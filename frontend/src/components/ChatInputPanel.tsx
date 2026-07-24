@@ -1,7 +1,7 @@
 import React from 'react';
 import { BrutalSelect } from './BrutalSelect';
 import { BrutalDialog } from './BrutalDialog';
-import { ConfigOptions, ChatConfig, type PermissionMode } from '../types/api';
+import { ConfigOptions, ChatConfig, normalizePermissionMode, type PermissionMode } from '../types/api';
 import { open } from '@tauri-apps/plugin-dialog';
 import { FileIcon } from './FileIcon';
 import { PaperClipIcon, XMarkIcon, FolderIcon } from '@heroicons/react/24/outline';
@@ -56,10 +56,8 @@ const INPUT_TEXT_METRIC_CLASS =
     'text-lg leading-7 tracking-normal font-sans font-medium [tab-size:4]';
 const PERMISSION_MODES: PermissionMode[] = [
     'default',
-    'accept_edits',
-    'plan',
     'auto',
-    'strict_readonly',
+    'full_access',
 ];
 
 function getFileExtensionLabel(filename: string): string {
@@ -143,7 +141,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
     const isComposingRef = React.useRef(false);
     const mentionActive = mentionQuery !== null;
     const suggestions = useSlashCommands(input);
-    const permissionMode = config.permission_mode ?? 'default';
+    const permissionMode = normalizePermissionMode(config.permission_mode);
     React.useEffect(() => { setSelectedSuggestion(0); }, [suggestions.length]);
     React.useEffect(() => { setSelectedMentionSuggestion(0); }, [mentionSuggestions.length]);
 
@@ -158,7 +156,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
             if (currentChatId) {
                 const state = await setChatPermissionMode(currentChatId, nextMode);
                 setConfig(prev => ({ ...prev, permission_mode: state.mode }));
-            } else if (nextMode !== 'plan') {
+            } else {
                 const state = await setDefaultPermissionMode(nextMode);
                 setConfig(prev => ({ ...prev, permission_mode: state.mode }));
             }
@@ -176,7 +174,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
 
     const changePermissionMode = React.useCallback((nextMode: PermissionMode) => {
         if (isSavingPermissionMode || nextMode === permissionMode) return;
-        if (nextMode === 'auto') {
+        if (nextMode === 'auto' || nextMode === 'full_access') {
             setPendingPermissionMode(nextMode);
             return;
         }
@@ -657,9 +655,13 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
           </div>
 
           <BrutalDialog
-            open={pendingPermissionMode === 'auto'}
-            title={t('chatWindow.autoModeDialogTitle')}
-            message={t('chatWindow.autoModeConfirmation')}
+            open={pendingPermissionMode !== null}
+            title={pendingPermissionMode === 'full_access'
+              ? t('chatWindow.fullAccessModeDialogTitle')
+              : t('chatWindow.autoModeDialogTitle')}
+            message={pendingPermissionMode === 'full_access'
+              ? t('chatWindow.fullAccessModeConfirmation')
+              : t('chatWindow.autoModeConfirmation')}
             onClose={() => setPendingPermissionMode(null)}
             actions={[
               {
@@ -667,9 +669,15 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                 tone: 'default',
               },
               {
-                label: t('chatWindow.autoModeEnable'),
+                label: pendingPermissionMode === 'full_access'
+                  ? t('chatWindow.fullAccessModeEnable')
+                  : t('chatWindow.autoModeEnable'),
                 tone: 'primary',
-                onClick: () => applyPermissionMode('auto'),
+                onClick: () => {
+                  if (pendingPermissionMode) {
+                    void applyPermissionMode(pendingPermissionMode);
+                  }
+                },
               },
             ]}
           />

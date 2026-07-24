@@ -807,13 +807,14 @@ async def mark_chat_read(request: Request) -> JSONResponse:
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
-_PERMISSION_MODES = {
-    "default",
-    "accept_edits",
-    "plan",
-    "auto",
-    "strict_readonly",
-}
+_PUBLIC_PERMISSION_MODES = {"default", "auto", "full_access"}
+_LEGACY_PERMISSION_MODES = {"accept_edits", "plan", "strict_readonly"}
+_PERMISSION_MODES = _PUBLIC_PERMISSION_MODES | _LEGACY_PERMISSION_MODES
+_SETTABLE_PERMISSION_MODES = _PUBLIC_PERMISSION_MODES | {"plan"}
+
+
+def _public_permission_mode(mode: str) -> str:
+    return mode if mode in _PUBLIC_PERMISSION_MODES else "default"
 
 
 async def get_permission_mode(request: Request) -> JSONResponse:
@@ -823,20 +824,19 @@ async def get_permission_mode(request: Request) -> JSONResponse:
         return JSONResponse({"error": "Chat not found"}, status_code=404)
     mode = str((chat.config or {}).get("permission_mode") or "default")
     pre_plan_mode = str((chat.config or {}).get("pre_plan_permission_mode") or "")
-    if mode not in _PERMISSION_MODES:
-        mode = "default"
+    mode = _public_permission_mode(mode)
     if pre_plan_mode not in _PERMISSION_MODES or pre_plan_mode == "plan":
         pre_plan_mode = ""
+    elif pre_plan_mode:
+        pre_plan_mode = _public_permission_mode(pre_plan_mode)
     return JSONResponse(
         {
             "mode": mode,
             "prePlanMode": pre_plan_mode or None,
             "availableModes": [
                 "default",
-                "accept_edits",
-                "plan",
                 "auto",
-                "strict_readonly",
+                "full_access",
             ],
             "autoModeAvailable": True,
             "unavailableReasons": {},
@@ -868,11 +868,14 @@ async def set_permission_mode(request: Request) -> JSONResponse:
             else "default"
         )
 
-    if mode not in _PERMISSION_MODES:
+    accepted_modes = (
+        _PERMISSION_MODES if restore_previous else _SETTABLE_PERMISSION_MODES
+    )
+    if mode not in accepted_modes:
         return JSONResponse(
             {
                 "error": "Invalid permission mode",
-                "validModes": sorted(_PERMISSION_MODES),
+                "validModes": sorted(_PUBLIC_PERMISSION_MODES),
             },
             status_code=400,
         )

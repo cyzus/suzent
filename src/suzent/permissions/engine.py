@@ -91,9 +91,10 @@ class PermissionEngine:
                 PermissionRisk.SAFE,
             )
 
-        ask_decision = self._evaluate_ask_rule(request, context)
-        if ask_decision is not None:
-            return ask_decision
+        if context.mode != PermissionMode.FULL_ACCESS:
+            ask_decision = self._evaluate_ask_rule(request, context)
+            if ask_decision is not None:
+                return ask_decision
 
         if request.tool_name in SHELL_TOOLS:
             decision = self._evaluate_shell(request, context)
@@ -114,6 +115,16 @@ class PermissionEngine:
                 reason_code="tool_requires_approval",
             )
 
+        if (
+            context.mode == PermissionMode.FULL_ACCESS
+            and decision.behavior == CommandDecision.ASK
+        ):
+            return _decision(
+                CommandDecision.ALLOW,
+                "Action allowed by Full Access mode",
+                "mode_full_access",
+                PermissionRisk.LOW,
+            )
         if decision.behavior == CommandDecision.ASK and policy == "always_allow":
             return _decision(
                 CommandDecision.ALLOW,
@@ -273,6 +284,14 @@ class PermissionEngine:
                 "A file path is required",
                 "invalid_file_path",
                 PermissionRisk.HIGH,
+            )
+
+        if context.mode == PermissionMode.FULL_ACCESS:
+            return _decision(
+                CommandDecision.ALLOW,
+                "File writes are allowed by Full Access mode",
+                "mode_full_access",
+                PermissionRisk.LOW,
             )
 
         allowed, reason = self._is_workspace_path(file_path, context)

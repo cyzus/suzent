@@ -6,11 +6,17 @@ from typing import Any
 from .models import PermissionRule, PermissionsConfig, ToolPermissionPolicy
 
 
-# Modes a user may set as the default for new chats. Mirrors the accepted set
-# in chat_routes._PERMISSION_MODES.
-VALID_DEFAULT_MODES = frozenset(
-    {"default", "accept_edits", "plan", "auto", "strict_readonly"}
-)
+VALID_DEFAULT_MODES = frozenset({"default", "auto", "full_access"})
+LEGACY_DEFAULT_MODES = frozenset({"accept_edits", "plan", "strict_readonly"})
+
+
+def normalize_default_permission_mode(mode: str) -> str | None:
+    cleaned = (mode or "").strip().lower()
+    if cleaned in VALID_DEFAULT_MODES:
+        return cleaned
+    if cleaned in LEGACY_DEFAULT_MODES:
+        return "default"
+    return None
 
 
 def normalize_keys(data: dict[str, Any]) -> dict[str, Any]:
@@ -115,8 +121,10 @@ def load_permission_overrides(
                 except Exception:
                     continue
         mode = payload.get("default_permission_mode")
-        if isinstance(mode, str) and mode.strip().lower() in VALID_DEFAULT_MODES:
-            default_mode = mode.strip().lower()
+        if isinstance(mode, str):
+            normalized_mode = normalize_default_permission_mode(mode)
+            if normalized_mode is not None:
+                default_mode = normalized_mode
 
     overrides: dict[str, Any] = {
         "permission_policies": merged_tools,

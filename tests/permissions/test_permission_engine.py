@@ -81,6 +81,103 @@ async def test_accept_edits_asks_outside_workspace(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_full_access_allows_write_outside_workspace(tmp_path: Path) -> None:
+    outside = tmp_path.parent / "outside.txt"
+    decision = await PermissionEngine().evaluate(
+        ToolPermissionRequest("write_file", {"file_path": str(outside)}),
+        context(tmp_path, mode=PermissionMode.FULL_ACCESS),
+    )
+
+    assert decision.behavior == CommandDecision.ALLOW
+    assert decision.reason_code == "mode_full_access"
+
+
+@pytest.mark.asyncio
+async def test_full_access_allows_unknown_tool_without_prompt(tmp_path: Path) -> None:
+    decision = await PermissionEngine().evaluate(
+        ToolPermissionRequest("external_action", {"value": "test"}),
+        context(tmp_path, mode=PermissionMode.FULL_ACCESS),
+    )
+
+    assert decision.behavior == CommandDecision.ALLOW
+    assert decision.reason_code == "mode_full_access"
+
+
+@pytest.mark.asyncio
+async def test_full_access_keeps_explicit_deny_rule(tmp_path: Path) -> None:
+    decision = await PermissionEngine().evaluate(
+        ToolPermissionRequest("external_action", {"value": "test"}),
+        context(
+            tmp_path,
+            mode=PermissionMode.FULL_ACCESS,
+            permission_rules=[
+                {
+                    "tool": "external_action",
+                    "behavior": "deny",
+                    "matcher": {"type": "all"},
+                }
+            ],
+        ),
+    )
+
+    assert decision.behavior == CommandDecision.DENY
+    assert decision.reason_code == "normalized_rule_deny"
+
+
+@pytest.mark.asyncio
+async def test_full_access_keeps_invalid_input_denied(tmp_path: Path) -> None:
+    decision = await PermissionEngine().evaluate(
+        ToolPermissionRequest("write_file", {"file_path": ""}),
+        context(tmp_path, mode=PermissionMode.FULL_ACCESS),
+    )
+
+    assert decision.behavior == CommandDecision.DENY
+    assert decision.reason_code == "invalid_file_path"
+
+
+@pytest.mark.asyncio
+async def test_full_access_allows_git_command_without_prompt(tmp_path: Path) -> None:
+    decision = await PermissionEngine().evaluate(
+        ToolPermissionRequest(
+            "bash_execute",
+            {"content": "git status", "language": "command"},
+        ),
+        context(tmp_path, mode=PermissionMode.FULL_ACCESS),
+    )
+
+    assert decision.behavior == CommandDecision.ALLOW
+    assert decision.reason_code == "shell_policy_allow"
+
+
+@pytest.mark.asyncio
+async def test_full_access_keeps_shell_deny_rule(tmp_path: Path) -> None:
+    decision = await PermissionEngine().evaluate(
+        ToolPermissionRequest(
+            "bash_execute",
+            {"content": "echo blocked", "language": "command"},
+        ),
+        context(
+            tmp_path,
+            mode=PermissionMode.FULL_ACCESS,
+            tool_permission_policies={
+                "bash_execute": {
+                    "command_rules": [
+                        {
+                            "pattern": "echo blocked",
+                            "match_type": "exact",
+                            "action": "deny",
+                        }
+                    ]
+                }
+            },
+        ),
+    )
+
+    assert decision.behavior == CommandDecision.DENY
+    assert decision.reason_code == "shell_policy_deny"
+
+
+@pytest.mark.asyncio
 async def test_plan_mode_denies_normal_edit(tmp_path: Path) -> None:
     decision = await PermissionEngine().evaluate(
         ToolPermissionRequest("write_file", {"file_path": "src/app.py"}),

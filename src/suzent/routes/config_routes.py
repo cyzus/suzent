@@ -155,11 +155,11 @@ async def save_default_permission_mode(request: Request) -> JSONResponse:
     """Persist the default permission mode used by new chats."""
     data = await request.json()
     mode = str(data.get("mode") or "").strip().lower()
-    if mode not in {"default", "accept_edits", "auto", "strict_readonly"}:
+    if mode not in {"default", "auto", "full_access"}:
         return JSONResponse(
             {
                 "error": "Invalid default permission mode",
-                "validModes": ["default", "accept_edits", "auto", "strict_readonly"],
+                "validModes": ["default", "auto", "full_access"],
             },
             status_code=400,
         )

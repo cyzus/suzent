@@ -46,6 +46,7 @@ def parse_permission_mode(value: Any) -> PermissionMode:
         "ask": PermissionMode.DEFAULT,
         "ask_before_edits": PermissionMode.DEFAULT,
         "accept_edits": PermissionMode.ACCEPT_EDITS,
+        "full_access": PermissionMode.FULL_ACCESS,
         "plan": PermissionMode.PLAN,
         "auto": PermissionMode.AUTO,
         "strict_readonly": PermissionMode.STRICT_READONLY,

@@ -4,7 +4,7 @@
 
 PERMISSIONS:
   # Permission mode new chats start in. One of:
-  #   default (ask before edits) | accept_edits | auto | plan | strict_readonly
+  #   default (ask before changes) | auto | full_access
   # Omitted here so this example stays non-overriding; set it in permissions.yaml.
   # default_permission_mode: default
   tools: {}

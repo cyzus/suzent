@@ -14,6 +14,7 @@ class PermissionMode(str, Enum):
     STRICT_READONLY = "strict_readonly"
     ACCEPT_EDITS = "accept_edits"
     FULL_APPROVAL = "full_approval"
+    FULL_ACCESS = "full_access"
     PLAN = "plan"
     AUTO = "auto"
 

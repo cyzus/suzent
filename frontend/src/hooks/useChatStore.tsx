@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import type { Message, ChatConfig, ConfigOptions, Chat, ChatSummary, ChatKindCounts } from '../types/api';
+import { normalizePermissionMode, type Message, type ChatConfig, type ConfigOptions, type Chat, type ChatSummary, type ChatKindCounts } from '../types/api';
 import { getApiBase } from '../lib/api';
 import { stripDenyApprovalPolicies } from '../lib/approvalPolicy';
 import { shouldKeepLocalAssistantContent } from '../lib/chatSyncGuards';
@@ -169,6 +169,9 @@ const hydrateChatConfig = (
     memory_enabled: savedConfig.memory_enabled ?? fallbackConfig.memory_enabled,
     sandbox_enabled: savedConfig.sandbox_enabled ?? fallbackConfig.sandbox_enabled,
     sandbox_volumes: savedConfig.sandbox_volumes ?? fallbackConfig.sandbox_volumes,
+    permission_mode: normalizePermissionMode(
+      savedConfig.permission_mode ?? fallbackConfig.permission_mode,
+    ),
     mcp_urls: savedConfig.mcp_urls ?? fallbackConfig.mcp_urls,
     mcp_enabled: savedConfig.mcp_enabled ?? fallbackConfig.mcp_enabled,
   };

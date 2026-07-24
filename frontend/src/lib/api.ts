@@ -67,8 +67,8 @@ export async function setChatPermissionMode(
 }
 
 export async function setDefaultPermissionMode(
-  mode: Exclude<PermissionMode, 'plan'>,
-): Promise<{ mode: Exclude<PermissionMode, 'plan'> }> {
+  mode: PermissionMode,
+): Promise<{ mode: PermissionMode }> {
   const response = await fetch(`${getApiBase()}/config/default-permission-mode`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },

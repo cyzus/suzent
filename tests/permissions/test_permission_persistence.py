@@ -59,14 +59,14 @@ def test_global_permission_rule_round_trip(tmp_path: Path) -> None:
     assert document["permissions"]["rules"] == []
 
 
-def test_default_permission_mode_loaded(tmp_path: Path) -> None:
+def test_legacy_default_permission_mode_migrates_to_default(tmp_path: Path) -> None:
     config_dir = tmp_path / "user"
     config_dir.mkdir()
     (config_dir / "permissions.yaml").write_text(
         yaml.safe_dump({"permissions": {"default_permission_mode": "accept_edits"}})
     )
     loaded = load_permission_overrides(tmp_path, Logger(), user_config_dir=config_dir)
-    assert loaded["default_permission_mode"] == "accept_edits"
+    assert loaded["default_permission_mode"] == "default"
 
 
 def test_invalid_default_permission_mode_ignored(tmp_path: Path) -> None:
@@ -105,10 +105,10 @@ def test_default_permission_mode_preserves_rules(tmp_path: Path) -> None:
     )
     persist_global_permission_rule(tmp_path, Logger(), rule, user_config_dir=config_dir)
     persist_default_permission_mode(
-        tmp_path, Logger(), "accept_edits", user_config_dir=config_dir
+        tmp_path, Logger(), "full_access", user_config_dir=config_dir
     )
     loaded = load_permission_overrides(tmp_path, Logger(), user_config_dir=config_dir)
-    assert loaded["default_permission_mode"] == "accept_edits"
+    assert loaded["default_permission_mode"] == "full_access"
     assert loaded["permission_rules"][0]["id"] == "rule-1"
 
 

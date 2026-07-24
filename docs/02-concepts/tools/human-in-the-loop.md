@@ -60,14 +60,17 @@ The pending decision is stored with the chat, so the same prompt is restored aft
 | Mode | Behavior |
 |------|----------|
 | `default` | Allow read-only commands; ask before workspace edits and other state-changing operations |
-| `accept_edits` | Allow verified workspace edits; continue asking for dangerous or external actions |
-| `plan` | Allow read-only exploration and writes only to the project `plan.md` |
 | `auto` | Allow deterministic low-risk operations and classify unresolved requests with a separate security model |
-| `strict_readonly` | Deny every non-read-only deferred operation |
+| `full_access` | Run valid tool actions without approval prompts; explicit deny rules and hard safety checks still apply |
 
-Entering Plan mode stores the previous mode. The mode API can restore it with `{"restorePrevious": true}`.
+Older `accept_edits`, `plan`, and `strict_readonly` values are accepted for
+backward compatibility but are no longer user-selectable. A legacy default is
+migrated conservatively to `default`.
 
 Auto mode is not blanket approval. Explicit denies, shell safety checks, path restrictions, and normalized deny rules run before the classifier. Interactive classifier failures fall back to asking; headless classifier failures deny.
+
+Full Access removes ordinary approval interruptions, but it does not override
+explicit deny rules, invalid tool inputs, or hard shell and path safety checks.
 
 ## Rule Scopes
 

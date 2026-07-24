@@ -32,7 +32,9 @@ class FakeDatabase:
         return True
 
 
-def test_plan_mode_restores_previous_mode(monkeypatch) -> None:
+def test_legacy_plan_mode_restores_previous_mode_without_exposing_it(
+    monkeypatch,
+) -> None:
     db = FakeDatabase()
     monkeypatch.setattr(chat_routes, "get_database", lambda: db)
     app = Starlette(
@@ -57,15 +59,40 @@ def test_plan_mode_restores_previous_mode(monkeypatch) -> None:
         json={"mode": "plan"},
     )
     assert entered.status_code == 200
-    assert entered.json()["prePlanMode"] == "accept_edits"
+    assert entered.json()["mode"] == "default"
+    assert entered.json()["prePlanMode"] == "default"
+    assert entered.json()["availableModes"] == ["default", "auto", "full_access"]
 
     restored = client.put(
         "/chats/chat-1/permission-mode",
         json={"restorePrevious": True},
     )
     assert restored.status_code == 200
-    assert restored.json()["mode"] == "accept_edits"
+    assert restored.json()["mode"] == "default"
     assert restored.json()["prePlanMode"] is None
+    assert db.chat.config["permission_mode"] == "accept_edits"
+
+
+def test_chat_permission_mode_api_rejects_removed_mode(monkeypatch) -> None:
+    db = FakeDatabase()
+    monkeypatch.setattr(chat_routes, "get_database", lambda: db)
+    app = Starlette(
+        routes=[
+            Route(
+                "/chats/{chat_id}/permission-mode",
+                chat_routes.set_permission_mode,
+                methods=["PUT"],
+            ),
+        ]
+    )
+
+    response = TestClient(app).put(
+        "/chats/chat-1/permission-mode",
+        json={"mode": "accept_edits"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["validModes"] == ["auto", "default", "full_access"]
 
 
 def test_default_permission_mode_api_persists(monkeypatch, tmp_path) -> None:
@@ -89,16 +116,36 @@ def test_default_permission_mode_api_persists(monkeypatch, tmp_path) -> None:
 
     response = client.put(
         "/config/default-permission-mode",
-        json={"mode": "accept_edits"},
+        json={"mode": "full_access"},
     )
 
     assert response.status_code == 200
-    assert response.json()["mode"] == "accept_edits"
-    assert config_module.CONFIG.default_permission_mode == "accept_edits"
+    assert response.json()["mode"] == "full_access"
+    assert config_module.CONFIG.default_permission_mode == "full_access"
     assert (
-        "default_permission_mode: accept_edits"
+        "default_permission_mode: full_access"
         in (config_dir / "permissions.yaml").read_text()
     )
+
+
+def test_default_permission_mode_api_rejects_removed_mode(monkeypatch) -> None:
+    app = Starlette(
+        routes=[
+            Route(
+                "/config/default-permission-mode",
+                config_routes.save_default_permission_mode,
+                methods=["PUT"],
+            ),
+        ]
+    )
+
+    response = TestClient(app).put(
+        "/config/default-permission-mode",
+        json={"mode": "accept_edits"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["validModes"] == ["default", "auto", "full_access"]
 
 
 def test_session_rule_api_round_trip(monkeypatch) -> None:

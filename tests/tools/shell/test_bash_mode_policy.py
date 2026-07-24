@@ -26,3 +26,9 @@ def test_full_approval_allows_read_only():
     # (ls, cat, …) should not prompt.
     decision = evaluate_mode(PermissionMode.FULL_APPROVAL, CommandClass.READ_ONLY)
     assert decision == CommandDecision.ALLOW
+
+
+def test_full_access_allows_unknown():
+    decision = evaluate_mode(PermissionMode.FULL_ACCESS, CommandClass.UNKNOWN)
+
+    assert decision == CommandDecision.ALLOW

@@ -151,8 +151,20 @@ async def get_chat_permission_state(request: Request) -> JSONResponse:
             decision = generated
         pending.append({**item, "decision": decision})
 
-    mode = str(config.get("permission_mode") or "default")
-    pre_plan_mode = config.get("pre_plan_permission_mode")
+    from suzent.permissions.loader import normalize_default_permission_mode
+
+    mode = (
+        normalize_default_permission_mode(
+            str(config.get("permission_mode") or "default")
+        )
+        or "default"
+    )
+    raw_pre_plan_mode = config.get("pre_plan_permission_mode")
+    pre_plan_mode = (
+        normalize_default_permission_mode(str(raw_pre_plan_mode))
+        if raw_pre_plan_mode
+        else None
+    )
     return JSONResponse(
         {
             "chatId": chat_id,

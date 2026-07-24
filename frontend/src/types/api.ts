@@ -56,10 +56,12 @@ export interface ChatConfig {
 
 export type PermissionMode =
   | 'default'
-  | 'accept_edits'
-  | 'plan'
   | 'auto'
-  | 'strict_readonly';
+  | 'full_access';
+
+export function normalizePermissionMode(value: unknown): PermissionMode {
+  return value === 'auto' || value === 'full_access' ? value : 'default';
+}
 
 export interface Chat {
   id: string;

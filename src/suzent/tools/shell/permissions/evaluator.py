@@ -33,8 +33,9 @@ def evaluate_command_policy(
 ) -> PermissionEvaluation:
     ctx = parse_command(command_text)
     command_class = classify_command(ctx)
+    mode = _parse_mode(mode_value)
 
-    if ctx.has_control_operators:
+    if ctx.has_control_operators and mode != PermissionMode.FULL_ACCESS:
         return PermissionEvaluation(
             decision=CommandDecision.ASK,
             reason="Command requires approval due to shell chaining semantics",
@@ -42,7 +43,7 @@ def evaluate_command_policy(
             metadata={"base_command": ctx.base_command},
         )
 
-    if ctx.base_command == "git":
+    if ctx.base_command == "git" and mode != PermissionMode.FULL_ACCESS:
         return PermissionEvaluation(
             decision=CommandDecision.ASK,
             reason="Git commands require approval",
@@ -66,6 +67,8 @@ def evaluate_command_policy(
     rules = normalize_rules(raw_rules)
     rule_decision = evaluate_rules(command_text, rules)
     if rule_decision is not None:
+        if mode == PermissionMode.FULL_ACCESS and rule_decision == CommandDecision.ASK:
+            rule_decision = CommandDecision.ALLOW
         return PermissionEvaluation(
             decision=rule_decision,
             reason="Decision from command policy rule",
@@ -73,7 +76,6 @@ def evaluate_command_policy(
             metadata={"base_command": ctx.base_command},
         )
 
-    mode = _parse_mode(mode_value)
     mode_decision = evaluate_mode(mode, command_class)
     if mode == PermissionMode.FULL_APPROVAL and mode_decision == CommandDecision.ASK:
         fallback = default_action.strip().lower()

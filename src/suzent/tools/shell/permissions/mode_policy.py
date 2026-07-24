@@ -4,6 +4,9 @@ from .policy_models import CommandClass, CommandDecision, PermissionMode
 
 
 def evaluate_mode(mode: PermissionMode, command_class: CommandClass) -> CommandDecision:
+    if mode == PermissionMode.FULL_ACCESS:
+        return CommandDecision.ALLOW
+
     if mode == PermissionMode.STRICT_READONLY:
         if command_class == CommandClass.READ_ONLY:
             return CommandDecision.ALLOW
