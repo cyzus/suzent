@@ -228,3 +228,57 @@ def test_draft_accumulator_snapshots_final_citation_sources():
             ],
         }
     ]
+
+
+def test_permission_decision_payload_and_resolution_are_persisted():
+    from suzent.permissions.models import (
+        CommandDecision,
+        PermissionDecision,
+        PermissionDecisionSource,
+        PermissionRisk,
+    )
+
+    decision = PermissionDecision(
+        behavior=CommandDecision.ALLOW,
+        reason="Classifier found no risky side effect",
+        reasonCode="auto_classifier_allow",
+        risk=PermissionRisk.LOW,
+        source=PermissionDecisionSource.AUTO_CLASSIFIER,
+        metadata={
+            "confidence": "high",
+            "risk_categories": ["network"],
+            "reviewer_model": "review-model",
+        },
+    )
+    payload = streaming._permission_decision_payload(
+        tool_call_id="call-1",
+        tool_name="social_message",
+        decision=decision,
+    )
+    acc = streaming._DraftDisplayAccumulator(chat_id="chat-1", run_id="run-1")
+    acc.apply(
+        SimpleNamespace(
+            type="CUSTOM",
+            name="tool_permission_decision",
+            value=payload,
+        )
+    )
+    resolution = {
+        "toolCallId": "call-1",
+        "behavior": "allow",
+        "source": "user",
+        "actionId": "allow_once",
+        "scope": "once",
+    }
+    acc.apply(
+        SimpleNamespace(
+            type="CUSTOM",
+            name="tool_permission_resolution",
+            value=resolution,
+        )
+    )
+
+    assert payload["source"] == "auto_classifier"
+    assert payload["confidence"] == "high"
+    assert acc.parts[0]["permissionDecision"] == payload
+    assert acc.parts[0]["permissionResolution"] == resolution

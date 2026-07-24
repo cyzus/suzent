@@ -51,7 +51,7 @@ from suzent.permissions import (
     PermissionEngine,
     ToolPermissionRequest,
 )
-from suzent.permissions.models import CommandDecision
+from suzent.permissions.models import CommandDecision, PermissionDecision
 from suzent.permissions.audit import record_permission_audit
 from loguru import logger
 
@@ -327,6 +327,18 @@ class _DraftDisplayAccumulator:
             if not tool.get("args") and value.get("args") is not None:
                 tool["args"] = _stringify_part_content(value.get("args"))
             self.dirty = True
+        elif name == "tool_permission_decision" and isinstance(value, dict):
+            tool_call_id = str(value.get("toolCallId") or "")
+            tool = self._ensure_tool(tool_call_id)
+            tool["permissionDecision"] = dict(value)
+            if value.get("toolName"):
+                tool["toolName"] = value["toolName"]
+            self.dirty = True
+        elif name == "tool_permission_resolution" and isinstance(value, dict):
+            tool_call_id = str(value.get("toolCallId") or "")
+            tool = self._ensure_tool(tool_call_id)
+            tool["permissionResolution"] = dict(value)
+            self.dirty = True
         elif name == "tool_approval_result" and isinstance(value, dict):
             tool_call_id = str(value.get("toolCallId") or "")
             tool = self._ensure_tool(tool_call_id)
@@ -535,6 +547,37 @@ def _tool_call_args_dict(tool_call: Any) -> dict[str, Any]:
     return {}
 
 
+def _permission_decision_payload(
+    *,
+    tool_call_id: str,
+    tool_name: str,
+    decision: PermissionDecision,
+) -> dict[str, Any]:
+    """Build the stable, user-visible permission decision event payload."""
+    metadata = decision.metadata
+    categories = metadata.get("risk_categories")
+    if not isinstance(categories, list):
+        categories = []
+    reviewer_model = metadata.get("reviewer_model")
+    if not isinstance(reviewer_model, str):
+        reviewer_model = None
+    confidence = metadata.get("confidence")
+    if not isinstance(confidence, (str, int, float)):
+        confidence = None
+    return {
+        "toolCallId": tool_call_id,
+        "toolName": tool_name,
+        "behavior": decision.behavior.value,
+        "source": decision.source.value,
+        "reason": decision.reason[:1000],
+        "reasonCode": decision.reason_code,
+        "risk": decision.risk.value,
+        "confidence": confidence,
+        "riskCategories": [str(value)[:80] for value in categories[:8]],
+        "reviewerModel": reviewer_model[:200] if reviewer_model else None,
+    }
+
+
 def _find_tool_return_parts(
     msg: Any,
     current_deferred: Optional[DeferredToolResults],
@@ -600,6 +643,7 @@ async def stream_agent_responses(
     message_history: list | None = None,
     chat_id: Optional[str] = None,
     deferred_tool_results: Optional[DeferredToolResults] = None,
+    permission_resolutions: Optional[list[dict[str, Any]]] = None,
     is_heartbeat: bool = False,
 ) -> AsyncGenerator[str, None]:
     """
@@ -761,6 +805,9 @@ async def stream_agent_responses(
         )
 
         try:
+            for resolution in permission_resolutions or []:
+                await sse_queue.put(("permission_resolution", resolution))
+
             logger.debug("[Streaming] Entering agent context (MCP init)...")
             async with agent:  # MCP server context management
                 logger.debug("[Streaming] Agent context ready. Starting run loop.")
@@ -1046,7 +1093,20 @@ async def stream_agent_responses(
                                     reason_code=decision.reason_code,
                                     mode=permission_context.mode.value,
                                     run_id=run_id,
-                                    metadata=decision.metadata,
+                                    metadata={
+                                        **decision.metadata,
+                                        "source": decision.source.value,
+                                    },
+                                )
+                                await sse_queue.put(
+                                    (
+                                        "permission_decision",
+                                        _permission_decision_payload(
+                                            tool_call_id=tc.tool_call_id,
+                                            tool_name=tc.tool_name,
+                                            decision=decision,
+                                        ),
+                                    )
                                 )
                                 if decision.behavior == CommandDecision.ALLOW:
                                     auto_approvals[tc.tool_call_id] = True
@@ -1339,6 +1399,12 @@ async def stream_agent_responses(
                             logger.debug(
                                 f"[Streaming] Failed to save pending_approval: {_pa_err}"
                             )
+
+                elif msg_type == "permission_decision":
+                    yield CustomEvent(name="tool_permission_decision", value=payload)
+
+                elif msg_type == "permission_resolution":
+                    yield CustomEvent(name="tool_permission_resolution", value=payload)
 
                 elif msg_type == "tool_recovery":
                     # HITL: emit recovered tool result with output

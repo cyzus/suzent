@@ -128,6 +128,15 @@ function stringifyContent(raw: unknown): string {
   }
 }
 
+function findLastToolPartIndex(parts: AGUIPart[], toolCallId: string): number {
+  for (let index = parts.length - 1; index >= 0; index -= 1) {
+    if (parts[index].type === 'tool' && parts[index].toolCallId === toolCallId) {
+      return index;
+    }
+  }
+  return -1;
+}
+
 export function processEvent(
   event: ParsedSSEEvent,
   parts: AGUIPart[],
@@ -265,7 +274,46 @@ export function processEvent(
       const name = data.name as string;
       const value = data.value;
 
-      if (name === 'tool_approval_request') {
+      if (name === 'tool_permission_decision') {
+        const decision = value as NonNullable<AGUIPart['permissionDecision']>;
+        const tcId = decision.toolCallId;
+        const existingIndex = findLastToolPartIndex(next, tcId);
+        if (existingIndex >= 0) {
+          next[existingIndex] = {
+            ...next[existingIndex],
+            toolName: decision.toolName || next[existingIndex].toolName,
+            permissionDecision: decision,
+          };
+        } else {
+          next.push({
+            type: 'tool',
+            toolCallId: tcId,
+            toolName: decision.toolName || 'unknown',
+            args: '',
+            state: 'running',
+            permissionDecision: decision,
+          });
+        }
+      } else if (name === 'tool_permission_resolution') {
+        const resolution = value as NonNullable<AGUIPart['permissionResolution']>;
+        const tcId = resolution.toolCallId;
+        const existingIndex = findLastToolPartIndex(next, tcId);
+        if (existingIndex >= 0) {
+          next[existingIndex] = {
+            ...next[existingIndex],
+            permissionResolution: resolution,
+          };
+        } else {
+          next.push({
+            type: 'tool',
+            toolCallId: tcId,
+            toolName: 'unknown',
+            args: '',
+            state: 'running',
+            permissionResolution: resolution,
+          });
+        }
+      } else if (name === 'tool_approval_request') {
         const approval = value as Record<string, unknown>;
         const tcId = approval.toolCallId as string;
         const approvalId = approval.approvalId as string;

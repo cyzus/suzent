@@ -717,6 +717,7 @@ class ChatProcessor:
 
         # Handle stateless resume
         deferred_tool_results = None
+        permission_resolutions: list[dict[str, Any]] = []
         if resume_approvals:
             from pydantic_ai.tools import DeferredToolResults
 
@@ -745,6 +746,15 @@ class ChatProcessor:
                 tool_call_id = app.get("tool_call_id") or app.get("request_id")
                 if tool_call_id:
                     approvals_dict[tool_call_id] = _deferred_approval_result(app)
+                    permission_resolutions.append(
+                        {
+                            "toolCallId": str(tool_call_id),
+                            "behavior": "allow" if app.get("approved") else "deny",
+                            "source": "user",
+                            "actionId": str(app.get("action_id") or "legacy"),
+                            "scope": str(app.get("remember") or "once"),
+                        }
+                    )
 
             pending_tool_call_ids = _collect_unprocessed_tool_call_ids(message_history)
             if approvals_dict and pending_tool_call_ids:
@@ -843,6 +853,7 @@ class ChatProcessor:
                 message_history=message_history,
                 chat_id=chat_id,
                 deferred_tool_results=deferred_tool_results,
+                permission_resolutions=permission_resolutions,
                 is_heartbeat=is_heartbeat,
             ):
                 try:

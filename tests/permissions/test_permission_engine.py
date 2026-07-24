@@ -6,7 +6,11 @@ import pytest
 
 from suzent.permissions.context import PermissionContext
 from suzent.permissions.engine import PermissionEngine, ToolPermissionRequest
-from suzent.permissions.models import CommandDecision, PermissionMode
+from suzent.permissions.models import (
+    CommandDecision,
+    PermissionDecisionSource,
+    PermissionMode,
+)
 from suzent.permissions.rules import parse_rules
 
 
@@ -90,6 +94,7 @@ async def test_full_access_allows_write_outside_workspace(tmp_path: Path) -> Non
 
     assert decision.behavior == CommandDecision.ALLOW
     assert decision.reason_code == "mode_full_access"
+    assert decision.source == PermissionDecisionSource.FULL_ACCESS
 
 
 @pytest.mark.asyncio
@@ -147,6 +152,7 @@ async def test_full_access_allows_git_command_without_prompt(tmp_path: Path) -> 
 
     assert decision.behavior == CommandDecision.ALLOW
     assert decision.reason_code == "shell_policy_allow"
+    assert decision.source == PermissionDecisionSource.FULL_ACCESS
 
 
 @pytest.mark.asyncio
@@ -271,6 +277,9 @@ async def test_auto_mode_classifies_unresolved_tool(tmp_path: Path) -> None:
 
     assert decision.behavior == CommandDecision.ALLOW
     assert decision.reason_code == "auto_classifier_allow"
+    assert decision.source == PermissionDecisionSource.AUTO_CLASSIFIER
+    assert decision.metadata["confidence"] == "high"
+    assert decision.metadata["risk_categories"] == ["test"]
 
 
 @pytest.mark.asyncio
@@ -285,6 +294,7 @@ async def test_auto_mode_prompts_for_risky_classifier_result(tmp_path: Path) -> 
     assert decision.behavior == CommandDecision.ASK
     assert decision.reason_code == "auto_classifier_high_risk"
     assert decision.risk.value == "high"
+    assert decision.source == PermissionDecisionSource.AUTO_CLASSIFIER
 
 
 @pytest.mark.asyncio

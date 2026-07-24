@@ -166,6 +166,9 @@ function aguiPartsToStoreMessage(parts: AGUIPart[], usage?: any, role: Message['
           args: part.args ?? existing.args,
           output: part.output ?? existing.output,
           approvalId: part.approvalId ?? existing.approvalId,
+          permission: part.permission ?? existing.permission,
+          permissionDecision: part.permissionDecision ?? existing.permissionDecision,
+          permissionResolution: part.permissionResolution ?? existing.permissionResolution,
           state: part.state ?? existing.state,
         };
         continue;

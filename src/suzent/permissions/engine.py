@@ -13,6 +13,7 @@ from suzent.permissions.context import PermissionContext
 from suzent.permissions.models import (
     CommandDecision,
     PermissionDecision,
+    PermissionDecisionSource,
     PermissionMode,
     PermissionRisk,
 )
@@ -55,6 +56,7 @@ class PermissionEngine:
                 deny_rule.description or "Action denied by a permission rule",
                 "normalized_rule_deny",
                 PermissionRisk.HIGH,
+                source=PermissionDecisionSource.RULE,
                 metadata={"rule_id": deny_rule.id},
             )
         policy = context.tool_approval_policy.get(request.tool_name)
@@ -64,6 +66,7 @@ class PermissionEngine:
                 "Tool denied by an explicit permission rule",
                 "explicit_tool_deny",
                 PermissionRisk.HIGH,
+                source=PermissionDecisionSource.RULE,
             )
 
         if context.mode == PermissionMode.PLAN:
@@ -124,6 +127,14 @@ class PermissionEngine:
                 "Action allowed by Full Access mode",
                 "mode_full_access",
                 PermissionRisk.LOW,
+                source=PermissionDecisionSource.FULL_ACCESS,
+            )
+        if (
+            context.mode == PermissionMode.FULL_ACCESS
+            and decision.behavior == CommandDecision.ALLOW
+        ):
+            return decision.model_copy(
+                update={"source": PermissionDecisionSource.FULL_ACCESS}
             )
         if decision.behavior == CommandDecision.ASK and policy == "always_allow":
             return _decision(
@@ -131,6 +142,7 @@ class PermissionEngine:
                 "Tool allowed by an explicit permission rule",
                 "explicit_tool_allow",
                 PermissionRisk.LOW,
+                source=PermissionDecisionSource.RULE,
             )
         allow_rule = find_rule(
             context.permission_rules,
@@ -144,6 +156,7 @@ class PermissionEngine:
                 allow_rule.description or "Action allowed by a permission rule",
                 "normalized_rule_allow",
                 PermissionRisk.LOW,
+                source=PermissionDecisionSource.RULE,
                 metadata={"rule_id": allow_rule.id},
             )
         if (
@@ -172,6 +185,7 @@ class PermissionEngine:
             request.args,
             reason=ask_rule.description or "A permission rule requires approval",
             reason_code="normalized_rule_ask",
+            source=PermissionDecisionSource.RULE,
         )
 
     async def _evaluate_auto(
@@ -193,6 +207,7 @@ class PermissionEngine:
                     {
                         "reason": f"Auto classifier unavailable: {exc}",
                         "reasonCode": "auto_classifier_unavailable",
+                        "source": PermissionDecisionSource.AUTO_CLASSIFIER.value,
                     }
                 )
                 return PermissionDecision.model_validate(payload)
@@ -201,6 +216,7 @@ class PermissionEngine:
                 "Auto classifier unavailable in a headless run",
                 "auto_classifier_unavailable",
                 PermissionRisk.HIGH,
+                source=PermissionDecisionSource.AUTO_CLASSIFIER,
             )
 
         if not result.should_block and result.confidence != "low":
@@ -210,9 +226,11 @@ class PermissionEngine:
                 result.reason,
                 "auto_classifier_allow",
                 PermissionRisk.LOW,
+                source=PermissionDecisionSource.AUTO_CLASSIFIER,
                 metadata={
                     "confidence": result.confidence,
                     "risk_categories": result.risk_categories,
+                    "reviewer_model": result.reviewer_model,
                 },
             )
 
@@ -222,10 +240,12 @@ class PermissionEngine:
                 {
                     "reason": result.reason,
                     "reasonCode": "auto_classifier_high_risk",
+                    "source": PermissionDecisionSource.AUTO_CLASSIFIER.value,
                     "risk": PermissionRisk.HIGH.value,
                     "metadata": {
                         "confidence": result.confidence,
                         "risk_categories": result.risk_categories,
+                        "reviewer_model": result.reviewer_model,
                     },
                 }
             )
@@ -235,9 +255,11 @@ class PermissionEngine:
             result.reason,
             "auto_classifier_block",
             PermissionRisk.HIGH,
+            source=PermissionDecisionSource.AUTO_CLASSIFIER,
             metadata={
                 "confidence": result.confidence,
                 "risk_categories": result.risk_categories,
+                "reviewer_model": result.reviewer_model,
             },
         )
 
@@ -292,6 +314,7 @@ class PermissionEngine:
                 "File writes are allowed by Full Access mode",
                 "mode_full_access",
                 PermissionRisk.LOW,
+                source=PermissionDecisionSource.FULL_ACCESS,
             )
 
         allowed, reason = self._is_workspace_path(file_path, context)
@@ -454,6 +477,7 @@ def _decision(
     reason_code: str,
     risk: PermissionRisk,
     *,
+    source: PermissionDecisionSource = PermissionDecisionSource.POLICY,
     metadata: dict[str, Any] | None = None,
 ) -> PermissionDecision:
     return PermissionDecision(
@@ -461,5 +485,6 @@ def _decision(
         reason=reason,
         reasonCode=reason_code,
         risk=risk,
+        source=source,
         metadata=metadata or {},
     )

@@ -142,6 +142,8 @@ const AGUIPartsContent: React.FC<{
             output: part.output ?? existing.output,
             approvalId: part.approvalId ?? existing.approvalId,
             permission: part.permission ?? existing.permission,
+            permissionDecision: part.permissionDecision ?? existing.permissionDecision,
+            permissionResolution: part.permissionResolution ?? existing.permissionResolution,
             state: part.state ?? existing.state,
           };
           continue;
@@ -231,6 +233,8 @@ const AGUIPartsContent: React.FC<{
                     output: tp.output || undefined,
                     approvalState,
                     permission: tp.permission,
+                    permissionDecision: tp.permissionDecision,
+                    permissionResolution: tp.permissionResolution,
                     onApprove: (isActionablyPending && tp.approvalId && onToolApproval)
                       ? (remember: ApprovalRememberScope, actionId?: string, feedback?: string) => onToolApproval(tp.approvalId!, tp.toolCallId || '', true, remember, tp.toolName, actionId, feedback)
                       : undefined,
@@ -287,6 +291,8 @@ const AGUIPartsContent: React.FC<{
                         onApprove={t.onApprove}
                         onDeny={t.onDeny}
                         permission={t.permission}
+                        permissionDecision={t.permissionDecision}
+                        permissionResolution={t.permissionResolution}
                         isAutoApproved={isAutoApproved}
                         onRemovePolicy={isAutoApproved && onRemoveApprovalPolicy ? () => onRemoveApprovalPolicy(t.toolName) : undefined}
                         onForceWebContext={onForceWebContext}
@@ -317,6 +323,9 @@ const AGUIPartsContent: React.FC<{
               toolArgs: tp.args || undefined,
               output: tp.output || undefined,
               approvalState,
+              permission: tp.permission,
+              permissionDecision: tp.permissionDecision,
+              permissionResolution: tp.permissionResolution,
               onApprove: (isActionablyPending && tp.approvalId && onToolApproval)
                 ? (remember: ApprovalRememberScope, actionId?: string, feedback?: string) => onToolApproval(tp.approvalId!, tp.toolCallId || '', true, remember, tp.toolName, actionId, feedback)
                 : undefined,

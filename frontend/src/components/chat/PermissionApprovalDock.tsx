@@ -27,6 +27,10 @@ interface PendingApproval {
   actions: PermissionAction[];
   reason?: string;
   risk?: string;
+  source?: string;
+  confidence?: 'low' | 'medium' | 'high' | number | null;
+  reviewerModel?: string | null;
+  riskCategories: string[];
 }
 
 function parseArgs(raw: string | undefined): Record<string, unknown> {
@@ -60,6 +64,24 @@ export function getPendingApprovals(parts: AGUIPart[]): PendingApproval[] {
       actions: part.permission.actions || [],
       reason: part.permission.reason,
       risk: part.permission.risk,
+      source: part.permissionDecision?.source || part.permission.source,
+      confidence: part.permissionDecision?.confidence
+        ?? (typeof part.permission.metadata?.confidence === 'number'
+          || part.permission.metadata?.confidence === 'low'
+          || part.permission.metadata?.confidence === 'medium'
+          || part.permission.metadata?.confidence === 'high'
+          ? part.permission.metadata.confidence
+          : null),
+      reviewerModel: part.permissionDecision?.reviewerModel
+        ?? (typeof part.permission.metadata?.reviewer_model === 'string'
+          ? part.permission.metadata.reviewer_model
+          : null),
+      riskCategories: part.permissionDecision?.riskCategories
+        ?? (Array.isArray(part.permission.metadata?.risk_categories)
+          ? part.permission.metadata.risk_categories.filter(
+            (item): item is string => typeof item === 'string',
+          )
+          : []),
     }];
   });
 }
@@ -233,13 +255,28 @@ const ApprovalCard: React.FC<{
       )}
 
       {approval.reason && (
-        <div className="mx-3 mt-2 flex min-w-0 items-center gap-2 text-[9px] text-neutral-500 dark:text-neutral-400">
-          {approval.risk && (
-            <span className="shrink-0 border border-brutal-black bg-brutal-yellow px-1.5 py-px text-[8px] font-bold uppercase tracking-wider text-brutal-black dark:border-neutral-500">
-              {approval.risk}
-            </span>
+        <div className="mx-3 mt-2 min-w-0 text-[9px] text-neutral-500 dark:text-neutral-400">
+          <div className="flex min-w-0 items-center gap-2">
+            {approval.risk && (
+              <span className="shrink-0 border border-brutal-black bg-brutal-yellow px-1.5 py-px text-[8px] font-bold uppercase tracking-wider text-brutal-black dark:border-neutral-500">
+                {approval.risk}
+              </span>
+            )}
+            <span className="truncate" title={approval.reason}>{approval.reason}</span>
+          </div>
+          {(approval.source || approval.confidence != null || approval.reviewerModel) && (
+            <div className="mt-1 truncate uppercase tracking-wide">
+              {[approval.source,
+                approval.confidence == null
+                  ? null
+                  : typeof approval.confidence === 'number'
+                    ? `${Math.round(approval.confidence * 100)}%`
+                    : approval.confidence,
+                approval.reviewerModel,
+                ...approval.riskCategories,
+              ].filter(Boolean).join(' · ')}
+            </div>
           )}
-          <span className="truncate" title={approval.reason}>{approval.reason}</span>
         </div>
       )}
 

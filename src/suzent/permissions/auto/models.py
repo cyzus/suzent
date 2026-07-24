@@ -10,3 +10,4 @@ class AutoClassificationResult(BaseModel):
     reason: str
     confidence: Literal["low", "medium", "high"]
     risk_categories: list[str] = Field(default_factory=list)
+    reviewer_model: str | None = None

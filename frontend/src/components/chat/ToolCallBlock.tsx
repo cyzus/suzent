@@ -7,7 +7,12 @@ import { ToolGroupIcon } from './toolGroupIcon';
 import { FileDiffViewer } from './FileDiffViewer';
 import { BashCommandRenderer, BashOutputRenderer } from './BashRenderer';
 import type { ApprovalRememberScope } from '../../hooks/useAGUI';
-import type { PermissionAction, PermissionPrompt } from '../../types/agui';
+import type {
+  PermissionAction,
+  PermissionPrompt,
+  ToolPermissionDecision,
+  ToolPermissionResolution,
+} from '../../types/agui';
 
 export interface ToolRendererProps {
   toolName: string;
@@ -127,6 +132,8 @@ interface ToolCallBlockProps {
   onApprove?: (remember: ApprovalRememberScope, actionId?: string, feedback?: string) => void;
   onDeny?: (actionId?: string, feedback?: string) => void;
   permission?: PermissionPrompt;
+  permissionDecision?: ToolPermissionDecision;
+  permissionResolution?: ToolPermissionResolution;
   isAutoApproved?: boolean;
   onRemovePolicy?: () => void;
   toolCallId?: string;
@@ -144,6 +151,8 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
   onApprove,
   onDeny,
   permission,
+  permissionDecision,
+  permissionResolution,
   isAutoApproved = false,
   onRemovePolicy,
   toolCallId,
@@ -176,7 +185,32 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
   // Format tool name for display: snake_case → readable
   const displayName = toolName.replace(/_/g, ' ');
 
-  const hasDetails = !!(toolArgs || output);
+  const visibleDecision = React.useMemo<ToolPermissionDecision | undefined>(() => {
+    if (permissionDecision) return permissionDecision;
+    if (!permission) return undefined;
+    const confidence = permission.metadata?.confidence;
+    const categories = permission.metadata?.risk_categories;
+    const reviewerModel = permission.metadata?.reviewer_model;
+    return {
+      toolCallId: toolCallId || '',
+      toolName,
+      behavior: permission.behavior,
+      source: permission.source || 'policy',
+      reason: permission.reason,
+      reasonCode: permission.reasonCode,
+      risk: permission.risk,
+      confidence: typeof confidence === 'number' || confidence === 'low'
+        || confidence === 'medium' || confidence === 'high'
+        ? confidence
+        : null,
+      riskCategories: Array.isArray(categories)
+        ? categories.filter((item): item is string => typeof item === 'string')
+        : [],
+      reviewerModel: typeof reviewerModel === 'string' ? reviewerModel : null,
+    };
+  }, [permissionDecision, permission, toolCallId, toolName]);
+
+  const hasDetails = !!(toolArgs || output || visibleDecision || permissionResolution);
   const hasOutput = !!output;
   const isPending = approvalState === 'pending';
   const isDenied = approvalState === 'denied';
@@ -184,6 +218,36 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
   const isBashTool = toolName === 'bash_execute';
   const ArgsRenderer = ARGS_RENDERERS[toolName];
   const OutputRenderer = OUTPUT_RENDERERS[toolName];
+  const confidenceLabel = visibleDecision?.confidence == null
+    ? null
+    : typeof visibleDecision.confidence === 'number'
+      ? `${Math.round(visibleDecision.confidence * 100)}%`
+      : visibleDecision.confidence;
+  const decisionBadge = (() => {
+    if (!visibleDecision) return null;
+    if (visibleDecision.source === 'full_access') {
+      return { label: t('toolCallBlock.permissionFullAccess'), className: 'border-violet-500 text-violet-700 dark:text-violet-300' };
+    }
+    if (permissionResolution) {
+      return permissionResolution.behavior === 'allow'
+        ? { label: t('toolCallBlock.permissionUserAllowed'), className: 'border-green-500 text-green-700 dark:text-green-300' }
+        : { label: t('toolCallBlock.permissionUserDenied'), className: 'border-red-500 text-red-700 dark:text-red-300' };
+    }
+    if (visibleDecision.behavior === 'ask') {
+      return { label: `${t('toolCallBlock.permissionReviewRequired')} · ${visibleDecision.risk}`, className: 'border-amber-500 text-amber-700 dark:text-amber-300' };
+    }
+    if (visibleDecision.behavior === 'deny') {
+      return { label: `${t('toolCallBlock.permissionDenied')} · ${visibleDecision.risk}`, className: 'border-red-500 text-red-700 dark:text-red-300' };
+    }
+    if (visibleDecision.source === 'auto_classifier') {
+      const suffix = confidenceLabel ? ` · ${confidenceLabel}` : '';
+      return { label: `${t('toolCallBlock.permissionAutoAllowed')}${suffix}`, className: 'border-blue-500 text-blue-700 dark:text-blue-300' };
+    }
+    if (visibleDecision.source === 'rule') {
+      return { label: t('toolCallBlock.permissionRuleAllowed'), className: 'border-emerald-500 text-emerald-700 dark:text-emerald-300' };
+    }
+    return null;
+  })();
 
   const parsedOutput = React.useMemo<ToolResultEnvelope | null>(() => {
     return parseToolResultEnvelope(output);
@@ -431,6 +495,11 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
         {isDenied && (
           <span className="text-[10px] text-red-500 font-bold shrink-0">DENIED</span>
         )}
+        {!expanded && decisionBadge && (
+          <span className={`rounded-sm border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide shrink-0 ${decisionBadge.className}`}>
+            {decisionBadge.label}
+          </span>
+        )}
 
         {/* Auto-approval badge (only shown when collapsed) */}
         {!expanded && isAutoApproved && !isPending && !isDenied && (
@@ -484,6 +553,56 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
       `}>
         <div className="overflow-hidden min-h-0 min-w-0 w-full">
           <div className={`${inActivityRail ? 'ml-0 pl-0 pr-0 border-l-0' : 'ml-2 pl-3 pr-2 border-l-2 border-neutral-200 dark:border-zinc-700'} mt-1 mb-2 space-y-3 min-w-0 overflow-x-hidden`}>
+            {visibleDecision && (
+              <div className="rounded-sm border border-neutral-300 bg-neutral-50 px-2.5 py-2 text-[11px] text-neutral-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-neutral-300">
+                <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-neutral-500">
+                  {t('toolCallBlock.permissionDecisionTitle')}
+                </div>
+                <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1">
+                  <dt className="text-neutral-500">{t('toolCallBlock.permissionOutcome')}</dt>
+                  <dd className="font-medium">{visibleDecision.behavior}</dd>
+                  <dt className="text-neutral-500">{t('toolCallBlock.permissionEvaluator')}</dt>
+                  <dd className="break-all">{visibleDecision.source}</dd>
+                  {visibleDecision.source === 'full_access' ? (
+                    <>
+                      <dt className="text-neutral-500">{t('toolCallBlock.permissionReview')}</dt>
+                      <dd className="font-medium text-violet-700 dark:text-violet-300">{t('toolCallBlock.permissionNotReviewed')}</dd>
+                    </>
+                  ) : (
+                    <>
+                      {visibleDecision.reviewerModel && (
+                        <>
+                          <dt className="text-neutral-500">{t('toolCallBlock.permissionReviewer')}</dt>
+                          <dd className="break-all">{visibleDecision.reviewerModel}</dd>
+                        </>
+                      )}
+                      {confidenceLabel && (
+                        <>
+                          <dt className="text-neutral-500">{t('toolCallBlock.permissionConfidence')}</dt>
+                          <dd>{confidenceLabel}</dd>
+                        </>
+                      )}
+                    </>
+                  )}
+                  <dt className="text-neutral-500">{t('toolCallBlock.permissionRisk')}</dt>
+                  <dd>{visibleDecision.risk}</dd>
+                  {visibleDecision.riskCategories.length > 0 && (
+                    <>
+                      <dt className="text-neutral-500">{t('toolCallBlock.permissionCategories')}</dt>
+                      <dd>{visibleDecision.riskCategories.join(', ')}</dd>
+                    </>
+                  )}
+                  <dt className="text-neutral-500">{t('toolCallBlock.permissionReason')}</dt>
+                  <dd className="break-words">{visibleDecision.reason}</dd>
+                  {permissionResolution && (
+                    <>
+                      <dt className="text-neutral-500">{t('toolCallBlock.permissionResolution')}</dt>
+                      <dd>{permissionResolution.behavior} · {permissionResolution.scope}</dd>
+                    </>
+                  )}
+                </dl>
+              </div>
+            )}
             {/* Arguments or Running status */}
             {(toolArgs || (isStreaming && !output)) && !(OutputRenderer && hasOutput && !ArgsRenderer) && (
               <div className="min-w-0 w-full overflow-hidden">
@@ -543,15 +662,6 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
             {/* Approval buttons — shown when tool is waiting for user decision */}
             {isPending && onApprove && onDeny && (
               <>
-                {permission?.reason && (
-                  <div className="rounded-sm border border-neutral-300 dark:border-zinc-700 px-2.5 py-2 text-[11px] text-neutral-600 dark:text-neutral-300">
-                    <span className="font-bold uppercase tracking-wide">
-                      {permission.risk} risk
-                    </span>
-                    <span className="mx-1.5">—</span>
-                    {permission.reason}
-                  </div>
-                )}
                 {permissionActions.some(action => action.feedbackKind === 'reject') && (
                   <textarea
                     value={rejectFeedback}

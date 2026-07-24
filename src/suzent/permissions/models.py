@@ -33,6 +33,13 @@ class PermissionRisk(str, Enum):
     CRITICAL = "critical"
 
 
+class PermissionDecisionSource(str, Enum):
+    POLICY = "policy"
+    RULE = "rule"
+    AUTO_CLASSIFIER = "auto_classifier"
+    FULL_ACCESS = "full_access"
+
+
 class PermissionScope(str, Enum):
     ONCE = "once"
     SESSION = "session"
@@ -118,6 +125,7 @@ class PermissionDecision(BaseModel):
     reason: str
     reason_code: str = Field(alias="reasonCode")
     risk: PermissionRisk
+    source: PermissionDecisionSource = PermissionDecisionSource.POLICY
     actions: list[PermissionAction] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
 

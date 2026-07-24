@@ -10,6 +10,7 @@ import { MarkdownRenderer } from './MarkdownRenderer';
 import { SubAgentCallBlock, type SubAgentStatus } from './SubAgentCallBlock';
 import { ToolCallBlock } from './ToolCallBlock';
 import { ToolGroupIcon } from './toolGroupIcon';
+import type { PermissionPrompt, ToolPermissionDecision, ToolPermissionResolution } from '../../types/agui';
 
 const LARGE_MARKDOWN_RENDER_THRESHOLD = 12000;
 
@@ -29,6 +30,9 @@ export const ToolSequenceGroup: React.FC<{
     approvalState?: 'pending' | 'denied' | undefined;
     onApprove?: (remember: ApprovalRememberScope) => void;
     onDeny?: () => void;
+    permission?: PermissionPrompt;
+    permissionDecision?: ToolPermissionDecision;
+    permissionResolution?: ToolPermissionResolution;
   }>;
   isStreaming?: boolean;
   toolApprovalPolicy?: Record<string, string>;
@@ -63,6 +67,9 @@ export const ToolSequenceGroup: React.FC<{
               isStreaming={isStreaming}
               onApprove={t.onApprove}
               onDeny={t.onDeny}
+              permission={t.permission}
+              permissionDecision={t.permissionDecision}
+              permissionResolution={t.permissionResolution}
               isAutoApproved={isAutoApproved}
               onRemovePolicy={isAutoApproved && onRemoveApprovalPolicy ? () => onRemoveApprovalPolicy(t.toolName) : undefined}
               onForceWebContext={onForceWebContext}
@@ -143,6 +150,9 @@ export const ToolSequenceGroup: React.FC<{
                 isStreaming={isStreaming && !t.output}
                 onApprove={t.onApprove}
                 onDeny={t.onDeny}
+                permission={t.permission}
+                permissionDecision={t.permissionDecision}
+                permissionResolution={t.permissionResolution}
                 isAutoApproved={isAutoApproved}
                 onRemovePolicy={isAutoApproved && onRemoveApprovalPolicy ? () => onRemoveApprovalPolicy(t.toolName) : undefined}
                 onForceWebContext={onForceWebContext}
@@ -328,6 +338,9 @@ export const StaticContent: React.FC<{
               toolArgs={b.toolArgs}
               output={b.content || undefined}
               approvalState={effectiveApprovalState}
+              permission={b.permission}
+              permissionDecision={b.permissionDecision}
+              permissionResolution={b.permissionResolution}
               onApprove={(isPending && b.approvalId && onToolApproval)
                 ? (remember) => onToolApproval(b.approvalId!, b.toolCallId || '', true, remember, b.toolName)
                 : undefined}
