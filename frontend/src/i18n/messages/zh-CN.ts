@@ -918,6 +918,7 @@ export const zhCN = {
     permissionDenied: '已拒绝',
     permissionAutoAllowed: '自动允许',
     permissionRuleAllowed: '规则允许',
+    permissionPolicyAllowed: '策略允许',
     ruleScopeSession: '当前对话',
     ruleScopeGlobal: '所有对话',
     ruleExplanationCommand: '{action} 将为{scope}创建命令规则：`{command}`',

@@ -37,6 +37,14 @@ const OUTPUT_RENDERERS: Record<string, React.FC<ToolRendererProps> | undefined> 
 
 export type ApprovalState = 'pending' | 'approved' | 'denied' | undefined;
 
+export function shouldShowPolicyAllowedBadge(
+  decision: ToolPermissionDecision,
+): boolean {
+  return decision.source === 'policy'
+    && decision.behavior === 'allow'
+    && decision.reasonCode !== 'readonly_operation';
+}
+
 interface ToolResultEnvelope {
   success?: boolean;
   message?: string;
@@ -245,6 +253,9 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
     }
     if (visibleDecision.source === 'rule') {
       return { label: t('toolCallBlock.permissionRuleAllowed'), className: 'border-emerald-500 text-emerald-700 dark:text-emerald-300' };
+    }
+    if (shouldShowPolicyAllowedBadge(visibleDecision)) {
+      return { label: t('toolCallBlock.permissionPolicyAllowed'), className: 'border-neutral-500 text-neutral-700 dark:text-neutral-300' };
     }
     return null;
   })();

@@ -992,6 +992,7 @@ export const en = {
     permissionDenied: 'Denied',
     permissionAutoAllowed: 'Auto allowed',
     permissionRuleAllowed: 'Rule allowed',
+    permissionPolicyAllowed: 'Policy allowed',
     ruleScopeSession: 'this chat',
     ruleScopeGlobal: 'all chats',
     ruleExplanationCommand: '{action} creates a rule for {scope}: `{command}`',

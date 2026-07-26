@@ -1663,6 +1663,7 @@ class ChatProcessor:
                 # 100% Backend Authored: rebuild the complete display log from the full agent history
                 # so chat.messages is always a faithful log of all exchanges, including tools and reasoning.
                 rebuilt = _rebuild_display_messages(messages, model_id=model_id)
+                rebuilt = _preserve_permission_metadata(rebuilt, chat_messages)
                 rebuilt = _preserve_citation_sources(rebuilt, chat_messages)
                 rebuilt = _append_inline_a2ui_surfaces(rebuilt, inline_a2ui_surfaces)
 
@@ -2259,6 +2260,41 @@ def _rebuild_display_messages(messages: list, model_id: str | None = None) -> li
             result.append(entry)
 
     return result
+
+
+def _preserve_permission_metadata(rebuilt: list, existing: list | None) -> list:
+    """Carry streamed permission decisions into finalized structured tool parts."""
+    metadata_by_tool_call_id: dict[str, dict[str, dict]] = {}
+    for message in existing or []:
+        if not isinstance(message, dict):
+            continue
+        for part in message.get("parts") or []:
+            if not isinstance(part, dict) or part.get("type") != "tool":
+                continue
+            tool_call_id = str(part.get("toolCallId") or "")
+            if not tool_call_id:
+                continue
+            preserved = {
+                key: dict(value)
+                for key in ("permissionDecision", "permissionResolution")
+                if isinstance((value := part.get(key)), dict)
+            }
+            if preserved:
+                metadata_by_tool_call_id.setdefault(tool_call_id, {}).update(preserved)
+
+    if not metadata_by_tool_call_id:
+        return rebuilt
+
+    for message in rebuilt:
+        if not isinstance(message, dict):
+            continue
+        for part in message.get("parts") or []:
+            if not isinstance(part, dict) or part.get("type") != "tool":
+                continue
+            metadata = metadata_by_tool_call_id.get(str(part.get("toolCallId") or ""))
+            if metadata:
+                part.update(metadata)
+    return rebuilt
 
 
 _SOURCE_TURN_RE = re.compile(r"^t(\d+)_src_\d+$")
