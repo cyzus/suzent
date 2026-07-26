@@ -226,11 +226,14 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
   const isBashTool = toolName === 'bash_execute';
   const ArgsRenderer = ARGS_RENDERERS[toolName];
   const OutputRenderer = OUTPUT_RENDERERS[toolName];
-  const confidenceLabel = visibleDecision?.confidence == null
+  const confidenceValueLabel = visibleDecision?.confidence == null
     ? null
     : typeof visibleDecision.confidence === 'number'
       ? `${Math.round(visibleDecision.confidence * 100)}%`
-      : visibleDecision.confidence;
+      : t(`toolCallBlock.permissionConfidenceLevels.${visibleDecision.confidence}`);
+  const confidenceBadgeLabel = confidenceValueLabel
+    ? t('toolCallBlock.permissionConfidenceBadge', { value: confidenceValueLabel })
+    : null;
   const decisionBadge = (() => {
     if (!visibleDecision) return null;
     if (visibleDecision.source === 'full_access') {
@@ -248,7 +251,7 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
       return { label: `${t('toolCallBlock.permissionDenied')} · ${visibleDecision.risk}`, className: 'border-red-500 text-red-700 dark:text-red-300' };
     }
     if (visibleDecision.source === 'auto_classifier') {
-      const suffix = confidenceLabel ? ` · ${confidenceLabel}` : '';
+      const suffix = confidenceBadgeLabel ? ` · ${confidenceBadgeLabel}` : '';
       return { label: `${t('toolCallBlock.permissionAutoAllowed')}${suffix}`, className: 'border-blue-500 text-blue-700 dark:text-blue-300' };
     }
     if (visibleDecision.source === 'rule') {
@@ -587,10 +590,10 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
                           <dd className="break-all">{visibleDecision.reviewerModel}</dd>
                         </>
                       )}
-                      {confidenceLabel && (
+                      {confidenceValueLabel && (
                         <>
                           <dt className="text-neutral-500">{t('toolCallBlock.permissionConfidence')}</dt>
-                          <dd>{confidenceLabel}</dd>
+                          <dd>{confidenceValueLabel}</dd>
                         </>
                       )}
                     </>

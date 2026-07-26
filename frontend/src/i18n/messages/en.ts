@@ -980,6 +980,13 @@ export const en = {
     permissionReviewer: 'Reviewer',
     permissionReview: 'Review',
     permissionConfidence: 'Confidence',
+    permissionConfidenceBadge: '{value} confidence',
+    permissionConfidenceSummary: 'Confidence: {value}',
+    permissionConfidenceLevels: {
+      low: 'Low',
+      medium: 'Medium',
+      high: 'High',
+    },
     permissionRisk: 'Risk',
     permissionCategories: 'Categories',
     permissionReason: 'Reason',

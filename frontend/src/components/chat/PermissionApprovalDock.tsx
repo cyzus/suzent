@@ -151,6 +151,14 @@ const ApprovalCard: React.FC<{
       ? approval.args.path
       : '';
   const detail = command || filePath || JSON.stringify(approval.args, null, 2);
+  const confidenceLabel = approval.confidence == null
+    ? null
+    : typeof approval.confidence === 'number'
+      ? `${Math.round(approval.confidence * 100)}%`
+      : t(`toolCallBlock.permissionConfidenceLevels.${approval.confidence}`);
+  const confidenceSummary = confidenceLabel
+    ? t('toolCallBlock.permissionConfidenceSummary', { value: confidenceLabel })
+    : null;
   const orderedActions = React.useMemo(
     () => getActionDisplayOrder(approval.actions),
     [approval.actions],
@@ -267,11 +275,7 @@ const ApprovalCard: React.FC<{
           {(approval.source || approval.confidence != null || approval.reviewerModel) && (
             <div className="mt-1 truncate uppercase tracking-wide">
               {[approval.source,
-                approval.confidence == null
-                  ? null
-                  : typeof approval.confidence === 'number'
-                    ? `${Math.round(approval.confidence * 100)}%`
-                    : approval.confidence,
+                confidenceSummary,
                 approval.reviewerModel,
                 ...approval.riskCategories,
               ].filter(Boolean).join(' · ')}

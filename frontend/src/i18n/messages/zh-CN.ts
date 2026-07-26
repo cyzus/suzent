@@ -906,6 +906,13 @@ export const zhCN = {
     permissionReviewer: '审核模型',
     permissionReview: '审核',
     permissionConfidence: '置信度',
+    permissionConfidenceBadge: '置信度：{value}',
+    permissionConfidenceSummary: '置信度：{value}',
+    permissionConfidenceLevels: {
+      low: '低',
+      medium: '中',
+      high: '高',
+    },
     permissionRisk: '风险',
     permissionCategories: '风险类别',
     permissionReason: '原因',
