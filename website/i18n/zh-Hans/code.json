@@ -1,22 +1,22 @@
 {
   "homepage.meta.title": {
-    "message": "主权本地智能体",
+    "message": "主权 AI 智能体",
     "description": "Homepage meta title"
   },
   "homepage.meta.description": {
-    "message": "一个与模型无关、本地优先的智能体，具备持久记忆、定时操作和对数据的主权控制。",
+    "message": "一个真正属于你的主权 AI 智能体：身份、记忆、技能、工作区和运行环境不依附于任何模型或平台。",
     "description": "Homepage meta description"
   },
   "homepage.hero.kicker": {
-    "message": "主权本地智能体",
+    "message": "主权 AI 智能体",
     "description": "Hero section kicker above the title"
   },
   "homepage.hero.subtitle": {
-    "message": "本地·  持久·  主权",
+    "message": "模型可以替换，你的智能体始终存在。",
     "description": "Hero subtitle"
   },
   "homepage.hero.cta.primary": {
-    "message": "查看指南",
+    "message": "召唤 Suzent",
     "description": "Primary CTA button in hero"
   },
   "homepage.hero.cta.github": {
@@ -60,79 +60,79 @@
     "description": "Start command label"
   },
   "homepage.features.label": {
-    "message": "本地能力 / 系统秘仪",
+    "message": "什么才是主权智能体？",
     "description": "Feature section label"
   },
   "homepage.features.modelAgnostic.arcana": {
-    "message": "I · 无模型者",
+    "message": "I · 主权智能",
     "description": "Feature card arcana label"
   },
   "homepage.features.modelAgnostic.title": {
-    "message": "模型无关",
+    "message": "选择它的智能",
     "description": "Feature card title"
   },
   "homepage.features.modelAgnostic.desc": {
-    "message": "通过一个本地接口使用 GPT、Claude、Gemini 等提供商。更换模型无需重建工作流。",
+    "message": "模型是引擎，而不是身份。更换提供商，不会失去让这个智能体属于你的记忆、技能和工作区。",
     "description": "Feature card description"
   },
   "homepage.features.memory.arcana": {
-    "message": "II · 不死记录",
+    "message": "II · 主权心智",
     "description": "Feature card arcana label"
   },
   "homepage.features.memory.title": {
-    "message": "持久记忆",
+    "message": "拥有它的记忆",
     "description": "Feature card title"
   },
   "homepage.features.memory.desc": {
-    "message": "Markdown 召回与 LanceDB 语义搜索，为智能体保留跨会话的长期记录。",
+    "message": "记忆存在于你可以阅读、编辑、删除、版本管理、重建和迁移的 Markdown 中。索引服务于文件，而非相反。",
     "description": "Feature card description"
   },
   "homepage.features.private.arcana": {
-    "message": "III · 虚空之手",
+    "message": "III · 主权权力",
     "description": "Feature card arcana label"
   },
   "homepage.features.private.title": {
-    "message": "主权执行",
+    "message": "治理它的行动",
     "description": "Feature card title"
   },
   "homepage.features.private.desc": {
-    "message": "本地优先架构，沙箱隔离执行。文件、记忆和运行时都由你掌控。",
+    "message": "权限、作用域规则、沙箱边界和可检查的活动时间线，让自主工作始终服从你的权力。",
     "description": "Feature card description"
   },
   "homepage.features.automation.arcana": {
-    "message": "IV · 神谕轮回",
+    "message": "IV · 主权容器",
     "description": "Feature card arcana label"
   },
   "homepage.features.automation.title": {
-    "message": "定时操作",
+    "message": "控制它的容器",
     "description": "Feature card title"
   },
   "homepage.features.automation.desc": {
-    "message": "运行类 Cron 任务、心跳检查和长期监控，无需额外接入另一套服务。",
+    "message": "运行在你控制的基础设施上，隔离项目工作区，挂载你自己的文件夹，并扩展到经过批准的设备。",
     "description": "Feature card description"
   },
   "homepage.features.skills.arcana": {
-    "message": "V · 技能魔典",
+    "message": "V · 主权能动性",
     "description": "Feature card arcana label"
   },
   "homepage.features.skills.title": {
-    "message": "技能索引",
+    "message": "让它持续工作",
     "description": "Feature card title"
   },
   "homepage.features.skills.desc": {
-    "message": "将领域知识打包为 Markdown 技能。在需要新能力时，本地添加即可。",
+    "message": "目标、任务、子智能体、定时任务和心跳机制，让工作不止于一次回答。回合快照让本地工作可以重来。",
     "description": "Feature card description"
   },
   "homepage.features.crossPlatform.arcana": {
-    "message": "VI · 可携容器",
+    "message": "VI · 主权连续性",
     "description": "Feature card arcana label"
   },
   "homepage.features.crossPlatform.title": {
-    "message": "可演化设计",
+    "message": "延续它的存在",
     "description": "Feature card title"
   },
   "homepage.features.crossPlatform.desc": {
-    "message": "支持 Windows、macOS 和 Linux。可通过 Nodes、技能和 WebSocket 伴侣设备继续扩展系统。",
+    "message": "迁移记忆、技能和配置，同时将凭证留在本地。模型和设备可以改变，你的智能体始终存在。",
     "description": "Feature card description"
   },
   "homepage.howItWorks.heading": {

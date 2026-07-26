@@ -9,14 +9,16 @@
 
 ![Suzent Banner](docs/assets/banner_v2.png)
 
-# **SUZENT: SUMMON A SOVEREIGN GEIST**
+# **SUZENT: THE SOVEREIGN AI AGENT**
+
+### **YOUR AGENT SHOULD NOT BE AN ACCOUNT YOU RENT.**
 
 ![Status](https://img.shields.io/badge/RITUAL-READY-black?style=flat-square) ![System](https://img.shields.io/badge/GEIST-LOCAL_FIRST-black?style=flat-square)
 
 [![Version](https://img.shields.io/github/v/release/cyzus/suzent?style=flat-square&label=version)](https://github.com/cyzus/suzent/releases) [![License](https://img.shields.io/github/license/cyzus/suzent?style=flat-square)](LICENSE) [![Python](https://img.shields.io/badge/python-3.12%2B-yellow?style=flat-square)](https://python.org) [![Discord](https://img.shields.io/badge/Discord-Join%20Chat-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/MkBDDbwPBK)
 
 
-**[SUMMONING RITUAL](docs/01-getting-started/quickstart.md)** • **[GRIMOIRE](docs/README.md)** • **[CONTRIBUTING](./CONTRIBUTING.md)**
+**[WEBSITE](https://suzent.com)** • **[SUMMONING RITUAL](docs/01-getting-started/quickstart.md)** • **[GRIMOIRE](docs/README.md)** • **[CONTRIBUTING](./CONTRIBUTING.md)**
 
 
 
@@ -24,74 +26,60 @@
 
 ---
 
-## <img src="docs/assets/robot-idle.svg" width="30" style="vertical-align: middle;" /> **THE DIGITAL OCCULT**
+## <img src="docs/assets/robot-idle.svg" width="30" style="vertical-align: middle;" /> **SUMMON A SOVEREIGN GEIST**
 
-> Your data. Your machine. Your rules.
+> Your agent should not be an account you rent. It should be a system you own.
 
-SUZENT [soo-zuh-nt] combines SUZERAIN (sovereign) + AGENT (executor). It is not a cloud pet, not a SaaS dashboard, and not another rented personality behind someone else's API quota. It is a local-first agentic system that answers to one authority: you.
+**SUZENT** [soo-zuh-nt] is an open-source, local-first AI agent whose identity, memory, skills, workspace, and runtime remain under your control. Use GPT, Claude, Gemini, DeepSeek, local models, or whatever comes next without resetting the agent that knows you and your work.
 
-Think of it as a **Sovereign Geist**: a cyber-spirit housed in your own machine, summoned through terminal incantations, bound by local files, memory, tools, and skills. The joke is a ritual. The ritual is an interface.
+It can research, write, code, pursue goals, run scheduled work, use tools, connect to your devices, and meet you in your existing channels. Every capability operates inside boundaries you define.
+
+**Models are replaceable. Platforms are temporary. Your agent remains.**
 
 ---
 
-## **WHY SUZENT?**
+## **WHAT MAKES AN AGENT SOVEREIGN?**
 
-SUZENT is an open-source deep research and co-worker agent with a local-first soul. It synthesizes ideas from modern AI agents, research assistants, coding co-workers, MCP tool ecosystems, and personal knowledge workflows into a system you can actually run, inspect, modify, and own.
+| Question | SUZENT's answer |
+|---|---|
+| Who owns its memory? | **You.** Markdown files are the durable source of truth. |
+| Who chooses its intelligence? | **You.** Models and providers are replaceable. |
+| Who defines what it may do? | **You.** Permissions, rules, and sandbox boundaries are explicit. |
+| Where does it live? | **On infrastructure you control.** |
+| Can it move? | Memory, skills, and configuration are portable; credentials stay local. |
+| Can you inspect it? | Tool calls, authorization decisions, files, and memory remain visible. |
 
-It is built both as a practical tool and as a reference implementation for developers: workspace isolation, persistent memory, tool execution, scheduled automation, social channel integration, and a desktop UI all live in one coherent stack.
+Sovereignty is not merely local execution. It is ownership of the agent's **mind, authority, vessel, and continuity**.
 
-The mythology is deliberate: cloud services are useful, but your agent should not require a pilgrimage to someone else's server to remember your work.
+## **THE SOVEREIGN SYSTEM**
 
+### <img src="docs/assets/robot-agnostic.svg" width="28" style="vertical-align: middle;" /> **CHOOSE ITS INTELLIGENCE**
 
-## **FEATURES**
+Models are engines, not identities. Switch between GPT, Claude, Gemini, DeepSeek, local models, and compatible providers without surrendering the memory, skills, or workspace that make the agent yours.
 
-### <img src="docs/assets/robot-agnostic.svg" width="28" style="vertical-align: middle;" /> **MODEL AGNOSTIC**
+### <img src="docs/assets/robot-thinking.svg" width="28" style="vertical-align: middle;" /> **OWN ITS MEMORY**
 
-Bring your own oracle. **SUZENT** is model agnostic and can use GPT, Claude, Gemini, DeepSeek, local models, or any provider exposed through the supported model stack.
+Conversation facts are captured in append-only Markdown logs, consolidated into an inspectable notebook, and indexed for semantic recall. The files remain authoritative; the LanceDB index can be rebuilt. Read, edit, delete, version, and carry the agent's memory yourself.
 
-### <img src="docs/assets/robot-gym.svg" width="28" style="vertical-align: middle;" /> **AGENTIC WORKFLOW**
+### <img src="docs/assets/robot-snooze.svg" width="28" style="vertical-align: middle;" /> **GOVERN ITS ACTIONS**
 
-**SUZENT** provides a rich agentic workflow comparable to deep research and co-worker products, but with open-source code, local workspaces, inspectable tools, and an architecture you can reshape.
+Autonomy never makes the agent the authority. Tool calls pass through explicit permission modes, scoped rules, path restrictions, and human approval. Docker workspaces isolate execution, while the activity timeline records what ran, what changed, and why it was authorized.
 
-### <img src="docs/assets/robot-reader.svg" width="28" style="vertical-align: middle;" /> **TOOLS & SKILLS**
+### <img src="docs/assets/robot-peeker.svg" width="28" style="vertical-align: middle;" /> **CONTROL ITS VESSEL**
 
-**SUZENT** ships with practical tools for real work: `bash`, web search, web fetch, and file operations. These form the basic ritual circle for research, coding, writing, and analysis.
+Run SUZENT on Windows, macOS, or Linux. Keep project workspaces isolated, share selected knowledge across conversations, mount folders you already own—including an Obsidian vault—and extend the system across approved companion devices.
 
-You can create your custom tools and further connect to Google Drive, GitHub, or Slack via standard MCP protocol.
+### <img src="docs/assets/robot-gym.svg" width="28" style="vertical-align: middle;" /> **LET IT WORK**
 
-Agent skills are fully supported. Drop your favorite skill grimoires into `./skills` and the agent can load new workflows without rewriting the core.
+Goals, project tasks, subagents, Cron, and Heartbeat let the agent continue beyond one reply. Interactive turns checkpoint their session workspace before work begins, so retry can restore both the conversation and local changes—not just regenerate the text.
 
-### <img src="docs/assets/robot-peeker.svg" width="28" style="vertical-align: middle;" /> **WORKSPACE**
+### <img src="docs/assets/robot-reader.svg" width="28" style="vertical-align: middle;" /> **KEEP ITS CONTINUITY**
 
-Unlike most agents, **SUZENT** uses dual workspaces: a cross-session workspace shared across chats for persistent knowledge, and per-session workspaces for individual conversations. This gives you continuity without losing isolation. You can also mount local folders, including an Obsidian vault, directly into the system.
+GitHub Sync carries portable configuration, user skills, and Markdown memory through a private repository while credentials remain device-local. A provider can disappear, a model can change, and a machine can be replaced without taking the agent's continuity with it.
 
-### <img src="docs/assets/robot-thinking.svg" width="28" style="vertical-align: middle;" /> **MEMORY**
+### <img src="docs/assets/robot-chat.svg" width="28" style="vertical-align: middle;" /> **OPEN BY DESIGN**
 
-**SUZENT** implements a global memory system that persists across sessions. Your agent can accumulate context, recall prior work, and build a private knowledge substrate on your machine.
-
-### <img src="docs/assets/robot-clock.svg" width="28" style="vertical-align: middle;" /> **AUTOMATION**
-
-**SUZENT** supports two automation systems for proactive, scheduled agent execution:
-- **Cron Jobs** - Schedule prompts to run on any cron expression in isolated sessions. Full CRUD via the Settings UI, CLI (`suzent cron`), and REST API.
-- **Heartbeat** - Periodic ambient monitoring that reads a per-session checklist configured in your chat and notifies you only when something needs attention.
-
-Both systems run with full memory enabled, so the agent retains context across scheduled tasks.
-
-### <img src="docs/assets/robot-chat.svg" width="28" style="vertical-align: middle;" /> **SOCIAL INTEGRATIONS**
-
-**SUZENT** connects to your messaging platforms so you can interact with your agent wherever you already communicate:
-- **Telegram** - Chat with your agent via a Telegram bot.
-- **Slack** - Integrate as a Slack app in your workspace.
-- **Discord** - Run as a Discord bot in your server.
-- **Lark (Feishu)** - Connect via the Lark Open Platform.
-
-### <img src="docs/assets/robot-snooze.svg" width="28" style="vertical-align: middle;" /> **PRIVATE & LOCAL**
-
-**SUZENT** runs on your device with privacy-focused web search, LanceDB for local vector storage, and Docker isolation for safer code execution. Your data stays in your vessel unless you explicitly connect an external service.
-
-### <img src="docs/assets/robot-party.svg" width="28" style="vertical-align: middle;" /> **UI READY**
-
-**SUZENT** features a NeoBrutalist web interface that turns terminal-based agent interactions into a sharp, high-contrast command surface: part workbench, part altar, part local machine room.
+Use built-in tools for files, shell execution, research, browsing, and interactive Canvas output. Add domain knowledge through portable `SKILL.md` packages, connect external systems through MCP, and talk through the desktop UI, Telegram, Slack, Discord, or Lark.
 
 ![SUZENT's NeoBrutalist Interface](docs/assets/new-chat.png)
 *Clean, bold, and ready to work: your sovereign geist's command center.*

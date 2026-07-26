@@ -18,46 +18,46 @@ const WIN_CMD  = `powershell -NoProfile -ExecutionPolicy Bypass -Command "irm ht
 
 const FEATURE_CARDS = [
   {
-    arcana: translate({ id: 'homepage.features.modelAgnostic.arcana', message: 'I · THE MODELLESS' }),
+    arcana: translate({ id: 'homepage.features.modelAgnostic.arcana', message: 'I · SOVEREIGN INTELLIGENCE' }),
     sigil: '⊕',
-    title: translate({ id: 'homepage.features.modelAgnostic.title', message: 'Model Agnostic' }),
-    desc:  translate({ id: 'homepage.features.modelAgnostic.desc',  message: 'Use GPT, Claude, Gemini, and other providers through one local interface. Change models without rebuilding your workflow.' }),
-    formula: 'provider ∈ any',
+    title: translate({ id: 'homepage.features.modelAgnostic.title', message: 'Choose Its Intelligence' }),
+    desc:  translate({ id: 'homepage.features.modelAgnostic.desc',  message: 'Models are engines, not identities. Switch providers without losing the memory, skills, and workspace that make the agent yours.' }),
+    formula: 'model ≠ self',
   },
   {
-    arcana: translate({ id: 'homepage.features.memory.arcana', message: 'II · THE UNDYING RECORD' }),
+    arcana: translate({ id: 'homepage.features.memory.arcana', message: 'II · SOVEREIGN MIND' }),
     sigil: '∴',
-    title: translate({ id: 'homepage.features.memory.title', message: 'Indelible Memory' }),
-    desc:  translate({ id: 'homepage.features.memory.desc',  message: 'Markdown recall and semantic LanceDB search give the agent a durable record across sessions.' }),
-    formula: 'recall(t) → self',
+    title: translate({ id: 'homepage.features.memory.title', message: 'Own Its Memory' }),
+    desc:  translate({ id: 'homepage.features.memory.desc',  message: 'Memory lives in readable Markdown you can edit, delete, version, rebuild, and carry. The index serves the files—not the other way around.' }),
+    formula: 'memory ∈ your files',
   },
   {
-    arcana: translate({ id: 'homepage.features.private.arcana', message: 'III · THE SANDBOXED HAND' }),
+    arcana: translate({ id: 'homepage.features.private.arcana', message: 'III · SOVEREIGN AUTHORITY' }),
     sigil: '□',
-    title: translate({ id: 'homepage.features.private.title', message: 'Sovereign Execution' }),
-    desc:  translate({ id: 'homepage.features.private.desc',  message: 'Local-first architecture with sandboxed execution. Your files, memory, and runtime stay under your control.' }),
-    formula: 'files ⊄ cloud',
+    title: translate({ id: 'homepage.features.private.title', message: 'Govern Its Actions' }),
+    desc:  translate({ id: 'homepage.features.private.desc',  message: 'Permissions, scoped rules, sandbox boundaries, and an inspectable activity trail keep autonomous work under your authority.' }),
+    formula: 'action ⊆ your law',
   },
   {
-    arcana: translate({ id: 'homepage.features.automation.arcana', message: 'IV · THE CRON ORACLE' }),
+    arcana: translate({ id: 'homepage.features.automation.arcana', message: 'IV · SOVEREIGN VESSEL' }),
     sigil: '⌁',
-    title: translate({ id: 'homepage.features.automation.title', message: 'Scheduled Operations' }),
-    desc:  translate({ id: 'homepage.features.automation.desc',  message: 'Run cron-like tasks, recurring checks, and long-lived monitors without bolting on another service.' }),
-    formula: 'task ↻ time',
+    title: translate({ id: 'homepage.features.automation.title', message: 'Control Its Vessel' }),
+    desc:  translate({ id: 'homepage.features.automation.desc',  message: 'Run it on infrastructure you control, isolate project workspaces, mount your own folders, and extend it across approved devices.' }),
+    formula: 'runtime ∈ your machine',
   },
   {
-    arcana: translate({ id: 'homepage.features.skills.arcana', message: 'V · THE SKILL GRIMOIRE' }),
+    arcana: translate({ id: 'homepage.features.skills.arcana', message: 'V · SOVEREIGN AGENCY' }),
     sigil: '✶',
-    title: translate({ id: 'homepage.features.skills.title', message: 'Skill Codex' }),
-    desc:  translate({ id: 'homepage.features.skills.desc',  message: 'Package domain knowledge as Markdown skills. Add them locally when the agent needs a new discipline.' }),
-    formula: 'SKILL.md',
+    title: translate({ id: 'homepage.features.skills.title', message: 'Let It Work' }),
+    desc:  translate({ id: 'homepage.features.skills.desc',  message: 'Goals, tasks, subagents, Cron, and Heartbeat carry work beyond one reply. Turn checkpoints make local work retryable.' }),
+    formula: 'agency ∧ oversight',
   },
   {
-    arcana: translate({ id: 'homepage.features.crossPlatform.arcana', message: 'VI · THE PORTABLE VESSEL' }),
+    arcana: translate({ id: 'homepage.features.crossPlatform.arcana', message: 'VI · SOVEREIGN CONTINUITY' }),
     sigil: '△',
-    title: translate({ id: 'homepage.features.crossPlatform.title', message: 'Evolvable by Design' }),
-    desc:  translate({ id: 'homepage.features.crossPlatform.desc',  message: 'Runs on Windows, macOS, and Linux. Extend the system through Nodes, skills, and companion devices over WebSocket.' }),
-    formula: 'node ⇄ node',
+    title: translate({ id: 'homepage.features.crossPlatform.title', message: 'Keep Its Continuity' }),
+    desc:  translate({ id: 'homepage.features.crossPlatform.desc',  message: 'Move portable memory, skills, and configuration while credentials stay local. Models and machines can change; your agent remains.' }),
+    formula: 'self > platform',
   },
 ];
 
@@ -244,11 +244,11 @@ function HomepageHeader() {
       {/* Above fold — title + orb fills the full viewport */}
       <div className={styles.heroInner}>
         <div className={styles.heroTitleArea}>
-          <div className={styles.heroTitleBox}>
+          <Heading as="h1" className={styles.heroTitleBox}>
             <ScrambleTitle text={siteConfig.title} />
-          </div>
+          </Heading>
           <p className={styles.heroSubtitle}>
-            <Translate id="homepage.hero.kicker">SOVEREIGN LOCAL INTELLIGENCE</Translate>
+            <Translate id="homepage.hero.kicker">THE SOVEREIGN AI AGENT</Translate>
           </p>
         </div>
 
@@ -258,7 +258,7 @@ function HomepageHeader() {
         </div>
 
         <p className={styles.heroTagline}>
-          <Translate id="homepage.hero.subtitle">Local. · Persistent. · Sovereign.</Translate>
+          <Translate id="homepage.hero.subtitle">Models are replaceable. Your agent remains.</Translate>
         </p>
       </div>
 
@@ -298,7 +298,7 @@ function HomepageHeader() {
 
         <div className={styles.heroCta}>
           <Link className={styles.heroCtaBtn} to="/docs/getting-started/quickstart">
-            <Translate id="homepage.hero.cta.primary">Open the Guide</Translate>
+            <Translate id="homepage.hero.cta.primary">Summon Suzent</Translate>
           </Link>
         </div>
       </div>
@@ -312,8 +312,8 @@ function HomepageHeader() {
 export default function Home(): ReactNode {
   return (
     <Layout
-      title={translate({ id: 'homepage.meta.title', message: 'Sovereign local intelligence' })}
-      description={translate({ id: 'homepage.meta.description', message: 'A model-agnostic, local-first agent with durable memory, scheduled operations, and sovereign control over your data.' })}
+      title={translate({ id: 'homepage.meta.title', message: 'The Sovereign AI Agent' })}
+      description={translate({ id: 'homepage.meta.description', message: 'A sovereign AI agent whose identity, memory, skills, workspace, and runtime remain under your control—independent of any model or platform.' })}
     >
       <Head>
         <style>{`.navbar,.navbar--fixed-top,.footer{display:none!important}`}</style>
@@ -326,7 +326,7 @@ export default function Home(): ReactNode {
           <div className="container">
             <div className={styles.featuresHeader}>
               <span className={styles.featuresRuleLine} />
-              <span className={styles.featuresRuleLabel}><Translate id="homepage.features.label">LOCAL CAPABILITIES / SYSTEM ARCANA</Translate></span>
+              <span className={styles.featuresRuleLabel}><Translate id="homepage.features.label">WHAT MAKES AN AGENT SOVEREIGN?</Translate></span>
               <span className={styles.featuresRuleLine} />
             </div>
             <div className={styles.grid}>

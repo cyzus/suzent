@@ -5,11 +5,16 @@ title: What is Suzent?
 
 # What is Suzent?
 
-Suzent is a **sovereign local agent** — a local-first AI system you own and control entirely. No cloud lock-in, no data leaving your machine unless you choose.
+Suzent is a **sovereign AI agent** whose identity, memory, skills, workspace,
+and runtime remain under your control. Models are replaceable, platforms are
+temporary, and the continuity of your agent belongs to you.
 
 ## Core ideas
 
-**Sovereign** means the important controls stay with you: model keys, data, memory, and runtime.
+**Sovereign** means more than running locally. You own the agent's mind,
+authority, vessel, and continuity: its durable state lives in files you can
+inspect and move, its actions follow boundaries you define, and changing a
+model or provider does not reset the agent that knows your work.
 
 **Local agent** means it is built for more than one-off answers. It can keep long-term memory, schedule recurring work, and run the operations you explicitly allow.
 
