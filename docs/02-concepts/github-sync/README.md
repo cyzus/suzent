@@ -130,6 +130,6 @@ Avoid editing generated payload files directly.
 
 ## See also
 
-- [Memory](../memory/README.md)
+- [Memory](/docs/concepts/memory)
 - [Skills](../skills/skills.md)
-- [Filesystem and sandbox](../filesystem.md)
+- [Filesystem and sandbox](/docs/concepts/filesystem)
