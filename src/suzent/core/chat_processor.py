@@ -668,14 +668,15 @@ class ChatProcessor:
                     yield chunk
                 return
 
-        # A new turn supersedes any unanswered tool calls left by an interrupted
-        # stream. Give those calls terminal results before appending the user's
-        # next message so restored history cannot keep advertising stale approval.
+        # A new user or autonomous continuation turn supersedes unanswered tool
+        # calls left by an interrupted stream. Give those calls terminal results
+        # before appending the next prompt so restored history cannot keep
+        # advertising stale approval.
         if (
             not resume_approvals
             and not is_heartbeat
             and _message_history_override is None
-            and (message_content or files)
+            and (message_content or files or system_reminders)
         ):
             message_history, cancelled_tool_call_ids = _cancel_unprocessed_tool_calls(
                 message_history,
