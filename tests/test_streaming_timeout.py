@@ -2,11 +2,41 @@ import asyncio
 from types import SimpleNamespace
 
 import pytest
+from ag_ui.core import CustomEvent, RunAgentInput
 from pydantic_ai.messages import FunctionToolCallEvent, FunctionToolResultEvent
 from pydantic_ai.messages import ToolCallPart, ToolReturnPart
 
 from suzent import streaming
 from suzent.tools.shell.bash_tool import BashTool
+
+
+async def test_agui_event_stream_preserves_permission_custom_events() -> None:
+    permission_event = CustomEvent(
+        name="tool_permission_decision",
+        value={
+            "toolCallId": "call-1",
+            "behavior": "allow",
+            "reason": "Allowed by policy",
+        },
+    )
+
+    async def source():
+        yield permission_event
+
+    event_stream = streaming._SuzentAGUIEventStream(
+        RunAgentInput(
+            thread_id="chat-1",
+            run_id="run-1",
+            messages=[],
+            state=None,
+            tools=[],
+            context=[],
+            forwarded_props=None,
+        )
+    )
+    converted = [event async for event in event_stream.transform_stream(source())]
+
+    assert permission_event in converted
 
 
 class _HangingStreamAgent:
@@ -228,3 +258,57 @@ def test_draft_accumulator_snapshots_final_citation_sources():
             ],
         }
     ]
+
+
+def test_permission_decision_payload_and_resolution_are_persisted():
+    from suzent.permissions.models import (
+        CommandDecision,
+        PermissionDecision,
+        PermissionDecisionSource,
+        PermissionRisk,
+    )
+
+    decision = PermissionDecision(
+        behavior=CommandDecision.ALLOW,
+        reason="Classifier found no risky side effect",
+        reasonCode="auto_classifier_allow",
+        risk=PermissionRisk.LOW,
+        source=PermissionDecisionSource.AUTO_CLASSIFIER,
+        metadata={
+            "confidence": "high",
+            "risk_categories": ["network"],
+            "reviewer_model": "review-model",
+        },
+    )
+    payload = streaming._permission_decision_payload(
+        tool_call_id="call-1",
+        tool_name="social_message",
+        decision=decision,
+    )
+    acc = streaming._DraftDisplayAccumulator(chat_id="chat-1", run_id="run-1")
+    acc.apply(
+        SimpleNamespace(
+            type="CUSTOM",
+            name="tool_permission_decision",
+            value=payload,
+        )
+    )
+    resolution = {
+        "toolCallId": "call-1",
+        "behavior": "allow",
+        "source": "user",
+        "actionId": "allow_once",
+        "scope": "once",
+    }
+    acc.apply(
+        SimpleNamespace(
+            type="CUSTOM",
+            name="tool_permission_resolution",
+            value=resolution,
+        )
+    )
+
+    assert payload["source"] == "auto_classifier"
+    assert payload["confidence"] == "high"
+    assert acc.parts[0]["permissionDecision"] == payload
+    assert acc.parts[0]["permissionResolution"] == resolution

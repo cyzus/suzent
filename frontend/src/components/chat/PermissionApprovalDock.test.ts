@@ -25,6 +25,18 @@ describe('getPendingApprovals', () => {
             },
           ],
         },
+        permissionDecision: {
+          toolCallId: 'call-1',
+          toolName: 'bash_execute',
+          behavior: 'ask',
+          source: 'auto_classifier',
+          reason: 'Needs approval',
+          reasonCode: 'test',
+          risk: 'medium',
+          confidence: 'high',
+          riskCategories: ['command_execution'],
+          reviewerModel: 'review-model',
+        },
       },
       {
         type: 'tool',
@@ -37,5 +49,8 @@ describe('getPendingApprovals', () => {
     expect(result).toHaveLength(1);
     expect(result[0].approvalId).toBe('approval-1');
     expect(result[0].args.content).toBe('npm test');
+    expect(result[0].source).toBe('auto_classifier');
+    expect(result[0].confidence).toBe('high');
+    expect(result[0].riskCategories).toEqual(['command_execution']);
   });
 });

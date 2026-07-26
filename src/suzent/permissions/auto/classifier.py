@@ -48,9 +48,10 @@ class AutoPermissionClassifier:
             "Proposed action:\n"
             f"{json.dumps({'tool': tool_name, 'args': args}, ensure_ascii=False)}"
         )
-        return await LLMClient(model=model).extract_with_schema(
+        result = await LLMClient(model=model).extract_with_schema(
             prompt=prompt,
             response_model=AutoClassificationResult,
             system=SYSTEM_PROMPT,
             temperature=0.0,
         )
+        return result.model_copy(update={"reviewer_model": model})

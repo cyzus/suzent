@@ -142,6 +142,8 @@ const AGUIPartsContent: React.FC<{
             output: part.output ?? existing.output,
             approvalId: part.approvalId ?? existing.approvalId,
             permission: part.permission ?? existing.permission,
+            permissionDecision: part.permissionDecision ?? existing.permissionDecision,
+            permissionResolution: part.permissionResolution ?? existing.permissionResolution,
             state: part.state ?? existing.state,
           };
           continue;
@@ -231,6 +233,8 @@ const AGUIPartsContent: React.FC<{
                     output: tp.output || undefined,
                     approvalState,
                     permission: tp.permission,
+                    permissionDecision: tp.permissionDecision,
+                    permissionResolution: tp.permissionResolution,
                     onApprove: (isActionablyPending && tp.approvalId && onToolApproval)
                       ? (remember: ApprovalRememberScope, actionId?: string, feedback?: string) => onToolApproval(tp.approvalId!, tp.toolCallId || '', true, remember, tp.toolName, actionId, feedback)
                       : undefined,
@@ -287,6 +291,8 @@ const AGUIPartsContent: React.FC<{
                         onApprove={t.onApprove}
                         onDeny={t.onDeny}
                         permission={t.permission}
+                        permissionDecision={t.permissionDecision}
+                        permissionResolution={t.permissionResolution}
                         isAutoApproved={isAutoApproved}
                         onRemovePolicy={isAutoApproved && onRemoveApprovalPolicy ? () => onRemoveApprovalPolicy(t.toolName) : undefined}
                         onForceWebContext={onForceWebContext}
@@ -317,6 +323,9 @@ const AGUIPartsContent: React.FC<{
               toolArgs: tp.args || undefined,
               output: tp.output || undefined,
               approvalState,
+              permission: tp.permission,
+              permissionDecision: tp.permissionDecision,
+              permissionResolution: tp.permissionResolution,
               onApprove: (isActionablyPending && tp.approvalId && onToolApproval)
                 ? (remember: ApprovalRememberScope, actionId?: string, feedback?: string) => onToolApproval(tp.approvalId!, tp.toolCallId || '', true, remember, tp.toolName, actionId, feedback)
                 : undefined,
@@ -616,7 +625,12 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
 
   if (effectiveParts && effectiveParts.length > 0) {
     hasError = effectiveParts.some(p => p.type === 'tool' && p.state === 'error');
-    isPendingApproval = effectiveParts.some(p => p.type === 'tool' && p.state === 'approval-requested');
+    isPendingApproval = effectiveParts.some(
+      p => p.type === 'tool'
+        && p.state === 'approval-requested'
+        && !p.output
+        && !!p.approvalId,
+    );
 
     // 优先找正在 running 的 tool
     const runningTool = effectiveParts.find(p => p.type === 'tool' && !p.output);
@@ -631,7 +645,12 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
     }
   } else {
     // For legacy blocks, check if there's a pending tool call
-    isPendingApproval = legacyBlocks.some(b => b.type === 'toolCall' && b.approvalState === 'pending');
+    isPendingApproval = legacyBlocks.some(
+      b => b.type === 'toolCall'
+        && b.approvalState === 'pending'
+        && !b.content
+        && !!b.approvalId,
+    );
   }
 
   // 2. 核心动画容器 (丝滑形变 UI)

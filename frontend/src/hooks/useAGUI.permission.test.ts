@@ -3,6 +3,58 @@ import { processEvent } from './useAGUI';
 import type { AGUIPart } from '../types/agui';
 
 describe('permission approval events', () => {
+  it('retains the initial automatic decision and later user resolution', () => {
+    const decisionResult = processEvent(
+      {
+        type: 'CUSTOM',
+        data: {
+          type: 'CUSTOM',
+          name: 'tool_permission_decision',
+          value: {
+            toolCallId: 'call-1',
+            toolName: 'bash_execute',
+            behavior: 'ask',
+            source: 'auto_classifier',
+            reason: 'Command changes project files',
+            reasonCode: 'auto_classifier_high_risk',
+            risk: 'high',
+            confidence: 'high',
+            riskCategories: ['filesystem_write'],
+            reviewerModel: 'review-model',
+          },
+        },
+      },
+      [] as AGUIPart[],
+    );
+    const resolutionResult = processEvent(
+      {
+        type: 'CUSTOM',
+        data: {
+          type: 'CUSTOM',
+          name: 'tool_permission_resolution',
+          value: {
+            toolCallId: 'call-1',
+            behavior: 'allow',
+            source: 'user',
+            actionId: 'allow_once',
+            scope: 'once',
+          },
+        },
+      },
+      decisionResult.parts,
+    );
+
+    expect(resolutionResult.parts[0].permissionDecision?.source).toBe('auto_classifier');
+    expect(resolutionResult.parts[0].permissionDecision?.confidence).toBe('high');
+    expect(resolutionResult.parts[0].permissionResolution).toEqual({
+      toolCallId: 'call-1',
+      behavior: 'allow',
+      source: 'user',
+      actionId: 'allow_once',
+      scope: 'once',
+    });
+  });
+
   it('preserves exactly the backend-provided actions and feedback declaration', () => {
     const decision = {
       behavior: 'ask',

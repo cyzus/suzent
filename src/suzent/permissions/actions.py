@@ -6,6 +6,7 @@ from suzent.permissions.models import (
     CommandDecision,
     PermissionAction,
     PermissionDecision,
+    PermissionDecisionSource,
     PermissionFeedbackKind,
     PermissionRisk,
     PermissionScope,
@@ -84,6 +85,7 @@ def build_approval_decision(
     reason: str = "This tool call requires approval",
     reason_code: str = "tool_requires_approval",
     risk: PermissionRisk = PermissionRisk.MEDIUM,
+    source: PermissionDecisionSource = PermissionDecisionSource.POLICY,
 ) -> PermissionDecision:
     """Build the actions offered for a deferred tool call.
 
@@ -177,6 +179,7 @@ def build_approval_decision(
         reason=reason,
         reasonCode=reason_code,
         risk=risk,
+        source=source,
         actions=actions,
     )
 

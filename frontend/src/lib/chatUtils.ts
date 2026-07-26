@@ -1,3 +1,4 @@
+import type { PermissionPrompt, ToolPermissionDecision, ToolPermissionResolution } from '../types/agui';
 
 export function formatMessageTime(iso: string): string {
   const date = new Date(iso);
@@ -18,6 +19,9 @@ export interface ContentBlock {
   toolCallId?: string;
   approvalId?: string;
   approvalState?: string;
+  permission?: PermissionPrompt;
+  permissionDecision?: ToolPermissionDecision;
+  permissionResolution?: ToolPermissionResolution;
   /** Parsed A2UI surface (type === 'a2ui') */
   a2uiSurface?: unknown;
 }

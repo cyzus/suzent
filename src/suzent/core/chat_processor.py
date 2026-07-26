@@ -256,6 +256,46 @@ def _collect_unprocessed_tool_call_ids(messages: list[Any]) -> set[str]:
     return pending_ids
 
 
+def _cancel_unprocessed_tool_calls(
+    messages: list[Any],
+    reason: str,
+) -> tuple[list[Any], set[str]]:
+    """Add terminal denial results for tool calls abandoned by an interrupted run."""
+    from pydantic_ai.messages import (
+        ModelRequest,
+        ModelResponse,
+        ToolCallPart,
+        ToolReturnPart,
+    )
+
+    pending_ids = _collect_unprocessed_tool_call_ids(messages)
+    if not pending_ids:
+        return messages, set()
+
+    pending_calls: dict[str, ToolCallPart] = {}
+    for message in messages:
+        if not isinstance(message, ModelResponse):
+            continue
+        for part in message.parts:
+            if isinstance(part, ToolCallPart) and part.tool_call_id in pending_ids:
+                pending_calls[part.tool_call_id] = part
+
+    cancelled_ids = set(pending_calls)
+    if not cancelled_ids:
+        return messages, set()
+
+    denial = f"The tool call was denied because {reason}."
+    denial_parts = [
+        ToolReturnPart(
+            tool_name=pending_calls[tool_call_id].tool_name,
+            tool_call_id=tool_call_id,
+            content=ToolDenied(message=denial),
+        )
+        for tool_call_id in sorted(cancelled_ids)
+    ]
+    return [*messages, ModelRequest(parts=denial_parts)], cancelled_ids
+
+
 def _deferred_approval_result(approval: dict[str, Any]) -> bool | ToolDenied:
     """Build the pydantic-ai approval result, preserving rejection feedback."""
     if approval.get("approved"):
@@ -294,6 +334,10 @@ def _preserve_partial_response(messages: list, full_response: str) -> list:
 
 
 def _is_denied_tool_return(content: Any) -> bool:
+    if isinstance(content, ToolDenied):
+        return True
+    if isinstance(content, dict) and content.get("kind") == "tool-denied":
+        return True
     text = str(content or "").strip().lower()
     return text.startswith("the tool call was denied") or text.startswith(
         "the user denied this tool call"
@@ -624,6 +668,28 @@ class ChatProcessor:
                     yield chunk
                 return
 
+        # A new user or autonomous continuation turn supersedes unanswered tool
+        # calls left by an interrupted stream. Give those calls terminal results
+        # before appending the next prompt so restored history cannot keep
+        # advertising stale approval.
+        if (
+            not resume_approvals
+            and not is_heartbeat
+            and _message_history_override is None
+            and (message_content or files or system_reminders)
+        ):
+            message_history, cancelled_tool_call_ids = _cancel_unprocessed_tool_calls(
+                message_history,
+                "the conversation continued after the previous run was interrupted",
+            )
+            if cancelled_tool_call_ids:
+                await remove_pending_approvals(chat_id, cancelled_tool_call_ids)
+                logger.info(
+                    "Cancelled {} abandoned tool call(s) before continuing chat {}",
+                    len(cancelled_tool_call_ids),
+                    chat_id,
+                )
+
         # --- System Reminder Injection (includes per-turn RAG hook when memory enabled) ---
         from suzent.core.system_reminder import build_combined_reminder
 
@@ -717,6 +783,7 @@ class ChatProcessor:
 
         # Handle stateless resume
         deferred_tool_results = None
+        permission_resolutions: list[dict[str, Any]] = []
         if resume_approvals:
             from pydantic_ai.tools import DeferredToolResults
 
@@ -745,6 +812,15 @@ class ChatProcessor:
                 tool_call_id = app.get("tool_call_id") or app.get("request_id")
                 if tool_call_id:
                     approvals_dict[tool_call_id] = _deferred_approval_result(app)
+                    permission_resolutions.append(
+                        {
+                            "toolCallId": str(tool_call_id),
+                            "behavior": "allow" if app.get("approved") else "deny",
+                            "source": "user",
+                            "actionId": str(app.get("action_id") or "legacy"),
+                            "scope": str(app.get("remember") or "once"),
+                        }
+                    )
 
             pending_tool_call_ids = _collect_unprocessed_tool_call_ids(message_history)
             if approvals_dict and pending_tool_call_ids:
@@ -843,6 +919,7 @@ class ChatProcessor:
                 message_history=message_history,
                 chat_id=chat_id,
                 deferred_tool_results=deferred_tool_results,
+                permission_resolutions=permission_resolutions,
                 is_heartbeat=is_heartbeat,
             ):
                 try:
@@ -1318,45 +1395,15 @@ class ChatProcessor:
             message_history = []
 
         # 3. Auto-deny any pending deferred tool approvals
-        from pydantic_ai.messages import (
-            ModelResponse,
-            ModelRequest,
-            ToolCallPart,
-            ToolReturnPart,
+        message_history, cancelled_tool_call_ids = _cancel_unprocessed_tool_calls(
+            message_history,
+            "the user redirected the conversation",
         )
-
-        if message_history:
-            last_msg = message_history[-1]
-            if isinstance(last_msg, ModelResponse):
-                # Check for unanswered tool calls — add denial returns
-                answered_ids = set()
-                for msg in message_history:
-                    if isinstance(msg, ModelRequest):
-                        for part in msg.parts:
-                            if isinstance(part, ToolReturnPart):
-                                answered_ids.add(part.tool_call_id)
-
-                unanswered_calls = []
-                for part in last_msg.parts:
-                    if (
-                        isinstance(part, ToolCallPart)
-                        and part.tool_call_id not in answered_ids
-                    ):
-                        unanswered_calls.append(part)
-
-                if unanswered_calls:
-                    denial_parts = [
-                        ToolReturnPart(
-                            tool_name=tc.tool_name,
-                            tool_call_id=tc.tool_call_id,
-                            content="Cancelled: user redirected the conversation",
-                        )
-                        for tc in unanswered_calls
-                    ]
-                    message_history.append(ModelRequest(parts=denial_parts))
+        if cancelled_tool_call_ids:
+            await remove_pending_approvals(chat_id, cancelled_tool_call_ids)
 
         # 4. Append steering message
-        from pydantic_ai.messages import UserPromptPart
+        from pydantic_ai.messages import ModelRequest, UserPromptPart
 
         steering_text = f"[User interrupted to redirect]: {steer_message}"
         message_history.append(
@@ -1652,6 +1699,7 @@ class ChatProcessor:
                 # 100% Backend Authored: rebuild the complete display log from the full agent history
                 # so chat.messages is always a faithful log of all exchanges, including tools and reasoning.
                 rebuilt = _rebuild_display_messages(messages, model_id=model_id)
+                rebuilt = _preserve_permission_metadata(rebuilt, chat_messages)
                 rebuilt = _preserve_citation_sources(rebuilt, chat_messages)
                 rebuilt = _append_inline_a2ui_surfaces(rebuilt, inline_a2ui_surfaces)
 
@@ -2248,6 +2296,41 @@ def _rebuild_display_messages(messages: list, model_id: str | None = None) -> li
             result.append(entry)
 
     return result
+
+
+def _preserve_permission_metadata(rebuilt: list, existing: list | None) -> list:
+    """Carry streamed permission decisions into finalized structured tool parts."""
+    metadata_by_tool_call_id: dict[str, dict[str, dict]] = {}
+    for message in existing or []:
+        if not isinstance(message, dict):
+            continue
+        for part in message.get("parts") or []:
+            if not isinstance(part, dict) or part.get("type") != "tool":
+                continue
+            tool_call_id = str(part.get("toolCallId") or "")
+            if not tool_call_id:
+                continue
+            preserved = {
+                key: dict(value)
+                for key in ("permissionDecision", "permissionResolution")
+                if isinstance((value := part.get(key)), dict)
+            }
+            if preserved:
+                metadata_by_tool_call_id.setdefault(tool_call_id, {}).update(preserved)
+
+    if not metadata_by_tool_call_id:
+        return rebuilt
+
+    for message in rebuilt:
+        if not isinstance(message, dict):
+            continue
+        for part in message.get("parts") or []:
+            if not isinstance(part, dict) or part.get("type") != "tool":
+                continue
+            metadata = metadata_by_tool_call_id.get(str(part.get("toolCallId") or ""))
+            if metadata:
+                part.update(metadata)
+    return rebuilt
 
 
 _SOURCE_TURN_RE = re.compile(r"^t(\d+)_src_\d+$")

@@ -16,6 +16,7 @@ from suzent.core.chat_processor import (
     _append_inline_a2ui_surfaces,
     _build_file_mention_context,
     _merge_rebuilt_after_compaction,
+    _preserve_permission_metadata,
     _preserve_citation_sources,
     _rebuild_display_messages,
     _resolve_response_model,
@@ -60,6 +61,58 @@ def test_rebuild_display_messages_preserves_reasoning():
     assert assistant["role"] == "assistant"
     assert "final answer" in assistant["content"]
     assert 'data-reasoning="true"' in assistant["content"]
+
+
+def test_preserve_permission_metadata_merges_streamed_decision_and_resolution():
+    rebuilt = [
+        {
+            "role": "assistant",
+            "parts": [
+                {
+                    "type": "tool",
+                    "toolCallId": "call-1",
+                    "toolName": "bash_execute",
+                    "state": "completed",
+                }
+            ],
+        }
+    ]
+    decision = {
+        "toolCallId": "call-1",
+        "behavior": "ask",
+        "source": "auto_classifier",
+        "reason": "External side effect",
+        "reasonCode": "auto_classifier_high_risk",
+        "risk": "high",
+        "riskCategories": ["network"],
+    }
+    resolution = {
+        "toolCallId": "call-1",
+        "behavior": "allow",
+        "source": "user",
+        "actionId": "allow_once",
+        "scope": "once",
+    }
+    existing = [
+        {
+            "role": "assistant",
+            "_streaming_draft": True,
+            "parts": [
+                {
+                    "type": "tool",
+                    "toolCallId": "call-1",
+                    "permissionDecision": decision,
+                    "permissionResolution": resolution,
+                }
+            ],
+        }
+    ]
+
+    result = _preserve_permission_metadata(rebuilt, existing)
+
+    tool_part = result[0]["parts"][0]
+    assert tool_part["permissionDecision"] == decision
+    assert tool_part["permissionResolution"] == resolution
 
 
 def test_rebuild_stamps_per_response_model_when_switched_mid_chat():

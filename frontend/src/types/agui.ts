@@ -13,6 +13,8 @@ export interface AGUIPart {
   state?: 'running' | 'completed' | 'error' | 'approval-requested';
   approvalId?: string;
   permission?: PermissionPrompt;
+  permissionDecision?: ToolPermissionDecision;
+  permissionResolution?: ToolPermissionResolution;
   displayData?: unknown;
   surface?: A2UISurface & { target?: string };
   /** For 'citation-sources' parts: the sources registered during this run. */
@@ -20,6 +22,8 @@ export interface AGUIPart {
 }
 
 export type ApprovalRememberScope = 'session' | 'global' | null;
+export type PermissionDecisionSource = 'policy' | 'rule' | 'auto_classifier' | 'full_access';
+export type PermissionRisk = 'safe' | 'low' | 'medium' | 'high' | 'critical';
 
 export interface PermissionAction {
   id: string;
@@ -38,7 +42,29 @@ export interface PermissionPrompt {
   behavior: 'allow' | 'ask' | 'deny';
   reason: string;
   reasonCode: string;
-  risk: 'safe' | 'low' | 'medium' | 'high' | 'critical';
+  risk: PermissionRisk;
+  source?: PermissionDecisionSource;
   actions: PermissionAction[];
   metadata?: Record<string, unknown>;
+}
+
+export interface ToolPermissionDecision {
+  toolCallId: string;
+  toolName: string;
+  behavior: 'allow' | 'ask' | 'deny';
+  source: PermissionDecisionSource;
+  reason: string;
+  reasonCode: string;
+  risk: PermissionRisk;
+  confidence?: 'low' | 'medium' | 'high' | number | null;
+  riskCategories: string[];
+  reviewerModel?: string | null;
+}
+
+export interface ToolPermissionResolution {
+  toolCallId: string;
+  behavior: 'allow' | 'deny';
+  source: 'user';
+  actionId: string;
+  scope: 'once' | 'session' | 'global';
 }
