@@ -2,11 +2,41 @@ import asyncio
 from types import SimpleNamespace
 
 import pytest
+from ag_ui.core import CustomEvent, RunAgentInput
 from pydantic_ai.messages import FunctionToolCallEvent, FunctionToolResultEvent
 from pydantic_ai.messages import ToolCallPart, ToolReturnPart
 
 from suzent import streaming
 from suzent.tools.shell.bash_tool import BashTool
+
+
+async def test_agui_event_stream_preserves_permission_custom_events() -> None:
+    permission_event = CustomEvent(
+        name="tool_permission_decision",
+        value={
+            "toolCallId": "call-1",
+            "behavior": "allow",
+            "reason": "Allowed by policy",
+        },
+    )
+
+    async def source():
+        yield permission_event
+
+    event_stream = streaming._SuzentAGUIEventStream(
+        RunAgentInput(
+            thread_id="chat-1",
+            run_id="run-1",
+            messages=[],
+            state=None,
+            tools=[],
+            context=[],
+            forwarded_props=None,
+        )
+    )
+    converted = [event async for event in event_stream.transform_stream(source())]
+
+    assert permission_event in converted
 
 
 class _HangingStreamAgent:

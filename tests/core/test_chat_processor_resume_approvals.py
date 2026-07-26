@@ -8,8 +8,10 @@ from pydantic_ai.tools import ToolDenied
 
 from suzent.core.chat_processor import (
     _apply_permission_updates,
+    _cancel_unprocessed_tool_calls,
     _collect_unprocessed_tool_call_ids,
     _deferred_approval_result,
+    _is_denied_tool_return,
     _resolve_resume_approval_actions,
 )
 from suzent.permissions.rules import parse_rules
@@ -73,6 +75,51 @@ def test_collect_unprocessed_tool_call_ids_empty_when_all_answered() -> None:
     pending = _collect_unprocessed_tool_call_ids(history)
 
     assert pending == set()
+
+
+def test_cancel_unprocessed_tool_calls_adds_terminal_denials() -> None:
+    history = [
+        ModelResponse(
+            parts=[
+                ToolCallPart(
+                    tool_name="bash_execute",
+                    tool_call_id="call-pending",
+                    args={"command": "npm test"},
+                ),
+                ToolCallPart(
+                    tool_name="bash_execute",
+                    tool_call_id="call-complete",
+                    args={"command": "pwd"},
+                ),
+            ]
+        ),
+        ModelRequest(
+            parts=[
+                ToolReturnPart(
+                    tool_name="bash_execute",
+                    tool_call_id="call-complete",
+                    content="ok",
+                )
+            ]
+        ),
+    ]
+
+    updated, cancelled_ids = _cancel_unprocessed_tool_calls(
+        history,
+        "the conversation continued",
+    )
+
+    assert cancelled_ids == {"call-pending"}
+    assert len(updated) == len(history) + 1
+    cancellation = updated[-1].parts[0]
+    assert isinstance(cancellation, ToolReturnPart)
+    assert cancellation.tool_call_id == "call-pending"
+    assert isinstance(cancellation.content, ToolDenied)
+    assert _is_denied_tool_return(cancellation.content)
+    assert _is_denied_tool_return(
+        {"message": cancellation.content.message, "kind": "tool-denied"}
+    )
+    assert _collect_unprocessed_tool_call_ids(updated) == set()
 
 
 def test_deferred_denial_attaches_user_feedback_to_tool_result() -> None:

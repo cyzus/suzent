@@ -625,7 +625,12 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
 
   if (effectiveParts && effectiveParts.length > 0) {
     hasError = effectiveParts.some(p => p.type === 'tool' && p.state === 'error');
-    isPendingApproval = effectiveParts.some(p => p.type === 'tool' && p.state === 'approval-requested');
+    isPendingApproval = effectiveParts.some(
+      p => p.type === 'tool'
+        && p.state === 'approval-requested'
+        && !p.output
+        && !!p.approvalId,
+    );
 
     // 优先找正在 running 的 tool
     const runningTool = effectiveParts.find(p => p.type === 'tool' && !p.output);
@@ -640,7 +645,12 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
     }
   } else {
     // For legacy blocks, check if there's a pending tool call
-    isPendingApproval = legacyBlocks.some(b => b.type === 'toolCall' && b.approvalState === 'pending');
+    isPendingApproval = legacyBlocks.some(
+      b => b.type === 'toolCall'
+        && b.approvalState === 'pending'
+        && !b.content
+        && !!b.approvalId,
+    );
   }
 
   // 2. 核心动画容器 (丝滑形变 UI)

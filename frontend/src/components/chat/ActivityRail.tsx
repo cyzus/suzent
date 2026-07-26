@@ -61,6 +61,10 @@ export function formatActivityToolName(toolName: string | undefined): string {
   return toolName ? toolName.replace(/_/g, ' ') : 'unknown tool';
 }
 
+export function isActionableAguiApproval(part: AGUIPart): boolean {
+  return part.state === 'approval-requested' && !part.output && Boolean(part.approvalId);
+}
+
 export function getTimestampDeltaSeconds(previousTimestamp?: string, currentTimestamp?: string): number | undefined {
   if (!previousTimestamp || !currentTimestamp) return undefined;
   const previousTime = new Date(previousTimestamp).getTime();
@@ -74,7 +78,7 @@ export function getAguiActivityLabel(chunks: Array<{ chunk: { type: string; item
   for (let i = chunks.length - 1; i >= 0; i -= 1) {
     const chunk = chunks[i].chunk;
     if (chunk.type === 'tool') {
-      const pendingTool = [...(chunk.items ?? [])].reverse().find(part => part.state === 'approval-requested' && !part.output);
+      const pendingTool = [...(chunk.items ?? [])].reverse().find(isActionableAguiApproval);
       if (pendingTool) return `Approval needed: ${formatActivityToolName(pendingTool.toolName)}`;
       const tool = [...(chunk.items ?? [])].reverse().find(part => !part.output || part.state === 'approval-requested');
       if (tool) return `Using ${formatActivityToolName(tool.toolName)}`;
@@ -90,7 +94,7 @@ export function getAguiActivityLabel(chunks: Array<{ chunk: { type: string; item
 export function hasAguiPendingApproval(chunks: Array<{ chunk: { type: string; items?: AGUIPart[] } }>): boolean {
   return chunks.some(({ chunk }) => (
     chunk.type === 'tool'
-    && (chunk.items ?? []).some(part => part.state === 'approval-requested' && !part.output)
+    && (chunk.items ?? []).some(isActionableAguiApproval)
   ));
 }
 
@@ -98,7 +102,7 @@ export function getLegacyActivityLabel(chunks: Array<{ chunk: { type: string; bl
   for (let i = chunks.length - 1; i >= 0; i -= 1) {
     const chunk = chunks[i].chunk;
     if (chunk.type === 'toolCall') {
-      const pendingTool = [...(chunk.blocks ?? [])].reverse().find(block => block.approvalState === 'pending' && !block.content);
+      const pendingTool = [...(chunk.blocks ?? [])].reverse().find(block => block.approvalState === 'pending' && !block.content && !!block.approvalId);
       if (pendingTool) return `Approval needed: ${formatActivityToolName(pendingTool.toolName)}`;
       const tool = [...(chunk.blocks ?? [])].reverse().find(block => !block.content || block.approvalState === 'pending');
       if (tool) return `Using ${formatActivityToolName(tool.toolName)}`;
@@ -114,7 +118,7 @@ export function getLegacyActivityLabel(chunks: Array<{ chunk: { type: string; bl
 export function hasLegacyPendingApproval(chunks: Array<{ chunk: { type: string; blocks?: ContentBlock[] } }>): boolean {
   return chunks.some(({ chunk }) => (
     chunk.type === 'toolCall'
-    && (chunk.blocks ?? []).some(block => block.approvalState === 'pending' && !block.content)
+    && (chunk.blocks ?? []).some(block => block.approvalState === 'pending' && !block.content && !!block.approvalId)
   ));
 }
 

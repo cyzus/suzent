@@ -703,7 +703,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       const chatId = streamingChatIdRef.current || activeChatIdRef.current;
 
       const hasPendingApprovals = parts.some(
-        p => p.type === 'tool' && p.state === 'approval-requested'
+        p => p.type === 'tool'
+          && p.state === 'approval-requested'
+          && !p.output
+          && !!p.approvalId
       );
 
       if (heartbeatOkRef.current) {
@@ -1057,7 +1060,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const transientPartsChatId = streamingChatIdRef.current || activeStreamingChatId;
   const hasPendingTransientApprovals =
     transientPartsChatId === currentChatId &&
-    streamingParts.some(p => p.type === 'tool' && p.state === 'approval-requested');
+    streamingParts.some(
+      p => p.type === 'tool'
+        && p.state === 'approval-requested'
+        && !p.output
+        && !!p.approvalId,
+    );
   const showTransientAssistant = streamingForCurrentChat || hasPendingTransientApprovals;
 
   // Safe values
@@ -1472,7 +1480,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       // If the stream paused for tool approval, keep the approval UI visible.
       // The event bus will fire stream_started again when the resume stream begins.
       const pendingApproval = liveStreamPartsRef.current.some(
-        p => p.type === 'tool' && p.state === 'approval-requested'
+        p => p.type === 'tool'
+          && p.state === 'approval-requested'
+          && !p.output
+          && !!p.approvalId
       );
       if (pendingApproval) {
         isLiveStreamRef.current = false;
@@ -1521,7 +1532,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     // there is zero frame delay between the SSE event arriving and tryConnect() firing.
     const handleStreamEnd = () => {
       const pendingApproval = getStreamingParts().some(
-        p => p.type === 'tool' && p.state === 'approval-requested'
+        p => p.type === 'tool'
+          && p.state === 'approval-requested'
+          && !p.output
+          && !!p.approvalId
       );
       if (pendingApproval) return;
 

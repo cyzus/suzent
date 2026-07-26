@@ -60,6 +60,17 @@ from loguru import logger
 _encoder = EventEncoder()
 
 
+class _SuzentAGUIEventStream(AGUIEventStream):
+    """Preserve Suzent custom events while converting pydantic-ai events."""
+
+    async def handle_event(self, event: Any) -> AsyncGenerator[Any, None]:
+        if isinstance(event, CustomEvent):
+            yield event
+            return
+        async for converted_event in super().handle_event(event):
+            yield converted_event
+
+
 class _ToolResultTimeout(TimeoutError):
     """Raised when a tool runs long enough that the LLM stream never delivers
     its result.
@@ -1452,7 +1463,7 @@ async def stream_agent_responses(
                 context=[],
                 forwarded_props=None,
             )
-            event_stream = AGUIEventStream(run_input)
+            event_stream = _SuzentAGUIEventStream(run_input)
             agui_events = event_stream.transform_stream(native_stream_generator())
             async for agui_event in agui_events:
                 if control.cancel_event.is_set():
