@@ -11,8 +11,9 @@ import asyncio
 import os
 from typing import Optional, Dict, Any, List, Set
 
+from fastmcp.client.transports import StdioTransport
 from pydantic_ai import Agent, Tool as PydanticTool
-from pydantic_ai.mcp import MCPServerStdio, MCPServerStreamableHTTP
+from pydantic_ai.mcp import MCPToolset
 from pydantic_ai.tools import DeferredToolRequests, RunContext
 from pydantic_ai.toolsets import FunctionToolset
 
@@ -69,8 +70,7 @@ def _build_mcp_servers(config: Dict[str, Any]) -> List:
     """
     Build MCP server toolset instances from the enabled servers in config.
 
-    Returns a list of MCPServerStreamableHTTP / MCPServerStdio instances
-    that can be passed as ``toolsets`` to a pydantic-ai Agent.
+    Returns MCP toolsets that can be passed to a pydantic-ai Agent.
     """
     from suzent.core import mcp_store as _mcp_store
 
@@ -103,23 +103,23 @@ def _build_mcp_servers(config: Dict[str, Any]) -> List:
     for name, url in mcp_urls.items():
         if mcp_enabled.get(name, False) and url:
             headers = mcp_headers.get(name)
-            server = MCPServerStreamableHTTP(
+            server = MCPToolset(
                 url,
                 headers=headers,
-                tool_prefix=name,
-            )
+                id=name,
+            ).prefixed(name)
             servers.append(server)
 
     # Build stdio servers
     if mcp_stdio_params:
         for name, params in mcp_stdio_params.items():
             if mcp_enabled.get(name, False):
-                server = MCPServerStdio(
-                    params["command"],
+                transport = StdioTransport(
+                    command=params["command"],
                     args=params.get("args", []),
                     env=params.get("env"),
-                    tool_prefix=name,
                 )
+                server = MCPToolset(transport, id=name).prefixed(name)
                 servers.append(server)
 
     return servers
@@ -151,9 +151,13 @@ async def probe_mcp_server(
 
     def _build():
         if has_url:
-            return MCPServerStreamableHTTP(entry["url"], headers=entry.get("headers"))
-        return MCPServerStdio(
-            entry["command"], args=entry.get("args") or [], env=entry.get("env")
+            return MCPToolset(entry["url"], headers=entry.get("headers"))
+        return MCPToolset(
+            StdioTransport(
+                command=entry["command"],
+                args=entry.get("args") or [],
+                env=entry.get("env"),
+            )
         )
 
     async def _connect() -> list[dict[str, str]]:
@@ -333,6 +337,7 @@ def create_agent(
         instructions=static_instructions,
         output_type=[str, DeferredToolRequests],
         output_retries=3,
+        end_strategy="early",
         history_processors=[make_compaction_history_processor()],
     )
 

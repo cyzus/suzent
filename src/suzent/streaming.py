@@ -36,6 +36,10 @@ from ag_ui.encoder import EventEncoder
 from suzent.core.agent_serializer import serialize_state
 from suzent.core.agent_deps import AgentDeps
 from suzent.core.citation_manager import CitationManager
+from suzent.core.message_history import (
+    is_tool_history_protocol_error,
+    strip_tool_interactions,
+)
 from suzent.core.stream_registry import (
     StreamControl,
     stream_controls,
@@ -809,6 +813,7 @@ async def stream_agent_responses(
         # function_tool_result time, so the AgentRunResultEvent fallback path
         # doesn't emit a second (duplicate) recovery for the same tool.
         _emitted_recovery_ids: set[str] = set()
+        _history_repair_retries = 0
         from pydantic_ai.messages import (
             ToolReturnPart as _TRP,
             ModelResponse as _MResp,
@@ -844,6 +849,7 @@ async def stream_agent_responses(
 
                     last_run_result = None
                     _tool_timeout: Optional[_ToolResultTimeout] = None
+                    _retry_repaired_history = False
                     logger.debug("[Streaming] Calling agent.run_stream_events()...")
                     _events = _iter_stream_events_with_timeout(
                         agent, prompt, run_kwargs
@@ -856,6 +862,30 @@ async def stream_agent_responses(
                         except _ToolResultTimeout as exc:
                             _tool_timeout = exc
                             break
+                        except Exception as exc:
+                            if (
+                                _history_repair_retries < 1
+                                and is_tool_history_protocol_error(exc)
+                            ):
+                                (
+                                    retry_history,
+                                    removed_for_compatibility,
+                                ) = strip_tool_interactions(history or [])
+                                if removed_for_compatibility:
+                                    _history_repair_retries += 1
+                                    history = retry_history
+                                    partial_history = retry_history
+                                    deps.last_messages = retry_history
+                                    _retry_repaired_history = True
+                                    await _save_mid_run_checkpoint(retry_history)
+                                    logger.warning(
+                                        "[Streaming] Provider rejected tool history; "
+                                        "retrying once without tool protocol parts: "
+                                        "compatibility_stripped={}",
+                                        removed_for_compatibility,
+                                    )
+                                    break
+                            raise
                         if control.cancel_event.is_set():
                             break
                         try:
@@ -1001,6 +1031,9 @@ async def stream_agent_responses(
                             )
                             # Continue processing other events
                             continue
+
+                    if _retry_repaired_history:
+                        continue
 
                     # A tool ran long enough that its result never arrived on the
                     # stream. Rather than aborting the turn, synthesize a failed
