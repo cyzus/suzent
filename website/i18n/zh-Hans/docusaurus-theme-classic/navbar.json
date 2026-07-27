@@ -14,5 +14,9 @@
   "item.label.GitHub": {
     "message": "GitHub",
     "description": "Navbar item with label GitHub"
+  },
+  "item.label.Sovereign": {
+    "message": "主权协议",
+    "description": "Navbar item with label Sovereign"
   }
 }

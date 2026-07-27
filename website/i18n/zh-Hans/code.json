@@ -19,6 +19,14 @@
     "message": "召唤 Suzent",
     "description": "Primary CTA button in hero"
   },
+  "homepage.hero.cta.sovereign": {
+    "message": "阅读主权协议",
+    "description": "Sovereignty Protocol CTA button in hero"
+  },
+  "homepage.nav.sovereign": {
+    "message": "主权",
+    "description": "Sovereignty page link in homepage navigation"
+  },
   "homepage.hero.cta.github": {
     "message": "在 GitHub 上查看",
     "description": "GitHub CTA button in hero"
@@ -64,15 +72,15 @@
     "description": "Feature section label"
   },
   "homepage.features.modelAgnostic.arcana": {
-    "message": "I · 主权智能",
+    "message": "I · 主权心智",
     "description": "Feature card arcana label"
   },
   "homepage.features.modelAgnostic.title": {
-    "message": "选择它的智能",
+    "message": "选择模型，保留自我",
     "description": "Feature card title"
   },
   "homepage.features.modelAgnostic.desc": {
-    "message": "模型是引擎，而不是身份。更换提供商，不会失去让这个智能体属于你的记忆、技能和工作区。",
+    "message": "模型是可替换的引擎。更换提供商时，定义智能体的身份、记忆、技能和工作区仍然属于你。",
     "description": "Feature card description"
   },
   "homepage.features.memory.arcana": {
@@ -88,27 +96,27 @@
     "description": "Feature card description"
   },
   "homepage.features.private.arcana": {
-    "message": "III · 主权权力",
+    "message": "II · 主权权力",
     "description": "Feature card arcana label"
   },
   "homepage.features.private.title": {
-    "message": "治理它的行动",
+    "message": "你的智能体，服从你的规则",
     "description": "Feature card title"
   },
   "homepage.features.private.desc": {
-    "message": "权限、作用域规则、沙箱边界和可检查的活动时间线，让自主工作始终服从你的权力。",
+    "message": "权限、作用域规则、沙箱边界和可检查的活动记录，让每一次行动始终处于你的权力之下。",
     "description": "Feature card description"
   },
   "homepage.features.automation.arcana": {
-    "message": "IV · 主权容器",
+    "message": "III · 主权容器",
     "description": "Feature card arcana label"
   },
   "homepage.features.automation.title": {
-    "message": "控制它的容器",
+    "message": "运行在你掌握钥匙的地方",
     "description": "Feature card title"
   },
   "homepage.features.automation.desc": {
-    "message": "运行在你控制的基础设施上，隔离项目工作区，挂载你自己的文件夹，并扩展到经过批准的设备。",
+    "message": "控制运行环境，隔离项目工作区，挂载你自己的文件夹，并且只把智能体扩展到经过批准的设备。",
     "description": "Feature card description"
   },
   "homepage.features.skills.arcana": {
@@ -124,15 +132,15 @@
     "description": "Feature card description"
   },
   "homepage.features.crossPlatform.arcana": {
-    "message": "VI · 主权连续性",
+    "message": "IV · 主权连续性",
     "description": "Feature card arcana label"
   },
   "homepage.features.crossPlatform.title": {
-    "message": "延续它的存在",
+    "message": "跨越任何平台继续存在",
     "description": "Feature card title"
   },
   "homepage.features.crossPlatform.desc": {
-    "message": "迁移记忆、技能和配置，同时将凭证留在本地。模型和设备可以改变，你的智能体始终存在。",
+    "message": "迁移记忆、技能和配置，同时将凭证留在本地。模型和设备可以改变，你的智能体仍然存在。",
     "description": "Feature card description"
   },
   "homepage.howItWorks.heading": {

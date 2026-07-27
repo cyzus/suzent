@@ -559,7 +559,9 @@
 /* CTA */
 .heroCta {
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
+  gap: 0.75rem;
 }
 
 .heroCtaBtn {
@@ -610,6 +612,11 @@
   color: var(--h-hover-text) !important;
   border-color: var(--h-hover-bg);
   transform: translateY(-1px);
+}
+
+.heroCtaBtnSecondary {
+  background: transparent;
+  color: var(--h-text) !important;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -666,7 +673,7 @@
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   border-top: 1px solid var(--h-border-faint);
   border-left: 1px solid var(--h-border-faint);
 }

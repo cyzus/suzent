@@ -63,6 +63,22 @@ const config: Config = {
             'https://github.com/cyzus/suzent/tree/main/website/',
         },
         blog: false, // Disable blog for now
+        sitemap: {
+          changefreq: 'weekly',
+          priority: 0.5,
+          ignorePatterns: ['/404', '/markdown-page'],
+          createSitemapItems: async ({ defaultCreateSitemapItems, ...params }) => {
+            const items = await defaultCreateSitemapItems(params);
+            const localizedItems = items
+              .filter(({ url }) => !url.includes('/zh-Hans/'))
+              .map((item) => ({
+                ...item,
+                url: item.url.replace('https://suzent.com/', 'https://suzent.com/zh-Hans/'),
+              }));
+
+            return [...items, ...localizedItems];
+          },
+        },
         theme: {
           customCss: [
             './src/css/custom.css',
@@ -82,8 +98,7 @@ const config: Config = {
       textColor: '#000000',
       isCloseable: true,
     },
-    // Replace with your project's social card
-    image: 'img/docusaurus-social-card.jpg',
+    image: 'img/suzent-social-card.png',
     colorMode: {
       defaultMode: 'light',
       disableSwitch: false,
@@ -96,6 +111,11 @@ const config: Config = {
         src: 'img/logo.svg',
       },
       items: [
+        {
+          to: '/sovereign',
+          label: 'Sovereign',
+          position: 'left',
+        },
         {
           type: 'docSidebar',
           sidebarId: 'tutorialSidebar',

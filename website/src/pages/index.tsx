@@ -18,45 +18,31 @@ const WIN_CMD  = `powershell -NoProfile -ExecutionPolicy Bypass -Command "irm ht
 
 const FEATURE_CARDS = [
   {
-    arcana: translate({ id: 'homepage.features.modelAgnostic.arcana', message: 'I · SOVEREIGN INTELLIGENCE' }),
+    arcana: translate({ id: 'homepage.features.modelAgnostic.arcana', message: 'I · SOVEREIGN MIND' }),
     sigil: '⊕',
-    title: translate({ id: 'homepage.features.modelAgnostic.title', message: 'Choose Its Intelligence' }),
-    desc:  translate({ id: 'homepage.features.modelAgnostic.desc',  message: 'Models are engines, not identities. Switch providers without losing the memory, skills, and workspace that make the agent yours.' }),
-    formula: 'model ≠ self',
+    title: translate({ id: 'homepage.features.modelAgnostic.title', message: 'Choose the Model. Keep the Self.' }),
+    desc:  translate({ id: 'homepage.features.modelAgnostic.desc',  message: 'Models are replaceable engines. Identity, memory, skills, and workspace remain yours when the provider changes.' }),
+    formula: 'model ≠ identity',
   },
   {
-    arcana: translate({ id: 'homepage.features.memory.arcana', message: 'II · SOVEREIGN MIND' }),
-    sigil: '∴',
-    title: translate({ id: 'homepage.features.memory.title', message: 'Own Its Memory' }),
-    desc:  translate({ id: 'homepage.features.memory.desc',  message: 'Memory lives in readable Markdown you can edit, delete, version, rebuild, and carry. The index serves the files—not the other way around.' }),
-    formula: 'memory ∈ your files',
-  },
-  {
-    arcana: translate({ id: 'homepage.features.private.arcana', message: 'III · SOVEREIGN AUTHORITY' }),
+    arcana: translate({ id: 'homepage.features.private.arcana', message: 'II · SOVEREIGN AUTHORITY' }),
     sigil: '□',
-    title: translate({ id: 'homepage.features.private.title', message: 'Govern Its Actions' }),
-    desc:  translate({ id: 'homepage.features.private.desc',  message: 'Permissions, scoped rules, sandbox boundaries, and an inspectable activity trail keep autonomous work under your authority.' }),
+    title: translate({ id: 'homepage.features.private.title', message: 'Your Agent, Under Your Law' }),
+    desc:  translate({ id: 'homepage.features.private.desc',  message: 'Permissions, scoped rules, sandbox boundaries, and an inspectable activity trail keep every action under your authority.' }),
     formula: 'action ⊆ your law',
   },
   {
-    arcana: translate({ id: 'homepage.features.automation.arcana', message: 'IV · SOVEREIGN VESSEL' }),
+    arcana: translate({ id: 'homepage.features.automation.arcana', message: 'III · SOVEREIGN VESSEL' }),
     sigil: '⌁',
-    title: translate({ id: 'homepage.features.automation.title', message: 'Control Its Vessel' }),
-    desc:  translate({ id: 'homepage.features.automation.desc',  message: 'Run it on infrastructure you control, isolate project workspaces, mount your own folders, and extend it across approved devices.' }),
-    formula: 'runtime ∈ your machine',
+    title: translate({ id: 'homepage.features.automation.title', message: 'Run Where You Hold the Keys' }),
+    desc:  translate({ id: 'homepage.features.automation.desc',  message: 'Control the runtime, isolate project workspaces, mount your own folders, and extend the agent only to approved devices.' }),
+    formula: 'runtime ∈ your domain',
   },
   {
-    arcana: translate({ id: 'homepage.features.skills.arcana', message: 'V · SOVEREIGN AGENCY' }),
-    sigil: '✶',
-    title: translate({ id: 'homepage.features.skills.title', message: 'Let It Work' }),
-    desc:  translate({ id: 'homepage.features.skills.desc',  message: 'Goals, tasks, subagents, Cron, and Heartbeat carry work beyond one reply. Turn checkpoints make local work retryable.' }),
-    formula: 'agency ∧ oversight',
-  },
-  {
-    arcana: translate({ id: 'homepage.features.crossPlatform.arcana', message: 'VI · SOVEREIGN CONTINUITY' }),
+    arcana: translate({ id: 'homepage.features.crossPlatform.arcana', message: 'IV · SOVEREIGN CONTINUITY' }),
     sigil: '△',
-    title: translate({ id: 'homepage.features.crossPlatform.title', message: 'Keep Its Continuity' }),
-    desc:  translate({ id: 'homepage.features.crossPlatform.desc',  message: 'Move portable memory, skills, and configuration while credentials stay local. Models and machines can change; your agent remains.' }),
+    title: translate({ id: 'homepage.features.crossPlatform.title', message: 'Outlive Any Platform' }),
+    desc:  translate({ id: 'homepage.features.crossPlatform.desc',  message: 'Move memory, skills, and configuration while credentials stay local. Models and machines can change; your agent remains.' }),
     formula: 'self > platform',
   },
 ];
@@ -119,6 +105,9 @@ function HomepageNav() {
           <span className={styles.homeNavTitle}>SUZENT</span>
         </Link>
         <div className={styles.homeNavLinks}>
+          <Link to="/sovereign" className={styles.homeNavLink}>
+            <Translate id="homepage.nav.sovereign">Sovereign</Translate>
+          </Link>
           <Link to="/docs/getting-started/intro" className={styles.homeNavLink}>Docs</Link>
           <a href="https://github.com/cyzus/suzent" className={styles.homeNavLink} target="_blank" rel="noopener noreferrer">GitHub</a>
           {otherLocale && (
@@ -300,6 +289,9 @@ function HomepageHeader() {
           <Link className={styles.heroCtaBtn} to="/docs/getting-started/quickstart">
             <Translate id="homepage.hero.cta.primary">Summon Suzent</Translate>
           </Link>
+          <Link className={clsx(styles.heroCtaBtn, styles.heroCtaBtnSecondary)} to="/sovereign">
+            <Translate id="homepage.hero.cta.sovereign">Read the Sovereignty Protocol</Translate>
+          </Link>
         </div>
       </div>
 
@@ -317,6 +309,27 @@ export default function Home(): ReactNode {
     >
       <Head>
         <style>{`.navbar,.navbar--fixed-top,.footer{display:none!important}`}</style>
+        <script type="application/ld+json">
+          {JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'SoftwareApplication',
+            name: 'Suzent',
+            alternateName: 'The Sovereign AI Agent',
+            description: 'A sovereign AI agent whose identity, memory, skills, workspace, and runtime remain under your control.',
+            url: 'https://suzent.com/',
+            applicationCategory: 'DeveloperApplication',
+            operatingSystem: 'Windows, macOS, Linux',
+            codeRepository: 'https://github.com/cyzus/suzent',
+            downloadUrl: 'https://github.com/cyzus/suzent/releases',
+            license: 'https://www.apache.org/licenses/LICENSE-2.0',
+            featureList: [
+              'Model-independent identity',
+              'User-owned memory and skills',
+              'Permissioned and sandboxed actions',
+              'Portable agent state',
+            ],
+          })}
+        </script>
       </Head>
       <HomepageNav />
       <HomepageHeader />
