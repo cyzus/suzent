@@ -39,7 +39,7 @@ logger = get_logger(__name__)
 
 
 def _create_openai_model(model_name: str, api_key: str, spec: ProviderSpec) -> object:
-    from pydantic_ai.models.openai import OpenAIModel
+    from pydantic_ai.models.openai import OpenAIChatModel
     from pydantic_ai.providers.openai import OpenAIProvider
 
     # Resolve base_url: Check SecretManager / Env for provider-specific base_url override
@@ -58,7 +58,7 @@ def _create_openai_model(model_name: str, api_key: str, spec: ProviderSpec) -> o
             break
 
     base_url = resolved_base_url or spec.base_url or os.environ.get("OPENAI_BASE_URL")
-    return OpenAIModel(
+    return OpenAIChatModel(
         model_name, provider=OpenAIProvider(api_key=api_key, base_url=base_url)
     )
 
@@ -106,11 +106,11 @@ def _create_openrouter_model(
 
 
 def _create_ollama_model(model_name: str, _api_key: str, spec: ProviderSpec) -> object:
-    from pydantic_ai.models.openai import OpenAIModel
+    from pydantic_ai.models.openai import OpenAIChatModel
     from pydantic_ai.providers.ollama import OllamaProvider
 
     base_url = os.environ.get("OLLAMA_BASE_URL") or "http://localhost:11434"
-    return OpenAIModel(model_name, provider=OllamaProvider(base_url=base_url))
+    return OpenAIChatModel(model_name, provider=OllamaProvider(base_url=base_url))
 
 
 def _create_chatgpt_model(model_name: str, _api_key: str, spec: ProviderSpec) -> object:
@@ -210,7 +210,7 @@ def _create_chatgpt_model(model_name: str, _api_key: str, spec: ProviderSpec) ->
 def _create_litellm_proxy_model(
     model_name: str, _api_key: str, spec: ProviderSpec
 ) -> object:
-    from pydantic_ai.models.openai import OpenAIModel
+    from pydantic_ai.models.openai import OpenAIChatModel
     from pydantic_ai.providers.litellm import LiteLLMProvider
 
     base_url = os.environ.get("LITELLM_BASE_URL") or os.environ.get(
@@ -226,7 +226,7 @@ def _create_litellm_proxy_model(
         or os.environ.get("LITELLM_PROXY_API_KEY")
         or "sk-1234"
     )
-    return OpenAIModel(
+    return OpenAIChatModel(
         model_name, provider=LiteLLMProvider(api_key=api_key, api_base=base_url)
     )
 
@@ -253,13 +253,13 @@ def _create_via_native_provider(
     model_name: str, api_key: str, spec: ProviderSpec
 ) -> object:
     """Create a model using the provider's native pydantic-ai provider class."""
-    from pydantic_ai.models.openai import OpenAIModel
+    from pydantic_ai.models.openai import OpenAIChatModel
 
     native = spec.native_provider
     assert native is not None
     module = importlib.import_module(native["module"])
     provider_cls = getattr(module, native["class"])
-    return OpenAIModel(model_name, provider=provider_cls(api_key=api_key))
+    return OpenAIChatModel(model_name, provider=provider_cls(api_key=api_key))
 
 
 # ---------------------------------------------------------------------------
@@ -300,7 +300,7 @@ def create_pydantic_ai_model(model_id: str) -> object:
     # Dispatch: native provider class takes priority over base_url compat
     if spec.has_native_provider:
         logger.debug(
-            "Mapped {} -> OpenAIModel via {}",
+            "Mapped {} -> OpenAIChatModel via {}",
             model_id,
             spec.native_provider["class"],
         )
