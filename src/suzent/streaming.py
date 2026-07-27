@@ -470,17 +470,36 @@ def _tool_timeout_from_event(event: Any) -> float:
     return BashTool.stream_wait_timeout_seconds(args.get("timeout"))
 
 
+def _tool_search_class_names(event: Any) -> list[str]:
+    """Return Suzent class names discovered by a native or fallback tool search."""
+    part = getattr(event, "part", None) or getattr(event, "result", None)
+    if getattr(part, "tool_kind", None) != "tool-search":
+        return []
+    discovered = getattr(part, "discovered_tools", None)
+    if not isinstance(discovered, list):
+        return []
+
+    from suzent.tools.registry import get_tool_class_name
+
+    names: list[str] = []
+    for match in discovered:
+        runtime_name = match.get("name") if isinstance(match, dict) else None
+        class_name = get_tool_class_name(runtime_name) if runtime_name else None
+        if class_name:
+            names.append(class_name)
+    return names
+
+
 async def _iter_stream_events_with_timeout(
     agent: Any,
     prompt: Any,
     run_kwargs: Dict[str, Any],
 ) -> AsyncGenerator[Any, None]:
     """Yield stream events, failing fast if the provider never produces one."""
-    stream = agent.run_stream_events(prompt, **run_kwargs)
-    first_event = True
-    tool_calls_in_flight = 0
-    tool_wait_timeout = 0.0
-    try:
+    async with agent.run_stream_events(prompt, **run_kwargs) as stream:
+        first_event = True
+        tool_calls_in_flight = 0
+        tool_wait_timeout = 0.0
         while True:
             if first_event:
                 timeout = _FIRST_STREAM_EVENT_TIMEOUT_SECONDS
@@ -517,13 +536,6 @@ async def _iter_stream_events_with_timeout(
                 if tool_calls_in_flight == 0:
                     tool_wait_timeout = 0.0
             yield event
-    finally:
-        aclose = getattr(stream, "aclose", None)
-        if aclose is not None:
-            try:
-                await aclose()
-            except Exception:
-                pass
 
 
 def _safe_args_preview(args: Any, max_len: int = 500) -> dict:
@@ -846,6 +858,7 @@ async def stream_agent_responses(
                     _chk_in_flight: int = 0
                     _chk_inflight_calls: Dict[str, Any] = {}
                     _chk_base: list = list(history or [])
+                    _activated_tool_names: set[str] = set()
 
                     last_run_result = None
                     _tool_timeout: Optional[_ToolResultTimeout] = None
@@ -895,6 +908,22 @@ async def stream_agent_responses(
 
                             # ── Mid-run checkpoint tracking ──────────────────
                             _event_kind = getattr(event, "event_kind", "")
+                            _new_tool_names = [
+                                name
+                                for name in _tool_search_class_names(event)
+                                if name not in _activated_tool_names
+                            ]
+                            if _new_tool_names:
+                                _activated_tool_names.update(_new_tool_names)
+                                await sse_queue.put(
+                                    (
+                                        "tool_activated",
+                                        {
+                                            "toolNames": _new_tool_names,
+                                            "chatId": chat_id,
+                                        },
+                                    )
+                                )
                             if _event_kind == "part_end":
                                 # Collect the complete part (not a delta) so we
                                 # can reconstruct a valid ModelResponse later.
@@ -1461,6 +1490,13 @@ async def stream_agent_responses(
                             "status": payload.get("status", "executed"),
                             "output": payload.get("output", ""),
                         },
+                    )
+
+                elif msg_type == "tool_activated":
+                    await _queue_custom_event(
+                        out_queue,
+                        "tool_activated",
+                        payload,
                     )
 
                 elif msg_type == "heartbeat_ok":

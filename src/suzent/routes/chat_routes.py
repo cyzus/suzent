@@ -472,9 +472,9 @@ async def deactivate_tool(request: Request) -> JSONResponse:
             {"error": "chat_id and tool_name are required"}, status_code=400
         )
 
-    from suzent.agent_manager import remove_unlocked_tool
+    from suzent.agent_manager import suppress_tool
 
-    remove_unlocked_tool(chat_id, tool_name)
+    suppress_tool(chat_id, tool_name)
     return JSONResponse({"status": "ok", "tool_name": tool_name})
 
 
@@ -781,11 +781,11 @@ async def delete_chat(request: Request) -> JSONResponse:
         if not success:
             return JSONResponse({"error": "Chat not found"}, status_code=404)
 
-        from suzent.agent_manager import clear_unlocked_tools
+        from suzent.agent_manager import clear_suppressed_tools
 
-        clear_unlocked_tools(chat_id)
+        clear_suppressed_tools(chat_id)
         for child_id in child_ids:
-            clear_unlocked_tools(child_id)
+            clear_suppressed_tools(child_id)
         return JSONResponse(
             {
                 "message": "Chat deleted successfully",

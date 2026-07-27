@@ -12,11 +12,10 @@ import os
 from typing import Optional, Dict, Any, List, Set
 
 from fastmcp.client.transports import StdioTransport
-from pydantic_ai import Agent, Tool as PydanticTool
-from pydantic_ai.capabilities import ProcessHistory
+from pydantic_ai import Agent
+from pydantic_ai.capabilities import ProcessHistory, ToolSearch
 from pydantic_ai.mcp import MCPToolset
-from pydantic_ai.tools import DeferredToolRequests, RunContext
-from pydantic_ai.toolsets import FunctionToolset
+from pydantic_ai.tools import DeferredToolRequests
 
 from suzent.core.agent_deps import AgentDeps
 from suzent.core.model_factory import create_pydantic_ai_model
@@ -29,7 +28,6 @@ from suzent.prompts import (
     register_dynamic_instructions,
 )
 from suzent.skills import get_skill_manager
-from suzent.tools.tool_search_tool import tool_search
 
 # Import memory lifecycle functions (for backward compatibility re-exports)
 from suzent.memory.lifecycle import (
@@ -47,24 +45,21 @@ agent_instance: Optional[Agent] = None
 agent_config: Optional[dict] = None
 agent_lock = asyncio.Lock()
 
-# --- Deferred (agent-activated) tool state ---
-_unlocked_tools_by_chat: Dict[str, Set[str]] = {}
+# Tools hidden by the user after native ToolSearch discovered them. This is
+# process-local UI state; the durable discovery record remains in message history.
+_suppressed_tools_by_chat: Dict[str, Set[str]] = {}
 
 
-def get_unlocked_tools(chat_id: str) -> Set[str]:
-    return _unlocked_tools_by_chat.get(chat_id, set())
+def get_suppressed_tools(chat_id: str) -> Set[str]:
+    return _suppressed_tools_by_chat.get(chat_id, set())
 
 
-def unlock_tool(chat_id: str, tool_name: str) -> None:
-    _unlocked_tools_by_chat.setdefault(chat_id, set()).add(tool_name)
+def suppress_tool(chat_id: str, tool_name: str) -> None:
+    _suppressed_tools_by_chat.setdefault(chat_id, set()).add(tool_name)
 
 
-def remove_unlocked_tool(chat_id: str, tool_name: str) -> None:
-    _unlocked_tools_by_chat.get(chat_id, set()).discard(tool_name)
-
-
-def clear_unlocked_tools(chat_id: str) -> None:
-    _unlocked_tools_by_chat.pop(chat_id, None)
+def clear_suppressed_tools(chat_id: str) -> None:
+    _suppressed_tools_by_chat.pop(chat_id, None)
 
 
 def _build_mcp_servers(config: Dict[str, Any]) -> List:
@@ -273,7 +268,11 @@ def create_agent(
     # --- Build tool list ---
     tool_names = (config.get("tools") or CONFIG.default_tools).copy()
 
-    from suzent.tools.registry import get_tool_function, get_tool_session_guidance
+    from suzent.tools.registry import (
+        get_deferred_tool_functions,
+        get_tool_function,
+        get_tool_session_guidance,
+    )
 
     tool_functions = []
     enabled_tool_names = set(tool_names)
@@ -295,6 +294,11 @@ def create_agent(
             tool_functions.append(fn)
         else:
             logger.warning(f"Tool function not found for: {tool_name}")
+
+    # All remaining deferrable tools are registered once with defer_loading=True.
+    # Pydantic AI exposes its native provider-side search where supported and
+    # transparently falls back to a local keyword search elsewhere.
+    tool_functions.extend(get_deferred_tool_functions(enabled_tool_names))
 
     # Auto-equip SkillTool if any skills are enabled
     skill_manager = get_skill_manager()
@@ -339,7 +343,10 @@ def create_agent(
         output_type=[str, DeferredToolRequests],
         retries={"output": 3},
         end_strategy="early",
-        capabilities=[ProcessHistory(make_compaction_history_processor())],
+        capabilities=[
+            ProcessHistory(make_compaction_history_processor()),
+            ToolSearch(),
+        ],
     )
 
     register_dynamic_instructions(
@@ -350,25 +357,6 @@ def create_agent(
         enabled_model_ids=enabled_models,
         current_model_id=model_id,
     )
-
-    # --- Deferred toolset: injects agent-activated tools each LLM step ---
-    _base_tool_names = set(enabled_tool_names)
-
-    @agent.toolset
-    async def _deferred_toolset(ctx: RunContext[AgentDeps]) -> FunctionToolset:
-        ts = FunctionToolset()
-        for name in get_unlocked_tools(ctx.deps.chat_id):
-            if name in _base_tool_names:
-                continue
-            fn = get_tool_function(name)
-            if fn is not None:
-                if isinstance(fn, PydanticTool):
-                    ts.add_tool(fn)
-                else:
-                    ts.add_function(fn)
-        return ts
-
-    agent.tool(tool_search)
 
     # Store metadata for later introspection
     agent._tool_names = [tn for tn in tool_names]  # type: ignore[attr-defined]
