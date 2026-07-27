@@ -13,6 +13,7 @@ from typing import Optional, Dict, Any, List, Set
 
 from fastmcp.client.transports import StdioTransport
 from pydantic_ai import Agent, Tool as PydanticTool
+from pydantic_ai.capabilities import ProcessHistory
 from pydantic_ai.mcp import MCPToolset
 from pydantic_ai.tools import DeferredToolRequests, RunContext
 from pydantic_ai.toolsets import FunctionToolset
@@ -336,9 +337,9 @@ def create_agent(
         toolsets=mcp_servers if mcp_servers else [],
         instructions=static_instructions,
         output_type=[str, DeferredToolRequests],
-        output_retries=3,
+        retries={"output": 3},
         end_strategy="early",
-        history_processors=[make_compaction_history_processor()],
+        capabilities=[ProcessHistory(make_compaction_history_processor())],
     )
 
     register_dynamic_instructions(
