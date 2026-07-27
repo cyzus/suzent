@@ -93,6 +93,8 @@ async def test_stream_events_support_pydantic_v2_context_manager() -> None:
 
     assert events
     assert events[-1].event_kind == "agent_run_result"
+    usage = streaming._run_result_usage(events[-1].result)
+    assert usage.requests == 1
 
 
 def test_function_tool_result_uses_v2_part_attribute() -> None:

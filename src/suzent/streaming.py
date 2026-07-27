@@ -495,6 +495,12 @@ def _function_tool_result_part(event: Any) -> Any:
     return getattr(event, "part", None) or getattr(event, "result", None)
 
 
+def _run_result_usage(result: Any) -> Any:
+    """Read run usage whether pydantic-ai exposes it as a property or method."""
+    usage = result.usage
+    return usage() if callable(usage) else usage
+
+
 async def _iter_stream_events_with_timeout(
     agent: Any,
     prompt: Any,
@@ -1324,7 +1330,7 @@ async def stream_agent_responses(
 
                         # Extract usage data (independent — failure doesn't affect history)
                         try:
-                            usage = payload.result.usage()
+                            usage = _run_result_usage(payload.result)
                             context_tokens = None
                             if result_messages is not None:
                                 try:
