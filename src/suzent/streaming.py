@@ -490,6 +490,11 @@ def _tool_search_class_names(event: Any) -> list[str]:
     return names
 
 
+def _function_tool_result_part(event: Any) -> Any:
+    """Read a tool result across pydantic-ai event schema versions."""
+    return getattr(event, "part", None) or getattr(event, "result", None)
+
+
 async def _iter_stream_events_with_timeout(
     agent: Any,
     prompt: Any,
@@ -935,22 +940,23 @@ async def stream_agent_responses(
                                 if _call_id:
                                     _chk_inflight_calls[_call_id] = _call_part
                             elif _event_kind == "function_tool_result":
+                                _result_part = _function_tool_result_part(event)
                                 _res_id = getattr(
-                                    getattr(event, "result", None),
+                                    _result_part,
                                     "tool_call_id",
                                     None,
                                 )
                                 if _res_id:
                                     _chk_inflight_calls.pop(_res_id, None)
-                                if isinstance(event.result, _TRP):
-                                    _chk_tool_returns.append(event.result)
+                                if isinstance(_result_part, _TRP):
+                                    _chk_tool_returns.append(_result_part)
                                     # For deferred (auto-approved) tools, the result
                                     # only otherwise reaches the frontend at
                                     # AgentRunResultEvent — too late, leaving the tool
                                     # stuck in "running" while the run continues. Emit
                                     # the recovery immediately so it shows completed.
                                     if current_deferred:
-                                        _trp = event.result
+                                        _trp = _result_part
                                         _tcid = getattr(_trp, "tool_call_id", None)
                                         if (
                                             _tcid

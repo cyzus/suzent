@@ -95,6 +95,17 @@ async def test_stream_events_support_pydantic_v2_context_manager() -> None:
     assert events[-1].event_kind == "agent_run_result"
 
 
+def test_function_tool_result_uses_v2_part_attribute() -> None:
+    part = ToolReturnPart(
+        tool_name="bash_execute",
+        content="done",
+        tool_call_id="call-1",
+    )
+    event = FunctionToolResultEvent(part)
+
+    assert streaming._function_tool_result_part(event) is part
+
+
 async def test_stream_events_timeout_when_first_event_never_arrives(monkeypatch):
     monkeypatch.setattr(streaming, "_FIRST_STREAM_EVENT_TIMEOUT_SECONDS", 0.01)
 
