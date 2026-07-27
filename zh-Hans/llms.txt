@@ -1,0 +1,22 @@
+# Suzent
+
+> Suzent is the sovereign AI agent: models are replaceable, while the agent's identity, memory, skills, workspace, and runtime remain under the user's control.
+
+## Start here
+
+- [Sovereignty Protocol](https://suzent.com/sovereign): The four conditions of agent sovereignty and a five-question ownership test.
+- [Introduction](https://suzent.com/docs/getting-started/intro): What Suzent is and how it differs from a rented AI account.
+- [Quickstart](https://suzent.com/docs/getting-started/quickstart): Install and run Suzent.
+
+## Sovereignty architecture
+
+- [Memory](https://suzent.com/docs/concepts/memory): Readable, file-backed memory where the index serves the files.
+- [Human in the loop](https://suzent.com/docs/concepts/tools/human-in-the-loop): Approval boundaries for tool execution.
+- [Filesystem](https://suzent.com/docs/concepts/filesystem): Controlled workspaces and filesystem access.
+- [GitHub sync](https://suzent.com/docs/concepts/github-sync): Portable agent state with credentials kept local.
+- [Automation](https://suzent.com/docs/concepts/automation): Goals, schedules, and continuing work.
+- [Nodes](https://suzent.com/docs/concepts/nodes): Extending the agent across approved devices.
+
+## Source
+
+- [GitHub repository](https://github.com/cyzus/suzent): Apache-2.0 licensed source, releases, issues, and contribution history.
