@@ -21,14 +21,68 @@ Dispatch strategy (in priority order):
 from __future__ import annotations
 
 import importlib
+import json
 import os
 from typing import Any
+
+import httpx
 
 from suzent.core.providers.catalog import PROVIDER_REGISTRY_BY_ID, ProviderSpec
 from suzent.core.providers.helpers import resolve_api_key
 from suzent.logger import get_logger
 
 logger = get_logger(__name__)
+
+_CHATGPT_UNSUPPORTED_PARAMS = {
+    "max_output_tokens",
+    "top_logprobs",
+    "prompt_cache_key",
+    "prompt_cache_retention",
+}
+
+
+def _rewrite_chatgpt_request(
+    request: httpx.Request, default_instructions: str
+) -> httpx.Request:
+    """Apply ChatGPT Responses API quirks without replacing HTTPX's transport."""
+    try:
+        body = json.loads(request.content)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return request
+    if not isinstance(body, dict):
+        return request
+
+    for key in _CHATGPT_UNSUPPORTED_PARAMS:
+        body.pop(key, None)
+    if not body.get("instructions"):
+        body["instructions"] = default_instructions
+    body["store"] = False
+    body["stream"] = True
+
+    content = json.dumps(body).encode()
+    headers = dict(request.headers)
+    headers["accept"] = "text/event-stream"
+    headers["content-type"] = "application/json"
+    headers["content-length"] = str(len(content))
+    return httpx.Request(
+        request.method,
+        request.url,
+        headers=headers,
+        content=content,
+        extensions=request.extensions,
+    )
+
+
+class _ChatGPTHTTPClient(httpx.AsyncClient):
+    """HTTPX client that preserves default system-proxy transport selection."""
+
+    def __init__(self, default_instructions: str) -> None:
+        super().__init__()
+        self._default_instructions = default_instructions
+
+    async def send(self, request: httpx.Request, **kwargs: Any) -> httpx.Response:
+        request = _rewrite_chatgpt_request(request, self._default_instructions)
+        return await super().send(request, **kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -114,7 +168,6 @@ def _create_ollama_model(model_name: str, _api_key: str, spec: ProviderSpec) -> 
 
 
 def _create_chatgpt_model(model_name: str, _api_key: str, spec: ProviderSpec) -> object:
-    import httpx
     from suzent.core.providers.chatgpt_auth import (
         chatgpt_api_base,
         chatgpt_default_headers,
@@ -136,44 +189,13 @@ def _create_chatgpt_model(model_name: str, _api_key: str, spec: ProviderSpec) ->
         )
 
     _chatgpt_instructions = chatgpt_default_instructions()
-    # Params the ChatGPT Responses API does not accept
-    _unsupported_params = {
-        "max_output_tokens",
-        "top_logprobs",
-        "prompt_cache_key",
-        "prompt_cache_retention",
-    }
 
     # The ChatGPT Responses API has several quirks vs standard OpenAI Responses API:
     # - Requires exactly `accept: text/event-stream` (SDK merges application/json in)
     # - Requires non-empty `instructions` and `store: false`
     # - Only accepts `stream: true` (must always stream)
     # - Does not accept max_output_tokens and other standard params
-    class _ChatGPTTransport(httpx.AsyncHTTPTransport):
-        async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
-            import json as _json
-
-            try:
-                body = _json.loads(request.content)
-                for key in _unsupported_params:
-                    body.pop(key, None)
-                if not body.get("instructions"):
-                    body["instructions"] = _chatgpt_instructions
-                body["store"] = False
-                body["stream"] = True
-                new_content = _json.dumps(body).encode()
-                headers = dict(request.headers)
-                headers["accept"] = "text/event-stream"
-                headers["content-type"] = "application/json"
-                headers["content-length"] = str(len(new_content))
-                request = httpx.Request(
-                    request.method, request.url, headers=headers, content=new_content
-                )
-            except Exception:
-                pass
-            return await super().handle_async_request(request)
-
-    http_client = httpx.AsyncClient(transport=_ChatGPTTransport())
+    http_client = _ChatGPTHTTPClient(_chatgpt_instructions)
     client = AsyncOpenAI(
         api_key=token,
         base_url=chatgpt_api_base(),
