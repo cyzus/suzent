@@ -419,6 +419,13 @@ The same actions are available via REST (`GET /nodes/pending`,
 **Settings → Devices**, a single unified list (connected nodes, peers you drive
 with a direction dropdown, devices that can drive you) plus pending approvals.
 
+## Peer file retrieval
+
+Peer capability results can expose explicitly registered, short-lived artifacts
+without granting access to arbitrary sandbox paths. See
+[Peer file retrieval](./peer-file-retrieval.md) for the download flow, security
+boundary, lifecycle, and remaining host-to-peer attachment work.
+
 ## Configuration
 
 Node system settings in Suzent configuration:
