@@ -8,6 +8,7 @@ import { ToolCallBlock } from './ToolCallBlock';
 import { SubAgentCallBlock } from './SubAgentCallBlock';
 import type { SubAgentStatus } from './SubAgentCallBlock';
 import { CopyButton } from './CopyButton';
+import { FileChangeSummary } from './FileChangeSummary';
 import { A2UIRenderer } from '../a2ui/A2UIRenderer';
 import type { A2UISurface } from '../../types/a2ui';
 import {
@@ -73,6 +74,8 @@ interface AssistantMessageProps {
   chatCitationSources?: CitationSourcesMap;
   /** Chat config model fallback for older messages without per-message metadata. */
   fallbackModel?: string;
+  /** Latest-turn file changes available for review and undo. */
+  fileChangeChatId?: string;
 }
 
 // Names that should be filtered out from tool call display
@@ -541,6 +544,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   onRetry,
   chatCitationSources,
   fallbackModel,
+  fileChangeChatId,
 }) => {
   const isStreamingThis = isStreaming && isLastMessage;
   const effectiveParts = aguiParts ?? message.parts;
@@ -735,6 +739,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
                 </div>
               )}
             </div>
+            {fileChangeChatId && <FileChangeSummary chatId={fileChangeChatId} />}
           </div>
         </div>
       </div>
@@ -1003,6 +1008,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
               </div>
             )}
           </div>
+          {fileChangeChatId && <FileChangeSummary chatId={fileChangeChatId} />}
         </div>
       </div>
     </div>

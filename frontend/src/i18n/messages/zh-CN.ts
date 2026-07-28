@@ -571,6 +571,16 @@ export const zhCN = {
     send: '发送',
     placeholder: '输入消息...',
   },
+  fileChanges: {
+    editedFiles: '已编辑 {count} 个文件',
+    review: '审核',
+    hideReview: '收起差异',
+    undo: '撤销',
+    undoing: '撤销中…',
+    undoSuccess: '已恢复 {count} 个文件。',
+    conflict: '为保护手动修改，已取消撤销：{files}',
+    binaryDiff: '二进制文件变更，无法显示文本差异。',
+  },
   chatList: {
     searchChatsPlaceholder: '搜索对话…',
     clearSearch: '清空搜索',

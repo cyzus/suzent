@@ -459,6 +459,9 @@ const MessageList: React.FC<{
                   onStopSubAgent={onStopSubAgent}
                   onForceWebContext={onForceWebContext}
                   onRetry={idx === lastAssistantIdx && !streamingForCurrentChat ? onRetry : undefined}
+                  fileChangeChatId={
+                    idx === lastAssistantIdx && !streamingForCurrentChat ? chatId : undefined
+                  }
                   chatCitationSources={chatCitationSources}
                   fallbackModel={fallbackModel}
                 />

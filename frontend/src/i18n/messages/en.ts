@@ -645,6 +645,16 @@ export const en = {
     send: 'Send',
     placeholder: 'Type a message...',
   },
+  fileChanges: {
+    editedFiles: 'Edited {count} file(s)',
+    review: 'Review',
+    hideReview: 'Hide diff',
+    undo: 'Undo',
+    undoing: 'Undoing…',
+    undoSuccess: 'Restored {count} file(s).',
+    conflict: 'Undo cancelled to protect manual changes in: {files}',
+    binaryDiff: 'Binary change; text diff unavailable.',
+  },
   chatList: {
     searchChatsPlaceholder: 'Search chats...',
     clearSearch: 'Clear search',

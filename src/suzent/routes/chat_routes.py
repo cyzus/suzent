@@ -29,6 +29,57 @@ logger = get_logger(__name__)
 _chat_send_tasks: set[asyncio.Task[None]] = set()
 
 
+async def get_chat_file_changes(request: Request) -> JSONResponse:
+    """GET /api/chats/{chat_id}/file-changes."""
+    from suzent.core.retry import load_retry_checkpoint
+
+    checkpoint = load_retry_checkpoint(request.path_params["chat_id"])
+    snapshot = list(getattr(checkpoint, "file_snapshot", []) or [])
+    files = [
+        {
+            "path": entry["path"],
+            "diff": entry.get("diff", ""),
+            "additions": int(entry.get("additions", 0)),
+            "deletions": int(entry.get("deletions", 0)),
+        }
+        for entry in snapshot
+        if entry.get("diff") or entry.get("additions") or entry.get("deletions")
+    ]
+    return JSONResponse(
+        {
+            "files": files,
+            "additions": sum(file["additions"] for file in files),
+            "deletions": sum(file["deletions"] for file in files),
+        }
+    )
+
+
+async def undo_chat_files(request: Request) -> JSONResponse:
+    """POST /api/chats/{chat_id}/undo."""
+    from suzent.core.file_tracker import FileRestoreConflictError, FileTracker
+    from suzent.core.retry import load_retry_checkpoint
+
+    chat_id = request.path_params["chat_id"]
+    checkpoint = load_retry_checkpoint(chat_id)
+    if checkpoint is None or not getattr(checkpoint, "file_snapshot", None):
+        return JSONResponse(
+            {"error": "No file changes are available to undo."}, status_code=404
+        )
+
+    snapshot = FileTracker.snapshot_from_json(checkpoint.file_snapshot)
+    try:
+        changed = FileTracker.apply_snapshot(chat_id, snapshot)
+    except FileRestoreConflictError as exc:
+        return JSONResponse(
+            {
+                "error": "Undo cancelled because files were modified after the agent turn.",
+                "conflicts": exc.paths,
+            },
+            status_code=409,
+        )
+    return JSONResponse({"success": True, "changed_files": changed})
+
+
 def _display_file_metadata(files_list: list) -> list[dict]:
     """Return JSON-safe file metadata for immediate user-message display."""
     result: list[dict] = []

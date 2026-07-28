@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import shutil
+from difflib import unified_diff
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -36,10 +37,23 @@ class FileBackup:
     backup_name: Optional[str]  # None → file did not exist
     version: int
     backup_time: datetime
+    after_hash: Optional[str] = None
+    after_exists: bool = True
+    diff: str = ""
+    additions: int = 0
+    deletions: int = 0
 
 
 # Map of absolute-path string → FileBackup
 FileSnapshot = Dict[str, FileBackup]
+
+
+class FileRestoreConflictError(RuntimeError):
+    """Raised when files changed after the agent turn and cannot be safely restored."""
+
+    def __init__(self, paths: list[str]) -> None:
+        self.paths = paths
+        super().__init__(f"Refusing to overwrite {len(paths)} manually changed file(s)")
 
 
 # ---------------------------------------------------------------------------
@@ -69,6 +83,43 @@ def _copy_file(src: Path, dst: Path) -> None:
     except FileNotFoundError:
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src, dst)
+
+
+def _content_hash(path: Path) -> Optional[str]:
+    if not path.exists():
+        return None
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _diff_metadata(before: Path | None, after: Path | None, display_path: str):
+    try:
+        before_lines = (
+            before.read_text(encoding="utf-8", errors="strict").splitlines(True)
+            if before and before.exists()
+            else []
+        )
+        after_lines = (
+            after.read_text(encoding="utf-8", errors="strict").splitlines(True)
+            if after and after.exists()
+            else []
+        )
+    except (OSError, UnicodeError):
+        return "", 0, 0
+    lines = list(
+        unified_diff(
+            before_lines,
+            after_lines,
+            fromfile=f"a/{display_path}",
+            tofile=f"b/{display_path}",
+        )
+    )
+    additions = sum(
+        1 for line in lines if line.startswith("+") and not line.startswith("+++")
+    )
+    deletions = sum(
+        1 for line in lines if line.startswith("-") and not line.startswith("---")
+    )
+    return "".join(lines), additions, deletions
 
 
 def _file_changed(abs_path: str, backup_name: str, chat_id: str) -> bool:
@@ -179,10 +230,21 @@ class FileTracker:
 
                 if not live.exists():
                     # File was deleted during this turn
+                    before = (
+                        _backup_path(self._chat_id, backup.backup_name)
+                        if backup.backup_name
+                        else None
+                    )
+                    diff, additions, deletions = _diff_metadata(before, None, abs_path)
                     snapshot[abs_path] = FileBackup(
-                        backup_name=None,
+                        backup_name=backup.backup_name,
                         version=backup.version,
                         backup_time=datetime.now(timezone.utc),
+                        after_hash=None,
+                        after_exists=False,
+                        diff=diff,
+                        additions=additions,
+                        deletions=deletions,
                     )
                     continue
 
@@ -197,7 +259,22 @@ class FileTracker:
                 # The v1 backup is already the pre-edit snapshot we need for
                 # restore, so we just record the current state in the snapshot
                 # without creating another copy.
-                snapshot[abs_path] = backup
+                before = (
+                    _backup_path(self._chat_id, backup.backup_name)
+                    if backup.backup_name
+                    else None
+                )
+                diff, additions, deletions = _diff_metadata(before, live, abs_path)
+                snapshot[abs_path] = FileBackup(
+                    backup_name=backup.backup_name,
+                    version=backup.version,
+                    backup_time=backup.backup_time,
+                    after_hash=_content_hash(live),
+                    after_exists=True,
+                    diff=diff,
+                    additions=additions,
+                    deletions=deletions,
+                )
 
             except Exception as exc:
                 logger.warning(
@@ -222,11 +299,42 @@ class FileTracker:
 
         Returns the list of file paths that were actually changed on disk.
         """
-        changed: list[str] = []
+        conflicts: list[str] = []
+        for abs_path, backup in snapshot.items():
+            live = Path(abs_path)
+            current_hash = _content_hash(live)
+            base_path = (
+                _backup_path(chat_id, backup.backup_name)
+                if backup.backup_name
+                else None
+            )
+            base_hash = _content_hash(base_path) if base_path else None
+            current_is_after = (
+                live.exists() == backup.after_exists
+                and current_hash == backup.after_hash
+            )
+            current_is_base = (
+                live.exists() == (backup.backup_name is not None)
+                and current_hash == base_hash
+            )
+            if not current_is_after and not current_is_base:
+                conflicts.append(abs_path)
+        if conflicts:
+            raise FileRestoreConflictError(conflicts)
 
+        changed: list[str] = []
         for abs_path, backup in snapshot.items():
             try:
                 live = Path(abs_path)
+                if live.exists() == (backup.backup_name is not None) and (
+                    _content_hash(live)
+                    == (
+                        _content_hash(_backup_path(chat_id, backup.backup_name))
+                        if backup.backup_name
+                        else None
+                    )
+                ):
+                    continue
 
                 if backup.backup_name is None:
                     # File should not exist — delete it if present
@@ -279,6 +387,11 @@ class FileTracker:
                 "backup_name": b.backup_name,
                 "version": b.version,
                 "backup_time": b.backup_time.isoformat(),
+                "after_hash": b.after_hash,
+                "after_exists": b.after_exists,
+                "diff": b.diff,
+                "additions": b.additions,
+                "deletions": b.deletions,
             }
             for path, b in snapshot.items()
         ]
@@ -291,5 +404,10 @@ class FileTracker:
                 backup_name=entry.get("backup_name"),
                 version=entry.get("version", 1),
                 backup_time=datetime.fromisoformat(entry["backup_time"]),
+                after_hash=entry.get("after_hash"),
+                after_exists=entry.get("after_exists", True),
+                diff=entry.get("diff", ""),
+                additions=entry.get("additions", 0),
+                deletions=entry.get("deletions", 0),
             )
         return result

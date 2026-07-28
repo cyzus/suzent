@@ -34,6 +34,7 @@ from suzent.routes.chat_routes import (
     deactivate_tool,
     delete_chat,
     get_chat,
+    get_chat_file_changes,
     get_chats,
     get_permission_mode,
     live_stream,
@@ -44,6 +45,7 @@ from suzent.routes.chat_routes import (
     set_permission_mode,
     stop_chat,
     update_chat,
+    undo_chat_files,
 )
 from suzent.routes.compact_routes import compact_chat
 from suzent.routes.chatgpt_routes import (
@@ -823,6 +825,12 @@ app = Starlette(
         Route("/chat/deactivate-tool", deactivate_tool, methods=["POST"]),
         Route("/chat/compact", compact_chat, methods=["POST"]),
         Route("/chat/retry", retry_chat, methods=["POST"]),
+        Route(
+            "/api/chats/{chat_id}/file-changes",
+            get_chat_file_changes,
+            methods=["GET"],
+        ),
+        Route("/api/chats/{chat_id}/undo", undo_chat_files, methods=["POST"]),
         Route("/commands", get_commands, methods=["GET"]),
         Route("/chats", get_chats, methods=["GET"]),
         Route("/chats", create_chat, methods=["POST"]),

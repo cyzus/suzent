@@ -9,6 +9,7 @@ from suzent.core.commands.sess import sess_command
 from suzent.core.commands.system import handle_status, handle_clear
 from suzent.core.commands.node import handle_node
 from suzent.core.commands.goal import handle_goal, handle_subgoal
+from suzent.core.commands.undo import handle_undo
 
 __all__ = [
     "dispatch",
@@ -25,4 +26,5 @@ __all__ = [
     "handle_node",
     "handle_goal",
     "handle_subgoal",
+    "handle_undo",
 ]
