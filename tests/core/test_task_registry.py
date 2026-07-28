@@ -56,8 +56,14 @@ class TestBackgroundTaskRegistry:
         assert registry.active_count == 2
 
         # Try to register a 3rd task (should fail)
-        with pytest.raises(RuntimeError, match="Max concurrent tasks limit reached"):
-            await registry.register(slow_task(), description="Task 3")
+        rejected = slow_task()
+        try:
+            with pytest.raises(
+                RuntimeError, match="Max concurrent tasks limit reached"
+            ):
+                await registry.register(rejected, description="Task 3")
+        finally:
+            rejected.close()
 
         # Cancel tasks to clean up
         task1.cancel()
@@ -206,8 +212,12 @@ class TestBackgroundTaskRegistry:
         await registry.shutdown(timeout=1.0)
 
         # Should not allow new registrations after shutdown
-        with pytest.raises(RuntimeError, match="shut down"):
-            await registry.register(quick_task(), description="After shutdown")
+        rejected = quick_task()
+        try:
+            with pytest.raises(RuntimeError, match="shut down"):
+                await registry.register(rejected, description="After shutdown")
+        finally:
+            rejected.close()
 
     def test_get_stats(self):
         """Test getting registry statistics."""
