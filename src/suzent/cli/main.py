@@ -148,20 +148,17 @@ def _local_ui_version(root: Path) -> str:
 
 
 def _current_version(root: Path) -> str:
-    """Return the installed/project version, falling back to pyproject for source runs."""
+    """Return the source version first, then installed package metadata."""
+    pyproject = root / "pyproject.toml"
+    if pyproject.exists():
+        for line in pyproject.read_text(encoding="utf-8").splitlines():
+            if line.strip().startswith("version ="):
+                return line.split("=", 1)[1].strip().strip('"')
+
     try:
         return version("suzent")
     except PackageNotFoundError:
-        pass
-
-    pyproject = root / "pyproject.toml"
-    if not pyproject.exists():
         return ""
-
-    for line in pyproject.read_text(encoding="utf-8").splitlines():
-        if line.strip().startswith("version ="):
-            return line.split("=", 1)[1].strip().strip('"')
-    return ""
 
 
 def _normalize_version_tag(value: str) -> str:

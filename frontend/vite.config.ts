@@ -3,6 +3,9 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
+  define: {
+    __FRONTEND_VERSION__: JSON.stringify(process.env.npm_package_version ?? 'unknown'),
+  },
   server: {
     host: '127.0.0.1',
     // Use a high fixed port outside current Windows dynamic range/exclusions.

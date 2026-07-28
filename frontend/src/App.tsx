@@ -21,6 +21,11 @@ import { ProjectProvider } from './hooks/useProjects';
 import { useStatusStore } from './hooks/useStatusStore';
 import { useTheme } from './hooks/useTheme';
 import { drainCronNotifications, fetchHeartbeatStatus } from './lib/api';
+import {
+  checkDesktopUpdate,
+  startDesktopUpdateAndRestart,
+  type UpdateStatus,
+} from './lib/desktopUpdates';
 import { isBusStreaming } from './hooks/useEventBus';
 import { useHeartbeatRunning } from './hooks/useHeartbeatRunning';
 import {
@@ -221,13 +226,6 @@ function MacTrafficLights({ isMaximized, onMaximize }: MacTrafficLightsProps): R
 
 type MainView = 'chat' | 'memory' | 'skills' | 'emotes';
 
-interface UpdateStatus {
-  current_version?: string;
-  latest_version?: string;
-  update_available?: boolean;
-  error?: string;
-}
-
 function NavTabs({ mainView, setMainView }: { mainView: MainView; setMainView: (v: MainView) => void }): React.ReactElement {
   const { t } = useI18n();
   return (
@@ -252,10 +250,10 @@ function UpdateButton(): React.ReactElement | null {
   React.useEffect(() => {
     let cancelled = false;
 
-    invoke<string>('check_for_update')
-      .then((raw) => {
+    checkDesktopUpdate()
+      .then((status) => {
         if (cancelled) return;
-        setUpdateStatus(JSON.parse(raw) as UpdateStatus);
+        setUpdateStatus(status);
       })
       .catch(() => {
         if (!cancelled) setUpdateStatus(null);
@@ -277,7 +275,7 @@ function UpdateButton(): React.ReactElement | null {
 
     setIsStartingUpdate(true);
     try {
-      await invoke('start_update_and_restart');
+      await startDesktopUpdateAndRestart();
     } catch (error) {
       setIsStartingUpdate(false);
       const message = error instanceof Error ? error.message : String(error);

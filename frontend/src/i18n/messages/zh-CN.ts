@@ -97,6 +97,12 @@ export const zhCN = {
     close: '关闭',
   },
   updates: {
+    sectionTitle: '软件更新',
+    checkDescription: '检查 GitHub Releases 中是否有更新的 Suzent 版本。',
+    check: '检查更新',
+    checking: '检查中...',
+    upToDate: 'Suzent 已是最新版本。',
+    checkFailed: '无法检查更新：{error}',
     available: '有可用更新',
     availableTitle: '有可用更新：{version}',
     updateNow: '更新',
@@ -293,6 +299,7 @@ export const zhCN = {
       data: '数据',
       usage: '用量',
       appearance: '外观',
+      about: '关于',
     },
     security: {
       title: '安全',
@@ -416,6 +423,14 @@ export const zhCN = {
       subtitle: '选择强调色主题',
       colorScheme: '颜色方案',
       schemes: { warm: '暖色', cold: '冷色', green: '绿色' },
+    },
+    about: {
+      title: '关于',
+      subtitle: '查看当前 Suzent 安装的版本信息',
+      description: '在桌面本地运行的个人 AI 智能体。',
+      frontendVersion: '桌面前端',
+      backendVersion: 'Python 后端',
+      unavailable: '不可用',
     },
     usage: {
       title: '用量',

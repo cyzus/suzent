@@ -6,6 +6,8 @@ import os
 import sys
 import subprocess
 import platform
+import tomllib
+from importlib.metadata import PackageNotFoundError, version as package_version
 from pathlib import Path
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -16,6 +18,43 @@ from suzent.database import get_database
 from suzent.config import get_effective_volumes
 
 logger = get_logger(__name__)
+
+
+def _get_source_version(start: Path | None = None) -> str | None:
+    """Find the nearest Suzent pyproject version for a source checkout."""
+
+    source_file = (start or Path(__file__)).resolve()
+    for parent in source_file.parents:
+        pyproject = parent / "pyproject.toml"
+        if not pyproject.is_file():
+            continue
+        try:
+            project = tomllib.loads(pyproject.read_text(encoding="utf-8")).get(
+                "project", {}
+            )
+        except (OSError, tomllib.TOMLDecodeError):
+            continue
+        if project.get("name") == "suzent" and isinstance(project.get("version"), str):
+            return project["version"]
+    return None
+
+
+def get_backend_version() -> str:
+    """Return the running backend package version."""
+
+    source_version = _get_source_version()
+    if source_version:
+        return source_version
+    try:
+        return package_version("suzent")
+    except PackageNotFoundError:
+        return "unknown"
+
+
+async def get_system_version(_request: Request) -> JSONResponse:
+    """Return version information for the running backend."""
+
+    return JSONResponse({"backend_version": get_backend_version()})
 
 
 def _get_resolver(chat_id: str) -> PathResolver:

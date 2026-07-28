@@ -43,6 +43,23 @@ export function getApiBase(): string {
   return 'http://127.0.0.1:8000';
 }
 
+export interface SystemVersionResponse {
+  backendVersion: string;
+}
+
+export async function fetchSystemVersion(): Promise<SystemVersionResponse> {
+  const response = await fetch(`${getApiBase()}/system/version`);
+  if (!response.ok) {
+    throw new Error(`Failed to load backend version: ${response.status}`);
+  }
+  const payload = await response.json() as { backend_version?: unknown };
+  return {
+    backendVersion: typeof payload.backend_version === 'string'
+      ? payload.backend_version
+      : 'unknown',
+  };
+}
+
 export interface PermissionModeState {
   mode: PermissionMode;
   prePlanMode?: PermissionMode | null;

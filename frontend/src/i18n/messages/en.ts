@@ -97,6 +97,12 @@ export const en = {
     close: 'Close',
   },
   updates: {
+    sectionTitle: 'Software updates',
+    checkDescription: 'Check GitHub Releases for a newer Suzent version.',
+    check: 'Check for updates',
+    checking: 'Checking...',
+    upToDate: 'Suzent is up to date.',
+    checkFailed: 'Could not check for updates: {error}',
     available: 'Update available',
     availableTitle: 'Update available: {version}',
     updateNow: 'Update',
@@ -293,6 +299,7 @@ export const en = {
       data: 'Data',
       usage: 'Usage',
       appearance: 'Appearance',
+      about: 'About',
     },
     security: {
       title: 'Security',
@@ -416,6 +423,14 @@ export const en = {
       subtitle: 'Choose an accent color theme',
       colorScheme: 'Color Scheme',
       schemes: { warm: 'Warm', cold: 'Cold', green: 'Green' },
+    },
+    about: {
+      title: 'About',
+      subtitle: 'Version information for this Suzent installation',
+      description: 'Your personal AI agent, running locally on your desktop.',
+      frontendVersion: 'Desktop frontend',
+      backendVersion: 'Python backend',
+      unavailable: 'Unavailable',
     },
     usage: {
       title: 'Usage',

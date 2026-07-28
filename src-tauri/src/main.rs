@@ -5,11 +5,11 @@ mod backend;
 
 use backend::BackendProcess;
 use serde::{Deserialize, Serialize};
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::Mutex;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::{Emitter, Manager, State};
 
 #[cfg(windows)]
@@ -53,7 +53,13 @@ fn get_backend_port(state: State<AppState>) -> Result<u16, String> {
 }
 
 #[tauri::command]
-fn check_for_update() -> Result<String, String> {
+async fn check_for_update() -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(check_for_update_blocking)
+        .await
+        .map_err(|error| format!("Update check task failed: {}", error))?
+}
+
+fn check_for_update_blocking() -> Result<String, String> {
     let repo_dir = backend::find_install_workspace_dir();
     let uv_exe = backend::find_uv();
 
@@ -71,17 +77,44 @@ fn check_for_update() -> Result<String, String> {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     hide_command_window(&mut command);
-    let output = command
-        .output()
+    let mut child = command
+        .spawn()
         .map_err(|e| format!("Failed to check for updates: {}", e))?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let started_at = Instant::now();
+    let status = loop {
+        if let Some(status) = child
+            .try_wait()
+            .map_err(|e| format!("Failed to wait for update check: {}", e))?
+        {
+            break status;
+        }
+        if started_at.elapsed() >= Duration::from_secs(15) {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err("Update check timed out after 15 seconds".to_string());
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    };
+
+    let mut stdout = Vec::new();
+    if let Some(mut pipe) = child.stdout.take() {
+        pipe.read_to_end(&mut stdout)
+            .map_err(|e| format!("Failed to read update check output: {}", e))?;
+    }
+    let mut stderr = Vec::new();
+    if let Some(mut pipe) = child.stderr.take() {
+        pipe.read_to_end(&mut stderr)
+            .map_err(|e| format!("Failed to read update check error: {}", e))?;
+    }
+
+    if !status.success() {
+        let stderr = String::from_utf8_lossy(&stderr).trim().to_string();
+        let stdout = String::from_utf8_lossy(&stdout).trim().to_string();
         return Err(if stderr.is_empty() { stdout } else { stderr });
     }
 
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    Ok(String::from_utf8_lossy(&stdout).trim().to_string())
 }
 
 #[tauri::command]

@@ -150,7 +150,11 @@ from suzent.routes.sandbox_routes import (
     upload_files,
 )
 from suzent.routes.skill_routes import get_skills, reload_skills, toggle_skill
-from suzent.routes.system_routes import list_host_files, open_in_explorer
+from suzent.routes.system_routes import (
+    get_system_version,
+    list_host_files,
+    open_in_explorer,
+)
 from suzent.routes.session_routes import (
     get_session_transcript,
     get_session_state,
@@ -938,6 +942,7 @@ app = Starlette(
             methods=["GET"],
         ),
         Route("/sandbox/upload", upload_files, methods=["POST"]),
+        Route("/system/version", get_system_version, methods=["GET"]),
         Route("/system/files", list_host_files, methods=["GET"]),
         Route("/system/open_explorer", open_in_explorer, methods=["POST"]),
         Route("/memory/core", get_core_memory, methods=["GET"]),

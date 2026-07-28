@@ -245,6 +245,16 @@ def test_is_newer_version(latest, current, expected):
     assert cli_main._is_newer_version(latest, current) is expected
 
 
+def test_current_version_prefers_source_checkout(monkeypatch, tmp_path):
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "suzent"\nversion = "0.7.1"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(cli_main, "version", lambda _name: "0.6.6")
+
+    assert cli_main._current_version(tmp_path) == "0.7.1"
+
+
 def test_check_for_update_detects_new_release(monkeypatch, tmp_path):
     monkeypatch.setattr(cli_main, "_current_version", lambda root: "0.6.2")
 

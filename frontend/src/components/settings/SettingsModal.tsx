@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useChatStore } from '../../hooks/useChatStore';
 import { ApiProvider, CustomProviderPayload, deleteCustomProvider, fetchApiKeys, fetchRoleModels, fetchRoleSuggestions, fetchSocialConfig, fetchMcpServers, saveApiKeys, saveCustomProvider, saveGlobalSandboxConfig, saveRoleModels, saveSocialConfig, saveUserPreferences, SocialConfig, UserConfig, verifyProvider } from '../../lib/api';
 import { AppearanceTab } from './AppearanceTab';
+import { AboutTab } from './AboutTab';
 import { AutomationTab } from './AutomationTab';
 import { DataTab } from './DataTab';
 import { McpTab } from './McpTab';
@@ -43,7 +44,7 @@ interface SettingsModalProps {
 }
 
 type ProviderTab = 'credentials' | 'models';
-type CategoryType = 'providers' | 'roles' | 'memory' | 'security' | 'social' | 'devices' | 'mcp' | 'automation' | 'data' | 'usage' | 'appearance';
+type CategoryType = 'providers' | 'roles' | 'memory' | 'security' | 'social' | 'devices' | 'mcp' | 'automation' | 'data' | 'usage' | 'appearance' | 'about';
 
 export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }: SettingsModalProps): React.ReactElement | null {
   const { refreshBackendConfig, backendConfig } = useChatStore();
@@ -518,6 +519,13 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }
         </svg>
       )
     },
+    {
+      id: 'about', label: t('settings.categories.about'), icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      )
+    },
   ];
 
   return (
@@ -692,6 +700,10 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }
 
                   {activeCategory === 'appearance' && (
                     <AppearanceTab />
+                  )}
+
+                  {activeCategory === 'about' && (
+                    <AboutTab />
                   )}
                 </>
               )}
