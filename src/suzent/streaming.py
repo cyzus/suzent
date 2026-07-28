@@ -36,6 +36,10 @@ from ag_ui.encoder import EventEncoder
 from suzent.core.agent_serializer import serialize_state
 from suzent.core.agent_deps import AgentDeps
 from suzent.core.citation_manager import CitationManager
+from suzent.core.message_history import (
+    is_tool_history_protocol_error,
+    strip_tool_interactions,
+)
 from suzent.core.stream_registry import (
     StreamControl,
     stream_controls,
@@ -91,6 +95,18 @@ class _ToolResultTimeout(TimeoutError):
 
 # Per-chat lock serialising reads+writes to _pending_approvals in chat.config.
 _pending_approval_locks: dict[str, asyncio.Lock] = {}
+
+
+def _strip_incompatible_tool_state(
+    history: list[Any],
+    deferred_results: Optional[DeferredToolResults],
+) -> tuple[list[Any], Optional[DeferredToolResults], int]:
+    """Remove tool protocol state together so a retry cannot orphan results."""
+
+    repaired_history, removed = strip_tool_interactions(history)
+    if removed:
+        deferred_results = None
+    return repaired_history, deferred_results, removed
 
 
 def _get_approval_lock(chat_id: str) -> asyncio.Lock:
@@ -466,17 +482,47 @@ def _tool_timeout_from_event(event: Any) -> float:
     return BashTool.stream_wait_timeout_seconds(args.get("timeout"))
 
 
+def _tool_search_class_names(event: Any) -> list[str]:
+    """Return Suzent class names discovered by a native or fallback tool search."""
+    part = getattr(event, "part", None) or getattr(event, "result", None)
+    if getattr(part, "tool_kind", None) != "tool-search":
+        return []
+    discovered = getattr(part, "discovered_tools", None)
+    if not isinstance(discovered, list):
+        return []
+
+    from suzent.tools.registry import get_tool_class_name
+
+    names: list[str] = []
+    for match in discovered:
+        runtime_name = match.get("name") if isinstance(match, dict) else None
+        class_name = get_tool_class_name(runtime_name) if runtime_name else None
+        if class_name:
+            names.append(class_name)
+    return names
+
+
+def _function_tool_result_part(event: Any) -> Any:
+    """Read a tool result across pydantic-ai event schema versions."""
+    return getattr(event, "part", None) or getattr(event, "result", None)
+
+
+def _run_result_usage(result: Any) -> Any:
+    """Read run usage whether pydantic-ai exposes it as a property or method."""
+    usage = result.usage
+    return usage() if callable(usage) else usage
+
+
 async def _iter_stream_events_with_timeout(
     agent: Any,
     prompt: Any,
     run_kwargs: Dict[str, Any],
 ) -> AsyncGenerator[Any, None]:
     """Yield stream events, failing fast if the provider never produces one."""
-    stream = agent.run_stream_events(prompt, **run_kwargs)
-    first_event = True
-    tool_calls_in_flight = 0
-    tool_wait_timeout = 0.0
-    try:
+    async with agent.run_stream_events(prompt, **run_kwargs) as stream:
+        first_event = True
+        tool_calls_in_flight = 0
+        tool_wait_timeout = 0.0
         while True:
             if first_event:
                 timeout = _FIRST_STREAM_EVENT_TIMEOUT_SECONDS
@@ -513,13 +559,6 @@ async def _iter_stream_events_with_timeout(
                 if tool_calls_in_flight == 0:
                     tool_wait_timeout = 0.0
             yield event
-    finally:
-        aclose = getattr(stream, "aclose", None)
-        if aclose is not None:
-            try:
-                await aclose()
-            except Exception:
-                pass
 
 
 def _safe_args_preview(args: Any, max_len: int = 500) -> dict:
@@ -809,6 +848,7 @@ async def stream_agent_responses(
         # function_tool_result time, so the AgentRunResultEvent fallback path
         # doesn't emit a second (duplicate) recovery for the same tool.
         _emitted_recovery_ids: set[str] = set()
+        _history_repair_retries = 0
         from pydantic_ai.messages import (
             ToolReturnPart as _TRP,
             ModelResponse as _MResp,
@@ -841,9 +881,11 @@ async def stream_agent_responses(
                     _chk_in_flight: int = 0
                     _chk_inflight_calls: Dict[str, Any] = {}
                     _chk_base: list = list(history or [])
+                    _activated_tool_names: set[str] = set()
 
                     last_run_result = None
                     _tool_timeout: Optional[_ToolResultTimeout] = None
+                    _retry_repaired_history = False
                     logger.debug("[Streaming] Calling agent.run_stream_events()...")
                     _events = _iter_stream_events_with_timeout(
                         agent, prompt, run_kwargs
@@ -856,6 +898,35 @@ async def stream_agent_responses(
                         except _ToolResultTimeout as exc:
                             _tool_timeout = exc
                             break
+                        except Exception as exc:
+                            if (
+                                _history_repair_retries < 1
+                                and is_tool_history_protocol_error(exc)
+                            ):
+                                (
+                                    retry_history,
+                                    retry_deferred,
+                                    removed_for_compatibility,
+                                ) = _strip_incompatible_tool_state(
+                                    history or [],
+                                    current_deferred,
+                                )
+                                if removed_for_compatibility:
+                                    _history_repair_retries += 1
+                                    history = retry_history
+                                    current_deferred = retry_deferred
+                                    partial_history = retry_history
+                                    deps.last_messages = retry_history
+                                    _retry_repaired_history = True
+                                    await _save_mid_run_checkpoint(retry_history)
+                                    logger.warning(
+                                        "[Streaming] Provider rejected tool history; "
+                                        "retrying once without tool protocol parts: "
+                                        "compatibility_stripped={}",
+                                        removed_for_compatibility,
+                                    )
+                                    break
+                            raise
                         if control.cancel_event.is_set():
                             break
                         try:
@@ -865,6 +936,22 @@ async def stream_agent_responses(
 
                             # ── Mid-run checkpoint tracking ──────────────────
                             _event_kind = getattr(event, "event_kind", "")
+                            _new_tool_names = [
+                                name
+                                for name in _tool_search_class_names(event)
+                                if name not in _activated_tool_names
+                            ]
+                            if _new_tool_names:
+                                _activated_tool_names.update(_new_tool_names)
+                                await sse_queue.put(
+                                    (
+                                        "tool_activated",
+                                        {
+                                            "toolNames": _new_tool_names,
+                                            "chatId": chat_id,
+                                        },
+                                    )
+                                )
                             if _event_kind == "part_end":
                                 # Collect the complete part (not a delta) so we
                                 # can reconstruct a valid ModelResponse later.
@@ -876,22 +963,23 @@ async def stream_agent_responses(
                                 if _call_id:
                                     _chk_inflight_calls[_call_id] = _call_part
                             elif _event_kind == "function_tool_result":
+                                _result_part = _function_tool_result_part(event)
                                 _res_id = getattr(
-                                    getattr(event, "result", None),
+                                    _result_part,
                                     "tool_call_id",
                                     None,
                                 )
                                 if _res_id:
                                     _chk_inflight_calls.pop(_res_id, None)
-                                if isinstance(event.result, _TRP):
-                                    _chk_tool_returns.append(event.result)
+                                if isinstance(_result_part, _TRP):
+                                    _chk_tool_returns.append(_result_part)
                                     # For deferred (auto-approved) tools, the result
                                     # only otherwise reaches the frontend at
                                     # AgentRunResultEvent — too late, leaving the tool
                                     # stuck in "running" while the run continues. Emit
                                     # the recovery immediately so it shows completed.
                                     if current_deferred:
-                                        _trp = event.result
+                                        _trp = _result_part
                                         _tcid = getattr(_trp, "tool_call_id", None)
                                         if (
                                             _tcid
@@ -1001,6 +1089,9 @@ async def stream_agent_responses(
                             )
                             # Continue processing other events
                             continue
+
+                    if _retry_repaired_history:
+                        continue
 
                     # A tool ran long enough that its result never arrived on the
                     # stream. Rather than aborting the turn, synthesize a failed
@@ -1256,7 +1347,7 @@ async def stream_agent_responses(
 
                         # Extract usage data (independent — failure doesn't affect history)
                         try:
-                            usage = payload.result.usage()
+                            usage = _run_result_usage(payload.result)
                             context_tokens = None
                             if result_messages is not None:
                                 try:
@@ -1428,6 +1519,13 @@ async def stream_agent_responses(
                             "status": payload.get("status", "executed"),
                             "output": payload.get("output", ""),
                         },
+                    )
+
+                elif msg_type == "tool_activated":
+                    await _queue_custom_event(
+                        out_queue,
+                        "tool_activated",
+                        payload,
                     )
 
                 elif msg_type == "heartbeat_ok":

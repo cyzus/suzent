@@ -7,7 +7,14 @@ history_processors) and compacts context in-flight once it crosses the trigger.
 from types import SimpleNamespace
 
 import pytest
-from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart, UserPromptPart
+from pydantic_ai.messages import (
+    ModelRequest,
+    ModelResponse,
+    TextPart,
+    ToolCallPart,
+    ToolReturnPart,
+    UserPromptPart,
+)
 
 import suzent.core.context_compressor as cc
 from suzent.config import CONFIG
@@ -172,3 +179,57 @@ async def test_skips_when_compacted_tail_is_invalid(monkeypatch):
     # Falls back to the original (which ends with a ModelResponse only if n even;
     # here it returns the untouched input, preserving whatever pydantic-ai gave us).
     assert out is hist
+
+
+@pytest.mark.asyncio
+async def test_compaction_keeps_tool_call_with_tail_result(monkeypatch):
+    monkeypatch.setattr(CONFIG, "compaction_keep_recent_turns", 1, raising=False)
+
+    async def fake_summary(self, messages, focus=None):
+        return "Archived history"
+
+    monkeypatch.setattr(
+        cc.ContextCompressor,
+        "_summarize_with_retry",
+        fake_summary,
+    )
+    compressor = cc.ContextCompressor(llm_client=object())
+    history = [
+        ModelRequest(parts=[UserPromptPart(content="old")]),
+        ModelResponse(parts=[TextPart(content="old answer")]),
+        ModelRequest(parts=[UserPromptPart(content="run")]),
+        ModelResponse(
+            parts=[
+                ToolCallPart(
+                    tool_name="bash_execute",
+                    tool_call_id="call-1",
+                    args={"command": "pwd"},
+                )
+            ]
+        ),
+        ModelRequest(
+            parts=[
+                ToolReturnPart(
+                    tool_name="bash_execute",
+                    tool_call_id="call-1",
+                    content="ok",
+                )
+            ]
+        ),
+    ]
+
+    out = await compressor._perform_compression(history)
+
+    call_index = next(
+        index
+        for index, message in enumerate(out)
+        if isinstance(message, ModelResponse)
+        and any(isinstance(part, ToolCallPart) for part in message.parts)
+    )
+    result_index = next(
+        index
+        for index, message in enumerate(out)
+        if isinstance(message, ModelRequest)
+        and any(isinstance(part, ToolReturnPart) for part in message.parts)
+    )
+    assert call_index < result_index

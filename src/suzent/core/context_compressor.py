@@ -21,6 +21,7 @@ from pydantic_ai.messages import (
 from pydantic_ai.tools import RunContext
 
 from suzent.core.agent_deps import AgentDeps
+from suzent.core.message_history import safe_tool_history_tail_start
 
 from suzent.config import CONFIG
 from suzent.logger import get_logger
@@ -494,7 +495,10 @@ class ContextCompressor:
         except asyncio.TimeoutError:
             logger.warning("Compaction timed out, falling back to hard trim")
             keep = CONFIG.compaction_keep_recent_turns * 2
-            return messages[:1] + messages[-keep:]
+            tail_start = safe_tool_history_tail_start(
+                messages, max(1, len(messages) - keep)
+            )
+            return messages[:1] + messages[tail_start:]
         except Exception as e:
             logger.error(f"Context compression failed: {e}")
             return messages
@@ -559,7 +563,7 @@ class ContextCompressor:
             return messages
 
         start_index = 1  # After first system/context message
-        end_index = len(messages) - keep_recent
+        end_index = safe_tool_history_tail_start(messages, len(messages) - keep_recent)
 
         if start_index >= end_index:
             return messages
@@ -951,7 +955,10 @@ def make_compaction_history_processor(source: str = "auto_midrun"):
             )
         except asyncio.TimeoutError:
             logger.warning("Mid-run compaction timed out, falling back to hard trim")
-            compressed = messages[:1] + messages[-keep_recent:]
+            tail_start = safe_tool_history_tail_start(
+                messages, max(1, len(messages) - keep_recent)
+            )
+            compressed = messages[:1] + messages[tail_start:]
         except Exception as e:
             logger.error(f"Mid-run compaction failed: {e}")
             emit_compaction_event(

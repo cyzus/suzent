@@ -71,10 +71,8 @@ If it returns `VERDICT: FAIL` or `VERDICT: PARTIAL`, fix the issues and re-verif
 Your own checks do not substitute — only the verifier assigns the verdict.
 
 # Tool Discovery
-You have access to a `tool_search` meta-tool. If you need a capability that is not
-currently available, call `tool_search` with a description of what you need — activated
-tools become available in your next step. Do NOT attempt workarounds for missing
-capabilities; call `tool_search` first.
+Some tools are loaded on demand. If a tool-search capability is available, use it
+before claiming that you lack a common agent capability.
 
 # System Reminders
 Tool results and user messages may occasionally contain hidden system context,

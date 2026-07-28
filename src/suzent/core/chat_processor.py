@@ -228,6 +228,7 @@ def _collect_unprocessed_tool_call_ids(messages: list[Any]) -> set[str]:
     from pydantic_ai.messages import (
         ModelRequest,
         ModelResponse,
+        RetryPromptPart,
         ToolCallPart,
         ToolReturnPart,
     )
@@ -239,7 +240,11 @@ def _collect_unprocessed_tool_call_ids(messages: list[Any]) -> set[str]:
     for msg in messages:
         if isinstance(msg, ModelRequest):
             for part in msg.parts:
-                if isinstance(part, ToolReturnPart) and part.tool_call_id:
+                if (
+                    isinstance(part, ToolReturnPart)
+                    or isinstance(part, RetryPromptPart)
+                    and part.tool_name
+                ) and part.tool_call_id:
                     answered_ids.add(part.tool_call_id)
 
     pending_ids: set[str] = set()

@@ -1,13 +1,40 @@
 import asyncio
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
 
 import pytest
 from ag_ui.core import CustomEvent, RunAgentInput
+from pydantic_ai import Agent
 from pydantic_ai.messages import FunctionToolCallEvent, FunctionToolResultEvent
-from pydantic_ai.messages import ToolCallPart, ToolReturnPart
+from pydantic_ai.messages import ModelResponse, ToolCallPart, ToolReturnPart
+from pydantic_ai.models.test import TestModel
+from pydantic_ai.tools import DeferredToolResults
 
 from suzent import streaming
 from suzent.tools.shell.bash_tool import BashTool
+
+
+def test_history_compatibility_retry_clears_deferred_tool_results() -> None:
+    history = [
+        ModelResponse(
+            parts=[
+                ToolCallPart(
+                    tool_name="bash_execute",
+                    args={"content": "pwd"},
+                    tool_call_id="call-1",
+                )
+            ]
+        )
+    ]
+    deferred = DeferredToolResults(approvals={"call-1": True})
+
+    repaired, repaired_deferred, removed = streaming._strip_incompatible_tool_state(
+        history, deferred
+    )
+
+    assert repaired == []
+    assert repaired_deferred is None
+    assert removed == 1
 
 
 async def test_agui_event_stream_preserves_permission_custom_events() -> None:
@@ -40,28 +67,69 @@ async def test_agui_event_stream_preserves_permission_custom_events() -> None:
 
 
 class _HangingStreamAgent:
-    async def run_stream_events(self, _prompt, **_kwargs):
-        await asyncio.Event().wait()
-        yield None
+    def run_stream_events(self, _prompt, **_kwargs):
+        @asynccontextmanager
+        async def stream():
+            async def events():
+                await asyncio.Event().wait()
+                yield None
+
+            yield events()
+
+        return stream()
 
 
 class _SlowToolStreamAgent:
-    async def run_stream_events(self, _prompt, **_kwargs):
-        yield FunctionToolCallEvent(
-            ToolCallPart(
-                tool_name="bash_execute",
-                args={"content": "sleep 1", "timeout": 1},
-                tool_call_id="call-1",
-            )
+    def run_stream_events(self, _prompt, **_kwargs):
+        @asynccontextmanager
+        async def stream():
+            async def events():
+                yield FunctionToolCallEvent(
+                    ToolCallPart(
+                        tool_name="bash_execute",
+                        args={"content": "sleep 1", "timeout": 1},
+                        tool_call_id="call-1",
+                    )
+                )
+                await asyncio.sleep(0.03)
+                yield FunctionToolResultEvent(
+                    ToolReturnPart(
+                        tool_name="bash_execute",
+                        content="done",
+                        tool_call_id="call-1",
+                    )
+                )
+
+            yield events()
+
+        return stream()
+
+
+async def test_stream_events_support_pydantic_v2_context_manager() -> None:
+    agent = Agent(TestModel())
+
+    events = [
+        event
+        async for event in streaming._iter_stream_events_with_timeout(
+            agent, "hello", {}
         )
-        await asyncio.sleep(0.03)
-        yield FunctionToolResultEvent(
-            ToolReturnPart(
-                tool_name="bash_execute",
-                content="done",
-                tool_call_id="call-1",
-            )
-        )
+    ]
+
+    assert events
+    assert events[-1].event_kind == "agent_run_result"
+    usage = streaming._run_result_usage(events[-1].result)
+    assert usage.requests == 1
+
+
+def test_function_tool_result_uses_v2_part_attribute() -> None:
+    part = ToolReturnPart(
+        tool_name="bash_execute",
+        content="done",
+        tool_call_id="call-1",
+    )
+    event = FunctionToolResultEvent(part)
+
+    assert streaming._function_tool_result_part(event) is part
 
 
 async def test_stream_events_timeout_when_first_event_never_arrives(monkeypatch):
@@ -77,15 +145,22 @@ async def test_stream_events_timeout_when_first_event_never_arrives(monkeypatch)
 class _HangingToolStreamAgent:
     """Emits a tool call but never produces its result."""
 
-    async def run_stream_events(self, _prompt, **_kwargs):
-        yield FunctionToolCallEvent(
-            ToolCallPart(
-                tool_name="bash_execute",
-                args={"content": "sleep 999", "timeout": 1},
-                tool_call_id="call-1",
-            )
-        )
-        await asyncio.Event().wait()
+    def run_stream_events(self, _prompt, **_kwargs):
+        @asynccontextmanager
+        async def stream():
+            async def events():
+                yield FunctionToolCallEvent(
+                    ToolCallPart(
+                        tool_name="bash_execute",
+                        args={"content": "sleep 999", "timeout": 1},
+                        tool_call_id="call-1",
+                    )
+                )
+                await asyncio.Event().wait()
+
+            yield events()
+
+        return stream()
 
 
 async def test_tool_result_timeout_raises_recoverable_error(monkeypatch):

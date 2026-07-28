@@ -24,7 +24,9 @@ logger = get_logger(__name__)
 # ---------------------------------------------------------------------------
 
 
-def _make_tool(tool_cls) -> Union[Callable, PydanticTool]:
+def _make_tool(
+    tool_cls, *, defer_loading: bool = False
+) -> Union[Callable, PydanticTool]:
     """Create a pydantic-ai tool from a suzent Tool class.
 
     * Creates a wrapper that instantiates a fresh Tool per call (thread-safe).
@@ -61,8 +63,30 @@ def _make_tool(tool_cls) -> Union[Callable, PydanticTool]:
 
     wrapper.__name__ = tool_cls.tool_name
 
-    if tool_cls.requires_approval:
-        return PydanticTool(wrapper, requires_approval=True)
+    if tool_cls.requires_approval or defer_loading:
+        prepare = None
+        if defer_loading:
+
+            async def prepare(ctx, tool_definition):
+                from suzent.agent_manager import get_suppressed_tools
+
+                policy = getattr(ctx.deps, "tool_approval_policy", {}) or {}
+                denied = (
+                    policy.get(tool_cls.name) == "always_deny"
+                    or policy.get(tool_cls.tool_name) == "always_deny"
+                )
+                suppressed = (
+                    tool_cls.name in get_suppressed_tools(ctx.deps.chat_id)
+                    and tool_cls.name not in ctx.deps.base_tool_names
+                )
+                return None if denied or suppressed else tool_definition
+
+        return PydanticTool(
+            wrapper,
+            requires_approval=tool_cls.requires_approval,
+            defer_loading=defer_loading,
+            prepare=prepare,
+        )
 
     return wrapper
 
@@ -177,6 +201,38 @@ def get_tool_function(tool_name: str) -> Optional[Union[Callable, PydanticTool]]
     if fn is None:
         logger.warning(f"Tool function not found: {tool_name}")
     return fn
+
+
+def get_deferred_tool_functions(exclude: set[str]) -> list[PydanticTool]:
+    """Build fresh deferred tools for Pydantic AI's native ToolSearch capability."""
+    tools: list[PydanticTool] = []
+    for cls in _all_tool_classes():
+        if cls.name in exclude or not getattr(cls, "deferrable", True):
+            continue
+        try:
+            tool = _make_tool(cls, defer_loading=True)
+        except Exception as exc:
+            logger.error(f"Failed to register deferred tool {cls.name}: {exc}")
+            continue
+        if isinstance(tool, PydanticTool):
+            tools.append(tool)
+    return tools
+
+
+def get_tool_class_name(runtime_name: str) -> Optional[str]:
+    """Resolve a model-facing function name to its Suzent tool class name."""
+    for cls in _all_tool_classes():
+        if cls.tool_name == runtime_name:
+            return cls.name
+    return None
+
+
+def get_tool_runtime_name(class_name: str) -> Optional[str]:
+    """Resolve a Suzent tool class name to its model-facing function name."""
+    for cls in _all_tool_classes():
+        if cls.name == class_name:
+            return cls.tool_name
+    return None
 
 
 def list_available_tools() -> List[str]:
