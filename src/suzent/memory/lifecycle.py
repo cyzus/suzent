@@ -266,15 +266,19 @@ async def init_memory_system() -> bool:
             CONFIG.tool_options.append("MemorySearchTool")
             logger.info("Added MemorySearchTool to config")
 
-        # Start background core-file watcher only when embedding is configured
+        # Start background core-file watcher only when embedding is configured.
+        # The watcher maintains the LanceDB search index, so it cannot do useful
+        # work without vectors.
         if markdown_store and _embedding_model:
             _watcher_task = asyncio.create_task(
                 _core_file_watch_loop(memory_manager, CONFIG.user_id),
                 name="core_memory_file_watcher",
             )
 
-            # Start the autonomous dream consolidation runner (gated; a safe no-op
-            # until enough daily logs accrue).
+        # Start the autonomous dream consolidation runner whenever markdown memory
+        # is available. Dream writes the notebook source of truth; vector reindexing
+        # is a best-effort follow-up that can be skipped when embeddings are unset.
+        if markdown_store:
             if getattr(CONFIG, "memory_consolidation_enabled", True):
                 try:
                     from suzent.core.dream_runner import DreamRunner

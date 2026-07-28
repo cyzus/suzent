@@ -176,6 +176,17 @@ class RoleRouter:
             if model_ids:
                 self.set_role(role, model_ids)
 
+    def replace_from_dict(self, role_models: Dict[str, Any]) -> None:
+        """Replace all role assignments with the supplied mapping.
+
+        Unlike ``load_from_dict``, empty lists intentionally clear roles. This
+        matches the Settings UI, where removing the last model from a role must
+        persist as "not configured" rather than leaving the old singleton value
+        alive.
+        """
+        self._roles = {}
+        self.load_from_dict(role_models)
+
     def load_from_db(self) -> None:
         """Load role assignments from the database."""
         try:
@@ -210,31 +221,12 @@ class RoleRouter:
             logger.warning("Failed to save role mappings to DB: {}", e)
 
     def load_from_config(self) -> None:
-        """Load role assignments from CONFIG.
-
-        Handles both new ``role_models`` dict and legacy flat fields:
-        ``tts_model``, ``embedding_model``, ``image_generation_model``,
-        ``extraction_model``.
-        """
+        """Load explicit role assignments from CONFIG."""
         from suzent.config import CONFIG
 
-        # New-style role_models dict
         role_models = getattr(CONFIG, "role_models", None)
         if role_models:
             self.load_from_dict(role_models)
-
-        # Legacy flat fields → role mapping (fallback if not set via role_models)
-        _legacy_map = {
-            ModelRole.TTS: "tts_model",
-            ModelRole.EMBEDDING: "embedding_model",
-            ModelRole.IMAGE_GENERATION: "image_generation_model",
-            ModelRole.CHEAP: "extraction_model",
-        }
-        for role, attr in _legacy_map.items():
-            if not self.has_role(role):
-                val = getattr(CONFIG, attr, None)
-                if val:
-                    self.set_role(role, [val])
 
 
 # ---------------------------------------------------------------------------
