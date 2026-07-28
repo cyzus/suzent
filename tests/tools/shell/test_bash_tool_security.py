@@ -137,7 +137,10 @@ def test_host_timeout_kills_process_tree_and_returns_tool_error(monkeypatch, tmp
         returncode = None
 
         def __init__(self, cmd, **kwargs):
-            pass
+            kwargs["stdout"].write(b"Fetching packages... 45%\n")
+            kwargs["stdout"].flush()
+            kwargs["stderr"].write(b"waiting for registry\n")
+            kwargs["stderr"].flush()
 
         def wait(self, timeout=None):
             raise subprocess.TimeoutExpired(cmd="slow", timeout=timeout)
@@ -160,8 +163,25 @@ def test_host_timeout_kills_process_tree_and_returns_tool_error(monkeypatch, tmp
     assert killed["called"]
     assert not result.success
     assert result.error_code.value == "timeout"
-    assert "Command timed out after 1 seconds" in result.message
+    assert "Fetching packages... 45%" in result.message
+    assert "waiting for registry" in result.message
+    assert "Process timed out after 1s" in result.message
     assert "background=True" in result.message
+    assert result.metadata["returncode"] == 124
+    assert result.metadata["stdout"] == "Fetching packages... 45%\n"
+    assert result.metadata["stderr"] == "waiting for registry\n"
+
+
+def test_default_timeout_uses_environment_override(monkeypatch):
+    monkeypatch.setenv("SUZENT_SHELL_TIMEOUT_MS", "2501")
+
+    assert BashTool.default_timeout_seconds() == 3
+
+
+def test_default_timeout_ignores_invalid_environment_override(monkeypatch):
+    monkeypatch.setenv("SUZENT_SHELL_TIMEOUT_MS", "not-a-number")
+
+    assert BashTool.default_timeout_seconds() == BashTool.DEFAULT_TIMEOUT_SECONDS
 
 
 def test_baseline_guardrails_require_approval_for_dangerous_command(tmp_path):

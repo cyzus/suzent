@@ -16,6 +16,7 @@ import os
 import re
 import subprocess
 import tempfile
+from math import ceil
 from pathlib import Path
 from typing import Annotated, Literal, Optional
 
@@ -86,8 +87,20 @@ class BashTool(Tool):
 
     @classmethod
     def default_timeout_seconds(cls) -> int:
-        """Return the execution timeout used when the caller omits timeout."""
-        return cls.DEFAULT_TIMEOUT_SECONDS
+        """Return the configured timeout used when the caller omits timeout."""
+        raw_timeout_ms = os.getenv("SUZENT_SHELL_TIMEOUT_MS", "").strip()
+        if not raw_timeout_ms:
+            return cls.DEFAULT_TIMEOUT_SECONDS
+        try:
+            timeout_ms = int(raw_timeout_ms)
+            if timeout_ms <= 0:
+                raise ValueError
+        except ValueError:
+            logger.warning(
+                "Ignoring invalid SUZENT_SHELL_TIMEOUT_MS; expected a positive integer"
+            )
+            return cls.DEFAULT_TIMEOUT_SECONDS
+        return max(1, ceil(timeout_ms / 1000))
 
     @classmethod
     def stream_wait_timeout_seconds(
@@ -533,6 +546,29 @@ class BashTool(Tool):
                     background=False,
                 )
 
+        except TimeoutError as e:
+            logger.warning(f"Sandbox execution timed out after {timeout}s")
+            self._audit_execution(
+                "timeout",
+                description=description,
+                mode="sandbox",
+                language=language,
+                timeout=timeout,
+                background=False,
+            )
+            return self._error_result(
+                ToolErrorCode.TIMEOUT,
+                (
+                    f"{e}\n[SYSTEM REMINDER: The sandbox command timed out. "
+                    "Do not blindly retry the same command; inspect the likely "
+                    "bottleneck, increase timeout, or use background=True.]"
+                ),
+                mode="sandbox",
+                language=language,
+                timeout=timeout,
+                background=False,
+                returncode=124,
+            )
         except Exception as e:
             logger.error(f"Sandbox tool error: {e}")
             self._audit_execution(
@@ -719,9 +755,25 @@ class BashTool(Tool):
         except subprocess.TimeoutExpired:
             if process is not None:
                 self._kill_host_process_tree(process)
+            stdout = self._read_output_file(stdout_path) if stdout_path else ""
+            stderr = self._read_output_file(stderr_path) if stderr_path else ""
+            partial_parts = []
+            if stdout.strip():
+                partial_parts.append(stdout)
+            if stderr.strip():
+                partial_parts.append(f"[stderr]\n{stderr}")
+            partial_output = "\n".join(partial_parts)
+            reminder = (
+                f"[SYSTEM REMINDER: Process timed out after {effective_timeout}s "
+                "and was terminated. Do not blindly retry the same command; "
+                "inspect the partial output, increase timeout, or use "
+                "background=True.]"
+            )
+            message = "\n".join(part for part in (partial_output, reminder) if part)
             logger.warning(f"Host execution timed out after {effective_timeout}s")
             self._audit_execution(
                 "timeout",
+                description=description,
                 mode="host",
                 language=language,
                 timeout=effective_timeout,
@@ -729,15 +781,15 @@ class BashTool(Tool):
             )
             return self._error_result(
                 ToolErrorCode.TIMEOUT,
-                (
-                    f"Command timed out after {effective_timeout} seconds and was "
-                    "terminated. Continue with a different approach, set a larger "
-                    "timeout, or use background=True for expected long-running work."
-                ),
+                message,
                 mode="host",
                 language=language,
                 timeout=effective_timeout,
                 background=False,
+                returncode=124,
+                stdout=stdout,
+                stderr=stderr,
+                cwd=str(working_dir),
             )
         except FileNotFoundError as e:
             logger.error(f"Host execution command not found: {e}")
