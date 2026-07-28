@@ -97,6 +97,18 @@ class _ToolResultTimeout(TimeoutError):
 _pending_approval_locks: dict[str, asyncio.Lock] = {}
 
 
+def _strip_incompatible_tool_state(
+    history: list[Any],
+    deferred_results: Optional[DeferredToolResults],
+) -> tuple[list[Any], Optional[DeferredToolResults], int]:
+    """Remove tool protocol state together so a retry cannot orphan results."""
+
+    repaired_history, removed = strip_tool_interactions(history)
+    if removed:
+        deferred_results = None
+    return repaired_history, deferred_results, removed
+
+
 def _get_approval_lock(chat_id: str) -> asyncio.Lock:
     if chat_id not in _pending_approval_locks:
         _pending_approval_locks[chat_id] = asyncio.Lock()
@@ -893,11 +905,16 @@ async def stream_agent_responses(
                             ):
                                 (
                                     retry_history,
+                                    retry_deferred,
                                     removed_for_compatibility,
-                                ) = strip_tool_interactions(history or [])
+                                ) = _strip_incompatible_tool_state(
+                                    history or [],
+                                    current_deferred,
+                                )
                                 if removed_for_compatibility:
                                     _history_repair_retries += 1
                                     history = retry_history
+                                    current_deferred = retry_deferred
                                     partial_history = retry_history
                                     deps.last_messages = retry_history
                                     _retry_repaired_history = True

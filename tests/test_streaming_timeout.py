@@ -6,11 +6,35 @@ import pytest
 from ag_ui.core import CustomEvent, RunAgentInput
 from pydantic_ai import Agent
 from pydantic_ai.messages import FunctionToolCallEvent, FunctionToolResultEvent
-from pydantic_ai.messages import ToolCallPart, ToolReturnPart
+from pydantic_ai.messages import ModelResponse, ToolCallPart, ToolReturnPart
 from pydantic_ai.models.test import TestModel
+from pydantic_ai.tools import DeferredToolResults
 
 from suzent import streaming
 from suzent.tools.shell.bash_tool import BashTool
+
+
+def test_history_compatibility_retry_clears_deferred_tool_results() -> None:
+    history = [
+        ModelResponse(
+            parts=[
+                ToolCallPart(
+                    tool_name="bash_execute",
+                    args={"content": "pwd"},
+                    tool_call_id="call-1",
+                )
+            ]
+        )
+    ]
+    deferred = DeferredToolResults(approvals={"call-1": True})
+
+    repaired, repaired_deferred, removed = streaming._strip_incompatible_tool_state(
+        history, deferred
+    )
+
+    assert repaired == []
+    assert repaired_deferred is None
+    assert removed == 1
 
 
 async def test_agui_event_stream_preserves_permission_custom_events() -> None:

@@ -38,6 +38,37 @@ with them.
 - **ThreadExecutor:** this offers limited value until blocking synchronous
   hooks or tools are identified in profiling.
 
+## Harness Shell assessment
+
+Do not replace `BashTool` and `ProcessTool` with `pydantic-ai-harness` yet.
+Suzent's shell layer includes Docker isolation, custom volume and path policy,
+PowerShell support, persisted permission decisions and audit events, and
+background processes that intentionally survive across agent turns. Harness
+Shell is not currently feature-equivalent for those product behaviors, and its
+0.x API can change between minor releases.
+
+The following Harness Shell ideas are worth absorbing into Suzent's existing
+implementation without adding the dependency:
+
+- **Secret-safe subprocess environments:** replace the current full
+  `os.environ` copy with an explicit allowlist plus denied-name patterns for
+  API keys, tokens, credentials, and other sensitive variables. Keep an
+  explicit escape hatch for tools that require a narrowly scoped variable.
+- **Diagnostic-friendly output limits:** make shell truncation retain both the
+  beginning and end of output, or prefer the tail for stderr, so the size limit
+  does not discard the exception and stack frames that explain a failure.
+- **Process-tree lifecycle management:** launch host commands in process groups
+  and terminate the group gracefully before forcing a kill. Connect cleanup to
+  chat deletion, application shutdown, and cancellation while preserving
+  Suzent's deliberate cross-turn background-process behavior.
+- **Working-directory continuity:** either add an out-of-band, validated sticky
+  working directory for later commands or correct the current tool description
+  so it does not promise persistence that the implementation does not provide.
+
+An isolated verifier or short-lived subagent can be a future pilot for Harness
+Shell. The main interactive agent should remain on Suzent's shell tools until a
+replacement preserves its permission, sandbox, process, and frontend contracts.
+
 ## Migration criteria
 
 A deferred item is ready when it preserves cross-provider fallback, permission
