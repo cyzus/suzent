@@ -1,19 +1,32 @@
+import importlib.util
 import json
 import os
 import subprocess
 import sys
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
-from scripts.bump_version import (
-    VERSION_FILES,
-    VersionFile,
-    bump_semver,
-    generate_changelog_draft,
-    read_version,
-    write_version,
-)
+
+def load_bump_version_module() -> ModuleType:
+    script_path = Path(__file__).resolve().parent.parent / "scripts/bump_version.py"
+    spec = importlib.util.spec_from_file_location("suzent_bump_version", script_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Could not load {script_path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+bump_version = load_bump_version_module()
+VERSION_FILES = bump_version.VERSION_FILES
+VersionFile = bump_version.VersionFile
+bump_semver = bump_version.bump_semver
+generate_changelog_draft = bump_version.generate_changelog_draft
+read_version = bump_version.read_version
+write_version = bump_version.write_version
 
 
 @pytest.mark.parametrize(
