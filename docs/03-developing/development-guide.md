@@ -14,7 +14,8 @@ uv run suzent start --dev
 
 > **Note**: `suzent start` launches the full development environment. The
 > `--dev` flag forces developer mode (debug backend + Tauri dev, skipping the
-> pre-built UI binary). For a headless backend only, use `uv run suzent serve --dev`.
+> pre-built UI binary). For a headless debug backend only, use
+> `uv run suzent serve --debug`.
 
 `uv sync --all-extras` installs both the `social` and `dev` optional
 dependency groups (equivalent to the `all` extra). For a minimal runtime
@@ -135,7 +136,7 @@ The backend automatically detects bundled environment through:
 | `LANCEDB_URI` | LanceDB vector store path |
 | `SANDBOX_DATA_PATH` | Sandbox data directory |
 | `SKILLS_DIR` | Advanced extra skills directory override |
-| `SUZENT_CAPABILITIES_TO_REPO` | When set (`1`), runtime model discovery writes capability data into the tracked `config/capabilities/` files instead of the user-data overlay — set automatically by `suzent start --dev` / `suzent serve --dev`. See [Model Capabilities](../02-concepts/providers/model-capabilities.md). |
+| `SUZENT_CAPABILITIES_TO_REPO` | Explicit maintainer opt-in that writes capability data into tracked `config/capabilities/` files instead of the user-data overlay. Normal and developer modes do not set it. See [Model Capabilities](../02-concepts/providers/model-capabilities.md). |
 
 ### Tauri Configuration
 

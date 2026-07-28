@@ -15,7 +15,8 @@ Normal runtime discovery writes to the local user-data overlay:
 
 This keeps ordinary Suzent usage from dirtying the Git working tree. The
 tracked files are only updated when `SUZENT_CAPABILITIES_TO_REPO=1` is set.
-Developer mode sets this automatically.
+Developer mode does not set this variable, so provider discovery and sync
+continue to use the local overlay while developing.
 
 See [Model Capabilities](../02-concepts/providers/model-capabilities.md) for
 details about precedence between shipped data, the local overlay, and global

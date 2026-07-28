@@ -250,7 +250,7 @@ class TestLocalOverlay:
 
 class TestWriteTarget:
     """save_discovered_models routes writes to the overlay by default, or to
-    the tracked repo dir in developer mode (SUZENT_CAPABILITIES_TO_REPO)."""
+    the tracked repo dir with an explicit maintainer opt-in."""
 
     def _models(self, path):
         return json.loads(path.read_text(encoding="utf-8"))["models"]
@@ -273,7 +273,7 @@ class TestWriteTarget:
         assert not (shipped / "acme.json").exists()
         assert "acme/found" in self._models(overlay / "acme.json")
 
-    def test_dev_mode_writes_to_repo(self, tmp_path, monkeypatch):
+    def test_explicit_maintainer_mode_writes_to_repo(self, tmp_path, monkeypatch):
         monkeypatch.setenv("SUZENT_CAPABILITIES_TO_REPO", "1")
         shipped = tmp_path / "shipped"
         shipped.mkdir()

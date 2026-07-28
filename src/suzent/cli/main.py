@@ -799,10 +799,6 @@ def register_commands(app: typer.Typer):
 
         backend_env = os.environ.copy()
         backend_env["SUZENT_PORT"] = str(DEFAULT_PORT)
-        # Dev mode: let runtime model discovery write into the tracked
-        # config/capabilities/ files so new models can be committed.
-        if dev:
-            backend_env["SUZENT_CAPABILITIES_TO_REPO"] = "1"
 
         backend_proc = None
         if backend_running:
@@ -840,8 +836,8 @@ def register_commands(app: typer.Typer):
         dev: bool = typer.Option(
             False,
             "--dev",
-            help="Developer mode: write runtime-discovered model capabilities "
-            "into the tracked config/capabilities/ files so they can be committed",
+            help="Compatibility flag; capability discovery still writes to "
+            "the local user-data overlay",
         ),
     ):
         """Start the Suzent backend server (headless/standalone mode)."""
@@ -857,8 +853,6 @@ def register_commands(app: typer.Typer):
         env = os.environ.copy()
         env["SUZENT_HOST"] = host
         env["SUZENT_PORT"] = str(port)
-        if dev:
-            env["SUZENT_CAPABILITIES_TO_REPO"] = "1"
 
         # Launch the server module using the same python interpreter
         cmd = [sys.executable, "-m", "suzent.server"]

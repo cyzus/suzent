@@ -50,10 +50,9 @@ def _local_capabilities_dir() -> Path:
 def _writes_to_repo() -> bool:
     """Whether runtime discovery should write into the tracked repo dir.
 
-    Enabled by the CLI in developer mode (``suzent start --dev`` / ``serve
-    --dev``) via ``SUZENT_CAPABILITIES_TO_REPO=1``, so newly discovered models
-    land in ``config/capabilities/`` ready to commit. Off by default, where
-    writes go to the user-data overlay and never dirty the repo.
+    This is an explicit maintainer opt-in via
+    ``SUZENT_CAPABILITIES_TO_REPO=1``. Normal and developer CLI modes leave it
+    off, so runtime writes use the user-data overlay and never dirty the repo.
     """
     return os.getenv("SUZENT_CAPABILITIES_TO_REPO", "").strip().lower() in (
         "1",
@@ -209,12 +208,11 @@ def _read_provider_models(provider_id: str) -> dict[str, dict]:
 def _write_provider(provider_id: str, models: dict[str, dict]) -> None:
     """Persist a provider's models to the active write target.
 
-    In developer mode (``SUZENT_CAPABILITIES_TO_REPO``) this is the tracked
-    ``config/capabilities/`` dir, so discovered models can be committed. By
-    default it is the user-data overlay, where model IDs already present in the
-    shipped repo file are dropped — the shipped curated entry wins at load time,
-    so an overlay copy is redundant and would go stale if the shipped entry is
-    later edited.
+    With the explicit ``SUZENT_CAPABILITIES_TO_REPO`` maintainer opt-in this is
+    the tracked ``config/capabilities/`` dir. By default it is the user-data
+    overlay, where model IDs already present in the shipped repo file are
+    dropped — the shipped curated entry wins at load time, so an overlay copy
+    is redundant and would go stale if the shipped entry is later edited.
     """
     target_dir = _write_target_dir()
     to_repo = target_dir == _CAPABILITIES_DIR
@@ -401,9 +399,9 @@ def save_discovered_models(provider_id: str, model_ids: list[str]) -> None:
     """Persist newly discovered model IDs to the active write target.
 
     Writes to the user-data overlay by default, or to the tracked repo dir in
-    developer mode (``SUZENT_CAPABILITIES_TO_REPO``). Only adds models not
-    already present in the shipped file or the overlay; never overwrites
-    curated data.
+    explicit maintainer mode (``SUZENT_CAPABILITIES_TO_REPO``). Only adds
+    models not already present in the shipped file or the overlay; never
+    overwrites curated data.
     """
     # "Already present" is judged against the merged shipped + overlay view, so
     # a model already curated in the repo isn't re-added as a bare stub.

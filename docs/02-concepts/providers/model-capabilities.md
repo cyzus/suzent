@@ -42,23 +42,23 @@ pulling.)
 The overlay is auto-generated and safe to delete; it will be repopulated on the
 next discovery.
 
-## Developer mode: writing to the repo
+## Updating the repository data
 
-If you maintain Suzent and want newly discovered models to land in the tracked
-files so you can **commit** them, start the backend in developer mode:
+Developer mode follows the same rule as normal runtime: provider **FETCH**,
+LiteLLM sync, and stale-model pruning write to the local overlay. Running
+`suzent start --dev` therefore does not modify tracked capability files.
+
+If you maintain Suzent and want to refresh the tracked files, use the dedicated
+maintenance command:
 
 ```bash
-suzent start --dev      # desktop dev environment
-suzent serve --dev      # headless backend only
+uv run python scripts/sync_model_capabilities.py --to-repo
 ```
 
-In dev mode the CLI sets `SUZENT_CAPABILITIES_TO_REPO=1`, which redirects all
-runtime capability writes (FETCH discovery, LiteLLM sync, stale-model pruning)
-into `config/capabilities/` instead of the overlay. Run a provider FETCH or let
-the sync run, review the diff, then commit the curated additions.
-
-Without `--dev` (the default for normal use and production builds), writes go to
-the overlay and the repo is never touched.
+This explicitly enables `SUZENT_CAPABILITIES_TO_REPO=1` for that process.
+Review the generated diff before committing it. The scheduled
+**Update Model Capabilities** workflow uses this command to open or update a
+dedicated pull request.
 
 ## Adding a model by hand
 

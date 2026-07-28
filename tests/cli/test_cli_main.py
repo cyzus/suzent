@@ -118,6 +118,34 @@ class _ServeProcessKeyboardInterrupt:
         raise KeyboardInterrupt()
 
 
+def test_start_dev_keeps_capability_writes_local(monkeypatch, tmp_path):
+    app = typer.Typer()
+    cli_main.register_commands(app)
+
+    popen_calls = {}
+
+    def fake_popen(cmd, env=None, **kwargs):
+        popen_calls["env"] = env
+        return _ServeProcessSuccess()
+
+    monkeypatch.delenv("SUZENT_CAPABILITIES_TO_REPO", raising=False)
+    monkeypatch.setattr(cli_main, "get_project_root", lambda: tmp_path)
+    monkeypatch.setattr(cli_main, "_notify_update_available", lambda root: None)
+    monkeypatch.setattr(cli_main, "ensure_cargo_in_path", lambda: None)
+    monkeypatch.setattr(cli_main, "ensure_msvc_linker", lambda: None)
+    monkeypatch.setattr(cli_main, "_is_suzent_server_running", lambda *args: False)
+    monkeypatch.setattr(cli_main, "get_pid_on_port", lambda port: None)
+    monkeypatch.setattr(cli_main.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(cli_main, "_ensure_npm_deps", lambda root: None)
+    monkeypatch.setattr(cli_main, "run_command", lambda *args, **kwargs: None)
+    monkeypatch.setattr(cli_main, "_terminate_process_gracefully", lambda process: None)
+
+    result = runner.invoke(app, ["start", "--dev"])
+
+    assert result.exit_code == 0
+    assert "SUZENT_CAPABILITIES_TO_REPO" not in popen_calls["env"]
+
+
 def test_serve_uses_default_windows_process_group(monkeypatch):
     """Regression: `suzent serve` should not create a new process group on Windows."""
     app = typer.Typer()
@@ -143,6 +171,26 @@ def test_serve_uses_default_windows_process_group(monkeypatch):
     assert popen_calls["env"]["SUZENT_PORT"] == "25314"
     # Important assertion: no CREATE_NEW_PROCESS_GROUP is passed.
     assert "creationflags" not in popen_calls["kwargs"]
+
+
+def test_serve_dev_keeps_capability_writes_local(monkeypatch):
+    app = typer.Typer()
+    cli_main.register_commands(app)
+
+    popen_calls = {}
+
+    def fake_popen(cmd, env=None, **kwargs):
+        popen_calls["env"] = env
+        return _ServeProcessSuccess()
+
+    monkeypatch.delenv("SUZENT_CAPABILITIES_TO_REPO", raising=False)
+    monkeypatch.setattr(cli_main.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(cli_main, "_is_suzent_server_running", lambda *args: False)
+
+    result = runner.invoke(app, ["serve", "--dev"])
+
+    assert result.exit_code == 0
+    assert "SUZENT_CAPABILITIES_TO_REPO" not in popen_calls["env"]
 
 
 def test_serve_ctrl_c_calls_graceful_terminator(monkeypatch):
