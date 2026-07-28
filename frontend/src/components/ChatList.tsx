@@ -333,7 +333,7 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
       return;
     }
     void fetchProjectChats(filterId);
-  }, [filterId, fetchProjectChats]);
+  }, [filterId, fetchProjectChats, chatTotal]);
 
   const filteredChats = useMemo(() => {
     if (filterId === ALL_PROJECTS_FILTER) return chats;
@@ -598,9 +598,11 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
     const unread = unreadMessages(chat);
     const showUnread = currentChatId !== chat.id && unread > 0;
     const chatKind = getChatKind(chat);
-    const parentTitle = chat.parentChatId
-      ? filteredChats.find(item => item.id === chat.parentChatId)?.title
-        ?? chats.find(item => item.id === chat.parentChatId)?.title
+    const relatedChatId = chat.parentChatId ?? chat.forkedFromChatId;
+    const parentTitle = relatedChatId
+      ? filteredChats.find(item => item.id === relatedChatId)?.title
+        ?? chats.find(item => item.id === relatedChatId)?.title
+        ?? chat.forkedFromChatTitle
       : null;
     const childSubagents = subagentsByParent.get(chat.id) ?? [];
     const hasCollapsedChildren = childSubagents.length > 0;
@@ -721,6 +723,11 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
             {chatKind === 'subagent' && parentTitle && (
               <span className="text-[9px] font-bold uppercase text-neutral-400 dark:text-neutral-500 truncate">
                 {t('chatList.labels.subagentOf', { name: parentTitle })}
+              </span>
+            )}
+            {chat.forkedFromChatId && parentTitle && (
+              <span className="text-[9px] font-bold text-blue-500 dark:text-blue-400 truncate">
+                {t('chatList.labels.branchOf', { name: parentTitle })}
               </span>
             )}
             <span className={`text-[10px] font-bold uppercase ml-auto shrink-0 ${currentChatId === chat.id ? 'text-brutal-black/70 dark:text-brutal-yellow' : 'text-neutral-400 dark:text-neutral-500'}`}>

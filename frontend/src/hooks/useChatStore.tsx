@@ -87,7 +87,7 @@ interface ChatCoreContextValue {
   chatKindTotals: ChatKindCounts;
   loadingMoreChats: boolean;
   refreshChatList: (searchQuery?: string, force?: boolean) => Promise<void>;
-  refreshChatListSilently: (searchQuery?: string) => Promise<void>;
+  refreshChatListSilently: (searchQuery?: string, force?: boolean) => Promise<void>;
   loadMoreChats: () => Promise<void>;
   updateChatTitleLocally: (chatId: string, title: string) => void;
   updateMessage: (index: number, update: Partial<Message>, chatId?: string | null) => void;
@@ -135,6 +135,9 @@ const stripReusableConfig = (config: ChatConfig): ChatConfig => {
     'target_id',
     'cron_job_id',
     'parent_chat_id',
+    'forked_from_chat_id',
+    'forked_from_chat_title',
+    'forked_from_message_index',
   ].forEach(key => delete reusable[key]);
   return reusable as unknown as ChatConfig;
 };
@@ -648,8 +651,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
     await refreshChatListInternal(search, { silent: false, force });
   }, [refreshChatListInternal]);
 
-  const refreshChatListSilently = useCallback(async (search?: string) => {
-    await refreshChatListInternal(search, { silent: true });
+  const refreshChatListSilently = useCallback(async (search?: string, force?: boolean) => {
+    await refreshChatListInternal(search, { silent: true, force });
   }, [refreshChatListInternal]);
 
   const loadMoreChats = useCallback(async () => {

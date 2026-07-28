@@ -141,6 +141,31 @@ def _copy_summary_keys(
 
 
 class ChatOperationsMixin:
+    def clone_chat_to_point(
+        self,
+        source_chat_id: str,
+        new_title: Optional[str] = None,
+        up_to_message_index: Optional[int] = None,
+    ) -> str:
+        """Clone a chat, optionally truncating its display messages."""
+        source = self.get_chat(source_chat_id)
+        if source is None:
+            raise ValueError(f"Chat not found: {source_chat_id}")
+        messages = list(source.messages or [])
+        if up_to_message_index is not None:
+            if not 0 <= up_to_message_index <= len(messages):
+                raise ValueError("up_to_message_index is outside the message history")
+            messages = messages[:up_to_message_index]
+        return self.create_chat(
+            title=new_title or f"{source.title} (fork)",
+            config=dict(source.config or {}),
+            messages=messages,
+            agent_state=source.agent_state if up_to_message_index is None else None,
+            working_directory=source.working_directory,
+            context_usage=dict(source.context_usage or {}),
+            project_id=source.project_id,
+        )
+
     def create_chat(
         self,
         title: str,
@@ -593,6 +618,9 @@ class ChatOperationsMixin:
                         projectSlug=project.slug if project else None,
                         projectName=project.name if project else None,
                         parentChatId=config.get("parent_chat_id"),
+                        forkedFromChatId=config.get("forked_from_chat_id"),
+                        forkedFromChatTitle=config.get("forked_from_chat_title"),
+                        forkedFromMessageIndex=config.get("forked_from_message_index"),
                     )
                 )
 

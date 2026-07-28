@@ -3,6 +3,7 @@ import { useChatStore } from '../hooks/useChatStore';
 import { useAGUI, type AGUIPart, type ApprovalRememberScope } from '../hooks/useAGUI';
 import {
   fetchCronJobs,
+  forkChat,
   getApiBase,
   getChatPermissionState,
   getSandboxParams,
@@ -29,6 +30,7 @@ import { NewChatView } from './NewChatView';
 import { ChatInputPanel, type FileMentionSelection } from './ChatInputPanel';
 import { ImageViewer } from './ImageViewer';
 import { FileViewer } from './FileViewer';
+import { BrutalDialog } from './BrutalDialog';
 import {
   UserMessage,
   AssistantMessage,
@@ -60,6 +62,51 @@ import type {
 const INITIAL_VISIBLE_MESSAGES = 30;
 const LOAD_MORE_MESSAGES = 60;
 const LOAD_MORE_SCROLL_THRESHOLD_PX = 96;
+
+interface ForkOrigin {
+  chatId: string;
+  chatTitle?: string;
+  messageIndex: number;
+}
+
+const ForkOriginMarker: React.FC<{
+  origin: ForkOrigin;
+  onOpen: (chatId: string) => void;
+}> = ({ origin, onOpen }) => {
+  const { t } = useI18n();
+  const accessibleLabel = origin.chatTitle
+    ? `${t('conversationFork.continuedFrom')}: ${origin.chatTitle}`
+    : t('conversationFork.continuedFrom');
+
+  return (
+    <div className="flex items-center gap-3 py-1" role="separator">
+      <div className="h-px flex-1 bg-neutral-200 dark:bg-zinc-700" />
+      <button
+        type="button"
+        onClick={() => onOpen(origin.chatId)}
+        className="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-semibold text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 transition-colors"
+        title={accessibleLabel}
+        aria-label={accessibleLabel}
+      >
+        <svg
+          viewBox="0 0 16 16"
+          aria-hidden="true"
+          className="h-3.5 w-3.5 fill-none stroke-current"
+          strokeWidth="1.4"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <circle cx="5" cy="3" r="1.3" />
+          <circle cx="5" cy="13" r="1.3" />
+          <circle cx="11" cy="6" r="1.3" />
+          <path d="M5 4.3v7.4M6.3 10.2C9.2 10.2 11 8.8 11 7.3" />
+        </svg>
+        <span>{t('conversationFork.continuedFrom')}</span>
+      </button>
+      <div className="h-px flex-1 bg-neutral-200 dark:bg-zinc-700" />
+    </div>
+  );
+};
 
 function getLastMessageTimestamp(messages: Message[]): string | undefined {
   for (let i = messages.length - 1; i >= 0; i -= 1) {
@@ -319,10 +366,13 @@ const MessageList: React.FC<{
   onStopSubAgent?: (taskId: string) => void;
   onForceWebContext?: (contextId: string) => void;
   onRetry?: () => void;
+  onFork?: (turnIndex?: number) => void;
+  forkOrigin?: ForkOrigin;
+  onOpenForkOrigin?: (chatId: string) => void;
   onEditUserMessage?: (newContent: string) => void;
   chatCitationSources?: CitationSourcesMap;
   fallbackModel?: string;
-}> = ({ messages, streamingForCurrentChat, messageIndexOffset = 0, chatId, onImageClick, onFileClick, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy, onInlineAction, subAgentTasks, onOpenSubAgentSidebar, onStopSubAgent, onForceWebContext, onRetry, onEditUserMessage, chatCitationSources, fallbackModel }) => {
+}> = ({ messages, streamingForCurrentChat, messageIndexOffset = 0, chatId, onImageClick, onFileClick, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy, onInlineAction, subAgentTasks, onOpenSubAgentSidebar, onStopSubAgent, onForceWebContext, onRetry, onFork, forkOrigin, onOpenForkOrigin, onEditUserMessage, chatCitationSources, fallbackModel }) => {
   const { skipIndices, groupRenders, stepSummaryByMessageIndex } = useMemo(
     () => buildMessageRenderPlan(messages),
     [messages],
@@ -432,51 +482,67 @@ const MessageList: React.FC<{
           );
         }
 
+        const showForkOrigin = (
+          forkOrigin
+          && onOpenForkOrigin
+          && globalIdx + 1 === forkOrigin.messageIndex
+        );
+
         return (
-          <div key={globalIdx} data-message-index={globalIdx} className="chat-msg-row w-full flex flex-col group/message">
-            <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} w-full`}>
-              {isUser ? (
-                <UserMessage
-                  message={m}
-                  chatId={chatId}
-                  onImageClick={onImageClick}
-                  onFileClick={onFileClick}
-                  isLatest={idx === lastUserIdx && !streamingForCurrentChat}
-                  onEdit={idx === lastUserIdx && !streamingForCurrentChat ? onEditUserMessage : undefined}
-                  onRerun={idx === lastUserIdx && !streamingForCurrentChat ? onRetry : undefined}
-                />
-              ) : (
-                <AssistantMessage
-                  message={m}
-                  previousMessageTimestamp={getPreviousMessageTimestamp(idx)}
-                  messageIndex={globalIdx}
-                  isStreaming={streamingForCurrentChat}
-                  isLastMessage={isLastMessage}
-                  onFileClick={onFileClick}
-                  onToolApproval={onToolApproval}
-                  toolApprovalPolicy={toolApprovalPolicy}
-                  onRemoveApprovalPolicy={onRemoveApprovalPolicy}
-                  onInlineAction={onInlineAction}
-                  subAgentTasks={subAgentTasks}
-                  onOpenSubAgentSidebar={onOpenSubAgentSidebar}
-                  onStopSubAgent={onStopSubAgent}
-                  onForceWebContext={onForceWebContext}
-                  onRetry={idx === lastAssistantIdx && !streamingForCurrentChat ? onRetry : undefined}
-                  fileChangeChatId={m.file_changes?.length ? chatId : undefined}
-                  chatCitationSources={chatCitationSources}
-                  fallbackModel={fallbackModel}
-                />
+          <React.Fragment key={globalIdx}>
+            <div data-message-index={globalIdx} className="chat-msg-row w-full flex flex-col group/message">
+              <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} w-full`}>
+                {isUser ? (
+                  <UserMessage
+                    message={m}
+                    chatId={chatId}
+                    onImageClick={onImageClick}
+                    onFileClick={onFileClick}
+                    isLatest={idx === lastUserIdx && !streamingForCurrentChat}
+                    onEdit={idx === lastUserIdx && !streamingForCurrentChat ? onEditUserMessage : undefined}
+                    onRerun={idx === lastUserIdx && !streamingForCurrentChat ? onRetry : undefined}
+                  />
+                ) : (
+                  <AssistantMessage
+                    message={m}
+                    previousMessageTimestamp={getPreviousMessageTimestamp(idx)}
+                    messageIndex={globalIdx}
+                    isStreaming={streamingForCurrentChat}
+                    isLastMessage={isLastMessage}
+                    onFileClick={onFileClick}
+                    onToolApproval={onToolApproval}
+                    toolApprovalPolicy={toolApprovalPolicy}
+                    onRemoveApprovalPolicy={onRemoveApprovalPolicy}
+                    onInlineAction={onInlineAction}
+                    subAgentTasks={subAgentTasks}
+                    onOpenSubAgentSidebar={onOpenSubAgentSidebar}
+                    onStopSubAgent={onStopSubAgent}
+                    onForceWebContext={onForceWebContext}
+                    onRetry={idx === lastAssistantIdx && !streamingForCurrentChat ? onRetry : undefined}
+                    onFork={
+                      onFork && !streamingForCurrentChat
+                        ? () => onFork(globalIdx + 1)
+                        : undefined
+                    }
+                    fileChangeChatId={m.file_changes?.length ? chatId : undefined}
+                    chatCitationSources={chatCitationSources}
+                    fallbackModel={fallbackModel}
+                  />
+                )}
+              </div>
+              {isAssistant && stepSummary && (
+                <div className="flex justify-start w-full mt-2 pl-4">
+                  <div className="inline-flex items-center gap-2 text-[10px] text-brutal-black font-mono font-bold px-3 py-1 bg-neutral-100 border-2 border-brutal-black shadow-sm select-none">
+                    <span className="text-brutal-blue">⚡</span>
+                    <span>{stepSummary}</span>
+                  </div>
+                </div>
               )}
             </div>
-            {isAssistant && stepSummary && (
-              <div className="flex justify-start w-full mt-2 pl-4">
-                <div className="inline-flex items-center gap-2 text-[10px] text-brutal-black font-mono font-bold px-3 py-1 bg-neutral-100 border-2 border-brutal-black shadow-sm select-none">
-                  <span className="text-brutal-blue">⚡</span>
-                  <span>{stepSummary}</span>
-                </div>
-              </div>
+            {showForkOrigin && (
+              <ForkOriginMarker origin={forkOrigin} onOpen={onOpenForkOrigin} />
             )}
-          </div>
+          </React.Fragment>
         );
       })}
     </div>
@@ -540,6 +606,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const [input, setInput] = useState('');
   const [viewingImage, setViewingImage] = useState<string | null>(null);
   const [viewingFile, setViewingFile] = useState<{ path: string; name: string } | null>(null);
+  const [pendingFork, setPendingFork] = useState<{ turnIndex?: number } | null>(null);
+  const [forkBusy, setForkBusy] = useState(false);
+  const [forkError, setForkError] = useState<string | null>(null);
   // `nonce` bumps on every click so re-selecting the *same* file re-triggers the
   // preview even after the user navigated back to the file list.
   const [sidebarFilePreview, setSidebarFilePreview] = useState<{ path: string; name: string; nonce: number } | null>(null);
@@ -1786,6 +1855,33 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     });
   };
 
+  const requestFork = useCallback((turnIndex?: number) => {
+    setForkError(null);
+    setPendingFork({ turnIndex });
+  }, []);
+
+  const confirmFork = useCallback(async () => {
+    if (!currentChatId || !pendingFork || forkBusy) return;
+    setForkBusy(true);
+    setForkError(null);
+    try {
+      const result = await forkChat(currentChatId, pendingFork.turnIndex);
+      await refreshChatListSilently(undefined, true);
+      await loadChat(result.new_chat_id, { force: true });
+      setPendingFork(null);
+    } catch (error) {
+      setForkError((error as Error).message);
+    } finally {
+      setForkBusy(false);
+    }
+  }, [
+    currentChatId,
+    forkBusy,
+    loadChat,
+    pendingFork,
+    refreshChatListSilently,
+  ]);
+
   // Retry handler — restores last checkpoint and re-runs the original message.
   // Uses the background queue (/chat/send) so the stream is reconnectable after
   // a page refresh, matching the behaviour of the main send path.
@@ -1985,6 +2081,21 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     setViewingFile({ path, name });
   };
 
+  const forkOrigin = useMemo<ForkOrigin | undefined>(() => {
+    const chatId = safeConfig.forked_from_chat_id;
+    const messageIndex = safeConfig.forked_from_message_index;
+    if (!chatId || typeof messageIndex !== 'number') return undefined;
+    return {
+      chatId,
+      chatTitle: safeConfig.forked_from_chat_title,
+      messageIndex,
+    };
+  }, [
+    safeConfig.forked_from_chat_id,
+    safeConfig.forked_from_chat_title,
+    safeConfig.forked_from_message_index,
+  ]);
+
   return (
     <div
       className="flex flex-row flex-1 h-full min-h-0 overflow-x-hidden bg-neutral-50 dark:bg-zinc-900 relative"
@@ -1994,6 +2105,47 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       onDrop={handleDrop}
     >
       {isDragging && <DragOverlay />}
+      <BrutalDialog
+        open={pendingFork !== null}
+        title={
+          forkError
+            ? t('conversationFork.errorTitle')
+            : t('conversationFork.title')
+        }
+        message={forkError || t('conversationFork.message')}
+        onClose={() => {
+          if (!forkBusy) {
+            setPendingFork(null);
+            setForkError(null);
+          }
+        }}
+        actions={
+          forkError
+            ? [
+                {
+                  label: t('common.close'),
+                  onClick: () => {
+                    setPendingFork(null);
+                    setForkError(null);
+                  },
+                },
+              ]
+            : [
+                {
+                  label: t('conversationFork.cancel'),
+                  onClick: () => setPendingFork(null),
+                },
+                {
+                  label: forkBusy
+                    ? t('conversationFork.creating')
+                    : t('conversationFork.confirm'),
+                  tone: 'primary',
+                  preventDismiss: true,
+                  onClick: confirmFork,
+                },
+              ]
+        }
+      />
 
       {/* Main Chat Column */}
       <div className="flex flex-col flex-1 min-w-0 min-h-0 h-full relative">
@@ -2062,6 +2214,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                     onStopSubAgent={handleStopSubAgent}
                     onForceWebContext={handleForceWebContext}
                     onRetry={!isStreaming ? handleRetry : undefined}
+                    onFork={!isStreaming ? requestFork : undefined}
+                    forkOrigin={forkOrigin}
+                    onOpenForkOrigin={(chatId) => void loadChat(chatId, { force: true })}
                     onEditUserMessage={!isStreaming ? handleEditUserMessage : undefined}
                     fallbackModel={safeConfig.model}
                   />

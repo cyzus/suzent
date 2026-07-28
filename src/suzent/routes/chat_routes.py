@@ -472,6 +472,30 @@ async def steer_chat_send(request: Request) -> JSONResponse:
     return JSONResponse({"chat_id": chat_id}, status_code=202)
 
 
+async def fork_chat_route(request: Request) -> JSONResponse:
+    """POST /api/chats/{chat_id}/fork."""
+    from suzent.core.fork import fork_chat
+
+    try:
+        body = await request.json()
+    except json.JSONDecodeError:
+        body = {}
+    try:
+        new_chat_id, restored = fork_chat(
+            request.path_params["chat_id"],
+            title=body.get("title"),
+            turn_index=body.get("turn_index"),
+        )
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+    return JSONResponse(
+        {
+            "new_chat_id": new_chat_id,
+            "restored_files_count": len(restored),
+        }
+    )
+
+
 async def retry_chat(request: Request) -> StreamingResponse:
     """
     Restore the last retry checkpoint for a chat and re-run the original user message.

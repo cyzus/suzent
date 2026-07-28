@@ -42,6 +42,35 @@ class TestChatOperations:
         assert len(chat.messages) == 1
         assert chat.messages[0]["content"] == "Hello"
 
+    def test_clone_chat_to_point_copies_config_and_truncates_messages(self, db):
+        source_id = db.create_chat(
+            "Original",
+            {"model": "gpt-4"},
+            [
+                {"role": "user", "content": "first"},
+                {"role": "assistant", "content": "answer"},
+                {"role": "user", "content": "second"},
+            ],
+            working_directory="/workspace/project",
+        )
+
+        clone_id = db.clone_chat_to_point(
+            source_id,
+            new_title="Alternative",
+            up_to_message_index=2,
+        )
+        clone = db.get_chat(clone_id)
+
+        assert clone is not None
+        assert clone.id != source_id
+        assert clone.title == "Alternative"
+        assert clone.messages == [
+            {"role": "user", "content": "first"},
+            {"role": "assistant", "content": "answer"},
+        ]
+        assert clone.config["model"] == "gpt-4"
+        assert clone.working_directory == "/workspace/project"
+
     def test_link_chat_to_project_moves_direct_subagents(self, db):
         source = db.get_project_by_slug(ChatDatabase.DEFAULT_PROJECT_SLUG)
         target_id = db.create_project("Target", "target")

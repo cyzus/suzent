@@ -63,6 +63,9 @@ export interface ChatConfig {
   heartbeat_last_run_at?: string;
   platform?: string;
   cron_job_id?: number;
+  forked_from_chat_id?: string;
+  forked_from_chat_title?: string;
+  forked_from_message_index?: number;
 }
 
 export type PermissionMode =
@@ -110,6 +113,9 @@ export interface ChatSummary {
   projectSlug?: string | null;
   projectName?: string | null;
   parentChatId?: string | null;
+  forkedFromChatId?: string | null;
+  forkedFromChatTitle?: string | null;
+  forkedFromMessageIndex?: number | null;
 }
 
 export interface ChatKindCounts {

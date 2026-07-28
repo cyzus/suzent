@@ -54,6 +54,9 @@ class ChatSummaryModel(BaseModel):
     projectSlug: Optional[str] = None
     projectName: Optional[str] = None
     parentChatId: Optional[str] = None
+    forkedFromChatId: Optional[str] = None
+    forkedFromChatTitle: Optional[str] = None
+    forkedFromMessageIndex: Optional[int] = None
 
 
 class ProjectModel(SQLModel, table=True):

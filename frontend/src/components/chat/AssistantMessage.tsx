@@ -70,6 +70,8 @@ interface AssistantMessageProps {
   onForceWebContext?: (contextId: string) => void;
   /** Retry handler — re-runs the last user message from this point */
   onRetry?: () => void;
+  /** Fork the conversation immediately after this assistant message. */
+  onFork?: () => void;
   /** Chat-wide citation sources (all turns), so inline badges resolve cross-turn ids. */
   chatCitationSources?: CitationSourcesMap;
   /** Chat config model fallback for older messages without per-message metadata. */
@@ -475,6 +477,23 @@ const RetryButton: React.FC<{ onClick: () => void; className?: string }> = ({ on
   );
 };
 
+const ForkButton: React.FC<{ onClick: () => void }> = ({ onClick }) => {
+  const { t } = useI18n();
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={t('conversationFork.button')}
+      aria-label={t('conversationFork.button')}
+      className="w-6 h-6 flex items-center justify-center bg-transparent text-neutral-400 hover:text-brutal-black dark:hover:text-white transition-colors"
+    >
+      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M6 3v6a3 3 0 003 3h9M15 8l4 4-4 4M6 21v-4" />
+      </svg>
+    </button>
+  );
+};
+
 const ProviderFavicon: React.FC<{ model: string }> = ({ model }) => {
   const [imgFailed, setImgFailed] = useState(false);
   const visual = getProviderVisualForModel(model);
@@ -542,6 +561,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   onStopSubAgent,
   onForceWebContext,
   onRetry,
+  onFork,
   chatCitationSources,
   fallbackModel,
   fileChangeChatId,
@@ -714,6 +734,9 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
       )}
       {onRetry && !isStreamingThis && !isThinking && (
         <RetryButton onClick={onRetry} />
+      )}
+      {onFork && !isStreamingThis && !isThinking && (
+        <ForkButton onClick={onFork} />
       )}
       {!isThinking && <SourcesPanel sources={citationSourcesList} />}
       {!isThinking && <ModelSignature model={modelSignature} />}
