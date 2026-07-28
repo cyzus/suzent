@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.7.2] - 2026-07-28
+
+### 🚀 Added
+- **Desktop Version and Updates**: Added an About page with frontend and backend versions, corrected logo rendering, and made update checks non-blocking.
+- **Permission Modes**: Added a simplified Full Access mode and clearer explanations of tool permission decisions.
+- **Desktop UX**: Refined the new-chat page, loading screen, model selection, folder context picker, and related localized text.
+- **Automation Configuration**: Added English and Chinese labels for automation and organization settings.
+
+### ⚡ Changed
+- **Pydantic AI v2.18**: Migrated agents, native tool search, streaming events, usage reporting, OpenAI models, ChatGPT subscription proxying, and message-history repair to the v2 APIs.
+- **Model Capabilities**: Automated provider capability updates while keeping synchronization worktrees isolated from local development changes.
+- **GitHub Sync**: Simplified synchronization around portable files.
+- **Product Narrative**: Refined the sovereign-agent positioning across the website.
+- **Release Process**: Added automated Release PR preparation, stale-PR refresh, pre-tag freshness checks, version consistency checks, draft builds, and publish-after-success behavior.
+
+### 🐛 Fixed
+- **Command Permissions**: Matched normalized command prefixes consistently.
+- **Local Services**: Improved loopback URL recognition when opening local services.
+- **Scheduled Jobs**: Improved active cron-job error handling and API responses.
+- **Release Notes**: Prevented prior-release changes from being repeated when a version tag and the main release commit have diverged.
+
 ## [v0.7.1] - 2026-07-22
 
 ### 🚀 Added

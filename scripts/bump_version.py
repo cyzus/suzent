@@ -144,7 +144,51 @@ def check_versions(root: Path, expected_version: str) -> bool:
     return consistent
 
 
-def _git_subjects_since_last_tag(root: Path) -> list[str]:
+def _run_git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", *args],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+
+
+def _previous_changelog_tag(root: Path, next_version: str) -> str | None:
+    changelog_path = root / "CHANGELOG.md"
+    if not changelog_path.exists():
+        return None
+
+    next_tag = f"v{next_version}"
+    tags = re.findall(
+        r"(?m)^## \[(v\d+\.\d+\.\d+)\](?:\s|$)",
+        changelog_path.read_text(encoding="utf-8"),
+    )
+    return next((tag for tag in tags if tag != next_tag), None)
+
+
+def _release_boundary(root: Path, next_version: str) -> str | None:
+    previous_tag = _previous_changelog_tag(root, next_version)
+    if previous_tag:
+        ancestor = _run_git(
+            root,
+            "merge-base",
+            "--is-ancestor",
+            previous_tag,
+            "HEAD",
+        )
+        if ancestor.returncode == 0:
+            return previous_tag
+
+        release_subject = f"chore: release {previous_tag}".lower()
+        history = _run_git(root, "log", "HEAD", "--format=%H%x09%s", "--no-merges")
+        if history.returncode == 0:
+            for line in history.stdout.splitlines():
+                commit, separator, subject = line.partition("\t")
+                if separator and subject.strip().lower() == release_subject:
+                    return commit
+
     tag_result = subprocess.run(
         ["git", "describe", "--tags", "--abbrev=0"],
         cwd=root,
@@ -153,8 +197,16 @@ def _git_subjects_since_last_tag(root: Path) -> list[str]:
         encoding="utf-8",
         check=False,
     )
-    previous_tag = tag_result.stdout.strip()
-    range_spec = f"{previous_tag}..HEAD" if previous_tag else "HEAD"
+    reachable_tag = tag_result.stdout.strip()
+    return reachable_tag or None
+
+
+def _git_subjects_since_last_release(
+    root: Path,
+    next_version: str,
+) -> list[str]:
+    boundary = _release_boundary(root, next_version)
+    range_spec = f"{boundary}..HEAD" if boundary else "HEAD"
     result = subprocess.run(
         ["git", "log", range_spec, "--format=%s", "--no-merges"],
         cwd=root,
@@ -182,7 +234,9 @@ def generate_changelog_draft(
     )
 
     for subject in (
-        subjects if subjects is not None else _git_subjects_since_last_tag(root)
+        subjects
+        if subjects is not None
+        else _git_subjects_since_last_release(root, version)
     ):
         match = conventional.match(subject)
         if match:
@@ -220,14 +274,39 @@ def generate_changelog_draft(
     return "\n".join(lines).rstrip() + "\n"
 
 
-def prepend_changelog(root: Path, version: str) -> bool:
+def _replace_changelog_entry(
+    existing: str,
+    version: str,
+    draft: str,
+) -> str | None:
+    entry = re.compile(rf"(?ms)^## \[v{re.escape(version)}\][^\n]*\n.*?(?=^## \[v|\Z)")
+    match = entry.search(existing)
+    if not match:
+        return None
+    return existing[: match.start()] + draft.rstrip() + "\n\n" + existing[match.end() :]
+
+
+def update_changelog(
+    root: Path,
+    version: str,
+    *,
+    replace_existing: bool = False,
+) -> bool:
     changelog_path = root / "CHANGELOG.md"
     existing = changelog_path.read_text(encoding="utf-8")
-    if re.search(rf"(?m)^## \[v{re.escape(version)}\](?:\s|$)", existing):
+    draft = generate_changelog_draft(version, root)
+    replacement = _replace_changelog_entry(existing, version, draft)
+    if replacement is not None and not replace_existing:
         print(f"  [SKIP] CHANGELOG.md already contains v{version}")
         return False
+    if replacement is not None:
+        if replacement == existing:
+            print(f"  [SKIP] CHANGELOG.md v{version} is already current")
+            return False
+        changelog_path.write_text(replacement, encoding="utf-8")
+        print(f"  [UPDATE] CHANGELOG.md: refreshed v{version}")
+        return True
 
-    draft = generate_changelog_draft(version, root)
     first_release = re.search(r"(?m)^## \[v", existing)
     if first_release:
         position = first_release.start()
@@ -275,6 +354,11 @@ def main() -> int:
         help="Synchronize versions without adding a changelog entry",
     )
     parser.add_argument(
+        "--refresh-changelog",
+        action="store_true",
+        help="Replace the current version entry using the latest branch history",
+    )
+    parser.add_argument(
         "--print-version",
         action="store_true",
         help="Print only the canonical version",
@@ -298,8 +382,14 @@ def main() -> int:
         )
         print(generate_changelog_draft(preview_version, root), end="")
         return 0
+    if args.refresh_changelog:
+        update_changelog(root, current_version, replace_existing=True)
+        return 0
     if not args.version:
-        parser.error("version is required unless --check or --changelog is used")
+        parser.error(
+            "version is required unless --check, --changelog, or "
+            "--refresh-changelog is used"
+        )
 
     try:
         new_version = parse_version_argument(current_version, args.version)
@@ -307,7 +397,7 @@ def main() -> int:
         for target in VERSION_FILES:
             write_version(root / target.path, target, new_version)
         if not args.no_changelog and new_version != current_version:
-            prepend_changelog(root, new_version)
+            update_changelog(root, new_version)
         if not check_versions(root, new_version):
             return 1
     except (KeyError, OSError, subprocess.CalledProcessError, ValueError) as error:

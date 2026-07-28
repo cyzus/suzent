@@ -10,6 +10,7 @@ on:
         type: string
 
 permissions:
+  actions: write
   contents: write
   pull-requests: write
 
@@ -98,4 +99,10 @@ jobs:
           Merging this PR creates the \`$RELEASE_TAG\` tag and starts the draft build and publication workflow."
         env:
           GH_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN || github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+
+      - name: Start Release PR CI
+        run: gh workflow run ci.yml --ref "release/$RELEASE_TAG"
+        env:
+          GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
