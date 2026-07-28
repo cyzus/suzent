@@ -28,6 +28,8 @@ generate_changelog_draft = bump_version.generate_changelog_draft
 read_version = bump_version.read_version
 write_version = bump_version.write_version
 git_subjects_since_last_release = bump_version._git_subjects_since_last_release
+replace_changelog_entry = bump_version._replace_changelog_entry
+update_changelog = bump_version.update_changelog
 
 
 @pytest.mark.parametrize(
@@ -153,6 +155,40 @@ def test_changelog_uses_reachable_release_commit_when_tag_diverged(
     assert git_subjects_since_last_release(tmp_path, "1.0.1") == [
         "feat: only new change"
     ]
+
+    current = changelog.read_text(encoding="utf-8")
+    changelog.write_text(
+        "# Changelog\n\n"
+        "## [v1.0.1] - 2026-07-03\n\n"
+        "### ⚡ Changed\n"
+        "- Stale draft\n\n" + current.removeprefix("# Changelog\n\n"),
+        encoding="utf-8",
+    )
+
+    assert update_changelog(tmp_path, "1.0.1", replace_existing=True)
+    refreshed = changelog.read_text(encoding="utf-8")
+    assert "Stale draft" not in refreshed
+    assert "- Only new change" in refreshed
+
+
+def test_refresh_changelog_replaces_only_current_version() -> None:
+    existing = (
+        "# Changelog\n\n"
+        "## [v1.0.1] - 2026-07-02\n\n"
+        "### ⚡ Changed\n"
+        "- Stale draft\n\n"
+        "## [v1.0.0] - 2026-07-01\n\n"
+        "### 🚀 Added\n"
+        "- Previous release\n"
+    )
+    draft = "## [v1.0.1] - 2026-07-03\n\n### 🐛 Fixed\n- Current draft\n"
+
+    refreshed = replace_changelog_entry(existing, "1.0.1", draft)
+
+    assert refreshed is not None
+    assert "Stale draft" not in refreshed
+    assert "- Current draft" in refreshed
+    assert "- Previous release" in refreshed
 
 
 def test_changelog_cli_uses_utf8_when_console_defaults_to_gbk() -> None:

@@ -1,0 +1,91 @@
+name: Refresh Release PR
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'Open Release PR number to refresh'
+        required: true
+        type: number
+
+permissions:
+  actions: write
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: refresh-release-${{ inputs.pr_number }}
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Resolve Release PR
+        id: pr
+        shell: bash
+        run: |
+          state="$(gh pr view "$PR_NUMBER" --json state --jq .state)"
+          base="$(gh pr view "$PR_NUMBER" --json baseRefName --jq .baseRefName)"
+          head="$(gh pr view "$PR_NUMBER" --json headRefName --jq .headRefName)"
+          cross_repo="$(gh pr view "$PR_NUMBER" --json isCrossRepository --jq .isCrossRepository)"
+
+          if [[ "$state" != "OPEN" || "$base" != "main" ]]; then
+            echo "::error::PR #$PR_NUMBER must be open and target main"
+            exit 1
+          fi
+          if [[ "$cross_repo" != "false" || "$head" != release/v* ]]; then
+            echo "::error::PR #$PR_NUMBER must use a same-repository release/v* branch"
+            exit 1
+          fi
+          echo "head=$head" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+
+      - name: Checkout release branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.pr.outputs.head }}
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_BOT_TOKEN || github.token }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Merge main and refresh release notes
+        id: refresh
+        shell: bash
+        run: |
+          git fetch origin main --tags
+          if git merge-base --is-ancestor origin/main HEAD; then
+            echo "::notice::Release PR is already up to date with main"
+            echo "updated=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git merge --no-edit origin/main
+          python scripts/bump_version.py --refresh-changelog
+          python scripts/bump_version.py --check
+          git add CHANGELOG.md
+          git diff --cached --check
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: refresh release notes"
+          fi
+          git push origin "HEAD:$RELEASE_BRANCH"
+          echo "updated=true" >> "$GITHUB_OUTPUT"
+        env:
+          RELEASE_BRANCH: ${{ steps.pr.outputs.head }}
+
+      - name: Start CI for refreshed head
+        if: steps.refresh.outputs.updated == 'true'
+        run: gh workflow run ci.yml --ref "$RELEASE_BRANCH"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_BRANCH: ${{ steps.pr.outputs.head }}

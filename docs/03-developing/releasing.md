@@ -19,6 +19,22 @@ The release remains a draft while Windows, macOS Intel, macOS Apple Silicon,
 and Linux builds run. It is published only after every build succeeds. A failed
 build therefore cannot expose a partially populated release.
 
+### If main changes before merge
+
+Do not merge a stale Release PR. Open
+**Actions → Refresh Release PR → Run workflow**, enter the PR number, and wait
+for the refreshed CI run.
+
+The refresh workflow merges the latest `main` into the release branch,
+regenerates the current version's changelog section, validates every version
+source, pushes the result, and explicitly starts CI. Review the regenerated
+notes again before merging because refresh replaces any manual edits in that
+version's section.
+
+The post-merge workflow independently verifies that the Release PR head
+contained the latest pre-merge `main` commit. If it did not, tag creation and
+publication stop instead of releasing code that is missing from the notes.
+
 ## What is automated
 
 `scripts/bump_version.py` synchronizes the version in:
@@ -36,6 +52,10 @@ lost.
 CI runs `python scripts/bump_version.py --check` on every pull request. A tag
 whose version does not match the manifests or changelog is rejected before any
 desktop build starts.
+
+Release PR workflows explicitly dispatch CI after bot-created or bot-refreshed
+branches. This avoids GitHub's suppression of ordinary workflow events created
+with the built-in token.
 
 ## Local fallback
 
