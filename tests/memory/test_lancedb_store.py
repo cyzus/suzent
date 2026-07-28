@@ -2,6 +2,7 @@ import pytest
 import pytest_asyncio
 import shutil
 import os
+import asyncio
 from suzent.memory.lancedb_store import LanceDBMemoryStore
 
 from suzent.config import CONFIG
@@ -13,19 +14,33 @@ TEST_URI = ".suzent/test_data/memory"
 TEST_EMBEDDING = [0.1] * CONFIG.embedding_dimension
 
 
+async def _rmtree_with_retry(path: str) -> None:
+    for attempt in range(5):
+        try:
+            shutil.rmtree(path)
+            return
+        except FileNotFoundError:
+            return
+        except OSError:
+            if attempt == 4:
+                raise
+            await asyncio.sleep(0.05)
+
+
 @pytest_asyncio.fixture
 async def store():
     # Setup
     if os.path.exists(TEST_URI):
-        shutil.rmtree(TEST_URI)
+        await _rmtree_with_retry(TEST_URI)
 
     s = LanceDBMemoryStore(uri=TEST_URI, embedding_dim=CONFIG.embedding_dimension)
     await s.connect()
     yield s
     # Teardown
+    await s.flush_access_recording()
     await s.close()
     if os.path.exists(TEST_URI):
-        shutil.rmtree(TEST_URI)
+        await _rmtree_with_retry(TEST_URI)
 
 
 @pytest.mark.asyncio
