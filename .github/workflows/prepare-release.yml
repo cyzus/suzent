@@ -1,0 +1,101 @@
+name: Prepare Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'patch, minor, major, or an exact version such as 0.8.0'
+        required: true
+        default: patch
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: prepare-release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_BOT_TOKEN || github.token }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Bump and validate versions
+        id: version
+        shell: bash
+        run: |
+          python scripts/bump_version.py "$RELEASE_INPUT"
+          python scripts/bump_version.py --check
+          version="$(python scripts/bump_version.py --print-version)"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+        env:
+          RELEASE_INPUT: ${{ inputs.version }}
+
+      - name: Create release branch
+        shell: bash
+        run: |
+          branch="release/$RELEASE_TAG"
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+            echo "::error::Branch $branch already exists. Update or close its release PR before retrying."
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git add \
+            CHANGELOG.md \
+            pyproject.toml \
+            uv.lock \
+            frontend/package.json \
+            frontend/package-lock.json \
+            src-tauri/tauri.conf.json \
+            src-tauri/tauri.conf.prod.json \
+            src-tauri/package.json \
+            src-tauri/package-lock.json \
+            src-tauri/Cargo.toml \
+            src-tauri/Cargo.lock \
+            apps/suzent-installer/tauri.conf.json \
+            apps/suzent-installer/package.json \
+            apps/suzent-installer/package-lock.json \
+            apps/suzent-installer/Cargo.toml \
+            apps/suzent-installer/Cargo.lock
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            echo "::error::No release changes were generated."
+            exit 1
+          fi
+          git commit -m "chore: release $RELEASE_TAG"
+          git push origin "$branch"
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+
+      - name: Open release pull request
+        shell: bash
+        run: |
+          gh pr create \
+            --base main \
+            --head "release/$RELEASE_TAG" \
+            --title "chore: release $RELEASE_TAG" \
+            --body "Automated release preparation for **$RELEASE_TAG**.
+
+          Review and edit the generated changelog, wait for required checks, then merge.
+
+          Merging this PR creates the \`$RELEASE_TAG\` tag and starts the draft build and publication workflow."
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN || github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}

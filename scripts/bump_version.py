@@ -1,335 +1,322 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Unified version bumper for Suzent.
-Updates version in:
-- src-tauri/tauri.conf.json
-- src-tauri/tauri.conf.prod.json
-- src-tauri/package.json
-- src-tauri/Cargo.toml
-- src-tauri/Cargo.lock
-- frontend/package.json
-- pyproject.toml
-- frontend/package-lock.json
-- src-tauri/package-lock.json
-- uv.lock
-"""
+"""Synchronize every Suzent package version and prepare its changelog entry."""
+
+from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import re
-import sys
-from pathlib import Path
 import subprocess
+import sys
+from dataclasses import dataclass
+from pathlib import Path
 
-# Files to update
-FILES = {
-    "tauri_conf": Path("src-tauri/tauri.conf.json"),
-    "tauri_conf_prod": Path("src-tauri/tauri.conf.prod.json"),
-    "tauri_pkg": Path("src-tauri/package.json"),
-    "cargo": Path("src-tauri/Cargo.toml"),
-    "cargo_lock": Path("src-tauri/Cargo.lock"),
-    "frontend_pkg": Path("frontend/package.json"),
-    "pyproject": Path("pyproject.toml"),
-}
+VERSION_PATTERN = re.compile(r"^\d+\.\d+\.\d+$")
 
 
-def get_current_version(tauri_conf_path):
-    with open(tauri_conf_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    return data["version"]
+@dataclass(frozen=True)
+class VersionFile:
+    path: str
+    kind: str
+    package: str | None = None
 
 
-def bump_semver(current_ver, bump_type):
-    major, minor, patch = map(int, current_ver.split("."))
+VERSION_FILES = (
+    VersionFile("src-tauri/tauri.conf.json", "json"),
+    VersionFile("src-tauri/tauri.conf.prod.json", "json"),
+    VersionFile("src-tauri/package.json", "json"),
+    VersionFile("frontend/package.json", "json"),
+    VersionFile("apps/suzent-installer/tauri.conf.json", "json"),
+    VersionFile("apps/suzent-installer/package.json", "json"),
+    VersionFile("src-tauri/Cargo.toml", "toml"),
+    VersionFile("apps/suzent-installer/Cargo.toml", "toml"),
+    VersionFile("pyproject.toml", "toml"),
+    VersionFile("frontend/package-lock.json", "package-lock"),
+    VersionFile("src-tauri/package-lock.json", "package-lock"),
+    VersionFile("apps/suzent-installer/package-lock.json", "package-lock"),
+    VersionFile("src-tauri/Cargo.lock", "named-lock", "suzent"),
+    VersionFile(
+        "apps/suzent-installer/Cargo.lock",
+        "named-lock",
+        "suzent-installer",
+    ),
+    VersionFile("uv.lock", "named-lock", "suzent"),
+)
+
+TOML_VERSION_PATTERN = re.compile(r'(?m)^(version\s*=\s*")(\d+\.\d+\.\d+)(")')
+
+
+def get_current_version(root: Path) -> str:
+    path = root / "src-tauri/tauri.conf.json"
+    return json.loads(path.read_text(encoding="utf-8"))["version"]
+
+
+def bump_semver(current_version: str, bump_type: str) -> str:
+    major, minor, patch = map(int, current_version.split("."))
     if bump_type == "major":
         return f"{major + 1}.0.0"
-    elif bump_type == "minor":
+    if bump_type == "minor":
         return f"{major}.{minor + 1}.0"
-    elif bump_type == "patch":
+    if bump_type == "patch":
         return f"{major}.{minor}.{patch + 1}"
-    return current_ver
+    raise ValueError(f"Unknown bump type: {bump_type}")
 
 
-def update_json(path, new_version):
-    with open(path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    old_version = data["version"]
-    if old_version == new_version:
-        print(f"  [SKIP] {path} already at {new_version}")
-        return
-
-    data["version"] = new_version
-
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
-        f.write("\n")  # Add trailing newline
-
-    print(f"  [UPDATE] {path}: {old_version} -> {new_version}")
+def _named_lock_pattern(package: str) -> re.Pattern[str]:
+    return re.compile(
+        rf'(\[\[package\]\]\r?\nname = "{re.escape(package)}"\r?\n'
+        rf'version = ")(\d+\.\d+\.\d+)(")'
+    )
 
 
-def update_toml(path, new_version):
-    """Simple regex based TOML updater to avoid destroying formatting/comments"""
-    with open(path, "r", encoding="utf-8") as f:
-        content = f.read()
+def read_version(path: Path, target: VersionFile) -> str:
+    if target.kind == "json":
+        return json.loads(path.read_text(encoding="utf-8"))["version"]
 
-    # Matches version = "x.y.z"
-    pattern = r'(version\s*=\s*")([\d\.]+)"'
+    if target.kind == "package-lock":
+        data = json.loads(path.read_text(encoding="utf-8"))
+        top_level = data["version"]
+        root_package = data["packages"][""]["version"]
+        if top_level != root_package:
+            return f"{top_level} (root package: {root_package})"
+        return top_level
 
-    if not re.search(pattern, content):
-        print(f"  [ERROR] Could not find version key in {path}")
-        return
+    content = path.read_text(encoding="utf-8")
+    if target.kind == "toml":
+        match = TOML_VERSION_PATTERN.search(content)
+    elif target.kind == "named-lock" and target.package:
+        match = _named_lock_pattern(target.package).search(content)
+    else:
+        raise ValueError(f"Unsupported version file type: {target.kind}")
 
-    new_content = re.sub(pattern, f'\\g<1>{new_version}"', content, count=1)
-
-    if content == new_content:
-        print(f"  [SKIP] {path} already at {new_version} (or pattern mismatch)")
-        return
-
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(new_content)
-
-    print(f"  [UPDATE] {path} -> {new_version}")
-
-
-def update_cargo_lock(path, new_version):
-    """Update only the root suzent package entry in Cargo.lock."""
-    with open(path, "r", encoding="utf-8") as f:
-        content = f.read()
-
-    pattern = r'(\[\[package\]\]\nname = "suzent"\nversion = ")([\d\.]+)(")'
-    match = re.search(pattern, content)
     if not match:
-        print(f"  [ERROR] Could not find suzent package entry in {path}")
+        raise ValueError(f"Could not find project version in {path}")
+    return match.group(2)
+
+
+def write_version(path: Path, target: VersionFile, version: str) -> None:
+    old_version = read_version(path, target)
+    if old_version == version:
+        print(f"  [SKIP] {target.path}")
         return
 
-    old_version = match.group(2)
-    if old_version == new_version:
-        print(f"  [SKIP] {path} already at {new_version}")
-        return
+    if target.kind == "json":
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["version"] = version
+        path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    elif target.kind == "package-lock":
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["version"] = version
+        data["packages"][""]["version"] = version
+        path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    else:
+        content = path.read_text(encoding="utf-8")
+        pattern = (
+            TOML_VERSION_PATTERN
+            if target.kind == "toml"
+            else _named_lock_pattern(target.package or "")
+        )
+        updated, count = pattern.subn(rf"\g<1>{version}\g<3>", content, count=1)
+        if count != 1:
+            raise ValueError(f"Could not update project version in {path}")
+        path.write_text(updated, encoding="utf-8")
 
-    new_content = re.sub(pattern, f"\\g<1>{new_version}\\g<3>", content, count=1)
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(new_content)
-
-    print(f"  [UPDATE] {path}: {old_version} -> {new_version}")
+    print(f"  [UPDATE] {target.path}: {old_version} -> {version}")
 
 
-def print_subprocess_error(label, error):
-    print(f"  [ERROR] Failed to update {label}: {error}")
-    stdout = (error.stdout or b"").decode("utf-8", errors="replace")
-    stderr = (error.stderr or b"").decode("utf-8", errors="replace")
-    if stdout.strip():
-        print(stdout.strip())
-    if stderr.strip():
-        print(stderr.strip())
+def check_versions(root: Path, expected_version: str) -> bool:
+    consistent = True
+    for target in VERSION_FILES:
+        path = root / target.path
+        try:
+            version = read_version(path, target)
+        except (KeyError, OSError, ValueError) as error:
+            print(f"  [ERROR] {target.path}: {error}")
+            consistent = False
+            continue
+
+        if version != expected_version:
+            print(f"  [MISMATCH] {target.path}: {version}")
+            consistent = False
+        else:
+            print(f"  [OK] {target.path}")
+    return consistent
 
 
-def generate_changelog_draft(version: str, root: Path) -> str:
-    prev_tag = subprocess.run(
+def _git_subjects_since_last_tag(root: Path) -> list[str]:
+    tag_result = subprocess.run(
         ["git", "describe", "--tags", "--abbrev=0"],
         cwd=root,
         capture_output=True,
         text=True,
         encoding="utf-8",
-    ).stdout.strip()
-
-    range_spec = f"{prev_tag}..HEAD" if prev_tag else "HEAD"
-
+        check=False,
+    )
+    previous_tag = tag_result.stdout.strip()
+    range_spec = f"{previous_tag}..HEAD" if previous_tag else "HEAD"
     result = subprocess.run(
         ["git", "log", range_spec, "--format=%s", "--no-merges"],
         cwd=root,
         capture_output=True,
         text=True,
         encoding="utf-8",
+        check=True,
     )
-    commits = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
-    ADDED = "Added"
-    CHANGED = "Changed"
-    FIXED = "Fixed"
-    groups: dict[str, list[str]] = {ADDED: [], CHANGED: [], FIXED: []}
-    skip_prefixes = ("chore:", "ci:", "docs:", "test:", "style:", "build:")
 
-    for msg in commits:
-        if any(msg.startswith(p) for p in skip_prefixes):
+def generate_changelog_draft(
+    version: str,
+    root: Path,
+    subjects: list[str] | None = None,
+) -> str:
+    groups: dict[str, list[str]] = {"Added": [], "Changed": [], "Fixed": []}
+    conventional = re.compile(
+        r"^(feat|fix|refactor|perf)(?:\([^)]+\))?!?:\s*(.+)$",
+        re.IGNORECASE,
+    )
+    ignored = re.compile(
+        r"^(chore|ci|docs|test|style|build)(?:\([^)]+\))?!?:",
+        re.IGNORECASE,
+    )
+
+    for subject in (
+        subjects if subjects is not None else _git_subjects_since_last_tag(root)
+    ):
+        match = conventional.match(subject)
+        if match:
+            commit_type, summary = match.groups()
+            group = {
+                "feat": "Added",
+                "fix": "Fixed",
+                "refactor": "Changed",
+                "perf": "Changed",
+            }[commit_type.lower()]
+        elif ignored.match(subject) or subject.lower().startswith("release v"):
             continue
-        if msg.startswith("feat:"):
-            groups[ADDED].append(msg[len("feat:") :].strip())
-        elif msg.startswith("fix:"):
-            groups[FIXED].append(msg[len("fix:") :].strip())
-        elif msg.startswith(("refactor:", "perf:")):
-            prefix = "refactor:" if msg.startswith("refactor:") else "perf:"
-            groups[CHANGED].append(msg[len(prefix) :].strip())
+        else:
+            group, summary = "Changed", subject
 
-    group_headers = {
-        ADDED: "### 🚀 Added",
-        CHANGED: "### ⚡ Changed",
-        FIXED: "### 🐛 Fixed",
+        summary = summary.strip()
+        if summary:
+            groups[group].append(summary[0].upper() + summary[1:])
+
+    headers = {
+        "Added": "### 🚀 Added",
+        "Changed": "### ⚡ Changed",
+        "Fixed": "### 🐛 Fixed",
     }
-
-    today = __import__("datetime").date.today().isoformat()
-    lines = [f"## [v{version}] - {today}", ""]
+    lines = [f"## [v{version}] - {dt.date.today().isoformat()}", ""]
     for group, items in groups.items():
-        if items:
-            lines.append(group_headers[group])
-            for item in items:
-                lines.append(f"- **{item[0].upper()}{item[1:]}**")
-            lines.append("")
+        if not items:
+            continue
+        lines.append(headers[group])
+        lines.extend(f"- {item}" for item in items)
+        lines.append("")
 
-    return "\n".join(lines)
+    if all(not items for items in groups.values()):
+        lines.extend(["### ⚡ Changed", "- Release maintenance", ""])
+    return "\n".join(lines).rstrip() + "\n"
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Bump project version")
+def prepend_changelog(root: Path, version: str) -> bool:
+    changelog_path = root / "CHANGELOG.md"
+    existing = changelog_path.read_text(encoding="utf-8")
+    if re.search(rf"(?m)^## \[v{re.escape(version)}\](?:\s|$)", existing):
+        print(f"  [SKIP] CHANGELOG.md already contains v{version}")
+        return False
+
+    draft = generate_changelog_draft(version, root)
+    first_release = re.search(r"(?m)^## \[v", existing)
+    if first_release:
+        position = first_release.start()
+        updated = existing[:position] + draft + "\n" + existing[position:]
+    else:
+        updated = existing.rstrip() + "\n\n" + draft
+    changelog_path.write_text(updated, encoding="utf-8")
+    print(f"  [UPDATE] CHANGELOG.md: added v{version}")
+    return True
+
+
+def parse_version_argument(current_version: str, value: str) -> str:
+    if value in {"major", "minor", "patch"}:
+        return bump_semver(current_version, value)
+    if not VERSION_PATTERN.fullmatch(value):
+        raise ValueError(f"Invalid version format: {value}")
+    return value
+
+
+def main() -> int:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8")
+
+    parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "version",
         nargs="?",
         help="New version (x.y.z) or bump type (major/minor/patch)",
     )
     parser.add_argument(
-        "--check", action="store_true", help="Check for consistency only"
+        "--check",
+        action="store_true",
+        help="Verify that all package versions match the canonical version",
     )
     parser.add_argument(
         "--changelog",
         action="store_true",
-        help="Preview changelog draft without bumping",
+        help="Preview the next release changelog without changing files",
     )
-
+    parser.add_argument(
+        "--no-changelog",
+        action="store_true",
+        help="Synchronize versions without adding a changelog entry",
+    )
+    parser.add_argument(
+        "--print-version",
+        action="store_true",
+        help="Print only the canonical version",
+    )
     args = parser.parse_args()
 
-    root = Path(__file__).parent.parent
-    PATHS = {k: root / v for k, v in FILES.items()}
+    root = Path(__file__).resolve().parent.parent
+    current_version = get_current_version(root)
 
-    current_version = get_current_version(PATHS["tauri_conf"])
-    print(f"Current version: {current_version}")
-
-    if args.changelog:
-        print(generate_changelog_draft(current_version, root))
-        return
-
-    if not args.version:
-        parser.error("version is required unless --changelog is specified")
-
+    if args.print_version:
+        print(current_version)
+        return 0
     if args.check:
-        # Check all files match
-        mismatch = False
-        for name, path in PATHS.items():
-            if path.suffix == ".json":
-                with open(path, "r") as f:
-                    v = json.load(f)["version"]
-            elif name == "cargo_lock":
-                with open(path, "r", encoding="utf-8") as f:
-                    match = re.search(
-                        r'\[\[package\]\]\nname = "suzent"\nversion = "([\d\.]+)"',
-                        f.read(),
-                    )
-                    v = match.group(1) if match else "unknown"
-            else:
-                with open(path, "r") as f:
-                    match = re.search(r'version\s*=\s*"([\d\.]+)"', f.read())
-                    v = match.group(1) if match else "unknown"
-
-            if v != current_version:
-                print(f"  [MISMATCH] {name}: {v}")
-                mismatch = True
-            else:
-                print(f"  [OK] {name}")
-
-        sys.exit(1 if mismatch else 0)
-
-    # Determine new version
-    if args.version in ["major", "minor", "patch"]:
-        new_version = bump_semver(current_version, args.version)
-    else:
-        new_version = args.version
-        if not re.match(r"^\d+\.\d+\.\d+$", new_version):
-            print(f"Invalid version format: {new_version}")
-            sys.exit(1)
-
-    print(f"Bumping to: {new_version}")
-
-    # Update files
-    update_json(PATHS["tauri_conf"], new_version)
-    update_json(PATHS["tauri_conf_prod"], new_version)
-    update_json(PATHS["tauri_pkg"], new_version)
-    update_json(PATHS["frontend_pkg"], new_version)
-    update_toml(PATHS["cargo"], new_version)
-    update_cargo_lock(PATHS["cargo_lock"], new_version)
-    update_toml(PATHS["pyproject"], new_version)
-
-    # Update lock files
-    print("\nUpdating lock files...")
-    try:
-        subprocess.run(
-            ["npm", "install"],
-            cwd=root / "frontend",
-            check=True,
-            capture_output=True,
-            shell=True,
+        print(f"Expected version: {current_version}")
+        return 0 if check_versions(root, current_version) else 1
+    if args.changelog:
+        preview_version = (
+            parse_version_argument(current_version, args.version)
+            if args.version
+            else current_version
         )
-        print("  [OK] Updated frontend/package-lock.json")
-    except subprocess.CalledProcessError as e:
-        print_subprocess_error("frontend lock", e)
+        print(generate_changelog_draft(preview_version, root), end="")
+        return 0
+    if not args.version:
+        parser.error("version is required unless --check or --changelog is used")
 
     try:
-        subprocess.run(
-            ["npm", "install"],
-            cwd=root / "src-tauri",
-            check=True,
-            capture_output=True,
-            shell=True,
-        )
-        print("  [OK] Updated src-tauri/package-lock.json")
-    except subprocess.CalledProcessError as e:
-        print_subprocess_error("src-tauri lock", e)
+        new_version = parse_version_argument(current_version, args.version)
+        print(f"Synchronizing version: {current_version} -> {new_version}")
+        for target in VERSION_FILES:
+            write_version(root / target.path, target, new_version)
+        if not args.no_changelog and new_version != current_version:
+            prepend_changelog(root, new_version)
+        if not check_versions(root, new_version):
+            return 1
+    except (KeyError, OSError, subprocess.CalledProcessError, ValueError) as error:
+        print(f"[ERROR] {error}", file=sys.stderr)
+        return 1
 
-    try:
-        print("Updating uv.lock...")
-        subprocess.run(
-            ["uv", "lock"],
-            cwd=root,
-            check=True,
-            capture_output=True,
-            shell=True,
-        )
-        print("  [OK] Updated uv.lock")
-    except subprocess.CalledProcessError as e:
-        print_subprocess_error("uv lock", e)
-
-    # Generate changelog and prepend to CHANGELOG.md
-    print("\nUpdating CHANGELOG.md...")
-    draft = generate_changelog_draft(new_version, root)
-    changelog_path = root / "CHANGELOG.md"
-    if changelog_path.exists():
-        existing = changelog_path.read_text(encoding="utf-8")
-        # Insert after the header block if present, otherwise prepend
-        if existing.startswith("# "):
-            header_end = existing.find("\n## ")
-            if header_end != -1:
-                new_content = (
-                    existing[:header_end]
-                    + "\n"
-                    + draft
-                    + "\n"
-                    + existing[header_end + 1 :]
-                )
-            else:
-                new_content = existing.rstrip() + "\n\n" + draft + "\n"
-        else:
-            new_content = draft + "\n" + existing
-    else:
-        new_content = "# Changelog\n\n" + draft + "\n"
-    changelog_path.write_text(new_content, encoding="utf-8")
-    print("  [OK] Updated CHANGELOG.md")
-
-    print("\nDone! Review CHANGELOG.md, then commit and release:")
-    print("git add .")
-    print(f'git commit -m "chore: release v{new_version}"')
-    print(f"git tag v{new_version}")
-    print("git push && git push --tags")
+    print("\nVersion files are synchronized. Review CHANGELOG.md before release.")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

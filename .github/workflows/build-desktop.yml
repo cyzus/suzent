@@ -1,75 +1,108 @@
-name: Build Desktop
+name: Build and Publish Desktop Release
 
 on:
   push:
     tags:
       - 'v*'
-  release:
-    types: [published]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing release tag to build, for example v0.7.2'
+        required: true
+        type: string
 
 permissions:
   contents: write
 
+concurrency:
+  group: desktop-release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
-  create-release:
+  prepare-release:
     runs-on: ubuntu-22.04
     outputs:
-      tag_name: ${{ steps.release-tag.outputs.tag_name }}
+      tag: ${{ steps.release-tag.outputs.tag }}
     steps:
-      - name: Resolve release tag
+      - name: Resolve and validate release tag
         id: release-tag
         shell: bash
         run: |
-          if [[ "${{ github.event_name }}" == "release" ]]; then
-            echo "tag_name=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            tag="$INPUT_TAG"
           else
-            echo "tag_name=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+            tag="$REF_NAME"
           fi
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Invalid release tag: $tag"
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+          REF_NAME: ${{ github.ref_name }}
 
-      - name: Checkout
-        if: github.event_name == 'push'
+      - name: Checkout release tag
         uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.release-tag.outputs.tag }}
 
-      - name: Extract changelog section
-        if: github.event_name == 'push'
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Validate version and changelog
         id: changelog
         shell: bash
         run: |
-          # Pull the CHANGELOG.md section whose header matches the tag, e.g. "## [v0.7.0]".
-          notes="$(awk -v tag="$TAG_NAME" '
+          python scripts/bump_version.py --check
+          expected_version="${RELEASE_TAG#v}"
+          actual_version="$(python scripts/bump_version.py --print-version)"
+          if [[ "$actual_version" != "$expected_version" ]]; then
+            echo "::error::Tag $RELEASE_TAG does not match project version $actual_version"
+            exit 1
+          fi
+
+          notes="$(awk -v tag="$RELEASE_TAG" '
             index($0, "## [" tag "]") == 1 { capture = 1; next }
             capture && index($0, "## [") == 1 { exit }
             capture { print }
           ' CHANGELOG.md)"
-          if [[ -z "${notes// }" ]]; then
-            echo "No CHANGELOG.md entry found for $TAG_NAME; falling back to generated notes only."
+          if [[ -z "${notes//[[:space:]]/}" ]]; then
+            echo "::error::CHANGELOG.md has no entry for $RELEASE_TAG"
+            exit 1
           fi
-          {
-            echo "notes<<__CHANGELOG_EOF__"
-            echo "$notes"
-            echo "__CHANGELOG_EOF__"
-          } >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$notes" > release-notes.md
         env:
-          TAG_NAME: ${{ steps.release-tag.outputs.tag_name }}
+          RELEASE_TAG: ${{ steps.release-tag.outputs.tag }}
 
-      - name: Create Release for tag
-        if: github.event_name == 'push'
+      - name: Create or refresh draft release
         shell: bash
         run: |
-          printf '%s\n' "${NOTES}" > release-notes.md
-          gh release create "$TAG_NAME" \
-            --title "$TAG_NAME" \
-            --notes-file release-notes.md \
-            --generate-notes || gh release view "$TAG_NAME"
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            is_draft="$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)"
+            if [[ "$is_draft" != "true" ]]; then
+              echo "::error::Release $RELEASE_TAG is already published"
+              exit 1
+            fi
+            gh release edit "$RELEASE_TAG" \
+              --title "$RELEASE_TAG" \
+              --notes-file release-notes.md
+          else
+            gh release create "$RELEASE_TAG" \
+              --verify-tag \
+              --draft \
+              --title "$RELEASE_TAG" \
+              --notes-file release-notes.md
+          fi
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
-          TAG_NAME: ${{ steps.release-tag.outputs.tag_name }}
-          NOTES: ${{ steps.changelog.outputs.notes }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release-tag.outputs.tag }}
 
   build:
-    needs: create-release
+    needs: prepare-release
     strategy:
       fail-fast: false
       matrix:
@@ -98,7 +131,10 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare-release.outputs.tag }}
 
       - uses: actions/setup-node@v4
         with:
@@ -110,7 +146,7 @@ jobs:
         with:
           workdir: src-tauri
 
-      - name: Install Linux system deps
+      - name: Install Linux system dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
@@ -120,30 +156,48 @@ jobs:
             librsvg2-dev \
             patchelf
 
-      - name: Install frontend deps
-        run: cd frontend && npm ci
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
 
-      - name: Install Tauri JS deps
-        run: cd src-tauri && npm ci
+      - name: Install Tauri dependencies
+        working-directory: src-tauri
+        run: npm ci
 
-      - name: Install installer JS deps
-        run: cd apps/suzent-installer && npm ci
+      - name: Install installer dependencies
+        working-directory: apps/suzent-installer
+        run: npm ci
 
       - name: Build main app
-        run: cd src-tauri && npm run build:dist
+        working-directory: src-tauri
+        run: npm run build:dist
 
       - name: Build installer app
-        run: cd apps/suzent-installer && npm run build
+        working-directory: apps/suzent-installer
+        run: npm run build
 
-      - name: Upload binaries to Release
-        if: github.event_name == 'release' || github.event_name == 'push'
+      - name: Upload binaries to draft release
         shell: bash
         run: |
           cp "${{ matrix.binary }}" "${{ matrix.asset }}"
           cp "${{ matrix.installer_binary }}" "${{ matrix.installer_asset }}"
-          gh release upload "${{ needs.create-release.outputs.tag_name }}" \
+          gh release upload "$RELEASE_TAG" \
             "${{ matrix.asset }}" \
             "${{ matrix.installer_asset }}" \
             --clobber
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.prepare-release.outputs.tag }}
+
+  publish-release:
+    needs:
+      - prepare-release
+      - build
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Publish completed release
+        run: gh release edit "$RELEASE_TAG" --draft=false
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.prepare-release.outputs.tag }}

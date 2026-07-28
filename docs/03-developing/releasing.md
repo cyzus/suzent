@@ -1,136 +1,104 @@
 # Release Guide
 
-This guide describes how to release a new version of Suzent. The process is automated using GitHub Actions, but requires a manual version bump and tagging.
+Suzent uses a Release PR workflow. Preparing a release is a single manual
+action; version synchronization, tagging, cross-platform builds, and GitHub
+Release publication are automated.
 
-## 1. Update Changelog
+## Normal release
 
-Generate a draft from commits since the last tag, then edit it into `CHANGELOG.md` before bumping the version — so the changelog and version bump land in the same commit.
+1. Open **Actions → Prepare Release → Run workflow**.
+2. Enter `patch`, `minor`, `major`, or an exact version such as `0.8.0`.
+3. Review the generated `release/vX.Y.Z` pull request. Edit the generated
+   changelog entry if needed, wait for required checks, and merge it.
+4. The merge automatically creates the `vX.Y.Z` tag and starts
+   **Build and Publish Desktop Release**.
+5. Verify the published release and its assets on the
+   [Releases page](https://github.com/cyzus/suzent/releases).
+
+The release remains a draft while Windows, macOS Intel, macOS Apple Silicon,
+and Linux builds run. It is published only after every build succeeds. A failed
+build therefore cannot expose a partially populated release.
+
+## What is automated
+
+`scripts/bump_version.py` synchronizes the version in:
+
+- the Python project and `uv.lock`;
+- the frontend and desktop npm manifests and lock files;
+- the main Tauri configuration, Cargo manifest, and Cargo lock;
+- the standalone installer's Tauri, npm, and Cargo files.
+
+It also generates a changelog draft from commits since the last tag. Scoped
+conventional commits such as `feat(ui): ...` are categorized, while unprefixed
+commit subjects are retained under **Changed** so release notes are not silently
+lost.
+
+CI runs `python scripts/bump_version.py --check` on every pull request. A tag
+whose version does not match the manifests or changelog is rejected before any
+desktop build starts.
+
+## Local fallback
+
+The same preparation can be run locally:
 
 ```bash
-python scripts/bump_version.py --changelog
-```
+# Preview release notes without changing files
+python scripts/bump_version.py patch --changelog
 
-This prints all `feat:`, `fix:`, `refactor:`, and `perf:` commits since the last tag. Copy the output into `CHANGELOG.md`, edit for clarity, then save.
-
-> [!TIP]
-> The draft only picks up commits with conventional prefixes. Commits without a prefix are skipped, so keeping commit messages consistent ensures nothing is missed.
-
-## 2. Bump Version
-
-With the changelog already updated, run the version bump. This updates version numbers across all necessary files (`package.json`, `Cargo.toml`, `pyproject.toml`, etc.) and prints the changelog draft again for reference.
-
-```bash
-# Bump patch version (e.g., 0.1.0 -> 0.1.1)
+# Synchronize files and add the changelog entry
 python scripts/bump_version.py patch
 
-# Bump minor version (e.g., 0.1.0 -> 0.2.0)
-python scripts/bump_version.py minor
-
-# Bump major version (e.g., 0.1.0 -> 1.0.0)
-python scripts/bump_version.py major
-
-# Set specific version
-python scripts/bump_version.py 1.2.3
+# Verify all version sources
+python scripts/bump_version.py --check
 ```
 
-Files updated:
-- `src-tauri/tauri.conf.json`
-- `src-tauri/tauri.conf.prod.json`
-- `src-tauri/package.json`
-- `src-tauri/Cargo.toml`
-- `src-tauri/Cargo.lock`
-- `frontend/package.json`
-- `pyproject.toml`
-- npm lock files
-- `uv.lock`
+Review the diff and commit only the version files and `CHANGELOG.md`. Do not use
+`git add .` in a working tree containing unrelated changes.
 
-> [!IMPORTANT]
-> The version in the changelog header (e.g., `[v0.2.3]`) must match the git tag exactly. Release notes are automatically extracted from this section.
+To rebuild an existing unpublished tag, open
+**Actions → Build and Publish Desktop Release → Run workflow** and enter the
+exact tag. The workflow refreshes an existing draft and replaces its assets.
+It refuses to overwrite an already published release.
 
-## 3. Run Pre-commit Hooks
+## Repository setup
 
-Before committing the version bump and changelog, ensure all code is properly formatted and linted. The CI workflow runs `ruff check .` and will fail if there are linting issues.
+The workflows use the built-in `GITHUB_TOKEN` for tagging and publication.
+No release credential is required.
 
-```bash
-# Run pre-commit hooks on all files
-pre-commit run --all-files
+GitHub suppresses ordinary workflow events caused by its built-in token. The
+release pipeline accounts for this by explicitly dispatching the desktop build
+after creating the tag.
 
-# Or manually run ruff
-ruff check . --fix
-ruff format .
-```
+For repositories that require pull-request checks to be triggered by the
+release bot, add a fine-grained `RELEASE_BOT_TOKEN` secret with access to
+contents and pull requests. Without it, Release PR creation still works, but
+GitHub may not trigger other workflows from the bot-created branch and pull
+request. The **Prepare Release** workflow always performs its own version
+validation.
 
-> [!TIP]
-> Install pre-commit hooks to run automatically before each commit:
-> ```bash
-> pre-commit install
-> ```
+Optionally protect the `main` branch and require review of Release PRs. That
+keeps changelog approval manual while leaving all mechanical release work
+automated.
 
-## 4. Commit and Tag
+## Recovery
 
-Commit the changelog and version bump together, then create a git tag. The GitHub Action workflow listens for tags starting with `v`.
+### A platform build fails
 
-```bash
-# 1. Commit the version bump, lock files, and changelog
-git add .
-git commit -m "chore: bump version to 0.1.1"
+Fix the cause on `main`, prepare a new patch release, and merge it. The failed
+version remains a draft and is not advertised as the latest release.
 
-# 2. Create a tag
-git tag v0.1.1
+If the failure was transient and the tagged source is correct, rerun
+**Build and Publish Desktop Release** with the existing tag.
 
-# 3. Push to GitHub
-git push && git push --tags
-```
+### A Release PR needs changes
 
-## 6. Automated Build & Release
+Edit the changelog directly on its `release/vX.Y.Z` branch. Do not rerun
+**Prepare Release** for the same version while that branch exists; the workflow
+stops instead of overwriting review edits.
 
-Once the tag is pushed, the **[Build Desktop Apps](../../.github/workflows/build-desktop.yml)** workflow will automatically trigger. It performs the following steps:
+### A wrong tag was created
 
-1.  **Extracts Release Notes**: Reads the changelog entry for the tagged version from `CHANGELOG.md`.
-2.  **Bundles Python Backend**: Downloads standalone Python + uv, builds suzent wheel into `src-tauri/resources/`.
-3.  **Builds Frontend**: Builds the React frontend.
-4.  **Builds Desktop App**: Bundles everything into a Tauri application.
-    - **Windows**: `.msi`
-    - **macOS**: `.dmg` (Intel & Apple Silicon)
-    - **Linux**: `.AppImage` / `.deb` (Ubuntu)
-5.  **Publishes Release**: Creates a GitHub Release with:
-    - Release notes from the changelog (fully automated!)
-    - All platform artifacts attached
-
-## 7. Verify Release
-
-1.  Go to the [GitHub Releases](https://github.com/cyzus/suzent/releases) page.
-2.  Verify the release was created with the correct version and release notes.
-3.  Download and test the artifacts if needed.
-
-## Troubleshooting
-
-### Pipeline Fails
-
-If you forgot to run pre-commit hooks or want to revert the release:
-
-1. **Delete the problematic tag**:
-   ```bash
-   # Delete locally
-   git tag -d v0.2.2  # Replace with your tag version
-   # Delete remotely
-   git push origin :refs/tags/v0.2.2
-   ```
-
-   
-2. **Recreate the tag**:
-   ```
-   # Create the tag on the latest commit (with precommit fixes)      
-   git tag v0.2.2
-
-   # Push everything
-   git push && git push --tags   
-   ```
-
-### Missing Changelog Entry
-
-If the workflow fails because the changelog entry is missing or doesn't match the tag version:
-
-1. Ensure there's an entry in `CHANGELOG.md` with the exact version matching your tag.
-2. The header must use the format: `## [v0.2.2] - 2026-02-02` (version must match the git tag).
-3. Follow steps 3-4 above to delete and recreate the tag after updating the changelog.
+Do not move a published version tag. If the release is still a draft, delete
+the draft and tag in GitHub, correct the source through a new pull request, and
+then run the desktop workflow for the corrected tag. Prefer issuing a new patch
+version once a release has been published.

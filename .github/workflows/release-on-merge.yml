@@ -1,0 +1,76 @@
+name: Start Release After Merge
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - closed
+
+permissions:
+  actions: write
+  contents: write
+
+jobs:
+  tag-and-build:
+    if: >-
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      startsWith(github.event.pull_request.head.ref, 'release/v')
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout merged commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Validate release
+        id: release
+        shell: bash
+        run: |
+          python scripts/bump_version.py --check
+          version="$(python scripts/bump_version.py --print-version)"
+          tag="v$version"
+          expected_tag="${RELEASE_BRANCH#release/}"
+          if [[ "$tag" != "$expected_tag" ]]; then
+            echo "::error::Release branch $RELEASE_BRANCH does not match project version $version"
+            exit 1
+          fi
+          if ! grep -Fq "## [$tag]" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no entry for $tag"
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+        env:
+          RELEASE_BRANCH: ${{ github.event.pull_request.head.ref }}
+
+      - name: Create release tag
+        shell: bash
+        run: |
+          if git rev-parse "$RELEASE_TAG" >/dev/null 2>&1; then
+            tagged_commit="$(git rev-list -n 1 "$RELEASE_TAG")"
+            if [[ "$tagged_commit" != "$MERGE_SHA" ]]; then
+              echo "::error::Tag $RELEASE_TAG already points to another commit"
+              exit 1
+            fi
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "$RELEASE_TAG" -m "Release $RELEASE_TAG"
+            git push origin "$RELEASE_TAG"
+          fi
+        env:
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+
+      - name: Start desktop release build
+        run: gh workflow run build-desktop.yml --ref main -f "tag=$RELEASE_TAG"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
