@@ -124,6 +124,19 @@ def _autofill_chat_roles_from_models(db: Any, model_ids: list[str]) -> bool:
     return changed
 
 
+def _first_newly_enabled_provider_models(
+    old_config: dict[str, Any], new_config: dict[str, Any]
+) -> list[str]:
+    """Return enabled models for the first provider that just gained models."""
+    for provider in PROVIDER_REGISTRY:
+        pid = provider.id
+        old_models = old_config.get(pid, {}).get("enabled_models") or []
+        new_models = new_config.get(pid, {}).get("enabled_models") or []
+        if not old_models and new_models:
+            return [m for m in new_models if isinstance(m, str) and m]
+    return []
+
+
 async def get_config(request: Request) -> JSONResponse:
     """Return frontend-consumable configuration merged with user preferences."""
     db = get_database()
@@ -504,6 +517,19 @@ async def save_api_keys(request: Request) -> JSONResponse:
         # Process _PROVIDER_CONFIG_ with auto-population of default_models
         provider_config_blob = keys.get("_PROVIDER_CONFIG_")
         if isinstance(provider_config_blob, str) and provider_config_blob:
+            existing_provider_config: dict[str, Any] = {}
+            try:
+                existing_blob = (db.get_api_keys() or {}).get("_PROVIDER_CONFIG_")
+                existing_provider_config = (
+                    json.loads(existing_blob)
+                    if isinstance(existing_blob, str) and existing_blob
+                    else {}
+                )
+                if not isinstance(existing_provider_config, dict):
+                    existing_provider_config = {}
+            except json.JSONDecodeError:
+                existing_provider_config = {}
+
             try:
                 custom_config: dict[str, Any] = json.loads(provider_config_blob)
             except json.JSONDecodeError:
@@ -516,7 +542,6 @@ async def save_api_keys(request: Request) -> JSONResponse:
 
             # For each provider whose key was newly set and has no enabled_models,
             # auto-populate with default_models so the UI shows options immediately.
-            models_for_role_autofill: list[str] = []
             for provider in PROVIDER_REGISTRY:
                 pid = provider.id
                 provider_key_was_set = any(
@@ -530,14 +555,15 @@ async def save_api_keys(request: Request) -> JSONResponse:
                         if pid not in custom_config:
                             custom_config[pid] = {}
                         custom_config[pid]["enabled_models"] = defaults
-                        if not models_for_role_autofill:
-                            models_for_role_autofill = defaults
 
             updated_blob = json.dumps(custom_config)
             db.save_api_key("_PROVIDER_CONFIG_", updated_blob)
             os.environ["_PROVIDER_CONFIG_"] = updated_blob
             count += 1
             invalidate_default_model_cache()
+            models_for_role_autofill = _first_newly_enabled_provider_models(
+                existing_provider_config, custom_config
+            )
             if _autofill_chat_roles_from_models(db, models_for_role_autofill):
                 count += 1
 

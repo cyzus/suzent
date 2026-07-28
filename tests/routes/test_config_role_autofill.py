@@ -1,4 +1,5 @@
 import json
+from types import SimpleNamespace
 
 from suzent.routes import config_routes
 from suzent.core.role_router import get_role_router
@@ -72,3 +73,24 @@ def test_autofill_noops_without_models():
 
     assert config_routes._autofill_chat_roles_from_models(db, []) is False
     assert "_ROLE_MODELS_" not in db.api_keys
+
+
+def test_detects_models_enabled_for_fieldless_provider(monkeypatch):
+    monkeypatch.setattr(
+        config_routes,
+        "PROVIDER_REGISTRY",
+        [
+            SimpleNamespace(id="openai"),
+            SimpleNamespace(id="chatgpt"),
+        ],
+    )
+
+    models = config_routes._first_newly_enabled_provider_models(
+        {"openai": {"enabled_models": ["openai/gpt-4.1"]}},
+        {
+            "openai": {"enabled_models": ["openai/gpt-4.1"]},
+            "chatgpt": {"enabled_models": ["chatgpt/gpt-5"]},
+        },
+    )
+
+    assert models == ["chatgpt/gpt-5"]
