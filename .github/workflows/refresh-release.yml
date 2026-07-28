@@ -1,12 +1,10 @@
 name: Refresh Release PR
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
-    inputs:
-      pr_number:
-        description: 'Open Release PR number to refresh'
-        required: true
-        type: number
 
 permissions:
   actions: write
@@ -14,37 +12,52 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: refresh-release-${{ inputs.pr_number }}
+  group: refresh-release
   cancel-in-progress: false
 
 jobs:
   refresh:
     runs-on: ubuntu-22.04
     steps:
-      - name: Resolve Release PR
+      - name: Find open Release PR
         id: pr
         shell: bash
         run: |
-          state="$(gh pr view "$PR_NUMBER" --json state --jq .state)"
-          base="$(gh pr view "$PR_NUMBER" --json baseRefName --jq .baseRefName)"
-          head="$(gh pr view "$PR_NUMBER" --json headRefName --jq .headRefName)"
-          cross_repo="$(gh pr view "$PR_NUMBER" --json isCrossRepository --jq .isCrossRepository)"
+          release_prs="$(
+            gh pr list \
+              --state open \
+              --base main \
+              --limit 100 \
+              --json number,headRefName,isCrossRepository \
+              --jq '[.[] | select(
+                .isCrossRepository == false and
+                (.headRefName | startswith("release/v"))
+              )]'
+          )"
+          count="$(jq length <<< "$release_prs")"
 
-          if [[ "$state" != "OPEN" || "$base" != "main" ]]; then
-            echo "::error::PR #$PR_NUMBER must be open and target main"
+          if [[ "$count" == "0" ]]; then
+            echo "::notice::No open Release PR found; nothing to refresh"
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ "$count" != "1" ]]; then
+            candidates="$(jq -r '.[] | "#\(.number) \(.headRefName)"' <<< "$release_prs")"
+            echo "::error::Expected one open Release PR, found $count: $candidates"
             exit 1
           fi
-          if [[ "$cross_repo" != "false" || "$head" != release/v* ]]; then
-            echo "::error::PR #$PR_NUMBER must use a same-repository release/v* branch"
-            exit 1
-          fi
+
+          head="$(jq -r '.[0].headRefName' <<< "$release_prs")"
+          number="$(jq -r '.[0].number' <<< "$release_prs")"
+          echo "::notice::Refreshing Release PR #$number from $head"
+          echo "found=true" >> "$GITHUB_OUTPUT"
           echo "head=$head" >> "$GITHUB_OUTPUT"
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ inputs.pr_number }}
 
       - name: Checkout release branch
+        if: steps.pr.outputs.found == 'true'
         uses: actions/checkout@v4
         with:
           ref: ${{ steps.pr.outputs.head }}
@@ -52,11 +65,13 @@ jobs:
           token: ${{ secrets.RELEASE_BOT_TOKEN || github.token }}
 
       - name: Set up Python
+        if: steps.pr.outputs.found == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
       - name: Merge main and refresh release notes
+        if: steps.pr.outputs.found == 'true'
         id: refresh
         shell: bash
         run: |
@@ -83,7 +98,9 @@ jobs:
           RELEASE_BRANCH: ${{ steps.pr.outputs.head }}
 
       - name: Start CI for refreshed head
-        if: steps.refresh.outputs.updated == 'true'
+        if: >-
+          steps.pr.outputs.found == 'true' &&
+          steps.refresh.outputs.updated == 'true'
         run: gh workflow run ci.yml --ref "$RELEASE_BRANCH"
         env:
           GH_TOKEN: ${{ github.token }}

@@ -21,15 +21,19 @@ build therefore cannot expose a partially populated release.
 
 ### If main changes before merge
 
-Do not merge a stale Release PR. Open
-**Actions → Refresh Release PR → Run workflow**, enter the PR number, and wait
-for the refreshed CI run.
+Do not merge a stale Release PR. Every push to `main` automatically runs
+**Refresh Release PR**. It finds the single open same-repository `release/v*`
+PR, refreshes it, and starts CI. No PR number or manual action is required.
 
 The refresh workflow merges the latest `main` into the release branch,
 regenerates the current version's changelog section, validates every version
 source, pushes the result, and explicitly starts CI. Review the regenerated
 notes again before merging because refresh replaces any manual edits in that
 version's section.
+
+For recovery, **Actions → Refresh Release PR → Run workflow** performs the same
+lookup without inputs. If there is no open Release PR it exits successfully. If
+there is more than one, it stops and lists the candidates instead of guessing.
 
 The post-merge workflow independently verifies that the Release PR head
 contained the latest pre-merge `main` commit. If it did not, tag creation and
