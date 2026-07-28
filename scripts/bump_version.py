@@ -144,7 +144,51 @@ def check_versions(root: Path, expected_version: str) -> bool:
     return consistent
 
 
-def _git_subjects_since_last_tag(root: Path) -> list[str]:
+def _run_git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", *args],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+
+
+def _previous_changelog_tag(root: Path, next_version: str) -> str | None:
+    changelog_path = root / "CHANGELOG.md"
+    if not changelog_path.exists():
+        return None
+
+    next_tag = f"v{next_version}"
+    tags = re.findall(
+        r"(?m)^## \[(v\d+\.\d+\.\d+)\](?:\s|$)",
+        changelog_path.read_text(encoding="utf-8"),
+    )
+    return next((tag for tag in tags if tag != next_tag), None)
+
+
+def _release_boundary(root: Path, next_version: str) -> str | None:
+    previous_tag = _previous_changelog_tag(root, next_version)
+    if previous_tag:
+        ancestor = _run_git(
+            root,
+            "merge-base",
+            "--is-ancestor",
+            previous_tag,
+            "HEAD",
+        )
+        if ancestor.returncode == 0:
+            return previous_tag
+
+        release_subject = f"chore: release {previous_tag}".lower()
+        history = _run_git(root, "log", "HEAD", "--format=%H%x09%s", "--no-merges")
+        if history.returncode == 0:
+            for line in history.stdout.splitlines():
+                commit, separator, subject = line.partition("\t")
+                if separator and subject.strip().lower() == release_subject:
+                    return commit
+
     tag_result = subprocess.run(
         ["git", "describe", "--tags", "--abbrev=0"],
         cwd=root,
@@ -153,8 +197,16 @@ def _git_subjects_since_last_tag(root: Path) -> list[str]:
         encoding="utf-8",
         check=False,
     )
-    previous_tag = tag_result.stdout.strip()
-    range_spec = f"{previous_tag}..HEAD" if previous_tag else "HEAD"
+    reachable_tag = tag_result.stdout.strip()
+    return reachable_tag or None
+
+
+def _git_subjects_since_last_release(
+    root: Path,
+    next_version: str,
+) -> list[str]:
+    boundary = _release_boundary(root, next_version)
+    range_spec = f"{boundary}..HEAD" if boundary else "HEAD"
     result = subprocess.run(
         ["git", "log", range_spec, "--format=%s", "--no-merges"],
         cwd=root,
@@ -182,7 +234,9 @@ def generate_changelog_draft(
     )
 
     for subject in (
-        subjects if subjects is not None else _git_subjects_since_last_tag(root)
+        subjects
+        if subjects is not None
+        else _git_subjects_since_last_release(root, version)
     ):
         match = conventional.match(subject)
         if match:

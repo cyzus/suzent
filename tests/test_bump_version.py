@@ -27,6 +27,7 @@ bump_semver = bump_version.bump_semver
 generate_changelog_draft = bump_version.generate_changelog_draft
 read_version = bump_version.read_version
 write_version = bump_version.write_version
+git_subjects_since_last_release = bump_version._git_subjects_since_last_release
 
 
 @pytest.mark.parametrize(
@@ -107,6 +108,53 @@ def test_changelog_accepts_scopes_and_keeps_unprefixed_changes(
     assert "refresh release guide" not in draft
 
 
+def test_changelog_uses_reachable_release_commit_when_tag_diverged(
+    tmp_path: Path,
+) -> None:
+    def git(*args: str) -> str:
+        result = subprocess.run(
+            ["git", *args],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=True,
+        )
+        return result.stdout.strip()
+
+    git("init")
+    git("config", "user.name", "Suzent Test")
+    git("config", "user.email", "test@suzent.local")
+    changelog = tmp_path / "CHANGELOG.md"
+    changelog.write_text("# Changelog\n", encoding="utf-8")
+    git("add", "CHANGELOG.md")
+    git("commit", "-m", "initial")
+    base_commit = git("rev-parse", "HEAD")
+
+    changelog.write_text(
+        "# Changelog\n\n## [v1.0.0] - 2026-07-01\n",
+        encoding="utf-8",
+    )
+    git("add", "CHANGELOG.md")
+    git("commit", "-m", "chore: release v1.0.0")
+    git("tag", "v1.0.0")
+
+    git("switch", "--detach", base_commit)
+    changelog.write_text(
+        "# Changelog\n\n## [v1.0.0] - 2026-07-02\n",
+        encoding="utf-8",
+    )
+    git("add", "CHANGELOG.md")
+    git("commit", "-m", "chore: release v1.0.0")
+    (tmp_path / "feature.txt").write_text("new\n", encoding="utf-8")
+    git("add", "feature.txt")
+    git("commit", "-m", "feat: only new change")
+
+    assert git_subjects_since_last_release(tmp_path, "1.0.1") == [
+        "feat: only new change"
+    ]
+
+
 def test_changelog_cli_uses_utf8_when_console_defaults_to_gbk() -> None:
     root = Path(__file__).resolve().parent.parent
     environment = {**os.environ, "PYTHONIOENCODING": "gbk"}
@@ -125,4 +173,5 @@ def test_changelog_cli_uses_utf8_when_console_defaults_to_gbk() -> None:
     )
 
     assert result.returncode == 0
-    assert "⚡".encode() in result.stdout
+    output = result.stdout.decode("utf-8")
+    assert any(marker in output for marker in ("🚀", "⚡", "🐛"))

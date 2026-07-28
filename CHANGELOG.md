@@ -8,108 +8,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v0.7.2] - 2026-07-28
 
 ### 🚀 Added
-- Simplify permission modes and introduce full access mode
-- Add _is_loopback_url function and corresponding tests for loopback URL handling
-- Update new chat page
-- Enhance BackendLoadingScreen styles and add system identity translations
-- Update ChatInputPanel and FolderContextPicker styles, enhance folder context translations
-- Enhance ChatInputPanel and ChatWindow for model selection and update handling
-- Implement closeImmediatelyAndPersist function and add tests
-- Enhance cron job handling and update API responses with additional fields
-- Add automation and organization sections in English and Chinese translations
-- Add stop command
-- Enhance handling of host paths and virtual paths in mentions
-- Implement MentionTextArea for file mentions and enhance input handling
-- Add support for command prefix permissions and enhance command parsing
-- Implement default permission mode handling and persistence
-- Update sidebar logic
-- Improve sidebar rendering
-- Move vault enable/disable + rotate into the header
-- Clearer pull/push/sync buttons — counts, up-to-date state, tooltips
-- Make local-only keys legible in the vault table
-- Per-key writer provenance + remove-from-vault
-- Render every provider as a group uniformly
-- Group provider keys so they sync together
-- Per-key opt-in, overwrite diff, phrase-match feedback, file inventory
-- Surface key vault in main card, not hidden in Advanced
-- Transparent secret vault — inventory, lock chip, honest push
-- Secure peer mesh — node auth, durable device tokens, agent.run (#53)
-- Support chatgpt subscription fetching
-- Improve visual for chatgpt provider
-- Real time compress token update
-- Message rendering
+- **Desktop Version and Updates**: Added an About page with frontend and backend versions, corrected logo rendering, and made update checks non-blocking.
+- **Permission Modes**: Added a simplified Full Access mode and clearer explanations of tool permission decisions.
+- **Desktop UX**: Refined the new-chat page, loading screen, model selection, folder context picker, and related localized text.
+- **Automation Configuration**: Added English and Chinese labels for automation and organization settings.
 
 ### ⚡ Changed
-- Automate release preparation and publishing
-- Add desktop about and update controls
-- Upgrade Pydantic AI to v2.18 (#69)
-- Build out the sovereign website narrative
-- Reframe Suzent around sovereign agent ownership
-- Expose tool permission decision transparency (#68)
-- Simplify GitHub sync to portable files only (#67)
-- Update model providers
-- Fix social permission approvals (#66)
-- Support wechat social channel (#65)
-- Add China setup mirrors (#64)
-- Update model list
-- Setup: update cargo install prompt
-- Refactor BashTool command execution to use temporary files for stdout and stderr
-- Update windows powershell cmd
-- Refactor response model resolution and add provider matching tests
-- Enhance ChatWindow streaming error handling and cleanup logic
-- Memorize permission mode
-- Document peer file retrieval in nodes skill
-- Clarify node invoke versus trigger
-- Inject suzent base url into bash tool
-- Update nodes skill for peer file retrieval
-- [codex] implement peer file retrieval (#62)
-- Close peer file proxy client on send failure
-- Implement peer file retrieval
-- Reuse running Suzent server from CLI (#60)
-- Update leak citations
-- Update decompose logic
-- Polish(sync): drop lock emoji for an svg padlock; clearer SYNC button icon
-- Theme-consistent visuals via shared DRY components
-- Revert "fix(voice): tolerate empty TTS completions instead of crashing"
-- Cache peer outbound status to cut poll cost
-- Ui: adjust setting modal
-- Feat(ui:) update memory compact animation
-- Improve compact requirement
-- Make use of native history summarizer
-- Update canvas skill
-- Doc: system reminders
-- Update render
-- Update goal frontend
-- Refactor chat processor
-- Refactor prompts
-- Use system reminders for unsupported images
-- Update xiaomi mimo capabilities
-- Update image support early notice
+- **Pydantic AI v2.18**: Migrated agents, native tool search, streaming events, usage reporting, OpenAI models, ChatGPT subscription proxying, and message-history repair to the v2 APIs.
+- **GitHub Sync**: Simplified synchronization around portable files.
+- **Product Narrative**: Refined the sovereign-agent positioning across the website.
+- **Release Process**: Added automated Release PR preparation, version consistency checks, draft builds, and publish-after-success behavior.
 
 ### 🐛 Fixed
-- Match normalized command prefix
-- Unable to open ui when proxy is on
-- Improve error handling for active cron jobs and add tests
-- File button misrender as [object object]
-- Correct per message model signature
-- File clickable and fileview
-- Fix token lookup logic
-- Bound subagent task and background-turn-lock registries (#61)
-- No OS keyring on CI/Linux host
-- Robust gaol/task fetch
-- Robust recovery-word confirmation + clearer word counter
-- Block Confirm when entered words don't match the vault
-- Stop syncing machine-local node/auth state
-- Backend value overwrites stale ambient env on inject
-- Clean untracked payload files before ff-only pull
-- Self-heal a profile with a stale/missing repo_path
-- Resolve config dir at runtime so tests can't write real config
-- Don't persist masked API-key placeholders (clobbered real keys)
-- Tolerate empty TTS completions instead of crashing
-- Node host loads stored secrets into env on startup
-- Fileview unwanted refresh
-- Update duplicate message view after compact
-- Manual compact doesn't get permitted
+- **Command Permissions**: Matched normalized command prefixes consistently.
+- **Local Services**: Improved loopback URL recognition when opening local services.
+- **Scheduled Jobs**: Improved active cron-job error handling and API responses.
+- **Release Notes**: Prevented prior-release changes from being repeated when a version tag and the main release commit have diverged.
 
 ## [v0.7.1] - 2026-07-22
 
