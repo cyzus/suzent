@@ -15,9 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### ⚡ Changed
 - **Pydantic AI v2.18**: Migrated agents, native tool search, streaming events, usage reporting, OpenAI models, ChatGPT subscription proxying, and message-history repair to the v2 APIs.
+- **Model Capabilities**: Automated provider capability updates while keeping synchronization worktrees isolated from local development changes.
 - **GitHub Sync**: Simplified synchronization around portable files.
 - **Product Narrative**: Refined the sovereign-agent positioning across the website.
-- **Release Process**: Added automated Release PR preparation, version consistency checks, draft builds, and publish-after-success behavior.
+- **Release Process**: Added automated Release PR preparation, stale-PR refresh, pre-tag freshness checks, version consistency checks, draft builds, and publish-after-success behavior.
 
 ### 🐛 Fixed
 - **Command Permissions**: Matched normalized command prefixes consistently.
