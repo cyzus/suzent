@@ -1,0 +1,48 @@
+name: Update Model Capabilities
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * *"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Sync tracked model capabilities
+        env:
+          SUZENT_DATA_DIR: ${{ runner.temp }}/suzent-data
+        run: uv run python scripts/sync_model_capabilities.py --to-repo
+
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: automation/model-capabilities
+          delete-branch: true
+          commit-message: "chore: update model capabilities"
+          title: "chore: update model capabilities"
+          body: |
+            Automated refresh of model capability metadata from LiteLLM.
+
+            This keeps high-churn model metadata out of `main` until the
+            generated diff is reviewed and merged.
+          add-paths: |
+            config/capabilities/*.json
