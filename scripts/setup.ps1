@@ -93,6 +93,22 @@ function Ensure-Git {
 Ensure-Git
 Write-Ok "git $(git --version)"
 
+# ── Optional accelerator: ripgrep ────────────────────────────────────────────
+if (Get-Command rg -ErrorAction SilentlyContinue) {
+    Write-Ok "ripgrep $((rg --version | Select-Object -First 1) -replace '^ripgrep ', '')"
+} elseif (Get-Command winget -ErrorAction SilentlyContinue) {
+    Write-Info "Installing optional ripgrep search accelerator..."
+    winget install --id BurntSushi.ripgrep.MSVC --source winget --accept-package-agreements --accept-source-agreements --silent
+    Refresh-Path
+    if (Get-Command rg -ErrorAction SilentlyContinue) {
+        Write-Ok "ripgrep installed"
+    } else {
+        Write-Warn "ripgrep install failed — grep_search will use its Python fallback."
+    }
+} else {
+    Write-Warn "ripgrep not found — grep_search will use its Python fallback."
+}
+
 # ── Check/install: Node.js ────────────────────────────────────────────────────
 function Get-NodeMajor {
     try {

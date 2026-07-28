@@ -1,3 +1,5 @@
+import json
+import subprocess
 from types import SimpleNamespace
 
 import pytest
@@ -44,6 +46,14 @@ class _DummyGrepResolver:
 
     def find_files(self, pattern, path):
         return self._files
+
+
+class _DummyRipgrepResolver(_DummyGrepResolver):
+    def resolve(self, path):
+        return self._files[0][0].parent if self._files else path
+
+    def to_virtual_path(self, path):
+        return f"/workspace/{path.name}"
 
 
 @pytest.mark.asyncio
@@ -136,6 +146,80 @@ async def test_grep_tool_reports_capped_scan(tmp_path):
     assert result.success
     assert result.metadata["capped"] is True
     assert "scan capped" in result.message
+
+
+def test_grep_tool_uses_ripgrep_json_output(tmp_path, monkeypatch):
+    source = tmp_path / "example.py"
+    source.write_text("needle\n", encoding="utf-8")
+    tool = GrepTool()
+    tool._resolver = _DummyRipgrepResolver([(source, str(source))])
+    ctx = SimpleNamespace(
+        deps=SimpleNamespace(
+            chat_id="chat-1",
+            sandbox_enabled=False,
+            custom_volumes=[],
+            workspace_root=str(tmp_path),
+            path_resolver=tool._resolver,
+        )
+    )
+    events = [
+        {
+            "type": "match",
+            "data": {
+                "path": {"text": str(source)},
+                "lines": {"text": "needle\n"},
+                "line_number": 1,
+            },
+        },
+        {"type": "summary", "data": {"stats": {"searches": 1}}},
+    ]
+
+    monkeypatch.setattr(tool, "_ripgrep_checked", True)
+    monkeypatch.setattr(tool, "_ripgrep_path", "rg")
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            args[0], 0, "\n".join(json.dumps(event) for event in events), ""
+        ),
+    )
+
+    result = tool.forward(ctx, pattern="needle", path=str(tmp_path))
+
+    assert result.success
+    assert result.metadata["engine"] == "ripgrep"
+    assert result.metadata["match_count"] == 1
+    assert result.metadata["scanned_files"] == 1
+    assert str(source) in result.message
+
+
+def test_grep_tool_falls_back_when_ripgrep_rejects_regex(tmp_path, monkeypatch):
+    source = tmp_path / "example.py"
+    source.write_text("needle\n", encoding="utf-8")
+    tool = GrepTool()
+    tool._resolver = _DummyRipgrepResolver([(source, str(source))])
+    ctx = SimpleNamespace(
+        deps=SimpleNamespace(
+            chat_id="chat-1",
+            sandbox_enabled=False,
+            custom_volumes=[],
+            workspace_root=str(tmp_path),
+            path_resolver=tool._resolver,
+        )
+    )
+    monkeypatch.setattr(tool, "_ripgrep_checked", True)
+    monkeypatch.setattr(tool, "_ripgrep_path", "rg")
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 2, "", "error"),
+    )
+
+    result = tool.forward(ctx, pattern="needle", path=str(tmp_path))
+
+    assert result.success
+    assert result.metadata["engine"] == "python"
+    assert result.metadata["match_count"] == 1
 
 
 @pytest.mark.asyncio
