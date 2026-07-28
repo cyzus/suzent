@@ -509,7 +509,12 @@ class LanceDBMemoryStore:
     ) -> List[Dict[str, Any]]:
         """Public FTS-only search (no embedding API call, purely local)."""
         where = self._build_user_chat_filter(user_id, chat_id)
-        return await self._perform_fts_search(query_text, where, limit)
+        results = await self._perform_fts_search(query_text, where, limit)
+        formatted_results = [
+            self._format_memory_result(r, score=r.get("_score", 0.0)) for r in results
+        ]
+        self._schedule_access_recording(formatted_results)
+        return formatted_results
 
     @staticmethod
     def _normalize_fts_scores(fts_results: List[Dict[str, Any]]) -> float:

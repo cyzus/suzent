@@ -410,9 +410,24 @@ class MemoryManager:
     ) -> List[Dict[str, Any]]:
         """
         Semantic search for memories (agent-facing tool).
-        Uses hybrid search: semantic + full-text + importance ranking.
+        Uses hybrid search when embeddings are configured; otherwise falls back
+        to local full-text search so memory remains useful without an embedding
+        provider.
         """
         try:
+            if not self.embedding_gen.model:
+                results = await self.store.fts_search(
+                    query_text=query,
+                    user_id=user_id or "",
+                    chat_id=chat_id,
+                    limit=limit,
+                )
+                self._log_recalls(results)
+                logger.info(
+                    f"Keyword memory search for '{query}': found {len(results)} results"
+                )
+                return results
+
             # Generate query embedding
             query_embedding = await self.embedding_gen.generate(query)
 

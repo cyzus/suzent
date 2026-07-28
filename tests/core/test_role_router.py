@@ -107,3 +107,34 @@ class TestRoleRouter:
         )
         assert router.has_role("primary") is False
         assert router.has_role("cheap") is False
+
+    def test_replace_from_dict_clears_existing_roles(self):
+        router = RoleRouter()
+        router.set_role("primary", ["openai/gpt-4.1"])
+        router.set_role("cheap", ["openai/gpt-4.1-mini"])
+
+        router.replace_from_dict({"primary": []})
+
+        assert router.list_roles() == {}
+
+    def test_load_from_config_ignores_legacy_model_fields(self, monkeypatch):
+        from suzent import config as config_mod
+
+        monkeypatch.setattr(config_mod.CONFIG, "role_models", {}, raising=False)
+        monkeypatch.setattr(
+            config_mod.CONFIG,
+            "embedding_model",
+            "gemini/gemini-embedding-001",
+            raising=False,
+        )
+        monkeypatch.setattr(
+            config_mod.CONFIG,
+            "extraction_model",
+            "gemini/gemini-2.5-flash",
+            raising=False,
+        )
+
+        router = RoleRouter()
+        router.load_from_config()
+
+        assert router.list_roles() == {}

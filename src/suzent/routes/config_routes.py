@@ -60,6 +60,83 @@ def _schedule_volume_metadata_refresh(volumes: list[str]) -> None:
             logger.warning("Volume metadata refresh failed: {}", exc)
 
 
+def _parse_role_models_blob(blob: str | None) -> dict[str, list[str]]:
+    if not blob:
+        return {}
+    try:
+        parsed = json.loads(blob)
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(parsed, dict):
+        return {}
+
+    roles: dict[str, list[str]] = {}
+    for role, value in parsed.items():
+        if isinstance(value, dict):
+            models = value.get("models", [])
+        elif isinstance(value, list):
+            models = value
+        else:
+            continue
+        if isinstance(models, list):
+            roles[role] = [m for m in models if isinstance(m, str) and m]
+    return roles
+
+
+def _save_role_models_blob(db: Any, roles: dict[str, list[str]]) -> None:
+    blob = json.dumps({role: {"models": models} for role, models in roles.items()})
+    db.save_api_key("_ROLE_MODELS_", blob)
+    os.environ["_ROLE_MODELS_"] = blob
+
+    from suzent.core.role_router import get_role_router
+
+    get_role_router().replace_from_dict(roles)
+
+
+def _autofill_chat_roles_from_models(db: Any, model_ids: list[str]) -> bool:
+    """Fill empty chat roles after a provider is connected."""
+    if not model_ids:
+        return False
+
+    api_keys = db.get_api_keys() or {}
+    roles = _parse_role_models_blob(api_keys.get("_ROLE_MODELS_"))
+
+    changed = False
+    for role in ("primary", "cheap"):
+        if not roles.get(role):
+            roles[role] = list(model_ids)
+            changed = True
+
+    if not roles.get("vision"):
+        try:
+            from suzent.core.model_registry import get_model_registry
+
+            registry = get_model_registry()
+            vision_models = [m for m in model_ids if registry.supports_vision(m)]
+        except Exception:
+            vision_models = []
+        if vision_models:
+            roles["vision"] = vision_models
+            changed = True
+
+    if changed:
+        _save_role_models_blob(db, roles)
+    return changed
+
+
+def _first_newly_enabled_provider_models(
+    old_config: dict[str, Any], new_config: dict[str, Any]
+) -> list[str]:
+    """Return enabled models for the first provider that just gained models."""
+    for provider in PROVIDER_REGISTRY:
+        pid = provider.id
+        old_models = old_config.get(pid, {}).get("enabled_models") or []
+        new_models = new_config.get(pid, {}).get("enabled_models") or []
+        if not old_models and new_models:
+            return [m for m in new_models if isinstance(m, str) and m]
+    return []
+
+
 async def get_config(request: Request) -> JSONResponse:
     """Return frontend-consumable configuration merged with user preferences."""
     db = get_database()
@@ -440,25 +517,39 @@ async def save_api_keys(request: Request) -> JSONResponse:
         # Process _PROVIDER_CONFIG_ with auto-population of default_models
         provider_config_blob = keys.get("_PROVIDER_CONFIG_")
         if isinstance(provider_config_blob, str) and provider_config_blob:
+            existing_provider_config: dict[str, Any] = {}
+            try:
+                existing_blob = (db.get_api_keys() or {}).get("_PROVIDER_CONFIG_")
+                existing_provider_config = (
+                    json.loads(existing_blob)
+                    if isinstance(existing_blob, str) and existing_blob
+                    else {}
+                )
+                if not isinstance(existing_provider_config, dict):
+                    existing_provider_config = {}
+            except json.JSONDecodeError:
+                existing_provider_config = {}
+
             try:
                 custom_config: dict[str, Any] = json.loads(provider_config_blob)
             except json.JSONDecodeError:
                 custom_config = {}
 
-            # Build a map of provider field keys → provider id
-            key_to_provider: dict[str, str] = {}
             provider_defaults: dict[str, list[str]] = {}
             for p in PROVIDER_REGISTRY:
                 pid = p.id
                 provider_defaults[pid] = [m["id"] for m in p.default_models]
-                for field in p.fields:
-                    key_to_provider[field["key"]] = pid
 
             # For each provider whose key was newly set and has no enabled_models,
             # auto-populate with default_models so the UI shows options immediately.
-            for env_key in newly_set_keys:
-                pid = key_to_provider.get(env_key)
-                if pid and not custom_config.get(pid, {}).get("enabled_models"):
+            for provider in PROVIDER_REGISTRY:
+                pid = provider.id
+                provider_key_was_set = any(
+                    field["key"] in newly_set_keys for field in provider.fields
+                )
+                if provider_key_was_set and not custom_config.get(pid, {}).get(
+                    "enabled_models"
+                ):
                     defaults = provider_defaults.get(pid, [])
                     if defaults:
                         if pid not in custom_config:
@@ -470,6 +561,11 @@ async def save_api_keys(request: Request) -> JSONResponse:
             os.environ["_PROVIDER_CONFIG_"] = updated_blob
             count += 1
             invalidate_default_model_cache()
+            models_for_role_autofill = _first_newly_enabled_provider_models(
+                existing_provider_config, custom_config
+            )
+            if _autofill_chat_roles_from_models(db, models_for_role_autofill):
+                count += 1
 
         return JSONResponse({"success": True, "updated": count})
     except Exception as e:
@@ -830,7 +926,7 @@ async def save_role_models(request: Request) -> JSONResponse:
         roles = data.get("roles", {})
 
         router = get_role_router()
-        router.load_from_dict(roles)
+        router.replace_from_dict(roles)
         router.save_to_db()
 
         return JSONResponse({"success": True, "roles": router.list_roles()})

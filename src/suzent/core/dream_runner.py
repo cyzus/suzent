@@ -518,11 +518,18 @@ class DreamRunner(BaseBrain):
         by the time we get here, so a timed-out reindex is non-fatal — the indexer is
         idempotent and the next reconcile picks up whatever was missed.
         """
+        embedding_gen = getattr(mgr, "embedding_gen", None)
+        if not getattr(embedding_gen, "model", None):
+            logger.info(
+                "[dream] skipping search reindex: no embedding model configured"
+            )
+            return
+
         await asyncio.wait_for(
             mgr._core_indexer.check_and_update(
                 markdown_store=mgr.markdown_store,
                 lancedb_store=mgr.store,
-                embedding_gen=mgr.embedding_gen,
+                embedding_gen=embedding_gen,
                 user_id=CONFIG.user_id,
             ),
             timeout=CONFIG.memory_consolidation_timeout_seconds,
