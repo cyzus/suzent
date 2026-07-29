@@ -141,6 +141,24 @@ def test_file_change_metadata_persists_on_each_assistant_turn():
     assert assistants[1]["file_changes"] == second_snapshot
 
 
+def test_latest_file_changes_move_from_tool_step_to_final_response():
+    snapshot = [{"path": "changed.py", "additions": 1, "deletions": 0}]
+    messages = [
+        {
+            "role": "assistant",
+            "content": "tool step",
+            "file_changes": snapshot,
+        },
+        {"role": "tool", "content": "written"},
+        {"role": "assistant", "content": "done"},
+    ]
+
+    result = _attach_latest_file_changes(messages, snapshot)
+
+    assert "file_changes" not in result[0]
+    assert result[2]["file_changes"] == snapshot
+
+
 def test_rebuild_stamps_per_response_model_when_switched_mid_chat():
     # User switched from sonnet to opus mid-chat; the run-level model_id is the
     # *current* model (opus). Each assistant message must show the model that

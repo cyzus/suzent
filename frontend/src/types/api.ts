@@ -42,6 +42,7 @@ export interface Message {
   images?: ImageAttachment[]; // Optional image attachments
   files?: FileAttachment[];   // Optional file attachments
   file_changes?: MessageFileChange[]; // Persisted file snapshot for this assistant turn
+  file_change_message_index?: number; // Raw backend index used for message-scoped undo
 }
 export interface ChatConfig {
   model: string;

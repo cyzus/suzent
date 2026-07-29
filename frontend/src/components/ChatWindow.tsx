@@ -371,6 +371,7 @@ const MessageList: React.FC<{
             timestamp: m.timestamp,
             model: m.model,
             file_changes: m.file_changes,
+            file_change_message_index: m.file_change_message_index,
           };
           return (
             <div key={globalIdx} data-message-index={globalIdx} className="chat-msg-row w-full flex flex-col group/message">

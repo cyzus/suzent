@@ -2409,6 +2409,13 @@ def _attach_latest_file_changes(messages: list, snapshot: Optional[list[dict]]) 
     changed_snapshot = _changed_file_snapshot(snapshot or [])
     if not changed_snapshot:
         return messages
+    for message in messages:
+        if (
+            isinstance(message, dict)
+            and message.get("role") == "assistant"
+            and message.get("file_changes") == changed_snapshot
+        ):
+            message.pop("file_changes", None)
     target = next(
         (
             message

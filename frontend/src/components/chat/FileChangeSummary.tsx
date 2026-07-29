@@ -79,16 +79,16 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
   };
 
   return (
-    <div className="mt-3 overflow-hidden rounded-xl border border-neutral-200 bg-white text-neutral-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-neutral-200">
+    <div className="mt-3 overflow-hidden border-2 border-brutal-black bg-white text-brutal-black shadow-[3px_3px_0_0_#000] dark:border-white dark:bg-zinc-800 dark:text-white dark:shadow-[3px_3px_0_0_#fff]">
       <div className="flex items-center gap-3 px-3 py-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-neutral-600 dark:bg-zinc-800 dark:text-neutral-300">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center border-2 border-brutal-black bg-brutal-yellow text-brutal-black dark:border-white">
           <FileChangesIcon />
         </div>
         <div className="min-w-0">
-          <div className="text-sm font-semibold text-neutral-800 dark:text-neutral-100">
+          <div className="text-sm font-black text-brutal-black dark:text-white">
             {t('fileChanges.editedFiles', { count: files.length })}
           </div>
-          <div className="font-mono text-xs">
+          <div className="font-mono text-xs font-bold">
             <span className="text-emerald-600 dark:text-emerald-400">+{additions}</span>{' '}
             <span className="text-red-500 dark:text-red-400">-{deletions}</span>
           </div>
@@ -98,7 +98,7 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
             type="button"
             disabled={busy}
             onClick={undo}
-            className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm text-neutral-700 hover:bg-neutral-100 disabled:opacity-50 dark:text-neutral-200 dark:hover:bg-zinc-800"
+            className="inline-flex items-center gap-1 px-2 py-1.5 text-sm font-bold text-brutal-black hover:bg-neutral-100 disabled:opacity-50 dark:text-white dark:hover:bg-zinc-700"
           >
             {busy ? t('fileChanges.undoing') : t('fileChanges.undo')}
             <UndoIcon />
@@ -106,17 +106,17 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
           <button
             type="button"
             onClick={() => setReviewing(value => !value)}
-            className="rounded-xl border border-neutral-200 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50 dark:border-zinc-700 dark:text-neutral-200 dark:hover:bg-zinc-800"
+            className="border-2 border-brutal-black bg-white px-3 py-1 text-sm font-bold text-brutal-black shadow-[2px_2px_0_0_#000] hover:-translate-y-0.5 hover:shadow-[3px_3px_0_0_#000] dark:border-white dark:bg-zinc-800 dark:text-white dark:shadow-[2px_2px_0_0_#fff]"
           >
             {reviewing ? t('fileChanges.hideReview') : t('fileChanges.review')}
           </button>
         </div>
       </div>
 
-      <div className="border-t border-neutral-200 px-3 py-2 dark:border-zinc-700">
+      <div className="border-t-2 border-brutal-black px-3 py-2 dark:border-white">
         {visibleFiles.map(file => (
           <div key={file.path} className="flex min-w-0 items-center gap-3 py-1.5 text-xs">
-            <span className="min-w-0 flex-1 truncate font-mono text-neutral-500 dark:text-neutral-400">
+            <span className="min-w-0 flex-1 truncate font-mono font-bold text-neutral-600 dark:text-neutral-300">
               {file.display_path || file.path}
             </span>
             <span className="shrink-0 font-mono">
@@ -129,7 +129,7 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
           <button
             type="button"
             onClick={() => setExpanded(value => !value)}
-            className="inline-flex items-center gap-1 py-1.5 text-xs font-medium text-neutral-700 hover:text-neutral-950 dark:text-neutral-300 dark:hover:text-white"
+            className="inline-flex items-center gap-1 py-1.5 text-xs font-black text-brutal-black hover:underline dark:text-white"
           >
             {expanded
               ? t('fileChanges.showLess')
@@ -140,15 +140,15 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
       </div>
 
       {message && (
-        <div className="border-t border-neutral-200 px-3 py-2 text-xs dark:border-zinc-700">
+        <div className="border-t-2 border-brutal-black bg-brutal-yellow/20 px-3 py-2 text-xs font-bold dark:border-white">
           {message}
         </div>
       )}
       {reviewing && (
-        <div className="max-h-96 overflow-auto border-t border-neutral-200 dark:border-zinc-700">
+        <div className="max-h-96 overflow-auto border-t-2 border-brutal-black dark:border-white">
           {files.map(file => (
-            <details key={file.path} className="border-b border-neutral-100 last:border-b-0 dark:border-zinc-800">
-              <summary className="cursor-pointer px-3 py-2 font-mono text-xs font-medium">
+            <details key={file.path} className="border-b-2 border-brutal-black last:border-b-0 dark:border-white">
+              <summary className="cursor-pointer bg-neutral-50 px-3 py-2 font-mono text-xs font-bold dark:bg-zinc-900">
                 {file.display_path || file.path}
               </summary>
               <pre className="overflow-x-auto bg-neutral-50 px-3 py-2 text-[11px] leading-5 dark:bg-zinc-950">
