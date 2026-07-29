@@ -744,6 +744,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
                 chatId={fileChangeChatId}
                 messageIndex={message.file_change_message_index ?? messageIndex}
                 files={message.file_changes}
+                initiallyUndone={message.file_changes_undone === true}
               />
             )}
           </div>
@@ -1019,6 +1020,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
               chatId={fileChangeChatId}
               messageIndex={message.file_change_message_index ?? messageIndex}
               files={message.file_changes}
+              initiallyUndone={message.file_changes_undone === true}
             />
           )}
         </div>

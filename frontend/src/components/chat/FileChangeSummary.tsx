@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { undoChatFiles } from '../../lib/api';
 import { parseUnifiedDiff } from '../../lib/unifiedDiff';
 import type { MessageFileChange } from '../../types/api';
@@ -43,19 +43,23 @@ interface FileChangeSummaryProps {
   chatId: string;
   messageIndex: number;
   files: MessageFileChange[];
+  initiallyUndone?: boolean;
 }
 
 export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
   chatId,
   messageIndex,
   files,
+  initiallyUndone = false,
 }) => {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
   const [reviewing, setReviewing] = useState(false);
   const [selectedPath, setSelectedPath] = useState(files[0]?.path ?? '');
   const [busy, setBusy] = useState(false);
+  const [undoCompleted, setUndoCompleted] = useState(initiallyUndone);
   const [message, setMessage] = useState<string | null>(null);
+  const undoStartedRef = useRef(initiallyUndone);
   const additions = useMemo(
     () => files.reduce((total, file) => total + file.additions, 0),
     [files],
@@ -81,12 +85,20 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
   if (files.length === 0) return null;
 
   const undo = async (): Promise<void> => {
+    if (undoStartedRef.current) return;
+    undoStartedRef.current = true;
     setBusy(true);
     setMessage(null);
     try {
       const result = await undoChatFiles(chatId, messageIndex);
-      setMessage(t('fileChanges.undoSuccess', { count: result.changed_files.length }));
+      setUndoCompleted(true);
+      setMessage(
+        result.changed_files.length > 0
+          ? t('fileChanges.undoSuccess', { count: result.changed_files.length })
+          : t('fileChanges.undoNoChanges'),
+      );
     } catch (error) {
+      undoStartedRef.current = false;
       const conflicts = (error as Error & { conflicts?: string[] }).conflicts;
       setMessage(
         conflicts?.length
@@ -116,11 +128,15 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
         <div className="ml-auto flex shrink-0 items-center gap-2">
           <button
             type="button"
-            disabled={busy}
+            disabled={busy || undoCompleted}
             onClick={undo}
             className="inline-flex items-center gap-1 px-2 py-1.5 text-sm font-bold text-brutal-black hover:bg-neutral-100 disabled:opacity-50 dark:text-white dark:hover:bg-zinc-800"
           >
-            {busy ? t('fileChanges.undoing') : t('fileChanges.undo')}
+            {busy
+              ? t('fileChanges.undoing')
+              : undoCompleted
+                ? t('fileChanges.undone')
+                : t('fileChanges.undo')}
             <UndoIcon />
           </button>
           <button

@@ -81,7 +81,13 @@ def test_undo_route_uses_requested_message_snapshot(monkeypatch):
             {"role": "assistant", "content": "no file edits"},
         ]
     )
-    database = SimpleNamespace(get_chat=lambda _chat_id: chat)
+    updated = {}
+    database = SimpleNamespace(
+        get_chat=lambda _chat_id: chat,
+        update_chat=lambda chat_id, messages: updated.update(
+            {"chat_id": chat_id, "messages": messages}
+        ),
+    )
     monkeypatch.setattr("suzent.routes.chat_routes.get_database", lambda: database)
     monkeypatch.setattr(
         FileTracker, "snapshot_from_json", lambda data: {"snapshot": data}
@@ -111,4 +117,44 @@ def test_undo_route_uses_requested_message_snapshot(monkeypatch):
     assert applied == {
         "chat_id": "chat-1",
         "snapshot": {"snapshot": stored_snapshot},
+    }
+    assert updated["chat_id"] == "chat-1"
+    assert updated["messages"][1]["file_changes_undone"] is True
+
+
+def test_undo_route_is_idempotent_for_restored_message(monkeypatch):
+    chat = SimpleNamespace(
+        messages=[
+            {
+                "role": "assistant",
+                "content": "done",
+                "file_changes": [{"path": "historical.py"}],
+                "file_changes_undone": True,
+            }
+        ]
+    )
+    database = SimpleNamespace(get_chat=lambda _chat_id: chat)
+    monkeypatch.setattr("suzent.routes.chat_routes.get_database", lambda: database)
+
+    def fail_if_applied(_chat_id, _snapshot):
+        raise AssertionError("restored snapshots must not be applied again")
+
+    monkeypatch.setattr(FileTracker, "apply_snapshot", fail_if_applied)
+    app = Starlette(
+        routes=[
+            Route(
+                "/api/chats/{chat_id}/undo",
+                undo_chat_files,
+                methods=["POST"],
+            )
+        ]
+    )
+
+    response = TestClient(app).post("/api/chats/chat-1/undo", json={"message_index": 0})
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "success": True,
+        "changed_files": [],
+        "already_undone": True,
     }

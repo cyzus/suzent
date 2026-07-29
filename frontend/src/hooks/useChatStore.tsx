@@ -1237,6 +1237,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
                 }
                 if (Array.isArray(msg.file_changes) && msg.file_changes.length > 0) {
                   currentAssistant.file_changes = msg.file_changes;
+                  currentAssistant.file_changes_undone = msg.file_changes_undone === true;
                   currentAssistant.file_change_message_index = serverMessageIndex;
                 }
                 awaitingToolContinuation = false;

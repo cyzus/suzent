@@ -66,13 +66,17 @@ async def undo_chat_files(request: Request) -> JSONResponse:
         data = {}
 
     snapshot_data: list[dict] | None = None
+    chat = None
+    database = None
+    messages: list = []
     message_index = data.get("message_index")
     if message_index is not None:
         if isinstance(message_index, bool) or not isinstance(message_index, int):
             return JSONResponse(
                 {"error": "message_index must be an integer."}, status_code=400
             )
-        chat = get_database().get_chat(chat_id)
+        database = get_database()
+        chat = database.get_chat(chat_id)
         if chat is None:
             return JSONResponse({"error": "Chat not found"}, status_code=404)
         messages = list(chat.messages or [])
@@ -82,6 +86,10 @@ async def undo_chat_files(request: Request) -> JSONResponse:
             )
         message = messages[message_index]
         if isinstance(message, dict) and message.get("role") == "assistant":
+            if message.get("file_changes_undone") is True:
+                return JSONResponse(
+                    {"success": True, "changed_files": [], "already_undone": True}
+                )
             stored_snapshot = message.get("file_changes")
             if isinstance(stored_snapshot, list):
                 snapshot_data = stored_snapshot
@@ -108,7 +116,14 @@ async def undo_chat_files(request: Request) -> JSONResponse:
             },
             status_code=409,
         )
-    return JSONResponse({"success": True, "changed_files": changed})
+    if message_index is not None and database is not None:
+        message = dict(messages[message_index])
+        message["file_changes_undone"] = True
+        messages[message_index] = message
+        database.update_chat(chat_id, messages=messages)
+    return JSONResponse(
+        {"success": True, "changed_files": changed, "already_undone": False}
+    )
 
 
 def _display_file_metadata(files_list: list) -> list[dict]:
