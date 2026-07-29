@@ -127,10 +127,10 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
             type="button"
             aria-expanded={reviewing}
             onClick={() => setReviewing(value => !value)}
-            className={`inline-flex items-center gap-1.5 border-2 border-brutal-black px-2.5 py-1 text-sm font-bold text-brutal-black shadow-[2px_2px_0_0_#000] transition-colors dark:border-zinc-300 dark:text-white dark:shadow-none ${
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-black transition-colors ${
               reviewing
-                ? 'bg-brutal-yellow/30 dark:bg-brutal-yellow/10'
-                : 'bg-white hover:bg-neutral-100 dark:bg-zinc-900 dark:hover:bg-zinc-800'
+                ? 'bg-brutal-black text-white dark:bg-white dark:text-brutal-black'
+                : 'text-brutal-black hover:bg-brutal-yellow/40 dark:text-white dark:hover:bg-zinc-800'
             }`}
           >
             {t('fileChanges.diff')}
