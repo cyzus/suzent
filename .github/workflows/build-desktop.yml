@@ -117,7 +117,7 @@ jobs:
             binary: src-tauri/target/release/suzent
             installer_asset: suzent-installer-macos-aarch64
             installer_binary: apps/suzent-installer/target/release/suzent-installer
-          - os: macos-13
+          - os: macos-15-intel
             asset: suzent-macos-x86_64
             binary: src-tauri/target/release/suzent
             installer_asset: suzent-installer-macos-x86_64
