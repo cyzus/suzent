@@ -370,6 +370,7 @@ const MessageList: React.FC<{
             content: groupedBlocksToAssistantContent(group.mergedBlocks),
             timestamp: m.timestamp,
             model: m.model,
+            file_changes: m.file_changes,
           };
           return (
             <div key={globalIdx} data-message-index={globalIdx} className="chat-msg-row w-full flex flex-col group/message">
@@ -389,6 +390,7 @@ const MessageList: React.FC<{
                   onOpenSubAgentSidebar={onOpenSubAgentSidebar}
                   onStopSubAgent={onStopSubAgent}
                   onForceWebContext={onForceWebContext}
+                  fileChangeChatId={m.file_changes?.length ? chatId : undefined}
                   chatCitationSources={chatCitationSources}
                   fallbackModel={fallbackModel}
                 />
@@ -459,9 +461,7 @@ const MessageList: React.FC<{
                   onStopSubAgent={onStopSubAgent}
                   onForceWebContext={onForceWebContext}
                   onRetry={idx === lastAssistantIdx && !streamingForCurrentChat ? onRetry : undefined}
-                  fileChangeChatId={
-                    idx === lastAssistantIdx && !streamingForCurrentChat ? chatId : undefined
-                  }
+                  fileChangeChatId={m.file_changes?.length ? chatId : undefined}
                   chatCitationSources={chatCitationSources}
                   fallbackModel={fallbackModel}
                 />

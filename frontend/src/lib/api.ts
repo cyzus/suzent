@@ -1137,10 +1137,17 @@ export async function fetchChatFileChanges(chatId: string): Promise<FileChangeSu
   return response.json();
 }
 
-export async function undoChatFiles(chatId: string): Promise<{ changed_files: string[] }> {
+export async function undoChatFiles(
+  chatId: string,
+  messageIndex: number,
+): Promise<{ changed_files: string[] }> {
   const response = await fetch(
     `${getApiBase()}/api/chats/${encodeURIComponent(chatId)}/undo`,
-    { method: 'POST' },
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message_index: messageIndex }),
+    },
   );
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {

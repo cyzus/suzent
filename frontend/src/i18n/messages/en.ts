@@ -649,6 +649,8 @@ export const en = {
     editedFiles: 'Edited {count} file(s)',
     review: 'Review',
     hideReview: 'Hide diff',
+    showMore: 'Show {count} more files',
+    showLess: 'Show fewer files',
     undo: 'Undo',
     undoing: 'Undoing…',
     undoSuccess: 'Restored {count} file(s).',

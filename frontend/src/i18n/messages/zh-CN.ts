@@ -575,6 +575,8 @@ export const zhCN = {
     editedFiles: '已编辑 {count} 个文件',
     review: '审核',
     hideReview: '收起差异',
+    showMore: '再显示 {count} 个文件',
+    showLess: '收起文件',
     undo: '撤销',
     undoing: '撤销中…',
     undoSuccess: '已恢复 {count} 个文件。',

@@ -37,7 +37,7 @@ async def get_chat_file_changes(request: Request) -> JSONResponse:
     snapshot = list(getattr(checkpoint, "file_snapshot", []) or [])
     files = [
         {
-            "path": entry["path"],
+            "path": entry.get("display_path") or entry["path"],
             "diff": entry.get("diff", ""),
             "additions": int(entry.get("additions", 0)),
             "deletions": int(entry.get("deletions", 0)),
@@ -55,18 +55,49 @@ async def get_chat_file_changes(request: Request) -> JSONResponse:
 
 
 async def undo_chat_files(request: Request) -> JSONResponse:
-    """POST /api/chats/{chat_id}/undo."""
+    """POST /api/chats/{chat_id}/undo for a persisted assistant-message snapshot."""
     from suzent.core.file_tracker import FileRestoreConflictError, FileTracker
     from suzent.core.retry import load_retry_checkpoint
 
     chat_id = request.path_params["chat_id"]
-    checkpoint = load_retry_checkpoint(chat_id)
-    if checkpoint is None or not getattr(checkpoint, "file_snapshot", None):
+    try:
+        data = await request.json()
+    except Exception:
+        data = {}
+
+    snapshot_data: list[dict] | None = None
+    message_index = data.get("message_index")
+    if message_index is not None:
+        if isinstance(message_index, bool) or not isinstance(message_index, int):
+            return JSONResponse(
+                {"error": "message_index must be an integer."}, status_code=400
+            )
+        chat = get_database().get_chat(chat_id)
+        if chat is None:
+            return JSONResponse({"error": "Chat not found"}, status_code=404)
+        messages = list(chat.messages or [])
+        if message_index < 0 or message_index >= len(messages):
+            return JSONResponse(
+                {"error": "Message index is out of range."}, status_code=400
+            )
+        message = messages[message_index]
+        if isinstance(message, dict) and message.get("role") == "assistant":
+            stored_snapshot = message.get("file_changes")
+            if isinstance(stored_snapshot, list):
+                snapshot_data = stored_snapshot
+    else:
+        # Backward compatibility for clients that only support latest-turn undo.
+        checkpoint = load_retry_checkpoint(chat_id)
+        stored_snapshot = getattr(checkpoint, "file_snapshot", None)
+        if isinstance(stored_snapshot, list):
+            snapshot_data = stored_snapshot
+
+    if not snapshot_data:
         return JSONResponse(
             {"error": "No file changes are available to undo."}, status_code=404
         )
 
-    snapshot = FileTracker.snapshot_from_json(checkpoint.file_snapshot)
+    snapshot = FileTracker.snapshot_from_json(snapshot_data)
     try:
         changed = FileTracker.apply_snapshot(chat_id, snapshot)
     except FileRestoreConflictError as exc:
@@ -661,10 +692,19 @@ async def get_chat(request: Request) -> JSONResponse:
             mode="json", by_alias=True, exclude={"agent_state"}
         )
         if isinstance(response_chat.get("messages"), list):
-            from suzent.core.chat_processor import _preserve_citation_sources
+            from suzent.core.chat_processor import (
+                _attach_latest_file_changes,
+                _preserve_citation_sources,
+            )
+            from suzent.core.retry import load_retry_checkpoint
 
             response_chat["messages"] = _preserve_citation_sources(
                 response_chat["messages"], []
+            )
+            checkpoint = load_retry_checkpoint(chat_id)
+            response_chat["messages"] = _attach_latest_file_changes(
+                response_chat["messages"],
+                list(getattr(checkpoint, "file_snapshot", []) or []),
             )
         context_usage = dict(chat.context_usage or {})
 

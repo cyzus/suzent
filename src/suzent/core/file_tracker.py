@@ -7,7 +7,7 @@ Mirrors Claude Code's fileHistory.ts design:
 - apply_snapshot(snap) — restores files to a recorded snapshot state
 
 Backup layout:
-    sandbox/file-history/{chat_id}/{sha256(abs_path)[:16]}@v{n}
+    sandbox/file-history/{chat_id}/{sha256(abs_path)[:16]}@{snapshot_id}-v{n}
 
 `backupFileName = None` means the file did not exist at that version.
 """
@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import shutil
+import uuid
 from difflib import unified_diff
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -61,9 +62,21 @@ class FileRestoreConflictError(RuntimeError):
 # ---------------------------------------------------------------------------
 
 
-def _backup_name(abs_path: str, version: int) -> str:
+def _backup_name(abs_path: str, version: int, snapshot_id: str) -> str:
     h = hashlib.sha256(abs_path.encode()).hexdigest()[:16]
-    return f"{h}@v{version}"
+    return f"{h}@{snapshot_id}-v{version}"
+
+
+def _display_path(abs_path: str) -> str:
+    path = Path(abs_path)
+    try:
+        return path.resolve().relative_to(Path.cwd().resolve()).as_posix()
+    except (OSError, ValueError):
+        normalized = abs_path.replace("\\", "/")
+        for marker in ("/workspace/", "/workspaces/"):
+            if marker in normalized:
+                return normalized.split(marker, 1)[1]
+        return normalized
 
 
 def _backup_dir(chat_id: str) -> Path:
@@ -175,6 +188,7 @@ class FileTracker:
 
     def __init__(self, chat_id: str) -> None:
         self._chat_id = chat_id
+        self._snapshot_id = uuid.uuid4().hex[:12]
         # abs_path → latest FileBackup recorded in the *current* pending snapshot
         self._pending: Dict[str, FileBackup] = {}
 
@@ -197,7 +211,7 @@ class FileTracker:
         bname: Optional[str] = None
 
         if live.exists():
-            bname = _backup_name(abs_path, version)
+            bname = _backup_name(abs_path, version, self._snapshot_id)
             try:
                 _copy_file(live, _backup_path(self._chat_id, bname))
                 # Preserve permissions
@@ -235,7 +249,9 @@ class FileTracker:
                         if backup.backup_name
                         else None
                     )
-                    diff, additions, deletions = _diff_metadata(before, None, abs_path)
+                    diff, additions, deletions = _diff_metadata(
+                        before, None, _display_path(abs_path)
+                    )
                     snapshot[abs_path] = FileBackup(
                         backup_name=backup.backup_name,
                         version=backup.version,
@@ -264,7 +280,9 @@ class FileTracker:
                     if backup.backup_name
                     else None
                 )
-                diff, additions, deletions = _diff_metadata(before, live, abs_path)
+                diff, additions, deletions = _diff_metadata(
+                    before, live, _display_path(abs_path)
+                )
                 snapshot[abs_path] = FileBackup(
                     backup_name=backup.backup_name,
                     version=backup.version,
@@ -384,6 +402,7 @@ class FileTracker:
         return [
             {
                 "path": path,
+                "display_path": _display_path(path),
                 "backup_name": b.backup_name,
                 "version": b.version,
                 "backup_time": b.backup_time.isoformat(),

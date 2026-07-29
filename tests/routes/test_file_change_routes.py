@@ -66,3 +66,49 @@ def test_undo_route_reports_conflicting_manual_changes(monkeypatch):
 
     assert response.status_code == 409
     assert response.json()["conflicts"] == ["example.py"]
+
+
+def test_undo_route_uses_requested_message_snapshot(monkeypatch):
+    stored_snapshot = [{"path": "historical.py", "backup_name": "backup-v1"}]
+    chat = SimpleNamespace(
+        messages=[
+            {"role": "user", "content": "change it"},
+            {
+                "role": "assistant",
+                "content": "done",
+                "file_changes": stored_snapshot,
+            },
+            {"role": "assistant", "content": "no file edits"},
+        ]
+    )
+    database = SimpleNamespace(get_chat=lambda _chat_id: chat)
+    monkeypatch.setattr("suzent.routes.chat_routes.get_database", lambda: database)
+    monkeypatch.setattr(
+        FileTracker, "snapshot_from_json", lambda data: {"snapshot": data}
+    )
+    applied = {}
+
+    def apply_snapshot(chat_id, snapshot):
+        applied["chat_id"] = chat_id
+        applied["snapshot"] = snapshot
+        return ["historical.py"]
+
+    monkeypatch.setattr(FileTracker, "apply_snapshot", apply_snapshot)
+    app = Starlette(
+        routes=[
+            Route(
+                "/api/chats/{chat_id}/undo",
+                undo_chat_files,
+                methods=["POST"],
+            )
+        ]
+    )
+
+    response = TestClient(app).post("/api/chats/chat-1/undo", json={"message_index": 1})
+
+    assert response.status_code == 200
+    assert response.json()["changed_files"] == ["historical.py"]
+    assert applied == {
+        "chat_id": "chat-1",
+        "snapshot": {"snapshot": stored_snapshot},
+    }

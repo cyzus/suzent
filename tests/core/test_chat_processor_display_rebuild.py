@@ -14,8 +14,10 @@ from suzent.core.chat_processor import (
     _agent_history_is_compacted,
     _append_command_messages,
     _append_inline_a2ui_surfaces,
+    _attach_latest_file_changes,
     _build_file_mention_context,
     _merge_rebuilt_after_compaction,
+    _preserve_file_change_metadata,
     _preserve_permission_metadata,
     _preserve_citation_sources,
     _rebuild_display_messages,
@@ -113,6 +115,30 @@ def test_preserve_permission_metadata_merges_streamed_decision_and_resolution():
     tool_part = result[0]["parts"][0]
     assert tool_part["permissionDecision"] == decision
     assert tool_part["permissionResolution"] == resolution
+
+
+def test_file_change_metadata_persists_on_each_assistant_turn():
+    first_snapshot = [{"path": "first.py", "additions": 1, "deletions": 0}]
+    second_snapshot = [{"path": "second.py", "additions": 2, "deletions": 1}]
+    existing = [
+        {"role": "user", "content": "q1"},
+        {"role": "assistant", "content": "a1", "file_changes": first_snapshot},
+        {"role": "user", "content": "q2"},
+        {"role": "assistant", "content": "a2"},
+    ]
+    rebuilt = [
+        {"role": "user", "content": "q1"},
+        {"role": "assistant", "content": "a1"},
+        {"role": "user", "content": "q2"},
+        {"role": "assistant", "content": "a2"},
+    ]
+
+    preserved = _preserve_file_change_metadata(rebuilt, existing)
+    result = _attach_latest_file_changes(preserved, second_snapshot)
+
+    assistants = [message for message in result if message["role"] == "assistant"]
+    assert assistants[0]["file_changes"] == first_snapshot
+    assert assistants[1]["file_changes"] == second_snapshot
 
 
 def test_rebuild_stamps_per_response_model_when_switched_mid_chat():

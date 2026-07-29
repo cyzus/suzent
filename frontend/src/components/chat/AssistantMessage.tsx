@@ -74,7 +74,7 @@ interface AssistantMessageProps {
   chatCitationSources?: CitationSourcesMap;
   /** Chat config model fallback for older messages without per-message metadata. */
   fallbackModel?: string;
-  /** Latest-turn file changes available for review and undo. */
+  /** Chat containing this message's persisted file snapshot. */
   fileChangeChatId?: string;
 }
 
@@ -739,7 +739,13 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
                 </div>
               )}
             </div>
-            {fileChangeChatId && <FileChangeSummary chatId={fileChangeChatId} />}
+            {fileChangeChatId && message.file_changes && (
+              <FileChangeSummary
+                chatId={fileChangeChatId}
+                messageIndex={messageIndex}
+                files={message.file_changes}
+              />
+            )}
           </div>
         </div>
       </div>
@@ -1008,7 +1014,13 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
               </div>
             )}
           </div>
-          {fileChangeChatId && <FileChangeSummary chatId={fileChangeChatId} />}
+          {fileChangeChatId && message.file_changes && (
+            <FileChangeSummary
+              chatId={fileChangeChatId}
+              messageIndex={messageIndex}
+              files={message.file_changes}
+            />
+          )}
         </div>
       </div>
     </div>

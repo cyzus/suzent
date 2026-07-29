@@ -915,6 +915,7 @@ class ChatProcessor:
         # 8. Stream Response
         full_response = ""
         stream_failed = False
+        file_snapshot_json: list[dict] = []
 
         try:
             async for chunk in stream_agent_responses(
@@ -953,23 +954,49 @@ class ChatProcessor:
                     if snap:
                         from suzent.core.file_tracker import FileTracker as _FT
                         from suzent.database import (
+                            ChatModel,
                             RetryCheckpointModel,
                             get_database as _get_db,
                         )
                         from sqlmodel import Session
                         from sqlalchemy.orm.attributes import flag_modified
 
-                        snap_json = _FT.snapshot_to_json(snap)
+                        file_snapshot_json = _changed_file_snapshot(
+                            _FT.snapshot_to_json(snap)
+                        )
 
                         def _commit_file_snapshot():
                             _db = _get_db()
                             with Session(_db.engine) as _sess:
                                 _ckpt = _sess.get(RetryCheckpointModel, chat_id)
                                 if _ckpt:
-                                    _ckpt.file_snapshot = snap_json
+                                    _ckpt.file_snapshot = file_snapshot_json
                                     _ckpt.has_file_snapshot = True
                                     flag_modified(_ckpt, "file_snapshot")
-                                    _sess.commit()
+                                _chat = _sess.get(ChatModel, chat_id)
+                                if _chat and file_snapshot_json:
+                                    display_messages = list(_chat.messages or [])
+                                    assistant_index = next(
+                                        (
+                                            index
+                                            for index in range(
+                                                len(display_messages) - 1, -1, -1
+                                            )
+                                            if isinstance(display_messages[index], dict)
+                                            and display_messages[index].get("role")
+                                            == "assistant"
+                                        ),
+                                        None,
+                                    )
+                                    if assistant_index is not None:
+                                        assistant = dict(
+                                            display_messages[assistant_index]
+                                        )
+                                        assistant["file_changes"] = file_snapshot_json
+                                        display_messages[assistant_index] = assistant
+                                        _chat.messages = display_messages
+                                        flag_modified(_chat, "messages")
+                                _sess.commit()
 
                         await asyncio.to_thread(_commit_file_snapshot)
             except Exception as _ft_fin_err:
@@ -1037,6 +1064,7 @@ class ChatProcessor:
                     deps=deps,
                     agent=agent,
                     postprocess_job_id=postprocess_job_id,
+                    file_snapshot=file_snapshot_json,
                 )
 
             task_id = f"post_process_{chat_id}_{postprocess_job_id}"
@@ -1108,6 +1136,7 @@ class ChatProcessor:
         deps: Any,
         agent: Any,
         postprocess_job_id: str,
+        file_snapshot: list[dict],
     ) -> None:
         """Background post-processing for a completed turn.
 
@@ -1252,6 +1281,7 @@ class ChatProcessor:
                     expected_revision=snapshot_revision,
                     postprocess_job_id=postprocess_job_id,
                     inline_a2ui_surfaces=getattr(deps, "inline_a2ui_surfaces", None),
+                    file_snapshot=file_snapshot,
                 )
                 db.update_job_step_status(
                     job_id, PostProcessStep.PERSIST, StepStatus.SUCCESS
@@ -1678,6 +1708,7 @@ class ChatProcessor:
         expected_revision: Optional[int] = None,
         postprocess_job_id: Optional[str] = None,
         inline_a2ui_surfaces: Optional[dict] = None,
+        file_snapshot: Optional[list[dict]] = None,
     ) -> None:
         """Persist conversation state to database."""
         try:
@@ -1733,7 +1764,11 @@ class ChatProcessor:
                         chat_messages, rebuilt
                     )
                 else:
+                    rebuilt = _preserve_file_change_metadata(rebuilt, chat_messages)
                     target_messages = rebuilt or chat_messages
+                target_messages = _attach_latest_file_changes(
+                    target_messages, file_snapshot
+                )
 
             if expected_revision is not None:
                 finalized = db.finalize_state_if_revision_matches(
@@ -2336,6 +2371,55 @@ def _preserve_permission_metadata(rebuilt: list, existing: list | None) -> list:
             if metadata:
                 part.update(metadata)
     return rebuilt
+
+
+def _preserve_file_change_metadata(rebuilt: list, existing: list | None) -> list:
+    """Carry immutable per-turn file snapshots into rebuilt assistant rows."""
+    existing_snapshots = [
+        message.get("file_changes")
+        for message in existing or []
+        if isinstance(message, dict) and message.get("role") == "assistant"
+    ]
+    assistant_messages = [
+        message
+        for message in rebuilt
+        if isinstance(message, dict) and message.get("role") == "assistant"
+    ]
+    for message, snapshot in zip(assistant_messages, existing_snapshots):
+        if isinstance(snapshot, list) and snapshot:
+            message["file_changes"] = snapshot
+    return rebuilt
+
+
+def _changed_file_snapshot(snapshot: list[dict]) -> list[dict]:
+    """Drop tracked-but-unchanged entries while retaining binary changes."""
+    return [
+        entry
+        for entry in snapshot
+        if entry.get("diff")
+        or entry.get("additions")
+        or entry.get("deletions")
+        or entry.get("after_hash") is not None
+        or entry.get("after_exists") is False
+    ]
+
+
+def _attach_latest_file_changes(messages: list, snapshot: Optional[list[dict]]) -> list:
+    """Attach this turn's snapshot to its final assistant display row."""
+    changed_snapshot = _changed_file_snapshot(snapshot or [])
+    if not changed_snapshot:
+        return messages
+    target = next(
+        (
+            message
+            for message in reversed(messages)
+            if isinstance(message, dict) and message.get("role") == "assistant"
+        ),
+        None,
+    )
+    if target is not None:
+        target["file_changes"] = changed_snapshot
+    return messages
 
 
 _SOURCE_TURN_RE = re.compile(r"^t(\d+)_src_\d+$")

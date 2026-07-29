@@ -74,3 +74,24 @@ def test_restore_rejects_changed_new_file(tmp_path, monkeypatch):
         FileTracker.apply_snapshot("chat-1", snapshot)
 
     assert tracked.read_text(encoding="utf-8") == "manual\n"
+
+
+def test_each_turn_uses_an_immutable_backup_name(tmp_path, monkeypatch):
+    tracked = tmp_path / "example.py"
+    tracked.write_text("before\n", encoding="utf-8")
+
+    first_tracker = _tracker(tmp_path, monkeypatch)
+    first_tracker.track_edit(str(tracked))
+    tracked.write_text("first turn\n", encoding="utf-8")
+    first_snapshot = first_tracker.make_snapshot()
+
+    second_tracker = _tracker(tmp_path, monkeypatch)
+    second_tracker.track_edit(str(tracked))
+    tracked.write_text("second turn\n", encoding="utf-8")
+    second_snapshot = second_tracker.make_snapshot()
+
+    first_backup = first_snapshot[str(tracked)].backup_name
+    second_backup = second_snapshot[str(tracked)].backup_name
+    assert first_backup != second_backup
+    assert first_backup is not None
+    assert second_backup is not None
