@@ -1,7 +1,9 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { undoChatFiles } from '../../lib/api';
+import { parseUnifiedDiff } from '../../lib/unifiedDiff';
 import type { MessageFileChange } from '../../types/api';
 import { useI18n } from '../../i18n';
+import { FileContentDiffViewer } from './FileDiffViewer';
 
 const DEFAULT_VISIBLE_FILES = 3;
 
@@ -31,6 +33,12 @@ const ChevronIcon: React.FC<{ expanded: boolean }> = ({ expanded }) => (
   </svg>
 );
 
+const getDisplayPath = (file: MessageFileChange): string => {
+  const path = (file.display_path || file.path).replace(/\\/g, '/');
+  const sandboxMatch = path.match(/\/sandbox\/projects\/[^/]+\/(.+)$/);
+  return sandboxMatch?.[1] || path;
+};
+
 interface FileChangeSummaryProps {
   chatId: string;
   messageIndex: number;
@@ -45,6 +53,7 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
   const [reviewing, setReviewing] = useState(false);
+  const [selectedPath, setSelectedPath] = useState(files[0]?.path ?? '');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const additions = useMemo(
@@ -57,6 +66,17 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
   );
   const visibleFiles = expanded ? files : files.slice(0, DEFAULT_VISIBLE_FILES);
   const hiddenCount = Math.max(0, files.length - DEFAULT_VISIBLE_FILES);
+  const selectedFile = files.find(file => file.path === selectedPath) ?? files[0];
+  const selectedDiff = useMemo(
+    () => parseUnifiedDiff(selectedFile?.diff ?? ''),
+    [selectedFile],
+  );
+
+  useEffect(() => {
+    if (!files.some(file => file.path === selectedPath)) {
+      setSelectedPath(files[0]?.path ?? '');
+    }
+  }, [files, selectedPath]);
 
   if (files.length === 0) return null;
 
@@ -79,9 +99,9 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
   };
 
   return (
-    <div className="mt-3 overflow-hidden border-2 border-brutal-black bg-white text-brutal-black shadow-[3px_3px_0_0_#000] dark:border-white dark:bg-zinc-800 dark:text-white dark:shadow-[3px_3px_0_0_#fff]">
-      <div className="flex items-center gap-3 px-3 py-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center border-2 border-brutal-black bg-brutal-yellow text-brutal-black dark:border-white">
+    <div className="mt-3 overflow-hidden border-2 border-brutal-black bg-white text-brutal-black shadow-[3px_3px_0_0_#000] dark:border-zinc-500 dark:bg-zinc-900 dark:text-white dark:shadow-none">
+      <div className="flex items-center gap-3 px-3 py-2.5">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center border-2 border-brutal-black bg-brutal-yellow text-brutal-black dark:border-zinc-300">
           <FileChangesIcon />
         </div>
         <div className="min-w-0">
@@ -98,38 +118,56 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
             type="button"
             disabled={busy}
             onClick={undo}
-            className="inline-flex items-center gap-1 px-2 py-1.5 text-sm font-bold text-brutal-black hover:bg-neutral-100 disabled:opacity-50 dark:text-white dark:hover:bg-zinc-700"
+            className="inline-flex items-center gap-1 px-2 py-1.5 text-sm font-bold text-brutal-black hover:bg-neutral-100 disabled:opacity-50 dark:text-white dark:hover:bg-zinc-800"
           >
             {busy ? t('fileChanges.undoing') : t('fileChanges.undo')}
             <UndoIcon />
           </button>
           <button
             type="button"
+            aria-expanded={reviewing}
             onClick={() => setReviewing(value => !value)}
-            className="border-2 border-brutal-black bg-white px-3 py-1 text-sm font-bold text-brutal-black shadow-[2px_2px_0_0_#000] hover:-translate-y-0.5 hover:shadow-[3px_3px_0_0_#000] dark:border-white dark:bg-zinc-800 dark:text-white dark:shadow-[2px_2px_0_0_#fff]"
+            className={`inline-flex items-center gap-1.5 border-2 border-brutal-black px-2.5 py-1 text-sm font-bold text-brutal-black shadow-[2px_2px_0_0_#000] transition-colors dark:border-zinc-300 dark:text-white dark:shadow-none ${
+              reviewing
+                ? 'bg-brutal-yellow/30 dark:bg-brutal-yellow/10'
+                : 'bg-white hover:bg-neutral-100 dark:bg-zinc-900 dark:hover:bg-zinc-800'
+            }`}
           >
-            {reviewing ? t('fileChanges.hideReview') : t('fileChanges.review')}
+            {t('fileChanges.diff')}
+            <ChevronIcon expanded={reviewing} />
           </button>
         </div>
       </div>
 
-      <div className="border-t-2 border-brutal-black px-3 py-2 dark:border-white">
+      <div className="border-t-2 border-brutal-black py-1 dark:border-zinc-500">
         {visibleFiles.map(file => (
-          <div key={file.path} className="flex min-w-0 items-center gap-3 py-1.5 text-xs">
+          <button
+            key={file.path}
+            type="button"
+            onClick={() => {
+              setSelectedPath(file.path);
+              setReviewing(true);
+            }}
+            className={`flex w-full min-w-0 items-center gap-3 border-l-4 px-3 py-1.5 text-left text-xs transition-colors ${
+              reviewing && selectedFile?.path === file.path
+                ? 'border-brutal-black bg-brutal-yellow/25 dark:border-brutal-yellow dark:bg-brutal-yellow/10'
+                : 'border-transparent hover:bg-neutral-100 dark:hover:bg-zinc-800'
+            }`}
+          >
             <span className="min-w-0 flex-1 truncate font-mono font-bold text-neutral-600 dark:text-neutral-300">
-              {file.display_path || file.path}
+              {getDisplayPath(file)}
             </span>
             <span className="shrink-0 font-mono">
               <span className="text-emerald-600 dark:text-emerald-400">+{file.additions}</span>{' '}
               <span className="text-red-500 dark:text-red-400">-{file.deletions}</span>
             </span>
-          </div>
+          </button>
         ))}
         {hiddenCount > 0 && (
           <button
             type="button"
             onClick={() => setExpanded(value => !value)}
-            className="inline-flex items-center gap-1 py-1.5 text-xs font-black text-brutal-black hover:underline dark:text-white"
+            className="ml-3 inline-flex items-center gap-1 py-1.5 text-xs font-black text-brutal-black hover:underline dark:text-white"
           >
             {expanded
               ? t('fileChanges.showLess')
@@ -140,22 +178,27 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
       </div>
 
       {message && (
-        <div className="border-t-2 border-brutal-black bg-brutal-yellow/20 px-3 py-2 text-xs font-bold dark:border-white">
+        <div className="border-t-2 border-brutal-black bg-brutal-yellow/20 px-3 py-2 text-xs font-bold dark:border-zinc-500">
           {message}
         </div>
       )}
-      {reviewing && (
-        <div className="max-h-96 overflow-auto border-t-2 border-brutal-black dark:border-white">
-          {files.map(file => (
-            <details key={file.path} className="border-b-2 border-brutal-black last:border-b-0 dark:border-white">
-              <summary className="cursor-pointer bg-neutral-50 px-3 py-2 font-mono text-xs font-bold dark:bg-zinc-900">
-                {file.display_path || file.path}
-              </summary>
-              <pre className="overflow-x-auto bg-neutral-50 px-3 py-2 text-[11px] leading-5 dark:bg-zinc-950">
-                {file.diff || t('fileChanges.binaryDiff')}
-              </pre>
-            </details>
-          ))}
+      {reviewing && selectedFile && (
+        <div className="border-t-2 border-brutal-black dark:border-zinc-500">
+          {selectedDiff ? (
+            <FileContentDiffViewer
+              filePath={getDisplayPath(selectedFile)}
+              original={selectedDiff.original}
+              modified={selectedDiff.modified}
+              addedLines={selectedFile.additions}
+              removedLines={selectedFile.deletions}
+              embedded
+              showFullPath
+            />
+          ) : (
+            <div className="bg-neutral-50 px-3 py-5 text-center text-xs font-bold text-neutral-500 dark:bg-zinc-950 dark:text-neutral-400">
+              {t('fileChanges.binaryDiff')}
+            </div>
+          )}
         </div>
       )}
     </div>
