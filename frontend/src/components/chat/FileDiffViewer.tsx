@@ -255,7 +255,12 @@ export const FileContentDiffViewer: React.FC<FileContentDiffViewerProps> = ({
         ? 'border-0 shadow-none'
         : 'mt-2 border-2 border-brutal-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:border-zinc-600 dark:shadow-none',
     ].join(' ')}>
-      <div className="flex items-center justify-between gap-3 border-b-2 border-brutal-black bg-neutral-100 px-3 py-1.5 font-mono text-xs font-bold tracking-wider text-brutal-black dark:border-zinc-600 dark:bg-zinc-800 dark:text-neutral-300">
+      <div className={[
+        'flex items-center justify-between gap-3 px-3 py-1.5 font-mono text-xs font-bold tracking-wider text-brutal-black dark:text-neutral-300',
+        embedded
+          ? 'border-b border-neutral-300 bg-white/50 dark:border-zinc-700 dark:bg-white/[0.025]'
+          : 'border-b-2 border-brutal-black bg-neutral-100 dark:border-zinc-600 dark:bg-zinc-800',
+      ].join(' ')}>
         <span className="flex min-w-0 items-center gap-3">
           <span className={`${showFullPath ? '' : 'uppercase'} truncate`} title={filePath}>
             {showFullPath ? filePath : namePart}

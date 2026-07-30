@@ -111,9 +111,9 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
   };
 
   return (
-    <div className="mt-3 overflow-hidden border-2 border-brutal-black bg-white text-brutal-black dark:border-zinc-500 dark:bg-zinc-900 dark:text-white">
-      <div className="flex items-center gap-3 px-3 py-2.5">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center border-2 border-brutal-black bg-brutal-yellow text-brutal-black dark:border-zinc-300">
+    <div className="mt-3 overflow-hidden border-l-4 border-brutal-black bg-neutral-100/70 text-brutal-black dark:border-zinc-600 dark:bg-white/[0.035] dark:text-white">
+      <div className="flex items-center gap-2.5 border-b border-neutral-300 px-3 py-2 dark:border-zinc-700">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center bg-brutal-yellow/45 text-brutal-black dark:bg-white/10 dark:text-neutral-200">
           <FileChangesIcon />
         </div>
         <div className="min-w-0">
@@ -130,7 +130,7 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
             type="button"
             disabled={busy || undoCompleted}
             onClick={undo}
-            className="inline-flex items-center gap-1 px-2 py-1.5 text-sm font-bold text-brutal-black hover:bg-neutral-100 disabled:opacity-50 dark:text-white dark:hover:bg-zinc-800"
+            className="inline-flex items-center gap-1 px-2 py-1.5 text-sm font-bold text-brutal-black hover:bg-black/[0.05] disabled:opacity-40 dark:text-white dark:hover:bg-white/[0.07]"
           >
             {busy
               ? t('fileChanges.undoing')
@@ -145,8 +145,8 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
             onClick={() => setReviewing(value => !value)}
             className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-black transition-colors ${
               reviewing
-                ? 'bg-brutal-black text-white dark:bg-white dark:text-brutal-black'
-                : 'text-brutal-black hover:bg-brutal-yellow/40 dark:text-white dark:hover:bg-zinc-800'
+                ? 'bg-black/[0.08] text-brutal-black dark:bg-white/10 dark:text-white'
+                : 'text-brutal-black hover:bg-black/[0.05] dark:text-white dark:hover:bg-white/[0.07]'
             }`}
           >
             {t('fileChanges.diff')}
@@ -155,7 +155,7 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
         </div>
       </div>
 
-      <div className="border-t-2 border-brutal-black py-1 dark:border-zinc-500">
+      <div className="py-1">
         {visibleFiles.map(file => (
           <button
             key={file.path}
@@ -164,10 +164,10 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
               setSelectedPath(file.path);
               setReviewing(true);
             }}
-            className={`flex w-full min-w-0 items-center gap-3 border-l-4 px-3 py-1.5 text-left text-xs transition-colors ${
+            className={`flex w-full min-w-0 items-center gap-3 px-3 py-1.5 text-left text-xs transition-colors ${
               reviewing && selectedFile?.path === file.path
-                ? 'border-brutal-black bg-brutal-yellow/25 dark:border-brutal-yellow dark:bg-brutal-yellow/10'
-                : 'border-transparent hover:bg-neutral-100 dark:hover:bg-zinc-800'
+                ? 'bg-black/[0.055] dark:bg-white/[0.07]'
+                : 'hover:bg-black/[0.035] dark:hover:bg-white/[0.05]'
             }`}
           >
             <span className="min-w-0 flex-1 truncate font-mono font-bold text-neutral-600 dark:text-neutral-300">
@@ -194,12 +194,12 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
       </div>
 
       {message && (
-        <div className="border-t-2 border-brutal-black bg-brutal-yellow/20 px-3 py-2 text-xs font-bold dark:border-zinc-500">
+        <div className="border-t border-neutral-300 bg-black/[0.025] px-3 py-2 text-xs font-bold dark:border-zinc-700 dark:bg-white/[0.035]">
           {message}
         </div>
       )}
       {reviewing && selectedFile && (
-        <div className="border-t-2 border-brutal-black dark:border-zinc-500">
+        <div className="border-t border-neutral-300 dark:border-zinc-700">
           {selectedDiff ? (
             <FileContentDiffViewer
               filePath={getDisplayPath(selectedFile)}
