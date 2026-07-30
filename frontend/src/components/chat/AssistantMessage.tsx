@@ -696,6 +696,33 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
     </div>
   );
 
+  const fileChangeSummary = fileChangeChatId && message.file_changes ? (
+    <FileChangeSummary
+      chatId={fileChangeChatId}
+      messageIndex={message.file_change_message_index ?? messageIndex}
+      files={message.file_changes}
+      initiallyUndone={message.file_changes_undone === true}
+    />
+  ) : null;
+
+  const messageFooter = (
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-2 pl-1">
+      {fullMessageText && !isThinking && (
+        <CopyButton text={fullMessageText} className="relative" />
+      )}
+      {onRetry && !isStreamingThis && !isThinking && (
+        <RetryButton onClick={onRetry} />
+      )}
+      {!isThinking && <SourcesPanel sources={citationSourcesList} />}
+      {!isThinking && <ModelSignature model={modelSignature} />}
+      {message.timestamp && !isStreamingThis && (
+        <div className="ml-auto text-[10px] text-neutral-400 select-none">
+          {formatMessageTime(message.timestamp)}
+        </div>
+      )}
+    </div>
+  );
+
   // ── AG-UI parts-based rendering path (for streaming messages) ──
   if (effectiveParts !== undefined) {
     return (
@@ -724,29 +751,8 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
                 onForceWebContext={onForceWebContext}
               />
             ) : null}
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-2 pl-1">
-              {fullMessageText && !isThinking && (
-                <CopyButton text={fullMessageText} className="relative" />
-              )}
-              {onRetry && !isStreamingThis && !isThinking && (
-                <RetryButton onClick={onRetry} />
-              )}
-              {!isThinking && <SourcesPanel sources={citationSourcesList} />}
-              {!isThinking && <ModelSignature model={modelSignature} />}
-              {message.timestamp && !isStreamingThis && (
-                <div className="ml-auto text-[10px] text-neutral-400 select-none">
-                  {formatMessageTime(message.timestamp)}
-                </div>
-              )}
-            </div>
-            {fileChangeChatId && message.file_changes && (
-              <FileChangeSummary
-                chatId={fileChangeChatId}
-                messageIndex={message.file_change_message_index ?? messageIndex}
-                files={message.file_changes}
-                initiallyUndone={message.file_changes_undone === true}
-              />
-            )}
+            {fileChangeSummary}
+            {messageFooter}
           </div>
         </div>
       </div>
@@ -1000,29 +1006,8 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
               </div>
             );
           })}
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-2 pl-1">
-            {fullMessageText && !isThinking && (
-              <CopyButton text={fullMessageText} className="relative" />
-            )}
-            {onRetry && !isStreamingThis && !isThinking && (
-              <RetryButton onClick={onRetry} />
-            )}
-            {!isThinking && <SourcesPanel sources={citationSourcesList} />}
-            {!isThinking && <ModelSignature model={modelSignature} />}
-            {message.timestamp && !isStreamingThis && (
-              <div className="ml-auto text-[10px] text-neutral-400 select-none">
-                {formatMessageTime(message.timestamp)}
-              </div>
-            )}
-          </div>
-          {fileChangeChatId && message.file_changes && (
-            <FileChangeSummary
-              chatId={fileChangeChatId}
-              messageIndex={message.file_change_message_index ?? messageIndex}
-              files={message.file_changes}
-              initiallyUndone={message.file_changes_undone === true}
-            />
-          )}
+          {fileChangeSummary}
+          {messageFooter}
         </div>
       </div>
     </div>
