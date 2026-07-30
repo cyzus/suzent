@@ -44,6 +44,7 @@ export interface Message {
   file_changes?: MessageFileChange[]; // Persisted file snapshot for this assistant turn
   file_changes_undone?: boolean; // Whether this message-scoped snapshot was restored
   file_change_message_index?: number; // Raw backend index used for message-scoped undo
+  raw_message_end_index?: number; // End-exclusive backend boundary for this rendered message
 }
 export interface ChatConfig {
   model: string;
@@ -63,6 +64,9 @@ export interface ChatConfig {
   heartbeat_last_run_at?: string;
   platform?: string;
   cron_job_id?: number;
+  forked_from_chat_id?: string;
+  forked_from_chat_title?: string;
+  forked_from_message_index?: number;
 }
 
 export type PermissionMode =
@@ -110,6 +114,9 @@ export interface ChatSummary {
   projectSlug?: string | null;
   projectName?: string | null;
   parentChatId?: string | null;
+  forkedFromChatId?: string | null;
+  forkedFromChatTitle?: string | null;
+  forkedFromMessageIndex?: number | null;
 }
 
 export interface ChatKindCounts {

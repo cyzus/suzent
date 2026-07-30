@@ -1160,6 +1160,30 @@ export async function undoChatFiles(
   return body;
 }
 
+export interface ForkChatResponse {
+  new_chat_id: string;
+  restored_files_count: number;
+}
+
+export async function forkChat(
+  chatId: string,
+  messageIndex?: number,
+): Promise<ForkChatResponse> {
+  const response = await fetch(
+    `${getApiBase()}/api/chats/${encodeURIComponent(chatId)}/fork`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(
+        messageIndex === undefined ? {} : { message_index: messageIndex },
+      ),
+    },
+  );
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.error || 'Failed to fork conversation');
+  return body;
+}
+
 export async function drainCronNotifications(): Promise<CronNotification[]> {
   try {
     const res = await fetch(`${getApiBase()}/cron/notifications`);

@@ -658,6 +658,16 @@ export const en = {
     conflict: 'Undo cancelled to protect manual changes in: {files}',
     binaryDiff: 'Binary change; text diff unavailable.',
   },
+  conversationFork: {
+    button: 'Branch from here',
+    title: 'Branch conversation?',
+    message: 'A new independent conversation will start from this message. The original conversation and your current workspace files will stay unchanged.',
+    cancel: 'Cancel',
+    confirm: 'Create branch',
+    creating: 'Creating…',
+    errorTitle: 'Could not branch conversation',
+    continuedFrom: 'Continued from task',
+  },
   chatList: {
     searchChatsPlaceholder: 'Search chats...',
     clearSearch: 'Clear search',
@@ -718,6 +728,7 @@ export const en = {
       heartbeat: 'Heartbeat',
       subagentOf: 'Under {name}',
       subagentsCount: '{count} subagents',
+      branchOf: 'Branched from {name}',
     },
     menu: {
       title: 'Actions',

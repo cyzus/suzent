@@ -584,6 +584,16 @@ export const zhCN = {
     conflict: '为保护手动修改，已取消撤销：{files}',
     binaryDiff: '二进制文件变更，无法显示文本差异。',
   },
+  conversationFork: {
+    button: '从这里分叉',
+    title: '分叉此对话？',
+    message: '将从此消息创建一个独立新对话。原对话和当前工作区文件都不会改变。',
+    cancel: '取消',
+    confirm: '创建分支',
+    creating: '创建中…',
+    errorTitle: '无法分叉对话',
+    continuedFrom: '接续自任务',
+  },
   chatList: {
     searchChatsPlaceholder: '搜索对话…',
     clearSearch: '清空搜索',
@@ -644,6 +654,7 @@ export const zhCN = {
       heartbeat: '心跳',
       subagentOf: '隶属于 {name}',
       subagentsCount: '{count} 个子智能体',
+      branchOf: '分支自 {name}',
     },
     menu: {
       title: '操作',
