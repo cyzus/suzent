@@ -52,14 +52,14 @@ def _state_from_display_messages(messages: list[dict[str, Any]]) -> bytes | None
 def _agent_state_at_display_point(
     agent_state: bytes | None,
     display_messages: list[dict[str, Any]],
-    turn_index: int,
+    message_index: int,
 ) -> bytes | None:
     """Truncate persisted model history at the selected assistant display row."""
     from pydantic_ai.messages import ModelResponse
 
     from suzent.core.agent_serializer import deserialize_state, serialize_state
 
-    selected_messages = display_messages[:turn_index]
+    selected_messages = display_messages[:message_index]
     selected_assistant_count = sum(
         message.get("role") == "assistant" for message in selected_messages
     )
@@ -81,11 +81,11 @@ def _agent_state_at_display_point(
     return _state_from_display_messages(selected_messages)
 
 
-def _raw_index_at_logical_display_point(
+def _validate_assistant_message_boundary(
     messages: list[dict[str, Any]],
-    logical_index: int,
-) -> int:
-    """Map a frontend-rendered message boundary back to the raw display log."""
+    message_index: int,
+) -> None:
+    """Ensure an end-exclusive raw index is an assistant bubble boundary."""
     boundaries: list[tuple[str, int]] = []
     assistant_end: int | None = None
     awaiting_tool_continuation = False
@@ -137,19 +137,17 @@ def _raw_index_at_logical_display_point(
             boundaries.append((str(role or "unknown"), raw_end))
 
     flush_assistant()
-    if not 1 <= logical_index <= len(boundaries):
-        raise ValueError("turn_index is outside the rendered message history")
-    role, raw_index = boundaries[logical_index - 1]
-    if role != "assistant":
+    if not 1 <= message_index <= len(messages):
+        raise ValueError("message_index is outside the message history")
+    if ("assistant", message_index) not in boundaries:
         raise ValueError("Conversation branches must start from an assistant message")
-    return raw_index
 
 
 def fork_chat(
     source_chat_id: str,
     *,
     title: str | None = None,
-    turn_index: int | None = None,
+    message_index: int | None = None,
 ) -> tuple[str, list[str]]:
     """Create an independent conversation branch without changing workspace files."""
     from suzent.config import CONFIG
@@ -160,23 +158,19 @@ def fork_chat(
     if source is None:
         raise ValueError(f"Chat not found: {source_chat_id}")
 
-    raw_turn_index = None
     branch_agent_state = source.agent_state
-    if turn_index is not None:
-        raw_turn_index = _raw_index_at_logical_display_point(
-            list(source.messages or []),
-            turn_index,
-        )
+    if message_index is not None:
+        _validate_assistant_message_boundary(list(source.messages or []), message_index)
         branch_agent_state = _agent_state_at_display_point(
             source.agent_state,
             list(source.messages or []),
-            raw_turn_index,
+            message_index,
         )
 
     new_chat_id = db.clone_chat_to_point(
         source_chat_id,
         new_title=title,
-        up_to_message_index=raw_turn_index,
+        up_to_message_index=message_index,
     )
     branch = db.get_chat(new_chat_id)
     branch_config = dict(branch.config or {}) if branch else {}
@@ -184,8 +178,8 @@ def fork_chat(
         {
             "forked_from_chat_id": source_chat_id,
             "forked_from_chat_title": source.title,
-            "forked_from_message_index": turn_index
-            if turn_index is not None
+            "forked_from_message_index": message_index
+            if message_index is not None
             else len(source.messages or []),
         }
     )
@@ -197,7 +191,7 @@ def fork_chat(
     if source_history.exists():
         shutil.copytree(source_history, new_history, dirs_exist_ok=True)
 
-    if turn_index is not None:
+    if message_index is not None:
         branch = db.get_chat(new_chat_id)
         db.rewrite_chat_messages(
             new_chat_id,

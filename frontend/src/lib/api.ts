@@ -1167,7 +1167,7 @@ export interface ForkChatResponse {
 
 export async function forkChat(
   chatId: string,
-  turnIndex?: number,
+  messageIndex?: number,
 ): Promise<ForkChatResponse> {
   const response = await fetch(
     `${getApiBase()}/api/chats/${encodeURIComponent(chatId)}/fork`,
@@ -1175,7 +1175,7 @@ export async function forkChat(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(
-        turnIndex === undefined ? {} : { turn_index: turnIndex },
+        messageIndex === undefined ? {} : { message_index: messageIndex },
       ),
     },
   );

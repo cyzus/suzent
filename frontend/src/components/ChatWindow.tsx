@@ -366,7 +366,7 @@ const MessageList: React.FC<{
   onStopSubAgent?: (taskId: string) => void;
   onForceWebContext?: (contextId: string) => void;
   onRetry?: () => void;
-  onFork?: (turnIndex?: number) => void;
+  onFork?: (messageIndex?: number) => void;
   forkOrigin?: ForkOrigin;
   onOpenForkOrigin?: (chatId: string) => void;
   onEditUserMessage?: (newContent: string) => void;
@@ -485,7 +485,7 @@ const MessageList: React.FC<{
         const showForkOrigin = (
           forkOrigin
           && onOpenForkOrigin
-          && globalIdx + 1 === forkOrigin.messageIndex
+          && m.raw_message_end_index === forkOrigin.messageIndex
         );
 
         return (
@@ -520,8 +520,10 @@ const MessageList: React.FC<{
                     onForceWebContext={onForceWebContext}
                     onRetry={idx === lastAssistantIdx && !streamingForCurrentChat ? onRetry : undefined}
                     onFork={
-                      onFork && !streamingForCurrentChat
-                        ? () => onFork(globalIdx + 1)
+                      onFork
+                        && !streamingForCurrentChat
+                        && typeof m.raw_message_end_index === 'number'
+                        ? () => onFork(m.raw_message_end_index)
                         : undefined
                     }
                     fileChangeChatId={m.file_changes?.length ? chatId : undefined}
@@ -606,7 +608,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const [input, setInput] = useState('');
   const [viewingImage, setViewingImage] = useState<string | null>(null);
   const [viewingFile, setViewingFile] = useState<{ path: string; name: string } | null>(null);
-  const [pendingFork, setPendingFork] = useState<{ turnIndex?: number } | null>(null);
+  const [pendingFork, setPendingFork] = useState<{ messageIndex?: number } | null>(null);
   const [forkBusy, setForkBusy] = useState(false);
   const [forkError, setForkError] = useState<string | null>(null);
   // `nonce` bumps on every click so re-selecting the *same* file re-triggers the
@@ -1855,9 +1857,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     });
   };
 
-  const requestFork = useCallback((turnIndex?: number) => {
+  const requestFork = useCallback((messageIndex?: number) => {
     setForkError(null);
-    setPendingFork({ turnIndex });
+    setPendingFork({ messageIndex });
   }, []);
 
   const confirmFork = useCallback(async () => {
@@ -1865,7 +1867,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     setForkBusy(true);
     setForkError(null);
     try {
-      const result = await forkChat(currentChatId, pendingFork.turnIndex);
+      const result = await forkChat(currentChatId, pendingFork.messageIndex);
       await refreshChatListSilently(undefined, true);
       await loadChat(result.new_chat_id, { force: true });
       setPendingFork(null);

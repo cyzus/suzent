@@ -17,6 +17,22 @@ from .models import (
 
 SUMMARY_LAST_MESSAGE_KEY = "_summary_last_message"
 SUMMARY_VISIBLE_COUNT_KEY = "_summary_visible_assistant_count"
+CHAT_SCOPED_CONFIG_KEYS = frozenset(
+    {
+        "tool_approval_policy",
+        "permission_policies",
+        "permission_mode",
+        "platform",
+        "sender_id",
+        "target_id",
+        "cron_job_id",
+        "parent_chat_id",
+        "forked_from_chat_id",
+        "forked_from_chat_title",
+        "forked_from_message_index",
+        "unread_count",
+    }
+)
 
 # Sentinel for rewrite_chat_messages(agent_state=...) so "omit" (leave stored state)
 # is distinguishable from an explicit None (restore a NULL checkpoint state).
@@ -26,6 +42,15 @@ _UNSET = object()
 # chat is hidden — sub-agent chats are intentionally kept visible (nested under their
 # parent agent in the UI), so they are NOT excluded here.
 HIDDEN_CHAT_PLATFORMS = ("dream",)
+
+
+def _reusable_chat_config(config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Copy model/tool settings without inheriting source-session state."""
+    return {
+        key: value
+        for key, value in (config or {}).items()
+        if key not in CHAT_SCOPED_CONFIG_KEYS and not key.startswith("heartbeat_")
+    }
 
 
 def _apply_chat_filters(statement, search, platform, project_id, fts_ids=None):
@@ -158,7 +183,7 @@ class ChatOperationsMixin:
             messages = messages[:up_to_message_index]
         return self.create_chat(
             title=new_title or f"{source.title} (fork)",
-            config=dict(source.config or {}),
+            config=_reusable_chat_config(source.config),
             messages=messages,
             agent_state=source.agent_state if up_to_message_index is None else None,
             working_directory=source.working_directory,

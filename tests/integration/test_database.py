@@ -42,10 +42,24 @@ class TestChatOperations:
         assert len(chat.messages) == 1
         assert chat.messages[0]["content"] == "Hello"
 
-    def test_clone_chat_to_point_copies_config_and_truncates_messages(self, db):
+    def test_clone_chat_to_point_copies_reusable_config_and_truncates_messages(
+        self, db
+    ):
         source_id = db.create_chat(
             "Original",
-            {"model": "gpt-4"},
+            {
+                "model": "gpt-4",
+                "tools": ["read_file"],
+                "tool_approval_policy": {"bash_execute": "always_allow"},
+                "permission_mode": "full_access",
+                "platform": "subagent",
+                "parent_chat_id": "parent-chat",
+                "cron_job_id": 42,
+                "heartbeat_enabled": True,
+                "heartbeat_interval_minutes": 5,
+                "forked_from_chat_id": "older-chat",
+                "unread_count": 3,
+            },
             [
                 {"role": "user", "content": "first"},
                 {"role": "assistant", "content": "answer"},
@@ -69,6 +83,19 @@ class TestChatOperations:
             {"role": "assistant", "content": "answer"},
         ]
         assert clone.config["model"] == "gpt-4"
+        assert clone.config["tools"] == ["read_file"]
+        for key in (
+            "tool_approval_policy",
+            "permission_mode",
+            "platform",
+            "parent_chat_id",
+            "cron_job_id",
+            "heartbeat_enabled",
+            "heartbeat_interval_minutes",
+            "forked_from_chat_id",
+            "unread_count",
+        ):
+            assert key not in clone.config
         assert clone.working_directory == "/workspace/project"
 
     def test_link_chat_to_project_moves_direct_subagents(self, db):

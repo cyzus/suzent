@@ -1209,18 +1209,26 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
               }
               if (currentAssistant) { mappedMessages.push(currentAssistant as Message); currentAssistant = null; }
               awaitingToolContinuation = false;
-              mappedMessages.push(msg);
+              mappedMessages.push({
+                ...msg,
+                raw_message_end_index: serverMessageIndex + 1,
+              });
             } else if (msg.role === 'system_triggered' || msg.role === 'trigger') {
               // 'trigger' is the legacy name; normalize to 'system_triggered' so the
               // rest of the render pipeline only needs to handle one role.
               if (currentAssistant) { mappedMessages.push(currentAssistant as Message); currentAssistant = null; }
               awaitingToolContinuation = false;
-              mappedMessages.push({ ...msg, role: 'system_triggered' } as Message);
+              mappedMessages.push({
+                ...msg,
+                role: 'system_triggered',
+                raw_message_end_index: serverMessageIndex + 1,
+              } as Message);
             } else if (msg.role === 'assistant') {
               if (!currentAssistant) {
                 currentAssistant = {
                   ...msg,
                   content: msg.content || '',
+                  raw_message_end_index: serverMessageIndex + 1,
                   file_change_message_index: msg.file_changes?.length
                     ? serverMessageIndex
                     : undefined,
@@ -1243,6 +1251,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
                   currentAssistant.file_changes_undone = msg.file_changes_undone === true;
                   currentAssistant.file_change_message_index = serverMessageIndex;
                 }
+                currentAssistant.raw_message_end_index = serverMessageIndex + 1;
                 awaitingToolContinuation = false;
               } else {
                 // Independent assistant turn (e.g. wakeup) — new bubble.
@@ -1250,6 +1259,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
                 currentAssistant = {
                   ...msg,
                   content: msg.content || '',
+                  raw_message_end_index: serverMessageIndex + 1,
                   file_change_message_index: msg.file_changes?.length
                     ? serverMessageIndex
                     : undefined,
@@ -1267,14 +1277,22 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
               }
             } else if (msg.role === 'tool') {
               if (!currentAssistant) {
-                currentAssistant = { role: 'assistant', content: '' };
+                currentAssistant = {
+                  role: 'assistant',
+                  content: '',
+                  raw_message_end_index: serverMessageIndex + 1,
+                };
               }
               currentAssistant.content += `\n<details data-tool-call-id="${escapeHtml(msg.tool_call_id ?? '')}"><summary>📦 ${escapeHtml(msg.name ?? '')}</summary>\n<pre><code class="language-text">${escapeHtml(msg.content ?? '')}</code></pre>\n</details>\n`;
+              currentAssistant.raw_message_end_index = serverMessageIndex + 1;
               awaitingToolContinuation = true;
             } else {
               if (currentAssistant) { mappedMessages.push(currentAssistant as Message); currentAssistant = null; }
               awaitingToolContinuation = false;
-              mappedMessages.push(msg);
+              mappedMessages.push({
+                ...msg,
+                raw_message_end_index: serverMessageIndex + 1,
+              });
             }
           }
           if (currentAssistant) { mappedMessages.push(currentAssistant as Message); }

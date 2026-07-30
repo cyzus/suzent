@@ -10,7 +10,9 @@ This module handles all chat endpoints including:
 import asyncio
 import json
 import traceback
+from typing import Annotated
 
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, ValidationError
 from starlette.requests import Request
 from starlette.responses import JSONResponse, StreamingResponse
 
@@ -27,6 +29,13 @@ from suzent.core.stream_registry import (
 
 logger = get_logger(__name__)
 _chat_send_tasks: set[asyncio.Task[None]] = set()
+
+
+class ForkChatRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: str | None = None
+    message_index: Annotated[StrictInt, Field(ge=1)] | None = None
 
 
 async def get_chat_file_changes(request: Request) -> JSONResponse:
@@ -479,12 +488,22 @@ async def fork_chat_route(request: Request) -> JSONResponse:
     try:
         body = await request.json()
     except json.JSONDecodeError:
-        body = {}
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
+    try:
+        payload = ForkChatRequest.model_validate(body)
+    except ValidationError as exc:
+        return JSONResponse(
+            {
+                "error": "Invalid fork request",
+                "details": exc.errors(include_url=False),
+            },
+            status_code=422,
+        )
     try:
         new_chat_id, restored = fork_chat(
             request.path_params["chat_id"],
-            title=body.get("title"),
-            turn_index=body.get("turn_index"),
+            title=payload.title,
+            message_index=payload.message_index,
         )
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=409)
