@@ -20,8 +20,8 @@ const MIN_MARKERS_TO_SHOW = 4;
 // rail, so a short conversation stays compact instead of being flung across
 // the full height. Past MAX_RAIL_PX the interval shrinks to keep dense
 // conversations bounded.
-const TICK_INTERVAL_PX = 14;
-const MAX_RAIL_PX = 340;
+const TICK_INTERVAL_PX = 11;
+const MAX_RAIL_PX = 272;
 
 interface ChatMinimapProps {
   messages: Message[];
@@ -324,11 +324,10 @@ export const ChatMinimap: React.FC<ChatMinimapProps> = ({
 
         {markers.map(marker => {
           const top = getMarkerTop(marker);
-          const waveCenter = hoverPercent ?? scrollCenterTop;
-          const distance = Math.abs(top - waveCenter);
-          const influence = Math.max(0, 1 - distance / 12);
+          const hoverDistance = hoverPercent == null ? null : Math.abs(top - hoverPercent);
+          const influence = hoverDistance == null ? 0 : Math.max(0, 1 - hoverDistance / 12);
           const isHovered = hoveredMarker?.id === marker.id;
-          const isNearScrollCenter = hoverPercent == null && distance < 3;
+          const isNearScrollCenter = hoverPercent == null && Math.abs(top - scrollCenterTop) < 3;
           return (
             <button
               key={marker.id}

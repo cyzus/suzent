@@ -24,8 +24,8 @@
   }
 
   .chat-minimap {
-    width: 2.5rem;
-    height: min(22rem, calc(100% - 4rem));
+    width: 2rem;
+    height: min(18rem, calc(100% - 4rem));
   }
 
   /* Rail height is set inline from the marker count and the rail is
@@ -34,23 +34,23 @@
   .chat-minimap-rail {
     position: absolute;
     top: 50%;
-    right: 0.35rem;
+    right: 0.25rem;
     transform: translateY(-50%);
-    width: 2rem;
+    width: 1.6rem;
     cursor: pointer;
   }
 
   /* Codex-style tick rail: each marker is a thin monochrome tick whose
      length encodes role. They sit muted-gray and darken + extend as the
-     scroll/hover wave passes; the current/hovered tick goes solid and
+     hover wave passes; the current/hovered tick goes solid and
      full-length. No fills, no rings — just fine horizontal strokes. */
   .chat-minimap-marker {
-    --minimap-base-width: 0.7rem;
+    --minimap-base-width: 0.55rem;
     --minimap-wave: 0;
     --minimap-ink: 0, 0, 0;
     position: absolute;
     right: 0;
-    width: calc(var(--minimap-base-width) + (0.95rem * var(--minimap-wave)));
+    width: calc(var(--minimap-base-width) + (0.75rem * var(--minimap-wave)));
     height: 2px;
     transform: translateY(-50%) scaleY(calc(1 + (0.5 * var(--minimap-wave))));
     transform-origin: right center;
@@ -73,19 +73,19 @@
   /* Role → tick length. User turns are the long anchor ticks; activity
      ticks stay short and quiet so the eye reads the conversation rhythm. */
   .chat-minimap-marker-user {
-    --minimap-base-width: 1.5rem;
+    --minimap-base-width: 1.2rem;
   }
 
   .chat-minimap-marker-assistant {
-    --minimap-base-width: 0.95rem;
+    --minimap-base-width: 0.75rem;
   }
 
   .chat-minimap-marker-notice {
-    --minimap-base-width: 0.8rem;
+    --minimap-base-width: 0.65rem;
   }
 
   .chat-minimap-marker-activity {
-    --minimap-base-width: 0.55rem;
+    --minimap-base-width: 0.45rem;
   }
 
   .dark .chat-minimap-marker {
@@ -97,7 +97,7 @@
      rule sits flush at the top-left as the only accent. */
   .chat-minimap-preview {
     position: absolute;
-    right: 3.75rem;
+    right: 3rem;
     width: min(21rem, calc(100vw - 14rem));
     transform: translateY(-50%) translateX(0.35rem);
     padding: 0.8rem 1rem 0.85rem;
