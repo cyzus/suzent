@@ -697,16 +697,18 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   );
 
   const fileChangeSummary = fileChangeChatId && message.file_changes ? (
-    <FileChangeSummary
-      chatId={fileChangeChatId}
-      messageIndex={message.file_change_message_index ?? messageIndex}
-      files={message.file_changes}
-      initiallyUndone={message.file_changes_undone === true}
-    />
+    <div className="px-1 pt-1">
+      <FileChangeSummary
+        chatId={fileChangeChatId}
+        messageIndex={message.file_change_message_index ?? messageIndex}
+        files={message.file_changes}
+        initiallyUndone={message.file_changes_undone === true}
+      />
+    </div>
   ) : null;
 
   const messageFooter = (
-    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-2 pl-1">
+    <div className="flex min-h-6 flex-wrap items-center gap-x-2 gap-y-1 px-1 pt-0.5">
       {fullMessageText && !isThinking && (
         <CopyButton text={fullMessageText} className="relative" />
       )}
