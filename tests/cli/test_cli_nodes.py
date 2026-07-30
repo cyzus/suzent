@@ -2,6 +2,7 @@
 Unit tests for the CLI subcommands (nodes, agent, config).
 """
 
+import subprocess
 from unittest.mock import AsyncMock, patch, MagicMock
 
 from typer.testing import CliRunner
@@ -25,6 +26,25 @@ class TestCLIRoot:
         assert "nodes" in result.output
         assert "agent" in result.output
         assert "config" in result.output
+
+    @patch("suzent.cli.main.ensure_cargo_in_path")
+    @patch("suzent.cli.main.subprocess.run")
+    def test_doctor_treats_missing_ripgrep_as_optional(
+        self, mock_run, mock_ensure_cargo
+    ):
+        def fake_run(cmd, *args, **kwargs):
+            if cmd[0] == "rg":
+                raise FileNotFoundError
+            return subprocess.CompletedProcess(cmd, 0, "tool version 1\n", "")
+
+        mock_run.side_effect = fake_run
+
+        result = runner.invoke(app, ["doctor"])
+
+        assert result.exit_code == 0
+        assert "ripgrep" in result.output
+        assert "Optional accelerator not installed" in result.output
+        assert "System is ready for Suzent" in result.output
 
 
 class TestNodesSubcommand:

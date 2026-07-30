@@ -258,25 +258,40 @@ class GrepTool(Tool):
         ):
             return None
 
-        target = self._resolver.resolve(path or ".")
+        if path == "/" and hasattr(self._resolver, "get_virtual_roots"):
+            targets = []
+            seen_targets: set[Path] = set()
+            for _, root in self._resolver.get_virtual_roots():
+                target = Path(root).resolve()
+                if target.exists() and target not in seen_targets:
+                    seen_targets.add(target)
+                    targets.append(target)
+        else:
+            targets = [self._resolver.resolve(path or ".")]
+
+        if not targets:
+            return [], 0, 0, False
+
         args = [
             self._ripgrep_path or "rg",
             "--json",
             "--line-number",
             "--color",
             "never",
+            "--hidden",
+            "--no-ignore",
             "--max-filesize",
             "2M",
         ]
         if include:
             args.extend(["--glob", include])
         for excluded_dir in sorted(DEFAULT_EXCLUDED_DIRS):
-            args.extend(["--glob", f"!{excluded_dir}/**"])
+            args.extend(["--glob", f"!**/{excluded_dir}/**"])
         if case_insensitive:
             args.append("--ignore-case")
         if context_lines:
             args.extend(["--context", str(context_lines)])
-        args.extend(["--", pattern, str(target)])
+        args.extend(["--", pattern, *(str(target) for target in targets)])
 
         try:
             completed = subprocess.run(
