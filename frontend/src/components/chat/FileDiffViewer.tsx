@@ -212,25 +212,108 @@ function countChangedLines(original: string, modified: string): { addedLines: nu
   return { addedLines, removedLines };
 }
 
-export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ toolName, parsedArgs, metadata, output }) => {
+export interface FileContentDiffViewerProps {
+  filePath: string;
+  original: string;
+  modified: string;
+  isDiff?: boolean;
+  addedLines?: number;
+  removedLines?: number;
+  embedded?: boolean;
+  showFullPath?: boolean;
+}
+
+export const FileContentDiffViewer: React.FC<FileContentDiffViewerProps> = ({
+  filePath,
+  original,
+  modified,
+  isDiff = true,
+  addedLines,
+  removedLines,
+  embedded = false,
+  showFullPath = false,
+}) => {
   const { theme, scheme } = useTheme();
   const editorTheme = getMonacoThemeName(theme, scheme);
   const beforeMount = useMemo(() => makeBeforeMount(), []);
+  const language = getLanguageFromPath(filePath);
+  const lineCount = Math.max(original.split('\n').length, modified.split('\n').length);
+  const height = Math.min(Math.max(lineCount * 19 + 16, 110), embedded ? 360 : 500);
+  const segments = filePath.split(/[/\\]/).filter(Boolean);
+  const namePart = segments.pop() || filePath;
+  const counts = useMemo(
+    () => addedLines === undefined || removedLines === undefined
+      ? countChangedLines(original, modified)
+      : { addedLines, removedLines },
+    [addedLines, modified, original, removedLines],
+  );
 
-  const { filePath, dirPart, namePart, language, isDiff, original, modified, height, canPreview, addedLines, removedLines } = useMemo(() => {
+  return (
+    <div className={[
+      'flex w-full flex-col overflow-hidden bg-white transition-all dark:bg-[#1e1e1e]',
+      embedded
+        ? 'border-0 shadow-none'
+        : 'mt-2 border-2 border-brutal-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:border-zinc-600 dark:shadow-none',
+    ].join(' ')}>
+      <div className={[
+        'flex items-center justify-between gap-3 px-3 py-1.5 font-mono text-xs font-bold tracking-wider text-brutal-black dark:text-neutral-300',
+        embedded
+          ? 'border-b border-neutral-300 bg-white/50 dark:border-zinc-700 dark:bg-white/[0.025]'
+          : 'border-b-2 border-brutal-black bg-neutral-100 dark:border-zinc-600 dark:bg-zinc-800',
+      ].join(' ')}>
+        <span className="flex min-w-0 items-center gap-3">
+          <span className={`${showFullPath ? '' : 'uppercase'} truncate`} title={filePath}>
+            {showFullPath ? filePath : namePart}
+          </span>
+          {isDiff && (counts.addedLines > 0 || counts.removedLines > 0) && (
+            <span className="flex items-center gap-1.5 opacity-90 text-[11px] shrink-0 font-bold">
+              {counts.addedLines > 0 && <span className="text-green-600 dark:text-green-400">+{counts.addedLines}</span>}
+              {counts.removedLines > 0 && <span className="text-red-600 dark:text-red-400">-{counts.removedLines}</span>}
+            </span>
+          )}
+        </span>
+        <span className="opacity-60 uppercase shrink-0">{language}</span>
+      </div>
+      <div style={{ height: `${height}px` }} className="w-full">
+        {isDiff ? (
+          <DiffEditor
+            original={original}
+            modified={modified}
+            language={language}
+            theme={editorTheme}
+            options={EDITOR_OPTIONS}
+            beforeMount={beforeMount}
+            loading={LOADING_FALLBACK}
+            // Chat blocks mount and unmount quickly. Keeping models alive avoids
+            // a Monaco teardown race that can abort the surrounding React render.
+            keepCurrentOriginalModel
+            keepCurrentModifiedModel
+          />
+        ) : (
+          <Editor
+            value={modified}
+            language={language}
+            theme={editorTheme}
+            options={EDITOR_OPTIONS}
+            beforeMount={beforeMount}
+            loading={LOADING_FALLBACK}
+          />
+        )}
+      </div>
+    </div>
+  );
+};
+
+export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ toolName, parsedArgs, metadata, output }) => {
+  const { filePath, isDiff, original, modified, canPreview, addedLines, removedLines } = useMemo(() => {
     const config = FILE_TOOL_PREVIEW_CONFIG[toolName];
     const rawPath = typeof metadata?.abs_path === 'string'
       ? metadata.abs_path
       : typeof parsedArgs?.file_path === 'string' ? parsedArgs.file_path
         : typeof parsedArgs?.path === 'string' ? parsedArgs.path
           : '';
-          
-    const segments = rawPath.split(/[/\\]/).filter(Boolean);
-    const namePart = segments.pop() || rawPath;
-    const dirPart = '';
-    
+
     const filePath = rawPath;
-    const language = getLanguageFromPath(filePath);
 
     let isDiff = false;
     let original = '';
@@ -269,10 +352,7 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ toolName, parsed
       }
     }
 
-    const lineCount = Math.max(original.split('\n').length, modified.split('\n').length);
-    const height = Math.min(Math.max(lineCount * 19 + 16, 100), 500);
-
-    return { filePath, dirPart, namePart, language, isDiff, original, modified, height, canPreview, addedLines, removedLines };
+    return { filePath, isDiff, original, modified, canPreview, addedLines, removedLines };
   }, [toolName, parsedArgs, metadata]);
 
   if (!canPreview) {
@@ -286,56 +366,13 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ toolName, parsed
   }
 
   return (
-    <div className="w-full border-2 border-brutal-black dark:border-zinc-600 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-none overflow-hidden bg-white dark:bg-[#1e1e1e] flex flex-col mt-2 transition-all">
-      <div className="px-3 py-1.5 bg-neutral-100 dark:bg-zinc-800 border-b-2 border-brutal-black dark:border-zinc-600 flex justify-between items-center text-xs font-mono text-brutal-black dark:text-neutral-300 font-bold tracking-wider">
-        {filePath ? (
-          <span className="flex items-center gap-3">
-            <span className="flex-1 truncate uppercase" title={filePath}>
-              <span className="opacity-50 font-normal">{dirPart}</span>
-              <span>{namePart}</span>
-            </span>
-            {isDiff && (addedLines > 0 || removedLines > 0) && (
-              <span className="flex items-center gap-1.5 opacity-90 text-[11px] shrink-0 font-bold">
-                {addedLines > 0 && <span className="text-green-600 dark:text-green-400">+{addedLines}</span>}
-                {removedLines > 0 && <span className="text-red-600 dark:text-red-400">-{removedLines}</span>}
-              </span>
-            )}
-          </span>
-        ) : (
-          <span className="uppercase">Unknown file</span>
-        )}
-        <span className="opacity-75 uppercase shrink-0">{language}</span>
-      </div>
-      <div style={{ height: `${height}px` }} className="w-full">
-        {isDiff ? (
-          <DiffEditor
-            original={original}
-            modified={modified}
-            language={language}
-            theme={editorTheme}
-            options={EDITOR_OPTIONS}
-            beforeMount={beforeMount}
-            loading={LOADING_FALLBACK}
-            // Don't let the wrapper eagerly dispose the models on unmount — that
-            // races the DiffEditorWidget teardown and throws "TextModel got
-            // disposed before DiffEditorWidget model got reset", which aborts the
-            // surrounding React render and leaves tool UI (e.g. an approval
-            // prompt) stuck. Leaving the models for GC trades a tiny leak for
-            // crash-free teardown in this rapid mount/unmount chat context.
-            keepCurrentOriginalModel
-            keepCurrentModifiedModel
-          />
-        ) : (
-          <Editor
-            value={modified}
-            language={language}
-            theme={editorTheme}
-            options={EDITOR_OPTIONS}
-            beforeMount={beforeMount}
-            loading={LOADING_FALLBACK}
-          />
-        )}
-      </div>
-    </div>
+    <FileContentDiffViewer
+      filePath={filePath}
+      original={original}
+      modified={modified}
+      isDiff={isDiff}
+      addedLines={addedLines}
+      removedLines={removedLines}
+    />
   );
 };

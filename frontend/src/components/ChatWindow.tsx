@@ -370,6 +370,8 @@ const MessageList: React.FC<{
             content: groupedBlocksToAssistantContent(group.mergedBlocks),
             timestamp: m.timestamp,
             model: m.model,
+            file_changes: m.file_changes,
+            file_change_message_index: m.file_change_message_index,
           };
           return (
             <div key={globalIdx} data-message-index={globalIdx} className="chat-msg-row w-full flex flex-col group/message">
@@ -389,6 +391,7 @@ const MessageList: React.FC<{
                   onOpenSubAgentSidebar={onOpenSubAgentSidebar}
                   onStopSubAgent={onStopSubAgent}
                   onForceWebContext={onForceWebContext}
+                  fileChangeChatId={m.file_changes?.length ? chatId : undefined}
                   chatCitationSources={chatCitationSources}
                   fallbackModel={fallbackModel}
                 />
@@ -459,6 +462,7 @@ const MessageList: React.FC<{
                   onStopSubAgent={onStopSubAgent}
                   onForceWebContext={onForceWebContext}
                   onRetry={idx === lastAssistantIdx && !streamingForCurrentChat ? onRetry : undefined}
+                  fileChangeChatId={m.file_changes?.length ? chatId : undefined}
                   chatCitationSources={chatCitationSources}
                   fallbackModel={fallbackModel}
                 />
@@ -1492,25 +1496,22 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       }
 
       const richMsg = aguiPartsToStoreMessage(liveStreamPartsRef.current, null, 'assistant', safeConfig.model);
-      const isSocialStream = chatIdAtMount.startsWith('social-');
       setIsStreaming(false, chatIdAtMount);
       // Stream finished cleanly — drop preserved reconnect state for this chat.
       streamStartByChatRef.current.delete(chatIdAtMount);
       abandonedPartsRef.current.delete(chatIdAtMount);
       _clearStreamSeed();
 
-      if (isSocialStream) {
-        if (richMsg.content.trim()) addMessage(richMsg, chatIdAtMount);
-        try { await loadChat(chatIdAtMount, { force: true }); } catch { /* ignore */ }
-      }
+      // Keep the completed stream visible while replacing it with the backend-authored
+      // message. The backend attaches file_changes as the stream closes, so every chat
+      // must reload here; limiting this sync to social chats left desktop diffs hidden
+      // until the user manually refreshed.
+      if (richMsg.content.trim()) addMessage(richMsg, chatIdAtMount);
+      try { await loadChat(chatIdAtMount, { force: true }); } catch { /* ignore */ }
 
       clearParts();
       liveStreamPartsRef.current = [];
       isLiveStreamRef.current = false;
-
-      if (!isSocialStream && richMsg.content.trim()) {
-        addMessage(richMsg, chatIdAtMount);
-      }
 
       // A stream_started arrived while we were busy — connect to it now.
       if (pendingConnectRef.current) {

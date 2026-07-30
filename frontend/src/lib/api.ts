@@ -1116,6 +1116,50 @@ export async function markChatRead(chatId: string): Promise<void> {
   } catch { }
 }
 
+export interface FileChangeSummaryItem {
+  path: string;
+  diff: string;
+  additions: number;
+  deletions: number;
+}
+
+export interface FileChangeSummaryResponse {
+  files: FileChangeSummaryItem[];
+  additions: number;
+  deletions: number;
+}
+
+export async function fetchChatFileChanges(chatId: string): Promise<FileChangeSummaryResponse> {
+  const response = await fetch(
+    `${getApiBase()}/api/chats/${encodeURIComponent(chatId)}/file-changes`,
+  );
+  if (!response.ok) throw new Error('Failed to load file changes');
+  return response.json();
+}
+
+export async function undoChatFiles(
+  chatId: string,
+  messageIndex: number,
+): Promise<{ changed_files: string[] }> {
+  const response = await fetch(
+    `${getApiBase()}/api/chats/${encodeURIComponent(chatId)}/undo`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message_index: messageIndex }),
+    },
+  );
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(body.error || 'Failed to undo file changes') as Error & {
+      conflicts?: string[];
+    };
+    error.conflicts = body.conflicts;
+    throw error;
+  }
+  return body;
+}
+
 export async function drainCronNotifications(): Promise<CronNotification[]> {
   try {
     const res = await fetch(`${getApiBase()}/cron/notifications`);

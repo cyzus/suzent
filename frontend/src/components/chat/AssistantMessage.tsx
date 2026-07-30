@@ -8,6 +8,7 @@ import { ToolCallBlock } from './ToolCallBlock';
 import { SubAgentCallBlock } from './SubAgentCallBlock';
 import type { SubAgentStatus } from './SubAgentCallBlock';
 import { CopyButton } from './CopyButton';
+import { FileChangeSummary } from './FileChangeSummary';
 import { A2UIRenderer } from '../a2ui/A2UIRenderer';
 import type { A2UISurface } from '../../types/a2ui';
 import {
@@ -73,6 +74,8 @@ interface AssistantMessageProps {
   chatCitationSources?: CitationSourcesMap;
   /** Chat config model fallback for older messages without per-message metadata. */
   fallbackModel?: string;
+  /** Chat containing this message's persisted file snapshot. */
+  fileChangeChatId?: string;
 }
 
 // Names that should be filtered out from tool call display
@@ -541,6 +544,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   onRetry,
   chatCitationSources,
   fallbackModel,
+  fileChangeChatId,
 }) => {
   const isStreamingThis = isStreaming && isLastMessage;
   const effectiveParts = aguiParts ?? message.parts;
@@ -692,6 +696,35 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
     </div>
   );
 
+  const fileChangeSummary = fileChangeChatId && message.file_changes ? (
+    <div className="px-1 pt-1">
+      <FileChangeSummary
+        chatId={fileChangeChatId}
+        messageIndex={message.file_change_message_index ?? messageIndex}
+        files={message.file_changes}
+        initiallyUndone={message.file_changes_undone === true}
+      />
+    </div>
+  ) : null;
+
+  const messageFooter = (
+    <div className="flex min-h-6 flex-wrap items-center gap-x-2 gap-y-1 px-1 pt-0.5">
+      {fullMessageText && !isThinking && (
+        <CopyButton text={fullMessageText} className="relative" />
+      )}
+      {onRetry && !isStreamingThis && !isThinking && (
+        <RetryButton onClick={onRetry} />
+      )}
+      {!isThinking && <SourcesPanel sources={citationSourcesList} />}
+      {!isThinking && <ModelSignature model={modelSignature} />}
+      {message.timestamp && !isStreamingThis && (
+        <div className="ml-auto text-[10px] text-neutral-400 select-none">
+          {formatMessageTime(message.timestamp)}
+        </div>
+      )}
+    </div>
+  );
+
   // ── AG-UI parts-based rendering path (for streaming messages) ──
   if (effectiveParts !== undefined) {
     return (
@@ -720,21 +753,8 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
                 onForceWebContext={onForceWebContext}
               />
             ) : null}
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-2 pl-1">
-              {fullMessageText && !isThinking && (
-                <CopyButton text={fullMessageText} className="relative" />
-              )}
-              {onRetry && !isStreamingThis && !isThinking && (
-                <RetryButton onClick={onRetry} />
-              )}
-              {!isThinking && <SourcesPanel sources={citationSourcesList} />}
-              {!isThinking && <ModelSignature model={modelSignature} />}
-              {message.timestamp && !isStreamingThis && (
-                <div className="ml-auto text-[10px] text-neutral-400 select-none">
-                  {formatMessageTime(message.timestamp)}
-                </div>
-              )}
-            </div>
+            {fileChangeSummary}
+            {messageFooter}
           </div>
         </div>
       </div>
@@ -988,21 +1008,8 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
               </div>
             );
           })}
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-2 pl-1">
-            {fullMessageText && !isThinking && (
-              <CopyButton text={fullMessageText} className="relative" />
-            )}
-            {onRetry && !isStreamingThis && !isThinking && (
-              <RetryButton onClick={onRetry} />
-            )}
-            {!isThinking && <SourcesPanel sources={citationSourcesList} />}
-            {!isThinking && <ModelSignature model={modelSignature} />}
-            {message.timestamp && !isStreamingThis && (
-              <div className="ml-auto text-[10px] text-neutral-400 select-none">
-                {formatMessageTime(message.timestamp)}
-              </div>
-            )}
-          </div>
+          {fileChangeSummary}
+          {messageFooter}
         </div>
       </div>
     </div>

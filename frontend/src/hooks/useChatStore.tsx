@@ -1196,7 +1196,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
           // new independent bubble (e.g. a wakeup turn).
           let awaitingToolContinuation = false;
 
-          for (const msg of serverMessages) {
+          for (const [serverMessageIndex, msg] of serverMessages.entries()) {
             if (msg.role === 'user') {
               // Empty user rows are tool-resume continuations (system-reminder injected
               // by the backend, then stripped to empty). Drop them — they don't represent
@@ -1215,7 +1215,13 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
               mappedMessages.push({ ...msg, role: 'system_triggered' } as Message);
             } else if (msg.role === 'assistant') {
               if (!currentAssistant) {
-                currentAssistant = { ...msg, content: msg.content || '' };
+                currentAssistant = {
+                  ...msg,
+                  content: msg.content || '',
+                  file_change_message_index: msg.file_changes?.length
+                    ? serverMessageIndex
+                    : undefined,
+                };
                 awaitingToolContinuation = false;
               } else if (awaitingToolContinuation) {
                 // This assistant message is the final-text continuation of the
@@ -1229,11 +1235,22 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
                     ...msg.parts,
                   ];
                 }
+                if (Array.isArray(msg.file_changes) && msg.file_changes.length > 0) {
+                  currentAssistant.file_changes = msg.file_changes;
+                  currentAssistant.file_changes_undone = msg.file_changes_undone === true;
+                  currentAssistant.file_change_message_index = serverMessageIndex;
+                }
                 awaitingToolContinuation = false;
               } else {
                 // Independent assistant turn (e.g. wakeup) — new bubble.
                 mappedMessages.push(currentAssistant as Message);
-                currentAssistant = { ...msg, content: msg.content || '' };
+                currentAssistant = {
+                  ...msg,
+                  content: msg.content || '',
+                  file_change_message_index: msg.file_changes?.length
+                    ? serverMessageIndex
+                    : undefined,
+                };
                 awaitingToolContinuation = false;
               }
               if (msg.tool_calls && Array.isArray(msg.tool_calls)) {

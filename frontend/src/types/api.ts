@@ -22,6 +22,14 @@ export interface FileAttachment {
   preview_data?: string;
 }
 
+export interface MessageFileChange {
+  path: string;
+  display_path?: string;
+  diff: string;
+  additions: number;
+  deletions: number;
+}
+
 export interface Message {
   role: 'user' | 'assistant' | 'notice' | 'canvas_action' | 'system_triggered';
   content: string;
@@ -33,6 +41,9 @@ export interface Message {
   _streaming_run_id?: string;
   images?: ImageAttachment[]; // Optional image attachments
   files?: FileAttachment[];   // Optional file attachments
+  file_changes?: MessageFileChange[]; // Persisted file snapshot for this assistant turn
+  file_changes_undone?: boolean; // Whether this message-scoped snapshot was restored
+  file_change_message_index?: number; // Raw backend index used for message-scoped undo
 }
 export interface ChatConfig {
   model: string;
