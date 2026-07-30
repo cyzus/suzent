@@ -111,7 +111,7 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
   };
 
   return (
-    <div className="mt-3 overflow-hidden border-l-4 border-brutal-black bg-neutral-100/70 text-brutal-black dark:border-zinc-600 dark:bg-white/[0.035] dark:text-white">
+    <div className="mt-3 overflow-hidden border border-l-4 border-neutral-300 border-l-brutal-black bg-neutral-100/70 text-brutal-black dark:border-zinc-700 dark:border-l-zinc-500 dark:bg-white/[0.035] dark:text-white">
       <div className="flex items-center gap-2.5 border-b border-neutral-300 px-3 py-2 dark:border-zinc-700">
         <div className="flex h-8 w-8 shrink-0 items-center justify-center bg-brutal-yellow/45 text-brutal-black dark:bg-white/10 dark:text-neutral-200">
           <FileChangesIcon />
