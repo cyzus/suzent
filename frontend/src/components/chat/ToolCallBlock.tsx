@@ -568,11 +568,25 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
         <div className="overflow-hidden min-h-0 min-w-0 w-full">
           <div className={`${inActivityRail ? 'ml-0 pl-0 pr-0 border-l-0' : 'ml-2 pl-3 pr-2 border-l-2 border-neutral-200 dark:border-zinc-700'} mt-1 mb-2 space-y-3 min-w-0 overflow-x-hidden`}>
             {visibleDecision && (
-              <div className="rounded-sm border border-neutral-300 bg-neutral-50 px-2.5 py-2 text-[11px] text-neutral-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-neutral-300">
-                <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-neutral-500">
-                  {t('toolCallBlock.permissionDecisionTitle')}
-                </div>
-                <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1">
+              <details className="group/permission rounded-sm border border-neutral-200 bg-neutral-50/60 text-[11px] text-neutral-700 dark:border-zinc-700 dark:bg-zinc-900/60 dark:text-neutral-300">
+                <summary className="flex cursor-pointer list-none items-center gap-2 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wide text-neutral-500 transition-colors hover:bg-neutral-100 dark:hover:bg-zinc-800 [&::-webkit-details-marker]:hidden">
+                  <svg
+                    className="h-2.5 w-2.5 shrink-0 transition-transform duration-150 group-open/permission:rotate-90"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={3}
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                  </svg>
+                  <span>{t('toolCallBlock.permissionDecisionTitle')}</span>
+                  {decisionBadge && (
+                    <span className={`ml-auto rounded-sm border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${decisionBadge.className}`}>
+                      {decisionBadge.label}
+                    </span>
+                  )}
+                </summary>
+                <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1 border-t border-neutral-200 px-2.5 py-2 dark:border-zinc-700">
                   <dt className="text-neutral-500">{t('toolCallBlock.permissionOutcome')}</dt>
                   <dd className="font-medium">{visibleDecision.behavior}</dd>
                   <dt className="text-neutral-500">{t('toolCallBlock.permissionEvaluator')}</dt>
@@ -615,7 +629,7 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
                     </>
                   )}
                 </dl>
-              </div>
+              </details>
             )}
             {/* Arguments or Running status */}
             {(toolArgs || (isStreaming && !output)) && !(OutputRenderer && hasOutput && !ArgsRenderer) && (
