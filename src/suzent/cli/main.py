@@ -1036,6 +1036,29 @@ def register_commands(app: typer.Typer):
                     typer.echo(f"  ❌ {name:<10} : Not installed")
                     all_ok = False
 
+        try:
+            ripgrep = subprocess.run(
+                ["rg", "--version"], capture_output=True, text=True
+            )
+            if ripgrep.returncode == 0:
+                typer.echo(
+                    f"  ✅ {'ripgrep':<10} : "
+                    f"{ripgrep.stdout.strip().splitlines()[0]} (optional accelerator)"
+                )
+            else:
+                raise FileNotFoundError
+        except (FileNotFoundError, OSError):
+            if IS_WINDOWS:
+                install_hint = "winget install --id BurntSushi.ripgrep.MSVC"
+            elif sys.platform == "darwin":
+                install_hint = "brew install ripgrep"
+            else:
+                install_hint = "install ripgrep with your system package manager"
+            typer.echo(
+                f"  ⚠️  {'ripgrep':<10} : Optional accelerator not installed; "
+                f"grep_search will use Python fallback. To enable it: {install_hint}"
+            )
+
         if all_ok:
             typer.echo("\n✨ System is ready for Suzent!")
         else:

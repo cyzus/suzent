@@ -99,6 +99,19 @@ if ! command -v git &>/dev/null; then
 fi
 ok "git $(git --version | awk '{print $3}')"
 
+# ── Optional accelerator: ripgrep ────────────────────────────────────────────
+if command -v rg &>/dev/null; then
+    ok "ripgrep $(rg --version | awk 'NR==1 {print $2}')"
+elif [ "$OS" = "Darwin" ] && command -v brew &>/dev/null; then
+    info "Installing optional ripgrep search accelerator..."
+    brew install ripgrep || warn "ripgrep install failed — grep_search will use its Python fallback."
+elif [ "$(id -u)" -eq 0 ] && command -v apt-get &>/dev/null; then
+    info "Installing optional ripgrep search accelerator..."
+    apt-get update && apt-get install -y ripgrep || warn "ripgrep install failed — grep_search will use its Python fallback."
+else
+    warn "ripgrep not found — grep_search will use its Python fallback."
+fi
+
 # ── Check/install: Node.js ────────────────────────────────────────────────────
 install_node() {
     info "Installing Node.js via nvm..."

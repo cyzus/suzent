@@ -1,3 +1,6 @@
+import json
+import subprocess
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -44,6 +47,32 @@ class _DummyGrepResolver:
 
     def find_files(self, pattern, path):
         return self._files
+
+
+class _DummyRipgrepResolver(_DummyGrepResolver):
+    def resolve(self, path):
+        return self._files[0][0].parent if self._files else path
+
+    def to_virtual_path(self, path):
+        return f"/workspace/{path.name}"
+
+
+class _DummyVirtualRootResolver(_DummyRipgrepResolver):
+    def __init__(self, roots):
+        super().__init__([], sandbox_enabled=True)
+        self._roots = roots
+
+    def get_virtual_roots(self):
+        return self._roots
+
+    def to_virtual_path(self, path):
+        for virtual_root, host_root in self._roots:
+            try:
+                relative = path.relative_to(host_root)
+            except ValueError:
+                continue
+            return str((Path(virtual_root) / relative).as_posix())
+        return None
 
 
 @pytest.mark.asyncio
@@ -136,6 +165,166 @@ async def test_grep_tool_reports_capped_scan(tmp_path):
     assert result.success
     assert result.metadata["capped"] is True
     assert "scan capped" in result.message
+
+
+def test_grep_tool_uses_ripgrep_json_output(tmp_path, monkeypatch):
+    source = tmp_path / "example.py"
+    source.write_text("needle\n", encoding="utf-8")
+    tool = GrepTool()
+    tool._resolver = _DummyRipgrepResolver([(source, str(source))])
+    ctx = SimpleNamespace(
+        deps=SimpleNamespace(
+            chat_id="chat-1",
+            sandbox_enabled=False,
+            custom_volumes=[],
+            workspace_root=str(tmp_path),
+            path_resolver=tool._resolver,
+        )
+    )
+    events = [
+        {
+            "type": "match",
+            "data": {
+                "path": {"text": str(source)},
+                "lines": {"text": "needle\n"},
+                "line_number": 1,
+            },
+        },
+        {"type": "summary", "data": {"stats": {"searches": 1}}},
+    ]
+
+    monkeypatch.setattr(tool, "_ripgrep_checked", True)
+    monkeypatch.setattr(tool, "_ripgrep_path", "rg")
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            args[0], 0, "\n".join(json.dumps(event) for event in events), ""
+        ),
+    )
+
+    result = tool.forward(ctx, pattern="needle", path=str(tmp_path))
+
+    assert result.success
+    assert result.metadata["engine"] == "ripgrep"
+    assert result.metadata["match_count"] == 1
+    assert result.metadata["scanned_files"] == 1
+    assert str(source) in result.message
+
+
+def test_grep_tool_preserves_ripgrep_search_semantics(tmp_path, monkeypatch):
+    source = tmp_path / "example.py"
+    source.write_text("needle\n", encoding="utf-8")
+    tool = GrepTool()
+    tool._resolver = _DummyRipgrepResolver([(source, str(source))])
+    ctx = SimpleNamespace(
+        deps=SimpleNamespace(
+            chat_id="chat-1",
+            sandbox_enabled=False,
+            custom_volumes=[],
+            workspace_root=str(tmp_path),
+            path_resolver=tool._resolver,
+        )
+    )
+    captured_args = []
+
+    def fake_run(args, **kwargs):
+        captured_args.extend(args)
+        return subprocess.CompletedProcess(args, 1, "", "")
+
+    monkeypatch.setattr(tool, "_ripgrep_checked", True)
+    monkeypatch.setattr(tool, "_ripgrep_path", "rg")
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    result = tool.forward(ctx, pattern="needle", path=str(tmp_path))
+
+    assert result.success
+    assert result.metadata["engine"] == "ripgrep"
+    assert "--hidden" in captured_args
+    assert "--no-ignore" in captured_args
+    assert "!**/node_modules/**" in captured_args
+
+
+def test_grep_tool_searches_all_virtual_roots_for_slash_path(tmp_path, monkeypatch):
+    workspace = tmp_path / "workspace"
+    shared = tmp_path / "shared"
+    workspace.mkdir()
+    shared.mkdir()
+    shared_file = shared / "memory.md"
+    shared_file.write_text("needle\n", encoding="utf-8")
+
+    tool = GrepTool()
+    tool._resolver = _DummyVirtualRootResolver(
+        [("/workspace", workspace), ("/shared", shared)]
+    )
+    ctx = SimpleNamespace(
+        deps=SimpleNamespace(
+            chat_id="chat-1",
+            sandbox_enabled=True,
+            custom_volumes=[],
+            workspace_root=str(workspace),
+            path_resolver=tool._resolver,
+        )
+    )
+    captured_args = []
+    events = [
+        {
+            "type": "match",
+            "data": {
+                "path": {"text": str(shared_file)},
+                "lines": {"text": "needle\n"},
+                "line_number": 1,
+            },
+        },
+        {"type": "summary", "data": {"stats": {"searches": 2}}},
+    ]
+
+    def fake_run(args, **kwargs):
+        captured_args.extend(args)
+        return subprocess.CompletedProcess(
+            args, 0, "\n".join(json.dumps(event) for event in events), ""
+        )
+
+    monkeypatch.setattr(tool, "_ripgrep_checked", True)
+    monkeypatch.setattr(tool, "_ripgrep_path", "rg")
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    result = tool.forward(ctx, pattern="needle", path="/")
+
+    assert result.success
+    assert result.metadata["engine"] == "ripgrep"
+    assert str(workspace.resolve()) in captured_args
+    assert str(shared.resolve()) in captured_args
+    assert "/shared/memory.md" in result.message
+
+
+def test_grep_tool_falls_back_when_ripgrep_rejects_regex(tmp_path, monkeypatch):
+    source = tmp_path / "example.py"
+    source.write_text("needle\n", encoding="utf-8")
+    tool = GrepTool()
+    tool._resolver = _DummyRipgrepResolver([(source, str(source))])
+    ctx = SimpleNamespace(
+        deps=SimpleNamespace(
+            chat_id="chat-1",
+            sandbox_enabled=False,
+            custom_volumes=[],
+            workspace_root=str(tmp_path),
+            path_resolver=tool._resolver,
+        )
+    )
+    monkeypatch.setattr(tool, "_ripgrep_checked", True)
+    monkeypatch.setattr(tool, "_ripgrep_path", "rg")
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 2, "", "error"),
+    )
+
+    result = tool.forward(ctx, pattern="needle", path=str(tmp_path))
+
+    assert result.success
+    assert result.metadata["engine"] == "python"
+    assert result.metadata["match_count"] == 1
 
 
 @pytest.mark.asyncio
