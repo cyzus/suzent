@@ -723,6 +723,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
         messageIndex={message.file_change_message_index ?? messageIndex}
         files={message.file_changes}
         initiallyUndone={message.file_changes_undone === true}
+        onFileClick={onFileClick}
       />
     </div>
   ) : null;

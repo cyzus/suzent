@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { EyeIcon } from '@heroicons/react/24/outline';
 import { undoChatFiles } from '../../lib/api';
 import { parseUnifiedDiff } from '../../lib/unifiedDiff';
 import type { MessageFileChange } from '../../types/api';
@@ -39,11 +40,17 @@ const getDisplayPath = (file: MessageFileChange): string => {
   return sandboxMatch?.[1] || path;
 };
 
+const getFileName = (file: MessageFileChange): string => {
+  const displayPath = getDisplayPath(file);
+  return displayPath.split(/[/\\]/).filter(Boolean).pop() || displayPath || file.path;
+};
+
 interface FileChangeSummaryProps {
   chatId: string;
   messageIndex: number;
   files: MessageFileChange[];
   initiallyUndone?: boolean;
+  onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
 }
 
 export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
@@ -51,6 +58,7 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
   messageIndex,
   files,
   initiallyUndone = false,
+  onFileClick,
 }) => {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
@@ -75,6 +83,16 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
     () => parseUnifiedDiff(selectedFile?.diff ?? ''),
     [selectedFile],
   );
+
+  const openDiffForFile = (file: MessageFileChange): void => {
+    const isCurrentOpen = reviewing && selectedFile?.path === file.path;
+    setSelectedPath(file.path);
+    setReviewing(!isCurrentOpen);
+  };
+
+  const openFilePreview = (file: MessageFileChange, shiftKey = false): void => {
+    onFileClick?.(file.path, getFileName(file), shiftKey);
+  };
 
   useEffect(() => {
     if (!files.some(file => file.path === selectedPath)) {
@@ -157,27 +175,40 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
 
       <div className="py-1">
         {visibleFiles.map(file => (
-          <button
+          <div
             key={file.path}
-            type="button"
-            onClick={() => {
-              setSelectedPath(file.path);
-              setReviewing(true);
-            }}
-            className={`flex w-full min-w-0 items-center gap-3 px-3 py-1.5 text-left text-xs transition-colors ${
+            className={`group/file-row flex w-full min-w-0 items-center gap-2 px-3 py-1.5 text-xs transition-colors ${
               reviewing && selectedFile?.path === file.path
                 ? 'bg-black/[0.055] dark:bg-white/[0.07]'
                 : 'hover:bg-black/[0.035] dark:hover:bg-white/[0.05]'
             }`}
           >
-            <span className="min-w-0 flex-1 truncate font-mono font-bold text-neutral-600 dark:text-neutral-300">
-              {getDisplayPath(file)}
-            </span>
-            <span className="shrink-0 font-mono">
+            <button
+              type="button"
+              onClick={() => openDiffForFile(file)}
+              className="flex min-w-0 flex-1 items-center gap-3 text-left"
+              aria-expanded={reviewing && selectedFile?.path === file.path}
+            >
+              <span className="min-w-0 flex-1 truncate font-mono font-bold text-neutral-600 dark:text-neutral-300">
+                {getDisplayPath(file)}
+              </span>
+            </button>
+            <span className="shrink-0 font-mono font-bold">
               <span className="text-emerald-600 dark:text-emerald-400">+{file.additions}</span>{' '}
               <span className="text-red-500 dark:text-red-400">-{file.deletions}</span>
             </span>
-          </button>
+            {onFileClick && (
+              <button
+                type="button"
+                onClick={event => openFilePreview(file, event.shiftKey)}
+                title={t('fileChanges.openFile')}
+                aria-label={t('fileChanges.openFile')}
+                className="inline-flex h-6 w-6 shrink-0 items-center justify-center text-neutral-500 opacity-70 transition hover:bg-black/[0.06] hover:text-brutal-black group-hover/file-row:opacity-100 dark:text-neutral-400 dark:hover:bg-white/[0.08] dark:hover:text-white"
+              >
+                <EyeIcon className="h-4 w-4 stroke-[2.2]" />
+              </button>
+            )}
+          </div>
         ))}
         {hiddenCount > 0 && (
           <button
@@ -208,7 +239,6 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
               addedLines={selectedFile.additions}
               removedLines={selectedFile.deletions}
               embedded
-              showFullPath
             />
           ) : (
             <div className="bg-neutral-50 px-3 py-5 text-center text-xs font-bold text-neutral-500 dark:bg-zinc-950 dark:text-neutral-400">

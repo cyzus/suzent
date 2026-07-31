@@ -650,6 +650,7 @@ export const en = {
     diff: 'Diff',
     showMore: 'Show {count} more files',
     showLess: 'Show fewer files',
+    openFile: 'Open file preview',
     undo: 'Undo',
     undone: 'Undone',
     undoing: 'Undoing…',

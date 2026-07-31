@@ -576,6 +576,7 @@ export const zhCN = {
     diff: '差异',
     showMore: '再显示 {count} 个文件',
     showLess: '收起文件',
+    openFile: '打开文件预览',
     undo: '撤销',
     undone: '已撤销',
     undoing: '撤销中…',
