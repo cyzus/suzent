@@ -56,6 +56,7 @@ class BashTool(Tool):
     _SUPPORTED_LANGUAGES = {"python", "nodejs", "command"}
     DEFAULT_TIMEOUT_SECONDS = 120
     TOOL_STREAM_TIMEOUT_GRACE_SECONDS = 30
+    TIMEOUT_OUTPUT_BYTES_PER_STREAM = 12_000
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -527,6 +528,31 @@ class BashTool(Tool):
                     background=False,
                 )
             else:
+                if result.timed_out:
+                    error = result.error or "Sandbox execution timed out"
+                    logger.warning(f"Sandbox execution timed out: {error}")
+                    self._audit_execution(
+                        "timeout",
+                        description=description,
+                        mode="sandbox",
+                        language=language,
+                        timeout=timeout,
+                        background=False,
+                    )
+                    return self._error_result(
+                        ToolErrorCode.TIMEOUT,
+                        (
+                            f"{error}\n"
+                            "[SYSTEM REMINDER: The sandbox command timed out. "
+                            "Do not blindly retry the same command; inspect the likely "
+                            "bottleneck, increase timeout, or use background=True.]"
+                        ),
+                        mode="sandbox",
+                        language=language,
+                        timeout=timeout,
+                        background=False,
+                        returncode=124,
+                    )
                 logger.warning(f"Sandbox execution error: {result.error}")
                 self._audit_execution(
                     "error",
@@ -755,8 +781,14 @@ class BashTool(Tool):
         except subprocess.TimeoutExpired:
             if process is not None:
                 self._kill_host_process_tree(process)
-            stdout = self._read_output_file(stdout_path) if stdout_path else ""
-            stderr = self._read_output_file(stderr_path) if stderr_path else ""
+            stdout = self._read_output_file(
+                stdout_path,
+                max_bytes=self.TIMEOUT_OUTPUT_BYTES_PER_STREAM,
+            )
+            stderr = self._read_output_file(
+                stderr_path,
+                max_bytes=self.TIMEOUT_OUTPUT_BYTES_PER_STREAM,
+            )
             partial_parts = []
             if stdout.strip():
                 partial_parts.append(stdout)
@@ -832,11 +864,39 @@ class BashTool(Tool):
             self._unlink_temp_output(stderr_path)
 
     @staticmethod
-    def _read_output_file(path: Optional[Path]) -> str:
+    def _read_output_file(
+        path: Optional[Path],
+        max_bytes: Optional[int] = None,
+    ) -> str:
         if path is None:
             return ""
         try:
-            return path.read_text(encoding="utf-8", errors="replace")
+            with path.open("rb") as output_file:
+                truncated = False
+                if max_bytes is not None:
+                    output_file.seek(0, os.SEEK_END)
+                    size = output_file.tell()
+                    truncated = size > max_bytes
+                    if truncated:
+                        head_bytes = max_bytes // 3
+                        tail_bytes = max_bytes - head_bytes
+                        output_file.seek(0)
+                        head = output_file.read(head_bytes)
+                        output_file.seek(-tail_bytes, os.SEEK_END)
+                        tail = output_file.read(tail_bytes)
+                        omitted_bytes = size - len(head) - len(tail)
+                        return (
+                            head.decode("utf-8", errors="replace")
+                            + f"\n... [{omitted_bytes} bytes omitted] ...\n"
+                            + tail.decode("utf-8", errors="replace")
+                        )
+                    else:
+                        output_file.seek(0)
+                    data = output_file.read(max_bytes)
+                else:
+                    data = output_file.read()
+            text = data.decode("utf-8", errors="replace")
+            return text
         except FileNotFoundError:
             return ""
 

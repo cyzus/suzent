@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from suzent.sandbox.manager import DockerSession, SandboxManager
+from suzent.sandbox.manager import DockerSession, Language, SandboxManager
 
 
 class _FakeContainers:
@@ -53,6 +53,33 @@ def test_docker_session_build_env_exposes_project_paths():
     assert env["PROJECT_SLUG"] == "default"
     assert env["PROJECT_PATH"] == "/workspace"
     assert env["SHARED_PATH"] == "/shared"
+
+
+def test_docker_session_timeout_returns_exit_code_124(monkeypatch):
+    session = DockerSession(
+        session_id="chat-timeout",
+        client=None,
+        data_path="unused",
+        image="python:3.11-slim",
+        memory_mb=512,
+        cpus=1,
+        network="bridge",
+        project_slug="default",
+    )
+    session._is_running = True
+
+    def raise_timeout(content, timeout):
+        raise TimeoutError("Execution timed out after 1s")
+
+    monkeypatch.setattr(session, "_execute_command", raise_timeout)
+
+    result = session.execute("sleep 10", Language.COMMAND, timeout=1)
+
+    assert not result.success
+    assert result.timed_out
+    assert result.exit_code == 124
+    assert result.error == "Execution timed out after 1s"
+    assert result.language == Language.COMMAND
 
 
 def test_sandbox_manager_singleton_per_volume_key(monkeypatch):
