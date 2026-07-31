@@ -14,6 +14,9 @@ Markdown memory in a private Git repository. Credentials remain on each device.
 
 The payload builder rejects forbidden paths before push. GitHub sync never
 creates encrypted key bundles and never reads from Suzent's local secret store.
+Pull replaces only portable configuration files and preserves other local
+configuration, including future device-local files. Planning compares source
+trees without mutating the sync repository worktree.
 
 ## Repository layout
 
@@ -130,6 +133,6 @@ Avoid editing generated payload files directly.
 
 ## See also
 
-- [Memory](/docs/concepts/memory)
+- [Memory](../memory/README.md)
 - [Skills](../skills/skills.md)
-- [Filesystem and sandbox](/docs/concepts/filesystem)
+- [Filesystem and sandbox](../filesystem.md)

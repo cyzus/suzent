@@ -154,6 +154,19 @@ Edit `src-tauri/tauri.conf.json` to customize:
 | Backend (Python) | No | Restart manually |
 | Rust code | No | Restart Tauri |
 
+## Architecture Notes
+
+Suzent uses `pydantic-ai` directly for provider execution, streaming, history
+processing, and deferred tool discovery, but keeps product-specific wrappers
+where they preserve local behavior. Tools still route through Suzent's registry,
+permission engine, sandbox/path policy, frontend events, and persisted replay
+contracts before execution.
+
+Do not replace shell, filesystem, MCP, web, image, or skill behavior with a
+native provider primitive unless the replacement preserves cross-provider
+fallback, permission policy, cancellation, persisted tool-call replay, and the
+existing frontend event contract.
+
 ## Command Reference
 
 | Task | Command |

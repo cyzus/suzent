@@ -153,8 +153,10 @@ File creation and modification tools.
 - `write_file`: Creates or overwrites a file. Creates parent directories automatically.
 - `edit_file`: Find-and-replace within a file. Supports `replace_all` for bulk replacements.
 
-Both are **permission controlled**. Default mode asks; Accept Edits and Auto mode
-allow verified workspace edits; Plan mode allows only the project `plan.md`.
+Both are **permission controlled**. Default mode asks before writes, Auto mode
+allows deterministic low-risk edits or escalates unresolved cases, and Full
+Access removes ordinary approval prompts while preserving hard path and deny
+checks.
 
 ### `glob_search` / `grep_search`
 

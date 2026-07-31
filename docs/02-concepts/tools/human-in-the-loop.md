@@ -120,6 +120,27 @@ Legacy binary approval payloads remain accepted as allow-once or deny-only decis
 
 ## Streaming Contract
 
+Permission provenance is streamed separately from the tool result so the UI can
+show how a deferred action was authorized. Full Access is labeled as allowed
+without review; it must not be presented as an Auto classifier approval.
+
+```json
+{
+  "name": "tool_permission_decision",
+  "value": {
+    "toolCallId": "tool-call-id",
+    "behavior": "ask",
+    "source": "auto_classifier",
+    "reason": "This command changes workspace files.",
+    "reasonCode": "auto_classifier_ask",
+    "risk": "medium",
+    "confidence": "high",
+    "riskCategories": ["filesystem"],
+    "reviewerModel": "openai/gpt-4.1-mini"
+  }
+}
+```
+
 The `tool_approval_request` custom event contains:
 
 ```json
@@ -139,6 +160,10 @@ The `tool_approval_request` custom event contains:
 ```
 
 The frontend renders `decision.actions` in order, including feedback inputs and rule explanations declared by the backend. Pending contracts are persisted in `_pending_approvals` so the same prompt can be restored after refresh.
+
+After a user acts on an approval prompt, Suzent streams
+`tool_permission_resolution` with the selected action and scope. Older clients
+can ignore provenance events and still rely on `tool_approval_request`.
 
 ## Audit Trail
 

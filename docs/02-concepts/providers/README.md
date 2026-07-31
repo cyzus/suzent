@@ -32,10 +32,12 @@ API keys are stored in the local database — never in plain text config files.
 | [Anthropic](./anthropic.md) | Claude models |
 | [Google Gemini](./gemini.md) | Free tier available |
 | [xAI (Grok)](./xai.md) | Grok models |
+| [DashScope](./dashscope.md) | Alibaba Cloud OpenAI-compatible endpoint |
 | [DeepSeek](./deepseek.md) | Cost-effective; includes reasoning model |
 | [MiniMax](./minimax.md) | |
 | [Moonshot (Kimi)](./moonshot.md) | Long context |
 | [Zhipu AI (GLM)](./zhipu.md) | GLM series |
+| [Xiaomi MiMo](./xiaomi-mimo.md) | Xiaomi MiMo models through an OpenAI-compatible API |
 
 ### Aggregators & Proxies
 
@@ -59,3 +61,5 @@ API keys are stored in the local database — never in plain text config files.
 **Custom models** — For each provider you can add custom model IDs on top of the default list. In **Settings → Providers → [Provider] → Custom Models**, enter the model ID in LiteLLM format: `provider/model-name` (e.g. `openai/gpt-4o-2024-11-20`).
 
 **Model capabilities** — Suzent tracks per-model metadata (context window, vision/reasoning/tool-calling flags, pricing) used for routing, compression, and cost estimation. See [Model Capabilities](./model-capabilities.md) for how this data is layered and how runtime discovery is stored.
+
+**Provider registry** — Built-in providers are declared in `config/providers.json`. User-defined providers are merged from `config/providers.user.json` and appear alongside the built-in cards after the registry reloads.
