@@ -179,7 +179,7 @@ def _validate_volume_mount(host_path: str) -> None:
 class ExecutionResult:
     """Result from code execution in sandbox."""
 
-    __slots__ = ("success", "output", "error", "exit_code", "language")
+    __slots__ = ("success", "output", "error", "exit_code", "language", "timed_out")
 
     def __init__(
         self,
@@ -188,17 +188,31 @@ class ExecutionResult:
         error: Optional[str] = None,
         exit_code: int = 0,
         language: Optional[Language] = None,
+        timed_out: bool = False,
     ):
         self.success = success
         self.output = output
         self.error = error
         self.exit_code = exit_code
         self.language = language
+        self.timed_out = timed_out
 
     @classmethod
     def failure(cls, error: str) -> ExecutionResult:
         """Factory for failed execution."""
         return cls(success=False, output="", error=error)
+
+    @classmethod
+    def timeout(cls, error: str, language: Language) -> ExecutionResult:
+        """Factory for executions stopped by the sandbox timeout."""
+        return cls(
+            success=False,
+            output="",
+            error=error,
+            exit_code=124,
+            language=language,
+            timed_out=True,
+        )
 
 
 # =============================================================================
@@ -599,7 +613,7 @@ class DockerSession:
                     return self._execute_command(content, timeout)
                 return self._execute_code(content, language, timeout)
             except TimeoutError as e:
-                return ExecutionResult.failure(str(e))
+                return ExecutionResult.timeout(str(e), language)
             except Exception as e:
                 if self._should_auto_heal(str(e)):
                     logger.warning(
