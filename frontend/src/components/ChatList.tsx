@@ -1069,12 +1069,16 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
                   <button
                     type="button"
                     onClick={() => {
-                      if (organization === 'list') selectOrganization('projects');
+                      if (organization === 'list') {
+                        beginNewChat();
+                        if (switchToView) switchToView('chat');
+                        return;
+                      }
                       setCreatingProjectInline(true);
                     }}
                     className="w-6 h-6 flex items-center justify-center text-neutral-500 hover:bg-brutal-yellow hover:text-brutal-black dark:text-neutral-400"
-                    title={t('chatList.newProject')}
-                    aria-label={t('chatList.newProject')}
+                    title={organization === 'list' ? t('chatList.newChat') : t('chatList.newProject')}
+                    aria-label={organization === 'list' ? t('chatList.newChat') : t('chatList.newProject')}
                   >
                     <PlusIcon className="w-4 h-4 stroke-[3]" />
                   </button>
