@@ -96,84 +96,351 @@ function DailyChart({ data, range }: { data: CostDaily[]; range: TimeRange }) {
   );
 }
 
-function TokenActivity({ data, range }: { data: CostDaily[]; range: TimeRange }) {
-  const { grid, maxTokens } = useMemo(() => {
-    const numRows = 7;
-    const numCols = 24;
-    const totalCells = numRows * numCols; // 168
+interface ActivityCell {
+  key: string;
+  label: string;
+  inputTokens: number;
+  outputTokens: number;
+  calls: number;
+}
 
-    const today = new Date().getTime();
-    let startTime = today;
-    if (range === 1) startTime -= 86400000;
-    else if (range === 7) startTime -= 7 * 86400000;
-    else if (range === 30) startTime -= 30 * 86400000;
-    else startTime -= 365 * 86400000;
+const DAY_MS = 86_400_000;
+const ACTIVITY_LEVEL_STRENGTH = [0, 25, 48, 72, 100];
 
-    const interval = (today - startTime) / totalCells;
+function addUtcDays(date: Date, days: number): Date {
+  return new Date(date.getTime() + days * DAY_MS);
+}
 
-    const gridRows: any[][] = Array.from({ length: numRows }, () => []);
-    const buckets = Array.from({ length: totalCells }, (_, i) => {
-      const bucketTime = startTime + i * interval;
-      return {
-        date: new Date(bucketTime).toISOString().slice(0, 16).replace('T', ' '),
-        cost_usd: 0,
-        input_tokens: 0,
-        output_tokens: 0,
-        calls: 0
-      };
-    });
+function utcDateKey(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
 
-    for (const d of data) {
-      const t = new Date(d.date).getTime();
-      if (t >= startTime && t <= today) {
-        const bIdx = Math.min(Math.floor((t - startTime) / interval), totalCells - 1);
-        buckets[bIdx].cost_usd += d.cost_usd;
-        buckets[bIdx].input_tokens += d.input_tokens;
-        buckets[bIdx].output_tokens += d.output_tokens;
-        buckets[bIdx].calls += d.calls;
-      }
-    }
+function activityLevel(tokens: number, thresholds: number[]): number {
+  if (tokens === 0) return 0;
+  const level = thresholds.findIndex(threshold => tokens <= threshold);
+  return level === -1 ? 4 : level + 1;
+}
 
-    const maxT = Math.max(...buckets.map(b => b.input_tokens + b.output_tokens), 1);
+function getActivityThresholds(cells: ActivityCell[]): number[] {
+  const nonZero = cells
+    .map(cell => cell.inputTokens + cell.outputTokens)
+    .filter(tokens => tokens > 0)
+    .sort((a, b) => a - b);
 
-    for (let i = 0; i < totalCells; i++) {
-      gridRows[i % numRows].push(buckets[i]);
-    }
+  if (nonZero.length === 0) return [1, 1, 1];
+  return [0.25, 0.5, 0.75].map(quantile => {
+    const index = Math.min(Math.floor((nonZero.length - 1) * quantile), nonZero.length - 1);
+    return nonZero[index];
+  });
+}
 
-    return { grid: gridRows, maxTokens: maxT };
-  }, [data, range]);
+function ActivitySquare({
+  cell,
+  thresholds,
+  onInspect,
+  sizeClass,
+}: {
+  cell: ActivityCell;
+  thresholds: number[];
+  onInspect: (cell: ActivityCell | null) => void;
+  sizeClass: string;
+}) {
+  const { locale, t } = useI18n();
+  const level = activityLevel(cell.inputTokens + cell.outputTokens, thresholds);
+  const backgroundColor = level === 0
+    ? undefined
+    : `color-mix(in srgb, var(--brutal-yellow) ${ACTIVITY_LEVEL_STRENGTH[level]}%, transparent)`;
 
   return (
-    <div className="space-y-3">
-      <div className="text-xs font-bold uppercase text-neutral-500 dark:text-neutral-400">
-        Token Activity ({range === 'all' ? 'Last 365 Days' : `Last ${range} ${range === 1 ? 'Day' : 'Days'}`})
-      </div>
-      <div className="overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-brutal-black dark:scrollbar-thumb-neutral-600">
-        <div className="flex flex-col gap-[2px] min-w-max">
-          {grid.map((row, rIdx) => (
-            <div key={rIdx} className="flex gap-[2px]">
-              {row.map((d: CostDaily, cIdx: number) => {
-                const total = d.input_tokens + d.output_tokens;
-                let intensity = 0;
-                if (total > 0) {
-                  intensity = Math.ceil((total / maxTokens) * 4); // 1 to 4
-                }
-                const bgClass = intensity === 0 ? 'bg-neutral-100 dark:bg-zinc-700' :
-                                intensity === 1 ? 'bg-blue-200 dark:bg-blue-900' :
-                                intensity === 2 ? 'bg-blue-400 dark:bg-blue-700' :
-                                intensity === 3 ? 'bg-blue-500 dark:bg-blue-500' :
-                                'bg-blue-600 dark:bg-blue-400';
-                return (
-                  <div
-                    key={`${d.date}-${cIdx}`}
-                    className={`w-3 h-3 rounded-sm ${bgClass} transition-all hover:ring-2 ring-brutal-black dark:ring-white z-10 hover:z-20`}
-                    title={`${d.date.replace('T', ' ').slice(0, 16)}: ${formatTokens(total)} tokens`}
-                  />
-                );
-              })}
-            </div>
-          ))}
+    <button
+      type="button"
+      className={`${sizeClass} ${level === 0 ? 'bg-neutral-100 dark:bg-zinc-700/70' : ''} border-2 border-brutal-black transition-shadow duration-100 hover:ring-2 hover:ring-inset focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset ring-brutal-black dark:ring-white`}
+      style={{ backgroundColor }}
+      aria-label={t('settings.usage.activityCellLabel', {
+        date: cell.label,
+        tokens: (cell.inputTokens + cell.outputTokens).toLocaleString(locale),
+        calls: cell.calls.toLocaleString(locale),
+      })}
+      onMouseEnter={() => onInspect(cell)}
+      onMouseLeave={() => onInspect(null)}
+      onFocus={() => onInspect(cell)}
+      onBlur={() => onInspect(null)}
+    />
+  );
+}
+
+function TokenActivity({ data, range }: { data: CostDaily[]; range: TimeRange }) {
+  const { locale, t } = useI18n();
+  const [inspected, setInspected] = useState<ActivityCell | null>(null);
+  const today = useMemo(() => {
+    const now = new Date();
+    return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  }, []);
+
+  const calendar = useMemo(() => {
+    if (range !== 30 && range !== 'all') return null;
+
+    const dayCount = range === 'all' ? 365 : 30;
+    const firstDay = addUtcDays(today, -(dayCount - 1));
+    const totals = new Map<string, ActivityCell>();
+
+    for (const item of data) {
+      const key = item.date.slice(0, 10);
+      if (key < utcDateKey(firstDay) || key > utcDateKey(today)) continue;
+      const current = totals.get(key) ?? {
+        key,
+        label: new Date(`${key}T00:00:00Z`).toLocaleDateString(locale, {
+          timeZone: 'UTC', month: 'short', day: 'numeric', year: 'numeric',
+        }),
+        inputTokens: 0,
+        outputTokens: 0,
+        calls: 0,
+      };
+      current.inputTokens += item.input_tokens;
+      current.outputTokens += item.output_tokens;
+      current.calls += item.calls;
+      totals.set(key, current);
+    }
+
+    const gridStart = addUtcDays(firstDay, -firstDay.getUTCDay());
+    const gridEnd = addUtcDays(today, 6 - today.getUTCDay());
+    const weeks: Array<Array<ActivityCell | null>> = [];
+    for (let cursor = gridStart; cursor <= gridEnd; cursor = addUtcDays(cursor, 7)) {
+      const week: Array<ActivityCell | null> = [];
+      for (let day = 0; day < 7; day += 1) {
+        const date = addUtcDays(cursor, day);
+        const key = utcDateKey(date);
+        if (date < firstDay || date > today) {
+          week.push(null);
+          continue;
+        }
+        week.push(totals.get(key) ?? {
+          key,
+          label: date.toLocaleDateString(locale, {
+            timeZone: 'UTC', month: 'short', day: 'numeric', year: 'numeric',
+          }),
+          inputTokens: 0,
+          outputTokens: 0,
+          calls: 0,
+        });
+      }
+      weeks.push(week);
+    }
+
+    const cells = weeks.flat().filter((cell): cell is ActivityCell => cell !== null);
+    return { weeks, cells, thresholds: getActivityThresholds(cells) };
+  }, [data, locale, range, today]);
+
+  const hourly = useMemo(() => {
+    if (range !== 1 && range !== 7) return null;
+
+    if (range === 1) {
+      const currentHour = new Date();
+      currentHour.setUTCMinutes(0, 0, 0);
+      const firstHour = new Date(currentHour.getTime() - 23 * 3_600_000);
+      const cells = Array.from({ length: 4 }, (_, quarter) => (
+        Array.from({ length: 24 }, (_, hourOffset) => {
+          const hour = new Date(firstHour.getTime() + hourOffset * 3_600_000);
+          const minute = quarter * 15;
+          const start = new Date(hour.getTime() + minute * 60_000);
+          return {
+            key: start.toISOString(),
+            label: start.toLocaleString(locale, {
+              timeZone: 'UTC', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false,
+            }),
+            inputTokens: 0,
+            outputTokens: 0,
+            calls: 0,
+          };
+        })
+      ));
+      for (const item of data) {
+        const timestamp = new Date(item.date);
+        const hourOffset = Math.floor((timestamp.getTime() - firstHour.getTime()) / 3_600_000);
+        if (hourOffset < 0 || hourOffset >= 24) continue;
+        const quarter = Math.min(Math.floor(timestamp.getUTCMinutes() / 15), 3);
+        const cell = cells[quarter][hourOffset];
+        cell.inputTokens += item.input_tokens;
+        cell.outputTokens += item.output_tokens;
+        cell.calls += item.calls;
+      }
+      return {
+        cells,
+        columnLabels: Array.from({ length: 24 }, (_, index) => {
+          const hour = new Date(firstHour.getTime() + index * 3_600_000).getUTCHours();
+          return index % 4 === 0 ? `${String(hour).padStart(2, '0')}:00` : '';
+        }),
+        rowLabels: ['00', '15', '30', '45'],
+        thresholds: getActivityThresholds(cells.flat()),
+      };
+    }
+
+    const firstDay = addUtcDays(today, -6);
+    const cells = Array.from({ length: 7 }, (_, dayOffset) => {
+      const date = addUtcDays(firstDay, dayOffset);
+      return Array.from({ length: 24 }, (_, hour) => ({
+        key: `${utcDateKey(date)}-${hour}`,
+        label: new Date(date.getTime() + hour * 3_600_000).toLocaleString(locale, {
+          timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', hour12: false,
+        }),
+        inputTokens: 0,
+        outputTokens: 0,
+        calls: 0,
+      }));
+    });
+    for (const item of data) {
+      const timestamp = new Date(item.date);
+      const dayOffset = Math.floor((Date.UTC(
+        timestamp.getUTCFullYear(), timestamp.getUTCMonth(), timestamp.getUTCDate(),
+      ) - firstDay.getTime()) / DAY_MS);
+      if (dayOffset < 0 || dayOffset >= 7) continue;
+      const cell = cells[dayOffset][timestamp.getUTCHours()];
+      cell.inputTokens += item.input_tokens;
+      cell.outputTokens += item.output_tokens;
+      cell.calls += item.calls;
+    }
+    return {
+      cells,
+      columnLabels: Array.from({ length: 24 }, (_, hour) => hour % 4 === 0 ? `${String(hour).padStart(2, '0')}:00` : ''),
+      rowLabels: cells.map(row => new Date(`${row[0].key.slice(0, 10)}T00:00:00Z`).toLocaleDateString(locale, {
+        timeZone: 'UTC', weekday: 'short',
+      })),
+      thresholds: getActivityThresholds(cells.flat()),
+    };
+  }, [data, locale, range, today]);
+
+  const allCells = calendar?.cells ?? hourly?.cells.flat() ?? [];
+  const activeCells = allCells.filter(cell => cell.inputTokens + cell.outputTokens > 0).length;
+  const totalTokens = allCells.reduce((sum, cell) => sum + cell.inputTokens + cell.outputTokens, 0);
+  const rangeLabel = range === 1
+    ? t('settings.usage.last24Hours')
+    : t('settings.usage.lastNDays', { count: range === 'all' ? 365 : range });
+  const thresholds = calendar?.thresholds ?? hourly?.thresholds ?? [1, 1, 1];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <div className="text-xs font-bold uppercase text-neutral-600 dark:text-neutral-300">
+            {t('settings.usage.tokenActivity')}
+          </div>
+          <div className="mt-1 text-[11px] font-mono text-neutral-400 dark:text-neutral-500">
+            {rangeLabel} · {t('settings.usage.utcTime')}
+          </div>
         </div>
+        <div className="min-h-9 text-left sm:text-right font-mono">
+          {inspected ? (
+            <>
+              <div className="text-xs font-bold text-brutal-black dark:text-white">{inspected.label}</div>
+              <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                {(inspected.inputTokens + inspected.outputTokens).toLocaleString(locale)} {t('settings.usage.tokensLowercase')} · {t('settings.usage.tooltipCalls', { count: inspected.calls.toLocaleString(locale) })}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="text-xs font-bold text-brutal-black dark:text-white">
+                {formatTokens(totalTokens)} {t('settings.usage.tokensLowercase')}
+              </div>
+              <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                {t('settings.usage.activePeriods', { count: activeCells })}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {calendar && range === 'all' && (
+        <div className="w-full min-w-0 pb-1">
+          <div
+            className="grid gap-[2px] sm:gap-[3px]"
+            style={{
+              gridTemplateColumns: `1.5rem repeat(${calendar.weeks.length}, minmax(0, 1fr))`,
+            }}
+          >
+            <div />
+            {calendar.weeks.map((week, weekIndex) => {
+              const firstVisible = week.find((cell): cell is ActivityCell => cell !== null);
+              const previousWeek = weekIndex > 0 ? calendar.weeks[weekIndex - 1] : [];
+              const previousVisible = previousWeek.find((cell): cell is ActivityCell => cell !== null);
+              const month = firstVisible?.key.slice(5, 7);
+              const showMonth = firstVisible && (weekIndex === 0 || month !== previousVisible?.key.slice(5, 7));
+              return (
+                <div key={`month-${weekIndex}`} className="h-4 overflow-visible whitespace-nowrap text-[9px] font-mono text-neutral-400 dark:text-neutral-500">
+                  {showMonth ? new Date(`${firstVisible.key}T00:00:00Z`).toLocaleDateString(locale, { timeZone: 'UTC', month: 'short' }) : ''}
+                </div>
+              );
+            })}
+            <div className="grid grid-rows-7 gap-[2px] sm:gap-[3px] text-[9px] font-mono leading-none text-neutral-400 dark:text-neutral-500">
+              {Array.from({ length: 7 }, (_, day) => (
+                <div key={day} className="flex items-center">
+                  {day % 2 === 1 ? new Date(Date.UTC(2024, 0, 7 + day)).toLocaleDateString(locale, { timeZone: 'UTC', weekday: 'short' }) : ''}
+                </div>
+              ))}
+            </div>
+            {calendar.weeks.map((week, weekIndex) => (
+              <div key={`week-${weekIndex}`} className="grid grid-rows-7 gap-[2px] sm:gap-[3px]">
+                {week.map((cell, dayIndex) => cell ? (
+                  <ActivitySquare key={cell.key} cell={cell} thresholds={thresholds} onInspect={setInspected} sizeClass="w-full aspect-square" />
+                ) : <div key={`empty-${dayIndex}`} className="w-full aspect-square" />)}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {calendar && range === 30 && (
+        <div className="overflow-x-auto pb-1 scrollbar-thin scrollbar-thumb-brutal-black dark:scrollbar-thumb-neutral-600">
+          <div className="grid min-w-[620px] grid-cols-[repeat(30,minmax(18px,1fr))] gap-1">
+            {calendar.cells.map(cell => (
+              <ActivitySquare key={cell.key} cell={cell} thresholds={thresholds} onInspect={setInspected} sizeClass="h-7 w-full" />
+            ))}
+            {calendar.cells.map((cell, index) => (
+              <div
+                key={`label-${cell.key}`}
+                className={`overflow-visible whitespace-nowrap text-[8px] font-mono text-neutral-400 dark:text-neutral-500 ${index === calendar.cells.length - 1 ? 'text-right' : ''}`}
+              >
+                {index % 5 === 0 || index === calendar.cells.length - 1
+                  ? new Date(`${cell.key}T00:00:00Z`).toLocaleDateString(locale, { timeZone: 'UTC', month: 'short', day: 'numeric' })
+                  : ''}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {hourly && (
+        <div className="overflow-x-auto pb-1 scrollbar-thin scrollbar-thumb-brutal-black dark:scrollbar-thumb-neutral-600">
+          <div className="grid min-w-[620px] gap-1" style={{ gridTemplateColumns: '2.5rem repeat(24, minmax(18px, 1fr))' }}>
+            <div />
+            {hourly.columnLabels.map((label, index) => (
+              <div key={`hour-${index}`} className="text-[8px] font-mono text-neutral-400 dark:text-neutral-500">{label}</div>
+            ))}
+            {hourly.cells.map((row, rowIndex) => (
+              <React.Fragment key={`row-${rowIndex}`}>
+                <div className="flex items-center text-[9px] font-mono text-neutral-400 dark:text-neutral-500">{hourly.rowLabels[rowIndex]}</div>
+                {row.map(cell => (
+                  <ActivitySquare key={cell.key} cell={cell} thresholds={thresholds} onInspect={setInspected} sizeClass="w-full h-4" />
+                ))}
+              </React.Fragment>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="flex items-center justify-end gap-1.5 text-[9px] font-mono text-neutral-400 dark:text-neutral-500">
+        <span>{t('settings.usage.less')}</span>
+        {[0, 1, 2, 3, 4].map(level => (
+          <span
+            key={level}
+            className={`h-3 w-3 border-2 border-brutal-black ${level === 0 ? 'bg-neutral-100 dark:bg-zinc-700/70' : ''}`}
+            style={{
+              backgroundColor: level === 0
+                ? undefined
+                : `color-mix(in srgb, var(--brutal-yellow) ${ACTIVITY_LEVEL_STRENGTH[level]}%, transparent)`,
+            }}
+          />
+        ))}
+        <span>{t('settings.usage.more')}</span>
       </div>
     </div>
   );
