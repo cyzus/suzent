@@ -12,7 +12,7 @@ Skills are specialized knowledge modules that extend the capabilities of AI agen
 |--------|-------|--------|
 | **Purpose** | Execute actions | Provide knowledge & context |
 | **Type** | Python code | Markdown documentation |
-| **Examples** | WebSearchTool, BashTool | filesystem-skill, notebook-skill |
+| **Examples** | WebSearchTool, RunCommandTool | filesystem-skill, notebook-skill |
 | **When Used** | Agent calls them to perform tasks | Agent loads them to gain expertise |
 
 ## Available Skills
@@ -360,7 +360,7 @@ If a skill requires specific tools or other skills:
 ## Prerequisites
 
 This skill requires:
-- `BashTool` enabled (for running scripts)
+- `RunCommandTool` enabled (for running scripts)
 - `filesystem-skill` loaded (for workspace navigation)
 - Python 3.8+ installed in sandbox
 ```

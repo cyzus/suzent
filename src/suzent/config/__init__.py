@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ValidationError, field_validator
 
 from ..logger import get_logger
 from suzent.permissions.loader import load_permission_overrides
@@ -247,9 +247,9 @@ def _normalize_keys(d: Dict[str, Any]) -> Dict[str, Any]:
 
 def get_tool_options() -> List[str]:
     """Discover available tool class names from the centralized registry."""
-    from suzent.tools.registry import list_available_tools
+    from suzent.tools.registry import list_configurable_tools
 
-    return list_available_tools()
+    return list_configurable_tools()
 
 
 def get_effective_volumes(custom_volumes: Optional[List[str]] = None) -> List[str]:
@@ -307,13 +307,25 @@ class ConfigModel(BaseModel):
         "EditFileTool",
         "GlobTool",
         "GrepTool",
-        "BashTool",
+        "RunCommandTool",
+        "StartCommandTool",
+        "CheckCommandTool",
+        "StopCommandTool",
         "ImageGenerationTool",
         "AgentTool",
         "MemorySearchTool",
         "SessionSearchTool",
     ]
     tool_options: Optional[List[str]] = None
+
+    @field_validator("default_tools", "tool_options", mode="before")
+    @classmethod
+    def migrate_legacy_shell_tools(cls, value: Any) -> Any:
+        if not isinstance(value, list):
+            return value
+        from suzent.tools.registry import migrate_shell_tool_names
+
+        return migrate_shell_tool_names(value)
 
     instructions: str = ""
     additional_authorized_imports: List[str] = []
@@ -373,6 +385,8 @@ class ConfigModel(BaseModel):
     sandbox_env: Dict[str, Any] = {}
     sandbox_data_path: str = str(DATA_DIR / "sandbox")
     sandbox_volumes: List[str] = []
+    shell_env: Optional[Dict[str, str]] = None
+    shell_denied_env_patterns: List[str] = []
 
     workspace_root: str = str(DATA_DIR)
 

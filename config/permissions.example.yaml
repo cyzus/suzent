@@ -11,7 +11,7 @@ PERMISSIONS:
   # Normalized rules are evaluated before mode behavior.
   # rules:
   #   - id: allow-npm-test
-  #     tool: bash_execute
+  #     tool: ShellTool
   #     behavior: allow
   #     matcher:
   #       type: exact_input

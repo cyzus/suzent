@@ -22,24 +22,36 @@ logger = get_logger(__name__)
 OUTPUT_CHAR_LIMIT = 30_000
 
 
-def truncate_tool_output(text: str, limit: int = OUTPUT_CHAR_LIMIT) -> str:
-    """Truncate output to *limit* chars, appending a line-count note."""
+def truncate_tool_output(
+    text: str,
+    limit: int = OUTPUT_CHAR_LIMIT,
+    *,
+    keep_tail: bool = False,
+) -> str:
+    """Truncate output to *limit* chars while reporting the omitted section."""
     if not text or len(text) <= limit:
         return text
-    truncated = text[:limit]
-    remaining_lines = text[limit:].count("\n") + 1
-    return truncated + f"\n... [{remaining_lines} lines truncated]"
+    if keep_tail:
+        omitted = text[:-limit]
+        return f"... [{omitted.count(chr(10)) + 1} lines truncated]\n" + text[-limit:]
+
+    omitted = text[limit:]
+    return text[:limit] + f"\n... [{omitted.count(chr(10)) + 1} lines truncated]"
 
 
-class ToolGroup(str, Enum):
-    """UI display group for a tool. Extending str means values serialise as plain strings."""
+class ToolCapability(str, Enum):
+    """Capability that owns and presents a related set of tools."""
 
     FILESYSTEM = "Filesystem"
-    EXECUTION = "Execution"
+    SHELL = "Shell"
     WEB = "Web"
     AGENT = "Agent"
     CREATIVE = "Creative"
     MEMORY = "Memory & recall"
+
+
+# Compatibility alias for existing tool implementations and third-party tools.
+ToolGroup = ToolCapability
 
 
 class ToolErrorCode(Enum):
@@ -137,12 +149,15 @@ class Tool:
 
     name: str = ""  # Registry key (e.g., "ReadFileTool")
     tool_name: str = ""  # pydantic-ai function name (e.g., "read_file")
-    group: Union[ToolGroup, str] = ""  # empty = hidden from UI
+    group: Union[ToolCapability, str] = ""  # empty = not user-configurable
+    display_name: Optional[str] = None
+    description: Optional[str] = None
     requires_approval: bool = False
     deferrable: bool = True  # False = never goes into the activatable pool
     session_guidance: Optional[str] = None
     guidance_priority: int = 100
     output_char_limit: int = OUTPUT_CHAR_LIMIT
+    keep_output_tail: bool = False
 
     def __init__(self, *args, **kwargs):
         pass
@@ -154,8 +169,16 @@ class Tool:
     def is_tool_denied(deps: Any, tool_name: str) -> Optional[str]:
         """Return a denial reason when policy explicitly blocks a tool."""
         policy = getattr(deps, "tool_approval_policy", {}) or {}
-        decision = policy.get(tool_name)
-        if decision == "always_deny":
+        aliases = [tool_name]
+        if tool_name == "run_command":
+            aliases.extend(["RunCommandTool", "ShellTool"])
+        elif tool_name == "start_command":
+            aliases.extend(["StartCommandTool", "ShellTool"])
+        elif tool_name == "check_command":
+            aliases.append("CheckCommandTool")
+        elif tool_name == "stop_command":
+            aliases.append("StopCommandTool")
+        if any(policy.get(name) == "always_deny" for name in aliases):
             return f"Tool '{tool_name}' is denied by policy"
         return None
 

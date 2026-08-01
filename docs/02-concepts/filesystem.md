@@ -4,7 +4,7 @@ Suzent provides secure file access and code execution through two modes: **Sandb
 
 ## Execution Modes
 
-| Mode | BashTool | File Tools | Path Style |
+| Mode | Shell capability | File Tools | Path Style |
 |------|----------|------------|------------|
 | **Sandbox** | Runs in Docker container | Virtual filesystem | `/persistence`, `/shared`, `/mnt/*` |
 | **Host** | Runs on host | Host filesystem | `$PROJECT_PATH`, `$SHARED_PATH`, `$MOUNT_*` |
@@ -133,6 +133,8 @@ requests.post(f"{base}/cron/jobs", json={
 | `sandbox_env` | `{}` | Extra env vars injected into container (secrets are blocked) |
 | `sandbox_data_path` | `.suzent/sandbox` | Host path for persistent data |
 | `sandbox_volumes` | `[]` | Extra bind mounts (`host:container`) |
+| `shell_env` | `null` | Exact base environment for host shell commands; `null` inherits the server environment |
+| `shell_denied_env_patterns` | `[]` | Glob patterns removed from the host shell environment, such as `OPENAI_*` |
 
 ---
 

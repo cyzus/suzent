@@ -33,10 +33,10 @@ PERMISSIONS:
     loaded = load_permission_overrides(tmp_path, _DummyLogger())
 
     assert "permission_policies" in loaded
-    assert loaded["permission_policies"]["bash_execute"]["enabled"] is True
-    assert loaded["permission_policies"]["bash_execute"]["mode"] == "strict_readonly"
-    assert loaded["permission_policies"]["bash_execute"]["default_action"] == "deny"
-    assert len(loaded["permission_policies"]["bash_execute"]["command_rules"]) == 1
+    assert loaded["permission_policies"]["ShellTool"]["enabled"] is True
+    assert loaded["permission_policies"]["ShellTool"]["mode"] == "strict_readonly"
+    assert loaded["permission_policies"]["ShellTool"]["default_action"] == "deny"
+    assert len(loaded["permission_policies"]["ShellTool"]["command_rules"]) == 1
 
 
 def test_user_file_overrides_example(tmp_path: Path):
@@ -63,15 +63,15 @@ tools:
 
     loaded = load_permission_overrides(tmp_path, _DummyLogger())
 
-    assert loaded["permission_policies"]["bash_execute"]["enabled"] is True
-    assert loaded["permission_policies"]["bash_execute"]["mode"] == "accept_edits"
+    assert loaded["permission_policies"]["ShellTool"]["enabled"] is True
+    assert loaded["permission_policies"]["ShellTool"]["mode"] == "accept_edits"
 
 
 def test_persist_global_command_rule_creates_permissions_file(tmp_path: Path):
     changed = persist_global_command_rule(
         tmp_path,
         _DummyLogger(),
-        tool_name="bash_execute",
+        tool_name="ShellTool",
         command_pattern="git status",
         action="allow",
     )
@@ -81,7 +81,7 @@ def test_persist_global_command_rule_creates_permissions_file(tmp_path: Path):
     assert user_path.exists()
 
     loaded = load_permission_overrides(tmp_path, _DummyLogger())
-    rules = loaded["permission_policies"]["bash_execute"]["command_rules"]
+    rules = loaded["permission_policies"]["ShellTool"]["command_rules"]
     assert len(rules) == 1
     assert rules[0]["pattern"] == "git status"
     assert rules[0]["match_type"] == "exact"
@@ -112,13 +112,13 @@ PERMISSIONS:
     changed = persist_global_command_rule(
         tmp_path,
         _DummyLogger(),
-        tool_name="bash_execute",
+        tool_name="ShellTool",
         command_pattern="git status",
         action="deny",
     )
 
     assert changed is True
     loaded = load_permission_overrides(tmp_path, _DummyLogger())
-    rules = loaded["permission_policies"]["bash_execute"]["command_rules"]
+    rules = loaded["permission_policies"]["ShellTool"]["command_rules"]
     assert len(rules) == 1
     assert rules[0]["action"] == "deny"

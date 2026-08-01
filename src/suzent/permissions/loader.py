@@ -8,6 +8,51 @@ from .models import PermissionRule, PermissionsConfig, ToolPermissionPolicy
 
 VALID_DEFAULT_MODES = frozenset({"default", "auto", "full_access"})
 LEGACY_DEFAULT_MODES = frozenset({"accept_edits", "plan", "strict_readonly"})
+LEGACY_SHELL_TOOL_NAMES = frozenset({"bash_execute", "BashTool"})
+
+
+def migrate_permission_tool_name(tool_name: str) -> str:
+    """Map legacy shell permission keys to the unified capability."""
+    return "ShellTool" if tool_name in LEGACY_SHELL_TOOL_NAMES else tool_name
+
+
+def _migrate_process_rule(raw_rule: dict[str, Any], target_tool: str) -> dict[str, Any]:
+    migrated_rule = {**raw_rule, "tool": target_tool}
+    matcher = raw_rule.get("matcher")
+    if not isinstance(matcher, dict) or matcher.get("type") != "exact_input":
+        return migrated_rule
+    value = matcher.get("value")
+    if not isinstance(value, dict):
+        return migrated_rule
+
+    migrated_value = {key: item for key, item in value.items() if key != "action"}
+    process_id = migrated_value.pop("process_id", None)
+    if process_id is not None:
+        migrated_value.setdefault("command_id", process_id)
+    if target_tool == "stop_command":
+        migrated_value.pop("offset", None)
+    migrated_rule["matcher"] = {**matcher, "value": migrated_value}
+    return migrated_rule
+
+
+def _migrate_rule_tools(raw_rule: dict[str, Any]) -> list[dict[str, Any]]:
+    tool_name = str(raw_rule.get("tool") or "")
+    if tool_name in LEGACY_SHELL_TOOL_NAMES:
+        return [{**raw_rule, "tool": "ShellTool"}]
+    if tool_name not in {"process_manage", "ProcessTool"}:
+        return [raw_rule]
+
+    matcher = raw_rule.get("matcher")
+    value = matcher.get("value") if isinstance(matcher, dict) else None
+    action = str(value.get("action") or "") if isinstance(value, dict) else ""
+    if action in {"poll", "status"}:
+        return [_migrate_process_rule(raw_rule, "check_command")]
+    if action == "kill":
+        return [_migrate_process_rule(raw_rule, "stop_command")]
+    return [
+        _migrate_process_rule(raw_rule, "check_command"),
+        _migrate_process_rule(raw_rule, "stop_command"),
+    ]
 
 
 def normalize_default_permission_mode(mode: str) -> str | None:
@@ -90,7 +135,8 @@ def load_permission_overrides(
         for tool_name, tool_cfg in tools_raw.items():
             if not isinstance(tool_cfg, dict):
                 continue
-            tools_validated[str(tool_name)] = ToolPermissionPolicy.model_validate(
+            migrated_name = migrate_permission_tool_name(str(tool_name))
+            tools_validated[migrated_name] = ToolPermissionPolicy.model_validate(
                 normalize_keys(tool_cfg)
             )
 
@@ -113,13 +159,14 @@ def load_permission_overrides(
             for raw_rule in raw_rules:
                 if not isinstance(raw_rule, dict):
                     continue
-                try:
-                    rule = PermissionRule.model_validate(
-                        {**raw_rule, "source": "global"}
-                    )
-                    merged_rules.append(rule.model_dump(mode="json", by_alias=True))
-                except Exception:
-                    continue
+                for migrated_rule in _migrate_rule_tools(raw_rule):
+                    try:
+                        rule = PermissionRule.model_validate(
+                            {**migrated_rule, "source": "global"}
+                        )
+                        merged_rules.append(rule.model_dump(mode="json", by_alias=True))
+                    except Exception:
+                        continue
         mode = payload.get("default_permission_mode")
         if isinstance(mode, str):
             normalized_mode = normalize_default_permission_mode(mode)

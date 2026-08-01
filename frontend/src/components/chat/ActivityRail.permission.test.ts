@@ -11,7 +11,7 @@ function toolPart(overrides: Partial<AGUIPart> = {}): AGUIPart {
   return {
     type: 'tool',
     toolCallId: 'call-1',
-    toolName: 'bash_execute',
+    toolName: 'run_command',
     state: 'approval-requested',
     ...overrides,
   };
@@ -24,7 +24,7 @@ describe('permission activity state', () => {
 
     expect(isActionableAguiApproval(part)).toBe(true);
     expect(hasAguiPendingApproval(chunks)).toBe(true);
-    expect(getAguiActivityLabel(chunks, false)).toBe('Approval needed: bash execute');
+    expect(getAguiActivityLabel(chunks, false)).toBe('Approval needed: run command');
   });
 
   it('does not keep an interrupted orphan tool call pending', () => {
@@ -33,6 +33,6 @@ describe('permission activity state', () => {
 
     expect(isActionableAguiApproval(part)).toBe(false);
     expect(hasAguiPendingApproval(chunks)).toBe(false);
-    expect(getAguiActivityLabel(chunks, false)).toBe('Using bash execute');
+    expect(getAguiActivityLabel(chunks, false)).toBe('Using run command');
   });
 });

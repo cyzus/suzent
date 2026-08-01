@@ -7,7 +7,7 @@ describe('permissionApprovalsToParts', () => {
       {
         approvalId: 'approval-1',
         toolCallId: 'call-1',
-        toolName: 'bash_execute',
+        toolName: 'run_command',
         args: { content: 'npm test' },
         decision: {
           behavior: 'ask',

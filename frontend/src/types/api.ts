@@ -176,7 +176,7 @@ export interface ConfigOptions {
   agents: string[];
   tools: string[];        // full list of tool options
   defaultTools: string[]; // default enabled tools
-  toolGroups?: { label: string; tools: string[] }[];
+  toolCapabilities?: ToolCapabilityOption[];
   codeTag: string;        // CODE_TAG (e.g. <code>) so frontend can parse blocks consistently
   userId?: string;        // backend-provided user identifier for memory system alignment
   globalSandboxVolumes?: string[];  // global volumes from config file
@@ -193,6 +193,21 @@ export interface ConfigOptions {
     embedding_model?: string;
     extraction_model?: string;
   };
+}
+
+export interface ToolOption {
+  id: string;
+  name: string;
+  description: string;
+  runtimeName: string;
+  requiresApproval: boolean;
+}
+
+export interface ToolCapabilityOption {
+  id: string;
+  label: string;
+  description: string;
+  tools: ToolOption[];
 }
 
 export interface ChatGPTStatusResponse {

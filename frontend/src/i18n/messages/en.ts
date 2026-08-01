@@ -120,6 +120,12 @@ export const en = {
     },
     toolsLabel: 'Tools',
     toolsEmpty: 'No tools available',
+    toolCatalog: {
+      approval: 'Approval',
+      deactivate: 'Deactivate',
+      deactivateTool: 'Deactivate {name}',
+      capabilityAria: '{name} capability',
+    },
     memory: {
       label: 'Memory System',
       button: 'Memory Tools',

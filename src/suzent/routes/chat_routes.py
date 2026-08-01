@@ -931,9 +931,12 @@ async def delete_chat(request: Request) -> JSONResponse:
             return JSONResponse({"error": "Chat not found"}, status_code=404)
 
         from suzent.agent_manager import clear_suppressed_tools
+        from suzent.tools.shell import cleanup_shell_session
 
+        cleanup_shell_session(chat_id)
         clear_suppressed_tools(chat_id)
         for child_id in child_ids:
+            cleanup_shell_session(child_id)
             clear_suppressed_tools(child_id)
         return JSONResponse(
             {

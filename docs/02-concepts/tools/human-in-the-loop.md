@@ -6,10 +6,10 @@ Suzent evaluates every deferred tool call through one backend permission engine.
 
 | Tool | Function | Gated operation |
 |------|----------|-----------------|
-| BashTool | `bash_execute` | Command and code execution |
+| RunCommandTool / StartCommandTool | `run_command`, `start_command` | Command and code execution |
 | WriteFileTool | `write_file` | File creation and overwrite |
 | EditFileTool | `edit_file` | File edits |
-| ProcessTool | `process_manage` | Mutating process operations |
+| StopCommandTool | `stop_command` | Stop a background command |
 | SocialMessageTool | `social_message` | Sending messages |
 | ImageGenerationTool | `image_generate` | Image generation |
 
@@ -147,7 +147,7 @@ The `tool_approval_request` custom event contains:
 {
   "approvalId": "tool-call-id",
   "toolCallId": "tool-call-id",
-  "toolName": "bash_execute",
+  "toolName": "run_command",
   "args": {"content": "npm test"},
   "decision": {
     "behavior": "ask",

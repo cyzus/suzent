@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from suzent.tools.shell.bash_tool import BashTool
+from suzent.tools.shell.shell_tools import RunCommandTool
 
 
 def _ctx(tmp_path, sandbox_enabled=False):
@@ -18,7 +18,7 @@ def _ctx(tmp_path, sandbox_enabled=False):
 
 
 def test_description_is_required_by_signature(tmp_path):
-    tool = BashTool()
+    tool = RunCommandTool()
 
     try:
         tool.forward(_ctx(tmp_path), content="echo hi", language="command")
@@ -30,7 +30,7 @@ def test_description_is_required_by_signature(tmp_path):
 
 
 def test_accepts_required_description(monkeypatch, tmp_path):
-    tool = BashTool()
+    tool = RunCommandTool()
 
     class _Process:
         returncode = 0

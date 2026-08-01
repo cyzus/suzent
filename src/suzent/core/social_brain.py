@@ -888,8 +888,8 @@ class SocialBrain(BaseBrain):
             else ""
         )
 
-        is_bash = req.tool_name in ("bash_execute", "BashTool")
-        if is_bash:
+        is_shell = req.tool_name in ("run_command", "start_command")
+        if is_shell:
             # Show description and the command clearly
             description = req.args.get("description", "") if req.args else ""
             command = req.args.get("content", "") if req.args else ""
@@ -962,8 +962,8 @@ class SocialBrain(BaseBrain):
 
         remember_label = ""
         if remember and req:
-            is_bash = req.tool_name in ("bash_execute", "BashTool")
-            if is_bash:
+            is_shell = req.tool_name in ("run_command", "start_command")
+            if is_shell:
                 command = req.args.get("content", "") if req.args else ""
                 from suzent.tools.shell.permissions.command_parser import parse_command
 
@@ -983,9 +983,9 @@ class SocialBrain(BaseBrain):
         # requests carry a decision contract; those are remembered by resuming
         # with action_id=allow_session so ChatProcessor applies permissionUpdates.
         if remember and req and not req.decision:
-            is_bash = req.tool_name in ("bash_execute", "BashTool")
-            if is_bash and approved:
-                # For bash, store a prefix rule on the base command in the chat DB
+            is_shell = req.tool_name in ("run_command", "start_command")
+            if is_shell and approved:
+                # For shell commands, store a prefix rule on the base command in the chat DB
                 # so it survives brain restarts and is scoped to this chat only.
                 command = req.args.get("content", "") if req.args else ""
                 from suzent.tools.shell.permissions.command_parser import parse_command
@@ -1000,7 +1000,7 @@ class SocialBrain(BaseBrain):
                         _chat_perm = dict(_chat_cfg.get("permission_policies") or {})
                         _upsert_command_rule(
                             _chat_perm,
-                            tool_name="bash_execute",
+                            tool_name="ShellTool",
                             command_pattern=base_cmd,
                             action="allow",
                             match_type="prefix",
@@ -1008,7 +1008,7 @@ class SocialBrain(BaseBrain):
                         _chat_cfg["permission_policies"] = _chat_perm
                         _db.update_chat(social_chat_id, config=_chat_cfg)
                     except Exception as _exc:
-                        logger.warning(f"Failed to persist bash session rule: {_exc}")
+                        logger.warning(f"Failed to persist shell session rule: {_exc}")
             else:
                 policy = "always_allow" if approved else "always_deny"
                 self._session_policies.setdefault(social_chat_id, {})[req.tool_name] = (

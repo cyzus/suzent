@@ -30,9 +30,9 @@ def test_derive_command_prefix_suzent_cli_two_levels() -> None:
     assert derive_command_prefix("suzent status") == "suzent status"
 
 
-def test_bash_remember_uses_prefix_matcher_for_subcommand() -> None:
+def test_shell_remember_uses_prefix_matcher_for_subcommand() -> None:
     decision = build_approval_decision(
-        "bash_execute",
+        "run_command",
         {"content": "git log --oneline -5"},
     ).model_dump(mode="json", by_alias=True)
 
@@ -47,10 +47,10 @@ def test_bash_remember_uses_prefix_matcher_for_subcommand() -> None:
         }
 
 
-def test_bash_remember_falls_back_to_exact_when_prefix_equals_command() -> None:
+def test_shell_remember_falls_back_to_exact_when_prefix_equals_command() -> None:
     # "npm test" derives prefix "npm test" == full command, so remember on exact.
     decision = build_approval_decision(
-        "bash_execute",
+        "run_command",
         {"content": "npm test"},
     ).model_dump(mode="json", by_alias=True)
     ids = [action["id"] for action in decision["actions"]]
@@ -62,9 +62,9 @@ def test_bash_remember_falls_back_to_exact_when_prefix_equals_command() -> None:
     }
 
 
-def test_bash_approval_actions_use_exact_command_matcher() -> None:
+def test_shell_approval_actions_use_exact_command_matcher() -> None:
     decision = build_approval_decision(
-        "bash_execute",
+        "run_command",
         {"content": "npm test", "description": "Run tests"},
     ).model_dump(mode="json", by_alias=True)
 
@@ -81,7 +81,7 @@ def test_bash_approval_actions_use_exact_command_matcher() -> None:
     }
 
 
-def test_non_bash_approval_actions_use_tool_wide_matcher() -> None:
+def test_non_shell_approval_actions_use_tool_wide_matcher() -> None:
     decision = build_approval_decision(
         "write_file",
         {"file_path": "README.md"},
@@ -94,7 +94,7 @@ def test_non_bash_approval_actions_use_tool_wide_matcher() -> None:
 
 def test_inline_python_execution_only_offers_one_time_actions() -> None:
     decision = build_approval_decision(
-        "bash_execute",
+        "run_command",
         {"content": "print('hello')", "language": "python"},
     ).model_dump(mode="json", by_alias=True)
 

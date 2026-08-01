@@ -1,18 +1,26 @@
 # Tools
 
-Tools extend the agent's capabilities, allowing it to interact with the filesystem, web, memory, social platforms, and more. Each tool is a **function** registered on the pydantic-ai `Agent` via the tool registry.
+Tools extend the agent's capabilities, allowing it to interact with the filesystem, web, memory, social platforms, and more. Each tool is a function owned by a named capability in the centralized registry.
 
 ## Architecture
 
-Suzent uses [pydantic-ai](https://ai.pydantic.dev/) for its agent framework. Tools are plain Python functions (sync or async) — not classes. Tools that need per-request state (sandbox config, file paths, memory) receive it via **dependency injection** through `RunContext[AgentDeps]`.
+Suzent uses [pydantic-ai](https://ai.pydantic.dev/) for its agent framework. Registry classes provide metadata and typed functions. Selected functions are bundled into Pydantic AI capabilities; tools that need per-request state receive it through `RunContext[AgentDeps]`.
 
 ```
 Agent
- ├── tools: [web_search, read_file, bash_execute, ...]   ← function-based
+ ├── capabilities
+ │    ├── filesystem: [read_file, write_file, ...]
+ │    ├── shell: [run_command, start_command, ...]
+ │    └── web: [web_search, webpage_fetch, ...]
  ├── toolsets: [MCPServerStdio(...), ...]                 ← MCP servers
  │    └── _deferred_toolset (per_run_step=True)           ← AI-activated tools
  └── deps_type: AgentDeps                                 ← shared context
 ```
+
+The configuration API exposes the same capability catalog to the frontend,
+including capability descriptions and each tool's display name, description,
+runtime function name, and approval requirement. Capability headers toggle a
+whole category, while every tool remains independently selectable.
 
 ### Deferred (AI-Activated) Tools
 
@@ -62,11 +70,14 @@ Tools that are **stateless** (e.g. `web_search`, `webpage_fetch`) omit `RunConte
 | GlobTool | `glob_search` | PathResolver | — | Find files matching glob patterns |
 | GrepTool | `grep_search` | PathResolver | — | Search file contents with regex |
 
-### Execution
+### Shell
 
 | Tool | Function | Context | HITL | Description |
 |------|----------|---------|------|-------------|
-| BashTool | `bash_execute` | Sandbox config | **Yes** | Execute code/commands (Python, Node.js, shell) |
+| RunCommandTool | `run_command` | Sandbox config | **Yes** | Run bounded commands and wait for their output |
+| StartCommandTool | `start_command` | Sandbox config | **Yes** | Start a long-running background command |
+| CheckCommandTool | `check_command` | Process registry | **Yes** | Read incremental output and command status |
+| StopCommandTool | `stop_command` | Process registry | **Yes** | Stop a background command and clean up resources |
 
 ### Planning & Memory
 
@@ -115,14 +126,22 @@ Performs web searches using SearXNG (self-hosted, privacy-focused) with automati
 
 **Configuration:** Set `SEARXNG_BASE_URL` in `.env` for SearXNG. Without it, falls back to DuckDuckGo.
 
-### `bash_execute`
+### Shell capability
 
 Executes code in a secure environment. Runs inside an isolated Docker container when sandbox mode is enabled, or on the host when disabled.
 
 **Parameters:**
 - `content` (required): Code or shell command to execute
 - `language`: `python`, `nodejs`, or `command`
-- `timeout`: Execution timeout in seconds
+- `run_command`: run bounded work synchronously with an optional timeout
+- `start_command`: start a long-running command and return a command ID
+- `check_command`: read incremental output and check completion
+- `stop_command`: terminate the command and its process tree
+
+All four operations belong to the Shell capability and can be enabled separately.
+Selecting a capability header in the frontend toggles every tool in that capability.
+Existing `ShellTool`, `BashTool`, or `ProcessTool` selections are expanded to all
+four operations during migration.
 
 **Storage paths** (available in both modes):
 - `/persistence` — Private storage, persists across sessions (current chat only)
@@ -234,7 +253,8 @@ If not specified, the agent uses these tools (from `config.py`):
 
 ```
 WebSearchTool, PlanningTool, ReadFileTool, WriteFileTool,
-EditFileTool, GlobTool, GrepTool, BashTool
+EditFileTool, GlobTool, GrepTool, RunCommandTool, StartCommandTool,
+CheckCommandTool, StopCommandTool
 ```
 
 ### Custom Tool Selection
@@ -248,7 +268,7 @@ config = {
         "WebSearchTool",
         "PlanningTool",
         "ReadFileTool",
-        "BashTool",
+        "RunCommandTool",
         "MemorySearchTool",
     ]
 }

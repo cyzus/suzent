@@ -34,7 +34,7 @@ _SUBAGENT_PROFILES: dict[str, list[str]] = {
     "explore": ["GlobTool", "GrepTool", "ReadFileTool"],
     "plan": ["GlobTool", "GrepTool", "ReadFileTool", "WebSearchTool", "WebpageTool"],
     "write": ["ReadFileTool", "WriteFileTool", "EditFileTool", "GlobTool", "GrepTool"],
-    "verify": ["BashTool"],
+    "verify": ["RunCommandTool"],
     "web": ["WebSearchTool", "WebpageTool"],
 }
 
@@ -104,7 +104,7 @@ class AgentTool(Tool):
                 default=None,
                 description=(
                     "Explicit whitelist of tool class names the sub-agent may use "
-                    "(e.g. ['BashTool', 'ReadFileTool']). "
+                    "(e.g. ['RunCommandTool', 'ReadFileTool']). "
                     "If subagent_type is also set, these are merged with the profile's tools. "
                     "Mutually exclusive with tools_denied."
                 ),
@@ -117,7 +117,7 @@ class AgentTool(Tool):
                 description=(
                     "Denylist path: start from all available tools, remove these. "
                     "Use for broad agents where you only need to block a few dangerous tools "
-                    "(e.g. ['WriteFileTool', 'EditFileTool', 'BashTool'] gives safe read-only access). "
+                    "(e.g. ['WriteFileTool', 'EditFileTool', 'RunCommandTool'] gives safe read-only access). "
                     "Mutually exclusive with tools_allowed."
                 ),
             ),
@@ -273,8 +273,15 @@ class AgentTool(Tool):
             # Denylist path: start from all available tools, subtract denied
             from suzent.tools.registry import list_available_tools
 
+            resolved_denied, unrecognized_denied = _resolve_tool_names(tools_denied)
+            if unrecognized_denied:
+                return ToolResult.error_result(
+                    ToolErrorCode.INVALID_ARGUMENT,
+                    "Some denied tool names were not recognized.",
+                    metadata={"unrecognized_tools": unrecognized_denied},
+                )
             all_tools = list_available_tools()
-            denied_set = set(tools_denied)
+            denied_set = set(resolved_denied)
             effective_tools = [t for t in all_tools if t not in denied_set]
         elif subagent_type is not None or tools_allowed is not None:
             # Whitelist path

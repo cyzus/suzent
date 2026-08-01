@@ -21,8 +21,16 @@ from suzent.permissions.rules import find_rule
 
 
 FILESYSTEM_WRITE_TOOLS = frozenset({"write_file", "edit_file"})
-SHELL_TOOLS = frozenset({"bash_execute", "BashTool"})
-PROCESS_TOOL = "process_manage"
+SHELL_TOOLS = frozenset(
+    {
+        "run_command",
+        "start_command",
+        "RunCommandTool",
+        "StartCommandTool",
+        "ShellTool",
+    }
+)
+CHECK_COMMAND_TOOL = "check_command"
 SOCIAL_TOOL = "social_message"
 
 
@@ -374,7 +382,16 @@ class PermissionEngine:
         # package, whose policy_models imports back into suzent.permissions.
         from suzent.tools.shell.permissions import evaluate_command_policy
 
-        policy = context.tool_permission_policies.get("bash_execute", {})
+        policy = (
+            context.tool_permission_policies.get(request.tool_name)
+            or context.tool_permission_policies.get(
+                "RunCommandTool"
+                if request.tool_name == "run_command"
+                else "StartCommandTool"
+            )
+            or context.tool_permission_policies.get("ShellTool")
+            or {}
+        )
         raw_rules = policy.get("command_rules", [])
         default_action = str(policy.get("default_action", "ask"))
         mode_value = self._shell_mode(context.mode, policy)
@@ -461,11 +478,8 @@ class PermissionEngine:
 
     @staticmethod
     def _is_readonly_operation(request: ToolPermissionRequest) -> bool:
-        if request.tool_name == PROCESS_TOOL:
-            return str(request.args.get("action") or "").lower() in {
-                "poll",
-                "status",
-            }
+        if request.tool_name == CHECK_COMMAND_TOOL:
+            return True
         if request.tool_name == SOCIAL_TOOL:
             return bool(request.args.get("list_contacts"))
         return False

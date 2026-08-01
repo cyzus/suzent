@@ -637,7 +637,7 @@ class DockerSession:
     ) -> str:
         """
         Start a long-running process in the background.
-        Returns a process_id to poll/kill via ProcessTool.
+        Returns a process ID to inspect or stop through ShellCapability.
         """
         with self._lock:
             self.last_used = time.time()
@@ -1035,6 +1035,17 @@ class SandboxManager:
             del self._sessions[session_id]
             return result
         return True
+
+    @classmethod
+    def remove_session_from_all_managers(cls, session_id: str) -> None:
+        """Remove a chat session from every initialized volume configuration."""
+        with _manager_singletons_lock:
+            managers = list(_manager_singletons.values())
+        for manager in managers:
+            try:
+                manager.remove_session(session_id)
+            except Exception as exc:
+                logger.warning(f"Failed to remove sandbox session {session_id}: {exc}")
 
     def cleanup_idle_sessions(self) -> int:
         """Stop containers idle longer than idle_timeout. Returns count stopped."""

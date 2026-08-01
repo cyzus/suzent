@@ -1,8 +1,8 @@
 """
-ProcessTool
-===========
+Shell process backend
+=====================
 
-Interact with background processes started by BashTool (background=True).
+Interact with background commands started by the Shell capability.
 
 Actions:
 - poll   : Read new output since last offset. Returns output, new offset, done status.
@@ -11,13 +11,13 @@ Actions:
 
 Usage (agent perspective):
     # Start a long-running process
-    process_id = bash_execute(content="npm install", language="command", background=True)
+    command_id = start_command(content="npm install", language="command")
 
     # Poll for output
-    process_manage(process_id="abc123", action="poll")
+    check_command(command_id="abc123")
 
     # Kill if needed
-    process_manage(process_id="abc123", action="kill")
+    stop_command(command_id="abc123")
 """
 
 from __future__ import annotations
@@ -28,15 +28,15 @@ from typing import Annotated, Literal, Optional
 from pydantic import Field
 from pydantic_ai import RunContext
 from suzent.core.agent_deps import AgentDeps
-from suzent.tools.base import Tool, ToolErrorCode, ToolGroup, ToolResult
+from suzent.tools.base import Tool, ToolErrorCode, ToolResult
 from suzent.logger import get_logger
 
 logger = get_logger(__name__)
 
 
-class ProcessTool(Tool):
+class ShellProcessBackend(Tool):
     """
-    Manage background processes started with BashTool(background=True).
+    Manage background commands started by the Shell capability.
 
     Actions:
     - poll:   Read new output since last offset.
@@ -46,10 +46,13 @@ class ProcessTool(Tool):
     - kill:   Stop the process with SIGTERM.
     """
 
-    name = "ProcessTool"
-    tool_name = "process_manage"
-    group = ToolGroup.EXECUTION
+    name = "ShellProcessBackend"
+    tool_name = "check_command"
+    # Process management is the second half of the Shell capability.
+    # Keep it model-facing, but do not expose a separate user-facing toggle.
+    group = ""
     requires_approval = True
+    keep_output_tail = True
     _VALID_ACTIONS = {"poll", "status", "kill"}
 
     def __init__(self, *args, **kwargs):
@@ -71,9 +74,7 @@ class ProcessTool(Tool):
         ctx: RunContext[AgentDeps],
         process_id: Annotated[
             str,
-            Field(
-                description="Background process ID returned by bash_execute when background=True."
-            ),
+            Field(description="Background command ID returned by start_command."),
         ],
         action: Annotated[
             Literal["poll", "status", "kill"],
@@ -92,7 +93,7 @@ class ProcessTool(Tool):
         """Manage a background process.
 
         Args:
-            process_id: The ID returned by bash_execute when background=True.
+            process_id: The ID returned by start_command.
             action: One of "poll", "status", or "kill".
             offset: For "poll" only — byte offset from previous poll response.
                     Start at 0, then pass the returned next_offset on each call.
@@ -223,7 +224,7 @@ class ProcessTool(Tool):
                 },
             )
         except Exception as e:
-            logger.error(f"ProcessTool poll error: {e}")
+            logger.error(f"Shell process polling error: {e}")
             self.audit_operation(
                 self.tool_name,
                 "poll",

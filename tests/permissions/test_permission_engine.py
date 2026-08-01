@@ -144,7 +144,7 @@ async def test_full_access_keeps_invalid_input_denied(tmp_path: Path) -> None:
 async def test_full_access_allows_git_command_without_prompt(tmp_path: Path) -> None:
     decision = await PermissionEngine().evaluate(
         ToolPermissionRequest(
-            "bash_execute",
+            "run_command",
             {"content": "git status", "language": "command"},
         ),
         context(tmp_path, mode=PermissionMode.FULL_ACCESS),
@@ -159,14 +159,14 @@ async def test_full_access_allows_git_command_without_prompt(tmp_path: Path) -> 
 async def test_full_access_keeps_shell_deny_rule(tmp_path: Path) -> None:
     decision = await PermissionEngine().evaluate(
         ToolPermissionRequest(
-            "bash_execute",
+            "run_command",
             {"content": "echo blocked", "language": "command"},
         ),
         context(
             tmp_path,
             mode=PermissionMode.FULL_ACCESS,
             tool_permission_policies={
-                "bash_execute": {
+                "ShellTool": {
                     "command_rules": [
                         {
                             "pattern": "echo blocked",
@@ -224,13 +224,13 @@ async def test_explicit_tool_deny_precedes_mode(tmp_path: Path) -> None:
 async def test_shell_rule_is_evaluated_by_central_engine(tmp_path: Path) -> None:
     decision = await PermissionEngine().evaluate(
         ToolPermissionRequest(
-            "bash_execute",
+            "run_command",
             {"content": "npm test", "language": "command"},
         ),
         context(
             tmp_path,
             tool_permission_policies={
-                "bash_execute": {
+                "ShellTool": {
                     "enabled": True,
                     "mode": "full_approval",
                     "default_action": "ask",
@@ -322,7 +322,7 @@ async def test_auto_mode_prompts_for_high_risk_shell_policy(
 ) -> None:
     decision = await PermissionEngine().evaluate(
         ToolPermissionRequest(
-            "bash_execute",
+            "run_command",
             {"content": "chmod 777 secrets.txt", "language": "command"},
         ),
         context(tmp_path, mode=PermissionMode.AUTO),
@@ -337,8 +337,8 @@ async def test_auto_mode_prompts_for_high_risk_shell_policy(
 async def test_process_poll_is_readonly_in_plan_mode(tmp_path: Path) -> None:
     decision = await PermissionEngine().evaluate(
         ToolPermissionRequest(
-            "process_manage",
-            {"process_id": "abcdef123456", "action": "poll"},
+            "check_command",
+            {"command_id": "abcdef123456", "offset": 0},
         ),
         context(tmp_path, mode=PermissionMode.PLAN),
     )
@@ -390,7 +390,7 @@ async def test_normalized_exact_allow_only_matches_same_command(
 ) -> None:
     rules = [
         {
-            "tool": "bash_execute",
+            "tool": "ShellTool",
             "behavior": "allow",
             "matcher": {
                 "type": "exact_input",
@@ -401,14 +401,14 @@ async def test_normalized_exact_allow_only_matches_same_command(
 
     allowed = await PermissionEngine().evaluate(
         ToolPermissionRequest(
-            "bash_execute",
+            "run_command",
             {"content": "npm test", "language": "command"},
         ),
         context(tmp_path, permission_rules=rules),
     )
     different = await PermissionEngine().evaluate(
         ToolPermissionRequest(
-            "bash_execute",
+            "run_command",
             {"content": "npm publish", "language": "command"},
         ),
         context(tmp_path, permission_rules=rules),

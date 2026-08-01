@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from suzent.tools.shell.process_tool import ProcessTool
+from suzent.tools.shell.process_tool import ShellProcessBackend
 
 
 def _ctx(tmp_path, sandbox_enabled=True):
@@ -17,9 +17,9 @@ def _ctx(tmp_path, sandbox_enabled=True):
 
 def test_respects_explicit_deny_policy(tmp_path):
     ctx = _ctx(tmp_path)
-    ctx.deps.tool_approval_policy["process_manage"] = "always_deny"
+    ctx.deps.tool_approval_policy["CheckCommandTool"] = "always_deny"
 
-    result = ProcessTool().forward(
+    result = ShellProcessBackend().forward(
         ctx,
         process_id="abcdef123456",
         action="status",
@@ -27,11 +27,11 @@ def test_respects_explicit_deny_policy(tmp_path):
 
     assert not result.success
     assert result.error_code.value == "permission_denied"
-    assert result.message == "Tool 'process_manage' is denied by policy"
+    assert result.message == "Tool 'check_command' is denied by policy"
 
 
 def test_rejects_invalid_process_id(tmp_path):
-    tool = ProcessTool()
+    tool = ShellProcessBackend()
 
     result = tool.forward(_ctx(tmp_path), process_id="not-valid", action="poll")
 
@@ -41,7 +41,7 @@ def test_rejects_invalid_process_id(tmp_path):
 
 
 def test_rejects_negative_offset(tmp_path):
-    tool = ProcessTool()
+    tool = ShellProcessBackend()
 
     result = tool.forward(
         _ctx(tmp_path),
@@ -56,7 +56,7 @@ def test_rejects_negative_offset(tmp_path):
 
 
 def test_rejects_unknown_action(tmp_path):
-    tool = ProcessTool()
+    tool = ShellProcessBackend()
 
     result = tool.forward(
         _ctx(tmp_path),
@@ -88,7 +88,7 @@ def test_host_kill_always_evicts_registry_entry(monkeypatch, tmp_path):
         lambda: registry,
     )
 
-    result = ProcessTool().forward(
+    result = ShellProcessBackend().forward(
         _ctx(tmp_path, sandbox_enabled=False),
         process_id="abcdef123456",
         action="kill",
@@ -123,7 +123,7 @@ def test_host_poll_evicts_when_done_and_drained(monkeypatch, tmp_path):
         lambda: registry,
     )
 
-    result = ProcessTool().forward(
+    result = ShellProcessBackend().forward(
         _ctx(tmp_path, sandbox_enabled=False),
         process_id="abcdef123456",
         action="poll",

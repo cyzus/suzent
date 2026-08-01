@@ -269,11 +269,18 @@ def create_agent(
     tool_names = (config.get("tools") or CONFIG.default_tools).copy()
 
     from suzent.tools.registry import (
+        expand_tool_dependencies,
         get_deferred_tool_functions,
+        group_tools_by_capability,
         get_tool_function,
         get_tool_session_guidance,
     )
 
+    tool_names = expand_tool_dependencies(tool_names)
+    capability_groups = group_tools_by_capability(tool_names)
+    capability_tool_names = {
+        tool_name for names in capability_groups.values() for tool_name in names
+    }
     tool_functions = []
     enabled_tool_names = set(tool_names)
     # SkillTool / SocialMessageTool are equipped by their own auto-equip logic below,
@@ -288,6 +295,8 @@ def create_agent(
 
     for tool_name in tool_names:
         if tool_name in _auto_equipped:
+            continue
+        if tool_name in capability_tool_names:
             continue
         fn = get_tool_function(tool_name)
         if fn:
@@ -313,7 +322,9 @@ def create_agent(
 
     # Auto-equip SocialMessageTool
     social_ctx = config.get("social_context")
-    if social_ctx or "SocialMessageTool" in tool_names:
+    if (
+        social_ctx or "SocialMessageTool" in tool_names
+    ) and "SocialMessageTool" not in capability_tool_names:
         fn = get_tool_function("SocialMessageTool")
         if fn and fn not in tool_functions:
             tool_functions.append(fn)
@@ -333,6 +344,16 @@ def create_agent(
     # threshold is compacted in-flight (not only at turn boundaries). It self-guards
     # on deps.stateless, so it's safe to register for every agent.
     from suzent.core.context_compressor import make_compaction_history_processor
+    from suzent.tools.capability import RegisteredToolCapability
+
+    capabilities = [
+        ProcessHistory(make_compaction_history_processor()),
+        ToolSearch(),
+    ]
+    capabilities.extend(
+        RegisteredToolCapability(capability_id, tuple(selected_tools))
+        for capability_id, selected_tools in capability_groups.items()
+    )
 
     agent = Agent(
         model,
@@ -343,10 +364,7 @@ def create_agent(
         output_type=[str, DeferredToolRequests],
         retries={"output": 3},
         end_strategy="early",
-        capabilities=[
-            ProcessHistory(make_compaction_history_processor()),
-            ToolSearch(),
-        ],
+        capabilities=capabilities,
     )
 
     register_dynamic_instructions(

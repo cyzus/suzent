@@ -242,21 +242,20 @@ def _broadcast_task_update(task: SubAgentTask) -> None:
 
 def _resolve_tool_names(tools_allowed: list[str]) -> tuple[list[str], list[str]]:
     """
-    Accept both registry class-name keys (e.g. "BashTool") and pydantic-ai
-    tool_name aliases (e.g. "bash_execute"). Returns (resolved, unrecognized).
+    Accept both registry class-name keys (e.g. "RunCommandTool") and pydantic-ai
+    tool_name aliases (e.g. "run_command"). Returns (resolved, unrecognized).
     """
-    from suzent.tools.registry import _all_tool_classes
+    from suzent.tools.registry import _all_tool_classes, migrate_shell_tool_names
 
-    # Build dual-lookup: class name → class name, tool_name → class name
+    # Build dual-lookup: class name → class name, tool_name → class name.
     lookup: dict[str, str] = {}
     for cls in _all_tool_classes():
         lookup[cls.name] = cls.name
         if cls.tool_name:
             lookup[cls.tool_name] = cls.name
-
     resolved = []
     unrecognized = []
-    for name in tools_allowed:
+    for name in migrate_shell_tool_names(tools_allowed):
         canonical = lookup.get(name)
         if canonical:
             if canonical not in resolved:
@@ -295,7 +294,7 @@ async def spawn_subagent(
     if unrecognized:
         logger.warning(
             f"spawn_subagent: unrecognized tool names {unrecognized} — "
-            f"use class-name keys (e.g. 'BashTool'). Resolved: {resolved}"
+            f"use class-name keys (e.g. 'RunCommandTool'). Resolved: {resolved}"
         )
 
     # Strip always-denied tools regardless of how the list was built

@@ -80,6 +80,48 @@ async def test_spawn_subagent_rejects_unrecognized_tools(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_spawn_subagent_legacy_shell_deny_removes_all_shell_tools(monkeypatch):
+    captured = {}
+
+    async def fake_spawn_subagent(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(
+            task_id="sub_12345678",
+            status="queued",
+            result_summary=None,
+            error=None,
+            chat_id="subagent-sub_12345678",
+            parent_chat_id=kwargs["parent_chat_id"],
+            tools_allowed=kwargs["tools_allowed"],
+        )
+
+    monkeypatch.setattr(
+        "suzent.tools.registry.list_available_tools",
+        lambda: [
+            "ReadFileTool",
+            "RunCommandTool",
+            "StartCommandTool",
+            "CheckCommandTool",
+            "StopCommandTool",
+        ],
+    )
+    monkeypatch.setattr(
+        "suzent.core.subagent_runner.spawn_subagent",
+        fake_spawn_subagent,
+    )
+
+    result = await AgentTool().forward(
+        SimpleNamespace(deps=SimpleNamespace(chat_id="chat-1")),
+        description="Inspect files without shell access",
+        tools_denied=["BashTool"],
+    )
+
+    assert result.success
+    assert captured["tools_allowed"] == ["ReadFileTool"]
+    assert result.metadata["resolved_tools"] == ["ReadFileTool"]
+
+
+@pytest.mark.asyncio
 async def test_spawn_subagent_rejects_disabled_model(monkeypatch):
     monkeypatch.setattr(
         "suzent.tools.agent_tool.get_enabled_models_from_db",

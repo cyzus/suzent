@@ -12,7 +12,7 @@ describe('permission approval events', () => {
           name: 'tool_permission_decision',
           value: {
             toolCallId: 'call-1',
-            toolName: 'bash_execute',
+            toolName: 'run_command',
             behavior: 'ask',
             source: 'auto_classifier',
             reason: 'Command changes project files',
@@ -86,7 +86,7 @@ describe('permission approval events', () => {
           value: {
             approvalId: 'call-1',
             toolCallId: 'call-1',
-            toolName: 'bash_execute',
+            toolName: 'run_command',
             args: { content: 'npm test' },
             decision,
           },

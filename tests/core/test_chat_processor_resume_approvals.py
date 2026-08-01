@@ -150,7 +150,7 @@ def test_deferred_approval_remains_executable() -> None:
 
 def test_resolve_resume_action_from_persisted_contract(monkeypatch) -> None:
     decision = build_approval_decision(
-        "bash_execute",
+        "run_command",
         {"content": "npm test"},
     ).model_dump(mode="json", by_alias=True)
 
@@ -160,7 +160,7 @@ def test_resolve_resume_action_from_persisted_contract(monkeypatch) -> None:
                 {
                     "approvalId": "call-1",
                     "toolCallId": "call-1",
-                    "toolName": "bash_execute",
+                    "toolName": "run_command",
                     "args": {"content": "npm test"},
                     "decision": decision,
                 }
@@ -190,13 +190,13 @@ def test_resolve_resume_action_from_persisted_contract(monkeypatch) -> None:
 
     assert resolved[0]["approved"] is True
     assert resolved[0]["remember"] == "session"
-    assert resolved[0]["tool_name"] == "bash_execute"
+    assert resolved[0]["tool_name"] == "run_command"
     assert resolved[0]["args"] == {"content": "npm test"}
 
 
 def test_resume_action_uses_persisted_args_not_client_args(monkeypatch) -> None:
     decision = build_approval_decision(
-        "bash_execute",
+        "run_command",
         {"content": "npm test"},
     ).model_dump(mode="json", by_alias=True)
 
@@ -206,7 +206,7 @@ def test_resume_action_uses_persisted_args_not_client_args(monkeypatch) -> None:
                 {
                     "approvalId": "call-1",
                     "toolCallId": "call-1",
-                    "toolName": "bash_execute",
+                    "toolName": "run_command",
                     "args": {"content": "npm test"},
                     "decision": decision,
                 }

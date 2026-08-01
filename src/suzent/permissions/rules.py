@@ -27,7 +27,10 @@ def match_rule(
     tool_name: str,
     args: dict[str, Any],
 ) -> bool:
-    if rule.tool not in {tool_name, "*"}:
+    shell_runtime_names = {"run_command", "start_command"}
+    shell_rule_names = {"ShellTool"}
+    shell_match = rule.tool in shell_rule_names and tool_name in shell_runtime_names
+    if rule.tool not in {tool_name, "*"} and not shell_match:
         return False
     matcher = rule.matcher
     if matcher.type == "all":
@@ -87,8 +90,11 @@ def parse_rules(raw_rules: Any) -> list[PermissionRule]:
     for raw in raw_rules:
         if not isinstance(raw, dict):
             continue
-        try:
-            parsed.append(PermissionRule.model_validate(raw))
-        except Exception:
-            continue
+        from suzent.permissions.loader import _migrate_rule_tools
+
+        for migrated_rule in _migrate_rule_tools(raw):
+            try:
+                parsed.append(PermissionRule.model_validate(migrated_rule))
+            except Exception:
+                continue
     return parsed
