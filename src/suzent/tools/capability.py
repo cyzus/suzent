@@ -1,4 +1,4 @@
-"""Pydantic AI capability that bundles Suzent shell operations."""
+"""Pydantic AI capability for a selected group of registered tools."""
 
 from dataclasses import dataclass
 from typing import Sequence
@@ -10,18 +10,13 @@ from suzent.core.agent_deps import AgentDeps
 
 
 @dataclass
-class ShellCapability(AbstractCapability[AgentDeps]):
-    """Expose command execution and process management as one capability."""
+class RegisteredToolCapability(AbstractCapability[AgentDeps]):
+    """Bundle selected registry tools under one capability boundary."""
 
-    tool_names: Sequence[str] = (
-        "RunCommandTool",
-        "StartCommandTool",
-        "CheckCommandTool",
-        "StopCommandTool",
-    )
+    capability_id: str
+    tool_names: Sequence[str]
 
     def get_toolset(self) -> FunctionToolset[AgentDeps]:
-        # Import lazily to avoid a registry -> capability -> registry cycle.
         from suzent.tools.registry import get_tool_function
 
         tools = [
@@ -29,4 +24,4 @@ class ShellCapability(AbstractCapability[AgentDeps]):
             for name in self.tool_names
             if (tool := get_tool_function(name)) is not None
         ]
-        return FunctionToolset(tools, id="suzent-shell")
+        return FunctionToolset(tools, id=f"suzent-{self.capability_id}")

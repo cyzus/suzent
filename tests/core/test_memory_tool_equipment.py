@@ -15,6 +15,7 @@ def _tool_names(config, *, deferred):
 
     def fake_agent(model, **kwargs):
         captured["tools"] = kwargs.get("tools") or []
+        captured["capabilities"] = kwargs.get("capabilities") or []
         return MagicMock()
 
     with (
@@ -36,6 +37,13 @@ def _tool_names(config, *, deferred):
         if is_deferred != deferred:
             continue
         names.add(tool.name if isinstance(tool, PydanticTool) else tool.__name__)
+    if not deferred:
+        for capability in captured["capabilities"]:
+            get_toolset = getattr(capability, "get_toolset", None)
+            if get_toolset is not None:
+                toolset = get_toolset()
+                if toolset is not None:
+                    names.update(toolset.tools)
     return names
 
 

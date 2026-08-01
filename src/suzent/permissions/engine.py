@@ -22,7 +22,13 @@ from suzent.permissions.rules import find_rule
 
 FILESYSTEM_WRITE_TOOLS = frozenset({"write_file", "edit_file"})
 SHELL_TOOLS = frozenset(
-    {"run_command", "start_command", "ShellTool", "StartCommandTool"}
+    {
+        "run_command",
+        "start_command",
+        "RunCommandTool",
+        "StartCommandTool",
+        "ShellTool",
+    }
 )
 CHECK_COMMAND_TOOL = "check_command"
 SOCIAL_TOOL = "social_message"
@@ -378,6 +384,11 @@ class PermissionEngine:
 
         policy = (
             context.tool_permission_policies.get(request.tool_name)
+            or context.tool_permission_policies.get(
+                "RunCommandTool"
+                if request.tool_name == "run_command"
+                else "StartCommandTool"
+            )
             or context.tool_permission_policies.get("ShellTool")
             or context.tool_permission_policies.get("bash_execute")
             or {}

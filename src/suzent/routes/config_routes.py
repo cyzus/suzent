@@ -24,7 +24,11 @@ from suzent.core.providers import (
     get_enabled_models_from_db,
     invalidate_default_model_cache,
 )
-from suzent.tools.registry import get_tool_groups, migrate_shell_tool_names
+from suzent.tools.registry import (
+    get_tool_capabilities,
+    get_tool_groups,
+    migrate_shell_tool_names,
+)
 from suzent.database import get_database
 from suzent.core.volume_metadata import refresh_volume_metadata
 from suzent.logger import get_logger
@@ -158,6 +162,7 @@ async def get_config(request: Request) -> JSONResponse:
         "agents": CONFIG.agent_options,
         "tools": [t for t in CONFIG.tool_options if t != "SkillTool"],
         "toolGroups": get_tool_groups(),
+        "toolCapabilities": get_tool_capabilities(),
         "defaultTools": [t for t in CONFIG.default_tools if t != "SkillTool"],
         "codeTag": CONFIG.code_tag,
         "userId": CONFIG.user_id,

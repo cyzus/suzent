@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import inspect
+import re
 from typing import Callable, Dict, List, Optional, Union
 
 from pydantic_ai import Tool as PydanticTool
@@ -166,47 +168,126 @@ def _all_tool_classes() -> list:
     ]
 
 
+SHELL_TOOL_CLASS_NAMES = (
+    "RunCommandTool",
+    "StartCommandTool",
+    "CheckCommandTool",
+    "StopCommandTool",
+)
+
+LEGACY_SHELL_TOOL_NAMES = {
+    "ShellTool",
+    "BashTool",
+    "ProcessTool",
+    "bash_execute",
+    "process_manage",
+}
+
+CAPABILITY_DESCRIPTIONS = {
+    "Filesystem": "Read, search, create, and modify files in the configured workspace.",
+    "Shell": "Run bounded commands and control long-running background processes.",
+    "Web": "Search the web, retrieve pages, and interact with browser-based content.",
+    "Agent": "Plan work, ask questions, render interfaces, and delegate bounded tasks.",
+    "Creative": "Generate, inspect, speak, or share rich media and social content.",
+    "Memory & recall": "Search durable memory and retrieve relevant past sessions.",
+}
+
+TOOL_DESCRIPTION_OVERRIDES = {
+    "BrowsingTool": "Open and interact with browser pages, including navigation, clicks, forms, and screenshots.",
+    "AskQuestionTool": "Pause execution to ask the user a focused question when their input is required.",
+    "GoalTool": "Create, inspect, and complete a durable goal that can continue across agent turns.",
+    "TaskCreateTool": "Create structured project tasks with dependencies, assignees, and progress metadata.",
+    "TaskUpdateTool": "Update the status, ownership, description, or dependencies of an existing task.",
+    "TaskListTool": "List project tasks and their current status, ownership, and dependency relationships.",
+    "RenderUITool": "Render an interactive interface such as a form, table, card, or action panel.",
+    "SpeakTool": "Convert a response to speech and return playable audio to the conversation.",
+    "SocialMessageTool": "Send a message through a configured social channel after approval.",
+}
+
+
 def migrate_shell_tool_names(tool_names: List[str]) -> List[str]:
-    """Migrate legacy shell selections to the unified ShellTool capability."""
-    legacy_names = {
-        "BashTool",
-        "ProcessTool",
-        "bash_execute",
-        "process_manage",
-        "StartCommandTool",
-        "CheckCommandTool",
-        "StopCommandTool",
-    }
-    migrated = ["ShellTool" if name in legacy_names else name for name in tool_names]
+    """Expand legacy aggregate shell selections into independently selectable tools."""
+    migrated: list[str] = []
+    for name in tool_names:
+        if name in LEGACY_SHELL_TOOL_NAMES:
+            migrated.extend(SHELL_TOOL_CLASS_NAMES)
+        else:
+            migrated.append(name)
     return list(dict.fromkeys(migrated))
 
 
 def expand_tool_dependencies(tool_names: List[str]) -> List[str]:
-    """Expand logical tool selections into the runtime tools they require.
+    """Normalize legacy aggregate selections while preserving modern choices."""
+    return migrate_shell_tool_names(tool_names)
 
-    ShellTool is the user-facing selection. Its three companion operations are
-    registered in the same capability without separate UI toggles.
-    """
-    expanded = migrate_shell_tool_names(tool_names)
-    companions = ["StartCommandTool", "CheckCommandTool", "StopCommandTool"]
-    if "ShellTool" in expanded:
-        index = expanded.index("ShellTool") + 1
-        for companion in companions:
-            if companion not in expanded:
-                expanded.insert(index, companion)
-                index += 1
-    return expanded
+
+def _humanize_tool_name(name: str) -> str:
+    without_suffix = re.sub(r"Tool$", "", name)
+    return re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", without_suffix)
+
+
+def _tool_description(cls: type) -> str:
+    explicit = getattr(cls, "description", None)
+    if explicit:
+        return str(explicit)
+    if cls.name in TOOL_DESCRIPTION_OVERRIDES:
+        return TOOL_DESCRIPTION_OVERRIDES[cls.name]
+    documentation = cls.__dict__.get("__doc__") or inspect.getdoc(cls.forward) or ""
+    paragraph = documentation.split("\n\n", 1)[0].replace("\n", " ").strip()
+    return paragraph or f"Use the {_humanize_tool_name(cls.name).lower()} tool."
+
+
+def get_tool_capabilities() -> List[Dict[str, object]]:
+    """Return the user-facing capability catalog with rich tool metadata."""
+    capabilities: Dict[str, list[dict[str, object]]] = {}
+    for cls in _all_tool_classes():
+        capability = getattr(cls, "group", "")
+        if not capability:
+            continue
+        label = str(capability.value if hasattr(capability, "value") else capability)
+        capabilities.setdefault(label, []).append(
+            {
+                "id": cls.name,
+                "name": getattr(cls, "display_name", None)
+                or _humanize_tool_name(cls.name),
+                "description": _tool_description(cls),
+                "runtimeName": cls.tool_name,
+                "requiresApproval": bool(cls.requires_approval),
+            }
+        )
+    return [
+        {
+            "id": re.sub(r"[^a-z0-9]+", "-", label.lower()).strip("-"),
+            "label": label,
+            "description": CAPABILITY_DESCRIPTIONS.get(label, ""),
+            "tools": tools,
+        }
+        for label, tools in capabilities.items()
+    ]
+
+
+def group_tools_by_capability(tool_names: List[str]) -> Dict[str, List[str]]:
+    """Group selected registry keys by their owning capability ID."""
+    selected = set(tool_names)
+    grouped: Dict[str, List[str]] = {}
+    for capability in get_tool_capabilities():
+        capability_tools = [
+            tool["id"] for tool in capability["tools"] if tool["id"] in selected
+        ]
+        if capability_tools:
+            grouped[str(capability["id"])] = capability_tools
+    return grouped
 
 
 def get_tool_groups() -> List[Dict]:
-    """Derive UI tool groups from each tool's ``group`` class attribute."""
-    groups: Dict[str, List[str]] = {}
-    for cls in _all_tool_classes():
-        g = getattr(cls, "group", "")
-        if not g:
-            continue
-        groups.setdefault(g, []).append(cls.name)
-    return [{"label": label, "tools": tools} for label, tools in groups.items()]
+    """Return the legacy group shape for older frontend clients."""
+    return [
+        {
+            "label": capability["label"],
+            "tools": [tool["id"] for tool in capability["tools"]],
+        }
+        for capability in get_tool_capabilities()
+    ]
 
 
 def _build_registry() -> Dict[str, Union[Callable, PydanticTool]]:

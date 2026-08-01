@@ -4,6 +4,7 @@ from suzent.config import ConfigModel
 from suzent.tools.base import truncate_tool_output
 from suzent.tools.registry import (
     expand_tool_dependencies,
+    get_tool_capabilities,
     get_tool_groups,
     list_configurable_tools,
     migrate_shell_tool_names,
@@ -17,7 +18,7 @@ from suzent.tools.shell.host_process_registry import HostProcessRegistry
 def test_legacy_shell_tools_migrate_to_capability() -> None:
     assert expand_tool_dependencies(["ReadFileTool", "BashTool"]) == [
         "ReadFileTool",
-        "ShellTool",
+        "RunCommandTool",
         "StartCommandTool",
         "CheckCommandTool",
         "StopCommandTool",
@@ -27,38 +28,73 @@ def test_legacy_shell_tools_migrate_to_capability() -> None:
 def test_shell_dependency_expansion_is_stable() -> None:
     selected = ["BashTool", "ProcessTool", "BashTool"]
     assert expand_tool_dependencies(selected) == [
-        "ShellTool",
+        "RunCommandTool",
         "StartCommandTool",
         "CheckCommandTool",
         "StopCommandTool",
     ]
 
 
-def test_process_tool_is_not_a_separate_ui_toggle() -> None:
-    execution = next(
-        group for group in get_tool_groups() if group["label"] == "Execution"
-    )
-    assert "ShellTool" in execution["tools"]
-    assert "ProcessTool" not in execution["tools"]
+def test_shell_tools_share_a_capability_but_remain_individually_selectable() -> None:
+    shell = next(group for group in get_tool_groups() if group["label"] == "Shell")
+    assert shell["tools"] == [
+        "RunCommandTool",
+        "StartCommandTool",
+        "CheckCommandTool",
+        "StopCommandTool",
+    ]
 
 
-def test_capability_companions_are_not_ui_toggles() -> None:
+def test_all_shell_operations_are_ui_toggles() -> None:
     configurable = list_configurable_tools()
-    assert "ShellTool" in configurable
-    assert "StartCommandTool" not in configurable
-    assert "CheckCommandTool" not in configurable
-    assert "StopCommandTool" not in configurable
+    for tool_name in (
+        "RunCommandTool",
+        "StartCommandTool",
+        "CheckCommandTool",
+        "StopCommandTool",
+    ):
+        assert tool_name in configurable
 
 
-def test_persisted_companion_selections_migrate_to_shell() -> None:
+def test_modern_shell_selections_remain_independent() -> None:
     assert migrate_shell_tool_names(
         ["StartCommandTool", "CheckCommandTool", "StopCommandTool"]
-    ) == ["ShellTool"]
+    ) == ["StartCommandTool", "CheckCommandTool", "StopCommandTool"]
 
     config = ConfigModel(
         tool_options=["StartCommandTool", "CheckCommandTool", "StopCommandTool"]
     )
-    assert config.tool_options == ["ShellTool"]
+    assert config.tool_options == [
+        "StartCommandTool",
+        "CheckCommandTool",
+        "StopCommandTool",
+    ]
+
+
+def test_legacy_shell_selection_enables_every_shell_operation() -> None:
+    config = ConfigModel(tool_options=["ShellTool"])
+    assert config.tool_options == [
+        "RunCommandTool",
+        "StartCommandTool",
+        "CheckCommandTool",
+        "StopCommandTool",
+    ]
+
+
+def test_capability_catalog_has_detailed_tool_metadata() -> None:
+    shell = next(
+        capability
+        for capability in get_tool_capabilities()
+        if capability["id"] == "shell"
+    )
+    assert shell["description"]
+    run_command = next(
+        tool for tool in shell["tools"] if tool["id"] == "RunCommandTool"
+    )
+    assert run_command["name"] == "Run command"
+    assert run_command["description"]
+    assert run_command["runtimeName"] == "run_command"
+    assert run_command["requiresApproval"] is True
 
 
 def test_shell_capability_contributes_both_runtime_tools() -> None:
@@ -69,6 +105,9 @@ def test_shell_capability_contributes_both_runtime_tools() -> None:
         "check_command",
         "stop_command",
     }
+
+    run_only = ShellCapability(("RunCommandTool",)).get_toolset()
+    assert set(run_only.tools) == {"run_command"}
 
 
 def test_shell_output_truncation_keeps_error_tail() -> None:

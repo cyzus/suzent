@@ -24,7 +24,10 @@ DEFAULT_TOOLS:
   - "EditFileTool"
   - "GlobTool"
   - "GrepTool"
-  - "ShellTool"
+  - "RunCommandTool"
+  - "StartCommandTool"
+  - "CheckCommandTool"
+  - "StopCommandTool"
   - "SpeakTool"
   - "AgentTool"
 

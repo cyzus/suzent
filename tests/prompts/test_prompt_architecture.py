@@ -228,17 +228,17 @@ def test_notebook_volume_does_not_run_git_probe(monkeypatch):
 
 def test_build_session_guidance_section_tool_aware_rules():
     entries = get_tool_session_guidance_entries(
-        ["ShellTool", "ReadFileTool", "SkillTool", "AskQuestionTool"]
+        ["RunCommandTool", "ReadFileTool", "SkillTool", "AskQuestionTool"]
     )
     assert [entry["tool_name"] for entry in entries] == [
-        "ShellTool",
+        "RunCommandTool",
         "ReadFileTool",
         "SkillTool",
         "AskQuestionTool",
     ]
 
     items = get_tool_session_guidance(
-        ["ShellTool", "ReadFileTool", "SkillTool", "AskQuestionTool"]
+        ["RunCommandTool", "ReadFileTool", "SkillTool", "AskQuestionTool"]
     )
     guidance = build_session_guidance_section(items)
 
@@ -264,9 +264,9 @@ def test_build_enabled_models_section_lists_current_and_available_models():
 
 def test_format_session_guidance_debug_shows_order():
     text = format_session_guidance_debug(
-        get_tool_session_guidance_entries(["SkillTool", "ShellTool"])
+        get_tool_session_guidance_entries(["SkillTool", "RunCommandTool"])
     )
 
     assert text.startswith("[SessionGuidance] ordered tool guidance:")
-    assert "1. priority=10 tool=ShellTool" in text
+    assert "1. priority=10 tool=RunCommandTool" in text
     assert "2. priority=30 tool=SkillTool" in text

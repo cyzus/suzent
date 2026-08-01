@@ -39,15 +39,19 @@ def truncate_tool_output(
     return text[:limit] + f"\n... [{omitted.count(chr(10)) + 1} lines truncated]"
 
 
-class ToolGroup(str, Enum):
-    """UI display group for a tool. Extending str means values serialise as plain strings."""
+class ToolCapability(str, Enum):
+    """Capability that owns and presents a related set of tools."""
 
     FILESYSTEM = "Filesystem"
-    EXECUTION = "Execution"
+    SHELL = "Shell"
     WEB = "Web"
     AGENT = "Agent"
     CREATIVE = "Creative"
     MEMORY = "Memory & recall"
+
+
+# Compatibility alias for existing tool implementations and third-party tools.
+ToolGroup = ToolCapability
 
 
 class ToolErrorCode(Enum):
@@ -145,7 +149,9 @@ class Tool:
 
     name: str = ""  # Registry key (e.g., "ReadFileTool")
     tool_name: str = ""  # pydantic-ai function name (e.g., "read_file")
-    group: Union[ToolGroup, str] = ""  # empty = hidden from UI
+    group: Union[ToolCapability, str] = ""  # empty = not user-configurable
+    display_name: Optional[str] = None
+    description: Optional[str] = None
     requires_approval: bool = False
     deferrable: bool = True  # False = never goes into the activatable pool
     session_guidance: Optional[str] = None
@@ -164,10 +170,16 @@ class Tool:
         """Return a denial reason when policy explicitly blocks a tool."""
         policy = getattr(deps, "tool_approval_policy", {}) or {}
         aliases = {tool_name}
-        if tool_name in {"run_command", "start_command"}:
-            aliases.update({"ShellTool", "bash_execute", "BashTool"})
-        elif tool_name in {"check_command", "stop_command"}:
-            aliases.update({"process_manage", "ProcessTool"})
+        if tool_name == "run_command":
+            aliases.update({"RunCommandTool", "ShellTool", "bash_execute", "BashTool"})
+        elif tool_name == "start_command":
+            aliases.update(
+                {"StartCommandTool", "ShellTool", "bash_execute", "BashTool"}
+            )
+        elif tool_name == "check_command":
+            aliases.update({"CheckCommandTool", "process_manage", "ProcessTool"})
+        elif tool_name == "stop_command":
+            aliases.update({"StopCommandTool", "process_manage", "ProcessTool"})
         decision = next((policy.get(name) for name in aliases if name in policy), None)
         if decision == "always_deny":
             return f"Tool '{tool_name}' is denied by policy"

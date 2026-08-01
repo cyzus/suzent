@@ -62,7 +62,7 @@ print(resp.json())
 
 ## Using Nodes via CLI (Host Mode)
 
-Nodes are controlled through the `suzent node` CLI subcommands. The agent uses these same commands via `ShellTool`.
+Nodes are controlled through the `suzent node` CLI subcommands. The agent uses these same commands via `RunCommandTool`.
 
 ### List Connected Nodes
 

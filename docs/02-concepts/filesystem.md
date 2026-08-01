@@ -4,7 +4,7 @@ Suzent provides secure file access and code execution through two modes: **Sandb
 
 ## Execution Modes
 
-| Mode | ShellTool | File Tools | Path Style |
+| Mode | Shell capability | File Tools | Path Style |
 |------|----------|------------|------------|
 | **Sandbox** | Runs in Docker container | Virtual filesystem | `/persistence`, `/shared`, `/mnt/*` |
 | **Host** | Runs on host | Host filesystem | `$PROJECT_PATH`, `$SHARED_PATH`, `$MOUNT_*` |

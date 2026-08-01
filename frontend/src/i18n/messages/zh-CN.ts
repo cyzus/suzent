@@ -120,6 +120,11 @@ export const zhCN = {
     },
     toolsLabel: '工具',
     toolsEmpty: '暂无可用工具',
+    toolCatalog: {
+      approval: '需审批',
+      deactivate: '停用',
+      capabilityAria: '{name} 能力',
+    },
     memory: {
       label: '记忆系统',
       button: '记忆工具',

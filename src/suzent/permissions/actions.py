@@ -97,6 +97,7 @@ def build_approval_decision(
     is_shell = tool_name in {
         "run_command",
         "start_command",
+        "RunCommandTool",
         "ShellTool",
         "StartCommandTool",
     }

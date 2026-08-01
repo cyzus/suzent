@@ -14,9 +14,14 @@ from suzent.tools.shell.process_tool import ShellProcessBackend
 class RunCommandTool(ShellCommandBackend):
     """Run a command synchronously."""
 
-    name = "ShellTool"
+    name = "RunCommandTool"
     tool_name = "run_command"
-    group = ToolGroup.EXECUTION
+    group = ToolGroup.SHELL
+    display_name = "Run command"
+    description = (
+        "Run a bounded shell command, Python snippet, or Node.js snippet and wait "
+        "for its complete output."
+    )
     deferrable = False
     session_guidance = (
         "Shell is for shell/system commands only. Use run_command for bounded "
@@ -66,7 +71,12 @@ class StartCommandTool(ShellCommandBackend):
 
     name = "StartCommandTool"
     tool_name = "start_command"
-    group = ""
+    group = ToolGroup.SHELL
+    display_name = "Start command"
+    description = (
+        "Start a long-running command in the background and return an ID for later "
+        "status checks or cancellation."
+    )
     deferrable = False
     session_guidance = None
 
@@ -103,7 +113,11 @@ class CheckCommandTool(ShellProcessBackend):
 
     name = "CheckCommandTool"
     tool_name = "check_command"
-    group = ""
+    group = ToolGroup.SHELL
+    display_name = "Check command"
+    description = (
+        "Read new output and the current status of a command started in the background."
+    )
     deferrable = False
 
     def forward(
@@ -134,7 +148,9 @@ class StopCommandTool(ShellProcessBackend):
 
     name = "StopCommandTool"
     tool_name = "stop_command"
-    group = ""
+    group = ToolGroup.SHELL
+    display_name = "Stop command"
+    description = "Stop a background command and clean up its process resources."
     deferrable = False
 
     def forward(
@@ -149,7 +165,7 @@ class StopCommandTool(ShellProcessBackend):
 
 
 SHELL_TOOL_CLASS_NAMES = (
-    "ShellTool",
+    "RunCommandTool",
     "StartCommandTool",
     "CheckCommandTool",
     "StopCommandTool",

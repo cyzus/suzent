@@ -46,7 +46,7 @@ class ShellCommandBackend(Tool):
 
     name = "ShellCommandBackend"
     tool_name = "run_command"
-    group = ToolGroup.EXECUTION
+    group = ToolGroup.SHELL
     requires_approval = True
     session_guidance = (
         "Shell is for shell/system commands ONLY. "

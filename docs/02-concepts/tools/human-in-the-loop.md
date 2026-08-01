@@ -6,10 +6,10 @@ Suzent evaluates every deferred tool call through one backend permission engine.
 
 | Tool | Function | Gated operation |
 |------|----------|-----------------|
-| ShellTool | `run_command`, `start_command` | Command and code execution |
+| RunCommandTool / StartCommandTool | `run_command`, `start_command` | Command and code execution |
 | WriteFileTool | `write_file` | File creation and overwrite |
 | EditFileTool | `edit_file` | File edits |
-| ShellTool | `stop_command` | Stop a background command |
+| StopCommandTool | `stop_command` | Stop a background command |
 | SocialMessageTool | `social_message` | Sending messages |
 | ImageGenerationTool | `image_generate` | Image generation |
 
