@@ -144,6 +144,43 @@ def test_start_dev_keeps_capability_writes_local(monkeypatch, tmp_path):
 
     assert result.exit_code == 0
     assert "SUZENT_CAPABILITIES_TO_REPO" not in popen_calls["env"]
+    assert popen_calls["env"]["SUZENT_DEV_MODE"] == "1"
+
+
+def test_start_dev_restarts_existing_backend(monkeypatch, tmp_path):
+    app = typer.Typer()
+    cli_main.register_commands(app)
+    killed_pids = []
+    popen_calls = []
+
+    def fake_popen(cmd, **kwargs):
+        popen_calls.append(cmd)
+        return _ServeProcessSuccess()
+
+    monkeypatch.setattr(cli_main, "get_project_root", lambda: tmp_path)
+    monkeypatch.setattr(cli_main, "_notify_update_available", lambda root: None)
+    monkeypatch.setattr(cli_main, "ensure_cargo_in_path", lambda: None)
+    monkeypatch.setattr(cli_main, "ensure_msvc_linker", lambda: None)
+    monkeypatch.setattr(cli_main, "_is_suzent_server_running", lambda *args: True)
+    monkeypatch.setattr(
+        cli_main,
+        "get_pid_on_port",
+        lambda port: (
+            4321 if port == cli_main.DEFAULT_PORT and not killed_pids else None
+        ),
+    )
+    monkeypatch.setattr(cli_main, "kill_process", killed_pids.append)
+    monkeypatch.setattr(cli_main.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(cli_main, "_ensure_npm_deps", lambda root: None)
+    monkeypatch.setattr(cli_main, "run_command", lambda *args, **kwargs: None)
+    monkeypatch.setattr(cli_main, "_terminate_process_gracefully", lambda process: None)
+
+    result = runner.invoke(app, ["start", "--dev"])
+
+    assert result.exit_code == 0
+    assert killed_pids == [4321]
+    assert popen_calls[0][:3] == [cli_main.sys.executable, "-m", "suzent.server"]
+    assert "--debug" in popen_calls[0]
 
 
 def test_serve_uses_default_windows_process_group(monkeypatch):
@@ -169,6 +206,7 @@ def test_serve_uses_default_windows_process_group(monkeypatch):
     assert popen_calls["cmd"][:3] == [cli_main.sys.executable, "-m", "suzent.server"]
     assert popen_calls["env"]["SUZENT_HOST"] == "127.0.0.1"
     assert popen_calls["env"]["SUZENT_PORT"] == "25314"
+    assert popen_calls["env"]["SUZENT_DEV_MODE"] == "1"
     # Important assertion: no CREATE_NEW_PROCESS_GROUP is passed.
     assert "creationflags" not in popen_calls["kwargs"]
 
@@ -233,6 +271,39 @@ def test_update_ui_binary_records_release_version(monkeypatch):
     assert cli_main._update_ui_binary(root, "v1.2.3")
 
     assert download_calls == [(root, "v1.2.3")]
+
+
+def test_replace_ui_files_restores_both_files_when_metadata_install_fails(
+    monkeypatch,
+    tmp_path,
+):
+    dest = tmp_path / "suzent-ui.exe"
+    version_file = tmp_path / "version.txt"
+    staged_binary = tmp_path / "new-ui.exe"
+    staged_version = tmp_path / "new-version.txt"
+    dest.write_bytes(b"old-ui")
+    version_file.write_text("v1.0.0", encoding="utf-8")
+    staged_binary.write_bytes(b"new-ui")
+    staged_version.write_text("v1.1.0", encoding="utf-8")
+    real_replace = Path.replace
+
+    def fail_metadata_replace(path, target):
+        if path == staged_version:
+            raise OSError("metadata locked")
+        return real_replace(path, target)
+
+    monkeypatch.setattr(Path, "replace", fail_metadata_replace)
+
+    with pytest.raises(OSError, match="metadata locked"):
+        cli_main._replace_ui_files(
+            dest,
+            version_file,
+            staged_binary,
+            staged_version,
+        )
+
+    assert dest.read_bytes() == b"old-ui"
+    assert version_file.read_text(encoding="utf-8") == "v1.0.0"
 
 
 def test_release_asset_url_pins_requested_tag():
@@ -339,6 +410,24 @@ def test_dev_update_uses_main_and_never_downloads_release_ui(monkeypatch, tmp_pa
     npm_ci_dirs = [cwd for command, cwd in commands if command == ["npm", "ci"]]
     assert npm_ci_dirs == [tmp_path / "frontend", tmp_path / "src-tauri"]
     assert cli_main._read_update_channel(tmp_path) == "dev"
+
+
+def test_dev_update_failure_resets_branch_to_saved_commit(monkeypatch, tmp_path):
+    app, commands = _mock_update_runtime(monkeypatch, tmp_path)
+
+    def fail_first_npm_ci(command, **kwargs):
+        commands.append((command, kwargs.get("cwd")))
+        if command == ["npm", "ci"]:
+            raise subprocess.CalledProcessError(1, command)
+
+    monkeypatch.setattr(cli_main, "run_command", fail_first_npm_ci)
+
+    result = runner.invoke(app, ["update", "--dev"])
+
+    assert result.exit_code == 1
+    command_args = [command for command, _cwd in commands]
+    assert ["git", "checkout", "main"] in command_args
+    assert ["git", "reset", "--hard", "oldcommit"] in command_args
 
 
 def test_windows_app_suzent_pids_parse_powershell_output(monkeypatch):

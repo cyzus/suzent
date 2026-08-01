@@ -47,6 +47,7 @@ export interface SystemVersionResponse {
   backendVersion: string;
   apiVersion: number;
   buildCommit: string;
+  developmentMode: boolean;
 }
 
 export async function fetchSystemVersion(): Promise<SystemVersionResponse> {
@@ -58,6 +59,7 @@ export async function fetchSystemVersion(): Promise<SystemVersionResponse> {
     backend_version?: unknown;
     api_version?: unknown;
     build_commit?: unknown;
+    development_mode?: unknown;
   };
   return {
     backendVersion: typeof payload.backend_version === 'string'
@@ -67,6 +69,7 @@ export async function fetchSystemVersion(): Promise<SystemVersionResponse> {
     buildCommit: typeof payload.build_commit === 'string'
       ? payload.build_commit
       : 'unknown',
+    developmentMode: payload.development_mode === true,
   };
 }
 
@@ -82,6 +85,7 @@ export function getBackendCompatibilityIssue(
     version: __FRONTEND_VERSION__,
     apiVersion: __SUZENT_API_VERSION__,
     buildCommit: __FRONTEND_BUILD_COMMIT__,
+    enforceBuildCommit: !import.meta.env.DEV,
   },
 ): BackendCompatibilityIssue | null {
   if (backend.apiVersion !== frontend.apiVersion) {
@@ -93,14 +97,19 @@ export function getBackendCompatibilityIssue(
   }
   const commitsKnown = backend.buildCommit !== 'unknown'
     && frontend.buildCommit !== 'unknown';
-  if (commitsKnown && backend.buildCommit !== frontend.buildCommit) {
+  const enforceBuildCommit = (frontend.enforceBuildCommit ?? true)
+    && !backend.developmentMode;
+  if (enforceBuildCommit
+    && commitsKnown
+    && backend.buildCommit !== frontend.buildCommit) {
     return {
       kind: 'build',
       frontend: frontend.buildCommit.slice(0, 8),
       backend: backend.buildCommit.slice(0, 8),
     };
   }
-  if (!commitsKnown
+  if (enforceBuildCommit
+    && !commitsKnown
     && backend.backendVersion !== 'unknown'
     && frontend.version !== 'unknown'
     && backend.backendVersion !== frontend.version) {

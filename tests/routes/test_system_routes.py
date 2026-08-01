@@ -18,6 +18,7 @@ def test_system_version_reports_running_backend_package(monkeypatch) -> None:
         "backend_version": "1.2.3",
         "api_version": system_routes.API_VERSION,
         "build_commit": "abc123",
+        "development_mode": False,
     }
 
 

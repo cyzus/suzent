@@ -154,7 +154,6 @@ from suzent.routes.sandbox_routes import (
 )
 from suzent.routes.skill_routes import get_skills, reload_skills, toggle_skill
 from suzent.routes.system_routes import (
-    get_system_identity,
     get_system_version,
     list_host_files,
     open_in_explorer,
@@ -289,7 +288,7 @@ _social_reload_lock = asyncio.Lock()
 
 async def health(_request: Request) -> JSONResponse:
     """Lightweight readiness probe used by the CLI to detect running servers."""
-    return JSONResponse({"app": "suzent", "status": "ok", **get_system_identity()})
+    return JSONResponse({"app": "suzent", "status": "ok"})
 
 
 def _build_social_from_config(

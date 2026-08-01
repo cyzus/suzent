@@ -77,11 +77,12 @@ def get_backend_commit(start: Path | None = None) -> str:
     return "unknown"
 
 
-def get_system_identity() -> dict[str, str | int]:
+def get_system_identity() -> dict[str, str | int | bool]:
     return {
         "backend_version": get_backend_version(),
         "api_version": API_VERSION,
         "build_commit": get_backend_commit(),
+        "development_mode": os.getenv("SUZENT_DEV_MODE") == "1",
     }
 
 

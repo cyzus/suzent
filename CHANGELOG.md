@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v0.7.3] - 2026-08-01
 
 ### 🐛 Fixed
-- Pin stable backend source, dependencies, and desktop assets to the same release; reject incompatible frontend/backend builds; and add `suzent update --dev` for lockstep development updates.
+- Pin fresh installs and stable updates to matching backend/UI releases, make update rollback recoverable, reject incompatible production builds, and keep `start --dev`/`serve` tolerant of normal development commit changes.
 
 ### ⚡ Changed
 - Add activity tracking features and localization for token activity display

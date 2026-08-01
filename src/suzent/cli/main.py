@@ -297,6 +297,49 @@ def _download_file_atomic(url: str, dest: Path, *, timeout: float = 60.0) -> Non
         raise
 
 
+def _replace_ui_files(
+    dest: Path,
+    version_file: Path,
+    staged_binary: Path,
+    staged_version: Path,
+) -> None:
+    """Replace the UI binary and metadata as one recoverable operation."""
+    binary_backup = dest.with_name(f".{dest.name}.previous")
+    version_backup = version_file.with_name(f".{version_file.name}.previous")
+    for backup in (binary_backup, version_backup):
+        backup.unlink(missing_ok=True)
+
+    binary_backed_up = False
+    version_backed_up = False
+    binary_installed = False
+    version_installed = False
+    try:
+        if dest.exists():
+            dest.replace(binary_backup)
+            binary_backed_up = True
+        if version_file.exists():
+            version_file.replace(version_backup)
+            version_backed_up = True
+
+        staged_binary.replace(dest)
+        binary_installed = True
+        staged_version.replace(version_file)
+        version_installed = True
+    except Exception:
+        if version_installed:
+            version_file.unlink(missing_ok=True)
+        if binary_installed:
+            dest.unlink(missing_ok=True)
+        if version_backed_up:
+            version_backup.replace(version_file)
+        if binary_backed_up:
+            binary_backup.replace(dest)
+        raise
+    else:
+        binary_backup.unlink(missing_ok=True)
+        version_backup.unlink(missing_ok=True)
+
+
 def download_ui_binary(root: Path, *, version: str = "latest") -> bool:
     """Download the pre-built UI binary from GitHub Releases. Returns True on success."""
     asset_name = _platform_asset_name()
@@ -314,9 +357,8 @@ def download_ui_binary(root: Path, *, version: str = "latest") -> bool:
         if not IS_WINDOWS:
             staged_binary.chmod(0o755)
         staged_version.write_text(version, encoding="utf-8")
-        staged_binary.replace(dest)
+        _replace_ui_files(dest, version_file, staged_binary, staged_version)
         staged_binary = None
-        staged_version.replace(version_file)
         staged_version = None
         typer.echo(f"  ✅ UI binary ready at {dest}")
         return True
@@ -811,7 +853,7 @@ def register_commands(app: typer.Typer):
         ports_to_check = [(18080, "Frontend")]
         if not backend_running:
             ports_to_check.insert(0, (DEFAULT_PORT, "Backend"))
-        else:
+        elif not dev:
             typer.echo(
                 f"  ✅ Backend already running on http://127.0.0.1:{DEFAULT_PORT}; "
                 "reusing it."
@@ -833,8 +875,35 @@ def register_commands(app: typer.Typer):
                     typer.echo("   ❌ Startup aborted.")
                     raise typer.Exit(code=1)
 
+        if dev and backend_running:
+            pid = get_pid_on_port(DEFAULT_PORT)
+            if not pid:
+                typer.echo(
+                    "  ❌ Dev mode found an existing Suzent backend but could not "
+                    "identify its PID. Run 'suzent stop' and retry."
+                )
+                raise typer.Exit(code=1)
+            typer.echo(
+                f"  • Restarting existing backend (PID {pid}) for a clean dev session..."
+            )
+            try:
+                kill_process(pid)
+            except Exception as error:
+                typer.echo(f"  ❌ Failed to restart existing backend: {error}")
+                raise typer.Exit(code=1)
+            for _attempt in range(20):
+                if get_pid_on_port(DEFAULT_PORT) is None:
+                    break
+                time.sleep(0.1)
+            else:
+                typer.echo("  ❌ Existing backend did not release its port.")
+                raise typer.Exit(code=1)
+            backend_running = False
+
         backend_env = os.environ.copy()
         backend_env["SUZENT_PORT"] = str(DEFAULT_PORT)
+        if dev:
+            backend_env["SUZENT_DEV_MODE"] = "1"
 
         backend_proc = None
         if backend_running:
@@ -889,6 +958,7 @@ def register_commands(app: typer.Typer):
         env = os.environ.copy()
         env["SUZENT_HOST"] = host
         env["SUZENT_PORT"] = str(port)
+        env["SUZENT_DEV_MODE"] = "1"
 
         # Launch the server module using the same python interpreter
         cmd = [sys.executable, "-m", "suzent.server"]
@@ -1136,12 +1206,15 @@ def register_commands(app: typer.Typer):
         return result.stdout.strip()
 
     def _restore_checkout(root: Path, branch: str, commit: str) -> None:
-        target = branch or commit
-        if not target:
+        if not commit:
             return
         try:
-            typer.echo(f"  • Rolling source back to {target}...")
-            run_command(["git", "checkout", target], cwd=root)
+            typer.echo(f"  • Rolling source back to {commit}...")
+            if branch:
+                run_command(["git", "checkout", branch], cwd=root)
+                run_command(["git", "reset", "--hard", commit], cwd=root)
+            else:
+                run_command(["git", "checkout", "--detach", commit], cwd=root)
             run_command(_backend_sync_args(root), cwd=root, shell_on_windows=True)
         except subprocess.CalledProcessError:
             typer.echo("  ⚠️  Automatic rollback was incomplete; inspect the checkout.")
@@ -1246,7 +1319,7 @@ def register_commands(app: typer.Typer):
                     )
                 except subprocess.CalledProcessError:
                     typer.echo("  ❌ Source update still failed. Restoring stash...")
-                    run_command(["git", "stash", "pop"], cwd=root)
+                    _restore_stashed_changes(root, stashed_changes)
                     raise typer.Exit(code=1)
             else:
                 typer.echo("  ❌ Update aborted.")
