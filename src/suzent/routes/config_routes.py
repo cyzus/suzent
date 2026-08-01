@@ -26,7 +26,6 @@ from suzent.core.providers import (
 )
 from suzent.tools.registry import (
     get_tool_capabilities,
-    get_tool_groups,
     migrate_shell_tool_names,
 )
 from suzent.database import get_database
@@ -161,7 +160,6 @@ async def get_config(request: Request) -> JSONResponse:
         "defaultModel": default_model,
         "agents": CONFIG.agent_options,
         "tools": [t for t in CONFIG.tool_options if t != "SkillTool"],
-        "toolGroups": get_tool_groups(),
         "toolCapabilities": get_tool_capabilities(),
         "defaultTools": [t for t in CONFIG.default_tools if t != "SkillTool"],
         "codeTag": CONFIG.code_tag,

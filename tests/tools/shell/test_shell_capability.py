@@ -1,11 +1,10 @@
 from types import SimpleNamespace
 
 from suzent.config import ConfigModel
-from suzent.tools.base import truncate_tool_output
+from suzent.tools.base import Tool, truncate_tool_output
 from suzent.tools.registry import (
     expand_tool_dependencies,
     get_tool_capabilities,
-    get_tool_groups,
     list_configurable_tools,
     migrate_shell_tool_names,
 )
@@ -36,8 +35,12 @@ def test_shell_dependency_expansion_is_stable() -> None:
 
 
 def test_shell_tools_share_a_capability_but_remain_individually_selectable() -> None:
-    shell = next(group for group in get_tool_groups() if group["label"] == "Shell")
-    assert shell["tools"] == [
+    shell = next(
+        capability
+        for capability in get_tool_capabilities()
+        if capability["id"] == "shell"
+    )
+    assert [tool["id"] for tool in shell["tools"]] == [
         "RunCommandTool",
         "StartCommandTool",
         "CheckCommandTool",
@@ -95,6 +98,19 @@ def test_capability_catalog_has_detailed_tool_metadata() -> None:
     assert run_command["description"]
     assert run_command["runtimeName"] == "run_command"
     assert run_command["requiresApproval"] is True
+    check_command = next(
+        tool for tool in shell["tools"] if tool["id"] == "CheckCommandTool"
+    )
+    assert check_command["requiresApproval"] is False
+
+
+def test_shell_deny_alias_takes_precedence_over_allow() -> None:
+    for policy in (
+        {"run_command": "always_allow", "ShellTool": "always_deny"},
+        {"ShellTool": "always_deny", "run_command": "always_allow"},
+    ):
+        deps = SimpleNamespace(tool_approval_policy=policy)
+        assert Tool.is_tool_denied(deps, "run_command") is not None
 
 
 def test_shell_capability_contributes_both_runtime_tools() -> None:

@@ -390,7 +390,6 @@ class PermissionEngine:
                 else "StartCommandTool"
             )
             or context.tool_permission_policies.get("ShellTool")
-            or context.tool_permission_policies.get("bash_execute")
             or {}
         )
         raw_rules = policy.get("command_rules", [])

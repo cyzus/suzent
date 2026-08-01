@@ -278,7 +278,6 @@ class ShellCommandBackend(Tool):
         tool_policy = (
             policy_map.get(self.tool_name)
             or policy_map.get("ShellTool")
-            or policy_map.get("bash_execute")
             or policy_map.get(self.name)
             or {}
         )

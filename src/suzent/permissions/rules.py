@@ -28,7 +28,7 @@ def match_rule(
     args: dict[str, Any],
 ) -> bool:
     shell_runtime_names = {"run_command", "start_command"}
-    shell_rule_names = {"ShellTool", "BashTool", "bash_execute"}
+    shell_rule_names = {"ShellTool"}
     shell_match = rule.tool in shell_rule_names and tool_name in shell_runtime_names
     if rule.tool not in {tool_name, "*"} and not shell_match:
         return False

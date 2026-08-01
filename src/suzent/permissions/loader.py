@@ -16,6 +16,25 @@ def migrate_permission_tool_name(tool_name: str) -> str:
     return "ShellTool" if tool_name in LEGACY_SHELL_TOOL_NAMES else tool_name
 
 
+def _migrate_process_rule(raw_rule: dict[str, Any], target_tool: str) -> dict[str, Any]:
+    migrated_rule = {**raw_rule, "tool": target_tool}
+    matcher = raw_rule.get("matcher")
+    if not isinstance(matcher, dict) or matcher.get("type") != "exact_input":
+        return migrated_rule
+    value = matcher.get("value")
+    if not isinstance(value, dict):
+        return migrated_rule
+
+    migrated_value = {key: item for key, item in value.items() if key != "action"}
+    process_id = migrated_value.pop("process_id", None)
+    if process_id is not None:
+        migrated_value.setdefault("command_id", process_id)
+    if target_tool == "stop_command":
+        migrated_value.pop("offset", None)
+    migrated_rule["matcher"] = {**matcher, "value": migrated_value}
+    return migrated_rule
+
+
 def _migrate_rule_tools(raw_rule: dict[str, Any]) -> list[dict[str, Any]]:
     tool_name = str(raw_rule.get("tool") or "")
     if tool_name in LEGACY_SHELL_TOOL_NAMES:
@@ -27,12 +46,12 @@ def _migrate_rule_tools(raw_rule: dict[str, Any]) -> list[dict[str, Any]]:
     value = matcher.get("value") if isinstance(matcher, dict) else None
     action = str(value.get("action") or "") if isinstance(value, dict) else ""
     if action in {"poll", "status"}:
-        return [{**raw_rule, "tool": "check_command"}]
+        return [_migrate_process_rule(raw_rule, "check_command")]
     if action == "kill":
-        return [{**raw_rule, "tool": "stop_command"}]
+        return [_migrate_process_rule(raw_rule, "stop_command")]
     return [
-        {**raw_rule, "tool": "check_command"},
-        {**raw_rule, "tool": "stop_command"},
+        _migrate_process_rule(raw_rule, "check_command"),
+        _migrate_process_rule(raw_rule, "stop_command"),
     ]
 
 

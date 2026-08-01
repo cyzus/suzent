@@ -27,7 +27,7 @@ def test_policy_prompts_for_dangerous_command_when_unapproved(monkeypatch, tmp_p
     monkeypatch.setattr(
         CONFIG,
         "permission_policies",
-        {"bash_execute": {"enabled": True, "mode": "accept_edits"}},
+        {"ShellTool": {"enabled": True, "mode": "accept_edits"}},
     )
 
     with pytest.raises(ApprovalRequired):
@@ -56,7 +56,7 @@ def test_approved_dangerous_command_reaches_execution(monkeypatch, tmp_path):
     monkeypatch.setattr(
         CONFIG,
         "permission_policies",
-        {"bash_execute": {"enabled": True, "mode": "accept_edits"}},
+        {"ShellTool": {"enabled": True, "mode": "accept_edits"}},
     )
 
     result = tool.forward(
@@ -77,7 +77,7 @@ def test_policy_asks_unknown_command_in_full_approval(monkeypatch, tmp_path):
         CONFIG,
         "permission_policies",
         {
-            "bash_execute": {
+            "ShellTool": {
                 "enabled": True,
                 "mode": "full_approval",
                 "default_action": "ask",
@@ -111,7 +111,7 @@ def test_policy_allows_readonly_command_in_strict_mode(monkeypatch, tmp_path):
     monkeypatch.setattr(
         CONFIG,
         "permission_policies",
-        {"bash_execute": {"enabled": True, "mode": "strict_readonly"}},
+        {"ShellTool": {"enabled": True, "mode": "strict_readonly"}},
     )
 
     result = tool.forward(

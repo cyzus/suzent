@@ -273,8 +273,15 @@ class AgentTool(Tool):
             # Denylist path: start from all available tools, subtract denied
             from suzent.tools.registry import list_available_tools
 
+            resolved_denied, unrecognized_denied = _resolve_tool_names(tools_denied)
+            if unrecognized_denied:
+                return ToolResult.error_result(
+                    ToolErrorCode.INVALID_ARGUMENT,
+                    "Some denied tool names were not recognized.",
+                    metadata={"unrecognized_tools": unrecognized_denied},
+                )
             all_tools = list_available_tools()
-            denied_set = set(tools_denied)
+            denied_set = set(resolved_denied)
             effective_tools = [t for t in all_tools if t not in denied_set]
         elif subagent_type is not None or tools_allowed is not None:
             # Whitelist path

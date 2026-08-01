@@ -1,7 +1,11 @@
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
+import { I18nProvider, tForLocale } from '../../i18n';
 import type { ConfigOptions } from '../../types/api';
 import {
+  CapabilityToolPicker,
   getCapabilities,
   toggleCapabilitySelection,
   toggleToolSelection,
@@ -74,5 +78,29 @@ describe('capability tool picker', () => {
         ['RunCommandTool', 'CheckCommandTool'],
       ),
     ).toEqual(['ReadFileTool']);
+  });
+
+  it('renders selection and deactivation as sibling buttons', () => {
+    const html = renderToStaticMarkup(
+      React.createElement(
+        I18nProvider,
+        null,
+        React.createElement(CapabilityToolPicker, {
+          backendConfig: config,
+          selected: [],
+          onChange: () => undefined,
+          activatedByAI: new Set(['RunCommandTool']),
+          onDeactivate: () => undefined,
+        }),
+      ),
+    );
+
+    expect(html).not.toContain('role="button"');
+    expect(html).toMatch(/aria-label="(?:Deactivate Run command|停用运行命令)"/);
+  });
+
+  it('localizes capability and tool metadata by stable IDs', () => {
+    expect(tForLocale('zh-CN', 'config.toolCatalog.capabilities.shell.name')).toBe('命令执行');
+    expect(tForLocale('zh-CN', 'config.toolCatalog.tools.RunCommandTool.description')).toContain('Shell 命令');
   });
 });

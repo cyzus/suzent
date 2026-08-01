@@ -118,6 +118,7 @@ class CheckCommandTool(ShellProcessBackend):
     description = (
         "Read new output and the current status of a command started in the background."
     )
+    requires_approval = False
     deferrable = False
 
     def forward(

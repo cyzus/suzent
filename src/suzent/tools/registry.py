@@ -279,17 +279,6 @@ def group_tools_by_capability(tool_names: List[str]) -> Dict[str, List[str]]:
     return grouped
 
 
-def get_tool_groups() -> List[Dict]:
-    """Return the legacy group shape for older frontend clients."""
-    return [
-        {
-            "label": capability["label"],
-            "tools": [tool["id"] for tool in capability["tools"]],
-        }
-        for capability in get_tool_capabilities()
-    ]
-
-
 def _build_registry() -> Dict[str, Union[Callable, PydanticTool]]:
     """Import all Tool classes and build the registry."""
     registry: Dict[str, Union[Callable, PydanticTool]] = {}

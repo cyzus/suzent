@@ -169,19 +169,16 @@ class Tool:
     def is_tool_denied(deps: Any, tool_name: str) -> Optional[str]:
         """Return a denial reason when policy explicitly blocks a tool."""
         policy = getattr(deps, "tool_approval_policy", {}) or {}
-        aliases = {tool_name}
+        aliases = [tool_name]
         if tool_name == "run_command":
-            aliases.update({"RunCommandTool", "ShellTool", "bash_execute", "BashTool"})
+            aliases.extend(["RunCommandTool", "ShellTool"])
         elif tool_name == "start_command":
-            aliases.update(
-                {"StartCommandTool", "ShellTool", "bash_execute", "BashTool"}
-            )
+            aliases.extend(["StartCommandTool", "ShellTool"])
         elif tool_name == "check_command":
-            aliases.update({"CheckCommandTool", "process_manage", "ProcessTool"})
+            aliases.append("CheckCommandTool")
         elif tool_name == "stop_command":
-            aliases.update({"StopCommandTool", "process_manage", "ProcessTool"})
-        decision = next((policy.get(name) for name in aliases if name in policy), None)
-        if decision == "always_deny":
+            aliases.append("StopCommandTool")
+        if any(policy.get(name) == "always_deny" for name in aliases):
             return f"Tool '{tool_name}' is denied by policy"
         return None
 

@@ -24,7 +24,7 @@ def _ctx(tmp_path, sandbox_enabled=False):
 
 def test_respects_explicit_deny_policy(tmp_path):
     ctx = _ctx(tmp_path)
-    ctx.deps.tool_approval_policy["bash_execute"] = "always_deny"
+    ctx.deps.tool_approval_policy["RunCommandTool"] = "always_deny"
 
     result = ShellCommandBackend().forward(
         ctx,
