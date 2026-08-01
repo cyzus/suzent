@@ -20,7 +20,12 @@ import { GoalTasksProvider, useGoalTasks } from './hooks/useGoalTasks';
 import { ProjectProvider } from './hooks/useProjects';
 import { useStatusStore } from './hooks/useStatusStore';
 import { useTheme } from './hooks/useTheme';
-import { drainCronNotifications, fetchHeartbeatStatus } from './lib/api';
+import {
+  drainCronNotifications,
+  fetchHeartbeatStatus,
+  fetchSystemVersion,
+  getBackendCompatibilityIssue,
+} from './lib/api';
 import {
   checkDesktopUpdate,
   startDesktopUpdateAndRestart,
@@ -999,6 +1004,7 @@ export default function App() {
   // before the installer/onboarding decision is known.
   const [backendReady, setBackendReady] = React.useState<boolean>(false);
   const [backendError, setBackendError] = React.useState<string | null>(null);
+  const [backendCompatible, setBackendCompatible] = React.useState(false);
   const [bootstrapStatusState, setBootstrapStatusState] = React.useState<BootstrapStatus | null>(null);
   const [bootstrapChecked, setBootstrapChecked] = React.useState(false);
   const [backendStartingAtStartup, setBackendStartingAtStartup] = React.useState(false);
@@ -1090,6 +1096,43 @@ export default function App() {
     };
   }, [backendReady]);
 
+  React.useEffect(() => {
+    if (!backendReady) {
+      setBackendCompatible(false);
+      return;
+    }
+    let cancelled = false;
+    fetchSystemVersion()
+      .then((identity) => {
+        if (cancelled) return;
+        const compatibilityIssue = getBackendCompatibilityIssue(identity);
+        if (compatibilityIssue) {
+          setBackendError(tForLocale(
+            getInitialLocale(),
+            `app.backendCompatibility.${compatibilityIssue.kind}`,
+            compatibilityIssue,
+          ));
+          setBackendCompatible(false);
+          return;
+        }
+        setBackendError(null);
+        setBackendCompatible(true);
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setBackendError(tForLocale(
+            getInitialLocale(),
+            'app.backendCompatibility.verifyFailed',
+            { error: String(error) },
+          ));
+          setBackendCompatible(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [backendReady]);
+
   return (
     <ErrorBoundary>
       {!bootstrapChecked ? (
@@ -1109,6 +1152,8 @@ export default function App() {
         <BackendLoadingScreen />
       ) : !backendReady ? (
         <StartupDecisionScreen />
+      ) : !backendCompatible ? (
+        <BackendLoadingScreen />
       ) : (
         <ProjectProvider>
           <ChatProvider>

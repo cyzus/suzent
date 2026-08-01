@@ -31,6 +31,12 @@ export const en = {
     desktopRequiredTitle: 'Desktop required',
     desktopRequiredDesc: 'Suzent is a desktop-only application. Please run this application using the native desktop launcher.',
     logoAriaLabel: 'Suzent logo',
+    backendCompatibility: {
+      api: 'Frontend/backend API mismatch ({frontend} vs {backend}). Run suzent update.',
+      build: 'Frontend/backend build mismatch ({frontend} vs {backend}). Run suzent update.',
+      version: 'Frontend/backend version mismatch ({frontend} vs {backend}). Run suzent update.',
+      verifyFailed: 'Failed to verify backend version: {error}',
+    },
   },
   bootstrap: {
     title: 'Set up Suzent',

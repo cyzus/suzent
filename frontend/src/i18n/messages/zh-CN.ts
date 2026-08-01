@@ -31,6 +31,12 @@ export const zhCN = {
     desktopRequiredTitle: '需要桌面端',
     desktopRequiredDesc: 'Suzent 仅支持桌面端运行。请使用原生桌面启动器打开该应用。',
     logoAriaLabel: 'Suzent 标志',
+    backendCompatibility: {
+      api: '前后端 API 版本不匹配（{frontend} 与 {backend}）。请运行 suzent update。',
+      build: '前后端构建不匹配（{frontend} 与 {backend}）。请运行 suzent update。',
+      version: '前后端版本不匹配（{frontend} 与 {backend}）。请运行 suzent update。',
+      verifyFailed: '无法验证后端版本：{error}',
+    },
   },
   bootstrap: {
     title: '设置 Suzent',

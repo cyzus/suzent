@@ -26,6 +26,9 @@ IS_WINDOWS = sys.platform == "win32"
 _REPO = "cyzus/suzent"
 _BIN_DIR = "bin"
 _UPDATE_CHECK_TTL_SECONDS = 24 * 60 * 60
+_UPDATE_CHANNEL_FILE = ".suzent/update-channel"
+_STABLE_CHANNEL = "stable"
+_DEV_CHANNEL = "dev"
 
 
 def _is_development_workspace(root: Path) -> bool:
@@ -34,7 +37,7 @@ def _is_development_workspace(root: Path) -> bool:
 
 
 def _backend_sync_args(root: Path) -> list[str]:
-    args = ["uv", "sync", "--extra", "social"]
+    args = ["uv", "sync", "--frozen", "--extra", "social"]
     if _is_development_workspace(root):
         args.extend(["--extra", "dev"])
     return args
@@ -52,6 +55,24 @@ def _get_ui_binary(root: Path) -> Path | None:
     if not existing:
         return None
     return max(existing, key=lambda p: p.stat().st_mtime)
+
+
+def _update_channel_path(root: Path) -> Path:
+    return root / _UPDATE_CHANNEL_FILE
+
+
+def _read_update_channel(root: Path) -> str:
+    try:
+        channel = _update_channel_path(root).read_text(encoding="utf-8").strip()
+    except OSError:
+        return _STABLE_CHANNEL
+    return channel if channel in {_STABLE_CHANNEL, _DEV_CHANNEL} else _STABLE_CHANNEL
+
+
+def _write_update_channel(root: Path, channel: str) -> None:
+    path = _update_channel_path(root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(channel, encoding="utf-8")
 
 
 def _is_ui_binary_current(root: Path, binary: Path) -> bool:
@@ -138,8 +159,10 @@ def _fetch_latest_release(timeout: float = 10.0) -> dict:
         return json.loads(resp.read())
 
 
-def _latest_asset_url(asset_name: str) -> str:
-    return f"https://github.com/{_REPO}/releases/latest/download/{asset_name}"
+def _release_asset_url(asset_name: str, version: str) -> str:
+    if version == "latest":
+        return f"https://github.com/{_REPO}/releases/latest/download/{asset_name}"
+    return f"https://github.com/{_REPO}/releases/download/{version}/{asset_name}"
 
 
 def _local_ui_version(root: Path) -> str:
@@ -274,40 +297,91 @@ def _download_file_atomic(url: str, dest: Path, *, timeout: float = 60.0) -> Non
         raise
 
 
+def _replace_ui_files(
+    dest: Path,
+    version_file: Path,
+    staged_binary: Path,
+    staged_version: Path,
+) -> None:
+    """Replace the UI binary and metadata as one recoverable operation."""
+    binary_backup = dest.with_name(f".{dest.name}.previous")
+    version_backup = version_file.with_name(f".{version_file.name}.previous")
+    for backup in (binary_backup, version_backup):
+        backup.unlink(missing_ok=True)
+
+    binary_backed_up = False
+    version_backed_up = False
+    binary_installed = False
+    version_installed = False
+    try:
+        if dest.exists():
+            dest.replace(binary_backup)
+            binary_backed_up = True
+        if version_file.exists():
+            version_file.replace(version_backup)
+            version_backed_up = True
+
+        staged_binary.replace(dest)
+        binary_installed = True
+        staged_version.replace(version_file)
+        version_installed = True
+    except Exception:
+        if version_installed:
+            version_file.unlink(missing_ok=True)
+        if binary_installed:
+            dest.unlink(missing_ok=True)
+        if version_backed_up:
+            version_backup.replace(version_file)
+        if binary_backed_up:
+            binary_backup.replace(dest)
+        raise
+    else:
+        binary_backup.unlink(missing_ok=True)
+        version_backup.unlink(missing_ok=True)
+
+
 def download_ui_binary(root: Path, *, version: str = "latest") -> bool:
     """Download the pre-built UI binary from GitHub Releases. Returns True on success."""
     asset_name = _platform_asset_name()
+    staged_binary: Path | None = None
+    staged_version: Path | None = None
     try:
         bin_dir = root / _BIN_DIR
         dest = bin_dir / ("suzent-ui.exe" if IS_WINDOWS else "suzent-ui")
+        version_file = bin_dir / "version.txt"
+        staged_binary = dest.with_name(f".{dest.name}.{version}.new")
+        staged_version = version_file.with_name(f".{version_file.name}.{version}.new")
 
         typer.echo("  • Downloading UI binary...")
-        _download_file_atomic(_latest_asset_url(asset_name), dest)
+        _download_file_atomic(_release_asset_url(asset_name, version), staged_binary)
         if not IS_WINDOWS:
-            dest.chmod(0o755)
-        (bin_dir / "version.txt").write_text(version)
+            staged_binary.chmod(0o755)
+        staged_version.write_text(version, encoding="utf-8")
+        _replace_ui_files(dest, version_file, staged_binary, staged_version)
+        staged_binary = None
+        staged_version = None
         typer.echo(f"  ✅ UI binary ready at {dest}")
         return True
     except Exception as e:
         typer.echo(f"  ⚠️  Binary download failed: {e}")
         return False
+    finally:
+        for staged_path in (staged_binary, staged_version):
+            if staged_path is not None:
+                try:
+                    staged_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
 
 
-def _update_ui_binary(root: Path) -> None:
-    """Download a new UI binary only if the release version changed."""
-    try:
-        release = _fetch_latest_release()
-        latest = release.get("tag_name", "")
-        local = _local_ui_version(root)
-        if latest and latest != local:
-            typer.echo(f"  • UI binary: {local or 'none'} → {latest}")
-            download_ui_binary(root, version=latest)
-        else:
-            typer.echo(f"  • UI binary up to date ({local})")
-    except Exception as e:
-        typer.echo(f"  ⚠️  Could not check UI binary version: {e}")
-        typer.echo("  • Attempting direct latest binary download...")
-        download_ui_binary(root)
+def _update_ui_binary(root: Path, release_tag: str) -> bool:
+    """Install the UI asset built from the exact backend release tag."""
+    local = _local_ui_version(root)
+    if release_tag == local and _get_ui_binary(root):
+        typer.echo(f"  • UI binary up to date ({local})")
+        return True
+    typer.echo(f"  • UI binary: {local or 'none'} → {release_tag}")
+    return download_ui_binary(root, version=release_tag)
 
 
 def _configure_console_encoding():
@@ -748,6 +822,10 @@ def register_commands(app: typer.Typer):
         typer.echo("🚀 Starting SUZENT...")
         _notify_update_available(root)
 
+        if not dev and _read_update_channel(root) == _DEV_CHANNEL:
+            typer.echo("  • Development update channel active; starting in dev mode.")
+            dev = True
+
         # --dev implies running the backend in debug mode.
         if dev:
             debug = True
@@ -775,7 +853,7 @@ def register_commands(app: typer.Typer):
         ports_to_check = [(18080, "Frontend")]
         if not backend_running:
             ports_to_check.insert(0, (DEFAULT_PORT, "Backend"))
-        else:
+        elif not dev:
             typer.echo(
                 f"  ✅ Backend already running on http://127.0.0.1:{DEFAULT_PORT}; "
                 "reusing it."
@@ -797,8 +875,35 @@ def register_commands(app: typer.Typer):
                     typer.echo("   ❌ Startup aborted.")
                     raise typer.Exit(code=1)
 
+        if dev and backend_running:
+            pid = get_pid_on_port(DEFAULT_PORT)
+            if not pid:
+                typer.echo(
+                    "  ❌ Dev mode found an existing Suzent backend but could not "
+                    "identify its PID. Run 'suzent stop' and retry."
+                )
+                raise typer.Exit(code=1)
+            typer.echo(
+                f"  • Restarting existing backend (PID {pid}) for a clean dev session..."
+            )
+            try:
+                kill_process(pid)
+            except Exception as error:
+                typer.echo(f"  ❌ Failed to restart existing backend: {error}")
+                raise typer.Exit(code=1)
+            for _attempt in range(20):
+                if get_pid_on_port(DEFAULT_PORT) is None:
+                    break
+                time.sleep(0.1)
+            else:
+                typer.echo("  ❌ Existing backend did not release its port.")
+                raise typer.Exit(code=1)
+            backend_running = False
+
         backend_env = os.environ.copy()
         backend_env["SUZENT_PORT"] = str(DEFAULT_PORT)
+        if dev:
+            backend_env["SUZENT_DEV_MODE"] = "1"
 
         backend_proc = None
         if backend_running:
@@ -853,6 +958,7 @@ def register_commands(app: typer.Typer):
         env = os.environ.copy()
         env["SUZENT_HOST"] = host
         env["SUZENT_PORT"] = str(port)
+        env["SUZENT_DEV_MODE"] = "1"
 
         # Launch the server module using the same python interpreter
         cmd = [sys.executable, "-m", "suzent.server"]
@@ -1089,9 +1195,78 @@ def register_commands(app: typer.Typer):
         except Exception:
             pass
 
-    def _run_update() -> None:
-        typer.echo("🔄 Updating Suzent...")
+    def _git_text(root: Path, *args: str) -> str:
+        result = subprocess.run(
+            ["git", *args],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return result.stdout.strip()
+
+    def _restore_checkout(root: Path, branch: str, commit: str) -> None:
+        if not commit:
+            return
+        try:
+            typer.echo(f"  • Rolling source back to {commit}...")
+            if branch:
+                run_command(["git", "checkout", branch], cwd=root)
+                run_command(["git", "reset", "--hard", commit], cwd=root)
+            else:
+                run_command(["git", "checkout", "--detach", commit], cwd=root)
+            run_command(_backend_sync_args(root), cwd=root, shell_on_windows=True)
+        except subprocess.CalledProcessError:
+            typer.echo("  ⚠️  Automatic rollback was incomplete; inspect the checkout.")
+
+    def _checkout_update_target(root: Path, *, dev: bool, release_tag: str) -> None:
+        if dev:
+            run_command(["git", "fetch", "origin", "main"], cwd=root)
+            run_command(["git", "switch", "main"], cwd=root)
+            run_command(["git", "merge", "--ff-only", "origin/main"], cwd=root)
+            return
+        run_command(["git", "fetch", "origin", "tag", release_tag], cwd=root)
+        run_command(["git", "checkout", "--detach", release_tag], cwd=root)
+
+    def _restore_stashed_changes(root: Path, stashed: bool) -> None:
+        if not stashed:
+            return
+        try:
+            run_command(["git", "stash", "pop"], cwd=root)
+        except subprocess.CalledProcessError:
+            typer.echo("  ⚠️  Stashed changes need manual conflict resolution.")
+
+    def _run_update(*, dev: bool = False) -> None:
+        channel = _DEV_CHANNEL if dev else _STABLE_CHANNEL
+        typer.echo(f"🔄 Updating Suzent ({channel} channel)...")
         root = get_project_root()
+
+        if not dev and _is_development_workspace(root):
+            typer.echo(
+                "  ❌ Stable updates require a bootstrapped installation. "
+                "Use 'suzent update --dev' for a source checkout."
+            )
+            raise typer.Exit(code=1)
+
+        release_tag = ""
+        if not dev:
+            try:
+                release_tag = str(_fetch_latest_release().get("tag_name", ""))
+            except Exception as error:
+                typer.echo(f"  ❌ Could not resolve the latest stable release: {error}")
+                raise typer.Exit(code=1)
+            if not re.fullmatch(r"v\d+\.\d+\.\d+", release_tag):
+                typer.echo(
+                    f"  ❌ Invalid stable release tag: {release_tag or 'missing'}"
+                )
+                raise typer.Exit(code=1)
+
+        try:
+            old_commit = _git_text(root, "rev-parse", "HEAD")
+            old_branch = _git_text(root, "branch", "--show-current")
+        except subprocess.CalledProcessError:
+            typer.echo("  ❌ Suzent installation is not a valid Git checkout.")
+            raise typer.Exit(code=1)
 
         # Self-heal installs dirtied by the old behavior, where runtime model
         # discovery wrote into the tracked config/capabilities/ files and made
@@ -1106,31 +1281,60 @@ def register_commands(app: typer.Typer):
         except subprocess.CalledProcessError:
             pass  # No such path / nothing to discard — fine.
 
-        typer.echo("  • Pulling latest changes...")
+        target_label = "origin/main" if dev else release_tag
+        typer.echo(f"  • Updating source to {target_label}...")
+        stashed_changes = False
+        if not dev:
+            try:
+                has_local_changes = bool(_git_text(root, "status", "--porcelain"))
+            except subprocess.CalledProcessError:
+                has_local_changes = False
+            if has_local_changes:
+                if not typer.confirm(
+                    "  Stable updates require a clean checkout. Stash local changes?"
+                ):
+                    typer.echo("  ❌ Update aborted.")
+                    raise typer.Exit(code=1)
+                run_command(["git", "stash", "--include-untracked"], cwd=root)
+                stashed_changes = True
         try:
-            run_command(["git", "pull"], cwd=root)
+            _checkout_update_target(root, dev=dev, release_tag=release_tag)
         except subprocess.CalledProcessError:
+            if stashed_changes:
+                typer.echo("  ❌ Source update failed. Restoring local changes...")
+                _restore_stashed_changes(root, stashed_changes)
+                raise typer.Exit(code=1)
             typer.echo(
-                "  ⚠️  Git pull failed. This is usually due to local file changes (e.g. lockfiles)."
+                "  ⚠️  Source update failed. This is usually due to local file changes."
             )
             if typer.confirm("  Stash local changes and retry?"):
                 typer.echo("  🔄 Stashing local changes...")
                 run_command(["git", "stash", "--include-untracked"], cwd=root)
+                stashed_changes = True
                 try:
-                    run_command(["git", "pull"], cwd=root)
-                except subprocess.CalledProcessError:
-                    typer.echo("  ❌ Git pull still failed. Restoring stash...")
-                    run_command(["git", "stash", "pop"], cwd=root)
-                    raise typer.Exit(code=1)
-                # Re-apply stashed changes (may have merge conflicts, non-fatal)
-                try:
-                    run_command(["git", "stash", "pop"], cwd=root)
-                except subprocess.CalledProcessError:
-                    typer.echo(
-                        "  ⚠️  Some stashed changes conflicted. Check 'git stash list'."
+                    _checkout_update_target(
+                        root,
+                        dev=dev,
+                        release_tag=release_tag,
                     )
+                except subprocess.CalledProcessError:
+                    typer.echo("  ❌ Source update still failed. Restoring stash...")
+                    _restore_stashed_changes(root, stashed_changes)
+                    raise typer.Exit(code=1)
             else:
                 typer.echo("  ❌ Update aborted.")
+                raise typer.Exit(code=1)
+
+        if not dev:
+            checked_out_version = _normalize_version_tag(_current_version(root))
+            expected_version = _normalize_version_tag(release_tag)
+            if checked_out_version != expected_version:
+                typer.echo(
+                    "  ❌ Stable source/version mismatch: "
+                    f"expected {expected_version}, found {checked_out_version}."
+                )
+                _restore_checkout(root, old_branch, old_commit)
+                _restore_stashed_changes(root, stashed_changes)
                 raise typer.Exit(code=1)
 
         # Restore tracked resource placeholders (may be missing from stale clones)
@@ -1199,6 +1403,8 @@ def register_commands(app: typer.Typer):
                         _renamed_exe.rename(target)
                 except OSError:
                     pass
+            _restore_checkout(root, old_branch, old_commit)
+            _restore_stashed_changes(root, stashed_changes)
             raise typer.Exit(code=1)
 
         # Clean up the .bak file (may still be locked until this process exits)
@@ -1221,47 +1427,66 @@ def register_commands(app: typer.Typer):
                 "  ⚠️  Playwright browser update failed (will retry on first use)."
             )
 
-        # Update pre-built UI binary (non-fatal)
-        typer.echo("  • Checking UI binary...")
-        _update_ui_binary(root)
+        if dev:
+            typer.echo("  • Updating frontend dependencies from lockfiles...")
+            try:
+                run_command(
+                    ["npm", "ci"],
+                    cwd=root / "frontend",
+                    shell_on_windows=True,
+                )
+                run_command(
+                    ["npm", "ci"],
+                    cwd=root / "src-tauri",
+                    shell_on_windows=True,
+                )
+            except subprocess.CalledProcessError:
+                typer.echo("  ❌ Development frontend dependency update failed.")
+                _restore_checkout(root, old_branch, old_commit)
+                _restore_stashed_changes(root, stashed_changes)
+                raise typer.Exit(code=1)
+        else:
+            typer.echo("  • Installing matching release UI binary...")
+            if not _update_ui_binary(root, release_tag):
+                typer.echo("  ❌ Matching release UI download failed; update aborted.")
+                _restore_checkout(root, old_branch, old_commit)
+                _restore_stashed_changes(root, stashed_changes)
+                raise typer.Exit(code=1)
 
-        ui_bin = _get_ui_binary(root)
-        if ui_bin:
-            # Frontend is embedded in the binary — no npm steps needed.
-            typer.echo("\n✨ Suzent successfully updated!")
-            return
-
-        # ── Developer path: update npm dependencies ───────────────────────────
-        typer.echo("  • Updating frontend dependencies...")
-        frontend_dir = root / "frontend"
-        try:
-            run_command(["npm", "install"], cwd=frontend_dir, shell_on_windows=True)
-        except subprocess.CalledProcessError:
-            typer.echo("  ❌ Frontend dependency update failed (npm install).")
-            raise typer.Exit(code=1)
-
-        typer.echo("  • Updating src-tauri dependencies...")
-        tauri_dir = root / "src-tauri"
-        try:
-            run_command(["npm", "install"], cwd=tauri_dir, shell_on_windows=True)
-        except subprocess.CalledProcessError:
-            typer.echo("  ❌ Src-tauri dependency update failed (npm install).")
-            raise typer.Exit(code=1)
-
-        typer.echo("\n✨ Suzent successfully updated!")
+        _write_update_channel(root, channel)
+        if dev:
+            _restore_stashed_changes(root, stashed_changes)
+        elif stashed_changes:
+            typer.echo(
+                "  • Local changes remain safely stored in Git stash; "
+                "reapply them only in a development checkout."
+            )
+        typer.echo(f"\n✨ Suzent successfully updated on the {channel} channel!")
 
     @app.command()
-    def update():
+    def update(
+        dev: bool = typer.Option(
+            False,
+            "--dev",
+            help="Update to origin/main and run the matching development frontend.",
+        ),
+    ):
         """Update Suzent to the latest version."""
-        _run_update()
+        _run_update(dev=dev)
 
     @app.command()
-    def upgrade():
+    def upgrade(
+        dev: bool = typer.Option(
+            False,
+            "--dev",
+            help="Update to origin/main and run the matching development frontend.",
+        ),
+    ):
         """Alias for `update`."""
         typer.echo(
             "`suzent upgrade` is supported; `suzent update` is the primary command."
         )
-        _run_update()
+        _run_update(dev=dev)
 
     @app.command("check-update")
     def check_update(

@@ -1,10 +1,22 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { execFileSync } from 'node:child_process';
+
+function getBuildCommit(): string {
+  if (process.env.SUZENT_BUILD_COMMIT) return process.env.SUZENT_BUILD_COMMIT;
+  try {
+    return execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+  } catch {
+    return 'unknown';
+  }
+}
 
 export default defineConfig({
   plugins: [react()],
   define: {
     __FRONTEND_VERSION__: JSON.stringify(process.env.npm_package_version ?? 'unknown'),
+    __FRONTEND_BUILD_COMMIT__: JSON.stringify(getBuildCommit()),
+    __SUZENT_API_VERSION__: JSON.stringify(1),
   },
   server: {
     host: '127.0.0.1',

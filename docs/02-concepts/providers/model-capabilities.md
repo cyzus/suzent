@@ -32,12 +32,12 @@ and via a periodic [LiteLLM](./litellm.md) sync that refreshes context windows
 and pricing. Those writes go to the **local overlay**, never to the tracked
 `config/capabilities/` files.
 
-This keeps the repo clean: `suzent update` runs `git pull`, and if runtime
-discovery had been writing into tracked files, every update would conflict.
-With the overlay, discovered models persist across updates in your data
-directory while the shipped files stay pristine. (For safety, `suzent update`
-also discards any stale local edits under `config/capabilities/` before
-pulling.)
+This keeps the repo clean: stable `suzent update` checks out an exact release,
+while `suzent update --dev` fast-forwards `main`. If runtime discovery had been
+writing into tracked files, either update could conflict. With the overlay,
+discovered models persist across updates in your data directory while the
+shipped files stay pristine. For safety, the updater discards stale local edits
+under `config/capabilities/` before changing revisions.
 
 The overlay is auto-generated and safe to delete; it will be repopulated on the
 next discovery.

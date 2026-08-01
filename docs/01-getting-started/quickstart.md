@@ -128,6 +128,12 @@ suzent doctor
 suzent update
 ```
 
+Stable updates pin the backend, locked dependencies, and desktop app to the
+same release. If you are developing from a source checkout, use
+`suzent update --dev` to fast-forward `main`, install its locked Python and
+frontend dependencies, and keep subsequent `suzent start` runs in developer
+mode.
+
 ---
 
 ## Next Steps

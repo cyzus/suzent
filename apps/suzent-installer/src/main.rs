@@ -16,6 +16,7 @@ const REPO_URL: &str = "https://github.com/cyzus/suzent.git";
 const UV_INSTALL_SH_URL: &str = "https://astral.sh/uv/install.sh";
 const UV_INSTALL_PS1_URL: &str = "https://astral.sh/uv/install.ps1";
 const RELEASE_BASE_URL: &str = "https://github.com/cyzus/suzent/releases/latest/download";
+const LATEST_RELEASE_API: &str = "https://api.github.com/repos/cyzus/suzent/releases/latest";
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
@@ -37,12 +38,15 @@ struct InstallStage {
 struct InstallConfig {
     dir: PathBuf,
     branch: String,
+    branch_explicit: bool,
     skip_playwright: bool,
     china_mirror: bool,
     repo_url: String,
     repo_url_override: bool,
     uv_install_url: String,
     release_base_url: String,
+    release_base_url_override: bool,
+    release_tag_override: Option<String>,
     json: bool,
     non_interactive: bool,
 }
@@ -51,6 +55,11 @@ struct InstallConfig {
 struct StageRequest {
     stage: String,
     dir: String,
+}
+
+#[derive(Deserialize)]
+struct ReleaseResponse {
+    tag_name: String,
 }
 
 #[derive(Default)]
@@ -217,13 +226,13 @@ impl InstallConfig {
                     .map(PathBuf::from)
             })
             .unwrap_or_else(default_install_dir);
-        let branch = flag_value(args, "--branch")
-            .or_else(|| {
-                env::var("SUZENT_BRANCH")
-                    .ok()
-                    .filter(|value| !value.trim().is_empty())
-            })
-            .unwrap_or_else(|| DEFAULT_BRANCH.to_string());
+        let configured_branch = flag_value(args, "--branch").or_else(|| {
+            env::var("SUZENT_BRANCH")
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+        });
+        let branch_explicit = configured_branch.is_some();
+        let branch = configured_branch.unwrap_or_else(|| DEFAULT_BRANCH.to_string());
         let skip_playwright = has_flag(args, "--skip-playwright")
             || env::var("SUZENT_SKIP_PLAYWRIGHT")
                 .map(|value| value == "1" || value.eq_ignore_ascii_case("true"))
@@ -247,21 +256,29 @@ impl InstallConfig {
                     UV_INSTALL_SH_URL.to_string()
                 }
             });
-        let release_base_url = env::var("SUZENT_RELEASE_BASE_URL")
+        let release_base_url_env = env::var("SUZENT_RELEASE_BASE_URL")
             .ok()
-            .filter(|value| !value.trim().is_empty())
+            .filter(|value| !value.trim().is_empty());
+        let release_base_url_override = release_base_url_env.is_some();
+        let release_base_url = release_base_url_env
             .map(|value| value.trim_end_matches('/').to_string())
             .unwrap_or_else(|| RELEASE_BASE_URL.to_string());
+        let release_tag_override = env::var("SUZENT_RELEASE_TAG")
+            .ok()
+            .filter(|value| !value.trim().is_empty());
 
         Self {
             dir,
             branch,
+            branch_explicit,
             skip_playwright,
             china_mirror,
             repo_url,
             repo_url_override,
             uv_install_url,
             release_base_url,
+            release_base_url_override,
+            release_tag_override,
             json: has_flag(args, "--json"),
             non_interactive: has_flag(args, "--non-interactive")
                 || has_flag(args, "--json")
@@ -525,68 +542,156 @@ fn stage_python(config: &InstallConfig) -> StageOutcome {
     }
 }
 
+fn is_release_tag(value: &str) -> bool {
+    let Some(version) = value.strip_prefix('v') else {
+        return false;
+    };
+    let parts: Vec<&str> = version.split('.').collect();
+    parts.len() == 3
+        && parts
+            .iter()
+            .all(|part| !part.is_empty() && part.chars().all(|ch| ch.is_ascii_digit()))
+}
+
+fn resolve_release_tag(config: &InstallConfig) -> Result<String, String> {
+    let tag = if let Some(tag) = &config.release_tag_override {
+        tag.trim().to_string()
+    } else {
+        reqwest::blocking::Client::builder()
+            .user_agent("suzent-installer")
+            .build()
+            .map_err(|error| format!("Failed to create release client: {error}"))?
+            .get(LATEST_RELEASE_API)
+            .send()
+            .and_then(|response| response.error_for_status())
+            .map_err(|error| format!("Failed to resolve latest stable release: {error}"))?
+            .json::<ReleaseResponse>()
+            .map_err(|error| format!("Invalid latest release response: {error}"))?
+            .tag_name
+    };
+    if !is_release_tag(&tag) {
+        return Err(format!("Invalid stable release tag: {tag}"));
+    }
+    Ok(tag)
+}
+
+fn write_install_release_state(
+    config: &InstallConfig,
+    release_tag: Option<&str>,
+) -> io::Result<()> {
+    let state_dir = config.dir.join(".suzent");
+    fs::create_dir_all(&state_dir)?;
+    fs::write(
+        state_dir.join("update-channel"),
+        if release_tag.is_some() {
+            "stable"
+        } else {
+            "dev"
+        },
+    )?;
+    let release_file = state_dir.join("release-tag");
+    if let Some(tag) = release_tag {
+        fs::write(release_file, tag)?;
+    } else if release_file.exists() {
+        fs::remove_file(release_file)?;
+    }
+    Ok(())
+}
+
+fn read_install_release_tag(config: &InstallConfig) -> Option<String> {
+    fs::read_to_string(config.dir.join(".suzent").join("release-tag"))
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| is_release_tag(value))
+}
+
 fn stage_repository(config: &InstallConfig) -> StageOutcome {
     let Some(git) = find_git_after_install() else {
         return StageOutcome::fail("Git is not installed; run the git stage first.");
     };
 
-    if config.dir.join(".git").exists() {
+    let release_tag = if config.branch_explicit {
+        None
+    } else {
+        match resolve_release_tag(config) {
+            Ok(tag) => Some(tag),
+            Err(error) => return StageOutcome::fail(error),
+        }
+    };
+    let target_ref = release_tag.as_deref().unwrap_or(&config.branch);
+
+    let repository_ready = if config.dir.join(".git").exists() {
         print_human("Existing Suzent repository found. Updating...");
         let update_remote = if config.repo_url_override {
             config.repo_url.as_str()
         } else {
             "origin"
         };
-        if !run_command(
-            Command::new(&git)
-                .args(["fetch", update_remote, &config.branch])
-                .current_dir(&config.dir),
-        ) {
-            return StageOutcome::fail("Failed to fetch repository updates.");
+        if let Some(tag) = &release_tag {
+            if !run_command(
+                Command::new(&git)
+                    .args(["fetch", update_remote, "tag", tag])
+                    .current_dir(&config.dir),
+            ) || !run_command(
+                Command::new(&git)
+                    .args(["checkout", "--detach", tag])
+                    .current_dir(&config.dir),
+            ) {
+                return StageOutcome::fail("Failed to check out stable release tag.");
+            }
+        } else {
+            if !run_command(
+                Command::new(&git)
+                    .args(["fetch", update_remote, target_ref])
+                    .current_dir(&config.dir),
+            ) {
+                return StageOutcome::fail("Failed to fetch repository updates.");
+            }
+            let mut checkout_command = Command::new(&git);
+            checkout_command
+                .args(["checkout", target_ref])
+                .current_dir(&config.dir)
+                .stdout(child_stdio())
+                .stderr(child_stdio());
+            let _ = run_command(&mut checkout_command);
+            if !run_command(
+                Command::new(&git)
+                    .args(["pull", update_remote, target_ref])
+                    .current_dir(&config.dir),
+            ) {
+                return StageOutcome::fail("Failed to update repository.");
+            }
         }
-        let mut checkout_command = Command::new(&git);
-        checkout_command
-            .args(["checkout", &config.branch])
-            .current_dir(&config.dir)
-            .stdout(child_stdio())
-            .stderr(child_stdio());
-        let _ = run_command(&mut checkout_command);
-        if !run_command(
-            Command::new(&git)
-                .args(["pull", update_remote, &config.branch])
-                .current_dir(&config.dir),
-        ) {
-            return StageOutcome::fail("Failed to update repository.");
-        }
-        return StageOutcome::ok();
-    }
-
-    if config.dir.exists() && !is_empty_dir(&config.dir) {
+        true
+    } else if config.dir.exists() && !is_empty_dir(&config.dir) {
         return StageOutcome::fail(format!(
             "{} already exists but is not a Git repository. Set SUZENT_DIR or --dir to another path.",
             config.dir.display()
         ));
-    }
-
-    if let Some(parent) = config.dir.parent() {
-        if let Err(error) = fs::create_dir_all(parent) {
-            return StageOutcome::fail(format!(
-                "Failed to create install parent directory: {error}"
-            ));
-        }
-    }
-
-    if run_command(Command::new(&git).args([
-        "clone",
-        "--branch",
-        &config.branch,
-        &config.repo_url,
-        config.dir.to_string_lossy().as_ref(),
-    ])) {
-        StageOutcome::ok()
     } else {
-        StageOutcome::fail("Failed to clone Suzent repository.")
+        if let Some(parent) = config.dir.parent() {
+            if let Err(error) = fs::create_dir_all(parent) {
+                return StageOutcome::fail(format!(
+                    "Failed to create install parent directory: {error}"
+                ));
+            }
+        }
+        run_command(Command::new(&git).args([
+            "clone",
+            "--branch",
+            target_ref,
+            &config.repo_url,
+            config.dir.to_string_lossy().as_ref(),
+        ]))
+    };
+
+    if !repository_ready {
+        return StageOutcome::fail("Failed to clone Suzent repository.");
     }
+    if let Err(error) = write_install_release_state(config, release_tag.as_deref()) {
+        return StageOutcome::fail(format!("Failed to record install channel: {error}"));
+    }
+    StageOutcome::ok()
 }
 
 fn stage_env(config: &InstallConfig) -> StageOutcome {
@@ -630,7 +735,17 @@ fn stage_dependencies(config: &InstallConfig) -> StageOutcome {
 
 fn stage_ui(config: &InstallConfig) -> StageOutcome {
     let asset = ui_asset_name();
-    let url = format!("{}/{asset}", config.release_base_url);
+    let release_tag = read_install_release_tag(config);
+    let release_base_url = if let Some(tag) = &release_tag {
+        if config.release_base_url_override {
+            config.release_base_url.clone()
+        } else {
+            format!("https://github.com/cyzus/suzent/releases/download/{tag}")
+        }
+    } else {
+        config.release_base_url.clone()
+    };
+    let url = format!("{release_base_url}/{asset}");
     let bin_dir = config.dir.join("bin");
     let dest = bin_dir.join(ui_binary_name());
     let tmp = dest.with_extension("tmp");
@@ -671,7 +786,8 @@ fn stage_ui(config: &InstallConfig) -> StageOutcome {
         }
     }
 
-    let _ = fs::write(bin_dir.join("version.txt"), "latest");
+    let ui_version = release_tag.as_deref().unwrap_or("latest");
+    let _ = fs::write(bin_dir.join("version.txt"), ui_version);
     print_human(format!("[OK] UI binary ready at {}", dest.display()));
     StageOutcome::ok()
 }
@@ -1163,6 +1279,19 @@ fn run_command(command: &mut Command) -> bool {
             .status(),
         Ok(status) if status.success()
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_release_tag;
+
+    #[test]
+    fn validates_stable_release_tags() {
+        assert!(is_release_tag("v0.7.3"));
+        assert!(!is_release_tag("0.7.3"));
+        assert!(!is_release_tag("v0.7"));
+        assert!(!is_release_tag("v0.7.3-rc1"));
+    }
 }
 
 fn find_executable(name: &str) -> Option<PathBuf> {

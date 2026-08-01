@@ -17,13 +17,14 @@ $ErrorActionPreference = "Stop"
 
 # ── Resolve config ────────────────────────────────────────────────────────────
 $SuzentDir    = if ($Dir)    { $Dir }    elseif ($env:SUZENT_DIR)    { $env:SUZENT_DIR }    else { Join-Path $env:USERPROFILE "suzent" }
+$BranchExplicit = [bool]($Branch -or $env:SUZENT_BRANCH)
 $SuzentBranch = if ($Branch) { $Branch } elseif ($env:SUZENT_BRANCH) { $env:SUZENT_BRANCH } else { "main" }
 $SkipPW       = $SkipPlaywright -or ($env:SUZENT_SKIP_PLAYWRIGHT -eq "1")
 $UseChinaMirror = $ChinaMirror -or ($env:SUZENT_CHINA_MIRROR -match "^(1|true|yes|cn)$")
 $RepoUrl      = if ($env:SUZENT_REPO_URL) { $env:SUZENT_REPO_URL } else { "https://github.com/cyzus/suzent.git" }
 $UpdateRemote = if ($env:SUZENT_REPO_URL) { $env:SUZENT_REPO_URL } else { "origin" }
 $UvInstallUrl = if ($env:SUZENT_UV_INSTALL_URL) { $env:SUZENT_UV_INSTALL_URL } else { "https://astral.sh/uv/install.ps1" }
-$ReleaseBaseUrl = if ($env:SUZENT_RELEASE_BASE_URL) { $env:SUZENT_RELEASE_BASE_URL.TrimEnd("/") } else { "https://github.com/cyzus/suzent/releases/latest/download" }
+$ReleaseBaseUrl = if ($env:SUZENT_RELEASE_BASE_URL) { $env:SUZENT_RELEASE_BASE_URL.TrimEnd("/") } else { "" }
 $MinNodeMajor = 20
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -68,6 +69,31 @@ Write-Host "  ╚══════╝ ╚═════╝ ╚═════�
 Write-Host ""
 
 Enable-ChinaMirrors
+
+$InstallRef = $SuzentBranch
+$ReleaseTag = ""
+if (-not $BranchExplicit -and $env:SUZENT_DEV_SETUP -ne "1") {
+    $ReleaseTag = if ($env:SUZENT_RELEASE_TAG) { $env:SUZENT_RELEASE_TAG.Trim() } else { "" }
+    if (-not $ReleaseTag) {
+        Write-Info "Resolving latest stable release..."
+        try {
+            $release = Invoke-RestMethod -Uri "https://api.github.com/repos/cyzus/suzent/releases/latest" -TimeoutSec 30
+            $ReleaseTag = [string]$release.tag_name
+        } catch {
+            Write-Fail ("Could not resolve the latest stable release: " + $_.Exception.Message)
+        }
+    }
+    if ($ReleaseTag -notmatch '^v\d+\.\d+\.\d+$') {
+        Write-Fail "Invalid stable release tag: $ReleaseTag"
+    }
+    $InstallRef = $ReleaseTag
+    if (-not $ReleaseBaseUrl) {
+        $ReleaseBaseUrl = "https://github.com/cyzus/suzent/releases/download/$ReleaseTag"
+    }
+    Write-Info "Installing matched stable release $ReleaseTag"
+} elseif (-not $ReleaseBaseUrl) {
+    $ReleaseBaseUrl = "https://github.com/cyzus/suzent/releases/latest/download"
+}
 
 # ── Detect update vs fresh install ───────────────────────────────────────────
 $IsUpdate = (Test-Path (Join-Path $SuzentDir ".git"))
@@ -225,9 +251,14 @@ if ($IsUpdate) {
         git stash push -m "suzent-update-$stamp"
     }
 
-    git fetch $UpdateRemote $SuzentBranch
-    try { git checkout $SuzentBranch --quiet 2>&1 | Out-Null } catch {}
-    git pull $UpdateRemote $SuzentBranch
+    if ($ReleaseTag) {
+        git fetch $UpdateRemote tag $InstallRef
+        git checkout --detach $InstallRef
+    } else {
+        git fetch $UpdateRemote $InstallRef
+        try { git checkout $InstallRef --quiet 2>&1 | Out-Null } catch {}
+        git pull $UpdateRemote $InstallRef
+    }
     $sha = git rev-parse --short HEAD
     Write-Ok "Repository updated to $sha"
 } else {
@@ -235,7 +266,7 @@ if ($IsUpdate) {
         Write-Fail "$SuzentDir already exists but is not a git repo. Remove it or set `$env:SUZENT_DIR to a different path."
     }
     Write-Info "Cloning SUZENT into $SuzentDir..."
-    git clone --branch $SuzentBranch $RepoUrl $SuzentDir
+    git clone --branch $InstallRef $RepoUrl $SuzentDir
     Write-Ok "Repository cloned"
     Set-Location $SuzentDir
 }
@@ -271,7 +302,8 @@ function Get-UiBinary {
         Write-Info "Downloading pre-built UI binary..."
         Invoke-WebRequest -Uri $url -OutFile $tmp -TimeoutSec 300
         Move-Item -Force $tmp $dest
-        Set-Content -Path (Join-Path $binDir "version.txt") -Value "latest" -NoNewline
+        $UiVersion = if ($ReleaseTag) { $ReleaseTag } else { "latest" }
+        Set-Content -Path (Join-Path $binDir "version.txt") -Value $UiVersion -NoNewline
         Write-Ok "UI binary ready ($dest)"
     } catch {
         if ($tmp -and (Test-Path $tmp)) {
@@ -339,6 +371,10 @@ Write-Ok "CLI shim written to $ShimPath"
 # PROTOCOL_VERSION in apps/suzent-installer.
 $MarkerPath = Join-Path $SuzentDir ".suzent-bootstrap-complete"
 Set-Content -Path $MarkerPath -Value "protocol=1`n" -NoNewline -Encoding ASCII
+$ChannelDir = Join-Path $SuzentDir ".suzent"
+if (-not (Test-Path $ChannelDir)) { New-Item -ItemType Directory -Force -Path $ChannelDir | Out-Null }
+$Channel = if ($ReleaseTag) { "stable" } else { "dev" }
+Set-Content -Path (Join-Path $ChannelDir "update-channel") -Value $Channel -NoNewline -Encoding ASCII
 Write-Ok "Workspace marked as bootstrapped"
 
 Add-ToUserPath $BinDir

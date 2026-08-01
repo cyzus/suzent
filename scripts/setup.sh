@@ -20,8 +20,9 @@ REPO_URL="${SUZENT_REPO_URL:-https://github.com/cyzus/suzent.git}"
 UPDATE_REMOTE="${SUZENT_REPO_URL:-origin}"
 UV_INSTALL_URL="${SUZENT_UV_INSTALL_URL:-https://astral.sh/uv/install.sh}"
 NVM_INSTALL_URL="${SUZENT_NVM_INSTALL_URL:-https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.0/install.sh}"
-RELEASE_BASE_URL="${SUZENT_RELEASE_BASE_URL:-https://github.com/cyzus/suzent/releases/latest/download}"
+RELEASE_BASE_URL="${SUZENT_RELEASE_BASE_URL:-}"
 SUZENT_DIR="${SUZENT_DIR:-$HOME/suzent}"
+SUZENT_BRANCH_EXPLICIT="${SUZENT_BRANCH+x}"
 SUZENT_BRANCH="${SUZENT_BRANCH:-main}"
 CHINA_MIRROR="${SUZENT_CHINA_MIRROR:-0}"
 MIN_NODE_MAJOR=20
@@ -66,6 +67,28 @@ case "$OS" in
 esac
 ok "$OS_NAME detected"
 enable_china_mirrors
+
+INSTALL_REF="$SUZENT_BRANCH"
+RELEASE_TAG=""
+if [ -z "$SUZENT_BRANCH_EXPLICIT" ] && [ "${SUZENT_DEV_SETUP:-0}" != "1" ]; then
+    RELEASE_TAG="${SUZENT_RELEASE_TAG:-}"
+    if [ -z "$RELEASE_TAG" ]; then
+        info "Resolving latest stable release..."
+        release_url="$(curl -fsSL -o /dev/null -w '%{url_effective}' \
+            https://github.com/cyzus/suzent/releases/latest)" \
+            || die "Could not resolve the latest stable release."
+        RELEASE_TAG="${release_url##*/}"
+    fi
+    [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+        || die "Invalid stable release tag: $RELEASE_TAG"
+    INSTALL_REF="$RELEASE_TAG"
+    [ -n "$RELEASE_BASE_URL" ] \
+        || RELEASE_BASE_URL="https://github.com/cyzus/suzent/releases/download/$RELEASE_TAG"
+    info "Installing matched stable release $RELEASE_TAG"
+else
+    [ -n "$RELEASE_BASE_URL" ] \
+        || RELEASE_BASE_URL="https://github.com/cyzus/suzent/releases/latest/download"
+fi
 
 # ── Helper: refresh PATH after install ───────────────────────────────────────
 refresh_path() {
@@ -198,16 +221,21 @@ if [ "$IS_UPDATE" = true ]; then
         git stash push -m "suzent-update-$(date +%Y%m%d-%H%M%S)"
     fi
 
-    git fetch "$UPDATE_REMOTE" "$SUZENT_BRANCH"
-    git checkout "$SUZENT_BRANCH" 2>/dev/null || true
-    git pull "$UPDATE_REMOTE" "$SUZENT_BRANCH"
+    if [ -n "$RELEASE_TAG" ]; then
+        git fetch "$UPDATE_REMOTE" tag "$INSTALL_REF"
+        git checkout --detach "$INSTALL_REF"
+    else
+        git fetch "$UPDATE_REMOTE" "$INSTALL_REF"
+        git checkout "$INSTALL_REF" 2>/dev/null || true
+        git pull "$UPDATE_REMOTE" "$INSTALL_REF"
+    fi
     ok "Repository updated to $(git rev-parse --short HEAD)"
 else
     if [ -d "$SUZENT_DIR" ]; then
         die "Directory $SUZENT_DIR already exists but is not a git repo. Remove it or set SUZENT_DIR to a different path."
     fi
     info "Cloning SUZENT into $SUZENT_DIR..."
-    git clone --branch "$SUZENT_BRANCH" "$REPO_URL" "$SUZENT_DIR"
+    git clone --branch "$INSTALL_REF" "$REPO_URL" "$SUZENT_DIR"
     ok "Repository cloned"
     cd "$SUZENT_DIR"
 fi
@@ -259,7 +287,7 @@ download_binary() {
 
     mv "$tmp" "bin/suzent-ui"
     chmod +x "bin/suzent-ui"
-    echo "latest" > "bin/version.txt"
+    echo "${RELEASE_TAG:-latest}" > "bin/version.txt"
     ok "UI binary ready (bin/suzent-ui)"
 }
 download_binary || true
@@ -315,6 +343,9 @@ ok "CLI shim written to $SHIM"
 # screen and fails with "installer helper was not found". protocol=1 matches
 # PROTOCOL_VERSION in apps/suzent-installer.
 printf 'protocol=1\n' > "$SUZENT_DIR/.suzent-bootstrap-complete"
+mkdir -p "$SUZENT_DIR/.suzent"
+printf '%s' "$([ -n "$RELEASE_TAG" ] && printf stable || printf dev)" \
+    > "$SUZENT_DIR/.suzent/update-channel"
 ok "Workspace marked as bootstrapped"
 
 add_to_path_config "$INSTALL_BIN"
