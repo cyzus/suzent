@@ -167,6 +167,8 @@ def test_host_timeout_kills_process_tree_and_returns_tool_error(monkeypatch, tmp
     assert "waiting for registry" in result.message
     assert "Process timed out after 1s" in result.message
     assert "background=True" in result.message
+    assert "SYSTEM REMINDER" not in result.message
+    assert "Retry guidance:" in result.message
     assert result.metadata["returncode"] == 124
     assert result.metadata["stdout"] == "Fetching packages... 45%\n"
     assert result.metadata["stderr"] == "waiting for registry\n"
@@ -239,6 +241,30 @@ def test_sandbox_timeout_result_is_classified(monkeypatch, tmp_path):
     assert result.error_code.value == "timeout"
     assert result.metadata["returncode"] == 124
     assert "Execution timed out after 1s" in result.message
+    assert "background=True" in result.message
+    assert "SYSTEM REMINDER" not in result.message
+    assert "Retry guidance:" in result.message
+
+
+def test_sandbox_timeout_exception_uses_hidden_system_reminder(monkeypatch, tmp_path):
+    def raise_timeout(**kwargs):
+        raise TimeoutError("Execution timed out after 1s")
+
+    tool = BashTool()
+    tool._manager = SimpleNamespace(execute=raise_timeout)
+
+    result = tool.forward(
+        _ctx(tmp_path, sandbox_enabled=True),
+        content="sleep 10",
+        language="command",
+        timeout=1,
+        description="Run a slow sandbox command",
+    )
+
+    assert not result.success
+    assert result.error_code.value == "timeout"
+    assert "SYSTEM REMINDER" not in result.message
+    assert "Retry guidance:" in result.message
     assert "background=True" in result.message
 
 

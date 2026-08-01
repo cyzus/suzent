@@ -542,10 +542,10 @@ class BashTool(Tool):
                     return self._error_result(
                         ToolErrorCode.TIMEOUT,
                         (
-                            f"{error}\n"
-                            "[SYSTEM REMINDER: The sandbox command timed out. "
-                            "Do not blindly retry the same command; inspect the likely "
-                            "bottleneck, increase timeout, or use background=True.]"
+                            f"{error}\n\n"
+                            "Retry guidance: do not blindly retry the same command; "
+                            "inspect the likely bottleneck, increase the timeout, or "
+                            "use background=True."
                         ),
                         mode="sandbox",
                         language=language,
@@ -585,9 +585,10 @@ class BashTool(Tool):
             return self._error_result(
                 ToolErrorCode.TIMEOUT,
                 (
-                    f"{e}\n[SYSTEM REMINDER: The sandbox command timed out. "
-                    "Do not blindly retry the same command; inspect the likely "
-                    "bottleneck, increase timeout, or use background=True.]"
+                    f"{e}\n\n"
+                    "Retry guidance: do not blindly retry the same command; inspect "
+                    "the likely bottleneck, increase the timeout, or use "
+                    "background=True."
                 ),
                 mode="sandbox",
                 language=language,
@@ -795,13 +796,14 @@ class BashTool(Tool):
             if stderr.strip():
                 partial_parts.append(f"[stderr]\n{stderr}")
             partial_output = "\n".join(partial_parts)
-            reminder = (
-                f"[SYSTEM REMINDER: Process timed out after {effective_timeout}s "
-                "and was terminated. Do not blindly retry the same command; "
-                "inspect the partial output, increase timeout, or use "
-                "background=True.]"
+            timeout_message = (
+                f"Process timed out after {effective_timeout}s and was terminated.\n\n"
+                "Retry guidance: do not blindly retry the same command; inspect the "
+                "partial output, increase the timeout, or use background=True."
             )
-            message = "\n".join(part for part in (partial_output, reminder) if part)
+            message = "\n".join(
+                part for part in (partial_output, timeout_message) if part
+            )
             logger.warning(f"Host execution timed out after {effective_timeout}s")
             self._audit_execution(
                 "timeout",

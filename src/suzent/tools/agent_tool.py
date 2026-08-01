@@ -3,8 +3,8 @@ AgentTool: delegate a task to an isolated sub-agent.
 
 Supports two execution modes:
 - run_in_background=True (default): fire-and-forget; parent continues immediately.
-  Completion is pushed back as a [System Notification] and automatically triggers
-  a parent LLM wakeup turn.
+  Completion is delivered through the hidden system-reminder channel and
+  automatically triggers a parent LLM wakeup turn.
 - run_in_background=False: blocking; parent awaits the child's result and receives
   it as a direct tool_result, enabling sequential multi-agent pipelines.
 

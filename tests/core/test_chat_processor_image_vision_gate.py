@@ -14,6 +14,7 @@ streaming generator.
 """
 
 from suzent.core.chat_processor import (
+    ATTACHMENT_PROCESSING_ERROR_NOTICE,
     _stripped_image_notice,
     _stripped_image_reminder,
 )
@@ -76,3 +77,8 @@ def test_notice_and_reminder_target_different_audiences() -> None:
     assert reminder is not None
     assert "Use the analyze_image tool" in reminder
     assert "Use the analyze_image tool" not in notice
+
+
+def test_attachment_processing_error_is_a_user_facing_notice() -> None:
+    assert "upload them again" in ATTACHMENT_PROCESSING_ERROR_NOTICE
+    assert "system reminder" not in ATTACHMENT_PROCESSING_ERROR_NOTICE.lower()

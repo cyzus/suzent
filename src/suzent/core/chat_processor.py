@@ -357,6 +357,10 @@ STRIPPED_IMAGE_NOTICE_TEMPLATE = """\
 The current model ({model_id}) can't read images. {count} image(s) were not \
 sent, but the assistant can still inspect them with analyze_image."""
 
+ATTACHMENT_PROCESSING_ERROR_NOTICE = (
+    "Failed to process one or more attachments. Please upload them again."
+)
+
 
 def _stripped_image_notice(model_id: str | None, count: int) -> str:
     """Render the user-facing notice for image(s) dropped from a blind model.
@@ -592,7 +596,28 @@ class ChatProcessor:
 
             except Exception as e:
                 logger.error(f"Failed to process attachments: {e}")
-                attachment_context += "\n[System Error: Failed to process attachments]"
+                if chat_id:
+                    try:
+                        db = get_database()
+                        chat = db.get_chat(chat_id)
+                        if chat is not None:
+                            updated_messages = _append_command_messages(
+                                list(chat.messages or []),
+                                message_content,
+                                ATTACHMENT_PROCESSING_ERROR_NOTICE,
+                            )
+                            db.update_chat(chat_id, messages=updated_messages)
+                    except Exception as persist_error:
+                        logger.debug(
+                            "Failed to persist attachment error notice for {}: {}",
+                            chat_id,
+                            persist_error,
+                        )
+                async for chunk in _emit_notice_stream(
+                    chat_id, ATTACHMENT_PROCESSING_ERROR_NOTICE
+                ):
+                    yield chunk
+                return
 
         if file_mentions:
             attachment_context += _build_file_mention_context(file_mentions)
