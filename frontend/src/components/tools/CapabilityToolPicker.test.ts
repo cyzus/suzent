@@ -7,6 +7,7 @@ import type { ConfigOptions } from '../../types/api';
 import {
   CapabilityToolPicker,
   getCapabilities,
+  resolveCatalogText,
   toggleCapabilitySelection,
   toggleToolSelection,
 } from './CapabilityToolPicker';
@@ -44,6 +45,43 @@ const config = {
     },
   ],
 } as ConfigOptions;
+
+const translatedCapabilityIds = [
+  'filesystem',
+  'shell',
+  'web',
+  'agent',
+  'creative',
+  'memory-recall',
+];
+
+const translatedToolIds = [
+  'ReadFileTool',
+  'WriteFileTool',
+  'EditFileTool',
+  'GlobTool',
+  'GrepTool',
+  'RunCommandTool',
+  'StartCommandTool',
+  'CheckCommandTool',
+  'StopCommandTool',
+  'BrowsingTool',
+  'WebpageTool',
+  'WebSearchTool',
+  'AskQuestionTool',
+  'GoalTool',
+  'TaskCreateTool',
+  'TaskUpdateTool',
+  'TaskListTool',
+  'RenderUITool',
+  'AgentTool',
+  'ImageGenerationTool',
+  'ImageVisionTool',
+  'SpeakTool',
+  'SocialMessageTool',
+  'MemorySearchTool',
+  'SessionSearchTool',
+];
 
 describe('capability tool picker', () => {
   it('keeps rich metadata while filtering unavailable tools', () => {
@@ -102,5 +140,34 @@ describe('capability tool picker', () => {
   it('localizes capability and tool metadata by stable IDs', () => {
     expect(tForLocale('zh-CN', 'config.toolCatalog.capabilities.shell.name')).toBe('命令执行');
     expect(tForLocale('zh-CN', 'config.toolCatalog.tools.RunCommandTool.description')).toContain('Shell 命令');
+  });
+
+  it('uses backend metadata as the English source of truth', () => {
+    const key = 'config.toolCatalog.tools.RunCommandTool.description';
+    const backendDescription = 'Description supplied by the backend.';
+
+    expect(tForLocale('en', key)).toBe(key);
+    expect(
+      resolveCatalogText(
+        lookupKey => tForLocale('en', lookupKey),
+        key,
+        backendDescription,
+      ),
+    ).toBe(backendDescription);
+  });
+
+  it('has Simplified Chinese overrides for every built-in catalog entry', () => {
+    for (const capabilityId of translatedCapabilityIds) {
+      for (const field of ['name', 'description']) {
+        const key = `config.toolCatalog.capabilities.${capabilityId}.${field}`;
+        expect(tForLocale('zh-CN', key)).not.toBe(key);
+      }
+    }
+    for (const toolId of translatedToolIds) {
+      for (const field of ['name', 'description']) {
+        const key = `config.toolCatalog.tools.${toolId}.${field}`;
+        expect(tForLocale('zh-CN', key)).not.toBe(key);
+      }
+    }
   });
 });

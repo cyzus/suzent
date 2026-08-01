@@ -40,6 +40,15 @@ export function toggleCapabilitySelection(selected: string[], tools: string[]): 
     : [...new Set([...selected, ...tools])];
 }
 
+export function resolveCatalogText(
+  translate: (key: string) => string,
+  key: string,
+  fallback: string,
+): string {
+  const value = translate(key);
+  return value === key ? fallback : value;
+}
+
 export function CapabilityToolPicker({
   backendConfig,
   selected,
@@ -51,10 +60,8 @@ export function CapabilityToolPicker({
 }: CapabilityToolPickerProps): React.ReactElement {
   const { t } = useI18n();
   const capabilities = getCapabilities(backendConfig);
-  const translated = (key: string, fallback: string): string => {
-    const value = t(key);
-    return value === key ? fallback : value;
-  };
+  const translated = (key: string, fallback: string): string =>
+    resolveCatalogText(t, key, fallback);
 
   if (capabilities.length === 0) {
     return <div className="py-8 text-center text-xs font-bold uppercase text-neutral-500">{emptyMessage ?? t('config.toolsEmpty')}</div>;
