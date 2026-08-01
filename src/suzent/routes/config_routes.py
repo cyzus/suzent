@@ -24,7 +24,7 @@ from suzent.core.providers import (
     get_enabled_models_from_db,
     invalidate_default_model_cache,
 )
-from suzent.tools.registry import get_tool_groups
+from suzent.tools.registry import get_tool_groups, migrate_shell_tool_names
 from suzent.database import get_database
 from suzent.core.volume_metadata import refresh_volume_metadata
 from suzent.logger import get_logger
@@ -174,7 +174,11 @@ async def get_config(request: Request) -> JSONResponse:
         data["userPreferences"] = {
             "model": user_prefs.model,
             "agent": user_prefs.agent,
-            "tools": user_prefs.tools,
+            "tools": (
+                migrate_shell_tool_names(user_prefs.tools)
+                if isinstance(user_prefs.tools, list)
+                else user_prefs.tools
+            ),
             "memory_enabled": user_prefs.memory_enabled,
             "sandbox_enabled": user_prefs.sandbox_enabled,
             "sandbox_volumes": user_prefs.sandbox_volumes,
@@ -202,10 +206,14 @@ async def save_preferences(request: Request) -> JSONResponse:
     db = get_database()
 
     # Save user preferences (non-memory settings)
+    selected_tools = data.get("tools")
+    if isinstance(selected_tools, list):
+        selected_tools = migrate_shell_tool_names(selected_tools)
+
     success = db.save_user_preferences(
         model=data.get("model"),
         agent=data.get("agent"),
-        tools=data.get("tools"),
+        tools=selected_tools,
         memory_enabled=data.get("memory_enabled"),
         sandbox_enabled=data.get("sandbox_enabled"),
         sandbox_volumes=data.get("sandbox_volumes"),

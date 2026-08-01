@@ -1,7 +1,13 @@
 from types import SimpleNamespace
 
+from suzent.config import ConfigModel
 from suzent.tools.base import truncate_tool_output
-from suzent.tools.registry import expand_tool_dependencies, get_tool_groups
+from suzent.tools.registry import (
+    expand_tool_dependencies,
+    get_tool_groups,
+    list_configurable_tools,
+    migrate_shell_tool_names,
+)
 from suzent.tools.shell import cleanup_shell_session
 from suzent.tools.shell.shell_tools import RunCommandTool
 from suzent.tools.shell.capability import ShellCapability
@@ -34,6 +40,25 @@ def test_process_tool_is_not_a_separate_ui_toggle() -> None:
     )
     assert "ShellTool" in execution["tools"]
     assert "ProcessTool" not in execution["tools"]
+
+
+def test_capability_companions_are_not_ui_toggles() -> None:
+    configurable = list_configurable_tools()
+    assert "ShellTool" in configurable
+    assert "StartCommandTool" not in configurable
+    assert "CheckCommandTool" not in configurable
+    assert "StopCommandTool" not in configurable
+
+
+def test_persisted_companion_selections_migrate_to_shell() -> None:
+    assert migrate_shell_tool_names(
+        ["StartCommandTool", "CheckCommandTool", "StopCommandTool"]
+    ) == ["ShellTool"]
+
+    config = ConfigModel(
+        tool_options=["StartCommandTool", "CheckCommandTool", "StopCommandTool"]
+    )
+    assert config.tool_options == ["ShellTool"]
 
 
 def test_shell_capability_contributes_both_runtime_tools() -> None:

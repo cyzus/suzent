@@ -247,9 +247,9 @@ def _normalize_keys(d: Dict[str, Any]) -> Dict[str, Any]:
 
 def get_tool_options() -> List[str]:
     """Discover available tool class names from the centralized registry."""
-    from suzent.tools.registry import list_available_tools
+    from suzent.tools.registry import list_configurable_tools
 
-    return list_available_tools()
+    return list_configurable_tools()
 
 
 def get_effective_volumes(custom_volumes: Optional[List[str]] = None) -> List[str]:
@@ -320,9 +320,9 @@ class ConfigModel(BaseModel):
     def migrate_legacy_shell_tools(cls, value: Any) -> Any:
         if not isinstance(value, list):
             return value
-        legacy_names = {"BashTool", "ProcessTool", "bash_execute", "process_manage"}
-        migrated = ["ShellTool" if item in legacy_names else item for item in value]
-        return list(dict.fromkeys(migrated))
+        from suzent.tools.registry import migrate_shell_tool_names
+
+        return migrate_shell_tool_names(value)
 
     instructions: str = ""
     additional_authorized_imports: List[str] = []

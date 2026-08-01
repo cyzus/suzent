@@ -168,7 +168,15 @@ def _all_tool_classes() -> list:
 
 def migrate_shell_tool_names(tool_names: List[str]) -> List[str]:
     """Migrate legacy shell selections to the unified ShellTool capability."""
-    legacy_names = {"BashTool", "ProcessTool", "bash_execute", "process_manage"}
+    legacy_names = {
+        "BashTool",
+        "ProcessTool",
+        "bash_execute",
+        "process_manage",
+        "StartCommandTool",
+        "CheckCommandTool",
+        "StopCommandTool",
+    }
     migrated = ["ShellTool" if name in legacy_names else name for name in tool_names]
     return list(dict.fromkeys(migrated))
 
@@ -273,6 +281,11 @@ def get_tool_runtime_name(class_name: str) -> Optional[str]:
 def list_available_tools() -> List[str]:
     """List all available tool names (class-name style)."""
     return sorted(_get_registry().keys())
+
+
+def list_configurable_tools() -> List[str]:
+    """List user-facing tool toggles, excluding capability implementation tools."""
+    return sorted(cls.name for cls in _all_tool_classes() if getattr(cls, "group", ""))
 
 
 def get_tool_registry() -> Dict[str, Union[Callable, PydanticTool]]:
