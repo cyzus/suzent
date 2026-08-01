@@ -25,6 +25,41 @@ from suzent.core.stream_registry import (
 logger = get_logger(__name__)
 
 
+def build_cron_reminder(
+    job_name: str,
+    prompt: str,
+    *,
+    triggered_at: Optional[datetime] = None,
+    last_run_at: Optional[datetime] = None,
+) -> str:
+    """Build the time-aware reminder delivered to a scheduled agent turn."""
+    local_now = triggered_at or datetime.now().astimezone()
+    if local_now.tzinfo is None:
+        local_now = local_now.astimezone()
+
+    timezone_name = local_now.tzname() or "local time"
+    utc_offset = local_now.strftime("%z")
+    formatted_offset = (
+        f"UTC{utc_offset[:3]}:{utc_offset[3:]}" if utc_offset else "UTC offset unknown"
+    )
+    current_time = local_now.isoformat(timespec="seconds")
+    if last_run_at is None:
+        last_run = "none (first run)"
+    else:
+        local_last_run = (
+            last_run_at if last_run_at.tzinfo is not None else last_run_at.astimezone()
+        )
+        last_run = local_last_run.isoformat(timespec="seconds")
+
+    return (
+        f"**Scheduled Task: {job_name}**\n\n"
+        "You were automatically woken by the cron scheduler.\n"
+        f"Current local time: {current_time} ({timezone_name}, {formatted_offset})\n\n"
+        f"Last run: {last_run}\n\n"
+        f"{prompt}"
+    )
+
+
 def get_active_scheduler() -> Optional["SchedulerBrain"]:
     """Return the active SchedulerBrain instance, or None if not running."""
     return get_active(SchedulerBrain)
@@ -248,6 +283,9 @@ class SchedulerBrain(BaseBrain):
             self._handle_retry(db, job_id, job.retry_count or 0, now, error)
             return
 
+        # Preserve the previous value before advancing the schedule for this run.
+        last_run_at = job.last_run_at
+
         # Advance schedule before execution to avoid drift
         now = datetime.now()
         try:
@@ -265,7 +303,9 @@ class SchedulerBrain(BaseBrain):
         run_id = db.create_cron_run(job_id, now)
 
         try:
-            response_text = await self._run_chat_turn(chat_id, job, db, job_id, run_id)
+            response_text = await self._run_chat_turn(
+                chat_id, job, db, job_id, run_id, last_run_at=last_run_at
+            )
 
             db.update_cron_job_run_state(
                 job_id, last_result=response_text, clear_error=True
@@ -289,12 +329,19 @@ class SchedulerBrain(BaseBrain):
             self._handle_retry(db, job_id, job.retry_count or 0, now, str(e))
 
     async def _run_chat_turn(
-        self, chat_id: str, job, db, job_id: int, run_id: int
+        self,
+        chat_id: str,
+        job,
+        db,
+        job_id: int,
+        run_id: int,
+        *,
+        last_run_at: Optional[datetime] = None,
     ) -> str:
         """Run a ChatProcessor turn for a cron job and return the response."""
         from suzent.core.chat_processor import ChatProcessor
 
-        cron_msg = f"**Scheduled Task: {job.name}**\n\n{job.prompt}"
+        cron_msg = build_cron_reminder(job.name, job.prompt, last_run_at=last_run_at)
 
         processor = ChatProcessor()
         config_override = self._build_config_override(
