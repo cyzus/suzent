@@ -17,14 +17,14 @@ describe('reconcileToolCallMessages', () => {
       toolMessage({
         type: 'tool',
         toolCallId: 'call-1',
-        toolName: 'bash_execute',
+        toolName: 'run_command',
         state: 'approval-requested',
       }),
     ];
     const transient: AGUIPart[] = [{
       type: 'tool',
       toolCallId: 'call-1',
-      toolName: 'bash_execute',
+      toolName: 'run_command',
       state: 'running',
     }];
 
@@ -35,13 +35,13 @@ describe('reconcileToolCallMessages', () => {
     const pending = toolMessage({
       type: 'tool',
       toolCallId: 'call-1',
-      toolName: 'bash_execute',
+      toolName: 'run_command',
       state: 'approval-requested',
     });
     const completed = toolMessage({
       type: 'tool',
       toolCallId: 'call-1',
-      toolName: 'bash_execute',
+      toolName: 'run_command',
       state: 'completed',
       output: 'ok',
     });
@@ -61,7 +61,7 @@ describe('reconcileToolCallMessages', () => {
         {
           type: 'tool',
           toolCallId: 'call-1',
-          toolName: 'bash_execute',
+          toolName: 'run_command',
           state: 'approval-requested',
         },
       ],

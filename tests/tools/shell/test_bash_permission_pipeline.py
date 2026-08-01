@@ -5,7 +5,7 @@ import pytest
 from pydantic_ai import ApprovalRequired
 
 from suzent.config import CONFIG
-from suzent.tools.shell.bash_tool import BashTool
+from suzent.tools.shell.bash_tool import ShellCommandBackend
 
 
 def _ctx(tmp_path, sandbox_enabled=False, approved=False):
@@ -22,7 +22,7 @@ def _ctx(tmp_path, sandbox_enabled=False, approved=False):
 
 
 def test_policy_prompts_for_dangerous_command_when_unapproved(monkeypatch, tmp_path):
-    tool = BashTool()
+    tool = ShellCommandBackend()
 
     monkeypatch.setattr(
         CONFIG,
@@ -40,7 +40,7 @@ def test_policy_prompts_for_dangerous_command_when_unapproved(monkeypatch, tmp_p
 
 
 def test_approved_dangerous_command_reaches_execution(monkeypatch, tmp_path):
-    tool = BashTool()
+    tool = ShellCommandBackend()
 
     class _Process:
         returncode = 0
@@ -71,7 +71,7 @@ def test_approved_dangerous_command_reaches_execution(monkeypatch, tmp_path):
 
 
 def test_policy_asks_unknown_command_in_full_approval(monkeypatch, tmp_path):
-    tool = BashTool()
+    tool = ShellCommandBackend()
 
     monkeypatch.setattr(
         CONFIG,
@@ -95,7 +95,7 @@ def test_policy_asks_unknown_command_in_full_approval(monkeypatch, tmp_path):
 
 
 def test_policy_allows_readonly_command_in_strict_mode(monkeypatch, tmp_path):
-    tool = BashTool()
+    tool = ShellCommandBackend()
 
     class _Process:
         returncode = 0
@@ -129,7 +129,7 @@ def test_policy_allows_readonly_command_in_strict_mode(monkeypatch, tmp_path):
 
 
 def test_chain_command_requires_approval_by_baseline(tmp_path):
-    tool = BashTool()
+    tool = ShellCommandBackend()
 
     with pytest.raises(ApprovalRequired):
         tool.forward(
@@ -141,7 +141,7 @@ def test_chain_command_requires_approval_by_baseline(tmp_path):
 
 
 def test_git_command_requires_approval_by_baseline(tmp_path):
-    tool = BashTool()
+    tool = ShellCommandBackend()
 
     with pytest.raises(ApprovalRequired):
         tool.forward(

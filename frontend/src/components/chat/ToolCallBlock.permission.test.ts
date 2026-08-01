@@ -8,7 +8,7 @@ function decision(
 ): ToolPermissionDecision {
   return {
     toolCallId: 'call-1',
-    toolName: 'bash_execute',
+    toolName: 'run_command',
     behavior: 'allow',
     source: 'policy',
     reason: 'Allowed by deterministic shell policy',

@@ -269,11 +269,14 @@ def create_agent(
     tool_names = (config.get("tools") or CONFIG.default_tools).copy()
 
     from suzent.tools.registry import (
+        expand_tool_dependencies,
         get_deferred_tool_functions,
         get_tool_function,
         get_tool_session_guidance,
     )
 
+    tool_names = expand_tool_dependencies(tool_names)
+    shell_capability_enabled = "ShellTool" in tool_names
     tool_functions = []
     enabled_tool_names = set(tool_names)
     # SkillTool / SocialMessageTool are equipped by their own auto-equip logic below,
@@ -288,6 +291,13 @@ def create_agent(
 
     for tool_name in tool_names:
         if tool_name in _auto_equipped:
+            continue
+        if shell_capability_enabled and tool_name in {
+            "ShellTool",
+            "StartCommandTool",
+            "CheckCommandTool",
+            "StopCommandTool",
+        }:
             continue
         fn = get_tool_function(tool_name)
         if fn:
@@ -333,6 +343,14 @@ def create_agent(
     # threshold is compacted in-flight (not only at turn boundaries). It self-guards
     # on deps.stateless, so it's safe to register for every agent.
     from suzent.core.context_compressor import make_compaction_history_processor
+    from suzent.tools.shell.capability import ShellCapability
+
+    capabilities = [
+        ProcessHistory(make_compaction_history_processor()),
+        ToolSearch(),
+    ]
+    if shell_capability_enabled:
+        capabilities.append(ShellCapability())
 
     agent = Agent(
         model,
@@ -343,10 +361,7 @@ def create_agent(
         output_type=[str, DeferredToolRequests],
         retries={"output": 3},
         end_strategy="early",
-        capabilities=[
-            ProcessHistory(make_compaction_history_processor()),
-            ToolSearch(),
-        ],
+        capabilities=capabilities,
     )
 
     register_dynamic_instructions(

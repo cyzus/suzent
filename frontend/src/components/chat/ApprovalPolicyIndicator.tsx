@@ -26,7 +26,7 @@ export const ApprovalPolicyIndicator: React.FC<ApprovalPolicyIndicatorProps> = (
     return null;
   }
 
-  // Format tool name for display: bash_execute → Bash
+  // Format tool name for display: run_command → Run Command
   const formatToolName = (toolName: string): string => {
     // Remove common suffixes
     const cleaned = toolName.replace(/_execute$|_file$|_message$/i, '');

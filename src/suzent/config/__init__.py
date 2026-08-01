@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ValidationError, field_validator
 
 from ..logger import get_logger
 from suzent.permissions.loader import load_permission_overrides
@@ -307,13 +307,22 @@ class ConfigModel(BaseModel):
         "EditFileTool",
         "GlobTool",
         "GrepTool",
-        "BashTool",
+        "ShellTool",
         "ImageGenerationTool",
         "AgentTool",
         "MemorySearchTool",
         "SessionSearchTool",
     ]
     tool_options: Optional[List[str]] = None
+
+    @field_validator("default_tools", "tool_options", mode="before")
+    @classmethod
+    def migrate_legacy_shell_tools(cls, value: Any) -> Any:
+        if not isinstance(value, list):
+            return value
+        legacy_names = {"BashTool", "ProcessTool", "bash_execute", "process_manage"}
+        migrated = ["ShellTool" if item in legacy_names else item for item in value]
+        return list(dict.fromkeys(migrated))
 
     instructions: str = ""
     additional_authorized_imports: List[str] = []
@@ -373,6 +382,8 @@ class ConfigModel(BaseModel):
     sandbox_env: Dict[str, Any] = {}
     sandbox_data_path: str = str(DATA_DIR / "sandbox")
     sandbox_volumes: List[str] = []
+    shell_env: Optional[Dict[str, str]] = None
+    shell_denied_env_patterns: List[str] = []
 
     workspace_root: str = str(DATA_DIR)
 

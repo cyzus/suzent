@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pytest
 from pydantic_ai import ApprovalRequired
 
-from suzent.tools.shell.bash_tool import BashTool
+from suzent.tools.shell.bash_tool import ShellCommandBackend
 
 
 def _ctx(tmp_path, sandbox_enabled=False):
@@ -26,7 +26,7 @@ def test_respects_explicit_deny_policy(tmp_path):
     ctx = _ctx(tmp_path)
     ctx.deps.tool_approval_policy["bash_execute"] = "always_deny"
 
-    result = BashTool().forward(
+    result = ShellCommandBackend().forward(
         ctx,
         content="echo hi",
         language="command",
@@ -35,11 +35,11 @@ def test_respects_explicit_deny_policy(tmp_path):
 
     assert not result.success
     assert result.error_code.value == "permission_denied"
-    assert result.message == "Tool 'bash_execute' is denied by policy"
+    assert result.message == "Tool 'run_command' is denied by policy"
 
 
 def test_rejects_unsupported_language(tmp_path):
-    tool = BashTool()
+    tool = ShellCommandBackend()
 
     result = tool.forward(
         _ctx(tmp_path),
@@ -57,7 +57,7 @@ def test_rejects_unsupported_language(tmp_path):
 
 
 def test_accepts_command_language_on_host(monkeypatch, tmp_path):
-    tool = BashTool()
+    tool = ShellCommandBackend()
 
     class _Process:
         returncode = 0
@@ -100,7 +100,7 @@ def test_accepts_command_language_on_host(monkeypatch, tmp_path):
 def test_host_env_includes_suzent_base_url(monkeypatch, tmp_path):
     from suzent.config import CONFIG
 
-    tool = BashTool()
+    tool = ShellCommandBackend()
 
     class _Process:
         returncode = 0
@@ -129,7 +129,7 @@ def test_host_env_includes_suzent_base_url(monkeypatch, tmp_path):
 
 
 def test_host_timeout_kills_process_tree_and_returns_tool_error(monkeypatch, tmp_path):
-    tool = BashTool()
+    tool = ShellCommandBackend()
     killed = {"called": False}
 
     class _Process:
@@ -150,7 +150,9 @@ def test_host_timeout_kills_process_tree_and_returns_tool_error(monkeypatch, tmp
         assert process.pid == 123
 
     monkeypatch.setattr("suzent.tools.shell.bash_tool.subprocess.Popen", _Process)
-    monkeypatch.setattr(BashTool, "_kill_host_process_tree", staticmethod(fake_kill))
+    monkeypatch.setattr(
+        ShellCommandBackend, "_kill_host_process_tree", staticmethod(fake_kill)
+    )
 
     result = tool.forward(
         _ctx(tmp_path),
@@ -175,7 +177,7 @@ def test_host_timeout_kills_process_tree_and_returns_tool_error(monkeypatch, tmp
 
 
 def test_host_timeout_bounds_captured_output(monkeypatch, tmp_path):
-    tool = BashTool()
+    tool = ShellCommandBackend()
     limit = tool.TIMEOUT_OUTPUT_BYTES_PER_STREAM
 
     class _Process:
@@ -193,7 +195,7 @@ def test_host_timeout_bounds_captured_output(monkeypatch, tmp_path):
 
     monkeypatch.setattr("suzent.tools.shell.bash_tool.subprocess.Popen", _Process)
     monkeypatch.setattr(
-        BashTool, "_kill_host_process_tree", staticmethod(lambda _: None)
+        ShellCommandBackend, "_kill_host_process_tree", staticmethod(lambda _: None)
     )
 
     result = tool.forward(
@@ -218,7 +220,7 @@ def test_host_timeout_bounds_captured_output(monkeypatch, tmp_path):
 
 
 def test_sandbox_timeout_result_is_classified(monkeypatch, tmp_path):
-    tool = BashTool()
+    tool = ShellCommandBackend()
     tool._manager = SimpleNamespace(
         execute=lambda **kwargs: SimpleNamespace(
             success=False,
@@ -250,7 +252,7 @@ def test_sandbox_timeout_exception_uses_hidden_system_reminder(monkeypatch, tmp_
     def raise_timeout(**kwargs):
         raise TimeoutError("Execution timed out after 1s")
 
-    tool = BashTool()
+    tool = ShellCommandBackend()
     tool._manager = SimpleNamespace(execute=raise_timeout)
 
     result = tool.forward(
@@ -269,7 +271,7 @@ def test_sandbox_timeout_exception_uses_hidden_system_reminder(monkeypatch, tmp_
 
 
 def test_sandbox_exit_code_124_is_not_assumed_to_be_timeout(monkeypatch, tmp_path):
-    tool = BashTool()
+    tool = ShellCommandBackend()
     tool._manager = SimpleNamespace(
         execute=lambda **kwargs: SimpleNamespace(
             success=False,
@@ -296,18 +298,21 @@ def test_sandbox_exit_code_124_is_not_assumed_to_be_timeout(monkeypatch, tmp_pat
 def test_default_timeout_uses_environment_override(monkeypatch):
     monkeypatch.setenv("SUZENT_SHELL_TIMEOUT_MS", "2501")
 
-    assert BashTool.default_timeout_seconds() == 3
+    assert ShellCommandBackend.default_timeout_seconds() == 3
 
 
 def test_default_timeout_ignores_invalid_environment_override(monkeypatch):
     monkeypatch.setenv("SUZENT_SHELL_TIMEOUT_MS", "not-a-number")
 
-    assert BashTool.default_timeout_seconds() == BashTool.DEFAULT_TIMEOUT_SECONDS
+    assert (
+        ShellCommandBackend.default_timeout_seconds()
+        == ShellCommandBackend.DEFAULT_TIMEOUT_SECONDS
+    )
 
 
 def test_baseline_guardrails_require_approval_for_dangerous_command(tmp_path):
     with pytest.raises(ApprovalRequired):
-        BashTool().forward(
+        ShellCommandBackend().forward(
             _ctx(tmp_path),
             content="sudo ls",
             language="command",

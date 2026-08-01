@@ -34,7 +34,7 @@ _SUBAGENT_PROFILES: dict[str, list[str]] = {
     "explore": ["GlobTool", "GrepTool", "ReadFileTool"],
     "plan": ["GlobTool", "GrepTool", "ReadFileTool", "WebSearchTool", "WebpageTool"],
     "write": ["ReadFileTool", "WriteFileTool", "EditFileTool", "GlobTool", "GrepTool"],
-    "verify": ["BashTool"],
+    "verify": ["ShellTool"],
     "web": ["WebSearchTool", "WebpageTool"],
 }
 
@@ -104,7 +104,7 @@ class AgentTool(Tool):
                 default=None,
                 description=(
                     "Explicit whitelist of tool class names the sub-agent may use "
-                    "(e.g. ['BashTool', 'ReadFileTool']). "
+                    "(e.g. ['ShellTool', 'ReadFileTool']). "
                     "If subagent_type is also set, these are merged with the profile's tools. "
                     "Mutually exclusive with tools_denied."
                 ),
@@ -117,7 +117,7 @@ class AgentTool(Tool):
                 description=(
                     "Denylist path: start from all available tools, remove these. "
                     "Use for broad agents where you only need to block a few dangerous tools "
-                    "(e.g. ['WriteFileTool', 'EditFileTool', 'BashTool'] gives safe read-only access). "
+                    "(e.g. ['WriteFileTool', 'EditFileTool', 'ShellTool'] gives safe read-only access). "
                     "Mutually exclusive with tools_allowed."
                 ),
             ),

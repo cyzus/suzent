@@ -11,7 +11,7 @@ from pydantic_ai.models.test import TestModel
 from pydantic_ai.tools import DeferredToolResults
 
 from suzent import streaming
-from suzent.tools.shell.bash_tool import BashTool
+from suzent.tools.shell.shell_tools import RunCommandTool
 
 
 def test_history_compatibility_retry_clears_deferred_tool_results() -> None:
@@ -19,7 +19,7 @@ def test_history_compatibility_retry_clears_deferred_tool_results() -> None:
         ModelResponse(
             parts=[
                 ToolCallPart(
-                    tool_name="bash_execute",
+                    tool_name="run_command",
                     args={"content": "pwd"},
                     tool_call_id="call-1",
                 )
@@ -86,7 +86,7 @@ class _SlowToolStreamAgent:
             async def events():
                 yield FunctionToolCallEvent(
                     ToolCallPart(
-                        tool_name="bash_execute",
+                        tool_name="run_command",
                         args={"content": "sleep 1", "timeout": 1},
                         tool_call_id="call-1",
                     )
@@ -94,7 +94,7 @@ class _SlowToolStreamAgent:
                 await asyncio.sleep(0.03)
                 yield FunctionToolResultEvent(
                     ToolReturnPart(
-                        tool_name="bash_execute",
+                        tool_name="run_command",
                         content="done",
                         tool_call_id="call-1",
                     )
@@ -123,7 +123,7 @@ async def test_stream_events_support_pydantic_v2_context_manager() -> None:
 
 def test_function_tool_result_uses_v2_part_attribute() -> None:
     part = ToolReturnPart(
-        tool_name="bash_execute",
+        tool_name="run_command",
         content="done",
         tool_call_id="call-1",
     )
@@ -151,7 +151,7 @@ class _HangingToolStreamAgent:
             async def events():
                 yield FunctionToolCallEvent(
                     ToolCallPart(
-                        tool_name="bash_execute",
+                        tool_name="run_command",
                         args={"content": "sleep 999", "timeout": 1},
                         tool_call_id="call-1",
                     )
@@ -167,7 +167,7 @@ async def test_tool_result_timeout_raises_recoverable_error(monkeypatch):
     # Force the tool-result wait to fire quickly.
     monkeypatch.setattr(streaming, "_DEFAULT_TOOL_STREAM_EVENT_TIMEOUT_SECONDS", 0.01)
     monkeypatch.setattr(
-        BashTool, "stream_wait_timeout_seconds", classmethod(lambda cls, t: 0.01)
+        RunCommandTool, "stream_wait_timeout_seconds", classmethod(lambda cls, t: 0.01)
     )
 
     events = []
@@ -211,7 +211,7 @@ async def test_stream_events_do_not_idle_timeout_while_tool_is_running(monkeypat
 def test_bash_tool_stream_timeout_uses_default_when_unspecified():
     event = FunctionToolCallEvent(
         ToolCallPart(
-            tool_name="bash_execute",
+            tool_name="run_command",
             args={"content": "sleep 999"},
             tool_call_id="call-1",
         )
@@ -219,13 +219,13 @@ def test_bash_tool_stream_timeout_uses_default_when_unspecified():
 
     timeout = streaming._tool_timeout_from_event(event)
 
-    assert timeout == BashTool.stream_wait_timeout_seconds(None)
+    assert timeout == RunCommandTool.stream_wait_timeout_seconds(None)
 
 
 def test_bash_tool_stream_timeout_uses_explicit_timeout_when_provided():
     event = FunctionToolCallEvent(
         ToolCallPart(
-            tool_name="bash_execute",
+            tool_name="run_command",
             args={"content": "sleep 999", "timeout": 5},
             tool_call_id="call-1",
         )
@@ -233,7 +233,7 @@ def test_bash_tool_stream_timeout_uses_explicit_timeout_when_provided():
 
     timeout = streaming._tool_timeout_from_event(event)
 
-    assert timeout == BashTool.stream_wait_timeout_seconds(5)
+    assert timeout == RunCommandTool.stream_wait_timeout_seconds(5)
 
 
 def test_non_bash_tool_stream_timeout_defaults_to_one_minute():

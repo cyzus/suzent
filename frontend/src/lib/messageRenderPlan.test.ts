@@ -74,9 +74,9 @@ describe('buildMessageRenderPlan', () => {
 
   it('keeps consecutive tool steps in one group across empty assistant placeholders', () => {
     const messages: Message[] = [
-      assistant('<details><summary>🔧 bash_execute</summary><pre><code class="language-text">{"cmd":"a"}</code></pre></details>', 'Input: 10 | Output: 2'),
+      assistant('<details><summary>🔧 run_command</summary><pre><code class="language-text">{"cmd":"a"}</code></pre></details>', 'Input: 10 | Output: 2'),
       assistant(''),
-      assistant('<details><summary>🔧 bash_execute</summary><pre><code class="language-text">{"cmd":"b"}</code></pre></details>', 'Input: 20 | Output: 3'),
+      assistant('<details><summary>🔧 run_command</summary><pre><code class="language-text">{"cmd":"b"}</code></pre></details>', 'Input: 20 | Output: 3'),
       assistant('Final answer body', 'Input: 5 | Output: 4'),
     ];
 
@@ -96,7 +96,7 @@ describe('buildMessageRenderPlan', () => {
     // they contain prose, so the old logic fragmented the turn into 3 groups.
     const messages: Message[] = [
       user('go'),
-      assistant('<details><summary>🔧 bash_execute</summary><pre><code class="language-text">{}</code></pre></details>', 'Input: 10 | Output: 2'),
+      assistant('<details><summary>🔧 run_command</summary><pre><code class="language-text">{}</code></pre></details>', 'Input: 10 | Output: 2'),
       assistant('Let me try another approach.\n<details><summary>🔧 read_file</summary><pre><code class="language-text">{}</code></pre></details>', 'Input: 20 | Output: 4'),
       assistant('Checking once more.\n<details><summary>🔧 grep_search</summary><pre><code class="language-text">{}</code></pre></details>', 'Input: 30 | Output: 5'),
       assistant('All done. Here is the answer.', 'Input: 5 | Output: 10'),
@@ -111,7 +111,7 @@ describe('buildMessageRenderPlan', () => {
   });
 
   it('treats system_triggered rows as turn boundaries so each cron/heartbeat fire has its own badge', () => {
-    const toolCall = '<details><summary>🔧 bash_execute</summary><pre><code class="language-text">{}</code></pre></details>';
+    const toolCall = '<details><summary>🔧 run_command</summary><pre><code class="language-text">{}</code></pre></details>';
     const messages: Message[] = [
       { role: 'system_triggered', content: 'Scheduled Task: ingest' },
       assistant(toolCall, 'Input: 10 | Output: 2'),
@@ -130,7 +130,7 @@ describe('buildMessageRenderPlan', () => {
   it('resets turn grouping at each user message', () => {
     const messages: Message[] = [
       user('first'),
-      assistant('<details><summary>🔧 bash_execute</summary><pre><code class="language-text">{}</code></pre></details>', 'Input: 10 | Output: 2'),
+      assistant('<details><summary>🔧 run_command</summary><pre><code class="language-text">{}</code></pre></details>', 'Input: 10 | Output: 2'),
       assistant('Reply 1'),
       user('second'),
       assistant('<details><summary>🔧 read_file</summary><pre><code class="language-text">{}</code></pre></details>', 'Input: 10 | Output: 3'),

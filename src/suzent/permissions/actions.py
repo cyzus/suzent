@@ -89,14 +89,19 @@ def build_approval_decision(
 ) -> PermissionDecision:
     """Build the actions offered for a deferred tool call.
 
-    Bash persistence is scoped to the exact command. Other tools retain the
+    Shell persistence is scoped to the exact command. Other tools retain the
     current tool-wide remember behavior during the migration period.
     """
 
     args = args or {}
-    is_bash = tool_name in {"bash_execute", "BashTool"}
+    is_shell = tool_name in {
+        "run_command",
+        "start_command",
+        "ShellTool",
+        "StartCommandTool",
+    }
     is_shell_command = (
-        is_bash and str(args.get("language") or "command").lower() == "command"
+        is_shell and str(args.get("language") or "command").lower() == "command"
     )
     # Choose a single remember matcher per scope. For shell commands, prefer a
     # prefix rule (e.g. "git log …") so a whole family of invocations is trusted
@@ -130,7 +135,8 @@ def build_approval_decision(
     # Shell commands can be remembered safely as prefix/exact rules. Inline
     # Python/Node programs are intentionally one-shot: persisting an arbitrary
     # code blob is confusing and provides little reusable authority.
-    if not is_bash or is_shell_command:
+    if not is_shell or is_shell_command:
+        remembered_tool_name = "ShellTool" if is_shell else tool_name
         actions.extend(
             [
                 PermissionAction(
@@ -141,7 +147,7 @@ def build_approval_decision(
                     permissionUpdates=[
                         _rule_update(
                             destination="session",
-                            tool_name=tool_name,
+                            tool_name=remembered_tool_name,
                             matcher=matcher,
                             behavior="allow",
                         )
@@ -155,7 +161,7 @@ def build_approval_decision(
                     permissionUpdates=[
                         _rule_update(
                             destination="global",
-                            tool_name=tool_name,
+                            tool_name=remembered_tool_name,
                             matcher=matcher,
                             behavior="allow",
                         )

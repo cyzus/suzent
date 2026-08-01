@@ -23,7 +23,8 @@ export interface ToolRendererProps {
 
 // Renders in the args section; stays visible after execution.
 const ARGS_RENDERERS: Record<string, React.FC<ToolRendererProps> | undefined> = {
-  bash_execute: BashCommandRenderer,
+  run_command: BashCommandRenderer,
+  start_command: BashCommandRenderer,
   edit_file: FileDiffViewer,
   write_file: FileDiffViewer,
 };
@@ -31,7 +32,8 @@ const ARGS_RENDERERS: Record<string, React.FC<ToolRendererProps> | undefined> = 
 // Renders in the output section when output arrives.
 // For bash: args section stays, output section shows stdout separately.
 const OUTPUT_RENDERERS: Record<string, React.FC<ToolRendererProps> | undefined> = {
-  bash_execute: BashOutputRenderer,
+  run_command: BashOutputRenderer,
+  start_command: BashOutputRenderer,
   read_file: FileDiffViewer,
 };
 
@@ -223,7 +225,7 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
   const isPending = approvalState === 'pending';
   const isDenied = approvalState === 'denied';
   const isWebTool = toolName === 'web_search' || toolName === 'webpage_fetch';
-  const isBashTool = toolName === 'bash_execute';
+  const isShellCommand = toolName === 'run_command' || toolName === 'start_command';
   const ArgsRenderer = ARGS_RENDERERS[toolName];
   const OutputRenderer = OUTPUT_RENDERERS[toolName];
   const confidenceValueLabel = visibleDecision?.confidence == null
@@ -378,10 +380,10 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
   const permissionActionLabel = (action: PermissionAction): string => {
     const knownLabels: Record<string, string> = {
       allow_once: t('toolCallBlock.permissionActions.allowOnce'),
-      allow_session: isBashTool
+      allow_session: isShellCommand
         ? t('toolCallBlock.permissionActions.allowCommandSession')
         : t('toolCallBlock.permissionActions.allowSession'),
-      allow_global: isBashTool
+      allow_global: isShellCommand
         ? t('toolCallBlock.permissionActions.allowCommandGlobal')
         : t('toolCallBlock.permissionActions.allowGlobal'),
       reject: t('toolCallBlock.permissionActions.reject'),

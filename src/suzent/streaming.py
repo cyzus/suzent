@@ -466,7 +466,7 @@ def _tool_timeout_from_event(event: Any) -> float:
     timeout = _DEFAULT_TOOL_STREAM_EVENT_TIMEOUT_SECONDS
     part = getattr(event, "part", None)
     tool_name = getattr(part, "tool_name", "")
-    if tool_name not in ("bash_execute", "BashTool"):
+    if tool_name != "run_command":
         return timeout
 
     args = getattr(part, "args", None)
@@ -477,9 +477,9 @@ def _tool_timeout_from_event(event: Any) -> float:
             args = None
     if not isinstance(args, dict):
         args = {}
-    from suzent.tools.shell.bash_tool import BashTool
+    from suzent.tools.shell.shell_tools import RunCommandTool
 
-    return BashTool.stream_wait_timeout_seconds(args.get("timeout"))
+    return RunCommandTool.stream_wait_timeout_seconds(args.get("timeout"))
 
 
 def _tool_search_class_names(event: Any) -> list[str]:

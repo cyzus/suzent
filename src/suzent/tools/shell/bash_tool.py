@@ -1,6 +1,6 @@
 """
-BashTool for Agent
-==================
+Shell command backend
+=====================
 
 Provides code execution within agent conversations.
 Each chat session gets its own session with persistent storage.
@@ -16,6 +16,7 @@ import os
 import re
 import subprocess
 import tempfile
+from fnmatch import fnmatchcase
 from math import ceil
 from pathlib import Path
 from typing import Annotated, Literal, Optional
@@ -32,7 +33,7 @@ from suzent.logger import get_logger
 logger = get_logger(__name__)
 
 
-class BashTool(Tool):
+class ShellCommandBackend(Tool):
     """
     Execute code in an isolated sandbox environment.
 
@@ -43,20 +44,29 @@ class BashTool(Tool):
     - Internet access for package installation and API calls
     """
 
-    name = "BashTool"
-    tool_name = "bash_execute"
+    name = "ShellCommandBackend"
+    tool_name = "run_command"
     group = ToolGroup.EXECUTION
     requires_approval = True
     session_guidance = (
-        "BashTool is for shell/system commands ONLY. "
+        "Shell is for shell/system commands ONLY. "
         "NEVER use bash to read, search, or edit files (no cat, head, tail, grep, find, sed, awk). "
         "Use read_file, grep_search, glob_search, edit_file, write_file instead."
     )
     guidance_priority = 10
+    keep_output_tail = True
     _SUPPORTED_LANGUAGES = {"python", "nodejs", "command"}
     DEFAULT_TIMEOUT_SECONDS = 120
     TOOL_STREAM_TIMEOUT_GRACE_SECONDS = 30
     TIMEOUT_OUTPUT_BYTES_PER_STREAM = 12_000
+    LLM_API_KEY_ENV_PATTERNS = (
+        "ANTHROPIC_*",
+        "GEMINI_*",
+        "GOOGLE_*",
+        "OPENAI_*",
+        "OPENROUTER_*",
+        "PYDANTIC_AI_GATEWAY_API_KEY",
+    )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -265,7 +275,13 @@ class BashTool(Tool):
         if hasattr(ctx.deps, "tool_permission_policies"):
             policy_map = dict(getattr(ctx.deps, "tool_permission_policies") or {})
 
-        tool_policy = policy_map.get(self.tool_name) or policy_map.get(self.name) or {}
+        tool_policy = (
+            policy_map.get(self.tool_name)
+            or policy_map.get("ShellTool")
+            or policy_map.get("bash_execute")
+            or policy_map.get(self.name)
+            or {}
+        )
         if not isinstance(tool_policy, dict):
             tool_policy = {}
 
@@ -654,7 +670,8 @@ class BashTool(Tool):
                 process_id=process_id,
             )
             return self._success_result(
-                "Background process started. Use process_manage to poll output.",
+                "Background command started. Use check_command to read output "
+                "or stop_command to terminate it.",
                 mode="host",
                 language=language,
                 timeout=None,
@@ -937,7 +954,19 @@ class BashTool(Tool):
         from suzent.config import CONFIG, RUNTIME_DIR
         from suzent.database import get_database
 
-        env = os.environ.copy()
+        configured_env = getattr(CONFIG, "shell_env", None)
+        env = dict(configured_env) if configured_env is not None else os.environ.copy()
+        denied_patterns = getattr(CONFIG, "shell_denied_env_patterns", []) or []
+        for name in list(env):
+            candidate = name.upper() if os.name == "nt" else name
+            if any(
+                fnmatchcase(
+                    candidate,
+                    pattern.upper() if os.name == "nt" else pattern,
+                )
+                for pattern in denied_patterns
+            ):
+                env.pop(name, None)
         env["PYTHONIOENCODING"] = "utf-8"
         env["WORKSPACE_ROOT"] = str(Path(self.workspace_root).resolve())
         env["SUZENT_BASE_URL"] = self._host_server_base_url(CONFIG, RUNTIME_DIR)

@@ -24,7 +24,7 @@ DEFAULT_TOOLS:
   - "EditFileTool"
   - "GlobTool"
   - "GrepTool"
-  - "BashTool"
+  - "ShellTool"
   - "SpeakTool"
   - "AgentTool"
 

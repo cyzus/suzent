@@ -8,7 +8,7 @@ Suzent uses [pydantic-ai](https://ai.pydantic.dev/) for its agent framework. Too
 
 ```
 Agent
- ├── tools: [web_search, read_file, bash_execute, ...]   ← function-based
+ ├── tools: [web_search, read_file, run_command, ...]   ← function-based
  ├── toolsets: [MCPServerStdio(...), ...]                 ← MCP servers
  │    └── _deferred_toolset (per_run_step=True)           ← AI-activated tools
  └── deps_type: AgentDeps                                 ← shared context
@@ -66,7 +66,7 @@ Tools that are **stateless** (e.g. `web_search`, `webpage_fetch`) omit `RunConte
 
 | Tool | Function | Context | HITL | Description |
 |------|----------|---------|------|-------------|
-| BashTool | `bash_execute` | Sandbox config | **Yes** | Execute code/commands (Python, Node.js, shell) |
+| ShellTool | `run_command`, `start_command`, `check_command`, `stop_command` | Sandbox config | **Yes** | Run commands and manage background processes as one capability |
 
 ### Planning & Memory
 
@@ -115,14 +115,21 @@ Performs web searches using SearXNG (self-hosted, privacy-focused) with automati
 
 **Configuration:** Set `SEARXNG_BASE_URL` in `.env` for SearXNG. Without it, falls back to DuckDuckGo.
 
-### `bash_execute`
+### Shell capability
 
 Executes code in a secure environment. Runs inside an isolated Docker container when sandbox mode is enabled, or on the host when disabled.
 
 **Parameters:**
 - `content` (required): Code or shell command to execute
 - `language`: `python`, `nodejs`, or `command`
-- `timeout`: Execution timeout in seconds
+- `run_command`: run bounded work synchronously with an optional timeout
+- `start_command`: start a long-running command and return a command ID
+- `check_command`: read incremental output and check completion
+- `stop_command`: terminate the command and its process tree
+
+All four operations are registered by `ShellCapability`. `ShellTool` is the only
+configuration/UI toggle, and existing `BashTool` or `ProcessTool` selections are
+migrated to it when an agent is created.
 
 **Storage paths** (available in both modes):
 - `/persistence` — Private storage, persists across sessions (current chat only)
@@ -234,7 +241,7 @@ If not specified, the agent uses these tools (from `config.py`):
 
 ```
 WebSearchTool, PlanningTool, ReadFileTool, WriteFileTool,
-EditFileTool, GlobTool, GrepTool, BashTool
+EditFileTool, GlobTool, GrepTool, ShellTool
 ```
 
 ### Custom Tool Selection
@@ -248,7 +255,7 @@ config = {
         "WebSearchTool",
         "PlanningTool",
         "ReadFileTool",
-        "BashTool",
+        "ShellTool",
         "MemorySearchTool",
     ]
 }

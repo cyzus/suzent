@@ -173,7 +173,8 @@ const AgentBadgeComponent: React.FC<AgentBadgeProps> = ({
         case 'web_search':
           variant = 'peeker';  // peeking search
           break;
-        case 'bash_execute':
+        case 'run_command':
+        case 'start_command':
         case 'write_file':
         case 'edit_file':
           variant = 'workout'; // working out (writing/editing code)

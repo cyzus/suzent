@@ -2,7 +2,7 @@
 HostProcessRegistry
 ===================
 
-In-process registry for background processes started by BashTool in host mode.
+In-process registry for background commands started by ShellCapability in host mode.
 
 Each entry tracks:
 - The Popen handle
@@ -50,14 +50,26 @@ class _HostProcess:
         return self.exit_code
 
     def kill(self) -> bool:
-        """Send SIGTERM (SIGKILL on Windows). Returns True if signal was sent."""
+        """Terminate the process tree. Returns True when a signal was sent."""
         if self.process.poll() is not None:
             return False
         try:
-            self.process.terminate()
+            import psutil
+
+            parent = psutil.Process(self.process.pid)
+            processes = [*parent.children(recursive=True), parent]
+            for process in processes:
+                process.terminate()
+            _, alive = psutil.wait_procs(processes, timeout=5)
+            for process in alive:
+                process.kill()
             return True
         except Exception:
-            return False
+            try:
+                self.process.kill()
+                return True
+            except Exception:
+                return False
 
     def read_output(self, offset: int) -> tuple[str, int]:
         """Read output bytes from `offset`. Returns (text, new_offset)."""
@@ -166,8 +178,12 @@ class HostProcessRegistry:
     def evict(self, chat_id: str, process_id: str) -> None:
         """Remove entry and delete temp output file."""
         with self._lock:
-            entry = self._processes.pop(process_id, None)
-        if entry and entry.chat_id == chat_id:
+            entry = self._processes.get(process_id)
+            if entry is not None and entry.chat_id == chat_id:
+                self._processes.pop(process_id, None)
+            else:
+                entry = None
+        if entry:
             entry.output_file.unlink(missing_ok=True)
 
     def evict_chat(self, chat_id: str) -> None:

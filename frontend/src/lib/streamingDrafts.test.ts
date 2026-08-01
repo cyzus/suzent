@@ -9,7 +9,7 @@ describe('hideStreamingDrafts', () => {
       role: 'assistant',
       content: '',
       _streaming_draft: true,
-      parts: [{ type: 'tool', toolCallId: 'call-1', toolName: 'bash_execute', state: 'running' }],
+      parts: [{ type: 'tool', toolCallId: 'call-1', toolName: 'run_command', state: 'running' }],
     };
     const final: Message = { role: 'assistant', content: 'done' };
 

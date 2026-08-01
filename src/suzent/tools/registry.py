@@ -42,6 +42,7 @@ def _make_tool(
     original = template.forward
 
     limit = tool_cls.output_char_limit
+    keep_tail = tool_cls.keep_output_tail
 
     if asyncio.iscoroutinefunction(original):
 
@@ -49,7 +50,9 @@ def _make_tool(
         async def wrapper(*args, **kwargs):
             result = await tool_cls().forward(*args, **kwargs)
             if isinstance(result, ToolResult):
-                result.message = truncate_tool_output(result.message, limit)
+                result.message = truncate_tool_output(
+                    result.message, limit, keep_tail=keep_tail
+                )
             return result
 
     else:
@@ -58,7 +61,9 @@ def _make_tool(
         def wrapper(*args, **kwargs):
             result = tool_cls().forward(*args, **kwargs)
             if isinstance(result, ToolResult):
-                result.message = truncate_tool_output(result.message, limit)
+                result.message = truncate_tool_output(
+                    result.message, limit, keep_tail=keep_tail
+                )
             return result
 
     wrapper.__name__ = tool_cls.tool_name
@@ -107,8 +112,12 @@ def _all_tool_classes() -> list:
         GlobTool,
         GrepTool,
     )
-    from suzent.tools.shell.bash_tool import BashTool
-    from suzent.tools.shell.process_tool import ProcessTool
+    from suzent.tools.shell.shell_tools import (
+        CheckCommandTool,
+        RunCommandTool,
+        StartCommandTool,
+        StopCommandTool,
+    )
     from suzent.tools.webpage_tool import WebpageTool
     from suzent.tools.websearch_tool import WebSearchTool
     from suzent.tools.goal_tool import GoalTool
@@ -133,8 +142,10 @@ def _all_tool_classes() -> list:
         EditFileTool,
         GlobTool,
         GrepTool,
-        BashTool,
-        ProcessTool,
+        RunCommandTool,
+        StartCommandTool,
+        CheckCommandTool,
+        StopCommandTool,
         BrowsingTool,
         WebpageTool,
         WebSearchTool,
@@ -153,6 +164,30 @@ def _all_tool_classes() -> list:
         SessionSearchTool,
         AgentTool,
     ]
+
+
+def migrate_shell_tool_names(tool_names: List[str]) -> List[str]:
+    """Migrate legacy shell selections to the unified ShellTool capability."""
+    legacy_names = {"BashTool", "ProcessTool", "bash_execute", "process_manage"}
+    migrated = ["ShellTool" if name in legacy_names else name for name in tool_names]
+    return list(dict.fromkeys(migrated))
+
+
+def expand_tool_dependencies(tool_names: List[str]) -> List[str]:
+    """Expand logical tool selections into the runtime tools they require.
+
+    ShellTool is the user-facing selection. Its three companion operations are
+    registered in the same capability without separate UI toggles.
+    """
+    expanded = migrate_shell_tool_names(tool_names)
+    companions = ["StartCommandTool", "CheckCommandTool", "StopCommandTool"]
+    if "ShellTool" in expanded:
+        index = expanded.index("ShellTool") + 1
+        for companion in companions:
+            if companion not in expanded:
+                expanded.insert(index, companion)
+                index += 1
+    return expanded
 
 
 def get_tool_groups() -> List[Dict]:

@@ -7,7 +7,7 @@ describe('getPendingApprovals', () => {
       {
         type: 'tool',
         toolCallId: 'call-1',
-        toolName: 'bash_execute',
+        toolName: 'run_command',
         args: JSON.stringify({ content: 'npm test' }),
         state: 'approval-requested',
         approvalId: 'approval-1',
@@ -27,7 +27,7 @@ describe('getPendingApprovals', () => {
         },
         permissionDecision: {
           toolCallId: 'call-1',
-          toolName: 'bash_execute',
+          toolName: 'run_command',
           behavior: 'ask',
           source: 'auto_classifier',
           reason: 'Needs approval',
@@ -41,7 +41,7 @@ describe('getPendingApprovals', () => {
       {
         type: 'tool',
         toolCallId: 'call-2',
-        toolName: 'bash_execute',
+        toolName: 'run_command',
         state: 'running',
       },
     ]);
