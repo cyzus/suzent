@@ -17,6 +17,17 @@ uv run suzent start --dev
 > pre-built UI binary). For a headless debug backend only, use
 > `uv run suzent serve --debug`.
 
+To update an existing development checkout, run:
+
+```bash
+uv run suzent update --dev
+```
+
+This fast-forwards `main` and installs the exact Python and frontend
+dependencies from the lockfiles. Plain `suzent update` is reserved for
+bootstrapped installations and pins every runtime component to one stable
+release.
+
 `uv sync --all-extras` installs both the `social` and `dev` optional
 dependency groups (equivalent to the `all` extra). For a minimal runtime
 without dev tooling, use `uv sync --extra social`.

@@ -19,6 +19,8 @@ from suzent.config import get_effective_volumes
 
 logger = get_logger(__name__)
 
+API_VERSION = 1
+
 
 def _get_source_version(start: Path | None = None) -> str | None:
     """Find the nearest Suzent pyproject version for a source checkout."""
@@ -51,10 +53,42 @@ def get_backend_version() -> str:
         return "unknown"
 
 
+def get_backend_commit(start: Path | None = None) -> str:
+    """Return the source commit used by the running backend when available."""
+
+    configured = os.getenv("SUZENT_BUILD_COMMIT", "").strip()
+    if configured:
+        return configured
+    source_file = (start or Path(__file__)).resolve()
+    for parent in source_file.parents:
+        if not (parent / ".git").exists():
+            continue
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=parent,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+        except (OSError, subprocess.CalledProcessError):
+            return "unknown"
+        return result.stdout.strip() or "unknown"
+    return "unknown"
+
+
+def get_system_identity() -> dict[str, str | int]:
+    return {
+        "backend_version": get_backend_version(),
+        "api_version": API_VERSION,
+        "build_commit": get_backend_commit(),
+    }
+
+
 async def get_system_version(_request: Request) -> JSONResponse:
     """Return version information for the running backend."""
 
-    return JSONResponse({"backend_version": get_backend_version()})
+    return JSONResponse(get_system_identity())
 
 
 def _get_resolver(chat_id: str) -> PathResolver:

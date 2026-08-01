@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.7.3] - 2026-08-01
+
+### 🐛 Fixed
+- Pin stable backend source, dependencies, and desktop assets to the same release; reject incompatible frontend/backend builds; and add `suzent update --dev` for lockstep development updates.
+
+### ⚡ Changed
+- Add activity tracking features and localization for token activity display
+- Add build_cron_reminder function and corresponding tests for cron-triggered prompts
+- Organize selectable tools into capabilities (#79)
+- Update button behavior in ChatList to initiate new chat when organization is 'list'
+- Add user-facing notice for attachment processing errors and improve timeout guidance in BashTool
+- Add file preview functionality and update translations
+- Update doc
+- Refactor permission decision display to use details element for improved UX
+- Improve shell timeout diagnostics (#73)
+- Accelerate grep search with ripgrep (#76)
+- Add safe conversation forking (#75)
+- Refactor chat minimap dimensions and marker widths for improved layout
+- Add conflict-safe file undo (#74)
+- Stabilize LanceDB store test cleanup
+- Stabilize task registry rejection tests
+- Improve provider bootstrap model defaults (#72)
+
 ## [v0.7.2] - 2026-07-28
 
 ### 🚀 Added

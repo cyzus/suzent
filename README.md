@@ -139,7 +139,16 @@ suzent start
 suzent update
 ```
 
-Or re-run the install command above — it detects an existing installation and pulls the latest changes.
+This installs the latest stable release as one matched set: backend source,
+locked dependencies, and desktop app. Developers working from a source checkout
+can update `main` and its frontend dependencies together with:
+
+```bash
+suzent update --dev
+```
+
+Or re-run the install command above — it detects an existing installation and
+updates it to the latest stable release.
 
 ---
 

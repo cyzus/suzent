@@ -45,6 +45,8 @@ export function getApiBase(): string {
 
 export interface SystemVersionResponse {
   backendVersion: string;
+  apiVersion: number;
+  buildCommit: string;
 }
 
 export async function fetchSystemVersion(): Promise<SystemVersionResponse> {
@@ -52,12 +54,63 @@ export async function fetchSystemVersion(): Promise<SystemVersionResponse> {
   if (!response.ok) {
     throw new Error(`Failed to load backend version: ${response.status}`);
   }
-  const payload = await response.json() as { backend_version?: unknown };
+  const payload = await response.json() as {
+    backend_version?: unknown;
+    api_version?: unknown;
+    build_commit?: unknown;
+  };
   return {
     backendVersion: typeof payload.backend_version === 'string'
       ? payload.backend_version
       : 'unknown',
+    apiVersion: typeof payload.api_version === 'number' ? payload.api_version : 0,
+    buildCommit: typeof payload.build_commit === 'string'
+      ? payload.build_commit
+      : 'unknown',
   };
+}
+
+export type BackendCompatibilityIssue = {
+  kind: 'api' | 'build' | 'version';
+  frontend: string;
+  backend: string;
+};
+
+export function getBackendCompatibilityIssue(
+  backend: SystemVersionResponse,
+  frontend = {
+    version: __FRONTEND_VERSION__,
+    apiVersion: __SUZENT_API_VERSION__,
+    buildCommit: __FRONTEND_BUILD_COMMIT__,
+  },
+): BackendCompatibilityIssue | null {
+  if (backend.apiVersion !== frontend.apiVersion) {
+    return {
+      kind: 'api',
+      frontend: String(frontend.apiVersion),
+      backend: String(backend.apiVersion),
+    };
+  }
+  const commitsKnown = backend.buildCommit !== 'unknown'
+    && frontend.buildCommit !== 'unknown';
+  if (commitsKnown && backend.buildCommit !== frontend.buildCommit) {
+    return {
+      kind: 'build',
+      frontend: frontend.buildCommit.slice(0, 8),
+      backend: backend.buildCommit.slice(0, 8),
+    };
+  }
+  if (!commitsKnown
+    && backend.backendVersion !== 'unknown'
+    && frontend.version !== 'unknown'
+    && backend.backendVersion !== frontend.version) {
+    return {
+      kind: 'version',
+      frontend: frontend.version,
+      backend: backend.backendVersion,
+    };
+  }
+  return null;
 }
 
 export interface PermissionModeState {

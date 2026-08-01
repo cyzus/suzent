@@ -119,7 +119,7 @@ impl BackendProcess {
     }
 
     fn wait_for_backend(&self) -> Result<(), String> {
-        let url = format!("http://127.0.0.1:{}/config", self.port);
+        let url = format!("http://127.0.0.1:{}/health", self.port);
         let client = reqwest::blocking::Client::builder()
             .timeout(Duration::from_secs(2))
             .no_proxy()

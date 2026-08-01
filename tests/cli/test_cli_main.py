@@ -222,9 +222,6 @@ def test_update_ui_binary_records_release_version(monkeypatch):
     download_calls = []
     root = Path("C:/tmp/suzent-test-root")
 
-    monkeypatch.setattr(
-        cli_main, "_fetch_latest_release", lambda: {"tag_name": "v1.2.3"}
-    )
     monkeypatch.setattr(cli_main, "_local_ui_version", lambda root: "")
 
     def fake_download(root: Path, *, version: str = "latest"):
@@ -233,15 +230,22 @@ def test_update_ui_binary_records_release_version(monkeypatch):
 
     monkeypatch.setattr(cli_main, "download_ui_binary", fake_download)
 
-    cli_main._update_ui_binary(root)
+    assert cli_main._update_ui_binary(root, "v1.2.3")
 
     assert download_calls == [(root, "v1.2.3")]
+
+
+def test_release_asset_url_pins_requested_tag():
+    assert cli_main._release_asset_url("suzent.exe", "v1.2.3") == (
+        "https://github.com/cyzus/suzent/releases/download/v1.2.3/suzent.exe"
+    )
 
 
 def test_backend_sync_args_keep_dev_extra_for_development_workspace(tmp_path):
     assert cli_main._backend_sync_args(tmp_path) == [
         "uv",
         "sync",
+        "--frozen",
         "--extra",
         "social",
         "--extra",
@@ -252,7 +256,89 @@ def test_backend_sync_args_keep_dev_extra_for_development_workspace(tmp_path):
 def test_backend_sync_args_use_social_extra_for_bootstrapped_install(tmp_path):
     (tmp_path / ".suzent-bootstrap-complete").write_text("")
 
-    assert cli_main._backend_sync_args(tmp_path) == ["uv", "sync", "--extra", "social"]
+    assert cli_main._backend_sync_args(tmp_path) == [
+        "uv",
+        "sync",
+        "--frozen",
+        "--extra",
+        "social",
+    ]
+
+
+def test_update_channel_round_trip(tmp_path):
+    assert cli_main._read_update_channel(tmp_path) == "stable"
+
+    cli_main._write_update_channel(tmp_path, "dev")
+
+    assert cli_main._read_update_channel(tmp_path) == "dev"
+
+
+def _mock_update_runtime(monkeypatch, tmp_path):
+    app = typer.Typer()
+    cli_main.register_commands(app)
+    commands = []
+
+    def fake_run(command, **kwargs):
+        if command[:3] == ["git", "rev-parse", "HEAD"]:
+            return subprocess.CompletedProcess(command, 0, stdout="oldcommit\n")
+        if command[:3] == ["git", "branch", "--show-current"]:
+            return subprocess.CompletedProcess(command, 0, stdout="main\n")
+        return subprocess.CompletedProcess(command, 0, stdout="")
+
+    def fake_run_command(command, **kwargs):
+        commands.append((command, kwargs.get("cwd")))
+
+    monkeypatch.setattr(cli_main, "get_project_root", lambda: tmp_path)
+    monkeypatch.setattr(cli_main.subprocess, "run", fake_run)
+    monkeypatch.setattr(cli_main, "run_command", fake_run_command)
+    monkeypatch.setattr(cli_main, "IS_WINDOWS", False)
+    return app, commands
+
+
+def test_stable_update_pins_source_and_ui_to_release(monkeypatch, tmp_path):
+    (tmp_path / ".suzent-bootstrap-complete").write_text("")
+    app, commands = _mock_update_runtime(monkeypatch, tmp_path)
+    ui_updates = []
+    monkeypatch.setattr(
+        cli_main,
+        "_fetch_latest_release",
+        lambda: {"tag_name": "v1.2.3"},
+    )
+    monkeypatch.setattr(cli_main, "_current_version", lambda root: "1.2.3")
+    monkeypatch.setattr(
+        cli_main,
+        "_update_ui_binary",
+        lambda root, tag: ui_updates.append(tag) or True,
+    )
+
+    result = runner.invoke(app, ["update"])
+
+    assert result.exit_code == 0
+    command_args = [command for command, _cwd in commands]
+    assert ["git", "fetch", "origin", "tag", "v1.2.3"] in command_args
+    assert ["git", "checkout", "--detach", "v1.2.3"] in command_args
+    assert ui_updates == ["v1.2.3"]
+    assert cli_main._read_update_channel(tmp_path) == "stable"
+
+
+def test_dev_update_uses_main_and_never_downloads_release_ui(monkeypatch, tmp_path):
+    app, commands = _mock_update_runtime(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        cli_main,
+        "_update_ui_binary",
+        lambda *_args: pytest.fail("dev update must not install release UI"),
+    )
+
+    result = runner.invoke(app, ["update", "--dev"])
+
+    assert result.exit_code == 0
+    command_args = [command for command, _cwd in commands]
+    assert ["git", "fetch", "origin", "main"] in command_args
+    assert ["git", "switch", "main"] in command_args
+    assert ["git", "merge", "--ff-only", "origin/main"] in command_args
+    npm_ci_dirs = [cwd for command, cwd in commands if command == ["npm", "ci"]]
+    assert npm_ci_dirs == [tmp_path / "frontend", tmp_path / "src-tauri"]
+    assert cli_main._read_update_channel(tmp_path) == "dev"
 
 
 def test_windows_app_suzent_pids_parse_powershell_output(monkeypatch):
