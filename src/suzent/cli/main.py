@@ -44,11 +44,19 @@ def _backend_sync_args(root: Path) -> list[str]:
 
 
 def _get_ui_binary(root: Path) -> Path | None:
-    """Return a compatible UI binary: newest local/release build wins."""
+    """Return the managed release UI, falling back to a local release build."""
     name = "suzent-ui.exe" if IS_WINDOWS else "suzent-ui"
     release_name = "suzent.exe" if IS_WINDOWS else "suzent"
+    managed_release = root / _BIN_DIR / name
+
+    # `suzent update` installs the UI and its version marker atomically. Prefer
+    # that managed pair over a locally-built executable whose newer mtime does
+    # not imply compatibility with the checked-out backend.
+    if managed_release.exists() and (root / _BIN_DIR / "version.txt").exists():
+        return managed_release
+
     candidates = [
-        root / _BIN_DIR / name,
+        managed_release,
         root / "src-tauri" / "target" / "release" / release_name,
     ]
     existing = [p for p in candidates if p.exists() and _is_ui_binary_current(root, p)]
@@ -835,7 +843,10 @@ def register_commands(app: typer.Typer):
             # Pre-built binary manages both backend and webview internally.
             typer.echo(f"  • Launching UI binary ({ui_bin.name})...")
             try:
-                subprocess.run([str(ui_bin)], env=_ui_launch_env())
+                subprocess.run(
+                    [str(ui_bin)],
+                    env=_ui_launch_env({"SUZENT_DIR": str(root)}),
+                )
             except (subprocess.CalledProcessError, KeyboardInterrupt):
                 pass
             return
@@ -1027,7 +1038,7 @@ def register_commands(app: typer.Typer):
 
         ui_bin = _get_ui_binary(root)
         if ui_bin:
-            env = _ui_launch_env({"SUZENT_PORT": str(port)})
+            env = _ui_launch_env({"SUZENT_DIR": str(root), "SUZENT_PORT": str(port)})
             try:
                 subprocess.run([str(ui_bin)], env=env)
             except (subprocess.CalledProcessError, KeyboardInterrupt):
