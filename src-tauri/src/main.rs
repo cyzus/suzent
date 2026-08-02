@@ -17,6 +17,7 @@ const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 struct AppState {
     backend: Mutex<Option<BackendProcess>>,
+    backend_startup_error: Mutex<Option<String>>,
 }
 
 #[derive(Clone, Serialize)]
@@ -57,6 +58,15 @@ async fn check_for_update() -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(check_for_update_blocking)
         .await
         .map_err(|error| format!("Update check task failed: {}", error))?
+}
+
+#[tauri::command]
+fn get_backend_startup_error(state: State<AppState>) -> Result<Option<String>, String> {
+    let error_guard = state
+        .backend_startup_error
+        .lock()
+        .map_err(|e| format!("Lock error: {}", e))?;
+    Ok(error_guard.clone())
 }
 
 fn check_for_update_blocking() -> Result<String, String> {
@@ -330,6 +340,12 @@ fn spawn_backend_start(app_handle: tauri::AppHandle) {
             return;
         };
 
+        if let Some(state) = app_handle.try_state::<AppState>() {
+            if let Ok(mut error_guard) = state.backend_startup_error.lock() {
+                *error_guard = None;
+            }
+        }
+
         match get_backend_config(&app_handle) {
             Ok((port, backend)) => {
                 println!("Backend configured on port {}", port);
@@ -359,6 +375,11 @@ try {{ localStorage.setItem('SUZENT_PORT', '{port}'); }} catch (e) {{}}
             }
             Err(e) => {
                 eprintln!("Failed to start backend: {}", e);
+                if let Some(state) = app_handle.try_state::<AppState>() {
+                    if let Ok(mut error_guard) = state.backend_startup_error.lock() {
+                        *error_guard = Some(e.clone());
+                    }
+                }
                 if e == "bootstrap-required" {
                     let _ = app_handle.emit(
                         "bootstrap-required",
@@ -518,6 +539,7 @@ fn main() {
         .setup(|app| {
             app.manage(AppState {
                 backend: Mutex::new(None),
+                backend_startup_error: Mutex::new(None),
             });
 
             let status = build_bootstrap_status(Some(app.handle()));
@@ -534,6 +556,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             get_backend_port,
+            get_backend_startup_error,
             check_for_update,
             start_update_and_restart,
             bootstrap_status,

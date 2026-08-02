@@ -183,6 +183,52 @@ def test_start_dev_restarts_existing_backend(monkeypatch, tmp_path):
     assert "--debug" in popen_calls[0]
 
 
+def test_get_ui_binary_prefers_managed_release_over_newer_local_build(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setattr(cli_main, "IS_WINDOWS", True)
+    managed = tmp_path / "bin" / "suzent-ui.exe"
+    local_build = tmp_path / "src-tauri" / "target" / "release" / "suzent.exe"
+    managed.parent.mkdir(parents=True)
+    local_build.parent.mkdir(parents=True)
+    managed.write_bytes(b"managed")
+    (managed.parent / "version.txt").write_text("v1.2.3", encoding="utf-8")
+    local_build.write_bytes(b"local")
+    local_build.touch()
+
+    assert cli_main._get_ui_binary(tmp_path) == managed
+
+
+@pytest.mark.parametrize(
+    ("command", "expected_port"), [("start", None), ("ui", "25314")]
+)
+def test_release_ui_receives_workspace_directory(
+    monkeypatch, tmp_path, command, expected_port
+):
+    app = typer.Typer()
+    cli_main.register_commands(app)
+    ui_binary = tmp_path / "bin" / "suzent-ui.exe"
+    launched = {}
+
+    def fake_run(args, env=None, **kwargs):
+        launched["args"] = args
+        launched["env"] = env
+        return subprocess.CompletedProcess(args, 0)
+
+    monkeypatch.setattr(cli_main, "get_project_root", lambda: tmp_path)
+    monkeypatch.setattr(cli_main, "_notify_update_available", lambda root: None)
+    monkeypatch.setattr(cli_main, "_get_ui_binary", lambda root: ui_binary)
+    monkeypatch.setattr(cli_main.subprocess, "run", fake_run)
+
+    result = runner.invoke(app, [command])
+
+    assert result.exit_code == 0
+    assert launched["args"] == [str(ui_binary)]
+    assert launched["env"]["SUZENT_DIR"] == str(tmp_path)
+    if expected_port is not None:
+        assert launched["env"]["SUZENT_PORT"] == expected_port
+
+
 def test_serve_uses_default_windows_process_group(monkeypatch):
     """Regression: `suzent serve` should not create a new process group on Windows."""
     app = typer.Typer()

@@ -938,7 +938,11 @@ async function isBackendPortReachable(port: number): Promise<boolean> {
 }
 
 async function waitForBackendPort(options?: { attempts?: number }): Promise<number | null> {
-  const attempts = options?.attempts ?? 12;
+  // Tauri may spend up to 45 seconds waiting for the port file and health
+  // check. Keep polling beyond that window so a persisted startup error is
+  // surfaced even when the original backend-error event fired before React
+  // registered its listener.
+  const attempts = options?.attempts ?? 24;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     const candidates: number[] = [];
     const remembered = getRememberedBackendPort();
@@ -956,6 +960,14 @@ async function waitForBackendPort(options?: { attempts?: number }): Promise<numb
         rememberBackendPort(port);
         return port;
       }
+    }
+
+    try {
+      const startupError = await invoke<string | null>('get_backend_startup_error');
+      if (startupError) throw new Error(startupError);
+    } catch (error) {
+      if (error instanceof Error && error.message) throw error;
+      // Older/dev shells may not expose startup error persistence yet.
     }
 
     await new Promise(resolve => window.setTimeout(resolve, Math.min(500 * Math.pow(1.35, attempt), 2500)));
@@ -1032,7 +1044,11 @@ export default function App() {
               setBackendError(null);
               setBackendStartingAtStartup(false);
             })
-            .catch(() => {});
+            .catch((error: unknown) => {
+              if (cancelled) return;
+              setBackendStartingAtStartup(false);
+              setBackendError(String(error));
+            });
         }
         setBootstrapChecked(true);
       })
@@ -1061,6 +1077,12 @@ export default function App() {
           setBackendError(null);
           setBackendStartingAtStartup(false);
           setBackendStartingAfterInstall(false);
+        }
+      }).catch((error: unknown) => {
+        if (!cancelled) {
+          setBackendStartingAtStartup(false);
+          setBackendStartingAfterInstall(false);
+          setBackendError(String(error));
         }
       });
     }
