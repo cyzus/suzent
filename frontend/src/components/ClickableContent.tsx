@@ -5,6 +5,7 @@ import { useI18n } from '../i18n';
 interface ClickableContentProps {
     content: string;
     onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
+    fileChipTone?: 'accent' | 'neutral';
 }
 
 type ContentSegment =
@@ -21,7 +22,11 @@ function basename(path: string): string {
  * Only detects absolute paths with extensions (e.g., /workspace/file.txt).
  * Agent messages should use markdown links with file:// protocol instead.
  */
-export const ClickableContent: React.FC<ClickableContentProps> = ({ content, onFileClick }) => {
+export const ClickableContent: React.FC<ClickableContentProps> = ({
+    content,
+    onFileClick,
+    fileChipTone = 'accent',
+}) => {
     const { t } = useI18n();
     const segments = useMemo(() => {
         if (!content || !onFileClick) return [];
@@ -89,11 +94,15 @@ export const ClickableContent: React.FC<ClickableContentProps> = ({ content, onF
                                 e.stopPropagation();
                                 onFileClick?.(segment.path, fileName, e.shiftKey);
                             }}
-                            className="inline-flex items-center gap-1 bg-brutal-yellow border-2 border-brutal-black px-2 py-0.5 font-mono text-xs font-bold text-brutal-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] brutal-btn cursor-pointer align-middle"
+                            className={`inline-flex max-w-full items-center gap-1.5 border-2 border-brutal-black px-2 py-1 my-0.5 font-mono text-xs font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] brutal-btn cursor-pointer align-middle transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue focus-visible:ring-offset-2 ${
+                                fileChipTone === 'neutral'
+                                    ? 'bg-white text-brutal-black hover:bg-neutral-100 dark:bg-zinc-900 dark:text-white dark:hover:bg-zinc-800'
+                                    : 'bg-brutal-yellow text-brutal-black'
+                            }`}
                             title={t('fileLink.clickToView', { path: segment.path })}
                         >
-                            <DocumentTextIcon className="w-3 h-3 stroke-[3]" />
-                            <span className="break-all">{segment.path}</span>
+                            <DocumentTextIcon className="w-3.5 h-3.5 stroke-[2.5] shrink-0" />
+                            <span className="break-all leading-snug">{segment.path}</span>
                         </button>
                     );
                 }
