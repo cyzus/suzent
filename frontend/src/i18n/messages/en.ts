@@ -36,6 +36,7 @@ export const en = {
       api: 'Frontend/backend API mismatch ({frontend} vs {backend}). Run suzent update.',
       build: 'Frontend/backend build mismatch ({frontend} vs {backend}). Run suzent update.',
       version: 'Frontend/backend version mismatch ({frontend} vs {backend}). Run suzent update.',
+      verifyTimeout: 'Backend version verification timed out. The backend may still be recovering; close and reopen Suzent.',
       verifyFailed: 'Failed to verify backend version: {error}',
     },
   },

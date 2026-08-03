@@ -1,6 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { getBackendCompatibilityIssue } from './api';
+import {
+  BackendVersionTimeoutError,
+  fetchSystemVersion,
+  getBackendCompatibilityIssue,
+} from './api';
 
 const frontend = {
   version: '1.2.3',
@@ -8,6 +12,45 @@ const frontend = {
   buildCommit: 'abcdef123456',
   enforceBuildCommit: true,
 };
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe('backend version request', () => {
+  it('retries a transient abort during WebView refresh', async () => {
+    vi.stubGlobal('window', { setTimeout, clearTimeout });
+    const abortError = new Error('signal is aborted without reason');
+    abortError.name = 'AbortError';
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(abortError)
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        backend_version: '1.2.3',
+        api_version: 1,
+        build_commit: 'abcdef123456',
+        development_mode: false,
+      }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(fetchSystemVersion({ retryDelayMs: 0 })).resolves.toEqual({
+      backendVersion: '1.2.3',
+      apiVersion: 1,
+      buildCommit: 'abcdef123456',
+      developmentMode: false,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns a typed timeout after repeated aborts', async () => {
+    vi.stubGlobal('window', { setTimeout, clearTimeout });
+    const abortError = new Error('aborted');
+    abortError.name = 'AbortError';
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(abortError));
+
+    await expect(fetchSystemVersion({ attempts: 2, retryDelayMs: 0 }))
+      .rejects.toBeInstanceOf(BackendVersionTimeoutError);
+  });
+});
 
 describe('backend compatibility', () => {
   it('accepts an exact release identity match', () => {
