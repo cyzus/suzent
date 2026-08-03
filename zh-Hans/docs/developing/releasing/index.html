@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.9.2">
 <title data-rh="true">SUZENT | Release Guide</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:image" content="https://suzent.com/zh-Hans/img/suzent-social-card.png"><meta data-rh="true" name="twitter:image" content="https://suzent.com/zh-Hans/img/suzent-social-card.png"><meta data-rh="true" property="og:url" content="https://suzent.com/zh-Hans/docs/developing/releasing"><meta data-rh="true" property="og:locale" content="zh_Hans"><meta data-rh="true" property="og:locale:alternate" content="en"><meta data-rh="true" name="docusaurus_locale" content="zh-Hans"><meta data-rh="true" name="docsearch:language" content="zh-Hans"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="SUZENT | Release Guide"><meta data-rh="true" name="description" content="Suzent uses a Release PR workflow. Preparing a release is a single manual"><meta data-rh="true" property="og:description" content="Suzent uses a Release PR workflow. Preparing a release is a single manual"><link data-rh="true" rel="icon" href="/zh-Hans/img/logo.svg"><link data-rh="true" rel="canonical" href="https://suzent.com/zh-Hans/docs/developing/releasing"><link data-rh="true" rel="alternate" href="https://suzent.com/docs/developing/releasing" hreflang="en"><link data-rh="true" rel="alternate" href="https://suzent.com/zh-Hans/docs/developing/releasing" hreflang="zh-Hans"><link data-rh="true" rel="alternate" href="https://suzent.com/docs/developing/releasing" hreflang="x-default"><script data-rh="true" type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"开发指南","item":"https://suzent.com/zh-Hans/docs/category/development"},{"@type":"ListItem","position":2,"name":"Release Guide","item":"https://suzent.com/zh-Hans/docs/developing/releasing"}]}</script><script>!function(){var a=location.pathname;"/"!==a&&"/zh-Hans"!==a&&"/zh-Hans/"!==a||document.documentElement.classList.add("homepage-mode")}()</script><link rel="stylesheet" href="/zh-Hans/assets/css/styles.123ff470.css">
-<script src="/zh-Hans/assets/js/runtime~main.e8572a09.js" defer="defer"></script>
+<script src="/zh-Hans/assets/js/runtime~main.727e7a5b.js" defer="defer"></script>
 <script src="/zh-Hans/assets/js/main.aa0ab085.js" defer="defer"></script>
 </head>
 <body class="navigation-with-keyboard">
@@ -18,7 +18,10 @@ Release publication are automated.</p>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="normal-release">Normal release<a href="#normal-release" class="hash-link" aria-label="Normal release的直接链接" title="Normal release的直接链接" translate="no">​</a></h2>
 <ol>
 <li class="">Open <strong>Actions → Prepare Release → Run workflow</strong>.</li>
-<li class="">Enter <code>patch</code>, <code>minor</code>, <code>major</code>, or an exact version such as <code>0.8.0</code>.</li>
+<li class="">Enter <code>patch</code>, <code>minor</code>, <code>major</code>, or an exact version such as <code>0.8.0</code>.
+Choose <code>build</code> for normal releases. Choose <code>reuse</code> only for backend-only
+hotfixes that do not change <code>API_VERSION</code>, frontend code, desktop code, or
+installer behavior; it reuses the previous published native assets.</li>
 <li class="">Review the generated <code>release/vX.Y.Z</code> pull request. Edit the generated
 changelog entry if needed, wait for required checks, and merge it.</li>
 <li class="">The merge automatically creates the <code>vX.Y.Z</code> tag and starts
@@ -29,6 +32,12 @@ changelog entry if needed, wait for required checks, and merge it.</li>
 <p>The release remains a draft while Windows, macOS Intel, macOS Apple Silicon,
 and Linux builds run. It is published only after every build succeeds. A failed
 build therefore cannot expose a partially populated release.</p>
+<p>Backend-only hotfixes still receive a normal version and Git tag for auditing,
+rollback, and dependency locking, but they do not rebuild four desktop targets.
+When <code>desktop_assets=reuse</code>, the workflow copies the previous published UI and
+installer assets into the new release. The frontend accepts a different backend
+build commit as long as <code>API_VERSION</code> matches. Incompatible route or payload
+changes must bump <code>API_VERSION</code> and use <code>desktop_assets=build</code>.</p>
 <h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="if-main-changes-before-merge">If main changes before merge<a href="#if-main-changes-before-merge" class="hash-link" aria-label="If main changes before merge的直接链接" title="If main changes before merge的直接链接" translate="no">​</a></h3>
 <p>Do not merge a stale Release PR. Every push to <code>main</code> automatically runs
 <strong>Refresh Release PR</strong>. It finds the single open same-repository <code>release/v*</code>
