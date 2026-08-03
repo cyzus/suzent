@@ -21,6 +21,7 @@ import { ProjectProvider } from './hooks/useProjects';
 import { useStatusStore } from './hooks/useStatusStore';
 import { useTheme } from './hooks/useTheme';
 import {
+  BackendVersionTimeoutError,
   drainCronNotifications,
   fetchHeartbeatStatus,
   fetchSystemVersion,
@@ -1153,8 +1154,12 @@ export default function App() {
         if (!cancelled) {
           setBackendError(tForLocale(
             getInitialLocale(),
-            'app.backendCompatibility.verifyFailed',
-            { error: String(error) },
+            error instanceof BackendVersionTimeoutError
+              ? 'app.backendCompatibility.verifyTimeout'
+              : 'app.backendCompatibility.verifyFailed',
+            error instanceof BackendVersionTimeoutError
+              ? undefined
+              : { error: String(error) },
           ));
           setBackendCompatible(false);
         }

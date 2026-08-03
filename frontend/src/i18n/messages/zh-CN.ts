@@ -36,6 +36,7 @@ export const zhCN = {
       api: '前后端 API 版本不匹配（{frontend} 与 {backend}）。请运行 suzent update。',
       build: '前后端构建不匹配（{frontend} 与 {backend}）。请运行 suzent update。',
       version: '前后端版本不匹配（{frontend} 与 {backend}）。请运行 suzent update。',
+      verifyTimeout: '后端版本验证超时。后端可能仍在恢复，请关闭并重新打开 Suzent。',
       verifyFailed: '无法验证后端版本：{error}',
     },
   },

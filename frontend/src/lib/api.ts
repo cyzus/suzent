@@ -50,17 +50,49 @@ export interface SystemVersionResponse {
   developmentMode: boolean;
 }
 
-export async function fetchSystemVersion(): Promise<SystemVersionResponse> {
-  const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 5000);
-  let response: Response;
-  try {
-    response = await fetch(`${getApiBase()}/system/version`, {
-      signal: controller.signal,
-    });
-  } finally {
-    window.clearTimeout(timeout);
+export class BackendVersionTimeoutError extends Error {
+  constructor() {
+    super('Backend version verification timed out');
+    this.name = 'BackendVersionTimeoutError';
   }
+}
+
+interface FetchSystemVersionOptions {
+  attempts?: number;
+  timeoutMs?: number;
+  retryDelayMs?: number;
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === 'AbortError';
+}
+
+export async function fetchSystemVersion(
+  options: FetchSystemVersionOptions = {},
+): Promise<SystemVersionResponse> {
+  const attempts = options.attempts ?? 2;
+  const timeoutMs = options.timeoutMs ?? 15000;
+  const retryDelayMs = options.retryDelayMs ?? 500;
+  let response: Response | null = null;
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      response = await fetch(`${getApiBase()}/system/version`, {
+        signal: controller.signal,
+      });
+      break;
+    } catch (error) {
+      if (!isAbortError(error)) throw error;
+      if (attempt === attempts - 1) throw new BackendVersionTimeoutError();
+      await new Promise(resolve => window.setTimeout(resolve, retryDelayMs));
+    } finally {
+      window.clearTimeout(timeout);
+    }
+  }
+
+  if (response === null) throw new BackendVersionTimeoutError();
   if (!response.ok) {
     throw new Error(`Failed to load backend version: ${response.status}`);
   }
