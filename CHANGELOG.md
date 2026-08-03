@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🚀 Added
 - Add transactional standalone updates (#91)
+- Add guided installer and updater experience with recoverable progress and per-step timing (#93)
 
 ### 🐛 Fixed
 - Retry backend identity after refresh (#90)
