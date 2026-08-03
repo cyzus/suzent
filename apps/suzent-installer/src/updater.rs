@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::collections::BTreeMap;
 use std::env;
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
@@ -16,13 +17,17 @@ struct ReleaseResponse {
     tag_name: String,
 }
 
-#[derive(Serialize)]
-struct UpdateStatus<'a> {
-    phase: &'a str,
+#[derive(Deserialize, Serialize)]
+struct UpdateStatus {
+    phase: String,
     progress: u8,
-    message: &'a str,
-    target_version: &'a str,
+    message: String,
+    target_version: String,
     updated_at: u64,
+    #[serde(default)]
+    phase_started_at: u64,
+    #[serde(default)]
+    phase_durations_ms: BTreeMap<String, u64>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -631,12 +636,40 @@ fn write_status(
     tag: &str,
 ) -> Result<(), String> {
     println!("[{progress:>3}%] {message}");
+    let now = now_epoch_millis();
+    let previous = fs::read(&paths.status)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<UpdateStatus>(&bytes).ok());
+    let same_transaction = previous
+        .as_ref()
+        .filter(|status| status.target_version == tag);
+    let mut phase_durations_ms = same_transaction
+        .map(|status| status.phase_durations_ms.clone())
+        .unwrap_or_default();
+    if let Some(status) = same_transaction {
+        if status.phase != phase {
+            let started_at = status
+                .phase_started_at
+                .max(status.updated_at.saturating_mul(1_000));
+            phase_durations_ms.insert(status.phase.clone(), now.saturating_sub(started_at));
+        }
+    }
+    let phase_started_at = same_transaction
+        .filter(|status| status.phase == phase)
+        .map(|status| {
+            status
+                .phase_started_at
+                .max(status.updated_at.saturating_mul(1_000))
+        })
+        .unwrap_or(now);
     let payload = UpdateStatus {
-        phase,
+        phase: phase.to_string(),
         progress,
-        message,
-        target_version: tag,
-        updated_at: now_epoch(),
+        message: message.to_string(),
+        target_version: tag.to_string(),
+        updated_at: now / 1_000,
+        phase_started_at,
+        phase_durations_ms,
     };
     write_json_atomic(&paths.status, &payload, "write update status")
 }
@@ -730,11 +763,11 @@ fn read_trimmed(path: impl AsRef<Path>) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
-fn now_epoch() -> u64 {
+fn now_epoch_millis() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
-        .as_secs()
+        .as_millis() as u64
 }
 
 fn display_io(action: &'static str) -> impl Fn(io::Error) -> String {
@@ -760,9 +793,11 @@ fn set_executable(_path: &Path) -> Result<(), String> {
 mod tests {
     use super::{
         acquire_lock, backup_current_ui, is_release_tag, parse_release_checksum, restore_ui_backup,
-        UpdatePaths,
+        write_status, UpdatePaths, UpdateStatus,
     };
     use std::fs;
+    use std::thread;
+    use std::time::Duration;
 
     #[test]
     fn validates_release_tags() {
@@ -810,5 +845,23 @@ mod tests {
         assert!(second.is_err());
         drop(first);
         assert!(acquire_lock(temp.path()).is_ok());
+    }
+
+    #[test]
+    fn records_completed_phase_durations_in_status() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let paths = UpdatePaths::new(temp.path().to_path_buf(), "v1.2.3");
+        fs::create_dir_all(&paths.state_dir).expect("state dir");
+
+        write_status(&paths, "preflight", 5, "Preparing", "v1.2.3").expect("first status");
+        thread::sleep(Duration::from_millis(2));
+        write_status(&paths, "download", 15, "Downloading", "v1.2.3").expect("second status");
+
+        let status: UpdateStatus =
+            serde_json::from_slice(&fs::read(&paths.status).expect("status file"))
+                .expect("valid status");
+        assert_eq!(status.phase, "download");
+        assert!(status.phase_durations_ms.contains_key("preflight"));
+        assert!(status.phase_started_at > 0);
     }
 }
