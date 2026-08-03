@@ -529,6 +529,27 @@ def test_windows_update_delegates_away_from_locked_launcher(monkeypatch, tmp_pat
     assert kwargs["env"][cli_main._UPDATE_HELPER_ENV] == "1"
 
 
+def test_windows_update_delegates_when_launcher_detection_misses(monkeypatch, tmp_path):
+    python_exe = tmp_path / ".venv" / "Scripts" / "python.exe"
+    python_exe.parent.mkdir(parents=True)
+    python_exe.write_bytes(b"")
+    popen_calls = []
+
+    monkeypatch.setattr(cli_main, "IS_WINDOWS", True)
+    monkeypatch.setattr(cli_main, "_windows_suzent_launcher_pid", lambda root: None)
+    monkeypatch.setattr(cli_main.os, "getpid", lambda: 9876)
+    monkeypatch.setattr(
+        cli_main.subprocess,
+        "Popen",
+        lambda command, **kwargs: popen_calls.append((command, kwargs)),
+    )
+    monkeypatch.delenv(cli_main._UPDATE_HELPER_ENV, raising=False)
+
+    assert cli_main._delegate_windows_update(tmp_path, dev=False)
+    command, _kwargs = popen_calls[0]
+    assert command[3:5] == ["--wait-pid", "9876"]
+
+
 def test_windows_update_helper_does_not_redelegate(monkeypatch, tmp_path):
     monkeypatch.setattr(cli_main, "IS_WINDOWS", True)
     monkeypatch.setenv(cli_main._UPDATE_HELPER_ENV, "1")
@@ -554,9 +575,9 @@ def test_windows_launcher_detection_falls_back_to_argv(monkeypatch, tmp_path):
         lambda *args, **kwargs: subprocess.CompletedProcess(args, 0, stdout=""),
     )
     monkeypatch.setattr(cli_main.sys, "argv", [str(launcher), "update"])
-    monkeypatch.setattr(cli_main.os, "getppid", lambda: 123)
+    monkeypatch.setattr(cli_main.os, "getpid", lambda: 456)
 
-    assert cli_main._windows_suzent_launcher_pid(tmp_path) == 123
+    assert cli_main._windows_suzent_launcher_pid(tmp_path) == 456
 
 
 @pytest.mark.parametrize(
