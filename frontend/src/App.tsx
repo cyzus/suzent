@@ -944,22 +944,23 @@ async function waitForBackendPort(options?: { attempts?: number }): Promise<numb
   // registered its listener.
   const attempts = options?.attempts ?? 24;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
-    const candidates: number[] = [];
-    const remembered = getRememberedBackendPort();
-    if (remembered) candidates.push(remembered);
-
     try {
       const tauriPort = await invoke<number>('get_backend_port');
-      candidates.unshift(tauriPort);
+      if (Number.isFinite(tauriPort) && tauriPort > 0) {
+        // Rust only stores the BackendProcess after its /health check passes,
+        // so this port is authoritative. This also makes WebView refreshes
+        // recover without a second browser-side request that can race startup.
+        rememberBackendPort(tauriPort);
+        return tauriPort;
+      }
     } catch {
       // A dev backend may only be discoverable from storage after a WebView refresh.
     }
 
-    for (const port of Array.from(new Set(candidates))) {
-      if (await isBackendPortReachable(port)) {
-        rememberBackendPort(port);
-        return port;
-      }
+    const remembered = getRememberedBackendPort();
+    if (remembered && await isBackendPortReachable(remembered)) {
+      rememberBackendPort(remembered);
+      return remembered;
     }
 
     try {
