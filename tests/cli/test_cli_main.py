@@ -433,9 +433,28 @@ def test_stable_update_delegates_to_release_installer(monkeypatch, tmp_path):
     assert delegated == [
         (
             tmp_path,
-            {"release_tag": "v1.2.3", "relaunch": None},
+            {"release_tag": "v1.2.3", "relaunch": None, "headless": False},
         )
     ]
+
+
+def test_stable_update_accepts_headless_mode(monkeypatch, tmp_path):
+    (tmp_path / ".suzent-bootstrap-complete").write_text("")
+    app, _commands = _mock_update_runtime(monkeypatch, tmp_path)
+    delegated = []
+    monkeypatch.setattr(
+        cli_main, "_fetch_latest_release", lambda: {"tag_name": "v1.2.3"}
+    )
+    monkeypatch.setattr(
+        cli_main,
+        "_delegate_installer_update",
+        lambda root, **kwargs: delegated.append((root, kwargs)),
+    )
+
+    result = runner.invoke(app, ["update", "--headless"])
+
+    assert result.exit_code == 0
+    assert delegated[0][1]["headless"] is True
 
 
 def test_parse_release_checksum_selects_exact_asset():
@@ -598,6 +617,96 @@ def test_stable_update_launches_standalone_installer(monkeypatch, tmp_path):
         str(tmp_path / "bin" / "suzent-ui.exe"),
     ]
     assert kwargs["cwd"] == tmp_path
+
+
+def test_stable_update_uses_headless_mode_without_graphical_session(
+    monkeypatch, tmp_path
+):
+    updater = tmp_path / "updater" / "suzent-installer"
+    updater.parent.mkdir()
+    updater.write_bytes(b"")
+    popen_calls = []
+
+    monkeypatch.setattr(cli_main, "IS_WINDOWS", False)
+    monkeypatch.setattr(cli_main, "_graphical_update_available", lambda: False)
+    monkeypatch.setattr(cli_main, "_install_release_updater", lambda tag: updater)
+    monkeypatch.setattr(
+        cli_main.subprocess,
+        "Popen",
+        lambda command, **kwargs: popen_calls.append((command, kwargs)),
+    )
+
+    cli_main._delegate_installer_update(
+        tmp_path,
+        release_tag="v1.2.3",
+        relaunch=None,
+    )
+
+    assert "--headless" in popen_calls[0][0]
+
+
+def test_stable_update_falls_back_when_window_exits_immediately(monkeypatch, tmp_path):
+    updater = tmp_path / "updater" / "suzent-installer.exe"
+    updater.parent.mkdir()
+    updater.write_bytes(b"")
+    popen_calls = []
+
+    class FailedWindow:
+        def poll(self):
+            return 1
+
+    def fake_popen(command, **kwargs):
+        popen_calls.append((command, kwargs))
+        return FailedWindow() if len(popen_calls) == 1 else None
+
+    monkeypatch.setattr(cli_main, "IS_WINDOWS", True)
+    monkeypatch.setattr(cli_main, "_graphical_update_available", lambda: True)
+    monkeypatch.setattr(cli_main, "_install_release_updater", lambda tag: updater)
+    monkeypatch.setattr(cli_main.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(cli_main.time, "sleep", lambda _seconds: None)
+
+    cli_main._delegate_installer_update(
+        tmp_path,
+        release_tag="v1.2.3",
+        relaunch=None,
+    )
+
+    assert "--headless" not in popen_calls[0][0]
+    assert "--headless" in popen_calls[1][0]
+
+
+def test_atomic_download_streams_with_progress(monkeypatch, tmp_path, capsys):
+    destination = tmp_path / "asset.exe"
+    observed_timeout = []
+
+    class Response:
+        headers = {"Content-Length": "6"}
+
+        def __init__(self):
+            self.chunks = iter((b"abc", b"def", b""))
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self, _size):
+            return next(self.chunks)
+
+    response = Response()
+
+    def fake_urlopen(_request, *, timeout):
+        observed_timeout.append(timeout)
+        return response
+
+    monkeypatch.setattr(cli_main.urllib.request, "urlopen", fake_urlopen)
+
+    cli_main._download_file_atomic("https://example.test/asset", destination)
+
+    assert destination.read_bytes() == b"abcdef"
+    assert observed_timeout == [300.0]
+    assert "100%" in capsys.readouterr().out
 
 
 def test_windows_update_delegates_when_launcher_detection_misses(monkeypatch, tmp_path):
