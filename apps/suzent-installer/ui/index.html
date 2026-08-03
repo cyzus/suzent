@@ -6,32 +6,44 @@
     <title>Suzent Installer</title>
     <style>
       :root {
-        color: #111;
-        background: #f8fafc;
-        --ink: #111;
-        --paper: #fff;
-        --muted: #52525b;
-        --line: #111;
-        --soft-line: #d4d4d8;
-        --yellow: #ffe666;
-        --blue: #2563eb;
-        --green: #16a34a;
-        --red: #dc2626;
-        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color: #171714;
+        background: #e9e7df;
+        --ink: #171714;
+        --paper: #f8f7f2;
+        --paper-2: #efede5;
+        --muted: #706f68;
+        --line: #cbc8bd;
+        --acid: #e8ff65;
+        --green: #2e6f50;
+        --green-soft: #dfefe5;
+        --red: #a53c35;
+        --red-soft: #f6e2df;
+        --blue: #355fd2;
+        --shadow: rgba(31, 30, 25, 0.14);
+        font-family: Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
       }
 
-      * {
-        box-sizing: border-box;
-      }
+      * { box-sizing: border-box; }
+      [hidden] { display: none !important; }
 
       body {
         margin: 0;
         height: 100vh;
-        background-color: #f8fafc;
-        background-image: radial-gradient(rgba(17, 17, 17, 0.11) 1px, transparent 1px);
-        background-size: 18px 18px;
         color: var(--ink);
         overflow: hidden;
+        background:
+          radial-gradient(circle at 12% 12%, rgba(232, 255, 101, 0.5), transparent 24%),
+          radial-gradient(circle at 88% 88%, rgba(53, 95, 210, 0.11), transparent 24%),
+          #e9e7df;
+      }
+
+      body::after {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        opacity: 0.22;
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 140 140' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.18'/%3E%3C/svg%3E");
       }
 
       main {
@@ -39,659 +51,610 @@
         display: grid;
         place-items: center;
         padding: 18px;
-        position: relative;
-      }
-
-      main::before {
-        content: "";
-        position: fixed;
-        inset: 0;
-        pointer-events: none;
-        background:
-          linear-gradient(90deg, transparent 0, transparent 49%, rgba(255, 230, 102, 0.18) 50%, transparent 51%, transparent 100%),
-          linear-gradient(180deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0));
-        background-size: 120px 100%, 100% 100%;
-        animation: drift-grid 14s linear infinite;
       }
 
       .shell {
-        width: 880px;
-        height: 540px;
-        border: 3px solid var(--line);
-        background: rgba(255, 255, 255, 0.98);
-        box-shadow: 8px 8px 0 var(--line), 0 24px 60px rgba(15, 23, 42, 0.14);
-        position: relative;
-        display: flex;
-        flex-direction: column;
-        animation: enter-shell 320ms ease-out both;
+        width: min(1040px, calc(100vw - 36px));
+        height: min(650px, calc(100vh - 36px));
+        min-height: 560px;
+        display: grid;
+        grid-template-columns: 244px minmax(0, 1fr);
+        overflow: hidden;
+        border: 1px solid rgba(23, 23, 20, 0.28);
+        border-radius: 18px;
+        background: var(--paper);
+        box-shadow: 0 28px 80px var(--shadow), 0 2px 0 rgba(255, 255, 255, 0.75) inset;
+        animation: shell-in 320ms cubic-bezier(.2,.8,.2,1) both;
       }
 
-      .header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 20px;
-        border-bottom: 3px solid var(--line);
-        padding: 22px 28px;
-        background: var(--paper);
+      .rail {
         position: relative;
+        display: flex;
+        min-height: 0;
+        flex-direction: column;
+        padding: 28px 24px 22px;
+        color: #f8f7f2;
+        background: var(--ink);
         overflow: hidden;
       }
 
-      .header::after {
+      .rail::before {
         content: "";
         position: absolute;
-        right: 0;
-        top: 0;
-        width: 168px;
-        height: 100%;
-        background:
-          repeating-linear-gradient(135deg, rgba(0, 0, 0, 0.08) 0 8px, transparent 8px 16px),
-          var(--yellow);
-        border-left: 3px solid var(--line);
-        z-index: 0;
+        width: 190px;
+        height: 190px;
+        right: -92px;
+        top: -84px;
+        border: 34px solid rgba(232, 255, 101, 0.14);
+        border-radius: 50%;
       }
 
-      .header > * {
-        position: relative;
-        z-index: 1;
-      }
-
-      h1 {
-        margin: 0;
-        font-size: 30px;
-        line-height: 1;
-        letter-spacing: 0;
-        text-transform: uppercase;
-      }
-
-      .brand-row {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-      }
-
-      .brand-logo {
+      .brand { display: flex; align-items: center; gap: 11px; position: relative; z-index: 1; }
+      .logo {
         width: 34px;
         height: 34px;
-        flex: 0 0 auto;
-        filter: drop-shadow(3px 3px 0 rgba(0, 0, 0, 0.16));
-        animation: logo-bob 1800ms ease-in-out infinite;
-      }
-
-      .brand-logo .logo-eye {
-        transform-origin: center;
-        animation: logo-eye-scan 2400ms ease-in-out infinite;
-      }
-
-      .brand-logo .logo-eye:last-child {
-        animation-delay: 80ms;
-      }
-
-      .version {
-        margin-top: 8px;
-        color: var(--muted);
-        font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-        font-size: 13px;
-      }
-
-      .body {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) 330px;
-        gap: 24px;
-        padding: 24px 28px 22px;
-        min-height: 0;
-        flex: 1;
-        background:
-          linear-gradient(180deg, rgba(255, 230, 102, 0.08), transparent 160px),
-          var(--paper);
-      }
-
-      label {
-        display: block;
-        margin-bottom: 8px;
-        font-size: 12px;
-        font-weight: 800;
-        text-transform: uppercase;
-      }
-
-      .path-row {
-        display: flex;
-        gap: 10px;
-      }
-
-      input {
-        width: 100%;
-        height: 40px;
-        border: 2px solid var(--line);
-        padding: 0 12px;
-        background: #fff;
-        font: 13px ui-monospace, SFMono-Regular, Consolas, monospace;
-        box-shadow: 3px 3px 0 #e5e5e5;
-      }
-
-      button {
-        height: 40px;
-        border: 2px solid var(--line);
-        background: var(--ink);
-        color: #fff;
-        padding: 0 16px;
-        font-weight: 900;
-        text-transform: uppercase;
-        cursor: pointer;
-        box-shadow: 4px 4px 0 var(--line);
-        transition: transform 140ms ease, box-shadow 140ms ease, background 140ms ease;
-      }
-
-      button.secondary {
-        border-color: var(--line);
-        background: #fff;
-        color: var(--ink);
-      }
-
-      button:hover:not(:disabled) {
-        transform: translate(-1px, -1px);
-        box-shadow: 6px 6px 0 var(--line);
-      }
-
-      button:active:not(:disabled) {
-        transform: translate(2px, 2px);
-        box-shadow: 1px 1px 0 var(--line);
-      }
-
-      button:disabled {
-        cursor: wait;
-        opacity: 0.55;
-        box-shadow: 2px 2px 0 #a1a1aa;
-      }
-
-      .actions {
-        display: flex;
-        gap: 10px;
-      }
-
-      .progress {
-        height: 14px;
-        margin: 20px 0 8px;
-        border: 2px solid var(--line);
-        background: #fff;
-        overflow: hidden;
-        box-shadow: 3px 3px 0 #e5e5e5;
-      }
-
-      .bar {
-        width: 0%;
-        height: 100%;
-        background:
-          repeating-linear-gradient(135deg, rgba(0, 0, 0, 0.16) 0 8px, transparent 8px 16px),
-          var(--yellow);
-        transition: width 240ms cubic-bezier(.2,.8,.2,1);
-        animation: progress-stripes 900ms linear infinite;
-      }
-
-      .percent {
-        text-align: right;
-        color: var(--muted);
-        font: 12px ui-monospace, SFMono-Regular, Consolas, monospace;
-      }
-
-      .stages {
-        display: grid;
-        gap: 7px;
-        margin-top: 16px;
-        max-height: 210px;
-        overflow: auto;
-        padding-right: 4px;
-      }
-
-      .stage {
-        display: flex;
+        grid-template-columns: 1fr 1fr;
+        gap: 5px;
         align-items: center;
-        justify-content: space-between;
-        gap: 14px;
-        border: 2px solid var(--line);
-        background: #fff;
-        padding: 9px 12px;
-        font-size: 13px;
-        box-shadow: 3px 3px 0 #e5e5e5;
-        animation: stage-in 180ms ease-out both;
+        padding: 7px;
+        border-radius: 9px;
+        background: var(--acid);
+        box-shadow: 0 0 0 1px rgba(255,255,255,.2) inset;
+      }
+      .logo i { display: block; height: 8px; border-radius: 3px; background: var(--ink); animation: eye 2.6s ease-in-out infinite; }
+      .logo i:last-child { animation-delay: 100ms; }
+      .wordmark { font-size: 16px; font-weight: 800; letter-spacing: -.02em; }
+      .wordmark small { display: block; margin-top: 2px; color: #a7a69f; font: 9px ui-monospace, monospace; letter-spacing: .14em; text-transform: uppercase; }
+
+      .rail-copy { margin-top: 54px; position: relative; z-index: 1; }
+      .eyebrow { margin: 0 0 12px; color: var(--acid); font: 700 10px ui-monospace, monospace; letter-spacing: .16em; text-transform: uppercase; }
+      .rail h1 { margin: 0; max-width: 190px; font-size: 30px; line-height: 1.03; letter-spacing: -.045em; }
+      .rail-intro { margin: 16px 0 0; color: #bdbcb5; font-size: 12px; line-height: 1.55; }
+
+      .trust-list { display: grid; gap: 13px; margin-top: 30px; }
+      .trust-item { display: grid; grid-template-columns: 20px 1fr; gap: 9px; align-items: start; color: #d8d7d0; font-size: 11px; line-height: 1.35; }
+      .trust-icon { width: 18px; height: 18px; display: grid; place-items: center; border: 1px solid #55544f; border-radius: 50%; color: var(--acid); font: 700 10px ui-monospace, monospace; }
+
+      .rail-footer { margin-top: auto; position: relative; z-index: 1; }
+      .safety-pill { display: inline-flex; align-items: center; gap: 7px; padding: 7px 9px; border: 1px solid #45443f; border-radius: 999px; color: #bdbcb5; font: 9px ui-monospace, monospace; letter-spacing: .08em; text-transform: uppercase; }
+      .safety-pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: #77c795; box-shadow: 0 0 0 3px rgba(119,199,149,.12); }
+
+      .content { display: flex; min-width: 0; min-height: 0; flex-direction: column; }
+      .topbar { min-height: 76px; display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 18px 26px; border-bottom: 1px solid var(--line); }
+      .topbar-title { min-width: 0; }
+      .topbar-title h2 { margin: 0; font-size: 17px; line-height: 1.2; letter-spacing: -.025em; }
+      .topbar-title p { margin: 6px 0 0; color: var(--muted); font: 10px ui-monospace, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .mode-badge { display: inline-flex; align-items: center; gap: 7px; flex: 0 0 auto; padding: 8px 11px; border: 1px solid var(--line); border-radius: 999px; background: #fff; color: #53524d; font: 700 9px ui-monospace, monospace; letter-spacing: .1em; text-transform: uppercase; }
+      .mode-badge::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--blue); }
+
+      .workspace { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 280px; }
+      .primary { min-width: 0; min-height: 0; display: flex; flex-direction: column; padding: 24px 26px 22px; }
+      .activity { min-height: 0; display: flex; flex-direction: column; padding: 24px 22px 20px; border-left: 1px solid var(--line); background: rgba(239,237,229,.62); }
+
+      label { display: block; margin-bottom: 8px; color: #4f4e48; font: 800 9px ui-monospace, monospace; letter-spacing: .12em; text-transform: uppercase; }
+      .path-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+      .path-box { position: relative; }
+      .path-box::before { content: "⌁"; position: absolute; left: 12px; top: 9px; color: var(--muted); font: 16px ui-monospace, monospace; }
+      input { width: 100%; height: 40px; padding: 0 12px 0 34px; border: 1px solid #bbb8ad; border-radius: 9px; outline: none; color: var(--ink); background: #fff; font: 11px ui-monospace, monospace; transition: border-color 140ms, box-shadow 140ms; }
+      input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(53,95,210,.1); }
+      input:disabled { color: #696861; background: var(--paper-2); }
+
+      button { height: 40px; border: 0; border-radius: 9px; padding: 0 15px; color: #fff; background: var(--ink); font: 800 10px ui-monospace, monospace; letter-spacing: .06em; text-transform: uppercase; cursor: pointer; transition: transform 130ms, box-shadow 130ms, opacity 130ms; }
+      button:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 7px 18px rgba(23,23,20,.16); }
+      button:active:not(:disabled) { transform: translateY(0); box-shadow: none; }
+      button:disabled { cursor: wait; opacity: .48; }
+      button.secondary { color: var(--ink); border: 1px solid #bbb8ad; background: #fff; }
+      button.ghost { height: 32px; padding: 0 10px; color: #575650; border: 1px solid var(--line); background: transparent; }
+
+      .status-card { margin-top: 20px; padding: 18px; border: 1px solid var(--line); border-radius: 13px; background: #fff; box-shadow: 0 10px 24px rgba(31,30,25,.06); }
+      .status-line { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+      .status-kicker { margin-bottom: 6px; color: var(--blue); font: 800 9px ui-monospace, monospace; letter-spacing: .12em; text-transform: uppercase; }
+      .status-title { margin: 0; font-size: 18px; letter-spacing: -.03em; }
+      .status-message { margin: 7px 0 0; color: var(--muted); font-size: 11px; line-height: 1.45; }
+      .elapsed { flex: 0 0 auto; padding-top: 3px; color: var(--muted); font: 10px ui-monospace, monospace; }
+      .progress-track { height: 7px; margin-top: 17px; overflow: hidden; border-radius: 99px; background: #e3e1d8; }
+      .progress-bar { width: 0; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--blue), #718cf0); transition: width 380ms cubic-bezier(.2,.8,.2,1); position: relative; }
+      .progress-bar.running::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,.55), transparent); transform: translateX(-100%); animation: scan 1.4s linear infinite; }
+      .progress-meta { display: flex; justify-content: space-between; margin-top: 8px; color: var(--muted); font: 9px ui-monospace, monospace; letter-spacing: .06em; text-transform: uppercase; }
+
+      .stage-heading { display: flex; align-items: center; justify-content: space-between; margin: 22px 0 10px; }
+      .stage-heading h3, .activity h3 { margin: 0; font-size: 11px; letter-spacing: .02em; text-transform: uppercase; }
+      .stage-heading span { color: var(--muted); font: 9px ui-monospace, monospace; }
+      .stage-heading-meta { display: flex; align-items: center; gap: 9px; }
+      button.stage-toggle { height: auto; padding: 0; color: var(--muted); border: 0; background: none; font: 9px ui-monospace, monospace; text-decoration: underline; text-underline-offset: 3px; }
+      .stages { min-height: 0; overflow: auto; display: grid; gap: 7px; padding-right: 4px; }
+      .stage { min-height: 43px; display: grid; grid-template-columns: 24px minmax(0,1fr) auto; gap: 10px; align-items: center; padding: 8px 10px; border: 1px solid transparent; border-radius: 9px; color: #4f4e49; background: transparent; animation: stage-in 180ms ease-out both; }
+      .stage:hover { background: rgba(255,255,255,.75); }
+      .stage.running { border-color: #c4cce8; color: var(--ink); background: #f2f5ff; }
+      .stage.failed { border-color: #e4bcb7; color: var(--red); background: var(--red-soft); }
+      .stage.succeeded { color: #39664d; }
+      .stage-icon { width: 22px; height: 22px; display: grid; place-items: center; border: 1px solid #cfccc1; border-radius: 50%; color: #8a8981; font: 800 9px ui-monospace, monospace; }
+      .stage.running .stage-icon { border-color: var(--blue); color: var(--blue); animation: pulse-ring 1.2s ease-in-out infinite; }
+      .stage.succeeded .stage-icon { border-color: #7dad90; color: #fff; background: var(--green); }
+      .stage.failed .stage-icon { border-color: var(--red); color: #fff; background: var(--red); }
+      .stage-title { min-width: 0; font-size: 11px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .state { display: grid; justify-items: end; gap: 2px; color: #8a8981; font: 8px ui-monospace, monospace; letter-spacing: .08em; text-transform: uppercase; }
+      .duration { color: #aaa89f; font-size: 8px; letter-spacing: 0; text-transform: none; }
+
+      .activity-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+      .live-dot { display: flex; align-items: center; gap: 6px; color: var(--muted); font: 8px ui-monospace, monospace; letter-spacing: .1em; text-transform: uppercase; }
+      .live-dot::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: #8f8e87; }
+      .live-dot.running::before { background: var(--green); animation: live 1.3s ease-in-out infinite; }
+      .summary { display: grid; gap: 8px; margin-bottom: 14px; }
+      .summary-row { display: flex; justify-content: space-between; gap: 12px; padding-bottom: 8px; border-bottom: 1px solid rgba(203,200,189,.7); color: var(--muted); font: 9px ui-monospace, monospace; }
+      .summary-row strong { max-width: 155px; color: #4b4a45; font-weight: 700; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+      .recent-status { margin-top: auto; padding: 10px 11px; overflow: hidden; color: #575650; border: 1px solid var(--line); border-radius: 9px; background: #fff; font: 9px ui-monospace, monospace; text-overflow: ellipsis; white-space: nowrap; }
+      .recent-status::before { content: "› "; color: #99978e; }
+      .log { margin-top: 8px; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; background: #1d1d1a; }
+      .log summary { display: flex; align-items: center; justify-content: space-between; padding: 9px 11px; color: #aaa9a2; cursor: pointer; font: 8px ui-monospace, monospace; letter-spacing: .12em; list-style: none; text-transform: uppercase; }
+      .log summary::-webkit-details-marker { display: none; }
+      .log summary::after { content: "+"; color: #77766f; font-size: 11px; }
+      .log[open] summary::after { content: "−"; }
+      .log-local { margin-left: auto; margin-right: 9px; color: #6f6e68; }
+      .log-body { max-height: 190px; overflow: auto; padding: 10px 11px; color: #bdbcb5; border-top: 1px solid #34342f; font: 9px/1.55 ui-monospace, monospace; }
+      .log-body div { white-space: pre-wrap; }
+      .log-body div::before { content: "› "; color: #65645e; }
+
+      .error-card, .complete-card { display: none; margin-bottom: 14px; padding: 13px; border-radius: 10px; font-size: 10px; line-height: 1.45; }
+      .error-card { color: #712d28; border: 1px solid #deb1ad; background: var(--red-soft); }
+      .complete-card { color: #28573e; border: 1px solid #a9cfb6; background: var(--green-soft); }
+      .result-title { margin-bottom: 5px; font-size: 11px; font-weight: 800; }
+      .result-actions { display: flex; gap: 7px; margin-top: 10px; }
+      .result-actions button { height: 32px; font-size: 8px; }
+
+      .footer-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; }
+      .footer-note { color: var(--muted); font-size: 9px; line-height: 1.35; }
+      .buttons { display: flex; gap: 8px; }
+
+      @media (max-width: 820px) {
+        .shell { grid-template-columns: 205px minmax(0,1fr); }
+        .workspace { grid-template-columns: 1fr; }
+        .activity { display: none; }
       }
 
-      .stage.running {
-        border-color: var(--line);
-        background: var(--yellow);
-        animation: running-pulse 900ms ease-in-out infinite;
+      @keyframes shell-in { from { opacity: 0; transform: translateY(10px) scale(.99); } to { opacity: 1; transform: none; } }
+      @keyframes stage-in { from { opacity: 0; transform: translateX(-5px); } to { opacity: 1; transform: none; } }
+      @keyframes scan { to { transform: translateX(100%); } }
+      @keyframes live { 50% { opacity: .35; transform: scale(.75); } }
+      @keyframes pulse-ring { 50% { box-shadow: 0 0 0 4px rgba(53,95,210,.12); } }
+      @keyframes eye { 0%,20%,100% { transform: translateX(0); } 45% { transform: translateX(2px); } 65% { transform: translateX(-1px); } }
+      @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 1ms !important; transition-duration: 1ms !important; } }
+
+      /* Keep installer and updater on the same neo-brutalist visual system as
+         the Suzent desktop shell. The information architecture above remains
+         shared; these rules are the canonical product skin. */
+      :root {
+        --ink: #111111;
+        --paper: #ffffff;
+        --paper-2: #f5f5f5;
+        --muted: #737373;
+        --line: #111111;
+        --acid: #ffe666;
+        --green: #5fd38d;
+        --green-soft: #ecfdf3;
+        --red: #dc2626;
+        --red-soft: #fff1f1;
+        --blue: #2563eb;
+        --shadow: rgba(0, 0, 0, 1);
       }
-
-      .stage.failed {
-        border-color: var(--red);
-        background: #fef2f2;
-        box-shadow: 3px 3px 0 var(--red);
-      }
-
-      .stage strong {
-        line-height: 1.2;
-      }
-
-      .state {
-        color: var(--muted);
-        font: 11px ui-monospace, SFMono-Regular, Consolas, monospace;
-        text-transform: uppercase;
-      }
-
-      .panel {
-        border-left: 3px solid var(--line);
-        padding-left: 22px;
-        min-height: 0;
-        display: flex;
-        flex-direction: column;
-      }
-
-      .panel h2 {
-        margin: 0 0 12px;
-        font-size: 15px;
-        text-transform: uppercase;
-      }
-
-      .panel p {
-        margin: 0 0 14px;
-        color: var(--muted);
-        font-size: 13px;
-        line-height: 1.42;
-      }
-
-      .error {
-        display: none;
-        margin-top: 14px;
-        border: 3px solid var(--red);
-        color: var(--red);
-        background: #fff;
-        padding: 12px;
-        font-weight: 800;
-        box-shadow: 5px 5px 0 #fecaca;
-      }
-
-      .complete {
-        display: none;
-        border: 3px solid var(--line);
-        background: #f0fdf4;
-        color: #14532d;
-        padding: 12px;
-        font-size: 13px;
-        line-height: 1.45;
-        box-shadow: 5px 5px 0 #86efac;
-      }
-
-      .log {
-        flex: 1;
-        min-height: 0;
-        border: 2px solid var(--line);
-        background: #f8fafc;
-        box-shadow: 4px 4px 0 #e5e5e5;
-      }
-
-      .log summary {
-        padding: 10px 12px;
-        font-size: 12px;
-        font-weight: 900;
-        text-transform: uppercase;
-        cursor: pointer;
-      }
-
-      .log-body {
-        height: 100%;
-        max-height: 286px;
-        overflow: auto;
-        border-top: 2px solid var(--line);
-        padding: 10px 12px;
-        color: #3f3f46;
-        font: 12px ui-monospace, SFMono-Regular, Consolas, monospace;
-        background: #fff;
-      }
-
-      .log-body div {
-        white-space: pre-wrap;
-      }
-
-      @media (max-width: 760px) {
-        main {
-          padding: 18px;
-        }
-
-        .body {
-          grid-template-columns: 1fr;
-        }
-
-        .panel {
-          border-left: 0;
-          border-top: 3px solid var(--line);
-          padding-left: 0;
-          padding-top: 22px;
-        }
-
-        .log-body {
-          max-height: 160px;
-        }
-      }
-
-      @keyframes enter-shell {
-        from {
-          opacity: 0;
-          transform: translateY(10px);
-        }
-        to {
-          opacity: 1;
-          transform: translateY(0);
-        }
-      }
-
-      @keyframes stage-in {
-        from {
-          opacity: 0;
-          transform: translateX(-8px);
-        }
-        to {
-          opacity: 1;
-          transform: translateX(0);
-        }
-      }
-
-      @keyframes running-pulse {
-        0%, 100% {
-          box-shadow: 3px 3px 0 var(--line);
-        }
-        50% {
-          box-shadow: 6px 6px 0 var(--line);
-        }
-      }
-
-      @keyframes progress-stripes {
-        from {
-          background-position: 0 0;
-        }
-        to {
-          background-position: 22px 0;
-        }
-      }
-
-      @keyframes drift-grid {
-        from {
-          background-position: 0 0, 0 0;
-        }
-        to {
-          background-position: 120px 0, 0 0;
-        }
-      }
-
-      @keyframes logo-bob {
-        0%, 100% {
-          transform: translateY(0);
-        }
-        50% {
-          transform: translateY(-2px);
-        }
-      }
-
-      @keyframes logo-eye-scan {
-        0%, 20%, 100% {
-          transform: translate(0, 0);
-        }
-        38% {
-          transform: translate(1.4px, 0);
-        }
-        56% {
-          transform: translate(-1.2px, 0.8px);
-        }
-        72% {
-          transform: translate(0, 0);
-        }
-      }
-
-      @media (prefers-reduced-motion: reduce) {
-        *,
-        *::before,
-        *::after {
-          animation-duration: 1ms !important;
-          animation-iteration-count: 1 !important;
-          transition-duration: 1ms !important;
-        }
+      body { display: flex; flex-direction: column; background: #f5f5f5; }
+      body::after { opacity: .035; background-image: linear-gradient(to right, #000 1px, transparent 1px), linear-gradient(to bottom, #000 1px, transparent 1px); background-size: 44px 44px; }
+      .app-titlebar { height: 40px; flex: 0 0 40px; display: flex; align-items: center; justify-content: space-between; padding-left: 15px; border-bottom: 1px solid #e5e5e5; background: #fff; user-select: none; }
+      .title-brand { display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 900; text-transform: uppercase; pointer-events: none; }
+      .title-mark { width: 14px; height: 14px; display: block; }
+      .window-actions { align-self: stretch; display: flex; }
+      .window-action { width: 40px; height: 39px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 0; color: #111; background: #fff; box-shadow: none; font: 500 16px sans-serif; }
+      .window-action:hover:not(:disabled) { transform: none; box-shadow: none; background: #f5f5f5; }
+      .window-action.close:hover:not(:disabled) { color: #fff; background: #dc2626; }
+      .window-action .minimize { width: 12px; height: 2px; background: currentColor; }
+      .window-action .maximize { width: 12px; height: 12px; border: 2px solid currentColor; }
+      main { flex: 1; height: auto; min-height: 0; display: block; padding: 0; }
+      .shell { width: 100%; height: 100%; min-height: 0; grid-template-columns: 238px minmax(0, 1fr); border: 0; border-radius: 0; background: #fff; box-shadow: none; }
+      .rail { padding: 25px 22px 20px; color: #111; border-right: 3px solid #111; background: #ffe666; }
+      .rail::before { width: 178px; height: 178px; right: -88px; top: -90px; border: 32px solid rgba(0,0,0,.08); border-radius: 0; transform: rotate(18deg); }
+      .logo { border: 2px solid #111; border-radius: 0; background: #111; box-shadow: 3px 3px 0 rgba(255,255,255,.75); }
+      .logo i { border-radius: 0; background: #fff; }
+      .wordmark small { color: #595959; }
+      .rail-copy { margin-top: 43px; }
+      .eyebrow { color: #111; letter-spacing: .2em; }
+      .rail h1 { font-size: 30px; font-weight: 950; line-height: 1; text-transform: uppercase; }
+      .rail-intro { color: #404040; font-weight: 550; }
+      .trust-list { margin-top: 27px; }
+      .trust-item { color: #262626; font-weight: 700; }
+      .trust-icon { border: 2px solid #111; border-radius: 0; color: #111; background: #fff; box-shadow: 2px 2px 0 #111; }
+      .safety-pill { border: 2px solid #111; border-radius: 0; color: #111; background: #fff; font-weight: 800; box-shadow: 2px 2px 0 #111; }
+      .safety-pill::before { background: #111; box-shadow: none; border-radius: 0; }
+      .topbar { min-height: 76px; padding: 17px 25px; border-bottom: 3px solid #111; background: #fff; }
+      .topbar-title h2 { font-size: 19px; font-weight: 950; text-transform: uppercase; }
+      .mode-badge { border: 2px solid #111; border-radius: 0; color: #111; background: #ffe666; box-shadow: 2px 2px 0 #111; }
+      .mode-badge::before { border-radius: 0; background: #111; }
+      .workspace { grid-template-columns: minmax(0, 1fr) 280px; }
+      .primary { padding: 22px 25px 20px; background: rgba(250,250,250,.88); }
+      .activity { padding: 22px 20px 18px; border-left: 3px solid #111; background: #fff; }
+      label { color: #111; }
+      .path-box::before { color: #111; }
+      input { border: 2px solid #111; border-radius: 0; background: #fff; box-shadow: 2px 2px 0 #111; }
+      input:focus { border-color: #111; box-shadow: 4px 4px 0 #111; }
+      input:disabled { color: #525252; background: #f5f5f5; }
+      button { border: 2px solid #111; border-radius: 0; background: #111; box-shadow: 3px 3px 0 #111; }
+      button:hover:not(:disabled) { transform: translate(-1px,-1px); box-shadow: 5px 5px 0 #111; }
+      button:active:not(:disabled) { transform: translate(2px,2px); box-shadow: 1px 1px 0 #111; }
+      button.secondary { border: 2px solid #111; color: #111; background: #fff; }
+      button.ghost { border: 2px solid #111; color: #111; background: #fff; }
+      .status-card { border: 2px solid #111; border-radius: 0; box-shadow: 4px 4px 0 #111; }
+      .status-kicker { color: #525252; }
+      .status-title { font-weight: 950; text-transform: uppercase; }
+      .progress-track { height: 5px; border-radius: 0; background: #d4d4d4; }
+      .progress-bar { border-radius: 0; background: #111; }
+      .stage { border-radius: 0; }
+      .stage:hover { background: #fff; }
+      .stage.running { border: 2px solid #111; color: #111; background: #ffe666; box-shadow: 2px 2px 0 #111; }
+      .stage.failed { border: 2px solid #dc2626; color: #991b1b; background: #fff1f1; box-shadow: 2px 2px 0 #dc2626; }
+      .stage.succeeded { color: #166534; }
+      .stage-icon { border: 2px solid #a3a3a3; border-radius: 0; }
+      .stage.running .stage-icon { border-color: #111; color: #111; background: #fff; }
+      .stage.succeeded .stage-icon { border-color: #111; color: #111; background: #5fd38d; }
+      .stage.failed .stage-icon { border-color: #111; color: #fff; background: #dc2626; }
+      .live-dot::before { border-radius: 0; }
+      .summary-row { border-bottom-color: #d4d4d4; }
+      .log { border: 2px solid #111; border-radius: 0; background: #111; box-shadow: 3px 3px 0 #d4d4d4; }
+      .error-card, .complete-card { border-radius: 0; }
+      .error-card { border: 2px solid #dc2626; background: #fff1f1; box-shadow: 3px 3px 0 #dc2626; }
+      .complete-card { border: 2px solid #111; background: #ecfdf3; box-shadow: 3px 3px 0 #111; }
+      .rail { color: #fff; background: #111; }
+      .rail::before { border-color: rgba(255,255,255,.055); }
+      .brand { gap: 10px; }
+      .brand-logo { width: 34px; height: 34px; display: block; padding: 0; border: 0; background: transparent; box-shadow: none; }
+      .wordmark { color: #fff; font: 900 14px ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: .08em; text-transform: uppercase; }
+      .wordmark small { display: none; }
+      .eyebrow { color: #d4d4d4; }
+      .rail h1 { color: #fff; }
+      .rail-intro { color: #bdbdbd; }
+      .trust-item { color: #e5e5e5; }
+      .trust-icon { border-color: #fff; color: #111; background: #fff; box-shadow: 2px 2px 0 #737373; }
+      .safety-pill { border-color: #737373; color: #e5e5e5; background: #111; box-shadow: none; }
+      .safety-pill::before { background: #fff; }
+      .mode-badge { background: #fff; }
+      .stage.running { color: #fff; background: #111; box-shadow: 3px 3px 0 #737373; }
+      .stage.running .stage-icon { border-color: #fff; color: #111; background: #fff; }
+      .stage.running .state { color: #d4d4d4; }
+      @media (max-width: 820px) {
+        .shell { grid-template-columns: 205px minmax(0, 1fr); }
+        .workspace { grid-template-columns: minmax(0, 1fr); }
+        .activity { display: none; }
       }
     </style>
   </head>
   <body>
+    <div class="app-titlebar" data-tauri-drag-region>
+      <div class="title-brand"><img class="title-mark" src="logo.svg" alt="" /><span>Suzent</span></div>
+      <div class="window-actions">
+        <button class="window-action" id="window-minimize" type="button" aria-label="Minimize"><span class="minimize"></span></button>
+        <button class="window-action" id="window-maximize" type="button" aria-label="Maximize"><span class="maximize"></span></button>
+        <button class="window-action close" id="window-close" type="button" aria-label="Close">×</button>
+      </div>
+    </div>
     <main>
       <section class="shell">
-        <div class="header">
-          <div>
-            <div class="brand-row">
-              <svg class="brand-logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-label="Suzent logo">
-                <rect x="0" y="0" width="24" height="24" rx="4" fill="#000000" />
-                <rect class="logo-eye" x="5" y="8" width="5" height="5" rx="1.5" fill="#FFFFFF" />
-                <rect class="logo-eye" x="14" y="8" width="5" height="5" rx="1.5" fill="#FFFFFF" />
-              </svg>
-              <h1>Install Suzent</h1>
-            </div>
-            <div class="version" id="version">Preparing installer...</div>
+        <aside class="rail">
+          <div class="brand">
+            <img class="brand-logo" src="logo.svg" alt="Suzent" />
+            <span class="wordmark">Suzent<small id="product-kind">Installer</small></span>
           </div>
-          <div class="actions">
-            <button class="secondary" id="launch" type="button" hidden>Launch</button>
-            <button id="start">Start</button>
+          <div class="rail-copy">
+            <p class="eyebrow" id="rail-eyebrow">Guided setup</p>
+            <h1 id="rail-title">Your agent, ready in one place.</h1>
+            <p class="rail-intro" id="rail-intro">We check each component, preserve existing data, and leave a verified installation behind.</p>
+            <div class="trust-list" id="trust-list"></div>
           </div>
-        </div>
-        <div class="body">
-          <div>
-            <label for="install-dir">Install directory</label>
-            <div class="path-row">
-              <input id="install-dir" autocomplete="off" spellcheck="false" />
-              <button class="secondary" id="browse-dir" type="button">Browse</button>
-              <button class="secondary" id="default-dir" type="button">Default</button>
+          <div class="rail-footer"><span class="safety-pill" id="safety-pill">Transaction protected</span></div>
+        </aside>
+
+        <section class="content">
+          <header class="topbar">
+            <div class="topbar-title"><h2 id="page-title">Install Suzent</h2><p id="page-subtitle">Preparing installation plan…</p></div>
+            <span class="mode-badge" id="mode-badge">Stable channel</span>
+          </header>
+
+          <div class="workspace">
+            <div class="primary">
+              <div id="destination-block">
+                <label for="install-dir" id="path-label">Installation destination</label>
+                <div class="path-row">
+                  <div class="path-box"><input id="install-dir" autocomplete="off" spellcheck="false" /></div>
+                  <button class="secondary" id="browse-dir" type="button">Choose</button>
+                </div>
+              </div>
+
+              <section class="status-card" aria-live="polite">
+                <div class="status-line">
+                  <div><div class="status-kicker" id="status-kicker">Ready when you are</div><h3 class="status-title" id="status-title">Review and begin</h3><p class="status-message" id="status-message">Nothing changes until you start the installation.</p></div>
+                  <span class="elapsed" id="elapsed">00:00</span>
+                </div>
+                <div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="progress-bar" id="bar"></div></div>
+                <div class="progress-meta"><span id="progress-label">Waiting</span><span id="percent">0%</span></div>
+              </section>
+
+              <div class="stage-heading"><h3 id="steps-heading">Installation plan</h3><div class="stage-heading-meta"><span id="stage-count">0 steps</span><button class="stage-toggle" id="toggle-stages" type="button" hidden>Show all</button></div></div>
+              <div class="stages" id="stages"></div>
+
+              <footer class="footer-actions">
+                <span class="footer-note" id="footer-note">You can continue using this computer during setup.</span>
+                <div class="buttons"><button class="secondary" id="launch" type="button" hidden>Launch Suzent</button><button id="start" type="button">Install</button></div>
+              </footer>
             </div>
-            <div class="progress">
-              <div class="bar" id="bar"></div>
-            </div>
-            <div class="percent" id="percent">0%</div>
-            <div class="stages" id="stages"></div>
-            <div class="error" id="error"></div>
+
+            <aside class="activity">
+              <div class="activity-header"><h3 id="activity-heading">Activity</h3><span class="live-dot" id="live-dot">Ready</span></div>
+              <div class="summary">
+                <div class="summary-row"><span id="summary-channel-label">Channel</span><strong id="summary-channel">Stable</strong></div>
+                <div class="summary-row"><span id="summary-target-label">Target</span><strong id="summary-target">Latest release</strong></div>
+                <div class="summary-row"><span id="summary-safety-label">Recovery</span><strong id="summary-safety">Automatic rollback</strong></div>
+              </div>
+              <div class="error-card" id="error"><div class="result-title" id="error-title">Action needed</div><div id="error-message"></div><div class="result-actions"><button id="retry" type="button">Retry safely</button><button class="secondary" id="copy-error" type="button">Copy details</button></div></div>
+              <div class="complete-card" id="complete"><div class="result-title" id="complete-title">All set</div><div id="complete-message"></div></div>
+              <div class="recent-status" id="recent-status">Waiting for activity</div>
+              <details class="log" id="log-details"><summary><span id="log-heading">Live details</span><span class="log-local" id="log-local">local only</span></summary><div class="log-body" id="log-body"></div></details>
+            </aside>
           </div>
-          <aside class="panel">
-            <div id="info-panel">
-              <h2>What this does</h2>
-              <p>Installs the tools Suzent needs, clones or updates the workspace, syncs Python dependencies, prepares browser automation, and creates launch shortcuts.</p>
-              <p>The main Suzent app is downloaded into the workspace during setup, so future launches use the installed copy.</p>
-              <p>Existing non-empty folders are protected unless they are already Suzent Git repositories.</p>
-            </div>
-            <div class="complete" id="complete"></div>
-            <details class="log" id="log">
-              <summary>Detailed log</summary>
-              <div class="log-body" id="log-body"></div>
-            </details>
-          </aside>
-        </div>
+        </section>
       </section>
     </main>
-    <script>
-      const invoke = window.__TAURI__.core.invoke;
-      const openDialog = window.__TAURI__.dialog.open;
-      const startButton = document.getElementById('start');
-      const launchButton = document.getElementById('launch');
-      const defaultButton = document.getElementById('default-dir');
-      const browseButton = document.getElementById('browse-dir');
-      const dirInput = document.getElementById('install-dir');
-      const versionEl = document.getElementById('version');
-      const stagesEl = document.getElementById('stages');
-      const barEl = document.getElementById('bar');
-      const percentEl = document.getElementById('percent');
-      const errorEl = document.getElementById('error');
-      const infoPanelEl = document.getElementById('info-panel');
-      const completeEl = document.getElementById('complete');
-      const logEl = document.getElementById('log');
-      const logBodyEl = document.getElementById('log-body');
 
+    <script>
+      const query = new URLSearchParams(location.search);
+      const preview = query.get('preview');
+      const isZh = query.get('lang') === 'zh' || (!query.has('lang') && navigator.language.toLowerCase().startsWith('zh'));
+      const tauri = window.__TAURI__;
+      const invoke = tauri?.core?.invoke;
+      const openDialog = tauri?.dialog?.open;
+      const $ = id => document.getElementById(id);
+      const els = {
+        start: $('start'), launch: $('launch'), retry: $('retry'), copyError: $('copy-error'), browse: $('browse-dir'), dir: $('install-dir'),
+        stages: $('stages'), bar: $('bar'), percent: $('percent'), elapsed: $('elapsed'), log: $('log-body'), error: $('error'), errorMessage: $('error-message'),
+        complete: $('complete'), completeMessage: $('complete-message'), live: $('live-dot'), statusKicker: $('status-kicker'), statusTitle: $('status-title'),
+        statusMessage: $('status-message'), progressLabel: $('progress-label'), stageCount: $('stage-count'), recent: $('recent-status'),
+        toggleStages: $('toggle-stages'), close: $('window-close'),
+      };
+
+      const text = isZh ? {
+        installer: '安装器', updater: '安全更新', installEyebrow: '引导式安装', updateEyebrow: '事务更新', installTitle: '让你的智能体，即刻就绪。',
+        updateTitle: '安全更新', installIntro: '逐项检查组件、保护已有数据，并交付经过验证的安装。', updateIntro: '验证后切换，失败自动恢复。',
+        installPage: '安装 Suzent', updatePage: '更新 Suzent', repairPage: '修复 Suzent', stable: '稳定通道', destination: '安装位置', currentLocation: '当前安装位置', choose: '选择',
+        ready: '等待开始', review: '确认后开始', nothing: '点击安装前不会修改任何内容。', waiting: '等待中', plan: '执行计划', steps: '项',
+        install: '安装', launch: '启动 Suzent', activity: '实时状态', channel: '通道', target: '目标版本', recovery: '恢复策略', rollback: '自动回滚',
+        latest: '最新版本', live: '进行中', local: '仅本机', action: '需要处理', retry: '安全重试', copy: '复制详情', allSet: '已完成',
+        footerInstall: '安装期间可以继续使用这台电脑。', footerUpdate: '准备阶段可安全恢复。', footerCritical: '正在替换运行环境，请勿关闭电脑。', protected: '事务保护已开启',
+        preparing: '正在准备', verifying: '校验下载与版本', completed: '操作完成', failed: '操作未完成', details: '详情', secure: ['资产校验', '保留当前版本', '自动恢复'], updatePlan: '更新进度',
+        showAll: '展开全部', showLess: '收起', completedCount: count => `已完成 ${count} 项`, waitingActivity: '等待活动',
+      } : {
+        installer: 'Installer', updater: 'Safe updater', installEyebrow: 'Guided setup', updateEyebrow: 'Transactional update', installTitle: 'Your agent, ready in one place.',
+        updateTitle: 'Safe update', installIntro: 'We check each component, preserve existing data, and leave a verified installation behind.', updateIntro: 'Verify, switch, and restore automatically if needed.',
+        installPage: 'Install Suzent', updatePage: 'Update Suzent', repairPage: 'Repair Suzent', stable: 'Stable channel', destination: 'Installation destination', currentLocation: 'Current installation', choose: 'Choose',
+        ready: 'Ready when you are', review: 'Review and begin', nothing: 'Nothing changes until you start the installation.', waiting: 'Waiting', plan: 'Execution plan', steps: 'steps',
+        install: 'Install', launch: 'Launch Suzent', activity: 'Activity', channel: 'Channel', target: 'Target', recovery: 'Recovery', rollback: 'Automatic rollback',
+        latest: 'Latest release', live: 'Live', local: 'local only', action: 'Action needed', retry: 'Retry safely', copy: 'Copy details', allSet: 'All set',
+        footerInstall: 'You can continue using this computer during setup.', footerUpdate: 'Preparation is recoverable.', footerCritical: 'Replacing the runtime. Do not shut down this computer.', protected: 'Transaction protected',
+        preparing: 'Preparing', verifying: 'Verifying download and version', completed: 'Operation complete', failed: 'Operation incomplete', details: 'Details', secure: ['Asset verification', 'Keep current version', 'Automatic recovery'], updatePlan: 'Update progress',
+        showAll: 'Show all', showLess: 'Show less', completedCount: count => `${count} completed`, waitingActivity: 'Waiting for activity',
+      };
+
+      const stageTranslations = {
+        'Checking system prerequisites': '检查系统环境', 'Installing uv': '安装 uv', 'Preparing workspace': '准备工作区', 'Installing standalone updater': '安装独立更新器',
+        'Installing Suzent desktop': '安装 Suzent 桌面端', 'Synchronizing Python environment': '同步 Python 环境', 'Installing Playwright Chromium': '安装 Playwright 浏览器',
+        'Creating launch shortcuts': '创建启动快捷方式', 'Finalizing installation': '完成安装',
+      };
+      const updateStages = isZh
+        ? [['preflight','准备事务'],['download','下载并校验'],['preserve','保护本地更改'],['stopping','停止运行进程'],['source','切换源代码'],['dependencies','同步后端环境'],['desktop','安装桌面端'],['verify','验证版本'],['complete','完成并重启']]
+        : [['preflight','Prepare transaction'],['download','Download & verify'],['preserve','Protect local changes'],['stopping','Stop running processes'],['source','Switch source'],['dependencies','Sync backend environment'],['desktop','Install desktop app'],['verify','Verify versions'],['complete','Finish & relaunch']];
+
+      let context = null;
       let manifest = null;
       let installComplete = false;
+      let running = false;
+      let startedAt = null;
+      let lastError = '';
+      let lastStatusKey = '';
+      let pollTimer = null;
+      let showAllStages = false;
+      let currentPhase = '';
+      let phaseStartedAt = 0;
+      let phaseDurations = {};
       const states = new Map();
 
-      function setError(message) {
-        errorEl.textContent = message || '';
-        errorEl.style.display = message ? 'block' : 'none';
+      function translateStage(title) { return isZh ? (stageTranslations[title] || title) : title; }
+      function setText(id, value) { const node = $(id); if (node) node.textContent = value; }
+      function log(message) { if (!message) return; els.recent.textContent = message; const line = document.createElement('div'); line.textContent = message; els.log.appendChild(line); els.log.scrollTop = els.log.scrollHeight; }
+      function setProgress(value, label, displayValue = null) { const pct = Math.max(0, Math.min(100, Math.round(value))); els.bar.style.width = `${pct}%`; els.bar.classList.toggle('running', running && pct < 100); els.percent.textContent = displayValue || `${pct}%`; els.progressLabel.textContent = label || text.waiting; document.querySelector('.progress-track').setAttribute('aria-valuenow', String(pct)); }
+      function setRunning(value) { running = value; els.live.classList.toggle('running', value); els.live.textContent = value ? text.live : text.ready; els.start.disabled = value; els.browse.disabled = value; els.dir.readOnly = context?.mode === 'update'; els.dir.disabled = value && context?.mode !== 'update'; }
+      function setError(message) { lastError = message || ''; els.error.style.display = message ? 'block' : 'none'; els.errorMessage.textContent = message || ''; if (message) { els.complete.style.display = 'none'; els.statusKicker.textContent = text.action; els.statusTitle.textContent = text.failed; } }
+      function setComplete(message) { els.complete.style.display = message ? 'block' : 'none'; els.completeMessage.textContent = message || ''; if (message) { els.error.style.display = 'none'; els.statusKicker.textContent = text.allSet; els.statusTitle.textContent = text.completed; } }
+
+      function applyStaticCopy() {
+        setText('product-kind', context.mode === 'update' ? text.updater : text.installer);
+        setText('rail-eyebrow', context.mode === 'update' ? text.updateEyebrow : text.installEyebrow);
+        setText('rail-title', context.mode === 'update' ? text.updateTitle : text.installTitle);
+        setText('rail-intro', context.mode === 'update' ? text.updateIntro : text.installIntro);
+        setText('page-title', context.repair ? text.repairPage : context.mode === 'update' ? text.updatePage : text.installPage);
+        setText('mode-badge', text.stable); setText('path-label', context.mode === 'update' ? text.currentLocation : text.destination); setText('browse-dir', text.choose); setText('status-kicker', text.ready);
+        setText('status-title', text.review); setText('status-message', context.mode === 'update' ? text.updateIntro : text.nothing); setText('progress-label', text.waiting);
+        setText('steps-heading', context.mode === 'update' ? text.updatePlan : text.plan); setText('start', context.mode === 'update' ? text.retry : text.install); setText('launch', text.launch);
+        setText('activity-heading', text.activity); setText('summary-channel-label', text.channel); setText('summary-target-label', text.target); setText('summary-safety-label', text.recovery);
+        setText('summary-channel', text.stable); setText('summary-target', context.target || text.latest); setText('summary-safety', text.rollback); setText('error-title', text.action);
+        setText('retry', text.retry); setText('copy-error', text.copy); setText('complete-title', text.allSet); setText('log-heading', text.details);
+        setText('log-local', text.local); els.live.textContent = text.ready;
+        setText('footer-note', context.mode === 'update' ? text.footerUpdate : text.footerInstall); setText('safety-pill', text.protected);
+        els.start.hidden = context.mode === 'update';
+        els.toggleStages.hidden = context.mode !== 'update';
+        els.toggleStages.textContent = text.showAll;
+        els.recent.textContent = text.waitingActivity;
+        $('rail-eyebrow').hidden = context.mode === 'update';
+        $('trust-list').hidden = context.mode === 'update';
+        document.querySelector('.summary').hidden = context.mode === 'update';
+        document.querySelector('.footer-actions').hidden = context.mode === 'update';
+        const trust = $('trust-list'); trust.innerHTML = ''; text.secure.forEach((item, index) => { const row = document.createElement('div'); row.className = 'trust-item'; const icon = document.createElement('span'); icon.className = 'trust-icon'; icon.textContent = ['✓','↶','◆'][index]; const label = document.createElement('span'); label.textContent = item; row.append(icon,label); trust.appendChild(row); });
       }
 
-      function setComplete(message) {
-        completeEl.textContent = message || '';
-        completeEl.style.display = message ? 'block' : 'none';
+      function formatDuration(milliseconds) {
+        if (milliseconds == null) return '';
+        if (milliseconds < 1_000) return '<1s';
+        const seconds = Math.round(milliseconds / 1_000);
+        if (seconds < 60) return `${seconds}s`;
+        return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, '0')}s`;
       }
 
-      function log(message) {
-        if (!message) return;
-        const line = document.createElement('div');
-        line.textContent = message;
-        logBodyEl.appendChild(line);
-        logBodyEl.scrollTop = logBodyEl.scrollHeight;
+      function stageDuration(name, state) {
+        if (state === 'skipped' || state === 'pending') return null;
+        const aliases = name === 'download' ? ['download', 'fetch'] : [name];
+        let total = aliases.reduce((sum, phase) => sum + Number(phaseDurations[phase] || 0), 0);
+        if (aliases.includes(currentPhase) && phaseStartedAt) total += Math.max(0, Date.now() - phaseStartedAt);
+        return total || null;
       }
 
-      function logStage(stage, result) {
-        log(``);
-        log(`## ${stage.title} (${result.duration_ms}ms)`);
-        for (const line of result.logs || []) log(line);
-        if (result.reason) log(`note: ${result.reason}`);
-      }
-
-      function workspacePathFromParent(parent) {
-        const trimmed = parent.replace(/[\\/]+$/, '');
-        if (!trimmed) return parent;
-        const parts = trimmed.split(/[\\/]/);
-        const leaf = parts[parts.length - 1];
-        if (leaf.toLowerCase() === 'suzent') return trimmed;
-        const separator = parent.includes('\\') ? '\\' : '/';
-        return `${trimmed}${separator}suzent`;
-      }
-
-      function renderStages(activeName) {
-        stagesEl.innerHTML = '';
-        for (const stage of manifest.stages) {
-          const state = states.get(stage.name) || 'pending';
-          const row = document.createElement('div');
-          row.className = `stage ${activeName === stage.name ? 'running' : ''} ${state === 'failed' ? 'failed' : ''}`;
-          row.innerHTML = `<strong>${stage.title}</strong><span class="state">${state}</span>`;
-          stagesEl.appendChild(row);
+      function renderStages(activeName = null) {
+        const fullList = context.mode === 'update' ? updateStages.map(([name,title], originalIndex) => ({ name, title, originalIndex })) : (manifest?.stages || []).map((stage, originalIndex) => ({ ...stage, originalIndex }));
+        let list = fullList;
+        const done = fullList.filter(stage => ['succeeded', 'skipped'].includes(states.get(stage.name))).length;
+        if (context.mode === 'update' && !showAllStages) {
+          const unresolvedIndex = fullList.findIndex(stage => ['running', 'failed', 'pending'].includes(states.get(stage.name) || 'pending'));
+          const currentIndex = unresolvedIndex < 0 ? Math.max(0, fullList.length - 1) : unresolvedIndex;
+          list = fullList.slice(currentIndex, currentIndex + 3);
+          if (done > 0) list = [{ name: '__completed', title: text.completedCount(done), originalIndex: -1, summaryState: 'succeeded' }, ...list];
         }
-
-        const done = manifest.stages.filter(stage => ['succeeded', 'skipped'].includes(states.get(stage.name))).length;
-        const pct = manifest.stages.length ? Math.round((done / manifest.stages.length) * 100) : 0;
-        barEl.style.width = `${pct}%`;
-        percentEl.textContent = `${pct}%`;
+        els.stages.innerHTML = '';
+        for (const stage of list) {
+          const state = stage.summaryState || states.get(stage.name) || 'pending';
+          const row = document.createElement('div'); row.className = `stage ${state} ${activeName === stage.name ? 'running' : ''}`;
+          const icon = document.createElement('span'); icon.className = 'stage-icon'; icon.textContent = state === 'succeeded' ? '✓' : state === 'failed' ? '!' : String(stage.originalIndex + 1).padStart(2,'0');
+          const title = document.createElement('span'); title.className = 'stage-title'; title.textContent = context.mode === 'install' ? translateStage(stage.title) : stage.title;
+          const status = document.createElement('span'); status.className = 'state';
+          const statusLabel = document.createElement('span'); statusLabel.textContent = state === 'succeeded' ? (isZh ? '完成' : 'done') : state === 'running' ? (isZh ? '进行中' : 'working') : state === 'failed' ? (isZh ? '失败' : 'failed') : state === 'skipped' ? (isZh ? '跳过' : 'skipped') : (isZh ? '等待' : 'queued'); status.appendChild(statusLabel);
+          const duration = stage.name === '__completed' ? Object.values(phaseDurations).reduce((sum, value) => sum + Number(value || 0), 0) : stageDuration(stage.name, state);
+          if (duration != null) { const timing = document.createElement('span'); timing.className = 'duration'; timing.textContent = formatDuration(duration); status.appendChild(timing); }
+          row.append(icon,title,status); els.stages.appendChild(row);
+        }
+        setText('stage-count', context.mode === 'update' ? `${done} / ${fullList.length}` : `${fullList.length} ${text.steps}`);
+        els.toggleStages.textContent = showAllStages ? text.showLess : text.showAll;
       }
 
-      async function load() {
-        const [raw, defaultDir] = await Promise.all([
-          invoke('installer_manifest'),
-          invoke('default_install_dir_command'),
-        ]);
-        manifest = JSON.parse(raw);
-        dirInput.value = defaultDir;
-        versionEl.textContent = `Protocol ${manifest.protocol_version} • ${manifest.stages.length} stages`;
-        for (const stage of manifest.stages) states.set(stage.name, 'pending');
-        renderStages(null);
+      function phaseIndex(phase) { const aliases = { fetch:'download', switching:'source', rollback:'verify', rolled_back:'complete', repair_required:'complete' }; const key = aliases[phase] || phase; return updateStages.findIndex(([name]) => name === key); }
+      function applyUpdateStatus(status) {
+        if (!status) return;
+        const index = phaseIndex(status.phase);
+        currentPhase = status.phase;
+        phaseStartedAt = Number(status.phase_started_at || 0);
+        phaseDurations = status.phase_durations_ms || {};
+        const phaseKeys = name => name === 'download' ? ['download', 'fetch'] : [name];
+        updateStages.forEach(([name], position) => {
+          const completed = phaseKeys(name).some(key => Object.hasOwn(phaseDurations, key));
+          states.set(name, position < index ? (completed ? 'succeeded' : 'skipped') : position === index ? 'running' : 'pending');
+        });
+        if (status.phase === 'complete') updateStages.forEach(([name]) => states.set(name, 'succeeded'));
+        if (['repair_required'].includes(status.phase)) states.set(updateStages[Math.max(0,index)]?.[0] || 'verify', 'failed');
+        renderStages(index >= 0 ? updateStages[index][0] : null);
+        els.statusKicker.textContent = status.phase === 'complete' ? text.allSet : text.preparing;
+        els.statusTitle.textContent = status.message || text.verifying;
+        const critical = ['source', 'dependencies', 'desktop', 'verify', 'switching', 'rollback'].includes(status.phase);
+        els.statusMessage.textContent = critical ? text.footerCritical : (isZh ? `目标 ${status.target_version || context.target} · 每一步都会写入恢复记录` : `Target ${status.target_version || context.target} · every step is journaled for recovery`);
+        setText('footer-note', critical ? text.footerCritical : text.footerUpdate);
+        els.close.disabled = critical;
+        els.close.title = critical ? text.footerCritical : '';
+        setProgress(status.progress || 0, status.phase || text.preparing, `${Math.max(1, index + 1)} / ${updateStages.length}`);
+        const statusKey = `${status.phase}:${status.progress}:${status.message}`;
+        if (statusKey !== lastStatusKey) { log(status.message); lastStatusKey = statusKey; }
+      }
+
+      async function loadContext() {
+        if (preview || !invoke) {
+          const mode = preview === 'install' ? 'install' : 'update';
+          return { mode, repair: preview === 'repair', dir: 'C:\\Users\\suzy\\suzent', target: 'v0.7.8' };
+        }
+        return await invoke('installer_context');
+      }
+
+      async function loadInstall() {
+        if (preview || !invoke) {
+          manifest = { protocol_version: 1, stages: [
+            {name:'system',title:'Checking system prerequisites'}, {name:'uv',title:'Installing uv'}, {name:'workspace',title:'Preparing workspace'},
+            {name:'backend',title:'Synchronizing Python environment'}, {name:'ui',title:'Installing Suzent desktop'}, {name:'updater',title:'Installing standalone updater'},
+            {name:'playwright',title:'Installing Playwright Chromium'}, {name:'shortcuts',title:'Creating launch shortcuts'},
+          ]};
+          context.dir = 'C:\\Users\\suzy\\suzent';
+        } else {
+          const [raw, defaultDir] = await Promise.all([invoke('installer_manifest'), invoke('default_install_dir_command')]);
+          manifest = JSON.parse(raw); context.dir = defaultDir;
+        }
+        manifest.stages.forEach(stage => states.set(stage.name, 'pending'));
+        els.dir.value = context.dir; setText('page-subtitle', `${text.stable} · ${manifest.stages.length} ${text.steps}`); renderStages();
+      }
+
+      async function loadUpdate() {
+        els.dir.value = context.dir; els.dir.readOnly = true; els.dir.disabled = false; els.browse.hidden = true; setText('page-subtitle', context.target || text.latest);
+        updateStages.forEach(([name]) => states.set(name, 'pending')); renderStages(); setRunning(true); startedAt = Date.now();
+        if (preview || !invoke) {
+          const previewStatus = preview === 'error'
+            ? {phase:'repair_required',progress:100,message:isZh ? '更新未完成，旧版本已保留' : 'Update did not complete; the working version was kept',target_version:'v0.7.8'}
+            : preview === 'complete'
+              ? {phase:'complete',progress:100,message:isZh ? '更新完成，正在重新启动' : 'Update complete; relaunching Suzent',target_version:'v0.7.8'}
+              : {phase:'dependencies',progress:65,message:isZh ? '正在同步后端环境' : 'Synchronizing backend environment',target_version:'v0.7.8',phase_started_at:Date.now()-12700,phase_durations_ms:{preflight:620,download:5300,fetch:2400,stopping:900,source:1300}};
+          applyUpdateStatus(previewStatus);
+          if (preview === 'error') { setRunning(false); setError(isZh ? '依赖同步失败。旧版本已恢复，可以安全重试。' : 'Dependency sync failed. The previous version was restored and it is safe to retry.'); }
+          if (preview === 'complete') { setRunning(false); setComplete(isZh ? 'Suzent 已更新并通过版本验证。' : 'Suzent was updated and passed version verification.'); }
+          return;
+        }
+        pollTimer = window.setInterval(async () => { try { const raw = await invoke('updater_status'); if (raw) applyUpdateStatus(JSON.parse(raw)); } catch {} }, 350);
+        await tauri.event.listen('updater-finished', event => finishUpdate(Number(event.payload)));
+      }
+
+      async function finishUpdate(code) {
+        if (pollTimer) clearInterval(pollTimer); setRunning(false);
+        let raw = null; try { raw = await invoke('updater_status'); } catch {}
+        const status = raw ? JSON.parse(raw) : null; if (status) applyUpdateStatus(status);
+        els.close.disabled = false; els.close.title = ''; setText('footer-note', text.footerUpdate);
+        if (code === 0) { setComplete(isZh ? '更新已验证，Suzent 正在重新启动。' : 'The update is verified and Suzent is relaunching.'); setTimeout(closeInstaller, 1400); }
+        else setError(status?.message || (isZh ? '更新失败。工作版本已保留，请查看详情后重试。' : 'The update failed. Your working version was preserved; review details and retry.'));
       }
 
       async function runInstall() {
-        if (installComplete) {
-          await closeInstaller();
-          return;
-        }
-
+        if (installComplete) return closeInstaller();
         if (!manifest) return;
-        setError(null);
-        setComplete(null);
-        infoPanelEl.style.display = 'none';
-        logBodyEl.innerHTML = '';
-        logEl.open = true;
-        installComplete = false;
-        launchButton.hidden = true;
-        startButton.disabled = true;
-        launchButton.disabled = true;
-        defaultButton.disabled = true;
-        browseButton.disabled = true;
-        dirInput.disabled = true;
-
+        setError(null); setComplete(null); els.log.innerHTML = ''; phaseDurations = {}; els.launch.hidden = true; setRunning(true); startedAt = Date.now();
         try {
-          const dir = dirInput.value.trim();
-          if (!dir) throw new Error('Install directory cannot be empty.');
-
+          const dir = els.dir.value.trim(); if (!dir) throw new Error(isZh ? '安装位置不能为空。' : 'Installation destination cannot be empty.');
           for (const stage of manifest.stages) {
-            states.set(stage.name, 'running');
-            renderStages(stage.name);
-            const raw = await invoke('run_installer_stage', { request: { stage: stage.name, dir } });
-            const result = JSON.parse(raw);
-            logStage(stage, result);
-            if (!result.ok) {
-              states.set(stage.name, 'failed');
-              renderStages(stage.name);
-              throw new Error(result.reason || `${stage.title} failed`);
-            }
-            states.set(stage.name, result.skipped ? 'skipped' : 'succeeded');
-            renderStages(null);
+            currentPhase = stage.name; phaseStartedAt = Date.now(); states.set(stage.name,'running'); renderStages(stage.name); els.statusKicker.textContent = text.preparing; els.statusTitle.textContent = translateStage(stage.title); els.statusMessage.textContent = isZh ? '正在执行并记录此步骤。' : 'Running and recording this step.';
+            const done = manifest.stages.filter(item => ['succeeded','skipped'].includes(states.get(item.name))).length; setProgress((done / manifest.stages.length) * 100, stage.name);
+            const result = preview || !invoke ? {ok:true,skipped:false,duration_ms:420,logs:[`${stage.title}: ok`]} : JSON.parse(await invoke('run_installer_stage',{request:{stage:stage.name,dir}}));
+            phaseDurations[stage.name] = Number(result.duration_ms || Date.now() - phaseStartedAt); currentPhase = '';
+            log(`${stage.title} (${result.duration_ms}ms)`); (result.logs || []).forEach(log);
+            if (!result.ok) { states.set(stage.name,'failed'); renderStages(stage.name); throw new Error(result.reason || `${stage.title} failed`); }
+            states.set(stage.name,result.skipped?'skipped':'succeeded'); renderStages();
           }
-
-          versionEl.textContent = 'Installation complete';
-          setComplete('Suzent is installed. Desktop and Start Menu shortcuts were created when supported by this platform.');
-          infoPanelEl.style.display = 'block';
-          launchButton.hidden = false;
-          launchButton.disabled = false;
-          startButton.textContent = 'Exit';
-          startButton.disabled = false;
-          installComplete = true;
-        } catch (error) {
-          setError(error instanceof Error ? error.message : String(error));
-          infoPanelEl.style.display = 'block';
-          startButton.disabled = false;
-          defaultButton.disabled = false;
-          browseButton.disabled = false;
-          dirInput.disabled = false;
-          launchButton.hidden = true;
-          launchButton.disabled = true;
-          startButton.textContent = 'Retry';
-        }
+          setProgress(100,text.completed); setRunning(false); installComplete = true; setComplete(isZh ? '安装已验证，快捷方式与独立更新器均已就绪。' : 'Installation verified. Shortcuts and the standalone updater are ready.'); els.launch.hidden = false; els.start.textContent = isZh ? '关闭' : 'Close';
+        } catch (error) { setRunning(false); setError(error instanceof Error ? error.message : String(error)); els.start.textContent = text.retry; }
       }
 
-      async function launchSuzent() {
-        try {
-          setError(null);
-          launchButton.disabled = true;
-          await invoke('launch_installed_app', { dir: dirInput.value.trim() });
-          await closeInstaller();
-        } catch (error) {
-          setError(error instanceof Error ? error.message : String(error));
-          launchButton.disabled = false;
-        }
-      }
+      async function retryUpdate() { setError(null); els.log.innerHTML = ''; phaseDurations = {}; currentPhase = ''; phaseStartedAt = 0; startedAt = Date.now(); setRunning(true); if (preview || !invoke) return; try { await invoke('retry_update'); pollTimer = window.setInterval(async () => { const raw = await invoke('updater_status'); if (raw) applyUpdateStatus(JSON.parse(raw)); },350); } catch (error) { setRunning(false); setError(String(error)); } }
+      async function launchSuzent() { try { await invoke?.('launch_installed_app',{dir:els.dir.value.trim()}); await closeInstaller(); } catch (error) { setError(String(error)); } }
+      async function closeInstaller() { const appWindow = tauri?.window?.getCurrentWindow?.(); if (appWindow) await appWindow.close(); else window.close(); }
 
-      async function closeInstaller() {
-        const appWindow = window.__TAURI__?.window?.getCurrentWindow?.();
-        if (appWindow) {
-          await appWindow.close();
-          return;
-        }
-        window.close();
-      }
+      els.start.addEventListener('click', () => context.mode === 'install' ? runInstall() : retryUpdate());
+      els.retry.addEventListener('click', () => context.mode === 'install' ? runInstall() : retryUpdate());
+      els.launch.addEventListener('click', launchSuzent);
+      els.copyError.addEventListener('click', () => navigator.clipboard?.writeText(lastError));
+      els.toggleStages.addEventListener('click', () => { showAllStages = !showAllStages; renderStages(); });
+      $('window-minimize').addEventListener('click', () => tauri?.window?.getCurrentWindow?.().minimize());
+      $('window-maximize').addEventListener('click', () => tauri?.window?.getCurrentWindow?.().toggleMaximize());
+      $('window-close').addEventListener('click', () => { if (!els.close.disabled) closeInstaller(); });
+      els.browse.addEventListener('click', async () => { if (!openDialog) return; const selected = await openDialog({directory:true,multiple:false,defaultPath:els.dir.value || undefined}); if (typeof selected === 'string') { const trimmed = selected.replace(/[\\/]+$/,''); els.dir.value = trimmed.toLowerCase().endsWith(`${navigator.platform.includes('Win')?'\\':'/'}suzent`) ? trimmed : `${trimmed}${selected.includes('\\')?'\\':'/'}suzent`; } });
+      window.setInterval(() => { if (!startedAt) return; const seconds = Math.floor((Date.now() - startedAt) / 1000); els.elapsed.textContent = `${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`; if (running) renderStages(); },1000);
 
-      browseButton.addEventListener('click', async () => {
-        const selected = await openDialog({
-          directory: true,
-          multiple: false,
-          defaultPath: dirInput.value.trim() || undefined,
-        });
-        if (typeof selected === 'string') {
-          dirInput.value = workspacePathFromParent(selected);
-        }
-      });
-
-      defaultButton.addEventListener('click', async () => {
-        dirInput.value = await invoke('default_install_dir_command');
-      });
-      launchButton.addEventListener('click', launchSuzent);
-      startButton.addEventListener('click', runInstall);
-      load().catch(error => setError(error instanceof Error ? error.message : String(error)));
+      (async () => {
+        context = await loadContext(); document.documentElement.lang = isZh ? 'zh-CN' : 'en'; applyStaticCopy();
+        if (context.mode === 'install') await loadInstall(); else await loadUpdate();
+      })().catch(error => setError(error instanceof Error ? error.message : String(error)));
     </script>
   </body>
 </html>

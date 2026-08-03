@@ -9,7 +9,10 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Instant;
+use tauri::Emitter;
 
 const PROTOCOL_VERSION: u16 = 1;
 const TARGET_PYTHON_VERSION: &str = "3.12";
@@ -95,18 +98,30 @@ struct StageResult {
     logs: Vec<String>,
 }
 
+#[derive(Serialize)]
+struct InstallerContext {
+    mode: &'static str,
+    repair: bool,
+    dir: String,
+    target: String,
+}
+
+struct UpdateRuntime {
+    args: Vec<String>,
+    repair: bool,
+    running: AtomicBool,
+}
+
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
     if has_flag(&args, "--update") || has_flag(&args, "--repair") {
-        show_update_console();
         let repair = has_flag(&args, "--repair");
-        let code = updater::run(&args, repair);
-        if code != 0 && has_flag(&args, "--keep-open-on-error") {
-            eprintln!("\nPress Enter to close this window.");
-            let mut line = String::new();
-            let _ = io::stdin().read_line(&mut line);
+        if has_flag(&args, "--headless") {
+            show_update_console();
+            std::process::exit(updater::run(&args, repair));
         }
-        std::process::exit(code);
+        run_update_tauri(args, repair);
+        return;
     }
     if args.is_empty() {
         run_tauri_app();
@@ -200,6 +215,41 @@ async fn run_installer_stage(request: StageRequest) -> Result<String, String> {
 }
 
 #[tauri::command]
+fn installer_context() -> InstallerContext {
+    let args: Vec<String> = env::args().skip(1).collect();
+    let repair = has_flag(&args, "--repair");
+    InstallerContext {
+        mode: if has_flag(&args, "--update") || repair {
+            "update"
+        } else {
+            "install"
+        },
+        repair,
+        dir: flag_value(&args, "--dir")
+            .map(PathBuf::from)
+            .unwrap_or_else(default_install_dir)
+            .display()
+            .to_string(),
+        target: flag_value(&args, "--target").unwrap_or_default(),
+    }
+}
+
+#[tauri::command]
+fn updater_status() -> Option<String> {
+    let args: Vec<String> = env::args().skip(1).collect();
+    let root = flag_value(&args, "--dir").map(PathBuf::from)?;
+    fs::read_to_string(root.join(".suzent").join("update-status.json")).ok()
+}
+
+#[tauri::command]
+fn retry_update(
+    app_handle: tauri::AppHandle,
+    runtime: tauri::State<'_, Arc<UpdateRuntime>>,
+) -> Result<(), String> {
+    start_update_worker(app_handle, runtime.inner().clone())
+}
+
+#[tauri::command]
 fn launch_installed_app(dir: String) -> Result<(), String> {
     let workspace = PathBuf::from(dir);
     let ui = workspace.join("bin").join(ui_binary_name());
@@ -220,12 +270,53 @@ fn run_tauri_app() {
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             installer_manifest,
+            installer_context,
             default_install_dir_command,
             run_installer_stage,
             launch_installed_app,
+            updater_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Suzent installer");
+}
+
+fn run_update_tauri(args: Vec<String>, repair: bool) {
+    let runtime = Arc::new(UpdateRuntime {
+        args,
+        repair,
+        running: AtomicBool::new(false),
+    });
+    let setup_runtime = runtime.clone();
+    tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_shell::init())
+        .manage(runtime)
+        .invoke_handler(tauri::generate_handler![
+            installer_context,
+            updater_status,
+            retry_update,
+        ])
+        .setup(move |app| {
+            start_update_worker(app.handle().clone(), setup_runtime.clone())?;
+            Ok(())
+        })
+        .run(tauri::generate_context!())
+        .expect("error while running Suzent updater");
+}
+
+fn start_update_worker(
+    app_handle: tauri::AppHandle,
+    runtime: Arc<UpdateRuntime>,
+) -> Result<(), String> {
+    if runtime.running.swap(true, Ordering::SeqCst) {
+        return Err("An update is already running".to_string());
+    }
+    std::thread::spawn(move || {
+        let code = updater::run(&runtime.args, runtime.repair);
+        runtime.running.store(false, Ordering::SeqCst);
+        let _ = app_handle.emit("updater-finished", code);
+    });
+    Ok(())
 }
 
 impl InstallConfig {
