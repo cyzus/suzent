@@ -5,6 +5,8 @@ import { getInitialLocale, tForLocale } from '../i18n';
 interface BackendLoadingScreenProps {
   error?: string | null;
   onRetry?: () => void;
+  status?: string;
+  progressHint?: number;
 }
 
 // Map each setup step message to a progress percentage.
@@ -19,12 +21,18 @@ const STEP_PROGRESS: Record<string, number> = {
   'Starting backend...': 95,
 };
 
-export function BackendLoadingScreen({ error, onRetry }: BackendLoadingScreenProps): React.ReactElement {
+export function BackendLoadingScreen({
+  error,
+  onRetry,
+  status,
+  progressHint = 0,
+}: BackendLoadingScreenProps): React.ReactElement {
   const locale = getInitialLocale();
   const t = (key: string, params?: Record<string, string>) => tForLocale(locale, key, params);
   const appWindow = window.__TAURI__?.window.getCurrentWindow();
   const [setupStep, setSetupStep] = React.useState<string | null>(null);
   const [progress, setProgress] = React.useState(0);
+  const [elapsedSeconds, setElapsedSeconds] = React.useState(0);
   const [isMaximized, setIsMaximized] = React.useState(false);
 
   async function handleDrag(event: React.MouseEvent<HTMLDivElement>): Promise<void> {
@@ -51,7 +59,17 @@ export function BackendLoadingScreen({ error, onRetry }: BackendLoadingScreenPro
     return () => clearInterval(interval);
   }, [error, setupStep]);
 
-  const hasMeasuredProgress = progress > 0;
+  React.useEffect(() => {
+    if (error) return;
+    const startedAt = Date.now();
+    const interval = window.setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, [error]);
+
+  const effectiveProgress = Math.max(progress, progressHint);
+  const hasMeasuredProgress = effectiveProgress > 0;
 
   return (
     <div className="flex h-screen w-screen flex-col bg-neutral-100 font-sans text-center overflow-hidden">
@@ -192,8 +210,13 @@ export function BackendLoadingScreen({ error, onRetry }: BackendLoadingScreenPro
           </h1>
           <div className="mb-10 min-h-5 max-w-xs">
             <p className="text-sm font-medium leading-5 text-neutral-500">
-              {error || setupStep || t('app.connectingToCore')}
+              {error || setupStep || status || t('app.connectingToCore')}
             </p>
+            {!error && (
+              <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-neutral-400">
+                {t('app.startupElapsed', { seconds: String(elapsedSeconds) })}
+              </p>
+            )}
           </div>
           {error ? (
             onRetry ? (
@@ -210,16 +233,16 @@ export function BackendLoadingScreen({ error, onRetry }: BackendLoadingScreenPro
               role="progressbar"
               aria-valuemin={0}
               aria-valuemax={100}
-              aria-valuenow={progress}
+              aria-valuenow={effectiveProgress}
             >
               <div className="mb-2 flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.16em] text-neutral-500">
                 <span>{t('app.systemStartup')}</span>
-                <span className="tabular-nums">{progress.toString().padStart(2, '0')}%</span>
+                <span className="tabular-nums">{effectiveProgress.toString().padStart(2, '0')}%</span>
               </div>
               <div className="relative h-px w-full overflow-hidden bg-neutral-300">
                 <div
                   className="absolute inset-y-0 left-0 bg-brutal-black transition-[width] duration-700 ease-out"
-                  style={{ width: `${progress}%` }}
+                  style={{ width: `${effectiveProgress}%` }}
                 />
               </div>
             </div>

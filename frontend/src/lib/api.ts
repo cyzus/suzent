@@ -126,7 +126,9 @@ export function getBackendCompatibilityIssue(
     version: __FRONTEND_VERSION__,
     apiVersion: __SUZENT_API_VERSION__,
     buildCommit: __FRONTEND_BUILD_COMMIT__,
-    enforceBuildCommit: !import.meta.env.DEV,
+    // Release identity may differ for backend-only hotfixes. API_VERSION is
+    // the compatibility contract; bump it whenever the desktop API breaks.
+    enforceBuildCommit: false,
   },
 ): BackendCompatibilityIssue | null {
   if (backend.apiVersion !== frontend.apiVersion) {

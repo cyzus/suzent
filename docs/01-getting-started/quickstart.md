@@ -129,10 +129,15 @@ suzent update
 ```
 
 Stable updates pin the backend, locked dependencies, and desktop app to the
-same release. If you are developing from a source checkout, use
-`suzent update --dev` to fast-forward `main`, install its locked Python and
-frontend dependencies, and keep subsequent `suzent start` runs in developer
-mode.
+same release. The command hands control to a standalone updater outside the
+workspace, so Windows can replace the virtual environment and app safely. The
+updater records progress in `<install-dir>/.suzent/update-status.json` and automatically
+restores the previous release if installation or verification fails. Run
+`suzent repair` if a machine lost power or was terminated during recovery.
+
+In a source checkout, plain `suzent update` detects the workspace and switches
+to the development channel automatically. `suzent update --dev` remains
+available when you want to select that channel explicitly.
 
 ---
 

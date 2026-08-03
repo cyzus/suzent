@@ -412,30 +412,69 @@ def _mock_update_runtime(monkeypatch, tmp_path):
     return app, commands
 
 
-def test_stable_update_pins_source_and_ui_to_release(monkeypatch, tmp_path):
+def test_stable_update_delegates_to_release_installer(monkeypatch, tmp_path):
     (tmp_path / ".suzent-bootstrap-complete").write_text("")
-    app, commands = _mock_update_runtime(monkeypatch, tmp_path)
-    ui_updates = []
+    app, _commands = _mock_update_runtime(monkeypatch, tmp_path)
+    delegated = []
     monkeypatch.setattr(
         cli_main,
         "_fetch_latest_release",
         lambda: {"tag_name": "v1.2.3"},
     )
-    monkeypatch.setattr(cli_main, "_current_version", lambda root: "1.2.3")
     monkeypatch.setattr(
         cli_main,
-        "_update_ui_binary",
-        lambda root, tag: ui_updates.append(tag) or True,
+        "_delegate_installer_update",
+        lambda root, **kwargs: delegated.append((root, kwargs)),
     )
 
     result = runner.invoke(app, ["update"])
 
     assert result.exit_code == 0
+    assert delegated == [
+        (
+            tmp_path,
+            {"release_tag": "v1.2.3", "relaunch": None},
+        )
+    ]
+
+
+def test_parse_release_checksum_selects_exact_asset():
+    digest = "a" * 64
+    assert (
+        cli_main._parse_release_checksum(
+            f"{'b' * 64}  other.exe\n{digest} *suzent-installer.exe\n",
+            "suzent-installer.exe",
+        )
+        == digest
+    )
+
+
+def test_plain_update_uses_dev_channel_for_source_checkout(monkeypatch, tmp_path):
+    app, commands = _mock_update_runtime(monkeypatch, tmp_path)
+
+    result = runner.invoke(app, ["update"])
+
+    assert result.exit_code == 0
+    assert "Source checkout detected" in result.stdout
     command_args = [command for command, _cwd in commands]
-    assert ["git", "fetch", "origin", "tag", "v1.2.3"] in command_args
-    assert ["git", "checkout", "--detach", "v1.2.3"] in command_args
-    assert ui_updates == ["v1.2.3"]
-    assert cli_main._read_update_channel(tmp_path) == "stable"
+    assert ["git", "fetch", "origin", "main"] in command_args
+    assert cli_main._read_update_channel(tmp_path) == "dev"
+
+
+def test_interrupted_update_message_includes_target_and_phase(tmp_path):
+    state_dir = tmp_path / ".suzent"
+    state_dir.mkdir()
+    (state_dir / "update-transaction.json").write_text(
+        '{"target_tag":"v1.2.3","phase":"switching"}',
+        encoding="utf-8",
+    )
+
+    message = cli_main._interrupted_update_message(tmp_path)
+
+    assert message is not None
+    assert "v1.2.3" in message
+    assert "switching" in message
+    assert "suzent repair" in message
 
 
 def test_dev_update_uses_main_and_never_downloads_release_ui(monkeypatch, tmp_path):
@@ -527,6 +566,38 @@ def test_windows_update_delegates_away_from_locked_launcher(monkeypatch, tmp_pat
     ]
     assert command[-1] == "--dev"
     assert kwargs["env"][cli_main._UPDATE_HELPER_ENV] == "1"
+
+
+def test_stable_update_launches_standalone_installer(monkeypatch, tmp_path):
+    updater = tmp_path / "updater" / "suzent-installer.exe"
+    updater.parent.mkdir()
+    updater.write_bytes(b"")
+    popen_calls = []
+
+    monkeypatch.setattr(cli_main, "IS_WINDOWS", True)
+    monkeypatch.setattr(cli_main, "_install_release_updater", lambda tag: updater)
+    monkeypatch.setattr(cli_main.os, "getpid", lambda: 2468)
+    monkeypatch.setattr(
+        cli_main.subprocess,
+        "Popen",
+        lambda command, **kwargs: popen_calls.append((command, kwargs)),
+    )
+
+    cli_main._delegate_installer_update(
+        tmp_path,
+        release_tag="v1.2.3",
+        relaunch=tmp_path / "bin" / "suzent-ui.exe",
+    )
+
+    command, kwargs = popen_calls[0]
+    assert command[:2] == [str(updater), "--update"]
+    assert command[command.index("--target") + 1] == "v1.2.3"
+    assert command[command.index("--wait-pid") + 1] == "2468"
+    assert command[-2:] == [
+        "--relaunch",
+        str(tmp_path / "bin" / "suzent-ui.exe"),
+    ]
+    assert kwargs["cwd"] == tmp_path
 
 
 def test_windows_update_delegates_when_launcher_detection_misses(monkeypatch, tmp_path):

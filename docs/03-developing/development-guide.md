@@ -20,13 +20,13 @@ uv run suzent start --dev
 To update an existing development checkout, run:
 
 ```bash
-uv run suzent update --dev
+uv run suzent update
 ```
 
 This fast-forwards `main` and installs the exact Python and frontend
-dependencies from the lockfiles. Plain `suzent update` is reserved for
-bootstrapped installations and pins every runtime component to one stable
-release.
+dependencies from the lockfiles. Suzent detects that this is a source checkout
+and selects the development channel automatically. Bootstrapped installations
+continue to use the stable channel.
 
 `uv sync --all-extras` installs both the `social` and `dev` optional
 dependency groups (equivalent to the `all` extra). For a minimal runtime

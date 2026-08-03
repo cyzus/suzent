@@ -8,6 +8,14 @@ on:
         required: true
         default: patch
         type: string
+      desktop_assets:
+        description: 'Build new desktop assets, or reuse the previous release for a backend-only hotfix'
+        required: true
+        default: build
+        type: choice
+        options:
+          - build
+          - reuse
 
 permissions:
   actions: write
@@ -40,11 +48,13 @@ jobs:
         run: |
           python scripts/bump_version.py "$RELEASE_INPUT"
           python scripts/bump_version.py --check
+          printf '%s\n' "$DESKTOP_ASSETS" > .release-assets-mode
           version="$(python scripts/bump_version.py --print-version)"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=v$version" >> "$GITHUB_OUTPUT"
         env:
           RELEASE_INPUT: ${{ inputs.version }}
+          DESKTOP_ASSETS: ${{ inputs.desktop_assets }}
 
       - name: Create release branch
         shell: bash
@@ -59,6 +69,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git switch -c "$branch"
           git add \
+            .release-assets-mode \
             CHANGELOG.md \
             pyproject.toml \
             uv.lock \
