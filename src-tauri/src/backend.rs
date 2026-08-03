@@ -5,6 +5,8 @@ use std::time::Duration;
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
+const BACKEND_READY_TIMEOUT: Duration = Duration::from_secs(120);
+const BACKEND_READY_RETRY_INTERVAL: Duration = Duration::from_millis(500);
 
 pub struct BackendProcess {
     child: Option<std::process::Child>,
@@ -131,7 +133,7 @@ impl BackendProcess {
         }
     }
 
-    fn wait_for_backend(&self) -> Result<(), String> {
+    fn wait_for_backend(&mut self) -> Result<(), String> {
         let url = format!("http://127.0.0.1:{}/health", self.port);
         let client = reqwest::blocking::Client::builder()
             .timeout(Duration::from_secs(2))
@@ -139,8 +141,10 @@ impl BackendProcess {
             .build()
             .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
-        for attempt in 1..=30 {
-            thread::sleep(Duration::from_millis(500));
+        let deadline = std::time::Instant::now() + BACKEND_READY_TIMEOUT;
+        let mut attempt = 0;
+        loop {
+            attempt += 1;
             match client.get(&url).send() {
                 Ok(resp) => {
                     if resp.status().is_success() || resp.status().as_u16() == 404 {
@@ -155,14 +159,42 @@ impl BackendProcess {
                 }
                 Err(e) => eprintln!("Backend readiness attempt {} failed: {}", attempt, e),
             }
+
+            if let Some(child) = self.child.as_mut() {
+                if let Ok(Some(status)) = child.try_wait() {
+                    return Err(format!(
+                        "Backend exited with {} while waiting for its health check",
+                        status
+                    ));
+                }
+            }
+
+            if std::time::Instant::now() >= deadline {
+                break;
+            }
+            thread::sleep(BACKEND_READY_RETRY_INTERVAL);
         }
-        Err("Backend failed health check within 15 seconds".to_string())
+        Err(format!(
+            "Backend failed health check within {} seconds",
+            BACKEND_READY_TIMEOUT.as_secs()
+        ))
     }
 }
 
 impl Drop for BackendProcess {
     fn drop(&mut self) {
         self.stop();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::BACKEND_READY_TIMEOUT;
+    use std::time::Duration;
+
+    #[test]
+    fn readiness_timeout_allows_slow_first_startup() {
+        assert!(BACKEND_READY_TIMEOUT >= Duration::from_secs(90));
     }
 }
 
