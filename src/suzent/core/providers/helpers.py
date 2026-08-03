@@ -111,7 +111,17 @@ def _provider_is_configured(spec) -> bool:
                 "ChatGPT provider unavailable while checking default model: {}", exc
             )
             return False
-        return bool(getattr(provider, "is_authenticated", lambda: False)())
+        try:
+            # /config is part of desktop startup. Never perform an OAuth refresh
+            # (and therefore a network request) while choosing its default model.
+            return bool(provider.is_authenticated(refresh=False))
+        except Exception as exc:
+            logger.warning(
+                "ChatGPT credentials could not be checked while choosing the "
+                "default model: {}",
+                exc,
+            )
+            return False
     return False
 
 

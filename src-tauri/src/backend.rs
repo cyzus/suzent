@@ -100,7 +100,7 @@ impl BackendProcess {
     }
 
     fn poll_port_file(
-        &self,
+        &mut self,
         port_file: &std::path::Path,
         timeout: Duration,
     ) -> Result<u16, String> {
@@ -112,6 +112,19 @@ impl BackendProcess {
             if let Ok(contents) = std::fs::read_to_string(port_file) {
                 if let Ok(port) = contents.trim().parse::<u16>() {
                     return Ok(port);
+                }
+            }
+            if let Some(child) = self.child.as_mut() {
+                if let Ok(Some(status)) = child.try_wait() {
+                    return Err(format!(
+                        "Backend exited with {} before reporting a port. Check {} for details.",
+                        status,
+                        port_file
+                            .parent()
+                            .unwrap_or_else(|| std::path::Path::new("."))
+                            .join("server.log")
+                            .display()
+                    ));
                 }
             }
             thread::sleep(Duration::from_millis(200));

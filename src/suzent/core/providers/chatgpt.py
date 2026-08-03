@@ -23,9 +23,9 @@ class ChatGPTProvider(BaseProvider):
     def _authenticator(self):
         return create_authenticator()
 
-    def is_authenticated(self) -> bool:
+    def is_authenticated(self, *, refresh: bool = True) -> bool:
         auth = self._authenticator()
-        return bool(get_valid_access_token(auth))
+        return bool(get_valid_access_token(auth, refresh=refresh))
 
     def fetch_models(self) -> List[Model]:
         auth = self._authenticator()

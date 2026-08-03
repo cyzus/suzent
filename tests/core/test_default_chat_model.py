@@ -167,6 +167,47 @@ def test_provider_is_configured_uses_resolve_api_key_for_keyed_providers(
     assert helpers._provider_is_configured(catalog[1]) is False
 
 
+def test_provider_is_configured_does_not_refresh_chatgpt_token(monkeypatch):
+    spec = _spec(
+        "chatgpt",
+        env_key=None,
+        api_type="chatgpt_subscription",
+        models=["chatgpt/gpt-5"],
+    )
+
+    class _Provider:
+        def is_authenticated(self, *, refresh: bool = True) -> bool:
+            assert refresh is False
+            return True
+
+    monkeypatch.setattr(
+        "suzent.core.providers.factory.ProviderFactory.get_provider",
+        lambda provider_id, config: _Provider(),
+    )
+
+    assert helpers._provider_is_configured(spec) is True
+
+
+def test_provider_is_configured_tolerates_chatgpt_auth_failure(monkeypatch):
+    spec = _spec(
+        "chatgpt",
+        env_key=None,
+        api_type="chatgpt_subscription",
+        models=["chatgpt/gpt-5"],
+    )
+
+    class _Provider:
+        def is_authenticated(self, *, refresh: bool = True) -> bool:
+            raise RuntimeError("refresh token rejected")
+
+    monkeypatch.setattr(
+        "suzent.core.providers.factory.ProviderFactory.get_provider",
+        lambda provider_id, config: _Provider(),
+    )
+
+    assert helpers._provider_is_configured(spec) is False
+
+
 def test_load_user_provider_config_tolerates_malformed_blob(monkeypatch):
     class _FakeDB:
         def get_api_keys(self):

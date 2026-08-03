@@ -928,7 +928,7 @@ async function isBackendPortReachable(port: number): Promise<boolean> {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 1500);
   try {
-    const res = await fetch(`http://127.0.0.1:${port}/config`, { signal: controller.signal });
+    const res = await fetch(`http://127.0.0.1:${port}/health`, { signal: controller.signal });
     return res.ok;
   } catch {
     return false;
@@ -1039,7 +1039,15 @@ export default function App() {
           setBackendStartingAtStartup(true);
           waitForBackendPort()
             .then((port) => {
-              if (cancelled || port === null) return;
+              if (cancelled) return;
+              if (port === null) {
+                setBackendStartingAtStartup(false);
+                setBackendError(tForLocale(
+                  getInitialLocale(),
+                  'app.backendStartTimeout',
+                ));
+                return;
+              }
               setBackendReady(true);
               setBackendError(null);
               setBackendStartingAtStartup(false);

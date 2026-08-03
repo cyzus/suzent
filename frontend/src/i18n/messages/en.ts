@@ -28,6 +28,7 @@ export const en = {
     systemIdentity: 'SUZENT / SYSTEM',
     systemStartup: 'System startup',
     backendErrorTitle: 'CONNECTION FAILED',
+    backendStartTimeout: 'Backend startup timed out. Check ~/.suzent/runtime/server.log for details.',
     desktopRequiredTitle: 'Desktop required',
     desktopRequiredDesc: 'Suzent is a desktop-only application. Please run this application using the native desktop launcher.',
     logoAriaLabel: 'Suzent logo',

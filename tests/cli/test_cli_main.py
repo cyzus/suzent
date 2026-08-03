@@ -502,6 +502,63 @@ def test_windows_suzent_backend_pids_parse_powershell_output(monkeypatch, tmp_pa
     assert cli_main._windows_suzent_backend_pids(tmp_path, exclude_pids={111}) == [222]
 
 
+def test_windows_update_delegates_away_from_locked_launcher(monkeypatch, tmp_path):
+    python_exe = tmp_path / ".venv" / "Scripts" / "python.exe"
+    python_exe.parent.mkdir(parents=True)
+    python_exe.write_bytes(b"")
+    popen_calls = []
+
+    monkeypatch.setattr(cli_main, "IS_WINDOWS", True)
+    monkeypatch.setattr(cli_main, "_windows_suzent_launcher_pid", lambda root: 4321)
+    monkeypatch.setattr(
+        cli_main.subprocess,
+        "Popen",
+        lambda command, **kwargs: popen_calls.append((command, kwargs)),
+    )
+    monkeypatch.delenv(cli_main._UPDATE_HELPER_ENV, raising=False)
+
+    assert cli_main._delegate_windows_update(tmp_path, dev=True)
+
+    command, kwargs = popen_calls[0]
+    assert command[:3] == [
+        str(python_exe),
+        "-m",
+        "suzent.cli.update_helper",
+    ]
+    assert command[-1] == "--dev"
+    assert kwargs["env"][cli_main._UPDATE_HELPER_ENV] == "1"
+
+
+def test_windows_update_helper_does_not_redelegate(monkeypatch, tmp_path):
+    monkeypatch.setattr(cli_main, "IS_WINDOWS", True)
+    monkeypatch.setenv(cli_main._UPDATE_HELPER_ENV, "1")
+    monkeypatch.setattr(
+        cli_main,
+        "_windows_suzent_launcher_pid",
+        lambda root: pytest.fail("helper must not inspect the launcher"),
+    )
+
+    assert not cli_main._delegate_windows_update(tmp_path, dev=False)
+
+
+def test_windows_launcher_detection_falls_back_to_argv(monkeypatch, tmp_path):
+    launcher = tmp_path / ".venv" / "Scripts" / "suzent.exe"
+    launcher.parent.mkdir(parents=True)
+    launcher.write_bytes(b"")
+
+    monkeypatch.setattr(cli_main, "IS_WINDOWS", True)
+    monkeypatch.setattr(cli_main, "_windows_ancestor_pids", lambda: {123})
+    monkeypatch.setattr(
+        cli_main.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args, 0, stdout=""),
+    )
+    monkeypatch.setattr(cli_main.sys, "argv", [str(launcher), "update"])
+    monkeypatch.setattr(cli_main.os, "getppid", lambda: 123)
+
+    assert cli_main._windows_suzent_launcher_pid(tmp_path) == 123
+
+
 @pytest.mark.parametrize(
     ("latest", "current", "expected"),
     [
