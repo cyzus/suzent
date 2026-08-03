@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v0.7.6] - 2026-08-03
 
 ### 🐛 Fixed
+- Recover backend state after WebView refresh (#87)
 - Tolerate slow desktop backend startup (#85)
 
 ## [v0.7.5] - 2026-08-03
