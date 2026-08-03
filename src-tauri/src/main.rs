@@ -412,12 +412,13 @@ fn write_update_script(repo_dir: &Path, uv_exe: &Path, ui_exe: &Path) -> Result<
 
     if cfg!(windows) {
         let script = runtime_dir.join("suzent-update-and-restart.cmd");
+        let python_exe = repo_dir.join(".venv").join("Scripts").join("python.exe");
         let contents = format!(
             "@echo off\r\n\
 title Suzent Update\r\n\
 timeout /t 1 /nobreak >nul\r\n\
 cd /d \"{}\"\r\n\
-\"{}\" run --no-sync suzent update\r\n\
+\"{}\" -m suzent.cli update\r\n\
 if errorlevel 1 (\r\n\
   echo.\r\n\
   echo Suzent update failed. Press any key to close.\r\n\
@@ -427,7 +428,7 @@ if errorlevel 1 (\r\n\
 start \"\" \"{}\"\r\n\
 exit /b 0\r\n",
             repo_dir.display(),
-            uv_exe.display(),
+            python_exe.display(),
             ui_exe.display()
         );
         std::fs::File::create(&script)

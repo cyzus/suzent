@@ -29,6 +29,7 @@ _UPDATE_CHECK_TTL_SECONDS = 24 * 60 * 60
 _UPDATE_CHANNEL_FILE = ".suzent/update-channel"
 _STABLE_CHANNEL = "stable"
 _DEV_CHANNEL = "dev"
+_UPDATE_HELPER_ENV = "SUZENT_UPDATE_HELPER"
 
 
 def _is_development_workspace(root: Path) -> bool:
@@ -738,6 +739,83 @@ def _windows_suzent_backend_pids(root: Path, *, exclude_pids: set[int]) -> list[
     return pids
 
 
+def _windows_suzent_launcher_pid(root: Path) -> int | None:
+    """Return the running venv console-shim PID in our ancestor chain."""
+    if not IS_WINDOWS:
+        return None
+    launcher = str((root / ".venv" / "Scripts" / "suzent.exe").resolve())
+    escaped_launcher = launcher.replace("'", "''")
+    script = (
+        "$ErrorActionPreference = 'SilentlyContinue'; "
+        f"$launcher = '{escaped_launcher}'; "
+        "Get-CimInstance Win32_Process | Where-Object { "
+        "$_.ExecutablePath -eq $launcher "
+        "} | ForEach-Object { $_.ProcessId }"
+    )
+    result = subprocess.run(
+        ["powershell", "-NoProfile", "-Command", script],
+        capture_output=True,
+        text=True,
+    )
+    ancestors = _windows_ancestor_pids()
+    for line in result.stdout.splitlines():
+        try:
+            pid = int(line.strip())
+        except ValueError:
+            continue
+        if pid in ancestors:
+            return pid
+
+    try:
+        invoked_as = Path(sys.argv[0]).resolve()
+        expected_launcher = root / ".venv" / "Scripts" / "suzent.exe"
+        if invoked_as == expected_launcher.resolve():
+            return os.getppid()
+    except OSError:
+        pass
+    return None
+
+
+def _delegate_windows_update(root: Path, *, dev: bool) -> bool:
+    """Relaunch updates outside the locked Windows console-script shim."""
+    if not IS_WINDOWS or os.environ.get(_UPDATE_HELPER_ENV) == "1":
+        return False
+
+    launcher_pid = _windows_suzent_launcher_pid(root)
+    if launcher_pid is None:
+        return False
+
+    python_exe = root / ".venv" / "Scripts" / "python.exe"
+    if not python_exe.exists():
+        raise RuntimeError(f"Python environment not found at {python_exe}")
+
+    command = [
+        str(python_exe),
+        "-m",
+        "suzent.cli.update_helper",
+        "--wait-pid",
+        str(launcher_pid),
+        "--root",
+        str(root),
+    ]
+    if dev:
+        command.append("--dev")
+
+    helper_env = os.environ.copy()
+    helper_env[_UPDATE_HELPER_ENV] = "1"
+    creationflags = getattr(subprocess, "CREATE_NEW_CONSOLE", 0) | getattr(
+        subprocess, "CREATE_NEW_PROCESS_GROUP", 0
+    )
+    subprocess.Popen(
+        command,
+        cwd=root,
+        env=helper_env,
+        creationflags=creationflags,
+    )
+    typer.echo("  • Update will continue in a separate window...")
+    return True
+
+
 def _stop_windows_process(pid: int, label: str) -> None:
     typer.echo(f"  • Stopping running {label} (PID {pid})...")
     subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True)
@@ -1251,6 +1329,9 @@ def register_commands(app: typer.Typer):
         channel = _DEV_CHANNEL if dev else _STABLE_CHANNEL
         typer.echo(f"🔄 Updating Suzent ({channel} channel)...")
         root = get_project_root()
+
+        if _delegate_windows_update(root, dev=dev):
+            return
 
         if not dev and _is_development_workspace(root):
             typer.echo(
