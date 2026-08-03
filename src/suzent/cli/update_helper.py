@@ -5,6 +5,7 @@ import ctypes
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 
@@ -30,6 +31,10 @@ def main() -> int:
     args = parser.parse_args()
 
     _wait_for_process_exit(args.wait_pid)
+    # The uv-generated console launcher can outlive its Python child very
+    # briefly while it propagates the exit code. Give Windows time to release
+    # suzent.exe before the nested update replaces that file.
+    time.sleep(0.5)
 
     command = [sys.executable, "-m", "suzent.cli", "update"]
     if args.dev:

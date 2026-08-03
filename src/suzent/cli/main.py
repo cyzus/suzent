@@ -770,7 +770,7 @@ def _windows_suzent_launcher_pid(root: Path) -> int | None:
         invoked_as = Path(sys.argv[0]).resolve()
         expected_launcher = root / ".venv" / "Scripts" / "suzent.exe"
         if invoked_as == expected_launcher.resolve():
-            return os.getppid()
+            return os.getpid()
     except OSError:
         pass
     return None
@@ -782,8 +782,7 @@ def _delegate_windows_update(root: Path, *, dev: bool) -> bool:
         return False
 
     launcher_pid = _windows_suzent_launcher_pid(root)
-    if launcher_pid is None:
-        return False
+    wait_pid = launcher_pid if launcher_pid is not None else os.getpid()
 
     python_exe = root / ".venv" / "Scripts" / "python.exe"
     if not python_exe.exists():
@@ -794,7 +793,7 @@ def _delegate_windows_update(root: Path, *, dev: bool) -> bool:
         "-m",
         "suzent.cli.update_helper",
         "--wait-pid",
-        str(launcher_pid),
+        str(wait_pid),
         "--root",
         str(root),
     ]
