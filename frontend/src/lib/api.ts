@@ -51,7 +51,16 @@ export interface SystemVersionResponse {
 }
 
 export async function fetchSystemVersion(): Promise<SystemVersionResponse> {
-  const response = await fetch(`${getApiBase()}/system/version`);
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 5000);
+  let response: Response;
+  try {
+    response = await fetch(`${getApiBase()}/system/version`, {
+      signal: controller.signal,
+    });
+  } finally {
+    window.clearTimeout(timeout);
+  }
   if (!response.ok) {
     throw new Error(`Failed to load backend version: ${response.status}`);
   }
