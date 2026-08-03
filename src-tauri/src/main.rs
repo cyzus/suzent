@@ -268,6 +268,8 @@ fn find_bootstrap_installer(app_handle: Option<&tauri::AppHandle>) -> Option<Pat
     let name = find_bootstrap_installer_name();
     let mut candidates = Vec::new();
 
+    candidates.push(backend::find_data_dir().join("updater").join(name));
+
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
             candidates.push(dir.join(name));
@@ -339,6 +341,22 @@ fn spawn_backend_start(app_handle: tauri::AppHandle) {
         let Some(window) = app_handle.get_webview_window("main") else {
             return;
         };
+
+        let update_journal = backend::find_install_workspace_dir()
+            .join(".suzent")
+            .join("update-transaction.json");
+        if update_journal.exists() {
+            let error =
+                "A Suzent update was interrupted. Run 'suzent repair' before starting the backend."
+                    .to_string();
+            if let Some(state) = app_handle.try_state::<AppState>() {
+                if let Ok(mut error_guard) = state.backend_startup_error.lock() {
+                    *error_guard = Some(error.clone());
+                }
+            }
+            let _ = window.emit("backend-error", error);
+            return;
+        }
 
         if let Some(state) = app_handle.try_state::<AppState>() {
             if let Ok(mut error_guard) = state.backend_startup_error.lock() {
@@ -418,14 +436,13 @@ fn write_update_script(repo_dir: &Path, uv_exe: &Path, ui_exe: &Path) -> Result<
 title Suzent Update\r\n\
 timeout /t 1 /nobreak >nul\r\n\
 cd /d \"{}\"\r\n\
-\"{}\" -m suzent.cli update\r\n\
+\"{}\" -m suzent.cli update --relaunch \"{}\"\r\n\
 if errorlevel 1 (\r\n\
   echo.\r\n\
   echo Suzent update failed. Press any key to close.\r\n\
   pause >nul\r\n\
   exit /b 1\r\n\
 )\r\n\
-start \"\" \"{}\"\r\n\
 exit /b 0\r\n",
             repo_dir.display(),
             python_exe.display(),
@@ -442,14 +459,14 @@ exit /b 0\r\n",
         "#!/bin/sh\n\
 sleep 1\n\
 cd \"{}\" || exit 1\n\
-\"{}\" run --no-sync suzent update\n\
+\"{}\" run --no-sync suzent update --relaunch \"{}\"\n\
 status=$?\n\
 if [ \"$status\" -ne 0 ]; then\n\
   printf '\\nSuzent update failed. Press Enter to close.'\n\
   read _\n\
   exit \"$status\"\n\
 fi\n\
-\"{}\" >/dev/null 2>&1 &\n",
+exit 0\n",
         repo_dir.display(),
         uv_exe.display(),
         ui_exe.display()

@@ -292,6 +292,38 @@ download_binary() {
 }
 download_binary || true
 
+download_updater() {
+    local machine asset
+    machine="$(uname -m)"
+    case "$OS" in
+        Darwin)
+            [ "$machine" = "arm64" ] && asset="suzent-installer-macos-aarch64" || asset="suzent-installer-macos-x86_64"
+            ;;
+        Linux)
+            asset="suzent-installer-linux-x86_64"
+            ;;
+        *) return ;;
+    esac
+
+    local updater_dir dest tmp url
+    updater_dir="$HOME/.suzent/updater"
+    dest="$updater_dir/suzent-installer"
+    tmp="$dest.tmp"
+    url="${RELEASE_BASE_URL%/}/$asset"
+    mkdir -p "$updater_dir"
+    info "Downloading standalone updater..."
+    if ! curl --connect-timeout 15 --max-time 300 -fL "$url" -o "$tmp"; then
+        rm -f "$tmp"
+        warn "Standalone updater download failed. The next 'suzent update' will retry automatically."
+        return 1
+    fi
+    mv "$tmp" "$dest"
+    chmod +x "$dest"
+    echo "${RELEASE_TAG:-latest}" > "$updater_dir/version.txt"
+    ok "Standalone updater ready ($dest)"
+}
+download_updater || true
+
 install_dev_deps() {
     ensure_rust
 

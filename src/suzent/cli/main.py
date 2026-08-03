@@ -3,6 +3,7 @@ Top-level CLI commands: start, serve, stop, doctor, update, upgrade, setup-build
 """
 
 import io
+import hashlib
 import json
 import os
 import platform
@@ -42,6 +43,22 @@ def _backend_sync_args(root: Path) -> list[str]:
     if _is_development_workspace(root):
         args.extend(["--extra", "dev"])
     return args
+
+
+def _interrupted_update_message(root: Path) -> str | None:
+    journal = root / ".suzent" / "update-transaction.json"
+    if not journal.exists():
+        return None
+    try:
+        transaction = json.loads(journal.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        transaction = {}
+    target = transaction.get("target_tag", "the selected release")
+    phase = transaction.get("phase", "unknown")
+    return (
+        f"An update to {target} was interrupted during {phase}. "
+        "Run 'suzent repair' before starting Suzent."
+    )
 
 
 def _get_ui_binary(root: Path) -> Path | None:
@@ -161,6 +178,24 @@ def _platform_asset_name() -> str:
     return "suzent-linux-x86_64"
 
 
+def _platform_installer_asset_name() -> str:
+    machine = platform.machine().lower()
+    if IS_WINDOWS:
+        return "suzent-installer-windows-x86_64.exe"
+    if sys.platform == "darwin":
+        return (
+            "suzent-installer-macos-aarch64"
+            if machine in ("arm64", "aarch64")
+            else "suzent-installer-macos-x86_64"
+        )
+    return "suzent-installer-linux-x86_64"
+
+
+def _persistent_updater_path() -> Path:
+    name = "suzent-installer.exe" if IS_WINDOWS else "suzent-installer"
+    return Path.home() / ".suzent" / "updater" / name
+
+
 def _fetch_latest_release(timeout: float = 10.0) -> dict:
     url = f"https://api.github.com/repos/{_REPO}/releases/latest"
     req = urllib.request.Request(url, headers={"User-Agent": "suzent-updater"})
@@ -172,6 +207,41 @@ def _release_asset_url(asset_name: str, version: str) -> str:
     if version == "latest":
         return f"https://github.com/{_REPO}/releases/latest/download/{asset_name}"
     return f"https://github.com/{_REPO}/releases/download/{version}/{asset_name}"
+
+
+def _parse_release_checksum(contents: str, asset_name: str) -> str:
+    for line in contents.splitlines():
+        parts = line.strip().split(maxsplit=1)
+        if len(parts) != 2:
+            continue
+        digest, filename = parts
+        if filename.lstrip("*") == asset_name and re.fullmatch(
+            r"[0-9a-fA-F]{64}", digest
+        ):
+            return digest.lower()
+    raise ValueError(f"SHA256SUMS has no valid entry for {asset_name}")
+
+
+def _verify_release_asset(path: Path, asset_name: str, release_tag: str) -> None:
+    checksum_url = _release_asset_url("SHA256SUMS", release_tag)
+    request = urllib.request.Request(
+        checksum_url,
+        headers={"User-Agent": "suzent-updater"},
+    )
+    with urllib.request.urlopen(request, timeout=30) as response:
+        expected = _parse_release_checksum(
+            response.read().decode("utf-8"),
+            asset_name,
+        )
+    digest = hashlib.sha256()
+    with path.open("rb") as file:
+        for chunk in iter(lambda: file.read(1024 * 1024), b""):
+            digest.update(chunk)
+    actual = digest.hexdigest()
+    if actual != expected:
+        raise ValueError(
+            f"Checksum mismatch for {asset_name}: expected {expected}, found {actual}"
+        )
 
 
 def _local_ui_version(root: Path) -> str:
@@ -287,7 +357,7 @@ def _notify_update_available(root: Path) -> None:
 
 
 def _download_file_atomic(url: str, dest: Path, *, timeout: float = 60.0) -> None:
-    dest.parent.mkdir(exist_ok=True)
+    dest.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp_name = tempfile.mkstemp(
         prefix=f".{dest.name}.", suffix=".tmp", dir=dest.parent
     )
@@ -304,6 +374,71 @@ def _download_file_atomic(url: str, dest: Path, *, timeout: float = 60.0) -> Non
         except Exception:
             pass
         raise
+
+
+def _install_release_updater(release_tag: str) -> Path:
+    updater = _persistent_updater_path()
+    version_file = updater.with_name("version.txt")
+    installed_version = (
+        version_file.read_text(encoding="utf-8").strip()
+        if version_file.exists()
+        else ""
+    )
+    if updater.exists() and installed_version == release_tag:
+        return updater
+
+    asset = _platform_installer_asset_name()
+    staged = updater.with_name(f".{updater.name}.{release_tag}.new")
+    try:
+        _download_file_atomic(_release_asset_url(asset, release_tag), staged)
+        _verify_release_asset(staged, asset, release_tag)
+        if not IS_WINDOWS:
+            staged.chmod(0o755)
+        staged.replace(updater)
+        version_file.write_text(release_tag, encoding="utf-8")
+    finally:
+        staged.unlink(missing_ok=True)
+    return updater
+
+
+def _delegate_installer_update(
+    root: Path,
+    *,
+    release_tag: str,
+    relaunch: Path | None,
+    repair: bool = False,
+) -> None:
+    typer.echo("  • Preparing standalone updater...")
+    try:
+        updater = _install_release_updater(release_tag)
+    except Exception as error:
+        typer.echo(f"  ❌ Could not prepare standalone updater: {error}")
+        raise typer.Exit(code=1)
+
+    command = [
+        str(updater),
+        "--repair" if repair else "--update",
+        "--dir",
+        str(root),
+        "--target",
+        release_tag,
+        "--wait-pid",
+        str(os.getpid()),
+        "--keep-open-on-error",
+    ]
+    if relaunch is not None:
+        command.extend(["--relaunch", str(relaunch)])
+
+    kwargs: dict = {"cwd": root, "env": os.environ.copy()}
+    if IS_WINDOWS:
+        kwargs["creationflags"] = getattr(
+            subprocess, "CREATE_NEW_CONSOLE", 0
+        ) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+    else:
+        kwargs["start_new_session"] = True
+    subprocess.Popen(command, **kwargs)
+    action = "Repair" if repair else "Update"
+    typer.echo(f"  • {action} continues in the standalone Suzent Installer.")
 
 
 def _replace_ui_files(
@@ -904,6 +1039,11 @@ def register_commands(app: typer.Typer):
             typer.echo("📚 Starting Documentation Server...")
             return
 
+        interrupted_update = _interrupted_update_message(root)
+        if interrupted_update is not None:
+            typer.echo(f"❌ {interrupted_update}")
+            raise typer.Exit(code=1)
+
         typer.echo("🚀 Starting SUZENT...")
         _notify_update_available(root)
 
@@ -1324,20 +1464,20 @@ def register_commands(app: typer.Typer):
         except subprocess.CalledProcessError:
             typer.echo("  ⚠️  Stashed changes need manual conflict resolution.")
 
-    def _run_update(*, dev: bool = False) -> None:
-        channel = _DEV_CHANNEL if dev else _STABLE_CHANNEL
-        typer.echo(f"🔄 Updating Suzent ({channel} channel)...")
+    def _run_update(*, dev: bool = False, relaunch: Path | None = None) -> None:
         root = get_project_root()
-
-        if _delegate_windows_update(root, dev=dev):
-            return
 
         if not dev and _is_development_workspace(root):
             typer.echo(
-                "  ❌ Stable updates require a bootstrapped installation. "
-                "Use 'suzent update --dev' for a source checkout."
+                "  • Source checkout detected; using the development update channel."
             )
-            raise typer.Exit(code=1)
+            dev = True
+
+        channel = _DEV_CHANNEL if dev else _STABLE_CHANNEL
+        typer.echo(f"🔄 Updating Suzent ({channel} channel)...")
+
+        if dev and _delegate_windows_update(root, dev=True):
+            return
 
         release_tag = ""
         if not dev:
@@ -1351,6 +1491,12 @@ def register_commands(app: typer.Typer):
                     f"  ❌ Invalid stable release tag: {release_tag or 'missing'}"
                 )
                 raise typer.Exit(code=1)
+            _delegate_installer_update(
+                root,
+                release_tag=release_tag,
+                relaunch=relaunch,
+            )
+            return
 
         try:
             old_commit = _git_text(root, "rev-parse", "HEAD")
@@ -1561,9 +1707,14 @@ def register_commands(app: typer.Typer):
             "--dev",
             help="Update to origin/main and run the matching development frontend.",
         ),
+        relaunch: Path | None = typer.Option(
+            None,
+            "--relaunch",
+            hidden=True,
+        ),
     ):
         """Update Suzent to the latest version."""
-        _run_update(dev=dev)
+        _run_update(dev=dev, relaunch=relaunch)
 
     @app.command()
     def upgrade(
@@ -1578,6 +1729,30 @@ def register_commands(app: typer.Typer):
             "`suzent upgrade` is supported; `suzent update` is the primary command."
         )
         _run_update(dev=dev)
+
+    @app.command()
+    def repair() -> None:
+        """Repair the installed stable release with the standalone updater."""
+        root = get_project_root()
+        release_file = root / ".suzent" / "release-tag"
+        release_tag = (
+            release_file.read_text(encoding="utf-8").strip()
+            if release_file.exists()
+            else ""
+        )
+        if not re.fullmatch(r"v\d+\.\d+\.\d+", release_tag):
+            try:
+                release_tag = str(_fetch_latest_release().get("tag_name", ""))
+            except Exception as error:
+                typer.echo(f"  ❌ Could not resolve repair version: {error}")
+                raise typer.Exit(code=1)
+        typer.echo(f"🛠️  Repairing Suzent {release_tag}...")
+        _delegate_installer_update(
+            root,
+            release_tag=release_tag,
+            relaunch=None,
+            repair=True,
+        )
 
     @app.command("check-update")
     def check_update(

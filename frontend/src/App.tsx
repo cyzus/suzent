@@ -1185,11 +1185,17 @@ export default function App() {
       ) : backendError ? (
         <BackendLoadingScreen error={backendError} />
       ) : backendStartingAfterInstall || backendStartingAtStartup ? (
-        <BackendLoadingScreen />
+        <BackendLoadingScreen
+          status={t('app.startingBackend')}
+          progressHint={45}
+        />
       ) : !backendReady ? (
         <StartupDecisionScreen />
       ) : !backendCompatible ? (
-        <BackendLoadingScreen />
+        <BackendLoadingScreen
+          status={t('app.verifyingBackend')}
+          progressHint={85}
+        />
       ) : (
         <ProjectProvider>
           <ChatProvider>

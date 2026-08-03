@@ -315,6 +315,28 @@ function Get-UiBinary {
 }
 Get-UiBinary
 
+function Get-UpdaterBinary {
+    $asset = "suzent-installer-windows-x86_64.exe"
+    $url = "$ReleaseBaseUrl/$asset"
+    $updaterDir = Join-Path $env:USERPROFILE ".suzent\updater"
+    $dest = Join-Path $updaterDir "suzent-installer.exe"
+    $tmp = "$dest.tmp"
+    try {
+        if (-not (Test-Path $updaterDir)) { New-Item -ItemType Directory -Force -Path $updaterDir | Out-Null }
+        Write-Info "Downloading standalone updater..."
+        Invoke-WebRequest -Uri $url -OutFile $tmp -TimeoutSec 300
+        Move-Item -Force $tmp $dest
+        $UpdaterVersion = if ($ReleaseTag) { $ReleaseTag } else { "latest" }
+        Set-Content -Path (Join-Path $updaterDir "version.txt") -Value $UpdaterVersion -NoNewline
+        Write-Ok "Standalone updater ready ($dest)"
+    } catch {
+        if (Test-Path $tmp) { Remove-Item -Force $tmp -ErrorAction SilentlyContinue }
+        Write-Warn ("Standalone updater download failed: " + $_.ToString())
+        Write-Warn "The next 'suzent update' will retry automatically."
+    }
+}
+Get-UpdaterBinary
+
 function Install-DevDependencies {
     Ensure-Rust
 

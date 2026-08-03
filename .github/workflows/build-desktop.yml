@@ -23,6 +23,7 @@ jobs:
     runs-on: ubuntu-22.04
     outputs:
       tag: ${{ steps.release-tag.outputs.tag }}
+      assets_mode: ${{ steps.assets-mode.outputs.mode }}
     steps:
       - name: Resolve and validate release tag
         id: release-tag
@@ -78,6 +79,20 @@ jobs:
         env:
           RELEASE_TAG: ${{ steps.release-tag.outputs.tag }}
 
+      - name: Resolve desktop asset mode
+        id: assets-mode
+        shell: bash
+        run: |
+          mode="build"
+          if [[ -f .release-assets-mode ]]; then
+            mode="$(tr -d '[:space:]' < .release-assets-mode)"
+          fi
+          if [[ "$mode" != "build" && "$mode" != "reuse" ]]; then
+            echo "::error::Invalid desktop asset mode: $mode"
+            exit 1
+          fi
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+
       - name: Create or refresh draft release
         shell: bash
         run: |
@@ -103,6 +118,7 @@ jobs:
 
   build:
     needs: prepare-release
+    if: needs.prepare-release.outputs.assets_mode == 'build'
     strategy:
       fail-fast: false
       matrix:
@@ -189,12 +205,68 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ needs.prepare-release.outputs.tag }}
 
+  reuse-assets:
+    needs: prepare-release
+    if: needs.prepare-release.outputs.assets_mode == 'reuse'
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Copy desktop assets from previous published release
+        shell: bash
+        run: |
+          previous_tag="$(gh release list --exclude-drafts --exclude-pre-releases --limit 20 --json tagName --jq \
+            '.[].tagName' | grep -Fvx "$RELEASE_TAG" | head -n 1)"
+          if [[ -z "$previous_tag" ]]; then
+            echo "::error::No previous published release is available for asset reuse"
+            exit 1
+          fi
+          backend_api="$(sed -nE 's/^API_VERSION = ([0-9]+)$/\1/p' src/suzent/routes/system_routes.py)"
+          desktop_api="$(git show "$previous_tag:frontend/vite.config.ts" | sed -nE \
+            's/.*__SUZENT_API_VERSION__: JSON.stringify\(([0-9]+)\).*/\1/p')"
+          if [[ -z "$backend_api" || -z "$desktop_api" || "$backend_api" != "$desktop_api" ]]; then
+            echo "::error::Desktop asset reuse is unsafe: backend API $backend_api, previous desktop API $desktop_api"
+            exit 1
+          fi
+          mkdir -p reused-assets
+          gh release download "$previous_tag" --pattern 'suzent-*' --dir reused-assets
+          if [[ "$(find reused-assets -maxdepth 1 -type f | wc -l)" -lt 8 ]]; then
+            echo "::error::Previous release $previous_tag does not contain all desktop and installer assets"
+            exit 1
+          fi
+          gh release upload "$RELEASE_TAG" reused-assets/* --clobber
+          echo "Reused desktop assets from $previous_tag"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.prepare-release.outputs.tag }}
+
   publish-release:
+    if: >-
+      always() &&
+      needs.prepare-release.result == 'success' &&
+      (needs.build.result == 'success' || needs.build.result == 'skipped') &&
+      (needs.reuse-assets.result == 'success' || needs.reuse-assets.result == 'skipped')
     needs:
       - prepare-release
       - build
+      - reuse-assets
     runs-on: ubuntu-22.04
     steps:
+      - name: Generate release checksums
+        shell: bash
+        run: |
+          mkdir -p release-assets
+          gh release download "$RELEASE_TAG" --pattern 'suzent-*' --dir release-assets
+          (cd release-assets && sha256sum suzent-* > SHA256SUMS)
+          gh release upload "$RELEASE_TAG" release-assets/SHA256SUMS --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.prepare-release.outputs.tag }}
+
       - name: Publish completed release
         run: gh release edit "$RELEASE_TAG" --draft=false
         env:

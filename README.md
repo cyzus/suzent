@@ -140,8 +140,17 @@ suzent update
 ```
 
 This installs the latest stable release as one matched set: backend source,
-locked dependencies, and desktop app. Developers working from a source checkout
-can update `main` and its frontend dependencies together with:
+locked dependencies, and desktop app. A standalone updater performs the switch
+outside the active virtual environment, verifies downloaded assets, and rolls
+back automatically on failure. If an interrupted update needs recovery, run:
+
+```bash
+suzent repair
+```
+
+Developers working from a source checkout can update `main` and its frontend
+dependencies together with plain `suzent update`; the checkout is detected
+automatically. The explicit equivalent is:
 
 ```bash
 suzent update --dev

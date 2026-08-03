@@ -1,5 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod updater;
+
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::env;
@@ -95,6 +97,17 @@ struct StageResult {
 
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
+    if has_flag(&args, "--update") || has_flag(&args, "--repair") {
+        show_update_console();
+        let repair = has_flag(&args, "--repair");
+        let code = updater::run(&args, repair);
+        if code != 0 && has_flag(&args, "--keep-open-on-error") {
+            eprintln!("\nPress Enter to close this window.");
+            let mut line = String::new();
+            let _ = io::stdin().read_line(&mut line);
+        }
+        std::process::exit(code);
+    }
     if args.is_empty() {
         run_tauri_app();
         return;
@@ -337,6 +350,13 @@ fn stages() -> Vec<InstallStage> {
             category: "install",
             needs_user_input: false,
             worker: stage_ui,
+        },
+        InstallStage {
+            name: "updater",
+            title: "Installing standalone updater",
+            category: "install",
+            needs_user_input: false,
+            worker: stage_updater,
         },
         InstallStage {
             name: "playwright",
@@ -789,6 +809,60 @@ fn stage_ui(config: &InstallConfig) -> StageOutcome {
     let ui_version = release_tag.as_deref().unwrap_or("latest");
     let _ = fs::write(bin_dir.join("version.txt"), ui_version);
     print_human(format!("[OK] UI binary ready at {}", dest.display()));
+    StageOutcome::ok()
+}
+
+#[cfg(windows)]
+fn show_update_console() {
+    unsafe {
+        windows_sys::Win32::System::Console::AllocConsole();
+    }
+}
+
+#[cfg(not(windows))]
+fn show_update_console() {}
+
+fn stage_updater(_config: &InstallConfig) -> StageOutcome {
+    let current = match env::current_exe() {
+        Ok(path) => path,
+        Err(error) => {
+            return StageOutcome::fail(format!("Failed to locate installer executable: {error}"));
+        }
+    };
+    let updater_dir = dirs_home().join(".suzent").join("updater");
+    let destination = updater_dir.join(if cfg!(windows) {
+        "suzent-installer.exe"
+    } else {
+        "suzent-installer"
+    });
+    if current == destination {
+        return StageOutcome::ok();
+    }
+    if let Err(error) = fs::create_dir_all(&updater_dir) {
+        return StageOutcome::fail(format!("Failed to create updater directory: {error}"));
+    }
+    let temporary = destination.with_extension("new");
+    if let Err(error) = fs::copy(&current, &temporary) {
+        return StageOutcome::fail(format!("Failed to stage standalone updater: {error}"));
+    }
+    if destination.exists() {
+        if let Err(error) = fs::remove_file(&destination) {
+            let _ = fs::remove_file(&temporary);
+            return StageOutcome::fail(format!("Failed to replace standalone updater: {error}"));
+        }
+    }
+    if let Err(error) = fs::rename(&temporary, &destination) {
+        let _ = fs::remove_file(&temporary);
+        return StageOutcome::fail(format!("Failed to install standalone updater: {error}"));
+    }
+    let tag = format!("v{}", env!("CARGO_PKG_VERSION"));
+    if let Err(error) = fs::write(updater_dir.join("version.txt"), tag) {
+        return StageOutcome::fail(format!("Failed to record updater version: {error}"));
+    }
+    print_human(format!(
+        "[OK] Standalone updater ready at {}",
+        destination.display()
+    ));
     StageOutcome::ok()
 }
 

@@ -8,6 +8,9 @@ Release publication are automated.
 
 1. Open **Actions → Prepare Release → Run workflow**.
 2. Enter `patch`, `minor`, `major`, or an exact version such as `0.8.0`.
+   Choose `build` for normal releases. Choose `reuse` only for backend-only
+   hotfixes that do not change `API_VERSION`, frontend code, desktop code, or
+   installer behavior; it reuses the previous published native assets.
 3. Review the generated `release/vX.Y.Z` pull request. Edit the generated
    changelog entry if needed, wait for required checks, and merge it.
 4. The merge automatically creates the `vX.Y.Z` tag and starts
@@ -18,6 +21,13 @@ Release publication are automated.
 The release remains a draft while Windows, macOS Intel, macOS Apple Silicon,
 and Linux builds run. It is published only after every build succeeds. A failed
 build therefore cannot expose a partially populated release.
+
+Backend-only hotfixes still receive a normal version and Git tag for auditing,
+rollback, and dependency locking, but they do not rebuild four desktop targets.
+When `desktop_assets=reuse`, the workflow copies the previous published UI and
+installer assets into the new release. The frontend accepts a different backend
+build commit as long as `API_VERSION` matches. Incompatible route or payload
+changes must bump `API_VERSION` and use `desktop_assets=build`.
 
 ### If main changes before merge
 

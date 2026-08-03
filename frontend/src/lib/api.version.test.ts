@@ -80,9 +80,9 @@ describe('backend compatibility', () => {
     }, frontend)).toEqual({ kind: 'build', frontend: 'abcdef12', backend: '99999999' });
   });
 
-  it('allows commit changes while the Vite development server is running', () => {
+  it('allows backend-only hotfix identities when the API contract is stable', () => {
     expect(getBackendCompatibilityIssue({
-      backendVersion: '1.2.3',
+      backendVersion: '1.2.4',
       apiVersion: 1,
       buildCommit: '999999999999',
       developmentMode: false,
