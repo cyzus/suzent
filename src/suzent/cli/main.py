@@ -196,6 +196,13 @@ def _persistent_updater_path() -> Path:
     return Path.home() / ".suzent" / "updater" / name
 
 
+def _graphical_update_available() -> bool:
+    """Return whether the current session can show the updater window."""
+    if IS_WINDOWS or sys.platform == "darwin":
+        return True
+    return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+
+
 def _fetch_latest_release(timeout: float = 10.0) -> dict:
     url = f"https://api.github.com/repos/{_REPO}/releases/latest"
     req = urllib.request.Request(url, headers={"User-Agent": "suzent-updater"})
@@ -356,7 +363,12 @@ def _notify_update_available(root: Path) -> None:
     typer.echo(f"  • Update available: {current} -> {latest}. Run 'suzent update'.")
 
 
-def _download_file_atomic(url: str, dest: Path, *, timeout: float = 60.0) -> None:
+def _download_file_atomic(
+    url: str,
+    dest: Path,
+    *,
+    inactivity_timeout: float = 300.0,
+) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp_name = tempfile.mkstemp(
         prefix=f".{dest.name}.", suffix=".tmp", dir=dest.parent
@@ -365,8 +377,27 @@ def _download_file_atomic(url: str, dest: Path, *, timeout: float = 60.0) -> Non
     try:
         with os.fdopen(fd, "wb") as file:
             req = urllib.request.Request(url, headers={"User-Agent": "suzent-updater"})
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                shutil.copyfileobj(resp, file)
+            with urllib.request.urlopen(req, timeout=inactivity_timeout) as resp:
+                total = int(resp.headers.get("Content-Length") or 0)
+                downloaded = 0
+                last_report = 0.0
+                while chunk := resp.read(256 * 1024):
+                    file.write(chunk)
+                    downloaded += len(chunk)
+                    now = time.monotonic()
+                    if now - last_report >= 0.25 or (total and downloaded >= total):
+                        if total:
+                            percent = min(100, round(downloaded * 100 / total))
+                            detail = (
+                                f"{downloaded / 1024 / 1024:.1f} / "
+                                f"{total / 1024 / 1024:.1f} MiB ({percent}%)"
+                            )
+                        else:
+                            detail = f"{downloaded / 1024 / 1024:.1f} MiB"
+                        typer.echo(f"\r  • Downloading {detail}", nl=False)
+                        last_report = now
+                if downloaded:
+                    typer.echo()
         tmp_path.replace(dest)
     except Exception:
         try:
@@ -407,6 +438,7 @@ def _delegate_installer_update(
     release_tag: str,
     relaunch: Path | None,
     repair: bool = False,
+    headless: bool = False,
 ) -> None:
     typer.echo("  • Preparing standalone updater...")
     try:
@@ -429,6 +461,10 @@ def _delegate_installer_update(
     if relaunch is not None:
         command.extend(["--relaunch", str(relaunch)])
 
+    use_headless = headless or not _graphical_update_available()
+    if use_headless:
+        command.append("--headless")
+
     kwargs: dict = {"cwd": root, "env": os.environ.copy()}
     if IS_WINDOWS:
         kwargs["creationflags"] = getattr(
@@ -436,9 +472,15 @@ def _delegate_installer_update(
         ) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
     else:
         kwargs["start_new_session"] = True
-    subprocess.Popen(command, **kwargs)
+    process = subprocess.Popen(command, **kwargs)
+    if not use_headless and process is not None:
+        time.sleep(0.75)
+        if process.poll() is not None:
+            typer.echo("  ⚠️  Updater window unavailable; continuing in the terminal.")
+            subprocess.Popen([*command, "--headless"], **kwargs)
     action = "Repair" if repair else "Update"
-    typer.echo(f"  • {action} continues in the standalone Suzent Installer.")
+    destination = "terminal" if use_headless else "standalone Suzent Installer"
+    typer.echo(f"  • {action} continues in the {destination}.")
 
 
 def _replace_ui_files(
@@ -1464,7 +1506,12 @@ def register_commands(app: typer.Typer):
         except subprocess.CalledProcessError:
             typer.echo("  ⚠️  Stashed changes need manual conflict resolution.")
 
-    def _run_update(*, dev: bool = False, relaunch: Path | None = None) -> None:
+    def _run_update(
+        *,
+        dev: bool = False,
+        relaunch: Path | None = None,
+        headless: bool = False,
+    ) -> None:
         root = get_project_root()
 
         if not dev and _is_development_workspace(root):
@@ -1495,6 +1542,7 @@ def register_commands(app: typer.Typer):
                 root,
                 release_tag=release_tag,
                 relaunch=relaunch,
+                headless=headless,
             )
             return
 
@@ -1712,9 +1760,14 @@ def register_commands(app: typer.Typer):
             "--relaunch",
             hidden=True,
         ),
+        headless: bool = typer.Option(
+            False,
+            "--headless",
+            help="Run the standalone updater in the terminal without a window.",
+        ),
     ):
         """Update Suzent to the latest version."""
-        _run_update(dev=dev, relaunch=relaunch)
+        _run_update(dev=dev, relaunch=relaunch, headless=headless)
 
     @app.command()
     def upgrade(
@@ -1723,15 +1776,26 @@ def register_commands(app: typer.Typer):
             "--dev",
             help="Update to origin/main and run the matching development frontend.",
         ),
+        headless: bool = typer.Option(
+            False,
+            "--headless",
+            help="Run the standalone updater in the terminal without a window.",
+        ),
     ):
         """Alias for `update`."""
         typer.echo(
             "`suzent upgrade` is supported; `suzent update` is the primary command."
         )
-        _run_update(dev=dev)
+        _run_update(dev=dev, headless=headless)
 
     @app.command()
-    def repair() -> None:
+    def repair(
+        headless: bool = typer.Option(
+            False,
+            "--headless",
+            help="Run the standalone updater in the terminal without a window.",
+        ),
+    ) -> None:
         """Repair the installed stable release with the standalone updater."""
         root = get_project_root()
         release_file = root / ".suzent" / "release-tag"
@@ -1752,6 +1816,7 @@ def register_commands(app: typer.Typer):
             release_tag=release_tag,
             relaunch=None,
             repair=True,
+            headless=headless,
         )
 
     @app.command("check-update")

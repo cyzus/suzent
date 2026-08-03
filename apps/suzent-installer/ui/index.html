@@ -320,6 +320,10 @@
       .stage.running { color: #fff; background: #111; box-shadow: 3px 3px 0 #737373; }
       .stage.running .stage-icon { border-color: #fff; color: #111; background: #fff; }
       .stage.running .state { color: #d4d4d4; }
+      body[data-mode="update"] .progress-bar.running::after { display: none; }
+      body[data-mode="update"] .stage { animation: none; }
+      body[data-mode="update"] .stage.running .stage-icon,
+      body[data-mode="update"] .live-dot.running::before { animation: none; }
       @media (max-width: 820px) {
         .shell { grid-template-columns: 205px minmax(0, 1fr); }
         .workspace { grid-template-columns: minmax(0, 1fr); }
@@ -427,7 +431,7 @@
         install: '安装', launch: '启动 Suzent', activity: '实时状态', channel: '通道', target: '目标版本', recovery: '恢复策略', rollback: '自动回滚',
         latest: '最新版本', live: '进行中', local: '仅本机', action: '需要处理', retry: '安全重试', copy: '复制详情', allSet: '已完成',
         footerInstall: '安装期间可以继续使用这台电脑。', footerUpdate: '准备阶段可安全恢复。', footerCritical: '正在替换运行环境，请勿关闭电脑。', protected: '事务保护已开启',
-        preparing: '正在准备', verifying: '校验下载与版本', completed: '操作完成', failed: '操作未完成', details: '详情', secure: ['资产校验', '保留当前版本', '自动恢复'], updatePlan: '更新进度',
+        preparing: '正在准备', downloading: '正在下载桌面端', verifying: '校验下载与版本', completed: '操作完成', failed: '操作未完成', details: '详情', secure: ['资产校验', '保留当前版本', '自动恢复'], updatePlan: '更新进度',
         showAll: '展开全部', showLess: '收起', completedCount: count => `已完成 ${count} 项`, waitingActivity: '等待活动',
       } : {
         installer: 'Installer', updater: 'Safe updater', installEyebrow: 'Guided setup', updateEyebrow: 'Transactional update', installTitle: 'Your agent, ready in one place.',
@@ -437,7 +441,7 @@
         install: 'Install', launch: 'Launch Suzent', activity: 'Activity', channel: 'Channel', target: 'Target', recovery: 'Recovery', rollback: 'Automatic rollback',
         latest: 'Latest release', live: 'Live', local: 'local only', action: 'Action needed', retry: 'Retry safely', copy: 'Copy details', allSet: 'All set',
         footerInstall: 'You can continue using this computer during setup.', footerUpdate: 'Preparation is recoverable.', footerCritical: 'Replacing the runtime. Do not shut down this computer.', protected: 'Transaction protected',
-        preparing: 'Preparing', verifying: 'Verifying download and version', completed: 'Operation complete', failed: 'Operation incomplete', details: 'Details', secure: ['Asset verification', 'Keep current version', 'Automatic recovery'], updatePlan: 'Update progress',
+        preparing: 'Preparing', downloading: 'Downloading desktop app', verifying: 'Verifying download and version', completed: 'Operation complete', failed: 'Operation incomplete', details: 'Details', secure: ['Asset verification', 'Keep current version', 'Automatic recovery'], updatePlan: 'Update progress',
         showAll: 'Show all', showLess: 'Show less', completedCount: count => `${count} completed`, waitingActivity: 'Waiting for activity',
       };
 
@@ -457,6 +461,7 @@
       let startedAt = null;
       let lastError = '';
       let lastStatusKey = '';
+      let lastStageRenderKey = '';
       let pollTimer = null;
       let showAllStages = false;
       let currentPhase = '';
@@ -465,14 +470,16 @@
       const states = new Map();
 
       function translateStage(title) { return isZh ? (stageTranslations[title] || title) : title; }
-      function setText(id, value) { const node = $(id); if (node) node.textContent = value; }
+      function setNodeText(node, value) { if (node && node.textContent !== value) node.textContent = value; }
+      function setText(id, value) { setNodeText($(id), value); }
       function log(message) { if (!message) return; els.recent.textContent = message; const line = document.createElement('div'); line.textContent = message; els.log.appendChild(line); els.log.scrollTop = els.log.scrollHeight; }
-      function setProgress(value, label, displayValue = null) { const pct = Math.max(0, Math.min(100, Math.round(value))); els.bar.style.width = `${pct}%`; els.bar.classList.toggle('running', running && pct < 100); els.percent.textContent = displayValue || `${pct}%`; els.progressLabel.textContent = label || text.waiting; document.querySelector('.progress-track').setAttribute('aria-valuenow', String(pct)); }
+      function setProgress(value, label, displayValue = null) { const pct = Math.max(0, Math.min(100, Math.round(value))); if (els.bar.style.width !== `${pct}%`) els.bar.style.width = `${pct}%`; els.bar.classList.toggle('running', running && pct < 100); setNodeText(els.percent, displayValue || `${pct}%`); setNodeText(els.progressLabel, label || text.waiting); const track = document.querySelector('.progress-track'); if (track.getAttribute('aria-valuenow') !== String(pct)) track.setAttribute('aria-valuenow', String(pct)); }
       function setRunning(value) { running = value; els.live.classList.toggle('running', value); els.live.textContent = value ? text.live : text.ready; els.start.disabled = value; els.browse.disabled = value; els.dir.readOnly = context?.mode === 'update'; els.dir.disabled = value && context?.mode !== 'update'; }
       function setError(message) { lastError = message || ''; els.error.style.display = message ? 'block' : 'none'; els.errorMessage.textContent = message || ''; if (message) { els.complete.style.display = 'none'; els.statusKicker.textContent = text.action; els.statusTitle.textContent = text.failed; } }
       function setComplete(message) { els.complete.style.display = message ? 'block' : 'none'; els.completeMessage.textContent = message || ''; if (message) { els.error.style.display = 'none'; els.statusKicker.textContent = text.allSet; els.statusTitle.textContent = text.completed; } }
 
       function applyStaticCopy() {
+        document.body.dataset.mode = context.mode;
         setText('product-kind', context.mode === 'update' ? text.updater : text.installer);
         setText('rail-eyebrow', context.mode === 'update' ? text.updateEyebrow : text.installEyebrow);
         setText('rail-title', context.mode === 'update' ? text.updateTitle : text.installTitle);
@@ -505,12 +512,35 @@
         return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, '0')}s`;
       }
 
+      function formatBytes(bytes) {
+        const value = Number(bytes || 0);
+        return value >= 1024 * 1024 ? `${(value / 1024 / 1024).toFixed(1)} MiB` : `${Math.round(value / 1024)} KiB`;
+      }
+
       function stageDuration(name, state) {
         if (state === 'skipped' || state === 'pending') return null;
         const aliases = name === 'download' ? ['download', 'fetch'] : [name];
         let total = aliases.reduce((sum, phase) => sum + Number(phaseDurations[phase] || 0), 0);
         if (aliases.includes(currentPhase) && phaseStartedAt) total += Math.max(0, Date.now() - phaseStartedAt);
         return total || null;
+      }
+
+      function stageRenderKey(activeName) {
+        const source = context.mode === 'update' ? updateStages.map(([name]) => name) : (manifest?.stages || []).map(stage => stage.name);
+        return `${showAllStages}:${activeName || ''}:${source.map(name => `${name}:${states.get(name) || 'pending'}`).join('|')}`;
+      }
+
+      function refreshStageDurations() {
+        for (const row of els.stages.querySelectorAll('.stage[data-stage]')) {
+          const name = row.dataset.stage;
+          const timing = row.querySelector('.duration');
+          if (!timing) continue;
+          const state = [...row.classList].find(value => ['succeeded','running','failed','skipped','pending'].includes(value)) || 'pending';
+          const duration = name === '__completed' ? Object.values(phaseDurations).reduce((sum, value) => sum + Number(value || 0), 0) : stageDuration(name, state);
+          const nextText = duration == null ? '' : formatDuration(duration);
+          if (timing.hidden !== (duration == null)) timing.hidden = duration == null;
+          if (timing.textContent !== nextText) timing.textContent = nextText;
+        }
       }
 
       function renderStages(activeName = null) {
@@ -526,17 +556,18 @@
         els.stages.innerHTML = '';
         for (const stage of list) {
           const state = stage.summaryState || states.get(stage.name) || 'pending';
-          const row = document.createElement('div'); row.className = `stage ${state} ${activeName === stage.name ? 'running' : ''}`;
+          const row = document.createElement('div'); row.className = `stage ${state} ${activeName === stage.name ? 'running' : ''}`; row.dataset.stage = stage.name;
           const icon = document.createElement('span'); icon.className = 'stage-icon'; icon.textContent = state === 'succeeded' ? '✓' : state === 'failed' ? '!' : String(stage.originalIndex + 1).padStart(2,'0');
           const title = document.createElement('span'); title.className = 'stage-title'; title.textContent = context.mode === 'install' ? translateStage(stage.title) : stage.title;
           const status = document.createElement('span'); status.className = 'state';
           const statusLabel = document.createElement('span'); statusLabel.textContent = state === 'succeeded' ? (isZh ? '完成' : 'done') : state === 'running' ? (isZh ? '进行中' : 'working') : state === 'failed' ? (isZh ? '失败' : 'failed') : state === 'skipped' ? (isZh ? '跳过' : 'skipped') : (isZh ? '等待' : 'queued'); status.appendChild(statusLabel);
-          const duration = stage.name === '__completed' ? Object.values(phaseDurations).reduce((sum, value) => sum + Number(value || 0), 0) : stageDuration(stage.name, state);
-          if (duration != null) { const timing = document.createElement('span'); timing.className = 'duration'; timing.textContent = formatDuration(duration); status.appendChild(timing); }
+          const timing = document.createElement('span'); timing.className = 'duration'; status.appendChild(timing);
           row.append(icon,title,status); els.stages.appendChild(row);
         }
         setText('stage-count', context.mode === 'update' ? `${done} / ${fullList.length}` : `${fullList.length} ${text.steps}`);
         els.toggleStages.textContent = showAllStages ? text.showLess : text.showAll;
+        lastStageRenderKey = stageRenderKey(activeName);
+        refreshStageDurations();
       }
 
       function phaseIndex(phase) { const aliases = { fetch:'download', switching:'source', rollback:'verify', rolled_back:'complete', repair_required:'complete' }; const key = aliases[phase] || phase; return updateStages.findIndex(([name]) => name === key); }
@@ -553,16 +584,23 @@
         });
         if (status.phase === 'complete') updateStages.forEach(([name]) => states.set(name, 'succeeded'));
         if (['repair_required'].includes(status.phase)) states.set(updateStages[Math.max(0,index)]?.[0] || 'verify', 'failed');
-        renderStages(index >= 0 ? updateStages[index][0] : null);
-        els.statusKicker.textContent = status.phase === 'complete' ? text.allSet : text.preparing;
-        els.statusTitle.textContent = status.message || text.verifying;
+        const activeName = index >= 0 ? updateStages[index][0] : null;
+        const nextRenderKey = stageRenderKey(activeName);
+        if (nextRenderKey !== lastStageRenderKey) renderStages(activeName); else refreshStageDurations();
+        setNodeText(els.statusKicker, status.phase === 'complete' ? text.allSet : text.preparing);
+        const downloading = status.phase === 'download' && Number(status.downloaded_bytes || 0) > 0;
+        setNodeText(els.statusTitle, downloading ? text.downloading : (status.message || text.verifying));
         const critical = ['source', 'dependencies', 'desktop', 'verify', 'switching', 'rollback'].includes(status.phase);
-        els.statusMessage.textContent = critical ? text.footerCritical : (isZh ? `目标 ${status.target_version || context.target} · 每一步都会写入恢复记录` : `Target ${status.target_version || context.target} · every step is journaled for recovery`);
+        const downloadDetail = downloading
+          ? `${formatBytes(status.downloaded_bytes)}${status.total_bytes ? ` / ${formatBytes(status.total_bytes)} · ${Math.min(100, Math.round(status.downloaded_bytes * 100 / status.total_bytes))}%` : ''}`
+          : '';
+        setNodeText(els.statusMessage, downloadDetail || (critical ? text.footerCritical : (isZh ? `目标 ${status.target_version || context.target} · 每一步都会写入恢复记录` : `Target ${status.target_version || context.target} · every step is journaled for recovery`)));
         setText('footer-note', critical ? text.footerCritical : text.footerUpdate);
         els.close.disabled = critical;
         els.close.title = critical ? text.footerCritical : '';
         setProgress(status.progress || 0, status.phase || text.preparing, `${Math.max(1, index + 1)} / ${updateStages.length}`);
-        const statusKey = `${status.phase}:${status.progress}:${status.message}`;
+        setNodeText(els.recent, status.message || text.waitingActivity);
+        const statusKey = status.phase === 'download' ? status.phase : `${status.phase}:${status.message}`;
         if (statusKey !== lastStatusKey) { log(status.message); lastStatusKey = statusKey; }
       }
 
@@ -598,6 +636,8 @@
             ? {phase:'repair_required',progress:100,message:isZh ? '更新未完成，旧版本已保留' : 'Update did not complete; the working version was kept',target_version:'v0.7.8'}
             : preview === 'complete'
               ? {phase:'complete',progress:100,message:isZh ? '更新完成，正在重新启动' : 'Update complete; relaunching Suzent',target_version:'v0.7.8'}
+              : preview === 'download'
+                ? {phase:'download',progress:20,message:isZh ? '正在下载桌面端' : 'Downloading desktop application',target_version:'v0.7.8',downloaded_bytes:10485760,total_bytes:16777216,phase_started_at:Date.now()-18400,phase_durations_ms:{preflight:620}}
               : {phase:'dependencies',progress:65,message:isZh ? '正在同步后端环境' : 'Synchronizing backend environment',target_version:'v0.7.8',phase_started_at:Date.now()-12700,phase_durations_ms:{preflight:620,download:5300,fetch:2400,stopping:900,source:1300}};
           applyUpdateStatus(previewStatus);
           if (preview === 'error') { setRunning(false); setError(isZh ? '依赖同步失败。旧版本已恢复，可以安全重试。' : 'Dependency sync failed. The previous version was restored and it is safe to retry.'); }
@@ -649,7 +689,7 @@
       $('window-maximize').addEventListener('click', () => tauri?.window?.getCurrentWindow?.().toggleMaximize());
       $('window-close').addEventListener('click', () => { if (!els.close.disabled) closeInstaller(); });
       els.browse.addEventListener('click', async () => { if (!openDialog) return; const selected = await openDialog({directory:true,multiple:false,defaultPath:els.dir.value || undefined}); if (typeof selected === 'string') { const trimmed = selected.replace(/[\\/]+$/,''); els.dir.value = trimmed.toLowerCase().endsWith(`${navigator.platform.includes('Win')?'\\':'/'}suzent`) ? trimmed : `${trimmed}${selected.includes('\\')?'\\':'/'}suzent`; } });
-      window.setInterval(() => { if (!startedAt) return; const seconds = Math.floor((Date.now() - startedAt) / 1000); els.elapsed.textContent = `${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`; if (running) renderStages(); },1000);
+      window.setInterval(() => { if (!startedAt) return; const seconds = Math.floor((Date.now() - startedAt) / 1000); els.elapsed.textContent = `${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`; if (running) refreshStageDurations(); },1000);
 
       (async () => {
         context = await loadContext(); document.documentElement.lang = isZh ? 'zh-CN' : 'en'; applyStaticCopy();

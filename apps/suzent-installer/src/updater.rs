@@ -3,11 +3,11 @@ use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::env;
 use std::fs::{self, OpenOptions};
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const LATEST_RELEASE_API: &str = "https://api.github.com/repos/cyzus/suzent/releases/latest";
 const RELEASE_BASE_URL: &str = "https://github.com/cyzus/suzent/releases/download";
@@ -28,6 +28,10 @@ struct UpdateStatus {
     phase_started_at: u64,
     #[serde(default)]
     phase_durations_ms: BTreeMap<String, u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    downloaded_bytes: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    total_bytes: Option<u64>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -252,7 +256,12 @@ fn prepare_target(paths: &UpdatePaths, target_tag: &str) -> Result<(), String> {
     }
     fs::create_dir_all(&paths.staging_dir)
         .map_err(display_io("create update staging directory"))?;
-    download_file(&release_asset_url(target_tag), &paths.staged_ui())?;
+    download_file(
+        &release_asset_url(target_tag),
+        &paths.staged_ui(),
+        paths,
+        target_tag,
+    )?;
     verify_release_asset(&paths.staged_ui(), target_tag, ui_asset_name())?;
     set_executable(&paths.staged_ui())?;
 
@@ -569,19 +578,59 @@ fn ui_asset_name() -> &'static str {
     }
 }
 
-fn download_file(url: &str, destination: &Path) -> Result<(), String> {
-    let response = reqwest::blocking::Client::builder()
+fn download_file(
+    url: &str,
+    destination: &Path,
+    paths: &UpdatePaths,
+    tag: &str,
+) -> Result<(), String> {
+    let mut response = reqwest::blocking::Client::builder()
         .user_agent("suzent-installer")
+        .connect_timeout(Duration::from_secs(30))
         .build()
         .map_err(|error| format!("failed to create download client: {error}"))?
         .get(url)
         .send()
         .and_then(|response| response.error_for_status())
         .map_err(|error| format!("failed to download {url}: {error}"))?;
-    let bytes = response
-        .bytes()
-        .map_err(|error| format!("failed to read {url}: {error}"))?;
-    fs::write(destination, bytes).map_err(display_io("write downloaded asset"))
+    let total = response.content_length();
+    let temporary = destination.with_extension("download");
+    let result = (|| {
+        let mut file = fs::File::create(&temporary).map_err(display_io("create download"))?;
+        let mut buffer = [0_u8; 256 * 1024];
+        let mut downloaded = 0_u64;
+        let mut last_report = Instant::now() - Duration::from_secs(1);
+        loop {
+            let count = response
+                .read(&mut buffer)
+                .map_err(|error| format!("failed to read {url}: {error}"))?;
+            if count == 0 {
+                break;
+            }
+            file.write_all(&buffer[..count])
+                .map_err(display_io("write downloaded asset"))?;
+            downloaded += count as u64;
+            if last_report.elapsed() >= Duration::from_millis(250)
+                || total.is_some_and(|size| downloaded >= size)
+            {
+                write_download_status(paths, tag, downloaded, total)?;
+                last_report = Instant::now();
+            }
+        }
+        file.sync_all()
+            .map_err(display_io("flush downloaded asset"))?;
+        if total.is_some_and(|size| downloaded != size) {
+            return Err(format!(
+                "incomplete download: received {downloaded} of {} bytes",
+                total.unwrap()
+            ));
+        }
+        fs::rename(&temporary, destination).map_err(display_io("finish downloaded asset"))
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&temporary);
+    }
+    result
 }
 
 fn verify_release_asset(path: &Path, tag: &str, asset_name: &str) -> Result<(), String> {
@@ -636,6 +685,61 @@ fn write_status(
     tag: &str,
 ) -> Result<(), String> {
     println!("[{progress:>3}%] {message}");
+    write_status_details(paths, phase, progress, message, tag, None, None)
+}
+
+fn write_download_status(
+    paths: &UpdatePaths,
+    tag: &str,
+    downloaded_bytes: u64,
+    total_bytes: Option<u64>,
+) -> Result<(), String> {
+    let percent = total_bytes
+        .filter(|total| *total > 0)
+        .map(|total| (downloaded_bytes.saturating_mul(100) / total).min(100));
+    let progress = percent
+        .map(|value| 15 + (value.saturating_mul(9) / 100) as u8)
+        .unwrap_or(15);
+    let message = match total_bytes {
+        Some(total) => format!(
+            "Downloading desktop application ({:.1} / {:.1} MiB, {}%)",
+            downloaded_bytes as f64 / 1024.0 / 1024.0,
+            total as f64 / 1024.0 / 1024.0,
+            percent.unwrap_or(0)
+        ),
+        None => format!(
+            "Downloading desktop application ({:.1} MiB)",
+            downloaded_bytes as f64 / 1024.0 / 1024.0
+        ),
+    };
+    print!("\r[{progress:>3}%] {message}");
+    io::stdout()
+        .flush()
+        .map_err(display_io("flush download progress"))?;
+    if percent == Some(100) {
+        println!();
+    }
+    write_status_details(
+        paths,
+        "download",
+        progress,
+        &message,
+        tag,
+        Some(downloaded_bytes),
+        total_bytes,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn write_status_details(
+    paths: &UpdatePaths,
+    phase: &str,
+    progress: u8,
+    message: &str,
+    tag: &str,
+    downloaded_bytes: Option<u64>,
+    total_bytes: Option<u64>,
+) -> Result<(), String> {
     let now = now_epoch_millis();
     let previous = fs::read(&paths.status)
         .ok()
@@ -670,6 +774,8 @@ fn write_status(
         updated_at: now / 1_000,
         phase_started_at,
         phase_durations_ms,
+        downloaded_bytes,
+        total_bytes,
     };
     write_json_atomic(&paths.status, &payload, "write update status")
 }
@@ -793,7 +899,7 @@ fn set_executable(_path: &Path) -> Result<(), String> {
 mod tests {
     use super::{
         acquire_lock, backup_current_ui, is_release_tag, parse_release_checksum, restore_ui_backup,
-        write_status, UpdatePaths, UpdateStatus,
+        write_download_status, write_status, UpdatePaths, UpdateStatus,
     };
     use std::fs;
     use std::thread;
@@ -863,5 +969,23 @@ mod tests {
         assert_eq!(status.phase, "download");
         assert!(status.phase_durations_ms.contains_key("preflight"));
         assert!(status.phase_started_at > 0);
+    }
+
+    #[test]
+    fn records_download_byte_progress_in_status() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let paths = UpdatePaths::new(temp.path().to_path_buf(), "v1.2.3");
+        fs::create_dir_all(&paths.state_dir).expect("state dir");
+
+        write_download_status(&paths, "v1.2.3", 5 * 1024 * 1024, Some(10 * 1024 * 1024))
+            .expect("download status");
+
+        let status: UpdateStatus =
+            serde_json::from_slice(&fs::read(&paths.status).expect("status file"))
+                .expect("valid status");
+        assert_eq!(status.phase, "download");
+        assert_eq!(status.downloaded_bytes, Some(5 * 1024 * 1024));
+        assert_eq!(status.total_bytes, Some(10 * 1024 * 1024));
+        assert_eq!(status.progress, 19);
     }
 }
