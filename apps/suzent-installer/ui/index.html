@@ -320,10 +320,24 @@
       .stage.running { color: #fff; background: #111; box-shadow: 3px 3px 0 #737373; }
       .stage.running .stage-icon { border-color: #fff; color: #111; background: #fff; }
       .stage.running .state { color: #d4d4d4; }
+      button.stage-toggle { height: 24px; display: inline-flex; align-items: center; gap: 5px; padding: 0 3px; border: 0; color: #525252; background: transparent; box-shadow: none; font: 500 10px/1 "Segoe UI", system-ui, sans-serif; letter-spacing: 0; text-decoration: none; text-transform: none; }
+      button.stage-toggle::after { content: "⌄"; color: #737373; font-size: 12px; line-height: 1; transform: translateY(-1px); }
+      button.stage-toggle[aria-expanded="true"]::after { content: "⌃"; transform: translateY(1px); }
+      button.stage-toggle:hover:not(:disabled) { color: #111; background: transparent; box-shadow: none; transform: none; }
+      button.stage-toggle:focus-visible { outline: none; background: #f0f0f0; }
+      .stage.failed { border: 1px solid #a3a3a3; color: #111; background: #fafafa; box-shadow: none; }
+      .stage.failed .stage-icon { border: 1px solid #111; border-radius: 50%; color: #111; background: transparent; }
+      .error-card { border: 1px solid #a3a3a3; color: #262626; background: #fafafa; box-shadow: none; }
       body[data-mode="update"] .progress-bar.running::after { display: none; }
       body[data-mode="update"] .stage { animation: none; }
       body[data-mode="update"] .stage.running .stage-icon,
       body[data-mode="update"] .live-dot.running::before { animation: none; }
+      body[data-mode="update"]::after { display: none; }
+      body[data-mode="update"] .status-card,
+      body[data-mode="update"] .stage.running,
+      body[data-mode="update"] .log { box-shadow: none; }
+      body.resizing::after { display: none; }
+      body.resizing *, body.resizing *::before, body.resizing *::after { animation: none !important; transition: none !important; }
       @media (max-width: 820px) {
         .shell { grid-template-columns: 205px minmax(0, 1fr); }
         .workspace { grid-template-columns: minmax(0, 1fr); }
@@ -332,7 +346,7 @@
     </style>
   </head>
   <body>
-    <div class="app-titlebar" data-tauri-drag-region>
+    <div class="app-titlebar">
       <div class="title-brand"><img class="title-mark" src="logo.svg" alt="" /><span>Suzent</span></div>
       <div class="window-actions">
         <button class="window-action" id="window-minimize" type="button" aria-label="Minimize"><span class="minimize"></span></button>
@@ -432,7 +446,7 @@
         latest: '最新版本', live: '进行中', local: '仅本机', action: '需要处理', retry: '安全重试', copy: '复制详情', allSet: '已完成',
         footerInstall: '安装期间可以继续使用这台电脑。', footerUpdate: '准备阶段可安全恢复。', footerCritical: '正在替换运行环境，请勿关闭电脑。', protected: '事务保护已开启',
         preparing: '正在准备', downloading: '正在下载桌面端', verifying: '校验下载与版本', completed: '操作完成', failed: '操作未完成', details: '详情', secure: ['资产校验', '保留当前版本', '自动恢复'], updatePlan: '更新进度',
-        showAll: '展开全部', showLess: '收起', completedCount: count => `已完成 ${count} 项`, waitingActivity: '等待活动',
+        showAll: '展开', showLess: '收起', completedCount: count => `已完成 ${count} 项`, waitingActivity: '等待活动',
       } : {
         installer: 'Installer', updater: 'Safe updater', installEyebrow: 'Guided setup', updateEyebrow: 'Transactional update', installTitle: 'Your agent, ready in one place.',
         updateTitle: 'Safe update', installIntro: 'We check each component, preserve existing data, and leave a verified installation behind.', updateIntro: 'Verify, switch, and restore automatically if needed.',
@@ -442,7 +456,7 @@
         latest: 'Latest release', live: 'Live', local: 'local only', action: 'Action needed', retry: 'Retry safely', copy: 'Copy details', allSet: 'All set',
         footerInstall: 'You can continue using this computer during setup.', footerUpdate: 'Preparation is recoverable.', footerCritical: 'Replacing the runtime. Do not shut down this computer.', protected: 'Transaction protected',
         preparing: 'Preparing', downloading: 'Downloading desktop app', verifying: 'Verifying download and version', completed: 'Operation complete', failed: 'Operation incomplete', details: 'Details', secure: ['Asset verification', 'Keep current version', 'Automatic recovery'], updatePlan: 'Update progress',
-        showAll: 'Show all', showLess: 'Show less', completedCount: count => `${count} completed`, waitingActivity: 'Waiting for activity',
+        showAll: 'Expand', showLess: 'Collapse', completedCount: count => `${count} completed`, waitingActivity: 'Waiting for activity',
       };
 
       const stageTranslations = {
@@ -557,7 +571,7 @@
         for (const stage of list) {
           const state = stage.summaryState || states.get(stage.name) || 'pending';
           const row = document.createElement('div'); row.className = `stage ${state} ${activeName === stage.name ? 'running' : ''}`; row.dataset.stage = stage.name;
-          const icon = document.createElement('span'); icon.className = 'stage-icon'; icon.textContent = state === 'succeeded' ? '✓' : state === 'failed' ? '!' : String(stage.originalIndex + 1).padStart(2,'0');
+          const icon = document.createElement('span'); icon.className = 'stage-icon'; icon.textContent = state === 'succeeded' ? '✓' : state === 'failed' ? '×' : String(stage.originalIndex + 1).padStart(2,'0');
           const title = document.createElement('span'); title.className = 'stage-title'; title.textContent = context.mode === 'install' ? translateStage(stage.title) : stage.title;
           const status = document.createElement('span'); status.className = 'state';
           const statusLabel = document.createElement('span'); statusLabel.textContent = state === 'succeeded' ? (isZh ? '完成' : 'done') : state === 'running' ? (isZh ? '进行中' : 'working') : state === 'failed' ? (isZh ? '失败' : 'failed') : state === 'skipped' ? (isZh ? '跳过' : 'skipped') : (isZh ? '等待' : 'queued'); status.appendChild(statusLabel);
@@ -566,6 +580,7 @@
         }
         setText('stage-count', context.mode === 'update' ? `${done} / ${fullList.length}` : `${fullList.length} ${text.steps}`);
         els.toggleStages.textContent = showAllStages ? text.showLess : text.showAll;
+        els.toggleStages.setAttribute('aria-expanded', String(showAllStages));
         lastStageRenderKey = stageRenderKey(activeName);
         refreshStageDurations();
       }
@@ -678,17 +693,30 @@
 
       async function retryUpdate() { setError(null); els.log.innerHTML = ''; phaseDurations = {}; currentPhase = ''; phaseStartedAt = 0; startedAt = Date.now(); setRunning(true); if (preview || !invoke) return; try { await invoke('retry_update'); pollTimer = window.setInterval(async () => { const raw = await invoke('updater_status'); if (raw) applyUpdateStatus(JSON.parse(raw)); },350); } catch (error) { setRunning(false); setError(String(error)); } }
       async function launchSuzent() { try { await invoke?.('launch_installed_app',{dir:els.dir.value.trim()}); await closeInstaller(); } catch (error) { setError(String(error)); } }
-      async function closeInstaller() { const appWindow = tauri?.window?.getCurrentWindow?.(); if (appWindow) await appWindow.close(); else window.close(); }
+      const appWindow = tauri?.window?.getCurrentWindow?.();
+      async function closeInstaller() { if (appWindow) await appWindow.close(); else window.close(); }
 
       els.start.addEventListener('click', () => context.mode === 'install' ? runInstall() : retryUpdate());
       els.retry.addEventListener('click', () => context.mode === 'install' ? runInstall() : retryUpdate());
       els.launch.addEventListener('click', launchSuzent);
       els.copyError.addEventListener('click', () => navigator.clipboard?.writeText(lastError));
       els.toggleStages.addEventListener('click', () => { showAllStages = !showAllStages; renderStages(); });
-      $('window-minimize').addEventListener('click', () => tauri?.window?.getCurrentWindow?.().minimize());
-      $('window-maximize').addEventListener('click', () => tauri?.window?.getCurrentWindow?.().toggleMaximize());
+      const titlebar = document.querySelector('.app-titlebar');
+      titlebar.addEventListener('pointerdown', event => {
+        if (event.button !== 0 || event.target.closest('.window-actions') || !appWindow) return;
+        if (event.detail === 2) appWindow.toggleMaximize();
+        else appWindow.startDragging();
+      });
+      $('window-minimize').addEventListener('click', () => appWindow?.minimize());
+      $('window-maximize').addEventListener('click', () => appWindow?.toggleMaximize());
       $('window-close').addEventListener('click', () => { if (!els.close.disabled) closeInstaller(); });
       els.browse.addEventListener('click', async () => { if (!openDialog) return; const selected = await openDialog({directory:true,multiple:false,defaultPath:els.dir.value || undefined}); if (typeof selected === 'string') { const trimmed = selected.replace(/[\\/]+$/,''); els.dir.value = trimmed.toLowerCase().endsWith(`${navigator.platform.includes('Win')?'\\':'/'}suzent`) ? trimmed : `${trimmed}${selected.includes('\\')?'\\':'/'}suzent`; } });
+      let resizeIdleTimer = null;
+      window.addEventListener('resize', () => {
+        document.body.classList.add('resizing');
+        window.clearTimeout(resizeIdleTimer);
+        resizeIdleTimer = window.setTimeout(() => document.body.classList.remove('resizing'), 140);
+      }, { passive: true });
       window.setInterval(() => { if (!startedAt) return; const seconds = Math.floor((Date.now() - startedAt) / 1000); els.elapsed.textContent = `${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`; if (running) refreshStageDurations(); },1000);
 
       (async () => {
