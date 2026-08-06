@@ -54,3 +54,56 @@ def test_backend_commit_prefers_build_environment(monkeypatch) -> None:
     monkeypatch.setenv("SUZENT_BUILD_COMMIT", "release-commit")
 
     assert system_routes.get_backend_commit() == "release-commit"
+
+
+def test_backend_commit_reads_symbolic_head_without_spawning_git(
+    tmp_path, monkeypatch
+) -> None:
+    commit = "a" * 40
+    git_dir = tmp_path / ".git"
+    ref = git_dir / "refs" / "heads" / "main"
+    ref.parent.mkdir(parents=True)
+    (git_dir / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+    ref.write_text(f"{commit}\n", encoding="utf-8")
+    source_file = tmp_path / "src" / "suzent" / "routes" / "system_routes.py"
+    source_file.parent.mkdir(parents=True)
+    source_file.touch()
+    monkeypatch.delenv("SUZENT_BUILD_COMMIT", raising=False)
+    monkeypatch.setattr(
+        system_routes.subprocess,
+        "run",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("git subprocess must not be started")
+        ),
+    )
+
+    assert system_routes.get_backend_commit(source_file) == commit
+
+
+def test_backend_commit_reads_packed_ref(tmp_path, monkeypatch) -> None:
+    commit = "b" * 40
+    git_dir = tmp_path / ".git"
+    git_dir.mkdir()
+    (git_dir / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+    (git_dir / "packed-refs").write_text(
+        f"# pack-refs with: peeled fully-peeled sorted\n{commit} refs/heads/main\n",
+        encoding="utf-8",
+    )
+    source_file = tmp_path / "system_routes.py"
+    source_file.touch()
+    monkeypatch.delenv("SUZENT_BUILD_COMMIT", raising=False)
+
+    assert system_routes.get_backend_commit(source_file) == commit
+
+
+def test_backend_commit_returns_unknown_for_invalid_metadata(
+    tmp_path, monkeypatch
+) -> None:
+    git_dir = tmp_path / ".git"
+    git_dir.mkdir()
+    (git_dir / "HEAD").write_text("not-a-commit\n", encoding="utf-8")
+    source_file = tmp_path / "system_routes.py"
+    source_file.touch()
+    monkeypatch.delenv("SUZENT_BUILD_COMMIT", raising=False)
+
+    assert system_routes.get_backend_commit(source_file) == "unknown"

@@ -7,6 +7,7 @@ import sys
 import subprocess
 import platform
 import tomllib
+from functools import lru_cache
 from importlib.metadata import PackageNotFoundError, version as package_version
 from pathlib import Path
 from starlette.requests import Request
@@ -53,28 +54,89 @@ def get_backend_version() -> str:
         return "unknown"
 
 
+def _git_directory(marker: Path) -> Path | None:
+    if marker.is_dir():
+        return marker
+    try:
+        prefix, value = marker.read_text(encoding="utf-8").strip().split(":", 1)
+    except (OSError, ValueError):
+        return None
+    if prefix.lower() != "gitdir":
+        return None
+    path = Path(value.strip())
+    return path if path.is_absolute() else (marker.parent / path).resolve()
+
+
+def _common_git_directory(git_dir: Path) -> Path:
+    try:
+        value = (git_dir / "commondir").read_text(encoding="utf-8").strip()
+    except OSError:
+        return git_dir
+    path = Path(value)
+    return path if path.is_absolute() else (git_dir / path).resolve()
+
+
+def _valid_commit(value: str) -> str | None:
+    commit = value.strip().lower()
+    if len(commit) in (40, 64) and all(char in "0123456789abcdef" for char in commit):
+        return commit
+    return None
+
+
+def _read_git_ref(git_dir: Path, ref: str) -> str | None:
+    common_dir = _common_git_directory(git_dir)
+    for root in (git_dir, common_dir):
+        try:
+            commit = _valid_commit((root / ref).read_text(encoding="utf-8"))
+        except OSError:
+            continue
+        if commit:
+            return commit
+
+    try:
+        packed_refs = (common_dir / "packed-refs").read_text(encoding="utf-8")
+    except OSError:
+        return None
+    for line in packed_refs.splitlines():
+        if not line or line.startswith(("#", "^")):
+            continue
+        try:
+            commit, packed_ref = line.split(" ", 1)
+        except ValueError:
+            continue
+        if packed_ref.strip() == ref:
+            return _valid_commit(commit)
+    return None
+
+
+@lru_cache(maxsize=8)
+def _read_source_commit(source_file: Path) -> str:
+    for parent in source_file.resolve().parents:
+        marker = parent / ".git"
+        if not marker.exists():
+            continue
+        git_dir = _git_directory(marker)
+        if git_dir is None:
+            return "unknown"
+        try:
+            head = (git_dir / "HEAD").read_text(encoding="utf-8").strip()
+        except OSError:
+            return "unknown"
+        if direct_commit := _valid_commit(head):
+            return direct_commit
+        if not head.startswith("ref:"):
+            return "unknown"
+        return _read_git_ref(git_dir, head.removeprefix("ref:").strip()) or "unknown"
+    return "unknown"
+
+
 def get_backend_commit(start: Path | None = None) -> str:
-    """Return the source commit used by the running backend when available."""
+    """Return the backend commit without spawning a process in the request path."""
 
     configured = os.getenv("SUZENT_BUILD_COMMIT", "").strip()
     if configured:
         return configured
-    source_file = (start or Path(__file__)).resolve()
-    for parent in source_file.parents:
-        if not (parent / ".git").exists():
-            continue
-        try:
-            result = subprocess.run(
-                ["git", "rev-parse", "HEAD"],
-                cwd=parent,
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-        except (OSError, subprocess.CalledProcessError):
-            return "unknown"
-        return result.stdout.strip() or "unknown"
-    return "unknown"
+    return _read_source_commit(start or Path(__file__))
 
 
 def get_system_identity() -> dict[str, str | int | bool]:
