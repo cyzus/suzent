@@ -58,7 +58,8 @@
       "supports_vision": false,
       "supports_function_calling": true,
       "supports_response_schema": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "supports_reasoning": true
     },
     "deepseek/deepseek-v4-pro": {
       "mode": "chat",
@@ -67,7 +68,8 @@
       "supports_vision": false,
       "supports_function_calling": true,
       "supports_response_schema": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "supports_reasoning": true
     }
   }
 }

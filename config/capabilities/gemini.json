@@ -253,7 +253,14 @@
       "supports_prompt_caching": false
     },
     "gemini/gemini-robotics-er-1.6-preview": {
-      "mode": "chat"
+      "mode": "chat",
+      "max_input_tokens": 131072,
+      "max_output_tokens": 65536,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "gemini/gemini-2.5-computer-use-preview-10-2025": {
       "mode": "chat",
@@ -480,10 +487,24 @@
       "supports_reasoning": false
     },
     "gemini/gemini-3.5-flash-lite": {
-      "mode": "chat"
+      "mode": "chat",
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 65536,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "gemini/gemini-3.6-flash": {
-      "mode": "chat"
+      "mode": "chat",
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 65536,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "gemini/imagen-3.0-fast-generate-001": {
       "mode": "image_generation"
@@ -493,6 +514,16 @@
     },
     "gemini/imagen-3.0-generate-002": {
       "mode": "image_generation"
+    },
+    "gemini/gemini-robotics-er-2-preview": {
+      "mode": "chat",
+      "max_input_tokens": 131072,
+      "max_output_tokens": 65536,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     }
   }
 }
