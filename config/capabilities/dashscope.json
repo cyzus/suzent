@@ -777,7 +777,13 @@
       "mode": "chat"
     },
     "dashscope/qwen3.7-max": {
-      "mode": "chat"
+      "mode": "chat",
+      "max_input_tokens": 991808,
+      "max_output_tokens": 65536,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "dashscope/qwen3.5-livetranslate-flash-realtime-2026-05-19": {
       "mode": "chat"
@@ -792,7 +798,14 @@
       "mode": "chat"
     },
     "dashscope/qwen3.7-plus": {
-      "mode": "chat"
+      "mode": "chat",
+      "max_input_tokens": 991808,
+      "max_output_tokens": 65536,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "dashscope/sre-gpu-auto-handle": {
       "mode": "chat"
