@@ -8,6 +8,15 @@ queue. Transport is gated by the auth boundary (agent scope); the application
 allowlist is layered on in the pairing phase.
 """
 
+from __future__ import annotations
+
+import ipaddress
+import shutil
+import tempfile
+from pathlib import Path
+from urllib.parse import urlparse
+
+import httpx
 from starlette.requests import Request
 from starlette.responses import JSONResponse, StreamingResponse
 
@@ -16,11 +25,132 @@ from suzent.logger import get_logger
 
 logger = get_logger(__name__)
 
+MAX_PEER_ATTACHMENTS = 8
+MAX_PEER_ATTACHMENT_BYTES = 50 * 1024 * 1024
+PEER_ATTACHMENT_TIMEOUT_SECONDS = 300.0
+
+
+def _normalized_host(value: str | None) -> str:
+    host = (value or "").rstrip(".").lower()
+    try:
+        return str(ipaddress.ip_address(host))
+    except ValueError:
+        return host
+
+
+def _validate_attachment_source(
+    url: str,
+    file_id: str,
+    *,
+    client_host: str,
+    callback_url: str,
+) -> None:
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        raise ValueError("Attachment URL must use HTTP or HTTPS")
+    if parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise ValueError("Attachment URL contains unsupported components")
+    if parsed.path != f"/nodes/peer-files/{file_id}":
+        raise ValueError("Attachment URL does not match its file id")
+
+    allowed_hosts = {_normalized_host(client_host)}
+    callback_host = urlparse(callback_url).hostname if callback_url else None
+    if callback_host:
+        allowed_hosts.add(_normalized_host(callback_host))
+    if _normalized_host(parsed.hostname) not in allowed_hosts:
+        raise ValueError("Attachment URL does not belong to the authenticated peer")
+
+
+async def _download_peer_attachments(
+    items: object,
+    *,
+    client_host: str,
+    callback_url: str,
+) -> tuple[list[dict], Path | None]:
+    """Download authenticated peer artifacts into a disposable staging directory."""
+    if not items:
+        return [], None
+    if not isinstance(items, list):
+        raise ValueError("attachments must be a list")
+    if len(items) > MAX_PEER_ATTACHMENTS:
+        raise ValueError(f"At most {MAX_PEER_ATTACHMENTS} attachments are allowed")
+
+    staging_dir = Path(tempfile.mkdtemp(prefix="suzent-peer-"))
+    downloaded: list[dict] = []
+    total_received = 0
+    try:
+        async with httpx.AsyncClient(
+            timeout=PEER_ATTACHMENT_TIMEOUT_SECONDS,
+            follow_redirects=False,
+            trust_env=False,
+        ) as client:
+            for item in items:
+                if not isinstance(item, dict):
+                    raise ValueError("Invalid attachment metadata")
+                file_id = str(item.get("id") or "")
+                url = str(item.get("url") or "")
+                token = str(item.get("token") or "")
+                name = Path(str(item.get("name") or "attachment")).name
+                try:
+                    advertised_size = int(item.get("size") or 0)
+                except (TypeError, ValueError) as exc:
+                    raise ValueError("Invalid attachment size") from exc
+                if not file_id or not token or not name:
+                    raise ValueError("Incomplete attachment metadata")
+                if advertised_size < 0 or advertised_size > MAX_PEER_ATTACHMENT_BYTES:
+                    raise ValueError(f"Attachment '{name}' exceeds the 50 MiB limit")
+                _validate_attachment_source(
+                    url,
+                    file_id,
+                    client_host=client_host,
+                    callback_url=callback_url,
+                )
+
+                target = staging_dir / f"{file_id}_{name}"
+                received = 0
+                async with client.stream(
+                    "GET", url, headers={"Authorization": f"Bearer {token}"}
+                ) as response:
+                    response.raise_for_status()
+                    length = response.headers.get("content-length")
+                    try:
+                        content_length = int(length) if length else 0
+                    except ValueError as exc:
+                        raise ValueError("Invalid attachment Content-Length") from exc
+                    if total_received + content_length > MAX_PEER_ATTACHMENT_BYTES:
+                        raise ValueError(
+                            "Peer attachments exceed the combined 50 MiB limit"
+                        )
+                    with target.open("wb") as output:
+                        async for chunk in response.aiter_bytes():
+                            received += len(chunk)
+                            total_received += len(chunk)
+                            if total_received > MAX_PEER_ATTACHMENT_BYTES:
+                                raise ValueError(
+                                    "Peer attachments exceed the combined 50 MiB limit"
+                                )
+                            output.write(chunk)
+                if advertised_size and received != advertised_size:
+                    raise ValueError(f"Attachment '{name}' size did not match metadata")
+                media_type = str(item.get("media_type") or "application/octet-stream")
+                downloaded.append(
+                    {
+                        "path": str(target),
+                        "filename": name,
+                        "type": "image" if media_type.startswith("image/") else "file",
+                    }
+                )
+        return downloaded, staging_dir
+    except Exception:
+        shutil.rmtree(staging_dir, ignore_errors=True)
+        raise
+
 
 async def suzent_channel_inbound(request: Request):
     """POST /channels/suzent/inbound — run the agent for a peer, stream the reply.
 
-    Body: {"from_id": <peer id>, "content": str, "chat_id"?: str}
+    Body: {"from_id": <peer id>, "content": str, "chat_id"?: str,
+           "attachments"?: list[artifact reference]}
     """
     try:
         body = await request.json()
@@ -71,6 +201,21 @@ async def suzent_channel_inbound(request: Request):
     name = (rec or {}).get("display_name") if rec else None
     trigger_label = name or peer_id or "an unknown device"
 
+    attachment_files: list[dict] = []
+    attachment_staging_dir: Path | None = None
+    try:
+        attachment_files, attachment_staging_dir = await _download_peer_attachments(
+            body.get("attachments"),
+            client_host=request.client.host if request.client else "",
+            callback_url=str((rec or {}).get("callback_url") or ""),
+        )
+    except (httpx.HTTPError, OSError, ValueError) as exc:
+        logger.warning("Suzent channel: peer attachment download rejected: {}", exc)
+        return JSONResponse(
+            {"error": f"Could not retrieve peer attachment: {exc}"},
+            status_code=400,
+        )
+
     from suzent.agent_manager import build_agent_config
     from suzent.core.chat_processor import ChatProcessor
     from suzent.database import get_database
@@ -109,6 +254,7 @@ async def suzent_channel_inbound(request: Request):
         chat_id=chat_id,
         user_id=CONFIG.user_id,
         message_content=content,
+        files=attachment_files,
         config_override=config_override,
         system_reminders=[attribution],
     )
@@ -169,6 +315,8 @@ async def suzent_channel_inbound(request: Request):
                         logger.info(f"Suzent channel: removed empty chat {chat_id}")
                 except Exception:
                     pass
+            if attachment_staging_dir is not None:
+                shutil.rmtree(attachment_staging_dir, ignore_errors=True)
 
     return StreamingResponse(_teed(), media_type="text/event-stream")
 

@@ -278,7 +278,20 @@ your session and streams the reply back.
 ```bash
 # From device A, drive device B's agent (B must have granted A control):
 suzent nodes trigger "Device B" "summarize ~/notes"
+
+# Attach one or more files from device A for device B's agent:
+suzent nodes trigger "Device B" "summarize these" \
+  --file ./notes.txt --file ./report.pdf
 ```
+
+Peer attachments are pulled directly from the sending device over the same
+LAN or Tailscale network. Each transfer uses a random artifact-specific token,
+expires after five minutes, and is limited to two download attempts. No
+permanent reverse control grant is required. A trigger accepts up to eight
+files with a combined size of 50 MiB; the receiver rejects redirects, URLs that
+do not belong to the authenticated peer, mismatched sizes, and oversized
+streams. Downloaded files move into that peer chat's `/workspace/uploads`
+directory and the temporary staging directory is removed after the turn.
 
 On the **target**, the session behaves like any other channel conversation:
 

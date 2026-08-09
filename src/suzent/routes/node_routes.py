@@ -7,8 +7,10 @@ Provides:
 """
 
 import asyncio
+import mimetypes
 import time
 import uuid
+from pathlib import Path
 
 from pydantic import ValidationError
 from starlette.requests import Request
@@ -33,6 +35,9 @@ from suzent.nodes.models import (
 from suzent.nodes.ws_node import WebSocketNode
 
 logger = get_logger(__name__)
+
+MAX_PEER_ATTACHMENTS = 8
+MAX_PEER_ATTACHMENT_BYTES = 50 * 1024 * 1024
 
 # Cache of per-peer reachability + outbound status, keyed by peer_id. The Devices
 # tab polls GET /nodes/peers every few seconds; without this, each poll would fan
@@ -1084,11 +1089,28 @@ async def peer_invoke(request: Request) -> JSONResponse:
 
 async def serve_peer_file(request: Request):
     """GET /nodes/peer-files/{file_id} — serve a registered local artifact."""
+    from suzent.auth_boundary import extract_token, is_loopback, token_scope
+
     registry = _get_peer_file_registry(request)
     file_id = request.path_params.get("file_id", "")
-    artifact = registry.get(file_id) if registry else None
+    token = extract_token(request.headers.raw)
+    client_host = request.client.host if request.client else ""
+    artifact = None
+    if registry is not None:
+        if is_loopback(client_host):
+            artifact = registry.get(file_id)
+        else:
+            node_manager = _get_node_manager(request)
+            device_store = getattr(node_manager, "device_store", None)
+            if token_scope(token, device_store) in ("agent", "full"):
+                artifact = registry.get(file_id)
+            else:
+                artifact = registry.authorize_transfer(file_id, token)
     if artifact is None:
-        return JSONResponse({"error": "Peer file not found"}, status_code=404)
+        return JSONResponse(
+            {"error": "Peer file not found or download grant is invalid"},
+            status_code=404,
+        )
     return FileResponse(
         artifact.path,
         media_type=artifact.media_type,
@@ -1372,7 +1394,8 @@ async def remove_peer(request: Request) -> JSONResponse:
 async def trigger_peer(request: Request):
     """POST /nodes/peers/{peer_id}/trigger — run a prompt on the peer, stream SSE.
 
-    Body: {"prompt": str, "chat_id"?: str}. Sends through the peer's Suzent
+    Body: {"prompt": str, "chat_id"?: str, "attachments"?: [{"path": str}]}.
+    Sends through the peer's Suzent
     channel (/channels/suzent/inbound) — the peer keys the session by our
     authenticated identity and streams its agent's reply back.
     """
@@ -1395,9 +1418,56 @@ async def trigger_peer(request: Request):
     if not prompt:
         return JSONResponse({"error": "prompt is required"}, status_code=400)
 
+    raw_attachments = body.get("attachments") or []
+    if not isinstance(raw_attachments, list):
+        return JSONResponse({"error": "attachments must be a list"}, status_code=400)
+    if len(raw_attachments) > MAX_PEER_ATTACHMENTS:
+        return JSONResponse(
+            {"error": f"At most {MAX_PEER_ATTACHMENTS} attachments are allowed"},
+            status_code=400,
+        )
+
+    registry = _get_peer_file_registry(request)
+    registered: list[str] = []
+    attachment_refs: list[dict] = []
+    total_size = 0
+    try:
+        source_base = _my_base_for_peer(peer["base_url"], _server_port(request))
+        for item in raw_attachments:
+            if not isinstance(item, dict) or not isinstance(item.get("path"), str):
+                raise ValueError("Each attachment requires a path")
+            path = Path(item["path"]).expanduser().resolve(strict=True)
+            if not path.is_file():
+                raise ValueError(f"Attachment is not a file: {path.name}")
+            size = path.stat().st_size
+            total_size += size
+            if total_size > MAX_PEER_ATTACHMENT_BYTES:
+                raise ValueError("Peer attachments exceed the combined 50 MiB limit")
+            requested_name = item.get("name")
+            name = Path(str(requested_name)).name if requested_name else path.name
+            media_type = (
+                str(item.get("media_type") or "").strip()
+                or mimetypes.guess_type(name)[0]
+                or "application/octet-stream"
+            )
+            artifact, transfer_token = registry.register_transfer(
+                path, name=name, media_type=media_type
+            )
+            registered.append(artifact.file_id)
+            ref = artifact.to_reference()
+            ref["url"] = f"{source_base}{ref['url']}"
+            ref["token"] = transfer_token
+            attachment_refs.append(ref)
+    except (OSError, ValueError) as exc:
+        for file_id in registered:
+            registry.remove(file_id)
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
     payload = {"content": prompt}
     if body.get("chat_id"):
         payload["chat_id"] = body["chat_id"]
+    if attachment_refs:
+        payload["attachments"] = attachment_refs
     headers = {"Authorization": f"Bearer {peer['token']}"}
     url = f"{peer['base_url']}/channels/suzent/inbound"
 

@@ -35,6 +35,10 @@ _HTTP_EXEMPT_PREFIXES = (
     "/nodes/grant-request",
     "/nodes/grant-status/",
     "/channels/suzent/grant-changed",  # untrusted revoke hint; receiver re-verifies
+    # The route validates either a durable device grant or its own short-lived,
+    # artifact-specific bearer. This exception lets a one-way peer present the
+    # latter without requiring a permanent reverse grant.
+    "/nodes/peer-files/",
 )
 
 

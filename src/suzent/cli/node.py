@@ -11,6 +11,7 @@ Usage:
 
 import json
 import asyncio
+from pathlib import Path
 from typing import Optional
 
 import typer
@@ -89,6 +90,16 @@ def node_trigger(
     peer: str = typer.Argument(help="Peer id or name from `suzent node list`"),
     prompt: str = typer.Argument(help="Prompt to run on the peer's agent"),
     chat_id: Optional[str] = typer.Option(None, "--chat-id", help="Reuse a chat"),
+    files: Optional[list[Path]] = typer.Option(
+        None,
+        "--file",
+        help="Attach a local file (repeat for multiple files)",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        resolve_path=True,
+    ),
 ):
     """Run a prompt on a peer device's agent and stream the reply."""
     import json as _json
@@ -116,7 +127,10 @@ def node_trigger(
 
         typer.echo(f"⚡ {match['name']}: ")
         try:
-            async for chunk in client.nodes.trigger(match["peer_id"], prompt, chat_id):
+            file_paths = [str(path) for path in (files or [])]
+            async for chunk in client.nodes.trigger(
+                match["peer_id"], prompt, chat_id, file_paths
+            ):
                 for line in chunk.decode("utf-8", "replace").splitlines():
                     if not line.startswith("data: "):
                         continue
