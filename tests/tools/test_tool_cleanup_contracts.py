@@ -5,6 +5,7 @@ import pytest
 from suzent.tools.base import ToolErrorCode, ToolResult
 from suzent.tools.skill_tool import SkillTool
 from suzent.tools.agent_tool import AgentTool
+from suzent.tools.registry import expand_tool_dependencies
 
 
 class _DummySkillManager:
@@ -193,6 +194,16 @@ async def test_spawn_subagent_accepts_effective_fallback_model(monkeypatch):
 def test_spawn_subagent_guidance_does_not_embed_model_workflow():
     assert "coun" + "cil" not in AgentTool.session_guidance.lower()
     assert "model_override" not in AgentTool.session_guidance
+
+
+def test_agent_tool_equips_small_lifecycle_dependencies():
+    assert expand_tool_dependencies(["AgentTool"]) == [
+        "AgentTool",
+        "AgentListTool",
+        "AgentReadTool",
+        "AgentWaitTool",
+        "AgentStopTool",
+    ]
 
 
 def test_skill_tool_returns_structured_result(monkeypatch):

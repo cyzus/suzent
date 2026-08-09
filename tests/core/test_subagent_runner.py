@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
 
@@ -9,6 +10,7 @@ from suzent.core.subagent_runner import (
     _evict_old_finished_tasks_locked,
     _task_to_sse_dict,
     _wakeup_parent_batch,
+    spawn_subagent,
 )
 
 
@@ -24,6 +26,34 @@ def _make_task(task_id: str, status: str, finished_offset: int | None = None):
     if finished_offset is not None:
         task.finished_at = datetime(2026, 1, 1) + timedelta(seconds=finished_offset)
     return task
+
+
+@pytest.mark.asyncio
+async def test_background_subagent_uses_shared_task_registry(monkeypatch):
+    captured = {}
+
+    async def fake_register(coro, task_id, description):
+        captured.update(task_id=task_id, description=description)
+        coro.close()
+        return SimpleNamespace(done=lambda: False, cancel=lambda: None)
+
+    monkeypatch.setattr(subagent_runner, "_resolve_tool_names", lambda tools: ([], []))
+    monkeypatch.setattr(
+        "suzent.core.task_registry.register_background_task", fake_register
+    )
+
+    task = await spawn_subagent(
+        parent_chat_id="chat-1",
+        description="Inspect the repository",
+        tools_allowed=[],
+        run_in_background=True,
+    )
+
+    assert captured == {
+        "task_id": f"subagent_{task.task_id}",
+        "description": "Inspect the repository",
+    }
+    assert task.runner_task is not None
 
 
 def test_evict_old_finished_tasks_keeps_active_and_recent(monkeypatch):

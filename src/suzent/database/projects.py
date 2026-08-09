@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy import text
 from sqlmodel import select
 
@@ -209,7 +209,10 @@ class ProjectOperationsMixin:
             return list(rows)
 
     def list_subagent_task_records(
-        self, parent_chat_id: Optional[str] = None
+        self,
+        parent_chat_id: Optional[str] = None,
+        task_id: Optional[str] = None,
+        limit: Optional[int] = None,
     ) -> List[dict]:
         """Return persisted subagent task records reconstructed from chat rows.
 
@@ -217,15 +220,37 @@ class ProjectOperationsMixin:
         persisted. This lets the UI show historical subagents after restart and
         when the currently selected chat is the subagent chat itself.
         """
+        statement = select(ChatModel).where(
+            text("json_extract(config, '$.platform') = 'subagent'")
+        )
+        if parent_chat_id:
+            statement = statement.where(
+                or_(
+                    ChatModel.id == parent_chat_id,
+                    text(
+                        "json_extract(config, '$.parent_chat_id') = :parent_chat_id"
+                    ).bindparams(parent_chat_id=parent_chat_id),
+                )
+            )
+        if task_id:
+            statement = statement.where(
+                or_(
+                    ChatModel.id == f"subagent-{task_id}",
+                    text(
+                        "json_extract(config, '$.subagent_task_id') = :task_id"
+                    ).bindparams(task_id=task_id),
+                )
+            )
+        statement = statement.order_by(ChatModel.updated_at.desc())
+        if limit is not None:
+            statement = statement.limit(limit)
+
         with self._session() as session:
-            chats = session.exec(select(ChatModel)).all()
+            chats = session.exec(statement).all()
 
         records = []
         for chat in chats:
             config = chat.config or {}
-            if config.get("platform") != "subagent":
-                continue
-
             task_id = config.get("subagent_task_id")
             if not task_id and chat.id.startswith("subagent-"):
                 task_id = chat.id[len("subagent-") :]
@@ -240,6 +265,15 @@ class ProjectOperationsMixin:
             if description.startswith(prefix):
                 description = description[len(prefix) :].strip()
 
+            status = config.get("subagent_status", "completed")
+            error = config.get("subagent_error")
+            if status in {"queued", "running"}:
+                # Runtime tasks are merged over these persisted records by the
+                # caller. A persisted-only active state is an orphan from a
+                # previous process and must not appear to still be executing.
+                status = "failed"
+                error = error or "Interrupted by server restart"
+
             records.append(
                 {
                     "task_id": task_id,
@@ -247,18 +281,21 @@ class ProjectOperationsMixin:
                     "chat_id": chat.id,
                     "description": description,
                     "tools_allowed": config.get("tools") or [],
-                    "status": "completed",
-                    "result_summary": None,
-                    "error": None,
-                    "model_override": config.get("model"),
-                    "started_at": chat.created_at.isoformat()
-                    if chat.created_at
-                    else None,
-                    "finished_at": chat.last_result_at.isoformat()
-                    if chat.last_result_at
-                    else chat.updated_at.isoformat()
-                    if chat.updated_at
-                    else None,
+                    "status": status,
+                    "result_summary": config.get("subagent_result_summary"),
+                    "error": error,
+                    "model_override": config.get("subagent_model")
+                    or config.get("model"),
+                    "started_at": config.get("subagent_started_at")
+                    or (chat.created_at.isoformat() if chat.created_at else None),
+                    "finished_at": config.get("subagent_finished_at")
+                    or (
+                        chat.last_result_at.isoformat()
+                        if chat.last_result_at
+                        else chat.updated_at.isoformat()
+                        if chat.updated_at
+                        else None
+                    ),
                     "inherit_context": config.get("inherit_context", False),
                     "isolation": config.get("isolation", "none"),
                     "worktree_path": config.get("worktree_path"),
@@ -268,9 +305,9 @@ class ProjectOperationsMixin:
 
         return sorted(
             records,
-            key=lambda record: record.get("finished_at")
-            or record.get("started_at")
-            or "",
+            key=lambda record: (
+                record.get("finished_at") or record.get("started_at") or ""
+            ),
             reverse=True,
         )
 

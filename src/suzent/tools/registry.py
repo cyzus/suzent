@@ -137,6 +137,12 @@ def _all_tool_classes() -> list:
     from suzent.tools.render_ui_tool import RenderUITool
     from suzent.tools.ask_question_tool import AskQuestionTool
     from suzent.tools.agent_tool import AgentTool
+    from suzent.tools.agent_lifecycle_tools import (
+        AgentListTool,
+        AgentReadTool,
+        AgentStopTool,
+        AgentWaitTool,
+    )
 
     return [
         ReadFileTool,
@@ -165,6 +171,10 @@ def _all_tool_classes() -> list:
         MemorySearchTool,
         SessionSearchTool,
         AgentTool,
+        AgentListTool,
+        AgentReadTool,
+        AgentWaitTool,
+        AgentStopTool,
     ]
 
 
@@ -173,6 +183,13 @@ SHELL_TOOL_CLASS_NAMES = (
     "StartCommandTool",
     "CheckCommandTool",
     "StopCommandTool",
+)
+
+AGENT_LIFECYCLE_TOOL_NAMES = (
+    "AgentListTool",
+    "AgentReadTool",
+    "AgentWaitTool",
+    "AgentStopTool",
 )
 
 LEGACY_SHELL_TOOL_NAMES = {
@@ -199,6 +216,10 @@ TOOL_DESCRIPTION_OVERRIDES = {
     "TaskCreateTool": "Create structured project tasks with dependencies, assignees, and progress metadata.",
     "TaskUpdateTool": "Update the status, ownership, description, or dependencies of an existing task.",
     "TaskListTool": "List project tasks and their current status, ownership, and dependency relationships.",
+    "AgentListTool": "List active or recent sub-agent tasks owned by the current conversation.",
+    "AgentReadTool": "Read a sub-agent task's status and visible conversation transcript.",
+    "AgentWaitTool": "Wait for one of up to eight selected sub-agent tasks to finish.",
+    "AgentStopTool": "Stop a running sub-agent task owned by the current conversation.",
     "RenderUITool": "Render an interactive interface such as a form, table, card, or action panel.",
     "SpeakTool": "Convert a response to speech and return playable audio to the conversation.",
     "SocialMessageTool": "Send a message through a configured social channel after approval.",
@@ -218,7 +239,10 @@ def migrate_shell_tool_names(tool_names: List[str]) -> List[str]:
 
 def expand_tool_dependencies(tool_names: List[str]) -> List[str]:
     """Normalize legacy aggregate selections while preserving modern choices."""
-    return migrate_shell_tool_names(tool_names)
+    expanded = migrate_shell_tool_names(tool_names)
+    if "AgentTool" in expanded:
+        expanded.extend(AGENT_LIFECYCLE_TOOL_NAMES)
+    return list(dict.fromkeys(expanded))
 
 
 def _humanize_tool_name(name: str) -> str:

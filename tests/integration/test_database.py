@@ -169,6 +169,42 @@ class TestChatOperations:
         assert by_child[0]["chat_id"] == child_id
         assert by_child[0]["description"] == "Analyzing Claude Code and Suzent"
 
+    def test_list_subagent_task_records_filters_and_limits_in_database(self, db):
+        parent_id = db.create_chat("Parent", {})
+        for index in range(3):
+            db.create_chat(
+                f"Sub-agent: task {index}",
+                {
+                    "platform": "subagent",
+                    "parent_chat_id": parent_id,
+                    "subagent_task_id": f"sub_{index}",
+                },
+                chat_id=f"subagent-sub_{index}",
+            )
+
+        limited = db.list_subagent_task_records(parent_chat_id=parent_id, limit=2)
+        selected = db.list_subagent_task_records(task_id="sub_1", limit=1)
+
+        assert len(limited) == 2
+        assert [record["task_id"] for record in selected] == ["sub_1"]
+
+    def test_persisted_running_subagent_is_reported_as_interrupted(self, db):
+        child_id = db.create_chat(
+            "Sub-agent: interrupted",
+            {
+                "platform": "subagent",
+                "subagent_task_id": "sub_interrupted",
+                "subagent_status": "running",
+            },
+            chat_id="subagent-sub_interrupted",
+        )
+
+        record = db.list_subagent_task_records(task_id="sub_interrupted")[0]
+
+        assert record["chat_id"] == child_id
+        assert record["status"] == "failed"
+        assert record["error"] == "Interrupted by server restart"
+
     def test_update_chat(self, db):
         chat_id = db.create_chat("Original Title", {})
 

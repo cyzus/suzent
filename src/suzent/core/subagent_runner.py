@@ -10,7 +10,7 @@ import asyncio
 import json
 import re
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -30,7 +30,15 @@ logger = get_logger(__name__)
 
 # Tools that sub-agents can never have, regardless of what the caller requests.
 # Prevents recursive sub-agent spawning.
-_ALWAYS_DENIED: frozenset[str] = frozenset({"AgentTool"})
+_ALWAYS_DENIED: frozenset[str] = frozenset(
+    {
+        "AgentTool",
+        "AgentListTool",
+        "AgentReadTool",
+        "AgentWaitTool",
+        "AgentStopTool",
+    }
+)
 
 # ─── Wakeup batching ──────────────────────────────────────────────────────────
 # When multiple sub-agents finish around the same time, we batch their results
@@ -133,6 +141,8 @@ class SubAgentTask:
     isolation_target_path: Optional[str] = None  # caller-supplied git repo root
     worktree_path: Optional[str] = None  # created worktree path (output)
     worktree_branch: Optional[str] = None  # created branch name (output)
+    completion_event: asyncio.Event = field(default_factory=asyncio.Event, repr=False)
+    runner_task: Optional[asyncio.Task] = field(default=None, repr=False)
 
 
 # Global registry: task_id -> SubAgentTask
@@ -227,6 +237,8 @@ def _task_to_sse_dict(task: SubAgentTask) -> dict:
 
 def _broadcast_task_update(task: SubAgentTask) -> None:
     """Push a task-state event to all active SSE subscribers (non-blocking)."""
+    if task.status in _TERMINAL_STATUSES:
+        task.completion_event.set()
     payload = json.dumps({"event": "task_update", "task": _task_to_sse_dict(task)})
     dead: set[asyncio.Queue] = set()
     for q in _sse_subscribers:
@@ -235,6 +247,35 @@ def _broadcast_task_update(task: SubAgentTask) -> None:
         except asyncio.QueueFull:
             dead.add(q)
     _sse_subscribers.difference_update(dead)
+
+
+def _persist_task_state(task: SubAgentTask) -> None:
+    """Mirror runtime lifecycle fields into the persisted child chat config."""
+    db = get_database()
+    chat = db.get_chat(task.chat_id)
+    if chat is None:
+        return
+    config = dict(chat.config or {})
+    config.update(
+        {
+            "subagent_status": task.status,
+            "subagent_result_summary": task.result_summary,
+            "subagent_error": task.error,
+            "subagent_model": task.model_override,
+            "tools": list(task.tools_allowed),
+            "inherit_context": task.inherit_context,
+            "isolation": task.isolation,
+            "worktree_path": task.worktree_path,
+            "worktree_branch": task.worktree_branch,
+            "subagent_started_at": task.started_at.isoformat()
+            if task.started_at
+            else None,
+            "subagent_finished_at": task.finished_at.isoformat()
+            if task.finished_at
+            else None,
+        }
+    )
+    db.update_chat(task.chat_id, config=config)
 
 
 # ─── Tool name resolution ─────────────────────────────────────────────────────
@@ -323,11 +364,23 @@ async def spawn_subagent(
     _broadcast_task_update(task)
 
     if run_in_background:
-        # Fire-and-forget — parent chat keeps streaming
-        asyncio.create_task(
-            _run_subagent(task, wakeup_parent=True),
-            name=f"subagent_{task_id}",
-        )
+        # Use the shared registry so sub-agents participate in concurrency limits,
+        # graceful shutdown, exception collection, and task diagnostics.
+        from suzent.core.task_registry import register_background_task
+
+        runner = _run_subagent(task, wakeup_parent=True)
+        try:
+            task.runner_task = await register_background_task(
+                runner,
+                task_id=f"subagent_{task_id}",
+                description=description[:200],
+            )
+        except Exception as exc:
+            runner.close()
+            task.status = "failed"
+            task.error = str(exc)
+            task.finished_at = datetime.now()
+            _broadcast_task_update(task)
     else:
         # Blocking — parent awaits the child's completion
         await _run_subagent(task, wakeup_parent=False)
@@ -369,10 +422,16 @@ async def _run_subagent(
                 "subagent_task_id": task.task_id,
                 "permission_mode": "auto",
                 "interaction_profile": "subagent",
+                "subagent_status": task.status,
+                "subagent_model": task.model_override,
+                "tools": list(task.tools_allowed),
+                "inherit_context": task.inherit_context,
+                "isolation": task.isolation,
             },
             chat_id=task.chat_id,
             project_id=parent_project_id,
         )
+    _persist_task_state(task)
 
     # Phase 2: inject parent conversation history into child chat
     if task.inherit_context:
@@ -386,6 +445,7 @@ async def _run_subagent(
             task.error = error
             task.finished_at = datetime.now()
             _broadcast_task_update(task)
+            _persist_task_state(task)
             await _notify_parent(
                 task,
                 "subagent_failed",
@@ -469,6 +529,7 @@ async def _run_subagent(
         task.result_summary = result_text[:1000] if result_text else "(no output)"
         task.finished_at = datetime.now()
         _broadcast_task_update(task)
+        _persist_task_state(task)
 
         await _notify_parent(
             task,
@@ -484,9 +545,10 @@ async def _run_subagent(
 
     except asyncio.CancelledError:
         task.status = "failed"
-        task.error = "Sub-agent cancelled"
+        task.error = task.error or "Sub-agent cancelled"
         task.finished_at = datetime.now()
         _broadcast_task_update(task)
+        _persist_task_state(task)
         raise
     except Exception as e:
         logger.error(f"Sub-agent {task.task_id} failed: {e}")
@@ -494,6 +556,7 @@ async def _run_subagent(
         task.error = str(e)
         task.finished_at = datetime.now()
         _broadcast_task_update(task)
+        _persist_task_state(task)
 
         await _notify_parent(
             task,
@@ -508,6 +571,7 @@ async def _run_subagent(
         # Phase 3: always tear down the worktree, even on failure
         if task.isolation == "worktree" and task.worktree_path:
             await _teardown_worktree(task)
+        _persist_task_state(task)
         # The task is now terminal; prune here too so a burst that all finishes
         # without a new spawn doesn't leave result summaries resident.
         await _evict_old_finished_tasks_locked()
@@ -826,6 +890,7 @@ async def clear_stuck_tasks() -> list[str]:
             task.error = "Cleared (orphaned task)"
             task.finished_at = datetime.now()
             _broadcast_task_update(task)
+            _persist_task_state(task)
             cleared.append(task.task_id)
     if cleared:
         await _evict_old_finished_tasks_locked()
@@ -847,4 +912,35 @@ async def stop_subagent(task_id: str) -> bool:
         task.error = "Stopped by user"
         task.finished_at = datetime.now()
         _broadcast_task_update(task)
+        _persist_task_state(task)
+        if task.runner_task and not task.runner_task.done():
+            task.runner_task.cancel()
     return True
+
+
+async def wait_for_subagents(
+    task_ids: list[str], timeout_seconds: float
+) -> tuple[list[SubAgentTask], bool]:
+    """Wait until any requested task finishes and return a fresh snapshot.
+
+    The boolean result is true when the wait timed out. Missing task IDs are
+    ignored here and validated by the caller, which owns access control.
+    """
+    tasks = [task for task_id in task_ids if (task := _tasks.get(task_id))]
+    if not tasks or any(task.status in _TERMINAL_STATUSES for task in tasks):
+        return tasks, False
+    if timeout_seconds <= 0:
+        return tasks, True
+
+    waiters = [asyncio.create_task(task.completion_event.wait()) for task in tasks]
+    try:
+        done, pending = await asyncio.wait(
+            waiters,
+            timeout=timeout_seconds,
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        return tasks, not done
+    finally:
+        for waiter in waiters:
+            if not waiter.done():
+                waiter.cancel()

@@ -108,6 +108,18 @@ See [Canvas (A2UI)](./canvas.md) for full documentation.
 | Tool | Function | Context | Description |
 |------|----------|---------|-------------|
 | ToolSearchTool | `tool_search` | AgentDeps | Discover and activate additional tools mid-conversation |
+| AgentTool | `agent` | chat_id | Start a bounded sub-agent in the foreground or background |
+| AgentListTool | `agent_list` | chat_id | List active tasks or bounded recent history owned by the current chat |
+| AgentReadTool | `agent_read` | chat_id | Read one owned task's status and visible transcript |
+| AgentWaitTool | `agent_wait` | chat_id | Wait until any of up to eight owned tasks finishes |
+| AgentStopTool | `agent_stop` | chat_id | Stop one owned running task |
+
+The lifecycle tools are intentionally separate instead of using one action-heavy
+management schema. `agent_list` defaults to active tasks and caps results at 20;
+historical conversation discovery remains the responsibility of
+`session_search`. Task ownership is inferred from the current chat, so callers do
+not pass parent chat or project identifiers. Selecting `AgentTool` automatically
+equips these lifecycle operations as its management dependencies.
 
 **HITL** = Requires human approval before execution. See [Human-in-the-Loop](./human-in-the-loop.md).
 
