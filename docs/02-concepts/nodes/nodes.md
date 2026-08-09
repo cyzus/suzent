@@ -309,7 +309,9 @@ The desktop app binds the server to **localhost only** by default
 (`SUZENT_HOST=127.0.0.1`), so peer devices can't reach it out of the box. To
 use cross-device nodes, enable **Settings → Devices → "Reachable by other
 devices"** (config `node_lan_bind`, default `false`) and **restart** the app —
-the server then binds `0.0.0.0` and is reachable on its LAN/Tailscale address.
+the server then binds `0.0.0.0` on the stable mesh port `25314` and is reachable
+on its LAN/Tailscale address. Desktop startup remains dynamically assigned when
+device reachability is disabled.
 
 ### Auth boundary (scoped tokens)
 

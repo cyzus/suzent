@@ -521,20 +521,9 @@ def _best_effort_lan_host() -> str:
 
     Falls back to the configured host when detection fails (e.g. offline).
     """
-    import socket
+    from suzent.nodes.discovery import _local_ip
 
-    from suzent.config import DEFAULT_HOST
-
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        try:
-            # No packets are actually sent; this just picks the outbound iface.
-            s.connect(("8.8.8.8", 80))
-            return s.getsockname()[0]
-        finally:
-            s.close()
-    except Exception:
-        return DEFAULT_HOST
+    return _local_ip()
 
 
 def _tailscale_addresses() -> list[tuple[str, str]]:
@@ -583,10 +572,14 @@ def _tailscale_addresses() -> list[tuple[str, str]]:
     return out
 
 
-def _pairing_addresses() -> list[dict]:
-    """Candidate addresses a companion device can use to reach this server."""
+def _server_port(request: Request) -> int:
     from suzent.config import DEFAULT_PORT
 
+    return int(getattr(request.app.state, "server_port", DEFAULT_PORT))
+
+
+def _pairing_addresses(port: int) -> list[dict]:
+    """Candidate addresses a companion device can use to reach this server."""
     candidates: list[tuple[str, str]] = [("LAN", _best_effort_lan_host())]
     candidates.extend(_tailscale_addresses())
 
@@ -600,7 +593,7 @@ def _pairing_addresses() -> list[dict]:
             {
                 "label": label,
                 "host": host,
-                "gateway_url": f"ws://{host}:{DEFAULT_PORT}/ws/node",
+                "gateway_url": f"ws://{host}:{port}/ws/node",
             }
         )
     return result
@@ -608,15 +601,14 @@ def _pairing_addresses() -> list[dict]:
 
 async def get_node_config(request: Request) -> JSONResponse:
     """GET /nodes/config — Current node configuration + pairing addresses."""
-    from suzent.config import DEFAULT_PORT
-
-    addresses = _pairing_addresses()
+    port = _server_port(request)
+    addresses = _pairing_addresses(port)
     primary = addresses[0] if addresses else None
     return JSONResponse(
         {
             "nodes_enabled": bool(CONFIG.nodes_enabled),
             "node_lan_bind": bool(getattr(CONFIG, "node_lan_bind", False)),
-            "port": DEFAULT_PORT,
+            "port": port,
             # All reachable addresses (LAN + Tailscale if present) so the UI can
             # offer the right one per network. lan_host/gateway_url kept for
             # backward compatibility.
@@ -670,7 +662,6 @@ async def save_node_config(request: Request) -> JSONResponse:
 
 async def discover_nodes(request: Request) -> JSONResponse:
     """GET /nodes/discover — Find Suzent peers on the LAN (mDNS) and tailnet."""
-    from suzent.config import DEFAULT_PORT
     from suzent.nodes import discovery
 
     try:
@@ -680,7 +671,7 @@ async def discover_nodes(request: Request) -> JSONResponse:
     lan_timeout = max(0.5, min(lan_timeout, 5.0))
 
     result = await discovery.discover_all(
-        self_port=DEFAULT_PORT, lan_timeout=lan_timeout
+        self_port=_server_port(request), lan_timeout=lan_timeout
     )
     return JSONResponse(result)
 
@@ -894,19 +885,17 @@ def _is_tailscale_host(host: str) -> bool:
     return host.startswith("100.") or host.endswith(".ts.net")
 
 
-def _my_base_for_peer(peer_base_url: str) -> str:
+def _my_base_for_peer(peer_base_url: str, port: int) -> str:
     """Pick an address of *this* server reachable on the peer's network.
 
     If we reach the peer over Tailscale, offer our Tailscale address (a LAN IP
     wouldn't be reachable from their network), otherwise our LAN address.
     """
-    from suzent.config import DEFAULT_PORT
-
     if _is_tailscale_host(_host_of(peer_base_url)):
         for _label, host in _tailscale_addresses():
             if host.startswith("100."):
-                return f"http://{host}:{DEFAULT_PORT}"
-    return f"http://{_best_effort_lan_host()}:{DEFAULT_PORT}"
+                return f"http://{host}:{port}"
+    return f"http://{_best_effort_lan_host()}:{port}"
 
 
 async def request_control(request: Request) -> JSONResponse:
@@ -932,7 +921,7 @@ async def request_control(request: Request) -> JSONResponse:
     my_name = socket.gethostname()
     # Tell the grantor where to reach us (for revoke notifications), on the same
     # network we're reaching them.
-    my_addr = _my_base_for_peer(base)
+    my_addr = _my_base_for_peer(base, _server_port(request))
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             r = await client.post(
@@ -1327,7 +1316,7 @@ async def set_peer_reverse(request: Request) -> JSONResponse:
             peer.get("name") or "peer", "peer", scope="agent"
         )
         # Offer an address reachable on the peer's network (Tailscale vs LAN).
-        my_base = _my_base_for_peer(peer["base_url"])
+        my_base = _my_base_for_peer(peer["base_url"], _server_port(request))
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 resp = await client.post(

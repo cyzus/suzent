@@ -8,6 +8,24 @@ import pytest
 from suzent.nodes.device_store import DeviceTokenStore
 from suzent.nodes.manager import MAX_PENDING_GRANTS, NodeManager
 from suzent.nodes.peer_store import PeerGrantStore
+from suzent.routes import node_routes
+
+
+def test_pairing_and_callback_urls_use_actual_server_port(monkeypatch) -> None:
+    monkeypatch.setattr(node_routes, "_best_effort_lan_host", lambda: "192.168.1.8")
+    monkeypatch.setattr(
+        node_routes,
+        "_tailscale_addresses",
+        lambda: [("Tailscale", "100.64.0.8")],
+    )
+
+    addresses = node_routes._pairing_addresses(43123)
+
+    assert addresses[0]["gateway_url"] == "ws://192.168.1.8:43123/ws/node"
+    assert (
+        node_routes._my_base_for_peer("http://100.64.0.9:25314", 43123)
+        == "http://100.64.0.8:43123"
+    )
 
 
 def _mgr(tmp_path):

@@ -16,6 +16,7 @@ Operator approval still gates the actual connection.
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import json
 import os
 import shutil
@@ -27,10 +28,54 @@ from suzent.logger import get_logger
 logger = get_logger(__name__)
 
 SERVICE_TYPE = "_suzent-node._tcp.local."
+TAILSCALE_NETWORK = ipaddress.ip_network("100.64.0.0/10")
+VPN_BENCHMARK_NETWORK = ipaddress.ip_network("198.18.0.0/15")
+
+
+def resolve_mesh_bind(
+    host: str, port: int, *, enabled: bool, default_port: int
+) -> tuple[str, int]:
+    """Use a predictable externally reachable endpoint for the device mesh."""
+    if not enabled:
+        return host, port
+    return (host if host in ("0.0.0.0", "::") else "0.0.0.0", port or default_port)
 
 
 def _local_ip() -> str:
-    """Best-effort primary LAN IP (the default-route interface)."""
+    """Best-effort physical LAN IP, excluding overlays and VPN adapters."""
+    candidates: list[str] = []
+    try:
+        import psutil
+
+        stats = psutil.net_if_stats()
+        for interface, addresses in psutil.net_if_addrs().items():
+            if not stats.get(interface) or not stats[interface].isup:
+                continue
+            for address in addresses:
+                if address.family != socket.AF_INET:
+                    continue
+                ip = ipaddress.ip_address(address.address)
+                if not ip.is_private or ip.is_loopback or ip.is_link_local:
+                    continue
+                # Tailscale's CGNAT range and 198.18/15 VPN benchmark networks
+                # are routable overlays, not addresses a same-LAN peer can use.
+                if ip in TAILSCALE_NETWORK or ip in VPN_BENCHMARK_NETWORK:
+                    continue
+                candidates.append(str(ip))
+    except Exception:
+        pass
+
+    if candidates:
+
+        def rank(value: str) -> tuple[int, str]:
+            if value.startswith("192.168."):
+                return (0, value)
+            if value.startswith("10."):
+                return (1, value)
+            return (2, value)
+
+        return min(candidates, key=rank)
+
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         try:

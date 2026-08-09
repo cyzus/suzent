@@ -5,11 +5,48 @@ the outbound connection manager.
 
 import asyncio
 import json
+import socket
+from collections import namedtuple
 
 import pytest
 
 from suzent.nodes import discovery
 from suzent.nodes.outbound import OutboundConnectionManager
+
+
+def test_mesh_bind_replaces_loopback_and_dynamic_port():
+    assert discovery.resolve_mesh_bind(
+        "127.0.0.1", 0, enabled=True, default_port=25314
+    ) == ("0.0.0.0", 25314)
+
+
+def test_mesh_bind_leaves_normal_desktop_start_dynamic():
+    assert discovery.resolve_mesh_bind(
+        "127.0.0.1", 0, enabled=False, default_port=25314
+    ) == ("127.0.0.1", 0)
+
+
+def test_local_ip_ignores_tailscale_and_vpn_ranges(monkeypatch):
+    address = namedtuple("address", "family address")
+    status = namedtuple("status", "isup")
+    monkeypatch.setattr(
+        "psutil.net_if_stats",
+        lambda: {
+            "VPN": status(True),
+            "Tailscale": status(True),
+            "Wi-Fi": status(True),
+        },
+    )
+    monkeypatch.setattr(
+        "psutil.net_if_addrs",
+        lambda: {
+            "VPN": [address(socket.AF_INET, "198.18.0.1")],
+            "Tailscale": [address(socket.AF_INET, "100.64.50.42")],
+            "Wi-Fi": [address(socket.AF_INET, "192.168.0.219")],
+        },
+    )
+
+    assert discovery._local_ip() == "192.168.0.219"
 
 
 # ─── Tailscale peer parsing ──────────────────────────────────────────
