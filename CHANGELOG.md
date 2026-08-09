@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🚀 Added
 - Support secure peer file attachments (#99)
+- Improve LAN/Tailscale discovery and stable mesh binding (#99)
 - Enhance backend commit retrieval without subprocess calls
 
 ## [v0.7.10] - 2026-08-05
