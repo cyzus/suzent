@@ -1,6 +1,6 @@
 """Small, purpose-specific tools for managing sub-agent tasks."""
 
-from typing import Annotated, Literal
+from typing import TYPE_CHECKING, Annotated, Any, Literal
 
 from pydantic import Field
 from pydantic_ai import RunContext
@@ -9,8 +9,14 @@ from suzent.core.agent_deps import AgentDeps
 from suzent.database import get_database
 from suzent.tools.base import Tool, ToolErrorCode, ToolGroup, ToolResult
 
+if TYPE_CHECKING:
+    from suzent.core.subagent_runner import SubAgentTask
 
-def _runtime_record(task) -> dict:
+
+_MAX_TRANSCRIPT_CHARS = 20_000
+
+
+def _runtime_record(task: "SubAgentTask") -> dict[str, Any]:
     return {
         "task_id": task.task_id,
         "parent_chat_id": task.parent_chat_id,
@@ -27,7 +33,7 @@ def _runtime_record(task) -> dict:
 
 def _find_accessible_task(
     task_id: str, current_chat_id: str
-) -> tuple[dict, object | None] | None:
+) -> tuple[dict[str, Any], "SubAgentTask | None"] | None:
     from suzent.core.subagent_runner import get_task
 
     runtime_task = get_task(task_id)
@@ -50,12 +56,39 @@ def _require_chat_id(ctx: RunContext[AgentDeps]) -> str | None:
     return ctx.deps.chat_id or None
 
 
-def _format_task(record: dict) -> str:
+def _format_task(record: dict[str, Any]) -> str:
     title = str(record.get("description") or "Untitled task").replace("\n", " ")
     if len(title) > 100:
         title = title[:97] + "..."
     model = f" · {record['model_override']}" if record.get("model_override") else ""
     return f"- {record['task_id']} · {record['status']}{model}\n  {title}"
+
+
+def _format_bounded_transcript(
+    messages: list[dict[str, str]],
+) -> tuple[str, int, bool]:
+    """Render recent visible messages without letting one task exhaust context."""
+    selected: list[str] = []
+    selected_chars = 0
+    message_truncated = False
+    for message in reversed(messages):
+        line = f"[{message['role']}] {message['text']}"
+        separator_chars = 1 if selected else 0
+        if (
+            selected
+            and selected_chars + separator_chars + len(line) > _MAX_TRANSCRIPT_CHARS
+        ):
+            break
+        if not selected and len(line) > _MAX_TRANSCRIPT_CHARS:
+            line = "[... message truncated ...]\n" + line[-_MAX_TRANSCRIPT_CHARS:]
+            message_truncated = True
+        selected.append(line)
+        selected_chars += separator_chars + len(line)
+
+    selected.reverse()
+    omitted = len(messages) - len(selected)
+    prefix = f"[... {omitted} earlier messages omitted ...]\n" if omitted else ""
+    return prefix + "\n".join(selected), omitted, message_truncated
 
 
 class AgentListTool(Tool):
@@ -151,15 +184,18 @@ class AgentReadTool(Tool):
         from suzent.database.search import sanitize_messages
 
         messages = sanitize_messages(chat.messages or [])
-        transcript = "\n".join(
-            f"[{message['role']}] {message['text']}" for message in messages
-        )
+        transcript, omitted, message_truncated = _format_bounded_transcript(messages)
         header = f"Sub-agent {task_id} · {record['status']}"
         if record.get("error"):
             header += f"\nError: {record['error']}"
         return ToolResult.success_result(
             f"{header}\n\n{transcript or '(no visible messages)'}",
-            metadata={**record, "message_count": len(messages)},
+            metadata={
+                **record,
+                "message_count": len(messages),
+                "omitted_message_count": omitted,
+                "transcript_truncated": omitted > 0 or message_truncated,
+            },
         )
 
 
@@ -201,16 +237,21 @@ class AgentWaitTool(Tool):
 
         terminal = {"completed", "failed"}
         timed_out = False
-        if runtime_tasks and not any(task.status in terminal for task in runtime_tasks):
+        if runtime_tasks and not any(
+            record["status"] in terminal for record in records
+        ):
             from suzent.core.subagent_runner import wait_for_subagents
 
             _, timed_out = await wait_for_subagents(
                 [task.task_id for task in runtime_tasks], timeout_seconds
             )
-            records = [
-                _find_accessible_task(task_id, current_chat_id)[0]
-                for task_id in dict.fromkeys(task_ids)
-            ]
+            refreshed_records = []
+            for task_id, previous_record in zip(
+                dict.fromkeys(task_ids), records, strict=True
+            ):
+                refreshed = _find_accessible_task(task_id, current_chat_id)
+                refreshed_records.append(refreshed[0] if refreshed else previous_record)
+            records = refreshed_records
 
         prefix = "Wait timed out; current status:" if timed_out else "Sub-agent status:"
         return ToolResult.success_result(

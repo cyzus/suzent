@@ -118,8 +118,10 @@ The lifecycle tools are intentionally separate instead of using one action-heavy
 management schema. `agent_list` defaults to active tasks and caps results at 20;
 historical conversation discovery remains the responsibility of
 `session_search`. Task ownership is inferred from the current chat, so callers do
-not pass parent chat or project identifiers. Selecting `AgentTool` automatically
-equips these lifecycle operations as its management dependencies.
+not pass parent chat or project identifiers. `agent_read` keeps its schema to a
+single task ID and applies an internal transcript budget, returning the newest
+visible messages when a child conversation is large. Selecting `AgentTool`
+automatically equips these lifecycle operations as its management dependencies.
 
 **HITL** = Requires human approval before execution. See [Human-in-the-Loop](./human-in-the-loop.md).
 

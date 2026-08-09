@@ -10,7 +10,9 @@ from suzent.core.subagent_runner import (
     _evict_old_finished_tasks_locked,
     _task_to_sse_dict,
     _wakeup_parent_batch,
+    clear_stuck_tasks,
     spawn_subagent,
+    stop_subagent,
 )
 
 
@@ -38,6 +40,8 @@ async def test_background_subagent_uses_shared_task_registry(monkeypatch):
         return SimpleNamespace(done=lambda: False, cancel=lambda: None)
 
     monkeypatch.setattr(subagent_runner, "_resolve_tool_names", lambda tools: ([], []))
+    monkeypatch.setattr(subagent_runner, "_ensure_task_chat", lambda task: None)
+    monkeypatch.setattr(subagent_runner, "_persist_task_state", lambda task: None)
     monkeypatch.setattr(
         "suzent.core.task_registry.register_background_task", fake_register
     )
@@ -49,11 +53,119 @@ async def test_background_subagent_uses_shared_task_registry(monkeypatch):
         run_in_background=True,
     )
 
-    assert captured == {
-        "task_id": f"subagent_{task.task_id}",
-        "description": "Inspect the repository",
-    }
-    assert task.runner_task is not None
+    try:
+        assert captured == {
+            "task_id": f"subagent_{task.task_id}",
+            "description": "Inspect the repository",
+        }
+        assert task.runner_task is not None
+    finally:
+        subagent_runner._tasks.pop(task.task_id, None)
+
+
+@pytest.mark.asyncio
+async def test_spawn_subagent_reports_persistence_failure_without_scheduling(
+    monkeypatch,
+):
+    registered = []
+    monkeypatch.setattr(subagent_runner, "_resolve_tool_names", lambda tools: ([], []))
+
+    def fail_persistence(task):
+        raise RuntimeError("database unavailable")
+
+    async def fake_register(*args, **kwargs):
+        registered.append(True)
+
+    monkeypatch.setattr(subagent_runner, "_ensure_task_chat", fail_persistence)
+    monkeypatch.setattr(
+        "suzent.core.task_registry.register_background_task", fake_register
+    )
+
+    task = await spawn_subagent(
+        parent_chat_id="chat-1",
+        description="Inspect the repository",
+        tools_allowed=[],
+        run_in_background=True,
+    )
+
+    try:
+        assert task.status == "failed"
+        assert task.error == "database unavailable"
+        assert registered == []
+        assert task.completion_event.is_set()
+    finally:
+        subagent_runner._tasks.pop(task.task_id, None)
+
+
+@pytest.mark.asyncio
+async def test_subagent_setup_failure_reaches_terminal_state(monkeypatch):
+    task = _make_task("sub_setup", "queued")
+    subagent_runner._tasks[task.task_id] = task
+
+    def fail_model():
+        raise RuntimeError("model unavailable")
+
+    monkeypatch.setattr(
+        "suzent.core.providers.get_default_chat_model",
+        fail_model,
+    )
+    monkeypatch.setattr(subagent_runner, "_persist_task_state", lambda task: None)
+
+    try:
+        await subagent_runner._run_subagent(task)
+
+        assert task.status == "failed"
+        assert task.error == "model unavailable"
+        assert task.finished_at is not None
+        assert task.completion_event.is_set()
+    finally:
+        subagent_runner._tasks.pop(task.task_id, None)
+
+
+@pytest.mark.asyncio
+async def test_stop_subagent_cancels_runner_and_rejects_terminal_retry(monkeypatch):
+    cancelled = []
+    stopped_streams = []
+    task = _make_task("sub_stop", "running")
+    task.runner_task = SimpleNamespace(
+        done=lambda: False, cancel=lambda: cancelled.append(task.task_id)
+    )
+    subagent_runner._tasks[task.task_id] = task
+    monkeypatch.setattr(
+        "suzent.core.stream_registry.stop_stream",
+        lambda chat_id, reason: stopped_streams.append((chat_id, reason)),
+    )
+    monkeypatch.setattr(subagent_runner, "_persist_task_state", lambda task: None)
+
+    try:
+        assert await stop_subagent(task.task_id) is True
+        assert await stop_subagent(task.task_id) is False
+        assert task.status == "failed"
+        assert cancelled == [task.task_id]
+        assert stopped_streams[0][0] == task.chat_id
+    finally:
+        subagent_runner._tasks.pop(task.task_id, None)
+
+
+@pytest.mark.asyncio
+async def test_clear_stuck_tasks_cancels_registered_runners(monkeypatch):
+    cancelled = []
+    task = _make_task("sub_stuck", "queued")
+    task.runner_task = SimpleNamespace(
+        done=lambda: False, cancel=lambda: cancelled.append(task.task_id)
+    )
+    subagent_runner._tasks[task.task_id] = task
+    monkeypatch.setattr(
+        "suzent.core.stream_registry.stop_stream", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(subagent_runner, "_persist_task_state", lambda task: None)
+
+    try:
+        assert await clear_stuck_tasks() == [task.task_id]
+        assert task.status == "failed"
+        assert cancelled == [task.task_id]
+    finally:
+        subagent_runner._tasks.pop(task.task_id, None)
 
 
 def test_evict_old_finished_tasks_keeps_active_and_recent(monkeypatch):

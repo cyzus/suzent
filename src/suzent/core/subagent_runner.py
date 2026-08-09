@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from suzent.config import CONFIG
-from suzent.database import get_database
+from suzent.database import ChatDatabase, get_database
 from suzent.logger import get_logger
 from suzent.core.stream_registry import (
     register_background_stream,
@@ -278,6 +278,35 @@ def _persist_task_state(task: SubAgentTask) -> None:
     db.update_chat(task.chat_id, config=config)
 
 
+def _ensure_task_chat(task: SubAgentTask) -> ChatDatabase:
+    """Create the persisted child chat before task execution is scheduled."""
+    db = get_database()
+    if db.get_chat(task.chat_id):
+        return db
+
+    parent_project_id = (
+        db.get_chat_project_id(task.parent_chat_id) if task.parent_chat_id else None
+    )
+    db.create_chat(
+        title=f"Sub-agent: {task.description[:60]}",
+        config={
+            "platform": "subagent",
+            "parent_chat_id": task.parent_chat_id,
+            "subagent_task_id": task.task_id,
+            "permission_mode": "auto",
+            "interaction_profile": "subagent",
+            "subagent_status": task.status,
+            "subagent_model": task.model_override,
+            "tools": list(task.tools_allowed),
+            "inherit_context": task.inherit_context,
+            "isolation": task.isolation,
+        },
+        chat_id=task.chat_id,
+        project_id=parent_project_id,
+    )
+    return db
+
+
 # ─── Tool name resolution ─────────────────────────────────────────────────────
 
 
@@ -361,6 +390,18 @@ async def spawn_subagent(
     async with _tasks_lock:
         _tasks[task_id] = task
         _evict_old_finished_tasks()
+
+    try:
+        _ensure_task_chat(task)
+        _persist_task_state(task)
+    except Exception as exc:
+        logger.error(f"Failed to persist sub-agent {task_id}: {exc}")
+        task.status = "failed"
+        task.error = str(exc)
+        task.finished_at = datetime.now()
+        _broadcast_task_update(task)
+        return task
+
     _broadcast_task_update(task)
 
     if run_in_background:
@@ -381,6 +422,7 @@ async def spawn_subagent(
             task.error = str(exc)
             task.finished_at = datetime.now()
             _broadcast_task_update(task)
+            _persist_task_state(task)
     else:
         # Blocking — parent awaits the child's completion
         await _run_subagent(task, wakeup_parent=False)
@@ -396,65 +438,56 @@ async def _run_subagent(
     wakeup_parent: bool = True,
 ):
     """Execute the sub-agent in an isolated chat, then notify the parent."""
-    if not task.model_override:
-        from suzent.core.providers import get_default_chat_model
+    try:
+        if not task.model_override:
+            from suzent.core.providers import get_default_chat_model
 
-        task.model_override = get_default_chat_model()
+            task.model_override = get_default_chat_model()
 
-    task.status = "running"
-    task.started_at = datetime.now()
-    _broadcast_task_update(task)
+        task.status = "running"
+        task.started_at = datetime.now()
+        _broadcast_task_update(task)
 
-    db = get_database()
+        # The queued state is persisted before scheduling, so other clients can
+        # see the task immediately and cancellation cannot lose its lifecycle record.
+        db = _ensure_task_chat(task)
+        _persist_task_state(task)
 
-    # Ensure isolated chat record exists. Subagents inherit the parent chat's
-    # project so they share the project's plan, heartbeat, uploads, and cwd —
-    # the parent's whole working context.
-    if not db.get_chat(task.chat_id):
-        parent_project_id = (
-            db.get_chat_project_id(task.parent_chat_id) if task.parent_chat_id else None
-        )
-        db.create_chat(
-            title=f"Sub-agent: {task.description[:60]}",
-            config={
-                "platform": "subagent",
-                "parent_chat_id": task.parent_chat_id,
-                "subagent_task_id": task.task_id,
-                "permission_mode": "auto",
-                "interaction_profile": "subagent",
-                "subagent_status": task.status,
-                "subagent_model": task.model_override,
-                "tools": list(task.tools_allowed),
-                "inherit_context": task.inherit_context,
-                "isolation": task.isolation,
-            },
-            chat_id=task.chat_id,
-            project_id=parent_project_id,
-        )
-    _persist_task_state(task)
+        if task.inherit_context:
+            await _fork_context(task, db)
 
-    # Phase 2: inject parent conversation history into child chat
-    if task.inherit_context:
-        await _fork_context(task, db)
-
-    # Phase 3: create git worktree before streaming starts
-    if task.isolation == "worktree":
-        error = await _setup_worktree(task)
-        if error:
-            task.status = "failed"
-            task.error = error
-            task.finished_at = datetime.now()
-            _broadcast_task_update(task)
+        if task.isolation == "worktree":
+            setup_error = await _setup_worktree(task)
+            if setup_error:
+                raise RuntimeError(setup_error)
+    except asyncio.CancelledError:
+        task.status = "failed"
+        task.error = task.error or "Sub-agent cancelled during setup"
+        task.finished_at = datetime.now()
+        _broadcast_task_update(task)
+        _persist_task_state(task)
+        raise
+    except Exception as exc:
+        logger.error(f"Sub-agent {task.task_id} setup failed: {exc}")
+        task.status = "failed"
+        task.error = str(exc)
+        task.finished_at = datetime.now()
+        _broadcast_task_update(task)
+        try:
             _persist_task_state(task)
-            await _notify_parent(
-                task,
-                "subagent_failed",
-                {
-                    "task_id": task.task_id,
-                    "error": error,
-                },
+        except Exception as persist_error:
+            logger.warning(
+                f"Could not persist failed sub-agent {task.task_id}: {persist_error}"
             )
-            return
+        if task.isolation == "worktree" and task.worktree_path:
+            await _teardown_worktree(task)
+        await _notify_parent(
+            task,
+            "subagent_failed",
+            {"task_id": task.task_id, "error": str(exc)},
+        )
+        await _evict_old_finished_tasks_locked()
+        return
 
     # Emit spawned event to parent chat
     await _notify_parent(
@@ -886,11 +919,16 @@ async def clear_stuck_tasks() -> list[str]:
     cleared = []
     for task in list(_tasks.values()):
         if task.status in ("queued", "running"):
+            from suzent.core.stream_registry import stop_stream
+
+            stop_stream(task.chat_id, reason=f"Sub-agent {task.task_id} cleared")
             task.status = "failed"
             task.error = "Cleared (orphaned task)"
             task.finished_at = datetime.now()
             _broadcast_task_update(task)
             _persist_task_state(task)
+            if task.runner_task and not task.runner_task.done():
+                task.runner_task.cancel()
             cleared.append(task.task_id)
     if cleared:
         await _evict_old_finished_tasks_locked()
@@ -902,7 +940,7 @@ async def stop_subagent(task_id: str) -> bool:
     from suzent.core.stream_registry import stop_stream
 
     task = _tasks.get(task_id)
-    if not task:
+    if not task or task.status not in ("queued", "running"):
         return False
     stop_stream(task.chat_id, reason=f"Sub-agent {task_id} stopped by user")
     # Mark failed immediately so the UI clears it even if the coroutine is slow
@@ -944,3 +982,4 @@ async def wait_for_subagents(
         for waiter in waiters:
             if not waiter.done():
                 waiter.cancel()
+        await asyncio.gather(*waiters, return_exceptions=True)
