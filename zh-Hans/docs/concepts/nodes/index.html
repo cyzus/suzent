@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.9.2">
 <title data-rh="true">SUZENT | Suzent Nodes Guide</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:image" content="https://suzent.com/zh-Hans/img/suzent-social-card.png"><meta data-rh="true" name="twitter:image" content="https://suzent.com/zh-Hans/img/suzent-social-card.png"><meta data-rh="true" property="og:url" content="https://suzent.com/zh-Hans/docs/concepts/nodes/"><meta data-rh="true" property="og:locale" content="zh_Hans"><meta data-rh="true" property="og:locale:alternate" content="en"><meta data-rh="true" name="docusaurus_locale" content="zh-Hans"><meta data-rh="true" name="docsearch:language" content="zh-Hans"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="SUZENT | Suzent Nodes Guide"><meta data-rh="true" name="description" content="This guide covers the node system in Suzent — how to connect companion devices and control them remotely."><meta data-rh="true" property="og:description" content="This guide covers the node system in Suzent — how to connect companion devices and control them remotely."><link data-rh="true" rel="icon" href="/zh-Hans/img/logo.svg"><link data-rh="true" rel="canonical" href="https://suzent.com/zh-Hans/docs/concepts/nodes/"><link data-rh="true" rel="alternate" href="https://suzent.com/docs/concepts/nodes/" hreflang="en"><link data-rh="true" rel="alternate" href="https://suzent.com/zh-Hans/docs/concepts/nodes/" hreflang="zh-Hans"><link data-rh="true" rel="alternate" href="https://suzent.com/docs/concepts/nodes/" hreflang="x-default"><script data-rh="true" type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"核心概念","item":"https://suzent.com/zh-Hans/docs/category/concepts"},{"@type":"ListItem","position":2,"name":"节点","item":"https://suzent.com/zh-Hans/docs/concepts/nodes/"}]}</script><script>!function(){var a=location.pathname;"/"!==a&&"/zh-Hans"!==a&&"/zh-Hans/"!==a||document.documentElement.classList.add("homepage-mode")}()</script><link rel="stylesheet" href="/zh-Hans/assets/css/styles.123ff470.css">
-<script src="/zh-Hans/assets/js/runtime~main.727e7a5b.js" defer="defer"></script>
+<script src="/zh-Hans/assets/js/runtime~main.6f04939e.js" defer="defer"></script>
 <script src="/zh-Hans/assets/js/main.aa0ab085.js" defer="defer"></script>
 </head>
 <body class="navigation-with-keyboard">
@@ -107,7 +107,15 @@ token is served once against an unguessable <code>request_id</code>.</p>
 (<code>POST /channels/suzent/inbound</code>), not a node capability. A peer you control
 sends the prompt; the target runs <em>its own</em> agent (its files, memory, tools) for
 your session and streams the reply back.</p>
-<div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain"># From device A, drive device B&#x27;s agent (B must have granted A control):</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">suzent nodes trigger &quot;Device B&quot; &quot;summarize ~/notes&quot;</span><br></span></code></pre></div></div>
+<div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain"># From device A, drive device B&#x27;s agent (B must have granted A control):</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">suzent nodes trigger &quot;Device B&quot; &quot;summarize ~/notes&quot;</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain" style="display:inline-block"></span><br></span><span class="token-line" style="color:#393A34"><span class="token plain"># Attach one or more files from device A for device B&#x27;s agent:</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">suzent nodes trigger &quot;Device B&quot; &quot;summarize these&quot; \</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">  --file ./notes.txt --file ./report.pdf</span><br></span></code></pre></div></div>
+<p>Peer attachments are pulled directly from the sending device over the same
+LAN or Tailscale network. Each transfer uses a random artifact-specific token,
+expires after five minutes, and is limited to two download attempts. No
+permanent reverse control grant is required. A trigger accepts up to eight
+files with a combined size of 50 MiB; the receiver rejects redirects, URLs that
+do not belong to the authenticated peer, mismatched sizes, and oversized
+streams. Downloaded files move into that peer chat&#x27;s <code>/workspace/uploads</code>
+directory and the temporary staging directory is removed after the turn.</p>
 <p>On the <strong>target</strong>, the session behaves like any other channel conversation:</p>
 <ul>
 <li class=""><strong>Persisted + resumable.</strong> The session is a real chat keyed <code>suzent:&lt;peer_id&gt;</code>,
@@ -136,7 +144,9 @@ the channel, which streams and reuses the <code>/chat</code> machinery.</p>
 (<code>SUZENT_HOST=127.0.0.1</code>), so peer devices can&#x27;t reach it out of the box. To
 use cross-device nodes, enable <strong>Settings → Devices → &quot;Reachable by other
 devices&quot;</strong> (config <code>node_lan_bind</code>, default <code>false</code>) and <strong>restart</strong> the app —
-the server then binds <code>0.0.0.0</code> and is reachable on its LAN/Tailscale address.</p>
+the server then binds <code>0.0.0.0</code> on the stable mesh port <code>25314</code> and is reachable
+on its LAN/Tailscale address. Desktop startup remains dynamically assigned when
+device reachability is disabled.</p>
 <h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="auth-boundary-scoped-tokens">Auth boundary (scoped tokens)<a href="#auth-boundary-scoped-tokens" class="hash-link" aria-label="Auth boundary (scoped tokens)的直接链接" title="Auth boundary (scoped tokens)的直接链接" translate="no">​</a></h3>
 <p>Exposing the server does <strong>not</strong> open the API to the network. A middleware
 enforces a loopback-trusted, <strong>scope-gated</strong> model:</p>
