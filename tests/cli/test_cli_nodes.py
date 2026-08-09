@@ -266,8 +266,9 @@ class TestNodesSubcommand:
             }
         )
 
-        async def fake_trigger(peer_id, prompt, chat_id=None):
+        async def fake_trigger(peer_id, prompt, chat_id=None, files=None):
             assert peer_id == "p1"
+            assert files == []
             yield b'data: {"type":"TEXT_MESSAGE_CONTENT","delta":"Hi "}\n\n'
             yield b'data: {"type":"TEXT_MESSAGE_CONTENT","delta":"there"}\n\n'
             yield b"data: [DONE]\n\n"
@@ -278,6 +279,31 @@ class TestNodesSubcommand:
         result = runner.invoke(app, ["nodes", "trigger", "Studio", "hello"])
         assert result.exit_code == 0
         assert "Hi there" in result.output
+
+    @patch("suzent.cli.node.get_client")
+    def test_nodes_trigger_passes_attached_file(self, mock_get_client, tmp_path):
+        attachment = tmp_path / "notes.txt"
+        attachment.write_text("hello", encoding="utf-8")
+        client = MagicMock()
+        client.nodes.peers = AsyncMock(
+            return_value={"peers": [{"peer_id": "p1", "name": "Studio"}]}
+        )
+
+        async def fake_trigger(peer_id, prompt, chat_id=None, files=None):
+            assert peer_id == "p1"
+            assert prompt == "read it"
+            assert files == [str(attachment.resolve())]
+            yield b"data: [DONE]\n\n"
+
+        client.nodes.trigger = fake_trigger
+        mock_get_client.return_value = client
+
+        result = runner.invoke(
+            app,
+            ["nodes", "trigger", "Studio", "read it", "--file", str(attachment)],
+        )
+
+        assert result.exit_code == 0
 
     @patch("suzent.cli.node.get_client")
     def test_nodes_trigger_unknown_peer(self, mock_get_client):

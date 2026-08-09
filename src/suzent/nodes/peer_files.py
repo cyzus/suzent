@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import mimetypes
 import secrets
+from hashlib import sha256
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -14,6 +15,8 @@ from suzent.logger import get_logger
 logger = get_logger(__name__)
 
 DEFAULT_PEER_FILE_TTL_SECONDS = 3600
+TRANSFER_PEER_FILE_TTL_SECONDS = 300
+TRANSFER_PEER_FILE_DOWNLOADS = 2
 
 
 class PeerFileArtifact(BaseModel):
@@ -25,6 +28,8 @@ class PeerFileArtifact(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     expires_at: datetime
     producer: str = "unknown"
+    access_token_digest: str | None = Field(default=None, exclude=True)
+    remaining_downloads: int | None = Field(default=None, exclude=True)
 
     def to_reference(self) -> dict:
         return {
@@ -71,6 +76,44 @@ class PeerFileRegistry:
         self._artifacts[file_id] = artifact
         logger.debug("Registered peer file artifact {}", file_id)
         return artifact
+
+    def register_transfer(
+        self,
+        path: str | Path,
+        *,
+        name: str | None = None,
+        media_type: str | None = None,
+        ttl_seconds: int = TRANSFER_PEER_FILE_TTL_SECONDS,
+    ) -> tuple[PeerFileArtifact, str]:
+        """Register a file with a short-lived, artifact-specific download grant."""
+        artifact = self.register(
+            path,
+            producer="peer.attachment",
+            name=name,
+            media_type=media_type,
+            ttl_seconds=ttl_seconds,
+        )
+        token = secrets.token_urlsafe(32)
+        artifact.access_token_digest = sha256(token.encode("utf-8")).hexdigest()
+        artifact.remaining_downloads = TRANSFER_PEER_FILE_DOWNLOADS
+        return artifact, token
+
+    def authorize_transfer(self, file_id: str, token: str) -> PeerFileArtifact | None:
+        """Consume one use of an artifact-specific download grant."""
+        artifact = self.get(file_id)
+        if artifact is None or not token or artifact.access_token_digest is None:
+            return None
+        digest = sha256(token.encode("utf-8")).hexdigest()
+        if not secrets.compare_digest(digest, artifact.access_token_digest):
+            return None
+        remaining = artifact.remaining_downloads or 0
+        if remaining <= 0:
+            return None
+        artifact.remaining_downloads = remaining - 1
+        return artifact
+
+    def remove(self, file_id: str) -> None:
+        self._artifacts.pop(file_id, None)
 
     def get(self, file_id: str) -> PeerFileArtifact | None:
         artifact = self._artifacts.get(file_id)

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from functools import lru_cache
 
 from suzent.client.base import AsyncBaseClient
@@ -90,11 +92,19 @@ class NodesAPI:
             body["timeout"] = timeout
         return await self.client.post(f"/nodes/peers/{peer_id}/invoke", json=body)
 
-    async def trigger(self, peer_id: str, prompt: str, chat_id: str | None = None):
+    async def trigger(
+        self,
+        peer_id: str,
+        prompt: str,
+        chat_id: str | None = None,
+        files: list[str] | None = None,
+    ):
         """Stream a peer agent run; yields raw SSE chunks (bytes)."""
         payload: dict = {"prompt": prompt}
         if chat_id:
             payload["chat_id"] = chat_id
+        if files:
+            payload["attachments"] = [{"path": path} for path in files]
         async for chunk in self.client.stream_post(
             f"/nodes/peers/{peer_id}/trigger", json=payload, timeout=None
         ):

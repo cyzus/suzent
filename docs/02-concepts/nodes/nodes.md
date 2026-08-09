@@ -278,7 +278,20 @@ your session and streams the reply back.
 ```bash
 # From device A, drive device B's agent (B must have granted A control):
 suzent nodes trigger "Device B" "summarize ~/notes"
+
+# Attach one or more files from device A for device B's agent:
+suzent nodes trigger "Device B" "summarize these" \
+  --file ./notes.txt --file ./report.pdf
 ```
+
+Peer attachments are pulled directly from the sending device over the same
+LAN or Tailscale network. Each transfer uses a random artifact-specific token,
+expires after five minutes, and is limited to two download attempts. No
+permanent reverse control grant is required. A trigger accepts up to eight
+files with a combined size of 50 MiB; the receiver rejects redirects, URLs that
+do not belong to the authenticated peer, mismatched sizes, and oversized
+streams. Downloaded files move into that peer chat's `/workspace/uploads`
+directory and the temporary staging directory is removed after the turn.
 
 On the **target**, the session behaves like any other channel conversation:
 
@@ -309,7 +322,9 @@ The desktop app binds the server to **localhost only** by default
 (`SUZENT_HOST=127.0.0.1`), so peer devices can't reach it out of the box. To
 use cross-device nodes, enable **Settings → Devices → "Reachable by other
 devices"** (config `node_lan_bind`, default `false`) and **restart** the app —
-the server then binds `0.0.0.0` and is reachable on its LAN/Tailscale address.
+the server then binds `0.0.0.0` on the stable mesh port `25314` and is reachable
+on its LAN/Tailscale address. Desktop startup remains dynamically assigned when
+device reachability is disabled.
 
 ### Auth boundary (scoped tokens)
 

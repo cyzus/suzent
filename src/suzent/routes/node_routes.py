@@ -7,8 +7,10 @@ Provides:
 """
 
 import asyncio
+import mimetypes
 import time
 import uuid
+from pathlib import Path
 
 from pydantic import ValidationError
 from starlette.requests import Request
@@ -33,6 +35,9 @@ from suzent.nodes.models import (
 from suzent.nodes.ws_node import WebSocketNode
 
 logger = get_logger(__name__)
+
+MAX_PEER_ATTACHMENTS = 8
+MAX_PEER_ATTACHMENT_BYTES = 50 * 1024 * 1024
 
 # Cache of per-peer reachability + outbound status, keyed by peer_id. The Devices
 # tab polls GET /nodes/peers every few seconds; without this, each poll would fan
@@ -521,20 +526,9 @@ def _best_effort_lan_host() -> str:
 
     Falls back to the configured host when detection fails (e.g. offline).
     """
-    import socket
+    from suzent.nodes.discovery import _local_ip
 
-    from suzent.config import DEFAULT_HOST
-
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        try:
-            # No packets are actually sent; this just picks the outbound iface.
-            s.connect(("8.8.8.8", 80))
-            return s.getsockname()[0]
-        finally:
-            s.close()
-    except Exception:
-        return DEFAULT_HOST
+    return _local_ip()
 
 
 def _tailscale_addresses() -> list[tuple[str, str]]:
@@ -583,10 +577,14 @@ def _tailscale_addresses() -> list[tuple[str, str]]:
     return out
 
 
-def _pairing_addresses() -> list[dict]:
-    """Candidate addresses a companion device can use to reach this server."""
+def _server_port(request: Request) -> int:
     from suzent.config import DEFAULT_PORT
 
+    return int(getattr(request.app.state, "server_port", DEFAULT_PORT))
+
+
+def _pairing_addresses(port: int) -> list[dict]:
+    """Candidate addresses a companion device can use to reach this server."""
     candidates: list[tuple[str, str]] = [("LAN", _best_effort_lan_host())]
     candidates.extend(_tailscale_addresses())
 
@@ -600,7 +598,7 @@ def _pairing_addresses() -> list[dict]:
             {
                 "label": label,
                 "host": host,
-                "gateway_url": f"ws://{host}:{DEFAULT_PORT}/ws/node",
+                "gateway_url": f"ws://{host}:{port}/ws/node",
             }
         )
     return result
@@ -608,15 +606,14 @@ def _pairing_addresses() -> list[dict]:
 
 async def get_node_config(request: Request) -> JSONResponse:
     """GET /nodes/config — Current node configuration + pairing addresses."""
-    from suzent.config import DEFAULT_PORT
-
-    addresses = _pairing_addresses()
+    port = _server_port(request)
+    addresses = _pairing_addresses(port)
     primary = addresses[0] if addresses else None
     return JSONResponse(
         {
             "nodes_enabled": bool(CONFIG.nodes_enabled),
             "node_lan_bind": bool(getattr(CONFIG, "node_lan_bind", False)),
-            "port": DEFAULT_PORT,
+            "port": port,
             # All reachable addresses (LAN + Tailscale if present) so the UI can
             # offer the right one per network. lan_host/gateway_url kept for
             # backward compatibility.
@@ -670,7 +667,6 @@ async def save_node_config(request: Request) -> JSONResponse:
 
 async def discover_nodes(request: Request) -> JSONResponse:
     """GET /nodes/discover — Find Suzent peers on the LAN (mDNS) and tailnet."""
-    from suzent.config import DEFAULT_PORT
     from suzent.nodes import discovery
 
     try:
@@ -680,7 +676,7 @@ async def discover_nodes(request: Request) -> JSONResponse:
     lan_timeout = max(0.5, min(lan_timeout, 5.0))
 
     result = await discovery.discover_all(
-        self_port=DEFAULT_PORT, lan_timeout=lan_timeout
+        self_port=_server_port(request), lan_timeout=lan_timeout
     )
     return JSONResponse(result)
 
@@ -894,19 +890,17 @@ def _is_tailscale_host(host: str) -> bool:
     return host.startswith("100.") or host.endswith(".ts.net")
 
 
-def _my_base_for_peer(peer_base_url: str) -> str:
+def _my_base_for_peer(peer_base_url: str, port: int) -> str:
     """Pick an address of *this* server reachable on the peer's network.
 
     If we reach the peer over Tailscale, offer our Tailscale address (a LAN IP
     wouldn't be reachable from their network), otherwise our LAN address.
     """
-    from suzent.config import DEFAULT_PORT
-
     if _is_tailscale_host(_host_of(peer_base_url)):
         for _label, host in _tailscale_addresses():
             if host.startswith("100."):
-                return f"http://{host}:{DEFAULT_PORT}"
-    return f"http://{_best_effort_lan_host()}:{DEFAULT_PORT}"
+                return f"http://{host}:{port}"
+    return f"http://{_best_effort_lan_host()}:{port}"
 
 
 async def request_control(request: Request) -> JSONResponse:
@@ -932,7 +926,7 @@ async def request_control(request: Request) -> JSONResponse:
     my_name = socket.gethostname()
     # Tell the grantor where to reach us (for revoke notifications), on the same
     # network we're reaching them.
-    my_addr = _my_base_for_peer(base)
+    my_addr = _my_base_for_peer(base, _server_port(request))
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             r = await client.post(
@@ -1095,11 +1089,28 @@ async def peer_invoke(request: Request) -> JSONResponse:
 
 async def serve_peer_file(request: Request):
     """GET /nodes/peer-files/{file_id} — serve a registered local artifact."""
+    from suzent.auth_boundary import extract_token, is_loopback, token_scope
+
     registry = _get_peer_file_registry(request)
     file_id = request.path_params.get("file_id", "")
-    artifact = registry.get(file_id) if registry else None
+    token = extract_token(request.headers.raw)
+    client_host = request.client.host if request.client else ""
+    artifact = None
+    if registry is not None:
+        if is_loopback(client_host):
+            artifact = registry.get(file_id)
+        else:
+            node_manager = _get_node_manager(request)
+            device_store = getattr(node_manager, "device_store", None)
+            if token_scope(token, device_store) in ("agent", "full"):
+                artifact = registry.get(file_id)
+            else:
+                artifact = registry.authorize_transfer(file_id, token)
     if artifact is None:
-        return JSONResponse({"error": "Peer file not found"}, status_code=404)
+        return JSONResponse(
+            {"error": "Peer file not found or download grant is invalid"},
+            status_code=404,
+        )
     return FileResponse(
         artifact.path,
         media_type=artifact.media_type,
@@ -1327,7 +1338,7 @@ async def set_peer_reverse(request: Request) -> JSONResponse:
             peer.get("name") or "peer", "peer", scope="agent"
         )
         # Offer an address reachable on the peer's network (Tailscale vs LAN).
-        my_base = _my_base_for_peer(peer["base_url"])
+        my_base = _my_base_for_peer(peer["base_url"], _server_port(request))
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 resp = await client.post(
@@ -1383,7 +1394,8 @@ async def remove_peer(request: Request) -> JSONResponse:
 async def trigger_peer(request: Request):
     """POST /nodes/peers/{peer_id}/trigger — run a prompt on the peer, stream SSE.
 
-    Body: {"prompt": str, "chat_id"?: str}. Sends through the peer's Suzent
+    Body: {"prompt": str, "chat_id"?: str, "attachments"?: [{"path": str}]}.
+    Sends through the peer's Suzent
     channel (/channels/suzent/inbound) — the peer keys the session by our
     authenticated identity and streams its agent's reply back.
     """
@@ -1406,9 +1418,56 @@ async def trigger_peer(request: Request):
     if not prompt:
         return JSONResponse({"error": "prompt is required"}, status_code=400)
 
+    raw_attachments = body.get("attachments") or []
+    if not isinstance(raw_attachments, list):
+        return JSONResponse({"error": "attachments must be a list"}, status_code=400)
+    if len(raw_attachments) > MAX_PEER_ATTACHMENTS:
+        return JSONResponse(
+            {"error": f"At most {MAX_PEER_ATTACHMENTS} attachments are allowed"},
+            status_code=400,
+        )
+
+    registry = _get_peer_file_registry(request)
+    registered: list[str] = []
+    attachment_refs: list[dict] = []
+    total_size = 0
+    try:
+        source_base = _my_base_for_peer(peer["base_url"], _server_port(request))
+        for item in raw_attachments:
+            if not isinstance(item, dict) or not isinstance(item.get("path"), str):
+                raise ValueError("Each attachment requires a path")
+            path = Path(item["path"]).expanduser().resolve(strict=True)
+            if not path.is_file():
+                raise ValueError(f"Attachment is not a file: {path.name}")
+            size = path.stat().st_size
+            total_size += size
+            if total_size > MAX_PEER_ATTACHMENT_BYTES:
+                raise ValueError("Peer attachments exceed the combined 50 MiB limit")
+            requested_name = item.get("name")
+            name = Path(str(requested_name)).name if requested_name else path.name
+            media_type = (
+                str(item.get("media_type") or "").strip()
+                or mimetypes.guess_type(name)[0]
+                or "application/octet-stream"
+            )
+            artifact, transfer_token = registry.register_transfer(
+                path, name=name, media_type=media_type
+            )
+            registered.append(artifact.file_id)
+            ref = artifact.to_reference()
+            ref["url"] = f"{source_base}{ref['url']}"
+            ref["token"] = transfer_token
+            attachment_refs.append(ref)
+    except (OSError, ValueError) as exc:
+        for file_id in registered:
+            registry.remove(file_id)
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
     payload = {"content": prompt}
     if body.get("chat_id"):
         payload["chat_id"] = body["chat_id"]
+    if attachment_refs:
+        payload["attachments"] = attachment_refs
     headers = {"Authorization": f"Bearer {peer['token']}"}
     url = f"{peer['base_url']}/channels/suzent/inbound"
 

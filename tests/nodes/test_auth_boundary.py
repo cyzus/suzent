@@ -11,6 +11,7 @@ from suzent.auth_boundary import (
     AuthBoundaryMiddleware,
     agent_path_allowed,
     extract_token,
+    is_http_exempt,
     is_loopback,
     scope_allows,
     token_scope,
@@ -64,6 +65,10 @@ def test_agent_path_allowed_peer_files_prefix_only():
     assert agent_path_allowed("/nodes/peer-files/pf_abc123")
     assert not agent_path_allowed("/nodes/peer-files")
     assert not agent_path_allowed("/sandbox/serve/chat/file.png")
+
+
+def test_peer_file_route_accepts_self_authenticating_transfer_grants():
+    assert is_http_exempt("/nodes/peer-files/pf_abc123")
 
 
 # ─── Middleware behavior ─────────────────────────────────────────────

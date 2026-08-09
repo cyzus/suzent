@@ -609,7 +609,7 @@ async def startup():
             from suzent.nodes.discovery import SuzentAdvertiser
 
             node_advertiser = SuzentAdvertiser(
-                port=DEFAULT_PORT,
+                port=int(getattr(app.state, "server_port", DEFAULT_PORT)),
                 display_name=_socket.gethostname(),
             )
             app.state.node_advertiser = node_advertiser
@@ -1118,13 +1118,23 @@ if __name__ == "__main__":
     # node WebSocket (still reachable on loopback for the local app).
     try:
         from suzent.config import CONFIG as _CFG
+        from suzent.nodes.discovery import resolve_mesh_bind
 
-        if getattr(_CFG, "node_lan_bind", False) and host not in ("0.0.0.0", "::"):
-            logger.info(
-                f"node_lan_bind enabled: binding 0.0.0.0 instead of {host} "
-                f"so peer devices can reach this server"
-            )
-            host = "0.0.0.0"
+        mesh_enabled = bool(getattr(_CFG, "node_lan_bind", False))
+        resolved_host, resolved_port = resolve_mesh_bind(
+            host, port, enabled=mesh_enabled, default_port=DEFAULT_PORT
+        )
+        if mesh_enabled:
+            if resolved_host != host:
+                logger.info(
+                    f"node_lan_bind enabled: binding {resolved_host} instead of {host} "
+                    f"so peer devices can reach this server"
+                )
+            if resolved_port != port:
+                logger.info(
+                    f"node_lan_bind enabled: using stable mesh port {DEFAULT_PORT}"
+                )
+        host, port = resolved_host, resolved_port
     except Exception:
         pass
 
@@ -1184,6 +1194,7 @@ if __name__ == "__main__":
         _sock.set_inheritable(True)
         effective_port = _sock.getsockname()[1]
         report_port(effective_port)
+        app.state.server_port = effective_port
         if port == 0:
             logger.info(f"Dynamic port assigned: {effective_port}")
     except OSError as e:
