@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.7.11] - 2026-08-09
+
+### 🚀 Added
+- Support secure peer file attachments (#99)
+- Improve LAN/Tailscale discovery and stable mesh binding (#99)
+- Enhance backend commit retrieval without subprocess calls
+
 ## [v0.7.10] - 2026-08-05
 
 ### 🐛 Fixed
