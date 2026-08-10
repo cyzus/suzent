@@ -152,6 +152,42 @@ def test_agent_list_includes_paired_remote_agents(monkeypatch, _empty_peer_trans
     )
 
 
+def test_agent_list_active_excludes_paused_remote_agents(
+    monkeypatch, _empty_peer_transport
+):
+    current = _chat("agent-current")
+    _empty_peer_transport.list_agents = lambda: [
+        {
+            "agent_id": "peer:ready",
+            "title": "Ready",
+            "kind": "remote",
+            "status": "ready",
+            "updated_at": None,
+        },
+        {
+            "agent_id": "peer:paused",
+            "title": "Paused",
+            "kind": "remote",
+            "status": "paused",
+            "updated_at": None,
+        },
+    ]
+    monkeypatch.setattr(
+        "suzent.tools.agent_lifecycle_tools.get_database",
+        lambda: SimpleNamespace(get_chat=lambda chat_id: current),
+    )
+    from suzent.core import stream_registry
+
+    monkeypatch.setattr(stream_registry, "active_stream_queues", {})
+    monkeypatch.setattr(stream_registry, "background_queues", {})
+    monkeypatch.setattr(stream_registry, "stream_controls", {})
+    monkeypatch.setattr("suzent.core.subagent_runner.list_active_tasks", lambda: [])
+
+    result = AgentListTool().forward(_ctx(), status="active")
+
+    assert [agent["agent_id"] for agent in result.metadata["agents"]] == ["peer:ready"]
+
+
 @pytest.mark.asyncio
 async def test_agent_read_returns_sanitized_visible_transcript(monkeypatch):
     target = _chat(

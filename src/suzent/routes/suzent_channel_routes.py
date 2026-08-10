@@ -19,6 +19,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import httpx
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from starlette.requests import Request
 from starlette.responses import JSONResponse, StreamingResponse
 
@@ -30,7 +31,22 @@ logger = get_logger(__name__)
 MAX_PEER_ATTACHMENTS = 8
 MAX_PEER_ATTACHMENT_BYTES = 50 * 1024 * 1024
 PEER_ATTACHMENT_TIMEOUT_SECONDS = 300.0
-_MESSAGE_ID_PATTERN = re.compile(r"^[A-Za-z0-9_.:-]{1,128}$")
+
+
+class PeerInboxRequest(BaseModel):
+    """Validated wire payload for durable peer delivery."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    message_id: str = Field(
+        strict=True, min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_.:-]+$"
+    )
+    content: str = Field(strict=True, min_length=1, max_length=20_000)
+
+    @field_validator("message_id", "content", mode="before")
+    @classmethod
+    def strip_text(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
 
 
 def _authenticated_peer(request: Request) -> tuple[dict | None, object | None]:
@@ -377,21 +393,12 @@ async def suzent_channel_inbox(request: Request) -> JSONResponse:
             {"error": "A valid peer token is required"}, status_code=401
         )
     try:
-        body = await request.json()
-    except Exception:
-        return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
+        payload = PeerInboxRequest.model_validate(await request.json())
+    except (ValidationError, ValueError):
+        return JSONResponse({"error": "Invalid inbox payload"}, status_code=400)
 
-    raw_message_id = body.get("message_id")
-    raw_content = body.get("content")
-    message_id = raw_message_id.strip() if isinstance(raw_message_id, str) else ""
-    content = raw_content.strip() if isinstance(raw_content, str) else ""
-    if not _MESSAGE_ID_PATTERN.fullmatch(message_id):
-        return JSONResponse({"error": "Invalid message_id"}, status_code=400)
-    if not content or len(content) > 20_000:
-        return JSONResponse(
-            {"error": "content must contain between 1 and 20000 characters"},
-            status_code=400,
-        )
+    message_id = payload.message_id
+    content = payload.content
 
     peer_id = str(record["device_id"])
     trigger_label = str(record.get("display_name") or peer_id)

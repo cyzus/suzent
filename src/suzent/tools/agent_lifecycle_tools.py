@@ -174,6 +174,10 @@ class AgentListTool(Tool):
             records.sort(key=lambda item: item.get("updated_at") or "", reverse=True)
 
         remote_records = get_peer_agent_transport().list_agents()
+        if status == "active":
+            remote_records = [
+                record for record in remote_records if record.get("status") == "ready"
+            ]
         records = [*remote_records, *records]
 
         has_more = len(records) > limit

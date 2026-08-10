@@ -224,6 +224,22 @@ def test_peer_inbox_persists_idempotently_before_ack(monkeypatch):
     assert queued["payload"]["sender_label"] == "Laptop"
 
 
+def test_peer_inbox_rejects_non_object_json(monkeypatch):
+    import suzent.database as dbmod
+
+    monkeypatch.setattr(dbmod, "get_database", lambda: _FakeDB())
+    client = TestClient(_authenticated_app())
+
+    response = client.post(
+        "/channels/suzent/inbox",
+        headers={"Authorization": "Bearer valid"},
+        json=[],
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {"error": "Invalid inbox payload"}
+
+
 def test_peer_session_returns_only_authenticated_peer_chat(monkeypatch):
     import suzent.database as dbmod
 
