@@ -353,6 +353,16 @@ class AgentTool(Tool):
             "isolation_target_path": isolation_target_path,
         }
 
+        # Persistence or background-registry scheduling can fail before the
+        # child ever starts. Report that terminal state instead of returning a
+        # misleading spawn confirmation.
+        if task.status == "failed":
+            return ToolResult.error_result(
+                ToolErrorCode.EXECUTION_FAILED,
+                f"Sub-agent {task.task_id} failed to start.",
+                metadata={**metadata, "error": task.error},
+            )
+
         if not run_in_background:
             # Blocking mode: return the actual result so the parent LLM can act on it
             if task.status == "completed":

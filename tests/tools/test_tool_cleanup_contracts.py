@@ -56,6 +56,40 @@ async def test_spawn_subagent_returns_structured_background_result(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_spawn_subagent_reports_background_scheduling_failure(monkeypatch):
+    async def fake_spawn_subagent(**kwargs):
+        return SimpleNamespace(
+            task_id="sub_failed",
+            status="failed",
+            result_summary=None,
+            error="Background task limit reached",
+            chat_id="subagent-sub_failed",
+            parent_chat_id=kwargs["parent_chat_id"],
+            tools_allowed=[],
+        )
+
+    monkeypatch.setattr(
+        "suzent.core.subagent_runner._resolve_tool_names",
+        lambda tools_allowed: ([], []),
+    )
+    monkeypatch.setattr(
+        "suzent.core.subagent_runner.spawn_subagent",
+        fake_spawn_subagent,
+    )
+
+    result = await AgentTool().forward(
+        SimpleNamespace(deps=SimpleNamespace(chat_id="chat-1")),
+        description="Inspect the workspace",
+        tools_allowed=[],
+    )
+
+    assert not result.success
+    assert result.error_code == ToolErrorCode.EXECUTION_FAILED
+    assert result.metadata["status"] == "failed"
+    assert result.metadata["error"] == "Background task limit reached"
+
+
+@pytest.mark.asyncio
 async def test_spawn_subagent_rejects_unrecognized_tools(monkeypatch):
     monkeypatch.setattr(
         "suzent.core.subagent_runner._resolve_tool_names",
