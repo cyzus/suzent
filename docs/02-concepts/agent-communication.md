@@ -56,8 +56,23 @@ special delivery semantics of Cron and social channels.
 
 ## Cross-session and Cross-device Semantics
 
-The inbox provides real cross-session communication. It also works across
-devices when those devices connect to the same Suzent backend (or backend
-instances sharing the same database). Independent local installations with
-separate databases do not discover or wake each other; that requires a shared
-relay or synchronized database service.
+The inbox provides real cross-session communication. Paired Suzent backends are
+also exposed as remote agent addresses such as `peer:4f31c02a96de`:
+
+1. `agent_send` writes the message to the sender's durable queue with the
+   `suzent_peer` transport.
+2. The existing Devices grant supplies the peer URL and scoped bearer token.
+3. The receiver acknowledges only after the message is committed to its own
+   durable inbox.
+4. The receiver wakes the authenticated peer's dedicated
+   `suzent:<device_id>` session.
+
+An offline peer is retried with bounded exponential backoff for up to 48
+attempts. The sender can use `agent_read` to inspect the peer-owned session when
+it comes back online, and `agent_stop` requests cooperative cancellation of that
+session.
+
+Remote callers cannot choose or inspect arbitrary local chat IDs. Optional
+streaming session names are placed below their authenticated
+`suzent:<device_id>:` namespace, while inbox/read/stop always operate on the
+dedicated default session.

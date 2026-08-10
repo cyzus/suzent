@@ -183,6 +183,28 @@ class TestPeerStore:
         assert store.get(a)["token"] == "t2"
         assert len(store.list_peers()) == 1
 
+    def test_add_preserves_agent_id_across_address_changes(self, tmp_path):
+        store = PeerGrantStore(path=tmp_path / "peers.json")
+        first = store.add(
+            "Laptop",
+            "http://192.168.1.8:25314",
+            "token-1",
+            node_identity="stable-device-id",
+        )
+        store.set_reverse_device_id(first, "reverse-grant")
+
+        second = store.add(
+            "Laptop",
+            "http://100.64.0.8:25314",
+            "token-2",
+            node_identity="stable-device-id",
+        )
+
+        assert second == first
+        assert store.get(first)["base_url"] == "http://100.64.0.8:25314"
+        assert store.get(first)["reverse_device_id"] == "reverse-grant"
+        assert store.list_peers()[0]["node_identity"] == "stable-device-id"
+
     def test_persistence(self, tmp_path):
         path = tmp_path / "peers.json"
         s1 = PeerGrantStore(path=path)

@@ -7,6 +7,11 @@ from pydantic_ai import RunContext
 
 from suzent.core.agent_deps import AgentDeps
 from suzent.database import ChatModel, get_database
+from suzent.nodes.agent_transport import (
+    PeerAgentTransport,
+    PeerAgentTransportError,
+    get_peer_agent_transport,
+)
 from suzent.tools.base import Tool, ToolErrorCode, ToolGroup, ToolResult
 
 _MAX_TRANSCRIPT_CHARS = 20_000
@@ -15,6 +20,11 @@ _HIDDEN_AGENT_PLATFORMS = {"dream", "subagent_wakeup"}
 
 def _require_chat_id(ctx: RunContext[AgentDeps]) -> Optional[str]:
     return ctx.deps.chat_id or None
+
+
+def _remote_transport(agent_id: str) -> Optional[PeerAgentTransport]:
+    transport = get_peer_agent_transport()
+    return transport if transport.peer_id(agent_id) else None
 
 
 def _resolve_agent_chat(agent_id: str) -> Optional[ChatModel]:
@@ -49,6 +59,8 @@ def _agent_kind(chat: ChatModel) -> str:
         return "subagent"
     if platform == "cron":
         return "cron"
+    if platform == "suzent":
+        return "remote"
     if platform in {"social", "telegram", "slack", "discord", "feishu", "wechat"}:
         return "social"
     return "interactive"
@@ -91,31 +103,18 @@ def _format_bounded_transcript(
     messages: list[dict[str, str]],
 ) -> tuple[str, int, bool]:
     """Render recent visible messages without letting one agent exhaust context."""
-    selected: list[str] = []
-    selected_chars = 0
-    message_truncated = False
-    for message in reversed(messages):
-        line = f"[{message['role']}] {message['text']}"
-        separator_chars = 1 if selected else 0
-        if (
-            selected
-            and selected_chars + separator_chars + len(line) > _MAX_TRANSCRIPT_CHARS
-        ):
-            break
-        if not selected and len(line) > _MAX_TRANSCRIPT_CHARS:
-            line = "[... message truncated ...]\n" + line[-_MAX_TRANSCRIPT_CHARS:]
-            message_truncated = True
-        selected.append(line)
-        selected_chars += separator_chars + len(line)
+    from suzent.database.search import bound_message_records
 
-    selected.reverse()
-    omitted = len(messages) - len(selected)
+    selected, omitted, message_truncated = bound_message_records(
+        messages, _MAX_TRANSCRIPT_CHARS
+    )
     prefix = f"[... {omitted} earlier messages omitted ...]\n" if omitted else ""
-    return prefix + "\n".join(selected), omitted, message_truncated
+    lines = [f"[{message['role']}] {message['text']}" for message in selected]
+    return prefix + "\n".join(lines), omitted, message_truncated
 
 
 class AgentListTool(Tool):
-    """List active or recent agent sessions in the current project."""
+    """List local project agents and paired remote Suzent agents."""
 
     name = "AgentListTool"
     tool_name = "agent_list"
@@ -174,11 +173,18 @@ class AgentListTool(Tool):
             ]
             records.sort(key=lambda item: item.get("updated_at") or "", reverse=True)
 
+        remote_records = get_peer_agent_transport().list_agents()
+        if status == "active":
+            remote_records = [
+                record for record in remote_records if record.get("status") == "ready"
+            ]
+        records = [*remote_records, *records]
+
         has_more = len(records) > limit
         records = records[:limit]
         if not records:
             return ToolResult.success_result(
-                f"No {status} agents found in the current project.",
+                f"No {status} local or paired remote agents found.",
                 metadata={"agents": [], "has_more": False},
             )
         return ToolResult.success_result(
@@ -194,12 +200,48 @@ class AgentReadTool(Tool):
     tool_name = "agent_read"
     group = ToolGroup.AGENT
 
-    def forward(
+    async def forward(
         self,
         ctx: RunContext[AgentDeps],
         agent_id: Annotated[str, Field(description="Stable agent ID from agent_list.")],
     ) -> ToolResult:
         current_chat_id = _require_chat_id(ctx)
+        peer_transport = _remote_transport(agent_id)
+        if current_chat_id and peer_transport is not None:
+            if get_database().get_chat(current_chat_id) is None:
+                return ToolResult.error_result(
+                    ToolErrorCode.INVALID_ARGUMENT, "No current agent is available."
+                )
+            try:
+                remote = await peer_transport.read(agent_id)
+            except PeerAgentTransportError as exc:
+                return ToolResult.error_result(ToolErrorCode.EXECUTION_FAILED, str(exc))
+            messages = remote.get("messages") or []
+            transcript, omitted, message_truncated = _format_bounded_transcript(
+                messages
+            )
+            remote_omitted = int(remote.get("omitted_message_count") or 0)
+            if remote_omitted:
+                transcript = (
+                    f"[... {remote_omitted} earlier messages omitted ...]\n{transcript}"
+                )
+            return ToolResult.success_result(
+                f"Agent {agent_id} · remote · {remote.get('status', 'idle')}\n\n"
+                f"{transcript or '(no visible messages)'}",
+                metadata={
+                    "agent_id": agent_id,
+                    "kind": "remote",
+                    "status": remote.get("status", "idle"),
+                    "message_count": remote.get("message_count", len(messages)),
+                    "omitted_message_count": remote.get(
+                        "omitted_message_count", omitted
+                    ),
+                    "transcript_truncated": remote.get(
+                        "transcript_truncated", omitted > 0 or message_truncated
+                    ),
+                },
+            )
+
         target = _accessible_agent(agent_id, current_chat_id or "")
         if current_chat_id is None or target is None:
             return ToolResult.error_result(
@@ -241,6 +283,30 @@ class AgentSendTool(Tool):
         ],
     ) -> ToolResult:
         current_chat_id = _require_chat_id(ctx)
+        peer_transport = _remote_transport(agent_id)
+        if current_chat_id and peer_transport is not None:
+            if get_database().get_chat(current_chat_id) is None:
+                return ToolResult.error_result(
+                    ToolErrorCode.INVALID_ARGUMENT, "No current agent is available."
+                )
+            try:
+                record, _ = peer_transport.enqueue(
+                    agent_id=agent_id,
+                    sender_chat_id=current_chat_id,
+                    content=message.strip(),
+                )
+            except PeerAgentTransportError as exc:
+                return ToolResult.error_result(ToolErrorCode.FILE_NOT_FOUND, str(exc))
+            return ToolResult.success_result(
+                f"Message queued for remote agent '{agent_id}'.",
+                metadata={
+                    "message_id": record["message_id"],
+                    "agent_id": agent_id,
+                    "status": record["status"],
+                    "transport": "suzent_peer",
+                },
+            )
+
         target = _accessible_agent(agent_id, current_chat_id or "")
         if current_chat_id is None or target is None:
             return ToolResult.error_result(
@@ -271,7 +337,7 @@ class AgentSendTool(Tool):
 
 
 class AgentStopTool(Tool):
-    """Stop an active agent session in the current project."""
+    """Stop an active local or paired remote agent session."""
 
     name = "AgentStopTool"
     tool_name = "agent_stop"
@@ -283,6 +349,26 @@ class AgentStopTool(Tool):
         agent_id: Annotated[str, Field(description="Stable agent ID from agent_list.")],
     ) -> ToolResult:
         current_chat_id = _require_chat_id(ctx)
+        peer_transport = _remote_transport(agent_id)
+        if current_chat_id and peer_transport is not None:
+            if get_database().get_chat(current_chat_id) is None:
+                return ToolResult.error_result(
+                    ToolErrorCode.INVALID_ARGUMENT, "No current agent is available."
+                )
+            try:
+                stopped = await peer_transport.stop(agent_id)
+            except PeerAgentTransportError as exc:
+                return ToolResult.error_result(ToolErrorCode.EXECUTION_FAILED, str(exc))
+            if not stopped:
+                return ToolResult.error_result(
+                    ToolErrorCode.INVALID_ARGUMENT,
+                    f"Remote agent '{agent_id}' is not active.",
+                )
+            return ToolResult.success_result(
+                f"Remote agent '{agent_id}' stopped.",
+                metadata={"agent_id": agent_id, "status": "stopping"},
+            )
+
         target = _accessible_agent(agent_id, current_chat_id or "")
         if current_chat_id is None or target is None:
             return ToolResult.error_result(

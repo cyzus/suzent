@@ -16,6 +16,8 @@ def _utcnow() -> datetime:
 def _message_record(message: AgentInboxMessageModel) -> dict[str, Any]:
     return {
         "message_id": message.message_id,
+        "transport": message.transport,
+        "destination_peer_id": message.destination_peer_id,
         "sender_chat_id": message.sender_chat_id,
         "target_chat_id": message.target_chat_id,
         "kind": message.kind,
@@ -44,6 +46,8 @@ class AgentInboxOperationsMixin:
         target_chat_id: str,
         content: str,
         sender_chat_id: Optional[str] = None,
+        transport: str = "local",
+        destination_peer_id: Optional[str] = None,
         kind: str = "agent_message",
         payload: Optional[dict[str, Any]] = None,
         max_attempts: int = 5,
@@ -55,10 +59,14 @@ class AgentInboxOperationsMixin:
             raise ValueError("message content is required")
         if max_attempts < 1:
             raise ValueError("max_attempts must be at least 1")
+        if transport not in {"local", "suzent_peer"}:
+            raise ValueError(f"Unsupported agent message transport '{transport}'")
+        if transport == "suzent_peer" and not destination_peer_id:
+            raise ValueError("destination_peer_id is required for peer delivery")
 
         now = _utcnow()
         with self._session() as session:
-            if session.get(ChatModel, target_chat_id) is None:
+            if transport == "local" and session.get(ChatModel, target_chat_id) is None:
                 raise ValueError(f"Target agent '{target_chat_id}' does not exist")
 
             existing = session.get(AgentInboxMessageModel, message_id)
@@ -67,6 +75,10 @@ class AgentInboxOperationsMixin:
                     existing.target_chat_id != target_chat_id
                     or existing.sender_chat_id != sender_chat_id
                     or existing.content != content
+                    or existing.transport != transport
+                    or existing.destination_peer_id != destination_peer_id
+                    or existing.kind != kind
+                    or dict(existing.payload or {}) != dict(payload or {})
                 ):
                     raise ValueError(
                         f"Inbox message ID '{message_id}' is already used by another payload"
@@ -75,6 +87,8 @@ class AgentInboxOperationsMixin:
 
             message = AgentInboxMessageModel(
                 message_id=message_id,
+                transport=transport,
+                destination_peer_id=destination_peer_id,
                 sender_chat_id=sender_chat_id,
                 target_chat_id=target_chat_id,
                 kind=kind,
@@ -219,6 +233,8 @@ class AgentInboxOperationsMixin:
         self,
         *,
         target_chat_id: Optional[str] = None,
+        transport: Optional[str] = None,
+        destination_peer_id: Optional[str] = None,
         status: Optional[str] = None,
         limit: int = 50,
     ) -> list[dict[str, Any]]:
@@ -227,6 +243,12 @@ class AgentInboxOperationsMixin:
         if target_chat_id:
             statement = statement.where(
                 AgentInboxMessageModel.target_chat_id == target_chat_id
+            )
+        if transport:
+            statement = statement.where(AgentInboxMessageModel.transport == transport)
+        if destination_peer_id:
+            statement = statement.where(
+                AgentInboxMessageModel.destination_peer_id == destination_peer_id
             )
         if status:
             statement = statement.where(AgentInboxMessageModel.status == status)

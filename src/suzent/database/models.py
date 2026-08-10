@@ -119,11 +119,13 @@ class ChatModel(SQLModel, table=True):
 
 
 class AgentInboxMessageModel(SQLModel, table=True):
-    """Durable message waiting to be delivered to an agent-backed chat."""
+    """Durable local or cross-device message awaiting agent delivery."""
 
     __tablename__ = "agent_inbox_messages"
 
     message_id: str = Field(primary_key=True)
+    transport: str = Field(default="local", index=True)
+    destination_peer_id: Optional[str] = Field(default=None, index=True)
     sender_chat_id: Optional[str] = Field(default=None, index=True)
     target_chat_id: str = Field(index=True)
     kind: str = Field(default="agent_message", index=True)
