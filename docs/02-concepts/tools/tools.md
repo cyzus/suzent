@@ -109,18 +109,25 @@ See [Canvas (A2UI)](./canvas.md) for full documentation.
 |------|----------|---------|-------------|
 | ToolSearchTool | `tool_search` | AgentDeps | Discover and activate additional tools mid-conversation |
 | AgentTool | `agent` | chat_id | Start a bounded sub-agent in the foreground or background |
-| AgentListTool | `agent_list` | chat_id | List active tasks or bounded recent history owned by the current chat |
-| AgentReadTool | `agent_read` | chat_id | Read one owned task's status and visible transcript |
-| AgentStopTool | `agent_stop` | chat_id | Stop one owned running task |
+| AgentListTool | `agent_list` | chat_id | List active or recent agent-backed sessions in the current project |
+| AgentReadTool | `agent_read` | chat_id | Read one accessible agent's bounded visible transcript |
+| AgentSendTool | `agent_send` | chat_id | Persist a message and wake another agent-backed session |
+| AgentStopTool | `agent_stop` | chat_id | Stop one accessible active agent |
 
 The lifecycle tools are intentionally separate instead of using one action-heavy
 management schema. `agent_list` defaults to active tasks and caps results at 20;
-historical conversation discovery remains the responsibility of
-`session_search`. Task ownership is inferred from the current chat, so callers do
-not pass parent chat or project identifiers. `agent_read` keeps its schema to a
-single task ID and applies an internal transcript budget, returning the newest
-visible messages when a child conversation is large. Selecting `AgentTool`
-automatically equips these lifecycle operations as its management dependencies.
+recent results cap at 50. Agent IDs are stable chat IDs. Access is inferred from
+the current project, so callers do not pass parent chat or project identifiers.
+`agent_read` applies an internal transcript budget and returns the newest visible
+messages when a conversation is large. `agent_send` has only two parameters
+(`agent_id` and `message`): it writes to the durable agent inbox, returns after
+the message is queued, and a background dispatcher wakes the target session.
+Selecting `AgentTool` automatically equips these lifecycle operations as its
+management dependencies. Sub-agents themselves cannot use the lifecycle tools,
+which prevents unbounded recursive orchestration.
+
+See [Agent Communication](../agent-communication.md) for inbox delivery,
+idempotency, and cross-device boundaries.
 
 **HITL** = Requires human approval before execution. See [Human-in-the-Loop](./human-in-the-loop.md).
 

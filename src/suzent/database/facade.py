@@ -4,6 +4,7 @@ from .base import ChatDatabaseBase
 from .chats import ChatOperationsMixin
 from .cron import CronOperationsMixin
 from .goals import GoalOperationsMixin
+from .inbox import AgentInboxOperationsMixin
 from .migrations import DatabaseMigrationMixin
 from .postprocess import PostprocessOperationsMixin
 from .projects import ProjectOperationsMixin
@@ -14,6 +15,7 @@ from .tasks import TaskOperationsMixin
 
 class ChatDatabase(
     DatabaseMigrationMixin,
+    AgentInboxOperationsMixin,
     ProjectOperationsMixin,
     GoalOperationsMixin,
     TaskOperationsMixin,

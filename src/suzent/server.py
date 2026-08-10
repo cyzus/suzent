@@ -281,6 +281,7 @@ outbound_manager = None
 scheduler_brain: SchedulerBrain = None
 heartbeat_runner: HeartbeatRunner = None
 sync_automation_runner: SyncAutomationRunner = None
+agent_inbox_dispatcher = None
 
 
 _social_reload_lock = asyncio.Lock()
@@ -540,6 +541,16 @@ async def startup():
         except Exception as e:
             logger.error(f"Failed to start background services: {e}")
 
+        global agent_inbox_dispatcher
+        try:
+            from suzent.core.agent_inbox import get_agent_inbox_dispatcher
+
+            agent_inbox_dispatcher = get_agent_inbox_dispatcher()
+            app.state.agent_inbox_dispatcher = agent_inbox_dispatcher
+            await agent_inbox_dispatcher.start()
+        except Exception as e:
+            logger.error(f"Failed to start AgentInboxDispatcher: {e}")
+
         # Start scheduler
         global scheduler_brain
         try:
@@ -730,10 +741,14 @@ async def shutdown():
         outbound_manager, \
         scheduler_brain, \
         heartbeat_runner, \
-        sync_automation_runner
+        sync_automation_runner, \
+        agent_inbox_dispatcher
 
     # Cancel any pending ask_question futures so their tasks can exit cleanly
     pending_questions.cancel_all()
+
+    if agent_inbox_dispatcher:
+        await _stop(agent_inbox_dispatcher.stop(), "AgentInboxDispatcher")
 
     if node_advertiser:
         try:

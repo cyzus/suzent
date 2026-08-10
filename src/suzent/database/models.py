@@ -118,6 +118,31 @@ class ChatModel(SQLModel, table=True):
     project: Optional[ProjectModel] = Relationship(back_populates="chats")
 
 
+class AgentInboxMessageModel(SQLModel, table=True):
+    """Durable message waiting to be delivered to an agent-backed chat."""
+
+    __tablename__ = "agent_inbox_messages"
+
+    message_id: str = Field(primary_key=True)
+    sender_chat_id: Optional[str] = Field(default=None, index=True)
+    target_chat_id: str = Field(index=True)
+    kind: str = Field(default="agent_message", index=True)
+    content: str
+    payload: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    status: str = Field(default="pending", index=True)
+    attempts: int = Field(default=0)
+    max_attempts: int = Field(default=5)
+    available_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc), index=True
+    )
+    lease_owner: Optional[str] = None
+    lease_until: Optional[datetime] = Field(default=None, index=True)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    delivered_at: Optional[datetime] = None
+    last_error: Optional[str] = None
+
+
 class RetryCheckpointModel(SQLModel, table=True):
     """Stores the last retry checkpoint for a chat session (one row per chat)."""
 

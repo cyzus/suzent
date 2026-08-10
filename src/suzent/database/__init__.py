@@ -4,6 +4,7 @@ import os
 
 from .facade import ChatDatabase
 from .models import (
+    AgentInboxMessageModel,
     ApiKeyModel,
     ChatCostSummaryModel,
     ChatModel,
@@ -28,6 +29,7 @@ from .models import (
 )
 
 __all__ = [
+    "AgentInboxMessageModel",
     "ApiKeyModel",
     "ChatCostSummaryModel",
     "ChatDatabase",

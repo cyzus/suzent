@@ -201,6 +201,7 @@ def test_agent_tool_equips_small_lifecycle_dependencies():
         "AgentTool",
         "AgentListTool",
         "AgentReadTool",
+        "AgentSendTool",
         "AgentStopTool",
     ]
 

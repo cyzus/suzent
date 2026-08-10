@@ -140,6 +140,7 @@ def _all_tool_classes() -> list:
     from suzent.tools.agent_lifecycle_tools import (
         AgentListTool,
         AgentReadTool,
+        AgentSendTool,
         AgentStopTool,
     )
 
@@ -172,6 +173,7 @@ def _all_tool_classes() -> list:
         AgentTool,
         AgentListTool,
         AgentReadTool,
+        AgentSendTool,
         AgentStopTool,
     ]
 
@@ -186,6 +188,7 @@ SHELL_TOOL_CLASS_NAMES = (
 AGENT_LIFECYCLE_TOOL_NAMES = (
     "AgentListTool",
     "AgentReadTool",
+    "AgentSendTool",
     "AgentStopTool",
 )
 
@@ -214,9 +217,10 @@ TOOL_DESCRIPTION_OVERRIDES = {
     "TaskCreateTool": "Create structured project tasks with dependencies, assignees, and progress metadata.",
     "TaskUpdateTool": "Update the status, ownership, description, or dependencies of an existing task.",
     "TaskListTool": "List project tasks and their current status, ownership, and dependency relationships.",
-    "AgentListTool": "List active or recent sub-agent tasks owned by the current conversation.",
-    "AgentReadTool": "Read a sub-agent task's status and visible conversation transcript.",
-    "AgentStopTool": "Stop a running sub-agent task owned by the current conversation.",
+    "AgentListTool": "List active or recent agent sessions in the current project.",
+    "AgentReadTool": "Read an accessible agent session's bounded visible transcript.",
+    "AgentSendTool": "Durably send a message to another agent session and wake it.",
+    "AgentStopTool": "Stop an active agent session in the current project.",
     "RenderUITool": "Render an interactive interface such as a form, table, card, or action panel.",
     "SpeakTool": "Convert a response to speech and return playable audio to the conversation.",
     "SocialMessageTool": "Send a message through a configured social channel after approval.",

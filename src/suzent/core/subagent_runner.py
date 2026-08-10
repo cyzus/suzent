@@ -13,7 +13,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 from suzent.config import CONFIG
 from suzent.database import ChatDatabase, get_database
@@ -23,7 +23,6 @@ from suzent.core.stream_registry import (
     unregister_background_stream,
     background_queues,
     get_active_stream_queue,
-    stream_controls,
 )
 
 logger = get_logger(__name__)
@@ -35,83 +34,10 @@ _ALWAYS_DENIED: frozenset[str] = frozenset(
         "AgentTool",
         "AgentListTool",
         "AgentReadTool",
+        "AgentSendTool",
         "AgentStopTool",
     }
 )
-
-# ─── Wakeup batching ──────────────────────────────────────────────────────────
-# When multiple sub-agents finish around the same time, we batch their results
-# into a single parent wakeup turn instead of firing one turn per completion.
-# Each entry is a completed SubAgentTask waiting to be delivered.
-
-_WAKEUP_BATCH_DELAY = 0.3  # seconds to wait for sibling completions to accumulate
-
-# parent_chat_id → list of finished tasks pending delivery
-_pending_wakeups: Dict[str, List["SubAgentTask"]] = {}
-# parent_chat_id → debounce asyncio.Task
-_wakeup_debounce_tasks: Dict[str, asyncio.Task] = {}
-_wakeup_lock = asyncio.Lock()
-
-
-async def _schedule_wakeup(task: "SubAgentTask") -> None:
-    """
-    Add a finished task to the pending batch for its parent chat, then start
-    (or reset) a debounce timer. When the timer fires, all accumulated tasks
-    are delivered in a single LLM turn.
-    """
-    parent_id = task.parent_chat_id
-    async with _wakeup_lock:
-        _pending_wakeups.setdefault(parent_id, []).append(task)
-
-        # Cancel existing debounce timer so we wait for more completions
-        existing = _wakeup_debounce_tasks.get(parent_id)
-        if existing and not existing.done():
-            existing.cancel()
-
-        debounce = asyncio.create_task(
-            _debounced_wakeup(parent_id),
-            name=f"wakeup_debounce_{parent_id}",
-        )
-        _wakeup_debounce_tasks[parent_id] = debounce
-
-
-async def _debounced_wakeup(parent_id: str) -> None:
-    """Wait briefly, then flush all pending completions as one wakeup turn.
-
-    The per-chat background turn lock (in stream_registry) ensures only one
-    background turn runs at a time across wakeup, heartbeat, and cron.
-    Completions that arrive while a turn is in flight are buffered in
-    _pending_wakeups and delivered in a follow-up turn after the lock releases.
-    """
-    from suzent.core.stream_registry import get_background_turn_lock
-
-    try:
-        await asyncio.sleep(_WAKEUP_BATCH_DELAY)
-    except asyncio.CancelledError:
-        return  # A newer completion reset the timer; this task is superseded
-
-    async with _wakeup_lock:
-        batch = _pending_wakeups.pop(parent_id, [])
-        _wakeup_debounce_tasks.pop(parent_id, None)
-
-    if not batch:
-        return
-
-    # The background turn lock is also held inside process_background_turn, so
-    # this outer acquire serializes the overflow drain loop against concurrent turns.
-    async with get_background_turn_lock(parent_id):
-        await _wakeup_parent_batch(parent_id, batch)
-        # Drain any completions that arrived while this turn was running.
-        while True:
-            async with _wakeup_lock:
-                overflow = _pending_wakeups.pop(parent_id, [])
-                existing = _wakeup_debounce_tasks.pop(parent_id, None)
-                if existing and not existing.done():
-                    existing.cancel()
-            if not overflow:
-                break
-            await _wakeup_parent_batch(parent_id, overflow)
-
 
 # ─── In-memory task registry ─────────────────────────────────────────────────
 
@@ -482,6 +408,8 @@ async def _run_subagent(
             "subagent_failed",
             {"task_id": task.task_id, "error": str(exc)},
         )
+        if wakeup_parent:
+            _queue_parent_wakeup(task)
         await _evict_old_finished_tasks_locked()
         return
 
@@ -570,7 +498,7 @@ async def _run_subagent(
         )
 
         if wakeup_parent:
-            await _schedule_wakeup(task)
+            _queue_parent_wakeup(task)
 
     except asyncio.CancelledError:
         task.status = "failed"
@@ -595,6 +523,8 @@ async def _run_subagent(
                 "error": str(e),
             },
         )
+        if wakeup_parent:
+            _queue_parent_wakeup(task)
     finally:
         unregister_background_stream(task.chat_id)
         # Phase 3: always tear down the worktree, even on failure
@@ -772,114 +702,37 @@ async def _teardown_worktree(task: SubAgentTask) -> None:
 # ─── Parent wakeup & notification ────────────────────────────────────────────
 
 
-async def _wakeup_parent_batch(parent_chat_id: str, batch: List[SubAgentTask]) -> None:
-    """
-    Trigger a single LLM turn in the parent chat delivering all finished sub-agents
-    at once. Called by _debounced_wakeup after the batch window closes.
+def _queue_parent_wakeup(task: SubAgentTask) -> None:
+    """Persist a completion or failure message for the parent agent."""
+    from suzent.core.agent_inbox import enqueue_agent_message
+    from suzent.prompts import SUBAGENT_WAKEUP_SINGLE
 
-    If the parent is currently streaming (user mid-conversation or an earlier wakeup
-    turn is still running), wait for the stream to finish before delivering. This
-    prevents results from being silently dropped when multiple sub-agents complete
-    in quick succession and a wakeup turn is already in flight for an earlier batch.
-    """
-    # Wait for the parent's active /chat stream to finish before injecting a
-    # wakeup turn — prevents the wakeup from racing with an in-progress user turn.
-    control = stream_controls.get(parent_chat_id)
-    if control is not None:
-        try:
-            await asyncio.wait_for(control.completed_event.wait(), timeout=120.0)
-        except asyncio.TimeoutError:
-            logger.warning(
-                f"Timed out waiting for parent {parent_chat_id} to finish streaming; "
-                f"dropping wakeup for {[t.task_id for t in batch]}"
-            )
-            return
-
+    if task.status == "completed":
+        content = SUBAGENT_WAKEUP_SINGLE.format(
+            task_id=task.task_id,
+            model_override=task.model_override or "(default)",
+            description=task.description[:300],
+            result_summary=task.result_summary or "(no output)",
+        )
+    else:
+        content = (
+            f"Sub-agent {task.task_id} failed.\n"
+            f"Task: {task.description[:300]}\n"
+            f"Error: {task.error or 'unknown error'}"
+        )
     try:
-        from suzent.core.chat_processor import ChatProcessor
-        from suzent.agent_manager import build_agent_config
-        from suzent.core.task_registry import wait_for_background_task_prefix
-        from suzent.prompts import (
-            SUBAGENT_WAKEUP_SINGLE,
-            SUBAGENT_WAKEUP_BATCH_HEADER,
-            SUBAGENT_WAKEUP_BATCH_ITEM,
+        enqueue_agent_message(
+            message_id=f"subagent-result-{task.task_id}",
+            sender_chat_id=task.chat_id,
+            target_chat_id=task.parent_chat_id,
+            content=content,
+            kind="subagent_result",
+            payload={"task_id": task.task_id, "status": task.status},
         )
-
-        if len(batch) == 1:
-            t = batch[0]
-            wake_msg = SUBAGENT_WAKEUP_SINGLE.format(
-                task_id=t.task_id,
-                model_override=t.model_override or "(default)",
-                description=t.description[:300],
-                result_summary=t.result_summary,
-            )
-        else:
-            parts = [SUBAGENT_WAKEUP_BATCH_HEADER.format(count=len(batch))]
-            for j, t in enumerate(batch, 1):
-                parts.append(
-                    SUBAGENT_WAKEUP_BATCH_ITEM.format(
-                        index=j,
-                        task_id=t.task_id,
-                        model_override=t.model_override or "(default)",
-                        description=t.description[:200],
-                        result_summary=t.result_summary or "(no output)",
-                    )
-                )
-            wake_msg = "\n\n".join(parts)
-
-        logger.debug(
-            f"Batched wakeup for {parent_chat_id}: {[t.task_id for t in batch]}"
+    except Exception as exc:
+        logger.warning(
+            f"Could not queue parent wakeup for sub-agent {task.task_id}: {exc}"
         )
-
-        config_override = build_agent_config(
-            {"platform": "subagent_wakeup", "memory_enabled": False},
-            require_social_tool=False,
-        )
-
-        # is_heartbeat=True → _persist_state(skip_messages=True) → only agent_state
-        # is saved; chat.messages is left untouched by the rebuild step.
-        await ChatProcessor().process_background_turn(
-            chat_id=parent_chat_id,
-            user_id=CONFIG.user_id,
-            message_content="",
-            config_override=config_override,
-            is_heartbeat=True,
-            system_reminders=[wake_msg],
-        )
-
-        # Wait for the background post-processing task to finish before writing
-        # to chat.messages to avoid a race condition.
-        try:
-            await wait_for_background_task_prefix(
-                f"post_process_{parent_chat_id}_", timeout=10.0
-            )
-        except Exception:
-            pass
-
-        # Rebuild the full display-message log from the finalized agent_state so
-        # that chat.messages always contains the complete conversation history
-        # (original user turn + all wakeup turns). The simple append approach was
-        # dropping the user message when the wakeup's snapshot incremented the
-        # revision and caused the user turn's finalize_state_if_revision_matches
-        # to be rejected as stale.
-        try:
-            from suzent.core.agent_serializer import deserialize_state
-            from suzent.core.chat_processor import _rebuild_display_messages
-
-            db = get_database()
-            parent = db.get_chat(parent_chat_id)
-            if parent is not None and parent.agent_state:
-                state = deserialize_state(parent.agent_state)
-                if state and state.get("message_history"):
-                    rebuilt = _rebuild_display_messages(state["message_history"])
-                    if rebuilt:
-                        db.update_chat(parent_chat_id, messages=rebuilt)
-        except Exception as _e:
-            logger.warning(f"Failed to rebuild display messages for wakeup: {_e}")
-
-        logger.debug(f"Batched wakeup turn completed for parent {parent_chat_id}")
-    except Exception as e:
-        logger.warning(f"Failed batched wakeup for parent {parent_chat_id}: {e}")
 
 
 async def _notify_parent(task: SubAgentTask, event_name: str, data: dict):

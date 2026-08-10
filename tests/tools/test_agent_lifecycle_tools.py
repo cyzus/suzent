@@ -1,92 +1,111 @@
+from datetime import datetime, timezone
+from inspect import signature
 from types import SimpleNamespace
 
 import pytest
 
-from suzent.core.subagent_runner import SubAgentTask
 from suzent.tools.agent_lifecycle_tools import (
     AgentListTool,
     AgentReadTool,
+    AgentSendTool,
     AgentStopTool,
 )
 from suzent.tools.base import ToolErrorCode
 
 
-def _ctx(chat_id: str = "parent-chat") -> SimpleNamespace:
+def _ctx(chat_id: str = "agent-current") -> SimpleNamespace:
     return SimpleNamespace(deps=SimpleNamespace(chat_id=chat_id))
 
 
-def _task(task_id: str, status: str = "running") -> SubAgentTask:
-    return SubAgentTask(
-        task_id=task_id,
-        parent_chat_id="parent-chat",
-        description=f"Task {task_id}",
-        tools_allowed=[],
-        status=status,
-        chat_id=f"subagent-{task_id}",
+def _chat(
+    chat_id: str,
+    *,
+    project_id: str = "project-1",
+    platform: str | None = None,
+    messages: list | None = None,
+) -> SimpleNamespace:
+    config = {"platform": platform} if platform else {}
+    return SimpleNamespace(
+        id=chat_id,
+        title=f"Agent {chat_id}",
+        project_id=project_id,
+        config=config,
+        messages=messages or [],
+        updated_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
     )
 
 
-def test_agent_list_defaults_to_bounded_active_tasks(monkeypatch):
-    tasks = [_task("sub_a"), _task("sub_b"), _task("sub_done", "completed")]
-    monkeypatch.setattr(
-        "suzent.core.subagent_runner.list_all_tasks", lambda parent_chat_id: tasks
-    )
-
-    result = AgentListTool().forward(_ctx(), limit=1)
-
-    assert result.success
-    assert [task["task_id"] for task in result.metadata["tasks"]] == ["sub_a"]
-    assert result.metadata["has_more"] is True
-    assert "sub_done" not in result.message
-
-
-def test_agent_list_recent_queries_only_current_parent(monkeypatch):
+def test_agent_list_recent_is_bounded_to_current_project(monkeypatch):
+    current = _chat("agent-current")
+    target = _chat("agent-target", platform="telegram")
     captured = {}
 
     class FakeDatabase:
-        def list_subagent_task_records(self, **kwargs):
+        def get_chat(self, chat_id):
+            return {current.id: current, target.id: target}.get(chat_id)
+
+        def list_chats(self, **kwargs):
             captured.update(kwargs)
-            return [
-                {
-                    "task_id": "sub_old",
-                    "parent_chat_id": "parent-chat",
-                    "chat_id": "subagent-sub_old",
-                    "description": "Old task",
-                    "status": "completed",
-                    "result_summary": "done",
-                    "error": None,
-                    "model_override": None,
-                    "started_at": "2026-01-01T00:00:00",
-                    "finished_at": "2026-01-01T00:01:00",
-                }
-            ]
+            return [SimpleNamespace(id=target.id)]
 
     monkeypatch.setattr(
-        "suzent.core.subagent_runner.list_all_tasks", lambda parent_chat_id: []
+        "suzent.tools.agent_lifecycle_tools.get_database", lambda: FakeDatabase()
     )
     monkeypatch.setattr(
-        "suzent.tools.agent_lifecycle_tools.get_database", lambda: FakeDatabase()
+        "suzent.tools.agent_lifecycle_tools._agent_is_active", lambda chat_id: False
     )
 
     result = AgentListTool().forward(_ctx(), status="recent", limit=5)
 
     assert result.success
-    assert captured == {"parent_chat_id": "parent-chat", "limit": 6}
-    assert result.metadata["tasks"][0]["task_id"] == "sub_old"
+    assert captured == {"limit": 6, "project_id": "project-1"}
+    assert result.metadata["agents"][0]["agent_id"] == "agent-target"
+    assert result.metadata["agents"][0]["kind"] == "social"
+
+
+def test_agent_list_active_uses_runtime_sessions_and_limit(monkeypatch):
+    current = _chat("agent-current")
+    first = _chat("agent-first")
+    second = _chat("agent-second", platform="subagent")
+
+    class FakeDatabase:
+        def get_chat(self, chat_id):
+            return {
+                current.id: current,
+                first.id: first,
+                second.id: second,
+            }.get(chat_id)
+
+        def list_subagent_task_records(self, **kwargs):
+            return []
+
+    monkeypatch.setattr(
+        "suzent.tools.agent_lifecycle_tools.get_database", lambda: FakeDatabase()
+    )
+    monkeypatch.setattr(
+        "suzent.tools.agent_lifecycle_tools._agent_is_active", lambda chat_id: True
+    )
+    from suzent.core import stream_registry
+
+    monkeypatch.setattr(
+        stream_registry, "active_stream_queues", {first.id: SimpleNamespace()}
+    )
+    monkeypatch.setattr(
+        stream_registry, "background_queues", {second.id: SimpleNamespace()}
+    )
+    monkeypatch.setattr(stream_registry, "stream_controls", {})
+    monkeypatch.setattr("suzent.core.subagent_runner.list_active_tasks", lambda: [])
+
+    result = AgentListTool().forward(_ctx(), limit=1)
+
+    assert result.success
+    assert len(result.metadata["agents"]) == 1
+    assert result.metadata["has_more"] is True
 
 
 def test_agent_read_returns_sanitized_visible_transcript(monkeypatch):
-    record = {
-        "task_id": "sub_a",
-        "parent_chat_id": "parent-chat",
-        "chat_id": "subagent-sub_a",
-        "description": "Inspect code",
-        "status": "completed",
-        "result_summary": "done",
-        "error": None,
-        "model_override": None,
-    }
-    chat = SimpleNamespace(
+    target = _chat(
+        "agent-target",
         messages=[
             {"role": "user", "content": "Inspect code"},
             {
@@ -96,18 +115,17 @@ def test_agent_read_returns_sanitized_visible_transcript(monkeypatch):
                     {"type": "text", "text": "Inspection complete."},
                 ],
             },
-        ]
+        ],
     )
     monkeypatch.setattr(
-        "suzent.tools.agent_lifecycle_tools._find_accessible_task",
-        lambda task_id, current_chat_id: (record, None),
+        "suzent.tools.agent_lifecycle_tools._accessible_agent",
+        lambda agent_id, current_chat_id: target,
     )
     monkeypatch.setattr(
-        "suzent.tools.agent_lifecycle_tools.get_database",
-        lambda: SimpleNamespace(get_chat=lambda chat_id: chat),
+        "suzent.tools.agent_lifecycle_tools._agent_is_active", lambda chat_id: False
     )
 
-    result = AgentReadTool().forward(_ctx(), "sub_a")
+    result = AgentReadTool().forward(_ctx(), "agent-target")
 
     assert result.success
     assert "Inspection complete." in result.message
@@ -116,70 +134,102 @@ def test_agent_read_returns_sanitized_visible_transcript(monkeypatch):
 
 
 def test_agent_read_bounds_large_transcripts_without_more_arguments(monkeypatch):
-    record = {
-        "task_id": "sub_a",
-        "parent_chat_id": "parent-chat",
-        "chat_id": "subagent-sub_a",
-        "description": "Inspect code",
-        "status": "completed",
-        "result_summary": "done",
-        "error": None,
-        "model_override": None,
-    }
-    chat = SimpleNamespace(
+    target = _chat(
+        "agent-target",
         messages=[
             {"role": "user", "content": f"message-{index}-" + "x" * 30}
             for index in range(10)
-        ]
+        ],
     )
     monkeypatch.setattr(
-        "suzent.tools.agent_lifecycle_tools._find_accessible_task",
-        lambda task_id, current_chat_id: (record, None),
+        "suzent.tools.agent_lifecycle_tools._accessible_agent",
+        lambda agent_id, current_chat_id: target,
     )
     monkeypatch.setattr(
-        "suzent.tools.agent_lifecycle_tools.get_database",
-        lambda: SimpleNamespace(get_chat=lambda chat_id: chat),
+        "suzent.tools.agent_lifecycle_tools._agent_is_active", lambda chat_id: False
     )
     monkeypatch.setattr("suzent.tools.agent_lifecycle_tools._MAX_TRANSCRIPT_CHARS", 100)
 
-    result = AgentReadTool().forward(_ctx(), "sub_a")
+    result = AgentReadTool().forward(_ctx(), "agent-target")
 
     assert result.success
     assert "earlier messages omitted" in result.message
     assert "message-9" in result.message
     assert "message-0" not in result.message
-    assert result.metadata["omitted_message_count"] > 0
     assert result.metadata["transcript_truncated"] is True
 
 
-def test_agent_read_rejects_task_owned_by_another_chat(monkeypatch):
+def test_agent_read_rejects_agent_from_another_project(monkeypatch):
     monkeypatch.setattr(
-        "suzent.tools.agent_lifecycle_tools._find_accessible_task",
-        lambda task_id, current_chat_id: None,
+        "suzent.tools.agent_lifecycle_tools._accessible_agent",
+        lambda agent_id, current_chat_id: None,
     )
 
-    result = AgentReadTool().forward(_ctx(), "sub_other")
+    result = AgentReadTool().forward(_ctx(), "agent-other")
 
     assert not result.success
     assert result.error_code == ToolErrorCode.FILE_NOT_FOUND
 
 
-@pytest.mark.asyncio
-async def test_agent_stop_stops_owned_runtime_task(monkeypatch):
-    task = _task("sub_a")
+def test_agent_send_queues_durable_message(monkeypatch):
+    target = _chat("agent-target")
+    captured = {}
     monkeypatch.setattr(
-        "suzent.tools.agent_lifecycle_tools._find_accessible_task",
-        lambda task_id, current_chat_id: (
-            {
-                "task_id": task.task_id,
-                "parent_chat_id": task.parent_chat_id,
-                "chat_id": task.chat_id,
-                "description": task.description,
-                "status": task.status,
-            },
-            task,
-        ),
+        "suzent.tools.agent_lifecycle_tools._accessible_agent",
+        lambda agent_id, current_chat_id: target,
     )
+
+    def enqueue(**kwargs):
+        captured.update(kwargs)
+        return {"message_id": "msg-1", "status": "pending"}, True
+
+    monkeypatch.setattr("suzent.core.agent_inbox.enqueue_agent_message", enqueue)
+
+    result = AgentSendTool().forward(_ctx(), "agent-target", "Please verify this")
+
+    assert result.success
+    assert captured == {
+        "sender_chat_id": "agent-current",
+        "target_chat_id": "agent-target",
+        "content": "Please verify this",
+    }
+    assert result.metadata["message_id"] == "msg-1"
+
+
+def test_agent_send_schema_stays_minimal():
+    assert list(signature(AgentSendTool.forward).parameters) == [
+        "self",
+        "ctx",
+        "agent_id",
+        "message",
+    ]
+
+
+def test_agent_send_rejects_self_delivery(monkeypatch):
+    current = _chat("agent-current")
+    monkeypatch.setattr(
+        "suzent.tools.agent_lifecycle_tools._accessible_agent",
+        lambda agent_id, current_chat_id: current,
+    )
+
+    result = AgentSendTool().forward(_ctx(), "agent-current", "Continue")
+
+    assert not result.success
+    assert result.error_code == ToolErrorCode.INVALID_ARGUMENT
+
+
+@pytest.mark.asyncio
+async def test_agent_stop_stops_active_subagent(monkeypatch):
+    target = _chat("subagent-sub_a", platform="subagent")
+    task = SimpleNamespace(task_id="sub_a", chat_id=target.id)
+    monkeypatch.setattr(
+        "suzent.tools.agent_lifecycle_tools._accessible_agent",
+        lambda agent_id, current_chat_id: target,
+    )
+    monkeypatch.setattr(
+        "suzent.tools.agent_lifecycle_tools._agent_is_active", lambda chat_id: True
+    )
+    monkeypatch.setattr("suzent.core.subagent_runner.list_active_tasks", lambda: [task])
     stopped = []
 
     async def stop_subagent(task_id):
@@ -188,7 +238,7 @@ async def test_agent_stop_stops_owned_runtime_task(monkeypatch):
 
     monkeypatch.setattr("suzent.core.subagent_runner.stop_subagent", stop_subagent)
 
-    result = await AgentStopTool().forward(_ctx(), "sub_a")
+    result = await AgentStopTool().forward(_ctx(), target.id)
 
     assert result.success
     assert stopped == ["sub_a"]
