@@ -10,7 +10,9 @@ allowlist is layered on in the pairing phase.
 
 from __future__ import annotations
 
+import hashlib
 import ipaddress
+import re
 import shutil
 import tempfile
 from pathlib import Path
@@ -28,6 +30,56 @@ logger = get_logger(__name__)
 MAX_PEER_ATTACHMENTS = 8
 MAX_PEER_ATTACHMENT_BYTES = 50 * 1024 * 1024
 PEER_ATTACHMENT_TIMEOUT_SECONDS = 300.0
+_MESSAGE_ID_PATTERN = re.compile(r"^[A-Za-z0-9_.:-]{1,128}$")
+
+
+def _authenticated_peer(request: Request) -> tuple[dict | None, object | None]:
+    """Resolve peer identity exclusively from the durable bearer grant."""
+    app = getattr(request, "app", None)
+    node_manager = getattr(getattr(app, "state", None), "node_manager", None)
+    try:
+        from suzent.auth_boundary import extract_token
+
+        token = extract_token(request.headers.raw)
+        record = (
+            node_manager.device_store.verify(token)
+            if node_manager is not None and token
+            else None
+        )
+    except Exception:
+        record = None
+    return record, node_manager
+
+
+def _peer_chat_id(peer_id: str, requested_chat_id: object = None) -> str:
+    """Bind remote-created sessions to the authenticated peer namespace."""
+    default_chat_id = f"suzent:{peer_id}"
+    if not requested_chat_id:
+        return default_chat_id
+    candidate = str(requested_chat_id).strip()
+    if candidate == default_chat_id:
+        return candidate
+    if re.fullmatch(r"[A-Za-z0-9_-]{1,64}", candidate):
+        return f"{default_chat_id}:{candidate}"
+    prefix = f"{default_chat_id}:"
+    suffix = candidate.removeprefix(prefix) if candidate.startswith(prefix) else ""
+    if suffix and re.fullmatch(r"[A-Za-z0-9_-]{1,64}", suffix):
+        return candidate
+    raise ValueError("chat_id must belong to the authenticated peer namespace")
+
+
+def _ensure_peer_chat(peer_id: str, trigger_label: str) -> str:
+    from suzent.database import get_database
+
+    db = get_database()
+    chat_id = _peer_chat_id(peer_id)
+    db.ensure_channel_chat(
+        chat_id,
+        title=f"⇄ {trigger_label}",
+        platform="suzent",
+        config_extra={"sender_id": peer_id, "sender_name": trigger_label},
+    )
+    return chat_id
 
 
 def _normalized_host(value: str | None) -> str:
@@ -161,27 +213,23 @@ async def suzent_channel_inbound(request: Request):
     if not content:
         return JSONResponse({"error": "content is required"}, status_code=400)
 
-    # Resolve the node manager once (None-safe: request.app may be unset in tests).
-    app = getattr(request, "app", None)
-    nm = getattr(getattr(app, "state", None), "node_manager", None)
-
     # Identify the peer from its authenticated token (the contact/device id) —
     # decision §10.1: session keyed by the *authenticated* identity, never a
     # spoofable body field. The scoped device token is the per-peer authorization.
-    rec = None
-    try:
-        from suzent.auth_boundary import extract_token
-
-        token = extract_token(request.headers.raw)
-        rec = nm.device_store.verify(token) if (nm and token) else None
-    except Exception:
-        pass
+    rec, nm = _authenticated_peer(request)
 
     # Require an identified peer (valid token) — otherwise we'd key the session by
     # a spoofable body field and create empty/orphan chats for unauthenticated
     # callers. A loopback caller (local app/tests) may pass an explicit chat_id.
     peer_id = rec.get("device_id") if rec else None
-    chat_id = body.get("chat_id") or (f"suzent:{peer_id}" if peer_id else None)
+    try:
+        chat_id = (
+            _peer_chat_id(peer_id, body.get("chat_id"))
+            if peer_id
+            else body.get("chat_id")
+        )
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=403)
     if not chat_id:
         # Record the rejected attempt so the operator can spot probing/abuse.
         if nm is not None:
@@ -319,6 +367,113 @@ async def suzent_channel_inbound(request: Request):
                 shutil.rmtree(attachment_staging_dir, ignore_errors=True)
 
     return StreamingResponse(_teed(), media_type="text/event-stream")
+
+
+async def suzent_channel_inbox(request: Request) -> JSONResponse:
+    """Persist a peer message locally and acknowledge without waiting for its turn."""
+    record, _node_manager = _authenticated_peer(request)
+    if record is None:
+        return JSONResponse(
+            {"error": "A valid peer token is required"}, status_code=401
+        )
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
+
+    raw_message_id = body.get("message_id")
+    raw_content = body.get("content")
+    message_id = raw_message_id.strip() if isinstance(raw_message_id, str) else ""
+    content = raw_content.strip() if isinstance(raw_content, str) else ""
+    if not _MESSAGE_ID_PATTERN.fullmatch(message_id):
+        return JSONResponse({"error": "Invalid message_id"}, status_code=400)
+    if not content or len(content) > 20_000:
+        return JSONResponse(
+            {"error": "content must contain between 1 and 20000 characters"},
+            status_code=400,
+        )
+
+    peer_id = str(record["device_id"])
+    trigger_label = str(record.get("display_name") or peer_id)
+    chat_id = _ensure_peer_chat(peer_id, trigger_label)
+    local_message_id = (
+        "remote_" + hashlib.sha256(f"{peer_id}:{message_id}".encode()).hexdigest()
+    )
+
+    from suzent.core.agent_inbox import enqueue_agent_message
+
+    try:
+        queued, created = enqueue_agent_message(
+            message_id=local_message_id,
+            sender_chat_id=None,
+            target_chat_id=chat_id,
+            content=content,
+            kind="remote_agent_message",
+            payload={
+                "remote_message_id": message_id,
+                "sender_label": trigger_label,
+                "sender_agent_id": f"device:{peer_id}",
+            },
+        )
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+    return JSONResponse(
+        {
+            "accepted": True,
+            "created": created,
+            "message_id": message_id,
+            "status": queued["status"],
+        },
+        status_code=202,
+    )
+
+
+async def suzent_channel_session(request: Request) -> JSONResponse:
+    """Return only the authenticated peer's dedicated visible transcript."""
+    record, _node_manager = _authenticated_peer(request)
+    if record is None:
+        return JSONResponse(
+            {"error": "A valid peer token is required"}, status_code=401
+        )
+
+    from suzent.core.stream_registry import is_background_streaming, stream_controls
+    from suzent.database import get_database
+    from suzent.database.search import bound_message_records, sanitize_messages
+
+    chat_id = _peer_chat_id(str(record["device_id"]))
+    chat = get_database().get_chat(chat_id)
+    messages = sanitize_messages(chat.messages or []) if chat is not None else []
+    bounded, omitted, message_truncated = bound_message_records(messages)
+    control = stream_controls.get(chat_id)
+    active = (
+        control is not None and not control.completed_event.is_set()
+    ) or is_background_streaming(chat_id)
+    return JSONResponse(
+        {
+            "agent_id": chat_id,
+            "status": "active" if active else "idle",
+            "messages": bounded,
+            "message_count": len(messages),
+            "omitted_message_count": omitted,
+            "transcript_truncated": omitted > 0 or message_truncated,
+        }
+    )
+
+
+async def suzent_channel_stop(request: Request) -> JSONResponse:
+    """Stop only the authenticated peer's dedicated active session."""
+    record, _node_manager = _authenticated_peer(request)
+    if record is None:
+        return JSONResponse(
+            {"error": "A valid peer token is required"}, status_code=401
+        )
+
+    from suzent.core.stream_registry import stop_stream
+
+    chat_id = _peer_chat_id(str(record["device_id"]))
+    if not stop_stream(chat_id, reason="Stopped by paired peer agent"):
+        return JSONResponse({"error": "Peer agent is not active"}, status_code=409)
+    return JSONResponse({"stopped": True, "agent_id": chat_id})
 
 
 async def suzent_channel_whoami(request: Request) -> JSONResponse:

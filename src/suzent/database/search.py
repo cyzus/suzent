@@ -32,6 +32,7 @@ MIN_TRIGRAM_CHARS = 3
 
 # Roles a session_search caller may ask to see. Reasoning is never surfaced.
 DEFAULT_ROLE_FILTER = ("user", "assistant")
+DEFAULT_TRANSCRIPT_CHAR_LIMIT = 20_000
 
 
 def _supports_fts5(conn: Any) -> bool:
@@ -118,6 +119,33 @@ def sanitize_messages(
             }
         )
     return out
+
+
+def bound_message_records(
+    messages: List[Dict[str, Any]],
+    max_chars: int = DEFAULT_TRANSCRIPT_CHAR_LIMIT,
+) -> tuple[List[Dict[str, Any]], int, bool]:
+    """Keep the newest visible messages within one shared transcript budget."""
+    selected: List[Dict[str, Any]] = []
+    selected_chars = 0
+    message_truncated = False
+    for message in reversed(messages):
+        text_value = str(message.get("text") or "")
+        line_size = len(str(message.get("role") or "")) + len(text_value) + 3
+        separator_chars = 1 if selected else 0
+        if selected and selected_chars + separator_chars + line_size > max_chars:
+            break
+        record = dict(message)
+        if not selected and line_size > max_chars:
+            available = max(1, max_chars - len(str(record.get("role") or "")) - 3)
+            record["text"] = "[... message truncated ...]\n" + text_value[-available:]
+            line_size = max_chars
+            message_truncated = True
+        selected.append(record)
+        selected_chars += separator_chars + line_size
+
+    selected.reverse()
+    return selected, len(messages) - len(selected), message_truncated
 
 
 class ChatSearchMixin:

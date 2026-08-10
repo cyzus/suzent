@@ -238,7 +238,10 @@ from suzent.routes.subagent_routes import (
 )
 from suzent.routes.event_bus_routes import event_bus_stream
 from suzent.routes.suzent_channel_routes import (
+    suzent_channel_inbox,
     suzent_channel_inbound,
+    suzent_channel_session,
+    suzent_channel_stop,
     suzent_channel_whoami,
     suzent_channel_grant_changed,
 )
@@ -605,9 +608,9 @@ async def startup():
 
     # Controller-side store of peers this device may drive (control-grant).
     try:
-        from suzent.nodes.peer_store import PeerGrantStore
+        from suzent.nodes.peer_store import get_peer_grant_store
 
-        app.state.peer_store = PeerGrantStore()
+        app.state.peer_store = get_peer_grant_store()
     except Exception as e:
         logger.warning(f"Failed to init peer store: {e}")
 
@@ -1021,6 +1024,9 @@ app = Starlette(
         Route("/nodes/peer-invoke", peer_invoke, methods=["POST"]),
         Route("/nodes/peer-files/{file_id}", serve_peer_file, methods=["GET"]),
         Route("/channels/suzent/inbound", suzent_channel_inbound, methods=["POST"]),
+        Route("/channels/suzent/inbox", suzent_channel_inbox, methods=["POST"]),
+        Route("/channels/suzent/session", suzent_channel_session, methods=["GET"]),
+        Route("/channels/suzent/stop", suzent_channel_stop, methods=["POST"]),
         Route("/channels/suzent/whoami", suzent_channel_whoami, methods=["GET"]),
         Route(
             "/channels/suzent/grant-changed",

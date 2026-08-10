@@ -17,6 +17,19 @@ def _ctx(chat_id: str = "agent-current") -> SimpleNamespace:
     return SimpleNamespace(deps=SimpleNamespace(chat_id=chat_id))
 
 
+@pytest.fixture(autouse=True)
+def _empty_peer_transport(monkeypatch):
+    transport = SimpleNamespace(
+        list_agents=lambda: [],
+        peer_id=lambda agent_id: None,
+    )
+    monkeypatch.setattr(
+        "suzent.tools.agent_lifecycle_tools.get_peer_agent_transport",
+        lambda: transport,
+    )
+    return transport
+
+
 def _chat(
     chat_id: str,
     *,
@@ -103,7 +116,44 @@ def test_agent_list_active_uses_runtime_sessions_and_limit(monkeypatch):
     assert result.metadata["has_more"] is True
 
 
-def test_agent_read_returns_sanitized_visible_transcript(monkeypatch):
+def test_agent_list_includes_paired_remote_agents(monkeypatch, _empty_peer_transport):
+    current = _chat("agent-current")
+
+    class FakeDatabase:
+        def get_chat(self, chat_id):
+            return current if chat_id == current.id else None
+
+        def list_chats(self, **kwargs):
+            return [SimpleNamespace(id=current.id)]
+
+    _empty_peer_transport.list_agents = lambda: [
+        {
+            "agent_id": "peer:peer-1",
+            "title": "Laptop",
+            "kind": "remote",
+            "status": "ready",
+            "project_id": None,
+            "parent_agent_id": None,
+            "updated_at": None,
+        }
+    ]
+    monkeypatch.setattr(
+        "suzent.tools.agent_lifecycle_tools.get_database", lambda: FakeDatabase()
+    )
+    monkeypatch.setattr(
+        "suzent.tools.agent_lifecycle_tools._agent_is_active", lambda chat_id: False
+    )
+
+    result = AgentListTool().forward(_ctx(), status="recent")
+
+    assert result.success
+    assert any(
+        record["agent_id"] == "peer:peer-1" for record in result.metadata["agents"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_agent_read_returns_sanitized_visible_transcript(monkeypatch):
     target = _chat(
         "agent-target",
         messages=[
@@ -125,7 +175,7 @@ def test_agent_read_returns_sanitized_visible_transcript(monkeypatch):
         "suzent.tools.agent_lifecycle_tools._agent_is_active", lambda chat_id: False
     )
 
-    result = AgentReadTool().forward(_ctx(), "agent-target")
+    result = await AgentReadTool().forward(_ctx(), "agent-target")
 
     assert result.success
     assert "Inspection complete." in result.message
@@ -133,7 +183,8 @@ def test_agent_read_returns_sanitized_visible_transcript(monkeypatch):
     assert result.metadata["message_count"] == 2
 
 
-def test_agent_read_bounds_large_transcripts_without_more_arguments(monkeypatch):
+@pytest.mark.asyncio
+async def test_agent_read_bounds_large_transcripts_without_more_arguments(monkeypatch):
     target = _chat(
         "agent-target",
         messages=[
@@ -150,7 +201,7 @@ def test_agent_read_bounds_large_transcripts_without_more_arguments(monkeypatch)
     )
     monkeypatch.setattr("suzent.tools.agent_lifecycle_tools._MAX_TRANSCRIPT_CHARS", 100)
 
-    result = AgentReadTool().forward(_ctx(), "agent-target")
+    result = await AgentReadTool().forward(_ctx(), "agent-target")
 
     assert result.success
     assert "earlier messages omitted" in result.message
@@ -159,16 +210,44 @@ def test_agent_read_bounds_large_transcripts_without_more_arguments(monkeypatch)
     assert result.metadata["transcript_truncated"] is True
 
 
-def test_agent_read_rejects_agent_from_another_project(monkeypatch):
+@pytest.mark.asyncio
+async def test_agent_read_rejects_agent_from_another_project(monkeypatch):
     monkeypatch.setattr(
         "suzent.tools.agent_lifecycle_tools._accessible_agent",
         lambda agent_id, current_chat_id: None,
     )
 
-    result = AgentReadTool().forward(_ctx(), "agent-other")
+    result = await AgentReadTool().forward(_ctx(), "agent-other")
 
     assert not result.success
     assert result.error_code == ToolErrorCode.FILE_NOT_FOUND
+
+
+@pytest.mark.asyncio
+async def test_agent_read_fetches_peer_owned_transcript(
+    monkeypatch, _empty_peer_transport
+):
+    current = _chat("agent-current")
+    _empty_peer_transport.peer_id = lambda agent_id: "peer-1"
+
+    async def read(agent_id):
+        return {
+            "status": "idle",
+            "messages": [{"role": "assistant", "text": "Remote result"}],
+            "message_count": 1,
+        }
+
+    _empty_peer_transport.read = read
+    monkeypatch.setattr(
+        "suzent.tools.agent_lifecycle_tools.get_database",
+        lambda: SimpleNamespace(get_chat=lambda chat_id: current),
+    )
+
+    result = await AgentReadTool().forward(_ctx(), "peer:peer-1")
+
+    assert result.success
+    assert "Remote result" in result.message
+    assert result.metadata["kind"] == "remote"
 
 
 def test_agent_send_queues_durable_message(monkeypatch):
@@ -218,6 +297,32 @@ def test_agent_send_rejects_self_delivery(monkeypatch):
     assert result.error_code == ToolErrorCode.INVALID_ARGUMENT
 
 
+def test_agent_send_queues_peer_transport_message(monkeypatch, _empty_peer_transport):
+    current = _chat("agent-current")
+    captured = {}
+    _empty_peer_transport.peer_id = lambda agent_id: "peer-1"
+
+    def enqueue(**kwargs):
+        captured.update(kwargs)
+        return {"message_id": "msg-remote", "status": "pending"}, True
+
+    _empty_peer_transport.enqueue = enqueue
+    monkeypatch.setattr(
+        "suzent.tools.agent_lifecycle_tools.get_database",
+        lambda: SimpleNamespace(get_chat=lambda chat_id: current),
+    )
+
+    result = AgentSendTool().forward(_ctx(), "peer:peer-1", "Run remote checks")
+
+    assert result.success
+    assert captured == {
+        "agent_id": "peer:peer-1",
+        "sender_chat_id": "agent-current",
+        "content": "Run remote checks",
+    }
+    assert result.metadata["transport"] == "suzent_peer"
+
+
 @pytest.mark.asyncio
 async def test_agent_stop_stops_active_subagent(monkeypatch):
     target = _chat("subagent-sub_a", platform="subagent")
@@ -242,3 +347,27 @@ async def test_agent_stop_stops_active_subagent(monkeypatch):
 
     assert result.success
     assert stopped == ["sub_a"]
+
+
+@pytest.mark.asyncio
+async def test_agent_stop_requests_peer_cancellation(
+    monkeypatch, _empty_peer_transport
+):
+    current = _chat("agent-current")
+    stopped = []
+    _empty_peer_transport.peer_id = lambda agent_id: "peer-1"
+
+    async def stop(agent_id):
+        stopped.append(agent_id)
+        return True
+
+    _empty_peer_transport.stop = stop
+    monkeypatch.setattr(
+        "suzent.tools.agent_lifecycle_tools.get_database",
+        lambda: SimpleNamespace(get_chat=lambda chat_id: current),
+    )
+
+    result = await AgentStopTool().forward(_ctx(), "peer:peer-1")
+
+    assert result.success
+    assert stopped == ["peer:peer-1"]

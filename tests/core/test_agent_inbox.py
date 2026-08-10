@@ -99,6 +99,67 @@ async def test_dispatcher_releases_failed_delivery_for_retry(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_dispatcher_routes_peer_message_through_transport(monkeypatch):
+    acknowledged = []
+    delivered = []
+
+    class FakeDatabase:
+        def acknowledge_agent_message(self, message_id, *, worker_id):
+            acknowledged.append((message_id, worker_id))
+            return True
+
+    class FakeTransport:
+        async def deliver(self, message):
+            delivered.append(message)
+
+    message = {
+        **_message(),
+        "transport": "suzent_peer",
+        "destination_peer_id": "peer-1",
+    }
+    dispatcher = AgentInboxDispatcher()
+    monkeypatch.setattr("suzent.core.agent_inbox.get_database", lambda: FakeDatabase())
+    monkeypatch.setattr(
+        "suzent.nodes.agent_transport.get_peer_agent_transport",
+        lambda: FakeTransport(),
+    )
+
+    await dispatcher._deliver_claimed(message)
+
+    assert delivered == [message]
+    assert acknowledged == [("msg-1", dispatcher.worker_id)]
+
+
+@pytest.mark.asyncio
+async def test_peer_delivery_uses_offline_tolerant_retry_window(monkeypatch):
+    retried = []
+
+    class FakeDatabase:
+        def retry_agent_message(self, message_id, **kwargs):
+            retried.append(kwargs)
+            return True
+
+    class FailingTransport:
+        async def deliver(self, message):
+            raise RuntimeError("peer offline")
+
+    message = {
+        **_message(attempts=10),
+        "transport": "suzent_peer",
+        "destination_peer_id": "peer-1",
+    }
+    monkeypatch.setattr("suzent.core.agent_inbox.get_database", lambda: FakeDatabase())
+    monkeypatch.setattr(
+        "suzent.nodes.agent_transport.get_peer_agent_transport",
+        lambda: FailingTransport(),
+    )
+
+    await AgentInboxDispatcher()._deliver_claimed(message)
+
+    assert retried[0]["retry_delay_seconds"] == 1024
+
+
+@pytest.mark.asyncio
 async def test_target_turn_uses_headless_config_and_delivery_marker(monkeypatch):
     captured = {}
     target = SimpleNamespace(title="Target", config={"platform": "personal"})

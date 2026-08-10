@@ -268,6 +268,43 @@ class DatabaseMigrationMixin:
                     conn.execute(text("ALTER TABLE tasks ADD COLUMN active_form TEXT"))
                 conn.commit()
 
+        # Migration: route durable agent messages through local or peer transports.
+        if "agent_inbox_messages" in refreshed_tables:
+            inbox_cols = [
+                col["name"]
+                for col in inspect(self.engine).get_columns("agent_inbox_messages")
+            ]
+            with self.engine.connect() as conn:
+                if "transport" not in inbox_cols:
+                    conn.execute(
+                        text(
+                            "ALTER TABLE agent_inbox_messages "
+                            "ADD COLUMN transport TEXT DEFAULT 'local'"
+                        )
+                    )
+                    conn.execute(
+                        text(
+                            "CREATE INDEX IF NOT EXISTS "
+                            "ix_agent_inbox_messages_transport "
+                            "ON agent_inbox_messages(transport)"
+                        )
+                    )
+                if "destination_peer_id" not in inbox_cols:
+                    conn.execute(
+                        text(
+                            "ALTER TABLE agent_inbox_messages "
+                            "ADD COLUMN destination_peer_id TEXT"
+                        )
+                    )
+                    conn.execute(
+                        text(
+                            "CREATE INDEX IF NOT EXISTS "
+                            "ix_agent_inbox_messages_destination_peer_id "
+                            "ON agent_inbox_messages(destination_peer_id)"
+                        )
+                    )
+                conn.commit()
+
     def _migrate_static_config_from_db(self) -> None:
         inspector = inspect(self.engine)
         tables = set(inspector.get_table_names())

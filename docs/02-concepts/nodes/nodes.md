@@ -293,6 +293,20 @@ do not belong to the authenticated peer, mismatched sizes, and oversized
 streams. Downloaded files move into that peer chat's `/workspace/uploads`
 directory and the temporary staging directory is removed after the turn.
 
+### Durable Agent tool delivery
+
+The Agent tool family uses the same peer grants and HTTP channel without
+blocking on a streamed response. `agent_list` includes linked backends as
+`peer:<peer_id>` entries. `agent_send` persists an outbound row first, then
+posts it to `POST /channels/suzent/inbox`; the receiver returns `202` only after
+its local inbox commit succeeds. Repeated delivery uses the original message ID
+and is idempotent on the receiver.
+
+`GET /channels/suzent/session` and `POST /channels/suzent/stop` are scoped to
+the authenticated peer's dedicated session. They cannot accept a caller-supplied
+chat ID. These routes use the existing `agent` grant scope; no host token or new
+pairing mechanism is required.
+
 On the **target**, the session behaves like any other channel conversation:
 
 - **Persisted + resumable.** The session is a real chat keyed `suzent:<peer_id>`,

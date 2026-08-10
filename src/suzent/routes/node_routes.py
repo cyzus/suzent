@@ -130,9 +130,9 @@ def _get_peer_store(request):
         return None
     store = getattr(app.state, "peer_store", None)
     if store is None:
-        from suzent.nodes.peer_store import PeerGrantStore
+        from suzent.nodes.peer_store import get_peer_grant_store
 
-        store = PeerGrantStore()
+        store = get_peer_grant_store()
         app.state.peer_store = store
     return store
 
@@ -823,6 +823,10 @@ async def grant_status(request: Request) -> JSONResponse:
     result = node_manager.take_grant_result(rid)
     if result is None:
         return JSONResponse({"error": "Unknown or expired request"}, status_code=404)
+    if result.get("token"):
+        from suzent.nodes.node_identity import get_node_identity
+
+        result["node_identity"] = get_node_identity()
     return JSONResponse(result)
 
 
@@ -974,7 +978,12 @@ async def control_status(request: Request) -> JSONResponse:
         store = _get_peer_store(request)
         # Prefer a human name (from discovery) over the bare URL.
         name = (request.query_params.get("name") or "").strip() or _host_of(base)
-        peer_id = store.add(name=name, base_url=base, token=data["token"])
+        peer_id = store.add(
+            name=name,
+            base_url=base,
+            token=data["token"],
+            node_identity=str(data.get("node_identity") or ""),
+        )
         return JSONResponse({"status": "approved", "peer_id": peer_id})
     return JSONResponse({"status": status or "pending"})
 

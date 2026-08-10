@@ -84,12 +84,14 @@ class AgentInboxDispatcher:
     async def _deliver_claimed(self, message: dict[str, Any]) -> None:
         message_id = str(message["message_id"])
         try:
-            if self._was_already_persisted(message):
+            if message.get(
+                "transport", "local"
+            ) == "local" and self._was_already_persisted(message):
                 get_database().acknowledge_agent_message(
                     message_id, worker_id=self.worker_id
                 )
                 return
-            await self._run_target_turn(message)
+            await self._deliver(message)
             if not get_database().acknowledge_agent_message(
                 message_id, worker_id=self.worker_id
             ):
@@ -100,7 +102,8 @@ class AgentInboxDispatcher:
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            retry_delay = min(60, 2 ** int(message.get("attempts", 1)))
+            retry_cap = 3600 if message.get("transport") == "suzent_peer" else 60
+            retry_delay = min(retry_cap, 2 ** int(message.get("attempts", 1)))
             get_database().retry_agent_message(
                 message_id,
                 worker_id=self.worker_id,
@@ -113,6 +116,19 @@ class AgentInboxDispatcher:
                 exc,
                 traceback.format_exc(),
             )
+
+    async def _deliver(self, message: dict[str, Any]) -> None:
+        """Dispatch a leased row through its configured transport."""
+        transport = str(message.get("transport") or "local")
+        if transport == "local":
+            await self._run_target_turn(message)
+            return
+        if transport == "suzent_peer":
+            from suzent.nodes.agent_transport import get_peer_agent_transport
+
+            await get_peer_agent_transport().deliver(message)
+            return
+        raise RuntimeError(f"Unsupported agent message transport '{transport}'")
 
     def _was_already_persisted(self, message: dict[str, Any]) -> bool:
         chat = get_database().get_chat(str(message["target_chat_id"]))
@@ -140,17 +156,24 @@ class AgentInboxDispatcher:
         sender_chat_id = message.get("sender_chat_id")
         if sender_chat_id:
             sender = get_database().get_chat(str(sender_chat_id))
-        sender_label = (
-            sender.title if sender is not None else str(sender_chat_id or "system")
+        payload = message.get("payload") or {}
+        sender_label = str(
+            payload.get("sender_label")
+            or (sender.title if sender is not None else sender_chat_id or "system")
+        )
+        sender_reference = str(
+            payload.get("sender_agent_id") or sender_chat_id or "system"
         )
         marker = _delivery_marker(str(message["message_id"]))
         delivered_content = (
-            f"[Agent message from {sender_label} ({sender_chat_id or 'system'})]\n"
+            f"[Agent message from {sender_label} ({sender_reference})]\n"
             f"{marker}\n{message['content']}"
         )
 
         base_config = dict(target_chat.config or {})
         base_config["interaction_profile"] = "headless"
+        if message.get("kind") == "remote_agent_message":
+            base_config["permission_mode"] = "auto"
         config_override = build_agent_config(base_config, require_social_tool=False)
 
         async with get_background_turn_lock(target_chat_id):
@@ -181,8 +204,11 @@ def enqueue_agent_message(
     content: str,
     sender_chat_id: Optional[str],
     message_id: Optional[str] = None,
+    transport: str = "local",
+    destination_peer_id: Optional[str] = None,
     kind: str = "agent_message",
     payload: Optional[dict[str, Any]] = None,
+    max_attempts: int = 5,
 ) -> tuple[dict[str, Any], bool]:
     """Persist one message and wake the local dispatcher when it is running."""
     resolved_id = message_id or f"msg_{uuid.uuid4().hex}"
@@ -191,8 +217,11 @@ def enqueue_agent_message(
         sender_chat_id=sender_chat_id,
         target_chat_id=target_chat_id,
         content=content,
+        transport=transport,
+        destination_peer_id=destination_peer_id,
         kind=kind,
         payload=payload,
+        max_attempts=max_attempts,
     )
     if created:
         get_agent_inbox_dispatcher().notify()

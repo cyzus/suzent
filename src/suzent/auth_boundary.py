@@ -73,6 +73,9 @@ AGENT_ALLOWED_PATHS = {
     "/nodes/peer-offer",
     "/nodes/peer-invoke",  # run a local capability on behalf of a controller
     "/channels/suzent/inbound",  # peer agent-to-agent messages
+    "/channels/suzent/inbox",  # durable peer agent-to-agent messages
+    "/channels/suzent/session",  # peer-owned session transcript
+    "/channels/suzent/stop",  # stop the peer-owned session
     "/channels/suzent/whoami",  # peer token-validity self-check
 }
 

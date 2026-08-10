@@ -68,7 +68,7 @@ class AgentTool(Tool):
         "Independent sub-agents can run simultaneously. When multiple research angles or tasks "
         "don't depend on each other, spawn them all in the SAME turn with run_in_background=True. "
         "You will be notified as each one finishes.\n"
-        "Use agent_list to discover agent sessions in the current project, agent_read for "
+        "Use agent_list to discover local project sessions and paired remote agents, agent_read for "
         "a bounded visible transcript, agent_send for durable cross-session messaging, and "
         "agent_stop to cancel work that is no longer needed. Background sub-agent results "
         "wake this conversation automatically.\n"

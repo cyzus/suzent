@@ -630,6 +630,60 @@ class TestAgentInboxOperations:
         assert first["message_id"] == second["message_id"]
         assert len(db.list_agent_messages(target_chat_id=target_id)) == 1
 
+    def test_remote_message_reuses_durable_queue_without_local_chat(self, db):
+        sender_id, _target_id = self._create_agents(db)
+
+        record, created = db.enqueue_agent_message(
+            message_id="msg-remote",
+            sender_chat_id=sender_id,
+            target_chat_id="peer:peer-1",
+            transport="suzent_peer",
+            destination_peer_id="peer-1",
+            kind="remote_agent_message",
+            content="Run checks remotely",
+        )
+        claimed = db.claim_next_agent_message(worker_id="worker-1")
+
+        assert created is True
+        assert record["transport"] == "suzent_peer"
+        assert record["destination_peer_id"] == "peer-1"
+        assert claimed["message_id"] == "msg-remote"
+
+    def test_existing_inbox_table_gains_transport_columns(self, tmp_path):
+        db_path = tmp_path / "legacy-inbox.db"
+        with sqlite3.connect(db_path) as conn:
+            conn.execute(
+                """
+                CREATE TABLE agent_inbox_messages (
+                    message_id TEXT PRIMARY KEY,
+                    sender_chat_id TEXT,
+                    target_chat_id TEXT NOT NULL,
+                    kind TEXT,
+                    content TEXT NOT NULL,
+                    payload JSON,
+                    status TEXT,
+                    attempts INTEGER,
+                    max_attempts INTEGER,
+                    available_at DATETIME,
+                    lease_owner TEXT,
+                    lease_until DATETIME,
+                    created_at DATETIME,
+                    updated_at DATETIME,
+                    delivered_at DATETIME,
+                    last_error TEXT
+                )
+                """
+            )
+
+        migrated = ChatDatabase(str(db_path))
+        columns = {
+            column["name"]
+            for column in inspect(migrated.engine).get_columns("agent_inbox_messages")
+        }
+
+        assert {"transport", "destination_peer_id"} <= columns
+        migrated.engine.dispose()
+
     def test_claim_and_acknowledge_message(self, db):
         sender_id, target_id = self._create_agents(db)
         db.enqueue_agent_message(

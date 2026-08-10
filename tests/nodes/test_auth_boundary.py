@@ -54,6 +54,9 @@ def test_scope_allows():
     assert scope_allows("agent", "/chat")
     assert scope_allows("agent", "/chat/stop")
     assert scope_allows("agent", "/nodes/peer-offer")  # mutual handshake
+    assert scope_allows("agent", "/channels/suzent/inbox")
+    assert scope_allows("agent", "/channels/suzent/session")
+    assert scope_allows("agent", "/channels/suzent/stop")
     assert not scope_allows("agent", "/nodes/config")
     assert not scope_allows("agent", "/nodes/peers")
     assert not scope_allows("agent", "/sandbox/files")

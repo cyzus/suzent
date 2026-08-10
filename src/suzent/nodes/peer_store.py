@@ -19,6 +19,7 @@ from suzent.logger import get_logger
 logger = get_logger(__name__)
 
 _STORE_PATH = USER_CONFIG_DIR / "node_peers.json"
+_default_store: "PeerGrantStore | None" = None
 
 
 def _now_iso() -> str:
@@ -77,20 +78,39 @@ class PeerGrantStore:
         except Exception as e:
             logger.warning(f"Peer store: could not persist {self._path}: {e}")
 
-    def add(self, name: str, base_url: str, token: str, mode: str = "trigger") -> str:
-        """Add (or update by base_url) a controllable peer. Returns peer_id."""
+    def add(
+        self,
+        name: str,
+        base_url: str,
+        token: str,
+        mode: str = "trigger",
+        node_identity: str = "",
+    ) -> str:
+        """Add a peer, preserving its ID across address changes when identified."""
         with self._lock:
             peer_id = next(
-                (p for p, r in self._peers.items() if r.get("base_url") == base_url),
+                (
+                    p
+                    for p, record in self._peers.items()
+                    if (node_identity and record.get("node_identity") == node_identity)
+                    or record.get("base_url") == base_url
+                ),
                 uuid.uuid4().hex[:12],
             )
-            self._peers[peer_id] = {
+            previous = self._peers.get(peer_id, {})
+            updated = {
                 "name": name,
                 "base_url": base_url.rstrip("/"),
                 "token": token,
                 "mode": mode,
-                "added_at": _now_iso(),
+                "added_at": previous.get("added_at") or _now_iso(),
             }
+            resolved_identity = node_identity or previous.get("node_identity", "")
+            if resolved_identity:
+                updated["node_identity"] = resolved_identity
+            if previous.get("reverse_device_id"):
+                updated["reverse_device_id"] = previous["reverse_device_id"]
+            self._peers[peer_id] = updated
             self._save()
         return peer_id
 
@@ -130,6 +150,7 @@ class PeerGrantStore:
                     "name": r.get("name", ""),
                     "base_url": r.get("base_url", ""),
                     "mode": r.get("mode", "trigger"),
+                    "node_identity": r.get("node_identity", ""),
                     "reverse_enabled": bool(r.get("reverse_device_id")),
                     "added_at": r.get("added_at", ""),
                 }
@@ -143,3 +164,11 @@ class PeerGrantStore:
             del self._peers[peer_id]
             self._save()
             return True
+
+
+def get_peer_grant_store() -> PeerGrantStore:
+    """Return the process-wide peer store shared by routes and agent tools."""
+    global _default_store
+    if _default_store is None:
+        _default_store = PeerGrantStore()
+    return _default_store
