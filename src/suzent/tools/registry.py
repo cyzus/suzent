@@ -137,6 +137,12 @@ def _all_tool_classes() -> list:
     from suzent.tools.render_ui_tool import RenderUITool
     from suzent.tools.ask_question_tool import AskQuestionTool
     from suzent.tools.agent_tool import AgentTool
+    from suzent.tools.agent_lifecycle_tools import (
+        AgentListTool,
+        AgentReadTool,
+        AgentSendTool,
+        AgentStopTool,
+    )
 
     return [
         ReadFileTool,
@@ -165,6 +171,10 @@ def _all_tool_classes() -> list:
         MemorySearchTool,
         SessionSearchTool,
         AgentTool,
+        AgentListTool,
+        AgentReadTool,
+        AgentSendTool,
+        AgentStopTool,
     ]
 
 
@@ -173,6 +183,13 @@ SHELL_TOOL_CLASS_NAMES = (
     "StartCommandTool",
     "CheckCommandTool",
     "StopCommandTool",
+)
+
+AGENT_LIFECYCLE_TOOL_NAMES = (
+    "AgentListTool",
+    "AgentReadTool",
+    "AgentSendTool",
+    "AgentStopTool",
 )
 
 LEGACY_SHELL_TOOL_NAMES = {
@@ -187,7 +204,8 @@ CAPABILITY_DESCRIPTIONS = {
     "Filesystem": "Read, search, create, and modify files in the configured workspace.",
     "Shell": "Run bounded commands and control long-running background processes.",
     "Web": "Search the web, retrieve pages, and interact with browser-based content.",
-    "Agent": "Plan work, ask questions, render interfaces, and delegate bounded tasks.",
+    "Tasks & goals": "Plan durable goals and track structured project tasks.",
+    "Agent": "Ask questions, render interfaces, and delegate bounded sub-agent work.",
     "Creative": "Generate, inspect, speak, or share rich media and social content.",
     "Memory & recall": "Search durable memory and retrieve relevant past sessions.",
 }
@@ -199,6 +217,10 @@ TOOL_DESCRIPTION_OVERRIDES = {
     "TaskCreateTool": "Create structured project tasks with dependencies, assignees, and progress metadata.",
     "TaskUpdateTool": "Update the status, ownership, description, or dependencies of an existing task.",
     "TaskListTool": "List project tasks and their current status, ownership, and dependency relationships.",
+    "AgentListTool": "List active or recent agent sessions in the current project.",
+    "AgentReadTool": "Read an accessible agent session's bounded visible transcript.",
+    "AgentSendTool": "Durably send a message to another agent session and wake it.",
+    "AgentStopTool": "Stop an active agent session in the current project.",
     "RenderUITool": "Render an interactive interface such as a form, table, card, or action panel.",
     "SpeakTool": "Convert a response to speech and return playable audio to the conversation.",
     "SocialMessageTool": "Send a message through a configured social channel after approval.",
@@ -218,7 +240,10 @@ def migrate_shell_tool_names(tool_names: List[str]) -> List[str]:
 
 def expand_tool_dependencies(tool_names: List[str]) -> List[str]:
     """Normalize legacy aggregate selections while preserving modern choices."""
-    return migrate_shell_tool_names(tool_names)
+    expanded = migrate_shell_tool_names(tool_names)
+    if "AgentTool" in expanded:
+        expanded.extend(AGENT_LIFECYCLE_TOOL_NAMES)
+    return list(dict.fromkeys(expanded))
 
 
 def _humanize_tool_name(name: str) -> str:

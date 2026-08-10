@@ -3,7 +3,7 @@ Sub-agent management API routes.
 
 GET  /subagents/active           — list currently running sub-agents
 GET  /subagents/stream           — SSE stream of task state changes
-GET  /subagents                  — list all sub-agents (optionally filter by parent_chat_id)
+GET  /subagents                  — list bounded recent sub-agents (optionally by parent_chat_id)
 GET  /subagents/{task_id}        — get a single sub-agent task
 POST /subagents/{task_id}/stop   — stop a running sub-agent
 """
@@ -15,6 +15,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, StreamingResponse
 
 from suzent.core.subagent_runner import (
+    SubAgentTask,
     get_task,
     list_active_tasks,
     list_all_tasks,
@@ -26,8 +27,11 @@ from suzent.core.subagent_runner import (
 )
 from suzent.database import get_database
 
+_DEFAULT_LIST_LIMIT = 100
+_MAX_LIST_LIMIT = 200
 
-def _task_to_dict(task) -> dict:
+
+def _task_to_dict(task: SubAgentTask) -> dict:
     return {
         "task_id": task.task_id,
         "parent_chat_id": task.parent_chat_id,
@@ -41,6 +45,24 @@ def _task_to_dict(task) -> dict:
         "started_at": task.started_at.isoformat() if task.started_at else None,
         "finished_at": task.finished_at.isoformat() if task.finished_at else None,
     }
+
+
+def _parse_list_limit(request: Request) -> int:
+    raw_limit = request.query_params.get("limit")
+    if raw_limit is None:
+        return _DEFAULT_LIST_LIMIT
+    try:
+        limit = int(raw_limit)
+    except ValueError:
+        return _DEFAULT_LIST_LIMIT
+    return min(max(limit, 1), _MAX_LIST_LIMIT)
+
+
+def _task_sort_key(task: dict) -> tuple[bool, str]:
+    return (
+        task.get("status") in {"queued", "running"},
+        task.get("finished_at") or task.get("started_at") or "",
+    )
 
 
 async def list_active_subagents(request: Request) -> JSONResponse:
@@ -82,23 +104,27 @@ async def stream_subagents(request: Request) -> StreamingResponse:
 
 async def list_subagents(request: Request) -> JSONResponse:
     parent_chat_id = request.query_params.get("parent_chat_id")
+    limit = _parse_list_limit(request)
     runtime_tasks = [
         _task_to_dict(t) for t in list_all_tasks(parent_chat_id=parent_chat_id)
     ]
     persisted_tasks = get_database().list_subagent_task_records(
-        parent_chat_id=parent_chat_id
+        parent_chat_id=parent_chat_id, limit=limit + 1
     )
 
-    seen = set()
-    tasks = []
-    for task in [*runtime_tasks, *persisted_tasks]:
+    tasks_by_id = {}
+    for task in persisted_tasks:
         task_id = task.get("task_id")
-        if not task_id or task_id in seen:
-            continue
-        seen.add(task_id)
-        tasks.append(task)
+        if task_id:
+            tasks_by_id[task_id] = task
+    for task in runtime_tasks:
+        tasks_by_id[task["task_id"]] = task
 
-    return JSONResponse({"tasks": tasks})
+    tasks = sorted(tasks_by_id.values(), key=_task_sort_key, reverse=True)
+    has_more = len(tasks) > limit or len(persisted_tasks) > limit
+    tasks = tasks[:limit]
+
+    return JSONResponse({"tasks": tasks, "has_more": has_more, "limit": limit})
 
 
 async def get_subagent(request: Request) -> JSONResponse:
@@ -107,10 +133,9 @@ async def get_subagent(request: Request) -> JSONResponse:
     if task:
         return JSONResponse({"task": _task_to_dict(task)})
 
-    persisted = get_database().list_subagent_task_records()
-    for record in persisted:
-        if record.get("task_id") == task_id:
-            return JSONResponse({"task": record})
+    persisted = get_database().list_subagent_task_records(task_id=task_id, limit=1)
+    if persisted:
+        return JSONResponse({"task": persisted[0]})
 
     return JSONResponse({"error": "Task not found"}, status_code=404)
 

@@ -15,7 +15,7 @@ logger = get_logger(__name__)
 class TaskUpdateTool(Tool):
     name: str = "TaskUpdateTool"
     tool_name: str = "update_task"
-    group: ToolGroup = ToolGroup.AGENT
+    group: ToolGroup = ToolGroup.TASKS
 
     def forward(
         self,

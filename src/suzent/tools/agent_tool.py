@@ -68,6 +68,10 @@ class AgentTool(Tool):
         "Independent sub-agents can run simultaneously. When multiple research angles or tasks "
         "don't depend on each other, spawn them all in the SAME turn with run_in_background=True. "
         "You will be notified as each one finishes.\n"
+        "Use agent_list to discover agent sessions in the current project, agent_read for "
+        "a bounded visible transcript, agent_send for durable cross-session messaging, and "
+        "agent_stop to cancel work that is no longer needed. Background sub-agent results "
+        "wake this conversation automatically.\n"
         "\n"
         "### Tool selection\n"
         "1. **subagent_type** (easiest): use a preset profile (explore / plan / write / verify / web)\n"
@@ -348,6 +352,16 @@ class AgentTool(Tool):
             "isolation": isolation,
             "isolation_target_path": isolation_target_path,
         }
+
+        # Persistence or background-registry scheduling can fail before the
+        # child ever starts. Report that terminal state instead of returning a
+        # misleading spawn confirmation.
+        if task.status == "failed":
+            return ToolResult.error_result(
+                ToolErrorCode.EXECUTION_FAILED,
+                f"Sub-agent {task.task_id} failed to start.",
+                metadata={**metadata, "error": task.error},
+            )
 
         if not run_in_background:
             # Blocking mode: return the actual result so the parent LLM can act on it

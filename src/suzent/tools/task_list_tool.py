@@ -14,7 +14,7 @@ logger = get_logger(__name__)
 class TaskListTool(Tool):
     name: str = "TaskListTool"
     tool_name: str = "list_tasks"
-    group: ToolGroup = ToolGroup.AGENT
+    group: ToolGroup = ToolGroup.TASKS
 
     def forward(
         self,

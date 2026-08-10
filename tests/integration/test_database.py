@@ -2,12 +2,14 @@
 
 import os
 import sqlite3
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from cryptography.fernet import Fernet
 from sqlalchemy import inspect
 
 from suzent.database import (
+    AgentInboxMessageModel,
     ChatDatabase,
     ChatSummaryModel,
     UserPreferencesModel,
@@ -168,6 +170,42 @@ class TestChatOperations:
         assert by_child[0]["parent_chat_id"] == ""
         assert by_child[0]["chat_id"] == child_id
         assert by_child[0]["description"] == "Analyzing Claude Code and Suzent"
+
+    def test_list_subagent_task_records_filters_and_limits_in_database(self, db):
+        parent_id = db.create_chat("Parent", {})
+        for index in range(3):
+            db.create_chat(
+                f"Sub-agent: task {index}",
+                {
+                    "platform": "subagent",
+                    "parent_chat_id": parent_id,
+                    "subagent_task_id": f"sub_{index}",
+                },
+                chat_id=f"subagent-sub_{index}",
+            )
+
+        limited = db.list_subagent_task_records(parent_chat_id=parent_id, limit=2)
+        selected = db.list_subagent_task_records(task_id="sub_1", limit=1)
+
+        assert len(limited) == 2
+        assert [record["task_id"] for record in selected] == ["sub_1"]
+
+    def test_persisted_running_subagent_is_reported_as_interrupted(self, db):
+        child_id = db.create_chat(
+            "Sub-agent: interrupted",
+            {
+                "platform": "subagent",
+                "subagent_task_id": "sub_interrupted",
+                "subagent_status": "running",
+            },
+            chat_id="subagent-sub_interrupted",
+        )
+
+        record = db.list_subagent_task_records(task_id="sub_interrupted")[0]
+
+        assert record["chat_id"] == child_id
+        assert record["status"] == "failed"
+        assert record["error"] == "Interrupted by server restart"
 
     def test_update_chat(self, db):
         chat_id = db.create_chat("Original Title", {})
@@ -562,3 +600,122 @@ class TestMCPServers:
         servers = db.get_mcp_servers()
         server = next(s for s in servers if s.name == "toggle-test")
         assert server.enabled is True
+
+
+class TestAgentInboxOperations:
+    def _create_agents(self, db):
+        project_id = db.create_project("Inbox", "inbox")
+        sender_id = db.create_chat("Sender", {}, project_id=project_id)
+        target_id = db.create_chat("Target", {}, project_id=project_id)
+        return sender_id, target_id
+
+    def test_enqueue_is_idempotent(self, db):
+        sender_id, target_id = self._create_agents(db)
+
+        first, first_created = db.enqueue_agent_message(
+            message_id="msg-1",
+            sender_chat_id=sender_id,
+            target_chat_id=target_id,
+            content="Review this",
+        )
+        second, second_created = db.enqueue_agent_message(
+            message_id="msg-1",
+            sender_chat_id=sender_id,
+            target_chat_id=target_id,
+            content="Review this",
+        )
+
+        assert first_created is True
+        assert second_created is False
+        assert first["message_id"] == second["message_id"]
+        assert len(db.list_agent_messages(target_chat_id=target_id)) == 1
+
+    def test_claim_and_acknowledge_message(self, db):
+        sender_id, target_id = self._create_agents(db)
+        db.enqueue_agent_message(
+            message_id="msg-claim",
+            sender_chat_id=sender_id,
+            target_chat_id=target_id,
+            content="Run checks",
+        )
+
+        claimed = db.claim_next_agent_message(worker_id="worker-1")
+
+        assert claimed["message_id"] == "msg-claim"
+        assert claimed["status"] == "processing"
+        assert claimed["attempts"] == 1
+        assert db.acknowledge_agent_message("msg-claim", worker_id="worker-2") is False
+        assert db.acknowledge_agent_message("msg-claim", worker_id="worker-1") is True
+        assert (
+            db.list_agent_messages(target_chat_id=target_id)[0]["status"] == "delivered"
+        )
+
+    def test_retry_releases_message_for_another_claim(self, db):
+        sender_id, target_id = self._create_agents(db)
+        db.enqueue_agent_message(
+            message_id="msg-retry",
+            sender_chat_id=sender_id,
+            target_chat_id=target_id,
+            content="Retry me",
+        )
+        db.claim_next_agent_message(worker_id="worker-1")
+
+        assert db.retry_agent_message(
+            "msg-retry",
+            worker_id="worker-1",
+            error="temporary failure",
+            retry_delay_seconds=0,
+        )
+        claimed = db.claim_next_agent_message(worker_id="worker-2")
+
+        assert claimed["message_id"] == "msg-retry"
+        assert claimed["attempts"] == 2
+        assert claimed["lease_owner"] == "worker-2"
+
+    def test_claim_serializes_each_target_across_workers(self, db):
+        sender_id, target_id = self._create_agents(db)
+        other_target_id = db.create_chat(
+            "Other target",
+            {},
+            project_id=db.get_chat(target_id).project_id,
+        )
+        for message_id, recipient in (
+            ("msg-first", target_id),
+            ("msg-same-target", target_id),
+            ("msg-other-target", other_target_id),
+        ):
+            db.enqueue_agent_message(
+                message_id=message_id,
+                sender_chat_id=sender_id,
+                target_chat_id=recipient,
+                content=message_id,
+            )
+
+        first = db.claim_next_agent_message(worker_id="worker-1")
+        second = db.claim_next_agent_message(worker_id="worker-2")
+        third = db.claim_next_agent_message(worker_id="worker-3")
+
+        assert first["message_id"] == "msg-first"
+        assert second["message_id"] == "msg-other-target"
+        assert third is None
+
+    def test_expired_exhausted_message_becomes_failed(self, db):
+        sender_id, target_id = self._create_agents(db)
+        db.enqueue_agent_message(
+            message_id="msg-exhausted",
+            sender_chat_id=sender_id,
+            target_chat_id=target_id,
+            content="Fail me",
+            max_attempts=1,
+        )
+        db.claim_next_agent_message(worker_id="worker-1", lease_seconds=1)
+        with db._session() as session:
+            message = session.get(AgentInboxMessageModel, "msg-exhausted")
+            message.lease_until = datetime.now(timezone.utc) - timedelta(seconds=1)
+            session.add(message)
+            session.commit()
+
+        assert db.claim_next_agent_message(worker_id="worker-2") is None
+        record = db.list_agent_messages(target_chat_id=target_id)[0]
+        assert record["status"] == "failed"
+        assert record["lease_owner"] is None

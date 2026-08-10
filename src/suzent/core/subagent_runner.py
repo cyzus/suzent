@@ -10,101 +10,34 @@ import asyncio
 import json
 import re
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 from suzent.config import CONFIG
-from suzent.database import get_database
+from suzent.database import ChatDatabase, get_database
 from suzent.logger import get_logger
 from suzent.core.stream_registry import (
     register_background_stream,
     unregister_background_stream,
     background_queues,
     get_active_stream_queue,
-    stream_controls,
 )
 
 logger = get_logger(__name__)
 
 # Tools that sub-agents can never have, regardless of what the caller requests.
 # Prevents recursive sub-agent spawning.
-_ALWAYS_DENIED: frozenset[str] = frozenset({"AgentTool"})
-
-# ─── Wakeup batching ──────────────────────────────────────────────────────────
-# When multiple sub-agents finish around the same time, we batch their results
-# into a single parent wakeup turn instead of firing one turn per completion.
-# Each entry is a completed SubAgentTask waiting to be delivered.
-
-_WAKEUP_BATCH_DELAY = 0.3  # seconds to wait for sibling completions to accumulate
-
-# parent_chat_id → list of finished tasks pending delivery
-_pending_wakeups: Dict[str, List["SubAgentTask"]] = {}
-# parent_chat_id → debounce asyncio.Task
-_wakeup_debounce_tasks: Dict[str, asyncio.Task] = {}
-_wakeup_lock = asyncio.Lock()
-
-
-async def _schedule_wakeup(task: "SubAgentTask") -> None:
-    """
-    Add a finished task to the pending batch for its parent chat, then start
-    (or reset) a debounce timer. When the timer fires, all accumulated tasks
-    are delivered in a single LLM turn.
-    """
-    parent_id = task.parent_chat_id
-    async with _wakeup_lock:
-        _pending_wakeups.setdefault(parent_id, []).append(task)
-
-        # Cancel existing debounce timer so we wait for more completions
-        existing = _wakeup_debounce_tasks.get(parent_id)
-        if existing and not existing.done():
-            existing.cancel()
-
-        debounce = asyncio.create_task(
-            _debounced_wakeup(parent_id),
-            name=f"wakeup_debounce_{parent_id}",
-        )
-        _wakeup_debounce_tasks[parent_id] = debounce
-
-
-async def _debounced_wakeup(parent_id: str) -> None:
-    """Wait briefly, then flush all pending completions as one wakeup turn.
-
-    The per-chat background turn lock (in stream_registry) ensures only one
-    background turn runs at a time across wakeup, heartbeat, and cron.
-    Completions that arrive while a turn is in flight are buffered in
-    _pending_wakeups and delivered in a follow-up turn after the lock releases.
-    """
-    from suzent.core.stream_registry import get_background_turn_lock
-
-    try:
-        await asyncio.sleep(_WAKEUP_BATCH_DELAY)
-    except asyncio.CancelledError:
-        return  # A newer completion reset the timer; this task is superseded
-
-    async with _wakeup_lock:
-        batch = _pending_wakeups.pop(parent_id, [])
-        _wakeup_debounce_tasks.pop(parent_id, None)
-
-    if not batch:
-        return
-
-    # The background turn lock is also held inside process_background_turn, so
-    # this outer acquire serializes the overflow drain loop against concurrent turns.
-    async with get_background_turn_lock(parent_id):
-        await _wakeup_parent_batch(parent_id, batch)
-        # Drain any completions that arrived while this turn was running.
-        while True:
-            async with _wakeup_lock:
-                overflow = _pending_wakeups.pop(parent_id, [])
-                existing = _wakeup_debounce_tasks.pop(parent_id, None)
-                if existing and not existing.done():
-                    existing.cancel()
-            if not overflow:
-                break
-            await _wakeup_parent_batch(parent_id, overflow)
-
+_ALWAYS_DENIED: frozenset[str] = frozenset(
+    {
+        "AgentTool",
+        "AgentListTool",
+        "AgentReadTool",
+        "AgentSendTool",
+        "AgentStopTool",
+    }
+)
 
 # ─── In-memory task registry ─────────────────────────────────────────────────
 
@@ -133,6 +66,7 @@ class SubAgentTask:
     isolation_target_path: Optional[str] = None  # caller-supplied git repo root
     worktree_path: Optional[str] = None  # created worktree path (output)
     worktree_branch: Optional[str] = None  # created branch name (output)
+    runner_task: Optional[asyncio.Task] = field(default=None, repr=False)
 
 
 # Global registry: task_id -> SubAgentTask
@@ -237,6 +171,64 @@ def _broadcast_task_update(task: SubAgentTask) -> None:
     _sse_subscribers.difference_update(dead)
 
 
+def _persist_task_state(task: SubAgentTask) -> None:
+    """Mirror runtime lifecycle fields into the persisted child chat config."""
+    db = get_database()
+    chat = db.get_chat(task.chat_id)
+    if chat is None:
+        return
+    config = dict(chat.config or {})
+    config.update(
+        {
+            "subagent_status": task.status,
+            "subagent_result_summary": task.result_summary,
+            "subagent_error": task.error,
+            "subagent_model": task.model_override,
+            "tools": list(task.tools_allowed),
+            "inherit_context": task.inherit_context,
+            "isolation": task.isolation,
+            "worktree_path": task.worktree_path,
+            "worktree_branch": task.worktree_branch,
+            "subagent_started_at": task.started_at.isoformat()
+            if task.started_at
+            else None,
+            "subagent_finished_at": task.finished_at.isoformat()
+            if task.finished_at
+            else None,
+        }
+    )
+    db.update_chat(task.chat_id, config=config)
+
+
+def _ensure_task_chat(task: SubAgentTask) -> ChatDatabase:
+    """Create the persisted child chat before task execution is scheduled."""
+    db = get_database()
+    if db.get_chat(task.chat_id):
+        return db
+
+    parent_project_id = (
+        db.get_chat_project_id(task.parent_chat_id) if task.parent_chat_id else None
+    )
+    db.create_chat(
+        title=f"Sub-agent: {task.description[:60]}",
+        config={
+            "platform": "subagent",
+            "parent_chat_id": task.parent_chat_id,
+            "subagent_task_id": task.task_id,
+            "permission_mode": "auto",
+            "interaction_profile": "subagent",
+            "subagent_status": task.status,
+            "subagent_model": task.model_override,
+            "tools": list(task.tools_allowed),
+            "inherit_context": task.inherit_context,
+            "isolation": task.isolation,
+        },
+        chat_id=task.chat_id,
+        project_id=parent_project_id,
+    )
+    return db
+
+
 # ─── Tool name resolution ─────────────────────────────────────────────────────
 
 
@@ -320,14 +312,39 @@ async def spawn_subagent(
     async with _tasks_lock:
         _tasks[task_id] = task
         _evict_old_finished_tasks()
+
+    try:
+        _ensure_task_chat(task)
+        _persist_task_state(task)
+    except Exception as exc:
+        logger.error(f"Failed to persist sub-agent {task_id}: {exc}")
+        task.status = "failed"
+        task.error = str(exc)
+        task.finished_at = datetime.now()
+        _broadcast_task_update(task)
+        return task
+
     _broadcast_task_update(task)
 
     if run_in_background:
-        # Fire-and-forget — parent chat keeps streaming
-        asyncio.create_task(
-            _run_subagent(task, wakeup_parent=True),
-            name=f"subagent_{task_id}",
-        )
+        # Use the shared registry so sub-agents participate in concurrency limits,
+        # graceful shutdown, exception collection, and task diagnostics.
+        from suzent.core.task_registry import register_background_task
+
+        runner = _run_subagent(task, wakeup_parent=True)
+        try:
+            task.runner_task = await register_background_task(
+                runner,
+                task_id=f"subagent_{task_id}",
+                description=description[:200],
+            )
+        except Exception as exc:
+            runner.close()
+            task.status = "failed"
+            task.error = str(exc)
+            task.finished_at = datetime.now()
+            _broadcast_task_update(task)
+            _persist_task_state(task)
     else:
         # Blocking — parent awaits the child's completion
         await _run_subagent(task, wakeup_parent=False)
@@ -343,58 +360,58 @@ async def _run_subagent(
     wakeup_parent: bool = True,
 ):
     """Execute the sub-agent in an isolated chat, then notify the parent."""
-    if not task.model_override:
-        from suzent.core.providers import get_default_chat_model
+    try:
+        if not task.model_override:
+            from suzent.core.providers import get_default_chat_model
 
-        task.model_override = get_default_chat_model()
+            task.model_override = get_default_chat_model()
 
-    task.status = "running"
-    task.started_at = datetime.now()
-    _broadcast_task_update(task)
+        task.status = "running"
+        task.started_at = datetime.now()
+        _broadcast_task_update(task)
 
-    db = get_database()
+        # The queued state is persisted before scheduling, so other clients can
+        # see the task immediately and cancellation cannot lose its lifecycle record.
+        db = _ensure_task_chat(task)
+        _persist_task_state(task)
 
-    # Ensure isolated chat record exists. Subagents inherit the parent chat's
-    # project so they share the project's plan, heartbeat, uploads, and cwd —
-    # the parent's whole working context.
-    if not db.get_chat(task.chat_id):
-        parent_project_id = (
-            db.get_chat_project_id(task.parent_chat_id) if task.parent_chat_id else None
-        )
-        db.create_chat(
-            title=f"Sub-agent: {task.description[:60]}",
-            config={
-                "platform": "subagent",
-                "parent_chat_id": task.parent_chat_id,
-                "subagent_task_id": task.task_id,
-                "permission_mode": "auto",
-                "interaction_profile": "subagent",
-            },
-            chat_id=task.chat_id,
-            project_id=parent_project_id,
-        )
+        if task.inherit_context:
+            await _fork_context(task, db)
 
-    # Phase 2: inject parent conversation history into child chat
-    if task.inherit_context:
-        await _fork_context(task, db)
-
-    # Phase 3: create git worktree before streaming starts
-    if task.isolation == "worktree":
-        error = await _setup_worktree(task)
-        if error:
-            task.status = "failed"
-            task.error = error
-            task.finished_at = datetime.now()
-            _broadcast_task_update(task)
-            await _notify_parent(
-                task,
-                "subagent_failed",
-                {
-                    "task_id": task.task_id,
-                    "error": error,
-                },
+        if task.isolation == "worktree":
+            setup_error = await _setup_worktree(task)
+            if setup_error:
+                raise RuntimeError(setup_error)
+    except asyncio.CancelledError:
+        task.status = "failed"
+        task.error = task.error or "Sub-agent cancelled during setup"
+        task.finished_at = datetime.now()
+        _broadcast_task_update(task)
+        _persist_task_state(task)
+        raise
+    except Exception as exc:
+        logger.error(f"Sub-agent {task.task_id} setup failed: {exc}")
+        task.status = "failed"
+        task.error = str(exc)
+        task.finished_at = datetime.now()
+        _broadcast_task_update(task)
+        try:
+            _persist_task_state(task)
+        except Exception as persist_error:
+            logger.warning(
+                f"Could not persist failed sub-agent {task.task_id}: {persist_error}"
             )
-            return
+        if task.isolation == "worktree" and task.worktree_path:
+            await _teardown_worktree(task)
+        await _notify_parent(
+            task,
+            "subagent_failed",
+            {"task_id": task.task_id, "error": str(exc)},
+        )
+        if wakeup_parent:
+            _queue_parent_wakeup(task)
+        await _evict_old_finished_tasks_locked()
+        return
 
     # Emit spawned event to parent chat
     await _notify_parent(
@@ -469,6 +486,7 @@ async def _run_subagent(
         task.result_summary = result_text[:1000] if result_text else "(no output)"
         task.finished_at = datetime.now()
         _broadcast_task_update(task)
+        _persist_task_state(task)
 
         await _notify_parent(
             task,
@@ -480,13 +498,14 @@ async def _run_subagent(
         )
 
         if wakeup_parent:
-            await _schedule_wakeup(task)
+            _queue_parent_wakeup(task)
 
     except asyncio.CancelledError:
         task.status = "failed"
-        task.error = "Sub-agent cancelled"
+        task.error = task.error or "Sub-agent cancelled"
         task.finished_at = datetime.now()
         _broadcast_task_update(task)
+        _persist_task_state(task)
         raise
     except Exception as e:
         logger.error(f"Sub-agent {task.task_id} failed: {e}")
@@ -494,6 +513,7 @@ async def _run_subagent(
         task.error = str(e)
         task.finished_at = datetime.now()
         _broadcast_task_update(task)
+        _persist_task_state(task)
 
         await _notify_parent(
             task,
@@ -503,11 +523,14 @@ async def _run_subagent(
                 "error": str(e),
             },
         )
+        if wakeup_parent:
+            _queue_parent_wakeup(task)
     finally:
         unregister_background_stream(task.chat_id)
         # Phase 3: always tear down the worktree, even on failure
         if task.isolation == "worktree" and task.worktree_path:
             await _teardown_worktree(task)
+        _persist_task_state(task)
         # The task is now terminal; prune here too so a burst that all finishes
         # without a new spawn doesn't leave result summaries resident.
         await _evict_old_finished_tasks_locked()
@@ -679,114 +702,37 @@ async def _teardown_worktree(task: SubAgentTask) -> None:
 # ─── Parent wakeup & notification ────────────────────────────────────────────
 
 
-async def _wakeup_parent_batch(parent_chat_id: str, batch: List[SubAgentTask]) -> None:
-    """
-    Trigger a single LLM turn in the parent chat delivering all finished sub-agents
-    at once. Called by _debounced_wakeup after the batch window closes.
+def _queue_parent_wakeup(task: SubAgentTask) -> None:
+    """Persist a completion or failure message for the parent agent."""
+    from suzent.core.agent_inbox import enqueue_agent_message
+    from suzent.prompts import SUBAGENT_WAKEUP_SINGLE
 
-    If the parent is currently streaming (user mid-conversation or an earlier wakeup
-    turn is still running), wait for the stream to finish before delivering. This
-    prevents results from being silently dropped when multiple sub-agents complete
-    in quick succession and a wakeup turn is already in flight for an earlier batch.
-    """
-    # Wait for the parent's active /chat stream to finish before injecting a
-    # wakeup turn — prevents the wakeup from racing with an in-progress user turn.
-    control = stream_controls.get(parent_chat_id)
-    if control is not None:
-        try:
-            await asyncio.wait_for(control.completed_event.wait(), timeout=120.0)
-        except asyncio.TimeoutError:
-            logger.warning(
-                f"Timed out waiting for parent {parent_chat_id} to finish streaming; "
-                f"dropping wakeup for {[t.task_id for t in batch]}"
-            )
-            return
-
+    if task.status == "completed":
+        content = SUBAGENT_WAKEUP_SINGLE.format(
+            task_id=task.task_id,
+            model_override=task.model_override or "(default)",
+            description=task.description[:300],
+            result_summary=task.result_summary or "(no output)",
+        )
+    else:
+        content = (
+            f"Sub-agent {task.task_id} failed.\n"
+            f"Task: {task.description[:300]}\n"
+            f"Error: {task.error or 'unknown error'}"
+        )
     try:
-        from suzent.core.chat_processor import ChatProcessor
-        from suzent.agent_manager import build_agent_config
-        from suzent.core.task_registry import wait_for_background_task_prefix
-        from suzent.prompts import (
-            SUBAGENT_WAKEUP_SINGLE,
-            SUBAGENT_WAKEUP_BATCH_HEADER,
-            SUBAGENT_WAKEUP_BATCH_ITEM,
+        enqueue_agent_message(
+            message_id=f"subagent-result-{task.task_id}",
+            sender_chat_id=task.chat_id,
+            target_chat_id=task.parent_chat_id,
+            content=content,
+            kind="subagent_result",
+            payload={"task_id": task.task_id, "status": task.status},
         )
-
-        if len(batch) == 1:
-            t = batch[0]
-            wake_msg = SUBAGENT_WAKEUP_SINGLE.format(
-                task_id=t.task_id,
-                model_override=t.model_override or "(default)",
-                description=t.description[:300],
-                result_summary=t.result_summary,
-            )
-        else:
-            parts = [SUBAGENT_WAKEUP_BATCH_HEADER.format(count=len(batch))]
-            for j, t in enumerate(batch, 1):
-                parts.append(
-                    SUBAGENT_WAKEUP_BATCH_ITEM.format(
-                        index=j,
-                        task_id=t.task_id,
-                        model_override=t.model_override or "(default)",
-                        description=t.description[:200],
-                        result_summary=t.result_summary or "(no output)",
-                    )
-                )
-            wake_msg = "\n\n".join(parts)
-
-        logger.debug(
-            f"Batched wakeup for {parent_chat_id}: {[t.task_id for t in batch]}"
+    except Exception as exc:
+        logger.warning(
+            f"Could not queue parent wakeup for sub-agent {task.task_id}: {exc}"
         )
-
-        config_override = build_agent_config(
-            {"platform": "subagent_wakeup", "memory_enabled": False},
-            require_social_tool=False,
-        )
-
-        # is_heartbeat=True → _persist_state(skip_messages=True) → only agent_state
-        # is saved; chat.messages is left untouched by the rebuild step.
-        await ChatProcessor().process_background_turn(
-            chat_id=parent_chat_id,
-            user_id=CONFIG.user_id,
-            message_content="",
-            config_override=config_override,
-            is_heartbeat=True,
-            system_reminders=[wake_msg],
-        )
-
-        # Wait for the background post-processing task to finish before writing
-        # to chat.messages to avoid a race condition.
-        try:
-            await wait_for_background_task_prefix(
-                f"post_process_{parent_chat_id}_", timeout=10.0
-            )
-        except Exception:
-            pass
-
-        # Rebuild the full display-message log from the finalized agent_state so
-        # that chat.messages always contains the complete conversation history
-        # (original user turn + all wakeup turns). The simple append approach was
-        # dropping the user message when the wakeup's snapshot incremented the
-        # revision and caused the user turn's finalize_state_if_revision_matches
-        # to be rejected as stale.
-        try:
-            from suzent.core.agent_serializer import deserialize_state
-            from suzent.core.chat_processor import _rebuild_display_messages
-
-            db = get_database()
-            parent = db.get_chat(parent_chat_id)
-            if parent is not None and parent.agent_state:
-                state = deserialize_state(parent.agent_state)
-                if state and state.get("message_history"):
-                    rebuilt = _rebuild_display_messages(state["message_history"])
-                    if rebuilt:
-                        db.update_chat(parent_chat_id, messages=rebuilt)
-        except Exception as _e:
-            logger.warning(f"Failed to rebuild display messages for wakeup: {_e}")
-
-        logger.debug(f"Batched wakeup turn completed for parent {parent_chat_id}")
-    except Exception as e:
-        logger.warning(f"Failed batched wakeup for parent {parent_chat_id}: {e}")
 
 
 async def _notify_parent(task: SubAgentTask, event_name: str, data: dict):
@@ -822,10 +768,16 @@ async def clear_stuck_tasks() -> list[str]:
     cleared = []
     for task in list(_tasks.values()):
         if task.status in ("queued", "running"):
+            from suzent.core.stream_registry import stop_stream
+
+            stop_stream(task.chat_id, reason=f"Sub-agent {task.task_id} cleared")
             task.status = "failed"
             task.error = "Cleared (orphaned task)"
             task.finished_at = datetime.now()
             _broadcast_task_update(task)
+            _persist_task_state(task)
+            if task.runner_task and not task.runner_task.done():
+                task.runner_task.cancel()
             cleared.append(task.task_id)
     if cleared:
         await _evict_old_finished_tasks_locked()
@@ -837,7 +789,7 @@ async def stop_subagent(task_id: str) -> bool:
     from suzent.core.stream_registry import stop_stream
 
     task = _tasks.get(task_id)
-    if not task:
+    if not task or task.status not in ("queued", "running"):
         return False
     stop_stream(task.chat_id, reason=f"Sub-agent {task_id} stopped by user")
     # Mark failed immediately so the UI clears it even if the coroutine is slow
@@ -847,4 +799,7 @@ async def stop_subagent(task_id: str) -> bool:
         task.error = "Stopped by user"
         task.finished_at = datetime.now()
         _broadcast_task_update(task)
+        _persist_task_state(task)
+        if task.runner_task and not task.runner_task.done():
+            task.runner_task.cancel()
     return True

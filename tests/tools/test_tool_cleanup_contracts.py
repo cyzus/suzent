@@ -5,6 +5,7 @@ import pytest
 from suzent.tools.base import ToolErrorCode, ToolResult
 from suzent.tools.skill_tool import SkillTool
 from suzent.tools.agent_tool import AgentTool
+from suzent.tools.registry import expand_tool_dependencies
 
 
 class _DummySkillManager:
@@ -52,6 +53,40 @@ async def test_spawn_subagent_returns_structured_background_result(monkeypatch):
     assert result.success
     assert result.metadata["task_id"] == "sub_12345678"
     assert result.metadata["resolved_tools"] == ["BashTool"]
+
+
+@pytest.mark.asyncio
+async def test_spawn_subagent_reports_background_scheduling_failure(monkeypatch):
+    async def fake_spawn_subagent(**kwargs):
+        return SimpleNamespace(
+            task_id="sub_failed",
+            status="failed",
+            result_summary=None,
+            error="Background task limit reached",
+            chat_id="subagent-sub_failed",
+            parent_chat_id=kwargs["parent_chat_id"],
+            tools_allowed=[],
+        )
+
+    monkeypatch.setattr(
+        "suzent.core.subagent_runner._resolve_tool_names",
+        lambda tools_allowed: ([], []),
+    )
+    monkeypatch.setattr(
+        "suzent.core.subagent_runner.spawn_subagent",
+        fake_spawn_subagent,
+    )
+
+    result = await AgentTool().forward(
+        SimpleNamespace(deps=SimpleNamespace(chat_id="chat-1")),
+        description="Inspect the workspace",
+        tools_allowed=[],
+    )
+
+    assert not result.success
+    assert result.error_code == ToolErrorCode.EXECUTION_FAILED
+    assert result.metadata["status"] == "failed"
+    assert result.metadata["error"] == "Background task limit reached"
 
 
 @pytest.mark.asyncio
@@ -193,6 +228,16 @@ async def test_spawn_subagent_accepts_effective_fallback_model(monkeypatch):
 def test_spawn_subagent_guidance_does_not_embed_model_workflow():
     assert "coun" + "cil" not in AgentTool.session_guidance.lower()
     assert "model_override" not in AgentTool.session_guidance
+
+
+def test_agent_tool_equips_small_lifecycle_dependencies():
+    assert expand_tool_dependencies(["AgentTool"]) == [
+        "AgentTool",
+        "AgentListTool",
+        "AgentReadTool",
+        "AgentSendTool",
+        "AgentStopTool",
+    ]
 
 
 def test_skill_tool_returns_structured_result(monkeypatch):
