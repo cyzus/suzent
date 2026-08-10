@@ -30,6 +30,17 @@ def test_selected_tools_are_grouped_by_capability() -> None:
     }
 
 
+def test_tasks_and_goals_are_separate_from_agent_tools() -> None:
+    grouped = group_tools_by_capability(
+        ["GoalTool", "TaskCreateTool", "AgentTool", "AgentListTool"]
+    )
+
+    assert grouped == {
+        "tasks-goals": ["GoalTool", "TaskCreateTool"],
+        "agent": ["AgentTool", "AgentListTool"],
+    }
+
+
 def test_registered_capability_exposes_only_selected_tools() -> None:
     capability = RegisteredToolCapability("filesystem", ("ReadFileTool", "GlobTool"))
 

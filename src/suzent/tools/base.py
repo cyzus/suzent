@@ -45,6 +45,7 @@ class ToolCapability(str, Enum):
     FILESYSTEM = "Filesystem"
     SHELL = "Shell"
     WEB = "Web"
+    TASKS = "Tasks & goals"
     AGENT = "Agent"
     CREATIVE = "Creative"
     MEMORY = "Memory & recall"

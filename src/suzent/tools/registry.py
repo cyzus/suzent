@@ -201,7 +201,8 @@ CAPABILITY_DESCRIPTIONS = {
     "Filesystem": "Read, search, create, and modify files in the configured workspace.",
     "Shell": "Run bounded commands and control long-running background processes.",
     "Web": "Search the web, retrieve pages, and interact with browser-based content.",
-    "Agent": "Plan work, ask questions, render interfaces, and delegate bounded tasks.",
+    "Tasks & goals": "Plan durable goals and track structured project tasks.",
+    "Agent": "Ask questions, render interfaces, and delegate bounded sub-agent work.",
     "Creative": "Generate, inspect, speak, or share rich media and social content.",
     "Memory & recall": "Search durable memory and retrieve relevant past sessions.",
 }

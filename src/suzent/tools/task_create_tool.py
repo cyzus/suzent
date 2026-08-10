@@ -29,7 +29,7 @@ class TaskInput(BaseModel):
 class TaskCreateTool(Tool):
     name: str = "TaskCreateTool"
     tool_name: str = "create_tasks"
-    group: ToolGroup = ToolGroup.AGENT
+    group: ToolGroup = ToolGroup.TASKS
 
     def forward(
         self,

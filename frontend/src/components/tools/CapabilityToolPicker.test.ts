@@ -50,6 +50,7 @@ const translatedCapabilityIds = [
   'filesystem',
   'shell',
   'web',
+  'tasks-goals',
   'agent',
   'creative',
   'memory-recall',

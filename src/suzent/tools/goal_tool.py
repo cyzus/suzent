@@ -16,7 +16,7 @@ DEFAULT_MAX_TURNS = 20
 class GoalTool(Tool):
     name: str = "GoalTool"
     tool_name: str = "manage_goal"
-    group: ToolGroup = ToolGroup.AGENT
+    group: ToolGroup = ToolGroup.TASKS
 
     def forward(
         self,
