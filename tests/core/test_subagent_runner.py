@@ -92,7 +92,6 @@ async def test_spawn_subagent_reports_persistence_failure_without_scheduling(
         assert task.status == "failed"
         assert task.error == "database unavailable"
         assert registered == []
-        assert task.completion_event.is_set()
     finally:
         subagent_runner._tasks.pop(task.task_id, None)
 
@@ -117,7 +116,6 @@ async def test_subagent_setup_failure_reaches_terminal_state(monkeypatch):
         assert task.status == "failed"
         assert task.error == "model unavailable"
         assert task.finished_at is not None
-        assert task.completion_event.is_set()
     finally:
         subagent_runner._tasks.pop(task.task_id, None)
 

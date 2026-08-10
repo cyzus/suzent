@@ -199,67 +199,6 @@ class AgentReadTool(Tool):
         )
 
 
-class AgentWaitTool(Tool):
-    """Wait until any selected running sub-agent finishes."""
-
-    name = "AgentWaitTool"
-    tool_name = "agent_wait"
-    group = ToolGroup.AGENT
-
-    async def forward(
-        self,
-        ctx: RunContext[AgentDeps],
-        task_ids: Annotated[
-            list[str],
-            Field(min_length=1, max_length=8, description="Task IDs to wait for."),
-        ],
-        timeout_seconds: Annotated[float, Field(default=30, ge=0, le=300)] = 30,
-    ) -> ToolResult:
-        current_chat_id = _require_chat_id(ctx)
-        if not current_chat_id:
-            return ToolResult.error_result(
-                ToolErrorCode.INVALID_ARGUMENT, "No current chat is available."
-            )
-
-        runtime_tasks = []
-        records = []
-        for task_id in dict.fromkeys(task_ids):
-            found = _find_accessible_task(task_id, current_chat_id)
-            if not found:
-                return ToolResult.error_result(
-                    ToolErrorCode.FILE_NOT_FOUND,
-                    f"No sub-agent task '{task_id}' is available to this chat.",
-                )
-            record, runtime_task = found
-            records.append(record)
-            if runtime_task is not None:
-                runtime_tasks.append(runtime_task)
-
-        terminal = {"completed", "failed"}
-        timed_out = False
-        if runtime_tasks and not any(
-            record["status"] in terminal for record in records
-        ):
-            from suzent.core.subagent_runner import wait_for_subagents
-
-            _, timed_out = await wait_for_subagents(
-                [task.task_id for task in runtime_tasks], timeout_seconds
-            )
-            refreshed_records = []
-            for task_id, previous_record in zip(
-                dict.fromkeys(task_ids), records, strict=True
-            ):
-                refreshed = _find_accessible_task(task_id, current_chat_id)
-                refreshed_records.append(refreshed[0] if refreshed else previous_record)
-            records = refreshed_records
-
-        prefix = "Wait timed out; current status:" if timed_out else "Sub-agent status:"
-        return ToolResult.success_result(
-            prefix + "\n" + "\n".join(_format_task(record) for record in records),
-            metadata={"tasks": records, "timed_out": timed_out},
-        )
-
-
 class AgentStopTool(Tool):
     """Stop one running sub-agent owned by the current chat."""
 

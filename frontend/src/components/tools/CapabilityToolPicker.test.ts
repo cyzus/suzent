@@ -77,7 +77,6 @@ const translatedToolIds = [
   'AgentTool',
   'AgentListTool',
   'AgentReadTool',
-  'AgentWaitTool',
   'AgentStopTool',
   'ImageGenerationTool',
   'ImageVisionTool',

@@ -166,7 +166,6 @@ export const zhCN = {
         AgentTool: { name: '子智能体', description: '将独立任务以前台或后台方式委派给子智能体。' },
         AgentListTool: { name: '列出子智能体', description: '列出当前会话的活跃或最近子智能体任务。' },
         AgentReadTool: { name: '读取子智能体', description: '读取子智能体任务的状态和可见对话记录。' },
-        AgentWaitTool: { name: '等待子智能体', description: '等待选定的子智能体任务之一完成。' },
         AgentStopTool: { name: '停止子智能体', description: '停止当前会话拥有的运行中子智能体任务。' },
         ImageGenerationTool: { name: '生成图片', description: '根据文本提示生成图片。' },
         ImageVisionTool: { name: '分析图片', description: '使用具备视觉能力的语言模型分析图片。' },

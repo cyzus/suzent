@@ -35,7 +35,6 @@ _ALWAYS_DENIED: frozenset[str] = frozenset(
         "AgentTool",
         "AgentListTool",
         "AgentReadTool",
-        "AgentWaitTool",
         "AgentStopTool",
     }
 )
@@ -141,7 +140,6 @@ class SubAgentTask:
     isolation_target_path: Optional[str] = None  # caller-supplied git repo root
     worktree_path: Optional[str] = None  # created worktree path (output)
     worktree_branch: Optional[str] = None  # created branch name (output)
-    completion_event: asyncio.Event = field(default_factory=asyncio.Event, repr=False)
     runner_task: Optional[asyncio.Task] = field(default=None, repr=False)
 
 
@@ -237,8 +235,6 @@ def _task_to_sse_dict(task: SubAgentTask) -> dict:
 
 def _broadcast_task_update(task: SubAgentTask) -> None:
     """Push a task-state event to all active SSE subscribers (non-blocking)."""
-    if task.status in _TERMINAL_STATUSES:
-        task.completion_event.set()
     payload = json.dumps({"event": "task_update", "task": _task_to_sse_dict(task)})
     dead: set[asyncio.Queue] = set()
     for q in _sse_subscribers:
@@ -954,32 +950,3 @@ async def stop_subagent(task_id: str) -> bool:
         if task.runner_task and not task.runner_task.done():
             task.runner_task.cancel()
     return True
-
-
-async def wait_for_subagents(
-    task_ids: list[str], timeout_seconds: float
-) -> tuple[list[SubAgentTask], bool]:
-    """Wait until any requested task finishes and return a fresh snapshot.
-
-    The boolean result is true when the wait timed out. Missing task IDs are
-    ignored here and validated by the caller, which owns access control.
-    """
-    tasks = [task for task_id in task_ids if (task := _tasks.get(task_id))]
-    if not tasks or any(task.status in _TERMINAL_STATUSES for task in tasks):
-        return tasks, False
-    if timeout_seconds <= 0:
-        return tasks, True
-
-    waiters = [asyncio.create_task(task.completion_event.wait()) for task in tasks]
-    try:
-        done, pending = await asyncio.wait(
-            waiters,
-            timeout=timeout_seconds,
-            return_when=asyncio.FIRST_COMPLETED,
-        )
-        return tasks, not done
-    finally:
-        for waiter in waiters:
-            if not waiter.done():
-                waiter.cancel()
-        await asyncio.gather(*waiters, return_exceptions=True)

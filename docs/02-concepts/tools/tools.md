@@ -111,7 +111,6 @@ See [Canvas (A2UI)](./canvas.md) for full documentation.
 | AgentTool | `agent` | chat_id | Start a bounded sub-agent in the foreground or background |
 | AgentListTool | `agent_list` | chat_id | List active tasks or bounded recent history owned by the current chat |
 | AgentReadTool | `agent_read` | chat_id | Read one owned task's status and visible transcript |
-| AgentWaitTool | `agent_wait` | chat_id | Wait until any of up to eight owned tasks finishes |
 | AgentStopTool | `agent_stop` | chat_id | Stop one owned running task |
 
 The lifecycle tools are intentionally separate instead of using one action-heavy

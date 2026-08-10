@@ -7,7 +7,6 @@ from suzent.tools.agent_lifecycle_tools import (
     AgentListTool,
     AgentReadTool,
     AgentStopTool,
-    AgentWaitTool,
 )
 from suzent.tools.base import ToolErrorCode
 
@@ -163,92 +162,6 @@ def test_agent_read_rejects_task_owned_by_another_chat(monkeypatch):
 
     assert not result.success
     assert result.error_code == ToolErrorCode.FILE_NOT_FOUND
-
-
-@pytest.mark.asyncio
-async def test_agent_wait_returns_after_runtime_task_finishes(monkeypatch):
-    task = _task("sub_a")
-
-    def find_task(task_id, current_chat_id):
-        return (
-            {
-                "task_id": task.task_id,
-                "parent_chat_id": task.parent_chat_id,
-                "chat_id": task.chat_id,
-                "description": task.description,
-                "status": task.status,
-                "result_summary": task.result_summary,
-                "error": task.error,
-                "model_override": task.model_override,
-                "started_at": None,
-                "finished_at": None,
-            },
-            task,
-        )
-
-    async def wait_for_subagents(task_ids, timeout_seconds):
-        task.status = "completed"
-        return [task], False
-
-    monkeypatch.setattr(
-        "suzent.tools.agent_lifecycle_tools._find_accessible_task", find_task
-    )
-    monkeypatch.setattr(
-        "suzent.core.subagent_runner.wait_for_subagents", wait_for_subagents
-    )
-
-    result = await AgentWaitTool().forward(_ctx(), ["sub_a"], timeout_seconds=1)
-
-    assert result.success
-    assert result.metadata["timed_out"] is False
-    assert result.metadata["tasks"][0]["status"] == "completed"
-
-
-@pytest.mark.asyncio
-async def test_agent_wait_returns_immediately_when_any_selected_task_is_terminal(
-    monkeypatch,
-):
-    running = _task("sub_running")
-    records = {
-        "sub_done": (
-            {
-                "task_id": "sub_done",
-                "parent_chat_id": "parent-chat",
-                "chat_id": "subagent-sub_done",
-                "description": "Finished task",
-                "status": "completed",
-            },
-            None,
-        ),
-        "sub_running": (
-            {
-                "task_id": running.task_id,
-                "parent_chat_id": running.parent_chat_id,
-                "chat_id": running.chat_id,
-                "description": running.description,
-                "status": running.status,
-            },
-            running,
-        ),
-    }
-    monkeypatch.setattr(
-        "suzent.tools.agent_lifecycle_tools._find_accessible_task",
-        lambda task_id, current_chat_id: records[task_id],
-    )
-
-    async def unexpected_wait(*args, **kwargs):
-        pytest.fail("agent_wait should return when any selected task is terminal")
-
-    monkeypatch.setattr(
-        "suzent.core.subagent_runner.wait_for_subagents", unexpected_wait
-    )
-
-    result = await AgentWaitTool().forward(
-        _ctx(), ["sub_done", "sub_running"], timeout_seconds=30
-    )
-
-    assert result.success
-    assert result.metadata["timed_out"] is False
 
 
 @pytest.mark.asyncio

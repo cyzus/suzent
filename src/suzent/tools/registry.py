@@ -141,7 +141,6 @@ def _all_tool_classes() -> list:
         AgentListTool,
         AgentReadTool,
         AgentStopTool,
-        AgentWaitTool,
     )
 
     return [
@@ -173,7 +172,6 @@ def _all_tool_classes() -> list:
         AgentTool,
         AgentListTool,
         AgentReadTool,
-        AgentWaitTool,
         AgentStopTool,
     ]
 
@@ -188,7 +186,6 @@ SHELL_TOOL_CLASS_NAMES = (
 AGENT_LIFECYCLE_TOOL_NAMES = (
     "AgentListTool",
     "AgentReadTool",
-    "AgentWaitTool",
     "AgentStopTool",
 )
 
@@ -218,7 +215,6 @@ TOOL_DESCRIPTION_OVERRIDES = {
     "TaskListTool": "List project tasks and their current status, ownership, and dependency relationships.",
     "AgentListTool": "List active or recent sub-agent tasks owned by the current conversation.",
     "AgentReadTool": "Read a sub-agent task's status and visible conversation transcript.",
-    "AgentWaitTool": "Wait for one of up to eight selected sub-agent tasks to finish.",
     "AgentStopTool": "Stop a running sub-agent task owned by the current conversation.",
     "RenderUITool": "Render an interactive interface such as a form, table, card, or action panel.",
     "SpeakTool": "Convert a response to speech and return playable audio to the conversation.",
