@@ -100,3 +100,47 @@ async def test_social_brain_uses_user_prefs(mock_process_turn_text, mock_get_db)
     config = call_args["config_override"]
 
     assert config["model"] == "social-prefer-model"
+    db.get_user_preferences.assert_called_once_with()
+
+
+@patch("suzent.database.get_database")
+@patch("suzent.core.chat_processor.ChatProcessor.process_turn_text")
+async def test_social_brain_reports_model_failure_and_stops_typing(
+    mock_process_turn_text, mock_get_db
+):
+    db = MagicMock()
+    mock_get_db.return_value = db
+    db.get_user_preferences.return_value = None
+    mock_process_turn_text.side_effect = RuntimeError("provider unavailable")
+
+    class TypingChannel:
+        def __init__(self) -> None:
+            self.start_typing = AsyncMock(return_value=True)
+            self.stop_typing = AsyncMock(return_value=True)
+
+    channel = TypingChannel()
+    channel_manager = MagicMock()
+    channel_manager.channels.get.return_value = channel
+    channel_manager.send_message = AsyncMock()
+
+    message = MagicMock()
+    message.platform = "wechat"
+    message.sender_id = "user123"
+    message.sender_name = "User"
+    message.content = "hello"
+    message.attachments = []
+    message.thread_id = None
+    message.get_chat_id.return_value = "wechat:user123"
+
+    brain = SocialBrain(channel_manager=channel_manager, model="test/model")
+    brain._ensure_chat_exists = MagicMock()
+
+    await brain._handle_message(message)
+
+    channel.start_typing.assert_awaited_once_with("user123")
+    channel.stop_typing.assert_awaited_once_with("user123")
+    channel_manager.send_message.assert_awaited_once_with(
+        "wechat",
+        "user123",
+        "❌ Failed to process your message. Please try again.",
+    )

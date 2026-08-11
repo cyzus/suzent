@@ -27,5 +27,6 @@ Add the following to your `config/social.json`:
 ## Notes
 
 - WeChat replies require the latest inbound `context_token`, so Suzent can reply to conversations that have messaged it during the current process.
+- While the model is working, Suzent shows WeChat's native typing indicator, refreshes it during long responses, and clears it when the response finishes or fails.
 - Text receive/send is supported. Media receive is preserved as attachment metadata, and encrypted CDN upload/download support is not implemented yet.
 - QR login authenticates Suzent to the WeChat iLink service. `allowed_users` is still the sender allowlist for incoming messages. The scanner is auto-added when `get_qrcode_status` returns `ilink_user_id`; add more WeChat sender or group IDs only if you want other conversations to access Suzent.

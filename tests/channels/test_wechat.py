@@ -1,4 +1,5 @@
 import json
+import asyncio
 
 import pytest
 import httpx
@@ -130,6 +131,53 @@ async def test_wechat_send_message_requires_inbound_context():
         assert await channel.send_message("user-1@im.wechat", "reply") is False
     finally:
         await channel._client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_wechat_typing_indicator_gets_ticket_starts_and_stops():
+    requests: list[httpx.Request] = []
+    typing_started = asyncio.Event()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path == "/ilink/bot/getconfig":
+            return httpx.Response(200, json={"ret": 0, "typing_ticket": "ticket-1"})
+        if request.url.path == "/ilink/bot/sendtyping":
+            payload = json.loads(request.content.decode("utf-8"))
+            if payload["status"] == 1:
+                typing_started.set()
+            return httpx.Response(200, json={"ret": 0})
+        raise AssertionError(f"Unexpected request: {request.url.path}")
+
+    channel = _make_channel(handler)
+    channel._to_unified_message(
+        {
+            "from_user_id": "user-1@im.wechat",
+            "message_type": 1,
+            "context_token": "ctx-1",
+            "item_list": [{"type": 1, "text_item": {"text": "hello"}}],
+        }
+    )
+
+    try:
+        assert await channel.start_typing("user-1@im.wechat") is True
+        await asyncio.wait_for(typing_started.wait(), timeout=1)
+        assert await channel.stop_typing("user-1@im.wechat") is True
+    finally:
+        await channel._client.aclose()
+
+    assert [request.url.path for request in requests] == [
+        "/ilink/bot/getconfig",
+        "/ilink/bot/sendtyping",
+        "/ilink/bot/sendtyping",
+    ]
+    getconfig_payload = json.loads(requests[0].content.decode("utf-8"))
+    assert getconfig_payload["ilink_user_id"] == "user-1@im.wechat"
+    assert getconfig_payload["context_token"] == "ctx-1"
+    assert [
+        json.loads(request.content.decode("utf-8"))["status"]
+        for request in requests[1:]
+    ] == [1, 2]
 
 
 @pytest.mark.asyncio

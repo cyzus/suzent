@@ -608,6 +608,9 @@ class SocialBrain(BaseBrain):
         Handle a single message using ChatProcessor.
         Auth and command dispatch are handled by _route_message before this is called.
         """
+        target_id = message.sender_id
+        typing_channel = None
+        typing_started = False
         try:
             # 1. Resolve Chat ID and target
             from suzent.channels.utils import extract_target_id
@@ -725,15 +728,6 @@ class SocialBrain(BaseBrain):
             except Exception:
                 pass
             effective_model = chat_model or self.model
-            if not effective_model:
-                try:
-                    from suzent.database import get_database as _gdb
-
-                    _prefs = _gdb().get_user_preferences(message.sender_id)
-                    if _prefs and isinstance(getattr(_prefs, "model", None), str):
-                        effective_model = _prefs.model or effective_model
-                except Exception:
-                    pass
             if effective_model:
                 base_config["model"] = effective_model
             if self.tools is not None:
@@ -767,6 +761,19 @@ class SocialBrain(BaseBrain):
             # Check if this channel supports streaming
             channel = self.channel_manager.channels.get(message.platform)
             supports_streaming = hasattr(channel, "send_stream")
+            start_typing = getattr(channel, "start_typing", None)
+            stop_typing = getattr(channel, "stop_typing", None)
+            if callable(start_typing) and callable(stop_typing):
+                typing_channel = channel
+                try:
+                    typing_started = await start_typing(target_id)
+                except Exception as exc:
+                    typing_channel = None
+                    logger.warning(
+                        "Failed to start typing indicator on {}: {}",
+                        message.platform,
+                        exc,
+                    )
 
             if supports_streaming and not is_steer:
                 # Run the LLM turn concurrently while piping text deltas to the channel
@@ -874,7 +881,22 @@ class SocialBrain(BaseBrain):
                 )
 
         except Exception as e:
-            logger.error(f"Failed to handle social message: {e}")
+            logger.exception("Failed to handle social message: {}", e)
+            await self.channel_manager.send_message(
+                message.platform,
+                target_id,
+                "❌ Failed to process your message. Please try again.",
+            )
+        finally:
+            if typing_started and typing_channel is not None:
+                try:
+                    await typing_channel.stop_typing(target_id)
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to stop typing indicator on {}: {}",
+                        message.platform,
+                        exc,
+                    )
 
     async def _prompt_next_approval(self, session: PendingApprovalSession):
         """Send the next approval prompt to the social channel."""

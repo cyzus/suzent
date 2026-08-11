@@ -25,6 +25,10 @@ TEXT_ITEM_TYPE = 1
 USER_MESSAGE_TYPE = 1
 BOT_MESSAGE_TYPE = 2
 FINISHED_MESSAGE_STATE = 2
+TYPING_ACTIVE_STATUS = 1
+TYPING_CANCELLED_STATUS = 2
+TYPING_KEEPALIVE_SECONDS = 5
+TYPING_TICKET_TTL_SECONDS = 23 * 60 * 60
 
 
 @dataclass
@@ -190,6 +194,8 @@ class WeChatChannel(SocialChannel):
         self._polling_task: asyncio.Task | None = None
         self._running = False
         self._contexts: dict[str, WeChatConversationContext] = {}
+        self._typing_tickets: dict[str, tuple[str, float]] = {}
+        self._typing_tasks: dict[str, asyncio.Task[None]] = {}
 
     async def connect(self) -> None:
         """Start long-polling when a bot token is configured."""
@@ -213,6 +219,13 @@ class WeChatChannel(SocialChannel):
     async def disconnect(self) -> None:
         """Stop polling and close HTTP resources."""
         self._running = False
+        typing_tasks = list(self._typing_tasks.values())
+        self._typing_tasks.clear()
+        for task in typing_tasks:
+            task.cancel()
+        if typing_tasks:
+            await asyncio.gather(*typing_tasks, return_exceptions=True)
+
         if self._polling_task and not self._polling_task.done():
             self._polling_task.cancel()
             try:
@@ -271,6 +284,95 @@ class WeChatChannel(SocialChannel):
         except Exception as exc:
             logger.error("Failed to send WeChat message to {}: {}", target_id, exc)
             return False
+
+    async def start_typing(self, target_id: str) -> bool:
+        """Show and periodically refresh WeChat's typing indicator."""
+        if not self.bot_token or not self._client or target_id not in self._contexts:
+            return False
+
+        existing = self._typing_tasks.pop(target_id, None)
+        if existing:
+            existing.cancel()
+            await asyncio.gather(existing, return_exceptions=True)
+
+        self._typing_tasks[target_id] = asyncio.create_task(
+            self._keep_typing(target_id)
+        )
+        return True
+
+    async def stop_typing(self, target_id: str) -> bool:
+        """Stop refreshing and clear WeChat's typing indicator."""
+        task = self._typing_tasks.pop(target_id, None)
+        if task:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+
+        context = self._contexts.get(target_id)
+        if not context or context.to_user_id not in self._typing_tickets:
+            return task is not None
+        return await self._send_typing(context, TYPING_CANCELLED_STATUS)
+
+    async def _keep_typing(self, target_id: str) -> None:
+        context = self._contexts[target_id]
+        try:
+            while True:
+                await self._send_typing(context, TYPING_ACTIVE_STATUS)
+                await asyncio.sleep(TYPING_KEEPALIVE_SECONDS)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning("WeChat typing indicator failed for {}: {}", target_id, exc)
+
+    async def _get_typing_ticket(
+        self, context: WeChatConversationContext
+    ) -> str | None:
+        cached = self._typing_tickets.get(context.to_user_id)
+        now = time.monotonic()
+        if cached and cached[1] > now:
+            return cached[0]
+
+        response = await self._post(
+            "/ilink/bot/getconfig",
+            {
+                "ilink_user_id": context.to_user_id,
+                "context_token": context.context_token,
+                "base_info": {"channel_version": self.channel_version},
+            },
+        )
+        ticket = response.get("typing_ticket")
+        if response.get("ret", 0) != 0 or not isinstance(ticket, str) or not ticket:
+            logger.warning(
+                "WeChat getconfig did not return a typing ticket: {}", response
+            )
+            return None
+
+        self._typing_tickets[context.to_user_id] = (
+            ticket,
+            now + TYPING_TICKET_TTL_SECONDS,
+        )
+        return ticket
+
+    async def _send_typing(
+        self, context: WeChatConversationContext, status: int
+    ) -> bool:
+        ticket = await self._get_typing_ticket(context)
+        if not ticket:
+            return False
+
+        response = await self._post(
+            "/ilink/bot/sendtyping",
+            {
+                "ilink_user_id": context.to_user_id,
+                "typing_ticket": ticket,
+                "status": status,
+                "base_info": {"channel_version": self.channel_version},
+            },
+        )
+        if response.get("ret", 0) != 0:
+            self._typing_tickets.pop(context.to_user_id, None)
+            logger.warning("WeChat sendtyping failed: {}", response)
+            return False
+        return True
 
     async def send_file(
         self, target_id: str, file_path: str, caption: str = None, **kwargs

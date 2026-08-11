@@ -75,6 +75,25 @@ def sess_command(
     return _impl
 
 
+@register_command(
+    aliases=["/new"],
+    description="Create a new session and switch to it",
+    usage="/new [title]",
+    surfaces=["social"],
+    category="session",
+)
+def new_command(
+    ctx: typer.Context,
+    title: list[str] = typer.Argument(None, help="Optional session title"),
+):
+    """Short form of ``/sess new [title]``."""
+
+    async def _impl():
+        return await _cmd_new(ctx.obj, title)
+
+    return _impl
+
+
 async def _cmd_ls(ctx: CommandContext) -> str:
     db = get_database()
     chats = db.list_chats(limit=20)
