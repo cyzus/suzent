@@ -255,37 +255,42 @@
     },
     "xai/grok-4.20-multi-agent-beta-0309": {
       "mode": "chat",
-      "max_input_tokens": 2000000,
-      "max_output_tokens": 2000000,
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 1000000,
       "supports_vision": true,
       "supports_function_calling": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "supports_response_schema": true
     },
     "xai/grok-4.20-beta-0309-reasoning": {
       "mode": "chat",
-      "max_input_tokens": 2000000,
-      "max_output_tokens": 2000000,
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 1000000,
       "supports_vision": true,
       "supports_function_calling": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "supports_response_schema": true
     },
     "xai/grok-4.20-0309-reasoning": {
       "mode": "chat",
-      "max_input_tokens": 2000000,
-      "max_output_tokens": 2000000,
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 1000000,
       "supports_vision": true,
       "supports_function_calling": true,
-      "supports_reasoning": true
+      "supports_reasoning": true,
+      "supports_response_schema": true,
+      "supports_prompt_caching": true
     },
     "xai/grok-4.20-beta-0309-non-reasoning": {
       "mode": "chat",
-      "max_input_tokens": 2000000,
-      "max_output_tokens": 2000000,
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 1000000,
       "supports_vision": true,
       "supports_function_calling": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "supports_response_schema": true
     },
     "xai/grok-beta": {
       "mode": "chat",
@@ -300,7 +305,9 @@
       "max_output_tokens": 256000,
       "supports_function_calling": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "supports_vision": true,
+      "supports_response_schema": true
     },
     "xai/grok-code-fast-1": {
       "mode": "chat",
@@ -308,7 +315,9 @@
       "max_output_tokens": 256000,
       "supports_function_calling": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "supports_vision": true,
+      "supports_response_schema": true
     },
     "xai/grok-code-fast-1-0825": {
       "mode": "chat",
@@ -316,7 +325,9 @@
       "max_output_tokens": 256000,
       "supports_function_calling": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "supports_vision": true,
+      "supports_response_schema": true
     },
     "xai/grok-vision-beta": {
       "mode": "chat",
@@ -339,6 +350,35 @@
       "mode": "chat",
       "max_input_tokens": 1000000,
       "max_output_tokens": 1000000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "xai/grok-4.20-0309-non-reasoning": {
+      "mode": "chat",
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 1000000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_prompt_caching": true
+    },
+    "xai/grok-4.20-multi-agent-0309": {
+      "mode": "chat",
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 1000000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "xai/grok-build-0.1": {
+      "mode": "chat",
+      "max_input_tokens": 256000,
+      "max_output_tokens": 256000,
       "supports_vision": true,
       "supports_function_calling": true,
       "supports_response_schema": true,
