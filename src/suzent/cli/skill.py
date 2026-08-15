@@ -7,7 +7,8 @@ Usage:
     suzent skill reload
 
 Installing and creating skills is intentionally NOT a CLI command — those are
-agent-driven flows handled by the bundled `skill-installer` and `skill-creator`
+agent-driven flows handled by the bundled `suzent-skill-installer` and
+`suzent-skill-creator`
 skills. See docs/design/plugin_system_cli.md §5.
 
 Backend routes (see src/suzent/routes/skill_routes.py):

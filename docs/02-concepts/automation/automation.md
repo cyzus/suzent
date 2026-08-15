@@ -9,11 +9,11 @@ Suzent has two separate automation systems that allow it to act proactively with
 | | Cron | Heartbeat |
 |---|---|---|
 | **Purpose** | Execute a specific task at a specific time | Periodic "wake up, check if anything needs attention" |
-| **Session** | Isolated (`cron-{id}`) — fresh, stateless | Per-session — executes in the target chat's context |
+| **Session** | Dedicated persistent chat (`cron-{id}`) | Per-session — executes in the target chat's context |
 | **Timing** | Cron expression (precise) | Fixed interval (default 30 min) |
 | **Config** | Per-job prompt | Per-session `heartbeat.md` instructions |
 | **Batching** | One job = one task | One tick can check multiple things |
-| **Context** | No conversation history | Sees recent check history in that chat session |
+| **Context** | Sees prior runs in that cron chat | Sees recent history in the target chat |
 
 **Use Cron when:** you want a scheduled action — daily reports, weekly summaries, timed reminders.
 
@@ -28,7 +28,10 @@ Suzent has two separate automation systems that allow it to act proactively with
 3. Scheduler fires the prompt in an isolated chat (`cron-{id}`)
 4. Results delivered via status bar (announce) or silently logged (none)
 
-Each cron job runs in its own isolated chat session with no conversation history. Memory is disabled to avoid polluting the knowledge base with routine output.
+Each cron job runs in its own dedicated persistent chat. Later runs can see that chat's
+prior agent state, although prompts should remain self-contained. Cron and heartbeat
+currently enable memory context; availability of memory-search tools is configured
+separately.
 
 ### Cron Expression Reference
 

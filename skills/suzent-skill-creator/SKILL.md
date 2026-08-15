@@ -1,5 +1,5 @@
 ---
-name: skill-creator
+name: suzent-skill-creator
 description: Create a new Suzent AgentSkill, or improve an existing one. Use when the user wants to author a skill from scratch, scaffold a SKILL.md with supporting scripts/references/assets, or refine a skill's description so it triggers reliably.
 ---
 
@@ -22,12 +22,15 @@ A Suzent skill is a directory containing a `SKILL.md` (required) plus optional
 
 ### 1. Capture intent
 
-Before writing anything, clarify with the user:
+Clarify only when these details are materially under-specified:
 - **What** the skill does (the capability or SOP it encodes).
 - **When** it should trigger — the concrete situations and phrasings. This drives
   the `description`, which is what the agent matches against.
 - **What output** is expected, and whether the skill needs bundled `scripts/`
   (executable helpers) or `references/` (docs the agent reads on demand).
+
+When the request and repository conventions already answer these questions, proceed
+without asking the user to repeat them.
 
 ### 2. Scaffold the directory
 
@@ -76,4 +79,4 @@ description and repeat.
 - This v1 covers scaffolding + authoring + reload. Eval harnesses and `.skill`
   packaging are intentionally out of scope for now.
 - To distribute a skill to others, share the directory; the recipient installs it
-  via the `skill-installer` skill.
+  via the `suzent-skill-installer` skill.

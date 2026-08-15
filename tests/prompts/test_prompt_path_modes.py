@@ -54,14 +54,27 @@ def test_skill_content_host_mode_rewrites_virtual_paths():
     assert "${MOUNT_NOTEBOOK}" in content
 
 
-def test_skill_content_host_mode_rewrites_persistence_alias():
+def _manager_with_path_skill(tmp_path: Path) -> SkillManager:
+    skill_dir = tmp_path / "path-guide"
+    skill_dir.mkdir()
+    (skill_dir / "SKILL.md").write_text(
+        "---\n"
+        "name: path-guide\n"
+        "description: Test path adaptation\n"
+        "---\n"
+        "Use /persistence in sandbox mode.\n",
+        encoding="utf-8",
+    )
+    return SkillManager(skills_dir=tmp_path)
+
+
+def test_skill_content_host_mode_rewrites_persistence_alias(tmp_path: Path):
     # /persistence is a legacy virtual alias for the per-chat project dir. On the
     # host there is no PERSISTENCE_PATH env var, so it must be rewritten to
-    # ${PROJECT_PATH} (the filesystem skill references /persistence in its
-    # sandbox-mode section).
-    manager = SkillManager(skills_dir=PROJECT_DIR / "skills")
+    # ${PROJECT_PATH} for any custom skill that references the sandbox alias.
+    manager = _manager_with_path_skill(tmp_path)
 
-    content = manager.get_skill_content("filesystem-skill", sandbox_enabled=False)
+    content = manager.get_skill_content("path-guide", sandbox_enabled=False)
 
     assert content is not None
     assert "/persistence" not in content
@@ -69,10 +82,10 @@ def test_skill_content_host_mode_rewrites_persistence_alias():
     assert "${PROJECT_PATH}" in content
 
 
-def test_skill_content_sandbox_mode_keeps_persistence_alias():
-    manager = SkillManager(skills_dir=PROJECT_DIR / "skills")
+def test_skill_content_sandbox_mode_keeps_persistence_alias(tmp_path: Path):
+    manager = _manager_with_path_skill(tmp_path)
 
-    content = manager.get_skill_content("filesystem-skill", sandbox_enabled=True)
+    content = manager.get_skill_content("path-guide", sandbox_enabled=True)
 
     assert content is not None
     assert "/persistence" in content

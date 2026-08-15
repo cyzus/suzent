@@ -12,7 +12,8 @@ Synthesize — do not transcribe.
 
 ## Step 1 — Read schema.md
 
-Read `SCHEMA.md` (or `schema.md`) from the notebook root completely before doing anything else.
+Read `schema.md` from the notebook root completely before doing anything else. Accept
+`SCHEMA.md` only when that is the actual filename.
 
 Notebook root by execution mode:
 - Sandbox Mode: `/mnt/notebook`
@@ -93,16 +94,8 @@ Only create one if:
 
 ## Step 6 — Write or update pages
 
-**MANDATORY FRONTMATTER:** Every compiled Wiki page must include YAML frontmatter:
-```yaml
----
-title: {Page Title}
-type: concept | literature | synthesis | entity
-status: active | superseded | needs-review
-confidence: high | medium | speculative
-updated: YYYY-MM-DD
----
-```
+Use exactly the frontmatter required by the vault's `schema.md`. Do not add a second,
+hard-coded template when the schema defines different fields.
 
 **When processing Literature/Papers:**
 Do not just write a generic summary. Extract specific dimensions:
@@ -112,16 +105,18 @@ Do not just write a generic summary. Extract specific dimensions:
 
 **Updating an existing page:**
 - Read it fully first. Do not duplicate what is already there.
-- Rewrite `## Overview` only if understanding has materially changed.
-- Add to `## Related` using full vault paths.
-- Add to `## Sources`, update `updated:` in frontmatter.
+- Preserve schema-required sections and frontmatter fields.
+- Rewrite an overview only if understanding has materially changed.
+- Update sources, dates, and related links only in the form required by the schema.
 
 **Creating a new page:**
-- Write a genuine `## Overview` paragraph — not a stub, not a list.
-- Add `## Related` with full vault paths to related existing pages.
+- Follow the schema's page structure exactly.
+- Write substantive synthesis rather than a stub or source transcription.
+- Add related links when the schema requires or the vault consistently uses them.
 
 After writing all pages, check cross-references: if page A links to page B,
-should page B link back? Add reciprocal `## Related` entries where meaningful.
+should page B link back? Add reciprocal links only when the schema and local style
+support them.
 
 ---
 

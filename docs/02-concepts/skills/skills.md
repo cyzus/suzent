@@ -12,31 +12,30 @@ Skills are specialized knowledge modules that extend the capabilities of AI agen
 |--------|-------|--------|
 | **Purpose** | Execute actions | Provide knowledge & context |
 | **Type** | Python code | Markdown documentation |
-| **Examples** | WebSearchTool, RunCommandTool | filesystem-skill, notebook-skill |
+| **Examples** | WebSearchTool, RunCommandTool | notebook, suzent-devices |
 | **When Used** | Agent calls them to perform tasks | Agent loads them to gain expertise |
 
 ## Available Skills
 
-Suzent includes two built-in skills:
+Suzent includes focused built-in skills for domain workflows. For example:
 
-### 1. filesystem-skill
+### notebook
 
-Provides information about the workspace directory structure for agents working in the sandbox environment.
-
-**Key Information:**
-- `/persistence` - Per-chat session directory
-- `/shared` - Workspace shared across all chat sessions
-- `/mnt/skills` - Skills directory
-- `/mnt/...` - Other mounted directories
-
-### 2. notebook-skill
-
-Enables agents to work with Obsidian vaults, understanding Obsidian Flavored Markdown syntax.
+Enables agents to maintain an Obsidian-compatible notebook and follow its vault schema.
 
 **Key Information:**
-- Vault location: `/mnt/notebook`
-- Supports CommonMark, GitHub Flavored Markdown, LaTeX math
-- Handles Obsidian-specific extensions (wikilinks, callouts, embeds)
+- Vault location: `/mnt/notebook` in sandbox mode
+- Supports CommonMark, GitHub Flavored Markdown, LaTeX math, wikilinks, and callouts
+- Loads the vault's `schema.md` before making notebook changes
+
+### suzent-devices
+
+Operates phones, laptops, headless servers, and peer agents connected to Suzent.
+
+**Key Information:**
+- Discovers connected devices and advertised capabilities
+- Invokes device commands through the `suzent nodes` CLI or REST API
+- Triggers a linked peer's Suzent agent when conversational reasoning is needed
 
 ## Skill Structure
 
@@ -94,8 +93,8 @@ Skills are managed via `~/.suzent/config/skills.json`:
 ```json
 {
   "enabled": [
-    "notebook-skill",
-    "filesystem-skill"
+    "notebook",
+    "suzent-devices"
   ]
 }
 ```
@@ -118,7 +117,7 @@ Skills are automatically mounted in the sandbox under `/mnt/skills/`:
 ```
 /mnt/skills/
 ├── official/
-│   ├── filesystem/
+│   ├── suzent-devices/
 │   │   └── SKILL.md
 │   └── notebook/
 │       └── SKILL.md
@@ -202,8 +201,8 @@ Add your skill to `~/.suzent/config/skills.json`:
 ```json
 {
   "enabled": [
-    "notebook-skill",
-    "filesystem-skill",
+    "notebook",
+    "suzent-devices",
     "my-custom-skill"
   ]
 }
@@ -361,6 +360,5 @@ If a skill requires specific tools or other skills:
 
 This skill requires:
 - `RunCommandTool` enabled (for running scripts)
-- `filesystem-skill` loaded (for workspace navigation)
 - Python 3.8+ installed in sandbox
 ```

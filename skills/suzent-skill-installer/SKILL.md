@@ -1,5 +1,5 @@
 ---
-name: skill-installer
+name: suzent-skill-installer
 description: Install a Suzent AgentSkill from a Git repo, ZIP URL, or owner/repo GitHub shorthand. Use when the user wants to add a third-party or community skill to Suzent. Fetches and copies only; never executes fetched code at install time.
 ---
 
@@ -18,11 +18,11 @@ the installed skill run later, at *use* time, through the agent's normal
 sandboxed tool path. "owner/repo shorthand" is a source-naming convenience and
 resolves to a GitHub fetch; it does not invoke `npx` or any package.
 
-The agent runs this on the user's explicit request ("install the skill at X"),
-in a conversation the user is watching, so there is no separate trust prompt:
-install fetches the source the user named, confirms it is a real skill, and
-copies it in. The actual safety boundary is at *use* time — any `scripts/` the
-installed skill runs go through the agent's normal sandboxed tool approval.
+Run this only on the user's explicit request ("install the skill at X"). Fetch
+the named source, confirm it is a real skill, and copy it without executing
+fetched code. The normal permission policy remains authoritative, especially
+for overwriting an existing skill or changing activation state. Any bundled
+`scripts/` run later through the agent's normal sandbox and approval path.
 
 ## Workflow
 
@@ -42,7 +42,7 @@ The script:
    size cap so a runaway fetch can't half-install.
 3. Locates the `SKILL.md` (resolving into a subdirectory for monorepos) and
    validates that its frontmatter parses under Suzent's loader (flat
-   `name:`/`description:` only — see the `skill-creator` skill).
+   `name:`/`description:` only — see the `suzent-skill-creator` skill).
 4. Copies the validated directory to `~/.suzent/skills/user/<name>/`, cleaning up
    on any failure.
 

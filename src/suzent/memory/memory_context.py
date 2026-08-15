@@ -118,13 +118,12 @@ file already exists for that topic. If it does, link to it — do not duplicate 
 Query workflow:
 1) Read `index.md` first to identify candidate pages
 2) Read relevant pages and synthesize with citations
-3) If the result is durable, file it back into the notebook
+3) File the result only when the user explicitly requests it or an enabled capture policy requires it
 
 Durable outputs include comparisons, analyses, syntheses, and decision breakdowns.
-When filing a durable output:
+When filing an authorized durable output:
 - Write a page in the appropriate vault location (not necessarily the root)
-- Add it to `index.md`
-- Append a `query-filed` entry to `log.md`
+- Follow the vault's `schema.md` for index and log updates
 
 {notebook_runbook}
 

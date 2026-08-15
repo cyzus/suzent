@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from suzent.config import PROJECT_DIR
 from suzent.skills.manager import SkillManager
 
 
@@ -44,3 +45,42 @@ def test_enabled_state_is_written_to_user_config_dir(tmp_path: Path):
 
     assert (config_dir / "skills.json").exists()
     assert "writer" in (config_dir / "skills.json").read_text(encoding="utf-8")
+
+
+def test_builtin_skill_names_match_directories_and_exclude_tool_only_guides():
+    manager = SkillManager(skills_dir=PROJECT_DIR / "skills")
+    skills = manager.loader.list_skills()
+    names = {skill.metadata.name for skill in skills}
+
+    assert all(skill.dir.name == skill.metadata.name for skill in skills)
+    assert {
+        "suzent-automation",
+        "suzent-canvas",
+        "suzent-devices",
+        "suzent-skill-creator",
+        "suzent-skill-installer",
+    }.issubset(names)
+    assert names.isdisjoint(
+        {
+            "automation",
+            "canvas",
+            "companion-devices",
+            "skill-creator",
+            "skill-installer",
+            "filesystem-skill",
+            "browser-skill",
+            "speech",
+            "nodes",
+        }
+    )
+
+
+def test_social_skill_routes_to_each_channel_reference():
+    social_dir = PROJECT_DIR / "skills" / "social"
+    skill_body = (social_dir / "SKILL.md").read_text(encoding="utf-8")
+
+    for channel in ("telegram", "slack", "discord", "feishu", "wechat"):
+        reference = social_dir / "references" / f"{channel}.md"
+
+        assert f"references/{channel}.md" in skill_body
+        assert reference.is_file()

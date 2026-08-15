@@ -11,8 +11,8 @@ A periodic editorial pass. Not just hygiene — lint surfaces new questions to i
 
 ## Step 1 — Read schema.md and index.md
 
-Read `SCHEMA.md` from the notebook root first. The schema defines the vault's conventions
-and what structure to expect.
+Read `schema.md` from the notebook root first. Accept `SCHEMA.md` only when that is the
+actual filename. The schema defines the vault's conventions and expected structure.
 
 Notebook root by execution mode:
 - Sandbox Mode: `/mnt/notebook`
@@ -35,10 +35,10 @@ Read related synthesized pages and check whether any claims conflict — within 
 or across related pages.
 
 When a contradiction is found:
-- Attempt to resolve it with the better-supported or more recent claim.
-- **If uncertain or requires human judgment:** DO NOT just leave a silent warning. You must escalate it:
-  1. Add a `> [!warning] Contradiction: [description]` callout in the specific markdown file.
-  2. **Crucially:** Prepend a high-priority `[!alert] Contradiction found in [[path/page]]` to the top of `log.md` (or `index.md`) so the user sees it immediately for expert resolution.
+- Resolve it only when the evidence and the schema make the correct claim unambiguous.
+- If human judgment is required, add a `> [!warning] Contradiction: [description]`
+  callout to the affected page, append the issue to the current lint entry in `log.md`,
+  and report it prominently to the user. Never prepend to an append-only log.
 
 ---
 
@@ -65,7 +65,8 @@ Fix dangling short-name links based on schema rules.
 A synthesized page not in `index.md` and not linked from any other page is an orphan:
 - Add to `index.md` if valuable.
 - Add `## Related` links from other pages if the connection is meaningful.
-- Delete only if truly obsolete.
+- Recommend deletion if truly obsolete; delete the page only when the user approves or
+  the active schema explicitly authorizes automatic removal.
 
 ---
 
@@ -78,9 +79,8 @@ Add missing reciprocal links.
 
 ## Step 8 — Check Status Decay
 
-Examine the YAML frontmatter of Wiki/Syntheses pages.
-- If a page has `status: active` but the `updated:` date is older than 90 days, the knowledge might be stale (especially in fast-moving fields like AI).
-- Change its status to `needs-review` and log it so the user knows to re-evaluate the current state of the art.
+Apply the staleness threshold and affected page types defined by `schema.md`. If the
+schema has no decay policy, report candidates without changing their status automatically.
 
 ---
 

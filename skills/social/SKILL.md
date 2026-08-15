@@ -1,38 +1,24 @@
 ---
 name: social
-description: Social messaging guidelines for Telegram, Slack, Discord, and Feishu. Best practices for formatting, character limits, and platform-specific features.
+description: Adapt responses and progress updates for Telegram, Slack, Discord, Feishu, or WeChat social-channel conversations. Use when the active conversation is on a social platform or the user requests platform-specific message formatting.
 ---
 
-# Social Messaging Guide
+# Social Messaging
 
-## Platform Formatting
+Read only the active platform's reference:
 
-### Telegram
-- Supports Markdown (bold, italic, code, links)
-- Message limit: 4096 characters
-- Supports inline buttons (not available via SocialMessageTool)
-- Good for short, punchy updates with formatting
+- Telegram: `references/telegram.md`
+- Slack: `references/slack.md`
+- Discord: `references/discord.md`
+- Feishu or Lark: `references/feishu.md`
+- WeChat: `references/wechat.md`
 
-### Slack
-- Uses mrkdwn format (different from standard Markdown)
-- *bold* uses `*text*`, _italic_ uses `_text_`
-- Message limit: ~40,000 characters
-- Supports blocks and attachments
+Use the injected platform and recipient; do not guess. If the platform is unknown, use only
+the generic rules.
 
-### Discord
-- Standard Markdown formatting
-- Message limit: 2000 characters
-- Code blocks with syntax highlighting
-- Keep messages short — split long content into multiple messages
+## Generic rules
 
-### Feishu
-- Rich text via post format, plain text via text
-- Message limit: ~30,000 characters
-
-## Best Practices
-- Keep messages concise for chat context
-- Use SocialMessageTool for progress updates on long tasks
-- Break long responses into logical sections
-- Avoid large code blocks on mobile-first platforms (Telegram)
-- Send a brief acknowledgment before starting long-running operations
-- Your final answer is delivered automatically — use the tool only for intermediate updates
+- Treat the system-provided character limit as authoritative.
+- Split only at safe boundaries, preserving code fences, links, lists, and sentences.
+- Use `SocialMessageTool` only for meaningful progress on long tasks. Final responses deliver
+  automatically; never resend them with the tool.

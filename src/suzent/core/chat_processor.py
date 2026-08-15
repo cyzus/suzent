@@ -743,7 +743,7 @@ class ChatProcessor:
             )
         # Stateless chats (dream, sub-agents) run a fixed, self-contained prompt and
         # must not receive skill-discovery / plan / RAG reminders — that ambient
-        # chatter (e.g. the automation/cron skill hint) is what made the dream agent
+        # chatter (e.g. the suzent-automation skill hint) is what made the dream agent
         # hallucinate "this scheduled task already fired, skip it" and no-op.
         # A non-vision model can't see the stripped image(s); tell it (invisibly
         # to the user) to inspect them via analyze_image. Merge into the adhoc
