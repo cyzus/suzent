@@ -19,6 +19,7 @@ Notebook root by execution mode:
 - Host Mode: `${MOUNT_NOTEBOOK}` (if mounted)
 
 Then read `index.md` to understand what synthesized pages exist and how they are organized.
+If the schema enables the OKF-inspired profile, read `okf.md` before checking pages.
 
 ---
 
@@ -55,8 +56,8 @@ Ensure the knowledge graph maintains connectivity.
 For each entry in `index.md`, verify the linked file exists.
 Fix broken paths or remove stale entries.
 
-Check synthesized pages for wikilinks that use short names instead of full vault paths.
-Fix dangling short-name links based on schema rules.
+Check synthesized pages for ambiguous or broken internal links and fix them according to the
+schema's link rules.
 
 ---
 
@@ -79,8 +80,8 @@ Add missing reciprocal links.
 
 ## Step 8 — Check Status Decay
 
-Apply the staleness threshold and affected page types defined by `schema.md`. If the
-schema has no decay policy, report candidates without changing their status automatically.
+Apply page-level `stale_after` dates and the fallback decay policy defined by `schema.md`.
+Use its review marker; if it defines none, report candidates without changing frontmatter.
 
 ---
 
@@ -102,6 +103,6 @@ List gaps explicitly with specifics — they drive future ingest targets.
 ## [YYYY-MM-DD] lint
 Issues found: {N} contradictions, {N} broken links, {N} missing cross-references
 Decay flagged: {N} pages marked needs-review
-Pages fixed: [[path/page]]
+Pages fixed: {schema-compliant page links}
 Gaps identified: {specific list}
 ```

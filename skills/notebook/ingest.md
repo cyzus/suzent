@@ -30,6 +30,7 @@ The schema defines:
 - Any additional conventions specific to this vault.
 
 Everything you do in subsequent steps must follow the schema.
+If the schema enables the OKF-inspired profile, read `okf.md` before writing pages.
 
 ---
 
@@ -71,7 +72,7 @@ For inbox files: read the full document and note the main topics, key arguments,
 ## Step 5 — Decide what to create or update
 
 **CRITICAL: Separate Knowledge from Projects (Dynamic vs. Static)**
-If a general concept is found within a specific project or document, **do not lock it inside the project folder**. Extract it into a global Wiki/Concepts page and link to it using `[[wikilinks]]`.
+If a general concept is found within a specific project or document, **do not lock it inside the project folder**. Extract it into a global Wiki/Concepts page and link to it using the schema's link style.
 
 **Personal facts about the user** (preferences, profile, working style, decisions about the user) go to `3_Personal/`, not `2_Wiki/`.
 
@@ -112,7 +113,7 @@ Do not just write a generic summary. Extract specific dimensions:
 **Creating a new page:**
 - Follow the schema's page structure exactly.
 - Write substantive synthesis rather than a stub or source transcription.
-- Add related links when the schema requires or the vault consistently uses them.
+- Add related links when the schema requires them.
 
 After writing all pages, check cross-references: if page A links to page B,
 should page B link back? Add reciprocal links only when the schema and local style
@@ -137,8 +138,8 @@ autonomous dream reads and writes the same token).
 
 ```
 ## [YYYY-MM-DD] ingest | daily logs  watermark=YYYY-MM-DD
-Pages created: [[path/page]]
-Pages updated: [[path/page]] (what changed)
+Pages created: {schema-compliant page links}
+Pages updated: {schema-compliant page links} (what changed)
 Sources: {filenames or date range}
 ```
 

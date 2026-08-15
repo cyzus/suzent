@@ -3,6 +3,9 @@
 This file defines the architecture, conventions, and rules for this vault.
 The AI reads it before every ingest, lint, or query operation. Edit it to match your vault.
 
+Synthesized pages use the notebook skill's optional OKF-inspired profile. This improves
+portability but does not declare full OKF conformance.
+
 ---
 
 ## Vault Structure
@@ -11,13 +14,13 @@ The vault is organized into layers by purpose:
 
 - `0_Inbox/` — unclassified raw materials waiting to be processed (PDFs, clippings, screenshots). The AI processes files here and moves them to appropriate destinations.
 - `1_Projects/` — active execution: TODO lists, roadmaps, meeting notes, project-specific docs. Do not store general knowledge or literature summaries here.
-- `2_Wiki/` — the LLM-maintained knowledge layer, highly interconnected via `[[wikilinks]]`:
+- `2_Wiki/` — the LLM-maintained, cross-linked knowledge layer:
   - `Concepts/` — evergreen, abstract ideas and theories
   - `Literature/` — summaries of specific papers, articles, or sources (1 source = 1 page)
   - `Syntheses/` — comparative analyses, cross-cutting insights, overviews
   - `Entities/` — specific concrete nouns (models, datasets, tools, people)
 - `3_Personal/` — long-term personal tracking
-- `4_Assets/` — read-only binary files (PDFs, images). Never modify. Reference via wikilinks.
+- `4_Assets/` — read-only binary files (PDFs, images). Never modify.
 - `5_Archives/` — completed or inactive work
 
 ---
@@ -38,21 +41,37 @@ Link to what exists instead.
 
 ## Page Types
 
-Every page in `2_Wiki/` must have YAML frontmatter:
+Every page in `2_Wiki/` must have YAML frontmatter. `type` is required; retain the other
+fields when they carry useful information:
 
 ```yaml
 ---
 type: concept | literature | synthesis | entity
-status: active | superseded | needs-review
+title: Human-readable title
+description: One-sentence summary
+tags: []
+status: draft | stable | deprecated
+review: current | needs-review
 confidence: high | medium | speculative
 updated: YYYY-MM-DD
+# Optional for time-sensitive knowledge
+stale_after: YYYY-MM-DD
+# Optional when the page derives from identifiable material
+sources:
+  - id: stable-source-id
+    resource: URL or vault-relative path
+    title: Source title
 ---
 ```
+
+Use standard Markdown links with full vault-relative paths, for example
+`[Temporal Reasoning](/2_Wiki/Concepts/Temporal%20Reasoning.md)`. For a claim tied to a
+`sources` entry, use a matching footnote such as `[^stable-source-id]`.
 
 Standard sections: `## Overview`, `## Key Facts`, `## Related`, `## Sources`.
 
 `## Overview` must be a coherent synthesis paragraph — not a stub or a list.
-`## Related` links must use full vault paths and explain the connection in one line.
+`## Related` links must use full vault-relative paths and explain the connection in one line.
 
 ---
 
@@ -81,8 +100,8 @@ Section headings used in `index.md`:
 
 ## Maintenance Rules
 
-1. **Contradictions** — if Source A conflicts with Source B, add `> [!warning] Conflicting claims: [description]` on the page and flag it in `log.md`.
-2. **Stale pages** — any `type: synthesis` page with `status: active` not updated in 90 days must be flagged `status: needs-review`.
+1. **Contradictions** — if Source A conflicts with Source B, add `> [!warning] Conflicting claims: [description]` on the page, set `review: needs-review`, and flag it in `log.md`.
+2. **Stale pages** — honor `stale_after` first. Otherwise, a synthesis not updated in 90 days must be flagged `review: needs-review`.
 3. **No orphans** — every wiki page must link back to a concept page or appear in `index.md`.
 
 ---
@@ -94,4 +113,4 @@ When ingesting a paper or source:
 1. Extract **Key Claims** — the core falsifiable argument.
 2. Extract **Methodology / Innovations** — what is technically novel.
 3. Note **Limitations** — when does the method fail or not apply.
-4. **Cross-link** — always link to the relevant concept page and related entities.
+4. **Cross-link** — link to the relevant concept page and related entities.

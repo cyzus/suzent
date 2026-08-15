@@ -84,3 +84,14 @@ def test_social_skill_routes_to_each_channel_reference():
 
         assert f"references/{channel}.md" in skill_body
         assert reference.is_file()
+
+
+def test_notebook_skill_exposes_optional_okf_profile():
+    notebook_dir = PROJECT_DIR / "skills" / "notebook"
+    skill_body = (notebook_dir / "SKILL.md").read_text(encoding="utf-8")
+    schema = (notebook_dir / "schema_example.md").read_text(encoding="utf-8")
+
+    assert "read `okf.md`" in skill_body
+    assert (notebook_dir / "okf.md").is_file()
+    assert "OKF-inspired profile" in schema
+    assert "okf_version" not in schema

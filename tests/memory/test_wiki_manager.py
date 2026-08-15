@@ -11,6 +11,9 @@ def test_ensure_structure_creates_required_files(tmp_path: Path):
     assert (tmp_path / "index.md").exists()
     assert (tmp_path / "log.md").exists()
     assert "# Notebook Schema" in (tmp_path / "schema.md").read_text(encoding="utf-8")
+    assert "OKF-inspired profile" in (tmp_path / "schema.md").read_text(
+        encoding="utf-8"
+    )
     assert "# Notebook Index" in (tmp_path / "index.md").read_text(encoding="utf-8")
     assert "# Notebook Log" in (tmp_path / "log.md").read_text(encoding="utf-8")
     assert manager is not None

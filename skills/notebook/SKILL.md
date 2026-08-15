@@ -15,6 +15,8 @@ that is the actual filename. The vault schema is the sole authority for director
 frontmatter, naming, indexes, staleness rules, and cross-link conventions. Do not copy
 defaults from this skill over a vault-specific rule.
 
+If the schema opts into the OKF-inspired profile, read `okf.md`. Do not apply it otherwise.
+
 If no notebook is configured, report that and skip notebook changes.
 
 ## Core files
@@ -24,8 +26,7 @@ If no notebook is configured, report that and skip notebook changes.
 - `log.md`: append-only operation history; never prepend, reorder, or edit an existing
   entry unless the schema explicitly defines a different log policy.
 
-Use Obsidian wikilinks and callouts only where the existing vault uses them. Prefer full
-vault-relative paths when links could be ambiguous.
+Use the schema's link style. Prefer full vault-relative paths when links could be ambiguous.
 
 ## Procedures
 

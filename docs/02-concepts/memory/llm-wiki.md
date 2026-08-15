@@ -2,7 +2,7 @@
 
 > Pattern originally described by Andrej Karpathy: [LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)
 
-The LLM Wiki is a structured knowledge base that lives alongside — but is separate from — the conversation memory system. It uses Obsidian-style markdown (wikilinks, callouts, frontmatter) and is organized according to a `schema.md` the agent reads before every operation.
+The LLM Wiki is a structured knowledge base that lives alongside — but is separate from — the conversation memory system. It uses Obsidian-compatible Markdown, frontmatter, and an optional OKF-inspired metadata profile, organized according to a `schema.md` the agent reads before every operation.
 
 ## How it works
 
@@ -21,7 +21,7 @@ The LLM Wiki is a structured knowledge base that lives alongside — but is sepa
 | **Content** | Episodic facts extracted from chats | Synthesized knowledge pages |
 | **Structure** | Daily logs + MEMORY.md + LanceDB | Obsidian vault (schema-defined folders) |
 | **Written by** | Automatic extraction | Agent directly via file tools |
-| **Searched via** | LanceDB hybrid search | GlobTool + GrepTool + wikilinks |
+| **Searched via** | LanceDB hybrid search | GlobTool + GrepTool + Markdown links |
 | **Lifetime** | Accumulates across conversations | Persistent; updated by agent on ingest |
 
 ## Operational skills
@@ -30,3 +30,4 @@ The notebook skill (under `skills/notebook/`) provides the agent with procedures
 
 - `ingest.md` — procedure for ingesting new content into the vault
 - `lint.md` — procedure for auditing and cleaning vault pages
+- `okf.md` — optional portable metadata and linking conventions enabled by the vault schema

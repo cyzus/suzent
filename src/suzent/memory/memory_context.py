@@ -321,13 +321,13 @@ DREAM_INSTRUCTIONS = f"""Consolidate the daily memory logs dated after {{start}}
       - New, non-conflicting                        -> add under the right section.
       - Correction (new entry shows old was wrong)  -> replace the wrong statement.
       - Change over time (both true at diff. times) -> rewrite as "Currently X (since {{end}});
-                                                       previously Y."  status: active.
+                                                       previously Y." Apply the schema's lifecycle fields.
       - Genuine conflict you can't confidently resolve -> keep the more recent claim, add a
         `> [!warning] Conflicting claims: <A> vs <B> (<dates>)` callout on the relevant
         content page (or create a conflict-review page in the schema's appropriate location
-        if no topical page exists) and set that page frontmatter status: needs-review.
+        if no topical page exists) and apply the schema's needs-review marker.
    c. Convert relative dates ("yesterday") to absolute.
-4. Add `## Related` wikilinks between related pages.
+4. Add `## Related` links using the schema's link style.
 5. Update index.md. Do NOT write the watermark to log.md — the runner records it.
 
 Return a one-paragraph summary of what you created, updated, superseded, or flagged.
@@ -356,17 +356,16 @@ LINT_INSTRUCTIONS = f"""Run an editorial lint pass over the notebook vault.
 1. Orient: read schema.md and index.md; glob_search {DREAM_NOTEBOOK_ROOT} for ALL pages (many live outside index.md).
 2. Contradictions: read related pages; where claims conflict, resolve with the better-supported/more
    recent claim. If it needs human judgement, add a `> [!warning] Contradiction: <desc>` callout on the
-   page AND prepend a `> [!alert] Contradiction found in [[path/page]]` line near the top of index.md.
+   page AND prepend a `> [!alert] Contradiction found in <schema-compliant link>` line near the top of index.md.
 3. Hierarchy: ensure entity/detail pages link up to their parent category; connect micro-islands to a
    higher-level concept or index so nothing is stranded.
-4. Broken links: for each index.md entry verify the file exists (fix/remove stale ones). Replace short-name
-   wikilinks with full vault paths per schema.
+4. Broken links: for each index.md entry verify the file exists (fix/remove stale ones). Repair internal
+   links according to the schema.
 5. Orphans: a page not in index.md and not linked anywhere — add to index.md if valuable, link it from a
    related page, or delete only if truly obsolete.
 6. Reciprocal links: if A links B in `## Related`, add B→A where meaningful.
-7. Decay: for Wiki/synthesis pages with `status: active` whose `updated:` is older than 90 days, set
-   `status: needs-review`.
-8. Gaps: note topics recurring in recent material with no synthesized page, and dangling wikilinks.
+7. Decay: apply page-level `stale_after` and the schema's fallback decay rule, using its review marker.
+8. Gaps: note recurring topics with no synthesized page and dangling internal links.
 
 Do NOT append the lint entry to log.md — the runner records it.
 Return a one-paragraph summary: contradictions found/resolved, links/orphans fixed, pages flagged, gaps.
