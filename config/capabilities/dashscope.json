@@ -237,10 +237,22 @@
       "mode": "chat"
     },
     "dashscope/deepseek-v4-flash": {
-      "mode": "chat"
+      "mode": "chat",
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 393216,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "dashscope/deepseek-v4-pro": {
-      "mode": "chat"
+      "mode": "chat",
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 393216,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "dashscope/qwen-image-2.0-pro-2026-04-22": {
       "mode": "chat"
@@ -267,7 +279,13 @@
       "mode": "chat"
     },
     "dashscope/glm-5.1": {
-      "mode": "chat"
+      "mode": "chat",
+      "max_input_tokens": 202745,
+      "max_output_tokens": 131072,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "dashscope/vanchin/deepseek-v3.1-terminus": {
       "mode": "chat"
@@ -777,7 +795,13 @@
       "mode": "chat"
     },
     "dashscope/qwen3.7-max": {
-      "mode": "chat"
+      "mode": "chat",
+      "max_input_tokens": 991808,
+      "max_output_tokens": 65536,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "dashscope/qwen3.5-livetranslate-flash-realtime-2026-05-19": {
       "mode": "chat"
@@ -792,7 +816,14 @@
       "mode": "chat"
     },
     "dashscope/qwen3.7-plus": {
-      "mode": "chat"
+      "mode": "chat",
+      "max_input_tokens": 991808,
+      "max_output_tokens": 65536,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "dashscope/sre-gpu-auto-handle": {
       "mode": "chat"
@@ -807,10 +838,23 @@
       "mode": "chat"
     },
     "dashscope/kimi-k2.7-code": {
-      "mode": "chat"
+      "mode": "chat",
+      "max_input_tokens": 229376,
+      "max_output_tokens": 16384,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "dashscope/glm-5.2": {
-      "mode": "chat"
+      "mode": "chat",
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 131072,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "dashscope/fun-asr-flash-2026-06-15": {
       "mode": "chat"
@@ -847,6 +891,25 @@
     },
     "dashscope/kimi/kimi-k3": {
       "mode": "chat"
+    },
+    "dashscope/deepseek-v4-flash-0731": {
+      "mode": "chat",
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 393216,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "dashscope/qwen3.8-max": {
+      "mode": "chat",
+      "max_input_tokens": 991808,
+      "max_output_tokens": 131072,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     }
   }
 }

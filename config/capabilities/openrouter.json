@@ -721,6 +721,12 @@
       "supports_function_calling": true,
       "supports_reasoning": true,
       "supports_prompt_caching": true
+    },
+    "openrouter/nvidia/nemotron-3.5-lightning": {
+      "mode": "chat",
+      "max_input_tokens": 262144,
+      "supports_function_calling": true,
+      "supports_reasoning": true
     }
   }
 }
