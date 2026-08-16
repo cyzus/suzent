@@ -3910,7 +3910,7 @@ wheels = [
 
 [[package]]
 name = "suzent"
-version = "0.7.11"
+version = "0.7.12"
 source = { editable = "." }
 dependencies = [
     { name = "crawl4ai" },

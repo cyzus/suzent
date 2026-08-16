@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.7.12] - 2026-08-16
+
+### 🚀 Added
+- Introduce OKF-inspired profile and update schema references
+
+### ⚡ Changed
+- Refactor social messaging guidelines and add platform-specific references
+- Improve social sessions and WeChat feedback
+- Add durable cross-device agent messaging (#102)
+- Add durable cross-session agent tools (#101)
+
+### 🐛 Fixed
+- Update vulnerable frontend and website dependencies
+
 ## [v0.7.11] - 2026-08-09
 
 ### 🚀 Added
