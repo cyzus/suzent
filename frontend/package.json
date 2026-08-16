@@ -22,6 +22,7 @@
     "@types/marked": "^5.0.2",
     "@types/qrcode": "^1.5.6",
     "clsx": "^2.1.1",
+    "dompurify": "^3.4.13",
     "marked": "^16.4.0",
     "mermaid": "^11.16.0",
     "qrcode": "^1.5.4",
@@ -38,16 +39,16 @@
     "@types/node": "^22.5.0",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
-    "@vitejs/plugin-react": "^4.3.1",
+    "@vitejs/plugin-react": "^6.0.5",
     "autoprefixer": "^10.4.19",
     "postcss": "^8.4.41",
     "tailwindcss": "^3.4.7",
     "typescript": "^5.5.4",
-    "vite": "^5.3.4",
-    "vitest": "^2.1.8"
+    "vite": "^8.2.1",
+    "vitest": "^4.1.10"
   },
   "overrides": {
-    "dompurify": ">=3.3.4"
+    "dompurify": "$dompurify"
   },
   "browserslist": [
     ">0.2%",

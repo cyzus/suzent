@@ -1,5 +1,6 @@
 import React from 'react';
 import { Message } from '../types/api';
+import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 
 // Configure marked with custom renderer to preserve whitespace in code blocks
@@ -26,8 +27,7 @@ marked.setOptions({
 });
 
 export const MessageBubble: React.FC<{ message: Message }> = ({ message }) => {
-  // Parse markdown
-  const htmlContent = marked.parse(message.content) as string;
+  const htmlContent = DOMPurify.sanitize(marked.parse(message.content) as string);
   
   return (
     <div className={message.role === 'user' ? 'text-right' : 'text-left'}>

@@ -19,7 +19,7 @@ const EDITOR_OPTIONS = {
   // undefined (reading 'isVisible')", which abort the surrounding React render
   // and leave tool UI (e.g. an approval prompt) stuck.
   stickyScroll: { enabled: false },
-  hover: { enabled: false },
+  hover: { enabled: 'off' },
   codeLens: false,
   occurrencesHighlight: 'off' as const,
   selectionHighlight: false,
