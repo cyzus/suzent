@@ -1129,7 +1129,7 @@ if __name__ == "__main__":
 
     ensure_app_data()
 
-    from suzent.config import DEFAULT_PORT
+    from suzent.config import DEFAULT_PORT, MESH_PORT
 
     _port_str = os.getenv("SUZENT_PORT", "").strip()
     port = int(_port_str) if _port_str else DEFAULT_PORT
@@ -1137,27 +1137,22 @@ if __name__ == "__main__":
     # The desktop app pins SUZENT_HOST=127.0.0.1 (loopback only). When the user
     # opts into the node mesh, bind all interfaces so peer devices can reach the
     # node WebSocket (still reachable on loopback for the local app).
-    try:
-        from suzent.config import CONFIG as _CFG
-        from suzent.nodes.discovery import resolve_mesh_bind
+    from suzent.config import CONFIG as _CFG
+    from suzent.nodes.discovery import resolve_mesh_bind
 
-        mesh_enabled = bool(getattr(_CFG, "node_lan_bind", False))
-        resolved_host, resolved_port = resolve_mesh_bind(
-            host, port, enabled=mesh_enabled, default_port=DEFAULT_PORT
-        )
-        if mesh_enabled:
-            if resolved_host != host:
-                logger.info(
-                    f"node_lan_bind enabled: binding {resolved_host} instead of {host} "
-                    f"so peer devices can reach this server"
-                )
-            if resolved_port != port:
-                logger.info(
-                    f"node_lan_bind enabled: using stable mesh port {DEFAULT_PORT}"
-                )
-        host, port = resolved_host, resolved_port
-    except Exception:
-        pass
+    mesh_enabled = bool(getattr(_CFG, "node_lan_bind", False))
+    original_host, original_port = host, port
+    host, port = resolve_mesh_bind(
+        host, port, enabled=mesh_enabled, default_port=MESH_PORT
+    )
+    if mesh_enabled:
+        if host != original_host:
+            logger.info(
+                f"node_lan_bind enabled: binding {host} instead of {original_host} "
+                f"so peer devices can reach this server"
+            )
+        if port != original_port:
+            logger.info(f"node_lan_bind enabled: using stable mesh port {MESH_PORT}")
 
     def write_port_file(effective_port: int) -> None:
         """Write the effective port to a file for CLI discovery."""
@@ -1215,6 +1210,7 @@ if __name__ == "__main__":
         _sock.set_inheritable(True)
         effective_port = _sock.getsockname()[1]
         report_port(effective_port)
+        app.state.server_host = host
         app.state.server_port = effective_port
         if port == 0:
             logger.info(f"Dynamic port assigned: {effective_port}")

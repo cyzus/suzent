@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import {
   ComputerDesktopIcon,
   MagnifyingGlassIcon,
-  ShieldCheckIcon,
   WifiIcon,
 } from '@heroicons/react/24/outline';
 
@@ -121,7 +121,7 @@ export function DevicesTab(): React.ReactElement {
   const [config, setConfig] = useState<NodeAuthConfig | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [restartHint, setRestartHint] = useState(false);
+  const [restarting, setRestarting] = useState(false);
   const [hostToken, setHostToken] = useState<string | null>(null);
   const [addrHost, setAddrHost] = useState<string | null>(null);
   const [connections, setConnections] = useState<OutboundConnection[]>([]);
@@ -215,10 +215,15 @@ export function DevicesTab(): React.ReactElement {
       setError(null);
       try {
         const next = await saveNodeConfig(updates);
-        if (next.restart_required) setRestartHint(true);
         // Preserve pairing-address fields the POST response doesn't echo.
         setConfig((prev) => ({ ...(prev ?? {}), ...next }));
+        if (next.restart_required) {
+          setRestarting(true);
+          await new Promise((resolve) => setTimeout(resolve, 150));
+          await invoke('restart_app');
+        }
       } catch (e) {
+        setRestarting(false);
         setError(e instanceof Error ? e.message : String(e));
       }
     },
@@ -417,10 +422,10 @@ export function DevicesTab(): React.ReactElement {
   const unmatchedGrants = grants.filter((g) => !matchedGrantIds.has(g.request_id));
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <SettingsHeader
         title="Devices"
-        subtitle="Companion devices and peer agents connected to this Suzent."
+        subtitle="Connect and control trusted devices."
       />
 
       {error && (
@@ -429,24 +434,21 @@ export function DevicesTab(): React.ReactElement {
         </div>
       )}
 
-      {/* ── Connection auth ─────────────────────────────────────────── */}
+      {restarting && (
+        <div className="border-2 border-brutal-black bg-brutal-yellow/40 px-3 py-2 text-xs font-bold uppercase">
+          Restarting Suzent to apply network access…
+        </div>
+      )}
+
+      {/* ── Network access ──────────────────────────────────────────── */}
       <SettingsCard>
         <SectionCardHeader
-          icon={<ShieldCheckIcon className="h-6 w-6" />}
+          icon={<WifiIcon className="h-6 w-6" />}
           iconTone="green"
-          title="Connection auth"
-          description="How companion devices are allowed to connect to this server."
+          title="Network access"
+          description="Allow connections from your trusted LAN or tailnet."
         />
-        <div className="space-y-4">
-          <div className="border-2 border-brutal-black bg-neutral-50 p-4 shadow-brutal-sm dark:bg-zinc-900">
-            <div className="font-bold uppercase text-sm">Auth mode</div>
-            <p className="text-xs text-neutral-500 dark:text-neutral-400 font-mono max-w-md">
-              New devices must be approved here before they can connect; once
-              approved they reconnect silently. Approve from the desktop app or
-              with <code>suzent node approve &lt;code&gt;</code> on the CLI.
-            </p>
-          </div>
-
+        <div className="space-y-3">
           <div className="grid gap-4 border-2 border-brutal-black bg-white p-4 shadow-brutal-sm dark:bg-zinc-900 md:grid-cols-[1fr_auto] md:items-center">
             <div className="flex min-w-0 gap-3">
               <div className="grid h-9 w-9 shrink-0 place-items-center border-2 border-brutal-black bg-brutal-blue text-white">
@@ -455,46 +457,46 @@ export function DevicesTab(): React.ReactElement {
               <div className="min-w-0">
                 <div className="font-bold uppercase text-sm">Reachable by other devices</div>
                 <p className="text-xs text-neutral-500 dark:text-neutral-400 font-mono max-w-md">
-                  Bind the server to all interfaces so peers can connect. Off by
-                  default the app listens on localhost only — required for
-                  cross-device nodes. Takes effect after a restart.
+                  Listen on port 25314. Changing this restarts Suzent automatically.
                 </p>
+                {!!config?.node_lan_bind && (
+                  <div className={`mt-1 text-[11px] font-bold uppercase ${config.binding_active ? 'text-green-600 dark:text-brutal-green' : 'text-brutal-red'}`}>
+                    {config.binding_active ? 'Ready on port 25314' : 'Restart needed'}
+                  </div>
+                )}
               </div>
             </div>
             <BrutalOnOff
               checked={!!config?.node_lan_bind}
+              disabled={restarting}
               onChange={(v) => updateConfig({ node_lan_bind: v })}
             />
           </div>
 
-          {restartHint && (
-            <div className="border-2 border-brutal-black dark:border-white bg-brutal-yellow/40 px-3 py-2 text-xs font-mono">
-              Restart Suzent on this device for the network-binding change to take effect.
-            </div>
-          )}
-
-          <div className="grid gap-4 border-2 border-brutal-black bg-white p-4 shadow-brutal-sm dark:bg-zinc-900 md:grid-cols-[1fr_auto] md:items-center">
-            <div className="min-w-0">
-              <div className="font-bold uppercase text-sm">Remote host access</div>
-              <p className="text-xs text-neutral-500 dark:text-neutral-400 font-mono max-w-md">
-                Mint a <span className="font-bold">full-access</span> token to operate this device remotely (everything, not just the agent). Granted control tokens stay scoped to the agent only.
+          <details>
+            <summary className="cursor-pointer text-xs font-bold uppercase text-neutral-500 hover:text-brutal-black dark:text-neutral-400 dark:hover:text-white">
+              Advanced access
+            </summary>
+            <div className="mt-2 grid gap-3 border-2 border-brutal-black bg-white p-3 dark:bg-zinc-900 md:grid-cols-[1fr_auto] md:items-center">
+              <p className="text-xs text-neutral-500 dark:text-neutral-400 font-mono">
+                Create a full-access token for remote administration.
               </p>
+              <BrutalButton
+                onClick={async () => {
+                  setError(null);
+                  try {
+                    const { token } = await createHostToken('Host access');
+                    setHostToken(token);
+                    await refresh();
+                  } catch (e) {
+                    setError(e instanceof Error ? e.message : String(e));
+                  }
+                }}
+              >
+                Create host token
+              </BrutalButton>
             </div>
-            <BrutalButton
-              onClick={async () => {
-                setError(null);
-                try {
-                  const { token } = await createHostToken('Host access');
-                  setHostToken(token);
-                  await refresh();
-                } catch (e) {
-                  setError(e instanceof Error ? e.message : String(e));
-                }
-              }}
-            >
-              Create host token
-            </BrutalButton>
-          </div>
+          </details>
           {hostToken && (
             <div className="border-2 border-brutal-red px-3 py-2 space-y-1">
               <div className="text-[11px] font-bold uppercase text-brutal-red">Copy now — shown once</div>
@@ -503,14 +505,11 @@ export function DevicesTab(): React.ReactElement {
                 <CopyButton value={hostToken} tone="red" />
                 <SettingsListAction onClick={() => setHostToken(null)}>Dismiss</SettingsListAction>
               </div>
-              <p className="text-[11px] text-neutral-400 font-mono">
-                On the remote device, send it as <code>Authorization: Bearer &lt;token&gt;</code>. Revoke it anytime under Devices.
-              </p>
             </div>
           )}
 
           <p className="border-l-4 border-brutal-yellow bg-brutal-yellow/20 px-3 py-2 text-[11px] text-neutral-600 dark:text-neutral-300 font-mono">
-            ws:// traffic is plaintext, and "reachable by other devices" exposes the HTTP API on your network — keep it to a trusted LAN or tailnet.
+            Use only on a trusted LAN or Tailscale network.
           </p>
         </div>
       </SettingsCard>
@@ -521,7 +520,7 @@ export function DevicesTab(): React.ReactElement {
           icon={<MagnifyingGlassIcon className="h-6 w-6" />}
           iconTone="blue"
           title="Discover"
-          description="Find other Suzent instances on your network and join them from here."
+          description="Find nearby or Tailscale devices."
           actions={
             <BrutalButton onClick={runDiscover} disabled={discovering} variant="dark">
               {discovering ? 'Scanning…' : 'Discover'}
@@ -529,11 +528,6 @@ export function DevicesTab(): React.ReactElement {
           }
         />
         <div className="space-y-4">
-          {!discovered && (
-            <p className="text-xs text-neutral-500 dark:text-neutral-400 font-mono">
-              Scan the LAN (mDNS) and your tailnet for Suzent peers. Discovery only finds the address — the remote still approves the connection.
-            </p>
-          )}
           {discovered && (
             <>
               {([
@@ -596,9 +590,7 @@ export function DevicesTab(): React.ReactElement {
               Pair manually
             </summary>
             <div className="space-y-2 mt-2">
-              <p className="text-[11px] text-neutral-400 font-mono">
-                Run this on the other device to make it a node of this one (useful for headless servers).
-              </p>
+              <p className="text-[11px] text-neutral-400 font-mono">Run on the other device.</p>
               {addresses.length > 1 && (
                 <BrutalSelect
                   value={selectedAddr?.host ?? ''}
@@ -623,7 +615,7 @@ export function DevicesTab(): React.ReactElement {
           icon={<ComputerDesktopIcon className="h-6 w-6" />}
           iconTone="yellow"
           title={`Devices (${deviceRows.length})`}
-          description="Every device this one is linked to. Approvals appear at the top. Each link shows two directions: whether you can trigger them, and whether they may trigger you."
+          description="Linked devices and permissions."
         />
         <div className="space-y-3">
           {/* Rejected inbound trigger attempts — quiet by default; expandable

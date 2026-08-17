@@ -158,6 +158,26 @@ fn start_update_and_restart(
 }
 
 #[tauri::command]
+fn restart_app(app_handle: tauri::AppHandle, state: State<AppState>) -> Result<(), String> {
+    {
+        let mut backend_guard = state
+            .backend
+            .lock()
+            .map_err(|_| "Failed to lock backend state".to_string())?;
+        if let Some(mut backend) = backend_guard.take() {
+            backend.stop();
+        }
+    }
+
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(250));
+        app_handle.restart();
+    });
+
+    Ok(())
+}
+
+#[tauri::command]
 fn bootstrap_status(app_handle: tauri::AppHandle) -> BootstrapStatus {
     build_bootstrap_status(Some(&app_handle))
 }
@@ -577,6 +597,7 @@ fn main() {
             get_backend_startup_error,
             check_for_update,
             start_update_and_restart,
+            restart_app,
             bootstrap_status,
             bootstrap_manifest,
             run_bootstrap_stage,

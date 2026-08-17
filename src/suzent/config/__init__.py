@@ -12,6 +12,7 @@ from ..logger import get_logger
 from suzent.permissions.loader import load_permission_overrides
 
 DEFAULT_PORT: int = int(os.getenv("SUZENT_PORT", "25314"))
+MESH_PORT: int = 25314
 DEFAULT_HOST: str = os.getenv("SUZENT_HOST", "localhost")
 
 

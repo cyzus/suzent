@@ -491,6 +491,7 @@ export interface PairingAddress {
 export interface NodeAuthConfig {
   nodes_enabled: boolean;
   node_lan_bind?: boolean;
+  binding_active?: boolean;
   lan_host?: string;
   port?: number;
   gateway_url?: string;

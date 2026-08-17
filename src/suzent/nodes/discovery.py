@@ -38,7 +38,7 @@ def resolve_mesh_bind(
     """Use a predictable externally reachable endpoint for the device mesh."""
     if not enabled:
         return host, port
-    return (host if host in ("0.0.0.0", "::") else "0.0.0.0", port or default_port)
+    return (host if host in ("0.0.0.0", "::") else "0.0.0.0", default_port)
 
 
 def _local_ip() -> str:
