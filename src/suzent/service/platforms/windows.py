@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import time
 from pathlib import Path
@@ -20,6 +21,7 @@ except ImportError:  # pragma: no cover - imported by cross-platform unit tests
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 RUN_VALUE = "Suzent Service"
 SUPERVISOR_PATH = RUNTIME_DIR / "service-supervisor.cmd"
+LAUNCHER_PATH = RUNTIME_DIR / "service-launcher.pyw"
 STOP_REQUEST_PATH = RUNTIME_DIR / "service-stop.request"
 
 
@@ -27,6 +29,10 @@ class WindowsServiceManager(PlatformServiceManager):
     @property
     def definition_path(self) -> Path:
         return SUPERVISOR_PATH
+
+    @property
+    def launcher_path(self) -> Path:
+        return LAUNCHER_PATH
 
     def _read_autostart(self) -> str | None:
         if winreg is None:
@@ -60,6 +66,37 @@ class WindowsServiceManager(PlatformServiceManager):
     def is_installed(self) -> bool:
         return self.definition_path.exists() and self._read_autostart() is not None
 
+    def _autostart_command(self) -> str:
+        pythonw = self.python_executable.with_name("pythonw.exe")
+        if os.name == "nt" and not pythonw.is_file():
+            raise RuntimeError(f"Windowless Python launcher not found at {pythonw}")
+        return subprocess.list2cmdline([str(pythonw), str(self.launcher_path)])
+
+    def _write_hidden_launcher(self) -> None:
+        script = (
+            "import subprocess\n\n"
+            "creationflags = (\n"
+            '    getattr(subprocess, "CREATE_NO_WINDOW", 0)\n'
+            '    | getattr(subprocess, "DETACHED_PROCESS", 0)\n'
+            '    | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)\n'
+            ")\n"
+            "subprocess.Popen(\n"
+            f'    ["cmd.exe", "/d", "/c", {str(self.definition_path)!r}],\n'
+            "    stdin=subprocess.DEVNULL,\n"
+            "    stdout=subprocess.DEVNULL,\n"
+            "    stderr=subprocess.DEVNULL,\n"
+            "    close_fds=True,\n"
+            "    creationflags=creationflags,\n"
+            ")\n"
+        )
+        self.launcher_path.write_text(script, encoding="utf-8")
+
+    def _ensure_hidden_autostart(self) -> None:
+        command = self._autostart_command()
+        self._write_hidden_launcher()
+        if self._read_autostart() != command:
+            self._set_autostart(command)
+
     def install(self) -> None:
         self.definition_path.parent.mkdir(parents=True, exist_ok=True)
         python = subprocess.list2cmdline([str(self.python_executable)])
@@ -88,18 +125,18 @@ class WindowsServiceManager(PlatformServiceManager):
             "goto run\n"
         )
         self.definition_path.write_text(script, encoding="utf-8")
-        command = subprocess.list2cmdline(
-            ["cmd.exe", "/d", "/c", str(self.definition_path)]
-        )
-        self._set_autostart(command)
+        self._write_hidden_launcher()
+        self._set_autostart(self._autostart_command())
 
     def uninstall(self) -> None:
         self._delete_autostart()
         self.stop()
         self.definition_path.unlink(missing_ok=True)
+        self.launcher_path.unlink(missing_ok=True)
         STOP_REQUEST_PATH.unlink(missing_ok=True)
 
     def start(self) -> None:
+        self._ensure_hidden_autostart()
         if read_process_state() is not None:
             return
         STOP_REQUEST_PATH.unlink(missing_ok=True)
