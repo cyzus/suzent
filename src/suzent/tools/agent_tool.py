@@ -271,6 +271,12 @@ class AgentTool(Tool):
                 "acp_agent_id is required when runtime='acp'.",
             )
 
+        if runtime == "acp" and model_override:
+            return ToolResult.error_result(
+                ToolErrorCode.INVALID_ARGUMENT,
+                "model_override is not supported when runtime='acp'.",
+            )
+
         # ── Resolve effective tool list ───────────────────────────────────────
         if model_override is not None:
             model_override = model_override.strip() or None
@@ -291,60 +297,68 @@ class AgentTool(Tool):
                     },
                 )
 
-        if tools_allowed and tools_denied:
-            return ToolResult.error_result(
-                ToolErrorCode.INVALID_ARGUMENT,
-                "tools_allowed and tools_denied are mutually exclusive. Use one or the other.",
-            )
-
-        if tools_denied is not None:
-            # Denylist path: start from all available tools, subtract denied
-            from suzent.tools.registry import list_available_tools
-
-            resolved_denied, unrecognized_denied = _resolve_tool_names(tools_denied)
-            if unrecognized_denied:
+        if runtime == "acp":
+            effective_tools = []
+            subagent_type = None
+        else:
+            if tools_allowed and tools_denied:
                 return ToolResult.error_result(
                     ToolErrorCode.INVALID_ARGUMENT,
-                    "Some denied tool names were not recognized.",
-                    metadata={"unrecognized_tools": unrecognized_denied},
+                    "tools_allowed and tools_denied are mutually exclusive. Use one or the other.",
                 )
-            all_tools = list_available_tools()
-            denied_set = set(resolved_denied)
-            effective_tools = [t for t in all_tools if t not in denied_set]
-        elif subagent_type is not None or tools_allowed is not None:
-            # Whitelist path
-            effective_tools = list(tools_allowed or [])
-            if subagent_type is not None:
-                profile_tools = _SUBAGENT_PROFILES.get(subagent_type)
-                if profile_tools is None:
+
+            if tools_denied is not None:
+                # Denylist path: start from all available tools, subtract denied
+                from suzent.tools.registry import list_available_tools
+
+                resolved_denied, unrecognized_denied = _resolve_tool_names(tools_denied)
+                if unrecognized_denied:
                     return ToolResult.error_result(
                         ToolErrorCode.INVALID_ARGUMENT,
-                        f"Unknown subagent_type '{subagent_type}'. "
-                        f"Available: {', '.join(sorted(_SUBAGENT_PROFILES))}",
+                        "Some denied tool names were not recognized.",
+                        metadata={"unrecognized_tools": unrecognized_denied},
                     )
-                for t in profile_tools:
-                    if t not in effective_tools:
-                        effective_tools.append(t)
-        else:
-            return ToolResult.error_result(
-                ToolErrorCode.INVALID_ARGUMENT,
-                "Specify subagent_type, tools_allowed, or tools_denied to define the sub-agent's capabilities.",
-            )
+                all_tools = list_available_tools()
+                denied_set = set(resolved_denied)
+                effective_tools = [t for t in all_tools if t not in denied_set]
+            elif subagent_type is not None or tools_allowed is not None:
+                # Whitelist path
+                effective_tools = list(tools_allowed or [])
+                if subagent_type is not None:
+                    profile_tools = _SUBAGENT_PROFILES.get(subagent_type)
+                    if profile_tools is None:
+                        return ToolResult.error_result(
+                            ToolErrorCode.INVALID_ARGUMENT,
+                            f"Unknown subagent_type '{subagent_type}'. "
+                            f"Available: {', '.join(sorted(_SUBAGENT_PROFILES))}",
+                        )
+                    for t in profile_tools:
+                        if t not in effective_tools:
+                            effective_tools.append(t)
+            else:
+                return ToolResult.error_result(
+                    ToolErrorCode.INVALID_ARGUMENT,
+                    "Specify subagent_type, tools_allowed, or tools_denied to define the sub-agent's capabilities.",
+                )
 
         # ── Validate tool names before spawning ───────────────────────────────
-        resolved, unrecognized = _resolve_tool_names(effective_tools)
-        if effective_tools and not resolved:
-            from suzent.tools.registry import list_available_tools as _list
+        if runtime == "acp":
+            resolved = []
+            unrecognized = []
+        else:
+            resolved, unrecognized = _resolve_tool_names(effective_tools)
+            if effective_tools and not resolved:
+                from suzent.tools.registry import list_available_tools as _list
 
-            available = ", ".join(_list())
-            return ToolResult.error_result(
-                ToolErrorCode.INVALID_ARGUMENT,
-                "None of the provided tool names were recognized.",
-                metadata={
-                    "unrecognized_tools": unrecognized,
-                    "available_tools": available,
-                },
-            )
+                available = ", ".join(_list())
+                return ToolResult.error_result(
+                    ToolErrorCode.INVALID_ARGUMENT,
+                    "None of the provided tool names were recognized.",
+                    metadata={
+                        "unrecognized_tools": unrecognized,
+                        "available_tools": available,
+                    },
+                )
 
         task = await spawn_subagent(
             parent_chat_id=parent_chat_id,

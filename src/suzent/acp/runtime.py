@@ -60,6 +60,13 @@ async def stream_acp_turn(
         )
         latest = db.get_chat(chat_id)
         existing = list(latest.messages or []) if latest else []
+
+        if message and not message.strip():
+            yield _sse(
+                {"type": "RUN_ERROR", "message": "Empty user input is not allowed"}
+            )
+            return
+
         if message and not (
             existing
             and existing[-1].get("role") == "user"
@@ -108,6 +115,12 @@ async def stream_acp_turn(
                     }
                 )
         text = "".join(parts)
+        if not text.strip():
+            yield _sse(
+                {"type": "RUN_ERROR", "message": "ACP agent produced no output text"}
+            )
+            return
+
         yield _sse({"type": "TEXT_MESSAGE_END", "messageId": message_id})
         if text:
             db.append_chat_message(chat_id, {"role": "assistant", "content": text})
