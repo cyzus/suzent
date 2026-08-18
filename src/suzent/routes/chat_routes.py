@@ -240,6 +240,12 @@ async def chat(request: Request) -> StreamingResponse:
 
         processor = ChatProcessor()
         config_override = build_agent_config(config, require_social_tool=False)
+        persisted_chat = get_database().get_chat(chat_id) if chat_id else None
+        effective_runtime = str(
+            config.get("runtime")
+            or ((persisted_chat.config or {}).get("runtime") if persisted_chat else "")
+            or "native"
+        ).lower()
 
         # When the frontend initiates a heartbeat SSE stream, claim the pending slot and
         # update heartbeat_last_run_at so the backend deferred fallback doesn't double-run.
@@ -302,16 +308,21 @@ async def chat(request: Request) -> StreamingResponse:
             except Exception as _hb_err:
                 logger.warning(f"Heartbeat pre-processing failed: {_hb_err}")
 
-        generator = processor.process_turn(
-            chat_id=chat_id,
-            user_id=CONFIG.user_id,
-            message_content=message,
-            files=files_list,
-            file_mentions=file_mentions,
-            config_override=config_override,
-            resume_approvals=resume_approvals,
-            is_heartbeat=is_heartbeat,
-        )
+        if effective_runtime == "acp":
+            from suzent.acp.runtime import stream_acp_turn
+
+            generator = stream_acp_turn(chat_id, message, {**config, **config_override})
+        else:
+            generator = processor.process_turn(
+                chat_id=chat_id,
+                user_id=CONFIG.user_id,
+                message_content=message,
+                files=files_list,
+                file_mentions=file_mentions,
+                config_override=config_override,
+                resume_approvals=resume_approvals,
+                is_heartbeat=is_heartbeat,
+            )
 
         if stream:
             return StreamingResponse(
@@ -383,6 +394,12 @@ async def chat_send(request: Request) -> JSONResponse:
 
     processor = ChatProcessor()
     config_override = build_agent_config(config, require_social_tool=False)
+    persisted_chat = get_database().get_chat(chat_id)
+    effective_runtime = str(
+        config.get("runtime")
+        or ((persisted_chat.config or {}).get("runtime") if persisted_chat else "")
+        or "native"
+    ).lower()
     if is_background_streaming(chat_id):
         return JSONResponse({"error": "Chat is already streaming"}, status_code=409)
 
@@ -393,15 +410,22 @@ async def chat_send(request: Request) -> JSONResponse:
 
     async def _run() -> None:
         try:
-            generator = processor.process_turn(
-                chat_id=chat_id,
-                user_id=CONFIG.user_id,
-                message_content=message,
-                files=files_list,
-                file_mentions=file_mentions,
-                config_override=config_override,
-                resume_approvals=resume_approvals or [],
-            )
+            if effective_runtime == "acp":
+                from suzent.acp.runtime import stream_acp_turn
+
+                generator = stream_acp_turn(
+                    chat_id, message, {**config, **config_override}
+                )
+            else:
+                generator = processor.process_turn(
+                    chat_id=chat_id,
+                    user_id=CONFIG.user_id,
+                    message_content=message,
+                    files=files_list,
+                    file_mentions=file_mentions,
+                    config_override=config_override,
+                    resume_approvals=resume_approvals or [],
+                )
             async for chunk in generator:
                 await stream_queue.put(chunk)
         except Exception as exc:
@@ -591,6 +615,13 @@ async def stop_chat(request: Request) -> JSONResponse:
 
     reason = data.get("reason") or "Stream stopped by user"
     success = stop_stream(chat_id, reason)
+    if not success:
+        try:
+            from suzent.acp import get_acp_manager
+
+            success = await get_acp_manager().cancel(chat_id)
+        except Exception:
+            success = False
 
     if not success:
         return JSONResponse({"status": "no_active_stream"}, status_code=404)
@@ -935,6 +966,12 @@ async def delete_chat(request: Request) -> JSONResponse:
 
         cleanup_shell_session(chat_id)
         clear_suppressed_tools(chat_id)
+        try:
+            from suzent.acp import get_acp_manager
+
+            await get_acp_manager().close(chat_id)
+        except Exception:
+            pass
         for child_id in child_ids:
             cleanup_shell_session(child_id)
             clear_suppressed_tools(child_id)

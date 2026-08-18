@@ -569,6 +569,10 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   const isStreamingThis = isStreaming && isLastMessage;
   const effectiveParts = aguiParts ?? message.parts;
   const hasParts = effectiveParts && effectiveParts.length > 0;
+  const isAcp = message.model?.includes('claude-code-cli');
+  const isBypassed = message.model?.includes('bypassed');
+  const showIdentity = !isAcp && !isBypassed;
+
   const isThinking = isStreamingThis && !message.content && !hasParts;
   const workedDurationSeconds = useMemo(
     () => getTimestampDeltaSeconds(previousMessageTimestamp, message.timestamp),
@@ -690,11 +694,18 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   const isHistory = !isLastMessage && !isPendingApproval;
 
   const badgeContainer = isHistory ? (
-    <div className="mb-2 mt-1 flex items-center gap-1.5 text-neutral-400 dark:text-neutral-500">
-      <RobotIcon className="w-4 h-4" />
-      <span className="text-[10px] font-mono font-bold uppercase tracking-wider">
-        Suzent
-      </span>
+    <div className="mb-2 mt-1 flex flex-col gap-0.5">
+      <div className="flex items-center gap-1.5 text-neutral-400 dark:text-neutral-500">
+        <RobotIcon className="w-4 h-4" />
+        <span className="text-[10px] font-mono font-bold uppercase tracking-wider">
+          Suzent
+        </span>
+      </div>
+      {showIdentity && (
+        <div className="text-[9px] font-mono text-neutral-400 uppercase tracking-widest">
+          SUZENT RUNTIME · {message.model || 'model'}
+        </div>
+      )}
     </div>
   ) : (
     <div className={`
@@ -712,6 +723,16 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
           hasError={hasError}
           isPendingApproval={isPendingApproval}
         />
+        {isAcp && (
+          <div className="absolute top-1 left-1 bg-white border border-brutal-black px-1 text-[8px] font-bold uppercase">
+            EXTERNAL RUNTIME · Claude Code CLI · via ACP
+          </div>
+        )}
+        {isBypassed && (
+          <div className="absolute top-1 left-1 bg-white border border-brutal-black px-1 text-[8px] font-bold uppercase">
+            Suzent native model bypassed
+          </div>
+        )}
       </div>
     </div>
   );

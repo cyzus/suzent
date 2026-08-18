@@ -184,6 +184,24 @@ class AgentTool(Tool):
                 ),
             ),
         ] = None,
+        runtime: Annotated[
+            Literal["native", "acp"],
+            Field(
+                default="native",
+                description="Execution runtime. Use 'acp' for a configured local ACP agent.",
+            ),
+        ] = "native",
+        acp_agent_id: Annotated[
+            Optional[str],
+            Field(
+                default=None,
+                description="ACP registry agent id; required when runtime='acp'.",
+            ),
+        ] = None,
+        acp_session_id: Annotated[
+            Optional[str],
+            Field(default=None, description="Optional ACP session id to resume."),
+        ] = None,
     ) -> ToolResult:
         """
         Launch a sub-agent to handle a task autonomously.
@@ -247,11 +265,17 @@ class AgentTool(Tool):
                 "isolation_target_path is required when isolation='worktree'.",
             )
 
+        if runtime == "acp" and not (acp_agent_id or "").strip():
+            return ToolResult.error_result(
+                ToolErrorCode.INVALID_ARGUMENT,
+                "acp_agent_id is required when runtime='acp'.",
+            )
+
         # ── Resolve effective tool list ───────────────────────────────────────
         if model_override is not None:
             model_override = model_override.strip() or None
 
-        if model_override:
+        if model_override and runtime != "acp":
             enabled_models = get_enabled_models_from_db()
             if model_override not in enabled_models:
                 models_list = ", ".join(f"'{m}'" for m in enabled_models)
@@ -333,6 +357,9 @@ class AgentTool(Tool):
             isolation=isolation,
             isolation_target_path=isolation_target_path,
             subagent_type=subagent_type,
+            runtime=runtime,
+            acp_agent_id=(acp_agent_id or "").strip() or None,
+            acp_session_id=(acp_session_id or "").strip() or None,
         )
 
         tool_list = ", ".join(resolved) if resolved else "(none)"

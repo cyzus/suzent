@@ -77,6 +77,9 @@ class CustomEventName(str, Enum):
     # Agent-activated tool notification
     TOOL_ACTIVATED = "tool_activated"
 
+    # Raw Agent Client Protocol session update
+    ACP_SESSION_UPDATE = "acp.session_update"
+
 
 # Backwards compatibility aliases
 TEXT_MESSAGE_CONTENT = StreamEventType.TEXT_MESSAGE_CONTENT

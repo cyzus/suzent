@@ -1,4 +1,4 @@
-import { ChatGPTLoginResponse, ChatGPTStatusResponse, ConfigOptions, PermissionMode } from '../types/api';
+import { AcpAgentDescriptor, ChatGPTLoginResponse, ChatGPTStatusResponse, ConfigOptions, PermissionMode } from '../types/api';
 import type { PermissionPrompt } from '../types/agui';
 import socialExampleConfig from '../../../config/social.example.json';
 
@@ -440,6 +440,98 @@ export async function fetchBackendConfig(): Promise<ConfigOptions | null> {
   } catch {
     return null;
   }
+}
+
+// ─── Agent Client Protocol (ACP) ─────────────────────────────────────
+
+export async function fetchAcpAgents(): Promise<AcpAgentDescriptor[]> {
+  const res = await fetch(`${getApiBase()}/acp/agents`);
+  if (!res.ok) throw new Error(`Failed to load ACP agents: ${res.status}`);
+  const data = await res.json();
+  return (data.agents || []).map((a: any) => ({
+    id: a.id,
+    name: a.name,
+    description: a.description,
+    install_command: a.install_command,
+    login_command: a.login_command,
+  }));
+}
+
+export type ACPAgent = AcpAgentDescriptor & { available?: boolean };
+
+export interface ACPSession {
+  id: string;
+  agent_id: string;
+  chat_id?: string | null;
+  title?: string | null;
+  cwd?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+function unwrapList<T>(payload: unknown, key: string): T[] {
+  if (Array.isArray(payload)) return payload as T[];
+  if (payload && typeof payload === 'object') {
+    const value = (payload as Record<string, unknown>)[key];
+    if (Array.isArray(value)) return value as T[];
+  }
+  return [];
+}
+
+function unwrapAcpSession(payload: unknown): ACPSession {
+  const record = payload && typeof payload === 'object'
+    ? payload as Record<string, unknown>
+    : {};
+  const nested = record.session && typeof record.session === 'object'
+    ? record.session as Record<string, unknown>
+    : record;
+  const id = nested.id ?? nested.session_id;
+  if (typeof id !== 'string' || !id) throw new Error('ACP session response did not include a session id');
+  return {
+    ...(nested as unknown as ACPSession),
+    id,
+    agent_id: String(nested.agent_id ?? ''),
+    chat_id: typeof nested.chat_id === 'string' ? nested.chat_id : null,
+  };
+}
+
+export async function probeAcpAgent(id: string): Promise<Record<string, unknown>> {
+  const res = await fetch(`${getApiBase()}/acp/agents/${encodeURIComponent(id)}/probe`, { method: 'POST' });
+  if (!res.ok) throw new Error(`Failed to probe agent: ${res.status}`);
+  return res.json();
+}
+
+export async function fetchAcpSessions(agentId: string): Promise<ACPSession[]> {
+  const res = await fetch(`${getApiBase()}/acp/sessions?agent_id=${encodeURIComponent(agentId)}`);
+  if (!res.ok) throw new Error(`Failed to load ACP sessions: ${res.status}`);
+  return unwrapList<ACPSession>(await res.json(), 'sessions').map(session => ({
+    ...session,
+    id: session.id || (session as ACPSession & { session_id?: string }).session_id || '',
+  })).filter(session => !!session.id);
+}
+
+export async function createAcpSession(agentId: string, chatId: string): Promise<ACPSession> {
+  const res = await fetch(`${getApiBase()}/acp/sessions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ agent_id: agentId, chat_id: chatId }),
+  });
+  if (!res.ok) throw new Error((await res.text()) || `Failed to create ACP session: ${res.status}`);
+  return unwrapAcpSession(await res.json());
+}
+
+export async function resumeAcpSession(
+  agentId: string,
+  sessionId: string,
+  chatId: string,
+): Promise<ACPSession> {
+  const res = await fetch(`${getApiBase()}/acp/sessions/resume`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ agent_id: agentId, session_id: sessionId, chat_id: chatId }),
+  });
+  if (!res.ok) throw new Error((await res.text()) || `Failed to resume ACP session: ${res.status}`);
+  return unwrapAcpSession(await res.json());
 }
 
 // ─── Nodes / Devices ─────────────────────────────────────────────────

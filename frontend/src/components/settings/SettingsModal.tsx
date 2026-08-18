@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 
 import { useChatStore } from '../../hooks/useChatStore';
 import { ApiProvider, CustomProviderPayload, deleteCustomProvider, fetchApiKeys, fetchRoleModels, fetchRoleSuggestions, fetchSocialConfig, fetchMcpServers, saveApiKeys, saveCustomProvider, saveGlobalSandboxConfig, saveRoleModels, saveSocialConfig, saveUserPreferences, SocialConfig, UserConfig, verifyProvider } from '../../lib/api';
+import { AcpAgentsTab } from './AcpAgentsTab';
 import { AppearanceTab } from './AppearanceTab';
 import { AboutTab } from './AboutTab';
 import { AutomationTab } from './AutomationTab';
@@ -45,7 +46,7 @@ interface SettingsModalProps {
 }
 
 type ProviderTab = 'credentials' | 'models';
-type CategoryType = 'providers' | 'roles' | 'memory' | 'security' | 'social' | 'devices' | 'mcp' | 'automation' | 'service' | 'data' | 'usage' | 'appearance' | 'about';
+type CategoryType = 'providers' | 'roles' | 'memory' | 'security' | 'social' | 'devices' | 'mcp' | 'acp-agents' | 'automation' | 'service' | 'data' | 'usage' | 'appearance' | 'about';
 
 export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }: SettingsModalProps): React.ReactElement | null {
   const { refreshBackendConfig, backendConfig } = useChatStore();
@@ -493,6 +494,13 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }
       )
     },
     {
+      id: 'acp-agents', label: 'ACP Agents', icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+        </svg>
+      )
+    },
+    {
       id: 'automation', label: t('settings.categories.automation'), icon: (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -688,6 +696,15 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }
                       serverList={mcpServerList}
                       onServerListChange={setMcpServerList}
                       onMcpServersRefresh={setMcpServers}
+                    />
+                  )}
+
+                  {activeCategory === 'acp-agents' && (
+                    <AcpAgentsTab
+                      onNewSession={(agentId) => {
+                        window.dispatchEvent(new CustomEvent('suzent:new-acp-chat', { detail: { agentId } }));
+                        handleClose();
+                      }}
                     />
                   )}
 
