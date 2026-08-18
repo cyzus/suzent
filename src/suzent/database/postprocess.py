@@ -200,7 +200,10 @@ class PostprocessOperationsMixin:
             statement = (
                 select(PostprocessJobModel)
                 .where(PostprocessJobModel.chat_id == chat_id)
-                .order_by(PostprocessJobModel.created_at.desc())
+                .order_by(
+                    PostprocessJobModel.created_at.desc(),
+                    PostprocessJobModel.id.desc(),
+                )
                 .limit(limit)
             )
             return session.exec(statement).all()

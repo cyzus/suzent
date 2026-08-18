@@ -206,21 +206,43 @@ class SchedulerBrain(BaseBrain):
         asyncio.create_task(self._execute_job(job_id))
 
     def drain_notifications(self) -> list:
-        """Drain and return all pending notifications."""
-        notifications = list(self._pending_notifications)
+        """Drain durable notifications, with the in-memory queue as fallback."""
+        notifications = []
+        try:
+            persisted = get_database().drain_background_notifications()
+            notifications.extend(
+                {
+                    "id": item.id,
+                    "job_id": item.job_id,
+                    "job_name": item.title,
+                    "result": item.result,
+                    "source": item.source,
+                    "timestamp": item.created_at.isoformat(),
+                }
+                for item in persisted
+            )
+        except Exception as exc:
+            logger.warning(f"Failed to drain durable notifications: {exc}")
+        notifications.extend(self._pending_notifications)
         self._pending_notifications.clear()
         return notifications
 
     def add_notification(self, source: str, result: str) -> None:
-        """Queue a status-bar notification from a non-cron source (e.g. goal mode)."""
-        self._pending_notifications.append(
-            {
-                "job_id": None,
-                "job_name": source,
-                "result": result[:500],
-                "timestamp": datetime.now().isoformat(),
-            }
-        )
+        """Persist a notification from a non-cron source (e.g. goal mode)."""
+        try:
+            get_database().create_background_notification(
+                source=source, title=source, result=result
+            )
+        except Exception as exc:
+            logger.warning(f"Failed to persist background notification: {exc}")
+            self._pending_notifications.append(
+                {
+                    "job_id": None,
+                    "job_name": source,
+                    "result": result[:500],
+                    "timestamp": datetime.now().isoformat(),
+                }
+            )
 
     # -- Internal ------------------------------------------------------------
 
@@ -314,14 +336,23 @@ class SchedulerBrain(BaseBrain):
             db.set_last_result_at(chat_id)
 
             if job.delivery_mode == "announce" and response_text:
-                self._pending_notifications.append(
-                    {
-                        "job_id": job.id,
-                        "job_name": job.name,
-                        "result": response_text[:500],
-                        "timestamp": datetime.now().isoformat(),
-                    }
-                )
+                try:
+                    db.create_background_notification(
+                        source="cron",
+                        title=job.name,
+                        result=response_text,
+                        job_id=job.id,
+                    )
+                except Exception as exc:
+                    logger.warning(f"Failed to persist cron notification: {exc}")
+                    self._pending_notifications.append(
+                        {
+                            "job_id": job.id,
+                            "job_name": job.name,
+                            "result": response_text[:500],
+                            "timestamp": datetime.now().isoformat(),
+                        }
+                    )
 
         except Exception as e:
             logger.error(f"Cron job {job_id} execution failed: {e}")

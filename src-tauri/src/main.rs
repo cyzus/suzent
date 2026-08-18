@@ -135,7 +135,12 @@ fn start_update_and_restart(
     let repo_dir = backend::find_install_workspace_dir();
     let uv_exe = backend::find_uv();
     let ui_exe = find_relaunch_exe(&repo_dir).map_err(|e| e.to_string())?;
-    let script = write_update_script(&repo_dir, &uv_exe, &ui_exe)?;
+    let restart_service = get_service_status()
+        .ok()
+        .and_then(|payload| serde_json::from_str::<serde_json::Value>(&payload).ok())
+        .and_then(|payload| payload.get("installed").and_then(|value| value.as_bool()))
+        .unwrap_or(false);
+    let script = write_update_script(&repo_dir, &uv_exe, &ui_exe, restart_service)?;
 
     {
         let mut backend_guard = state
@@ -267,6 +272,122 @@ fn frontend_ready(app_handle: tauri::AppHandle) -> Result<(), String> {
         .set_focus()
         .map_err(|e| format!("Failed to focus main window: {}", e))?;
     Ok(())
+}
+
+fn run_service_cli(args: &[&str]) -> Result<String, String> {
+    let repo_dir = backend::find_install_workspace_dir();
+    let python = backend::find_venv_python(&repo_dir)
+        .ok_or_else(|| "Suzent Python environment is not installed.".to_string())?;
+    let mut command = Command::new(python);
+    command
+        .args(["-m", "suzent.cli", "service"])
+        .args(args)
+        .current_dir(repo_dir)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    hide_command_window(&mut command);
+    let output = command
+        .output()
+        .map_err(|error| format!("Failed to run Suzent service command: {}", error))?;
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    if output.status.success() {
+        return Ok(stdout);
+    }
+    Err(if stderr.is_empty() { stdout } else { stderr })
+}
+
+fn extract_json_payload(output: &str) -> Result<String, String> {
+    let start = output
+        .find('{')
+        .ok_or_else(|| "Service status did not contain JSON.".to_string())?;
+    let payload = &output[start..];
+    serde_json::from_str::<serde_json::Value>(payload)
+        .map_err(|error| format!("Invalid service status response: {}", error))?;
+    Ok(payload.to_string())
+}
+
+#[tauri::command]
+fn get_service_status() -> Result<String, String> {
+    extract_json_payload(&run_service_cli(&["status", "--json"])?)
+}
+
+#[tauri::command]
+fn set_service_enabled(
+    app_handle: tauri::AppHandle,
+    state: State<AppState>,
+    enabled: bool,
+) -> Result<String, String> {
+    if enabled {
+        run_service_cli(&["install"])?;
+    } else {
+        let was_attached = {
+            let backend = state
+                .backend
+                .lock()
+                .map_err(|_| "Failed to lock backend state".to_string())?;
+            backend
+                .as_ref()
+                .map(|process| !process.is_owned())
+                .unwrap_or(false)
+        };
+        run_service_cli(&["uninstall"])?;
+        if was_attached {
+            // The UI was using the service that was just disabled. Wait for the
+            // fixed port to close, then restore the legacy owned-child mode so
+            // disabling background operation does not strand the open window.
+            for _ in 0..30 {
+                if BackendProcess::attach_if_healthy(25314).is_none() {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            let (port, backend) = get_backend_config(&app_handle)?;
+            {
+                let mut current = state
+                    .backend
+                    .lock()
+                    .map_err(|_| "Failed to lock backend state".to_string())?;
+                *current = Some(backend);
+            }
+            publish_backend_port(&app_handle, port)?;
+        }
+    }
+    get_service_status()
+}
+
+#[tauri::command]
+fn restart_background_service() -> Result<String, String> {
+    run_service_cli(&["restart"])?;
+    get_service_status()
+}
+
+#[tauri::command]
+fn get_service_log_path() -> Result<String, String> {
+    Ok(backend::find_data_dir()
+        .join("runtime")
+        .join("server.log")
+        .display()
+        .to_string())
+}
+
+fn publish_backend_port(app_handle: &tauri::AppHandle, port: u16) -> Result<(), String> {
+    let window = app_handle
+        .get_webview_window("main")
+        .ok_or_else(|| "Main window not found".to_string())?;
+    let js = format!(
+        r#"
+window.__SUZENT_BACKEND_PORT__ = {port};
+try {{ sessionStorage.setItem('SUZENT_PORT', '{port}'); }} catch (e) {{}}
+try {{ localStorage.setItem('SUZENT_PORT', '{port}'); }} catch (e) {{}}
+"#
+    );
+    window
+        .eval(&js)
+        .map_err(|error| format!("Failed to inject backend port: {}", error))?;
+    app_handle
+        .emit("backend-ready", port)
+        .map_err(|error| format!("Failed to publish backend port: {}", error))
 }
 
 fn find_bootstrap_installer_name() -> &'static str {
@@ -458,7 +579,12 @@ fn find_relaunch_exe(repo_dir: &Path) -> Result<PathBuf, std::io::Error> {
     std::env::current_exe()
 }
 
-fn write_update_script(repo_dir: &Path, uv_exe: &Path, ui_exe: &Path) -> Result<PathBuf, String> {
+fn write_update_script(
+    repo_dir: &Path,
+    uv_exe: &Path,
+    ui_exe: &Path,
+    restart_service: bool,
+) -> Result<PathBuf, String> {
     let runtime_dir = backend::find_data_dir().join("runtime");
     std::fs::create_dir_all(&runtime_dir)
         .map_err(|e| format!("Failed to create runtime dir: {}", e))?;
@@ -466,22 +592,43 @@ fn write_update_script(repo_dir: &Path, uv_exe: &Path, ui_exe: &Path) -> Result<
     if cfg!(windows) {
         let script = runtime_dir.join("suzent-update-and-restart.cmd");
         let python_exe = repo_dir.join(".venv").join("Scripts").join("python.exe");
+        let service_stop = if restart_service {
+            format!(
+                "\"{}\" -m suzent.cli service stop >nul 2>&1\r\n",
+                python_exe.display()
+            )
+        } else {
+            String::new()
+        };
+        let service_start = if restart_service {
+            format!(
+                "\"{}\" -m suzent.cli service start >nul 2>&1\r\n",
+                python_exe.display()
+            )
+        } else {
+            String::new()
+        };
         let contents = format!(
             "@echo off\r\n\
 title Suzent Update\r\n\
 timeout /t 1 /nobreak >nul\r\n\
 cd /d \"{}\"\r\n\
+{}\
 \"{}\" -m suzent.cli update --relaunch \"{}\"\r\n\
-if errorlevel 1 (\r\n\
+set \"update_status=%errorlevel%\"\r\n\
+{}\
+if not \"%update_status%\"==\"0\" (\r\n\
   echo.\r\n\
   echo Suzent update failed. Press any key to close.\r\n\
   pause >nul\r\n\
-  exit /b 1\r\n\
+  exit /b %update_status%\r\n\
 )\r\n\
 exit /b 0\r\n",
             repo_dir.display(),
+            service_stop,
             python_exe.display(),
-            ui_exe.display()
+            ui_exe.display(),
+            service_start,
         );
         std::fs::File::create(&script)
             .and_then(|mut file| file.write_all(contents.as_bytes()))
@@ -490,12 +637,30 @@ exit /b 0\r\n",
     }
 
     let script = runtime_dir.join("suzent-update-and-restart.sh");
+    let service_stop = if restart_service {
+        format!(
+            "\"{}\" run --no-sync suzent service stop >/dev/null 2>&1\n",
+            uv_exe.display()
+        )
+    } else {
+        String::new()
+    };
+    let service_start = if restart_service {
+        format!(
+            "\"{}\" run --no-sync suzent service start >/dev/null 2>&1\n",
+            uv_exe.display()
+        )
+    } else {
+        String::new()
+    };
     let contents = format!(
         "#!/bin/sh\n\
 sleep 1\n\
 cd \"{}\" || exit 1\n\
+{}\
 \"{}\" run --no-sync suzent update --relaunch \"{}\"\n\
 status=$?\n\
+{}\
 if [ \"$status\" -ne 0 ]; then\n\
   printf '\\nSuzent update failed. Press Enter to close.'\n\
   read _\n\
@@ -503,8 +668,10 @@ if [ \"$status\" -ne 0 ]; then\n\
 fi\n\
 exit 0\n",
         repo_dir.display(),
+        service_stop,
         uv_exe.display(),
-        ui_exe.display()
+        ui_exe.display(),
+        service_start,
     );
     std::fs::File::create(&script)
         .and_then(|mut file| file.write_all(contents.as_bytes()))
@@ -559,7 +726,7 @@ fn main() {
 
     // CLI mode: delegate to `uv run suzent <args>` in the repo directory.
     if args.len() > 1 {
-        let repo_dir = backend::find_repo_dir();
+        let repo_dir = backend::find_install_workspace_dir();
         let uv_exe = backend::find_uv();
 
         let mut command = std::process::Command::new(&uv_exe);
@@ -618,7 +785,11 @@ fn main() {
             run_bootstrap_stage,
             set_install_workspace,
             retry_backend_start,
-            frontend_ready
+            frontend_ready,
+            get_service_status,
+            set_service_enabled,
+            restart_background_service,
+            get_service_log_path
         ])
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
@@ -672,12 +843,21 @@ fn get_backend_config(app_handle: &tauri::AppHandle) -> Result<(u16, BackendProc
         .parse::<u16>()
         .unwrap_or(0);
 
-    // 0 means "read from server.port file written by the backend at startup"
+    // 0 means "read from server.port file written by the backend at startup".
+    // A running background service owns its own lifetime, so attaching here
+    // must never cause it to be stopped when the desktop window exits.
     let resolved = if port == 0 {
         read_port_file().unwrap_or(25314)
     } else {
         port
     };
+    if let Some(backend) = BackendProcess::attach_if_healthy(resolved) {
+        println!(
+            "Dev mode: attached to existing backend on port {}",
+            resolved
+        );
+        return Ok((resolved, backend));
+    }
     println!("Dev mode: connecting to backend on port {}", resolved);
     println!("If nothing shows up, start the backend first with: suzent serve");
     Ok((resolved, BackendProcess::new()))
@@ -694,12 +874,58 @@ fn get_backend_config(app_handle: &tauri::AppHandle) -> Result<(u16, BackendProc
         return Err("bootstrap-required".to_string());
     }
 
-    let port = std::env::var("SUZENT_PORT")
+    let configured_port = std::env::var("SUZENT_PORT")
         .unwrap_or_else(|_| "0".to_string())
         .parse::<u16>()
         .unwrap_or(0);
 
+    // Prefer an already-running background service (fixed port 25314) or an
+    // explicitly supplied backend. Attached backends are not child processes,
+    // so BackendProcess::drop leaves them running when the UI closes.
+    let attach_port = if configured_port == 0 {
+        25314
+    } else {
+        configured_port
+    };
+    if let Some(backend) = BackendProcess::attach_if_healthy(attach_port) {
+        println!(
+            "Attached to existing Suzent service on port {}",
+            attach_port
+        );
+        return Ok((attach_port, backend));
+    }
+
     let mut bp = BackendProcess::new();
-    let actual_port = bp.start_with_uv(&uv_exe, &repo_dir, port)?;
+    let actual_port = bp.start_with_uv(&uv_exe, &repo_dir, configured_port)?;
     Ok((actual_port, bp))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::write_update_script;
+    use std::fs;
+    use std::path::Path;
+
+    #[test]
+    fn update_script_restores_service_before_propagating_failure() {
+        let temp = tempfile::tempdir().expect("temporary directory");
+        std::env::set_var("SUZENT_DATA_DIR", temp.path());
+        let script = write_update_script(
+            Path::new("C:/Suzent Test"),
+            Path::new("C:/Tools/uv"),
+            Path::new("C:/Suzent Test/suzent-ui"),
+            true,
+        )
+        .expect("update script");
+        let contents = fs::read_to_string(script).expect("script contents");
+        std::env::remove_var("SUZENT_DATA_DIR");
+
+        let restart = contents.find("service start").expect("service restart");
+        let failure = if cfg!(windows) {
+            contents.find("if not").expect("failure branch")
+        } else {
+            contents.find("if [").expect("failure branch")
+        };
+        assert!(restart < failure);
+    }
 }

@@ -26,10 +26,12 @@ from .models import (
     TaskModel,
     UserPreferencesModel,
     VolumeMetadataModel,
+    BackgroundNotificationModel,
 )
 
 __all__ = [
     "AgentInboxMessageModel",
+    "BackgroundNotificationModel",
     "ApiKeyModel",
     "ChatCostSummaryModel",
     "ChatDatabase",

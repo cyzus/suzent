@@ -8,14 +8,23 @@ This module handles all memory endpoints including:
 """
 
 import json
+from typing import Any
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from suzent.logger import get_logger
 from suzent.config import CONFIG
-from suzent.memory.lifecycle import get_memory_manager
+from suzent.memory.lifecycle import get_memory_manager, init_memory_system
 
 logger = get_logger(__name__)
+
+
+async def _get_or_initialize_memory_manager() -> Any:
+    manager = get_memory_manager()
+    if manager is None:
+        await init_memory_system()
+        manager = get_memory_manager()
+    return manager
 
 
 async def get_core_memory(request: Request) -> JSONResponse:
@@ -33,7 +42,7 @@ async def get_core_memory(request: Request) -> JSONResponse:
         user_id = request.query_params.get("user_id", CONFIG.user_id)
         chat_id = request.query_params.get("chat_id")
 
-        manager = get_memory_manager()
+        manager = await _get_or_initialize_memory_manager()
         if not manager:
             return JSONResponse(
                 {"error": "Memory system not initialized"}, status_code=503
@@ -87,7 +96,7 @@ async def update_core_memory_block(request: Request) -> JSONResponse:
                 status_code=400,
             )
 
-        manager = get_memory_manager()
+        manager = await _get_or_initialize_memory_manager()
         if not manager:
             return JSONResponse(
                 {"error": "Memory system not initialized"}, status_code=503
@@ -132,7 +141,7 @@ async def search_archival_memory(request: Request) -> JSONResponse:
         limit = min(int(request.query_params.get("limit", "20")), 100)
         offset = int(request.query_params.get("offset", "0"))
 
-        manager = get_memory_manager()
+        manager = await _get_or_initialize_memory_manager()
         if not manager:
             return JSONResponse(
                 {"error": "Memory system not initialized"}, status_code=503
@@ -210,7 +219,7 @@ async def delete_archival_memory(request: Request) -> JSONResponse:
         if not memory_id:
             return JSONResponse({"error": "Missing memory_id"}, status_code=400)
 
-        manager = get_memory_manager()
+        manager = await _get_or_initialize_memory_manager()
         if not manager:
             return JSONResponse(
                 {"error": "Memory system not initialized"}, status_code=503
@@ -274,7 +283,7 @@ async def get_memory_stats(request: Request) -> JSONResponse:
     try:
         user_id = request.query_params.get("user_id", CONFIG.user_id)
 
-        manager = get_memory_manager()
+        manager = await _get_or_initialize_memory_manager()
         if not manager:
             return JSONResponse(
                 {"error": "Memory system not initialized"}, status_code=503

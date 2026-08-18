@@ -15,6 +15,7 @@ from suzent.core.stream_registry import (
 
 def teardown_function():
     pending_auto_approvals.clear()
+    stream_registry._pending_auto_approval_times.clear()
     background_queues.clear()
     stream_registry._background_turn_locks.clear()
 
@@ -35,6 +36,28 @@ def test_merge_pending_auto_approvals_ignores_empty_inputs():
     merge_pending_auto_approvals("", {"a": True})
     merge_pending_auto_approvals("chat-2", {})
     assert pending_auto_approvals == {}
+
+
+def test_pending_auto_approvals_are_bounded(monkeypatch):
+    monkeypatch.setattr(stream_registry, "_MAX_PENDING_AUTO_APPROVAL_CHATS", 3)
+
+    for index in range(5):
+        merge_pending_auto_approvals(f"chat-{index}", {"tool": True})
+
+    assert len(pending_auto_approvals) == 3
+    assert set(pending_auto_approvals) == {"chat-2", "chat-3", "chat-4"}
+
+
+def test_background_stream_queue_drops_oldest_at_capacity():
+    queue = stream_registry._BusStreamQueue("bounded", maxsize=2)
+
+    queue.put_nowait("first")
+    queue.put_nowait("second")
+    queue.put_nowait("third")
+
+    assert queue.qsize() == 2
+    assert queue.get_nowait() == "second"
+    assert queue.get_nowait() == "third"
 
 
 def test_try_register_background_stream_rejects_active_producer():

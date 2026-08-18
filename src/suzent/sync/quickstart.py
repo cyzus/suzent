@@ -118,9 +118,11 @@ def quickstart_github_sync(
     remote_url = public_clone_url(username, slug)
     actions.append(f"Signed in to GitHub as {username}")
 
+    cloned_existing_remote = False
     if not (target / ".git").exists():
         if remote_url and _remote_repo_exists(token, username, slug):
             _clone_existing_repo(target, remote_url, remote, token, actions)
+            cloned_existing_remote = True
         else:
             target.mkdir(parents=True, exist_ok=True)
             _init_repo(target)
@@ -141,11 +143,12 @@ def quickstart_github_sync(
 
     if remote_url and username:
         _ensure_remote(target, remote, remote_url, actions)
-        created, install_required = _create_github_repo_api(
-            target, token, username, slug, branch_name, warnings
-        )
-        if created:
-            actions.append(created)
+        if not cloned_existing_remote:
+            created, install_required = _create_github_repo_api(
+                target, token, username, slug, branch_name, warnings
+            )
+            if created:
+                actions.append(created)
 
     detected_branch = _detect_branch(target)
     if detected_branch:

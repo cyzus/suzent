@@ -24,6 +24,7 @@ from suzent.cli.mcp import mcp_app
 from suzent.cli.node import node_app
 from suzent.cli.pair import pair_app
 from suzent.cli.skill import skill_app
+from suzent.cli.service import service_app
 
 app = typer.Typer(help="Suzent CLI - Your Digital Co-worker Manager")
 
@@ -54,6 +55,7 @@ app.add_typer(heartbeat_app, name="heartbeat")
 app.add_typer(pair_app, name="pair")
 app.add_typer(mcp_app, name="mcp")
 app.add_typer(skill_app, name="skill")
+app.add_typer(service_app, name="service")
 
 if __name__ == "__main__":
     app()

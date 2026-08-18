@@ -22,15 +22,44 @@ import secrets
 import subprocess
 import tempfile
 import threading
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Optional
+from typing import BinaryIO, Dict, Optional
 
 from suzent.logger import get_logger
 
 logger = get_logger(__name__)
 
 _ID_BYTES = 6  # → 12 hex chars
+_MAX_ACTIVE_PROCESSES = 64
+_MAX_RETAINED_PROCESSES = 256
+_COMPLETED_PROCESS_TTL_SECONDS = 10 * 60
+_MAX_OUTPUT_BYTES = 16 * 1024 * 1024
+
+
+def _capture_output(stream: BinaryIO, output_file: Path, max_bytes: int) -> None:
+    """Drain a child pipe while keeping its on-disk output strictly bounded."""
+    marker = f"\n[output truncated: {max_bytes} byte capture limit reached]\n".encode()
+    content_limit = max(0, max_bytes - len(marker))
+    written = 0
+    truncated = False
+    with output_file.open("wb") as handle:
+        while chunk := stream.read(64 * 1024):
+            if truncated:
+                continue
+            available = content_limit - written
+            if len(chunk) <= available:
+                handle.write(chunk)
+                written += len(chunk)
+                handle.flush()
+                continue
+            if available > 0:
+                handle.write(chunk[:available])
+            handle.write(marker[: max_bytes - min(content_limit, max_bytes)])
+            handle.flush()
+            truncated = True
+    stream.close()
 
 
 @dataclass
@@ -39,6 +68,9 @@ class _HostProcess:
     output_file: Path
     chat_id: str
     exit_code: Optional[int] = field(default=None)
+    created_at: float = field(default_factory=time.monotonic)
+    completed_at: Optional[float] = field(default=None)
+    capture_thread: threading.Thread | None = field(default=None)
     _file_handle = None  # kept open so Popen can write
 
     def poll(self) -> Optional[int]:
@@ -47,6 +79,9 @@ class _HostProcess:
             rc = self.process.poll()
             if rc is not None:
                 self.exit_code = rc
+                self.completed_at = time.monotonic()
+                if self.capture_thread is not None:
+                    self.capture_thread.join(timeout=1)
         return self.exit_code
 
     def kill(self) -> bool:
@@ -115,38 +150,55 @@ class HostProcessRegistry:
         stdout and stderr are merged into a single temp file so the model
         can poll them with a single byte offset (same as CC's approach).
         """
+        self.sweep()
+        with self._lock:
+            active_count = sum(
+                1 for entry in self._processes.values() if entry.poll() is None
+            )
+        if active_count >= _MAX_ACTIVE_PROCESSES:
+            raise RuntimeError(
+                f"Host background process limit reached ({_MAX_ACTIVE_PROCESSES})."
+            )
+
         process_id = secrets.token_hex(_ID_BYTES)
 
-        # Temp file for merged output — persists until explicitly evicted
+        # Temp file for merged output — persists until explicitly evicted.
+        # A dedicated pipe-draining thread prevents a noisy command from growing
+        # this file without bound or blocking once the capture limit is reached.
         out_fd, out_path = tempfile.mkstemp(prefix=f"suzent_proc_{process_id}_")
         out_file = Path(out_path)
+        os.close(out_fd)
 
         try:
             proc = subprocess.Popen(
                 cmd,
                 cwd=cwd,
                 env=env,
-                stdout=out_fd,
-                stderr=out_fd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                bufsize=0,
                 # Detach from our process group so it survives if the parent
                 # thread exits, matching CC's non-blocking semantics.
                 close_fds=True,
             )
         except Exception:
-            os.close(out_fd)
             out_file.unlink(missing_ok=True)
             raise
-        finally:
-            # Close our copy of the fd; the child still has its own
-            try:
-                os.close(out_fd)
-            except OSError:
-                pass
+
+        assert proc.stdout is not None
+        capture_thread = threading.Thread(
+            target=_capture_output,
+            args=(proc.stdout, out_file, _MAX_OUTPUT_BYTES),
+            name=f"suzent-output-{process_id}",
+            daemon=True,
+        )
+        capture_thread.start()
 
         entry = _HostProcess(
             process=proc,
             output_file=out_file,
             chat_id=chat_id,
+            capture_thread=capture_thread,
         )
 
         with self._lock:
@@ -169,6 +221,58 @@ class HostProcessRegistry:
             "done": exit_code is not None,
             "exit_code": exit_code,
         }
+
+    def sweep(self) -> int:
+        """Evict expired completed entries and cap retained process metadata."""
+        now = time.monotonic()
+        removed: list[_HostProcess] = []
+        with self._lock:
+            completed: list[tuple[str, _HostProcess]] = []
+            for process_id, entry in list(self._processes.items()):
+                poll = getattr(entry, "poll", None)
+                if poll is None or poll() is None:
+                    continue
+                completed.append((process_id, entry))
+                completed_at = getattr(entry, "completed_at", None)
+                if completed_at is not None and (
+                    now - completed_at >= _COMPLETED_PROCESS_TTL_SECONDS
+                ):
+                    self._processes.pop(process_id, None)
+                    removed.append(entry)
+
+            overflow = len(self._processes) - _MAX_RETAINED_PROCESSES
+            if overflow > 0:
+                retained_completed = [
+                    pair for pair in completed if pair[0] in self._processes
+                ]
+                retained_completed.sort(
+                    key=lambda pair: getattr(pair[1], "completed_at", now) or now
+                )
+                for process_id, entry in retained_completed[:overflow]:
+                    self._processes.pop(process_id, None)
+                    removed.append(entry)
+
+        for entry in removed:
+            entry.output_file.unlink(missing_ok=True)
+        if removed:
+            logger.debug(
+                f"[HostProcessRegistry] evicted {len(removed)} completed processes"
+            )
+        return len(removed)
+
+    def shutdown(self) -> None:
+        """Terminate every owned process and remove its temporary output."""
+        with self._lock:
+            entries = list(self._processes.items())
+        for process_id, entry in entries:
+            try:
+                entry.kill()
+                entry.poll()
+            except Exception:
+                pass
+            with self._lock:
+                self._processes.pop(process_id, None)
+            entry.output_file.unlink(missing_ok=True)
 
     def kill(self, chat_id: str, process_id: str) -> bool:
         """Send SIGTERM. Returns True if signal was sent."""

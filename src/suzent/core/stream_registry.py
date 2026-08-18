@@ -19,6 +19,7 @@ Bus event shapes:
 """
 
 import asyncio
+import time
 from typing import Any, Dict, Optional, Set
 
 
@@ -86,6 +87,28 @@ def get_background_turn_lock(chat_id: str) -> asyncio.Lock:
 # Cache policy-decided approvals for suspended streams so resume payloads
 # can merge explicit user decisions with backend auto-decisions.
 pending_auto_approvals: Dict[str, Dict[str, bool]] = {}
+_pending_auto_approval_times: Dict[str, float] = {}
+_MAX_PENDING_AUTO_APPROVAL_CHATS = 512
+_PENDING_AUTO_APPROVAL_TTL_SECONDS = 60 * 60
+
+
+def _prune_pending_auto_approvals(now: float) -> None:
+    expired = [
+        chat_id
+        for chat_id, updated_at in _pending_auto_approval_times.items()
+        if now - updated_at > _PENDING_AUTO_APPROVAL_TTL_SECONDS
+    ]
+    for chat_id in expired:
+        pending_auto_approvals.pop(chat_id, None)
+        _pending_auto_approval_times.pop(chat_id, None)
+
+    overflow = len(pending_auto_approvals) - _MAX_PENDING_AUTO_APPROVAL_CHATS
+    if overflow <= 0:
+        return
+    oldest = sorted(_pending_auto_approval_times, key=_pending_auto_approval_times.get)
+    for chat_id in oldest[:overflow]:
+        pending_auto_approvals.pop(chat_id, None)
+        _pending_auto_approval_times.pop(chat_id, None)
 
 
 def stop_stream(chat_id: str, reason: str = "Stream stopped by user") -> bool:
@@ -102,15 +125,20 @@ def merge_pending_auto_approvals(chat_id: str, approvals: Dict[str, bool]) -> No
     """Merge auto-approval decisions for a chat into the pending cache."""
     if not chat_id or not approvals:
         return
+    now = time.monotonic()
+    _prune_pending_auto_approvals(now)
     existing = pending_auto_approvals.get(chat_id, {})
     existing.update(approvals)
     pending_auto_approvals[chat_id] = existing
+    _pending_auto_approval_times[chat_id] = now
+    _prune_pending_auto_approvals(now)
 
 
 def pop_pending_auto_approvals(chat_id: str) -> Dict[str, bool]:
     """Return and clear cached auto-approvals for a chat."""
     if not chat_id:
         return {}
+    _pending_auto_approval_times.pop(chat_id, None)
     return pending_auto_approvals.pop(chat_id, {})
 
 
@@ -205,7 +233,7 @@ class _BusStreamQueue:
     else delegates to the inner asyncio.Queue.
     """
 
-    def __init__(self, chat_id: str, maxsize: int = 0):
+    def __init__(self, chat_id: str, maxsize: int = 4096):
         self.chat_id = chat_id
         self._q: asyncio.Queue = asyncio.Queue(maxsize=maxsize)
         # Cleared when the None sentinel is put so is_background_streaming()
@@ -221,13 +249,17 @@ class _BusStreamQueue:
         if item is None:
             self.producer_active = False
             self.done_event.set()
-        await self._q.put(item)
+        if self._q.full():
+            self._q.get_nowait()
+        self._q.put_nowait(item)
         _fan_chunk_to_bus(self.chat_id, item)
 
     def put_nowait(self, item) -> None:
         if item is None:
             self.producer_active = False
             self.done_event.set()
+        if self._q.full():
+            self._q.get_nowait()
         self._q.put_nowait(item)
         _fan_chunk_to_bus(self.chat_id, item)
 

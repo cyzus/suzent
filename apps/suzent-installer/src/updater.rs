@@ -55,6 +55,50 @@ impl Drop for UpdateLock {
     }
 }
 
+struct ServiceRestartGuard {
+    root: PathBuf,
+    enabled: bool,
+    stopped: bool,
+}
+
+impl ServiceRestartGuard {
+    fn detect(root: &Path) -> Self {
+        Self {
+            root: root.to_path_buf(),
+            enabled: service_definition_exists(),
+            stopped: false,
+        }
+    }
+
+    fn stop(&mut self) -> Result<(), String> {
+        if !self.enabled {
+            return Ok(());
+        }
+        run_service_command(&self.root, "stop")?;
+        self.stopped = true;
+        Ok(())
+    }
+
+    fn restart(&mut self) -> Result<(), String> {
+        if !self.stopped {
+            return Ok(());
+        }
+        run_service_command(&self.root, "start")?;
+        self.stopped = false;
+        Ok(())
+    }
+}
+
+impl Drop for ServiceRestartGuard {
+    fn drop(&mut self) {
+        if self.stopped {
+            if let Err(error) = run_service_command(&self.root, "start") {
+                eprintln!("failed to restore Suzent service after update: {error}");
+            }
+        }
+    }
+}
+
 struct UpdatePaths {
     root: PathBuf,
     state_dir: PathBuf,
@@ -146,6 +190,7 @@ fn run_inner(args: &[String], repair: bool) -> Result<(), String> {
     }
 
     let paths = UpdatePaths::new(root, &target_tag);
+    let mut service_guard = ServiceRestartGuard::detect(&paths.root);
     fs::create_dir_all(&paths.state_dir).map_err(display_io("create update state directory"))?;
     let _lock = acquire_lock(&paths.state_dir)?;
     write_status(&paths, "preflight", 5, "Preparing update", &target_tag)?;
@@ -195,6 +240,7 @@ fn run_inner(args: &[String], repair: bool) -> Result<(), String> {
         "Stopping Suzent processes",
         &target_tag,
     )?;
+    service_guard.stop()?;
     stop_suzent_processes(&paths.root)?;
     transaction.phase = "switching".to_string();
     write_journal(&paths, &transaction)?;
@@ -234,12 +280,63 @@ fn run_inner(args: &[String], repair: bool) -> Result<(), String> {
         &target_tag,
     )?;
     cleanup_transaction_files(&paths);
+    service_guard.restart()?;
 
     if let Some(relaunch) = flag_value(args, "--relaunch") {
         launch_app(&PathBuf::from(relaunch), &paths.root)?;
     }
     println!("Suzent is ready on {target_tag}");
     Ok(())
+}
+
+#[cfg(windows)]
+fn service_definition_exists() -> bool {
+    use winreg::enums::HKEY_CURRENT_USER;
+    use winreg::RegKey;
+
+    RegKey::predef(HKEY_CURRENT_USER)
+        .open_subkey(r"Software\Microsoft\Windows\CurrentVersion\Run")
+        .and_then(|key| key.get_value::<String, _>("Suzent Service"))
+        .is_ok()
+}
+
+#[cfg(not(windows))]
+fn service_definition_exists() -> bool {
+    let Some(home) = dirs::home_dir() else {
+        return false;
+    };
+    if cfg!(target_os = "macos") {
+        return home
+            .join("Library/LaunchAgents/com.suzent.service.plist")
+            .exists();
+    }
+    home.join(".config/systemd/user/suzent.service").exists()
+}
+
+fn service_python(root: &Path) -> PathBuf {
+    if cfg!(windows) {
+        root.join(".venv/Scripts/python.exe")
+    } else {
+        root.join(".venv/bin/python")
+    }
+}
+
+fn run_service_command(root: &Path, action: &str) -> Result<(), String> {
+    let python = service_python(root);
+    if !python.exists() {
+        return Err(format!(
+            "service Python executable is missing: {}",
+            python.display()
+        ));
+    }
+    run_checked(
+        Command::new(python)
+            .args(["-m", "suzent.cli", "service", action])
+            .current_dir(root)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null()),
+        action,
+    )
 }
 
 fn prepare_target(paths: &UpdatePaths, target_tag: &str) -> Result<(), String> {

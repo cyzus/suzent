@@ -6,6 +6,7 @@ from .cron import CronOperationsMixin
 from .goals import GoalOperationsMixin
 from .inbox import AgentInboxOperationsMixin
 from .migrations import DatabaseMigrationMixin
+from .notifications import BackgroundNotificationOperationsMixin
 from .postprocess import PostprocessOperationsMixin
 from .projects import ProjectOperationsMixin
 from .search import ChatSearchMixin
@@ -23,6 +24,7 @@ class ChatDatabase(
     ChatSearchMixin,
     PostprocessOperationsMixin,
     SettingsOperationsMixin,
+    BackgroundNotificationOperationsMixin,
     CronOperationsMixin,
     ChatDatabaseBase,
 ):
