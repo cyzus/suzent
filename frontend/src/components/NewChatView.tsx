@@ -6,6 +6,7 @@ import { useI18n } from '../i18n';
 import { useProjects } from '../hooks/useProjects';
 import { fetchAcpAgents, fetchAcpSessions, type ACPSession } from '../lib/api';
 import { AcpAgentDescriptor } from '../types/api';
+import { RuntimeProvenance } from './RuntimeProvenance';
 
 interface NewChatViewProps {
     input: string;
@@ -141,8 +142,9 @@ const ProjectPicker: React.FC = () => {
     );
 };
 
-import { RuntimeProvenance } from './RuntimeProvenance';
-// ... (previous imports)
+import { BrutalSelect } from './BrutalSelect';
+
+// ... (other imports)
 
 const ACPSelector: React.FC<{
     config: ChatConfig;
@@ -210,34 +212,40 @@ const ACPSelector: React.FC<{
         }
     };
 
-    const selectClass = 'h-9 min-w-0 border-2 border-brutal-black bg-white dark:bg-zinc-800 dark:text-white px-2 text-xs font-bold focus:outline-none';
     return (
-        <div className="mb-3 flex flex-col items-center gap-2">
-            <RuntimeProvenance config={config} />
-            <div className="inline-flex border-2 border-brutal-black bg-white dark:bg-zinc-800 shadow-[2px_2px_0_0_#000]">
-                <button type="button" onClick={setNative} className={`px-3 py-1.5 text-xs font-extrabold uppercase ${!isAcp ? 'bg-brutal-black text-white dark:bg-white dark:text-black' : 'dark:text-white'}`}>
-                    {t('newChat.acp.native')}
-                </button>
-                <button type="button" onClick={() => agents[0] && selectAgent(agents[0].id)} className={`border-l-2 border-brutal-black px-3 py-1.5 text-xs font-extrabold uppercase ${isAcp ? 'bg-brutal-black text-white dark:bg-white dark:text-black' : 'dark:text-white'}`}>
-                    ACP
-                </button>
-            </div>
-            {isAcp && (
-                <div className="flex w-full max-w-lg gap-2">
-                    <select aria-label={t('newChat.acp.agent')} value={config.acp_agent_id || ''} onChange={event => selectAgent(event.target.value)} className={`${selectClass} flex-1`}>
-                        {agents.length === 0 && <option value={config.acp_agent_id}>{config.acp_agent_name || t('newChat.acp.noAgents')}</option>}
-                        {agents.map(agent => <option key={agent.id} value={agent.id}>{agent.name || agent.id}</option>)}
-                    </select>
-                    <select aria-label={t('newChat.acp.resume')} value="" onChange={event => void selectSession(event.target.value)} disabled={busy || sessions.length === 0} className={`${selectClass} flex-1 disabled:opacity-50`}>
-                        <option value="">{busy ? t('newChat.acp.resuming') : t('newChat.acp.resume')}</option>
-                        {sessions.map(session => (
-                            <option key={session.id} value={session.id}>
-                                {session.title || session.cwd || session.id}{session.chat_id ? ` · ${t('newChat.acp.bound')}` : ''}
-                            </option>
-                        ))}
-                    </select>
+        <div className="mb-4 flex flex-col gap-2">
+            <div className="flex flex-col sm:flex-row items-center gap-2">
+                <div className="inline-flex border-2 border-brutal-black bg-white dark:bg-zinc-800 shadow-[2px_2px_0_0_#000]">
+                    <button type="button" onClick={setNative} className={`px-3 py-1.5 text-xs font-extrabold uppercase ${!isAcp ? 'bg-brutal-black text-white dark:bg-white dark:text-black' : 'dark:text-white'}`}>
+                        {t('newChat.acp.native')}
+                    </button>
+                    <button type="button" onClick={() => agents[0] && selectAgent(agents[0].id)} className={`border-l-2 border-brutal-black px-3 py-1.5 text-xs font-extrabold uppercase ${isAcp ? 'bg-brutal-black text-white dark:bg-white dark:text-black' : 'dark:text-white'}`}>
+                        ACP
+                    </button>
                 </div>
-            )}
+                {isAcp && (
+                    <div className="flex flex-1 w-full gap-2">
+                        <BrutalSelect
+                            value={config.acp_agent_id || ''}
+                            onChange={selectAgent}
+                            options={agents.map(a => ({ value: a.id, label: a.name || a.id }))}
+                            placeholder={t('newChat.acp.agent')}
+                            buttonClassName="h-9 py-1 text-xs"
+                            className="flex-1"
+                        />
+                        <BrutalSelect
+                            value=""
+                            onChange={selectSession}
+                            options={sessions.map(s => ({ value: s.id, label: s.title || s.cwd || s.id }))}
+                            placeholder={busy ? t('newChat.acp.resuming') : t('newChat.acp.resume')}
+                            disabled={busy || sessions.length === 0}
+                            buttonClassName="h-9 py-1 text-xs"
+                            className="flex-1"
+                        />
+                    </div>
+                )}
+                {isAcp && <RuntimeProvenance config={config} compact={true} />}
+            </div>
             {error && <div className="text-xs font-bold text-brutal-red">{error}</div>}
         </div>
     );
