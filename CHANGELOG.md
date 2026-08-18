@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Let the desktop app attach to an existing Service instead of launching a duplicate backend
 - Make desktop shutdown, updates, rollbacks, and uninstall service-aware and graceful
 - Bound streaming queues, pending approvals, background process metadata, and captured command output
+- Defer memory subsystem initialization until first use to reduce idle Service memory usage
 
 ### 🐛 Fixed
 - Prevent stale runtime locks and recycled process IDs from being treated as a healthy Service
