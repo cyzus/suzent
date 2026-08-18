@@ -852,3 +852,59 @@ def test_check_update_json_command(monkeypatch):
     assert payload["current_version"] == "0.6.2"
     assert payload["latest_version"] == "v0.6.3"
     assert payload["update_available"] is True
+
+
+def _macos_workspace(tmp_path: Path) -> Path:
+    (tmp_path / "pyproject.toml").write_text('version = "0.7.13"\n', encoding="utf-8")
+    icons = tmp_path / "src-tauri" / "icons"
+    icons.mkdir(parents=True)
+    (icons / "icon.icns").write_bytes(b"icns-payload")
+    binary = tmp_path / "bin" / "suzent-ui"
+    binary.parent.mkdir(parents=True)
+    binary.write_bytes(b"mach-o")
+    return binary
+
+
+def test_macos_launch_target_wraps_bare_binary_in_app_bundle(monkeypatch, tmp_path):
+    """Regression: a loose executable only ever gets the generic macOS icon."""
+    monkeypatch.setattr(cli_main.sys, "platform", "darwin")
+    binary = _macos_workspace(tmp_path)
+
+    launch = cli_main._macos_launch_target(tmp_path, binary)
+
+    bundle = tmp_path / "bin" / "SUZENT.app"
+    assert launch == bundle / "Contents" / "MacOS" / "suzent-ui"
+    assert launch.stat().st_ino == binary.stat().st_ino
+    assert (bundle / "Contents" / "Resources" / "icon.icns").read_bytes() == (
+        b"icns-payload"
+    )
+
+    info = cli_main.plistlib.loads((bundle / "Contents" / "Info.plist").read_bytes())
+    assert info["CFBundleExecutable"] == "suzent-ui"
+    assert info["CFBundleIconFile"] == "icon.icns"
+    assert info["CFBundleIdentifier"] == "com.suzent.app"
+    assert info["CFBundlePackageType"] == "APPL"
+    assert info["CFBundleShortVersionString"] == "0.7.13"
+
+
+def test_macos_launch_target_relinks_bundle_after_update(monkeypatch, tmp_path):
+    monkeypatch.setattr(cli_main.sys, "platform", "darwin")
+    binary = _macos_workspace(tmp_path)
+    launch = cli_main._macos_launch_target(tmp_path, binary)
+
+    # `suzent update` swaps the binary by rename, leaving the old inode behind.
+    replacement = binary.with_name(".suzent-ui.new")
+    replacement.write_bytes(b"mach-o-v2")
+    replacement.replace(binary)
+
+    assert cli_main._macos_launch_target(tmp_path, binary) == launch
+    assert launch.read_bytes() == b"mach-o-v2"
+    assert launch.stat().st_ino == binary.stat().st_ino
+
+
+def test_macos_launch_target_skips_non_macos_platforms(monkeypatch, tmp_path):
+    monkeypatch.setattr(cli_main.sys, "platform", "linux")
+    binary = _macos_workspace(tmp_path)
+
+    assert cli_main._macos_launch_target(tmp_path, binary) == binary
+    assert not (tmp_path / "bin" / "SUZENT.app").exists()

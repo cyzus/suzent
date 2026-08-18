@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import platform
+import plistlib
 import re
 import signal
 import shutil
@@ -31,6 +32,7 @@ _UPDATE_CHANNEL_FILE = ".suzent/update-channel"
 _STABLE_CHANNEL = "stable"
 _DEV_CHANNEL = "dev"
 _UPDATE_HELPER_ENV = "SUZENT_UPDATE_HELPER"
+_MACOS_UI_BUNDLE = "SUZENT.app"
 
 
 def _is_development_workspace(root: Path) -> bool:
@@ -104,6 +106,82 @@ def _write_update_channel(root: Path, channel: str) -> None:
 def _is_ui_binary_current(root: Path, binary: Path) -> bool:
     """Return True when a discovered UI binary can be launched."""
     return binary.exists()
+
+
+def _macos_bundle_plist(executable: str, version: str) -> bytes:
+    info: dict[str, object] = {
+        "CFBundleDevelopmentRegion": "en",
+        "CFBundleExecutable": executable,
+        "CFBundleIconFile": "icon.icns",
+        "CFBundleIdentifier": "com.suzent.app",
+        "CFBundleInfoDictionaryVersion": "6.0",
+        "CFBundleName": "SUZENT",
+        "CFBundlePackageType": "APPL",
+        "CFBundleSignature": "????",
+        "LSMinimumSystemVersion": "10.13",
+        "NSHighResolutionCapable": True,
+    }
+    if re.fullmatch(r"\d+(\.\d+){0,2}", version):
+        info["CFBundleShortVersionString"] = version
+        info["CFBundleVersion"] = version
+    return plistlib.dumps(info, sort_keys=True)
+
+
+def _write_bundle_file(path: Path, data: bytes) -> None:
+    """Write bundle metadata, leaving the mtime alone when nothing changed."""
+    if path.exists() and path.read_bytes() == data:
+        return
+    path.write_bytes(data)
+
+
+def _link_bundle_executable(binary: Path, executable: Path) -> None:
+    """Point the bundle at the current binary, refreshing it after an update."""
+    if executable.exists() and executable.stat().st_ino == binary.stat().st_ino:
+        return
+    executable.unlink(missing_ok=True)
+    try:
+        os.link(binary, executable)
+    except OSError:
+        shutil.copy2(binary, executable)
+        executable.chmod(0o755)
+
+
+def _macos_launch_target(root: Path, binary: Path) -> Path:
+    """Return a path that launches the UI with the Suzent icon and name.
+
+    Releases publish a bare Mach-O executable, but macOS reads an app's icon,
+    name and activation policy from the enclosing bundle — a loose binary only
+    ever gets the generic executable icon. Generating the bundle around the
+    downloaded binary keeps the single-file release format intact.
+    """
+    if sys.platform != "darwin" or not binary.exists():
+        return binary
+    if any(part.endswith(".app") for part in binary.parts):
+        return binary
+
+    try:
+        bundle = binary.parent / _MACOS_UI_BUNDLE
+        contents = bundle / "Contents"
+        macos_dir = contents / "MacOS"
+        resources = contents / "Resources"
+        macos_dir.mkdir(parents=True, exist_ok=True)
+        resources.mkdir(parents=True, exist_ok=True)
+
+        _write_bundle_file(
+            contents / "Info.plist",
+            _macos_bundle_plist(
+                binary.name, _normalize_version_tag(_current_version(root))
+            ),
+        )
+        icon = root / "src-tauri" / "icons" / "icon.icns"
+        if icon.exists():
+            _write_bundle_file(resources / "icon.icns", icon.read_bytes())
+
+        executable = macos_dir / binary.name
+        _link_bundle_executable(binary, executable)
+    except OSError:
+        return binary
+    return executable
 
 
 def _ui_launch_env(extra: dict[str, str] | None = None) -> dict[str, str]:
@@ -1103,7 +1181,7 @@ def register_commands(app: typer.Typer):
             typer.echo(f"  • Launching UI binary ({ui_bin.name})...")
             try:
                 subprocess.run(
-                    [str(ui_bin)],
+                    [str(_macos_launch_target(root, ui_bin))],
                     env=_ui_launch_env({"SUZENT_DIR": str(root)}),
                 )
             except (subprocess.CalledProcessError, KeyboardInterrupt):

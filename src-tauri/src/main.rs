@@ -432,6 +432,21 @@ try {{ localStorage.setItem('SUZENT_PORT', '{port}'); }} catch (e) {{}}
 }
 
 fn find_relaunch_exe(repo_dir: &Path) -> Result<PathBuf, std::io::Error> {
+    // The CLI wraps the released binary in a .app so macOS shows the Suzent
+    // icon; relaunch through the bundle to keep it after an update.
+    #[cfg(target_os = "macos")]
+    {
+        let bundled = repo_dir
+            .join("bin")
+            .join("SUZENT.app")
+            .join("Contents")
+            .join("MacOS")
+            .join("suzent-ui");
+        if bundled.exists() {
+            return Ok(bundled);
+        }
+    }
+
     let bundled = if cfg!(windows) {
         repo_dir.join("bin").join("suzent-ui.exe")
     } else {
