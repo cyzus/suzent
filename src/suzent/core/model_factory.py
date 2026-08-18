@@ -41,6 +41,24 @@ _CHATGPT_UNSUPPORTED_PARAMS = {
 }
 
 
+def _chatgpt_model_profile(default: dict[str, Any]) -> dict[str, Any]:
+    """Disable hosted tool search for the ChatGPT subscription endpoint.
+
+    The Codex Responses endpoint can emit tool-search output items whose ``tso_``
+    identity cannot be correlated by the standard Responses stream adapter.  By
+    marking only that native tool as unsupported, Pydantic AI automatically uses
+    its local ``search_tools`` fallback while preserving every other capability
+    from the resolved OpenAI model profile.
+    """
+    from pydantic_ai.native_tools._tool_search import ToolSearchTool
+
+    supported_native_tools = default.get("supported_native_tools", frozenset())
+    return {
+        **default,
+        "supported_native_tools": supported_native_tools - {ToolSearchTool},
+    }
+
+
 def _rewrite_chatgpt_request(
     request: httpx.Request, default_instructions: str
 ) -> httpx.Request:
@@ -226,6 +244,7 @@ def _create_chatgpt_model(model_name: str, _api_key: str, spec: ProviderSpec) ->
     return _ChatGPTResponsesModel(
         model_name,
         provider=OpenAIProvider(openai_client=client),
+        profile=_chatgpt_model_profile,
     )
 
 

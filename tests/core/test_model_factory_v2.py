@@ -3,9 +3,26 @@ from unittest.mock import AsyncMock, patch
 
 import httpx
 from pydantic_ai.models.openai import OpenAIChatModel
+from pydantic_ai.native_tools import WebSearchTool
+from pydantic_ai.native_tools._tool_search import ToolSearchTool
 
 from suzent.core import model_factory
 from suzent.core.providers.catalog import PROVIDER_REGISTRY_BY_ID
+
+
+def test_chatgpt_profile_disables_only_native_tool_search() -> None:
+    default = {
+        "supports_tools": True,
+        "supported_native_tools": frozenset({ToolSearchTool, WebSearchTool}),
+    }
+
+    profile = model_factory._chatgpt_model_profile(default)
+
+    assert profile["supports_tools"] is True
+    assert profile["supported_native_tools"] == frozenset({WebSearchTool})
+    assert default["supported_native_tools"] == frozenset(
+        {ToolSearchTool, WebSearchTool}
+    )
 
 
 def test_chatgpt_request_rewrite_preserves_transport_metadata() -> None:
