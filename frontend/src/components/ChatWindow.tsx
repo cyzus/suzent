@@ -2,9 +2,13 @@ import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMe
 import { useChatStore } from '../hooks/useChatStore';
 import { useAGUI, type AGUIPart, type ApprovalRememberScope } from '../hooks/useAGUI';
 import {
+  createAcpSession,
   fetchCronJobs,
   forkChat,
   getApiBase,
+  resumeAcpSession,
+  type ACPAgent,
+  type ACPSession,
   getChatPermissionState,
   getSandboxParams,
   updateCronJob,
@@ -582,6 +586,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     config,
     backendConfig,
     setConfig,
+    setChatConfigForId,
     shouldResetNext,
     consumeResetFlag,
     updateMessage,
@@ -1699,6 +1704,22 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     }
   }, [input, isRightSidebarOpen]);
 
+  const handleResumeAcpSession = useCallback(async (agent: ACPAgent, session: ACPSession) => {
+    if (session.chat_id) {
+      await loadChat(session.chat_id, { force: true });
+      return;
+    }
+    const chatId = await createNewChat();
+    if (!chatId) throw new Error(t('newChat.acp.resumeFailed'));
+    const resumed = await resumeAcpSession(agent.id, session.id, chatId);
+    await setChatConfigForId(chatId, {
+      ...safeConfig,
+      acp_agent_id: agent.id,
+      acp_agent_name: agent.name || agent.id,
+      acp_session_id: resumed.id,
+    });
+  }, [createNewChat, loadChat, safeConfig, setChatConfigForId, t]);
+
   // Send message handler (also handles steering when streaming)
   const send = async () => {
     const prompt = input.trim();
@@ -1771,6 +1792,21 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       }
     }
 
+    let configForSend = safeConfig;
+    if (safeConfig.acp_agent_id && !safeConfig.acp_session_id) {
+      try {
+        const session = await createAcpSession(safeConfig.acp_agent_id, chatIdForSend);
+        configForSend = {
+          ...safeConfig,
+          acp_session_id: session.id,
+        };
+        await setChatConfigForId(chatIdForSend, configForSend);
+      } catch (error) {
+        setStatusBar(error instanceof Error ? error.message : t('newChat.acp.createFailed'), 'error', 5000);
+        return;
+      }
+    }
+
     // Block if a background stream is active AND the frontend also thinks this chat
     // is streaming. If the frontend already cleared (e.g. user just hit Stop), skip
     // this check — the backend will return 409 if it's truly still busy, which gives
@@ -1825,7 +1861,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     const mentionsToSend = extractSelectedFileMentions(prompt, fileMentions);
     const payload: Record<string, unknown> = {
       message: prompt,
-      config: safeConfig,
+      config: configForSend,
       chat_id: chatIdForSend,
       reset: resetFlag,
     };
@@ -2164,6 +2200,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           </div>
         )}
         <div className="relative flex-1 min-h-0">
+          {currentChatId && safeConfig.acp_agent_id && (
+            <div className="absolute right-4 top-3 z-10 inline-flex items-center gap-2 border-2 border-brutal-black bg-white px-2.5 py-1 text-[10px] font-extrabold uppercase shadow-[2px_2px_0_0_#000] dark:bg-zinc-800 dark:text-white" title={t('chatWindow.acpAgentLocked')}>
+              <span>ACP</span>
+              <span className="font-mono normal-case">{safeConfig.acp_agent_name || safeConfig.acp_agent_id}</span>
+              <span aria-hidden="true">●</span>
+            </div>
+          )}
           <div
             ref={scrollContainerRef}
             className={safeMessages.length === 0
@@ -2195,6 +2238,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 onImageClick={setViewingImage}
                 currentChatId={currentChatId}
                 onFileMentionSelected={(mention) => setFileMentions(prev => [...prev.filter(item => item.name !== mention.name), mention])}
+                onResumeAcpSession={handleResumeAcpSession}
               />
             ) : (
               <>

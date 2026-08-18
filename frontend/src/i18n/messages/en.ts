@@ -669,6 +669,11 @@ export const en = {
     newChat: 'New chat',
     send: 'Send',
     placeholder: 'Type a message...',
+    runtime: {
+      external: 'EXTERNAL RUNTIME · Claude Code CLI · via ACP',
+      suzent: 'SUZENT RUNTIME',
+      bypassed: 'Suzent native model bypassed',
+    },
   },
   fileChanges: {
     editedFiles: 'Edited {count} file(s)',
@@ -811,6 +816,13 @@ export const en = {
     stop: 'Stop',
     send: 'Send',
     redirect: 'Redirect',
+    runtime: {
+      external: 'EXTERNAL RUNTIME',
+      suzent: 'SUZENT RUNTIME',
+      viaAcp: 'VIA ACP',
+      bypassed: 'SUZENT NATIVE MODEL BYPASSED',
+    },
+    modelManagedByAcp: 'ACP MANAGED',
   },
   chatWindow: {
     dragDropTitle: 'Drop files here',
@@ -829,6 +841,7 @@ export const en = {
     connecting: 'Connecting to Neural Core...',
     outputValidationRetryError: 'The model response format failed validation too many times. Please retry this message.',
     genericError: 'Something went wrong. Please try again.',
+    acpAgentLocked: 'ACP agent is fixed for this chat',
     heartbeatOff: 'Heartbeat off',
     permissionModeTitle: 'Tool permission mode',
     permissionModeLabel: 'Mode',
@@ -871,6 +884,16 @@ export const en = {
   },
   newChat: {
     creatingIn: 'Creating in',
+    acp: {
+      native: 'Native',
+      agent: 'ACP agent',
+      resume: 'Resume session',
+      resuming: 'Resuming...',
+      bound: 'bound',
+      noAgents: 'No ACP agents',
+      createFailed: 'Could not create ACP session',
+      resumeFailed: 'Could not resume ACP session',
+    },
     greetings: {
       nightOwl: 'Night owl?',
       goodMorning: 'Good morning.',

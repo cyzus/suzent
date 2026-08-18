@@ -687,6 +687,11 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
                 {chat.projectName}
               </span>
             )}
+            {(chat.acpAgentName || chat.acpAgentId || (chat as any).acp_agent_name || (chat as any).acp_agent_id) && (
+              <span className={`inline-flex items-center h-5 px-2 rounded-sm text-[10px] font-extrabold uppercase tracking-wide border shrink-0 ${currentChatId === chat.id ? 'bg-brutal-black text-white border-brutal-black dark:bg-white dark:text-black' : 'bg-white text-brutal-black border-brutal-black dark:bg-zinc-900 dark:text-white dark:border-white'}`} title={chat.acpAgentName || (chat as any).acp_agent_name || chat.acpAgentId || (chat as any).acp_agent_id}>
+                ACP
+              </span>
+            )}
             {chat.platform && (
               <span className={`inline-flex items-center h-5 px-2 rounded-sm text-[10px] font-extrabold uppercase tracking-wide border shrink-0 ${currentChatId === chat.id ? 'bg-white/80 text-brutal-black border-brutal-black dark:bg-zinc-900 dark:text-brutal-yellow dark:border-brutal-yellow' : 'bg-neutral-100 text-neutral-700 border-neutral-300 dark:bg-zinc-700 dark:text-neutral-200 dark:border-zinc-500'}`}>
                 {platformLabel(chat.platform)}

@@ -11,6 +11,7 @@ import { useSlashCommands } from '../hooks/useSlashCommands';
 import { getApiBase, setChatPermissionMode, setDefaultPermissionMode } from '../lib/api';
 import { buildMountedVolumes } from '../lib/volumeMounts';
 import { MentionTextArea, type MentionTextAreaHandle } from './chat/MentionTextArea';
+import { RuntimeProvenance } from './RuntimeProvenance';
 
 interface ChatInputPanelProps {
     input: string;
@@ -142,6 +143,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
     const mentionActive = mentionQuery !== null;
     const suggestions = useSlashCommands(input);
     const permissionMode = normalizePermissionMode(config.permission_mode);
+    const isAcpRuntime = config.runtime === 'acp' || Boolean(config.acp_agent_id);
     React.useEffect(() => { setSelectedSuggestion(0); }, [suggestions.length]);
     React.useEffect(() => { setSelectedMentionSuggestion(0); }, [mentionSuggestions.length]);
 
@@ -585,102 +587,24 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                 {/* Right: model picker (shrinks) + action button (fixed) */}
                 {configReady && (
                     <div className="relative min-w-0 shrink">
-                        <BrutalSelect
-                            value={modelValue ?? config.model}
-                            onChange={onModelChange ?? ((val) => setConfig(prev => ({ ...prev, model: val })))}
-                            options={backendConfig!.models}
-                            placeholder={t('chatInput.modelPlaceholder').toUpperCase()}
-                            dropUp={modelSelectDropUp}
-                            className="h-9 text-sm max-w-[220px]"
-                            buttonClassName="!h-9 !border-0 !bg-neutral-100 dark:!bg-zinc-700 !px-2.5 !py-1.5 !shadow-none !translate-x-0 !translate-y-0 hover:!bg-neutral-200 dark:hover:!bg-zinc-600 focus-visible:!ring-2 focus-visible:!ring-brutal-blue"
-                            dropdownClassName="min-w-[200px] right-0"
-                        />
+                        {isAcpRuntime ? (
+                            <RuntimeProvenance config={config} compact />
+                        ) : (
+                            <BrutalSelect
+                                value={modelValue ?? config.model}
+                                onChange={onModelChange ?? ((val) => setConfig(prev => ({ ...prev, model: val })))}
+                                options={backendConfig!.models}
+                                placeholder={t('chatInput.modelPlaceholder').toUpperCase()}
+                                dropUp={modelSelectDropUp}
+                                className="h-9 text-sm max-w-[220px]"
+                                buttonClassName="!h-9 !border-0 !bg-neutral-100 dark:!bg-zinc-700 !px-2.5 !py-1.5 !shadow-none !translate-x-0 !translate-y-0 hover:!bg-neutral-200 dark:hover:!bg-zinc-600 focus-visible:!ring-2 focus-visible:!ring-brutal-blue"
+                                dropdownClassName="min-w-[200px] right-0"
+                            />
+                        )}
                     </div>
-                )}
-
-                {/* Redirect button (shown when streaming and user has typed) */}
-                {stopStreaming && streamingForCurrentChat && input.trim() ? (
-                    <button
-                        type="submit"
-                        className="h-9 border-2 border-brutal-black duration-100 px-4 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed uppercase shrink-0 bg-brutal-yellow hover:bg-yellow-300 text-brutal-black focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue"
-                        disabled={!configReady}
-                        title={t('chatInput.redirectAgent')}
-                    >
-                        {t('chatInput.redirect').toUpperCase()}
-                    </button>
-                ) : stopStreaming && streamingForCurrentChat ? (
-                    <button
-                        type="button"
-                        onClick={(e) => {
-                            e.preventDefault();
-                            stopStreaming();
-                        }}
-                        className="h-9 border-2 border-brutal-black duration-100 px-4 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed text-white uppercase shrink-0 bg-brutal-red hover:bg-red-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue"
-                        disabled={stopInFlight}
-                        title={t('chatInput.stopGenerating')}
-                    >
-                        {t('chatInput.stop').toUpperCase()}
-                    </button>
-                ) : (
-                    <button
-                        type="submit"
-                        className="h-9 border-2 border-brutal-black duration-100 px-4 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed text-white uppercase shrink-0 bg-brutal-blue hover:bg-blue-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue"
-                        disabled={streamingForCurrentChat || !configReady}
-                        title={t('chatInput.sendMessage')}
-                    >
-                        {t('chatInput.send').toUpperCase()}
-                    </button>
                 )}
             </div>
           </form>
-
-          <div
-            className="flex items-center px-1"
-            title={t(`chatWindow.permissionModeDescriptions.${permissionMode}`)}
-          >
-            <BrutalSelect
-              value={permissionMode}
-              onChange={value => changePermissionMode(value as PermissionMode)}
-              options={PERMISSION_MODES.map(option => ({
-                value: option,
-                label: t(`chatWindow.permissionModeInputLabels.${option}`),
-              }))}
-              dropUp={true}
-              hideChevron={true}
-              disabled={!configReady || streamingForCurrentChat || isSavingPermissionMode}
-              className="inline-block w-auto"
-              buttonClassName="!h-6 !w-auto !gap-1.5 !border-0 !bg-transparent dark:!bg-transparent !px-0 !py-0 !font-sans !text-xs !font-medium !normal-case !tracking-normal !text-neutral-600 dark:!text-neutral-400 !shadow-none !translate-x-0 !translate-y-0 hover:!bg-transparent hover:!text-brutal-black dark:hover:!bg-transparent dark:hover:!text-white"
-              dropdownClassName="min-w-[220px] font-mono text-[10px]"
-            />
-          </div>
-
-          <BrutalDialog
-            open={pendingPermissionMode !== null}
-            title={pendingPermissionMode === 'full_access'
-              ? t('chatWindow.fullAccessModeDialogTitle')
-              : t('chatWindow.autoModeDialogTitle')}
-            message={pendingPermissionMode === 'full_access'
-              ? t('chatWindow.fullAccessModeConfirmation')
-              : t('chatWindow.autoModeConfirmation')}
-            onClose={() => setPendingPermissionMode(null)}
-            actions={[
-              {
-                label: t('chatWindow.autoModeCancel'),
-                tone: 'default',
-              },
-              {
-                label: pendingPermissionMode === 'full_access'
-                  ? t('chatWindow.fullAccessModeEnable')
-                  : t('chatWindow.autoModeEnable'),
-                tone: 'primary',
-                onClick: () => {
-                  if (pendingPermissionMode) {
-                    void applyPermissionMode(pendingPermissionMode);
-                  }
-                },
-              },
-            ]}
-          />
         </div>
     );
 };

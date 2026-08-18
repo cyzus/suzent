@@ -635,6 +635,11 @@ export const zhCN = {
     newChat: '新对话',
     send: '发送',
     placeholder: '输入消息...',
+    runtime: {
+      external: '外部运行时 · Claude Code CLI · 通过 ACP',
+      suzent: 'SUZENT 运行时',
+      bypassed: '已绕过 SUZENT 原生模型',
+    },
   },
   fileChanges: {
     editedFiles: '已编辑 {count} 个文件',
@@ -777,6 +782,13 @@ export const zhCN = {
     stop: '停止',
     send: '发送',
     redirect: '重定向',
+    runtime: {
+      external: '外部运行时',
+      suzent: 'SUZENT 运行时',
+      viaAcp: '通过 ACP',
+      bypassed: '已绕过 SUZENT 原生模型',
+    },
+    modelManagedByAcp: 'ACP 管理',
   },
   chatWindow: {
     dragDropTitle: '将文件拖到这里',
@@ -795,6 +807,7 @@ export const zhCN = {
     connecting: '正在连接核心服务...',
     outputValidationRetryError: '模型输出格式校验多次失败，请重试这条消息。',
     genericError: '发生错误，请重试。',
+    acpAgentLocked: '此会话的 ACP 智能体不可更改',
     heartbeatOff: '心跳已关闭',
     permissionModeTitle: '工具权限模式',
     permissionModeLabel: '模式',
@@ -837,6 +850,16 @@ export const zhCN = {
   },
   newChat: {
     creatingIn: '将创建于',
+    acp: {
+      native: '原生',
+      agent: 'ACP 智能体',
+      resume: '恢复会话',
+      resuming: '恢复中...',
+      bound: '已绑定',
+      noAgents: '没有 ACP 智能体',
+      createFailed: '无法创建 ACP 会话',
+      resumeFailed: '无法恢复 ACP 会话',
+    },
     greetings: {
       nightOwl: '夜猫子？',
       goodMorning: '早上好。',
