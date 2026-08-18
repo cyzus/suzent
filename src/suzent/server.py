@@ -291,8 +291,75 @@ _social_reload_lock = asyncio.Lock()
 
 
 async def health(_request: Request) -> JSONResponse:
-    """Lightweight readiness probe used by the CLI to detect running servers."""
-    return JSONResponse({"app": "suzent", "status": "ok"})
+    """Lightweight liveness probe used for process identity and supervision."""
+    from suzent.routes.system_routes import get_backend_version
+
+    return JSONResponse(
+        {
+            "app": "suzent",
+            "status": "ok",
+            "version": get_backend_version(),
+            "run_mode": os.getenv("SUZENT_RUN_MODE", "standalone"),
+            "pid": os.getpid(),
+        }
+    )
+
+
+async def readiness(request: Request) -> JSONResponse:
+    """Report whether background subsystems finished their startup sequence."""
+    ready = bool(getattr(request.app.state, "background_services_ready", False))
+    return JSONResponse(
+        {"app": "suzent", "status": "ready" if ready else "starting"},
+        status_code=200 if ready else 503,
+    )
+
+
+async def service_runtime_status(request: Request) -> JSONResponse:
+    """Expose privacy-safe process health for the local desktop UI and CLI."""
+    import time
+
+    import psutil
+
+    process = psutil.Process(os.getpid())
+    return JSONResponse(
+        {
+            "app": "suzent",
+            "run_mode": os.getenv("SUZENT_RUN_MODE", "standalone"),
+            "pid": process.pid,
+            "uptime_seconds": max(0.0, time.time() - process.create_time()),
+            "rss_bytes": process.memory_info().rss,
+            "threads": process.num_threads(),
+            "ready": bool(
+                getattr(request.app.state, "background_services_ready", False)
+            ),
+            "scheduler_running": bool(
+                scheduler_brain and getattr(scheduler_brain, "_running", False)
+            ),
+            "heartbeat_running": bool(
+                heartbeat_runner and getattr(heartbeat_runner, "_running", False)
+            ),
+            "channels_configured": len(channel_manager.channels)
+            if channel_manager
+            else 0,
+        }
+    )
+
+
+async def stop_service(request: Request) -> JSONResponse:
+    """Request graceful shutdown using the running backend's private token."""
+    import hmac
+
+    expected = os.getenv("SUZENT_SERVICE_CONTROL_TOKEN", "")
+    provided = request.headers.get("X-Suzent-Service-Token", "")
+    if not expected:
+        return JSONResponse({"error": "shutdown_not_enabled"}, status_code=409)
+    if not hmac.compare_digest(provided, expected):
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+    server = getattr(request.app.state, "uvicorn_server", None)
+    if server is None:
+        return JSONResponse({"error": "server_not_ready"}, status_code=503)
+    server.should_exit = True
+    return JSONResponse({"status": "stopping"}, status_code=202)
 
 
 def _build_social_from_config(
@@ -451,6 +518,37 @@ async def _refresh_provider_models() -> None:
         logger.debug("Background model refresh failed: {}", exc)
 
 
+async def _monitor_service_resources() -> None:
+    """Gracefully recycle an unattended service after sustained memory growth."""
+    import psutil
+
+    from suzent.service.resource_guard import ResourceGuard
+
+    try:
+        max_rss_mb = max(256, int(os.getenv("SUZENT_SERVICE_MAX_RSS_MB", "1024")))
+        interval = max(5, int(os.getenv("SUZENT_SERVICE_RSS_INTERVAL", "60")))
+    except ValueError:
+        max_rss_mb = 1024
+        interval = 60
+    guard = ResourceGuard(max_rss_bytes=max_rss_mb * 1024 * 1024)
+    process = psutil.Process(os.getpid())
+    while True:
+        await asyncio.sleep(interval)
+        rss_bytes = process.memory_info().rss
+        if not guard.observe(rss_bytes):
+            continue
+        logger.error(
+            "Service memory stayed above {} MiB for {} samples; restarting",
+            max_rss_mb,
+            guard.consecutive_limit,
+        )
+        server = getattr(app.state, "uvicorn_server", None)
+        if server is not None:
+            os.environ["SUZENT_SERVICE_RECYCLE"] = "1"
+            server.should_exit = True
+        return
+
+
 async def startup():
     """Initialize services on application startup."""
     from suzent.memory.lifecycle import init_memory_system, _memory_rag_hook
@@ -460,6 +558,11 @@ async def startup():
     from suzent.database import get_database
 
     logger.info("Application startup - initializing services")
+    app.state.background_services_ready = False
+    if os.getenv("SUZENT_RUN_MODE") == "service":
+        app.state.service_resource_guard = asyncio.create_task(
+            _monitor_service_resources(), name="service_resource_guard"
+        )
 
     try:
         from genai_prices import UpdatePrices
@@ -531,10 +634,13 @@ async def startup():
         social-messaging failure (and vice versa). cm/sb may be None when social
         config failed to build — that's fine, memory and the rest still start.
         """
-        try:
-            await init_memory_system()
-        except Exception as e:
-            logger.error(f"Failed to initialize memory system: {e}")
+        if os.getenv("SUZENT_RUN_MODE") == "service":
+            logger.info("Service memory initialization deferred until first use")
+        else:
+            try:
+                await init_memory_system()
+            except Exception as e:
+                logger.error(f"Failed to initialize memory system: {e}")
         try:
             if cm is not None:
                 await cm.start_all()
@@ -581,6 +687,9 @@ async def startup():
             await sync_automation_runner.start()
         except Exception as e:
             logger.error(f"Failed to start SyncAutomationRunner: {e}")
+
+        app.state.background_services_ready = True
+        logger.info("Application background services are ready")
 
     global node_manager
     node_manager = NodeManager()
@@ -750,6 +859,14 @@ async def shutdown():
     # Cancel any pending ask_question futures so their tasks can exit cleanly
     pending_questions.cancel_all()
 
+    resource_guard = getattr(app.state, "service_resource_guard", None)
+    if resource_guard is not None and not resource_guard.done():
+        resource_guard.cancel()
+        try:
+            await resource_guard
+        except asyncio.CancelledError:
+            pass
+
     if agent_inbox_dispatcher:
         await _stop(agent_inbox_dispatcher.stop(), "AgentInboxDispatcher")
 
@@ -794,6 +911,13 @@ async def shutdown():
     except Exception as e:
         logger.error(f"Error shutting down task registry: {e}")
 
+    try:
+        from suzent.tools.shell.host_process_registry import HostProcessRegistry
+
+        HostProcessRegistry().shutdown()
+    except Exception as e:
+        logger.error(f"Error shutting down host background processes: {e}")
+
     await shutdown_memory_system()
 
     try:
@@ -834,6 +958,9 @@ app = Starlette(
     lifespan=lifespan,
     routes=[
         Route("/health", health, methods=["GET"]),
+        Route("/ready", readiness, methods=["GET"]),
+        Route("/service/status", service_runtime_status, methods=["GET"]),
+        Route("/service/stop", stop_service, methods=["POST"]),
         Route("/chat", chat, methods=["POST"]),
         Route("/chat/send", chat_send, methods=["POST"]),
         Route("/chat/live", live_stream, methods=["POST"]),
@@ -1321,6 +1448,7 @@ if __name__ == "__main__":
             timeout_graceful_shutdown=5,  # force-close lingering SSE connections after 5s
         )
         server = uvicorn.Server(config)
+        app.state.uvicorn_server = server
         sockets = [_sock] if _sock else None
         try:
             await server.serve(sockets=sockets)

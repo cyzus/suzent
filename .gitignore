@@ -17,6 +17,9 @@ htmlcov/
 .tox/
 .nox/
 pytest-debug.log
+/.tmp-*/
+/.pre-commit-cache/
+/.uv-cache-service/
 
 # Virtual environments
 .venv

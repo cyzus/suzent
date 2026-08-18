@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
@@ -11,6 +11,7 @@ const BACKEND_READY_RETRY_INTERVAL: Duration = Duration::from_millis(500);
 pub struct BackendProcess {
     child: Option<std::process::Child>,
     pub port: u16,
+    control_token: Option<String>,
 }
 
 impl BackendProcess {
@@ -18,14 +19,66 @@ impl BackendProcess {
         BackendProcess {
             child: None,
             port: 0,
+            control_token: None,
         }
     }
 
     pub fn stop(&mut self) {
         if let Some(mut child) = self.child.take() {
+            if let Some(token) = self.control_token.take() {
+                let url = format!("http://127.0.0.1:{}/service/stop", self.port);
+                if let Ok(client) = reqwest::blocking::Client::builder()
+                    .timeout(Duration::from_secs(2))
+                    .no_proxy()
+                    .build()
+                {
+                    let _ = client
+                        .post(url)
+                        .header("X-Suzent-Service-Token", token)
+                        .send();
+                }
+
+                let deadline = Instant::now() + Duration::from_secs(15);
+                while Instant::now() < deadline {
+                    if matches!(child.try_wait(), Ok(Some(_))) {
+                        return;
+                    }
+                    thread::sleep(Duration::from_millis(100));
+                }
+            }
             let _ = child.kill();
             let _ = child.wait();
         }
+    }
+
+    /// Attach to an already-running backend without taking ownership of it.
+    pub fn attach_if_healthy(port: u16) -> Option<Self> {
+        let url = format!("http://127.0.0.1:{}/health", port);
+        let client = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(1))
+            .no_proxy()
+            .build()
+            .ok()?;
+        let response = client.get(url).send().ok()?;
+        if !response.status().is_success() {
+            return None;
+        }
+        let body = response.text().ok()?;
+        let payload: serde_json::Value = serde_json::from_str(&body).ok()?;
+        if payload.get("app").and_then(|value| value.as_str()) != Some("suzent")
+            || payload.get("status").and_then(|value| value.as_str()) != Some("ok")
+        {
+            return None;
+        }
+        Some(Self {
+            child: None,
+            port,
+            control_token: None,
+        })
+    }
+
+    pub fn is_owned(&self) -> bool {
+        self.child.is_some()
     }
 }
 
@@ -59,6 +112,7 @@ impl BackendProcess {
             .map_err(|e| format!("Failed to open log file: {}", e))?;
 
         let venv_python = find_venv_python(repo_dir);
+        let control_token = uuid::Uuid::new_v4().simple().to_string();
         let mut command = if let Some(ref py) = venv_python {
             let mut cmd = Command::new(py);
             cmd.args(["-m", "suzent.server"]);
@@ -78,6 +132,8 @@ impl BackendProcess {
             .env("SUZENT_PORT", hint_port.to_string())
             .env("SUZENT_HOST", "127.0.0.1")
             .env("SUZENT_DATA_DIR", &data_dir)
+            .env("SUZENT_RUN_MODE", "desktop-child")
+            .env("SUZENT_SERVICE_CONTROL_TOKEN", &control_token)
             .env("PYTHONUNBUFFERED", "1")
             .env("LOG_FILE", &log_file)
             .current_dir(repo_dir)
@@ -92,6 +148,7 @@ impl BackendProcess {
             .map_err(|e| format!("Failed to start backend: {}", e))?;
 
         self.child = Some(child);
+        self.control_token = Some(control_token);
 
         // Poll server.port file written by Python's write_port_file() at startup.
         let port = self.poll_port_file(&port_file, Duration::from_secs(30))?;
@@ -360,7 +417,7 @@ fn which_uv() -> Result<PathBuf, ()> {
 }
 
 /// Return the venv Python executable if the venv exists under repo_dir.
-fn find_venv_python(repo_dir: &Path) -> Option<PathBuf> {
+pub fn find_venv_python(repo_dir: &Path) -> Option<PathBuf> {
     let py = if cfg!(windows) {
         repo_dir.join(".venv").join("Scripts").join("python.exe")
     } else {

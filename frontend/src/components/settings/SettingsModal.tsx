@@ -14,6 +14,7 @@ import { SocialTab } from './SocialTab';
 import { DevicesTab } from './DevicesTab';
 import { UsageTab } from './UsageTab';
 import { SecurityTab } from './SecurityTab';
+import { BackgroundServiceTab } from './BackgroundServiceTab';
 import { useI18n, type Locale } from '../../i18n';
 import { BrutalSelect } from '../BrutalSelect';
 import { FullscreenOverlay } from '../FullscreenOverlay';
@@ -44,7 +45,7 @@ interface SettingsModalProps {
 }
 
 type ProviderTab = 'credentials' | 'models';
-type CategoryType = 'providers' | 'roles' | 'memory' | 'security' | 'social' | 'devices' | 'mcp' | 'automation' | 'data' | 'usage' | 'appearance' | 'about';
+type CategoryType = 'providers' | 'roles' | 'memory' | 'security' | 'social' | 'devices' | 'mcp' | 'automation' | 'service' | 'data' | 'usage' | 'appearance' | 'about';
 
 export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }: SettingsModalProps): React.ReactElement | null {
   const { refreshBackendConfig, backendConfig } = useChatStore();
@@ -499,6 +500,13 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }
       )
     },
     {
+      id: 'service', label: t('settings.categories.service'), icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2" />
+        </svg>
+      )
+    },
+    {
       id: 'data', label: t('settings.categories.data'), icon: (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M4 7c0 1.657 3.582 3 8 3s8-1.343 8-3M4 7c0-1.657 3.582-3 8-3s8 1.343 8 3M4 7v10c0 1.657 3.582 3 8 3s8-1.343 8-3V7M4 12c0 1.657 3.582 3 8 3s8-1.343 8-3" />
@@ -688,6 +696,10 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }
                       models={backendConfig?.models || []}
                       tools={backendConfig?.tools || []}
                     />
+                  )}
+
+                  {activeCategory === 'service' && (
+                    <BackgroundServiceTab />
                   )}
 
                   {activeCategory === 'data' && (

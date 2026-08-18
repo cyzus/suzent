@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.8.0] - 2026-08-18
+
+### 🚀 Added
+- Add an opt-in, current-user Background Service for Windows, macOS, and Linux
+- Add a dedicated Service settings tab with live health, memory, restart, and log controls
+- Persist automation notifications while the desktop app is closed
+- Add service diagnostics, readiness probes, process identity checks, and resource watchdogs
+
+### ⚡ Changed
+- Let the desktop app attach to an existing Service instead of launching a duplicate backend
+- Make desktop shutdown, updates, rollbacks, and uninstall service-aware and graceful
+- Bound streaming queues, pending approvals, background process metadata, and captured command output
+
+### 🐛 Fixed
+- Prevent stale runtime locks and recycled process IDs from being treated as a healthy Service
+- Clean up browser sessions, host processes, schedulers, channels, and memory on controlled shutdown
+
 ## [v0.7.13] - 2026-08-17
 
 ### 🐛 Fixed

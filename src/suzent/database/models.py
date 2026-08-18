@@ -346,6 +346,20 @@ class CronRunModel(SQLModel, table=True):
     error: Optional[str] = None
 
 
+class BackgroundNotificationModel(SQLModel, table=True):
+    """Durable notification produced while the desktop UI may be closed."""
+
+    __tablename__ = "background_notifications"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    source: str = Field(index=True)
+    title: str
+    result: str
+    job_id: Optional[int] = Field(default=None, index=True)
+    created_at: datetime = Field(default_factory=lambda: datetime.now())
+    delivered_at: Optional[datetime] = Field(default=None, index=True)
+
+
 class PostprocessJobModel(SQLModel, table=True):
     """Postprocess job tracking for chat turn completion.
 

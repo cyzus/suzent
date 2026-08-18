@@ -431,6 +431,11 @@ class ChatProcessor:
         if config_override:
             config.update(config_override)
 
+        if config.get("memory_enabled") and os.getenv("SUZENT_RUN_MODE") == "service":
+            from suzent.memory.lifecycle import init_memory_system
+
+            await init_memory_system()
+
         # 2. Get Agent
         logger.debug("[ChatProcessor] Calling get_or_create_agent")
         try:

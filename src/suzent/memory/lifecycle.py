@@ -22,6 +22,7 @@ main_event_loop = None  # Store reference to main event loop for async operation
 # Background watcher task reference (kept alive)
 _watcher_task = None
 _dream_runner = None
+_initialization_task: asyncio.Task[bool] | None = None
 
 # Gate that lets the dream runner pause the core-file watcher while it holds the
 # consolidation lock (so the watcher can't index half-written pages mid-dream).
@@ -158,6 +159,17 @@ async def _core_file_watch_loop(mgr, user_id: str, interval: int = 300) -> None:
 
 
 async def init_memory_system() -> bool:
+    """Initialize memory once and let concurrent callers share the same task."""
+    global _initialization_task
+
+    if memory_manager is not None:
+        return True
+    if _initialization_task is None or _initialization_task.done():
+        _initialization_task = asyncio.create_task(_initialize_memory_system())
+    return await asyncio.shield(_initialization_task)
+
+
+async def _initialize_memory_system() -> bool:
     """
     Initialize the memory system if enabled in configuration.
 
@@ -299,7 +311,20 @@ async def init_memory_system() -> bool:
 
 async def shutdown_memory_system():
     """Shutdown memory system and close connections."""
-    global memory_store, _watcher_task, _dream_runner
+    global \
+        memory_store, \
+        memory_manager, \
+        _watcher_task, \
+        _dream_runner, \
+        _initialization_task
+
+    if _initialization_task is not None and not _initialization_task.done():
+        _initialization_task.cancel()
+        try:
+            await _initialization_task
+        except asyncio.CancelledError:
+            pass
+    _initialization_task = None
 
     if _dream_runner is not None:
         try:
@@ -321,6 +346,8 @@ async def shutdown_memory_system():
             logger.info("Memory system shutdown complete")
         except Exception as e:
             logger.error(f"Error shutting down memory system: {e}")
+    memory_store = None
+    memory_manager = None
 
 
 def get_memory_manager():
