@@ -658,6 +658,27 @@ class ChatOperationsMixin:
 
             return results
 
+    def list_chats_by_config(
+        self, key: str, value: Any, limit: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        """Return ``{id, title, config}`` for chats whose ``config[key] == value``.
+
+        Projects only the columns needed, so callers filtering on a config flag
+        don't pull every chat's ``messages`` and ``agent_state`` blobs.
+        """
+        with self._session() as session:
+            statement = (
+                select(ChatModel.id, ChatModel.title, ChatModel.config)
+                .where(ChatModel.config[key].as_string() == str(value))
+                .order_by(ChatModel.updated_at.desc())
+            )
+            if limit is not None:
+                statement = statement.limit(limit)
+            return [
+                {"id": row[0], "title": row[1], "config": row[2] or {}}
+                for row in session.exec(statement).all()
+            ]
+
     def get_chat_count(
         self, search: str = None, platform: str = None, project_id: str = None
     ) -> int:

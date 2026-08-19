@@ -6,9 +6,22 @@ import asyncio
 import json
 import os
 from collections.abc import Awaitable, Callable
+from importlib.metadata import PackageNotFoundError, version as _pkg_version
 from typing import Any
 
 NotificationHandler = Callable[[str, dict[str, Any]], Awaitable[None] | None]
+# Given the request params, returns the ACP `outcome` payload.
+PermissionHandler = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
+
+# ACP major protocol version this client speaks.
+PROTOCOL_VERSION = 1
+
+
+def _client_version() -> str:
+    try:
+        return _pkg_version("suzent")
+    except PackageNotFoundError:
+        return "0"
 
 
 class ACPError(RuntimeError):
@@ -23,11 +36,13 @@ class ACPClient:
         cwd: str | None = None,
         env: dict[str, str] | None = None,
         notification_handler: NotificationHandler | None = None,
+        permission_handler: PermissionHandler | None = None,
     ):
         self.command = command
         self.cwd = cwd
         self.env = env or {}
         self.notification_handler = notification_handler
+        self.permission_handler = permission_handler
         self.process: asyncio.subprocess.Process | None = None
         self._reader_task: asyncio.Task | None = None
         self._pending: dict[int, asyncio.Future] = {}
@@ -35,6 +50,7 @@ class ACPClient:
         self._write_lock = asyncio.Lock()
         self.stderr_lines: list[str] = []
         self._stderr_task: asyncio.Task | None = None
+        self._reverse_tasks: set[asyncio.Task] = set()
 
     async def start(self) -> None:
         if self.process and self.process.returncode is None:
@@ -59,17 +75,19 @@ class ACPClient:
         self._reader_task = asyncio.create_task(self._read_loop())
         self._stderr_task = asyncio.create_task(self._read_stderr())
 
-    async def initialize(self) -> Any:
-        return await self.request(
+    async def initialize(self) -> dict[str, Any]:
+        """Perform the ACP handshake. Must be the first call on a connection."""
+        result = await self.request(
             "initialize",
             {
-                "protocolVersion": 1,
-                "clientInfo": {"name": "suzent", "version": "0.7.13"},
+                "protocolVersion": PROTOCOL_VERSION,
+                "clientInfo": {"name": "suzent", "version": _client_version()},
                 "clientCapabilities": {
                     "fs": {"readTextFile": False, "writeTextFile": False}
                 },
             },
         )
+        return result if isinstance(result, dict) else {}
 
     async def request(
         self, method: str, params: dict[str, Any] | None = None, timeout: float = 120.0
@@ -126,6 +144,10 @@ class ACPClient:
         await self.notify("session/cancel", {"sessionId": session_id})
 
     async def close(self) -> None:
+        for task in list(self._reverse_tasks):
+            if not task.done():
+                task.cancel()
+        self._reverse_tasks.clear()
         process = self.process
         if process and process.returncode is None:
             # Cancel reader tasks first
@@ -222,11 +244,7 @@ class ACPClient:
 
     async def _handle_reverse_request(self, message: dict[str, Any]) -> None:
         method = str(message.get("method") or "")
-        # ACP agents may ask the client to grant a tool/action permission. Suzent
-        # has no trusted mapping for those reverse requests, so fail closed.
-        if method == "session/request_permission":
-            result: Any = {"outcome": {"outcome": "cancelled"}}
-        else:
+        if method != "session/request_permission":
             await self._send(
                 {
                     "jsonrpc": "2.0",
@@ -238,7 +256,39 @@ class ACPClient:
                 }
             )
             return
-        await self._send({"jsonrpc": "2.0", "id": message["id"], "result": result})
+        if self.permission_handler is None:
+            # No relay configured: fail closed rather than granting silently.
+            await self._send(
+                {
+                    "jsonrpc": "2.0",
+                    "id": message["id"],
+                    "result": {"outcome": {"outcome": "cancelled"}},
+                }
+            )
+            return
+        # Deciding can take as long as a human takes. Answer on a side task so the
+        # read loop keeps draining session/update notifications meanwhile —
+        # awaiting inline here would deadlock the whole turn.
+        task = asyncio.create_task(
+            self._resolve_permission(message["id"], message.get("params") or {})
+        )
+        self._reverse_tasks.add(task)
+        task.add_done_callback(self._reverse_tasks.discard)
+
+    async def _resolve_permission(
+        self, request_id: Any, params: dict[str, Any]
+    ) -> None:
+        try:
+            outcome = await self.permission_handler(params)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            outcome = {"outcome": {"outcome": "cancelled"}}
+        try:
+            await self._send({"jsonrpc": "2.0", "id": request_id, "result": outcome})
+        except Exception:
+            # Process already gone; nothing to answer.
+            pass
 
     async def _read_stderr(self) -> None:
         assert self.process and self.process.stderr

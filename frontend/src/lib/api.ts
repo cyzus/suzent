@@ -1606,3 +1606,31 @@ export async function saveSocialConfig(config: SocialConfig): Promise<boolean> {
     return false;
   }
 }
+
+
+export async function resolveAcpPermission(
+  requestId: string,
+  approved: boolean,
+  optionId?: string,
+): Promise<void> {
+  const res = await fetch(
+    `${getApiBase()}/acp/permissions/${encodeURIComponent(requestId)}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ approved, option_id: optionId }),
+    },
+  );
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({}));
+    throw new Error((detail as { error?: string }).error || `Failed to resolve permission: ${res.status}`);
+  }
+}
+
+export async function fetchAcpPermissions(chatId?: string): Promise<unknown[]> {
+  const query = chatId ? `?chat_id=${encodeURIComponent(chatId)}` : '';
+  const res = await fetch(`${getApiBase()}/acp/permissions${query}`);
+  if (!res.ok) throw new Error(`Failed to fetch permissions: ${res.status}`);
+  const data = await res.json();
+  return (data.pending as unknown[]) || [];
+}

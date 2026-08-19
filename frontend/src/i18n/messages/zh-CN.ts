@@ -807,6 +807,19 @@ export const zhCN = {
     },
     modelManagedByAcp: 'ACP 管理',
   },
+  acp: {
+    permission: {
+      header: '外部智能体请求授权',
+      untitled: '未命名的工具调用',
+      approved: '已批准',
+      denied: '已拒绝',
+      expired: '已不再等待决定',
+    },
+    sessionReset: {
+      header: '已开启新会话',
+      body: '无法恢复之前的 {agent} 会话，本轮将从空白开始，不包含此前的历史记录。',
+    },
+  },
   chatWindow: {
     dragDropTitle: '将文件拖到这里',
     dragDropDesc: '支持图片、PDF、文档等',

@@ -85,7 +85,7 @@ class ACPAgentRegistry:
     def list_agents(self) -> list[ACPAgent]:
         agents = {agent.id: agent for agent in _BUILTINS}
         for raw in self._read_entries():
-            agent = self._parse(raw)
+            agent = self._parse(raw, builtin=agents.get(str(raw.get("id") or "")))
             if agent is not None:
                 agents[agent.id] = agent
         return list(agents.values())
@@ -116,7 +116,7 @@ class ACPAgentRegistry:
         return []
 
     @staticmethod
-    def _parse(raw: dict[str, Any]) -> ACPAgent | None:
+    def _parse(raw: dict[str, Any], builtin: ACPAgent | None = None) -> ACPAgent | None:
         agent_id = str(raw.get("id") or "").strip()
         command = raw.get("command")
         if isinstance(command, str):
@@ -127,10 +127,38 @@ class ACPAgentRegistry:
         if not command:
             return None
         env = raw.get("env") if isinstance(raw.get("env"), dict) else {}
+
+        def _command_field(key: str, fallback: list[str] | None) -> list[str] | None:
+            value = raw.get(key)
+            if isinstance(value, str):
+                value = [value]
+            if isinstance(value, list):
+                parts = [str(part) for part in value if str(part)]
+                if parts:
+                    return parts
+            return fallback
+
+        # Overriding a built-in's command shouldn't discard its install/login
+        # metadata -- the UI needs those to offer setup actions.
         return ACPAgent(
             id=agent_id,
-            name=str(raw.get("name") or agent_id),
+            name=str(raw.get("name") or (builtin.name if builtin else agent_id)),
             command=command,
             env={str(k): str(v) for k, v in env.items()},
-            cwd=str(raw["cwd"]) if raw.get("cwd") else None,
+            cwd=str(raw["cwd"])
+            if raw.get("cwd")
+            else (builtin.cwd if builtin else None),
+            builtin=bool(builtin),
+            install_command=_command_field(
+                "install_command", builtin.install_command if builtin else None
+            ),
+            login_command=_command_field(
+                "login_command", builtin.login_command if builtin else None
+            ),
+            version_bounds=str(raw["version_bounds"])
+            if raw.get("version_bounds")
+            else (builtin.version_bounds if builtin else None),
+            auth_status=str(raw["auth_status"])
+            if raw.get("auth_status")
+            else (builtin.auth_status if builtin else None),
         )

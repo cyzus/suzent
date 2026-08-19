@@ -231,7 +231,9 @@ from suzent.routes.a2ui_routes import a2ui_action, a2ui_answer
 from suzent.routes.acp_routes import (
     create_acp_session,
     list_acp_agents,
+    list_acp_permissions,
     list_acp_sessions,
+    resolve_acp_permission,
     resume_acp_session,
     probe_acp_agent,
 )
@@ -980,6 +982,12 @@ app = Starlette(
         Route("/acp/sessions", list_acp_sessions, methods=["GET"]),
         Route("/acp/sessions", create_acp_session, methods=["POST"]),
         Route("/acp/sessions/resume", resume_acp_session, methods=["POST"]),
+        Route("/acp/permissions", list_acp_permissions, methods=["GET"]),
+        Route(
+            "/acp/permissions/{request_id}",
+            resolve_acp_permission,
+            methods=["POST"],
+        ),
         Route("/chat", chat, methods=["POST"]),
         Route("/chat/send", chat_send, methods=["POST"]),
         Route("/chat/live", live_stream, methods=["POST"]),

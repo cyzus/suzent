@@ -563,6 +563,16 @@ async def _run_subagent(
             _queue_parent_wakeup(task)
     finally:
         unregister_background_stream(task.chat_id)
+        # An ACP sub-agent owns a subprocess; without this it outlives the task
+        # and only dies at server shutdown. Close it before the worktree goes
+        # away, since the agent's cwd may point inside it.
+        if task.runtime == "acp":
+            try:
+                from suzent.acp import get_acp_manager
+
+                await get_acp_manager().close(task.chat_id)
+            except Exception as exc:
+                logger.warning(f"Failed to close ACP session for {task.task_id}: {exc}")
         # Phase 3: always tear down the worktree, even on failure
         if task.isolation == "worktree" and task.worktree_path:
             await _teardown_worktree(task)

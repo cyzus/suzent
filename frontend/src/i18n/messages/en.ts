@@ -841,6 +841,19 @@ export const en = {
     },
     modelManagedByAcp: 'ACP MANAGED',
   },
+  acp: {
+    permission: {
+      header: 'External agent needs approval',
+      untitled: 'Untitled tool call',
+      approved: 'Approved',
+      denied: 'Denied',
+      expired: 'No longer waiting for a decision',
+    },
+    sessionReset: {
+      header: 'New session started',
+      body: 'The previous {agent} session could not be resumed, so this turn starts fresh without earlier history.',
+    },
+  },
   chatWindow: {
     dragDropTitle: 'Drop files here',
     dragDropDesc: 'Images, PDFs, documents, etc.',

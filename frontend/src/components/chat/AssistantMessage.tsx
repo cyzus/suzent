@@ -6,6 +6,8 @@ import { ThinkingAnimation, AgentBadge, RobotIcon } from './ThinkingAnimation';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { ToolCallBlock } from './ToolCallBlock';
 import { SubAgentCallBlock } from './SubAgentCallBlock';
+import { AcpPermissionPrompt } from './AcpPermissionPrompt';
+import { AcpSessionResetNotice } from './AcpSessionResetNotice';
 import type { SubAgentStatus } from './SubAgentCallBlock';
 import { CopyButton } from './CopyButton';
 import { FileChangeSummary } from './FileChangeSummary';
@@ -161,14 +163,15 @@ const AGUIPartsContent: React.FC<{
   }, [parts]);
 
   // Group consecutive parts of the same type into chunks
-  const chunks: { type: 'tool' | 'reasoning' | 'text' | 'a2ui'; items: AGUIPart[] }[] = [];
+  type ChunkType = 'tool' | 'reasoning' | 'text' | 'a2ui' | 'acp-permission' | 'acp-notice';
+  const chunks: { type: ChunkType; items: AGUIPart[] }[] = [];
   let current: AGUIPart[] = [];
-  let currentType: 'tool' | 'reasoning' | 'text' | 'a2ui' | null = null;
+  let currentType: ChunkType | null = null;
 
   for (const part of normalizedParts) {
     // citation-sources parts carry metadata, not display content — skip them.
     if (part.type === 'citation-sources') continue;
-    const type = part.type as 'tool' | 'reasoning' | 'text' | 'a2ui';
+    const type = part.type as ChunkType;
     if (current.length === 0) {
       currentType = type;
       current.push(part);
@@ -403,6 +406,34 @@ const AGUIPartsContent: React.FC<{
                 </div>
               </details>
             </div>
+          );
+        }
+
+        if (chunk.type === 'acp-permission') {
+          return (
+            <React.Fragment key={ci}>
+              {chunk.items.map((p, pi) =>
+                p.acpPermission ? (
+                  <AcpPermissionPrompt
+                    key={p.acpPermission.requestId || pi}
+                    request={p.acpPermission}
+                    stale={!isStreaming}
+                  />
+                ) : null,
+              )}
+            </React.Fragment>
+          );
+        }
+
+        if (chunk.type === 'acp-notice') {
+          return (
+            <React.Fragment key={ci}>
+              {chunk.items.map((p, pi) =>
+                p.acpNotice ? (
+                  <AcpSessionResetNotice key={pi} notice={p.acpNotice} />
+                ) : null,
+              )}
+            </React.Fragment>
           );
         }
 

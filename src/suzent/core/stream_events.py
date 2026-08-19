@@ -80,6 +80,12 @@ class CustomEventName(str, Enum):
     # Raw Agent Client Protocol session update
     ACP_SESSION_UPDATE = "acp.session_update"
 
+    # ACP agent is asking the user (or a Suzent agent) to approve a tool call
+    ACP_PERMISSION_REQUEST = "acp.permission_request"
+
+    # A resume fell back to a fresh ACP session, so prior history is gone
+    ACP_SESSION_RESET = "acp.session_reset"
+
 
 # Backwards compatibility aliases
 TEXT_MESSAGE_CONTENT = StreamEventType.TEXT_MESSAGE_CONTENT
