@@ -62,7 +62,12 @@ const config: Config = {
           editUrl:
             'https://github.com/cyzus/suzent/tree/main/website/',
         },
-        blog: false, // Disable blog for now
+        blog: {
+          showReadingTime: true,
+          // Please change this to your repo.
+          // Remove this to remove the "edit this page" links.
+          editUrl: 'https://github.com/cyzus/suzent/tree/main/website/',
+        },
         sitemap: {
           changefreq: 'weekly',
           priority: 0.5,
