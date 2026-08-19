@@ -19,7 +19,7 @@ In Suzent's architecture, a Node is any companion device that connects to the ma
 Inspired by OpenClaw's distributed control paradigm, nodes allow the Suzent agent to step out of its isolated sandbox and interact with the physical and network environment surrounding the user. 
 
 - **Smartphones** can offer capabilities like `camera.snap` or `location.get`.
-- **Companion/IoT Devices** might expose `speaker.speak` or `display.show`.
+- **Smart TV/Displays** might expose `speaker.speak` or `display.show`.
 - **Peer Laptops/Desktops** might allow the agent to read files, run scripts, or trigger their own local instances of the Suzent agent.
 
 ## How it Works: The Architecture
