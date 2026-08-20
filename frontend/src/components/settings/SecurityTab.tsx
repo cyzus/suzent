@@ -3,6 +3,7 @@ import { useI18n } from '../../i18n';
 import { SettingsHeader } from './SettingsHeader';
 import { SettingsCard, SectionCardHeader } from './SettingsCard';
 import { BrutalOnOff } from '../BrutalOnOff';
+import { HostTokenCard } from './HostTokenCard';
 
 interface SecurityTabProps {
   sandboxEnabled: boolean;
@@ -34,6 +35,8 @@ export function SecurityTab({ sandboxEnabled, onSandboxEnabledChange }: Security
           }
         />
       </SettingsCard>
+
+      <HostTokenCard />
     </div>
   );
 }

@@ -404,6 +404,14 @@ class ConfigModel(BaseModel):
     # exposes the HTTP API on the network, so keep on trusted/tailnet only.
     node_lan_bind: bool = False
 
+    # Publish an A2A Agent Card at /.well-known/agent-card.json, making this
+    # device discoverable and callable by any A2A-speaking agent. Off by
+    # default: the card is unauthenticated by design, so serving it reveals the
+    # device name and skill list to anything that can reach the port.
+    a2a_enabled: bool = False
+    # Operator-facing name on the published card. Blank falls back to hostname.
+    a2a_agent_name: str = ""
+
     session_daily_reset_hour: int = 0
     session_idle_timeout_minutes: int = 0
     jsonl_transcripts_enabled: bool = True

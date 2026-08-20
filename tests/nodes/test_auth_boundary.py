@@ -211,3 +211,24 @@ class TestMiddleware:
         called, sent = await _run(_scope("websocket", "100.64.0.5", path="/ws/other"))
         assert not called
         assert sent and sent[0]["type"] == "websocket.close"
+
+
+def test_browser_node_page_is_public_but_not_the_devices_api():
+    """The /node page must be exempt by EXACT path, never as a prefix.
+
+    A joining device has no token, so the page itself must be fetchable. But
+    exempting "/node" as a *prefix* would also match "/nodes/devices" and
+    "/nodes/pending/{code}/approve", handing the entire device API to any
+    unauthenticated remote caller.
+    """
+    assert is_http_exempt("/node")
+
+    for guarded in (
+        "/nodes",
+        "/nodes/devices",
+        "/nodes/pending",
+        "/nodes/pending/ABC123/approve",
+        "/nodes/grants",
+        "/nodex",
+    ):
+        assert not is_http_exempt(guarded), f"{guarded} must stay behind auth"

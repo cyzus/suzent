@@ -63,6 +63,11 @@ dev = [
     "pre-commit>=3.0.0",
     "build>=1.0.0",
     "zstandard",
+    # Dev-only: the official A2A SDK drives our A2A server in the conformance
+    # test, so protocol correctness is verified against the reference client
+    # rather than against our own assumptions. Not a runtime dependency —
+    # suzent.a2a hand-rolls the wire types to stay in the Starlette route style.
+    "a2a-sdk>=1.1.0",
 ]
 
 # All optional dependencies

@@ -311,6 +311,7 @@ export const en = {
       security: 'Security',
       social: 'Social Channels',
       devices: 'Devices',
+      mesh: 'Mesh',
       mcp: 'MCP Servers',
       automation: 'Automation',
       service: 'Background Service',

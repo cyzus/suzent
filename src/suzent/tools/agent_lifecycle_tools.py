@@ -7,6 +7,8 @@ from pydantic_ai import RunContext
 
 from suzent.core.agent_deps import AgentDeps
 from suzent.database import ChatModel, get_database
+from suzent.a2a import agent_bridge
+from suzent.a2a.agent_bridge import A2ABridgeError
 from suzent.nodes.agent_transport import (
     PeerAgentTransport,
     PeerAgentTransportError,
@@ -173,7 +175,12 @@ class AgentListTool(Tool):
             ]
             records.sort(key=lambda item: item.get("updated_at") or "", reverse=True)
 
-        remote_records = get_peer_agent_transport().list_agents()
+        # Both federation paths are delegation targets: Suzent peers reached by
+        # pairing, and external agents reached by the open A2A protocol.
+        remote_records = [
+            *get_peer_agent_transport().list_agents(),
+            *agent_bridge.list_agents(),
+        ]
         if status == "active":
             remote_records = [
                 record for record in remote_records if record.get("status") == "ready"
@@ -283,6 +290,25 @@ class AgentSendTool(Tool):
         ],
     ) -> ToolResult:
         current_chat_id = _require_chat_id(ctx)
+
+        # External A2A agents settle in one call — message/send blocks until the
+        # remote task completes or asks a question — so the reply comes straight
+        # back rather than through the durable outbox the Suzent peer path uses.
+        if agent_bridge.parse_address(agent_id):
+            try:
+                outcome = agent_bridge.delegate(agent_id, message.strip())
+            except A2ABridgeError as exc:
+                return ToolResult.error_result(ToolErrorCode.FILE_NOT_FOUND, str(exc))
+            return ToolResult.success_result(
+                outcome["summary"],
+                metadata={
+                    "agent_id": agent_id,
+                    "state": outcome["state"],
+                    "task_id": outcome.get("task_id"),
+                    "transport": "a2a",
+                },
+            )
+
         peer_transport = _remote_transport(agent_id)
         if current_chat_id and peer_transport is not None:
             if get_database().get_chat(current_chat_id) is None:

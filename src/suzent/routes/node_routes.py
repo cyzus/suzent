@@ -1508,3 +1508,26 @@ async def trigger_peer(request: Request):
             yield f'data: {{"type":"error","data":"{e}"}}\n\n'
 
     return StreamingResponse(_stream(), media_type="text/event-stream")
+
+
+async def browser_node_page(request):
+    """GET /node — a zero-install node that runs in any browser.
+
+    Turns a phone, tablet, or TV browser into a mesh device: a screen the agent
+    can write to and a speaker it can talk through. Served without a token
+    because the joining device has none yet — the page carries no secrets, and
+    the WebSocket handshake it performs still requires operator approval.
+    """
+    from starlette.responses import FileResponse, JSONResponse
+    from pathlib import Path as _Path
+
+    page = _Path(__file__).resolve().parent.parent / "static" / "node.html"
+    if not page.exists():
+        return JSONResponse({"error": "Browser node page not found"}, status_code=404)
+    return FileResponse(
+        page,
+        media_type="text/html",
+        # The page derives its gateway from the URL that served it, so a stale
+        # cached copy on a wall display would still work; keep it short anyway.
+        headers={"Cache-Control": "no-cache"},
+    )

@@ -13,6 +13,7 @@ import { ModelRolesTab } from './ModelRolesTab';
 import { ProvidersTab } from './ProvidersTab';
 import { SocialTab } from './SocialTab';
 import { DevicesTab } from './DevicesTab';
+import { MeshTab } from './MeshTab';
 import { UsageTab } from './UsageTab';
 import { SecurityTab } from './SecurityTab';
 import { BackgroundServiceTab } from './BackgroundServiceTab';
@@ -46,7 +47,7 @@ interface SettingsModalProps {
 }
 
 type ProviderTab = 'credentials' | 'models';
-type CategoryType = 'providers' | 'roles' | 'memory' | 'security' | 'social' | 'devices' | 'mcp' | 'acp-agents' | 'automation' | 'service' | 'data' | 'usage' | 'appearance' | 'about';
+type CategoryType = 'providers' | 'roles' | 'memory' | 'security' | 'social' | 'devices' | 'mesh' | 'mcp' | 'acp-agents' | 'automation' | 'service' | 'data' | 'usage' | 'appearance' | 'about';
 
 export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }: SettingsModalProps): React.ReactElement | null {
   const { refreshBackendConfig, backendConfig } = useChatStore();
@@ -487,6 +488,13 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }
       )
     },
     {
+      id: 'mesh', label: t('settings.categories.mesh'), icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v3m0 12v3m9-9h-3M6 12H3m13.5-6.5l-2 2m-5 5l-2 2m0-9l2 2m5 5l2 2M12 14a2 2 0 100-4 2 2 0 000 4z" />
+        </svg>
+      )
+    },
+    {
       id: 'mcp', label: t('settings.categories.mcp'), icon: (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
@@ -689,6 +697,10 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }
 
                   {activeCategory === 'devices' && (
                     <DevicesTab />
+                  )}
+
+                  {activeCategory === 'mesh' && (
+                    <MeshTab />
                   )}
 
                   {activeCategory === 'mcp' && (

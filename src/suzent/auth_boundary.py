@@ -39,11 +39,28 @@ _HTTP_EXEMPT_PREFIXES = (
     # artifact-specific bearer. This exception lets a one-way peer present the
     # latter without requiring a permanent reverse grant.
     "/nodes/peer-files/",
+    # A2A discovery. The card is a public document by design — that is what
+    # makes an agent discoverable — and the route itself 404s unless the
+    # operator opted in. It authorizes nothing: /a2a/v1 still needs a grant.
+    "/.well-known/agent-card.json",
 )
 
 
+# Exempt by EXACT path only. These must never be prefixes: "/node" as a prefix
+# would also match "/nodes/devices" and "/nodes/pending/{code}/approve", handing
+# the entire device API to unauthenticated remote callers.
+_HTTP_EXEMPT_PATHS = {
+    # The browser-node page. A device joining the mesh has no token yet, so the
+    # page must be fetchable without one. It is static markup carrying no
+    # secrets; the /ws/node handshake it then performs still requires approval.
+    "/node",
+}
+
+
 def is_http_exempt(path: str) -> bool:
-    return any(path.startswith(p) for p in _HTTP_EXEMPT_PREFIXES)
+    return path in _HTTP_EXEMPT_PATHS or any(
+        path.startswith(p) for p in _HTTP_EXEMPT_PREFIXES
+    )
 
 
 def is_loopback(host: str | None) -> bool:
@@ -77,6 +94,7 @@ AGENT_ALLOWED_PATHS = {
     "/channels/suzent/session",  # peer-owned session transcript
     "/channels/suzent/stop",  # stop the peer-owned session
     "/channels/suzent/whoami",  # peer token-validity self-check
+    "/a2a/v1",  # A2A JSON-RPC: send/stream messages, get/cancel tasks
 }
 
 AGENT_ALLOWED_PREFIXES = ("/nodes/peer-files/",)

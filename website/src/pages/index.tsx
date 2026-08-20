@@ -108,6 +108,7 @@ function HomepageNav() {
           <Link to="/sovereign" className={styles.homeNavLink}>
             <Translate id="homepage.nav.sovereign">Sovereign</Translate>
           </Link>
+          <Link to="/blog" className={styles.homeNavLink}>Blog</Link>
           <Link to="/docs/getting-started/intro" className={styles.homeNavLink}>Docs</Link>
           <a href="https://github.com/cyzus/suzent" className={styles.homeNavLink} target="_blank" rel="noopener noreferrer">GitHub</a>
           {otherLocale && (
