@@ -20,19 +20,18 @@ except ImportError:  # pragma: no cover - imported by cross-platform unit tests
 
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 RUN_VALUE = "Suzent Service"
-SUPERVISOR_PATH = RUNTIME_DIR / "service-supervisor.cmd"
-LAUNCHER_PATH = RUNTIME_DIR / "service-launcher.pyw"
+SUPERVISOR_PATH = RUNTIME_DIR / "service-supervisor.pyw"
 STOP_REQUEST_PATH = RUNTIME_DIR / "service-stop.request"
+
+# Legacy paths from the cmd.exe-based supervisor; cleaned up on install/uninstall.
+_LEGACY_CMD = RUNTIME_DIR / "service-supervisor.cmd"
+_LEGACY_LAUNCHER = RUNTIME_DIR / "service-launcher.pyw"
 
 
 class WindowsServiceManager(PlatformServiceManager):
     @property
     def definition_path(self) -> Path:
         return SUPERVISOR_PATH
-
-    @property
-    def launcher_path(self) -> Path:
-        return LAUNCHER_PATH
 
     def _read_autostart(self) -> str | None:
         if winreg is None:
@@ -66,87 +65,91 @@ class WindowsServiceManager(PlatformServiceManager):
     def is_installed(self) -> bool:
         return self.definition_path.exists() and self._read_autostart() is not None
 
-    def _autostart_command(self) -> str:
+    def _pythonw(self) -> Path:
         pythonw = self.python_executable.with_name("pythonw.exe")
         if os.name == "nt" and not pythonw.is_file():
             raise RuntimeError(f"Windowless Python launcher not found at {pythonw}")
-        return subprocess.list2cmdline([str(pythonw), str(self.launcher_path)])
+        return pythonw
 
-    def _write_hidden_launcher(self) -> None:
-        script = (
-            "import subprocess\n\n"
-            "creationflags = (\n"
-            '    getattr(subprocess, "CREATE_NO_WINDOW", 0)\n'
-            '    | getattr(subprocess, "DETACHED_PROCESS", 0)\n'
-            '    | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)\n'
-            ")\n"
-            "subprocess.Popen(\n"
-            f'    ["cmd.exe", "/d", "/c", {str(self.definition_path)!r}],\n'
-            "    stdin=subprocess.DEVNULL,\n"
-            "    stdout=subprocess.DEVNULL,\n"
-            "    stderr=subprocess.DEVNULL,\n"
-            "    close_fds=True,\n"
-            "    creationflags=creationflags,\n"
-            ")\n"
+    def _autostart_command(self) -> str:
+        return subprocess.list2cmdline(
+            [str(self._pythonw()), str(self.definition_path)]
         )
-        self.launcher_path.write_text(script, encoding="utf-8")
 
-    def _ensure_hidden_autostart(self) -> None:
+    def _ensure_autostart(self) -> None:
+        """Migrate stale autostart entries (including the old launcher path)."""
         command = self._autostart_command()
-        self._write_hidden_launcher()
         if self._read_autostart() != command:
             self._set_autostart(command)
 
+    @staticmethod
+    def _cleanup_legacy() -> None:
+        _LEGACY_CMD.unlink(missing_ok=True)
+        _LEGACY_LAUNCHER.unlink(missing_ok=True)
+
     def install(self) -> None:
         self.definition_path.parent.mkdir(parents=True, exist_ok=True)
-        python = subprocess.list2cmdline([str(self.python_executable)])
+        python = str(self.python_executable)
         stop_request = str(STOP_REQUEST_PATH)
+        # The supervisor is a .pyw script run by pythonw.exe — a GUI-subsystem
+        # binary that never allocates a console window.  The old approach used
+        # cmd.exe to run a .cmd batch, which could flash a terminal on Win 11
+        # (Windows Terminal intercepts console-subsystem process creation) and
+        # combined the MSDN-incompatible CREATE_NO_WINDOW | DETACHED_PROCESS
+        # flags.
         script = (
-            "@echo off\n"
-            "setlocal\n"
-            "set retries=0\n"
-            f'if exist "{stop_request}" del /q "{stop_request}"\n'
-            ":run\n"
-            f'if exist "{stop_request}" (\n'
-            f'  del /q "{stop_request}"\n'
-            "  exit /b 0\n"
-            ")\n"
-            f"{python} -m suzent.service.runtime\n"
-            "set code=%errorlevel%\n"
-            f'if exist "{stop_request}" (\n'
-            f'  del /q "{stop_request}"\n'
-            "  exit /b 0\n"
-            ")\n"
-            "if %code% EQU 0 exit /b 0\n"
-            "if %code% EQU 73 exit /b 73\n"
-            "set /a retries+=1\n"
-            "if %retries% GEQ 3 exit /b %code%\n"
-            "timeout /t 5 /nobreak >nul\n"
-            "goto run\n"
+            "import subprocess, sys, time\n"
+            "from pathlib import Path\n\n"
+            f"STOP_REQUEST = Path({stop_request!r})\n"
+            f"PYTHON = {python!r}\n"
+            "MAX_RETRIES = 3\n"
+            "CREATE_NO_WINDOW = 0x08000000\n\n"
+            "if STOP_REQUEST.exists():\n"
+            "    STOP_REQUEST.unlink(missing_ok=True)\n\n"
+            "retries = 0\n"
+            "while True:\n"
+            "    if STOP_REQUEST.exists():\n"
+            "        STOP_REQUEST.unlink(missing_ok=True)\n"
+            "        break\n"
+            "    code = subprocess.call(\n"
+            '        [PYTHON, "-m", "suzent.service.runtime"],\n'
+            "        stdin=subprocess.DEVNULL,\n"
+            "        stdout=subprocess.DEVNULL,\n"
+            "        stderr=subprocess.DEVNULL,\n"
+            "        creationflags=CREATE_NO_WINDOW,\n"
+            "    )\n"
+            "    if STOP_REQUEST.exists():\n"
+            "        STOP_REQUEST.unlink(missing_ok=True)\n"
+            "        break\n"
+            "    if code == 0 or code == 73:\n"
+            "        break\n"
+            "    retries += 1\n"
+            "    if retries >= MAX_RETRIES:\n"
+            "        break\n"
+            "    time.sleep(5)\n"
         )
         self.definition_path.write_text(script, encoding="utf-8")
-        self._write_hidden_launcher()
         self._set_autostart(self._autostart_command())
+        self._cleanup_legacy()
 
     def uninstall(self) -> None:
         self._delete_autostart()
         self.stop()
         self.definition_path.unlink(missing_ok=True)
-        self.launcher_path.unlink(missing_ok=True)
         STOP_REQUEST_PATH.unlink(missing_ok=True)
+        self._cleanup_legacy()
 
     def start(self) -> None:
-        self._ensure_hidden_autostart()
+        self._ensure_autostart()
         if read_process_state() is not None:
             return
         STOP_REQUEST_PATH.unlink(missing_ok=True)
-        creationflags = (
-            getattr(subprocess, "CREATE_NO_WINDOW", 0)
-            | getattr(subprocess, "DETACHED_PROCESS", 0)
-            | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-        )
+        # pythonw.exe is a GUI-subsystem binary — it never creates a console
+        # window, even without creation flags.  CREATE_NEW_PROCESS_GROUP lets
+        # the supervisor outlive the parent (CLI / Tauri).
+        creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
         subprocess.Popen(
-            ["cmd.exe", "/d", "/c", str(self.definition_path)],
+            [str(self._pythonw()), str(self.definition_path)],
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
