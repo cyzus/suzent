@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Suzent Node</title>
+<style>
+  /* Neo-brutalist, matching the Suzent app: hard black borders, offset
+     shadows, uppercase weight. Palette mirrors tailwind.config.cjs. */
+  :root {
+    --black: #000000;
+    --white: #FFFFFF;
+    --blue: #0066FF;
+    --green: #A8E6A3;
+    --yellow: #FFE666;
+    --red: #FF0000;
+    --ink: #000000;
+    --paper: #FAFAF9;
+    --muted: #57534e;
+    --shadow: 4px 4px 0px var(--black);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink: #FFFFFF;
+      --paper: #18181b;
+      --muted: #a1a1aa;
+      --shadow: 4px 4px 0px #FFFFFF;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100dvh; background: var(--paper); color: var(--ink);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 4vmin; padding: 6vmin; text-align: center; overflow-wrap: anywhere;
+  }
+
+  .panel {
+    width: min(38rem, 100%); background: var(--paper);
+    border: 3px solid var(--black); box-shadow: var(--shadow);
+    padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem;
+  }
+  @media (prefers-color-scheme: dark) { .panel { border-color: #FFFFFF; } }
+
+  h1 {
+    margin: 0; font-size: clamp(18px, 3.4vmin, 26px); font-weight: 800;
+    text-transform: uppercase; letter-spacing: .08em;
+  }
+  label {
+    display: block; font-size: 11px; font-weight: 800; text-transform: uppercase;
+    letter-spacing: .1em; color: var(--muted); margin-bottom: .4rem; text-align: left;
+  }
+  input {
+    width: 100%; font: inherit; font-weight: 700; padding: .6em .8em;
+    border: 2px solid var(--black); background: var(--white); color: #000;
+    border-radius: 0;
+  }
+  button {
+    font: inherit; font-weight: 800; text-transform: uppercase; letter-spacing: .06em;
+    padding: .75em 1.6em; border: 3px solid var(--black); background: var(--yellow);
+    color: #000; box-shadow: 4px 4px 0 var(--black); cursor: pointer; border-radius: 0;
+  }
+  button:active { transform: translate(2px, 2px); box-shadow: none; }
+  button:disabled { opacity: .45; cursor: default; }
+  button.ghost { background: var(--white); box-shadow: 2px 2px 0 var(--black); }
+
+  #status {
+    display: flex; align-items: center; gap: .5rem; justify-content: center;
+    font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .1em;
+    color: var(--muted);
+  }
+  #dot { width: .8em; height: .8em; border: 2px solid var(--black); background: var(--yellow); }
+  #dot.on { background: var(--green); }
+  #dot.off { background: var(--red); }
+
+  #pairing {
+    display: none; border: 3px solid var(--black); background: var(--yellow);
+    box-shadow: var(--shadow); color: #000; padding: .5em .3em;
+    font-size: clamp(32px, 13vmin, 84px); font-weight: 800; letter-spacing: .16em;
+  }
+  #stage {
+    font-size: clamp(24px, 8vmin, 92px); font-weight: 800; line-height: 1.12;
+    max-width: 22ch; text-transform: uppercase; letter-spacing: -.01em;
+  }
+  #hint { font-size: 12px; color: var(--muted); max-width: 46ch; line-height: 1.5; }
+  .row { display: flex; gap: .6rem; justify-content: center; flex-wrap: wrap; }
+
+  /* Wall mode: a screen on a wall, readable across a room. Nothing but the
+     message — no chrome, no controls, maximum contrast. */
+  body.wall { background: #000; color: #fff; padding: 4vmin; }
+  body.wall .panel, body.wall #hint, body.wall #status, body.wall .row { display: none; }
+  body.wall #stage { max-width: 90vw; font-size: clamp(40px, 15vmin, 220px); }
+  body.wall #pairing { border-color: #fff; }
+  #exitWall {
+    display: none; position: fixed; inset: auto 1rem 1rem auto;
+    background: transparent; border: 2px solid #fff; color: #fff;
+    box-shadow: none; opacity: .25; padding: .5em 1em; font-size: 11px;
+  }
+  body.wall #exitWall { display: block; }
+</style>
+</head>
+<body>
+  <div class="panel" id="panel">
+    <h1>Suzent Node</h1>
+    <div>
+      <label for="name">Device name</label>
+      <input id="name" maxlength="40" placeholder="Living Room TV" autocomplete="off" />
+    </div>
+    <div class="row">
+      <button id="join">Join the mesh</button>
+      <button id="wall" class="ghost">Wall mode</button>
+    </div>
+    <div id="status"><span id="dot"></span><span id="statusText">Ready to join</span></div>
+  </div>
+
+  <div id="pairing"></div>
+  <div id="stage"></div>
+  <div id="hint">
+    This page becomes a device your agent can invoke &mdash; a screen it can write to
+    and a speaker it can talk through. Keep it open and awake. Nothing is installed.
+  </div>
+  <button id="exitWall" class="ghost">Exit wall mode</button>
+
+<script>
+(() => {
+  "use strict";
+
+  const el = (id) => document.getElementById(id);
+  const statusText = el("statusText"), dot = el("dot"), stage = el("stage");
+  const pairing = el("pairing"), hint = el("hint"), panel = el("panel");
+  const joinBtn = el("join"), wallBtn = el("wall"), exitWallBtn = el("exitWall");
+  const nameInput = el("name");
+
+  // Derive the gateway from wherever this page was served, so the device never
+  // has to be told an address — it already knows the one that reached it.
+  const GATEWAY = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/node`;
+  const TOKEN_KEY = "suzent.node.deviceToken";
+  const NAME_KEY = "suzent.node.displayName";
+  const WALL_KEY = "suzent.node.wall";
+
+  let socket = null;
+  let connected = false;
+  let replacing = false;
+
+  function setStatus(text, state) {
+    statusText.textContent = text;
+    dot.className = state || "";
+  }
+
+  // Speech must be unlocked by a real user gesture on iOS, which is the main
+  // reason this page has a Join button at all.
+  function unlockSpeech() {
+    try {
+      const u = new SpeechSynthesisUtterance("");
+      u.volume = 0;
+      speechSynthesis.speak(u);
+    } catch (_) {}
+  }
+
+  async function keepAwake() {
+    try {
+      await navigator.wakeLock.request("screen");
+      document.addEventListener("visibilitychange", async () => {
+        if (document.visibilityState === "visible") {
+          try { await navigator.wakeLock.request("screen"); } catch (_) {}
+        }
+      });
+    } catch (_) {
+      // Unsupported, or blocked on a non-secure origin — harmless.
+    }
+  }
+
+  function guessName() {
+    const ua = navigator.userAgent;
+    return /iPhone/.test(ua) ? "iPhone"
+         : /iPad/.test(ua) ? "iPad"
+         : /Android.*TV|SMART-TV|Tizen|Web0S|AppleTV/i.test(ua) ? "TV"
+         : /Android/.test(ua) ? "Android Phone"
+         : "Browser Screen";
+  }
+
+  function currentName() {
+    return (nameInput.value || "").trim() || guessName();
+  }
+
+  // ─── Wall mode ────────────────────────────────────────────────────
+
+  function setWall(on) {
+    document.body.classList.toggle("wall", on);
+    try { localStorage.setItem(WALL_KEY, on ? "1" : "0"); } catch (_) {}
+    if (on) keepAwake();
+  }
+
+  wallBtn.addEventListener("click", () => {
+    // Entering wall mode implies you want it live, so join if we haven't.
+    if (!connected) join();
+    setWall(true);
+  });
+  exitWallBtn.addEventListener("click", () => setWall(false));
+
+  // ─── Capabilities this device offers ──────────────────────────────
+  // Limited to what works on a plain http:// LAN origin. Camera, geolocation,
+  // and clipboard all require a secure context, so they are NOT advertised —
+  // a node must never claim a capability it cannot honor.
+
+  const CAPABILITIES = [
+    { name: "screen.show",  description: "Display a message on this screen",
+      params_schema: { text: "str" } },
+    { name: "screen.clear", description: "Clear this screen", params_schema: {} },
+    { name: "screen.speak", description: "Say something out loud on this device",
+      params_schema: { text: "str" } },
+    { name: "device.info",  description: "Report this device's screen and platform",
+      params_schema: {} },
+  ];
+
+  const HANDLERS = {
+    "screen.show": ({ text }) => {
+      stage.textContent = String(text ?? "");
+      return { shown: String(text ?? "") };
+    },
+    "screen.clear": () => {
+      stage.textContent = "";
+      return { cleared: true };
+    },
+    "screen.speak": ({ text }) => {
+      const words = String(text ?? "").trim();
+      if (!words) throw new Error("text is required");
+      if (!("speechSynthesis" in window)) throw new Error("Speech is unavailable here");
+      speechSynthesis.cancel();
+      speechSynthesis.speak(new SpeechSynthesisUtterance(words));
+      stage.textContent = words;
+      return { spoke: words };
+    },
+    "device.info": () => ({
+      platform: navigator.platform || "unknown",
+      user_agent: navigator.userAgent,
+      screen: `${screen.width}x${screen.height}`,
+      language: navigator.language,
+    }),
+  };
+
+  // ─── Connection ───────────────────────────────────────────────────
+
+  function connect() {
+    setStatus("Connecting", "");
+    socket = new WebSocket(GATEWAY);
+
+    socket.onopen = () => {
+      socket.send(JSON.stringify({
+        type: "connect",
+        display_name: currentName(),
+        platform: "browser",
+        capabilities: CAPABILITIES,
+        device_token: localStorage.getItem(TOKEN_KEY) || "",
+      }));
+    };
+
+    socket.onmessage = (event) => {
+      let msg;
+      try { msg = JSON.parse(event.data); } catch (_) { return; }
+
+      if (msg.type === "pending") {
+        setStatus("Approve this device in Suzent", "");
+        pairing.style.display = "block";
+        pairing.textContent = msg.pairing_code || "";
+        // The name travels in the handshake, so it is still editable while we
+        // wait — pressing Join again re-announces under the new one.
+        nameInput.disabled = false;
+        joinBtn.disabled = false;
+        joinBtn.textContent = "Rejoin with this name";
+        // Any token we presented was refused; stop replaying a dead one.
+        try { localStorage.removeItem(TOKEN_KEY); } catch (_) {}
+        return;
+      }
+
+      if (msg.type === "connected") {
+        connected = true;
+        if (msg.device_token) localStorage.setItem(TOKEN_KEY, msg.device_token);
+        pairing.style.display = "none";
+        joinBtn.disabled = true;
+        joinBtn.textContent = "Joined";
+        nameInput.disabled = true;
+        hint.textContent =
+          "Connected. Your agent can write to this screen and speak through it. " +
+          "To rename this device, reload the page and rejoin.";
+        setStatus(`${currentName()} - in the mesh`, "on");
+        keepAwake();
+        return;
+      }
+
+      if (msg.type === "ping") {
+        socket.send(JSON.stringify({ type: "pong" }));
+        return;
+      }
+
+      if (msg.type === "invoke") {
+        const reply = { type: "result", request_id: msg.request_id };
+        try {
+          const handler = HANDLERS[msg.command];
+          if (!handler) throw new Error(`Unknown command: ${msg.command}`);
+          reply.success = true;
+          reply.result = handler(msg.params || {});
+        } catch (err) {
+          // Always answer — a silent node just makes the caller time out.
+          reply.success = false;
+          reply.error = String(err && err.message ? err.message : err);
+        }
+        socket.send(JSON.stringify(reply));
+        return;
+      }
+
+      if (msg.type === "error") {
+        setStatus(msg.message || "Rejected", "off");
+        localStorage.removeItem(TOKEN_KEY);
+      }
+    };
+
+    socket.onclose = () => {
+      connected = false;
+      if (replacing) {
+        replacing = false;
+        return;
+      }
+      setStatus("Disconnected - retrying", "off");
+      // A saved token makes reconnects silent, so a screen left on a wall
+      // rejoins by itself after a router blip.
+      setTimeout(connect, 3000);
+    };
+  }
+
+  function join() {
+    if (connected) return;
+    unlockSpeech();
+    try { localStorage.setItem(NAME_KEY, currentName()); } catch (_) {}
+    joinBtn.disabled = true;
+    // Re-announcing: drop the pending socket without triggering its retry.
+    if (socket) {
+      replacing = true;
+      try { socket.close(); } catch (_) {}
+      socket = null;
+    }
+    pairing.style.display = "none";
+    connect();
+  }
+
+  joinBtn.addEventListener("click", join);
+  nameInput.addEventListener("keydown", (e) => { if (e.key === "Enter") join(); });
+
+  // ─── Boot ─────────────────────────────────────────────────────────
+
+  let savedName = "";
+  try { savedName = localStorage.getItem(NAME_KEY) || ""; } catch (_) {}
+  nameInput.value = savedName || guessName();
+
+  const params = new URLSearchParams(location.search);
+  const wallWanted = params.get("wall") === "1" ||
+    (() => { try { return localStorage.getItem(WALL_KEY) === "1"; } catch (_) { return false; } })();
+
+  // An already-approved device rejoins without a tap, so a wall display
+  // survives a reboot unattended. A brand-new one still waits for a human,
+  // because pairing needs the operator anyway.
+  let hasToken = false;
+  try { hasToken = !!localStorage.getItem(TOKEN_KEY); } catch (_) {}
+  if (hasToken) join();
+  if (wallWanted) setWall(true);
+})();
+</script>
+</body>
+</html>
