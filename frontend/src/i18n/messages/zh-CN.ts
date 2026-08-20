@@ -351,6 +351,7 @@ export const zhCN = {
       security: '安全',
       social: '社交频道',
       devices: '设备',
+      mesh: '智能体网格',
       mcp: 'MCP 服务器',
       automation: '自动化',
       service: '后台服务',

@@ -1,9 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import {
   ComputerDesktopIcon,
   MagnifyingGlassIcon,
-  WifiIcon,
 } from '@heroicons/react/24/outline';
 
 import {
@@ -12,7 +10,6 @@ import {
   fetchApprovedDevices,
   fetchUnauthorizedTriggers,
   fetchNodeConfig,
-  saveNodeConfig,
   approvePendingNode,
   denyPendingNode,
   revokeDevice,
@@ -27,8 +24,8 @@ import {
   removePeer,
   requestControl,
   controlStatus,
-  createHostToken,
   type ConnectedNode,
+  type NodeCapabilityInfo,
   type PendingNode,
   type ApprovedDevice,
   type NodeAuthConfig,
@@ -42,6 +39,11 @@ import { BrutalSelect } from '../BrutalSelect';
 import { BrutalButton } from '../BrutalButton';
 import { BrutalOnOff } from '../BrutalOnOff';
 import { SettingsHeader } from './SettingsHeader';
+import { NodeInvokePanel, PeerInvokePanel } from './NodeInvokePanel';
+import { CopyButton } from './CopyButton';
+import { BrowserNodeQR } from './BrowserNodeQR';
+import { NetworkAccessStrip } from './NetworkAccessCard';
+import { PeerTriggerPanel } from './PeerTriggerPanel';
 import { SectionCardHeader, SettingsCard, SettingsListItem, SettingsListAction } from './SettingsCard';
 import { relativeTime } from '../../lib/chatUtils';
 
@@ -54,25 +56,6 @@ function capNames(caps: { name: string }[]): string {
 
 function isAgent(node: { capabilities: { name: string }[] }): boolean {
   return node.capabilities.some((c) => c.name === AGENT_CAPABILITY);
-}
-
-/** A small button that confirms it copied to the clipboard. */
-function CopyButton({ value, tone = 'neutral', label = 'Copy' }: { value: string; tone?: 'blue' | 'red' | 'neutral'; label?: string }): React.ReactElement {
-  const [copied, setCopied] = useState(false);
-  return (
-    <SettingsListAction
-      tone={tone}
-      disabled={!value}
-      onClick={() => {
-        if (!value) return;
-        navigator.clipboard?.writeText(value);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
-      }}
-    >
-      {copied ? 'Copied' : label}
-    </SettingsListAction>
-  );
 }
 
 /** Read-only status pill (used for the outbound direction and empty states). */
@@ -121,8 +104,6 @@ export function DevicesTab(): React.ReactElement {
   const [config, setConfig] = useState<NodeAuthConfig | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [restarting, setRestarting] = useState(false);
-  const [hostToken, setHostToken] = useState<string | null>(null);
   const [addrHost, setAddrHost] = useState<string | null>(null);
   const [connections, setConnections] = useState<OutboundConnection[]>([]);
   const [grants, setGrants] = useState<ControlRequest[]>([]);
@@ -210,26 +191,6 @@ export function DevicesTab(): React.ReactElement {
     return () => clearInterval(id);
   }, [refresh]);
 
-  const updateConfig = useCallback(
-    async (updates: { node_lan_bind?: boolean }) => {
-      setError(null);
-      try {
-        const next = await saveNodeConfig(updates);
-        // Preserve pairing-address fields the POST response doesn't echo.
-        setConfig((prev) => ({ ...(prev ?? {}), ...next }));
-        if (next.restart_required) {
-          setRestarting(true);
-          await new Promise((resolve) => setTimeout(resolve, 150));
-          await invoke('restart_app');
-        }
-      } catch (e) {
-        setRestarting(false);
-        setError(e instanceof Error ? e.message : String(e));
-      }
-    },
-    []
-  );
-
   const act = async (key: string, fn: () => Promise<void>) => {
     setBusy(key);
     setError(null);
@@ -275,6 +236,10 @@ export function DevicesTab(): React.ReactElement {
     online: boolean;
     isAgent: boolean;
     capabilities?: string;
+    /** Live capability descriptors, present only while the node is connected —
+     *  what the invoke form is generated from. */
+    nodeId?: string;
+    nodeCapabilities?: NodeCapabilityInfo[];
     deviceId?: string; // grant I issued (they drive me)
     scope?: string;
     status?: 'active' | 'paused'; // inbound grant status
@@ -297,7 +262,16 @@ export function DevicesTab(): React.ReactElement {
   };
   const deviceRows: DeviceRow[] = (() => {
     const byKey = new Map<string, DeviceRow>();
-    const keyForName = (s: string) => `name:${s.trim().toLowerCase()}`;
+    // Normalize the display name before matching: the same machine introduces
+    // itself differently per source — "MacBook Pro" from a peer record vs
+    // "MacBook-Pro.local" from mDNS — and those must collapse to one row.
+    const keyForName = (s: string) =>
+      `name:${s
+        .trim()
+        .toLowerCase()
+        .replace(/\.local$/, '')
+        .replace(/[\s_-]+/g, ' ')
+        .trim()}`;
     // Merge peer.base_url and a grant's callback_url for the same machine
     // (names differ across sides). Shared normalizer defined above.
     const keyForUrl = addrKeyOf;
@@ -309,17 +283,27 @@ export function DevicesTab(): React.ReactElement {
         online: true,
         isAgent: isAgent(n),
         capabilities: capNames(n.capabilities),
+        nodeId: n.node_id,
+        nodeCapabilities: n.capabilities,
       };
       byKey.set(keyForName(n.display_name), row);
     }
-    // Peers first — they carry base_url, the stable identity we merge on.
+    // Peers carry node_identity — the ONLY network-independent handle for a
+    // machine. base_url changes between LAN and tailnet, and device/peer ids are
+    // minted per side, so identity has to be indexed here or a grant arriving on
+    // a different address spawns a second row for the same laptop.
     for (const p of peers) {
+      const idKey = p.node_identity ? `id:${p.node_identity}` : null;
       const addrKey = keyForUrl(p.base_url);
       const nameKey = keyForName(p.name);
-      const existing = (addrKey && byKey.get(addrKey)) || byKey.get(nameKey);
+      const existing =
+        (idKey && byKey.get(idKey)) ||
+        (addrKey && byKey.get(addrKey)) ||
+        byKey.get(nameKey);
       if (existing) {
         existing.peer = p;
         existing.online = existing.online || !!p.online;
+        if (idKey) byKey.set(idKey, existing);
         if (addrKey) byKey.set(addrKey, existing);
       } else {
         const row: DeviceRow = {
@@ -330,6 +314,7 @@ export function DevicesTab(): React.ReactElement {
           peer: p,
         };
         byKey.set(nameKey, row);
+        if (idKey) byKey.set(idKey, row);
         if (addrKey) byKey.set(addrKey, row);
       }
     }
@@ -434,85 +419,8 @@ export function DevicesTab(): React.ReactElement {
         </div>
       )}
 
-      {restarting && (
-        <div className="border-2 border-brutal-black bg-brutal-yellow/40 px-3 py-2 text-xs font-bold uppercase">
-          Restarting Suzent to apply network access…
-        </div>
-      )}
-
-      {/* ── Network access ──────────────────────────────────────────── */}
-      <SettingsCard>
-        <SectionCardHeader
-          icon={<WifiIcon className="h-6 w-6" />}
-          iconTone="green"
-          title="Network access"
-          description="Allow connections from your trusted LAN or tailnet."
-        />
-        <div className="space-y-3">
-          <div className="grid gap-4 border-2 border-brutal-black bg-white p-4 shadow-brutal-sm dark:bg-zinc-900 md:grid-cols-[1fr_auto] md:items-center">
-            <div className="flex min-w-0 gap-3">
-              <div className="grid h-9 w-9 shrink-0 place-items-center border-2 border-brutal-black bg-brutal-blue text-white">
-                <WifiIcon className="h-5 w-5" />
-              </div>
-              <div className="min-w-0">
-                <div className="font-bold uppercase text-sm">Reachable by other devices</div>
-                <p className="text-xs text-neutral-500 dark:text-neutral-400 font-mono max-w-md">
-                  Listen on port 25314. Changing this restarts Suzent automatically.
-                </p>
-                {!!config?.node_lan_bind && (
-                  <div className={`mt-1 text-[11px] font-bold uppercase ${config.binding_active ? 'text-green-600 dark:text-brutal-green' : 'text-brutal-red'}`}>
-                    {config.binding_active ? 'Ready on port 25314' : 'Restart needed'}
-                  </div>
-                )}
-              </div>
-            </div>
-            <BrutalOnOff
-              checked={!!config?.node_lan_bind}
-              disabled={restarting}
-              onChange={(v) => updateConfig({ node_lan_bind: v })}
-            />
-          </div>
-
-          <details>
-            <summary className="cursor-pointer text-xs font-bold uppercase text-neutral-500 hover:text-brutal-black dark:text-neutral-400 dark:hover:text-white">
-              Advanced access
-            </summary>
-            <div className="mt-2 grid gap-3 border-2 border-brutal-black bg-white p-3 dark:bg-zinc-900 md:grid-cols-[1fr_auto] md:items-center">
-              <p className="text-xs text-neutral-500 dark:text-neutral-400 font-mono">
-                Create a full-access token for remote administration.
-              </p>
-              <BrutalButton
-                onClick={async () => {
-                  setError(null);
-                  try {
-                    const { token } = await createHostToken('Host access');
-                    setHostToken(token);
-                    await refresh();
-                  } catch (e) {
-                    setError(e instanceof Error ? e.message : String(e));
-                  }
-                }}
-              >
-                Create host token
-              </BrutalButton>
-            </div>
-          </details>
-          {hostToken && (
-            <div className="border-2 border-brutal-red px-3 py-2 space-y-1">
-              <div className="text-[11px] font-bold uppercase text-brutal-red">Copy now — shown once</div>
-              <div className="flex items-center gap-2">
-                <code className="flex-1 font-mono text-xs break-all">{hostToken}</code>
-                <CopyButton value={hostToken} tone="red" />
-                <SettingsListAction onClick={() => setHostToken(null)}>Dismiss</SettingsListAction>
-              </div>
-            </div>
-          )}
-
-          <p className="border-l-4 border-brutal-yellow bg-brutal-yellow/20 px-3 py-2 text-[11px] text-neutral-600 dark:text-neutral-300 font-mono">
-            Use only on a trusted LAN or Tailscale network.
-          </p>
-        </div>
-      </SettingsCard>
+      {/* Network status — the toggle lives in Mesh; this is read-only. */}
+      <NetworkAccessStrip />
 
       {/* ── Discover peers ──────────────────────────────────────────── */}
       <SettingsCard>
@@ -582,6 +490,29 @@ export function DevicesTab(): React.ReactElement {
                 </div>
               ))}
             </>
+          )}
+
+          {/* Zero-install path: scan and the screen joins the mesh. Placed
+              above the CLI fallback because it is the one most devices can do. */}
+          {selectedAddr?.host && (
+            <div className="border-2 border-brutal-black dark:border-white bg-neutral-50 dark:bg-zinc-900 p-4">
+              <p className="text-xs font-bold uppercase tracking-wide mb-3">
+                Add a screen (phone, tablet, TV)
+              </p>
+              {addresses.length > 1 && (
+                <div className="mb-3">
+                  <BrutalSelect
+                    value={selectedAddr.host}
+                    onChange={setAddrHost}
+                    options={addresses.map((a) => ({
+                      value: a.host,
+                      label: `${a.label} · ${a.host}`,
+                    }))}
+                  />
+                </div>
+              )}
+              <BrowserNodeQR host={selectedAddr.host} port={config?.port ?? 25314} />
+            </div>
           )}
 
           {/* Fallback for headless / non-discoverable devices. */}
@@ -743,6 +674,27 @@ export function DevicesTab(): React.ReactElement {
                   </div>
 
                   <div className="space-y-3 px-4 py-3">
+                    {/* Drive this device from here: a Suzent peer takes a prompt
+                        for its agent, a node takes one of its named commands. */}
+                    {d.peer && (
+                      <>
+                        <PeerTriggerPanel
+                          peerId={d.peer.peer_id}
+                          paused={d.peer.mode !== 'trigger'}
+                        />
+                        {/* A Suzent peer runs its own nodes, so its hardware is
+                            invokable too — loaded on demand, not on the poll. */}
+                        <PeerInvokePanel peerId={d.peer.peer_id} />
+                      </>
+                    )}
+
+                    {d.nodeId && (d.nodeCapabilities?.length ?? 0) > 0 && (
+                      <NodeInvokePanel
+                        nodeId={d.nodeId}
+                        capabilities={d.nodeCapabilities ?? []}
+                      />
+                    )}
+
                     {d.peer?.base_url && (
                       <div className="border-l-4 border-brutal-blue bg-white/80 px-2 py-1 text-[11px] text-neutral-500 font-mono truncate dark:bg-zinc-950/50 dark:text-neutral-400">{d.peer.base_url}</div>
                     )}

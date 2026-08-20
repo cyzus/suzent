@@ -448,6 +448,9 @@ export interface NodeCapabilityInfo {
   name: string;
   description?: string;
   params_schema?: Record<string, string>;
+  /** Which of a peer's devices owns this capability. Present only when the
+   *  capabilities were flattened from a remote peer's node list. */
+  node?: string;
 }
 
 export interface ConnectedNode {
@@ -633,6 +636,9 @@ export interface ControlledPeer {
   peer_id: string;
   name: string;
   base_url: string;
+  /** Stable per-install identity, network-independent — the only reliable way
+   *  to tell that a LAN address and a tailnet address are the same machine. */
+  node_identity?: string;
   mode: 'off' | 'trigger' | 'paused';
   reverse_enabled?: boolean;
   added_at: string;
@@ -1513,4 +1519,346 @@ export async function saveSocialConfig(config: SocialConfig): Promise<boolean> {
     console.error(e);
     return false;
   }
+}
+
+// ─── A2A (Agent2Agent) ───────────────────────────────────────────────
+// The open half of the mesh: agents reached by URL and the standard protocol,
+// alongside the Suzent-native peers above. See src/suzent/a2a/.
+
+export interface A2ASkill {
+  id: string;
+  name: string;
+  description?: string;
+  tags?: string[];
+  examples?: string[];
+}
+
+export interface A2ACard {
+  protocolVersion?: string;
+  name: string;
+  description?: string;
+  url?: string;
+  version?: string;
+  preferredTransport?: string;
+  capabilities?: { streaming?: boolean; pushNotifications?: boolean };
+  securitySchemes?: Record<string, { type?: string; scheme?: string; description?: string }>;
+  skills?: A2ASkill[];
+}
+
+/** This device's own published identity. */
+export interface A2AStatus {
+  enabled: boolean;
+  card_url: string;
+  rpc_url: string;
+  name: string;
+  environment: string;
+  node_identity: string;
+  version: string;
+  card: A2ACard;
+}
+
+/** An external agent we may delegate to. */
+export interface A2AAgent {
+  agent_id: string;
+  name: string;
+  base_url: string;
+  rpc_url: string;
+  enabled: boolean;
+  has_token: boolean;
+  card?: A2ACard | null;
+  added_at: string;
+}
+
+export type A2ATaskState =
+  | 'submitted'
+  | 'working'
+  | 'input-required'
+  | 'auth-required'
+  | 'completed'
+  | 'canceled'
+  | 'failed'
+  | 'rejected'
+  | 'unknown';
+
+/** Our view of a task we delegated to a remote agent. */
+export interface A2AOutboundTask {
+  agent_id: string;
+  agent_name: string;
+  task_id: string;
+  context_id: string;
+  state: A2ATaskState;
+  message: string;
+  prompt: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** A task another agent gave us. */
+export interface A2AInboundTask {
+  id: string;
+  context_id: string;
+  state: A2ATaskState;
+  timestamp?: string;
+  message: string;
+}
+
+async function a2aJson<T>(res: Response, fallback: string): Promise<T> {
+  if (!res.ok) {
+    // Route errors carry a JSON `error`; fall back to raw text for anything else.
+    let detail = '';
+    try {
+      detail = ((await res.json()) as { error?: string }).error || '';
+    } catch {
+      detail = await res.text().catch(() => '');
+    }
+    throw new Error(detail || fallback);
+  }
+  return (await res.json()) as T;
+}
+
+export async function fetchA2AStatus(): Promise<A2AStatus | null> {
+  const res = await fetch(`${getApiBase()}/a2a/status`);
+  if (!res.ok) return null;
+  return (await res.json()) as A2AStatus;
+}
+
+export async function saveA2AStatus(updates: {
+  enabled?: boolean;
+  agent_name?: string;
+}): Promise<A2AStatus> {
+  const res = await fetch(`${getApiBase()}/a2a/status`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  });
+  return a2aJson<A2AStatus>(res, 'Failed to update A2A settings');
+}
+
+export async function fetchA2AAgents(): Promise<A2AAgent[]> {
+  const res = await fetch(`${getApiBase()}/a2a/agents`);
+  if (!res.ok) return [];
+  return ((await res.json()).agents || []) as A2AAgent[];
+}
+
+export async function addA2AAgent(url: string, token = ''): Promise<A2AAgent> {
+  const res = await fetch(`${getApiBase()}/a2a/agents`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url, token }),
+  });
+  return a2aJson<A2AAgent>(res, 'Could not add that agent');
+}
+
+export async function refreshA2AAgent(agentId: string): Promise<void> {
+  const res = await fetch(`${getApiBase()}/a2a/agents/${agentId}/refresh`, { method: 'POST' });
+  await a2aJson(res, 'Could not refresh that agent card');
+}
+
+export async function setA2AAgentEnabled(agentId: string, enabled: boolean): Promise<void> {
+  const res = await fetch(`${getApiBase()}/a2a/agents/${agentId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled }),
+  });
+  await a2aJson(res, 'Could not update that agent');
+}
+
+export async function removeA2AAgent(agentId: string): Promise<void> {
+  const res = await fetch(`${getApiBase()}/a2a/agents/${agentId}`, { method: 'DELETE' });
+  await a2aJson(res, 'Could not remove that agent');
+}
+
+/**
+ * Delegate a task, or answer one that is waiting on `input-required` by passing
+ * the `taskId` the remote agent paused on.
+ */
+export async function sendToA2AAgent(
+  agentId: string,
+  text: string,
+  options: { taskId?: string; contextId?: string } = {}
+): Promise<{ kind: 'task' | 'message'; task?: A2AOutboundTask; summary: string }> {
+  const res = await fetch(`${getApiBase()}/a2a/agents/${agentId}/send`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, task_id: options.taskId, context_id: options.contextId }),
+  });
+  return a2aJson(res, 'The remote agent could not be reached');
+}
+
+export async function fetchA2AOutboundTasks(): Promise<A2AOutboundTask[]> {
+  const res = await fetch(`${getApiBase()}/a2a/outbound`);
+  if (!res.ok) return [];
+  return ((await res.json()).tasks || []) as A2AOutboundTask[];
+}
+
+export async function fetchA2AInboundTasks(): Promise<A2AInboundTask[]> {
+  const res = await fetch(`${getApiBase()}/a2a/tasks`);
+  if (!res.ok) return [];
+  return ((await res.json()).tasks || []) as A2AInboundTask[];
+}
+
+export async function refreshA2AOutboundTask(
+  agentId: string,
+  taskId: string
+): Promise<A2AOutboundTask> {
+  const res = await fetch(`${getApiBase()}/a2a/outbound/${agentId}/${taskId}/refresh`, {
+    method: 'POST',
+  });
+  return (await a2aJson<{ task: A2AOutboundTask }>(res, 'Could not refresh that task')).task;
+}
+
+export async function cancelA2AOutboundTask(
+  agentId: string,
+  taskId: string
+): Promise<A2AOutboundTask> {
+  const res = await fetch(`${getApiBase()}/a2a/outbound/${agentId}/${taskId}/cancel`, {
+    method: 'POST',
+  });
+  return (await a2aJson<{ task: A2AOutboundTask }>(res, 'Could not cancel that task')).task;
+}
+
+/**
+ * Invoke a capability on a connected node (a phone, TV, or any device that
+ * joined the mesh). Params are shaped by the capability's own `params_schema`,
+ * which the device advertised at handshake — the server rejects anything the
+ * device did not offer.
+ */
+export async function invokeNode(
+  nodeId: string,
+  command: string,
+  params: Record<string, unknown> = {}
+): Promise<{ success: boolean; result?: unknown; error?: string | null }> {
+  const res = await fetch(`${getApiBase()}/nodes/${nodeId}/invoke`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ command, params }),
+  });
+  if (!res.ok) {
+    let detail = '';
+    try {
+      detail = ((await res.json()) as { error?: string }).error || '';
+    } catch {
+      detail = await res.text().catch(() => '');
+    }
+    throw new Error(detail || `Invoke failed (HTTP ${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * Trigger a Suzent peer's agent with a prompt and stream its reply.
+ *
+ * Unlike a node capability (one named command), a peer is a whole agent: this
+ * runs a turn on that machine and streams AG-UI events back, so `onDelta` fires
+ * as the remote agent types. Returns once the stream closes.
+ */
+export async function triggerPeer(
+  peerId: string,
+  prompt: string,
+  onDelta: (text: string) => void
+): Promise<void> {
+  const res = await fetch(`${getApiBase()}/nodes/peers/${peerId}/trigger`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt }),
+  });
+  if (!res.ok) {
+    let detail = '';
+    try {
+      detail = ((await res.json()) as { error?: string }).error || '';
+    } catch {
+      detail = await res.text().catch(() => '');
+    }
+    throw new Error(detail || `Trigger failed (HTTP ${res.status})`);
+  }
+  if (!res.body) throw new Error('The peer returned no stream');
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    // SSE frames are separated by a blank line; keep any partial tail buffered.
+    const frames = buffer.split('\n\n');
+    buffer = frames.pop() ?? '';
+    for (const frame of frames) {
+      const line = frame.split('\n').find((l) => l.startsWith('data: '));
+      if (!line) continue;
+      try {
+        const event = JSON.parse(line.slice(6));
+        if (event.type === 'TEXT_MESSAGE_CONTENT' && event.delta) {
+          onDelta(String(event.delta));
+        } else if (event.type === 'RUN_ERROR') {
+          throw new Error(String(event.message || 'The remote turn failed'));
+        }
+      } catch (e) {
+        if (e instanceof Error && e.message !== 'Unexpected end of JSON input') throw e;
+      }
+    }
+  }
+}
+
+/**
+ * List the hardware capabilities of a Suzent peer — a live, best-effort fetch
+ * of that machine's own nodes through our grant token. Each entry carries the
+ * `node` that owns it, since a peer may have several devices attached.
+ *
+ * This crosses the network, so call it on demand (when a row is expanded),
+ * never on the polling loop.
+ */
+export async function fetchPeerCapabilities(
+  peerId: string
+): Promise<NodeCapabilityInfo[]> {
+  // The server already caps its own call to the peer, but an unreachable peer
+  // or a stalled socket must never leave the UI spinning — fail loudly instead.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+  let res: Response;
+  try {
+    res = await fetch(`${getApiBase()}/nodes/peers/${peerId}/capabilities`, {
+      signal: controller.signal,
+    });
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      throw new Error('Timed out reading capabilities — the device may be offline.');
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+  if (!res.ok) {
+    let detail = '';
+    try {
+      detail = ((await res.json()) as { error?: string }).error || '';
+    } catch {
+      detail = '';
+    }
+    throw new Error(detail || `Could not read capabilities (HTTP ${res.status})`);
+  }
+  return ((await res.json()).capabilities || []) as NodeCapabilityInfo[];
+}
+
+/** Run a capability on a Suzent peer's device, proxied through our grant. */
+export async function invokePeerCapability(
+  peerId: string,
+  command: string,
+  params: Record<string, unknown> = {}
+): Promise<{ success: boolean; result?: unknown; error?: string | null }> {
+  const res = await fetch(`${getApiBase()}/nodes/peers/${peerId}/invoke`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ command, params }),
+  });
+  if (!res.ok) {
+    let detail = '';
+    try {
+      detail = ((await res.json()) as { error?: string }).error || '';
+    } catch {
+      detail = await res.text().catch(() => '');
+    }
+    throw new Error(detail || `Invoke failed (HTTP ${res.status})`);
+  }
+  return res.json();
 }
