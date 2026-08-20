@@ -168,6 +168,7 @@ from suzent.routes.session_routes import (
 )
 from suzent.routes.browser_routes import browser_websocket_endpoint
 from suzent.routes.node_routes import (
+    browser_node_page,
     node_websocket_endpoint,
     list_nodes,
     describe_node,
@@ -244,6 +245,22 @@ from suzent.routes.suzent_channel_routes import (
     suzent_channel_stop,
     suzent_channel_whoami,
     suzent_channel_grant_changed,
+)
+from suzent.routes.a2a_routes import (
+    a2a_add_agent,
+    a2a_agent_card,
+    a2a_cancel_outbound_task,
+    a2a_list_agents,
+    a2a_list_tasks,
+    a2a_outbound_tasks,
+    a2a_refresh_agent,
+    a2a_refresh_outbound_task,
+    a2a_remove_agent,
+    a2a_rpc,
+    a2a_save_status,
+    a2a_send_to_agent,
+    a2a_status,
+    a2a_update_agent,
 )
 from suzent.channels.manager import ChannelManager
 from suzent.nodes.manager import NodeManager
@@ -1155,6 +1172,29 @@ app = Starlette(
         Route("/channels/suzent/session", suzent_channel_session, methods=["GET"]),
         Route("/channels/suzent/stop", suzent_channel_stop, methods=["POST"]),
         Route("/channels/suzent/whoami", suzent_channel_whoami, methods=["GET"]),
+        # A2A (Agent2Agent) — open federation alongside the Suzent-native mesh.
+        Route("/.well-known/agent-card.json", a2a_agent_card, methods=["GET"]),
+        Route("/a2a/v1", a2a_rpc, methods=["POST"]),
+        Route("/a2a/status", a2a_status, methods=["GET"]),
+        Route("/a2a/status", a2a_save_status, methods=["POST"]),
+        Route("/a2a/tasks", a2a_list_tasks, methods=["GET"]),
+        Route("/a2a/agents", a2a_list_agents, methods=["GET"]),
+        Route("/a2a/agents", a2a_add_agent, methods=["POST"]),
+        Route("/a2a/agents/{agent_id}", a2a_update_agent, methods=["PATCH"]),
+        Route("/a2a/agents/{agent_id}", a2a_remove_agent, methods=["DELETE"]),
+        Route("/a2a/agents/{agent_id}/refresh", a2a_refresh_agent, methods=["POST"]),
+        Route("/a2a/agents/{agent_id}/send", a2a_send_to_agent, methods=["POST"]),
+        Route("/a2a/outbound", a2a_outbound_tasks, methods=["GET"]),
+        Route(
+            "/a2a/outbound/{agent_id}/{task_id}/refresh",
+            a2a_refresh_outbound_task,
+            methods=["POST"],
+        ),
+        Route(
+            "/a2a/outbound/{agent_id}/{task_id}/cancel",
+            a2a_cancel_outbound_task,
+            methods=["POST"],
+        ),
         Route(
             "/channels/suzent/grant-changed",
             suzent_channel_grant_changed,
@@ -1176,6 +1216,8 @@ app = Starlette(
         Route("/nodes/peers/{peer_id}/reverse", set_peer_reverse, methods=["POST"]),
         Route("/nodes/peers/{peer_id}/remove", remove_peer, methods=["POST"]),
         Route("/nodes/peers/{peer_id}/trigger", trigger_peer, methods=["POST"]),
+        # Zero-install browser node: open this URL on a phone or TV.
+        Route("/node", browser_node_page, methods=["GET"]),
         Route("/nodes/pending", list_pending_nodes, methods=["GET"]),
         Route(
             "/nodes/pending/{pairing_code}/approve",
