@@ -3,16 +3,17 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+from suzent.logger import get_logger
 
 from .client import ACPClient
 from .permissions import PERMISSION_QUEUE_KEY, get_permission_broker
 from .registry import ACPAgentRegistry
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass

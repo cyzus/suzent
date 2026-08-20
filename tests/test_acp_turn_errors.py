@@ -6,7 +6,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from suzent.acp.runtime import stream_acp_turn
+from suzent.acp.runtime import (
+    _build_acp_file_context,
+    stream_acp_steer,
+    stream_acp_turn,
+)
 
 
 def _events(chunks):
@@ -163,3 +167,162 @@ async def test_successful_turn_clears_the_restored_flag():
     managed = _managed("s-1", restored=True)
     await _run([managed], [([_text_chunk("ok")], {"stopReason": "end_turn"})])
     assert managed.restored is False
+
+
+# ── file context ──────────────────────────────────────────────────────────────
+
+
+def test_build_acp_file_context_from_mentions():
+    ctx = _build_acp_file_context(
+        file_mentions=[
+            {"path": "/tmp/a.py", "type": "file"},
+            {"path": "/tmp/src", "type": "directory"},
+        ]
+    )
+    assert "[User referenced file: /tmp/a.py]" in ctx
+    assert "[User referenced directory: /tmp/src]" in ctx
+
+
+def test_build_acp_file_context_empty_when_no_mentions():
+    assert _build_acp_file_context() == ""
+    assert _build_acp_file_context(file_mentions=[]) == ""
+
+
+def test_build_acp_file_context_plain_strings():
+    ctx = _build_acp_file_context(file_mentions=["/tmp/x.txt"])
+    assert "[User referenced file: /tmp/x.txt]" in ctx
+
+
+# ── steer ─────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_steer_cancels_then_reprompts():
+    """stream_acp_steer must cancel the current prompt, then send a new turn."""
+    managed = _managed()
+
+    with (
+        patch("suzent.acp.runtime.get_database") as get_db,
+        patch("suzent.acp.runtime.get_acp_manager") as get_mgr,
+    ):
+        chat = MagicMock()
+        chat.config = {
+            "runtime": "acp",
+            "acp_agent_id": "claude-code",
+            "acp_session_id": "s-1",
+        }
+        chat.messages = []
+        db = MagicMock()
+        db.get_chat.return_value = chat
+        get_db.return_value = db
+
+        manager = AsyncMock()
+        manager.ensure.return_value = managed
+        get_mgr.return_value = manager
+
+        async def prompt(session_id, message):
+            managed.updates.put_nowait(_text_chunk("steered"))
+            return {"stopReason": "end_turn"}
+
+        managed.client.prompt = prompt
+
+        events = _events([c async for c in stream_acp_steer("chat-1", "use rust")])
+
+    manager.cancel.assert_awaited_once_with("chat-1")
+    deltas = "".join(e["delta"] for e in events if e["type"] == "TEXT_MESSAGE_CONTENT")
+    assert deltas == "steered"
+
+
+@pytest.mark.asyncio
+async def test_file_mentions_injected_into_acp_prompt():
+    """File mentions must appear in the message the ACP agent receives."""
+    managed = _managed()
+    captured_messages: list[str] = []
+
+    with (
+        patch("suzent.acp.runtime.get_database") as get_db,
+        patch("suzent.acp.runtime.get_acp_manager") as get_mgr,
+    ):
+        chat = MagicMock()
+        chat.config = {
+            "runtime": "acp",
+            "acp_agent_id": "claude-code",
+            "acp_session_id": "s-1",
+        }
+        chat.messages = []
+        db = MagicMock()
+        db.get_chat.return_value = chat
+        get_db.return_value = db
+
+        manager = AsyncMock()
+        manager.ensure.return_value = managed
+        get_mgr.return_value = manager
+
+        async def prompt(session_id, message):
+            captured_messages.append(message)
+            managed.updates.put_nowait(_text_chunk("ok"))
+            return {"stopReason": "end_turn"}
+
+        managed.client.prompt = prompt
+
+        events = _events(
+            [
+                c
+                async for c in stream_acp_turn(
+                    "chat-1",
+                    "read this",
+                    file_mentions=[{"path": "/tmp/data.csv", "type": "file"}],
+                )
+            ]
+        )
+
+    assert len(captured_messages) == 1
+    assert "/tmp/data.csv" in captured_messages[0]
+    assert "read this" in captured_messages[0]
+    assert not [e for e in events if e["type"] == "RUN_ERROR"]
+
+
+@pytest.mark.asyncio
+async def test_binary_uploads_emit_unsupported_warning():
+    """Binary file uploads must produce a warning event, not be silently dropped."""
+    managed = _managed()
+
+    with (
+        patch("suzent.acp.runtime.get_database") as get_db,
+        patch("suzent.acp.runtime.get_acp_manager") as get_mgr,
+    ):
+        chat = MagicMock()
+        chat.config = {
+            "runtime": "acp",
+            "acp_agent_id": "claude-code",
+            "acp_session_id": "s-1",
+        }
+        chat.messages = []
+        db = MagicMock()
+        db.get_chat.return_value = chat
+        get_db.return_value = db
+
+        manager = AsyncMock()
+        manager.ensure.return_value = managed
+        get_mgr.return_value = manager
+
+        async def prompt(session_id, message):
+            managed.updates.put_nowait(_text_chunk("ok"))
+            return {"stopReason": "end_turn"}
+
+        managed.client.prompt = prompt
+
+        events = _events(
+            [
+                c
+                async for c in stream_acp_turn(
+                    "chat-1",
+                    "describe this image",
+                    files=[{"name": "photo.png", "data": b"..."}],
+                )
+            ]
+        )
+
+    warnings = [e for e in events if e.get("name") == "acp.files_unsupported"]
+    assert len(warnings) == 1
+    assert warnings[0]["value"]["count"] == 1

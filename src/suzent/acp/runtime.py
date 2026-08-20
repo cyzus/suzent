@@ -122,10 +122,53 @@ def _no_output_error(state: dict[str, Any]) -> str:
     return "ACP agent produced no output text"
 
 
+def _build_acp_file_context(
+    file_mentions: list[Any] | None = None,
+    files: list[Any] | None = None,
+) -> str:
+    """Annotate the ACP prompt with user-referenced paths.
+
+    ACP agents run locally so file paths are actionable.  Binary uploads
+    (``files``) can't be forwarded over the text-only prompt channel; a
+    warning event is emitted instead by the caller.
+    """
+    parts: list[str] = []
+    for item in file_mentions or []:
+        if isinstance(item, dict):
+            path = item.get("path")
+            kind = "directory" if item.get("type") == "directory" else "file"
+        else:
+            path = item
+            kind = "file"
+        if path:
+            parts.append(f"[User referenced {kind}: {path}]")
+    return "\n".join(parts)
+
+
+async def stream_acp_steer(
+    chat_id: str,
+    message: str,
+    config_override: dict[str, Any] | None = None,
+) -> AsyncGenerator[str, None]:
+    """Cancel the running ACP prompt, then send a new turn.
+
+    ACP has no dedicated steer RPC — a steer is cancel + re-prompt.
+    """
+    try:
+        await get_acp_manager().cancel(chat_id)
+    except Exception:
+        pass  # Nothing running is fine; we'll still send the new turn.
+    async for event in stream_acp_turn(chat_id, message, config_override):
+        yield event
+
+
 async def stream_acp_turn(
     chat_id: str,
     message: str,
     config_override: dict[str, Any] | None = None,
+    *,
+    files: list[Any] | None = None,
+    file_mentions: list[Any] | None = None,
 ) -> AsyncGenerator[str, None]:
     db = get_database()
     chat = db.get_chat(chat_id)
@@ -137,6 +180,28 @@ async def stream_acp_turn(
     run_id = str(uuid.uuid4())
     message_id = str(uuid.uuid4())
     message_open = False
+    # Annotate the prompt with user-referenced file paths so the ACP agent
+    # can act on them — it runs locally and has filesystem access.
+    file_context = _build_acp_file_context(file_mentions, files)
+    if file_context:
+        message = f"{file_context}\n\n{message}" if message else file_context
+
+    # Binary uploads can't be forwarded over the text-only ACP prompt channel.
+    if files:
+        yield _sse(
+            {
+                "type": "CUSTOM",
+                "name": "acp.files_unsupported",
+                "value": {
+                    "count": len(files),
+                    "message": (
+                        "File uploads are not forwarded to ACP agents. "
+                        "Referenced file paths are included in the prompt."
+                    ),
+                },
+            }
+        )
+
     yield _sse({"type": "RUN_STARTED", "runId": run_id, "threadId": chat_id})
 
     try:

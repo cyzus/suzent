@@ -31,6 +31,21 @@ logger = get_logger(__name__)
 _chat_send_tasks: set[asyncio.Task[None]] = set()
 
 
+def _resolve_chat_runtime(chat_id: str | None, config: dict) -> str:
+    """Determine whether a chat uses the native processor or an ACP agent.
+
+    Checks the request config first, then falls back to the persisted chat
+    config.  Consolidates the detection that ``chat()``, ``chat_send()``,
+    and the steer routes all need.
+    """
+    persisted = get_database().get_chat(chat_id) if chat_id else None
+    return str(
+        config.get("runtime")
+        or ((persisted.config or {}).get("runtime") if persisted else "")
+        or "native"
+    ).lower()
+
+
 class ForkChatRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -240,12 +255,7 @@ async def chat(request: Request) -> StreamingResponse:
 
         processor = ChatProcessor()
         config_override = build_agent_config(config, require_social_tool=False)
-        persisted_chat = get_database().get_chat(chat_id) if chat_id else None
-        effective_runtime = str(
-            config.get("runtime")
-            or ((persisted_chat.config or {}).get("runtime") if persisted_chat else "")
-            or "native"
-        ).lower()
+        effective_runtime = _resolve_chat_runtime(chat_id, config)
 
         # When the frontend initiates a heartbeat SSE stream, claim the pending slot and
         # update heartbeat_last_run_at so the backend deferred fallback doesn't double-run.
@@ -311,7 +321,13 @@ async def chat(request: Request) -> StreamingResponse:
         if effective_runtime == "acp":
             from suzent.acp.runtime import stream_acp_turn
 
-            generator = stream_acp_turn(chat_id, message, {**config, **config_override})
+            generator = stream_acp_turn(
+                chat_id,
+                message,
+                {**config, **config_override},
+                files=files_list or None,
+                file_mentions=file_mentions or None,
+            )
         else:
             generator = processor.process_turn(
                 chat_id=chat_id,
@@ -394,12 +410,7 @@ async def chat_send(request: Request) -> JSONResponse:
 
     processor = ChatProcessor()
     config_override = build_agent_config(config, require_social_tool=False)
-    persisted_chat = get_database().get_chat(chat_id)
-    effective_runtime = str(
-        config.get("runtime")
-        or ((persisted_chat.config or {}).get("runtime") if persisted_chat else "")
-        or "native"
-    ).lower()
+    effective_runtime = _resolve_chat_runtime(chat_id, config)
     if is_background_streaming(chat_id):
         return JSONResponse({"error": "Chat is already streaming"}, status_code=409)
 
@@ -414,7 +425,11 @@ async def chat_send(request: Request) -> JSONResponse:
                 from suzent.acp.runtime import stream_acp_turn
 
                 generator = stream_acp_turn(
-                    chat_id, message, {**config, **config_override}
+                    chat_id,
+                    message,
+                    {**config, **config_override},
+                    files=files_list or None,
+                    file_mentions=file_mentions or None,
                 )
             else:
                 generator = processor.process_turn(
@@ -472,6 +487,7 @@ async def steer_chat_send(request: Request) -> JSONResponse:
 
     processor = ChatProcessor()
     config_override = build_agent_config(config, require_social_tool=False)
+    effective_runtime = _resolve_chat_runtime(chat_id, config)
     stop_stream(chat_id, reason="Steered by user")
     _prewrite_user_display_message(chat_id, message, [])
 
@@ -479,12 +495,19 @@ async def steer_chat_send(request: Request) -> JSONResponse:
 
     async def _run() -> None:
         try:
-            generator = processor.process_steer(
-                chat_id=chat_id,
-                user_id=CONFIG.user_id,
-                steer_message=message,
-                config_override=config_override,
-            )
+            if effective_runtime == "acp":
+                from suzent.acp.runtime import stream_acp_steer
+
+                generator = stream_acp_steer(
+                    chat_id, message, {**config, **config_override}
+                )
+            else:
+                generator = processor.process_steer(
+                    chat_id=chat_id,
+                    user_id=CONFIG.user_id,
+                    steer_message=message,
+                    config_override=config_override,
+                )
             async for chunk in generator:
                 await stream_queue.put(chunk)
         except Exception as exc:
@@ -1127,13 +1150,21 @@ async def steer_chat(request: Request) -> StreamingResponse:
 
         processor = ChatProcessor()
         config_override = build_agent_config(config, require_social_tool=False)
+        effective_runtime = _resolve_chat_runtime(chat_id, config)
 
-        generator = processor.process_steer(
-            chat_id=chat_id,
-            user_id=CONFIG.user_id,
-            steer_message=message,
-            config_override=config_override,
-        )
+        if effective_runtime == "acp":
+            from suzent.acp.runtime import stream_acp_steer
+
+            generator = stream_acp_steer(
+                chat_id, message, {**config, **config_override}
+            )
+        else:
+            generator = processor.process_steer(
+                chat_id=chat_id,
+                user_id=CONFIG.user_id,
+                steer_message=message,
+                config_override=config_override,
+            )
 
         return StreamingResponse(
             generator,

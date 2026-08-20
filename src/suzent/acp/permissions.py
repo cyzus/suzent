@@ -17,13 +17,14 @@ a Suzent agent acting on the same endpoint on the user's behalf.
 from __future__ import annotations
 
 import asyncio
-import logging
 import time
 import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
-logger = logging.getLogger(__name__)
+from suzent.logger import get_logger
+
+logger = get_logger(__name__)
 
 # Marker key used to tunnel a permission request through the session update
 # queue, so the streaming layer can tell it apart from agent notifications.
