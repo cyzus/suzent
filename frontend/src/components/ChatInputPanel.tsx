@@ -640,7 +640,12 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
 
                 {/* Right: model picker (shrinks) + action button (fixed) */}
                 {configReady && (
-                    <div className="relative min-w-0 shrink">
+                    <div
+                        className="relative min-w-0 shrink"
+                        title={isAcpRuntime && !canChooseRuntime
+                            ? t('chatWindow.acpAgentLocked')
+                            : undefined}
+                    >
                         <BrutalSelect
                             value={selectedEngine}
                             onChange={onEngineChange}

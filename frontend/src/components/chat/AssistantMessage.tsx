@@ -597,12 +597,15 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   fallbackModel,
   fileChangeChatId,
 }) => {
+  const { t } = useI18n();
   const isStreamingThis = isStreaming && isLastMessage;
   const effectiveParts = aguiParts ?? message.parts;
   const hasParts = effectiveParts && effectiveParts.length > 0;
-  const isAcp = message.model?.includes('claude-code-cli');
-  const isBypassed = message.model?.includes('bypassed');
-  const showIdentity = !isAcp && !isBypassed;
+  // The ACP runtime stamps `acp/<agent-id>` on the response it produced; the
+  // chat-level fallback carries the same shape for turns saved before that.
+  const signature = message.model || fallbackModel;
+  const acpAgent = signature?.startsWith('acp/') ? signature.slice(4) : undefined;
+  const isAcp = !!acpAgent;
 
   const isThinking = isStreamingThis && !message.content && !hasParts;
   const workedDurationSeconds = useMemo(
@@ -675,7 +678,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
     }
   }, [effectiveParts, legacyBlocks, citationSourcesMap]);
 
-  const modelSignature = message.model || fallbackModel;
+  const modelSignature = signature;
 
   // 1. 抓取当前正在跑的 Tool 和 错误状态
   let currentToolName: string | undefined = undefined;
@@ -732,11 +735,11 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
           Suzent
         </span>
       </div>
-      {showIdentity && (
-        <div className="text-[9px] font-mono text-neutral-400 uppercase tracking-widest">
-          SUZENT RUNTIME · {message.model || 'model'}
-        </div>
-      )}
+      <div className="text-[9px] font-mono text-neutral-400 uppercase tracking-widest">
+        {isAcp
+          ? t('chatMessage.runtime.external', { agent: acpAgent })
+          : t('chatMessage.runtime.suzent', { model: signature || 'model' })}
+      </div>
     </div>
   ) : (
     <div className={`
@@ -755,13 +758,13 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
           isPendingApproval={isPendingApproval}
         />
         {isAcp && (
-          <div className="absolute top-1 left-1 bg-white border border-brutal-black px-1 text-[8px] font-bold uppercase">
-            EXTERNAL RUNTIME · Claude Code CLI · via ACP
-          </div>
-        )}
-        {isBypassed && (
-          <div className="absolute top-1 left-1 bg-white border border-brutal-black px-1 text-[8px] font-bold uppercase">
-            Suzent native model bypassed
+          // The badge box is only 90px wide, so keep this to a marker and let
+          // the signature under the message carry the agent name.
+          <div
+            className="absolute top-1 left-1 bg-white border border-brutal-black px-1 text-[8px] font-bold uppercase"
+            title={t('chatMessage.runtime.external', { agent: acpAgent })}
+          >
+            ACP
           </div>
         )}
       </div>

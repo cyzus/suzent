@@ -32,6 +32,96 @@ def _text_from_update(params: dict[str, Any]) -> str:
     return str(update.get("text") or content or "")
 
 
+def _turn_error_from_update(params: dict[str, Any]) -> str:
+    """Return the agent's error text when an update reports a failed turn."""
+    if not isinstance(params, dict):
+        return ""
+    if (
+        str(params.get("status") or "") != "turn_error"
+        and str(params.get("phase") or "") != "error"
+    ):
+        return ""
+    message = params.get("message")
+    if isinstance(message, str) and message.strip():
+        return message.strip()
+    return "the agent reported a failed turn"
+
+
+async def _stream_prompt(
+    managed: Any,
+    message: str,
+    message_id: str,
+    state: dict[str, Any],
+) -> AsyncGenerator[str, None]:
+    """Run one prompt turn, recording text, stopReason, and any agent error."""
+    prompt_task = asyncio.create_task(
+        managed.client.prompt(managed.session_id, message)
+    )
+    try:
+        while True:
+            if prompt_task.done() and managed.updates.empty():
+                break
+            try:
+                update = await asyncio.wait_for(managed.updates.get(), timeout=0.1)
+            except asyncio.TimeoutError:
+                continue
+            if PERMISSION_QUEUE_KEY in update:
+                yield _sse(
+                    {
+                        "type": "CUSTOM",
+                        "name": "acp.permission_request",
+                        "value": update[PERMISSION_QUEUE_KEY],
+                    }
+                )
+                continue
+            failure = _turn_error_from_update(update)
+            if failure:
+                state["error"] = failure
+            delta = _text_from_update(update)
+            if delta:
+                state["parts"].append(delta)
+                yield _sse(
+                    {
+                        "type": "TEXT_MESSAGE_CONTENT",
+                        "messageId": message_id,
+                        "delta": delta,
+                    }
+                )
+            else:
+                yield _sse(
+                    {"type": "CUSTOM", "name": "acp.session_update", "value": update}
+                )
+        result = await prompt_task
+    finally:
+        # Never leave the prompt in flight when this generator stops early
+        # (client disconnect, cancellation, or an error above).
+        if not prompt_task.done():
+            prompt_task.cancel()
+
+    state["stop_reason"] = str(result.get("stopReason") or "")
+    if not state["parts"]:
+        fallback = result.get("text") or result.get("message")
+        if isinstance(fallback, str) and fallback:
+            state["parts"].append(fallback)
+            yield _sse(
+                {
+                    "type": "TEXT_MESSAGE_CONTENT",
+                    "messageId": message_id,
+                    "delta": fallback,
+                }
+            )
+
+
+def _no_output_error(state: dict[str, Any]) -> str:
+    """Explain an empty turn using whatever the agent actually told us."""
+    if state.get("error"):
+        return f"ACP agent error: {state['error']}"
+    stop_reason = state.get("stop_reason") or ""
+    if stop_reason and stop_reason != "end_turn":
+        return f"ACP agent stopped without output (stopReason: {stop_reason})"
+    return "ACP agent produced no output text"
+
+
 async def stream_acp_turn(
     chat_id: str,
     message: str,
@@ -96,72 +186,63 @@ async def stream_acp_turn(
             {"type": "TEXT_MESSAGE_START", "messageId": message_id, "role": "assistant"}
         )
         message_open = True
-        prompt_task = asyncio.create_task(
-            managed.client.prompt(managed.session_id, message)
-        )
-        parts: list[str] = []
-        try:
-            while True:
-                if prompt_task.done() and managed.updates.empty():
-                    break
-                try:
-                    update = await asyncio.wait_for(managed.updates.get(), timeout=0.1)
-                except asyncio.TimeoutError:
-                    continue
-                if PERMISSION_QUEUE_KEY in update:
-                    yield _sse(
-                        {
-                            "type": "CUSTOM",
-                            "name": "acp.permission_request",
-                            "value": update[PERMISSION_QUEUE_KEY],
-                        }
-                    )
-                    continue
-                delta = _text_from_update(update)
-                if delta:
-                    parts.append(delta)
-                    yield _sse(
-                        {
-                            "type": "TEXT_MESSAGE_CONTENT",
-                            "messageId": message_id,
-                            "delta": delta,
-                        }
-                    )
-                else:
-                    yield _sse(
-                        {
-                            "type": "CUSTOM",
-                            "name": "acp.session_update",
-                            "value": update,
-                        }
-                    )
-            result = await prompt_task
-        finally:
-            # Never leave the prompt in flight when this generator stops early
-            # (client disconnect, cancellation, or an error above).
-            if not prompt_task.done():
-                prompt_task.cancel()
-        if not parts:
-            fallback = result.get("text") or result.get("message")
-            if isinstance(fallback, str) and fallback:
-                parts.append(fallback)
-                yield _sse(
-                    {
-                        "type": "TEXT_MESSAGE_CONTENT",
-                        "messageId": message_id,
-                        "delta": fallback,
-                    }
-                )
-        text = "".join(parts)
+
+        state: dict[str, Any] = {"parts": [], "stop_reason": "", "error": ""}
+        async for event in _stream_prompt(managed, message, message_id, state):
+            yield event
+
+        # A session restored with session/load that fails its very first turn is
+        # almost always stale: the agent accepted an id its process no longer
+        # backs, which only surfaces here. Start a fresh session and try once
+        # more, so a chat isn't permanently broken after the agent restarts.
+        if (
+            managed.restored
+            and not "".join(state["parts"]).strip()
+            and state["stop_reason"] == "error"
+        ):
+            managed = await get_acp_manager().create(
+                chat_id,
+                managed.agent_id,
+                managed.cwd,
+                str(config.get("permission_mode") or ""),
+            )
+            db.merge_chat_config(chat_id, {"acp_session_id": managed.session_id})
+            yield _sse(
+                {
+                    "type": "CUSTOM",
+                    "name": "acp.session_reset",
+                    "value": {
+                        "agentId": managed.agent_id,
+                        "requestedSessionId": requested_session,
+                        "sessionId": managed.session_id,
+                        "reason": "stale_session",
+                    },
+                }
+            )
+            state = {"parts": [], "stop_reason": "", "error": ""}
+            async for event in _stream_prompt(managed, message, message_id, state):
+                yield event
+
+        text = "".join(state["parts"])
         yield _sse({"type": "TEXT_MESSAGE_END", "messageId": message_id})
         message_open = False
         if not text.strip():
-            yield _sse(
-                {"type": "RUN_ERROR", "message": "ACP agent produced no output text"}
-            )
+            yield _sse({"type": "RUN_ERROR", "message": _no_output_error(state)})
             return
 
-        db.append_chat_message(chat_id, {"role": "assistant", "content": text})
+        # The restored session has now proven it can run a turn.
+        managed.restored = False
+        # Stamp the agent that produced this response, matching the native
+        # per-message model signature, so the transcript doesn't label an ACP
+        # answer with the chat's unused native model.
+        db.append_chat_message(
+            chat_id,
+            {
+                "role": "assistant",
+                "content": text,
+                "model": f"acp/{managed.agent_id}",
+            },
+        )
         yield _sse({"type": "AGENT_FINISHED", "runId": run_id, "threadId": chat_id})
         yield "data: [DONE]\n\n"
     except asyncio.CancelledError:

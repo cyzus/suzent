@@ -26,9 +26,14 @@ class ManagedSession:
     capabilities: dict[str, Any] = field(default_factory=dict)
     agent_info: dict[str, Any] = field(default_factory=dict)
     protocol_version: Any = None
-    # False when a resume was requested but the agent could not load the prior
-    # session, so a fresh one was started instead.
+    # True when this session carries the history that was asked for -- either
+    # session/load succeeded, or it is the same live session as before.
     resumed: bool = False
+    # True while this session came from session/load on a freshly spawned
+    # process and has not yet proven it can actually run a turn. Agents may
+    # accept a session id their process no longer has, which only shows up as a
+    # failed turn; cleared once a turn produces output.
+    restored: bool = False
     # Chat permission_mode; 'auto'/'full_access' skip the approval prompt.
     permission_mode: str = ""
 
@@ -74,6 +79,7 @@ class ACPManager:
             and current.session_id == session_id
         ):
             current.permission_mode = permission_mode
+            current.resumed = True
             return current
         async with self._lock:
             await self._close_unlocked(chat_id)
@@ -177,10 +183,12 @@ class ACPManager:
                 init.get("agentInfo") if isinstance(init.get("agentInfo"), dict) else {}
             )
             resumed = False
+            restored = False
             if session_id and capabilities.get("loadSession"):
                 result = await client.load_session(session_id, cwd)
                 resolved_id = str(result.get("sessionId") or session_id)
                 resumed = True
+                restored = True
             else:
                 if session_id:
                     logger.info(
@@ -207,6 +215,7 @@ class ACPManager:
             agent_info=agent_info,
             protocol_version=init.get("protocolVersion"),
             resumed=resumed,
+            restored=restored,
             permission_mode=permission_mode,
         )
 

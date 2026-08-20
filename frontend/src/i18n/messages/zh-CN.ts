@@ -906,6 +906,10 @@ export const zhCN = {
     },
   },
   chatMessage: {
+    runtime: {
+      external: '外部运行时 · {agent} · 通过 ACP',
+      suzent: 'SUZENT 运行时 · {model}',
+    },
     viewFile: '查看文件（按住 Shift 点击全屏）',
     downloadFile: '下载文件',
     userLabel: '用户',

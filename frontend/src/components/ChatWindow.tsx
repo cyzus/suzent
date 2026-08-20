@@ -1322,6 +1322,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     onRightSidebarToggle(true);
   }, [onRightSidebarToggle]);
 
+  // Turns saved before the runtime stamped a per-message model fall back to
+  // the chat's engine -- which for an ACP chat is the agent, not the unused
+  // native model.
+  const fallbackModelSignature = safeConfig.acp_agent_id
+    ? `acp/${safeConfig.acp_agent_id}`
+    : safeConfig.model;
+
   const handleStopSubAgent = useCallback(async (taskId: string) => {
     try {
       await fetch(`${getApiBase()}/subagents/${taskId}/stop`, { method: 'POST' });
@@ -2181,13 +2188,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           </div>
         )}
         <div className="relative flex-1 min-h-0">
-          {currentChatId && safeConfig.acp_agent_id && (
-            <div className="absolute right-4 top-3 z-10 inline-flex items-center gap-2 border-2 border-brutal-black bg-white px-2.5 py-1 text-[10px] font-extrabold uppercase shadow-[2px_2px_0_0_#000] dark:bg-zinc-800 dark:text-white" title={t('chatWindow.acpAgentLocked')}>
-              <span>ACP</span>
-              <span className="font-mono normal-case">{safeConfig.acp_agent_name || safeConfig.acp_agent_id}</span>
-              <span aria-hidden="true">●</span>
-            </div>
-          )}
           <div
             ref={scrollContainerRef}
             className={safeMessages.length === 0
@@ -2244,7 +2244,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                     forkOrigin={forkOrigin}
                     onOpenForkOrigin={(chatId) => void loadChat(chatId, { force: true })}
                     onEditUserMessage={!isStreaming ? handleEditUserMessage : undefined}
-                    fallbackModel={safeConfig.model}
+                    fallbackModel={fallbackModelSignature}
                   />
                 )}
                 {/* Streaming/transient message from AG-UI */}
@@ -2273,7 +2273,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                             onStopSubAgent={handleStopSubAgent}
                             onForceWebContext={handleForceWebContext}
                             chatCitationSources={chatCitationSources}
-                            fallbackModel={safeConfig.model}
+                            fallbackModel={fallbackModelSignature}
                           />
                         )}
                       </div>

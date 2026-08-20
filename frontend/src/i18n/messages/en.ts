@@ -940,6 +940,10 @@ export const en = {
     },
   },
   chatMessage: {
+    runtime: {
+      external: 'EXTERNAL RUNTIME · {agent} · VIA ACP',
+      suzent: 'SUZENT RUNTIME · {model}',
+    },
     viewFile: 'View file (Shift+Click for full screen)',
     downloadFile: 'Download file',
     userLabel: 'User',
