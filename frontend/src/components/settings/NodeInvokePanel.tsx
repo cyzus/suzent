@@ -5,6 +5,7 @@ import {
   invokePeerCapability,
   type NodeCapabilityInfo,
 } from '../../lib/api';
+import { BrutalSelect } from '../BrutalSelect';
 import { SettingsListAction } from './SettingsCard';
 
 type InvokeFn = (
@@ -73,21 +74,20 @@ function InvokeForm({
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-2">
-        <select
-          className="px-2 py-1 border-2 border-brutal-black bg-white dark:bg-zinc-900 text-sm font-bold"
+        <BrutalSelect
           value={command}
           disabled={busy}
-          onChange={(e) => {
-            setCommand(e.target.value);
+          onChange={(v) => {
+            setCommand(v);
             setOutcome(null);
           }}
-        >
-          {capabilities.map((cap) => (
-            <option key={`${cap.node ?? ''}:${cap.name}`} value={cap.name}>
-              {cap.node ? `${cap.name} · ${cap.node}` : cap.name}
-            </option>
-          ))}
-        </select>
+          options={capabilities.map((cap) => ({
+            value: cap.name,
+            label: cap.node ? `${cap.name} · ${cap.node}` : cap.name,
+          }))}
+          hideChevron={capabilities.length <= 1}
+          className="min-w-[10rem]"
+        />
 
         {fields.map(([name, type]) => (
           <input

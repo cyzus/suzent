@@ -7,6 +7,7 @@ import { useState, useEffect, Fragment } from 'react';
 import { memoryApi } from '../../lib/memoryApi';
 import { useI18n } from '../../i18n';
 import { useChatStore } from '../../hooks/useChatStore';
+import { BrutalSelect } from '../BrutalSelect';
 import type { TranscriptEntry } from '../../types/memory';
 
 function formatTimestamp(ts: string): string {
@@ -137,18 +138,15 @@ export const TranscriptPanel: React.FC = () => {
             <label className="block text-xs font-bold uppercase text-neutral-600 dark:text-neutral-400 mb-1">
               {t('transcripts.sessionLabel')}
             </label>
-            <select
+            <BrutalSelect
               value={selectedSessionId || ''}
-              onChange={(e) => setSelectedSessionId(e.target.value || null)}
-              className="w-full px-3 py-2 border-3 border-brutal-black bg-white dark:bg-zinc-700 dark:text-white text-sm font-mono focus:outline-none focus:ring-4 focus:ring-brutal-black"
-            >
-              <option value="">{t('transcripts.selectPlaceholder')}</option>
-              {sessionOptions.map((opt) => (
-                <option key={opt.id} value={opt.id}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
+              onChange={(v) => setSelectedSessionId(v || null)}
+              placeholder={t('transcripts.selectPlaceholder')}
+              options={sessionOptions.map((opt) => ({
+                value: opt.id,
+                label: opt.label,
+              }))}
+            />
           </div>
 
           {/* Last N filter */}
