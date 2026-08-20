@@ -57,6 +57,7 @@ interface ChatStreamingContextValue {
 interface ChatCoreContextValue {
   config: ChatConfig;
   setConfig: (c: ChatConfig | ((prev: ChatConfig) => ChatConfig)) => void;
+  setChatConfigForId: (chatId: string, config: ChatConfig) => Promise<void>;
   addMessage: (m: Message, chatId?: string | null) => void;
   updateLastUserMessageImages: (images: any[], chatId?: string | null) => void;
   updateAssistantStreaming: (delta: string, chatId?: string | null) => void;
@@ -138,6 +139,9 @@ const stripReusableConfig = (config: ChatConfig): ChatConfig => {
     'forked_from_chat_id',
     'forked_from_chat_title',
     'forked_from_message_index',
+    'acp_agent_id',
+    'acp_agent_name',
+    'acp_session_id',
   ].forEach(key => delete reusable[key]);
   return reusable as unknown as ChatConfig;
 };
@@ -253,7 +257,10 @@ const configsEqual = (a?: ChatConfig | null, b?: ChatConfig | null): boolean => 
     a.memory_enabled === b.memory_enabled &&
     a.permission_mode === b.permission_mode &&
     recordEqual(a.mcp_enabled, b.mcp_enabled) &&
-    recordEqual(a.tool_approval_policy, b.tool_approval_policy)
+    recordEqual(a.tool_approval_policy, b.tool_approval_policy) &&
+    a.acp_agent_id === b.acp_agent_id &&
+    a.acp_agent_name === b.acp_agent_name &&
+    a.acp_session_id === b.acp_session_id
   );
 };
 
@@ -858,6 +865,24 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
     }
   }, [config, currentChatId, configByChat, scheduleSave]);
 
+  const setChatConfigForId = useCallback(async (chatId: string, nextConfig: ChatConfig) => {
+    const key = keyForChat(chatId);
+    setConfigByChat(prev => ({ ...prev, [key]: nextConfig }));
+    setConfigState(nextConfig);
+    setChats(prev => prev.map(chat => chat.id === chatId ? {
+      ...chat,
+      acpAgentId: nextConfig.acp_agent_id ?? null,
+      acpAgentName: nextConfig.acp_agent_name ?? null,
+      acpSessionId: nextConfig.acp_session_id ?? null,
+    } : chat));
+    const res = await fetch(`${getApiBase()}/chats/${chatId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ config: stripDenyApprovalPolicies(nextConfig) }),
+    });
+    if (!res.ok) throw new Error(`Failed to save ACP chat config: ${res.status}`);
+  }, []);
+
   const addMessage = useCallback((message: Message, chatId: string | null = currentChatId) => {
     setMessagesForChat(chatId, prev => [...prev, message]);
     scheduleSave(chatId, 800);
@@ -1091,6 +1116,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
           projectId: createdProjectId ?? null,
           projectName: createdProject?.name ?? null,
           projectSlug: createdProject?.slug ?? null,
+          acpAgentId: effectiveConfig.acp_agent_id ?? null,
+          acpAgentName: effectiveConfig.acp_agent_name ?? null,
+          acpSessionId: effectiveConfig.acp_session_id ?? null,
         };
 
         setChats(prev => {
@@ -1500,6 +1528,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
   const coreValue = useMemo<ChatCoreContextValue>(() => ({
       config,
       setConfig: optimizedSetConfig,
+      setChatConfigForId,
       addMessage,
       updateLastUserMessageImages,
       updateAssistantStreaming,
@@ -1543,6 +1572,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
   }), [
     config,
     optimizedSetConfig,
+    setChatConfigForId,
     addMessage,
     updateLastUserMessageImages,
     updateAssistantStreaming,

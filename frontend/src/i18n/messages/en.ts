@@ -687,6 +687,11 @@ export const en = {
     newChat: 'New chat',
     send: 'Send',
     placeholder: 'Type a message...',
+    runtime: {
+      external: 'EXTERNAL RUNTIME · Claude Code CLI · via ACP',
+      suzent: 'SUZENT RUNTIME',
+      bypassed: 'Suzent native model bypassed',
+    },
   },
   fileChanges: {
     editedFiles: 'Edited {count} file(s)',
@@ -812,6 +817,12 @@ export const en = {
     loadingMore: 'Loading...',
   },
   chatInput: {
+    engineGroups: {
+      models: 'Models',
+      acp: 'ACP agents',
+    },
+    acpNotInstalled: 'Not installed',
+    acpInstallHint: 'Not installed — add it in Settings › ACP Agents',
     removeFile: 'Remove file',
     placeholderReady: 'How can I help you today?',
     placeholderLoading: 'System loading...',
@@ -829,6 +840,26 @@ export const en = {
     stop: 'Stop',
     send: 'Send',
     redirect: 'Redirect',
+    runtime: {
+      external: 'EXTERNAL RUNTIME',
+      suzent: 'SUZENT RUNTIME',
+      viaAcp: 'VIA ACP',
+      bypassed: 'SUZENT NATIVE MODEL BYPASSED',
+    },
+    modelManagedByAcp: 'ACP MANAGED',
+  },
+  acp: {
+    permission: {
+      header: 'External agent needs approval',
+      untitled: 'Untitled tool call',
+      approved: 'Approved',
+      denied: 'Denied',
+      expired: 'No longer waiting for a decision',
+    },
+    sessionReset: {
+      header: 'New session started',
+      body: 'The previous {agent} session could not be resumed, so this turn starts fresh without earlier history.',
+    },
   },
   chatWindow: {
     dragDropTitle: 'Drop files here',
@@ -847,6 +878,7 @@ export const en = {
     connecting: 'Connecting to Neural Core...',
     outputValidationRetryError: 'The model response format failed validation too many times. Please retry this message.',
     genericError: 'Something went wrong. Please try again.',
+    acpAgentLocked: 'ACP agent is fixed for this chat',
     heartbeatOff: 'Heartbeat off',
     permissionModeTitle: 'Tool permission mode',
     permissionModeLabel: 'Mode',
@@ -889,6 +921,16 @@ export const en = {
   },
   newChat: {
     creatingIn: 'Creating in',
+    acp: {
+      native: 'Native',
+      agent: 'ACP agent',
+      resume: 'Resume session',
+      resuming: 'Resuming...',
+      bound: 'bound',
+      noAgents: 'No ACP agents',
+      createFailed: 'Could not create ACP session',
+      resumeFailed: 'Could not resume ACP session',
+    },
     greetings: {
       nightOwl: 'Night owl?',
       goodMorning: 'Good morning.',
@@ -898,6 +940,10 @@ export const en = {
     },
   },
   chatMessage: {
+    runtime: {
+      external: 'EXTERNAL RUNTIME · {agent} · VIA ACP',
+      suzent: 'SUZENT RUNTIME · {model}',
+    },
     viewFile: 'View file (Shift+Click for full screen)',
     downloadFile: 'Download file',
     userLabel: 'User',

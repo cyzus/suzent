@@ -59,6 +59,9 @@ class SubAgentTask:
     model_override: Optional[str] = (
         None  # resolved model ID (override or default fallback)
     )
+    runtime: str = "native"
+    acp_agent_id: Optional[str] = None
+    acp_session_id: Optional[str] = None
     # Phase 2: context forking
     inherit_context: bool = False
     # Phase 3: git worktree isolation
@@ -184,6 +187,9 @@ def _persist_task_state(task: SubAgentTask) -> None:
             "subagent_result_summary": task.result_summary,
             "subagent_error": task.error,
             "subagent_model": task.model_override,
+            "runtime": task.runtime,
+            "acp_agent_id": task.acp_agent_id,
+            "acp_session_id": task.acp_session_id,
             "tools": list(task.tools_allowed),
             "inherit_context": task.inherit_context,
             "isolation": task.isolation,
@@ -219,6 +225,9 @@ def _ensure_task_chat(task: SubAgentTask) -> ChatDatabase:
             "interaction_profile": "subagent",
             "subagent_status": task.status,
             "subagent_model": task.model_override,
+            "runtime": task.runtime,
+            "acp_agent_id": task.acp_agent_id,
+            "acp_session_id": task.acp_session_id,
             "tools": list(task.tools_allowed),
             "inherit_context": task.inherit_context,
             "isolation": task.isolation,
@@ -271,6 +280,9 @@ async def spawn_subagent(
     isolation: str = "none",
     isolation_target_path: Optional[str] = None,
     subagent_type: Optional[str] = None,
+    runtime: str = "native",
+    acp_agent_id: Optional[str] = None,
+    acp_session_id: Optional[str] = None,
 ) -> SubAgentTask:
     """
     Create a SubAgentTask and launch it.
@@ -307,6 +319,9 @@ async def spawn_subagent(
         isolation_target_path=isolation_target_path,
         subagent_type=subagent_type,
         model_override=model_override,
+        runtime=runtime,
+        acp_agent_id=acp_agent_id,
+        acp_session_id=acp_session_id,
     )
 
     async with _tasks_lock:
@@ -361,7 +376,7 @@ async def _run_subagent(
 ):
     """Execute the sub-agent in an isolated chat, then notify the parent."""
     try:
-        if not task.model_override:
+        if task.runtime != "acp" and not task.model_override:
             from suzent.core.providers import get_default_chat_model
 
             task.model_override = get_default_chat_model()
@@ -472,15 +487,36 @@ async def _run_subagent(
         if task.cwd:
             base_config["cwd"] = task.cwd
 
-        config_override = build_agent_config(base_config, require_social_tool=False)
+        if task.runtime == "acp":
+            if not task.acp_agent_id:
+                raise ValueError("acp_agent_id is required when runtime='acp'")
+            base_config.update(
+                {
+                    "runtime": "acp",
+                    "acp_agent_id": task.acp_agent_id,
+                    "acp_session_id": task.acp_session_id,
+                    "acp_cwd": task.cwd or str(Path.cwd()),
+                }
+            )
+            db.merge_chat_config(task.chat_id, base_config)
+            from suzent.acp.runtime import run_acp_turn_text
 
-        result_text = await processor.process_turn_text(
-            chat_id=task.chat_id,
-            user_id=CONFIG.user_id,
-            message_content=task.description,
-            config_override=config_override,
-            _stream_queue=stream_queue,
-        )
+            result_text = await run_acp_turn_text(
+                task.chat_id, task.description, base_config, stream_queue
+            )
+            refreshed = db.get_chat(task.chat_id)
+            task.acp_session_id = (
+                (refreshed.config or {}).get("acp_session_id") if refreshed else None
+            )
+        else:
+            config_override = build_agent_config(base_config, require_social_tool=False)
+            result_text = await processor.process_turn_text(
+                chat_id=task.chat_id,
+                user_id=CONFIG.user_id,
+                message_content=task.description,
+                config_override=config_override,
+                _stream_queue=stream_queue,
+            )
 
         task.status = "completed"
         task.result_summary = result_text[:1000] if result_text else "(no output)"
@@ -527,6 +563,16 @@ async def _run_subagent(
             _queue_parent_wakeup(task)
     finally:
         unregister_background_stream(task.chat_id)
+        # An ACP sub-agent owns a subprocess; without this it outlives the task
+        # and only dies at server shutdown. Close it before the worktree goes
+        # away, since the agent's cwd may point inside it.
+        if task.runtime == "acp":
+            try:
+                from suzent.acp import get_acp_manager
+
+                await get_acp_manager().close(task.chat_id)
+            except Exception as exc:
+                logger.warning(f"Failed to close ACP session for {task.task_id}: {exc}")
         # Phase 3: always tear down the worktree, even on failure
         if task.isolation == "worktree" and task.worktree_path:
             await _teardown_worktree(task)

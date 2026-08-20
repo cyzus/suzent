@@ -6,12 +6,12 @@
  */
 import { useState, useCallback, useRef } from 'react';
 import type { A2UISurface } from '../types/a2ui';
-import type { AGUIPart, ApprovalRememberScope } from '../types/agui';
+import type { AGUIPart, AcpPermissionRequest, ApprovalRememberScope } from '../types/agui';
 import type { CitationSource } from '../lib/streamEvents';
 
 // ── Types ────────────────────────────────────────────────────────────
 export type AGUIStatus = 'idle' | 'submitted' | 'streaming' | 'error';
-export type { AGUIPart, ApprovalRememberScope };
+export type { AGUIPart, AcpPermissionRequest, ApprovalRememberScope };
 
 interface UseAGUIOptions {
   url: string;
@@ -313,6 +313,26 @@ export function processEvent(
             permissionResolution: resolution,
           });
         }
+      } else if (name === 'acp.permission_request') {
+        // An external ACP agent is blocked waiting for a decision. Surface it
+        // as its own part; it is answered via the ACP endpoint, not the native
+        // resume_approvals flow.
+        const req = value as AcpPermissionRequest;
+        if (req?.requestId && !next.some(p => p.acpPermission?.requestId === req.requestId)) {
+          next.push({ type: 'acp-permission', acpPermission: req });
+        }
+      } else if (name === 'acp.session_reset') {
+        const notice = value as Record<string, unknown>;
+        next.push({
+          type: 'acp-notice',
+          acpNotice: {
+            kind: 'session_reset',
+            agentId: notice.agentId as string | undefined,
+            requestedSessionId: notice.requestedSessionId as string | undefined,
+            sessionId: notice.sessionId as string | undefined,
+            reason: notice.reason as string | undefined,
+          },
+        });
       } else if (name === 'tool_approval_request') {
         const approval = value as Record<string, unknown>;
         const tcId = approval.toolCallId as string;

@@ -5,6 +5,12 @@ import { useI18n } from '../i18n';
 interface Option {
   value: string;
   label: string;
+  /** Rendered but not selectable — e.g. an agent whose binary isn't installed. */
+  disabled?: boolean;
+  /** Secondary line under the label, used to explain a disabled option. */
+  hint?: string;
+  /** Optional section heading; consecutive options sharing one are grouped. */
+  group?: string;
 }
 
 interface BrutalSelectProps {
@@ -133,22 +139,41 @@ export const BrutalSelect: React.FC<BrutalSelectProps> = ({
         width: dropdownPosition.width,
       }}
     >
-      {normalizedOptions.map((option) => (
-        <button
-          key={option.value}
-          type="button"
-          onClick={() => {
-            onChange(option.value);
-            setIsOpen(false);
-          }}
-          className={`w-full text-left px-3 py-2 font-bold text-sm uppercase transition-colors border-b-2 border-neutral-100 dark:border-zinc-700 last:border-0 ${value === option.value
-            ? 'bg-brutal-black text-white dark:bg-brutal-yellow dark:text-brutal-black'
-            : 'bg-white dark:bg-zinc-800 text-brutal-black dark:text-white hover:bg-brutal-yellow dark:hover:bg-zinc-700'
-            }`}
-        >
-          {option.label}
-        </button>
-      ))}
+      {normalizedOptions.map((option, optionIndex) => {
+        const previousGroup = optionIndex > 0 ? normalizedOptions[optionIndex - 1].group : undefined;
+        const showGroupHeader = !!option.group && option.group !== previousGroup;
+        return (
+          <React.Fragment key={option.value}>
+            {showGroupHeader && (
+              <div className="px-3 pt-2 pb-1 text-[10px] font-mono font-bold uppercase tracking-widest text-neutral-500 dark:text-neutral-400 bg-neutral-50 dark:bg-zinc-900 border-b-2 border-neutral-100 dark:border-zinc-700">
+                {option.group}
+              </div>
+            )}
+            <button
+              type="button"
+              disabled={option.disabled}
+              onClick={() => {
+                if (option.disabled) return;
+                onChange(option.value);
+                setIsOpen(false);
+              }}
+              className={`w-full text-left px-3 py-2 font-bold text-sm uppercase transition-colors border-b-2 border-neutral-100 dark:border-zinc-700 last:border-0 ${option.disabled
+                ? 'bg-white dark:bg-zinc-800 text-neutral-400 dark:text-neutral-600 cursor-not-allowed'
+                : value === option.value
+                  ? 'bg-brutal-black text-white dark:bg-brutal-yellow dark:text-brutal-black'
+                  : 'bg-white dark:bg-zinc-800 text-brutal-black dark:text-white hover:bg-brutal-yellow dark:hover:bg-zinc-700'
+                }`}
+            >
+              {option.label}
+              {option.hint && (
+                <span className="block normal-case font-normal text-[10px] text-neutral-500 dark:text-neutral-500 mt-0.5">
+                  {option.hint}
+                </span>
+              )}
+            </button>
+          </React.Fragment>
+        );
+      })}
     </div>,
     document.body
   );

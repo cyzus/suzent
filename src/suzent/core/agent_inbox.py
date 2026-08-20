@@ -171,6 +171,8 @@ class AgentInboxDispatcher:
         )
 
         base_config = dict(target_chat.config or {})
+        runtime = base_config.get("runtime", "native")
+        subagent_runtime = base_config.get("subagent_runtime", "native")
         base_config["interaction_profile"] = "headless"
         if message.get("kind") == "remote_agent_message":
             base_config["permission_mode"] = "auto"
@@ -180,12 +182,20 @@ class AgentInboxDispatcher:
             control = stream_controls.get(target_chat_id)
             if control is not None and not control.completed_event.is_set():
                 await asyncio.wait_for(control.completed_event.wait(), timeout=120.0)
-            await ChatProcessor().process_background_turn(
-                chat_id=target_chat_id,
-                user_id=CONFIG.user_id,
-                message_content=delivered_content,
-                config_override=config_override,
-            )
+
+            if runtime == "acp" or subagent_runtime == "acp":
+                from suzent.acp.runtime import run_acp_turn_text
+
+                await run_acp_turn_text(
+                    target_chat_id, delivered_content, config_override, None
+                )
+            else:
+                await ChatProcessor().process_background_turn(
+                    chat_id=target_chat_id,
+                    user_id=CONFIG.user_id,
+                    message_content=delivered_content,
+                    config_override=config_override,
+                )
 
 
 _dispatcher: Optional[AgentInboxDispatcher] = None

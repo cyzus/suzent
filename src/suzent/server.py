@@ -229,6 +229,15 @@ from suzent.routes.heartbeat_routes import (
     save_heartbeat_global_config,
 )
 from suzent.routes.a2ui_routes import a2ui_action, a2ui_answer
+from suzent.routes.acp_routes import (
+    create_acp_session,
+    list_acp_agents,
+    list_acp_permissions,
+    list_acp_sessions,
+    resolve_acp_permission,
+    resume_acp_session,
+    probe_acp_agent,
+)
 from suzent.routes.subagent_routes import (
     list_active_subagents,
     list_subagents,
@@ -929,6 +938,13 @@ async def shutdown():
         logger.error(f"Error shutting down task registry: {e}")
 
     try:
+        from suzent.acp import get_acp_manager
+
+        await _stop(get_acp_manager().shutdown(), "ACPManager")
+    except Exception as e:
+        logger.error(f"Error shutting down ACP manager: {e}")
+
+    try:
         from suzent.tools.shell.host_process_registry import HostProcessRegistry
 
         HostProcessRegistry().shutdown()
@@ -978,6 +994,17 @@ app = Starlette(
         Route("/ready", readiness, methods=["GET"]),
         Route("/service/status", service_runtime_status, methods=["GET"]),
         Route("/service/stop", stop_service, methods=["POST"]),
+        Route("/acp/agents", list_acp_agents, methods=["GET"]),
+        Route("/acp/agents/{agent_id}/probe", probe_acp_agent, methods=["POST"]),
+        Route("/acp/sessions", list_acp_sessions, methods=["GET"]),
+        Route("/acp/sessions", create_acp_session, methods=["POST"]),
+        Route("/acp/sessions/resume", resume_acp_session, methods=["POST"]),
+        Route("/acp/permissions", list_acp_permissions, methods=["GET"]),
+        Route(
+            "/acp/permissions/{request_id}",
+            resolve_acp_permission,
+            methods=["POST"],
+        ),
         Route("/chat", chat, methods=["POST"]),
         Route("/chat/send", chat_send, methods=["POST"]),
         Route("/chat/live", live_stream, methods=["POST"]),

@@ -67,6 +67,10 @@ export interface ChatConfig {
   forked_from_chat_id?: string;
   forked_from_chat_title?: string;
   forked_from_message_index?: number;
+  acp_agent_id?: string;
+  acp_agent_name?: string;
+  acp_session_id?: string;
+  runtime?: 'native' | 'acp';
 }
 
 export type PermissionMode =
@@ -117,6 +121,9 @@ export interface ChatSummary {
   forkedFromChatId?: string | null;
   forkedFromChatTitle?: string | null;
   forkedFromMessageIndex?: number | null;
+  acpAgentId?: string | null;
+  acpAgentName?: string | null;
+  acpSessionId?: string | null;
 }
 
 export interface ChatKindCounts {
@@ -208,6 +215,18 @@ export interface ToolCapabilityOption {
   label: string;
   description: string;
   tools: ToolOption[];
+}
+
+export interface AcpAgentDescriptor {
+  id: string;
+  name: string;
+  description?: string;
+  probe?: () => Promise<boolean>;
+  install_command?: string[];
+  login_command?: string[];
+  /** 'ready' when the executable was found on PATH, else 'not_installed'. */
+  status?: 'ready' | 'not_installed';
+  executable_path?: string | null;
 }
 
 export interface ChatGPTStatusResponse {

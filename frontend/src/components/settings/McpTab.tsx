@@ -4,7 +4,7 @@ import { useI18n } from '../../i18n';
 import { addMcpServer, updateMcpServer, fetchMcpServers, removeMcpServer, setMcpServerEnabled, testMcpServer, type McpProbeResult } from '../../lib/api';
 import { BrutalSelect } from '../BrutalSelect';
 import { SettingsHeader } from './SettingsHeader';
-import { SectionCardHeader, SettingsCard, SettingsListItem, SettingsListAction } from './SettingsCard';
+import { SectionCardHeader, SettingsCard, SettingsListItem, SettingsListAction, Badge } from './SettingsCard';
 import { BrutalOnOff } from '../BrutalOnOff';
 import { BrutalButton } from '../BrutalButton';
 
@@ -304,52 +304,46 @@ export function McpTab({
                                     />
                                 </div>
                                 <div className="flex-1 min-w-0 relative z-10 w-full">
-                                    <div className="flex items-center gap-3 mb-2">
-                                        <span className="text-lg font-black uppercase tracking-wide text-brutal-black dark:text-white truncate">
+                                    <div className="flex items-center gap-3">
+                                        <span className="font-black uppercase tracking-wide text-brutal-black dark:text-white truncate">
                                             {server.name}
                                         </span>
-                                        <span className={`text-[10px] font-bold px-2 py-0.5 border-2 border-brutal-black shadow-[1px_1px_0_0_#000] uppercase ${server.type === 'url' ? 'bg-brutal-blue text-white' : 'bg-brutal-yellow text-brutal-black'}`}>
-                                            {server.type === 'url' ? t('config.mcp.url') : t('config.mcp.stdio')}
-                                        </span>
+                                        <Badge>
+                                          {server.type === 'url' ? t('config.mcp.url') : t('config.mcp.stdio')}
+                                        </Badge>
                                     </div>
-                                    <div className="bg-white dark:bg-zinc-800 border-2 border-dashed border-brutal-black/40 dark:border-white/20 p-2 text-xs font-mono text-neutral-600 dark:text-neutral-300 truncate rounded-sm">
+                                    <div className="mt-1 text-[10px] font-mono text-neutral-500 dark:text-neutral-400 truncate">
                                         {server.type === 'url' ? (
                                             <span title={server.url}>{server.url}</span>
                                         ) : (
                                             <span title={`${server.command} ${server.args?.join(' ') || ''}`}>
-                                                <span className="font-bold text-brutal-black dark:text-white">{server.command}</span>
+                                                {server.command}
                                                 {server.args && server.args.length > 0 && ` ${server.args.join(' ')}`}
                                             </span>
                                         )}
                                     </div>
                                     
                                     {probes[server.name] && (
-                                        <div className="mt-3">
+                                        <div className="mt-2">
                                             {probes[server.name].testing ? (
-                                                <div className="inline-flex items-center gap-1.5 px-2 py-1 bg-neutral-200 dark:bg-zinc-700 border border-brutal-black text-[10px] font-bold uppercase text-neutral-600 dark:text-neutral-300">
-                                                    <span className="text-sm leading-none">⚙</span> {t('settings.mcp.testing')}
+                                                <div className="text-[10px] font-bold uppercase text-neutral-500">
+                                                    {t('settings.mcp.testing')}...
                                                 </div>
                                             ) : probes[server.name].ok ? (
-                                                <div className="inline-flex items-center gap-2">
-                                                    <div className="inline-flex items-center gap-1.5 px-2 py-1 bg-green-100 dark:bg-green-900/30 border border-brutal-black text-[10px] font-bold uppercase text-green-700 dark:text-green-400" title={t('settings.mcp.reachable')}>
-                                                        <span className="w-2 h-2 bg-green-500 rounded-full border border-brutal-black" />
-                                                        {t('settings.mcp.reachable')} ({probes[server.name].count ?? 0})
-                                                    </div>
+                                                <div className="flex items-center gap-2">
+                                                    <Badge>{t('settings.mcp.reachable')} ({probes[server.name].count ?? 0})</Badge>
                                                     {(probes[server.name].tools?.length ?? 0) > 0 && (
                                                         <button
                                                             type="button"
                                                             onClick={() => setExpandedTools(prev => ({ ...prev, [server.name]: !prev[server.name] }))}
-                                                            className="text-[10px] font-bold uppercase text-brutal-blue dark:text-blue-400 hover:underline hover:text-blue-600"
+                                                            className="text-[10px] font-bold uppercase text-brutal-blue dark:text-blue-400"
                                                         >
                                                             {expandedTools[server.name] ? '[-]' : '[+]'} {t('settings.mcp.viewTools')}
                                                         </button>
                                                     )}
                                                 </div>
                                             ) : (
-                                                <div className="inline-flex items-center gap-1.5 px-2 py-1 bg-red-100 dark:bg-red-900/30 border border-brutal-black text-[10px] font-bold uppercase text-brutal-red truncate max-w-full" title={probes[server.name].error}>
-                                                    <span className="text-brutal-red text-sm leading-none">⚠</span>
-                                                    <span className="truncate">{t('settings.mcp.unreachable')}: {probes[server.name].error}</span>
-                                                </div>
+                                                <Badge>{t('settings.mcp.unreachable')}: {probes[server.name].error}</Badge>
                                             )}
                                         </div>
                                     )}
@@ -370,7 +364,6 @@ export function McpTab({
                                 </div>
                                 <div className="flex gap-2 shrink-0 relative z-10 w-full md:w-auto mt-3 md:mt-0 justify-end md:self-start md:ml-4">
                                     <SettingsListAction
-                                        tone="blue"
                                         onClick={() => handleTestServer(server)}
                                         disabled={loading || probes[server.name]?.testing}
                                     >
@@ -384,7 +377,6 @@ export function McpTab({
                                         {t('common.edit')}
                                     </SettingsListAction>
                                     <SettingsListAction
-                                        tone="red"
                                         onClick={() => handleRemoveServer(server)}
                                         disabled={loading}
                                     >
@@ -438,7 +430,6 @@ export function McpTab({
                                     )}
                                     <div className="flex gap-3 pt-2">
                                         <SettingsListAction
-                                            tone="blue"
                                             onClick={handleSaveEdit}
                                             disabled={editLoading || (editDraft.type === 'url' ? !editDraft.url.trim() : !editDraft.command.trim())}
                                         >

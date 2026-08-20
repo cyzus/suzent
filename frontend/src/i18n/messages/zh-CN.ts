@@ -653,6 +653,11 @@ export const zhCN = {
     newChat: '新对话',
     send: '发送',
     placeholder: '输入消息...',
+    runtime: {
+      external: '外部运行时 · Claude Code CLI · 通过 ACP',
+      suzent: 'SUZENT 运行时',
+      bypassed: '已绕过 SUZENT 原生模型',
+    },
   },
   fileChanges: {
     editedFiles: '已编辑 {count} 个文件',
@@ -778,6 +783,12 @@ export const zhCN = {
     loadingMore: '加载中...',
   },
   chatInput: {
+    engineGroups: {
+      models: '模型',
+      acp: 'ACP 智能体',
+    },
+    acpNotInstalled: '未安装',
+    acpInstallHint: '未安装 — 请在“设置 › ACP Agents”中添加',
     removeFile: '移除文件',
     placeholderReady: '我能如何帮助你？',
     placeholderLoading: '系统加载中...',
@@ -795,6 +806,26 @@ export const zhCN = {
     stop: '停止',
     send: '发送',
     redirect: '重定向',
+    runtime: {
+      external: '外部运行时',
+      suzent: 'SUZENT 运行时',
+      viaAcp: '通过 ACP',
+      bypassed: '已绕过 SUZENT 原生模型',
+    },
+    modelManagedByAcp: 'ACP 管理',
+  },
+  acp: {
+    permission: {
+      header: '外部智能体请求授权',
+      untitled: '未命名的工具调用',
+      approved: '已批准',
+      denied: '已拒绝',
+      expired: '已不再等待决定',
+    },
+    sessionReset: {
+      header: '已开启新会话',
+      body: '无法恢复之前的 {agent} 会话，本轮将从空白开始，不包含此前的历史记录。',
+    },
   },
   chatWindow: {
     dragDropTitle: '将文件拖到这里',
@@ -813,6 +844,7 @@ export const zhCN = {
     connecting: '正在连接核心服务...',
     outputValidationRetryError: '模型输出格式校验多次失败，请重试这条消息。',
     genericError: '发生错误，请重试。',
+    acpAgentLocked: '此会话的 ACP 智能体不可更改',
     heartbeatOff: '心跳已关闭',
     permissionModeTitle: '工具权限模式',
     permissionModeLabel: '模式',
@@ -855,6 +887,16 @@ export const zhCN = {
   },
   newChat: {
     creatingIn: '将创建于',
+    acp: {
+      native: '原生',
+      agent: 'ACP 智能体',
+      resume: '恢复会话',
+      resuming: '恢复中...',
+      bound: '已绑定',
+      noAgents: '没有 ACP 智能体',
+      createFailed: '无法创建 ACP 会话',
+      resumeFailed: '无法恢复 ACP 会话',
+    },
     greetings: {
       nightOwl: '夜猫子？',
       goodMorning: '早上好。',
@@ -864,6 +906,10 @@ export const zhCN = {
     },
   },
   chatMessage: {
+    runtime: {
+      external: '外部运行时 · {agent} · 通过 ACP',
+      suzent: 'SUZENT 运行时 · {model}',
+    },
     viewFile: '查看文件（按住 Shift 点击全屏）',
     downloadFile: '下载文件',
     userLabel: '用户',

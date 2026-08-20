@@ -6,6 +6,8 @@ import { ThinkingAnimation, AgentBadge, RobotIcon } from './ThinkingAnimation';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { ToolCallBlock } from './ToolCallBlock';
 import { SubAgentCallBlock } from './SubAgentCallBlock';
+import { AcpPermissionPrompt } from './AcpPermissionPrompt';
+import { AcpSessionResetNotice } from './AcpSessionResetNotice';
 import type { SubAgentStatus } from './SubAgentCallBlock';
 import { CopyButton } from './CopyButton';
 import { FileChangeSummary } from './FileChangeSummary';
@@ -161,14 +163,15 @@ const AGUIPartsContent: React.FC<{
   }, [parts]);
 
   // Group consecutive parts of the same type into chunks
-  const chunks: { type: 'tool' | 'reasoning' | 'text' | 'a2ui'; items: AGUIPart[] }[] = [];
+  type ChunkType = 'tool' | 'reasoning' | 'text' | 'a2ui' | 'acp-permission' | 'acp-notice';
+  const chunks: { type: ChunkType; items: AGUIPart[] }[] = [];
   let current: AGUIPart[] = [];
-  let currentType: 'tool' | 'reasoning' | 'text' | 'a2ui' | null = null;
+  let currentType: ChunkType | null = null;
 
   for (const part of normalizedParts) {
     // citation-sources parts carry metadata, not display content — skip them.
     if (part.type === 'citation-sources') continue;
-    const type = part.type as 'tool' | 'reasoning' | 'text' | 'a2ui';
+    const type = part.type as ChunkType;
     if (current.length === 0) {
       currentType = type;
       current.push(part);
@@ -406,6 +409,34 @@ const AGUIPartsContent: React.FC<{
           );
         }
 
+        if (chunk.type === 'acp-permission') {
+          return (
+            <React.Fragment key={ci}>
+              {chunk.items.map((p, pi) =>
+                p.acpPermission ? (
+                  <AcpPermissionPrompt
+                    key={p.acpPermission.requestId || pi}
+                    request={p.acpPermission}
+                    stale={!isStreaming}
+                  />
+                ) : null,
+              )}
+            </React.Fragment>
+          );
+        }
+
+        if (chunk.type === 'acp-notice') {
+          return (
+            <React.Fragment key={ci}>
+              {chunk.items.map((p, pi) =>
+                p.acpNotice ? (
+                  <AcpSessionResetNotice key={pi} notice={p.acpNotice} />
+                ) : null,
+              )}
+            </React.Fragment>
+          );
+        }
+
         if (chunk.type === 'a2ui') {
           return (
             <React.Fragment key={ci}>
@@ -566,9 +597,16 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   fallbackModel,
   fileChangeChatId,
 }) => {
+  const { t } = useI18n();
   const isStreamingThis = isStreaming && isLastMessage;
   const effectiveParts = aguiParts ?? message.parts;
   const hasParts = effectiveParts && effectiveParts.length > 0;
+  // The ACP runtime stamps `acp/<agent-id>` on the response it produced; the
+  // chat-level fallback carries the same shape for turns saved before that.
+  const signature = message.model || fallbackModel;
+  const acpAgent = signature?.startsWith('acp/') ? signature.slice(4) : undefined;
+  const isAcp = !!acpAgent;
+
   const isThinking = isStreamingThis && !message.content && !hasParts;
   const workedDurationSeconds = useMemo(
     () => getTimestampDeltaSeconds(previousMessageTimestamp, message.timestamp),
@@ -640,7 +678,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
     }
   }, [effectiveParts, legacyBlocks, citationSourcesMap]);
 
-  const modelSignature = message.model || fallbackModel;
+  const modelSignature = signature;
 
   // 1. 抓取当前正在跑的 Tool 和 错误状态
   let currentToolName: string | undefined = undefined;
@@ -690,11 +728,18 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   const isHistory = !isLastMessage && !isPendingApproval;
 
   const badgeContainer = isHistory ? (
-    <div className="mb-2 mt-1 flex items-center gap-1.5 text-neutral-400 dark:text-neutral-500">
-      <RobotIcon className="w-4 h-4" />
-      <span className="text-[10px] font-mono font-bold uppercase tracking-wider">
-        Suzent
-      </span>
+    <div className="mb-2 mt-1 flex flex-col gap-0.5">
+      <div className="flex items-center gap-1.5 text-neutral-400 dark:text-neutral-500">
+        <RobotIcon className="w-4 h-4" />
+        <span className="text-[10px] font-mono font-bold uppercase tracking-wider">
+          Suzent
+        </span>
+      </div>
+      <div className="text-[9px] font-mono text-neutral-400 uppercase tracking-widest">
+        {isAcp
+          ? t('chatMessage.runtime.external', { agent: acpAgent })
+          : t('chatMessage.runtime.suzent', { model: signature || 'model' })}
+      </div>
     </div>
   ) : (
     <div className={`
@@ -712,6 +757,16 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
           hasError={hasError}
           isPendingApproval={isPendingApproval}
         />
+        {isAcp && (
+          // The badge box is only 90px wide, so keep this to a marker and let
+          // the signature under the message carry the agent name.
+          <div
+            className="absolute top-1 left-1 bg-white border border-brutal-black px-1 text-[8px] font-bold uppercase"
+            title={t('chatMessage.runtime.external', { agent: acpAgent })}
+          >
+            ACP
+          </div>
+        )}
       </div>
     </div>
   );

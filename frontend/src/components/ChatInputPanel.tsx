@@ -11,6 +11,8 @@ import { useSlashCommands } from '../hooks/useSlashCommands';
 import { getApiBase, setChatPermissionMode, setDefaultPermissionMode } from '../lib/api';
 import { buildMountedVolumes } from '../lib/volumeMounts';
 import { MentionTextArea, type MentionTextAreaHandle } from './chat/MentionTextArea';
+import { useAcpAgents } from '../hooks/useAcpAgents';
+import { buildEngineOptions, engineValue, parseEngineValue } from '../lib/engineOptions';
 
 interface ChatInputPanelProps {
     input: string;
@@ -142,6 +144,60 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
     const mentionActive = mentionQuery !== null;
     const suggestions = useSlashCommands(input);
     const permissionMode = normalizePermissionMode(config.permission_mode);
+    const isAcpRuntime = config.runtime === 'acp' || Boolean(config.acp_agent_id);
+    const acpAgents = useAcpAgents();
+
+    // The runtime is only choosable while the chat is still new: an ACP chat is
+    // bound to a session owned by one agent, and a native chat's history means
+    // nothing to an external agent, so neither can be swapped mid-conversation.
+    const canChooseRuntime = !currentChatId;
+
+    const engineOptions = React.useMemo(() => buildEngineOptions({
+        models: backendConfig?.models ?? [],
+        agents: acpAgents,
+        canChooseRuntime,
+        selectedAgentId: config.acp_agent_id,
+        labels: {
+            models: t('chatInput.engineGroups.models'),
+            acp: t('chatInput.engineGroups.acp'),
+            notInstalled: t('chatInput.acpNotInstalled'),
+            installHint: t('chatInput.acpInstallHint'),
+        },
+    }), [acpAgents, backendConfig, canChooseRuntime, config.acp_agent_id, t]);
+
+    const selectedEngine = engineValue({
+        isAcpRuntime,
+        acpAgentId: config.acp_agent_id,
+        model: modelValue ?? config.model,
+    });
+
+    const onEngineChange = React.useCallback((next: string) => {
+        const selection = parseEngineValue(next);
+        if (selection.kind === 'acp') {
+            const agent = acpAgents.find(item => item.id === selection.agentId);
+            setConfig(prev => ({
+                ...prev,
+                runtime: 'acp',
+                acp_agent_id: selection.agentId,
+                acp_agent_name: agent?.name || selection.agentId,
+                acp_session_id: undefined,
+            }));
+            return;
+        }
+        if (isAcpRuntime) {
+            setConfig(prev => ({
+                ...prev,
+                runtime: 'native',
+                acp_agent_id: undefined,
+                acp_agent_name: undefined,
+                acp_session_id: undefined,
+                model: selection.model,
+            }));
+            return;
+        }
+        if (onModelChange) onModelChange(selection.model);
+        else setConfig(prev => ({ ...prev, model: selection.model }));
+    }, [acpAgents, isAcpRuntime, onModelChange, setConfig]);
     React.useEffect(() => { setSelectedSuggestion(0); }, [suggestions.length]);
     React.useEffect(() => { setSelectedMentionSuggestion(0); }, [mentionSuggestions.length]);
 
@@ -584,16 +640,22 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
 
                 {/* Right: model picker (shrinks) + action button (fixed) */}
                 {configReady && (
-                    <div className="relative min-w-0 shrink">
+                    <div
+                        className="relative min-w-0 shrink"
+                        title={isAcpRuntime && !canChooseRuntime
+                            ? t('chatWindow.acpAgentLocked')
+                            : undefined}
+                    >
                         <BrutalSelect
-                            value={modelValue ?? config.model}
-                            onChange={onModelChange ?? ((val) => setConfig(prev => ({ ...prev, model: val })))}
-                            options={backendConfig!.models}
+                            value={selectedEngine}
+                            onChange={onEngineChange}
+                            options={engineOptions}
+                            disabled={isAcpRuntime && !canChooseRuntime}
                             placeholder={t('chatInput.modelPlaceholder').toUpperCase()}
                             dropUp={modelSelectDropUp}
                             className="h-9 text-sm max-w-[220px]"
                             buttonClassName="!h-9 !border-0 !bg-neutral-100 dark:!bg-zinc-700 !px-2.5 !py-1.5 !shadow-none !translate-x-0 !translate-y-0 hover:!bg-neutral-200 dark:hover:!bg-zinc-600 focus-visible:!ring-2 focus-visible:!ring-brutal-blue"
-                            dropdownClassName="min-w-[200px] right-0"
+                            dropdownClassName="min-w-[240px] right-0"
                         />
                     </div>
                 )}

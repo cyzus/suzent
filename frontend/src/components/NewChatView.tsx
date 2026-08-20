@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ChatInputPanel, type FileMentionSelection } from './ChatInputPanel';
 import { ConfigOptions, ChatConfig } from '../types/api';
 import { GreetingCube } from './chat/GreetingCube';
 import { useI18n } from '../i18n';
 import { useProjects } from '../hooks/useProjects';
+import { useAcpAgents } from '../hooks/useAcpAgents';
 
 interface NewChatViewProps {
     input: string;
@@ -138,6 +139,9 @@ const ProjectPicker: React.FC = () => {
     );
 };
 
+
+// ... (other imports)
+
 export const NewChatView: React.FC<NewChatViewProps> = ({
     input,
     setInput,
@@ -163,6 +167,25 @@ export const NewChatView: React.FC<NewChatViewProps> = ({
     const [isInputHovered, setIsInputHovered] = useState(false);
     const [isInputFocused, setIsInputFocused] = useState(false);
     const isInputEngaged = isInputHovered || isInputFocused;
+    const acpAgents = useAcpAgents();
+
+    useEffect(() => {
+        const handleNewAcpChat = (event: Event) => {
+            const customEvent = event as CustomEvent<{ agentId: string }>;
+            const agentId = customEvent.detail.agentId;
+            // Resolve the real name so the runtime badge doesn't read "ACP Agent".
+            const agent = acpAgents.find(item => item.id === agentId);
+            setConfig(prev => ({
+                ...prev,
+                runtime: 'acp',
+                acp_agent_id: agentId,
+                acp_agent_name: agent?.name || agentId,
+            }));
+        };
+
+        window.addEventListener('suzent:new-acp-chat', handleNewAcpChat as EventListener);
+        return () => window.removeEventListener('suzent:new-acp-chat', handleNewAcpChat as EventListener);
+    }, [acpAgents, setConfig]);
 
     return (
         <div className="flex flex-col items-center justify-center h-full min-h-[400px] text-center p-8 animate-brutal-drop">

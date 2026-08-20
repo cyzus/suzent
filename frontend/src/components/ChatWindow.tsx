@@ -2,6 +2,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMe
 import { useChatStore } from '../hooks/useChatStore';
 import { useAGUI, type AGUIPart, type ApprovalRememberScope } from '../hooks/useAGUI';
 import {
+  createAcpSession,
   fetchCronJobs,
   forkChat,
   getApiBase,
@@ -582,6 +583,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     config,
     backendConfig,
     setConfig,
+    setChatConfigForId,
     shouldResetNext,
     consumeResetFlag,
     updateMessage,
@@ -1320,6 +1322,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     onRightSidebarToggle(true);
   }, [onRightSidebarToggle]);
 
+  // Turns saved before the runtime stamped a per-message model fall back to
+  // the chat's engine -- which for an ACP chat is the agent, not the unused
+  // native model.
+  const fallbackModelSignature = safeConfig.acp_agent_id
+    ? `acp/${safeConfig.acp_agent_id}`
+    : safeConfig.model;
+
   const handleStopSubAgent = useCallback(async (taskId: string) => {
     try {
       await fetch(`${getApiBase()}/subagents/${taskId}/stop`, { method: 'POST' });
@@ -1771,6 +1780,21 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       }
     }
 
+    let configForSend = safeConfig;
+    if (safeConfig.acp_agent_id && !safeConfig.acp_session_id) {
+      try {
+        const session = await createAcpSession(safeConfig.acp_agent_id, chatIdForSend);
+        configForSend = {
+          ...safeConfig,
+          acp_session_id: session.id,
+        };
+        await setChatConfigForId(chatIdForSend, configForSend);
+      } catch (error) {
+        setStatusBar(error instanceof Error ? error.message : t('newChat.acp.createFailed'), 'error', 5000);
+        return;
+      }
+    }
+
     // Block if a background stream is active AND the frontend also thinks this chat
     // is streaming. If the frontend already cleared (e.g. user just hit Stop), skip
     // this check — the backend will return 409 if it's truly still busy, which gives
@@ -1825,7 +1849,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     const mentionsToSend = extractSelectedFileMentions(prompt, fileMentions);
     const payload: Record<string, unknown> = {
       message: prompt,
-      config: safeConfig,
+      config: configForSend,
       chat_id: chatIdForSend,
       reset: resetFlag,
     };
@@ -2220,7 +2244,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                     forkOrigin={forkOrigin}
                     onOpenForkOrigin={(chatId) => void loadChat(chatId, { force: true })}
                     onEditUserMessage={!isStreaming ? handleEditUserMessage : undefined}
-                    fallbackModel={safeConfig.model}
+                    fallbackModel={fallbackModelSignature}
                   />
                 )}
                 {/* Streaming/transient message from AG-UI */}
@@ -2249,7 +2273,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                             onStopSubAgent={handleStopSubAgent}
                             onForceWebContext={handleForceWebContext}
                             chatCitationSources={chatCitationSources}
-                            fallbackModel={safeConfig.model}
+                            fallbackModel={fallbackModelSignature}
                           />
                         )}
                       </div>
