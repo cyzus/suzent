@@ -817,6 +817,12 @@ export const en = {
     loadingMore: 'Loading...',
   },
   chatInput: {
+    engineGroups: {
+      models: 'Models',
+      acp: 'ACP agents',
+    },
+    acpNotInstalled: 'Not installed',
+    acpInstallHint: 'Not installed — add it in Settings › ACP Agents',
     removeFile: 'Remove file',
     placeholderReady: 'How can I help you today?',
     placeholderLoading: 'System loading...',

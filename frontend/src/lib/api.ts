@@ -454,6 +454,9 @@ export async function fetchAcpAgents(): Promise<AcpAgentDescriptor[]> {
     description: a.description,
     install_command: a.install_command,
     login_command: a.login_command,
+    // Kept so callers can tell a usable agent from one that isn't installed.
+    status: a.status,
+    executable_path: a.executable_path,
   }));
 }
 

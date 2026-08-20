@@ -783,6 +783,12 @@ export const zhCN = {
     loadingMore: '加载中...',
   },
   chatInput: {
+    engineGroups: {
+      models: '模型',
+      acp: 'ACP 智能体',
+    },
+    acpNotInstalled: '未安装',
+    acpInstallHint: '未安装 — 请在“设置 › ACP Agents”中添加',
     removeFile: '移除文件',
     placeholderReady: '我能如何帮助你？',
     placeholderLoading: '系统加载中...',

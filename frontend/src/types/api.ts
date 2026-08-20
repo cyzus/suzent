@@ -224,6 +224,9 @@ export interface AcpAgentDescriptor {
   probe?: () => Promise<boolean>;
   install_command?: string[];
   login_command?: string[];
+  /** 'ready' when the executable was found on PATH, else 'not_installed'. */
+  status?: 'ready' | 'not_installed';
+  executable_path?: string | null;
 }
 
 export interface ChatGPTStatusResponse {

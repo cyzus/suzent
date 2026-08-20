@@ -6,9 +6,6 @@ import {
   fetchCronJobs,
   forkChat,
   getApiBase,
-  resumeAcpSession,
-  type ACPAgent,
-  type ACPSession,
   getChatPermissionState,
   getSandboxParams,
   updateCronJob,
@@ -1704,22 +1701,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     }
   }, [input, isRightSidebarOpen]);
 
-  const handleResumeAcpSession = useCallback(async (agent: ACPAgent, session: ACPSession) => {
-    if (session.chat_id) {
-      await loadChat(session.chat_id, { force: true });
-      return;
-    }
-    const chatId = await createNewChat();
-    if (!chatId) throw new Error(t('newChat.acp.resumeFailed'));
-    const resumed = await resumeAcpSession(agent.id, session.id, chatId);
-    await setChatConfigForId(chatId, {
-      ...safeConfig,
-      acp_agent_id: agent.id,
-      acp_agent_name: agent.name || agent.id,
-      acp_session_id: resumed.id,
-    });
-  }, [createNewChat, loadChat, safeConfig, setChatConfigForId, t]);
-
   // Send message handler (also handles steering when streaming)
   const send = async () => {
     const prompt = input.trim();
@@ -2238,7 +2219,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 onImageClick={setViewingImage}
                 currentChatId={currentChatId}
                 onFileMentionSelected={(mention) => setFileMentions(prev => [...prev.filter(item => item.name !== mention.name), mention])}
-                onResumeAcpSession={handleResumeAcpSession}
               />
             ) : (
               <>

@@ -4,9 +4,6 @@ import { ConfigOptions, ChatConfig } from '../types/api';
 import { GreetingCube } from './chat/GreetingCube';
 import { useI18n } from '../i18n';
 import { useProjects } from '../hooks/useProjects';
-import { fetchAcpAgents, fetchAcpSessions, type ACPSession } from '../lib/api';
-import { AcpAgentDescriptor } from '../types/api';
-import { RuntimeProvenance } from './RuntimeProvenance';
 
 interface NewChatViewProps {
     input: string;
@@ -29,7 +26,6 @@ interface NewChatViewProps {
     onImageClick?: (src: string) => void;
     currentChatId?: string | null;
     onFileMentionSelected?: (mention: FileMentionSelection) => void;
-    onResumeAcpSession?: (agent: AcpAgentDescriptor, session: ACPSession) => Promise<void>;
 }
 
 const GreetingPresence: React.FC<{ engaged: boolean }> = React.memo(({ engaged }) => {
@@ -142,114 +138,8 @@ const ProjectPicker: React.FC = () => {
     );
 };
 
-import { BrutalSelect } from './BrutalSelect';
 
 // ... (other imports)
-
-const ACPSelector: React.FC<{
-    config: ChatConfig;
-    setConfig: React.Dispatch<React.SetStateAction<ChatConfig>>;
-    onResume?: (agent: AcpAgentDescriptor, session: ACPSession) => Promise<void>;
-}> = ({ config, setConfig, onResume }) => {
-    const { t } = useI18n();
-    const [agents, setAgents] = useState<AcpAgentDescriptor[]>([]);
-    const [sessions, setSessions] = useState<ACPSession[]>([]);
-    const [busy, setBusy] = useState(false);
-    const [error, setError] = useState('');
-    const isAcp = config.runtime === 'acp';
-
-    useEffect(() => {
-        let cancelled = false;
-        fetchAcpAgents()
-            .then(items => { if (!cancelled) setAgents(items); })
-            .catch(() => { if (!cancelled) setAgents([]); });
-        return () => { cancelled = true; };
-    }, []);
-
-    useEffect(() => {
-        if (!config.acp_agent_id) {
-            setSessions([]);
-            return;
-        }
-        let cancelled = false;
-        fetchAcpSessions(config.acp_agent_id)
-            .then(items => { if (!cancelled) setSessions(items); })
-            .catch(() => { if (!cancelled) setSessions([]); });
-        return () => { cancelled = true; };
-    }, [config.acp_agent_id]);
-
-    const setNative = () => setConfig(prev => ({
-        ...prev,
-        runtime: 'native',
-        acp_agent_id: undefined,
-        acp_agent_name: undefined,
-        acp_session_id: undefined,
-    }));
-
-    const selectAgent = (agentId: string) => {
-        const agent = agents.find(item => item.id === agentId);
-        setConfig(prev => ({
-            ...prev,
-            runtime: 'acp',
-            acp_agent_id: agent?.id,
-            acp_agent_name: agent?.name || agent?.id,
-            acp_session_id: undefined,
-        }));
-    };
-
-    const selectSession = async (sessionId: string) => {
-        const agent = agents.find(item => item.id === config.acp_agent_id);
-        const session = sessions.find(item => item.id === sessionId);
-        if (!agent || !session || !onResume) return;
-        setBusy(true);
-        setError('');
-        try {
-            await onResume(agent, session);
-        } catch (err) {
-            setError(err instanceof Error ? err.message : t('newChat.acp.resumeFailed'));
-        } finally {
-            setBusy(false);
-        }
-    };
-
-    return (
-        <div className="mb-4 flex flex-col gap-2">
-            <div className="flex flex-col sm:flex-row items-center gap-2">
-                <div className="inline-flex border-2 border-brutal-black bg-white dark:bg-zinc-800 shadow-[2px_2px_0_0_#000]">
-                    <button type="button" onClick={setNative} className={`px-3 py-1.5 text-xs font-extrabold uppercase ${!isAcp ? 'bg-brutal-black text-white dark:bg-white dark:text-black' : 'dark:text-white'}`}>
-                        {t('newChat.acp.native')}
-                    </button>
-                    <button type="button" onClick={() => agents[0] && selectAgent(agents[0].id)} className={`border-l-2 border-brutal-black px-3 py-1.5 text-xs font-extrabold uppercase ${isAcp ? 'bg-brutal-black text-white dark:bg-white dark:text-black' : 'dark:text-white'}`}>
-                        ACP
-                    </button>
-                </div>
-                {isAcp && (
-                    <div className="flex flex-1 w-full gap-2">
-                        <BrutalSelect
-                            value={config.acp_agent_id || ''}
-                            onChange={selectAgent}
-                            options={agents.map(a => ({ value: a.id, label: a.name || a.id }))}
-                            placeholder={t('newChat.acp.agent')}
-                            buttonClassName="h-9 py-1 text-xs"
-                            className="flex-1"
-                        />
-                        <BrutalSelect
-                            value=""
-                            onChange={selectSession}
-                            options={sessions.map(s => ({ value: s.id, label: s.title || s.cwd || s.id }))}
-                            placeholder={busy ? t('newChat.acp.resuming') : t('newChat.acp.resume')}
-                            disabled={busy || sessions.length === 0}
-                            buttonClassName="h-9 py-1 text-xs"
-                            className="flex-1"
-                        />
-                    </div>
-                )}
-                {isAcp && <RuntimeProvenance config={config} compact={true} />}
-            </div>
-            {error && <div className="text-xs font-bold text-brutal-red">{error}</div>}
-        </div>
-    );
-};
 
 export const NewChatView: React.FC<NewChatViewProps> = ({
     input,
@@ -272,7 +162,6 @@ export const NewChatView: React.FC<NewChatViewProps> = ({
     onImageClick,
     currentChatId,
     onFileMentionSelected,
-    onResumeAcpSession,
 }) => {
     const [isInputHovered, setIsInputHovered] = useState(false);
     const [isInputFocused, setIsInputFocused] = useState(false);
@@ -298,7 +187,6 @@ export const NewChatView: React.FC<NewChatViewProps> = ({
             <GreetingPresence engaged={isInputEngaged} />
 
             <div className="w-full max-w-2xl">
-                {!currentChatId && <ACPSelector config={config} setConfig={setConfig} onResume={onResumeAcpSession} />}
                 <ProjectPicker />
                 <div
                     onPointerEnter={() => setIsInputHovered(true)}
