@@ -83,6 +83,17 @@ function SunIcon() {
   );
 }
 
+/** Half sun / half moon — indicates "follow system preference". */
+function AutoIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="square">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 3v18" />
+      <path d="M12 7a5 5 0 0 1 0 10" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 function GitHubIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -92,7 +103,7 @@ function GitHubIcon() {
 }
 
 function HomepageNav() {
-  const { colorMode, setLightTheme, setDarkTheme } = useColorMode();
+  const { colorModeChoice, setColorMode } = useColorMode();
   const { i18n } = useDocusaurusContext();
   const { pathname } = useLocation();
 
@@ -104,6 +115,22 @@ function HomepageNav() {
     const stripped = pathname.replace(/^\/(zh-Hans)(\/|$)/, '/') || '/';
     return otherLocale === i18n.defaultLocale ? stripped : `/zh-Hans${stripped === '/' ? '/' : stripped}`;
   }
+
+  // Cycle: auto → light → dark → auto
+  function cycleTheme() {
+    if (colorModeChoice === null) setColorMode('light');
+    else if (colorModeChoice === 'light') setColorMode('dark');
+    else setColorMode(null);
+  }
+
+  const themeIcon =
+    colorModeChoice === 'light' ? <SunIcon />
+    : colorModeChoice === 'dark' ? <MoonIcon />
+    : <AutoIcon />;
+  const themeLabel =
+    colorModeChoice === 'light' ? 'Light'
+    : colorModeChoice === 'dark' ? 'Dark'
+    : 'Auto';
 
   return (
     <nav className={styles.homeNav} aria-label="Homepage navigation">
@@ -127,10 +154,11 @@ function HomepageNav() {
             )}
             <button
               className={styles.homeNavIconLink}
-              onClick={() => colorMode === 'dark' ? setLightTheme() : setDarkTheme()}
-              aria-label="Toggle dark mode"
+              onClick={cycleTheme}
+              aria-label={`Theme: ${themeLabel}`}
+              title={themeLabel}
             >
-              {colorMode === 'dark' ? <SunIcon /> : <MoonIcon />}
+              {themeIcon}
             </button>
           </div>
         </div>
