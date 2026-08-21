@@ -122,6 +122,13 @@ interface AgentBadgeProps {
   hasError?: boolean;
   isPendingApproval?: boolean;
   eyeClass?: string;
+  /**
+   * Replaces the robot avatar with a caller-supplied mark, keeping the same
+   * slot, drop-in animation, and thinking fade. Used for ACP turns, where the
+   * work was done by an external agent and the Suzent robot would misattribute
+   * it. Variant state is ignored in that case.
+   */
+  icon?: React.ReactNode;
 }
 
 const AgentBadgeComponent: React.FC<AgentBadgeProps> = ({
@@ -130,6 +137,7 @@ const AgentBadgeComponent: React.FC<AgentBadgeProps> = ({
   currentToolName,
   hasError,
   isPendingApproval,
+  icon,
 }) => {
   // Determine variant based on state
   const [baseVariant, setBaseVariant] = useState<RobotVariant>(() => selectWeightedVariant(BADGE_WEIGHTS));
@@ -199,14 +207,14 @@ const AgentBadgeComponent: React.FC<AgentBadgeProps> = ({
       transition-opacity duration-500 delay-200
       ${isThinking ? 'opacity-0 pointer-events-none' : 'opacity-100'}
     `}>
-      <div 
-        key={variant} 
-        className="w-8 h-8 shrink-0 relative"
+      <div
+        key={icon ? 'icon' : variant}
+        className="w-8 h-8 shrink-0 relative flex items-center justify-center text-brutal-black dark:text-white"
         style={{
           animation: 'robot-drop-in 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
         }}
       >
-        <RobotAvatar variant={variant} />
+        {icon ?? <RobotAvatar variant={variant} />}
       </div>
       <style>{`
         @keyframes robot-drop-in {

@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import type { Message } from '../../types/api';
 import type { AGUIPart, ApprovalRememberScope } from '../../hooks/useAGUI';
-import { splitAssistantContent, ContentBlock, formatMessageTime } from '../../lib/chatUtils';
+import { splitAssistantContent, ContentBlock, formatMessageTime, hasStreamedOutput } from '../../lib/chatUtils';
 import { ThinkingAnimation, AgentBadge, RobotIcon } from './ThinkingAnimation';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { ToolCallBlock } from './ToolCallBlock';
 import { SubAgentCallBlock } from './SubAgentCallBlock';
 import { AcpPermissionPrompt } from './AcpPermissionPrompt';
+import { AcpAgentIcon } from '../AcpAgentIcon';
 import { AcpSessionResetNotice } from './AcpSessionResetNotice';
 import type { SubAgentStatus } from './SubAgentCallBlock';
 import { CopyButton } from './CopyButton';
@@ -459,7 +460,11 @@ const AGUIPartsContent: React.FC<{
         // Text chunk
         const fullText = chunk.items.map(p => p.text || '').join('');
         const isLastChunk = ci === chunks.length - 1;
-        if (!fullText.trim() && !isLastChunk) return null;
+        // An empty chunk gets no bubble, not even the last one. The stream
+        // opens its text part before the first token -- seconds early under
+        // ACP, while the agent boots -- and rendering that shell put an empty
+        // bordered box with a blinking cursor under the assembly animation.
+        if (!fullText.trim()) return null;
         return (
           <div key={ci} className="border-3 border-brutal-black shadow-brutal-lg bg-white dark:bg-zinc-800 px-6 py-5 relative">
             <div className="space-y-4">
@@ -607,7 +612,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   const acpAgent = signature?.startsWith('acp/') ? signature.slice(4) : undefined;
   const isAcp = !!acpAgent;
 
-  const isThinking = isStreamingThis && !message.content && !hasParts;
+  const isThinking = isStreamingThis && !message.content && !hasStreamedOutput(effectiveParts);
   const workedDurationSeconds = useMemo(
     () => getTimestampDeltaSeconds(previousMessageTimestamp, message.timestamp),
     [previousMessageTimestamp, message.timestamp],
@@ -730,9 +735,15 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   const badgeContainer = isHistory ? (
     <div className="mb-2 mt-1 flex flex-col gap-0.5">
       <div className="flex items-center gap-1.5 text-neutral-400 dark:text-neutral-500">
-        <RobotIcon className="w-4 h-4" />
+        {/* An ACP turn was produced by an external agent, so it is signed with
+            that agent's mark rather than with Suzent's robot. */}
+        {isAcp ? (
+          <AcpAgentIcon id={acpAgent} className="w-4 h-4 shrink-0" />
+        ) : (
+          <RobotIcon className="w-4 h-4" />
+        )}
         <span className="text-[10px] font-mono font-bold uppercase tracking-wider">
-          Suzent
+          {isAcp ? acpAgent : 'Suzent'}
         </span>
       </div>
       <div className="text-[9px] font-mono text-neutral-400 uppercase tracking-widest">
@@ -756,6 +767,11 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
           currentToolName={currentToolName}
           hasError={hasError}
           isPendingApproval={isPendingApproval}
+          icon={
+            isAcp ? (
+              <AcpAgentIcon id={acpAgent} className="w-6 h-6 shrink-0" />
+            ) : undefined
+          }
         />
         {isAcp && (
           // The badge box is only 90px wide, so keep this to a marker and let

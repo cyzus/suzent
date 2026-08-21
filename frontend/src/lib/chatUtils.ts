@@ -1,4 +1,19 @@
-import type { PermissionPrompt, ToolPermissionDecision, ToolPermissionResolution } from '../types/agui';
+import type { AGUIPart, PermissionPrompt, ToolPermissionDecision, ToolPermissionResolution } from '../types/agui';
+
+/**
+ * Has the run produced anything the user can actually see yet?
+ *
+ * The stream opens its assistant message as soon as the run starts. Under ACP
+ * that lands seconds ahead of the first token, while the agent process is still
+ * booting, so an empty text shell must not count as output -- otherwise the
+ * assembly animation gives way to a bare typewriter cursor with nothing behind
+ * it. A tool or notice part counts; an empty text/reasoning shell does not.
+ */
+export function hasStreamedOutput(parts: AGUIPart[] | undefined): boolean {
+  return !!parts?.some(part =>
+    part.type === 'text' || part.type === 'reasoning' ? !!part.text : true,
+  );
+}
 
 export function formatMessageTime(iso: string): string {
   const date = new Date(iso);
