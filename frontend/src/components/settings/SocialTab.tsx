@@ -16,6 +16,7 @@ import { BrutalMultiSelect } from '../BrutalMultiSelect';
 import { BrutalOnOff } from '../BrutalOnOff';
 import { SettingsHeader } from './SettingsHeader';
 import { SettingsCard, SectionCardHeader, GridCard } from './SettingsCard';
+import { SocialPlatformBadge, SocialPlatformIcon, socialPlatformLabel } from './SocialPlatformIcon';
 
 interface McpServersData {
     urls: Record<string, string>;
@@ -269,30 +270,6 @@ export function SocialTab({
         <div className="space-y-6">
             <SettingsHeader title={t('settings.social.title')} subtitle={t('settings.social.subtitle')} />
 
-            <SettingsCard>
-                <SectionCardHeader
-                    iconTone="black"
-                    icon={<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>}
-                    title={t('settings.social.generalSettingsTitle')}
-                    description={t('settings.social.generalSettingsDesc')}
-                />
-
-                <div className="space-y-4">
-                    <div className="space-y-2">
-                        <label className="text-sm font-bold uppercase text-neutral-800 dark:text-neutral-200">
-                            {t('settings.social.globalAllowedUsers')}
-                        </label>
-                        <input
-                            type="text"
-                            className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 dark:focus:bg-zinc-800 dark:text-white dark:placeholder-neutral-500"
-                            value={(socialConfig.allowed_users || []).join(', ')}
-                            onChange={(e) => onConfigChange({ ...socialConfig, allowed_users: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
-                            placeholder={t('settings.social.allowedUsersPlaceholder')}
-                        />
-                    </div>
-                </div>
-            </SettingsCard>
-
             {/* Agent Capabilities Card */}
             <SettingsCard>
                 <SectionCardHeader
@@ -446,7 +423,10 @@ export function SocialTab({
                                 <div className="min-w-0">
                                     <div className="flex items-center gap-2 flex-wrap">
                                         <span className="font-mono text-base font-black tracking-widest bg-brutal-yellow text-brutal-black border border-brutal-black px-2 py-0.5">{p.token}</span>
-                                        <span className="text-xs font-bold uppercase bg-neutral-200 dark:bg-zinc-700 px-1">{p.platform}</span>
+                                        <span className="inline-flex items-center gap-1 text-xs font-bold uppercase bg-neutral-200 dark:bg-zinc-700 px-1">
+                                            <SocialPlatformIcon id={p.platform} className="w-3.5 h-3.5" />
+                                            {socialPlatformLabel(p.platform)}
+                                        </span>
                                         <span className="font-mono text-sm font-bold">{p.sender_name}</span>
                                         <span className="font-mono text-xs text-neutral-500 dark:text-neutral-400">{p.sender_id}</span>
                                     </div>
@@ -486,7 +466,12 @@ export function SocialTab({
                     return (
                         <GridCard
                             key={key}
-                            title={key}
+                            title={
+                                <span className="flex items-center gap-3 min-w-0">
+                                    <SocialPlatformBadge id={key} />
+                                    <span className="truncate">{socialPlatformLabel(key)}</span>
+                                </span>
+                            }
                             headerRight={
                                 <BrutalOnOff
                                     checked={isEnabled}

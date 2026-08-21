@@ -81,7 +81,7 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }
   const [activeCategory, setActiveCategory] = useState<CategoryType>('providers');
 
   // Social Config State
-  const [socialConfig, setSocialConfig] = useState<SocialConfig>({ allowed_users: [] });
+  const [socialConfig, setSocialConfig] = useState<SocialConfig>({});
   const [mcpServers, setMcpServers] = useState<{ urls: Record<string, string>; stdio: Record<string, any>; enabled: Record<string, boolean> } | null>(null);
   const [useCustomTools, setUseCustomTools] = useState(false);
   const [useCustomMcp, setUseCustomMcp] = useState(false);

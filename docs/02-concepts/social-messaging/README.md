@@ -21,10 +21,10 @@ Create a file at `config/social.json` in your workspace root. You can copy `conf
 
 ```json
 {
-  "allowed_users": ["GLOBAL_ADMIN_ID"],
   "telegram": {
     "enabled": true,
-    "token": "..."
+    "token": "...",
+    "allowed_users": ["YOUR_TELEGRAM_USER_ID"]
   },
   "feishu": {
     "enabled": true,
@@ -47,13 +47,23 @@ Create a file at `config/social.json` in your workspace root. You can copy `conf
 }
 ```
 
--   **Global `allowed_users`**: List of user IDs authorized to access the bot from *any* platform.
--   **Platform `allowed_users`**: List of user IDs authorized *only* for that specific platform.
+-   **`allowed_users`**: List of sender IDs authorized on that platform. Every
+    platform block has its own list — there is no cross-platform allowlist, since
+    sender IDs are namespaced per platform and are not comparable across them.
+
+> **Deprecated:** a top-level `allowed_users` key used to grant access on every
+> platform at once, and matched display names as well as IDs — so an approval on
+> one platform could be inherited by anyone who renamed themselves on another.
+> It is no longer matched on names. An existing top-level key still loads: its
+> entries are copied into every configured platform's list and a warning is
+> logged. Move each entry to the platform it belongs to and delete the key.
 
 ## Features
 
 ### 1. Access Control
-By default, the bot is restricted. You must explicitly add your User ID (e.g., your Telegram ID) to the `allowed_users` list. Messages from unauthorized users are rejected with an "Access Denied" message.
+By default, the bot is restricted. You must explicitly add your User ID (e.g., your Telegram ID) to that platform's `allowed_users` list. Only sender IDs are matched — display names are user-settable and unverified, so they are ignored. Messages from unauthorized users are rejected with an "Access Denied" message.
+
+Approvals granted through the pairing handshake are written to the allowlist of the platform the request arrived on, not to every platform.
 
 ### 2. Persistent Memory
 Conversations on social platforms are treated as persistent sessions. Suzent creates a specific chat session (e.g., `social-telegram-12345`) and stores:

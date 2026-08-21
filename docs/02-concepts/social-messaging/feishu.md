@@ -61,9 +61,8 @@ Add the following to your `config/social.json`:
     "enabled": true,
     "app_id": "cli_...",
     "app_secret": "...",
-    "allowed_users": ["ou_..."] 
-  },
-  "allowed_users": [] 
+    "allowed_users": ["ou_..."]
+  }
 }
 ```
 
@@ -75,4 +74,4 @@ Add the following to your `config/social.json`:
     *   `Unauthorized social message from: Feishu User (ou_c50b7b...)`
     *   OR `Feishu Message IDs - Union: ..., Open: ou_c50b7b..., ...`
 4.  Copy the **Open ID** (starts with `ou_`).
-5.  Add it to the `allowed_users` list in `config/social.json` and **Restart the Server**.
+5.  Add it to the Feishu block's `allowed_users` list in `config/social.json` and **Restart the Server**.
