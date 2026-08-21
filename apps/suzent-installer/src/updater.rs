@@ -11,6 +11,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const LATEST_RELEASE_API: &str = "https://api.github.com/repos/cyzus/suzent/releases/latest";
 const RELEASE_BASE_URL: &str = "https://github.com/cyzus/suzent/releases/download";
+/// Keeps a captured failure reason short enough to stay readable in the UI.
+const FAILURE_DETAIL_LIMIT: usize = 600;
 
 #[derive(Deserialize)]
 struct ReleaseResponse {
@@ -32,6 +34,12 @@ struct UpdateStatus {
     downloaded_bytes: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     total_bytes: Option<u64>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    failed: bool,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 #[derive(Serialize, Deserialize)]
@@ -190,17 +198,33 @@ fn run_inner(args: &[String], repair: bool) -> Result<(), String> {
     }
 
     let paths = UpdatePaths::new(root, &target_tag);
-    let mut service_guard = ServiceRestartGuard::detect(&paths.root);
     fs::create_dir_all(&paths.state_dir).map_err(display_io("create update state directory"))?;
     let _lock = acquire_lock(&paths.state_dir)?;
-    write_status(&paths, "preflight", 5, "Preparing update", &target_tag)?;
+
+    if let Err(error) = run_transaction(&paths, &target_tag) {
+        record_failure(&paths, &target_tag, &error);
+        return Err(error);
+    }
+
+    if let Some(relaunch) = flag_value(args, "--relaunch") {
+        launch_app(&PathBuf::from(relaunch), &paths.root)?;
+    }
+    println!("Suzent is ready on {target_tag}");
+    Ok(())
+}
+
+/// Runs the whole update transaction so a failure at any phase can be
+/// recorded on the status document by the caller.
+fn run_transaction(paths: &UpdatePaths, target_tag: &str) -> Result<(), String> {
+    let mut service_guard = ServiceRestartGuard::detect(&paths.root);
+    write_status(paths, "preflight", 5, "Preparing update", target_tag)?;
 
     let old_commit = git_text(&paths.root, &["rev-parse", "HEAD"])?;
     let old_branch = git_text(&paths.root, &["branch", "--show-current"])?;
     let old_release_tag = read_trimmed(paths.state_dir.join("release-tag")).unwrap_or_default();
     let old_ui_version = read_trimmed(paths.ui_version()).unwrap_or_default();
     let mut transaction = UpdateTransaction {
-        target_tag: target_tag.clone(),
+        target_tag: target_tag.to_string(),
         old_commit,
         old_branch,
         old_release_tag,
@@ -208,19 +232,19 @@ fn run_inner(args: &[String], repair: bool) -> Result<(), String> {
         stashed_changes: false,
         phase: "preflight".to_string(),
     };
-    write_journal(&paths, &transaction)?;
+    write_journal(paths, &transaction)?;
 
-    prepare_target(&paths, &target_tag)?;
+    prepare_target(paths, target_tag)?;
     transaction.phase = "prepared".to_string();
-    write_journal(&paths, &transaction)?;
+    write_journal(paths, &transaction)?;
 
     if has_local_changes(&paths.root)? {
         write_status(
-            &paths,
+            paths,
             "preserve",
             30,
             "Preserving local changes",
-            &target_tag,
+            target_tag,
         )?;
         run_checked(
             Command::new("git")
@@ -230,62 +254,51 @@ fn run_inner(args: &[String], repair: bool) -> Result<(), String> {
             "preserve local changes",
         )?;
         transaction.stashed_changes = true;
-        write_journal(&paths, &transaction)?;
+        write_journal(paths, &transaction)?;
     }
 
     write_status(
-        &paths,
+        paths,
         "stopping",
         40,
         "Stopping Suzent processes",
-        &target_tag,
+        target_tag,
     )?;
     service_guard.stop()?;
     stop_suzent_processes(&paths.root)?;
     transaction.phase = "switching".to_string();
-    write_journal(&paths, &transaction)?;
+    write_journal(paths, &transaction)?;
 
-    let result = backup_current_ui(&paths).and_then(|()| install_target(&paths, &target_tag));
+    let result = backup_current_ui(paths).and_then(|()| install_target(paths, target_tag));
     if let Err(error) = result {
-        let rollback_result = rollback(&paths, &transaction);
+        let rollback_result = rollback(paths, &transaction);
         if rollback_result.is_ok() {
             let _ = write_status(
-                &paths,
+                paths,
                 "rolled_back",
                 100,
                 "Update failed; previous version restored",
-                &target_tag,
+                target_tag,
             );
             let _ = fs::remove_file(&paths.journal);
             return Err(error);
         }
         let rollback_error = rollback_result.unwrap_err();
         let _ = write_status(
-            &paths,
+            paths,
             "repair_required",
             100,
             "Update and rollback failed; run suzent repair",
-            &target_tag,
+            target_tag,
         );
         return Err(format!("{error}; rollback also failed: {rollback_error}"));
     }
 
     transaction.phase = "complete".to_string();
-    write_journal(&paths, &transaction)?;
-    write_status(
-        &paths,
-        "complete",
-        100,
-        "Suzent update complete",
-        &target_tag,
-    )?;
-    cleanup_transaction_files(&paths);
+    write_journal(paths, &transaction)?;
+    write_status(paths, "complete", 100, "Suzent update complete", target_tag)?;
+    cleanup_transaction_files(paths);
     service_guard.restart()?;
-
-    if let Some(relaunch) = flag_value(args, "--relaunch") {
-        launch_app(&PathBuf::from(relaunch), &paths.root)?;
-    }
-    println!("Suzent is ready on {target_tag}");
     Ok(())
 }
 
@@ -332,9 +345,7 @@ fn run_service_command(root: &Path, action: &str) -> Result<(), String> {
     run_checked(
         Command::new(python)
             .args(["-m", "suzent.cli", "service", action])
-            .current_dir(root)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null()),
+            .current_dir(root),
         action,
     )
 }
@@ -365,7 +376,7 @@ fn prepare_target(paths: &UpdatePaths, target_tag: &str) -> Result<(), String> {
     write_status(paths, "fetch", 25, "Fetching release source", target_tag)?;
     run_checked(
         Command::new("git")
-            .args(["fetch", "origin", "tag", target_tag])
+            .args(["fetch", "--force", "origin", "tag", target_tag])
             .current_dir(&paths.root),
         "fetch release source",
     )
@@ -774,6 +785,30 @@ fn parse_release_checksum(contents: &str, asset_name: &str) -> Result<String, St
     Err(format!("SHA256SUMS has no valid entry for {asset_name}"))
 }
 
+/// Records why an update stopped so the UI shows the real reason instead of the
+/// last progress message. Terminal statuses written by the rollback path win.
+fn record_failure(paths: &UpdatePaths, tag: &str, error: &str) {
+    let previous = fs::read(&paths.status)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<UpdateStatus>(&bytes).ok())
+        .filter(|status| status.target_version == tag);
+    if previous
+        .as_ref()
+        .is_some_and(|status| is_terminal_phase(&status.phase))
+    {
+        return;
+    }
+    let (phase, progress) = previous
+        .as_ref()
+        .map(|status| (status.phase.clone(), status.progress))
+        .unwrap_or_else(|| ("preflight".to_string(), 0));
+    let _ = write_status_details(paths, &phase, progress, error, tag, None, None, true);
+}
+
+fn is_terminal_phase(phase: &str) -> bool {
+    matches!(phase, "complete" | "rolled_back" | "repair_required")
+}
+
 fn write_status(
     paths: &UpdatePaths,
     phase: &str,
@@ -782,7 +817,7 @@ fn write_status(
     tag: &str,
 ) -> Result<(), String> {
     println!("[{progress:>3}%] {message}");
-    write_status_details(paths, phase, progress, message, tag, None, None)
+    write_status_details(paths, phase, progress, message, tag, None, None, false)
 }
 
 fn write_download_status(
@@ -824,6 +859,7 @@ fn write_download_status(
         tag,
         Some(downloaded_bytes),
         total_bytes,
+        false,
     )
 }
 
@@ -836,6 +872,7 @@ fn write_status_details(
     tag: &str,
     downloaded_bytes: Option<u64>,
     total_bytes: Option<u64>,
+    failed: bool,
 ) -> Result<(), String> {
     let now = now_epoch_millis();
     let previous = fs::read(&paths.status)
@@ -873,6 +910,7 @@ fn write_status_details(
         phase_durations_ms,
         downloaded_bytes,
         total_bytes,
+        failed,
     };
     write_json_atomic(&paths.status, &payload, "write update status")
 }
@@ -920,17 +958,46 @@ fn git_text(root: &Path, args: &[&str]) -> Result<String, String> {
 }
 
 fn run_checked(command: &mut Command, action: &str) -> Result<(), String> {
-    let status = command
-        .status()
+    let output = command
+        .output()
         .map_err(|error| format!("failed to {action}: {error}"))?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(format!(
-            "failed to {action} (exit {})",
-            status.code().unwrap_or(1)
-        ))
+    if output.status.success() {
+        return Ok(());
     }
+    let code = output.status.code().unwrap_or(1);
+    match command_failure_detail(&output.stdout, &output.stderr) {
+        Some(detail) => Err(format!("failed to {action} (exit {code}): {detail}")),
+        None => Err(format!("failed to {action} (exit {code})")),
+    }
+}
+
+/// Collapses a failed command's stderr (or stdout when stderr is empty) into a
+/// single line so the reason survives into `update-status.json` and the UI.
+fn command_failure_detail(stdout: &[u8], stderr: &[u8]) -> Option<String> {
+    let stderr = String::from_utf8_lossy(stderr);
+    let stdout = String::from_utf8_lossy(stdout);
+    let source = if stderr.trim().is_empty() {
+        stdout
+    } else {
+        stderr
+    };
+    let mut detail = source
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join("; ");
+    if detail.is_empty() {
+        return None;
+    }
+    if detail.chars().count() > FAILURE_DETAIL_LIMIT {
+        detail = detail
+            .chars()
+            .take(FAILURE_DETAIL_LIMIT)
+            .collect::<String>()
+            + "\u{2026}";
+    }
+    Some(detail)
 }
 
 fn launch_app(executable: &Path, root: &Path) -> Result<(), String> {
@@ -995,12 +1062,80 @@ fn set_executable(_path: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        acquire_lock, backup_current_ui, is_release_tag, parse_release_checksum, restore_ui_backup,
-        write_download_status, write_status, UpdatePaths, UpdateStatus,
+        acquire_lock, backup_current_ui, command_failure_detail, is_release_tag,
+        parse_release_checksum, record_failure, restore_ui_backup, write_download_status,
+        write_status, UpdatePaths, UpdateStatus, FAILURE_DETAIL_LIMIT,
     };
     use std::fs;
     use std::thread;
     use std::time::Duration;
+
+    #[test]
+    fn reports_command_stderr_as_failure_detail() {
+        let stderr = b"From https://github.com/cyzus/suzent\n ! [rejected] v0.9.0 (would clobber existing tag)\n";
+        let detail = command_failure_detail(b"", stderr).expect("detail");
+        assert_eq!(
+            detail,
+            "From https://github.com/cyzus/suzent; ! [rejected] v0.9.0 (would clobber existing tag)"
+        );
+    }
+
+    #[test]
+    fn falls_back_to_stdout_and_truncates_long_failure_detail() {
+        assert_eq!(
+            command_failure_detail(b"  only on stdout  ", b"   \n").expect("detail"),
+            "only on stdout"
+        );
+        assert_eq!(command_failure_detail(b"", b""), None);
+
+        let long = "x".repeat(FAILURE_DETAIL_LIMIT + 40);
+        let detail = command_failure_detail(b"", long.as_bytes()).expect("detail");
+        assert_eq!(detail.chars().count(), FAILURE_DETAIL_LIMIT + 1);
+        assert!(detail.ends_with('\u{2026}'));
+    }
+
+    #[test]
+    fn records_failure_reason_on_the_current_phase() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let paths = UpdatePaths::new(temp.path().to_path_buf(), "v1.2.3");
+        fs::create_dir_all(&paths.state_dir).expect("state dir");
+        write_status(&paths, "fetch", 25, "Fetching release source", "v1.2.3").expect("status");
+
+        record_failure(
+            &paths,
+            "v1.2.3",
+            "failed to fetch release source (exit 1): would clobber",
+        );
+
+        let status: UpdateStatus =
+            serde_json::from_slice(&fs::read(&paths.status).expect("read")).expect("parse");
+        assert_eq!(status.phase, "fetch");
+        assert_eq!(status.progress, 25);
+        assert!(status.failed);
+        assert!(status.message.contains("would clobber"));
+    }
+
+    #[test]
+    fn keeps_rollback_status_after_a_failure() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let paths = UpdatePaths::new(temp.path().to_path_buf(), "v1.2.3");
+        fs::create_dir_all(&paths.state_dir).expect("state dir");
+        write_status(
+            &paths,
+            "rolled_back",
+            100,
+            "Update failed; previous version restored",
+            "v1.2.3",
+        )
+        .expect("status");
+
+        record_failure(&paths, "v1.2.3", "failed to synchronize Python environment");
+
+        let status: UpdateStatus =
+            serde_json::from_slice(&fs::read(&paths.status).expect("read")).expect("parse");
+        assert_eq!(status.phase, "rolled_back");
+        assert!(!status.failed);
+    }
 
     #[test]
     fn validates_release_tags() {
