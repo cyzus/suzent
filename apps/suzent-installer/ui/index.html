@@ -620,6 +620,7 @@
         const statusKey = status.phase === 'download' ? status.phase : `${status.phase}:${status.message}`;
         if (statusKey !== lastStatusKey) { log(status.message); lastStatusKey = statusKey; }
         if (status.failed && Number(status.phase_started_at || 0) >= failureFloor) setError(status.message);
+        else if (lastError) setError(null);
       }
 
       async function loadContext() {
@@ -647,6 +648,7 @@
       }
 
       async function loadUpdate() {
+        failureFloor = Date.now();
         els.dir.value = context.dir; els.dir.readOnly = true; els.dir.disabled = false; els.browse.hidden = true; setText('page-subtitle', context.target || text.latest);
         updateStages.forEach(([name]) => states.set(name, 'pending')); renderStages(); setRunning(true); startedAt = Date.now();
         if (preview || !invoke) {
