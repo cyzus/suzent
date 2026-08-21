@@ -495,7 +495,12 @@ async def _run_subagent(
                     "runtime": "acp",
                     "acp_agent_id": task.acp_agent_id,
                     "acp_session_id": task.acp_session_id,
-                    "acp_cwd": task.cwd or str(Path.cwd()),
+                    "acp_cwd": task.cwd
+                    or str(
+                        Path(CONFIG.sandbox_data_path).resolve()
+                        / "projects"
+                        / db.get_chat_project_slug(task.chat_id)
+                    ),
                 }
             )
             db.merge_chat_config(task.chat_id, base_config)

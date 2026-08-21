@@ -13,6 +13,23 @@ from .client import ACPClient, ACPError
 from .permissions import PERMISSION_QUEUE_KEY, get_permission_broker
 from .registry import ACPAgentRegistry
 
+
+def _resolve_project_dir(chat_id: str) -> str:
+    """Return the sandbox project directory for *chat_id*.
+
+    Mirrors the fallback the Bash tool uses when ``deps.cwd`` is unset:
+    ``{sandbox_data_path}/projects/{project_slug}``.
+    """
+    from suzent.config import CONFIG
+    from suzent.database import get_database
+
+    sandbox_data_path = Path(CONFIG.sandbox_data_path).resolve()
+    project_slug = get_database().get_chat_project_slug(chat_id)
+    project_dir = sandbox_data_path / "projects" / project_slug
+    project_dir.mkdir(parents=True, exist_ok=True)
+    return str(project_dir)
+
+
 logger = get_logger(__name__)
 
 
@@ -96,7 +113,9 @@ class ACPManager:
         agent_id = str(config.get("acp_agent_id") or "").strip()
         if not agent_id:
             raise ValueError("ACP chat config requires acp_agent_id")
-        cwd = str(config.get("acp_cwd") or config.get("cwd") or Path.cwd())
+        cwd = str(
+            config.get("acp_cwd") or config.get("cwd") or _resolve_project_dir(chat_id)
+        )
         session_id = str(config.get("acp_session_id") or "").strip()
         permission_mode = str(config.get("permission_mode") or "")
         if session_id:
@@ -168,7 +187,7 @@ class ACPManager:
 
         client = ACPClient(
             agent.command,
-            cwd=agent.cwd,
+            cwd=agent.cwd or cwd,
             env=agent.env,
             notification_handler=on_notification,
             permission_handler=on_permission,

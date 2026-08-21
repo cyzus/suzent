@@ -10,6 +10,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from suzent.acp import get_acp_manager
+from suzent.acp.manager import _resolve_project_dir
 from suzent.acp.permissions import get_permission_broker
 from suzent.database import get_database
 
@@ -56,9 +57,7 @@ async def create_acp_session(request: Request) -> JSONResponse:
         agent_id = str(data.get("agent_id") or data.get("agentId") or "").strip()
         if not agent_id:
             return JSONResponse({"error": "agent_id is required"}, status_code=400)
-        cwd = str(data.get("cwd") or Path.cwd())
-        config = dict(data.get("config") or {})
-        config.update({"runtime": "acp", "acp_agent_id": agent_id, "acp_cwd": cwd})
+        explicit_cwd = data.get("cwd")
         db = get_database()
 
         # Attach to the caller's chat when it names one. The chat picker
@@ -68,6 +67,11 @@ async def create_acp_session(request: Request) -> JSONResponse:
         chat_id = str(data.get("chat_id") or data.get("chatId") or "").strip()
         created_chat = False
         previous_config: dict[str, Any] | None = None
+
+        # Defer the cwd fallback: we need chat_id to resolve the project dir,
+        # and chat_id may not be known until the branch below creates one.
+        config = dict(data.get("config") or {})
+        config.update({"runtime": "acp", "acp_agent_id": agent_id})
         if chat_id:
             existing = db.get_chat(chat_id)
             if existing is None:
@@ -76,7 +80,6 @@ async def create_acp_session(request: Request) -> JSONResponse:
             # agent answers. Snapshot the config so a failed handshake can't
             # strand an existing chat on a runtime that never came up.
             previous_config = dict(existing.config or {})
-            db.merge_chat_config(chat_id, config)
         else:
             chat_id = db.create_chat(
                 str(data.get("title") or "ACP Session"),
@@ -84,6 +87,15 @@ async def create_acp_session(request: Request) -> JSONResponse:
                 project_id=data.get("project_id") or data.get("projectId"),
             )
             created_chat = True
+
+        cwd = str(explicit_cwd) if explicit_cwd else _resolve_project_dir(chat_id)
+        config["acp_cwd"] = cwd
+        if previous_config is not None:
+            db.merge_chat_config(chat_id, config)
+        elif created_chat:
+            # The chat was just created with a partial config; patch in acp_cwd.
+            db.merge_chat_config(chat_id, {"acp_cwd": cwd})
+
         try:
             managed = await get_acp_manager().create(chat_id, agent_id, cwd)
         except Exception:
@@ -124,9 +136,17 @@ async def probe_acp_agent(request: Request) -> JSONResponse:
             )
 
         # Unique key so concurrent probes don't evict each other's subprocess.
+        # Probes are ephemeral and have no real chat, so fall back to the
+        # default project directory rather than the backend's launch dir.
+        from suzent.config import CONFIG
+
+        probe_cwd = agent.cwd or str(
+            Path(CONFIG.sandbox_data_path).resolve() / "projects" / "default"
+        )
+        Path(probe_cwd).mkdir(parents=True, exist_ok=True)
         probe_chat_id = f"probe:{agent_id}:{uuid.uuid4().hex}"
         managed = await manager.create(
-            chat_id=probe_chat_id, agent_id=agent_id, cwd=agent.cwd or str(Path.cwd())
+            chat_id=probe_chat_id, agent_id=agent_id, cwd=probe_cwd
         )
         try:
             # The handshake already ran during create(); report what it returned.
@@ -166,7 +186,10 @@ async def resume_acp_session(request: Request) -> JSONResponse:
         if not agent_id:
             return JSONResponse({"error": "agent_id is required"}, status_code=400)
         cwd = str(
-            data.get("cwd") or config.get("acp_cwd") or config.get("cwd") or Path.cwd()
+            data.get("cwd")
+            or config.get("acp_cwd")
+            or config.get("cwd")
+            or _resolve_project_dir(chat_id)
         )
         managed = await get_acp_manager().resume(chat_id, agent_id, session_id, cwd)
         db.merge_chat_config(
