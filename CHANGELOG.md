@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.9.0] - 2026-08-21
+
+### 🚀 Added
+- Three-state theme toggle — light, dark, auto
+- Mesh tab, device invoke/trigger, settings reorg
+- Browser node page and non-Suzent node example
+- Implement A2A protocol server and client
+- Add ACP agent runtime and desktop sessions
+
+### ⚡ Changed
+- Revert "chore: bump version to 0.9.0"
+- Fold the ACP runtime choice into the model picker
+- Simplify ACP and MCP settings UI
+- Fix ChatGPT subscription tool search
+
+### 🐛 Fixed
+- Polish ACP agents settings tab
+- Steer routing, file context, and logger for ACP chats
+- Report agent errors, recover stale sessions, fix runtime labelling
+- Clean up landing page nav — fewer words, tighter layout
+- Eliminate console window flash on Windows service startup
+- Show the real agent name when launching ACP from settings
+- Replace native selects with BrutalSelect in invoke panel and transcript
+- Restore send, stop, and permission controls to the chat input
+- Correct protocol handshake, lifecycle leaks, and relay permissions
+- Keep ACP follow-up turns on external runtime
+
 ## [v0.8.1] - 2026-08-18
 
 ### 🐛 Fixed
