@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import shutil
 from collections.abc import Awaitable, Callable
 from importlib.metadata import PackageNotFoundError, version as _pkg_version
 from typing import Any
@@ -15,6 +16,9 @@ PermissionHandler = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
 
 # ACP major protocol version this client speaks.
 PROTOCOL_VERSION = 1
+
+# How much trailing stderr to quote when an agent process dies.
+_EXIT_DETAIL_CHARS = 400
 
 
 def _client_version() -> str:
@@ -60,17 +64,35 @@ class ACPClient:
         process_env = os.environ.copy()
         process_env.update(self.env)
 
+        # Resolve the executable to its full path.  On Windows,
+        # ``create_subprocess_exec`` calls ``CreateProcessW`` which does NOT
+        # search for ``.cmd`` / ``.bat`` wrappers (only ``.exe``).  Tools like
+        # ``npx``, ``node``, and ``gemini`` are often installed as ``.cmd``
+        # shims by npm/installers, so an unresolved bare name fails with
+        # ``[WinError 2] The system cannot find the specified file``.
+        # ``shutil.which`` honours PATHEXT on Windows and returns the full
+        # path including the extension, which ``CreateProcessW`` can execute.
+        cmd = list(self.command)
+        resolved = shutil.which(cmd[0])
+        if resolved:
+            cmd[0] = resolved
+
         # POSIX systems: create a new process group/session
         start_new_session = not os.name == "nt"
 
+        extra: dict[str, Any] = {}
+        if os.name == "nt":
+            extra["creationflags"] = 0x08000000  # CREATE_NO_WINDOW
+
         self.process = await asyncio.create_subprocess_exec(
-            *self.command,
+            *cmd,
             cwd=self.cwd,
             env=process_env,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             start_new_session=start_new_session,
+            **extra,
         )
         self._reader_task = asyncio.create_task(self._read_loop())
         self._stderr_task = asyncio.create_task(self._read_stderr())
@@ -237,10 +259,45 @@ class ACPClient:
                     if asyncio.iscoroutine(result):
                         await result
         finally:
-            error = ACPError("ACP process exited")
-            for future in self._pending.values():
-                if not future.done():
-                    future.set_exception(error)
+            if any(not future.done() for future in self._pending.values()):
+                error = await self._exit_error()
+                for future in self._pending.values():
+                    if not future.done():
+                        future.set_exception(error)
+
+    async def _exit_error(self) -> ACPError:
+        """Explain an exit using whatever the agent printed on the way out.
+
+        A bare "ACP process exited" gives the user nothing to act on -- a bad
+        command line, a missing login, and a crash all look identical.
+        """
+        # stdout EOF can beat the stderr drain, so give the reader a moment to
+        # finish; otherwise the agent's own complaint is lost to a race.
+        if self._stderr_task is not None and not self._stderr_task.done():
+            try:
+                await asyncio.wait_for(asyncio.shield(self._stderr_task), timeout=1.0)
+            except (Exception, asyncio.CancelledError):
+                # Timing out or being cancelled here only means we stop waiting
+                # for more stderr; whatever is buffered is still worth saying.
+                pass
+        code = self.process.returncode if self.process else None
+        if code is None and self.process is not None:
+            # stdout EOF arrives before the child is reaped, so wait briefly
+            # for the real exit status instead of reporting none at all.
+            try:
+                code = await asyncio.wait_for(self.process.wait(), timeout=0.5)
+            except (Exception, asyncio.CancelledError):
+                code = None
+        detail = " | ".join(line for line in self.stderr_lines[-5:] if line.strip())
+        # A usage dump can run for pages; the tail carries the actual complaint.
+        if len(detail) > _EXIT_DETAIL_CHARS:
+            detail = "..." + detail[-_EXIT_DETAIL_CHARS:]
+        prefix = (
+            "ACP process exited"
+            if code is None
+            else f"ACP process exited (code {code})"
+        )
+        return ACPError(f"{prefix}: {detail}" if detail else prefix)
 
     async def _handle_reverse_request(self, message: dict[str, Any]) -> None:
         method = str(message.get("method") or "")

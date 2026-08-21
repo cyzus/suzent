@@ -74,8 +74,38 @@ def test_registry_merges_builtins_and_user_agents(tmp_path, monkeypatch):
         encoding="utf-8",
     )
     agents = {agent.id: agent for agent in ACPAgentRegistry(config).list_agents()}
-    assert {"claude-code", "codex-acp", "mock"} <= set(agents)
+    assert {"claude-code", "codex", "mock"} <= set(agents)
     assert agents["mock"].available is True
     assert all(
         "agent-sdk" not in " ".join(agent.command).lower() for agent in agents.values()
     )
+
+
+# Dies the moment it is asked to do anything, the way a CLI does when handed a
+# flag it doesn't know.
+DYING_AGENT = r"""
+import sys
+sys.stdin.readline()
+print("agent-cli: error: unrecognized arguments: --acp", file=sys.stderr, flush=True)
+sys.exit(2)
+"""
+
+
+@pytest.mark.asyncio
+async def test_exit_error_quotes_the_agent_s_own_complaint(tmp_path):
+    """ "ACP process exited" alone leaves the user with nothing to fix."""
+    from suzent.acp.client import ACPError
+
+    script = tmp_path / "dying_acp.py"
+    script.write_text(DYING_AGENT, encoding="utf-8")
+    client = ACPClient([sys.executable, "-u", str(script)])
+    await client.start()
+    try:
+        with pytest.raises(ACPError) as excinfo:
+            await client.initialize()
+    finally:
+        await client.close()
+
+    message = str(excinfo.value)
+    assert "code 2" in message
+    assert "unrecognized arguments: --acp" in message
