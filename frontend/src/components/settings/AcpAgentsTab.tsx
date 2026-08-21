@@ -145,12 +145,12 @@ export function AcpAgentsTab(): React.ReactElement {
               return (
                 <SettingsListItem key={agent.id}>
                   {/* Identity and status — the two things scanned first */}
-                  <div className="flex items-start gap-3 p-4 bg-white dark:bg-zinc-800 border-b-2 border-brutal-black">
+                  <div className="flex items-start gap-3 p-4 border-b-2 border-brutal-black">
                     <div
                       className={`w-10 h-10 border-2 border-brutal-black flex items-center justify-center shrink-0 ${
                         ready
-                          ? 'bg-white dark:bg-zinc-900 text-brutal-black dark:text-white shadow-[2px_2px_0_0_#000] dark:shadow-[2px_2px_0_0_#fff]'
-                          : 'bg-neutral-200 dark:bg-zinc-700 text-neutral-400 dark:text-neutral-500'
+                          ? 'bg-brutal-black text-white dark:bg-white dark:text-brutal-black'
+                          : 'text-neutral-400 dark:text-neutral-500'
                       }`}
                     >
                       <AcpAgentIcon id={agent.id} />
@@ -214,11 +214,11 @@ export function AcpAgentsTab(): React.ReactElement {
 
                   {/* The fix, in place of the status it explains */}
                   {needsSetup && (
-                    <div className="m-4 border-[3px] border-brutal-black bg-white dark:bg-zinc-800 shadow-[3px_3px_0_0_#000] dark:shadow-[3px_3px_0_0_#fff]">
-                      <div className="border-b-[3px] border-brutal-black bg-amber-400 text-brutal-black px-3 py-1.5 text-[11px] font-black uppercase tracking-wide">
+                    <div className="border-b-2 border-brutal-black">
+                      <div className="border-b-2 border-brutal-black bg-amber-400 text-brutal-black px-4 py-1.5 text-[11px] font-black uppercase tracking-wide">
                         {t('settings.acp.setupTitle')}
                       </div>
-                      <div className="p-3 space-y-3">
+                      <div className="p-4 space-y-3">
                         {agent.docs_url && (
                           <div className="space-y-2">
                             <p className="text-[11px] text-neutral-600 dark:text-neutral-400">
@@ -363,7 +363,7 @@ function CommandChip({
   t: (k: string) => string;
 }): React.ReactElement {
   return (
-    <div className="flex items-stretch border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900">
+    <div className="flex items-stretch border-2 border-brutal-black bg-white dark:bg-zinc-800">
       <code className="flex-1 min-w-0 px-2.5 py-1.5 font-mono text-[11px] text-brutal-black dark:text-white overflow-x-auto whitespace-nowrap">
         <span className="text-neutral-400 select-none">$ </span>
         {command}
@@ -374,7 +374,7 @@ function CommandChip({
         className={`shrink-0 border-l-2 border-brutal-black px-2.5 text-[10px] font-black uppercase transition-colors ${
           copied
             ? 'bg-brutal-green text-brutal-black'
-            : 'bg-white dark:bg-zinc-800 text-brutal-black dark:text-white hover:bg-brutal-yellow dark:hover:bg-brutal-yellow dark:hover:text-brutal-black'
+            : 'text-brutal-black dark:text-white hover:bg-brutal-yellow hover:text-brutal-black'
         }`}
       >
         {copied ? t('settings.acp.copied') : t('settings.acp.copyCommand')}
