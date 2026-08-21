@@ -150,19 +150,7 @@ async def remove_pending_approvals(
 _FIRST_STREAM_EVENT_TIMEOUT_SECONDS = 45.0
 _STREAM_IDLE_TIMEOUT_SECONDS = 120.0
 _DEFAULT_TOOL_STREAM_EVENT_TIMEOUT_SECONDS = 60.0
-_AUTO_TITLE_PLACEHOLDER_TITLES = frozenset({"", "new chat", "untitled"})
 _DRAFT_PERSIST_INTERVAL_SECONDS = 0.75
-
-
-def _should_generate_auto_title(chat: Any) -> bool:
-    """Generate when first turn or when a previous placeholder title survived."""
-    if chat is None:
-        return False
-    turn_count = getattr(chat, "turn_count", 0) or 0
-    if turn_count == 0:
-        return True
-    title = str(getattr(chat, "title", "") or "").strip().lower()
-    return title in _AUTO_TITLE_PLACEHOLDER_TITLES
 
 
 def _serialize_tool_output(output: Any) -> str:
@@ -775,9 +763,12 @@ async def stream_agent_responses(
             _chat = _get_db().get_chat(chat_id)
             _turn_count = getattr(_chat, "turn_count", 0) or 0
             logger.info(f"[AutoTitle] chat={chat_id} turn_count={_turn_count}")
-            if _should_generate_auto_title(_chat):
-                from suzent.core.auto_title import generate_auto_title
+            from suzent.core.auto_title import (
+                generate_auto_title,
+                should_generate_auto_title,
+            )
 
+            if should_generate_auto_title(_chat):
                 _agent_model = getattr(agent, "_model_id", None) or getattr(
                     agent, "model", None
                 )

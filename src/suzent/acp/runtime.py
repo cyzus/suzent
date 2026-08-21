@@ -7,6 +7,7 @@ import json
 import uuid
 from typing import Any, AsyncGenerator
 
+from suzent.core.auto_title import generate_auto_title, should_generate_auto_title
 from suzent.database import get_database
 
 from .manager import get_acp_manager
@@ -182,6 +183,10 @@ async def stream_acp_turn(
     message_open = False
     # Annotate the prompt with user-referenced file paths so the ACP agent
     # can act on them — it runs locally and has filesystem access.
+    # Only the agent sees that annotation; the transcript keeps what the user
+    # typed. Comparing the annotated text against the stored row defeated the
+    # duplicate check below and persisted the message twice.
+    user_message = message
     file_context = _build_acp_file_context(file_mentions, files)
     if file_context:
         message = f"{file_context}\n\n{message}" if message else file_context
@@ -204,9 +209,11 @@ async def stream_acp_turn(
 
     yield _sse({"type": "RUN_STARTED", "runId": run_id, "threadId": chat_id})
 
+    title_task: asyncio.Task[Any] | None = None
     try:
         requested_session = str(config.get("acp_session_id") or "").strip()
         managed = await get_acp_manager().ensure(chat_id, config)
+        load_error = str(getattr(managed, "load_error", "") or "")
         if requested_session and not managed.resumed:
             # The agent could not load the prior session, so history is gone.
             # Say so rather than letting it look like the agent lost its memory.
@@ -218,7 +225,12 @@ async def stream_acp_turn(
                         "agentId": managed.agent_id,
                         "requestedSessionId": requested_session,
                         "sessionId": managed.session_id,
-                        "reason": "load_session_unsupported",
+                        "reason": (
+                            "load_session_failed"
+                            if load_error
+                            else "load_session_unsupported"
+                        ),
+                        "detail": load_error,
                     },
                 }
             )
@@ -240,12 +252,25 @@ async def stream_acp_turn(
             )
             return
 
-        if message and not (
+        # /chat/send pre-writes the user's row so the UI has something to show
+        # before the first token arrives; only append when that didn't happen.
+        if user_message.strip() and not (
             existing
             and existing[-1].get("role") == "user"
-            and existing[-1].get("content") == message
+            and str(existing[-1].get("content") or "").strip() == user_message.strip()
         ):
-            db.append_chat_message(chat_id, {"role": "user", "content": message})
+            db.append_chat_message(
+                chat_id, {"role": "user", "content": user_message.strip()}
+            )
+
+        # Auto-titling lives in suzent.streaming, which an ACP turn never goes
+        # through -- so every ACP chat stayed named "New Chat". The title comes
+        # from the `cheap` role, not from the ACP agent, so it costs the turn
+        # nothing and runs alongside it.
+        if user_message.strip() and should_generate_auto_title(latest):
+            title_task = asyncio.create_task(
+                generate_auto_title(chat_id, user_message.strip())
+            )
 
         yield _sse(
             {"type": "TEXT_MESSAGE_START", "messageId": message_id, "role": "assistant"}
@@ -308,6 +333,20 @@ async def stream_acp_turn(
                 "model": f"acp/{managed.agent_id}",
             },
         )
+        if title_task is not None:
+            try:
+                title = await title_task
+            except Exception:
+                title = None
+            if title:
+                yield _sse(
+                    {
+                        "type": "CUSTOM",
+                        "name": "chat_title_updated",
+                        "value": {"chat_id": chat_id, "title": title},
+                    }
+                )
+
         yield _sse({"type": "AGENT_FINISHED", "runId": run_id, "threadId": chat_id})
         yield "data: [DONE]\n\n"
     except asyncio.CancelledError:
@@ -317,6 +356,10 @@ async def stream_acp_turn(
         if message_open:
             yield _sse({"type": "TEXT_MESSAGE_END", "messageId": message_id})
         yield _sse({"type": "RUN_ERROR", "message": str(exc)})
+    finally:
+        # A failed or abandoned turn shouldn't leave a title lookup in flight.
+        if title_task is not None and not title_task.done():
+            title_task.cancel()
 
 
 async def run_acp_turn_text(

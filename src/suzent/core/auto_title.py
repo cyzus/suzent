@@ -1,6 +1,21 @@
 """Auto-title generation for new chats using the RoleRouter."""
 
+from typing import Any
+
 from loguru import logger
+
+_PLACEHOLDER_TITLES = frozenset({"", "new chat", "untitled"})
+
+
+def should_generate_auto_title(chat: Any) -> bool:
+    """Generate when first turn or when a previous placeholder title survived."""
+    if chat is None:
+        return False
+    turn_count = getattr(chat, "turn_count", 0) or 0
+    if turn_count == 0:
+        return True
+    title = str(getattr(chat, "title", "") or "").strip().lower()
+    return title in _PLACEHOLDER_TITLES
 
 
 def _clean_title_source(user_content: str) -> str:
@@ -56,16 +71,15 @@ async def generate_auto_title(
             f"[AutoTitle] cheap role model={model!r}, fallback={fallback_model!r}"
         )
 
-        if not model:
-            model = fallback_model
+        candidate_models: list[str] = []
+        for candidate in (model, fallback_model):
+            if candidate and candidate not in candidate_models:
+                candidate_models.append(candidate)
 
-        if not model:
-            logger.warning(f"Auto-title skipped for {chat_id}: no model configured")
-            return None
-
-        candidate_models = [model]
-        if fallback_model and fallback_model not in candidate_models:
-            candidate_models.append(fallback_model)
+        if not candidate_models:
+            # An ACP-only install has no native model to ask. Falling through to
+            # the heuristic below still beats leaving the chat named "New Chat".
+            logger.info(f"Auto-title for {chat_id}: no model configured")
 
         for candidate_model in candidate_models:
             try:
