@@ -477,6 +477,8 @@
       let lastStatusKey = '';
       let lastStageRenderKey = '';
       let pollTimer = null;
+      // Ignores a failure recorded by an earlier attempt while a retry is starting.
+      let failureFloor = 0;
       let showAllStages = false;
       let currentPhase = '';
       let phaseStartedAt = 0;
@@ -598,7 +600,7 @@
           states.set(name, position < index ? (completed ? 'succeeded' : 'skipped') : position === index ? 'running' : 'pending');
         });
         if (status.phase === 'complete') updateStages.forEach(([name]) => states.set(name, 'succeeded'));
-        if (['repair_required'].includes(status.phase)) states.set(updateStages[Math.max(0,index)]?.[0] || 'verify', 'failed');
+        if (status.failed || ['repair_required'].includes(status.phase)) states.set(updateStages[Math.max(0,index)]?.[0] || 'verify', 'failed');
         const activeName = index >= 0 ? updateStages[index][0] : null;
         const nextRenderKey = stageRenderKey(activeName);
         if (nextRenderKey !== lastStageRenderKey) renderStages(activeName); else refreshStageDurations();
@@ -617,6 +619,7 @@
         setNodeText(els.recent, status.message || text.waitingActivity);
         const statusKey = status.phase === 'download' ? status.phase : `${status.phase}:${status.message}`;
         if (statusKey !== lastStatusKey) { log(status.message); lastStatusKey = statusKey; }
+        if (status.failed && Number(status.phase_started_at || 0) >= failureFloor) setError(status.message);
       }
 
       async function loadContext() {
@@ -691,7 +694,7 @@
         } catch (error) { setRunning(false); setError(error instanceof Error ? error.message : String(error)); els.start.textContent = text.retry; }
       }
 
-      async function retryUpdate() { setError(null); els.log.innerHTML = ''; phaseDurations = {}; currentPhase = ''; phaseStartedAt = 0; startedAt = Date.now(); setRunning(true); if (preview || !invoke) return; try { await invoke('retry_update'); pollTimer = window.setInterval(async () => { const raw = await invoke('updater_status'); if (raw) applyUpdateStatus(JSON.parse(raw)); },350); } catch (error) { setRunning(false); setError(String(error)); } }
+      async function retryUpdate() { failureFloor = Date.now(); setError(null); els.log.innerHTML = ''; phaseDurations = {}; currentPhase = ''; phaseStartedAt = 0; startedAt = Date.now(); setRunning(true); if (preview || !invoke) return; try { await invoke('retry_update'); pollTimer = window.setInterval(async () => { const raw = await invoke('updater_status'); if (raw) applyUpdateStatus(JSON.parse(raw)); },350); } catch (error) { setRunning(false); setError(String(error)); } }
       async function launchSuzent() { try { await invoke?.('launch_installed_app',{dir:els.dir.value.trim()}); await closeInstaller(); } catch (error) { setError(String(error)); } }
       const appWindow = tauri?.window?.getCurrentWindow?.();
       async function closeInstaller() { if (appWindow) await appWindow.close(); else window.close(); }
