@@ -9,7 +9,7 @@ from typing import Any
 
 from suzent.logger import get_logger
 
-from .client import ACPClient
+from .client import ACPClient, ACPError
 from .permissions import PERMISSION_QUEUE_KEY, get_permission_broker
 from .registry import ACPAgentRegistry
 
@@ -37,6 +37,8 @@ class ManagedSession:
     restored: bool = False
     # Chat permission_mode; 'auto'/'full_access' skip the approval prompt.
     permission_mode: str = ""
+    # Why session/load failed, when a resume fell back to a fresh session.
+    load_error: str = ""
 
 
 class ACPManager:
@@ -185,19 +187,36 @@ class ACPManager:
             )
             resumed = False
             restored = False
+            resolved_id = ""
+            load_error = ""
             if session_id and capabilities.get("loadSession"):
-                result = await client.load_session(session_id, cwd)
-                resolved_id = str(result.get("sessionId") or session_id)
-                resumed = True
-                restored = True
-            else:
-                if session_id:
+                try:
+                    result = await client.load_session(session_id, cwd)
+                    resolved_id = str(result.get("sessionId") or session_id)
+                    resumed = True
+                    restored = True
+                except ACPError as exc:
+                    # The agent advertises loadSession but no longer holds this
+                    # id -- codex reports "no rollout found for thread id" once
+                    # its rollout file is gone. Losing the history is bad; a
+                    # chat that can never send another message is worse, so
+                    # fall back to a fresh session and let the caller say so.
+                    load_error = str(exc)
                     logger.info(
-                        "ACP agent %s does not support session/load; "
-                        "starting a fresh session instead of resuming %s",
+                        "ACP agent %s could not load session %s (%s); "
+                        "starting a fresh session",
                         agent_id,
                         session_id,
+                        load_error,
                     )
+            elif session_id:
+                logger.info(
+                    "ACP agent %s does not support session/load; "
+                    "starting a fresh session instead of resuming %s",
+                    agent_id,
+                    session_id,
+                )
+            if not resolved_id:
                 result = await client.new_session(cwd)
                 resolved_id = str(result.get("sessionId") or "")
                 if not resolved_id:
@@ -218,6 +237,7 @@ class ACPManager:
             resumed=resumed,
             restored=restored,
             permission_mode=permission_mode,
+            load_error=load_error,
         )
 
     async def _close_unlocked(self, chat_id: str) -> None:
