@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from pathlib import Path
+from typing import Any
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -66,9 +67,15 @@ async def create_acp_session(request: Request) -> JSONResponse:
         # (once as "New Chat", once as "ACP Session").
         chat_id = str(data.get("chat_id") or data.get("chatId") or "").strip()
         created_chat = False
+        previous_config: dict[str, Any] | None = None
         if chat_id:
-            if db.get_chat(chat_id) is None:
+            existing = db.get_chat(chat_id)
+            if existing is None:
                 return JSONResponse({"error": "Chat not found"}, status_code=404)
+            # The merge below routes the chat to the agent before we know the
+            # agent answers. Snapshot the config so a failed handshake can't
+            # strand an existing chat on a runtime that never came up.
+            previous_config = dict(existing.config or {})
             db.merge_chat_config(chat_id, config)
         else:
             chat_id = db.create_chat(
@@ -82,6 +89,8 @@ async def create_acp_session(request: Request) -> JSONResponse:
         except Exception:
             if created_chat:
                 db.delete_chat(chat_id)
+            elif previous_config is not None:
+                db.update_chat(chat_id, config=previous_config)
             raise
         db.merge_chat_config(chat_id, {"acp_session_id": managed.session_id})
         return JSONResponse(

@@ -139,6 +139,32 @@ async def test_a_failed_handshake_rolls_back_a_chat_this_route_created(temp_db):
     assert len(temp_db.list_chats()) == before
 
 
+@pytest.mark.asyncio
+async def test_a_failed_handshake_leaves_the_caller_s_chat_on_its_own_runtime(temp_db):
+    """A native chat must not be stranded on an agent that never answered.
+
+    The route writes ``runtime: acp`` before the handshake, so without a
+    rollback a single failed connect made the chat unusable for good.
+    """
+    chat_id = temp_db.create_chat("New Chat", {"model": "claude-opus-5"})
+    manager = MagicMock()
+    manager.create = AsyncMock(side_effect=RuntimeError("agent not available"))
+
+    with (
+        patch.object(acp_routes, "get_database", return_value=temp_db),
+        patch.object(acp_routes, "get_acp_manager", return_value=manager),
+    ):
+        response = await acp_routes.create_acp_session(
+            _Request({"agent_id": "claude-code", "chat_id": chat_id})
+        )
+
+    assert response.status_code == 500
+    config = temp_db.get_chat(chat_id).config
+    assert config.get("runtime") != "acp"
+    assert "acp_agent_id" not in config
+    assert config.get("model") == "claude-opus-5", "unrelated config was dropped"
+
+
 def _acp_chats(db) -> None:
     db.create_chat("Codex chat", {"runtime": "acp", "acp_agent_id": "codex"})
     db.create_chat("Codex chat 2", {"runtime": "acp", "acp_agent_id": "codex"})
