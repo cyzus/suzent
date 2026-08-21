@@ -1,6 +1,8 @@
 """Tests for the built-in Claude CLI → ACP bridge."""
 
+import asyncio
 import json
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -331,3 +333,113 @@ async def test_cancel_unknown_session_is_noop():
     """Cancelling a session that doesn't exist should not raise."""
     bridge = ClaudeACPBridge()
     await bridge.handle_session_cancel({"sessionId": "ghost"})
+
+
+# ── _run_claude: the child process contract ──────────────────────────────────
+
+
+class _FakeProc:
+    """A stand-in for the ``claude -p`` child process."""
+
+    def __init__(self, stdout_lines, stderr=b"", returncode=0):
+        self.stdout = asyncio.StreamReader()
+        for line in stdout_lines:
+            self.stdout.feed_data(line.encode("utf-8") + b"\n")
+        self.stdout.feed_eof()
+        self.stderr = asyncio.StreamReader()
+        self.stderr.feed_data(stderr)
+        self.stderr.feed_eof()
+        self.returncode = returncode
+        self.terminated = False
+        self.killed = False
+
+    async def wait(self):
+        return self.returncode
+
+    def terminate(self):
+        self.terminated = True
+
+    def kill(self):
+        self.killed = True
+
+
+def _spawns(proc, monkeypatch):
+    async def fake_exec(*_args, **_kwargs):
+        return proc
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
+
+
+async def _run(bridge, proc, monkeypatch):
+    _spawns(proc, monkeypatch)
+    monkeypatch.setattr(bridge, "_write", AsyncMock())
+    return await asyncio.wait_for(
+        bridge._run_claude(_Session("s-1", "/tmp"), "hi", partial=True), timeout=5.0
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_noisy_line_does_not_suppress_the_assistant_reply(monkeypatch):
+    """A non-JSON line is relayed, but the real reply must still arrive.
+
+    Node prints deprecation warnings on stdout.  Counting one as a streamed
+    delta used to disable the ``assistant`` fallback for the whole turn,
+    leaving the warning as the entire answer.
+    """
+    assistant = json.dumps(
+        {"type": "assistant", "message": {"content": [{"type": "text", "text": "42"}]}}
+    )
+    proc = _FakeProc(["(node:9) Warning: punycode is deprecated", assistant])
+
+    result = await _run(ClaudeACPBridge(), proc, monkeypatch)
+
+    assert result is not None
+    assert "42" in result.text
+
+
+@pytest.mark.asyncio
+async def test_stderr_is_read_while_the_child_is_still_running(monkeypatch):
+    """The child must not be waited on before its stderr is drained.
+
+    stderr is a pipe with a finite buffer: a chatty run fills it and blocks
+    on its next write.  This fake reproduces that by refusing to exit until
+    something reads stderr, so the old wait-then-drain order hangs.
+    """
+
+    class _BlockedProc(_FakeProc):
+        def __init__(self):
+            super().__init__(["hello"])
+            self._read = asyncio.Event()
+            self.stderr = _GatedStderr(self._read)
+
+        async def wait(self):
+            await self._read.wait()
+            return 0
+
+    class _GatedStderr:
+        def __init__(self, read_event):
+            self._read_event = read_event
+
+        async def read(self, _n=-1):
+            self._read_event.set()
+            return b"npm notice"
+
+    result = await _run(ClaudeACPBridge(), _BlockedProc(), monkeypatch)
+
+    assert result is not None
+    assert result.stderr == "npm notice"
+
+
+@pytest.mark.asyncio
+async def test_cancel_only_kills_its_own_session(monkeypatch):
+    """Two sessions can have turns in flight; cancel must not cross over."""
+    bridge = ClaudeACPBridge()
+    mine, theirs = _Session("s-1", "/tmp"), _Session("s-2", "/tmp")
+    mine.proc, theirs.proc = _FakeProc([]), _FakeProc([])
+    mine.proc.returncode = theirs.proc.returncode = None
+    bridge._sessions.update({"s-1": mine, "s-2": theirs})
+
+    await bridge.handle_session_cancel({"sessionId": "s-1"})
+
+    assert mine.cancelled is True and mine.proc.terminated is True
+    assert theirs.cancelled is False and theirs.proc.terminated is False

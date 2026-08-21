@@ -56,11 +56,15 @@ class _TurnResult:
 class _Session:
     """State for one ACP session backed by the Claude CLI."""
 
-    __slots__ = ("id", "cwd", "claude_conversation_id", "cancelled")
+    __slots__ = ("id", "cwd", "claude_conversation_id", "cancelled", "proc")
 
     def __init__(self, session_id: str, cwd: str) -> None:
         self.id = session_id
         self.cwd = cwd
+        # The CLI process for this session's in-flight turn, if any.  Held per
+        # session rather than per bridge so cancelling one session cannot kill
+        # another session's child.
+        self.proc: asyncio.subprocess.Process | None = None
         # Populated from the CLI's ``result`` event so subsequent turns can
         # ``--resume`` the same conversation and keep full context.
         self.claude_conversation_id: str | None = None
@@ -77,7 +81,6 @@ class ClaudeACPBridge:
 
     def __init__(self) -> None:
         self._sessions: dict[str, _Session] = {}
-        self._active_proc: asyncio.subprocess.Process | None = None
         self._write_lock = asyncio.Lock()
         # Cleared permanently the first time the CLI rejects the flag.
         self._partial = True
@@ -239,9 +242,15 @@ class ClaudeACPBridge:
                 stderr=asyncio.subprocess.PIPE,
                 **extra,
             )
-            self._active_proc = proc
+            session.proc = proc
         except FileNotFoundError:
             return None
+
+        # stderr is a pipe, so someone has to read it while the child runs.
+        # A chatty `claude -p` -- node deprecation warnings, auth notices --
+        # otherwise fills the pipe buffer and blocks on its next write, with
+        # nothing on stdout to break the deadlock until the ACP timeout.
+        stderr_task = asyncio.create_task(_read_all(proc.stderr))
 
         full_text = ""
         got_first_line = False
@@ -272,7 +281,7 @@ class ClaudeACPBridge:
                     return _TurnResult(
                         returncode=None,
                         text="",
-                        stderr=await _drain(proc.stderr, 2.0),
+                        stderr=await _collect(stderr_task, 2.0),
                         timed_out=True,
                     )
 
@@ -284,7 +293,12 @@ class ClaudeACPBridge:
                     continue
                 delta = _extract_text_delta(raw)
                 if delta:
-                    saw_delta = True
+                    # Only a real stream event counts.  A non-JSON line is
+                    # relayed verbatim, and letting a stray node warning set
+                    # this flag would suppress the `assistant` fallback for
+                    # the rest of the turn -- leaving the warning as the
+                    # entire reply.
+                    saw_delta = saw_delta or _is_json_object(raw)
                 else:
                     whole = _extract_assistant_text(raw)
                     if whole and not saw_delta:
@@ -303,7 +317,7 @@ class ClaudeACPBridge:
                     )
                 _try_capture_conversation_id(session, raw)
         finally:
-            self._active_proc = None
+            session.proc = None
             if session.cancelled and proc.returncode is None:
                 try:
                     proc.terminate()
@@ -321,16 +335,17 @@ class ClaudeACPBridge:
         return _TurnResult(
             returncode=proc.returncode,
             text=full_text,
-            stderr=await _drain(proc.stderr, 1.0),
+            stderr=await _collect(stderr_task, 1.0),
             timed_out=False,
         )
 
     async def handle_session_cancel(self, params: dict[str, Any]) -> None:
         session_id = str(params.get("sessionId") or "")
         session = self._sessions.get(session_id)
-        if session:
-            session.cancelled = True
-        proc = self._active_proc
+        if session is None:
+            return
+        session.cancelled = True
+        proc = session.proc
         if proc and proc.returncode is None:
             try:
                 proc.terminate()
@@ -342,7 +357,9 @@ class ClaudeACPBridge:
     async def run(self) -> None:
         """Read JSON-RPC messages from stdin and dispatch."""
         loop = asyncio.get_running_loop()
-        prompt_task: asyncio.Task[None] | None = None
+        # One entry per in-flight turn.  Keeping only the newest task leaked
+        # the others when several sessions were prompted at once.
+        prompt_tasks: set[asyncio.Task[None]] = set()
 
         while True:
             raw = await loop.run_in_executor(None, sys.stdin.buffer.readline)
@@ -366,19 +383,21 @@ class ClaudeACPBridge:
                 await self.handle_session_new(req_id, params)
             elif method == "session/prompt":
                 # Run concurrently so cancel messages can still be received.
-                prompt_task = asyncio.create_task(
-                    self.handle_session_prompt(req_id, params)
-                )
+                task = asyncio.create_task(self.handle_session_prompt(req_id, params))
+                prompt_tasks.add(task)
+                task.add_done_callback(prompt_tasks.discard)
             elif method == "session/cancel":
                 await self.handle_session_cancel(params)
             elif req_id is not None:
                 await self._error(req_id, -32601, f"Method not found: {method}")
 
-        # Stdin closed — clean up any running prompt.
-        if prompt_task and not prompt_task.done():
-            prompt_task.cancel()
+        # Stdin closed — clean up any running prompts.
+        pending = [t for t in prompt_tasks if not t.done()]
+        for task in pending:
+            task.cancel()
+        for task in pending:
             try:
-                await prompt_task
+                await task
             except asyncio.CancelledError:
                 pass
 
@@ -496,15 +515,35 @@ def _rejects_partial_messages(stderr: str) -> bool:
     )
 
 
-async def _drain(stream: asyncio.StreamReader | None, timeout: float) -> str:
-    """Read whatever a pipe has to offer without blocking the turn."""
+async def _read_all(stream: asyncio.StreamReader | None) -> str:
+    """Consume a pipe to EOF.
+
+    Run as a task for the lifetime of the child so its stderr buffer can
+    never fill up.
+    """
     if stream is None:
         return ""
     try:
-        data = await asyncio.wait_for(stream.read(), timeout=timeout)
-    except (asyncio.TimeoutError, Exception):
+        data = await stream.read()
+    except Exception:
         return ""
     return data.decode("utf-8", errors="replace").strip()
+
+
+async def _collect(task: asyncio.Task[str], timeout: float) -> str:
+    """Take what a drain task has, giving up rather than hanging the turn."""
+    try:
+        return await asyncio.wait_for(task, timeout)
+    except Exception:
+        return ""
+
+
+def _is_json_object(line: str) -> bool:
+    """True when the line parsed as a JSON object -- i.e. a real CLI event."""
+    try:
+        return isinstance(json.loads(line), dict)
+    except (json.JSONDecodeError, ValueError):
+        return False
 
 
 def _try_capture_conversation_id(session: _Session, line: str) -> None:
