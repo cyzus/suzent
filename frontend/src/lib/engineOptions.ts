@@ -26,11 +26,13 @@ export interface EngineLabels {
 /**
  * Build the combined "what answers this chat" option list.
  *
- * Native models come first; ACP agents follow in their own group. Agents whose
- * binary isn't on PATH are listed but disabled, so picking one can't produce a
- * chat that only fails once you hit send. When the runtime is locked (an
- * existing chat) the group collapses to just the agent already in use, so the
- * button still renders a name instead of a bare key.
+ * Native models come first; ACP agents follow in their own group. Agents that
+ * aren't installed are left out entirely rather than shown greyed out — the
+ * list is a menu of what you can actually run, and Settings › ACP Agents is
+ * where you go to see the ones you don't have yet. The one exception is the
+ * agent a chat is already bound to: it stays visible (disabled, with a hint)
+ * so an existing ACP chat renders its agent's name instead of a bare key and
+ * explains why it can't send.
  */
 export function buildEngineOptions(params: {
   models: string[];
@@ -47,12 +49,14 @@ export function buildEngineOptions(params: {
     group: labels.models,
   }));
 
+  const isInstalled = (agent: AcpAgentDescriptor) => agent.status !== 'not_installed';
+
   const visible = canChooseRuntime
-    ? agents
+    ? agents.filter(agent => isInstalled(agent) || agent.id === selectedAgentId)
     : agents.filter(agent => agent.id === selectedAgentId);
 
   const agentOptions: EngineOption[] = visible.map(agent => {
-    const unavailable = agent.status === 'not_installed';
+    const unavailable = !isInstalled(agent);
     return {
       value: `${ACP_PREFIX}${agent.id}`,
       label: `ACP · ${agent.name || agent.id}`,

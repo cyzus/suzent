@@ -11,7 +11,7 @@ const LABELS = {
 
 const AGENTS: AcpAgentDescriptor[] = [
   { id: 'claude-code', name: 'Claude Code', status: 'ready' },
-  { id: 'codex-acp', name: 'Codex (ACP)', status: 'not_installed', install_command: ['sh', '-c', 'x'] },
+  { id: 'codex', name: 'Codex (ACP)', status: 'not_installed', install_command: ['sh', '-c', 'x'] },
   { id: 'bare', name: 'Bare', status: 'not_installed' },
 ];
 
@@ -32,17 +32,26 @@ describe('buildEngineOptions', () => {
     expect(options.slice(2).every(o => o.group === 'ACP agents')).toBe(true);
   });
 
-  it('never offers an agent whose binary is missing', () => {
-    const options = build();
-    const byId = Object.fromEntries(options.map(o => [o.value, o]));
-    expect(byId['acp:claude-code'].disabled).toBeFalsy();
-    expect(byId['acp:codex-acp'].disabled).toBe(true);
-    expect(byId['acp:bare'].disabled).toBe(true);
+  it('hides agents that are not installed instead of greying them out', () => {
+    const values = build().map(o => o.value);
+    expect(values).toContain('acp:claude-code');
+    expect(values).not.toContain('acp:codex');
+    expect(values).not.toContain('acp:bare');
+  });
+
+  it('keeps a missing agent visible when the chat is already bound to it', () => {
+    const byId = Object.fromEntries(
+      build({ selectedAgentId: 'codex' }).map(o => [o.value, o]),
+    );
+    expect(byId['acp:codex'].disabled).toBe(true);
+    expect(byId['acp:codex'].hint).toBe(LABELS.installHint);
+    expect(byId['acp:bare']).toBeUndefined();
   });
 
   it('points at the install path only when there is an install command', () => {
-    const byId = Object.fromEntries(build().map(o => [o.value, o]));
-    expect(byId['acp:codex-acp'].hint).toBe(LABELS.installHint);
+    const byId = Object.fromEntries(
+      build({ selectedAgentId: 'bare' }).map(o => [o.value, o]),
+    );
     expect(byId['acp:bare'].hint).toBe(LABELS.notInstalled);
     expect(byId['acp:claude-code'].hint).toBeUndefined();
   });
