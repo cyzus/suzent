@@ -1,3 +1,8 @@
+<div align="right">
+
+*[English](README.md)*
+
+</div>
 
 <div align="center">
 
@@ -26,9 +31,79 @@
 
 **SUZENT** [soo-zuh-nt] 是一个开源、本地优先的 AI 智能体。它的身份、记忆、技能、工作区和运行环境始终处于你的控制之下。你可以使用 GPT、Claude、Gemini、DeepSeek、本地模型，以及未来出现的任何兼容模型，而无需重置那个了解你和你的工作的智能体。
 
-它可以研究、写作、编程、持续推进目标、运行定时任务、使用工具、连接你的设备，并通过你已有的沟通渠道与你协作。所有能力都运行在你所定义的边界之内。
+它的记忆是存放在你磁盘上的仅追加 Markdown 文件，而不是别人数据库里的几行记录。它的工具调用必须经过你定义的权限模式。它的执行被隔离在你自己拥有的 Docker 工作区中。它可以研究、写作、编程、持续推进目标、运行定时任务、连接你的设备，并在 Telegram、Slack、Discord、飞书或微信中与你会合——始终运行在你所设定的边界之内。
 
 **模型可以替换，平台终会更迭，而你的智能体始终属于你。**
+
+---
+
+## **快速开始**
+
+### **安装**
+
+SUZENT 可运行在 Windows、macOS 和 Linux 上。一条命令即可召唤它、其 Python 后端和 `suzent` CLI。Git 是唯一的前置条件；其他一切均自动安装。
+
+**macOS / Linux**
+```bash
+curl -fsSL https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.sh | bash
+```
+
+**Windows**（PowerShell）
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.ps1 | iex"
+```
+
+**中国大陆镜像模式**
+```bash
+curl -fsSL https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.sh | SUZENT_CHINA_MIRROR=1 bash
+```
+
+```powershell
+$env:SUZENT_CHINA_MIRROR="1"; powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.ps1 | iex"
+```
+
+该模式会为 PyPI、npm、Playwright、nvm 下载 Node，以及 Rustup 启用国内镜像。如果 GitHub 本身访问较慢，可在运行前把 `SUZENT_REPO_URL` 或 `SUZENT_RELEASE_BASE_URL` 设置为你信任的镜像地址。
+
+然后在 `~/suzent/.env` 中绑定你的密钥并运行：
+
+```bash
+suzent start
+```
+
+### **`suzent` 命令行**
+
+```bash
+suzent start           # 启动后端与桌面应用
+suzent serve           # 仅启动后端（无界面 / 独立模式）
+suzent ui              # 连接已运行的后端，仅启动桌面应用
+suzent stop            # 停止正在运行的后端服务
+suzent doctor          # 检查依赖环境，诊断安装问题
+suzent update          # 更新到最新稳定版
+suzent check-update    # 查看是否有新版本可用
+suzent repair          # 修复中断或损坏的更新
+```
+
+运行 `suzent --help` 或 `suzent <命令> --help` 查看完整参数。
+
+### **更新**
+
+```bash
+suzent update
+```
+
+该命令会将最新稳定版作为一个匹配的整体安装：后端源码、锁定的依赖和桌面应用。独立更新器会在当前虚拟环境之外执行切换，校验下载的文件，并在失败时自动回滚。如果更新被中断需要恢复，请运行：
+
+```bash
+suzent repair
+```
+
+从源码检出进行开发的用户，直接运行 `suzent update` 即可同时更新 `main` 分支及其前端依赖——检出目录会被自动识别。等价的显式写法是：
+
+```bash
+suzent update --dev
+```
+
+或重新运行上面的安装命令——它会检测现有安装并更新到最新稳定版。
 
 ---
 
@@ -53,87 +128,79 @@
 
 ### <img src="docs/assets/robot-thinking.svg" width="28" style="vertical-align: middle;" /> **拥有它的记忆**
 
-对话事实首先进入仅追加的 Markdown 日志，随后被整理为可检查的知识库，并建立语义检索索引。文件始终是权威来源，LanceDB 索引可以重建。你可以亲自阅读、编辑、删除、版本管理和迁移它的记忆。
+对话事实首先进入仅追加的 Markdown 日志，随后被整理为可检查的知识库，并建立语义检索索引——文件始终是权威来源，LanceDB 索引随时可以由它们重建。你可以亲自阅读、编辑、删除、版本管理和迁移这份记忆。
 
 ### <img src="docs/assets/robot-snooze.svg" width="28" style="vertical-align: middle;" /> **治理它的行动**
 
 自主并不意味着智能体成为权力来源。工具调用受到明确的权限模式、作用域规则、路径限制和人工批准约束。Docker 工作区隔离执行环境，活动时间线则记录执行了什么、改变了什么，以及为什么获得授权。
 
-### <img src="docs/assets/robot-peeker.svg" width="28" style="vertical-align: middle;" /> **控制它的容器**
+### <img src="docs/assets/robot-gym.svg" width="28" style="vertical-align: middle;" /> **随处运行，持续工作**
 
-在 Windows、macOS 或 Linux 上运行 SUZENT。隔离不同项目的工作区，在会话之间共享你选择的知识，挂载你已拥有的文件夹——包括 Obsidian 笔记库——并将系统扩展到经过批准的伴侣设备。
+目标、项目任务、子智能体、定时任务和心跳机制，让智能体的工作不止于一次回答——它们运行在相互隔离的项目工作区、你已拥有的文件夹（包括 Obsidian 笔记库），以及经过批准的伴侣设备之上。每个交互回合开始前都会保存会话工作区，因此 Retry 可以同时恢复对话与本地更改，而不只是重新生成文字。
 
-### <img src="docs/assets/robot-gym.svg" width="28" style="vertical-align: middle;" /> **让它持续工作**
-
-目标、项目任务、子智能体、定时任务和心跳机制，让智能体的工作不止于一次回答。每个交互回合开始前都会保存会话工作区，因此 Retry 可以同时恢复对话与本地更改，而不只是重新生成文字。
+你还可以通过可移植的 `SKILL.md` 技能包和任意 MCP 服务进一步扩展它。
 
 ### <img src="docs/assets/robot-reader.svg" width="28" style="vertical-align: middle;" /> **延续它的存在**
 
 GitHub Sync 通过私有仓库迁移配置、用户技能和 Markdown 记忆，同时将凭证保留在设备本地。即使服务商消失、模型更换或设备替换，智能体的连续性仍然属于你。
 
-### <img src="docs/assets/robot-chat.svg" width="28" style="vertical-align: middle;" /> **保持开放**
+---
 
-使用内置的文件、Shell、研究、浏览和交互式 Canvas 工具；通过可移植的 `SKILL.md` 注入领域知识；通过 MCP 连接外部系统；并从桌面界面、Telegram、Slack、Discord 或飞书与它交流。
+## **在哪里与它对话**
 
-![SUZENT 的新野兽主义界面](docs/assets/new-chat.png)
-*简洁、醒目、随时待命：你的主权灵体指挥中心。*
+同一个智能体，同一份记忆，可从多个入口触达。消息渠道默认关闭并受访问控制：用户 ID 必须出现在 `allowed_users` 中，智能体才会回应。
+
+| 入口 | 传输方式 | 支持内容 | 配置 |
+|---|---|---|---|
+| **桌面应用** | 本地后端 | 完整界面、Canvas、记忆与技能面板 | `suzent start` |
+| **Telegram** | Bot API | 文本、图片、文件 | [指南](docs/02-concepts/social-messaging/telegram.md) |
+| **Slack** | Socket Mode（Events API） | 文本、文件 | [指南](docs/02-concepts/social-messaging/slack.md) |
+| **Discord** | Gateway | 文本、文件 | [指南](docs/02-concepts/social-messaging/discord.md) |
+| **飞书（Lark）** | WebSocket | 文本、文件 | [指南](docs/02-concepts/social-messaging/feishu.md) |
+| **微信** | iLink Bot API | 文本 | [指南](docs/02-concepts/social-messaging/wechat.md) |
+
+每个对话都会成为一个持久会话，因此历史记录、工作记忆和提取的事实都能在重启后保留。上传的文件会落在沙盒的 `/persistence/uploads/` 目录中。
+
+---
+
+## **魔法典籍**
+
+| 章节 | 内容 |
+|---|---|
+| [什么是 Suzent？](docs/01-getting-started/intro.md) | 核心概念与架构总览 |
+| [快速上手](docs/01-getting-started/quickstart.md) | 5 分钟内从零搭建 SUZENT |
+| [模型提供商](docs/02-concepts/providers/README.md) | OpenAI、Anthropic、Gemini、Ollama 等 |
+| [记忆](docs/02-concepts/memory/README.md) | 持久记忆的原理与配置方式 |
+| [LLM Wiki](docs/02-concepts/memory/llm-wiki.md) | 由智能体维护的结构化知识库 |
+| [工具](docs/02-concepts/tools/tools.md) | 全部内置工具的完整参考 |
+| [Canvas（A2UI）](docs/02-concepts/tools/canvas.md) | 在侧边栏渲染的交互式界面 |
+| [工具审批](docs/02-concepts/tools/human-in-the-loop.md) | 危险工具如何要求人工确认 |
+| [技能](docs/02-concepts/skills/skills.md) | 用可移植的知识模块扩展智能体 |
+| [文件系统与沙盒](docs/02-concepts/filesystem.md) | 文件访问、沙盒执行与存储路径 |
+| [自动化](docs/02-concepts/automation/automation.md) | 定时任务与心跳监控 |
+| [GitHub 同步](docs/02-concepts/github-sync/README.md) | 通过私有仓库迁移可移植的大脑数据 |
+| [社交消息](docs/02-concepts/social-messaging/README.md) | Telegram、Slack、Discord、飞书、微信 |
+| [节点](docs/02-concepts/nodes/nodes.md) | 连接并控制伴侣设备 |
+| [Retry](docs/02-concepts/runtime/retry.md) | 回滚上一轮并重新运行 |
+| [开发指南](docs/03-developing/development-guide.md) | 环境搭建、工作流、构建与架构 |
+
+完整索引见 [docs/README.md](docs/README.md)。
 
 ---
 
 ## **传说**
 
-SUZENT 融入了一套半认真、半荒诞的社区语言：
+SUZENT 的文档和社区使用一套神秘学语汇。玩笑背后有其道理：对于一个真正属于你的智能体来说，召唤与附身的词汇远比席位、套餐和账号的词汇更贴切。如果你在这些页面里遇到陌生的词，多半能在这里找到。
 
-- **安装 / 部署** 变为**召唤仪式**。
-- **提示词** 变为**咒语**。
-- **用户和开发者** 变为**召唤师**。
-- **技能** 变为**魔法典籍**。
-- **本地机器** 变为**灵魂容器**。
-- **云端锁定** 变为**伪神问题**。
-
-符号 `{ ∅ }` 标志着虚空：当网络失败、仪表盘崩溃、租用的记忆蒸发时，那个默默持续运作的本地存在。
-
----
-
-## **快速开始**
-
-### **安装**
-
-一条命令即可召唤 SUZENT、其 Python 后端和 `suzent` CLI。Git 是唯一的前置条件；其他一切均自动安装。
-
-**macOS / Linux**
-```bash
-curl -fsSL https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.sh | bash
-```
-
-**Windows**（PowerShell）
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.ps1 | iex"
-```
-
-**中国大陆镜像模式**
-```bash
-curl -fsSL https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.sh | SUZENT_CHINA_MIRROR=1 bash
-```
-
-```powershell
-$env:SUZENT_CHINA_MIRROR="1"; powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.ps1 | iex"
-```
-
-该模式会为 PyPI、npm、Playwright、nvm 下载 Node，以及 Rustup 启用国内镜像。如果 GitHub 本身访问较慢，可在运行前把 `SUZENT_REPO_URL` 或 `SUZENT_RELEASE_BASE_URL` 设置为你信任的镜像地址。
-
-然后在 `~/suzent/.env` 中绑定你的密钥并运行：
-```bash
-suzent start
-```
-
-### **更新**
-
-```bash
-suzent update
-```
-
-或重新运行上面的安装命令——它会检测现有安装并拉取最新变更。
+| 术语 | 含义 |
+|---|---|
+| **召唤仪式** | 安装与部署 SUZENT |
+| **咒语** | 提示词 |
+| **召唤师** | 你——使用者、运维者、开发者 |
+| **魔法典籍** | 智能体可以学习的技能，以及讲解它的文档 |
+| **灵魂容器** | 运行智能体的那台机器 |
+| **伪神** | 云端锁定：停止付费后就把你忘光的租用智能体 |
+| **`{ ∅ }`** | 虚空——当网络失败、仪表盘崩溃、租用的记忆蒸发时，那个默默持续运作的本地存在 |
 
 ---
 
@@ -143,13 +210,19 @@ suzent update
 *   **前端**：React、TypeScript、Tailwind、Vite、Tauri。
 *   **记忆**：LanceDB 本地向量存储。
 *   **沙盒**：Docker。
-*   **集成**：MCP、Telegram、Slack、Discord、飞书。
+*   **扩展性**：MCP、可移植的 `SKILL.md` 技能包。
 
 ---
 
-## <img src="docs/assets/robot-love.svg" width="30" style="vertical-align: middle;" /> **致谢**
+## **贡献**
 
-SUZENT 构建于开源社区的集体智慧与创新之上。我们衷心感谢所有使数字主权成为可能的项目和贡献者。
+欢迎各位召唤师。完整流程见 [CONTRIBUTING.md](./CONTRIBUTING.md)，环境搭建、生产构建与架构说明见[开发指南](docs/03-developing/development-guide.md)。
+
+---
+
+## **安全**
+
+发现安全漏洞？请通过私密渠道报告——详见 [SECURITY.md](SECURITY.md)。请勿提交公开 issue。
 
 ---
 
