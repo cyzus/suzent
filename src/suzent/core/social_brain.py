@@ -104,7 +104,6 @@ class SocialBrain(BaseBrain):
     def __init__(
         self,
         channel_manager: ChannelManager,
-        allowed_users: list = None,
         platform_allowlists: dict = None,
         model: str = None,
         memory_enabled: bool = True,
@@ -115,7 +114,6 @@ class SocialBrain(BaseBrain):
     ):
         super().__init__()
         self.channel_manager = channel_manager
-        self.allowed_users = set(allowed_users) if allowed_users else set()
         self.platform_allowlists = (
             {k: set(v) for k, v in platform_allowlists.items()}
             if platform_allowlists
@@ -527,9 +525,9 @@ class SocialBrain(BaseBrain):
             return False
 
         sender_id = entry["sender_id"]
-        self.allowed_users.add(sender_id)
-        self.allowed_users.add(entry["sender_name"])
-        await self._persist_approved_user(sender_id)
+        platform = entry["platform"]
+        self.platform_allowlists.setdefault(platform, set()).add(sender_id)
+        await self._persist_approved_user(sender_id, platform)
 
         try:
             await self.channel_manager.send_message(
@@ -563,8 +561,13 @@ class SocialBrain(BaseBrain):
         )
         return True
 
-    async def _persist_approved_user(self, sender_id: str):
-        """Persist an approved sender_id to social.json so it survives restarts."""
+    async def _persist_approved_user(self, sender_id: str, platform: str):
+        """Persist an approved sender_id to its platform allowlist in social.json.
+
+        Approvals are scoped to the platform the request came in on: sender ids
+        are namespaced per platform, so a global entry would grant access on
+        surfaces the sender was never approved for.
+        """
         try:
             import json as _json
             from suzent.config import PROJECT_DIR
@@ -574,32 +577,33 @@ class SocialBrain(BaseBrain):
                 return
             with open(config_path) as f:
                 cfg = _json.load(f)
-            users = cfg.get("allowed_users", [])
+            platform_cfg = cfg.get(platform)
+            if not isinstance(platform_cfg, dict):
+                platform_cfg = {}
+                cfg[platform] = platform_cfg
+            users = platform_cfg.get("allowed_users") or []
             if sender_id not in users:
                 users.append(sender_id)
-            cfg["allowed_users"] = users
+            platform_cfg["allowed_users"] = users
             with open(config_path, "w") as f:
                 _json.dump(cfg, f, indent=2)
         except Exception as e:
             logger.warning(f"Pairing: could not persist approval: {e}")
 
     def _is_authorized(self, message: UnifiedMessage) -> bool:
-        """Check if a message sender is authorized."""
+        """Check if a message sender is authorized on the platform it wrote from.
+
+        Matches on sender_id only. Display names are user-settable and
+        unverified on every supported platform, so honouring them would let
+        anyone reach the agent by renaming themselves to an approved user.
+        """
         platform_allowed = self.platform_allowlists.get(message.platform)
-        # Empty allowlists always deny — users must be approved via pairing or pre-configured.
-        if not self.allowed_users and not platform_allowed:
+        # Empty allowlist always denies — users must be approved via pairing or
+        # pre-configured.
+        if not platform_allowed:
             return False
 
-        # Check if sender is in either global or platform-specific allowlist
-        identifiers = {message.sender_id, message.sender_name}
-
-        if self.allowed_users and identifiers & self.allowed_users:
-            return True
-
-        if platform_allowed and identifiers & platform_allowed:
-            return True
-
-        return False
+        return message.sender_id in platform_allowed
 
     async def _handle_message(
         self, message: UnifiedMessage, social_chat_id: str | None = None

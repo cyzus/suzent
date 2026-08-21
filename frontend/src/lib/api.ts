@@ -1089,7 +1089,12 @@ export function getSandboxParams(chatId: string, path: string, volumes?: string[
 // -----------------------------------------------------------------------------
 
 export interface SocialConfig {
-  allowed_users: string[];
+  /**
+   * Deprecated global allowlist. Kept only so an existing social.json round-trips
+   * unchanged; the backend fans it out to every platform and warns. Authorization
+   * is per-platform — see each platform's own `allowed_users`.
+   */
+  allowed_users?: string[];
   model?: string;
   memory_enabled?: boolean;
   tools?: string[] | null;
@@ -1098,7 +1103,7 @@ export interface SocialConfig {
 }
 
 function getSocialConfigDefaults(): SocialConfig {
-  const defaults: SocialConfig = { allowed_users: [] };
+  const defaults: SocialConfig = {};
   for (const [key, value] of Object.entries(socialExampleConfig)) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
 
@@ -1225,12 +1230,12 @@ export async function pollWeChatLogin(sessionId: string): Promise<WeChatLoginSta
 export async function fetchSocialConfig(): Promise<SocialConfig> {
   try {
     const res = await fetch(`${getApiBase()}/config/social`);
-    if (!res.ok) return withSocialConfigDefaults({ allowed_users: [] });
+    if (!res.ok) return withSocialConfigDefaults({});
     const data = await res.json();
-    return withSocialConfigDefaults(data.config || { allowed_users: [] });
+    return withSocialConfigDefaults(data.config || {});
   } catch (e) {
     console.error('Error fetching social config:', e);
-    return withSocialConfigDefaults({ allowed_users: [] });
+    return withSocialConfigDefaults({});
   }
 }
 

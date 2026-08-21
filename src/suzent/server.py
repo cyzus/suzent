@@ -394,21 +394,35 @@ def _build_social_from_config(
     cm = ChannelManager()
     cm.load_drivers_from_config(social_config)
 
-    allowed_users = set(social_config.get("allowed_users", []))
-    env_allowed = os.environ.get("ALLOWED_SOCIAL_USERS", "")
-    if env_allowed:
-        allowed_users.update([u.strip() for u in env_allowed.split(",") if u.strip()])
-
     platform_allowlists = {}
     for platform, settings in social_config.items():
         if isinstance(settings, dict) and "allowed_users" in settings:
-            platform_allowlists[platform] = settings.get("allowed_users", [])
+            platform_allowlists[platform] = set(settings.get("allowed_users") or [])
+
+    # Migration: the top-level `allowed_users` key and ALLOWED_SOCIAL_USERS predate
+    # per-platform allowlists and carry no platform of their own. Fan them out to
+    # every configured platform — sender ids are namespaced, so an id only ever
+    # matched its own platform anyway, and this drops the old display-name match
+    # that let a sender on one platform inherit an approval from another.
+    legacy_allowed = set(social_config.get("allowed_users") or [])
+    env_allowed = os.environ.get("ALLOWED_SOCIAL_USERS", "")
+    legacy_allowed.update(u.strip() for u in env_allowed.split(",") if u.strip())
+    if legacy_allowed and platform_allowlists:
+        logger.warning(
+            "social: %d global allowed_users entr%s applied to every platform "
+            "(%s). Global allowlists are deprecated — move each entry to the "
+            "platform it belongs to and remove the top-level key.",
+            len(legacy_allowed),
+            "y" if len(legacy_allowed) == 1 else "ies",
+            ", ".join(sorted(platform_allowlists)),
+        )
+        for entries in platform_allowlists.values():
+            entries.update(legacy_allowed)
 
     handshake_cfg = social_config.get("handshake", {})
     sb = SocialBrain(
         cm,
-        allowed_users=list(allowed_users),
-        platform_allowlists=platform_allowlists,
+        platform_allowlists={k: list(v) for k, v in platform_allowlists.items()},
         model=social_config.get("model"),
         memory_enabled=social_config.get("memory_enabled", True),
         tools=social_config.get("tools"),
