@@ -24,7 +24,7 @@ describe('permission activity state', () => {
 
     expect(isActionableAguiApproval(part)).toBe(true);
     expect(hasAguiPendingApproval(chunks)).toBe(true);
-    expect(getAguiActivityLabel(chunks, false)).toBe('Approval needed: run command');
+    expect(getAguiActivityLabel(chunks, false)).toBe('Approval needed: Run command');
   });
 
   it('does not keep an interrupted orphan tool call pending', () => {
@@ -33,6 +33,6 @@ describe('permission activity state', () => {
 
     expect(isActionableAguiApproval(part)).toBe(false);
     expect(hasAguiPendingApproval(chunks)).toBe(false);
-    expect(getAguiActivityLabel(chunks, false)).toBe('Using run command');
+    expect(getAguiActivityLabel(chunks, false)).toBe('Run command');
   });
 });

@@ -205,7 +205,7 @@ const AGUIPartsContent: React.FC<{
               key={`activity-${gi}`}
               itemCount={countActivityItems(group.chunks)}
               durationSeconds={workedDurationSeconds}
-              startedAtMs={activityGroupOrdinal === 0 ? streamStartedAtMs : undefined}
+              startedAtMs={streamStartedAtMs}
               showDuration={activityGroupOrdinal === 0}
               defaultExpanded={Boolean(isStreaming)}
               isActive={Boolean(isStreaming)}
@@ -953,6 +953,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
                   key={`legacy-activity-${groupIndex}`}
                   itemCount={countActivityItems(group.chunks)}
                   durationSeconds={workedDurationSeconds}
+                  startedAtMs={streamStartedAtMs}
                   showDuration={activityGroupOrdinal === 0}
                   defaultExpanded={isStreamingThis}
                   isActive={isStreamingThis}
