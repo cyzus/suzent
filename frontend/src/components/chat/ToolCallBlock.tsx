@@ -4,6 +4,7 @@ import { MarkdownRenderer } from './MarkdownRenderer';
 import { WebSearchRenderer } from './WebSearchRenderer';
 import { ToolArgsRenderer } from './ToolArgsRenderer';
 import { ToolGroupIcon } from './toolGroupIcon';
+import { getToolSummary } from './toolSummary';
 import { FileDiffViewer } from './FileDiffViewer';
 import { BashCommandRenderer, BashOutputRenderer } from './BashRenderer';
 import type { ApprovalRememberScope } from '../../hooks/useAGUI';
@@ -289,6 +290,13 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
     }
   }, [toolArgs]);
 
+  // Headline for the collapsed pill: an action verb plus the tool's own
+  // arguments ("READ ToolCallBlock.tsx") instead of just the tool name.
+  const summary = React.useMemo(
+    () => getToolSummary(toolName, parsedToolArgs, t),
+    [toolName, parsedToolArgs, t],
+  );
+
   const { addedLines, removedLines } = React.useMemo(() => {
     let added = 0;
     let removed = 0;
@@ -475,6 +483,7 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
           }
         }}
         className={headerClassName}
+        title={summary.title ?? undefined}
       >
         {/* Icon */}
         <ToolGroupIcon
@@ -484,8 +493,13 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
           hasOutput={hasOutput}
         />
 
-        {/* Tool name */}
-        <span className="truncate max-w-[280px]">{displayName}</span>
+        {/* Action verb + argument detail (e.g. READ ToolCallBlock.tsx) */}
+        <span className="shrink-0">{summary.verb}</span>
+        {summary.detail && (
+          <span className="truncate min-w-0 max-w-[320px] font-normal normal-case tracking-normal opacity-80">
+            {summary.detail}
+          </span>
+        )}
 
         {/* Diff lines if available */}
         {!expanded && (addedLines > 0 || removedLines > 0) && (

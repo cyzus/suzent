@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import type { AGUIPart } from '../../hooks/useAGUI';
 import type { ContentBlock } from '../../lib/chatUtils';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { getRepeatedToolLabel, getToolSummary, normalizeToolName } from './toolSummary';
+import { tForLocale } from '../../i18n';
 
 export type ActivityRenderGroup<T> =
   | { type: 'activity'; chunks: Array<{ chunk: T; index: number }> }
@@ -41,6 +43,13 @@ export function getActivityGroupOrdinal<T>(groups: ActivityRenderGroup<T>[], ind
     .length;
 }
 
+function findLastIndex<T>(items: T[], predicate: (item: T) => boolean): number {
+  for (let i = items.length - 1; i >= 0; i -= 1) {
+    if (predicate(items[i])) return i;
+  }
+  return -1;
+}
+
 export function getReasoningHeader(text: string, isStreaming: boolean = false): string {
   const firstLine = text.trim().split('\n')[0].replace(/^[#*>-\s]+/, '').replace(/\*\*/g, '').trim();
   const summary = firstLine.length > 80 ? firstLine.substring(0, 77) + '...' : firstLine || 'Processing...';
@@ -57,8 +66,73 @@ export function countActivityItems(chunks: Array<{ chunk: { type: string; items?
   }, 0);
 }
 
-export function formatActivityToolName(toolName: string | undefined): string {
-  return toolName ? toolName.replace(/_/g, ' ') : 'unknown tool';
+const railT = (key: string, params?: Record<string, unknown>) => tForLocale('en', key, params);
+
+function capitalize(value: string): string {
+  return value ? `${value[0].toUpperCase()}${value.slice(1)}` : value;
+}
+
+/**
+ * Rail status label for a tool call, e.g. "Read ToolCallBlock.tsx".
+ *
+ * Falls back to the bare tool name while args are still streaming in (or when
+ * a tool exposes nothing worth showing), so the label never goes empty.
+ */
+export function formatActivityToolName(toolName: string | undefined, args?: string): string {
+  if (!toolName) return 'unknown tool';
+  const fallback = capitalize(toolName.replace(/_/g, ' '));
+  let parsed: Record<string, unknown> | null = null;
+  if (args) {
+    try {
+      const candidate = JSON.parse(args);
+      if (candidate && typeof candidate === 'object' && !Array.isArray(candidate)) {
+        parsed = candidate as Record<string, unknown>;
+      }
+    } catch {
+      parsed = null;
+    }
+  }
+  if (!parsed) return fallback;
+  // The surrounding rail copy is English-only, so resolve verbs against `en`.
+  const summary = getToolSummary(toolName, parsed, railT);
+  return summary.detail ? `${summary.verb} ${summary.detail}` : fallback;
+}
+
+const REPEAT_LABEL_THRESHOLD = 3;
+
+/**
+ * How many calls to the same tool the run ends with, e.g. ten `run_command`
+ * calls in a row. One line saying "Ran 10 commands" beats a label that keeps
+ * flickering between ten near-identical command names.
+ */
+export function trailingToolRunLength(toolNames: Array<string | undefined>): number {
+  if (toolNames.length === 0) return 0;
+  const last = toolNames[toolNames.length - 1];
+  if (!last) return 0;
+  const canonical = normalizeToolName(last);
+  let count = 0;
+  for (let i = toolNames.length - 1; i >= 0; i -= 1) {
+    const name = toolNames[i];
+    if (!name || normalizeToolName(name) !== canonical) break;
+    count += 1;
+  }
+  return count;
+}
+
+/**
+ * Status label for the tool the rail is on now: the repeat summary when the
+ * same tool has been called several times running, otherwise the single call.
+ */
+function formatActiveToolLabel(
+  toolNames: Array<string | undefined>,
+  toolName: string | undefined,
+  args: string | undefined,
+): string {
+  // Two calls still read fine individually; from three on, the count says more
+  // than a label that rewrites itself every second.
+  const streak = trailingToolRunLength(toolNames);
+  if (streak >= REPEAT_LABEL_THRESHOLD && toolName) return getRepeatedToolLabel(toolName, streak, railT);
+  return formatActivityToolName(toolName, args);
 }
 
 export function isActionableAguiApproval(part: AGUIPart): boolean {
@@ -79,9 +153,22 @@ export function getAguiActivityLabel(chunks: Array<{ chunk: { type: string; item
     const chunk = chunks[i].chunk;
     if (chunk.type === 'tool') {
       const pendingTool = [...(chunk.items ?? [])].reverse().find(isActionableAguiApproval);
-      if (pendingTool) return `Approval needed: ${formatActivityToolName(pendingTool.toolName)}`;
-      const tool = [...(chunk.items ?? [])].reverse().find(part => !part.output || part.state === 'approval-requested');
-      if (tool) return `Using ${formatActivityToolName(tool.toolName)}`;
+      if (pendingTool) return `Approval needed: ${formatActivityToolName(pendingTool.toolName, pendingTool.args)}`;
+      // Count the streak across the whole group, not just this chunk: the
+      // agent's own thinking between two shell calls does not make them
+      // unrelated pieces of work.
+      const items = chunks
+        .slice(0, i + 1)
+        .flatMap(entry => (entry.chunk.type === 'tool' ? entry.chunk.items ?? [] : []));
+      const toolIndex = findLastIndex(items, part => !part.output || part.state === 'approval-requested');
+      if (toolIndex >= 0) {
+        const tool = items[toolIndex];
+        return formatActiveToolLabel(
+          items.slice(0, toolIndex + 1).map(part => part.toolName),
+          tool.toolName,
+          tool.args,
+        );
+      }
     }
     if (chunk.type === 'reasoning') {
       const text = (chunk.items ?? []).map(part => part.text || '').join('').trim();
@@ -103,9 +190,19 @@ export function getLegacyActivityLabel(chunks: Array<{ chunk: { type: string; bl
     const chunk = chunks[i].chunk;
     if (chunk.type === 'toolCall') {
       const pendingTool = [...(chunk.blocks ?? [])].reverse().find(block => block.approvalState === 'pending' && !block.content && !!block.approvalId);
-      if (pendingTool) return `Approval needed: ${formatActivityToolName(pendingTool.toolName)}`;
-      const tool = [...(chunk.blocks ?? [])].reverse().find(block => !block.content || block.approvalState === 'pending');
-      if (tool) return `Using ${formatActivityToolName(tool.toolName)}`;
+      if (pendingTool) return `Approval needed: ${formatActivityToolName(pendingTool.toolName, pendingTool.toolArgs)}`;
+      const blocks = chunks
+        .slice(0, i + 1)
+        .flatMap(entry => (entry.chunk.type === 'toolCall' ? entry.chunk.blocks ?? [] : []));
+      const toolIndex = findLastIndex(blocks, block => !block.content || block.approvalState === 'pending');
+      if (toolIndex >= 0) {
+        const tool = blocks[toolIndex];
+        return formatActiveToolLabel(
+          blocks.slice(0, toolIndex + 1).map(block => block.toolName),
+          tool.toolName,
+          tool.toolArgs,
+        );
+      }
     }
     if (chunk.type === 'reasoning') {
       const text = (chunk.blocks ?? []).map(block => block.content).join('\n').trim();
@@ -173,9 +270,12 @@ export const ActivityRail: React.FC<{
 
   const displayedSeconds = durationSeconds ?? elapsedSeconds;
   const durationLabel = `Worked for ${formatActivityDuration(displayedSeconds)}`;
-  const headerLabel = showDuration || isActive
+  // Only the turn's first rail reports the worked time. When assistant text
+  // splits a turn into several rails they all belong to one stretch of work, so
+  // the later ones show what is happening instead of starting a second clock.
+  const headerLabel = showDuration
     ? durationLabel
-    : currentLabel ?? 'Activity';
+    : currentLabel ?? (isActive ? durationLabel : 'Activity');
 
   return (
     <div className="activity-rail-shell min-w-0 w-full">
