@@ -9,17 +9,19 @@ interface AcpAgentsTabProps {
   onNewSession: (agentId: string) => void;
 }
 
+type ProbeState = { status: 'probing' } | { status: 'ok'; data: Record<string, unknown> } | { status: 'error'; message: string };
+
 export function AcpAgentsTab({ onNewSession }: AcpAgentsTabProps): React.ReactElement {
   const { t } = useI18n();
   const [agents, setAgents] = useState<AcpAgentDescriptor[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [probeResults, setProbeResults] = useState<Record<string, any>>({});
+  const [loading, setLoading] = useState(true);
+  const [probes, setProbes] = useState<Record<string, ProbeState>>({});
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const loadAgents = async () => {
     setLoading(true);
     try {
-      const data: AcpAgentDescriptor[] = await fetchAcpAgents();
-      setAgents(data);
+      setAgents(await fetchAcpAgents());
     } catch (e) {
       console.error('Failed to fetch agents', e);
     } finally {
@@ -28,70 +30,138 @@ export function AcpAgentsTab({ onNewSession }: AcpAgentsTabProps): React.ReactEl
   };
 
   const handleProbe = async (agent: AcpAgentDescriptor) => {
-    if (agent.probe) {
-        const result = await agent.probe();
-        setProbeResults(prev => ({ ...prev, [agent.id]: result }));
-        return;
-    }
+    setProbes(prev => ({ ...prev, [agent.id]: { status: 'probing' } }));
     try {
+      if (agent.probe) {
+        const ok = await agent.probe();
+        setProbes(prev => ({
+          ...prev,
+          [agent.id]: ok ? { status: 'ok', data: {} } : { status: 'error', message: 'probe returned false' },
+        }));
+        return;
+      }
       const data = await probeAcpAgent(agent.id);
-      setProbeResults(prev => ({ ...prev, [agent.id]: data }));
+      setProbes(prev => ({ ...prev, [agent.id]: { status: 'ok', data } }));
     } catch (e) {
-      console.error('Probe failed', e);
+      setProbes(prev => ({ ...prev, [agent.id]: { status: 'error', message: String(e) } }));
     }
   };
 
-  useEffect(() => {
-    loadAgents();
-  }, []);
+  const handleCopy = (id: string, text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(prev => prev === id ? null : prev), 1500);
+  };
+
+  useEffect(() => { loadAgents(); }, []);
+
+  const isReady = (agent: AcpAgentDescriptor) => agent.status === 'ready';
 
   return (
     <div className="space-y-6">
       <SettingsHeader title={t('settings.acp.title')} subtitle={t('settings.acp.subtitle')} />
+
       <SettingsCard>
         <SectionCardHeader
           iconTone="black"
           icon={<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>}
-          title={t('settings.acp.title')}
+          title={t('settings.acp.registeredTitle')}
+          description={t('settings.acp.registeredDesc')}
         />
+
         {loading ? (
           <div className="p-8 text-center font-bold uppercase text-neutral-500">{t('common.loading')}</div>
+        ) : agents.length === 0 ? (
+          <div className="text-center py-8 text-neutral-500 dark:text-neutral-400 font-bold uppercase">
+            {t('settings.acp.noAgents')}
+          </div>
         ) : (
-          <div className="space-y-3">
-            {agents.map(agent => (
-              <SettingsListItem key={agent.id}>
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-3">
-                      <h3 className="font-black uppercase tracking-wide text-brutal-black dark:text-white truncate">
-                        {agent.name}
-                      </h3>
-                      <Badge>ACP Agent</Badge>
+          <div className="space-y-4">
+            {agents.map(agent => {
+              const probe = probes[agent.id];
+              const ready = isReady(agent);
+              return (
+                <SettingsListItem key={agent.id}>
+                  <div className="flex flex-col md:flex-row items-start md:items-center gap-4 p-4 md:p-5">
+                    {/* Status dot */}
+                    <div className="shrink-0 mt-1 md:mt-0">
+                      <div className={`w-4 h-4 rounded-full border-2 border-brutal-black ${ready ? 'bg-brutal-green' : 'bg-neutral-300 dark:bg-neutral-600'}`} />
                     </div>
-                    <div className="font-mono text-[10px] text-neutral-500 dark:text-neutral-400 mt-1">
-                      {agent.id}
+
+                    {/* Info */}
+                    <div className="flex-1 min-w-0 w-full">
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <h3 className="font-black uppercase tracking-wide text-brutal-black dark:text-white truncate">
+                          {agent.name}
+                        </h3>
+                        <Badge tone={ready ? 'green' : 'amber'}>
+                          {ready ? t('settings.acp.ready') : t('settings.acp.notInstalled')}
+                        </Badge>
+                        {agent.status !== undefined && (
+                          <Badge tone="neutral">
+                            {agent.executable_path ? t('settings.acp.custom') : t('settings.acp.builtIn')}
+                          </Badge>
+                        )}
+                      </div>
+
+                      {agent.description && (
+                        <p className="text-xs text-neutral-600 dark:text-neutral-400 mt-1">{agent.description}</p>
+                      )}
+
+                      <div className="font-mono text-[10px] text-neutral-500 dark:text-neutral-400 mt-1.5 truncate" title={agent.executable_path || agent.id}>
+                        {agent.executable_path || agent.id}
+                      </div>
+
+                      {/* Probe results */}
+                      {probe && (
+                        <div className="mt-2">
+                          {probe.status === 'probing' ? (
+                            <div className="text-[10px] font-bold uppercase text-neutral-500">
+                              {t('settings.acp.probing')}
+                            </div>
+                          ) : probe.status === 'ok' ? (
+                            <Badge tone="green">{t('settings.acp.probeOk')}</Badge>
+                          ) : (
+                            <Badge tone="red">{t('settings.acp.probeFailed')}: {probe.message}</Badge>
+                          )}
+                        </div>
+                      )}
                     </div>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2 shrink-0">
-                      <SettingsListAction tone="blue" onClick={() => onNewSession(agent.id)}>New Session</SettingsListAction>
-                      <SettingsListAction onClick={() => handleProbe(agent)}>Probe</SettingsListAction>
+
+                    {/* Actions */}
+                    <div className="flex flex-wrap gap-2 shrink-0 w-full md:w-auto mt-2 md:mt-0 justify-end md:self-start md:ml-4">
+                      <SettingsListAction
+                        tone="blue"
+                        onClick={() => onNewSession(agent.id)}
+                        disabled={!ready}
+                      >
+                        {t('settings.acp.newSession')}
+                      </SettingsListAction>
+                      <SettingsListAction
+                        onClick={() => handleProbe(agent)}
+                        disabled={!ready || probe?.status === 'probing'}
+                      >
+                        {probe?.status === 'probing' ? t('settings.acp.probing') : t('settings.acp.probe')}
+                      </SettingsListAction>
                       {agent.install_command && (
-                        <SettingsListAction onClick={() => navigator.clipboard.writeText(agent.install_command!.join(' '))}>Copy Install</SettingsListAction>
+                        <SettingsListAction
+                          onClick={() => handleCopy(`install-${agent.id}`, agent.install_command!.join(' '))}
+                        >
+                          {copiedId === `install-${agent.id}` ? t('settings.acp.copied') : t('settings.acp.copyInstall')}
+                        </SettingsListAction>
                       )}
                       {agent.login_command && (
-                        <SettingsListAction onClick={() => navigator.clipboard.writeText(agent.login_command!.join(' '))}>Copy Login</SettingsListAction>
+                        <SettingsListAction
+                          onClick={() => handleCopy(`login-${agent.id}`, agent.login_command!.join(' '))}
+                        >
+                          {copiedId === `login-${agent.id}` ? t('settings.acp.copied') : t('settings.acp.copyLogin')}
+                        </SettingsListAction>
                       )}
+                    </div>
                   </div>
-                </div>
-                {probeResults[agent.id] !== undefined && (
-                  <div className="px-4 pb-4">
-                    <pre className="text-[10px] font-mono bg-neutral-100 dark:bg-black p-2 border border-brutal-black/10 overflow-x-auto">
-                      {JSON.stringify(probeResults[agent.id], null, 2)}
-                    </pre>
-                  </div>
-                )}
-              </SettingsListItem>
-            ))}
+                </SettingsListItem>
+              );
+            })}
           </div>
         )}
       </SettingsCard>
