@@ -2,7 +2,6 @@ import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMe
 import { useChatStore } from '../hooks/useChatStore';
 import { useAGUI, type AGUIPart, type ApprovalRememberScope } from '../hooks/useAGUI';
 import {
-  createAcpSession,
   fetchCronJobs,
   forkChat,
   getApiBase,
@@ -583,7 +582,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     config,
     backendConfig,
     setConfig,
-    setChatConfigForId,
     shouldResetNext,
     consumeResetFlag,
     updateMessage,
@@ -643,6 +641,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const stopInFlightRef = useRef(false);
   // True while a steer is in flight — prevents the normal-send finally from hiding the bubble
   const steeringRef = useRef(false);
+  // True from the moment a send is accepted until it has handed off to the
+  // stream. `isStreaming` only covers the part after the await chain, so
+  // without this a second Enter during chat creation or file upload sent the
+  // same prompt twice.
+  const sendInFlightRef = useRef(false);
 
   // Ref for async callback access to current chatId
   const activeChatIdRef = useRef<string | null>(currentChatId);
@@ -1710,6 +1713,16 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
   // Send message handler (also handles steering when streaming)
   const send = async () => {
+    if (sendInFlightRef.current) return;
+    sendInFlightRef.current = true;
+    try {
+      await sendTurn();
+    } finally {
+      sendInFlightRef.current = false;
+    }
+  };
+
+  const sendTurn = async () => {
     const prompt = input.trim();
     if (!prompt || !configReady || isUploading) return;
 
@@ -1780,20 +1793,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       }
     }
 
-    let configForSend = safeConfig;
-    if (safeConfig.acp_agent_id && !safeConfig.acp_session_id) {
-      try {
-        const session = await createAcpSession(safeConfig.acp_agent_id, chatIdForSend);
-        configForSend = {
-          ...safeConfig,
-          acp_session_id: session.id,
-        };
-        await setChatConfigForId(chatIdForSend, configForSend);
-      } catch (error) {
-        setStatusBar(error instanceof Error ? error.message : t('newChat.acp.createFailed'), 'error', 5000);
-        return;
-      }
-    }
+    // ACP sessions are not created here. Spawning the agent and running the
+    // handshake takes seconds, and doing it before the input clears froze the
+    // composer with no feedback. The backend's stream_acp_turn ensures the
+    // session itself and persists the id, so the boot now overlaps the
+    // streaming indicator instead of blocking it.
 
     // Block if a background stream is active AND the frontend also thinks this chat
     // is streaming. If the frontend already cleared (e.g. user just hit Stop), skip
@@ -1849,7 +1853,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     const mentionsToSend = extractSelectedFileMentions(prompt, fileMentions);
     const payload: Record<string, unknown> = {
       message: prompt,
-      config: configForSend,
+      config: safeConfig,
       chat_id: chatIdForSend,
       reset: resetFlag,
     };
