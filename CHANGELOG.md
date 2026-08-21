@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fix ChatGPT subscription tool search
 
 ### 🐛 Fixed
+- Polish ACP agents settings tab
 - Steer routing, file context, and logger for ACP chats
 - Report agent errors, recover stale sessions, fix runtime labelling
 - Clean up landing page nav — fewer words, tighter layout
