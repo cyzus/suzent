@@ -4,19 +4,53 @@ Suzent uses a Release PR workflow. Preparing a release is a single manual
 action; version synchronization, tagging, cross-platform builds, and GitHub
 Release publication are automated.
 
+## Before you start
+
+1. Make sure all changes intended for the release have been merged into
+   `main`, and that its required CI checks pass.
+2. Decide the next [semantic version](https://semver.org/):
+   - `patch` for backward-compatible fixes;
+   - `minor` for backward-compatible features;
+   - `major` for breaking changes;
+   - an exact `X.Y.Z` version only when the automatically calculated version
+     is not appropriate.
+3. Decide how desktop assets should be handled:
+   - use `build` for every normal release and for any frontend, desktop,
+     installer, or `API_VERSION` change;
+   - use `reuse` only for a backend-only hotfix that remains compatible with
+     the previous desktop application.
+
 ## Normal release
 
-1. Open **Actions → Prepare Release → Run workflow**.
-2. Enter `patch`, `minor`, `major`, or an exact version such as `0.8.0`.
-   Choose `build` for normal releases. Choose `reuse` only for backend-only
-   hotfixes that do not change `API_VERSION`, frontend code, desktop code, or
-   installer behavior; it reuses the previous published native assets.
-3. Review the generated `release/vX.Y.Z` pull request. Edit the generated
-   changelog entry if needed, wait for required checks, and merge it.
-4. The merge automatically creates the `vX.Y.Z` tag and starts
-   **Build and Publish Desktop Release**.
-5. Verify the published release and its assets on the
-   [Releases page](https://github.com/cyzus/suzent/releases).
+1. In GitHub, open **Actions → Prepare Release → Run workflow** and select the
+   `main` branch.
+2. Set **version** to `patch`, `minor`, `major`, or an exact version such as
+   `0.8.0`. Set **desktop_assets** to `build` unless the release meets all of
+   the `reuse` conditions above, then run the workflow.
+3. Wait for the workflow to open a `release/vX.Y.Z` pull request. Do not create
+   the release branch, tag, or GitHub Release manually.
+4. Review the pull request:
+   - confirm the version is correct in every changed manifest and lock file;
+   - edit the generated `CHANGELOG.md` section so it is accurate and useful to
+     users;
+   - confirm `.release-assets-mode` contains the intended `build` or `reuse`
+     value;
+   - wait for all required checks to pass.
+5. Merge the Release PR into `main`. The merge automatically creates the
+   `vX.Y.Z` tag and starts **Build and Publish Desktop Release**.
+6. Wait for that workflow to complete. The GitHub Release stays in draft state
+   until every required asset has been uploaded and checksums are generated.
+7. Open the [Releases page](https://github.com/cyzus/suzent/releases) and verify:
+   - the release is published rather than draft and is marked as the latest
+     release;
+   - its title, tag, and release notes match the merged changelog;
+   - all eight `suzent-*` application and installer assets are present (two
+     each for Windows, Linux, macOS Intel, and macOS Apple Silicon);
+   - `SHA256SUMS` is attached.
+
+The release is complete only after the publication and asset checks in step 7
+pass. If the workflow fails, follow [Recovery](#recovery) rather than manually
+publishing the draft.
 
 The release remains a draft while Windows, macOS Intel, macOS Apple Silicon,
 and Linux builds run. It is published only after every build succeeds. A failed
@@ -77,13 +111,13 @@ The same preparation can be run locally:
 
 ```bash
 # Preview release notes without changing files
-python scripts/bump_version.py patch --changelog
+uv run python scripts/bump_version.py patch --changelog
 
 # Synchronize files and add the changelog entry
-python scripts/bump_version.py patch
+uv run python scripts/bump_version.py patch
 
 # Verify all version sources
-python scripts/bump_version.py --check
+uv run python scripts/bump_version.py --check
 ```
 
 Review the diff and commit only the version files and `CHANGELOG.md`. Do not use
