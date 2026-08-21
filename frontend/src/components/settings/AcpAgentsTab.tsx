@@ -136,73 +136,156 @@ export function AcpAgentsTab(): React.ReactElement {
               const counts = sessionCounts[agent.id];
               const activeSessions = counts?.active ?? 0;
               const savedSessions = counts?.saved ?? 0;
+              const adapter = agent.adapter_package;
+              const customInstall = agent.install_command?.join(' ');
+              // The adapter is Suzent's own requirement; a custom agent's
+              // install_command is whatever its author wrote. Never both.
+              const setupCommand = adapter ? `npm install -g ${adapter}` : customInstall;
+              const needsSetup = !ready && (agent.docs_url || setupCommand);
               return (
                 <SettingsListItem key={agent.id}>
-                  <div className="p-4 md:p-5 space-y-3">
-                    {/* Row 1: icon + status dot + name + badges */}
-                    <div className="flex items-center gap-3 flex-wrap">
-                      <span className={ready ? 'text-brutal-black dark:text-white' : 'text-neutral-400 dark:text-neutral-500'}>
-                        <AcpAgentIcon id={agent.id} />
-                      </span>
-                      <div
-                        className={`w-2.5 h-2.5 rounded-full border-2 border-brutal-black shrink-0 ${
-                          ready ? 'bg-brutal-green' : 'bg-neutral-300 dark:bg-neutral-600'
-                        }`}
-                      />
-                      <span className="font-black uppercase tracking-wide text-brutal-black dark:text-white text-base">
-                        {agent.name}
-                      </span>
-                      <Badge tone={ready ? 'green' : 'amber'}>
-                        {ready ? t('settings.acp.ready') : t('settings.acp.notInstalled')}
-                      </Badge>
-                      <Badge tone="neutral">
-                        {agent.builtin ? t('settings.acp.builtIn') : t('settings.acp.custom')}
-                      </Badge>
-                      {ready && agent.auth_status && (
-                        <AuthBadge status={agent.auth_status} t={t} />
-                      )}
+                  {/* Identity and status — the two things scanned first */}
+                  <div className="flex items-start gap-3 p-4 bg-white dark:bg-zinc-800 border-b-2 border-brutal-black">
+                    <div
+                      className={`w-10 h-10 border-2 border-brutal-black flex items-center justify-center shrink-0 ${
+                        ready
+                          ? 'bg-white dark:bg-zinc-900 text-brutal-black dark:text-white shadow-[2px_2px_0_0_#000] dark:shadow-[2px_2px_0_0_#fff]'
+                          : 'bg-neutral-200 dark:bg-zinc-700 text-neutral-400 dark:text-neutral-500'
+                      }`}
+                    >
+                      <AcpAgentIcon id={agent.id} />
                     </div>
-
-                    {/* Row 2: description */}
-                    {agent.description && (
-                      <div className="text-xs text-neutral-500 dark:text-neutral-400 pl-8">
-                        {agent.description}
+                    <div className="min-w-0 flex-1">
+                      {/* Badges wrap under the name rather than crushing it:
+                          the settings pane gets narrow. */}
+                      <div className="flex items-start justify-between gap-2 flex-wrap">
+                        <div className="font-black uppercase tracking-wide text-base text-brutal-black dark:text-white break-words">
+                          {agent.name}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {ready && agent.auth_status && (
+                            <AuthBadge status={agent.auth_status} t={t} />
+                          )}
+                          <Badge tone={ready ? 'green' : 'amber'}>
+                            {ready ? t('settings.acp.ready') : t('settings.acp.notInstalled')}
+                          </Badge>
+                        </div>
                       </div>
-                    )}
-
-                    {/* Row 3: executable path + session counts */}
-                    <div className="flex items-center gap-4 pl-8 min-w-0">
-                      <span
-                        className="font-mono text-[10px] text-neutral-500 dark:text-neutral-400 truncate min-w-0 flex-1"
-                        title={agent.executable_path || agent.id}
-                      >
-                        {agent.executable_path || agent.id}
-                      </span>
-                      {ready && (
-                        // "Active" means a live agent process; a chat bound to
-                        // this agent with nothing running is only "saved".
-                        <Badge
-                          tone={activeSessions > 0 ? 'blue' : 'neutral'}
-                          className="shrink-0"
-                        >
-                          {activeSessions > 0
-                            ? t('settings.acp.activeSessions').replace(
-                                '{count}',
-                                String(activeSessions),
-                              )
-                            : savedSessions > 0
-                              ? t('settings.acp.savedSessions').replace(
-                                  '{count}',
-                                  String(savedSessions),
-                                )
-                              : t('settings.acp.noSessions')}
-                        </Badge>
+                      {agent.description && (
+                        <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
+                          {agent.description}
+                        </div>
                       )}
                     </div>
+                  </div>
 
-                    {/* Row 4: probe result (if any) */}
+                  {/* Where it lives, who defined it, what it's running */}
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2 border-b-2 border-brutal-black/10 dark:border-white/10">
+                    <span
+                      className="font-mono text-[10px] text-neutral-500 dark:text-neutral-400 truncate min-w-0 flex-1 basis-48"
+                      title={agent.executable_path || agent.id}
+                    >
+                      {agent.executable_path || agent.id}
+                    </span>
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-neutral-400 dark:text-neutral-500 shrink-0">
+                      {agent.builtin ? t('settings.acp.builtIn') : t('settings.acp.custom')}
+                    </span>
+                    {ready && (
+                      // "Active" means a live agent process; a chat bound to
+                      // this agent with nothing running is only "saved".
+                      <Badge
+                        tone={activeSessions > 0 ? 'blue' : 'neutral'}
+                        className="shrink-0"
+                      >
+                        {activeSessions > 0
+                          ? t('settings.acp.activeSessions').replace(
+                              '{count}',
+                              String(activeSessions),
+                            )
+                          : savedSessions > 0
+                            ? t('settings.acp.savedSessions').replace(
+                                '{count}',
+                                String(savedSessions),
+                              )
+                            : t('settings.acp.noSessions')}
+                      </Badge>
+                    )}
+                  </div>
+
+                  {/* The fix, in place of the status it explains */}
+                  {needsSetup && (
+                    <div className="m-4 border-[3px] border-brutal-black bg-white dark:bg-zinc-800 shadow-[3px_3px_0_0_#000] dark:shadow-[3px_3px_0_0_#fff]">
+                      <div className="border-b-[3px] border-brutal-black bg-amber-400 text-brutal-black px-3 py-1.5 text-[11px] font-black uppercase tracking-wide">
+                        {t('settings.acp.setupTitle')}
+                      </div>
+                      <div className="p-3 space-y-3">
+                        {agent.docs_url && (
+                          <div className="space-y-2">
+                            <p className="text-[11px] text-neutral-600 dark:text-neutral-400">
+                              {t('settings.acp.installHint')}
+                            </p>
+                            <ExternalAction
+                              href={agent.docs_url}
+                              label={t('settings.acp.installGuide')}
+                              primary
+                            />
+                          </div>
+                        )}
+                        {setupCommand && (
+                          <div className="space-y-1.5">
+                            <div className="text-[10px] font-black uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+                              {adapter
+                                ? t('settings.acp.adapterTitle')
+                                : t('settings.acp.copyInstall')}
+                            </div>
+                            {adapter && (
+                              <p className="text-[11px] text-neutral-600 dark:text-neutral-400">
+                                {t('settings.acp.adapterHint')}
+                              </p>
+                            )}
+                            <CommandChip
+                              command={setupCommand}
+                              copied={copiedId === `install-${agent.id}`}
+                              onCopy={() => handleCopy(`install-${agent.id}`, setupCommand)}
+                              t={t}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Actions — the probe result reads on the line it came from */}
+                  <div className="flex flex-wrap items-center gap-2 p-4">
+                    <SettingsListAction
+                      onClick={() => handleProbe(agent)}
+                      disabled={!ready || probe?.status === 'probing'}
+                    >
+                      {probe?.status === 'probing'
+                        ? t('settings.acp.probing')
+                        : t('settings.acp.probe')}
+                    </SettingsListAction>
+                    {/* Logging in before the CLI exists is a dead end; the
+                        setup panel is the only useful action until then. */}
+                    {ready && agent.login_command && (
+                      <SettingsListAction
+                        onClick={() =>
+                          handleCopy(
+                            `login-${agent.id}`,
+                            agent.login_command!.join(' '),
+                          )
+                        }
+                      >
+                        {copiedId === `login-${agent.id}`
+                          ? t('settings.acp.copied')
+                          : t('settings.acp.copyLogin')}
+                      </SettingsListAction>
+                    )}
+                    {ready && agent.docs_url && (
+                      <ExternalAction href={agent.docs_url} label={t('settings.acp.docs')} />
+                    )}
                     {probe && (
-                      <div className="pl-8">
+                      <div className="ml-auto shrink-0">
                         {probe.status === 'probing' ? (
                           <span className="text-[10px] font-bold uppercase text-neutral-500">
                             {t('settings.acp.probing')}
@@ -210,52 +293,12 @@ export function AcpAgentsTab(): React.ReactElement {
                         ) : probe.status === 'ok' ? (
                           <Badge tone="green">{t('settings.acp.probeOk')}</Badge>
                         ) : (
-                          <Badge tone="red">
+                          <Badge tone="red" title={probe.message}>
                             {t('settings.acp.probeFailed')}
                           </Badge>
                         )}
                       </div>
                     )}
-
-                    {/* Row 5: actions — status checks and clipboard helpers only */}
-                    <div className="flex flex-wrap gap-2 pt-1 pl-8">
-                      <SettingsListAction
-                        onClick={() => handleProbe(agent)}
-                        disabled={!ready || probe?.status === 'probing'}
-                      >
-                        {probe?.status === 'probing'
-                          ? t('settings.acp.probing')
-                          : t('settings.acp.probe')}
-                      </SettingsListAction>
-                      {agent.install_command && (
-                        <SettingsListAction
-                          onClick={() =>
-                            handleCopy(
-                              `install-${agent.id}`,
-                              agent.install_command!.join(' '),
-                            )
-                          }
-                        >
-                          {copiedId === `install-${agent.id}`
-                            ? t('settings.acp.copied')
-                            : t('settings.acp.copyInstall')}
-                        </SettingsListAction>
-                      )}
-                      {agent.login_command && (
-                        <SettingsListAction
-                          onClick={() =>
-                            handleCopy(
-                              `login-${agent.id}`,
-                              agent.login_command!.join(' '),
-                            )
-                          }
-                        >
-                          {copiedId === `login-${agent.id}`
-                            ? t('settings.acp.copied')
-                            : t('settings.acp.copyLogin')}
-                        </SettingsListAction>
-                      )}
-                    </div>
                   </div>
                 </SettingsListItem>
               );
@@ -263,6 +306,79 @@ export function AcpAgentsTab(): React.ReactElement {
           </div>
         )}
       </SettingsCard>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Setup helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Link styled to match `SettingsListAction` so an outbound link sits in the
+ * same action row as the buttons without reading as a different control.
+ */
+function ExternalAction({
+  href,
+  label,
+  primary = false,
+}: {
+  href: string;
+  label: string;
+  primary?: boolean;
+}): React.ReactElement {
+  const tone = primary
+    ? 'border-brutal-black bg-brutal-blue text-white shadow-[2px_2px_0_0_#000] hover:-translate-y-0.5'
+    : 'border-brutal-black/20 dark:border-white/10 text-neutral-500 dark:text-neutral-400 hover:border-brutal-black hover:text-brutal-black dark:hover:border-white dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-zinc-800';
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer noopener"
+      className={`inline-flex items-center gap-1.5 px-3 py-1 border text-[11px] font-bold uppercase transition-all rounded-sm ${tone}`}
+    >
+      {label}
+      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2.5}
+          d="M14 5h5v5M19 5l-8 8M17 14v4a1 1 0 01-1 1H6a1 1 0 01-1-1V8a1 1 0 011-1h4"
+        />
+      </svg>
+    </a>
+  );
+}
+
+/** A terminal-looking command with the copy button attached to it. */
+function CommandChip({
+  command,
+  copied,
+  onCopy,
+  t,
+}: {
+  command: string;
+  copied: boolean;
+  onCopy: () => void;
+  t: (k: string) => string;
+}): React.ReactElement {
+  return (
+    <div className="flex items-stretch border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900">
+      <code className="flex-1 min-w-0 px-2.5 py-1.5 font-mono text-[11px] text-brutal-black dark:text-white overflow-x-auto whitespace-nowrap">
+        <span className="text-neutral-400 select-none">$ </span>
+        {command}
+      </code>
+      <button
+        type="button"
+        onClick={onCopy}
+        className={`shrink-0 border-l-2 border-brutal-black px-2.5 text-[10px] font-black uppercase transition-colors ${
+          copied
+            ? 'bg-brutal-green text-brutal-black'
+            : 'bg-white dark:bg-zinc-800 text-brutal-black dark:text-white hover:bg-brutal-yellow dark:hover:bg-brutal-yellow dark:hover:text-brutal-black'
+        }`}
+      >
+        {copied ? t('settings.acp.copied') : t('settings.acp.copyCommand')}
+      </button>
     </div>
   );
 }

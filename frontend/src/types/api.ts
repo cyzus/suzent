@@ -224,6 +224,10 @@ export interface AcpAgentDescriptor {
   probe?: () => Promise<boolean>;
   install_command?: string[];
   login_command?: string[];
+  /** Vendor install documentation — install routes are too plural to hardcode. */
+  docs_url?: string | null;
+  /** npm adapter this agent is launched through, when it runs via npx. */
+  adapter_package?: string | null;
   /** 'ready' when the executable was found on PATH, else 'not_installed'. */
   status?: 'ready' | 'not_installed';
   executable_path?: string | null;

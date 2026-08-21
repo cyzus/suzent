@@ -109,6 +109,10 @@ class ACPAgent:
     builtin: bool = False
     description: str | None = None
     requires_executable: str | None = None
+    # Where the vendor documents installation. Install routes are plural and
+    # platform-specific (brew, curl, native installer, Docker, npm), so we link
+    # to the page that tracks them instead of hardcoding one command.
+    docs_url: str | None = None
 
     install_command: list[str] | None = None
     login_command: list[str] | None = None
@@ -141,6 +145,16 @@ class ACPAgent:
             return package
         return self.command[0] if self.command else self.name
 
+    @property
+    def adapter_package(self) -> str | None:
+        """The npm adapter this agent is launched through, if any.
+
+        Priming it is Suzent's requirement, not the vendor's: a cold `npx`
+        download happens inside the `initialize` handshake, where it reads as
+        a hung agent.
+        """
+        return _npx_package(self.command)
+
     def diagnostics(self) -> dict[str, Any]:
         # Show the user-facing executable, not an intermediate launcher.
         if self.requires_executable:
@@ -163,6 +177,8 @@ class ACPAgent:
             "auth_status": self.auth_status,
             "install_command": self.install_command,
             "login_command": self.login_command,
+            "docs_url": self.docs_url,
+            "adapter_package": self.adapter_package,
         }
 
     def to_dict(self) -> dict[str, Any]:
@@ -185,26 +201,21 @@ _BUILTINS = (
         builtin=True,
         description="Wraps the Claude CLI for Pro/Max subscribers — no API key needed.",
         requires_executable="claude",
-        install_command=["npm", "install", "-g", "@anthropic-ai/claude-code"],
+        docs_url="https://docs.claude.com/en/docs/claude-code/setup",
         login_command=["claude", "auth", "login"],
         auth_status="unknown",
     ),
     # ── Claude Code (API Adapter) ────────────────────────────────────
     # Official @agentclientprotocol adapter using the Agent SDK (2.4k ⭐).
-    # npx downloads on first use and caches; ``install_command`` offers a
-    # permanent global install.
+    # npx downloads on first use and caches; ``adapter_package`` lets the UI
+    # offer a permanent global install so the first turn isn't a download.
     ACPAgent(
         id="claude-code-api",
         name="Claude Code (API)",
         command=["npx", "-y", "@agentclientprotocol/claude-agent-acp"],
         builtin=True,
         description="Official ACP adapter via Agent SDK — requires an Anthropic API key.",
-        install_command=[
-            "npm",
-            "install",
-            "-g",
-            "@agentclientprotocol/claude-agent-acp",
-        ],
+        docs_url="https://github.com/agentclientprotocol/claude-agent-acp",
     ),
     # ── Codex ────────────────────────────────────────────────────────
     # Official @agentclientprotocol adapter for the OpenAI Codex CLI.
@@ -214,7 +225,7 @@ _BUILTINS = (
         command=["npx", "-y", "@agentclientprotocol/codex-acp"],
         builtin=True,
         description="Official ACP adapter for the OpenAI Codex CLI.",
-        install_command=["npm", "install", "-g", "@agentclientprotocol/codex-acp"],
+        docs_url="https://developers.openai.com/codex/cli/",
         # `auth` doesn't exist on the Codex CLI; the subcommand is `login`.
         login_command=["codex", "login"],
     ),
@@ -228,6 +239,7 @@ _BUILTINS = (
         command=["hermes", "acp"],
         builtin=True,
         description="Nous Research's autonomous AI agent with native ACP support.",
+        docs_url="https://github.com/NousResearch/hermes-agent",
         # `hermes login` is deprecated and `hermes auth` has no `login`
         # subcommand; the CLI points users at `setup` for provider auth.
         login_command=["hermes", "setup"],
@@ -243,7 +255,7 @@ _BUILTINS = (
         command=["openclaw", "acp"],
         builtin=True,
         description="Bridges a running OpenClaw Gateway session over ACP.",
-        install_command=["npm", "install", "-g", "openclaw"],
+        docs_url="https://docs.openclaw.ai/start/getting-started",
         login_command=["openclaw", "onboard"],
     ),
 )
@@ -348,6 +360,9 @@ class ACPAgentRegistry:
             requires_executable=str(raw["requires_executable"])
             if raw.get("requires_executable")
             else (builtin.requires_executable if builtin else None),
+            docs_url=str(raw["docs_url"])
+            if raw.get("docs_url")
+            else (builtin.docs_url if builtin else None),
             install_command=_command_field(
                 "install_command", builtin.install_command if builtin else None
             ),

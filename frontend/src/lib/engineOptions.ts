@@ -63,7 +63,7 @@ export function buildEngineOptions(params: {
       group: labels.acp,
       disabled: unavailable,
       hint: unavailable
-        ? (agent.install_command?.length ? labels.installHint : labels.notInstalled)
+        ? (agent.docs_url || agent.install_command?.length ? labels.installHint : labels.notInstalled)
         : undefined,
     };
   });

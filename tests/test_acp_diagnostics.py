@@ -162,3 +162,56 @@ def test_display_command_names_the_dependency_not_the_launcher():
     assert bridge.display_command == "claude"
     assert npx_agent.display_command == "@agentclientprotocol/codex-acp"
     assert plain.display_command == "hermes"
+
+
+def test_adapter_package_is_only_set_for_npx_launched_agents():
+    """The setup panel offers a global install to skip the cold `npx` fetch.
+
+    That download happens inside the `initialize` handshake, so it reads as a
+    hung agent. Agents that run their own binary have nothing to prime.
+    """
+    npx_agent = ACPAgent(
+        id="codex",
+        name="Codex",
+        command=["npx", "-y", "@agentclientprotocol/codex-acp"],
+    )
+    plain = ACPAgent(id="hermes", name="Hermes", command=["hermes", "acp"])
+
+    assert npx_agent.adapter_package == "@agentclientprotocol/codex-acp"
+    assert plain.adapter_package is None
+
+
+def test_builtins_link_install_docs_instead_of_hardcoding_a_command():
+    """Install routes are plural (brew, curl, installer, npm) and per-platform.
+
+    A single `npm install -g` was wrong for anyone who installed another way,
+    and for the CLI bridges it named the adapter rather than the agent.
+    """
+    registry = ACPAgentRegistry(path=None)
+
+    for agent in registry.list_agents():
+        assert agent.install_command is None, agent.id
+        assert agent.docs_url, agent.id
+        assert agent.diagnostics()["docs_url"] == agent.docs_url
+
+
+def test_a_custom_agent_can_carry_its_own_docs_url(tmp_path):
+    path = tmp_path / "acp_agents.json"
+    path.write_text(
+        json.dumps(
+            {
+                "agents": [
+                    {
+                        "id": "mine",
+                        "name": "Mine",
+                        "command": ["mine"],
+                        "docs_url": "https://mine.test/install",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    registry = ACPAgentRegistry(path=path)
+
+    assert registry.get("mine").docs_url == "https://mine.test/install"

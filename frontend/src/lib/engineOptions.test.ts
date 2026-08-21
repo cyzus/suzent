@@ -13,6 +13,7 @@ const AGENTS: AcpAgentDescriptor[] = [
   { id: 'claude-code', name: 'Claude Code', status: 'ready' },
   { id: 'codex', name: 'Codex (ACP)', status: 'not_installed', install_command: ['sh', '-c', 'x'] },
   { id: 'bare', name: 'Bare', status: 'not_installed' },
+  { id: 'documented', name: 'Documented', status: 'not_installed', docs_url: 'https://x.test' },
 ];
 
 const build = (over: Partial<Parameters<typeof buildEngineOptions>[0]> = {}) =>
@@ -48,12 +49,19 @@ describe('buildEngineOptions', () => {
     expect(byId['acp:bare']).toBeUndefined();
   });
 
-  it('points at the install path only when there is an install command', () => {
+  it('points at the install path only when there is somewhere to point', () => {
     const byId = Object.fromEntries(
       build({ selectedAgentId: 'bare' }).map(o => [o.value, o]),
     );
     expect(byId['acp:bare'].hint).toBe(LABELS.notInstalled);
     expect(byId['acp:claude-code'].hint).toBeUndefined();
+  });
+
+  it('treats vendor docs as an install path, the way built-ins now describe one', () => {
+    const byId = Object.fromEntries(
+      build({ selectedAgentId: 'documented' }).map(o => [o.value, o]),
+    );
+    expect(byId['acp:documented'].hint).toBe(LABELS.installHint);
   });
 
   it('drops the ACP group once the chat exists, keeping the agent in use', () => {
