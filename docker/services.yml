@@ -28,7 +28,7 @@ services:
   # SearXNG privacy-respecting metasearch engine
   searxng:
     container_name: suzent-searxng
-    image: docker.io/searxng/searxng:latest
+    image: docker.io/searxng/searxng@sha256:d477c0460cc06afa57541f24c7adcae3846303a125c3ae785b9893c9c2c2186f
     restart: unless-stopped
     networks:
       - suzent-network
@@ -44,7 +44,13 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: [ "CMD", "wget", "--spider", "-q", "http://localhost:8080/" ]
+      test:
+        [
+          "CMD",
+          "wget",
+          "-qO-",
+          "http://localhost:8080/search?q=healthcheck&format=json&engines=duckduckgo",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3

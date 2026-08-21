@@ -1,5 +1,10 @@
 # see https://docs.searxng.org/admin/settings/settings.html#settings-use-default-settings
-use_default_settings: true
+use_default_settings:
+  engines:
+    remove:
+      - radio browser
+      - wikidata
+      - yacy images
 server:
   # base_url is defined in the SEARXNG_BASE_URL environment variable, see .env and docker-compose.yml
   # secret_key is defined in the SEARXNG_SECRET environment variable
