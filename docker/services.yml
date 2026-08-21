@@ -43,15 +43,14 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+    # `/config` proves the app booted and is serving its API, without the
+    # cost of a real search: the previous check fired a live DuckDuckGo query
+    # every 30s (~2,880/day per install, enough to get an install blocked) and
+    # stayed green anyway, since SearXNG answers 200 with `unresponsive_engines`
+    # when an engine fails.
     healthcheck:
-      test:
-        [
-          "CMD",
-          "wget",
-          "-qO-",
-          "http://localhost:8080/search?q=healthcheck&format=json&engines=duckduckgo",
-        ]
-      interval: 30s
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/config"]
+      interval: 60s
       timeout: 10s
       retries: 3
     logging:
