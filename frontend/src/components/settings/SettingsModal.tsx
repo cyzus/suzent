@@ -712,12 +712,7 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }
                   )}
 
                   {activeCategory === 'acp-agents' && (
-                    <AcpAgentsTab
-                      onNewSession={(agentId) => {
-                        window.dispatchEvent(new CustomEvent('suzent:new-acp-chat', { detail: { agentId } }));
-                        handleClose();
-                      }}
-                    />
+                    <AcpAgentsTab />
                   )}
 
                   {activeCategory === 'automation' && (

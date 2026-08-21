@@ -20,24 +20,33 @@ async def list_acp_agents(_request: Request) -> JSONResponse:
     )
 
 
-async def list_acp_sessions(_request: Request) -> JSONResponse:
+async def list_acp_sessions(request: Request) -> JSONResponse:
+    # Scope to one agent when asked. Without this every agent reported the same
+    # total, so the settings tab showed an identical session count on each card.
+    agent_id = (request.query_params.get("agent_id") or "").strip()
+
     db = get_database()
     sessions = []
     for row in db.list_chats_by_config("runtime", "acp"):
         config = row["config"]
+        row_agent = config.get("acp_agent_id")
+        if agent_id and row_agent != agent_id:
+            continue
         sessions.append(
             {
                 "chat_id": row["id"],
                 "title": row["title"],
-                "agent_id": config.get("acp_agent_id"),
+                "agent_id": row_agent,
                 "session_id": config.get("acp_session_id"),
                 "cwd": config.get("acp_cwd") or config.get("cwd"),
                 "platform": config.get("platform"),
             }
         )
-    return JSONResponse(
-        {"sessions": sessions, "active": get_acp_manager().list_active()}
-    )
+
+    active = get_acp_manager().list_active()
+    if agent_id:
+        active = [item for item in active if item.get("agent_id") == agent_id]
+    return JSONResponse({"sessions": sessions, "active": active})
 
 
 async def create_acp_session(request: Request) -> JSONResponse:
@@ -50,15 +59,29 @@ async def create_acp_session(request: Request) -> JSONResponse:
         config = dict(data.get("config") or {})
         config.update({"runtime": "acp", "acp_agent_id": agent_id, "acp_cwd": cwd})
         db = get_database()
-        chat_id = db.create_chat(
-            str(data.get("title") or "ACP Session"),
-            config,
-            project_id=data.get("project_id") or data.get("projectId"),
-        )
+
+        # Attach to the caller's chat when it names one. The chat picker
+        # already created a chat before the first send; minting a second one
+        # here left every ACP conversation showing up twice in the sidebar
+        # (once as "New Chat", once as "ACP Session").
+        chat_id = str(data.get("chat_id") or data.get("chatId") or "").strip()
+        created_chat = False
+        if chat_id:
+            if db.get_chat(chat_id) is None:
+                return JSONResponse({"error": "Chat not found"}, status_code=404)
+            db.merge_chat_config(chat_id, config)
+        else:
+            chat_id = db.create_chat(
+                str(data.get("title") or "ACP Session"),
+                config,
+                project_id=data.get("project_id") or data.get("projectId"),
+            )
+            created_chat = True
         try:
             managed = await get_acp_manager().create(chat_id, agent_id, cwd)
         except Exception:
-            db.delete_chat(chat_id)
+            if created_chat:
+                db.delete_chat(chat_id)
             raise
         db.merge_chat_config(chat_id, {"acp_session_id": managed.session_id})
         return JSONResponse(

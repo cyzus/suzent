@@ -227,6 +227,10 @@ export interface AcpAgentDescriptor {
   /** 'ready' when the executable was found on PATH, else 'not_installed'. */
   status?: 'ready' | 'not_installed';
   executable_path?: string | null;
+  /** True for agents shipped in the built-in registry. */
+  builtin?: boolean;
+  /** Auth status reported by the registry (e.g. 'unknown', 'ok', 'missing'). */
+  auth_status?: string;
 }
 
 export interface ChatGPTStatusResponse {

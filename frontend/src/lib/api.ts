@@ -457,6 +457,8 @@ export async function fetchAcpAgents(): Promise<AcpAgentDescriptor[]> {
     // Kept so callers can tell a usable agent from one that isn't installed.
     status: a.status,
     executable_path: a.executable_path,
+    builtin: a.builtin,
+    auth_status: a.auth_status,
   }));
 }
 
@@ -504,13 +506,22 @@ export async function probeAcpAgent(id: string): Promise<Record<string, unknown>
   return res.json();
 }
 
-export async function fetchAcpSessions(agentId: string): Promise<ACPSession[]> {
+export interface AcpAgentSessions {
+  /** Chats bound to this agent, whether or not a process is running. */
+  saved: ACPSession[];
+  /** Sessions with a live agent process right now. */
+  active: number;
+}
+
+export async function fetchAcpSessions(agentId: string): Promise<AcpAgentSessions> {
   const res = await fetch(`${getApiBase()}/acp/sessions?agent_id=${encodeURIComponent(agentId)}`);
   if (!res.ok) throw new Error(`Failed to load ACP sessions: ${res.status}`);
-  return unwrapList<ACPSession>(await res.json(), 'sessions').map(session => ({
+  const payload = await res.json();
+  const saved = unwrapList<ACPSession>(payload, 'sessions').map(session => ({
     ...session,
     id: session.id || (session as ACPSession & { session_id?: string }).session_id || '',
   })).filter(session => !!session.id);
+  return { saved, active: unwrapList<unknown>(payload, 'active').length };
 }
 
 export async function createAcpSession(agentId: string, chatId: string): Promise<ACPSession> {
