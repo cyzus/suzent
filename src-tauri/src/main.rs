@@ -135,7 +135,7 @@ fn start_update_and_restart(
     let repo_dir = backend::find_install_workspace_dir();
     let uv_exe = backend::find_uv();
     let ui_exe = find_relaunch_exe(&repo_dir).map_err(|e| e.to_string())?;
-    let restart_service = get_service_status()
+    let restart_service = get_service_status_blocking()
         .ok()
         .and_then(|payload| serde_json::from_str::<serde_json::Value>(&payload).ok())
         .and_then(|payload| payload.get("installed").and_then(|value| value.as_bool()))
@@ -307,17 +307,32 @@ fn extract_json_payload(output: &str) -> Result<String, String> {
     Ok(payload.to_string())
 }
 
-#[tauri::command]
-fn get_service_status() -> Result<String, String> {
+fn get_service_status_blocking() -> Result<String, String> {
     extract_json_payload(&run_service_cli(&["status", "--json"])?)
 }
 
 #[tauri::command]
-fn set_service_enabled(
+async fn get_service_status() -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(get_service_status_blocking)
+        .await
+        .map_err(|error| format!("Service status task failed: {}", error))?
+}
+
+#[tauri::command]
+async fn set_service_enabled(
     app_handle: tauri::AppHandle,
-    state: State<AppState>,
     enabled: bool,
 ) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || set_service_enabled_blocking(app_handle, enabled))
+        .await
+        .map_err(|error| format!("Service configuration task failed: {}", error))?
+}
+
+fn set_service_enabled_blocking(
+    app_handle: tauri::AppHandle,
+    enabled: bool,
+) -> Result<String, String> {
+    let state = app_handle.state::<AppState>();
     if enabled {
         run_service_cli(&["install"])?;
     } else {
@@ -353,13 +368,17 @@ fn set_service_enabled(
             publish_backend_port(&app_handle, port)?;
         }
     }
-    get_service_status()
+    get_service_status_blocking()
 }
 
 #[tauri::command]
-fn restart_background_service() -> Result<String, String> {
-    run_service_cli(&["restart"])?;
-    get_service_status()
+async fn restart_background_service() -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        run_service_cli(&["restart"])?;
+        get_service_status_blocking()
+    })
+    .await
+    .map_err(|error| format!("Service restart task failed: {}", error))?
 }
 
 #[tauri::command]

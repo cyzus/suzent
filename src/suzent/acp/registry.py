@@ -87,7 +87,8 @@ def _npm_package_installed(package: str) -> bool:
 
 def _npx_package(command: list[str]) -> str | None:
     """The package an ``npx`` command would run, or None if not an npx call."""
-    if not command or Path(command[0]).stem.lower() != "npx":
+    executable = Path(command[0].replace("\\", "/")).stem.lower() if command else ""
+    if executable != "npx":
         return None
     for part in command[1:]:
         if part.startswith("-"):
