@@ -126,6 +126,21 @@ class ACPAgent:
             return False
         return True
 
+    @property
+    def display_command(self) -> str:
+        """What to name when the agent can't run.
+
+        ``command[0]`` is an implementation detail: for the CLI bridge it is
+        the Python interpreter, and telling a user their own interpreter is
+        unavailable helps nobody.
+        """
+        if self.requires_executable:
+            return self.requires_executable
+        package = _npx_package(self.command)
+        if package:
+            return package
+        return self.command[0] if self.command else self.name
+
     def diagnostics(self) -> dict[str, Any]:
         # Show the user-facing executable, not an intermediate launcher.
         if self.requires_executable:
@@ -228,6 +243,11 @@ _BUILTINS = (
 )
 
 
+# Built-in ids that have been renamed. Chats created before the rename still
+# carry the old id in their config, and every send would fail without this.
+_RENAMED_IDS = {"codex-acp": "codex"}
+
+
 class ACPAgentRegistry:
     """Load ACP stdio commands from ``~/.suzent/acp_agents.json``.
 
@@ -250,9 +270,17 @@ class ACPAgentRegistry:
         return list(agents.values())
 
     def get(self, agent_id: str) -> ACPAgent:
-        for agent in self.list_agents():
+        agents = self.list_agents()
+        for agent in agents:
             if agent.id == agent_id:
                 return agent
+        # Fall back to the new id only when nothing claims the old one, so a
+        # user-defined agent keeping the retired id still wins.
+        renamed = _RENAMED_IDS.get(agent_id)
+        if renamed:
+            for agent in agents:
+                if agent.id == renamed:
+                    return agent
         raise KeyError(f"Unknown ACP agent: {agent_id}")
 
     def _read_entries(self) -> list[dict[str, Any]]:

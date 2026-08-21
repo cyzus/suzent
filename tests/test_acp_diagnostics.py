@@ -1,6 +1,8 @@
+import json
+
 import pytest
 from suzent.acp import registry as registry_mod
-from suzent.acp.registry import ACPAgent, _npx_package
+from suzent.acp.registry import ACPAgent, ACPAgentRegistry, _npx_package
 from suzent.acp.manager import ACPManager
 
 
@@ -104,3 +106,59 @@ async def test_manager_stop():
     manager = ACPManager()
     # Ensure no error on stopping non-existent session
     await manager.stop("non-existent")
+
+
+def test_a_retired_agent_id_still_resolves(tmp_path, monkeypatch):
+    """`codex-acp` was renamed to `codex`; existing chats still carry the old id.
+
+    Without the alias every send on such a chat died with a KeyError.
+    """
+    monkeypatch.setenv("SUZENT_DATA_DIR", str(tmp_path))
+    registry = ACPAgentRegistry(path=tmp_path / "acp_agents.json")
+
+    assert registry.get("codex-acp").id == "codex"
+
+
+def test_a_user_defined_agent_keeps_the_retired_id(tmp_path, monkeypatch):
+    """The alias is a fallback, not an override."""
+    monkeypatch.setenv("SUZENT_DATA_DIR", str(tmp_path))
+    path = tmp_path / "acp_agents.json"
+    path.write_text(
+        json.dumps(
+            {"agents": [{"id": "codex-acp", "name": "Mine", "command": ["mine"]}]}
+        ),
+        encoding="utf-8",
+    )
+    registry = ACPAgentRegistry(path=path)
+
+    assert registry.get("codex-acp").name == "Mine"
+
+
+def test_unknown_agent_ids_still_raise(tmp_path):
+    registry = ACPAgentRegistry(path=tmp_path / "acp_agents.json")
+
+    with pytest.raises(KeyError):
+        registry.get("nope")
+
+
+def test_display_command_names_the_dependency_not_the_launcher():
+    """`command[0]` for the CLI bridge is the Python interpreter.
+
+    Reporting that as unavailable pointed users at the wrong program.
+    """
+    bridge = ACPAgent(
+        id="claude-code",
+        name="Claude Code (CLI)",
+        command=["/usr/bin/python3", "-m", "suzent.acp.claude_bridge"],
+        requires_executable="claude",
+    )
+    npx_agent = ACPAgent(
+        id="codex",
+        name="Codex",
+        command=["npx", "-y", "@agentclientprotocol/codex-acp"],
+    )
+    plain = ACPAgent(id="hermes", name="Hermes", command=["hermes", "acp"])
+
+    assert bridge.display_command == "claude"
+    assert npx_agent.display_command == "@agentclientprotocol/codex-acp"
+    assert plain.display_command == "hermes"

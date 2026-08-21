@@ -144,7 +144,7 @@ class ACPManager:
         agent = self.registry.get(agent_id)
         if not agent.available:
             raise RuntimeError(
-                f"ACP agent executable is not available: {agent.command[0]}"
+                f"{agent.name} is not available: {agent.display_command} was not found"
             )
         queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
 
