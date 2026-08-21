@@ -185,6 +185,7 @@ _BUILTINS = (
         builtin=True,
         description="Wraps the Claude CLI for Pro/Max subscribers — no API key needed.",
         requires_executable="claude",
+        install_command=["npm", "install", "-g", "@anthropic-ai/claude-code"],
         login_command=["claude", "auth", "login"],
         auth_status="unknown",
     ),
@@ -214,7 +215,8 @@ _BUILTINS = (
         builtin=True,
         description="Official ACP adapter for the OpenAI Codex CLI.",
         install_command=["npm", "install", "-g", "@agentclientprotocol/codex-acp"],
-        login_command=["codex", "auth"],
+        # `auth` doesn't exist on the Codex CLI; the subcommand is `login`.
+        login_command=["codex", "login"],
     ),
     # ── Hermes ───────────────────────────────────────────────────────
     # Nous Research's autonomous AI agent with ACP support.
@@ -231,14 +233,18 @@ _BUILTINS = (
         login_command=["hermes", "setup"],
     ),
     # ── OpenClaw ─────────────────────────────────────────────────────
-    # Popular open-source coding agent with its own ACP adapter.
+    # `openclaw acp` is bridge mode: it exposes a running Gateway session as
+    # an ACP server.  The @openclaw/acpx package points the other way -- it is
+    # a plugin that lets OpenClaw *drive* other ACP agents -- and it publishes
+    # no bin, so `npx @openclaw/acpx` could never have started.
     ACPAgent(
         id="openclaw",
         name="OpenClaw",
-        command=["npx", "-y", "@openclaw/acpx"],
+        command=["openclaw", "acp"],
         builtin=True,
-        description="Open-source coding agent with ACP support via @openclaw/acpx.",
-        install_command=["npm", "install", "-g", "@openclaw/acpx"],
+        description="Bridges a running OpenClaw Gateway session over ACP.",
+        install_command=["npm", "install", "-g", "openclaw"],
+        login_command=["openclaw", "onboard"],
     ),
 )
 
