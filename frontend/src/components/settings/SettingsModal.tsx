@@ -249,6 +249,16 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }
     if (Object.keys(keysToSave).length > 0) {
       setOriginalDisplayValues(prev => ({ ...prev, ...keysToSave }));
     }
+
+    // Enabling/disabling provider models changes what the rest of the app can
+    // offer: the chat engine picker reads backendConfig.models and the Model
+    // Roles dropdown reads the role suggestions. Both are derived server-side
+    // from the enabled models we just wrote, so re-pull them here instead of
+    // waiting for the next app reload.
+    await Promise.allSettled([
+      refreshBackendConfig(),
+      fetchRoleSuggestions().then(setRoleSuggestions),
+    ]);
   }
 
   async function saveSocialSettings(): Promise<void> {
