@@ -47,6 +47,17 @@ export interface MemorySearchResponse {
   count: number;
   offset: number;
   limit: number;
+  /** Size of the whole matching set. Absent for relevance searches, which have no total. */
+  total?: number;
+}
+
+/** Server-side ordering and filtering for the archival list. */
+export interface ArchivalQueryOptions {
+  orderBy?: 'created_at' | 'updated_at' | 'accessed_at' | 'importance' | 'access_count';
+  orderDesc?: boolean;
+  /** Half-open importance band: min inclusive, max exclusive. */
+  minImportance?: number;
+  maxImportance?: number;
 }
 
 // --- Session & Transcript types (Phase 6: Frontend Integration) ---

@@ -8,7 +8,7 @@ This module handles all memory endpoints including:
 """
 
 import json
-from typing import Any
+from typing import Any, Optional
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
@@ -17,6 +17,24 @@ from suzent.config import CONFIG
 from suzent.memory.lifecycle import get_memory_manager, init_memory_system
 
 logger = get_logger(__name__)
+
+# Columns the archival list may be ordered by, mirroring LanceDBStore.list_memories.
+ARCHIVAL_ORDER_COLUMNS = {
+    "created_at",
+    "updated_at",
+    "accessed_at",
+    "importance",
+    "access_count",
+}
+# How deep "load more" may page into a relevance-ranked search.
+ARCHIVAL_SEARCH_MAX_DEPTH = 500
+
+
+def _optional_float(raw: Optional[str]) -> Optional[float]:
+    """Parse an optional float query param; blank and missing both mean None."""
+    if raw is None or raw == "":
+        return None
+    return float(raw)
 
 
 async def _get_or_initialize_memory_manager() -> Any:
@@ -140,6 +158,15 @@ async def search_archival_memory(request: Request) -> JSONResponse:
         # chat_id = request.query_params.get('chat_id')
         limit = min(int(request.query_params.get("limit", "20")), 100)
         offset = int(request.query_params.get("offset", "0"))
+        order_by = request.query_params.get("order_by", "created_at")
+        order_desc = request.query_params.get("order_desc", "true").lower() != "false"
+        min_importance = _optional_float(request.query_params.get("min_importance"))
+        max_importance = _optional_float(request.query_params.get("max_importance"))
+
+        if order_by not in ARCHIVAL_ORDER_COLUMNS:
+            return JSONResponse(
+                {"error": f"Invalid order_by: {order_by}"}, status_code=400
+            )
 
         manager = await _get_or_initialize_memory_manager()
         if not manager:
@@ -147,18 +174,51 @@ async def search_archival_memory(request: Request) -> JSONResponse:
                 {"error": "Memory system not initialized"}, status_code=503
             )
 
+        total: Optional[int] = None
+
         if query:
-            # Semantic search
+            # Semantic search. The search path ranks by relevance and has no
+            # native offset, so page by over-fetching and slicing — that keeps
+            # "load more" from re-appending the same top hits.
+            fetch_limit = min(offset + limit, ARCHIVAL_SEARCH_MAX_DEPTH)
             memories = await manager.search_memories(
                 query=query,
                 user_id=user_id,
                 chat_id=None,  # Always search user-level
-                limit=limit,
+                limit=fetch_limit,
             )
+            if min_importance is not None:
+                memories = [
+                    m
+                    for m in memories
+                    if float(m.get("importance", 0)) >= min_importance
+                ]
+            if max_importance is not None:
+                memories = [
+                    m
+                    for m in memories
+                    if float(m.get("importance", 0)) < max_importance
+                ]
+            memories = memories[offset : offset + limit]
         else:
-            # List all memories (no search)
+            # List all memories (no search). Ordering and the importance band are
+            # applied across the whole set before pagination, so the first page is
+            # the true first page and not just the first page re-sorted.
             memories = await manager.store.list_memories(
-                user_id=user_id, chat_id=None, limit=limit, offset=offset
+                user_id=user_id,
+                chat_id=None,
+                limit=limit,
+                offset=offset,
+                order_by=order_by,
+                order_desc=order_desc,
+                min_importance=min_importance,
+                max_importance=max_importance,
+            )
+            total = await manager.store.get_memory_count(
+                user_id=user_id,
+                chat_id=None,
+                min_importance=min_importance,
+                max_importance=max_importance,
             )
 
         # Format memories for frontend
@@ -187,14 +247,18 @@ async def search_archival_memory(request: Request) -> JSONResponse:
                 }
             )
 
-        return JSONResponse(
-            {
-                "memories": formatted_memories,
-                "count": len(formatted_memories),
-                "offset": offset,
-                "limit": limit,
-            }
-        )
+        payload: dict[str, Any] = {
+            "memories": formatted_memories,
+            "count": len(formatted_memories),
+            "offset": offset,
+            "limit": limit,
+        }
+        # Only the list path knows the size of the matching set; a relevance
+        # search has no meaningful total.
+        if total is not None:
+            payload["total"] = total
+
+        return JSONResponse(payload)
 
     except ValueError as e:
         return JSONResponse({"error": f"Invalid parameter: {e}"}, status_code=400)

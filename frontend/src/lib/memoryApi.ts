@@ -8,6 +8,7 @@ import type {
   ArchivalMemory,
   MemoryStats,
   MemorySearchResponse,
+  ArchivalQueryOptions,
   TranscriptResponse,
   SessionStateResponse,
   DailyLogResponse,
@@ -71,7 +72,8 @@ export const memoryApi = {
     query: string = '',
     userId: string = 'default-user',
     limit: number = 20,
-    offset: number = 0
+    offset: number = 0,
+    options: ArchivalQueryOptions = {}
   ): Promise<MemorySearchResponse> {
     const params = new URLSearchParams({
       user_id: userId,
@@ -81,6 +83,18 @@ export const memoryApi = {
 
     if (query) {
       params.set('query', query);
+    }
+    if (options.orderBy) {
+      params.set('order_by', options.orderBy);
+    }
+    if (options.orderDesc !== undefined) {
+      params.set('order_desc', options.orderDesc ? 'true' : 'false');
+    }
+    if (options.minImportance !== undefined) {
+      params.set('min_importance', options.minImportance.toString());
+    }
+    if (options.maxImportance !== undefined) {
+      params.set('max_importance', options.maxImportance.toString());
     }
 
     const response = await fetch(`${memoryEndpoint()}/archival?${params}`);

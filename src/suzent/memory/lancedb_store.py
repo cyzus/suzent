@@ -829,13 +829,21 @@ class LanceDBMemoryStore:
     # --- Query Operations ---
 
     async def get_memory_count(
-        self, user_id: str, chat_id: Optional[str] = None
+        self,
+        user_id: str,
+        chat_id: Optional[str] = None,
+        min_importance: Optional[float] = None,
+        max_importance: Optional[float] = None,
     ) -> int:
-        """Get total number of memories for a user."""
+        """Get the number of memories for a user, optionally within an importance band."""
         try:
             clause = f"user_id = '{_escape_sql(user_id)}'"
             if chat_id:
                 clause += f" AND chat_id = '{_escape_sql(chat_id)}'"
+            if min_importance is not None:
+                clause += f" AND importance >= {float(min_importance)}"
+            if max_importance is not None:
+                clause += f" AND importance < {float(max_importance)}"
 
             return await self.archival_table.count_rows(clause)
         except Exception as e:
@@ -850,12 +858,24 @@ class LanceDBMemoryStore:
         offset: int = 0,
         order_by: str = "created_at",
         order_desc: bool = True,
+        min_importance: Optional[float] = None,
+        max_importance: Optional[float] = None,
     ) -> List[Dict[str, Any]]:
-        """List memories with pagination and ordering."""
+        """List memories with pagination, ordering, and an importance band.
+
+        The importance band is half-open — `min_importance` is inclusive and
+        `max_importance` exclusive — so adjacent bands (low/medium/high) tile the
+        range without overlapping. Filtering happens before pagination, so offset
+        paging stays correct for the filtered set.
+        """
         try:
             clause = f"user_id = '{_escape_sql(user_id)}'"
             if chat_id:
                 clause += f" AND chat_id = '{_escape_sql(chat_id)}'"
+            if min_importance is not None:
+                clause += f" AND importance >= {float(min_importance)}"
+            if max_importance is not None:
+                clause += f" AND importance < {float(max_importance)}"
 
             # Select only the columns the list view needs — never the embedding
             # `vector` (thousands of high-dim rows would be read off disk for nothing,

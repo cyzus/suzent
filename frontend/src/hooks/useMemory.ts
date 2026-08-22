@@ -7,6 +7,7 @@ import type {
   CoreMemoryBlocks,
   CoreMemoryLabel,
   ArchivalMemory,
+  ArchivalQueryOptions,
   MemoryStats,
 } from '../types/memory';
 import { memoryApi } from '../lib/memoryApi';
@@ -23,6 +24,8 @@ interface MemoryState {
   archivalError: string | null;
   archivalHasMore: boolean;
   archivalQuery: string;
+  /** Size of the whole matching set, when the server can report one. */
+  archivalTotal: number | null;
 
   // Stats
   stats: MemoryStats | null;
@@ -35,7 +38,11 @@ interface MemoryState {
   setUserId: (userId: string) => void;
   loadCoreMemory: (chatId?: string | null) => Promise<void>;
   updateCoreMemoryBlock: (label: CoreMemoryLabel, content: string) => Promise<void>;
-  loadArchivalMemories: (query?: string, append?: boolean) => Promise<void>;
+  loadArchivalMemories: (
+    query?: string,
+    append?: boolean,
+    options?: ArchivalQueryOptions
+  ) => Promise<void>;
   deleteArchivalMemory: (memoryId: string) => Promise<void>;
   loadStats: () => Promise<void>;
   reset: () => void;
@@ -50,10 +57,14 @@ const initialState = {
   archivalError: null,
   archivalHasMore: true,
   archivalQuery: '',
+  archivalTotal: null,
   stats: null,
   statsLoading: false,
   userId: 'default-user',
 };
+
+// Sort/filter changes fire overlapping requests; only the newest may write state.
+let archivalRequestId = 0;
 
 export const useMemory = create<MemoryState>((set, get) => ({
   ...initialState,
@@ -93,17 +104,31 @@ export const useMemory = create<MemoryState>((set, get) => ({
     }
   },
 
-  loadArchivalMemories: async (query: string = '', append: boolean = false) => {
+  loadArchivalMemories: async (
+    query: string = '',
+    append: boolean = false,
+    options: ArchivalQueryOptions = {}
+  ) => {
     const state = get();
 
-    // Don't load if already loading
-    if (state.archivalLoading) return;
+    // Appending races with itself (scroll spam), but a fresh load must always win —
+    // it carries a new sort or filter that the in-flight page no longer matches.
+    if (state.archivalLoading && append) return;
 
+    const requestId = ++archivalRequestId;
     set({ archivalLoading: true, archivalError: null, archivalQuery: query });
 
     try {
       const offset = append ? state.archivalMemories.length : 0;
-      const result = await memoryApi.searchArchivalMemory(query, state.userId, 20, offset);
+      const result = await memoryApi.searchArchivalMemory(
+        query,
+        state.userId,
+        20,
+        offset,
+        options
+      );
+
+      if (requestId !== archivalRequestId) return;
 
       set(state => ({
         archivalMemories: append
@@ -111,8 +136,10 @@ export const useMemory = create<MemoryState>((set, get) => ({
           : result.memories,
         archivalLoading: false,
         archivalHasMore: result.memories.length === result.limit,
+        archivalTotal: result.total ?? null,
       }));
     } catch (error) {
+      if (requestId !== archivalRequestId) return;
       set({
         archivalError: error instanceof Error ? error.message : 'Failed to load archival memories',
         archivalLoading: false,
@@ -127,6 +154,7 @@ export const useMemory = create<MemoryState>((set, get) => ({
       // Remove from local state
       set(state => ({
         archivalMemories: state.archivalMemories.filter(m => m.id !== memoryId),
+        archivalTotal: state.archivalTotal === null ? null : Math.max(state.archivalTotal - 1, 0),
       }));
 
       // Reload stats
