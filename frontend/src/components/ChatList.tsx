@@ -28,6 +28,7 @@ import { BrutalButton } from './BrutalButton';
 
 const ALL_PROJECTS_FILTER = '__all__';
 const AUTOMATION_PREVIEW_LIMIT = 5;
+const AUTOMATION_STATUS_POLL_MS = 8_000;
 const ORGANIZATION_STORAGE_KEY = 'suzent-chat-organization';
 type ChatKind = 'you' | 'subagent' | 'scheduled';
 type ChatOrganization = 'projects' | 'list';
@@ -40,6 +41,50 @@ const isCronFailureHandledInChat = (job: CronJob): boolean => {
   if (!job.last_error || !job.chat_updated_at || !job.last_run_finished_at) return false;
   return new Date(job.chat_updated_at).getTime() > new Date(job.last_run_finished_at).getTime();
 };
+
+function SessionStatusBadges({
+  running,
+  unreadCount,
+}: {
+  running?: boolean;
+  unreadCount?: number;
+}): React.ReactElement | null {
+  const { t } = useI18n();
+  const unread = Math.max(0, unreadCount ?? 0);
+
+  if (!running && unread === 0) return null;
+
+  return (
+    <span className="inline-flex flex-shrink-0 items-center gap-1">
+      {running && (
+        <span className="inline-flex h-4 items-center gap-1 border border-emerald-700 bg-emerald-50 px-1.5 text-[8px] font-extrabold uppercase tracking-wide text-emerald-800 dark:border-emerald-500 dark:bg-emerald-950/60 dark:text-emerald-300">
+          <span className="h-1.5 w-1.5 bg-emerald-500 animate-pulse" aria-hidden="true" />
+          {t('chatList.labels.running')}
+        </span>
+      )}
+      {unread > 0 && (
+        <span className="inline-flex h-4 items-center bg-neutral-900 px-1.5 text-[8px] font-extrabold uppercase tracking-wide text-white dark:bg-neutral-100 dark:text-neutral-900">
+          {t('chatList.labels.unreadCount', { count: unread > 99 ? '99+' : unread })}
+        </span>
+      )}
+    </span>
+  );
+}
+
+function SidebarRowSkeleton({ compact = false }: { compact?: boolean }): React.ReactElement {
+  return (
+    <div className={`${compact ? 'min-h-11 px-3.5 py-2' : 'min-h-[58px] px-3.5 py-3'} border-b border-neutral-200 dark:border-zinc-700`}>
+      <div className="flex animate-pulse items-center justify-between gap-4">
+        <div className="h-3 w-3/5 bg-neutral-200 dark:bg-zinc-700" />
+        <div className="h-2 w-9 bg-neutral-200 dark:bg-zinc-700" />
+      </div>
+      <div className="mt-2 flex animate-pulse items-center gap-2">
+        <div className="h-2 w-14 bg-neutral-200 dark:bg-zinc-700" />
+        <div className="h-2 w-24 bg-neutral-100 dark:bg-zinc-700/70" />
+      </div>
+    </div>
+  );
+}
 
 interface ChatListProps {
   onOpenAutomation?: () => void;
@@ -149,7 +194,7 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
 
   useEffect(() => {
     void refreshAutomation();
-    const interval = window.setInterval(() => void refreshAutomation(), 30_000);
+    const interval = window.setInterval(() => void refreshAutomation(), AUTOMATION_STATUS_POLL_MS);
     return () => window.clearInterval(interval);
   }, [refreshAutomation]);
 
@@ -216,12 +261,24 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
       });
       setProjectChatKindTotals(prev => ({ ...prev, all: prev.all + 1, you: prev.you + 1 }));
     } else {
-      // No length change — propagate any field updates (e.g. auto-title) to projectChats.
+      // No length change — propagate live summary fields such as title, unread,
+      // and running state to the project-scoped list.
       setProjectChats(prev => {
         let changed = false;
         const next = prev.map(pc => {
           const updated = chats.find(c => c.id === pc.id);
-          if (updated && updated.title !== pc.title) { changed = true; return { ...pc, title: updated.title }; }
+          if (
+            updated
+            && (
+              updated.title !== pc.title
+              || updated.updatedAt !== pc.updatedAt
+              || updated.unreadCount !== pc.unreadCount
+              || updated.isRunning !== pc.isRunning
+            )
+          ) {
+            changed = true;
+            return { ...pc, ...updated };
+          }
           return pc;
         });
         return changed ? next : prev;
@@ -231,9 +288,20 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
 
   const markRead = useCallback((chatId: string) => {
     const chat = chatsRef.current.find(c => c.id === chatId);
-    if (!chat) return;
-    markChatRead(chatId);
-    chat.unreadCount = 0;
+    if (chat) chat.unreadCount = 0;
+    setProjectChats(prev => prev.map(item => (
+      item.id === chatId ? { ...item, unreadCount: 0 } : item
+    )));
+    setCronJobs(prev => prev.map(job => (
+      `cron-${job.id}` === chatId ? { ...job, unread_count: 0 } : job
+    )));
+    setHeartbeatStatus(prev => prev ? {
+      ...prev,
+      active_sessions: prev.active_sessions?.map(session => (
+        session.chat_id === chatId ? { ...session, unread_count: 0 } : session
+      )),
+    } : prev);
+    void markChatRead(chatId);
   }, []);
 
   const isUnread = (chat: ChatSummary) => {
@@ -596,7 +664,6 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
 
   const renderChatRow = (chat: ChatSummary, showProject = false, nested = false) => {
     const unread = unreadMessages(chat);
-    const showUnread = currentChatId !== chat.id && unread > 0;
     const chatKind = getChatKind(chat);
     const relatedChatId = chat.parentChatId ?? chat.forkedFromChatId;
     const parentTitle = relatedChatId
@@ -608,7 +675,7 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
     const hasCollapsedChildren = childSubagents.length > 0;
     const childrenExpanded = expandedSubagentParents.has(chat.id);
     const rowSurface = currentChatId === chat.id
-      ? 'bg-yellow-50 dark:bg-zinc-700 border-neutral-200 dark:border-zinc-600 shadow-[inset_3px_0_0_var(--brutal-yellow)]'
+      ? 'bg-neutral-100 dark:bg-zinc-700 border-neutral-300 dark:border-zinc-600 shadow-[inset_3px_0_0_#171717] dark:shadow-[inset_3px_0_0_#f5f5f5]'
       : chat.heartbeatEnabled
         ? 'bg-yellow-50 border-neutral-200 dark:bg-zinc-800 dark:border-zinc-700 shadow-[inset_4px_0_0_var(--brutal-yellow)] hover:bg-yellow-100/70 dark:hover:bg-zinc-700/80'
         : chatKind === 'subagent'
@@ -667,19 +734,15 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
             <h3 className={`font-extrabold text-xs leading-snug truncate flex-1 min-w-0 transition-colors ${currentChatId === chat.id ? 'text-brutal-black dark:text-white' : isUnread(chat) ? 'text-neutral-950 dark:text-white' : 'text-neutral-800 dark:text-neutral-100 group-hover:text-brutal-black dark:group-hover:text-white'}`}>
               {chat.title || t('chatList.untitled')}
             </h3>
-            {showUnread && (
-              <span className="text-[10px] font-extrabold min-w-[20px] h-5 px-1.5 flex items-center justify-center rounded-sm bg-brutal-yellow text-brutal-black border-2 border-brutal-black leading-none shrink-0 shadow-[1px_1px_0_0_rgba(0,0,0,1)]">
-                {unread > 99 ? '99+' : unread}
-              </span>
-            )}
           </div>
           <div className="flex items-center gap-1.5 overflow-hidden">
+            <SessionStatusBadges running={chat.isRunning} unreadCount={unread} />
             {/* Project chip — always shown so the user knows which workspace */}
             {showProject && chat.projectName && (
               <span
                 className={`inline-flex items-center h-5 px-2 text-[10px] font-extrabold uppercase tracking-wide border shrink-0 max-w-[8rem] truncate ${
                   currentChatId === chat.id
-                    ? 'bg-white/80 text-brutal-black border-brutal-black dark:bg-zinc-900 dark:text-brutal-yellow dark:border-brutal-yellow'
+                    ? 'bg-white text-brutal-black border-neutral-500 dark:bg-zinc-900 dark:text-white dark:border-neutral-500'
                     : 'bg-neutral-100 text-neutral-600 border-neutral-300 dark:bg-zinc-700 dark:text-neutral-300 dark:border-zinc-500'
                 }`}
                 title={chat.projectName}
@@ -693,13 +756,13 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
               </span>
             )}
             {chat.platform && (
-              <span className={`inline-flex items-center h-5 px-2 rounded-sm text-[10px] font-extrabold uppercase tracking-wide border shrink-0 ${currentChatId === chat.id ? 'bg-white/80 text-brutal-black border-brutal-black dark:bg-zinc-900 dark:text-brutal-yellow dark:border-brutal-yellow' : 'bg-neutral-100 text-neutral-700 border-neutral-300 dark:bg-zinc-700 dark:text-neutral-200 dark:border-zinc-500'}`}>
+              <span className={`inline-flex items-center h-5 px-2 rounded-sm text-[10px] font-extrabold uppercase tracking-wide border shrink-0 ${currentChatId === chat.id ? 'bg-white text-brutal-black border-neutral-500 dark:bg-zinc-900 dark:text-white dark:border-neutral-500' : 'bg-neutral-100 text-neutral-700 border-neutral-300 dark:bg-zinc-700 dark:text-neutral-200 dark:border-zinc-500'}`}>
                 {platformLabel(chat.platform)}
               </span>
             )}
             {chat.heartbeatEnabled && (
               <span
-                className={`shrink-0 flex items-center gap-1 h-5 px-1.5 rounded-sm border text-[9px] font-extrabold uppercase tracking-wide ${currentChatId === chat.id ? 'bg-white/80 text-brutal-black border-brutal-black dark:bg-zinc-900 dark:text-brutal-yellow dark:border-brutal-yellow' : 'bg-brutal-yellow text-brutal-black border-brutal-black transition-all'}`}
+                className={`shrink-0 flex items-center gap-1 h-5 px-1.5 rounded-sm border text-[9px] font-extrabold uppercase tracking-wide ${currentChatId === chat.id ? 'bg-white text-brutal-black border-neutral-500 dark:bg-zinc-900 dark:text-white dark:border-neutral-500' : 'bg-brutal-yellow text-brutal-black border-brutal-black transition-all'}`}
                 title={t('chatWindow.heartbeatEnabled')}
               >
                 <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="square" strokeLinejoin="miter">
@@ -735,7 +798,7 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
                 {t('chatList.labels.branchOf', { name: parentTitle })}
               </span>
             )}
-            <span className={`text-[10px] font-bold uppercase ml-auto shrink-0 ${currentChatId === chat.id ? 'text-brutal-black/70 dark:text-brutal-yellow' : 'text-neutral-400 dark:text-neutral-500'}`}>
+            <span className={`text-[10px] font-bold uppercase ml-auto shrink-0 ${currentChatId === chat.id ? 'text-neutral-600 dark:text-neutral-300' : 'text-neutral-400 dark:text-neutral-500'}`}>
               {formatDate(chat.updatedAt)}
             </span>
           </div>
@@ -771,21 +834,24 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
   };
 
   const renderListSkeleton = () => (
-    <div className="p-4 bg-white dark:bg-zinc-800">
-      <div className="space-y-3">
-        {[...Array(5)].map((_, i) => (
-          <div key={i} className="h-16 bg-neutral-300 border-3 border-brutal-black animate-brutal-blink"></div>
+    <div className="h-full bg-white dark:bg-zinc-800" role="status" aria-label={t('common.loading')}>
+      <div className="border-b border-neutral-200 p-3 dark:border-zinc-700">
+        <div className="h-10 animate-pulse border-2 border-neutral-300 bg-neutral-100 dark:border-zinc-600 dark:bg-zinc-700" />
+      </div>
+      <div className="flex items-center justify-between px-3 py-2">
+        <div className="h-2.5 w-16 animate-pulse bg-neutral-200 dark:bg-zinc-700" />
+        <div className="h-2.5 w-5 animate-pulse bg-neutral-100 dark:bg-zinc-700/70" />
+      </div>
+      <div className="border-t border-neutral-200 dark:border-zinc-700">
+        {[...Array(6)].map((_, i) => (
+          <SidebarRowSkeleton key={i} />
         ))}
       </div>
     </div>
   );
 
   if (loadingChats) {
-    return (
-      <div className="p-4">
-        {renderListSkeleton()}
-      </div>
-    );
+    return renderListSkeleton();
   }
 
   const filteredTotal = filterId === ALL_PROJECTS_FILTER ? chatTotal : projectChatKindTotals.all;
@@ -911,8 +977,8 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
 
                 {loadingAutomation ? (
                   <div className="border-t border-neutral-200 dark:border-zinc-700">
-                    <div className="h-11 border-b border-neutral-200 bg-neutral-100 dark:border-zinc-700 dark:bg-zinc-700 animate-pulse" />
-                    <div className="h-11 border-b border-neutral-200 bg-neutral-100 dark:border-zinc-700 dark:bg-zinc-700 animate-pulse" />
+                    <SidebarRowSkeleton compact />
+                    <SidebarRowSkeleton compact />
                   </div>
                 ) : (
                   <div className="border-t border-neutral-200 dark:border-zinc-700">
@@ -945,7 +1011,7 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
                                   }}
                                   className={`group/task relative min-h-11 border-b border-neutral-200 transition-colors dark:border-zinc-700 ${
                                     currentChatId === chatId
-                                      ? 'bg-yellow-50 shadow-[inset_3px_0_0_var(--brutal-yellow)] dark:bg-zinc-700'
+                                      ? 'bg-neutral-100 shadow-[inset_3px_0_0_#171717] dark:bg-zinc-700 dark:shadow-[inset_3px_0_0_#f5f5f5]'
                                       : 'bg-white hover:bg-neutral-50 dark:bg-zinc-800 dark:hover:bg-zinc-700'
                                   }`}
                                 >
@@ -977,8 +1043,14 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
                                       >
                                         <span className="min-w-0">
                                           <span className="block truncate text-xs font-extrabold leading-tight text-brutal-black dark:text-white">{job.name}</span>
-                                          <span className={`block truncate text-[9px] font-bold leading-tight ${unresolvedError ? 'text-red-600 dark:text-red-400' : 'text-neutral-500 dark:text-neutral-400'}`}>
-                                            {subtitle}
+                                          <span className="mt-1 flex min-w-0 items-center gap-1.5">
+                                            <SessionStatusBadges
+                                              running={job.is_running}
+                                              unreadCount={currentChatId === chatId ? 0 : job.unread_count}
+                                            />
+                                            <span className={`truncate text-[9px] font-bold leading-tight ${unresolvedError ? 'text-red-600 dark:text-red-400' : 'text-neutral-500 dark:text-neutral-400'}`}>
+                                              {subtitle}
+                                            </span>
                                           </span>
                                         </span>
                                         <span className="shrink-0 text-[9px] font-bold uppercase text-neutral-400 dark:text-neutral-500">
@@ -1027,14 +1099,20 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
                                 onClick={() => openChatById(session.chat_id)}
                                 className={`w-full min-h-11 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-3.5 py-2 text-left border-b border-neutral-200 transition-colors dark:border-zinc-700 ${
                                   currentChatId === session.chat_id
-                                    ? 'bg-yellow-50 shadow-[inset_3px_0_0_var(--brutal-yellow)] dark:bg-zinc-700'
+                                    ? 'bg-neutral-100 shadow-[inset_3px_0_0_#171717] dark:bg-zinc-700 dark:shadow-[inset_3px_0_0_#f5f5f5]'
                                     : 'bg-white hover:bg-neutral-50 dark:bg-zinc-800 dark:hover:bg-zinc-700'
                                 }`}
                               >
                                 <span className="min-w-0">
                                   <span className="block text-xs leading-tight font-extrabold truncate text-brutal-black dark:text-white">{session.title}</span>
-                                  <span className="block text-[9px] leading-tight font-bold text-neutral-500 dark:text-neutral-400">
-                                    {t('chatList.automation.everyMinutes', { minutes: session.interval_minutes })}
+                                  <span className="mt-1 flex min-w-0 items-center gap-1.5">
+                                    <SessionStatusBadges
+                                      running={session.is_running}
+                                      unreadCount={currentChatId === session.chat_id ? 0 : session.unread_count}
+                                    />
+                                    <span className="truncate text-[9px] leading-tight font-bold text-neutral-500 dark:text-neutral-400">
+                                      {t('chatList.automation.everyMinutes', { minutes: session.interval_minutes })}
+                                    </span>
                                   </span>
                                 </span>
                                 <span className="text-[9px] font-extrabold uppercase text-neutral-500 dark:text-neutral-400">

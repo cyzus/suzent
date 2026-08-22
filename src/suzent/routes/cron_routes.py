@@ -8,6 +8,7 @@ from croniter import croniter
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+from suzent.core.stream_registry import is_background_streaming
 from suzent.database import ChatDatabase, CronJobModel, get_database
 
 
@@ -35,6 +36,8 @@ def _job_to_dict(job: CronJobModel, db: ChatDatabase) -> dict:
             if latest_run and latest_run.finished_at
             else None
         ),
+        "is_running": is_background_streaming(f"cron-{job.id}"),
+        "unread_count": (chat.config or {}).get("unread_count", 0) if chat else 0,
         "created_at": job.created_at.isoformat(),
         "updated_at": job.updated_at.isoformat(),
     }

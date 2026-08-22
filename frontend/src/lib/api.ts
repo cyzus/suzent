@@ -1286,6 +1286,8 @@ export interface CronJob {
   last_error: string | null;
   chat_updated_at: string | null;
   last_run_finished_at: string | null;
+  is_running: boolean;
+  unread_count: number;
   created_at: string;
   updated_at: string;
 }
@@ -1485,6 +1487,8 @@ export interface HeartbeatStatus {
     title: string;
     interval_minutes: number;
     last_run_at: string | null;
+    is_running: boolean;
+    unread_count: number;
   }>;
 }
 

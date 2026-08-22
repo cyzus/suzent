@@ -800,6 +800,8 @@ export const zhCN = {
     },
     labels: {
       heartbeat: '心跳',
+      running: '运行中',
+      unreadCount: '{count} 条未读',
       subagentOf: '隶属于 {name}',
       subagentsCount: '{count} 个子智能体',
       branchOf: '分支自 {name}',

@@ -834,6 +834,8 @@ export const en = {
     },
     labels: {
       heartbeat: 'Heartbeat',
+      running: 'Running',
+      unreadCount: '{count} unread',
       subagentOf: 'Under {name}',
       subagentsCount: '{count} subagents',
       branchOf: 'Branched from {name}',

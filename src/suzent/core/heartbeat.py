@@ -152,6 +152,8 @@ class HeartbeatRunner(BaseBrain):
                     "title": chat.title,
                     "interval_minutes": cfg.get("heartbeat_interval_minutes", 30),
                     "last_run_at": cfg.get("heartbeat_last_run_at"),
+                    "is_running": chat.id in stream_controls,
+                    "unread_count": cfg.get("unread_count", 0),
                 }
             )
 
