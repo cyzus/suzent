@@ -204,8 +204,10 @@ class TestChatOperations:
         record = db.list_subagent_task_records(task_id="sub_interrupted")[0]
 
         assert record["chat_id"] == child_id
-        assert record["status"] == "failed"
-        assert record["error"] == "Interrupted by server restart"
+        # An orphan is stopped, not failed: nothing went wrong with the run, the
+        # process it was living in went away.
+        assert record["status"] == "cancelled"
+        assert record["error"] == "Stopped when the server restarted"
 
     def test_update_chat(self, db):
         chat_id = db.create_chat("Original Title", {})

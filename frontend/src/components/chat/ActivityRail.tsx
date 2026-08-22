@@ -3,6 +3,7 @@ import type { AGUIPart } from '../../hooks/useAGUI';
 import type { ContentBlock } from '../../lib/chatUtils';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { getRepeatedToolLabel, getToolSummary, normalizeToolName } from './toolSummary';
+import type { ToolTense } from './toolSummary';
 import { tForLocale } from '../../i18n';
 
 export type ActivityRenderGroup<T> =
@@ -78,7 +79,11 @@ function capitalize(value: string): string {
  * Falls back to the bare tool name while args are still streaming in (or when
  * a tool exposes nothing worth showing), so the label never goes empty.
  */
-export function formatActivityToolName(toolName: string | undefined, args?: string): string {
+export function formatActivityToolName(
+  toolName: string | undefined,
+  args?: string,
+  tense: ToolTense = 'imperative',
+): string {
   if (!toolName) return 'unknown tool';
   const fallback = capitalize(toolName.replace(/_/g, ' '));
   let parsed: Record<string, unknown> | null = null;
@@ -94,7 +99,7 @@ export function formatActivityToolName(toolName: string | undefined, args?: stri
   }
   if (!parsed) return fallback;
   // The surrounding rail copy is English-only, so resolve verbs against `en`.
-  const summary = getToolSummary(toolName, parsed, railT);
+  const summary = getToolSummary(toolName, parsed, railT, tense);
   return summary.detail ? `${summary.verb} ${summary.detail}` : fallback;
 }
 
@@ -122,17 +127,23 @@ export function trailingToolRunLength(toolNames: Array<string | undefined>): num
 /**
  * Status label for the tool the rail is on now: the repeat summary when the
  * same tool has been called several times running, otherwise the single call.
+ *
+ * `tense` says whether that last call is still in flight, which decides whether
+ * the label reads "Running 10 commands" or "Ran 10 commands".
  */
 function formatActiveToolLabel(
   toolNames: Array<string | undefined>,
   toolName: string | undefined,
   args: string | undefined,
+  tense: ToolTense,
 ): string {
   // Two calls still read fine individually; from three on, the count says more
   // than a label that rewrites itself every second.
   const streak = trailingToolRunLength(toolNames);
-  if (streak >= REPEAT_LABEL_THRESHOLD && toolName) return getRepeatedToolLabel(toolName, streak, railT);
-  return formatActivityToolName(toolName, args);
+  if (streak >= REPEAT_LABEL_THRESHOLD && toolName) {
+    return getRepeatedToolLabel(toolName, streak, railT, tense);
+  }
+  return formatActivityToolName(toolName, args, tense);
 }
 
 export function isActionableAguiApproval(part: AGUIPart): boolean {
@@ -167,6 +178,7 @@ export function getAguiActivityLabel(chunks: Array<{ chunk: { type: string; item
           items.slice(0, toolIndex + 1).map(part => part.toolName),
           tool.toolName,
           tool.args,
+          isStreaming && !tool.output ? 'active' : 'past',
         );
       }
     }
@@ -201,6 +213,7 @@ export function getLegacyActivityLabel(chunks: Array<{ chunk: { type: string; bl
           blocks.slice(0, toolIndex + 1).map(block => block.toolName),
           tool.toolName,
           tool.toolArgs,
+          isStreaming && !tool.content ? 'active' : 'past',
         );
       }
     }

@@ -1,11 +1,20 @@
 /**
- * SubAgentList — shows all sub-agents spawned in the current session.
- * Fetches history from /subagents once on mount, then overlays live state
- * from the shared useSubAgentStatus EventSource hook.
+ * SubAgentList — every sub-agent spawned in the current session.
+ *
+ * History comes from /subagents; live state is overlaid from the shared
+ * useSubAgentStatus EventSource. The overlay now includes the terminal update,
+ * so a run that finishes flips to DONE/STOPPED in place instead of sitting on a
+ * stale "running" row until someone reopened the panel.
  */
 import React, { useEffect, useRef, useState } from 'react';
+import { CpuChipIcon } from '@heroicons/react/24/outline';
 import { getApiBase } from '../../lib/api';
 import { useSubAgentStatus, SubAgentSummary } from '../../hooks/useSubAgentStatus';
+import {
+  isSubAgentActive,
+  SubAgentStatusBadge,
+  SubAgentStatusIcon,
+} from '../chat/subAgentStatus';
 import { useI18n } from '../../i18n';
 
 interface SubAgentListProps {
@@ -13,29 +22,7 @@ interface SubAgentListProps {
   onSelect: (taskId: string) => void;
 }
 
-// Extend SubAgentSummary locally with Phase 2/3 fields that come from the API
-// but are not yet in the shared type.
-interface SubAgentRow extends SubAgentSummary {
-  finished_at?: string | null;
-  model_override?: string | null;
-  inherit_context?: boolean;
-  isolation?: string;
-  worktree_branch?: string | null;
-}
-
-const STATUS_BADGE: Record<string, string> = {
-  running:   'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
-  queued:    'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300',
-  completed: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
-  failed:    'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300',
-};
-
-const STATUS_ICON: Record<string, string> = {
-  running:   '🤖',
-  queued:    '⏳',
-  completed: '✅',
-  failed:    '❌',
-};
+type SubAgentRow = SubAgentSummary;
 
 function formatDuration(startedAt: string | null | undefined, finishedAt: string | null | undefined): string {
   if (!startedAt) return '';
@@ -47,6 +34,16 @@ function formatDuration(startedAt: string | null | undefined, finishedAt: string
   return `${Math.floor(s / 60)}m ${s % 60}s`;
 }
 
+/** Newest first, with anything still working pinned to the top. */
+function sortRows(rows: SubAgentRow[]): SubAgentRow[] {
+  return [...rows].sort((a, b) => {
+    const activeDelta = Number(isSubAgentActive(b.status)) - Number(isSubAgentActive(a.status));
+    if (activeDelta !== 0) return activeDelta;
+    const key = (r: SubAgentRow) => r.finished_at || r.started_at || '';
+    return key(b).localeCompare(key(a));
+  });
+}
+
 async function stopSubAgent(taskId: string): Promise<void> {
   await fetch(`${getApiBase()}/subagents/${encodeURIComponent(taskId)}/stop`, { method: 'POST' });
 }
@@ -56,8 +53,8 @@ export const SubAgentList: React.FC<SubAgentListProps> = ({ chatId, onSelect }) 
   const [historicTasks, setHistoricTasks] = useState<SubAgentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [stopping, setStopping] = useState<Set<string>>(new Set());
-  const { activeTasks } = useSubAgentStatus();
-  const knownActiveIdsRef = useRef<Set<string>>(new Set());
+  const { taskStates } = useSubAgentStatus();
+  const lastSignatureRef = useRef('');
 
   const fetchTasks = (chatId: string) =>
     fetch(`${getApiBase()}/subagents?parent_chat_id=${encodeURIComponent(chatId)}`)
@@ -67,32 +64,32 @@ export const SubAgentList: React.FC<SubAgentListProps> = ({ chatId, onSelect }) 
 
   useEffect(() => {
     setLoading(true);
-    knownActiveIdsRef.current = new Set();
+    lastSignatureRef.current = '';
     fetchTasks(chatId).finally(() => setLoading(false));
   }, [chatId]);
 
-  useEffect(() => {
-    const newIds = activeTasks
-      .filter(t => t.parent_chat_id === chatId)
-      .map(t => t.task_id)
-      .filter(id => !knownActiveIdsRef.current.has(id));
-    if (newIds.length > 0) {
-      newIds.forEach(id => knownActiveIdsRef.current.add(id));
-      fetchTasks(chatId);
-    }
-  }, [activeTasks, chatId]);
+  const liveTasks = Object.values(taskStates).filter(task => task.parent_chat_id === chatId);
 
-  const chatActiveTasks = activeTasks.filter(t => t.parent_chat_id === chatId) as SubAgentRow[];
-  const activeIds = new Set(chatActiveTasks.map(t => t.task_id));
-  const tasks: SubAgentRow[] = [
-    ...chatActiveTasks,
-    ...historicTasks.filter(t => !activeIds.has(t.task_id)),
+  // Refetch whenever a task appears or changes state, so persisted-only fields
+  // (worktree branch, result summary) catch up with the live overlay.
+  const signature = liveTasks.map(task => `${task.task_id}:${task.status}`).sort().join('|');
+  useEffect(() => {
+    if (!signature || signature === lastSignatureRef.current) return;
+    lastSignatureRef.current = signature;
+    fetchTasks(chatId);
+  }, [signature, chatId]);
+
+  const liveById = new Map(liveTasks.map(task => [task.task_id, task]));
+  const merged = [
+    ...liveTasks.map(task => ({ ...historicTasks.find(h => h.task_id === task.task_id), ...task })),
+    ...historicTasks.filter(task => !liveById.has(task.task_id)),
   ];
+  const tasks = sortRows(merged as SubAgentRow[]);
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full text-[10px] font-bold uppercase tracking-widest font-mono text-neutral-400 animate-pulse">
-        Loading...
+        {t('subAgents.loading')}
       </div>
     );
   }
@@ -100,7 +97,7 @@ export const SubAgentList: React.FC<SubAgentListProps> = ({ chatId, onSelect }) 
   if (tasks.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-[10px] font-bold uppercase tracking-widest font-mono text-neutral-400">
-        No sub-agents in this session
+        {t('subAgents.empty')}
       </div>
     );
   }
@@ -109,28 +106,32 @@ export const SubAgentList: React.FC<SubAgentListProps> = ({ chatId, onSelect }) 
     <div className="flex flex-col h-full min-h-0 font-mono">
       <div className="px-3 py-2 border-b-3 border-brutal-black bg-white dark:bg-zinc-800 shrink-0">
         <span className="text-[10px] font-bold uppercase tracking-widest font-mono text-neutral-500 dark:text-neutral-400">
-          Sub-agents ({tasks.length})
+          {t('subAgents.heading', { count: tasks.length })}
         </span>
       </div>
       <div className="flex-1 overflow-y-auto scrollbar-thin p-2 space-y-1 min-h-0">
         {tasks.map((task) => {
-          const isActive = task.status === 'running' || task.status === 'queued';
+          const isActive = isSubAgentActive(task.status);
           const duration = formatDuration(task.started_at, task.finished_at);
           const hasWorktree = task.isolation === 'worktree';
-          const hasContext = task.inherit_context;
 
           return (
             <div
               key={task.task_id}
-              className="w-full text-left px-2 py-2 rounded-sm bg-neutral-50 dark:bg-zinc-800 border border-neutral-200 dark:border-zinc-600 group"
+              role="button"
+              tabIndex={0}
+              onClick={() => onSelect(task.task_id)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  onSelect(task.task_id);
+                }
+              }}
+              className="w-full text-left px-2 py-2 rounded-sm bg-neutral-50 dark:bg-zinc-800 border-2 border-neutral-200 dark:border-zinc-600 hover:border-brutal-black dark:hover:border-white transition-colors cursor-pointer group"
             >
               <div className="flex items-start gap-2">
-                <button className="contents" onClick={() => onSelect(task.task_id)}>
-                <span className="text-[11px] shrink-0 mt-0.5">
-                  {STATUS_ICON[task.status] ?? '🤖'}
-                </span>
-                </button>
-                <div className="flex-1 min-w-0 cursor-pointer" onClick={() => onSelect(task.task_id)}>
+                <SubAgentStatusIcon status={task.status} className="w-3.5 h-3.5 mt-0.5" />
+                <div className="flex-1 min-w-0">
                   {/* Description */}
                   <div className="text-[11px] text-neutral-700 dark:text-neutral-200 leading-snug line-clamp-2 group-hover:text-neutral-900 dark:group-hover:text-white">
                     {task.description}
@@ -138,12 +139,7 @@ export const SubAgentList: React.FC<SubAgentListProps> = ({ chatId, onSelect }) 
 
                   {/* Meta row: status + time + tool count + stop button */}
                   <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                    <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-sm ${STATUS_BADGE[task.status] ?? ''}`}>
-                      {task.status}
-                      {isActive && (
-                        <span className="inline-block w-1 h-1 rounded-full bg-current ml-1 animate-pulse" />
-                      )}
-                    </span>
+                    <SubAgentStatusBadge status={task.status} t={t} />
                     {isActive && (
                       <button
                         onClick={(e) => {
@@ -154,10 +150,10 @@ export const SubAgentList: React.FC<SubAgentListProps> = ({ chatId, onSelect }) 
                           );
                         }}
                         disabled={stopping.has(task.task_id)}
-                        className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-sm bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-800 disabled:opacity-50"
-                        title="Stop sub-agent"
+                        className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-px border-2 border-red-600 bg-red-50 dark:bg-red-950 text-red-700 dark:text-red-300 rounded-sm hover:bg-red-100 dark:hover:bg-red-900 disabled:opacity-50 transition-colors"
+                        title={t('subAgents.stop')}
                       >
-                        {stopping.has(task.task_id) ? '…' : 'stop'}
+                        {stopping.has(task.task_id) ? t('subAgents.stopping') : t('subAgents.stop')}
                       </button>
                     )}
 
@@ -168,15 +164,27 @@ export const SubAgentList: React.FC<SubAgentListProps> = ({ chatId, onSelect }) 
                     )}
 
                     {duration && !isActive && (
-                      <span className="text-[9px] text-neutral-400">⏱ {duration}</span>
+                      <span className="text-[9px] text-neutral-400">{duration}</span>
                     )}
 
                     {task.tools_allowed.length > 0 && (
-                      <span className="text-[9px] text-neutral-400">
-                        🔧 {task.tools_allowed.length}
+                      <span className="inline-flex items-center gap-1 text-[9px] text-neutral-400">
+                        <CpuChipIcon className="w-2.5 h-2.5" />
+                        {t('subAgents.toolCount', { count: task.tools_allowed.length })}
                       </span>
                     )}
                   </div>
+
+                  {/* Why a stopped or failed run ended, right on the row. */}
+                  {!isActive && task.status !== 'completed' && task.error && (
+                    <div className={`mt-1 text-[10px] leading-snug line-clamp-2 ${
+                      task.status === 'failed'
+                        ? 'text-red-600 dark:text-red-400'
+                        : 'text-neutral-500 dark:text-neutral-400'
+                    }`}>
+                      {task.error}
+                    </div>
+                  )}
 
                   {task.model_override && (
                     <div className="mt-1">
@@ -190,16 +198,16 @@ export const SubAgentList: React.FC<SubAgentListProps> = ({ chatId, onSelect }) 
                   )}
 
                   {/* Context / Isolation badges */}
-                  {(hasContext || hasWorktree) && (
+                  {(task.inherit_context || hasWorktree) && (
                     <div className="flex items-center gap-1 mt-1 flex-wrap">
-                      {hasContext && (
-                        <span className="text-[9px] px-1 py-px bg-purple-50 dark:bg-purple-950 border border-purple-200 dark:border-purple-800 text-purple-600 dark:text-purple-400 rounded-sm font-bold uppercase">
-                          forked
+                      {task.inherit_context && (
+                        <span className="text-[9px] px-1 py-px bg-white dark:bg-zinc-900 border-2 border-neutral-400 dark:border-zinc-500 text-neutral-600 dark:text-neutral-300 rounded-sm font-bold uppercase tracking-wide">
+                          {t('subAgents.contextForked')}
                         </span>
                       )}
                       {hasWorktree && (
-                        <span className="text-[9px] px-1 py-px bg-orange-50 dark:bg-orange-950 border border-orange-200 dark:border-orange-800 text-orange-600 dark:text-orange-400 rounded-sm font-bold uppercase">
-                          {task.worktree_branch ?? 'worktree'}
+                        <span className="text-[9px] px-1 py-px bg-white dark:bg-zinc-900 border-2 border-neutral-400 dark:border-zinc-500 text-neutral-600 dark:text-neutral-300 rounded-sm font-bold uppercase tracking-wide truncate max-w-full">
+                          {task.worktree_branch ?? t('subAgents.worktree')}
                         </span>
                       )}
                     </div>
