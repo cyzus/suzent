@@ -1139,6 +1139,11 @@ export const en = {
     codeCopiedToClipboard: 'Code copied to clipboard',
     logCopiedToClipboard: 'Log copied to clipboard',
     copyToClipboard: 'Copy to clipboard',
+    backgroundChecking: 'Background checking',
+    backgroundOnline: 'Background online',
+    backgroundStarting: 'Background starting',
+    backgroundOffline: 'Background offline',
+    backgroundDetails: 'Scheduler {scheduler} · heartbeat {heartbeat} · {channels} channels',
   },
   codeBlock: {
     copyText: 'Copy text',

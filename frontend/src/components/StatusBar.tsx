@@ -7,7 +7,15 @@ import { useSubAgentStatus } from '../hooks/useSubAgentStatus';
 import { useContextUsageStore, type ContextUsage } from '../hooks/useContextUsageStore';
 import { useCompact } from '../hooks/useCompact';
 import { useDreamStatus } from '../hooks/useDreamStatus';
-import { enableHeartbeat, disableHeartbeat, setHeartbeatInterval, fetchHeartbeatMd, saveHeartbeatMd } from '../lib/api';
+import {
+  disableHeartbeat,
+  enableHeartbeat,
+  fetchHeartbeatMd,
+  fetchServiceRuntimeStatus,
+  saveHeartbeatMd,
+  setHeartbeatInterval,
+  type ServiceRuntimeStatus,
+} from '../lib/api';
 import { BrutalOnOff } from './BrutalOnOff';
 
 const getStatusStyles = (type: StatusType) => {
@@ -38,6 +46,7 @@ const getStatusIcon = (type: StatusType) => {
 };
 
 const HEARTBEAT_HEALTHY_WINDOW_MS = 90_000; // 90s — runner ticks every 1 min
+const SERVICE_STATUS_POLL_MS = 8_000;
 
 function formatRelativeTime(iso: string | null): string | null {
   if (!iso) return null;
@@ -665,34 +674,132 @@ function DreamWidget({ onOpenMemorySettings }: { onOpenMemorySettings?: () => vo
   );
 }
 
-interface StatusBarProps {
-  onOpenMemorySettings?: () => void;
+function BackendServiceWidget() {
+  const { t } = useI18n();
+  const [service, setService] = useState<ServiceRuntimeStatus | null>(null);
+  const [unavailable, setUnavailable] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+
+    const refresh = async () => {
+      try {
+        const next = await fetchServiceRuntimeStatus();
+        if (!active) return;
+        setService(next);
+        setUnavailable(false);
+      } catch {
+        if (!active) return;
+        setUnavailable(true);
+      }
+    };
+
+    refresh();
+    const interval = window.setInterval(refresh, SERVICE_STATUS_POLL_MS);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, []);
+
+  const state = unavailable
+    ? 'offline'
+    : service?.ready
+    ? 'online'
+    : service
+    ? 'starting'
+    : 'checking';
+  const label = state === 'online'
+    ? t('status.backgroundOnline')
+    : state === 'starting'
+    ? t('status.backgroundStarting')
+    : state === 'offline'
+    ? t('status.backgroundOffline')
+    : t('status.backgroundChecking');
+  const dotClass = state === 'online'
+    ? 'bg-brutal-green'
+    : state === 'offline'
+    ? 'bg-brutal-red'
+    : 'bg-brutal-yellow animate-pulse';
+  const details = service && !unavailable
+    ? t('status.backgroundDetails', {
+        scheduler: service.schedulerRunning ? t('common.on') : t('common.off'),
+        heartbeat: service.heartbeatRunning ? t('common.on') : t('common.off'),
+        channels: String(service.channelsConfigured),
+      })
+    : label;
+
+  return (
+    <div className="flex min-w-0 items-center gap-2" title={details}>
+      <span className={`h-2.5 w-2.5 flex-shrink-0 border border-brutal-black dark:border-neutral-300 ${dotClass}`} aria-hidden="true" />
+      <span className="truncate">{label}</span>
+    </div>
+  );
 }
 
-export const StatusBar: React.FC<StatusBarProps> = ({ onOpenMemorySettings }) => {
+function ActiveChatTitle() {
+  const { currentChatId, chats } = useChatCoreStore();
+  const activeTitle = currentChatId
+    ? chats.find(chat => chat.id === currentChatId)?.title.trim()
+    : null;
+
+  if (!activeTitle) return null;
+
+  return (
+    <div
+      className="flex h-5 max-w-full min-w-0 items-center gap-2 border border-neutral-400/80 bg-white/70 px-2.5 text-neutral-700 shadow-[2px_2px_0_rgba(0,0,0,0.12)] dark:border-neutral-600 dark:bg-zinc-900/80 dark:text-neutral-200 dark:shadow-[2px_2px_0_rgba(255,255,255,0.08)]"
+      title={activeTitle}
+    >
+      <span className="relative flex h-3 w-3 flex-shrink-0 items-center justify-center border border-current/50" aria-hidden="true">
+        <span className="h-1 w-1 bg-current" />
+      </span>
+      <span className="truncate text-[11px] font-semibold normal-case tracking-normal" dir="auto">
+        {activeTitle}
+      </span>
+    </div>
+  );
+}
+
+interface StatusBarProps {
+  onOpenMemorySettings?: () => void;
+  showActiveChatTitle?: boolean;
+}
+
+export const StatusBar: React.FC<StatusBarProps> = ({ onOpenMemorySettings, showActiveChatTitle = false }) => {
   const { message, type } = useStatusStore();
 
   return (
     <div className={`
-      w-full h-7 flex items-center px-4 md:px-6
+      w-full h-8 flex items-center px-3 md:px-5
       border-b-3 border-brutal-black
       font-mono text-[10px] md:text-xs font-bold uppercase tracking-wider
       transition-colors duration-200
       ${getStatusStyles(type)}
     `}>
       {/* Left: transient toast area */}
-      <div className="flex items-center gap-3 flex-1 min-w-0">
-        <span className="flex-shrink-0 w-4 text-center">{getStatusIcon(type)}</span>
-        <span className="truncate">{message}</span>
-        <span className="hidden md:inline opacity-50 flex-shrink-0">
-          {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-        </span>
+      <div className="flex min-w-0 flex-1 items-center gap-2.5">
+        {message ? (
+          <>
+            <span className="w-4 flex-shrink-0 text-center">{getStatusIcon(type)}</span>
+            <span className="truncate">{message}</span>
+          </>
+        ) : (
+          <BackendServiceWidget />
+        )}
       </div>
+
+      {/* Center: selected conversation identity */}
+      <div className="hidden min-w-0 flex-1 justify-center px-4 lg:flex">
+        {showActiveChatTitle && <ActiveChatTitle />}
+      </div>
+
       {/* Right: context usage + sub-agent indicator + heartbeat */}
-      <ContextWidget />
-      <SubAgentWidget />
-      <DreamWidget onOpenMemorySettings={onOpenMemorySettings} />
-      <HeartbeatWidget />
+      <div className="flex min-w-0 flex-1 items-center justify-end">
+        <ContextWidget />
+        <SubAgentWidget />
+        <DreamWidget onOpenMemorySettings={onOpenMemorySettings} />
+        <HeartbeatWidget />
+      </div>
     </div>
   );
 };

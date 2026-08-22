@@ -3,7 +3,7 @@ import { create } from 'zustand';
 export type StatusType = 'idle' | 'info' | 'success' | 'error' | 'warning';
 
 interface StatusState {
-  message: string;
+  message: string | null;
   type: StatusType;
   timeoutId: NodeJS.Timeout | null;
   
@@ -12,7 +12,7 @@ interface StatusState {
 }
 
 export const useStatusStore = create<StatusState>((set, get) => ({
-  message: 'SYSTEM_READY',
+  message: null,
   type: 'idle',
   timeoutId: null,
 
@@ -23,7 +23,7 @@ export const useStatusStore = create<StatusState>((set, get) => ({
     }
 
     const newTimeoutId = setTimeout(() => {
-      set({ message: 'SYSTEM_READY', type: 'idle', timeoutId: null });
+      set({ message: null, type: 'idle', timeoutId: null });
     }, duration);
 
     set({ message, type, timeoutId: newTimeoutId });
@@ -34,6 +34,6 @@ export const useStatusStore = create<StatusState>((set, get) => ({
     if (timeoutId) {
       clearTimeout(timeoutId);
     }
-    set({ message: 'SYSTEM_READY', type: 'idle', timeoutId: null });
+    set({ message: null, type: 'idle', timeoutId: null });
   },
 }));

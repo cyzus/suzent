@@ -43,6 +43,34 @@ export function getApiBase(): string {
   return 'http://127.0.0.1:8000';
 }
 
+export interface ServiceRuntimeStatus {
+  ready: boolean;
+  schedulerRunning: boolean;
+  heartbeatRunning: boolean;
+  channelsConfigured: number;
+  uptimeSeconds: number;
+}
+
+export async function fetchServiceRuntimeStatus(): Promise<ServiceRuntimeStatus> {
+  const response = await fetch(`${getApiBase()}/service/status`);
+  if (!response.ok) {
+    throw new Error(`Failed to load service status: ${response.status}`);
+  }
+
+  const payload = await response.json() as Record<string, unknown>;
+  return {
+    ready: payload.ready === true,
+    schedulerRunning: payload.scheduler_running === true,
+    heartbeatRunning: payload.heartbeat_running === true,
+    channelsConfigured: typeof payload.channels_configured === 'number'
+      ? payload.channels_configured
+      : 0,
+    uptimeSeconds: typeof payload.uptime_seconds === 'number'
+      ? payload.uptime_seconds
+      : 0,
+  };
+}
+
 export interface SystemVersionResponse {
   backendVersion: string;
   apiVersion: number;

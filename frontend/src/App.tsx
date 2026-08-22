@@ -647,7 +647,10 @@ function AppInner(): React.ReactElement {
             </div>
           </header>
 
-          <StatusBar onOpenMemorySettings={() => { setMemoryInitialTab('dreaming'); setMainView('memory'); }} />
+          <StatusBar
+            showActiveChatTitle={mainView === 'chat'}
+            onOpenMemorySettings={() => { setMemoryInitialTab('dreaming'); setMainView('memory'); }}
+          />
 
           {mainView === 'chat' && (
             <div key="chat" className="flex-1 flex flex-col min-h-0 animate-view-fade">

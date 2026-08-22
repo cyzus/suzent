@@ -1105,6 +1105,11 @@ export const zhCN = {
     codeCopiedToClipboard: '代码已复制到剪贴板',
     logCopiedToClipboard: '日志已复制到剪贴板',
     copyToClipboard: '复制到剪贴板',
+    backgroundChecking: '正在检查后台服务',
+    backgroundOnline: '后台服务在线',
+    backgroundStarting: '后台服务启动中',
+    backgroundOffline: '后台服务离线',
+    backgroundDetails: '调度器 {scheduler} · 心跳 {heartbeat} · {channels} 个频道',
   },
   codeBlock: {
     copyText: '复制文本',

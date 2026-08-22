@@ -104,6 +104,7 @@ def test_generate_auto_title_strips_system_reminders_from_model_prompt(
 ) -> None:
     db = _DB()
     prompts: list[str] = []
+    system_prompts: list[str] = []
     max_tokens: list[int] = []
     reasoning_efforts: list[str] = []
 
@@ -113,6 +114,7 @@ def test_generate_auto_title_strips_system_reminders_from_model_prompt(
 
         async def complete(self, **kwargs) -> str:
             prompts.append(kwargs["prompt"])
+            system_prompts.append(kwargs["system"])
             max_tokens.append(kwargs["max_tokens"])
             reasoning_efforts.append(kwargs["reasoning_effort"])
             return "Greeting"
@@ -133,6 +135,12 @@ def test_generate_auto_title_strips_system_reminders_from_model_prompt(
     assert title == "Greeting"
     assert prompts == [
         "Create a title for this user message:\n<message>\nhi\n</message>\nTitle:"
+    ]
+    assert system_prompts == [
+        "You name chat conversations. You are not replying to the user. "
+        "Write the title in the primary language of the user's message. "
+        "Output only a concise chat title of 3 to 6 words. "
+        "No punctuation, no quotes."
     ]
     assert max_tokens == [512]
     assert reasoning_efforts == ["none"]

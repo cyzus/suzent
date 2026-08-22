@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   BackendVersionTimeoutError,
+  fetchServiceRuntimeStatus,
   fetchSystemVersion,
   getBackendCompatibilityIssue,
 } from './api';
@@ -49,6 +50,27 @@ describe('backend version request', () => {
 
     await expect(fetchSystemVersion({ attempts: 2, retryDelayMs: 0 }))
       .rejects.toBeInstanceOf(BackendVersionTimeoutError);
+  });
+});
+
+describe('background service status request', () => {
+  it('maps the backend runtime fields used by the status bar', async () => {
+    vi.stubGlobal('window', {});
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      ready: true,
+      scheduler_running: true,
+      heartbeat_running: false,
+      channels_configured: 2,
+      uptime_seconds: 123.5,
+    }), { status: 200 })));
+
+    await expect(fetchServiceRuntimeStatus()).resolves.toEqual({
+      ready: true,
+      schedulerRunning: true,
+      heartbeatRunning: false,
+      channelsConfigured: 2,
+      uptimeSeconds: 123.5,
+    });
   });
 });
 

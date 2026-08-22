@@ -38,6 +38,7 @@ async def _generate_title_with_model(model: str, user_content: str) -> str | Non
         ),
         system=(
             "You name chat conversations. You are not replying to the user. "
+            "Write the title in the primary language of the user's message. "
             "Output only a concise chat title of 3 to 6 words. "
             "No punctuation, no quotes."
         ),
