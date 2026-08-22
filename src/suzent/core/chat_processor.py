@@ -1838,6 +1838,7 @@ class ChatProcessor:
                 else:
                     rebuilt = _preserve_file_change_metadata(rebuilt, chat_messages)
                     target_messages = rebuilt or chat_messages
+                target_messages = _coalesce_unanswered_cron_triggers(target_messages)
                 target_messages = _attach_latest_file_changes(
                     target_messages, file_snapshot
                 )
@@ -2176,6 +2177,27 @@ def _response_provider_matches_run(
             implementation_names.add(provider_class.removesuffix("Provider").lower())
 
     return response_provider_name in implementation_names
+
+
+def _coalesce_unanswered_cron_triggers(messages: list[dict]) -> list[dict]:
+    """Keep only the latest of consecutive cron triggers with no visible output."""
+    coalesced: list[dict] = []
+    for message in messages:
+        is_cron_trigger = message.get("role") == "system_triggered" and str(
+            message.get("content", "")
+        ).lstrip().startswith("**Scheduled Task:")
+        previous_is_cron_trigger = bool(
+            coalesced
+            and coalesced[-1].get("role") == "system_triggered"
+            and str(coalesced[-1].get("content", ""))
+            .lstrip()
+            .startswith("**Scheduled Task:")
+        )
+        if is_cron_trigger and previous_is_cron_trigger:
+            coalesced[-1] = message
+        else:
+            coalesced.append(message)
+    return coalesced
 
 
 def _rebuild_display_messages(messages: list, model_id: str | None = None) -> list:

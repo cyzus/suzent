@@ -148,6 +148,49 @@ def test_rebuild_preserves_explicit_display_trigger():
     assert res[0]["content"] == "Scheduled Task: ingest"
 
 
+def test_coalesce_unanswered_cron_triggers_keeps_only_latest_trigger():
+    from suzent.core.chat_processor import _coalesce_unanswered_cron_triggers
+
+    first = {
+        "role": "system_triggered",
+        "content": "**Scheduled Task: report**\n\nFirst attempt",
+    }
+    latest = {
+        "role": "system_triggered",
+        "content": "**Scheduled Task: report**\n\nLatest attempt",
+    }
+
+    assert _coalesce_unanswered_cron_triggers([first, latest]) == [latest]
+
+
+def test_coalesce_unanswered_cron_triggers_preserves_completed_runs():
+    from suzent.core.chat_processor import _coalesce_unanswered_cron_triggers
+
+    first = {
+        "role": "system_triggered",
+        "content": "**Scheduled Task: report**\n\nFirst attempt",
+    }
+    response = {"role": "assistant", "content": "Report delivered"}
+    latest = {
+        "role": "system_triggered",
+        "content": "**Scheduled Task: report**\n\nLatest attempt",
+    }
+
+    messages = [first, response, latest]
+    assert _coalesce_unanswered_cron_triggers(messages) == messages
+
+
+def test_coalesce_unanswered_cron_triggers_leaves_other_triggers_untouched():
+    from suzent.core.chat_processor import _coalesce_unanswered_cron_triggers
+
+    messages = [
+        {"role": "system_triggered", "content": "Heartbeat wake"},
+        {"role": "system_triggered", "content": "Heartbeat wake"},
+    ]
+
+    assert _coalesce_unanswered_cron_triggers(messages) == messages
+
+
 # Ensure tests run
 if __name__ == "__main__":
     pytest.main([__file__])
