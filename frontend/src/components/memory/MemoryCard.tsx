@@ -1,6 +1,9 @@
 /**
  * Memory Card Component
- * Displays a single archival memory with metadata and enhanced visual design
+ * Displays a single archival memory, content first — the text is the thing worth
+ * reading, so metadata is demoted to a quiet footer and only shown when it says
+ * something. (Indexed memories all carry importance 0.5, so a badge repeating that
+ * on every card is noise.)
  */
 
 import React, { useState } from 'react';
@@ -14,6 +17,25 @@ interface MemoryCardProps {
   onDelete: (memoryId: string) => Promise<void>;
   searchQuery?: string;
   compact?: boolean;
+}
+
+/** Escape a user-typed query so it can go into a RegExp literal safely. */
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Memories are stored as light markdown. Full rendering would fight the card, but
+ * leaving the syntax in makes prose read like source code — so drop the markers.
+ */
+function readableContent(raw: string): string {
+  return raw
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/(^|[\s(])\*([^*\n]+)\*/g, '$1$2')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/^\s*[-*]\s+/gm, '• ')
+    .trim();
 }
 
 export const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, searchQuery, compact = false }) => {
@@ -75,12 +97,12 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, search
   const highlightText = (text: string, query?: string) => {
     if (!query || query.trim() === '') return text;
 
-    const parts = text.split(new RegExp(`(${query})`, 'gi'));
+    const parts = text.split(new RegExp(`(${escapeRegExp(query)})`, 'gi'));
     return (
       <>
         {parts.map((part, i) =>
           part.toLowerCase() === query.toLowerCase() ? (
-            <mark key={i} className="bg-brutal-black text-white font-bold px-1">
+            <mark key={i} className="bg-brutal-yellow text-brutal-black font-bold px-0.5">
               {part}
             </mark>
           ) : (
@@ -93,10 +115,19 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, search
 
   const tags = memory.metadata?.tags || [];
   const category = memory.metadata?.category;
-  const shouldTruncate = memory.content.length > 200;
-  const displayContent = !isExpanded && shouldTruncate
-    ? memory.content.slice(0, 200) + '...'
-    : memory.content;
+  const sourceFile = memory.metadata?.source_file as string | undefined;
+  const content = readableContent(memory.content);
+  // Importance is a constant for indexed memories; only surface it when it deviates.
+  const showImportance = memory.importance >= 0.8 || memory.importance < 0.5;
+  // Roughly four lines of prose — past that the card needs a "show more".
+  const shouldTruncate = content.length > 320;
+
+  const spineClass =
+    memory.importance >= 0.8
+      ? 'bg-brutal-black dark:bg-white'
+      : memory.importance >= 0.5
+        ? 'bg-neutral-300 dark:bg-zinc-600'
+        : 'bg-neutral-200 dark:bg-zinc-700';
 
   if (compact) {
     return (
@@ -115,19 +146,20 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, search
 
         <div className="p-2 flex items-center gap-3">
           {/* Importance Indicator */}
-          <div className={`w-1.5 h-8 flex-shrink-0 ${memory.importance >= 0.8 ? 'bg-brutal-black' :
-            memory.importance >= 0.5 ? 'bg-neutral-400' : 'bg-neutral-200'
-            }`} title={t('memoryCard.importance.tooltip', { value: memory.importance.toFixed(2) })}></div>
+          <div
+            className={`w-1.5 h-8 flex-shrink-0 ${spineClass}`}
+            title={t('memoryCard.importance.tooltip', { value: memory.importance.toFixed(2) })}
+          ></div>
 
           {/* Content Preview */}
           <div className="flex-1 min-w-0">
-            <p className="text-sm text-neutral-800 dark:text-neutral-200 truncate font-mono">
-              {highlightText(memory.content, searchQuery)}
+            <p className="truncate text-sm leading-6 text-brutal-black dark:text-neutral-100">
+              {highlightText(content, searchQuery)}
             </p>
             <div className="flex items-center gap-2 text-[10px] text-neutral-500 dark:text-neutral-400 mt-0.5">
               <span className="font-bold uppercase">{formatDate(memory.created_at)}</span>
-              {category && <span>• {category}</span>}
-              {tags.length > 0 && <span>• #{tags[0]}</span>}
+              {sourceFile && <span className="truncate font-mono">{sourceFile}</span>}
+              {tags.length > 0 && <span>#{tags[0]}</span>}
             </div>
           </div>
 
@@ -145,7 +177,7 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, search
   }
 
   return (
-    <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 shadow-[2px_2px_0_0_#000] brutal-btn transition-all relative group">
+    <article className="border-3 border-brutal-black bg-white dark:bg-zinc-800 shadow-[2px_2px_0_0_#000] brutal-btn transition-all relative group">
       {/* Delete confirmation overlay */}
       {showConfirm && (
         <BrutalDeleteOverlay
@@ -159,94 +191,86 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, search
         />
       )}
 
-      <div className="p-4">
-        {/* Header with badges */}
-        <div className="flex items-start justify-between gap-3 mb-3">
-          <div className="flex gap-2 flex-wrap items-center">
-            {/* Importance text indicator */}
-            <span className="text-xs font-bold uppercase text-brutal-black dark:text-white bg-neutral-100 dark:bg-zinc-700 px-2 py-0.5 border border-brutal-black">
-              {getImportanceLabel(memory.importance)} {memory.importance.toFixed(2)}
-            </span>
+      <div className="flex">
+        {/* Importance spine — a glance-level cue that costs no vertical space */}
+        <div
+          className={`w-1.5 shrink-0 ${spineClass}`}
+          title={t('memoryCard.importance.tooltip', { value: memory.importance.toFixed(2) })}
+        />
 
-            {/* Category badge */}
-            {category && (
-              <span className="px-2 py-0.5 border border-brutal-black bg-white dark:bg-zinc-700 text-brutal-black dark:text-white text-xs font-bold uppercase">
-                {category}
-              </span>
-            )}
-
-            {/* Recent indicator */}
-            {isRecent() && (
-              <span className="text-xs font-bold uppercase text-brutal-black border border-brutal-black px-1 bg-yellow-200">
-                {t('memoryCard.badges.new')}
-              </span>
-            )}
-
-            {/* Frequently accessed indicator */}
-            {isFrequentlyAccessed && (
-              <span className="text-xs font-bold uppercase text-white bg-brutal-black px-1">
-                {t('memoryCard.badges.hot')}
-              </span>
-            )}
-          </div>
-
-          {/* Delete button - only visible on hover */}
-          <BrutalDeleteButton
-            onClick={() => setShowConfirm(true)}
-            className="flex-shrink-0 w-7 h-7 opacity-0 group-hover:opacity-100 transition-opacity"
-            title={t('memoryCard.delete.buttonTitle')}
-          />
-        </div>
-
-        {/* Content */}
-        <div className="mb-3">
-          <p className="text-sm text-neutral-800 dark:text-white leading-relaxed break-words font-mono">
-            {highlightText(displayContent, searchQuery)}
+        <div className="min-w-0 flex-1 p-4">
+          {/* Content leads */}
+          <p
+            className={`max-w-[68ch] whitespace-pre-line break-words text-[15px] leading-7 text-brutal-black dark:text-neutral-100 ${
+              !isExpanded && shouldTruncate ? 'line-clamp-4' : ''
+            }`}
+          >
+            {highlightText(content, searchQuery)}
           </p>
           {shouldTruncate && (
             <button
               onClick={() => setIsExpanded(!isExpanded)}
-              className="mt-2 text-xs font-bold text-brutal-black dark:text-white hover:underline uppercase border-b-2 border-transparent hover:border-brutal-black dark:hover:border-white inline-block"
+              className="mt-2 inline-block border-b-2 border-transparent text-[11px] font-bold uppercase text-neutral-600 hover:border-brutal-black hover:text-brutal-black dark:text-neutral-400 dark:hover:border-white dark:hover:text-white"
             >
-              {isExpanded ? `▲ ${t('memoryCard.showLess')}` : `▼ ${t('memoryCard.showMore')}`}
+              {isExpanded ? t('memoryCard.showLess') : t('memoryCard.showMore')}
             </button>
           )}
-        </div>
 
-        {/* Metadata row */}
-        <div className="flex items-center gap-4 text-xs text-neutral-600 dark:text-neutral-400 flex-wrap mb-2 border-t-2 border-neutral-100 dark:border-zinc-700 pt-2">
-          <span className="flex items-center gap-1">
-            <span className="font-bold">{t('memoryCard.meta.created')}</span>
-            {formatDate(memory.created_at)}
-          </span>
+          {/* Quiet footer: only what actually varies between memories */}
+          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-neutral-500 dark:text-neutral-400">
+            <span className="font-bold uppercase tracking-wide">{formatDate(memory.created_at)}</span>
 
-          <span className="flex items-center gap-1">
-            <span className="font-bold">{t('memoryCard.meta.views')}</span>
-            {memory.access_count}
-          </span>
+            {sourceFile && (
+              <span className="font-mono" title={String(category || '')}>
+                {sourceFile}
+              </span>
+            )}
 
-          {memory.similarity !== undefined && (
-            <span className="flex items-center gap-1 text-brutal-black font-bold bg-yellow-100 px-1">
-              <span className="font-bold">{t('memoryCard.meta.match')}</span>
-              {(memory.similarity * 100).toFixed(0)}%
-            </span>
-          )}
-        </div>
-
-        {/* Tags */}
-        {tags.length > 0 && (
-          <div className="flex gap-2 flex-wrap mt-2">
-            {tags.map((tag: string, idx: number) => (
-              <span
-                key={idx}
-                className="px-2 py-0.5 border border-brutal-black bg-neutral-50 dark:bg-zinc-700 text-brutal-black dark:text-white text-[10px] font-bold uppercase cursor-default"
-              >
+            {tags.slice(0, 3).map((tag: string, idx: number) => (
+              <span key={idx} className="text-neutral-400 dark:text-neutral-500">
                 #{tag}
               </span>
             ))}
+
+            {memory.access_count > 0 && (
+              <span>
+                {t('memoryCard.meta.views')} {memory.access_count}
+              </span>
+            )}
+
+            {showImportance && (
+              <span className="font-bold uppercase text-brutal-black dark:text-white">
+                {getImportanceLabel(memory.importance)}
+              </span>
+            )}
+
+            {isRecent() && (
+              <span className="border border-brutal-black bg-brutal-yellow px-1 font-bold uppercase text-brutal-black">
+                {t('memoryCard.badges.new')}
+              </span>
+            )}
+
+            {isFrequentlyAccessed && (
+              <span className="bg-brutal-black px-1 font-bold uppercase text-white dark:bg-white dark:text-brutal-black">
+                {t('memoryCard.badges.hot')}
+              </span>
+            )}
+
+            {memory.similarity !== undefined && memory.similarity > 0 && (
+              <span className="font-bold text-brutal-black dark:text-white">
+                {t('memoryCard.meta.match')} {(memory.similarity * 100).toFixed(0)}%
+              </span>
+            )}
           </div>
-        )}
+        </div>
+
+        {/* Delete button - only visible on hover */}
+        <BrutalDeleteButton
+          onClick={() => setShowConfirm(true)}
+          className="absolute right-2 top-2 h-7 w-7 opacity-0 transition-opacity group-hover:opacity-100"
+          title={t('memoryCard.delete.buttonTitle')}
+        />
       </div>
-    </div>
+    </article>
   );
 };

@@ -14,6 +14,8 @@ import { DailyLogsPanel } from './DailyLogsPanel';
 import { TranscriptPanel } from './TranscriptPanel';
 import { DreamingPanel } from './DreamingPanel';
 import { BrutalSegmentedTabs } from '../BrutalSegmentedTabs';
+import { BrutalButton } from '../BrutalButton';
+import { ChevronDownIcon } from '@heroicons/react/24/outline';
 import type { CoreMemoryLabel } from '../../types/memory';
 
 // MEMORY.md is shown in Overview as the editable 'facts' core-memory block, so it
@@ -94,30 +96,40 @@ export const MemoryView: React.FC<{ initialTab?: MemoryTab }> = ({ initialTab })
 
       {/* Tab content */}
       {activeTab === 'overview' && (
-        <div className="space-y-8 animate-view-fade">
+        <div className="space-y-6 animate-view-fade">
           {/* Stats Dashboard */}
           <section>
-            <MemoryStatsComponent stats={stats} isLoading={statsLoading} />
+            <MemoryStatsComponent
+              stats={stats}
+              isLoading={statsLoading}
+              onRefresh={() => {
+                loadStats();
+                loadCoreMemory();
+              }}
+            />
           </section>
 
-          <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
+          <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
             {/* Core Memory Section */}
             <div className="xl:col-span-5 space-y-4">
-              <div className="flex items-center justify-between bg-white dark:bg-zinc-800 text-brutal-black dark:text-white p-3 border-3 border-brutal-black">
-                <div>
-                  <h3 className="font-brutal text-xl uppercase tracking-tight">
+              <div className="flex items-center justify-between gap-3 bg-white dark:bg-zinc-800 text-brutal-black dark:text-white px-3 py-2 border-2 border-brutal-black shadow-brutal-sm">
+                <div className="min-w-0">
+                  <h3 className="font-brutal text-base uppercase tracking-tight leading-none">
                     {t('memoryView.coreMemoryTitle')}
                   </h3>
-                  <p className="text-xs text-neutral-600 dark:text-neutral-400 font-mono">
+                  <p className="text-[11px] text-neutral-600 dark:text-neutral-400 font-mono truncate">
                     {t('memoryView.coreMemoryDesc')}
                   </p>
                 </div>
-                <button
+                <BrutalButton
                   onClick={() => setShowCoreMemory(!showCoreMemory)}
-                  className="px-2 py-1 border-2 border-brutal-black dark:border-white bg-brutal-black text-white hover:bg-neutral-100 hover:text-brutal-black dark:bg-zinc-700 dark:hover:bg-zinc-600 font-bold text-xs uppercase brutal-btn"
+                  size="icon"
+                  aria-expanded={showCoreMemory}
+                  title={showCoreMemory ? t('memoryView.collapseSection') : t('memoryView.expandSection')}
+                  aria-label={showCoreMemory ? t('memoryView.collapseSection') : t('memoryView.expandSection')}
                 >
-                  {showCoreMemory ? '\u2212' : '+'}
-                </button>
+                  <ChevronDownIcon className={`h-4 w-4 stroke-2 transition-transform ${showCoreMemory ? '' : '-rotate-90'}`} />
+                </BrutalButton>
               </div>
 
               {showCoreMemory && (
@@ -149,16 +161,8 @@ export const MemoryView: React.FC<{ initialTab?: MemoryTab }> = ({ initialTab })
               )}
             </div>
 
-            {/* Archival Memory Section */}
-            <div className="xl:col-span-7 space-y-4">
-              <div className="bg-white dark:bg-zinc-800 p-1 border-b-3 border-brutal-black mb-2">
-                <h3 className="font-brutal text-xl uppercase tracking-tight text-brutal-black dark:text-white">
-                  {t('memoryView.archivalTitle')}
-                </h3>
-                <p className="text-xs text-neutral-600 dark:text-neutral-400 font-mono">
-                  {t('memoryView.archivalDesc')}
-                </p>
-              </div>
+            {/* Archival Memory Section — its own header lives inside the list. */}
+            <div className="xl:col-span-7">
               <ArchivalMemoryList />
             </div>
           </div>

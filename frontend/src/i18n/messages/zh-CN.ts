@@ -1058,6 +1058,7 @@ export const zhCN = {
       lowToHigh: '低 → 高',
       mostAccessed: '访问最多',
       mostRelevant: '最相关',
+      relevanceNeedsQuery: '搜索时才可使用',
     },
     importanceLevel: '重要性',
     importance: {
@@ -1078,6 +1079,11 @@ export const zhCN = {
       switchToList: '切换到精简列表',
     },
     showingCount: '正在显示 {count} 条记忆',
+    group: {
+      unknownDate: '无日期',
+    },
+    showingOfTotal: '显示 {count}/{total} 条记忆',
+    loadedOnlyNote: '排序与筛选仅作用于已加载的记忆',
     filteredBy: '按"{importance}"重要性筛选',
     errorTitle: '加载记忆失败',
     empty: {
@@ -1437,6 +1443,8 @@ export const zhCN = {
     coldMemoryRatio: '未访问占比',
     coldCount: '仍未访问 {cold}/{total} 条',
     accessDistribution: '访问分层',
+    refresh: '刷新统计',
+    emptyHint: '尚未记录任何记忆。',
     distributionTooltipUnaccessed: '未访问：{count}',
     distributionTooltipLight: '轻度（1-2次）：{count}',
     distributionTooltipEngaged: '高频（3次以上）：{count}',
@@ -1449,10 +1457,9 @@ export const zhCN = {
     failedToSave: '保存失败',
     copiedText: '✓ 已复制',
     placeholder: '请输入{title}…',
-    charactersOfMax: '{current} / {max} 字符',
-    overLimit: '超出限制！',
-    usedPercent: '已使用 {percent}%',
-    noContent: '暂无内容，点击"编辑"进行添加',
+    noContent: '这里还没有内容。',
+    addContent: '添加内容',
+    editHint: '⌘↩ 保存 · esc 取消',
     charactersCount: '{count} 字符',
     wordsApprox: '约 {count} 个词',
     labels: {
@@ -1499,6 +1506,8 @@ export const zhCN = {
     coreMemoryDesc: '始终注入 Prompt 的 Markdown 文件：persona.md、user.md、MEMORY.md',
     archivalTitle: '归档数据库',
     archivalDesc: '只读搜索索引',
+    collapseSection: '收起该区块',
+    expandSection: '展开该区块',
     indexingArchives: '索引归档数据',
     waiting: '等待中',
     tabs: {

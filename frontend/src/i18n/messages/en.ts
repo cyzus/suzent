@@ -695,6 +695,8 @@ export const en = {
     coreMemoryDesc: 'Always-visible markdown files: persona.md, user.md, MEMORY.md',
     archivalTitle: 'Archival database',
     archivalDesc: 'Read-only search index',
+    collapseSection: 'Collapse section',
+    expandSection: 'Expand section',
     indexingArchives: 'Indexing archives',
     waiting: 'Waiting',
     tabs: {
@@ -1092,6 +1094,7 @@ export const en = {
       lowToHigh: 'Low → High',
       mostAccessed: 'Most accessed',
       mostRelevant: 'Most relevant',
+      relevanceNeedsQuery: 'Available while a search is active',
     },
     importanceLevel: 'Importance level',
     importance: {
@@ -1112,6 +1115,11 @@ export const en = {
       switchToList: 'Switch to compact view',
     },
     showingCount: 'Showing {count} memories',
+    group: {
+      unknownDate: 'Undated',
+    },
+    showingOfTotal: 'Showing {count} of {total} memories',
+    loadedOnlyNote: 'Sorting and filters apply to loaded memories only',
     filteredBy: 'filtered by {importance} importance',
     errorTitle: 'Error loading memories',
     empty: {
@@ -1471,6 +1479,8 @@ export const en = {
     coldMemoryRatio: 'Unaccessed ratio',
     coldCount: '{cold}/{total} still unaccessed',
     accessDistribution: 'Access distribution',
+    refresh: 'Refresh stats',
+    emptyHint: 'No memories recorded yet.',
     distributionTooltipUnaccessed: 'Unaccessed: {count}',
     distributionTooltipLight: 'Light (1-2): {count}',
     distributionTooltipEngaged: 'Engaged (3+): {count}',
@@ -1483,10 +1493,9 @@ export const en = {
     failedToSave: 'Failed to save',
     copiedText: '✓ Copied',
     placeholder: 'Enter {title}...',
-    charactersOfMax: '{current} / {max} characters',
-    overLimit: 'Over limit!',
-    usedPercent: '{percent}% used',
-    noContent: 'No content yet — click Edit to add',
+    noContent: 'Nothing written here yet.',
+    addContent: 'Add content',
+    editHint: '⌘↩ save · esc cancel',
     charactersCount: '{count} characters',
     wordsApprox: '{count} words (approx)',
     labels: {

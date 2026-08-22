@@ -1,161 +1,172 @@
 /**
  * Memory Statistics Dashboard Component
- * Displays visual stats with neo-brutalist styling
+ * One compact summary block: the total, two rate read-outs, and the access
+ * breakdown that those rates are computed from.
  */
 
 import React from 'react';
+import { ArrowPathIcon } from '@heroicons/react/24/outline';
 import { useI18n } from '../../i18n';
+import { BrutalButton } from '../BrutalButton';
 import type { MemoryStats } from '../../types/memory';
 
 interface MemoryStatsProps {
   stats: MemoryStats | null;
   isLoading?: boolean;
+  onRefresh?: () => void;
 }
 
-export const MemoryStatsComponent: React.FC<MemoryStatsProps> = ({ stats, isLoading }) => {
+const toPercent = (value?: number) => `${((value || 0) * 100).toFixed(1)}%`;
+
+interface RateProps {
+  label: string;
+  value: string;
+  detail: string;
+  ratio: number;
+}
+
+/** A rate read-out: label, percentage, raw counts, and a hairline bar. */
+const Rate: React.FC<RateProps> = ({ label, value, detail, ratio }) => (
+  <div className="min-w-[7.5rem]">
+    <div className="text-[10px] font-bold uppercase tracking-wide text-neutral-600 dark:text-neutral-400">
+      {label}
+    </div>
+    <div className="font-brutal text-xl leading-tight text-brutal-black dark:text-white">{value}</div>
+    <div className="mt-1 h-1.5 w-24 border-2 border-brutal-black bg-white dark:bg-zinc-700">
+      <div
+        className="h-full bg-brutal-black transition-all duration-500 dark:bg-white"
+        style={{ width: `${Math.min(Math.max(ratio * 100, 0), 100)}%` }}
+      />
+    </div>
+    <div className="mt-1 font-mono text-[10px] text-neutral-500 dark:text-neutral-400">{detail}</div>
+  </div>
+);
+
+export const MemoryStatsComponent: React.FC<MemoryStatsProps> = ({ stats, isLoading, onRefresh }) => {
   const { t } = useI18n();
 
-  if (isLoading) {
+  if (isLoading && !stats) {
     return (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {[1, 2, 3, 4].map((i) => (
-          <div
-            key={i}
-            className="border-3 border-brutal-black bg-white dark:bg-zinc-800 p-4 animate-brutal-blink"
-          >
-            <div className="h-4 bg-neutral-200 dark:bg-zinc-700 mb-2"></div>
-            <div className="h-8 bg-neutral-200 dark:bg-zinc-700"></div>
-          </div>
-        ))}
+      <div className="border-3 border-brutal-black bg-white p-4 shadow-brutal animate-brutal-blink dark:bg-zinc-800">
+        <div className="mb-4 h-8 w-40 bg-neutral-200 dark:bg-zinc-700" />
+        <div className="h-7 bg-neutral-200 dark:bg-zinc-700" />
       </div>
     );
   }
 
   if (!stats) return null;
 
-  const toPercent = (value?: number) => `${((value || 0) * 100).toFixed(1)}%`;
   const accessDistribution = stats.access_distribution || {};
   const unaccessed = accessDistribution.unaccessed || 0;
   const light = accessDistribution.light || 0;
   const engaged = accessDistribution.engaged || 0;
-  const total = unaccessed + light + engaged || 1;
+  const distributionTotal = unaccessed + light + engaged;
+  const totalMemories = stats.total_memories || 0;
+
+  // Engaged first: the bar reads left-to-right from most-used to never-touched.
+  const tiers = [
+    {
+      key: 'engaged',
+      count: engaged,
+      fill: 'bg-brutal-green',
+      legend: t('memoryStats.engagedCount', { count: String(engaged) }),
+      title: t('memoryStats.distributionTooltipEngaged', { count: String(engaged) }),
+    },
+    {
+      key: 'light',
+      count: light,
+      fill: 'bg-brutal-yellow',
+      legend: t('memoryStats.lightCount', { count: String(light) }),
+      title: t('memoryStats.distributionTooltipLight', { count: String(light) }),
+    },
+    {
+      key: 'unaccessed',
+      count: unaccessed,
+      fill: 'bg-neutral-200 dark:bg-zinc-600',
+      legend: t('memoryStats.unaccessedCount', { count: String(unaccessed) }),
+      title: t('memoryStats.distributionTooltipUnaccessed', { count: String(unaccessed) }),
+    },
+  ].filter((tier) => tier.count > 0);
+
+  const share = (count: number) => (distributionTotal ? (count / distributionTotal) * 100 : 0);
 
   return (
-    <div className="space-y-4">
-      {/* Main Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Total Memories */}
-        <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 shadow-[2px_2px_0_0_#000] p-4 brutal-btn transition-all">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold uppercase text-neutral-600 dark:text-neutral-400">{t('memoryStats.totalMemories')}</span>
+    <div className="border-3 border-brutal-black bg-white p-4 shadow-brutal dark:bg-zinc-800">
+      <div className="flex flex-wrap items-start gap-x-8 gap-y-4">
+        <div>
+          <div className="text-[10px] font-bold uppercase tracking-wide text-neutral-600 dark:text-neutral-400">
+            {t('memoryStats.totalMemories')}
           </div>
-          <div className="font-brutal text-3xl text-brutal-black dark:text-white">{stats.total_memories}</div>
-        </div>
-
-        {/* Memory Utilization */}
-        <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 shadow-[2px_2px_0_0_#000] p-4 brutal-btn transition-all">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold uppercase text-neutral-600 dark:text-neutral-400">{t('memoryStats.memoryUtilization')}</span>
-          </div>
-          <div className="font-brutal text-3xl text-brutal-black dark:text-white">
-            {toPercent(stats.utilization_rate)}
-          </div>
-          <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
-            {t('memoryStats.utilizedCount', {
-              active: String(stats.utilized_memories || 0),
-              total: String(stats.total_memories || 0),
-            })}
-          </div>
-          <div className="mt-2 h-2 bg-white dark:bg-zinc-700 border-3 border-brutal-black">
-            <div
-              className="h-full bg-brutal-black transition-all duration-500"
-              style={{ width: toPercent(stats.utilization_rate) }}
-            />
+          <div className="font-brutal text-4xl leading-none text-brutal-black dark:text-white">
+            {totalMemories}
           </div>
         </div>
 
-        {/* 7d Activity */}
-        <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 shadow-[2px_2px_0_0_#000] p-4 brutal-btn transition-all">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold uppercase text-neutral-600 dark:text-neutral-400">{t('memoryStats.activity7d')}</span>
-          </div>
-          <div className="font-brutal text-3xl text-brutal-black dark:text-white">
-            {toPercent(stats.recent_activity_rate_7d)}
-          </div>
-          <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
-            {t('memoryStats.recentCount', {
-              recent: String(stats.recently_accessed_memories_7d || 0),
-              total: String(stats.total_memories || 0),
-            })}
-          </div>
-        </div>
+        <Rate
+          label={t('memoryStats.memoryUtilization')}
+          value={toPercent(stats.utilization_rate)}
+          detail={`${stats.utilized_memories || 0}/${totalMemories}`}
+          ratio={stats.utilization_rate || 0}
+        />
+        <Rate
+          label={t('memoryStats.activity7d')}
+          value={toPercent(stats.recent_activity_rate_7d)}
+          detail={`${stats.recently_accessed_memories_7d || 0}/${totalMemories}`}
+          ratio={stats.recent_activity_rate_7d || 0}
+        />
+        <Rate
+          label={t('memoryStats.coldMemoryRatio')}
+          value={toPercent(stats.cold_memory_ratio)}
+          detail={`${stats.cold_memories || 0}/${totalMemories}`}
+          ratio={stats.cold_memory_ratio || 0}
+        />
 
-        {/* Cold Memory Ratio */}
-        <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 shadow-[2px_2px_0_0_#000] p-4 brutal-btn transition-all">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold uppercase text-neutral-600 dark:text-neutral-400">{t('memoryStats.coldMemoryRatio')}</span>
-          </div>
-          <div className="font-brutal text-3xl text-brutal-black dark:text-white">
-            {toPercent(stats.cold_memory_ratio)}
-          </div>
-          <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
-            {t('memoryStats.coldCount', {
-              cold: String(stats.cold_memories || 0),
-              total: String(stats.total_memories || 0),
-            })}
-          </div>
-        </div>
+        {onRefresh && (
+          <BrutalButton
+            onClick={onRefresh}
+            size="icon"
+            title={t('memoryStats.refresh')}
+            aria-label={t('memoryStats.refresh')}
+            className="ml-auto"
+          >
+            <ArrowPathIcon className={`h-4 w-4 stroke-2 ${isLoading ? 'animate-spin' : ''}`} />
+          </BrutalButton>
+        )}
       </div>
 
-      {/* Access Distribution Bar */}
-      {(unaccessed > 0 || light > 0 || engaged > 0) && (
-        <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 shadow-brutal p-4">
-          <h4 className="font-bold text-xs uppercase text-neutral-600 dark:text-neutral-400 mb-3">
+      {distributionTotal > 0 ? (
+        <div className="mt-4 border-t-2 border-neutral-200 pt-3 dark:border-zinc-700">
+          <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-neutral-600 dark:text-neutral-400">
             {t('memoryStats.accessDistribution')}
-          </h4>
-          <div className="flex h-8 border-3 border-brutal-black overflow-hidden bg-white dark:bg-zinc-700">
-            {unaccessed > 0 && (
-              <div
-                className="bg-brutal-black flex items-center justify-center text-white text-xs font-bold transition-all duration-500"
-                style={{ width: `${(unaccessed / total) * 100}%` }}
-                title={t('memoryStats.distributionTooltipUnaccessed', { count: String(unaccessed) })}
-              >
-                {`${unaccessed}`}
-              </div>
-            )}
-            {light > 0 && (
-              <div
-                className="bg-brutal-gray flex items-center justify-center text-white text-xs font-bold transition-all duration-500"
-                style={{ width: `${(light / total) * 100}%` }}
-                title={t('memoryStats.distributionTooltipLight', { count: String(light) })}
-              >
-                {`${light}`}
-              </div>
-            )}
-            {engaged > 0 && (
-              <div
-                className="bg-white dark:bg-zinc-600 border-l-3 border-brutal-black flex items-center justify-center text-brutal-black dark:text-white text-xs font-bold transition-all duration-500"
-                style={{ width: `${(engaged / total) * 100}%` }}
-                title={t('memoryStats.distributionTooltipEngaged', { count: String(engaged) })}
-              >
-                {`${engaged}`}
-              </div>
-            )}
           </div>
-          <div className="flex justify-between mt-2 text-xs dark:text-neutral-300">
-            <div className="flex items-center gap-1">
-              <div className="w-3 h-3 bg-brutal-black border-2 border-brutal-black"></div>
-              <span>{t('memoryStats.unaccessedCount', { count: String(unaccessed) })}</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <div className="w-3 h-3 bg-brutal-gray border-2 border-brutal-black"></div>
-              <span>{t('memoryStats.lightCount', { count: String(light) })}</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <div className="w-3 h-3 bg-white dark:bg-zinc-500 border-2 border-brutal-black"></div>
-              <span>{t('memoryStats.engagedCount', { count: String(engaged) })}</span>
-            </div>
+          <div className="flex h-6 overflow-hidden border-2 border-brutal-black bg-white dark:bg-zinc-700">
+            {tiers.map((tier, index) => (
+              <div
+                key={tier.key}
+                className={`flex items-center justify-center text-[11px] font-bold text-brutal-black transition-all duration-500 ${tier.fill} ${index > 0 ? 'border-l-2 border-brutal-black' : ''}`}
+                style={{ width: `${share(tier.count)}%` }}
+                title={tier.title}
+              >
+                {/* Below ~7% the label collides with the segment borders. */}
+                {share(tier.count) >= 7 ? tier.count : ''}
+              </div>
+            ))}
           </div>
+          <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-[11px] text-brutal-black dark:text-neutral-300">
+            {tiers.map((tier) => (
+              <div key={tier.key} className="flex items-center gap-1.5" title={tier.title}>
+                <div className={`h-3 w-3 border-2 border-brutal-black ${tier.fill}`} />
+                <span>{tier.legend}</span>
+                <span className="font-mono text-neutral-500 dark:text-neutral-400">
+                  {share(tier.count).toFixed(1)}%
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="mt-4 border-t-2 border-neutral-200 pt-3 font-mono text-xs text-neutral-500 dark:border-zinc-700 dark:text-neutral-400">
+          {t('memoryStats.emptyHint')}
         </div>
       )}
     </div>
