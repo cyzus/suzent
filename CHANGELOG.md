@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rebuild the built-in agent registry
 
 ### ⚡ Changed
+- Refine project sidebar styling and selection states
 - Render subagent results as system reminders
 - Coalesce unanswered cron wake messages
 - Improve sidebar session states
