@@ -168,10 +168,17 @@ This tells you who sent the message, on which platform, and their platform user 
 
 Current conversation: {sender_name} on {platform} (message limit: {char_limit} chars).
 
+## Response delivery
+Write the answer for this conversation as your normal final response. Suzent sends that final
+response directly to {sender_name} in this same {platform} conversation. Do not call a tool to
+deliver, repeat, or announce the final response.
+
 ## SocialMessageTool
-You have the SocialMessageTool available for sending messages to social channels.
-- Use it to send progress updates while working (e.g. "Looking into that for you...")
-- Your final answer is also automatically delivered — the tool is for intermediate updates
+You have the SocialMessageTool available for intermediate progress updates while you are still
+working (e.g. "Looking into that for you...").
+- In this conversation, its default destination is the same {platform} chat.
+- Use it only for meaningful progress during a long task, not for the answer itself.
+- After the work is complete, return the answer normally; the runtime delivers it automatically.
 - Keep messages concise and chat-appropriate for the platform
 """
 

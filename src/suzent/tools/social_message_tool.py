@@ -118,7 +118,12 @@ class SocialMessageTool(Tool):
             Optional[str],
             Field(
                 default=None,
-                description="Message body to send. Required unless list_contacts is true.",
+                description=(
+                    "Intermediate progress update or deliberate outbound message. "
+                    "When handling an inbound social conversation, return the final answer "
+                    "normally instead of sending it with this tool. Required unless "
+                    "list_contacts is true."
+                ),
             ),
         ] = None,
         channel: Annotated[
@@ -144,6 +149,10 @@ class SocialMessageTool(Tool):
         ] = None,
     ) -> ToolResult:
         """Send a message to a social platform, or list known contacts.
+
+        In an active inbound social conversation, use this only for intermediate
+        progress. The runtime automatically sends the normal final response to the
+        originating conversation, so this tool must not duplicate it.
 
         Call with list_contacts=true to discover available channels and
         recipient IDs before sending a message.

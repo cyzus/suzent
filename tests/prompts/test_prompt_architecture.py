@@ -5,6 +5,7 @@ from suzent.prompts import (
     build_enabled_models_section,
     build_custom_volumes_section,
     build_session_guidance_section,
+    build_social_context,
     format_session_guidance_debug,
     register_dynamic_instructions,
 )
@@ -205,6 +206,21 @@ def test_register_dynamic_instructions_empty_social_returns_empty_string():
     )
 
     assert funcs["inject_social_context"](ctx) == ""
+
+
+def test_social_context_explains_final_response_delivery():
+    result = build_social_context(
+        {"platform": "discord", "sender_name": "Ada", "sender_id": "user-1"}
+    )
+    normalized = " ".join(result.split())
+
+    assert "normal final response" in normalized
+    assert "directly to Ada in this same discord conversation" in normalized
+    assert (
+        "Do not call a tool to deliver, repeat, or announce the final response"
+        in normalized
+    )
+    assert "intermediate progress updates" in normalized
 
 
 def test_notebook_volume_does_not_run_git_probe(monkeypatch):

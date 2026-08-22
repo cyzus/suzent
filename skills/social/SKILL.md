@@ -18,7 +18,10 @@ the generic rules.
 
 ## Generic rules
 
+- Your normal final response is the reply sent to the user on the active social platform. Write
+  the complete user-facing answer there; do not use `SocialMessageTool` to deliver or duplicate it.
+- `SocialMessageTool` exists so the user can receive meaningful intermediate progress while a
+  long task is still running. It is not required for short tasks or final-answer delivery.
 - Treat the system-provided character limit as authoritative.
-- Split only at safe boundaries, preserving code fences, links, lists, and sentences.
-- Use `SocialMessageTool` only for meaningful progress on long tasks. Final responses deliver
-  automatically; never resend them with the tool.
+- Keep the final response within that limit. Preserve code fences, links, lists, and sentence
+  boundaries when shortening or restructuring it; never send final-answer chunks with the tool.

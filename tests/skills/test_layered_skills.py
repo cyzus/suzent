@@ -85,6 +85,10 @@ def test_social_skill_routes_to_each_channel_reference():
         assert f"references/{channel}.md" in skill_body
         assert reference.is_file()
 
+    assert "normal final response is the reply sent to the user" in skill_body
+    assert "intermediate progress" in skill_body
+    assert "do not use `SocialMessageTool` to deliver or duplicate it" in skill_body
+
 
 def test_notebook_skill_exposes_optional_okf_profile():
     notebook_dir = PROJECT_DIR / "skills" / "notebook"
