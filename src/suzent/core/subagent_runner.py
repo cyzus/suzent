@@ -24,6 +24,12 @@ from suzent.core.stream_registry import (
     background_queues,
     get_active_stream_queue,
 )
+from suzent.core.citation_codec import (
+    namespace_sources,
+    render_citations_plain_text,
+    rewrite_citation_ids,
+    truncate_citation_text,
+)
 
 logger = get_logger(__name__)
 
@@ -50,6 +56,7 @@ class SubAgentTask:
     tools_allowed: list[str]
     status: str = "queued"  # queued | running | completed | failed
     result_summary: Optional[str] = None
+    citation_sources: list[dict] = field(default_factory=list)
     error: Optional[str] = None
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
@@ -487,6 +494,7 @@ async def _run_subagent(
         if task.cwd:
             base_config["cwd"] = task.cwd
 
+        child_citation_sources: list[dict] = []
         if task.runtime == "acp":
             if not task.acp_agent_id:
                 raise ValueError("acp_agent_id is required when runtime='acp'")
@@ -521,10 +529,20 @@ async def _run_subagent(
                 message_content=task.description,
                 config_override=config_override,
                 _stream_queue=stream_queue,
+                citation_sources_out=child_citation_sources,
             )
 
         task.status = "completed"
-        task.result_summary = result_text[:1000] if result_text else "(no output)"
+        task.citation_sources, source_id_map = namespace_sources(
+            child_citation_sources, task.task_id
+        )
+        normalised_result = rewrite_citation_ids(result_text or "", source_id_map)
+        summary_text = truncate_citation_text(normalised_result, 1000)
+        task.result_summary = (
+            render_citations_plain_text(summary_text, task.citation_sources)
+            if summary_text
+            else "(no output)"
+        )
         task.finished_at = datetime.now()
         _broadcast_task_update(task)
         _persist_task_state(task)
@@ -535,6 +553,7 @@ async def _run_subagent(
             {
                 "task_id": task.task_id,
                 "result_summary": task.result_summary,
+                "citation_sources": task.citation_sources,
             },
         )
 
@@ -759,11 +778,28 @@ def _queue_parent_wakeup(task: SubAgentTask) -> None:
     from suzent.prompts import SUBAGENT_WAKEUP_SINGLE
 
     if task.status == "completed":
-        content = SUBAGENT_WAKEUP_SINGLE.format(
-            task_id=task.task_id,
-            model_override=task.model_override or "(default)",
-            description=task.description[:300],
-            result_summary=task.result_summary or "(no output)",
+        source_context = ""
+        if task.citation_sources:
+            lines = []
+            for source in task.citation_sources:
+                source_id = source.get("id")
+                title = source.get("title") or source_id
+                url = source.get("url")
+                description = f"[{source_id}] {title}"
+                if url:
+                    description += f" ({url})"
+                lines.append(description)
+            source_context = (
+                "\n\nCitable sources imported from the sub-agent:\n" + "\n".join(lines)
+            )
+        content = (
+            SUBAGENT_WAKEUP_SINGLE.format(
+                task_id=task.task_id,
+                model_override=task.model_override or "(default)",
+                description=task.description[:300],
+                result_summary=task.result_summary or "(no output)",
+            )
+            + source_context
         )
     else:
         content = (
@@ -778,7 +814,11 @@ def _queue_parent_wakeup(task: SubAgentTask) -> None:
             target_chat_id=task.parent_chat_id,
             content=content,
             kind="subagent_result",
-            payload={"task_id": task.task_id, "status": task.status},
+            payload={
+                "task_id": task.task_id,
+                "status": task.status,
+                "citation_sources": task.citation_sources,
+            },
         )
     except Exception as exc:
         logger.warning(

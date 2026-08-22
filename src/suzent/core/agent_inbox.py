@@ -195,6 +195,9 @@ class AgentInboxDispatcher:
                     user_id=CONFIG.user_id,
                     message_content=delivered_content,
                     config_override=config_override,
+                    incoming_citation_sources=list(
+                        payload.get("citation_sources") or []
+                    ),
                 )
 
 

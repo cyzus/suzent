@@ -721,6 +721,7 @@ async def stream_agent_responses(
         or (isinstance(_m, dict) and _m.get("role") == "assistant")
     )
     citation_mgr = CitationManager(turn=_turn_index)
+    citation_mgr.import_sources(deps.incoming_citation_sources)
     deps.citation_manager = citation_mgr
     citation_sources_last_sent = 0
 

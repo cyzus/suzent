@@ -103,6 +103,36 @@ class CitationManager:
         """Get a source by ID."""
         return self._sources.get(source_id)
 
+    def import_sources(self, sources: list[dict]) -> None:
+        """Import already-namespaced sources received from another agent.
+
+        Imported IDs are retained because the transported text refers to them.
+        Producers must namespace the IDs before crossing the agent boundary.
+        """
+        for payload in sources:
+            source_id = str(payload.get("id") or "").strip()
+            if not source_id or source_id in self._sources:
+                continue
+            raw_type = str(payload.get("type") or CitationSourceType.SUBAGENT.value)
+            try:
+                source_type = CitationSourceType(raw_type)
+            except ValueError:
+                source_type = CitationSourceType.SUBAGENT
+            title = str(payload.get("title") or source_id)
+            source = CitationSource(
+                id=source_id,
+                type=source_type,
+                title=title,
+                url=str(payload["url"]) if payload.get("url") else None,
+                snippet=str(payload["snippet"])[:200]
+                if payload.get("snippet")
+                else None,
+                favicon=str(payload["favicon"]) if payload.get("favicon") else None,
+                metadata=dict(payload.get("metadata") or {}),
+            )
+            self._sources[source_id] = source
+            self._dedup[(source.type.value, source.url or source.title)] = source_id
+
     def to_prompt_context(self) -> str:
         """Render the available-sources block for injection into the prompt."""
         if not self._sources:

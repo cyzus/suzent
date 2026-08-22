@@ -255,6 +255,14 @@ def test_parent_wakeup_is_persisted_with_model(monkeypatch):
         model_override="openai/gpt-4.1",
         status="completed",
         result_summary="Choose A.",
+        citation_sources=[
+            {
+                "id": "sa_sub_a_src_1",
+                "type": "webpage",
+                "title": "Evidence",
+                "url": "https://example.com/evidence",
+            }
+        ],
     )
 
     _queue_parent_wakeup(task)
@@ -263,6 +271,9 @@ def test_parent_wakeup_is_persisted_with_model(monkeypatch):
     assert captured["sender_chat_id"] == "subagent-sub_a"
     assert captured["target_chat_id"] == "chat-1"
     assert captured["kind"] == "subagent_result"
-    assert captured["payload"] == {"task_id": "sub_a", "status": "completed"}
+    assert captured["payload"]["task_id"] == "sub_a"
+    assert captured["payload"]["status"] == "completed"
+    assert captured["payload"]["citation_sources"][0]["id"] == "sa_sub_a_src_1"
     assert "Model: openai/gpt-4.1" in captured["content"]
     assert "Choose A." in captured["content"]
+    assert "[sa_sub_a_src_1] Evidence" in captured["content"]

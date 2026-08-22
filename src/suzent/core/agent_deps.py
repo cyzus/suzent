@@ -91,6 +91,7 @@ class AgentDeps:
     # CitationManager instance for this run; tools register citable sources on it
     # and streaming.py injects its prompt context + emits citation events.
     citation_manager: Any = None
+    incoming_citation_sources: list[dict[str, Any]] = field(default_factory=list)
 
     # --- Prompt Context Cache ---
     section_cache: dict[str, str] = field(default_factory=dict)

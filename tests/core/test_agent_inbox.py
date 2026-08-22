@@ -183,7 +183,18 @@ async def test_target_turn_uses_headless_config_and_delivery_marker(monkeypatch)
     )
     monkeypatch.setattr("suzent.core.stream_registry.stream_controls", {})
 
-    await AgentInboxDispatcher()._run_target_turn(_message())
+    message = _message()
+    message["payload"] = {
+        "citation_sources": [
+            {
+                "id": "sa_sub_a_src_1",
+                "type": "webpage",
+                "title": "Evidence",
+                "url": "https://example.com/evidence",
+            }
+        ]
+    }
+    await AgentInboxDispatcher()._run_target_turn(message)
 
     assert captured["chat_id"] == "agent-target"
     assert captured["config_override"]["interaction_profile"] == "headless"
@@ -193,3 +204,4 @@ async def test_target_turn_uses_headless_config_and_delivery_marker(monkeypatch)
     )
     assert "<!-- suzent-agent-inbox:msg-1 -->" in captured["message_content"]
     assert captured["message_content"].endswith("Please review")
+    assert captured["incoming_citation_sources"][0]["id"] == "sa_sub_a_src_1"

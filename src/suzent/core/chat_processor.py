@@ -63,6 +63,35 @@ def _encode_custom_event(name: str, value: dict[str, Any]) -> str:
     return _event_encoder.encode(CustomEvent(name=name, value=value))
 
 
+def _merge_citation_sources_from_sse(chunk: str, target: list[dict]) -> None:
+    """Merge ``citation_sources`` custom events from one encoded SSE chunk."""
+    by_id = {
+        str(source.get("id")): source
+        for source in target
+        if isinstance(source, dict) and source.get("id")
+    }
+    for line in chunk.splitlines():
+        if not line.startswith("data: "):
+            continue
+        try:
+            event = json.loads(line[6:].strip())
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if event.get("type") not in {"CUSTOM", "CUSTOM_EVENT"}:
+            continue
+        name = event.get("name")
+        value = event.get("value") or {}
+        if not name and isinstance(event.get("custom"), dict):
+            name = event["custom"].get("name")
+            value = event["custom"].get("value") or {}
+        if name != "citation_sources" or not isinstance(value, dict):
+            continue
+        for source in value.get("sources") or []:
+            if isinstance(source, dict) and source.get("id"):
+                by_id[str(source["id"])] = dict(source)
+    target[:] = by_id.values()
+
+
 def _emit_notice_stream(chat_id: str, text: str) -> AsyncGenerator[str, None]:
     """Yield a minimal self-contained SSE run that shows ``text`` as a notice row.
 
@@ -400,6 +429,7 @@ class ChatProcessor:
         is_heartbeat: bool = False,
         _message_history_override: list = None,
         system_reminders: list[str] = None,
+        incoming_citation_sources: list[dict] = None,
     ) -> AsyncGenerator[str, None]:
         """
         Process a user message turn:
@@ -447,6 +477,7 @@ class ChatProcessor:
 
         # 3. Build AgentDeps (replaces inject_chat_context)
         deps = build_agent_deps(chat_id=chat_id, user_id=user_id, config=config)
+        deps.incoming_citation_sources = list(incoming_citation_sources or [])
         # System/forked chats never persist agent_state — they reset before each run.
         deps.stateless = self._is_system_chat(chat_id)
 
@@ -1493,6 +1524,7 @@ class ChatProcessor:
         config_override: Dict = None,
         on_event: Any = None,
         _stream_queue=None,
+        citation_sources_out: list[dict] = None,
     ) -> str:
         """Run a steer and return only the final response text.
 
@@ -1512,6 +1544,8 @@ class ChatProcessor:
             ):
                 if _stream_queue is not None:
                     await _stream_queue.put(chunk)
+                if citation_sources_out is not None:
+                    _merge_citation_sources_from_sse(chunk, citation_sources_out)
                 for event in parser.parse([chunk]):
                     if on_event:
                         await on_event(event)
@@ -1538,6 +1572,8 @@ class ChatProcessor:
         is_heartbeat: bool = False,
         _stream_queue=None,
         system_reminders: list[str] = None,
+        incoming_citation_sources: list[dict] = None,
+        citation_sources_out: list[dict] = None,
     ) -> str:
         """Run a conversation turn and return only the final response text.
 
@@ -1562,9 +1598,13 @@ class ChatProcessor:
                 is_social=is_social,
                 is_heartbeat=is_heartbeat,
                 system_reminders=system_reminders,
+                incoming_citation_sources=incoming_citation_sources,
             ):
                 if _stream_queue is not None:
                     await _stream_queue.put(chunk)
+
+                if citation_sources_out is not None:
+                    _merge_citation_sources_from_sse(chunk, citation_sources_out)
 
                 # Use the shared parser to turn raw SSE chunks into events
                 for event in parser.parse([chunk]):
@@ -1589,6 +1629,7 @@ class ChatProcessor:
         config_override: Dict = None,
         is_heartbeat: bool = False,
         system_reminders: list[str] = None,
+        incoming_citation_sources: list[dict] = None,
     ) -> str:
         """Run a chat turn with an SSE background stream so the frontend can watch it.
 
@@ -1610,6 +1651,7 @@ class ChatProcessor:
             is_heartbeat=is_heartbeat,
             _stream_queue=stream_queue,
             system_reminders=system_reminders,
+            incoming_citation_sources=incoming_citation_sources,
         )
 
     async def _process_upload_file(

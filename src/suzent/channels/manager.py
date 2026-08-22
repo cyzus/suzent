@@ -7,6 +7,10 @@ import asyncio
 from typing import Dict
 from suzent.logger import get_logger
 from suzent.channels.base import SocialChannel, UnifiedMessage
+from suzent.core.citation_codec import (
+    CitationStreamRenderer,
+    render_citations_plain_text,
+)
 
 logger = get_logger(__name__)
 
@@ -121,6 +125,8 @@ class ChannelManager:
         self, platform: str, target_id: str, content: str, **kwargs
     ) -> bool:
         """Route outgoing message to the correct driver."""
+        citation_sources = kwargs.pop("citation_sources", [])
+        content = render_citations_plain_text(content, citation_sources)
         if not platform and ":" in target_id:
             # Auto-detect platform from target_id if not provided
             # NOTE: This assumes target_id is "platform:id"
@@ -138,6 +144,7 @@ class ChannelManager:
         self, platform: str, target_id: str, stream, **kwargs
     ) -> bool:
         """Route a streaming response to the correct driver (if supported)."""
+        citation_sources = kwargs.pop("citation_sources", [])
         if platform and ":" in target_id and target_id.startswith(f"{platform}:"):
             _, target_id = target_id.split(":", 1)
 
@@ -146,16 +153,28 @@ class ChannelManager:
             logger.error(f"Cannot stream: Platform '{platform}' not configured.")
             return False
 
+        renderer = CitationStreamRenderer()
+        renderer.add_sources(citation_sources)
+
+        async def portable_stream():
+            async for chunk in stream:
+                rendered = renderer.feed(chunk)
+                if rendered:
+                    yield rendered
+            final = renderer.finish()
+            if final:
+                yield final
+
         send_stream = getattr(channel, "send_stream", None)
         if send_stream is None:
             # Fallback: collect full content then send
             chunks = []
-            async for chunk in stream:
+            async for chunk in portable_stream():
                 chunks.append(chunk)
             return await channel.send_message(target_id, "".join(chunks))
 
         try:
-            return await send_stream(target_id, stream, **kwargs)
+            return await send_stream(target_id, portable_stream(), **kwargs)
         except Exception as e:
             logger.error(f"Error streaming on {platform}: {e}")
             return False

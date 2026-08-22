@@ -91,3 +91,30 @@ def test_clear_resets_counter_and_sources():
     mgr.clear()
     assert mgr.get_all() == []
     assert mgr.register(CitationSourceType.FILE, "g", url="file:///b") == "t0_src_1"
+
+
+def test_import_sources_retains_namespaced_ids_and_metadata():
+    mgr = CitationManager(turn=4)
+    mgr.import_sources(
+        [
+            {
+                "id": "sa_sub_a_src_1",
+                "type": "webpage",
+                "title": "Imported",
+                "url": "https://example.com/imported",
+            }
+        ]
+    )
+
+    imported = mgr.get("sa_sub_a_src_1")
+    assert imported is not None
+    assert imported.title == "Imported"
+    assert imported.url == "https://example.com/imported"
+    assert (
+        mgr.register(
+            CitationSourceType.WEBPAGE,
+            "Duplicate",
+            url="https://example.com/imported",
+        )
+        == "sa_sub_a_src_1"
+    )

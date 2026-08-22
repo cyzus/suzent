@@ -211,6 +211,14 @@ class SocialMessageTool(Tool):
                 "Event loop not available for async message dispatch.",
             )
 
+        from suzent.core.citation_codec import render_citations_plain_text
+
+        citation_manager = getattr(deps, "citation_manager", None)
+        citation_sources = (
+            citation_manager.to_event_payload() if citation_manager else []
+        )
+        message = render_citations_plain_text(message, citation_sources)
+
         # Enforce platform character limit
         char_limit = PLATFORM_CHAR_LIMITS.get(platform, 4096)
         if len(message) > char_limit:
@@ -220,7 +228,11 @@ class SocialMessageTool(Tool):
         # Sync-to-async bridge: agent tools run in a background thread
         try:
             future = asyncio.run_coroutine_threadsafe(
-                self._channel_manager.send_message(platform, target, message),
+                self._channel_manager.send_message(
+                    platform,
+                    target,
+                    message,
+                ),
                 self._event_loop,
             )
             success = future.result(timeout=30)

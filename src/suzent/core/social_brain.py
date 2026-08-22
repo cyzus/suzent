@@ -751,6 +751,7 @@ class SocialBrain(BaseBrain):
 
             # 4. Process and Reply — collect all approval requests from the stream
             collected_approvals: list[ApprovalRequest] = []
+            social_citation_sources: list[dict] = []
 
             async def on_event(event):
                 if isinstance(event, ApprovalRequest):
@@ -782,6 +783,9 @@ class SocialBrain(BaseBrain):
             if supports_streaming and not is_steer:
                 # Run the LLM turn concurrently while piping text deltas to the channel
                 import json as _json
+                from suzent.core.citation_codec import CitationStreamRenderer
+
+                citation_renderer = CitationStreamRenderer()
 
                 async def _text_delta_stream():
                     """Yield text deltas from the background stream queue."""
@@ -795,9 +799,22 @@ class SocialBrain(BaseBrain):
                                 if data.get("type") == "TEXT_MESSAGE_CONTENT":
                                     delta = data.get("delta", "")
                                     if delta:
-                                        yield delta
+                                        rendered = citation_renderer.feed(delta)
+                                        if rendered:
+                                            yield rendered
+                                elif (
+                                    data.get("type") in {"CUSTOM", "CUSTOM_EVENT"}
+                                    and data.get("name") == "citation_sources"
+                                ):
+                                    sources = (data.get("value") or {}).get(
+                                        "sources", []
+                                    )
+                                    citation_renderer.add_sources(sources)
                         except Exception:
                             pass
+                    final = citation_renderer.finish()
+                    if final:
+                        yield final
 
                 # Start the LLM turn as a background task
                 process_task = asyncio.create_task(
@@ -809,6 +826,7 @@ class SocialBrain(BaseBrain):
                         config_override=config_override,
                         on_event=on_event,
                         _stream_queue=stream_queue,
+                        citation_sources_out=social_citation_sources,
                     )
                 )
 
@@ -832,6 +850,7 @@ class SocialBrain(BaseBrain):
                             config_override=config_override,
                             on_event=on_event,
                             _stream_queue=stream_queue,
+                            citation_sources_out=social_citation_sources,
                         )
                     else:
                         full_response = await processor.process_turn_text(
@@ -842,6 +861,7 @@ class SocialBrain(BaseBrain):
                             config_override=config_override,
                             on_event=on_event,
                             _stream_queue=stream_queue,
+                            citation_sources_out=social_citation_sources,
                         )
                 finally:
                     unregister_background_stream(social_chat_id)
@@ -877,11 +897,17 @@ class SocialBrain(BaseBrain):
             # Send Final Response (non-streaming path, or steer)
             if not supports_streaming and full_response.strip():
                 await self.channel_manager.send_message(
-                    message.platform, target_id, full_response
+                    message.platform,
+                    target_id,
+                    full_response,
+                    citation_sources=social_citation_sources,
                 )
             elif is_steer and full_response.strip():
                 await self.channel_manager.send_message(
-                    message.platform, target_id, full_response
+                    message.platform,
+                    target_id,
+                    full_response,
+                    citation_sources=social_citation_sources,
                 )
 
         except Exception as e:
@@ -1074,6 +1100,7 @@ class SocialBrain(BaseBrain):
 
             # Collect any new approval requests that arise during resume
             new_approvals: list[_AR] = []
+            resumed_citation_sources: list[dict] = []
 
             async def on_event(event):
                 if isinstance(event, _AR):
@@ -1091,6 +1118,7 @@ class SocialBrain(BaseBrain):
                 config_override=config,
                 is_social=True,
                 on_event=on_event,
+                citation_sources_out=resumed_citation_sources,
             )
 
             # If new approvals arose (e.g. second bash command), prompt them
@@ -1119,7 +1147,10 @@ class SocialBrain(BaseBrain):
 
             if full_response.strip():
                 await self.channel_manager.send_message(
-                    session.platform, session.target_id, full_response
+                    session.platform,
+                    session.target_id,
+                    full_response,
+                    citation_sources=resumed_citation_sources,
                 )
         except Exception as e:
             logger.error(f"Failed to resume social chat: {e}")
