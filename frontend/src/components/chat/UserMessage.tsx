@@ -373,7 +373,7 @@ export const UserMessage: React.FC<UserMessageProps> = ({ message, chatId, onIma
       {/* Text content — edit mode swaps the bubble for a textarea */}
       {message.content && !isEditing && (
         <div className="flex justify-end pr-1 pb-1">
-          <div className="bg-brutal-yellow border-3 border-brutal-black shadow-[3px_3px_0_0_#000] px-5 py-4 max-w-full font-medium relative select-text">
+          <div className="relative max-w-full border-2 border-brutal-black bg-brutal-yellow px-4 py-3 font-medium shadow-[2px_2px_0_0_#000] select-text dark:border-white dark:shadow-[2px_2px_0_0_#fff]">
             <div className="prose prose-sm max-w-none break-words text-brutal-black font-sans whitespace-pre-wrap">
               <ClickableContent content={content} onFileClick={onFileClick} fileChipTone="neutral" />
             </div>

@@ -466,7 +466,7 @@ const AGUIPartsContent: React.FC<{
         // bordered box with a blinking cursor under the assembly animation.
         if (!fullText.trim()) return null;
         return (
-          <div key={ci} className="border-3 border-brutal-black shadow-brutal-lg bg-white dark:bg-zinc-800 px-6 py-5 relative">
+          <div key={ci} className="relative px-1 py-1 text-brutal-black dark:text-neutral-100">
             <div className="space-y-4">
               <MarkdownRenderer content={fullText} onFileClick={onFileClick} streamingLite={Boolean(isStreaming && isLastChunk)} />
               {isStreaming && isLastChunk && (
@@ -1093,7 +1093,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
               : chunk.blocks.filter(b => b.type !== 'reasoning');
 
             return (
-              <div key={idx} className="border-3 border-brutal-black shadow-brutal-lg bg-white dark:bg-zinc-800 px-6 py-5 relative">
+              <div key={idx} className="relative px-1 py-1 text-brutal-black dark:text-neutral-100">
                 <div className="space-y-4">
                   {isStreamingChunk ? (
                     <StreamingContent blocks={contentBlocks} messageIndex={messageIndex} showCursor={cursorReady} onFileClick={onFileClick} />
