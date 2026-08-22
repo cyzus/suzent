@@ -20,6 +20,7 @@ import {
 } from '@heroicons/react/24/outline';
 
 import { useI18n } from '../../i18n';
+import { BrutalButton } from '../BrutalButton';
 import { BrutalSelect } from '../BrutalSelect';
 
 export type SettingsCategory =
@@ -104,15 +105,17 @@ function SettingsTitle({ onClose }: { onClose: () => void }): React.ReactElement
           {t('settings.title')}
         </h1>
       </div>
-      <button
+      <BrutalButton
         type="button"
+        variant="light"
+        size="icon-lg"
         onClick={onClose}
         aria-label={t('common.close')}
         title={t('common.close')}
-        className="flex h-9 w-9 shrink-0 items-center justify-center border-2 border-brutal-black bg-white shadow-brutal-sm transition-transform hover:-translate-y-px active:translate-x-px active:translate-y-px active:shadow-none"
+        className="shrink-0"
       >
         <XMarkIcon className="h-5 w-5" aria-hidden="true" />
-      </button>
+      </BrutalButton>
     </div>
   );
 }

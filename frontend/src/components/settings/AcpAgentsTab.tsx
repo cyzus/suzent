@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useI18n } from '../../i18n';
 import { fetchAcpAgents, fetchAcpSessions, probeAcpAgent } from '../../lib/api';
 import type { AcpAgentDescriptor } from '../../types/api';
+import { BrutalLink } from '../BrutalButton';
 import { SectionCardHeader, SettingsListItem, SettingsListAction, Badge } from './SettingsCard';
 import { SettingsHeader } from './SettingsHeader';
 import { AcpAgentIcon } from '../AcpAgentIcon';
@@ -328,16 +329,8 @@ function ExternalAction({
   label: string;
   primary?: boolean;
 }): React.ReactElement {
-  const tone = primary
-    ? 'border-brutal-black bg-brutal-blue text-white shadow-brutal-sm hover:-translate-y-0.5'
-    : 'border-brutal-black/20 dark:border-white/10 text-neutral-500 dark:text-neutral-400 hover:border-brutal-black hover:text-brutal-black dark:hover:border-white dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-zinc-800';
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noreferrer noopener"
-      className={`inline-flex items-center gap-1.5 px-3 py-1 border text-[11px] font-bold uppercase transition-all rounded-sm ${tone}`}
-    >
+  const content = (
+    <>
       {label}
       <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path
@@ -347,6 +340,32 @@ function ExternalAction({
           d="M14 5h5v5M19 5l-8 8M17 14v4a1 1 0 01-1 1H6a1 1 0 01-1-1V8a1 1 0 011-1h4"
         />
       </svg>
+    </>
+  );
+
+  if (primary) {
+    return (
+      <BrutalLink
+        href={href}
+        target="_blank"
+        rel="noreferrer noopener"
+        variant="primary"
+        size="sm"
+        className="uppercase"
+      >
+        {content}
+      </BrutalLink>
+    );
+  }
+
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer noopener"
+      className="inline-flex items-center gap-1.5 rounded-sm border border-brutal-black/20 px-3 py-1 text-[11px] font-bold uppercase text-neutral-500 transition-colors hover:border-brutal-black hover:bg-neutral-100 hover:text-brutal-black dark:border-white/10 dark:text-neutral-400 dark:hover:border-white dark:hover:bg-zinc-800 dark:hover:text-white"
+    >
+      {content}
     </a>
   );
 }

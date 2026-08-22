@@ -87,7 +87,7 @@ export function AppearanceTab(): React.ReactElement {
                     'w-40 h-28 border-3 border-brutal-black overflow-hidden transition-all',
                     isActive
                       ? 'shadow-brutal ring-[3px] ring-black ring-offset-2 ring-offset-white dark:ring-white dark:ring-offset-zinc-800'
-                      : 'shadow-brutal hover:-translate-x-px hover:-translate-y-px',
+                      : 'shadow-brutal hover:brightness-[0.98]',
                   ].join(' ')}
                 >
                   <CardPreview s={key} />
