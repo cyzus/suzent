@@ -5,6 +5,48 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.9.1] - 2026-08-22
+
+### 🚀 Added
+- Add InformationPopover component and integrate it into StatusBar, ChatMinimap, and CitationBadge
+- Make tool labels agree on tense
+- Describe tool calls by what they actually did
+- Update README and add SECURITY.md for improved documentation and vulnerability reporting
+- Link vendor install docs instead of guessing a command
+- Sign ACP turns with the agent that produced them
+- Give each ACP agent its own session count
+- Rebuild the built-in agent registry
+
+### ⚡ Changed
+- Render subagent results as system reminders
+- Coalesce unanswered cron wake messages
+- Improve sidebar session states
+- Improve chat titles and status bar
+- Fix citation transport across agents and social channels
+
+### 🐛 Fixed
+- Update background service messages for clarity
+- Let a finished answer outrank a dropped stream
+- Report why a run stopped, in one shared vocabulary
+- Scope allowlist authorization per platform, brand icons
+- Use the sandbox project dir instead of the backend launch dir
+- Correct the install and login commands on built-in agents
+- Parse Windows npx paths cross-platform
+- Keep service settings responsive
+- Stop the SearXNG healthcheck from querying DuckDuckGo
+- Put a chat back on its runtime when the handshake fails
+- Keep chats on the retired codex-acp id working
+- Keep the CLI bridge from deadlocking or losing the reply
+- Don't block the composer while an ACP agent boots
+- Keep uninstalled ACP agents out of the engine picker
+- Stop duplicating the user's message and title ACP chats
+- Fall back to a fresh session when session/load fails
+- Launch npx agents on Windows and explain agent exits
+- Clear a previous attempt's failure banner on a new update
+- Force-update release tags and surface real update errors
+- Enhance release guide with detailed versioning and asset handling instructions
+- Restructure ACP agents tab layout
+
 ## [v0.9.0] - 2026-08-21
 
 ### 🚀 Added
