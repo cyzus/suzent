@@ -1,31 +1,35 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useI18n } from '../../i18n';
 import { SettingsHeader } from './SettingsHeader';
-import { GridCard } from './SettingsCard';
+import { GridCard, SettingsGrid, SettingsPage } from './SettingsCard';
 
 interface ModelRolesTabProps {
   roleModels: Record<string, string[]>;
   suggestions: Record<string, string[]>;
+  unregisteredModels: string[];
   onChange: (roles: Record<string, string[]>) => void;
 }
 
-const ROLES: { key: string; labelKey: string; descKey: string }[] = [
-  { key: 'primary',          labelKey: 'roles.primary',          descKey: 'roles.primaryDesc' },
-  { key: 'cheap',            labelKey: 'roles.cheap',            descKey: 'roles.cheapDesc' },
-  { key: 'vision',           labelKey: 'roles.vision',           descKey: 'roles.visionDesc' },
-  { key: 'embedding',        labelKey: 'roles.embedding',        descKey: 'roles.embeddingDesc' },
-  { key: 'image_generation', labelKey: 'roles.imageGeneration',  descKey: 'roles.imageGenerationDesc' },
-  { key: 'tts',              labelKey: 'roles.tts',              descKey: 'roles.ttsDesc' },
+type FallbackBehavior = 'none' | 'primary' | 'vision-primary';
+
+const ROLES: { key: string; labelKey: string; descKey: string; fallback: FallbackBehavior }[] = [
+  { key: 'primary',          labelKey: 'roles.primary',          descKey: 'roles.primaryDesc',         fallback: 'none' },
+  { key: 'cheap',            labelKey: 'roles.cheap',            descKey: 'roles.cheapDesc',           fallback: 'primary' },
+  { key: 'vision',           labelKey: 'roles.vision',           descKey: 'roles.visionDesc',          fallback: 'vision-primary' },
+  { key: 'embedding',        labelKey: 'roles.embedding',        descKey: 'roles.embeddingDesc',       fallback: 'none' },
+  { key: 'image_generation', labelKey: 'roles.imageGeneration',  descKey: 'roles.imageGenerationDesc', fallback: 'none' },
+  { key: 'tts',              labelKey: 'roles.tts',              descKey: 'roles.ttsDesc',             fallback: 'none' },
 ];
 
 // ── Searchable dropdown ──────────────────────────────────────────────────────
 
 interface ModelDropdownProps {
   options: string[];
+  unregisteredModels: Set<string>;
   onSelect: (model: string) => void;
 }
 
-function ModelDropdown({ options, onSelect }: ModelDropdownProps) {
+function ModelDropdown({ options, unregisteredModels, onSelect }: ModelDropdownProps) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -102,10 +106,15 @@ function ModelDropdown({ options, onSelect }: ModelDropdownProps) {
                 <button
                   type="button"
                   onClick={() => handleSelect(m)}
-                  className="w-full text-left px-3 py-2 font-mono text-xs hover:bg-brutal-yellow dark:hover:bg-brutal-yellow/20 border-b border-neutral-100 dark:border-zinc-700 truncate dark:text-white"
+                  className="flex w-full items-center justify-between gap-2 border-b border-neutral-100 px-3 py-2 text-left font-mono text-xs hover:bg-brutal-yellow dark:border-zinc-700 dark:text-white dark:hover:bg-brutal-yellow/20"
                   title={m}
                 >
-                  {m}
+                  <span className="truncate">{m}</span>
+                  {unregisteredModels.has(m) && (
+                    <span className="shrink-0 border border-amber-700 bg-amber-100 px-1 py-0.5 font-sans text-[8px] font-black uppercase text-amber-900 dark:bg-amber-900/30 dark:text-amber-300">
+                      {t('settings.roles.unverified')}
+                    </span>
+                  )}
                 </button>
               </li>
             ))}
@@ -131,17 +140,23 @@ function ModelDropdown({ options, onSelect }: ModelDropdownProps) {
 // ── Role card ────────────────────────────────────────────────────────────────
 
 interface RoleCardProps {
+  roleKey: string;
   label: string;
   desc: string;
   selected: string[];
   suggestions: string[];
+  unregisteredModels: string[];
+  fallback: FallbackBehavior;
   onChange: (models: string[]) => void;
 }
 
-function RoleCard({ label, desc, selected, suggestions, onChange }: RoleCardProps) {
+function RoleCard({ roleKey, label, desc, selected, suggestions, unregisteredModels, fallback, onChange }: RoleCardProps) {
   const { t } = useI18n();
 
-  const available = suggestions.filter(m => !selected.includes(m));
+  const unregistered = new Set(unregisteredModels);
+  const explicitOverrides = new Set(selected.filter((model) => !suggestions.includes(model)));
+  const available = [...new Set([...suggestions, ...unregisteredModels])]
+    .filter(m => !selected.includes(m));
 
   function addModel(modelId: string) {
     const id = modelId.trim();
@@ -159,26 +174,56 @@ function RoleCard({ label, desc, selected, suggestions, onChange }: RoleCardProp
     onChange(next);
   }
 
+  function moveDown(idx: number) {
+    if (idx >= selected.length - 1) return;
+    const next = [...selected];
+    [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
+    onChange(next);
+  }
+
+  function priorityLabel(index: number): string {
+    if (index === 0) return t('settings.roles.firstChoice');
+    if (index === selected.length - 1) return t('settings.roles.lastResort');
+    return t('settings.roles.fallbackNumber', { number: String(index) });
+  }
+
+  const emptyFallback = fallback === 'primary'
+    ? t('settings.roles.inheritsPrimary')
+    : fallback === 'vision-primary'
+      ? t('settings.roles.inheritsVisionPrimary')
+      : t('settings.roles.noImplicitFallback');
+
   return (
     <GridCard title={label} subtitle={desc} active={selected.length > 0}>
       {/* Body */}
-      <div className="p-4 flex flex-col gap-3 flex-1">
+      <div className="flex flex-1 flex-col gap-3 p-3">
 
         {/* Selected model chain */}
         {selected.length > 0 ? (
-          <div className="space-y-1.5">
+          <div>
             {selected.map((modelId, idx) => (
-              <div key={modelId} className="flex items-center gap-1.5">
-                <span className="text-[10px] font-black w-5 h-5 flex items-center justify-center border-2 border-brutal-black bg-brutal-black text-white flex-shrink-0">
-                  {idx + 1}
-                </span>
-                <span
-                  className="flex-1 font-mono text-xs truncate border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-700 dark:text-white px-2 py-1 shadow-brutal-sm"
-                  title={modelId}
-                >
-                  {modelId}
-                </span>
-                {idx > 0 ? (
+              <React.Fragment key={modelId}>
+                <div className="grid grid-cols-[5.25rem_minmax(0,1fr)_auto] items-center gap-1.5">
+                  <span className="text-[9px] font-black uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+                    {priorityLabel(idx)}
+                  </span>
+                  <span
+                    className="flex min-w-0 items-center gap-1.5 border-2 border-brutal-black bg-neutral-50 px-2 py-1.5 font-mono text-xs dark:bg-zinc-700 dark:text-white"
+                    title={modelId}
+                  >
+                    <span className="truncate">{modelId}</span>
+                    {(unregistered.has(modelId) || explicitOverrides.has(modelId)) && (
+                      <span
+                        className="shrink-0 text-amber-700 dark:text-amber-300"
+                        title={t('settings.roles.explicitOverride')}
+                        aria-label={t('settings.roles.explicitOverride')}
+                      >
+                        ?
+                      </span>
+                    )}
+                  </span>
+                  <div className="flex items-center gap-1">
+                  {idx > 0 ? (
                   <button
                     type="button"
                     onClick={() => moveUp(idx)}
@@ -188,23 +233,49 @@ function RoleCard({ label, desc, selected, suggestions, onChange }: RoleCardProp
                 ) : (
                   selected.length > 1 && <span className="w-6 h-6 flex-shrink-0" aria-hidden="true" />
                 )}
+                {idx < selected.length - 1 ? (
+                  <button
+                    type="button"
+                    onClick={() => moveDown(idx)}
+                    className="w-6 h-6 flex items-center justify-center border-2 border-brutal-black bg-white dark:bg-zinc-700 hover:bg-neutral-100 dark:hover:bg-zinc-600 dark:text-white text-xs flex-shrink-0 font-bold"
+                    title={t('settings.roles.moveDown')}
+                  >↓</button>
+                ) : (
+                  selected.length > 1 && <span className="w-6 h-6 flex-shrink-0" aria-hidden="true" />
+                )}
                 <button
                   type="button"
                   onClick={() => removeModel(modelId)}
                   className="w-6 h-6 flex items-center justify-center border-2 border-brutal-black bg-white dark:bg-zinc-700 hover:bg-red-50 dark:hover:bg-red-900/30 dark:text-white text-xs flex-shrink-0 font-bold"
                   title={t('common.remove')}
                 >×</button>
-              </div>
+                  </div>
+                </div>
+                {idx < selected.length - 1 && (
+                  <div className="ml-[5.55rem] h-3 border-l-2 border-dashed border-neutral-400" aria-hidden="true" />
+                )}
+              </React.Fragment>
             ))}
+            <p className="mt-2 border-t border-neutral-200 pt-2 text-[10px] leading-relaxed text-neutral-500 dark:border-zinc-600 dark:text-neutral-400">
+              {t('settings.roles.chainStops')}
+            </p>
           </div>
         ) : (
-          <div className="text-xs text-neutral-400 dark:text-neutral-500 italic border-2 border-dashed border-neutral-200 dark:border-zinc-600 px-3 py-2">
-            {t('settings.roles.notConfigured')}
+          <div className="border-2 border-dashed border-neutral-300 bg-neutral-50 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-900">
+            <p className="text-[10px] font-black uppercase text-neutral-500 dark:text-neutral-400">
+              {t('settings.roles.notConfigured')}
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-neutral-600 dark:text-neutral-400">{emptyFallback}</p>
           </div>
         )}
 
         {/* Add model: searchable dropdown; typing a custom id also works */}
-        <ModelDropdown options={available} onSelect={addModel} />
+        <ModelDropdown options={available} unregisteredModels={unregistered} onSelect={addModel} />
+        {unregisteredModels.length > 0 && roleKey !== 'primary' && roleKey !== 'cheap' && (
+          <p className="text-[10px] leading-relaxed text-amber-800 dark:text-amber-300">
+            {t('settings.roles.unregisteredAvailable')}
+          </p>
+        )}
       </div>
     </GridCard>
   );
@@ -212,25 +283,28 @@ function RoleCard({ label, desc, selected, suggestions, onChange }: RoleCardProp
 
 // ── Tab ──────────────────────────────────────────────────────────────────────
 
-export function ModelRolesTab({ roleModels, suggestions, onChange }: ModelRolesTabProps): React.ReactElement {
+export function ModelRolesTab({ roleModels, suggestions, unregisteredModels, onChange }: ModelRolesTabProps): React.ReactElement {
   const { t } = useI18n();
 
   return (
-    <div className="space-y-6">
+    <SettingsPage>
       <SettingsHeader title={t('settings.roles.title')} subtitle={t('settings.roles.subtitle')} />
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
-        {ROLES.map(({ key, labelKey, descKey }) => (
+      <SettingsGrid density="compact">
+        {ROLES.map(({ key, labelKey, descKey, fallback }) => (
           <RoleCard
             key={key}
+            roleKey={key}
             label={t(`settings.${labelKey}`)}
             desc={t(`settings.${descKey}`)}
             selected={roleModels[key] || []}
             suggestions={suggestions[key] || []}
+            unregisteredModels={unregisteredModels}
+            fallback={fallback}
             onChange={models => onChange({ ...roleModels, [key]: models })}
           />
         ))}
-      </div>
-    </div>
+      </SettingsGrid>
+    </SettingsPage>
   );
 }

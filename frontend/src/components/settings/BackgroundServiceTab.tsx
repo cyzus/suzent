@@ -4,7 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useI18n } from '../../i18n';
 import { BrutalButton } from '../BrutalButton';
 import { BrutalOnOff } from '../BrutalOnOff';
-import { SectionCardHeader, SettingsCard } from './SettingsCard';
+import { SectionCardHeader, SettingsCard, SettingsPage } from './SettingsCard';
 import { SettingsHeader } from './SettingsHeader';
 
 interface ServiceStatus {
@@ -101,7 +101,7 @@ export function BackgroundServiceTab(): React.ReactElement {
         : t('settings.service.stopped');
 
   return (
-    <div className="space-y-6">
+    <SettingsPage>
       <SettingsHeader
         title={t('settings.service.title')}
         subtitle={t('settings.service.subtitle')}
@@ -173,6 +173,6 @@ export function BackgroundServiceTab(): React.ReactElement {
           </BrutalButton>
         </div>
       </SettingsCard>
-    </div>
+    </SettingsPage>
   );
 }

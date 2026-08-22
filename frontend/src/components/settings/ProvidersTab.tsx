@@ -6,6 +6,7 @@ import type { ChatGPTLoginResponse, ChatGPTStatusResponse } from '../../types/ap
 import { BrutalMultiSelect } from '../BrutalMultiSelect';
 import { BrutalButton } from '../BrutalButton';
 import { SettingsHeader } from './SettingsHeader';
+import { SettingsGrid, SettingsPage } from './SettingsCard';
 import { getProviderColor, getProviderInitials, normalizeProviderLogoUrl } from '../../lib/providerVisuals';
 
 const API_TYPES = ['openai', 'anthropic', 'google', 'xai', 'openrouter', 'ollama', 'litellm_proxy', 'bedrock'] as const;
@@ -138,10 +139,10 @@ function AddProviderForm({ onSave, onCancel }: AddProviderFormProps) {
     };
 
     return (
-        <div className="bg-white dark:bg-zinc-800 border-3 border-brutal-black shadow-brutal p-6 space-y-4">
+        <div className="space-y-4 border-2 border-brutal-black bg-white p-4 shadow-brutal-sm dark:bg-zinc-800 sm:p-5">
             <h3 className="font-black uppercase text-lg tracking-wide dark:text-white">{t('settings.providers.addForm.title')}</h3>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-1">
                     <label className="text-[10px] font-bold uppercase text-neutral-500 tracking-wider">{t('settings.providers.addForm.id')} *</label>
                     <input
@@ -164,7 +165,7 @@ function AddProviderForm({ onSave, onCancel }: AddProviderFormProps) {
                 </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-1">
                     <label className="text-[10px] font-bold uppercase text-neutral-500 tracking-wider">{t('settings.providers.addForm.apiType')}</label>
                     <select
@@ -189,7 +190,7 @@ function AddProviderForm({ onSave, onCancel }: AddProviderFormProps) {
 
             <div className="border-t-2 border-neutral-200 dark:border-zinc-700 pt-4 space-y-3">
                 <p className="text-[10px] font-bold uppercase text-neutral-500 tracking-wider">{t('settings.providers.addForm.apiKeySection')}</p>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid gap-3 sm:grid-cols-3">
                     <div className="space-y-1">
                         <label className="text-[10px] font-bold uppercase text-neutral-400 tracking-wider">{t('settings.providers.addForm.envVar')}</label>
                         <input
@@ -353,9 +354,9 @@ function ChatGPTProviderCard({
     const statusActionLabel = connected ? t('settings.providers.chatgpt.disconnect') : t('settings.providers.chatgpt.signIn');
 
     return (
-        <div className="bg-white dark:bg-zinc-800 dark:text-white border-3 border-brutal-black shadow-brutal flex flex-col h-full">
-            <div className="relative p-4 pr-12 bg-neutral-50 dark:bg-zinc-900 flex justify-between items-center border-b-3 border-brutal-black gap-3 overflow-hidden">
-                <div className="relative z-0 flex flex-1 items-center gap-3 min-w-0">
+        <div className="flex h-full flex-col border-2 border-brutal-black bg-white shadow-brutal-sm dark:bg-zinc-800 dark:text-white">
+            <div className="flex items-center justify-between gap-3 border-b-2 border-brutal-black bg-neutral-50 p-3 dark:bg-zinc-900">
+                <div className="flex min-w-0 flex-1 items-center gap-3">
                     <ProviderIcon provider={provider} />
                     <div className="flex flex-col min-w-0">
                         <span className={`font-black uppercase tracking-wide leading-tight dark:text-white whitespace-normal break-normal [overflow-wrap:normal] ${getProviderTitleClass(provider.label)}`}>
@@ -366,25 +367,24 @@ function ChatGPTProviderCard({
                         </span>
                     </div>
                 </div>
-                <button
-                    type="button"
-                    onClick={connected ? handleDisconnect : handleSignIn}
-                    disabled={loading || !!pendingLogin}
-                    title={pendingLogin ? statusLabel : statusActionLabel}
-                    aria-label={pendingLogin ? statusLabel : statusActionLabel}
-                    className={`group absolute inset-0 z-10 flex items-center justify-center overflow-hidden whitespace-nowrap text-sm leading-none font-black uppercase tracking-wide text-transparent transition-colors focus-visible:outline-none disabled:pointer-events-none ${connected ? 'hover:bg-white hover:text-red-600 focus-visible:bg-white focus-visible:text-red-600' : 'hover:bg-brutal-black hover:text-white focus-visible:bg-brutal-black focus-visible:text-white'}`}
-                >
-                    <span className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
-                        {statusActionLabel}
+                <div className="flex shrink-0 items-center gap-2">
+                    <span className={`hidden text-[10px] font-black uppercase sm:inline ${connected ? 'text-green-700 dark:text-green-400' : 'text-neutral-500 dark:text-neutral-400'}`}>
+                        {statusLabel}
                     </span>
-                    <span
-                        className={`absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-2 border-brutal-black transition-opacity group-hover:opacity-0 group-focus-visible:opacity-0 ${connected ? 'bg-brutal-green' : 'bg-transparent dark:bg-zinc-800'}`}
-                        aria-hidden="true"
-                    />
-                </button>
+                    <BrutalButton
+                        type="button"
+                        variant={connected ? 'danger' : 'dark'}
+                        size="xs"
+                        onClick={connected ? handleDisconnect : handleSignIn}
+                        disabled={loading || !!pendingLogin}
+                        title={pendingLogin ? statusLabel : statusActionLabel}
+                    >
+                        {loading ? '…' : statusActionLabel}
+                    </BrutalButton>
+                </div>
             </div>
 
-            <div className="p-5 flex flex-col gap-4 flex-1">
+            <div className="flex flex-1 flex-col gap-4 p-4">
                 {pendingLogin && (
                     <div className="space-y-3 p-3 border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900">
                         <p className="text-xs font-bold text-neutral-700 dark:text-neutral-300">
@@ -542,7 +542,7 @@ export function ProvidersTab({
     };
 
     return (
-        <div className="space-y-6">
+        <SettingsPage>
             <SettingsHeader
                 title={t('settings.providers.title')}
                 subtitle={t('settings.providers.subtitle')}
@@ -551,20 +551,24 @@ export function ProvidersTab({
                         {syncResult && (
                             <span className="text-[10px] font-bold text-neutral-300 max-w-[200px] truncate">{syncResult}</span>
                         )}
-                        <button
+                        <BrutalButton
                             onClick={handleSync}
                             disabled={syncing}
                             title={t('settings.providers.syncTooltip')}
-                            className="px-3 py-2 text-xs font-black uppercase border-2 border-white text-white hover:bg-white/10 disabled:opacity-40 active:translate-y-px"
+                            variant="dark"
+                            size="sm"
+                            className="!border-white"
                         >
                             {syncing ? t('settings.providers.syncing') : t('settings.providers.sync')}
-                        </button>
-                        <button
+                        </BrutalButton>
+                        <BrutalButton
                             onClick={() => setShowAddForm(v => !v)}
-                            className="px-3 py-2 text-xs font-black uppercase bg-white text-brutal-black border-2 border-white hover:bg-neutral-200 active:translate-y-px"
+                            variant="light"
+                            size="sm"
+                            className="!border-white"
                         >
                             {showAddForm ? '✕' : t('settings.providers.addProvider')}
-                        </button>
+                        </BrutalButton>
                     </>
                 }
             />
@@ -576,7 +580,7 @@ export function ProvidersTab({
                 />
             )}
 
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+            <SettingsGrid>
                 {providers.map((provider) => {
                     const activeTab = activeTabs[provider.id] || 'credentials';
                     const conf = userConfigs[provider.id] || { enabled_models: [], custom_models: [] };
@@ -617,9 +621,9 @@ export function ProvidersTab({
                     }
 
                     return (
-                        <div key={provider.id} className="bg-white dark:bg-zinc-800 dark:text-white border-3 border-brutal-black shadow-brutal flex flex-col h-full">
+                        <div key={provider.id} className="flex h-full flex-col border-2 border-brutal-black bg-white shadow-brutal-sm dark:bg-zinc-800 dark:text-white">
                             {/* Provider Header */}
-                            <div className="p-4 bg-neutral-50 dark:bg-zinc-900 flex justify-between items-center border-b-3 border-brutal-black gap-3">
+                            <div className="flex items-center justify-between gap-3 border-b-2 border-brutal-black bg-neutral-50 p-3 dark:bg-zinc-900">
                                 <div className="flex flex-1 items-center gap-3 min-w-0">
                                     <ProviderIcon provider={provider} />
                                     <div className="flex flex-col min-w-0">
@@ -651,10 +655,10 @@ export function ProvidersTab({
                             </div>
 
                             {/* Tabs */}
-                            <div className="flex bg-brutal-black border-b-3 border-brutal-black">
+                            <div className="flex border-b-2 border-brutal-black bg-brutal-black">
                                 <button
                                     onClick={() => onTabChange(provider.id, 'credentials')}
-                                    className={`flex-1 p-2 font-bold uppercase text-xs tracking-wider transition-colors border-r-3 border-brutal-black ${activeTab === 'credentials' ? 'bg-brutal-black text-white dark:bg-zinc-900' : 'bg-white dark:bg-zinc-800 text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-700'}`}
+                                    className={`flex-1 border-r-2 border-brutal-black p-2 text-xs font-bold uppercase tracking-wider transition-colors ${activeTab === 'credentials' ? 'bg-brutal-black text-white dark:bg-zinc-900' : 'bg-white text-brutal-black hover:bg-neutral-100 dark:bg-zinc-800 dark:text-white dark:hover:bg-zinc-700'}`}
                                 >
                                     {t('settings.providers.apiKeysTab')}
                                 </button>
@@ -666,7 +670,7 @@ export function ProvidersTab({
                                 </button>
                             </div>
 
-                            <div className="p-6 flex flex-col gap-4 flex-1">
+                            <div className="flex flex-1 flex-col gap-4 p-4">
                                 {activeTab === 'credentials' && (
                                     <div className="space-y-4">
                                         {provider.fields.map(field => {
@@ -811,7 +815,7 @@ export function ProvidersTab({
                         </div>
                     );
                 })}
-            </div>
-        </div>
+            </SettingsGrid>
+        </SettingsPage>
     );
 }

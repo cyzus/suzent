@@ -17,8 +17,18 @@ class FakeDB:
 
 
 class FakeRegistry:
+    _capabilities = {
+        "openai/text-embedding-3-small": SimpleNamespace(mode="embedding"),
+        "openai/tts-1": SimpleNamespace(mode="tts"),
+    }
+
     def supports_vision(self, model_id: str) -> bool:
         return model_id.endswith("vision")
+
+    def get_capabilities(self, model_id: str):
+        if model_id == "openai/gpt-4.1-vision":
+            return SimpleNamespace(mode="chat")
+        return self._capabilities.get(model_id)
 
 
 def _saved_roles(db: FakeDB) -> dict:
@@ -94,3 +104,15 @@ def test_detects_models_enabled_for_fieldless_provider(monkeypatch):
     )
 
     assert models == ["chatgpt/gpt-5"]
+
+
+def test_role_suggestions_keep_unregistered_models_available_as_overrides():
+    suggestions = config_routes._build_role_suggestions(
+        FakeRegistry(),
+        ["openai/gpt-4.1-vision", "custom/new-model"],
+    )
+
+    assert suggestions["vision"] == ["openai/gpt-4.1-vision"]
+    assert suggestions["embedding"] == ["openai/text-embedding-3-small"]
+    assert suggestions["tts"] == ["openai/tts-1"]
+    assert suggestions["_unregistered"] == ["custom/new-model"]

@@ -3,7 +3,7 @@ import { useTheme, SCHEME_COLORS, SCHEME_SURFACES, type Scheme } from '../../hoo
 import { useI18n, type Locale } from '../../i18n';
 import { BrutalSelect } from '../BrutalSelect';
 import { SettingsHeader } from './SettingsHeader';
-import { SectionCardHeader, SettingsCard } from './SettingsCard';
+import { SectionCardHeader, SettingsCard, SettingsPage } from './SettingsCard';
 
 /** Mini split preview: left = light half, right = dark half */
 function CardPreview({ s }: { s: Scheme }) {
@@ -46,7 +46,7 @@ export function AppearanceTab(): React.ReactElement {
   const schemeKeys: Scheme[] = ['warm', 'cold', 'green'];
 
   return (
-    <div className="space-y-6">
+    <SettingsPage>
       <SettingsHeader title={t('settings.appearance.title')} subtitle={t('settings.appearance.subtitle')} />
 
       <SettingsCard>
@@ -129,6 +129,6 @@ export function AppearanceTab(): React.ReactElement {
           })}
         </div>
       </SettingsCard>
-    </div>
+    </SettingsPage>
   );
 }

@@ -480,8 +480,8 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }
             onCategoryChange={setActiveCategory}
             onClose={handleClose}
           />
-          <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 scrollbar-thin">
-            <div className={`${activeCategory === 'usage' ? 'max-w-6xl' : 'max-w-4xl'} mx-auto`}>
+          <div className="settings-content flex-1 overflow-y-auto p-3 scrollbar-thin sm:p-5 lg:p-6">
+            <div className={`${activeCategory === 'usage' ? 'max-w-6xl' : 'max-w-5xl'} mx-auto`}>
               {loading ? (
                 <div className="flex justify-center items-center h-full">
                   <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-brutal-black"></div>
@@ -530,6 +530,7 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }
                     <ModelRolesTab
                       roleModels={roleModels}
                       suggestions={roleSuggestions}
+                      unregisteredModels={roleSuggestions._unregistered || []}
                       onChange={setRoleModels}
                     />
                   )}

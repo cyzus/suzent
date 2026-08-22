@@ -3,7 +3,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 
 import { useI18n } from '../../i18n';
 import { SettingsHeader } from './SettingsHeader';
-import { SettingsCard, SectionCardHeader } from './SettingsCard';
+import { SettingsCard, SectionCardHeader, SettingsPage } from './SettingsCard';
 import { BrutalOnOff } from '../BrutalOnOff';
 import { BrutalButton } from '../BrutalButton';
 
@@ -45,7 +45,7 @@ export function MemoryTab({
     };
 
     return (
-        <div className="space-y-6">
+        <SettingsPage>
             <SettingsHeader title={t('settings.memoryConfig.title')} subtitle={t('settings.memoryConfig.subtitle')} />
 
             {/* Global memory enable toggle */}
@@ -135,6 +135,6 @@ export function MemoryTab({
                     </div>
                 </div>
             </SettingsCard>
-        </div>
+        </SettingsPage>
     );
 }

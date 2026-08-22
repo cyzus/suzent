@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { useI18n } from '../../i18n';
 import { GitHubSyncSection } from './GitHubSyncSection';
 import { SettingsHeader } from './SettingsHeader';
+import { SettingsPage } from './SettingsCard';
 
 type Notification = { text: string; isError: boolean };
 
@@ -16,16 +17,16 @@ export function DataTab({ onSyncComplete }: { onSyncComplete?: () => void }): Re
   }
 
   return (
-    <div className="space-y-6">
+    <SettingsPage>
       <SettingsHeader title={t('settings.data.title')} subtitle={t('settings.data.subtitle')} />
 
       <GitHubSyncSection busy={busy} onBusyChange={setBusy} onNotify={notify} onSyncComplete={onSyncComplete} />
 
       {notification && (
-        <div className={`border-4 border-brutal-black p-4 font-mono text-sm shadow-brutal ${notification.isError ? 'bg-red-100 text-brutal-black' : 'bg-green-100 text-brutal-black'}`}>
+        <div className={`border-2 border-brutal-black p-3 font-mono text-sm shadow-brutal-sm ${notification.isError ? 'bg-red-100 text-brutal-black' : 'bg-green-100 text-brutal-black'}`}>
           {notification.text}
         </div>
       )}
-    </div>
+    </SettingsPage>
   );
 }

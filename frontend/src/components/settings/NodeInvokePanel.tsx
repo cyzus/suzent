@@ -73,7 +73,7 @@ function InvokeForm({
 
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="grid items-start gap-2 sm:grid-cols-[minmax(11rem,0.8fr)_minmax(0,2fr)_auto]">
         <BrutalSelect
           value={command}
           disabled={busy}
@@ -86,26 +86,28 @@ function InvokeForm({
             label: cap.node ? `${cap.name} · ${cap.node}` : cap.name,
           }))}
           hideChevron={capabilities.length <= 1}
-          className="min-w-[10rem]"
+          className="min-w-0"
         />
 
-        {fields.map(([name, type]) => (
-          <input
-            key={`${command}:${name}`}
-            className="px-2 py-1 border-2 border-brutal-black bg-white dark:bg-zinc-900 text-sm"
-            placeholder={`${name} (${type})`}
-            value={values[`${command}:${name}`] ?? ''}
-            disabled={busy}
-            onChange={(e) =>
-              setValues((v) => ({ ...v, [`${command}:${name}`]: e.target.value }))
-            }
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') run();
-            }}
-          />
-        ))}
+        <div className="grid min-w-0 gap-2 [grid-template-columns:repeat(auto-fit,minmax(min(100%,12rem),1fr))]">
+          {fields.map(([name, type]) => (
+            <input
+              key={`${command}:${name}`}
+              className="min-w-0 border-2 border-brutal-black bg-white px-3 py-2 text-sm dark:bg-zinc-900"
+              placeholder={`${name} (${type})`}
+              value={values[`${command}:${name}`] ?? ''}
+              disabled={busy}
+              onChange={(e) =>
+                setValues((v) => ({ ...v, [`${command}:${name}`]: e.target.value }))
+              }
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') run();
+              }}
+            />
+          ))}
+        </div>
 
-        <SettingsListAction tone="blue" disabled={busy} onClick={run}>
+        <SettingsListAction className="h-10" tone="blue" disabled={busy} onClick={run}>
           {busy ? 'Running…' : 'Run'}
         </SettingsListAction>
       </div>

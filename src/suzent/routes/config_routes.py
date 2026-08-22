@@ -950,6 +950,38 @@ async def save_role_models(request: Request) -> JSONResponse:
 # ---------------------------------------------------------------------------
 
 
+def _build_role_suggestions(
+    registry: Any, enabled_models: list[str]
+) -> dict[str, list[str]]:
+    """Build role suggestions without hiding enabled models we cannot classify.
+
+    Unknown models remain available as explicit user overrides. They are kept in
+    a separate metadata bucket so the UI can label them as capability-unverified
+    instead of presenting them as known-compatible suggestions.
+    """
+    vision_models = [
+        model for model in enabled_models if registry.supports_vision(model)
+    ]
+    unregistered_models = [
+        model for model in enabled_models if registry.get_capabilities(model) is None
+    ]
+
+    caps = registry._capabilities  # type: ignore[attr-defined]
+    return {
+        "primary": enabled_models,
+        "cheap": enabled_models,
+        "vision": vision_models,
+        "embedding": sorted(
+            model for model, cap in caps.items() if cap.mode == "embedding"
+        ),
+        "image_generation": sorted(
+            model for model, cap in caps.items() if cap.mode == "image_generation"
+        ),
+        "tts": sorted(model for model, cap in caps.items() if cap.mode == "tts"),
+        "_unregistered": unregistered_models,
+    }
+
+
 async def get_role_suggestions(request: Request) -> JSONResponse:
     """GET /api/config/role-suggestions — mode-filtered model suggestions per role.
 
@@ -964,27 +996,7 @@ async def get_role_suggestions(request: Request) -> JSONResponse:
         registry = get_model_registry()
         chat_models = get_enabled_models_from_db()
 
-        # Vision: only enabled models with confirmed supports_vision=True
-        vision_models = [m for m in chat_models if registry.supports_vision(m)]
-
-        # Specialised modes from capabilities file
-        caps = registry._capabilities  # type: ignore[attr-defined]
-        embedding_models = sorted(m for m, c in caps.items() if c.mode == "embedding")
-        image_gen_models = sorted(
-            m for m, c in caps.items() if c.mode == "image_generation"
-        )
-        tts_models = sorted(m for m, c in caps.items() if c.mode == "tts")
-
-        return JSONResponse(
-            {
-                "primary": chat_models,
-                "cheap": chat_models,
-                "vision": vision_models,
-                "embedding": embedding_models,
-                "image_generation": image_gen_models,
-                "tts": tts_models,
-            }
-        )
+        return JSONResponse(_build_role_suggestions(registry, chat_models))
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 

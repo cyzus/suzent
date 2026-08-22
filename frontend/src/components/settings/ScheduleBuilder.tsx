@@ -168,10 +168,9 @@ export function ScheduleBuilder({ value, onChange }: ScheduleBuilderProps): Reac
         <label className="block font-bold tracking-wide text-brutal-black dark:text-white uppercase mb-1 text-xs">{text}</label>
     );
 
-    // Match BrutalSelect's chrome (border-3 + 2px drop shadow) so the schedule
-    // inputs sit consistently beside the Repeat dropdown.
+    // Keep schedule fields crisp without adding another heavy shadow layer.
     const brutalInput =
-        'bg-white dark:bg-zinc-800 dark:text-white border-3 border-brutal-black px-3 py-2 font-bold text-sm focus:outline-none shadow-brutal-sm';
+        'bg-white dark:bg-zinc-800 dark:text-white border-2 border-brutal-black px-3 py-2 font-bold text-sm focus:outline-none';
 
     const numberInput = (val: number, min: number, max: number | undefined, onVal: (n: number) => void) => (
         <input

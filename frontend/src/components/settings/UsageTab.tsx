@@ -3,7 +3,7 @@ import { fetchGlobalCost, fetchDailyCost, fetchModelsCost, fetchActivityStats, f
 import type { CostGlobal, CostDaily, CostModel, ActivityStats } from '../../lib/api';
 import { useI18n } from '../../i18n';
 import { SettingsHeader } from './SettingsHeader';
-import { SettingsCard } from './SettingsCard';
+import { SettingsCard, SettingsPage } from './SettingsCard';
 
 type TimeRange = 1 | 7 | 30 | 'all';
 
@@ -489,7 +489,7 @@ function ModelBreakdown({ models }: { models: CostModel[] }) {
 
 function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 shadow-brutal p-4 flex flex-col">
+    <div className="flex flex-col border-2 border-brutal-black bg-white p-4 shadow-brutal-sm dark:bg-zinc-800">
       <span className="text-[10px] font-bold uppercase text-neutral-400 dark:text-neutral-500 tracking-wider">
         {label}
       </span>
@@ -557,7 +557,7 @@ export function UsageTab(): React.ReactElement {
   }, [global, range]);
 
   return (
-    <div className="space-y-6">
+    <SettingsPage>
       {/* Header */}
       <SettingsHeader title={t('settings.usage.title')} subtitle={t('settings.usage.subtitle')} />
 
@@ -584,7 +584,7 @@ export function UsageTab(): React.ReactElement {
           <div className="animate-spin rounded-full h-12 w-12 border-b-4 border-brutal-black" />
         </div>
       ) : error ? (
-        <div className="border-3 border-brutal-black bg-red-50 dark:bg-red-950 p-4">
+        <div className="border-2 border-brutal-black bg-red-50 p-4 dark:bg-red-950">
           <p className="text-sm text-red-700 dark:text-red-400 font-mono">{error}</p>
         </div>
       ) : global ? (
@@ -707,7 +707,7 @@ export function UsageTab(): React.ReactElement {
 
           {/* Empty state */}
           {global.total_calls === 0 && heatmap.length === 0 && (
-            <div className="border-3 border-dashed border-neutral-300 dark:border-neutral-600 p-8 text-center">
+            <div className="border-2 border-dashed border-neutral-300 p-6 text-center dark:border-neutral-600">
               <p className="text-sm text-neutral-500 dark:text-neutral-400 font-mono">
                 {t('settings.usage.noUsageYet')}
               </p>
@@ -715,6 +715,6 @@ export function UsageTab(): React.ReactElement {
           )}
         </>
       ) : null}
-    </div>
+    </SettingsPage>
   );
 }

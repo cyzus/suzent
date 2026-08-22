@@ -15,7 +15,7 @@ import {
 import { BrutalMultiSelect } from '../BrutalMultiSelect';
 import { BrutalOnOff } from '../BrutalOnOff';
 import { SettingsHeader } from './SettingsHeader';
-import { SettingsCard, SectionCardHeader, GridCard } from './SettingsCard';
+import { SettingsCard, SectionCardHeader, GridCard, SettingsGrid, SettingsPage } from './SettingsCard';
 import { SocialPlatformBadge, SocialPlatformIcon, socialPlatformLabel } from './SocialPlatformIcon';
 
 interface McpServersData {
@@ -267,7 +267,7 @@ export function SocialTab({
     };
 
     return (
-        <div className="space-y-6">
+        <SettingsPage>
             <SettingsHeader title={t('settings.social.title')} subtitle={t('settings.social.subtitle')} />
 
             {/* Agent Capabilities Card */}
@@ -407,13 +407,13 @@ export function SocialTab({
                 />
 
                 {!handshakeEnabled && (
-                    <div className="border-3 border-dashed border-neutral-300 dark:border-neutral-600 p-6 text-center">
+                    <div className="border-2 border-dashed border-neutral-300 p-4 text-center dark:border-neutral-600">
                         <p className="text-sm text-neutral-500 dark:text-neutral-400 font-mono">{t('settings.social.pairingDisabled')}</p>
                     </div>
                 )}
 
                 {handshakeEnabled && (pairings.length === 0 ? (
-                    <div className="border-3 border-dashed border-neutral-300 dark:border-neutral-600 p-6 text-center">
+                    <div className="border-2 border-dashed border-neutral-300 p-4 text-center dark:border-neutral-600">
                         <p className="text-sm text-neutral-500 dark:text-neutral-400 font-mono">{t('settings.social.noPendingRequests')}</p>
                     </div>
                 ) : (
@@ -455,7 +455,7 @@ export function SocialTab({
             </SettingsCard>
 
             {/* Platform-specific cards */}
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
+            <SettingsGrid>
                 {Object.entries(socialConfig).map(([key, value]) => {
                     if (key === 'allowed_users' || key === 'model' || key === 'memory_enabled' || key === 'tools' || key === 'mcp_enabled' || key === 'handshake') return null;
                     if (typeof value !== 'object' || value === null) return null;
@@ -530,7 +530,7 @@ export function SocialTab({
                         </GridCard>
                     );
                 })}
-            </div>
-        </div>
+            </SettingsGrid>
+        </SettingsPage>
     );
 }

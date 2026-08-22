@@ -4,7 +4,7 @@ import { useI18n } from '../../i18n';
 import { addMcpServer, updateMcpServer, fetchMcpServers, removeMcpServer, setMcpServerEnabled, testMcpServer, type McpProbeResult } from '../../lib/api';
 import { BrutalSelect } from '../BrutalSelect';
 import { SettingsHeader } from './SettingsHeader';
-import { SectionCardHeader, SettingsCard, SettingsListItem, SettingsListAction, Badge } from './SettingsCard';
+import { CollapsibleSettingsCard, SectionCardHeader, SettingsCard, SettingsListItem, SettingsListAction, Badge, SettingsPage } from './SettingsCard';
 import { BrutalOnOff } from '../BrutalOnOff';
 import { BrutalButton } from '../BrutalButton';
 
@@ -47,6 +47,7 @@ export function McpTab({
     const [stdioEnv, setStdioEnv] = useState('');
     const [addType, setAddType] = useState<'url' | 'stdio'>('url');
     const [loading, setLoading] = useState(false);
+    const [showAddForm, setShowAddForm] = useState(false);
     // In-progress inline edit for one server, or null. Transport mirrors the
     // server's own type (the name and transport kind are not editable here).
     type EditDraft = { name: string; type: 'url' | 'stdio'; url: string; headers: string; command: string; args: string; env: string };
@@ -130,6 +131,7 @@ export function McpTab({
             }
             if (probe) setProbes(prev => ({ ...prev, [addedName]: probe! }));
             clearAddForm();
+            setShowAddForm(false);
             await refreshServerList();
         } finally {
             setLoading(false);
@@ -199,17 +201,20 @@ export function McpTab({
     };
 
     return (
-        <div className="space-y-6">
+        <SettingsPage>
             <SettingsHeader title={t('settings.mcp.title')} subtitle={t('settings.mcp.subtitle')} />
 
             {/* Add MCP Server Card */}
-            <SettingsCard>
-                <SectionCardHeader
+            <CollapsibleSettingsCard
+                open={showAddForm}
+                onOpenChange={setShowAddForm}
+                openLabel={t('common.add')}
+                closeLabel={t('common.close')}
                     iconTone="blue"
                     icon={<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>}
                     title={t('settings.mcp.addNewServerTitle')}
                     description={t('settings.mcp.addNewServerDesc')}
-                />
+            >
 
                 <div className="space-y-4">
                     <div className="flex gap-2">
@@ -274,7 +279,7 @@ export function McpTab({
                         {loading ? t('settings.mcp.adding') : t('settings.mcp.addServer')}
                     </BrutalButton>
                 </div>
-            </SettingsCard>
+            </CollapsibleSettingsCard>
 
             {/* Server List Card */}
             <SettingsCard>
@@ -386,7 +391,7 @@ export function McpTab({
                               </div>
  
                               {editDraft?.name === server.name && (
-                                <div className="border-t-[3px] border-brutal-black p-5 space-y-3 bg-neutral-100 dark:bg-zinc-800">
+                                <div className="space-y-3 border-t-2 border-brutal-black bg-neutral-100 p-4 dark:bg-zinc-800">
                                     <div className="text-[12px] font-black uppercase tracking-wider text-brutal-black dark:text-white flex items-center gap-2">
                                         <span className="w-2 h-2 bg-brutal-yellow border border-brutal-black inline-block" />
                                         {t('settings.mcp.editServerTitle')} — <span className="text-brutal-blue dark:text-blue-400">{server.name}</span>
@@ -397,13 +402,13 @@ export function McpTab({
                                                 value={editDraft.url}
                                                 onChange={e => setEditDraft({ ...editDraft, url: e.target.value })}
                                                 placeholder="https://host/path"
-                                                className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs shadow-brutal-sm focus:outline-none focus:translate-y-[2px] focus:translate-x-[2px] focus:shadow-none transition-all dark:text-white dark:placeholder-neutral-500"
+                                                className="w-full border-2 border-brutal-black bg-white px-3 py-2 font-mono text-xs transition-colors focus:bg-neutral-50 focus:outline-none dark:bg-zinc-900 dark:text-white dark:placeholder-neutral-500 dark:focus:bg-zinc-800"
                                             />
                                             <input
                                                 value={editDraft.headers}
                                                 onChange={e => setEditDraft({ ...editDraft, headers: e.target.value })}
                                                 placeholder={t('settings.mcp.headersPlaceholder')}
-                                                className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs shadow-brutal-sm focus:outline-none focus:translate-y-[2px] focus:translate-x-[2px] focus:shadow-none transition-all dark:text-white dark:placeholder-neutral-500"
+                                                className="w-full border-2 border-brutal-black bg-white px-3 py-2 font-mono text-xs transition-colors focus:bg-neutral-50 focus:outline-none dark:bg-zinc-900 dark:text-white dark:placeholder-neutral-500 dark:focus:bg-zinc-800"
                                             />
                                         </div>
                                     ) : (
@@ -412,19 +417,19 @@ export function McpTab({
                                                 value={editDraft.command}
                                                 onChange={e => setEditDraft({ ...editDraft, command: e.target.value })}
                                                 placeholder={t('settings.mcp.commandPlaceholder')}
-                                                className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs shadow-brutal-sm focus:outline-none focus:translate-y-[2px] focus:translate-x-[2px] focus:shadow-none transition-all dark:text-white dark:placeholder-neutral-500"
+                                                className="w-full border-2 border-brutal-black bg-white px-3 py-2 font-mono text-xs transition-colors focus:bg-neutral-50 focus:outline-none dark:bg-zinc-900 dark:text-white dark:placeholder-neutral-500 dark:focus:bg-zinc-800"
                                             />
                                             <input
                                                 value={editDraft.args}
                                                 onChange={e => setEditDraft({ ...editDraft, args: e.target.value })}
                                                 placeholder={t('settings.mcp.argsPlaceholder')}
-                                                className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs shadow-brutal-sm focus:outline-none focus:translate-y-[2px] focus:translate-x-[2px] focus:shadow-none transition-all dark:text-white dark:placeholder-neutral-500"
+                                                className="w-full border-2 border-brutal-black bg-white px-3 py-2 font-mono text-xs transition-colors focus:bg-neutral-50 focus:outline-none dark:bg-zinc-900 dark:text-white dark:placeholder-neutral-500 dark:focus:bg-zinc-800"
                                             />
                                             <input
                                                 value={editDraft.env}
                                                 onChange={e => setEditDraft({ ...editDraft, env: e.target.value })}
                                                 placeholder={t('settings.mcp.envPlaceholder')}
-                                                className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs shadow-brutal-sm focus:outline-none focus:translate-y-[2px] focus:translate-x-[2px] focus:shadow-none transition-all dark:text-white dark:placeholder-neutral-500"
+                                                className="w-full border-2 border-brutal-black bg-white px-3 py-2 font-mono text-xs transition-colors focus:bg-neutral-50 focus:outline-none dark:bg-zinc-900 dark:text-white dark:placeholder-neutral-500 dark:focus:bg-zinc-800"
                                             />
                                         </div>
                                     )}
@@ -449,6 +454,6 @@ export function McpTab({
                     </div>
                 )}
             </SettingsCard>
-        </div>
+        </SettingsPage>
     );
 }

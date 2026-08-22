@@ -44,7 +44,7 @@ import { CopyButton } from './CopyButton';
 import { BrowserNodeQR } from './BrowserNodeQR';
 import { NetworkAccessStrip } from './NetworkAccessCard';
 import { PeerTriggerPanel } from './PeerTriggerPanel';
-import { SectionCardHeader, SettingsCard, SettingsListItem, SettingsListAction } from './SettingsCard';
+import { SectionCardHeader, SettingsCard, SettingsListItem, SettingsListAction, SettingsPage } from './SettingsCard';
 import { relativeTime } from '../../lib/chatUtils';
 
 const POLL_MS = 4000;
@@ -110,6 +110,7 @@ export function DevicesTab(): React.ReactElement {
   const [peers, setPeers] = useState<ControlledPeer[]>([]);
   const [discovered, setDiscovered] = useState<{ lan: DiscoveredPeer[]; tailscale: DiscoveredPeer[] } | null>(null);
   const [discovering, setDiscovering] = useState(false);
+  const [showScreenPairing, setShowScreenPairing] = useState(false);
   const [unauthorized, setUnauthorized] = useState<UnauthorizedTrigger[]>([]);
   // Outstanding control requests awaiting the remote operator's approval,
   // keyed by base_url → { request_id, name }. The regular refresh() reconciles
@@ -407,7 +408,7 @@ export function DevicesTab(): React.ReactElement {
   const unmatchedGrants = grants.filter((g) => !matchedGrantIds.has(g.request_id));
 
   return (
-    <div className="space-y-5">
+    <SettingsPage>
       <SettingsHeader
         title="Devices"
         subtitle="Connect and control trusted devices."
@@ -495,23 +496,33 @@ export function DevicesTab(): React.ReactElement {
           {/* Zero-install path: scan and the screen joins the mesh. Placed
               above the CLI fallback because it is the one most devices can do. */}
           {selectedAddr?.host && (
-            <div className="border-2 border-brutal-black dark:border-white bg-neutral-50 dark:bg-zinc-900 p-4">
-              <p className="text-xs font-bold uppercase tracking-wide mb-3">
-                Add a screen (phone, tablet, TV)
-              </p>
-              {addresses.length > 1 && (
-                <div className="mb-3">
-                  <BrutalSelect
-                    value={selectedAddr.host}
-                    onChange={setAddrHost}
-                    options={addresses.map((a) => ({
-                      value: a.host,
-                      label: `${a.label} · ${a.host}`,
-                    }))}
-                  />
+            <div className="border-2 border-brutal-black bg-neutral-50 dark:border-white dark:bg-zinc-900">
+              <button
+                type="button"
+                className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs font-black uppercase tracking-wide hover:bg-neutral-100 dark:hover:bg-zinc-800"
+                aria-expanded={showScreenPairing}
+                onClick={() => setShowScreenPairing((open) => !open)}
+              >
+                <span>Add a screen (phone, tablet, TV)</span>
+                <span aria-hidden="true">{showScreenPairing ? '−' : '+'}</span>
+              </button>
+              {showScreenPairing && (
+                <div className="border-t-2 border-brutal-black p-3 dark:border-white">
+                  {addresses.length > 1 && (
+                    <div className="mb-3">
+                      <BrutalSelect
+                        value={selectedAddr.host}
+                        onChange={setAddrHost}
+                        options={addresses.map((a) => ({
+                          value: a.host,
+                          label: `${a.label} · ${a.host}`,
+                        }))}
+                      />
+                    </div>
+                  )}
+                  <BrowserNodeQR host={selectedAddr.host} port={config?.port ?? 25314} />
                 </div>
               )}
-              <BrowserNodeQR host={selectedAddr.host} port={config?.port ?? 25314} />
             </div>
           )}
 
@@ -809,6 +820,6 @@ export function DevicesTab(): React.ReactElement {
           })}
         </div>
       </SettingsCard>
-    </div>
+    </SettingsPage>
   );
 }

@@ -18,7 +18,7 @@ import { BrutalMultiSelect } from '../BrutalMultiSelect';
 import { BrutalSelect } from '../BrutalSelect';
 import { ScheduleBuilder, describeCron } from './ScheduleBuilder';
 import { SettingsHeader } from './SettingsHeader';
-import { SettingsCard, SectionCardHeader, SettingsListItem, SettingsListAction } from './SettingsCard';
+import { CollapsibleSettingsCard, SettingsCard, SectionCardHeader, SettingsListItem, SettingsListAction, SettingsPage } from './SettingsCard';
 import { BrutalOnOff } from '../BrutalOnOff';
 import { BrutalButton } from '../BrutalButton';
 
@@ -32,6 +32,7 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
   const [jobs, setJobs] = useState<CronJob[]>([]);
   const [status, setStatus] = useState<{ scheduler_running: boolean; total_jobs: number; active_jobs: number } | null>(null);
   const [loading, setLoading] = useState(false);
+  const [showCreateForm, setShowCreateForm] = useState(false);
 
   // Global heartbeat allowed tools
   const [heartbeatAllowedTools, setHeartbeatAllowedTools] = useState<string[]>([]);
@@ -93,6 +94,7 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
       setDeliveryMode('announce');
       setModelOverride('');
       setIsActive(true);
+      setShowCreateForm(false);
       await refresh();
     } catch (e: any) {
       alert(e.message || t('settings.automation.failedToCreateJob'));
@@ -188,31 +190,26 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
   ];
 
   return (
-    <div className="space-y-6">
+    <SettingsPage>
       <SettingsHeader title={t('settings.automation.title')} subtitle={t('settings.automation.subtitle')} />
 
-      {/* Status Card */}
-      <SettingsCard>
-        <SectionCardHeader
-          iconTone={status?.scheduler_running ? 'green' : 'neutral'}
-          icon={
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          }
-          title={t('settings.automation.schedulerStatusTitle')}
-          description={
-            <>
-              {status?.scheduler_running ? (
-                <span className="text-green-700 dark:text-green-400 font-bold">{t('settings.automation.running')}</span>
-              ) : (
-                <span className="text-red-700 dark:text-red-400 font-bold">{t('settings.automation.stopped')}</span>
-              )}
-              {status && ` \u2014 ${t('settings.automation.activeOfTotal', { active: String(status.active_jobs), total: String(status.total_jobs) })}`}
-            </>
-          }
-        />
-      </SettingsCard>
+      {/* Compact status strip: this is a summary, not a full settings section. */}
+      <div className="flex items-center gap-3 border-2 border-brutal-black bg-white p-3 shadow-brutal-sm dark:bg-zinc-800 dark:text-white">
+        <div className={`flex h-9 w-9 shrink-0 items-center justify-center border-2 border-brutal-black ${status?.scheduler_running ? 'bg-brutal-green' : 'bg-neutral-300'}`}>
+          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <div className="min-w-0">
+          <h3 className="text-sm font-black uppercase">{t('settings.automation.schedulerStatusTitle')}</h3>
+          <p className="text-xs text-neutral-600 dark:text-neutral-400">
+            <span className={status?.scheduler_running ? 'font-bold text-green-700 dark:text-green-400' : 'font-bold text-red-700 dark:text-red-400'}>
+              {status?.scheduler_running ? t('settings.automation.running') : t('settings.automation.stopped')}
+            </span>
+            {status && ` \u2014 ${t('settings.automation.activeOfTotal', { active: String(status.active_jobs), total: String(status.total_jobs) })}`}
+          </p>
+        </div>
+      </div>
 
       {/* Heartbeat Tool Approvals */}
       {tools.length > 0 && (
@@ -271,13 +268,16 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
       )}
 
       {/* Add Job Form */}
-      <SettingsCard>
-        <SectionCardHeader
+      <CollapsibleSettingsCard
+        open={showCreateForm}
+        onOpenChange={setShowCreateForm}
+        openLabel={t('common.add')}
+        closeLabel={t('common.close')}
           iconTone="blue"
           icon={<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>}
           title={t('settings.automation.addNewJobTitle')}
           description={t('settings.automation.addNewJobDesc')}
-        />
+      >
 
         <div className="space-y-4">
           <input
@@ -337,7 +337,7 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
             {loading ? t('settings.automation.creating') : t('settings.automation.addJob')}
           </BrutalButton>
         </div>
-      </SettingsCard>
+      </CollapsibleSettingsCard>
 
       {/* Job List */}
       <SettingsCard>
@@ -520,6 +520,6 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
           </div>
         )}
       </SettingsCard>
-    </div>
+    </SettingsPage>
   );
 }

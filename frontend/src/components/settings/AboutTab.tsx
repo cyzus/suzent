@@ -8,7 +8,7 @@ import {
   type UpdateStatus,
 } from '../../lib/desktopUpdates';
 import { SuzentLogo } from '../SuzentLogo';
-import { SettingsCard } from './SettingsCard';
+import { SettingsCard, SettingsPage } from './SettingsCard';
 import { SettingsHeader } from './SettingsHeader';
 
 type BackendVersionState =
@@ -90,7 +90,7 @@ export function AboutTab(): React.ReactElement {
     : `v${__FRONTEND_VERSION__}`;
 
   return (
-    <div className="space-y-6">
+    <SettingsPage>
       <SettingsHeader
         title={t('settings.about.title')}
         subtitle={t('settings.about.subtitle')}
@@ -165,7 +165,7 @@ export function AboutTab(): React.ReactElement {
           </div>
         </div>
       </SettingsCard>
-    </div>
+    </SettingsPage>
   );
 }
 
@@ -183,8 +183,8 @@ function VersionCard({ label, value, tone }: VersionCardProps): React.ReactEleme
   }[tone];
 
   return (
-    <div className="border-3 border-brutal-black bg-neutral-50 dark:bg-zinc-900 shadow-brutal-sm">
-      <div className={`border-b-3 border-brutal-black px-4 py-2 text-xs font-black uppercase ${toneClass}`}>
+    <div className="border-2 border-brutal-black bg-neutral-50 shadow-brutal-sm dark:bg-zinc-900">
+      <div className={`border-b-2 border-brutal-black px-4 py-2 text-xs font-black uppercase ${toneClass}`}>
         {label}
       </div>
       <div className="px-4 py-5 font-mono text-2xl font-bold">

@@ -1,7 +1,7 @@
 import React from 'react';
 import { useI18n } from '../../i18n';
 import { SettingsHeader } from './SettingsHeader';
-import { SettingsCard, SectionCardHeader } from './SettingsCard';
+import { SettingsCard, SectionCardHeader, SettingsPage } from './SettingsCard';
 import { BrutalOnOff } from '../BrutalOnOff';
 import { HostTokenCard } from './HostTokenCard';
 
@@ -14,7 +14,7 @@ export function SecurityTab({ sandboxEnabled, onSandboxEnabledChange }: Security
   const { t } = useI18n();
 
   return (
-    <div className="space-y-6">
+    <SettingsPage>
       <SettingsHeader
         title={t('settings.security.title')}
         subtitle={t('settings.security.subtitle')}
@@ -37,6 +37,6 @@ export function SecurityTab({ sandboxEnabled, onSandboxEnabledChange }: Security
       </SettingsCard>
 
       <HostTokenCard />
-    </div>
+    </SettingsPage>
   );
 }

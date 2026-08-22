@@ -3,7 +3,7 @@ import { useI18n } from '../../i18n';
 import { fetchAcpAgents, fetchAcpSessions, probeAcpAgent } from '../../lib/api';
 import type { AcpAgentDescriptor } from '../../types/api';
 import { BrutalLink } from '../BrutalButton';
-import { SectionCardHeader, SettingsListItem, SettingsListAction, Badge } from './SettingsCard';
+import { SectionCardHeader, SettingsListItem, SettingsListAction, Badge, SettingsPage } from './SettingsCard';
 import { SettingsHeader } from './SettingsHeader';
 import { AcpAgentIcon } from '../AcpAgentIcon';
 
@@ -103,7 +103,7 @@ export function AcpAgentsTab(): React.ReactElement {
   const isReady = (agent: AcpAgentDescriptor) => agent.status === 'ready';
 
   return (
-    <div className="space-y-6">
+    <SettingsPage>
       <SettingsHeader
         title={t('settings.acp.title')}
         subtitle={t('settings.acp.subtitle')}
@@ -308,7 +308,7 @@ export function AcpAgentsTab(): React.ReactElement {
           </div>
         )}
       </section>
-    </div>
+    </SettingsPage>
   );
 }
 

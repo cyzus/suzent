@@ -26,6 +26,7 @@ import { SettingsHeader } from './SettingsHeader';
 import {
   SectionCardHeader,
   SettingsCard,
+  SettingsPage,
   SettingsListAction,
   SettingsListItem,
 } from './SettingsCard';
@@ -201,14 +202,14 @@ export function MeshTab(): React.ReactElement {
   const settledTasks = outbound.filter((t) => !isLive(t.state)).slice(0, 8);
 
   return (
-    <div className="space-y-6">
+    <SettingsPage>
       <SettingsHeader
         title="Mesh"
         subtitle="Every agent this device can reach — your paired Suzent devices and any external agent that speaks A2A."
       />
 
       {error && (
-        <div className="border-3 border-brutal-red bg-red-50 dark:bg-red-900/20 p-3 text-sm">
+        <div className="border-2 border-brutal-red bg-red-50 p-3 text-sm dark:bg-red-900/20">
           {error}
         </div>
       )}
@@ -531,6 +532,6 @@ export function MeshTab(): React.ReactElement {
           </div>
         </SettingsCard>
       )}
-    </div>
+    </SettingsPage>
   );
 }

@@ -13,10 +13,11 @@ interface SettingsHeaderProps {
  */
 export function SettingsHeader({ title, subtitle, actions }: SettingsHeaderProps): React.ReactElement {
   return (
-    <header className="flex flex-col gap-4 border-3 border-brutal-black bg-brutal-black p-4 text-white shadow-brutal sm:flex-row sm:items-start sm:justify-between">
+    <header className="relative flex flex-col gap-3 overflow-hidden border-2 border-brutal-black bg-brutal-black px-4 py-4 text-white shadow-brutal-sm sm:flex-row sm:items-center sm:justify-between sm:px-5">
+      <div className="absolute inset-y-0 left-0 w-1.5 bg-brutal-yellow" aria-hidden="true" />
       <div className="min-w-0">
-        <h2 className="font-brutal text-2xl uppercase tracking-tight leading-none">{title}</h2>
-        {subtitle && <p className="mt-1.5 max-w-2xl font-mono text-xs leading-relaxed text-neutral-300">{subtitle}</p>}
+        <h2 className="font-brutal text-xl uppercase leading-none tracking-tight sm:text-2xl">{title}</h2>
+        {subtitle && <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-neutral-300">{subtitle}</p>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2 sm:shrink-0 sm:justify-end">{actions}</div>}
     </header>

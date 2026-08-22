@@ -1,4 +1,5 @@
 import React from 'react';
+import { BrutalButton } from '../BrutalButton';
 
 type IconTone = 'blue' | 'green' | 'yellow' | 'black' | 'neutral';
 
@@ -35,19 +36,19 @@ export function SectionCardHeader({
   className = '',
 }: SectionCardHeaderProps): React.ReactElement {
   return (
-    <div className={`mb-5 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between ${className}`}>
-      <div className="flex min-w-0 items-start gap-3 sm:gap-4">
+    <div className={`mb-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between ${className}`}>
+      <div className="flex min-w-0 items-start gap-3">
         {icon && (
           <div
-            className={`w-12 h-12 border-2 border-brutal-black flex items-center justify-center shrink-0 shadow-brutal-sm ${ICON_TONE[iconTone]}`}
+            className={`flex h-9 w-9 shrink-0 items-center justify-center border-2 border-brutal-black shadow-brutal-sm ${ICON_TONE[iconTone]}`}
           >
             {icon}
           </div>
         )}
         <div className="min-w-0">
-          <h3 className="text-lg font-bold uppercase leading-tight sm:text-xl">{title}</h3>
+          <h3 className="text-base font-black uppercase leading-tight sm:text-lg">{title}</h3>
           {description && (
-            <p className="mt-1 max-w-2xl text-sm leading-relaxed text-neutral-600 dark:text-neutral-400">{description}</p>
+            <p className="mt-1 max-w-2xl text-xs leading-relaxed text-neutral-600 dark:text-neutral-400 sm:text-sm">{description}</p>
           )}
         </div>
       </div>
@@ -84,11 +85,11 @@ export function GridCard({
 }: GridCardProps): React.ReactElement {
   return (
     <div
-      className={`bg-white dark:bg-zinc-800 dark:text-white border-3 border-brutal-black shadow-brutal flex flex-col ${className}`}
+      className={`flex flex-col border-2 border-brutal-black bg-white shadow-brutal-sm dark:bg-zinc-800 dark:text-white ${className}`}
     >
-      <div className="p-4 bg-neutral-50 dark:bg-zinc-900 border-b-3 border-brutal-black flex items-center justify-between gap-3">
+      <div className="flex items-center justify-between gap-3 border-b-2 border-brutal-black bg-neutral-50 p-3 dark:bg-zinc-900">
         <div className="min-w-0">
-          <div className="font-black uppercase text-lg tracking-wide truncate">{title}</div>
+          <div className="truncate text-base font-black uppercase tracking-wide">{title}</div>
           {subtitle && (
             <div className="text-xs text-neutral-500 dark:text-neutral-400 normal-case font-normal mt-0.5">
               {subtitle}
@@ -120,11 +121,80 @@ interface SettingsCardProps {
 export function SettingsCard({ className = '', children }: SettingsCardProps): React.ReactElement {
   return (
     <div
-      className={`border-3 border-brutal-black bg-white p-4 shadow-brutal dark:bg-zinc-800 dark:text-white sm:p-6 ${className}`}
+      className={`border-2 border-brutal-black bg-white p-3 shadow-brutal-sm dark:bg-zinc-800 dark:text-white sm:p-4 ${className}`}
     >
       {children}
     </div>
   );
+}
+
+interface SettingsPageProps {
+  className?: string;
+  children: React.ReactNode;
+}
+
+/** Consistent vertical rhythm and bottom breathing room for every settings tab. */
+export function SettingsPage({ className = '', children }: SettingsPageProps): React.ReactElement {
+  return <div className={`space-y-4 pb-3 ${className}`}>{children}</div>;
+}
+
+interface CollapsibleSettingsCardProps extends Omit<SectionCardHeaderProps, 'actions'> {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  openLabel: string;
+  closeLabel: string;
+  children: React.ReactNode;
+}
+
+/** A compact summary row that reveals infrequently used creation forms. */
+export function CollapsibleSettingsCard({
+  open,
+  onOpenChange,
+  openLabel,
+  closeLabel,
+  children,
+  ...headerProps
+}: CollapsibleSettingsCardProps): React.ReactElement {
+  return (
+    <SettingsCard>
+      <SectionCardHeader
+        {...headerProps}
+        className={open ? headerProps.className : '!mb-0'}
+        actions={
+          <BrutalButton
+            type="button"
+            variant={open ? 'default' : 'primary'}
+            size="xs"
+            aria-expanded={open}
+            onClick={() => onOpenChange(!open)}
+          >
+            <span aria-hidden="true">{open ? '−' : '+'}</span>
+            {open ? closeLabel : openLabel}
+          </BrutalButton>
+        }
+      />
+      {open && children}
+    </SettingsCard>
+  );
+}
+
+interface SettingsGridProps {
+  density?: 'compact' | 'comfortable';
+  className?: string;
+  children: React.ReactNode;
+}
+
+/** Container-driven card grid that adapts to the settings pane, not the window. */
+export function SettingsGrid({
+  density = 'comfortable',
+  className = '',
+  children,
+}: SettingsGridProps): React.ReactElement {
+  const columns = density === 'compact'
+    ? 'grid-cols-[repeat(auto-fit,minmax(min(100%,19rem),1fr))]'
+    : 'grid-cols-[repeat(auto-fit,minmax(min(100%,23rem),1fr))]';
+
+  return <div className={`grid items-start gap-4 ${columns} ${className}`}>{children}</div>;
 }
 
 type BadgeTone = 'green' | 'blue' | 'amber' | 'red' | 'neutral';
@@ -203,7 +273,7 @@ interface SettingsListItemProps {
  */
 export function SettingsListItem({ children, className = '' }: SettingsListItemProps): React.ReactElement {
   return (
-    <div className={`group relative overflow-hidden bg-neutral-50 dark:bg-zinc-900 border-3 border-brutal-black shadow-brutal ${className}`}>
+    <div className={`group relative overflow-hidden border-2 border-brutal-black bg-neutral-50 shadow-brutal-sm dark:bg-zinc-900 ${className}`}>
       <div className="absolute inset-0 opacity-[0.03] bg-[radial-gradient(#000_2px,transparent_2px)] [background-size:16px_16px] pointer-events-none" />
       <div className="relative z-10 w-full h-full flex flex-col">
         {children}
