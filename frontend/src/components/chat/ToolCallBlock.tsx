@@ -5,6 +5,7 @@ import { WebSearchRenderer } from './WebSearchRenderer';
 import { ToolArgsRenderer } from './ToolArgsRenderer';
 import { ToolGroupIcon } from './toolGroupIcon';
 import { getToolSummary } from './toolSummary';
+import type { ToolTense } from './toolSummary';
 import { FileDiffViewer } from './FileDiffViewer';
 import { BashCommandRenderer, BashOutputRenderer } from './BashRenderer';
 import type { ApprovalRememberScope } from '../../hooks/useAGUI';
@@ -290,11 +291,23 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
     }
   }, [toolArgs]);
 
+  // A pill is read at three moments and wants a different verb form at each: a
+  // proposal awaiting approval ("RUN npm test"), a call in flight ("RUNNING npm
+  // test"), a finished one ("RAN npm test"). A call with neither output nor a
+  // live stream never ran, so it stays a proposal.
+  const tense: ToolTense = isPending || isDenied
+    ? 'imperative'
+    : hasOutput
+      ? (parsedOutput?.success === false || parsedOutput?.error_code ? 'failed' : 'past')
+      : isStreaming
+        ? 'active'
+        : 'imperative';
+
   // Headline for the collapsed pill: an action verb plus the tool's own
   // arguments ("READ ToolCallBlock.tsx") instead of just the tool name.
   const summary = React.useMemo(
-    () => getToolSummary(toolName, parsedToolArgs, t),
-    [toolName, parsedToolArgs, t],
+    () => getToolSummary(toolName, parsedToolArgs, t, tense),
+    [toolName, parsedToolArgs, t, tense],
   );
 
   const { addedLines, removedLines } = React.useMemo(() => {

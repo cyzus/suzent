@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { tForLocale } from '../../i18n';
-import { getRepeatedToolLabel, getToolSummary, normalizeToolName } from './toolSummary';
+import { getRepeatedToolLabel, getToolSummary, isFailedToolOutput, normalizeToolName } from './toolSummary';
 
 const t = (key: string, params?: Record<string, unknown>) => tForLocale('en', key, params);
 const summarize = (toolName: string, args: Record<string, unknown> | null) =>
@@ -33,7 +33,7 @@ describe('getToolSummary', () => {
       .toBe('Search code “getToolSummary”');
     expect(line('glob_search', { pattern: '**/*.test.ts' })).toBe('Find files **/*.test.ts');
     expect(line('web_search', { query: 'tauri window transparency' }))
-      .toBe('Search the web “tauri window transparency”');
+      .toBe('Search web “tauri window transparency”');
     expect(line('webpage_fetch', { url: 'https://www.example.com/docs/page?ref=1' }))
       .toBe('Open page example.com/docs/page');
   });
@@ -80,11 +80,11 @@ describe('getToolSummary', () => {
 
   it('collapses whitespace so a pill stays on one line', () => {
     expect(line('web_search', { query: 'tauri\n  window   transparency' }))
-      .toBe('Search the web “tauri window transparency”');
+      .toBe('Search web “tauri window transparency”');
   });
 
   it('falls back to the verb alone when args have not streamed in yet', () => {
-    expect(line('web_search', null)).toBe('Search the web');
+    expect(line('web_search', null)).toBe('Search web');
     expect(summarize('read_file', {}).detail).toBeNull();
   });
 
@@ -92,25 +92,80 @@ describe('getToolSummary', () => {
     expect(line('Read', { file_path: 'src/main.py' })).toBe('Read main.py');
     expect(line('Bash', { command: 'ls', description: 'List files' })).toBe('List files ls');
     expect(line('mcp__github__create_issue', { title: 'Broken pill' }))
-      .toBe('create issue Broken pill');
+      .toBe('Call create issue Broken pill');
   });
 
   it('falls back to a humanized name plus a headline argument for unknown tools', () => {
-    expect(line('some_new_tool', { query: 'what happened' })).toBe('some new tool what happened');
-    expect(line('some_new_tool', { irrelevant: 1 })).toBe('some new tool');
+    expect(line('some_new_tool', { query: 'what happened' })).toBe('Call some new tool what happened');
+    expect(line('some_new_tool', { irrelevant: 1 })).toBe('Call some new tool');
+  });
+});
+
+describe('tense', () => {
+  it('proposes, narrates, then reports the same call', () => {
+    expect(getToolSummary('run_command', { content: 'npm test' }, t, 'imperative').verb).toBe('Run');
+    expect(getToolSummary('run_command', { content: 'npm test' }, t, 'active').verb).toBe('Running');
+    expect(getToolSummary('run_command', { content: 'npm test' }, t, 'past').verb).toBe('Ran');
+    expect(getToolSummary('web_search', { query: 'x' }, t, 'active').verb).toBe('Searching web');
+    expect(getToolSummary('web_search', { query: 'x' }, t, 'past').verb).toBe('Searched web');
+  });
+
+  it('defaults to the proposal form so an unknown state never claims a call ran', () => {
+    expect(getToolSummary('read_file', { file_path: 'a.ts' }, t).verb).toBe('Read');
+  });
+
+  it('frames every tool it does not enumerate, whatever its name looks like', () => {
+    expect(getToolSummary('create_issue', {}, t, 'imperative').verb).toBe('Call create issue');
+    expect(getToolSummary('create_issue', {}, t, 'active').verb).toBe('Calling create issue');
+    expect(getToolSummary('mcp__linear__send_reminder', {}, t, 'past').verb).toBe('Called send reminder');
+    // A name that is not a verb phrase is carried, never conjugated.
+    expect(getToolSummary('file_search', {}, t, 'past').verb).toBe('Called file search');
+    expect(getToolSummary('weather_today', {}, t, 'active').verb).toBe('Calling weather today');
+  });
+
+  it('says a call failed instead of claiming it happened', () => {
+    expect(getToolSummary('run_command', { content: 'npm test' }, t, 'failed').verb).toBe('Failed to run');
+    expect(getToolSummary('web_search', { query: 'x' }, t, 'failed').verb).toBe('Failed to search web');
+    expect(getToolSummary('mcp__linear__send_reminder', {}, t, 'failed').verb)
+      .toBe('Failed to call send reminder');
+  });
+
+  it('reads a failure out of the tool result envelope only', () => {
+    expect(isFailedToolOutput('{"success": false, "message": "boom"}')).toBe(true);
+    expect(isFailedToolOutput('{"error_code": "EXECUTION_FAILED"}')).toBe(true);
+    expect(isFailedToolOutput('{"success": true, "message": "ok"}')).toBe(false);
+    // Plain text output is output, not a failure.
+    expect(isFailedToolOutput('error: command not found')).toBe(false);
+    expect(isFailedToolOutput('{"success": fal')).toBe(false);
+    expect(isFailedToolOutput(undefined)).toBe(false);
+  });
+
+  it('leaves untranslated headlines alone', () => {
+    // A shell description is the model's own words, not a verb we own.
+    expect(getToolSummary('run_command', { content: 'npm test', description: 'Build the app' }, t, 'past').verb)
+      .toBe('Build the app');
+    expect(getToolSummary('some_new_tool', { query: 'q' }, t, 'past').verb).toBe('Called some new tool');
   });
 });
 
 describe('getRepeatedToolLabel', () => {
-  it('summarizes a run of identical calls in plain language', () => {
+  it('summarizes a finished run of identical calls in the past tense', () => {
     expect(getRepeatedToolLabel('run_command', 10, t)).toBe('Ran 10 commands');
     expect(getRepeatedToolLabel('read_file', 4, t)).toBe('Read 4 files');
     expect(getRepeatedToolLabel('Bash', 3, t)).toBe('Ran 3 commands');
     expect(getRepeatedToolLabel('web_search', 2, t)).toBe('Ran 2 web searches');
   });
 
+  it('describes a run that is still going in the present tense', () => {
+    expect(getRepeatedToolLabel('run_command', 10, t, 'active')).toBe('Running 10 commands');
+    expect(getRepeatedToolLabel('read_file', 4, t, 'active')).toBe('Reading 4 files');
+    expect(getRepeatedToolLabel('web_search', 2, t, 'active')).toBe('Running 2 web searches');
+    expect(getRepeatedToolLabel('glob_search', 5, t, 'active')).toBe('Looking for files 5 times');
+  });
+
   it('falls back to the tool headline for tools without a repeat phrasing', () => {
-    expect(getRepeatedToolLabel('speak', 3, t)).toBe('Say · 3 times');
+    expect(getRepeatedToolLabel('speak', 3, t)).toBe('Said · 3 times');
+    expect(getRepeatedToolLabel('speak', 3, t, 'active')).toBe('Saying · 3 times');
   });
 });
 

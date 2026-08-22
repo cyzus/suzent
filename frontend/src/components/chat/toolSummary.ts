@@ -147,6 +147,53 @@ export function normalizeToolName(toolName: string): string {
   return NAME_ALIASES[snake] ?? snake;
 }
 
+/**
+ * Lowercases a headline's first letter so it can sit inside a frame — "Search
+ * the web" → "Failed to search the web". An all-caps opening (an acronym) is
+ * left alone.
+ */
+function lowerFirst(value: string): string {
+  if (/^[A-Z]{2}/.test(value)) return value;
+  return value.charAt(0).toLowerCase() + value.slice(1);
+}
+
+/**
+ * Whether a tool's own output says the call failed.
+ *
+ * Tools answer with a `ToolResult` envelope, so a failure is stated in the
+ * payload rather than thrown — `success: false`, or an `error_code`. The check
+ * is deliberately shallow: output that is not an envelope (plain text, a
+ * truncated stream) is not a failure, it is just output.
+ */
+export function isFailedToolOutput(output: string | undefined): boolean {
+  if (!output) return false;
+  const trimmed = output.trim();
+  if (!trimmed.startsWith('{')) return false;
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (!parsed || typeof parsed !== 'object') return false;
+    return parsed.success === false || typeof parsed.error_code === 'string';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Puts an unrecognized tool's name into the requested tense with one frame:
+ * "Call send reminder", "Calling send reminder", "Called send reminder".
+ *
+ * The enumerated tools each own a real verb because the phrasing is worth the
+ * words — "Searched the web “x”" beats "Called web search “x”". For
+ * everything else there is no verb to conjugate: the name is an identifier and
+ * may not even start with a verb, so the frame carries the tense and the name
+ * is left exactly as written. Three lines of translation cover every tool that
+ * will ever be plugged in, and nothing can come out as "filing search" or
+ * "sended reminder".
+ */
+function frameToolName(name: string, tense: ToolTense, t: TranslateFn): string {
+  return t(`toolSummary.unknownTool.${tense}`, { name });
+}
+
 /** Fallback label when no builder matches: `do_thing` → `do thing`. */
 function humanizeToolName(toolName: string): string {
   const mcp = /^mcp__([^_]+(?:_[^_]+)*?)__(.+)$/.exec(toolName.trim());
@@ -177,6 +224,48 @@ const GENERIC_DETAIL_KEYS = [
   'message',
   'id',
 ];
+
+// ---------------------------------------------------------------------------
+// Tense
+// ---------------------------------------------------------------------------
+
+/**
+ * Which form of a tool's verb to use.
+ *
+ * A pill is read at three different moments and wants a different form at each:
+ * while the agent is asking permission it is a proposal ("Run command"), while
+ * the call is in flight it is happening now ("Running npm test"), and once the
+ * output has landed it is a record of what was done ("Ran npm test"). Every
+ * label in this module — single calls and repeat summaries alike — takes the
+ * same three-way choice so a transcript never mixes the two readings.
+ */
+export type ToolTense = 'imperative' | 'active' | 'past' | 'failed';
+
+const TENSE_GROUPS: Record<ToolTense, string> = {
+  imperative: 'verbs',
+  active: 'verbsActive',
+  past: 'verbsPast',
+  // A failure is framed rather than conjugated — see `getToolSummary`.
+  failed: 'verbs',
+};
+
+/**
+ * Wraps a translate function so every `toolSummary.verbs.*` lookup inside the
+ * builders resolves to the requested tense instead. Doing it here keeps the
+ * thirty-odd builders free of tense handling; a verb missing from a tensed set
+ * quietly falls back to its base form rather than rendering a raw key.
+ */
+function withTense(t: TranslateFn, tense: ToolTense): TranslateFn {
+  if (tense === 'imperative') return t;
+  const prefix = 'toolSummary.verbs.';
+  const group = TENSE_GROUPS[tense];
+  return (key, params) => {
+    if (!key.startsWith(prefix)) return t(key, params);
+    const tensedKey = `toolSummary.${group}.${key.slice(prefix.length)}`;
+    const tensed = t(tensedKey, params);
+    return tensed === tensedKey ? t(key, params) : tensed;
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Per-tool builders
@@ -390,6 +479,7 @@ export function getToolSummary(
   toolName: string,
   parsedArgs: Record<string, unknown> | null | undefined,
   t: TranslateFn,
+  tense: ToolTense = 'imperative',
 ): ToolSummary {
   const args = parsedArgs && typeof parsedArgs === 'object' && !Array.isArray(parsedArgs)
     ? parsedArgs
@@ -400,15 +490,22 @@ export function getToolSummary(
   let headline: string;
   let rawDetail: string | null;
 
+  // A failure wraps the proposal form — "Run npm test" → "Failed to run npm
+  // test" — rather than owning a fourth set of verbs. One frame says the same
+  // thing for every tool, including the ones we do not enumerate.
+  const built = tense === 'failed' ? 'imperative' : tense;
+
   if (builder) {
-    const built = builder(args, t);
-    headline = built.verb;
-    rawDetail = built.detail ? compact(built.detail) : null;
+    const summary = builder(args, withTense(t, built));
+    headline = summary.verb;
+    rawDetail = summary.detail ? compact(summary.detail) : null;
   } else {
-    headline = humanizeToolName(toolName);
+    headline = frameToolName(humanizeToolName(toolName), built, t);
     const generic = firstOf(args, GENERIC_DETAIL_KEYS);
     rawDetail = generic ? compact(generic) : null;
   }
+
+  if (tense === 'failed') headline = t('toolSummary.failed', { verb: lowerFirst(headline) });
 
   return {
     verb: headline,
@@ -432,19 +529,25 @@ const REPEAT_KEYS: Record<string, string> = {
 };
 
 /**
- * Label for a run of back-to-back calls to the same tool, e.g. "Ran 10
+ * Label for a run of back-to-back calls to the same tool, e.g. "Running 10
  * commands". Ten separate pills all reading "Run …" say less than one line
  * saying how many there were.
+ *
+ * Takes the same tense as a single call: a streak still running reads
+ * "Running 10 commands", a finished one "Ran 10 commands". A proposal is never
+ * a streak, so `imperative` reads back as the past like any finished run.
  */
 export function getRepeatedToolLabel(
   toolName: string,
   count: number,
   t: TranslateFn,
+  tense: ToolTense = 'past',
 ): string {
+  const group = tense === 'active' ? 'repeatsActive' : 'repeats';
   const key = REPEAT_KEYS[normalizeToolName(toolName)];
-  if (key) return t(`toolSummary.repeats.${key}`, { count });
-  return t('toolSummary.repeats.generic', {
-    name: getToolSummary(toolName, null, t).verb,
+  if (key) return t(`toolSummary.${group}.${key}`, { count });
+  return t(`toolSummary.${group}.generic`, {
+    name: getToolSummary(toolName, null, t, tense).verb,
     count,
   });
 }

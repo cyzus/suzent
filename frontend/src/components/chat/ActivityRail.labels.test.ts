@@ -53,7 +53,7 @@ describe('getAguiActivityLabel', () => {
     ];
     const chunks = [{ chunk: { type: 'tool', items } }];
 
-    expect(getAguiActivityLabel(chunks, true)).toBe('Ran 10 commands');
+    expect(getAguiActivityLabel(chunks, true)).toBe('Running 10 commands');
   });
 
   it('keeps counting a streak that the agent thought in the middle of', () => {
@@ -63,7 +63,7 @@ describe('getAguiActivityLabel', () => {
       { chunk: { type: 'tool', items: [toolPart({ output: undefined, state: 'running' })] } },
     ];
 
-    expect(getAguiActivityLabel(chunks, true)).toBe('Ran 3 commands');
+    expect(getAguiActivityLabel(chunks, true)).toBe('Running 3 commands');
   });
 
   it('keeps describing the call until the streak is long enough to matter', () => {
@@ -73,7 +73,7 @@ describe('getAguiActivityLabel', () => {
     ];
     const chunks = [{ chunk: { type: 'tool', items } }];
 
-    expect(getAguiActivityLabel(chunks, true)).toBe('Run npm test');
+    expect(getAguiActivityLabel(chunks, true)).toBe('Running npm test');
   });
 
   it('describes a lone call instead of counting it', () => {
@@ -88,6 +88,6 @@ describe('getAguiActivityLabel', () => {
     ];
     const chunks = [{ chunk: { type: 'tool', items } }];
 
-    expect(getAguiActivityLabel(chunks, true)).toBe('Search the web “tauri transparency”');
+    expect(getAguiActivityLabel(chunks, true)).toBe('Searching web “tauri transparency”');
   });
 });
