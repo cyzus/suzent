@@ -384,6 +384,16 @@
       "supports_response_schema": true,
       "supports_reasoning": true,
       "supports_prompt_caching": true
+    },
+    "xai/grok-4.6": {
+      "mode": "chat",
+      "max_input_tokens": 500000,
+      "max_output_tokens": 500000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     }
   }
 }

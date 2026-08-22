@@ -727,6 +727,34 @@
       "max_input_tokens": 262144,
       "supports_function_calling": true,
       "supports_reasoning": true
+    },
+    "openrouter/anthropic/claude-opus-5": {
+      "mode": "chat",
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/deepseek/deepseek-v4-pro": {
+      "mode": "chat",
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 384000,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/deepseek/deepseek-v4-pro-0813": {
+      "mode": "chat",
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 384000,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     }
   }
 }
