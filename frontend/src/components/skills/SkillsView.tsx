@@ -1,13 +1,25 @@
-import React, { useEffect, useState } from 'react';
-import { XMarkIcon } from '@heroicons/react/24/outline';
+import React, { useEffect, useMemo, useState } from 'react';
+import { XMarkIcon, MagnifyingGlassIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import { useSkills } from '../../hooks/useSkills';
 import { MarkdownRenderer } from '../chat/MarkdownRenderer';
+import { BrutalButton } from '../BrutalButton';
 import { useI18n } from '../../i18n';
 import { Skill } from '../../types/skills';
+
+/** Strip the light markdown skill descriptions carry so rows stay single-line. */
+function plainDescription(description?: string): string {
+    return (description || '')
+        .replace(/`([^`]*)`/g, '$1')
+        .replace(/\*\*([^*]*)\*\*/g, '$1')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
 
 export const SkillsView: React.FC = () => {
     const { skills, loading, error, loadSkills, reload, toggle } = useSkills();
     const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null);
+    const [query, setQuery] = useState('');
+    const [enabledOnly, setEnabledOnly] = useState(false);
     const { t } = useI18n();
 
     useEffect(() => {
@@ -27,6 +39,20 @@ export const SkillsView: React.FC = () => {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [selectedSkill]);
 
+    const enabledCount = useMemo(() => skills.filter(s => s.enabled).length, [skills]);
+
+    const visibleSkills = useMemo(() => {
+        const needle = query.trim().toLowerCase();
+        return skills.filter(skill => {
+            if (enabledOnly && !skill.enabled) return false;
+            if (!needle) return true;
+            return (
+                skill.name.toLowerCase().includes(needle) ||
+                (skill.description || '').toLowerCase().includes(needle)
+            );
+        });
+    }, [skills, query, enabledOnly]);
+
     if (loading && skills.length === 0) {
         return (
             <div className="h-full w-full flex flex-col items-center justify-center p-8">
@@ -43,42 +69,53 @@ export const SkillsView: React.FC = () => {
                 <div className="border-3 border-brutal-red bg-white dark:bg-zinc-800 p-6 shadow-brutal">
                     <h3 className="font-brutal text-xl text-brutal-red mb-2 uppercase">{t('skills.errorTitle')}</h3>
                     <p className="font-mono text-sm">{error}</p>
-                    <button
-                        onClick={() => loadSkills()}
-                        className="mt-4 px-4 py-2 border-2 border-brutal-black font-bold uppercase hover:bg-neutral-100 dark:hover:bg-zinc-700"
-                    >
+                    <BrutalButton onClick={() => loadSkills()} size="sm" className="mt-4">
                         {t('skills.retry')}
-                    </button>
+                    </BrutalButton>
                 </div>
             </div>
         );
     }
 
     return (
-        <div className="h-full w-full overflow-y-auto px-4 md:px-8 py-8 space-y-8 max-w-7xl mx-auto scrollbar-thin">
-            <div className="bg-white dark:bg-zinc-800 p-3 border-3 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex justify-between items-center">
-                <div>
-                    <h2 className="font-brutal text-3xl uppercase tracking-tighter">{t('skills.title')}</h2>
-                    <p className="text-sm font-mono text-neutral-600 dark:text-neutral-400">{t('skills.subtitle')}</p>
+        <div className="h-full w-full overflow-y-auto px-4 md:px-6 py-5 space-y-4 max-w-5xl mx-auto scrollbar-thin">
+            <div className="bg-white dark:bg-zinc-800 px-3 py-2 border-2 border-brutal-black shadow-brutal-sm flex flex-wrap items-center gap-2">
+                <div className="min-w-0 mr-auto">
+                    <h2 className="font-brutal text-lg uppercase tracking-tighter leading-none">{t('skills.title')}</h2>
+                    <p className="text-[11px] font-mono text-neutral-500 dark:text-neutral-400">
+                        {t('skills.enabledCount', { enabled: enabledCount, total: skills.length })}
+                    </p>
                 </div>
-                <button
-                    onClick={() => reload()}
-                    title={t('skills.reload')}
-                    className="p-2 border-2 border-brutal-black hover:bg-neutral-100 dark:hover:bg-zinc-700 brutal-btn transition-all"
+                <div className="relative">
+                    <MagnifyingGlassIcon className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neutral-400" />
+                    <input
+                        value={query}
+                        onChange={(event) => setQuery(event.target.value)}
+                        placeholder={t('skills.searchPlaceholder')}
+                        aria-label={t('skills.searchPlaceholder')}
+                        className="w-40 sm:w-56 border-2 border-brutal-black bg-white dark:bg-zinc-900 py-1 pl-7 pr-2 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-brutal-yellow"
+                    />
+                </div>
+                <BrutalButton
+                    onClick={() => setEnabledOnly(value => !value)}
+                    size="xs"
+                    isActive={enabledOnly}
+                    title={t('skills.enabledOnly')}
                 >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                </button>
+                    {t('skills.enabledOnly')}
+                </BrutalButton>
+                <BrutalButton onClick={() => reload()} size="icon" title={t('skills.reload')}>
+                    <ArrowPathIcon className="h-4 w-4 stroke-2" />
+                </BrutalButton>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {skills.map(skill => (
+            <div className="border-2 border-brutal-black divide-y-2 divide-brutal-black bg-white dark:bg-zinc-800 shadow-brutal-sm">
+                {visibleSkills.map(skill => (
                     <div
                         key={skill.name}
                         role="button"
                         tabIndex={0}
-                        title={t('skills.openSkill')}
+                        title={skill.path}
                         onClick={() => setSelectedSkill(skill)}
                         onKeyDown={(event) => {
                             if (event.key === 'Enter' || event.key === ' ') {
@@ -86,35 +123,43 @@ export const SkillsView: React.FC = () => {
                                 setSelectedSkill(skill);
                             }
                         }}
-                        className={`bg-white dark:bg-zinc-800 border-3 border-brutal-black p-5 shadow-[5px_5px_0px_0px_rgba(0,0,0,1)] transition-all cursor-pointer hover:-translate-y-0.5 hover:shadow-[7px_7px_0px_0px_rgba(0,0,0,1)] focus:outline-none focus:ring-4 focus:ring-brutal-yellow ${!skill.enabled ? 'opacity-75' : ''}`}
+                        className={`flex items-center gap-3 px-3 py-2 cursor-pointer transition-colors hover:bg-neutral-100 dark:hover:bg-zinc-700 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-brutal-yellow ${!skill.enabled ? 'opacity-60' : ''}`}
                     >
-                        <div className="flex justify-between items-start mb-2">
-                            <h3 className="font-brutal text-xl uppercase break-all">{skill.name}</h3>
-                            <button
-                                onClick={(event) => {
-                                    event.stopPropagation();
-                                    toggle(skill.name);
-                                }}
-                                className={`w-12 h-6 flex items-center border-2 border-brutal-black p-0.5 transition-colors ${skill.enabled ? 'bg-brutal-black justify-end' : 'bg-white dark:bg-zinc-700 justify-start'}`}
-                                title={skill.enabled ? t('skills.disableSkill') : t('skills.enableSkill')}
-                            >
-                                <div className={`w-4 h-4 border-2 border-brutal-black ${skill.enabled ? 'bg-white' : 'bg-neutral-300 dark:bg-zinc-500'}`} />
-                            </button>
+                        <button
+                            type="button"
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                toggle(skill.name);
+                            }}
+                            className={`shrink-0 w-9 h-5 flex items-center border-2 border-brutal-black p-0.5 transition-colors ${skill.enabled ? 'bg-brutal-green justify-end' : 'bg-white dark:bg-zinc-700 justify-start'}`}
+                            title={skill.enabled ? t('skills.disableSkill') : t('skills.enableSkill')}
+                            aria-pressed={skill.enabled}
+                        >
+                            <div className={`w-3 h-3 border-2 border-brutal-black ${skill.enabled ? 'bg-white' : 'bg-neutral-300 dark:bg-zinc-500'}`} />
+                        </button>
+                        <div className="min-w-0 flex-1 flex flex-col sm:flex-row sm:items-baseline sm:gap-3">
+                            <span className="font-mono text-xs font-black uppercase truncate sm:max-w-[16rem] sm:shrink-0">
+                                {skill.name}
+                            </span>
+                            <span className="min-w-0 truncate text-[11px] text-neutral-600 dark:text-neutral-400">
+                                {plainDescription(skill.description)}
+                            </span>
                         </div>
-                        <div className="mb-4 overflow-hidden text-ellipsis">
-                            <p className="font-mono text-[10px] text-neutral-500 dark:text-neutral-400 bg-neutral-100 dark:bg-zinc-700 p-1 inline-block truncate max-w-full" title={skill.path}>
-                                {skill.path}
-                            </p>
-                        </div>
-                        <div className="border-t-2 border-neutral-200 dark:border-zinc-600 pt-3">
-                            <MarkdownRenderer content={skill.description || ''} />
-                        </div>
+                        {skill.source && (
+                            <span className="shrink-0 hidden md:inline border-2 border-brutal-black px-1.5 py-0.5 font-mono text-[9px] uppercase text-neutral-600 dark:text-neutral-300">
+                                {skill.source}
+                            </span>
+                        )}
                     </div>
                 ))}
-                {skills.length === 0 && (
-                    <div className="col-span-full text-center border-3 border-dashed border-neutral-300 dark:border-zinc-600 p-12">
-                        <p className="font-mono text-neutral-400 text-lg">{t('skills.emptyTitle')}</p>
-                        <p className="text-sm text-neutral-400 mt-2">{t('skills.emptyDesc')}</p>
+                {visibleSkills.length === 0 && (
+                    <div className="text-center p-10">
+                        <p className="font-mono text-neutral-400">
+                            {skills.length === 0 ? t('skills.emptyTitle') : t('skills.noMatches')}
+                        </p>
+                        {skills.length === 0 && (
+                            <p className="text-sm text-neutral-400 mt-2">{t('skills.emptyDesc')}</p>
+                        )}
                     </div>
                 )}
             </div>
@@ -140,15 +185,15 @@ export const SkillsView: React.FC = () => {
                                     {selectedSkill.path}
                                 </p>
                             </div>
-                            <button
-                                type="button"
+                            <BrutalButton
                                 onClick={() => setSelectedSkill(null)}
+                                size="icon"
                                 title={t('skills.closeSkill')}
                                 aria-label={t('skills.closeSkill')}
-                                className="shrink-0 p-2 border-2 border-brutal-black hover:bg-neutral-100 dark:hover:bg-zinc-700 brutal-btn transition-all"
+                                className="shrink-0"
                             >
                                 <XMarkIcon className="h-5 w-5 stroke-[3]" />
-                            </button>
+                            </BrutalButton>
                         </div>
                         <div className="overflow-y-auto p-5 md:p-7 scrollbar-thin">
                             <div className="mb-5 border-b-2 border-neutral-200 dark:border-zinc-700 pb-4">
