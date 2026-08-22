@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Message } from '../../types/api';
 import { formatMessageTime } from '../../lib/chatUtils';
 import { useI18n } from '../../i18n';
+import { InformationPopover } from '../InformationPopover';
 
 type ChatMinimapMessageTone = 'user' | 'assistant' | 'notice' | 'activity';
 
@@ -295,13 +296,12 @@ export const ChatMinimap: React.FC<ChatMinimapProps> = ({
         title={t('chatWindow.minimapLabel')}
       >
         {hoveredMarker && (
-          <div
+          <InformationPopover
             className="chat-minimap-preview pointer-events-none"
             style={{
               top: `${previewTop}%`,
             }}
           >
-            <div className="chat-minimap-preview-accent" />
             <div className="min-w-0">
               <div className="truncate text-[13px] font-semibold leading-snug text-neutral-900 dark:text-neutral-50">
                 {hoveredMarker.title}
@@ -319,7 +319,7 @@ export const ChatMinimap: React.FC<ChatMinimapProps> = ({
                 </div>
               )}
             </div>
-          </div>
+          </InformationPopover>
         )}
 
         {markers.map(marker => {

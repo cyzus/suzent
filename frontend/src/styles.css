@@ -92,36 +92,13 @@
     --minimap-ink: 255, 255, 255;
   }
 
-  /* Preview is a clean, shadeless Codex-style card: rounded, thin
-     hairline border, flat fill, no drop shadow. A short tone-colored
-     rule sits flush at the top-left as the only accent. */
+  /* The shared information popover owns the panel appearance. */
   .chat-minimap-preview {
     position: absolute;
     right: 3rem;
     width: min(21rem, calc(100vw - 14rem));
     transform: translateY(-50%) translateX(0.35rem);
-    padding: 0.8rem 1rem 0.85rem;
-    border: 1px solid rgba(0, 0, 0, 0.14);
-    border-radius: 0.85rem;
-    background: #fff;
     animation: chat-minimap-preview-in 130ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
-  }
-
-  .dark .chat-minimap-preview {
-    border-color: rgba(255, 255, 255, 0.16);
-    background: #1c1c1f;
-  }
-
-  .chat-minimap-preview-accent {
-    width: 1.6rem;
-    height: 3px;
-    margin-bottom: 0.55rem;
-    border-radius: 2px;
-    background: rgba(0, 0, 0, 0.35);
-  }
-
-  .dark .chat-minimap-preview-accent {
-    background: rgba(255, 255, 255, 0.35);
   }
 }
 

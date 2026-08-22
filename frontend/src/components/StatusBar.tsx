@@ -17,6 +17,7 @@ import {
   type ServiceRuntimeStatus,
 } from '../lib/api';
 import { BrutalOnOff } from './BrutalOnOff';
+import { InformationPopover } from './InformationPopover';
 
 const getStatusStyles = (type: StatusType) => {
   switch (type) {
@@ -70,8 +71,6 @@ const SECTION_LABEL = 'text-[10px] font-bold uppercase tracking-wider text-neutr
 const PILL_BUTTON = 'px-1.5 py-0.5 border border-brutal-black dark:border-neutral-400 text-[10px] font-bold uppercase tracking-wider transition-colors';
 const PILL_BUTTON_IDLE = 'bg-white text-brutal-black hover:bg-neutral-100 dark:bg-zinc-800 dark:text-white dark:hover:bg-zinc-700';
 const PILL_BUTTON_ACTIVE = 'bg-brutal-black text-white border-brutal-black dark:bg-neutral-200 dark:text-brutal-black';
-const POPOVER_PANEL = 'absolute top-6 right-0 rounded border-2 border-brutal-black dark:border-neutral-500 bg-white dark:bg-zinc-900 shadow-lg text-[11px] text-neutral-700 dark:text-neutral-300 p-2.5 z-50';
-
 function useStatusHoverPopover() {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -327,9 +326,9 @@ function HeartbeatWidget() {
       </button>
 
       {open && (
-        <div
+        <InformationPopover
           role="dialog"
-          className={`${POPOVER_PANEL} w-60 space-y-2`}
+          className="absolute top-6 right-0 z-50 w-60 space-y-2"
         >
           {/* On/off */}
           <div className="flex items-center justify-between gap-3">
@@ -406,7 +405,7 @@ function HeartbeatWidget() {
               </div>
             )}
           </div>
-        </div>
+        </InformationPopover>
       )}
     </div>
   );
@@ -523,9 +522,9 @@ function ContextWidgetBody({ usage, limit }: { usage: ContextUsage; limit: numbe
       </button>
 
       {open && (
-        <div
+        <InformationPopover
           role="dialog"
-          className={`${POPOVER_PANEL} w-56 space-y-1.5 font-mono normal-case tracking-normal font-normal`}
+          className="absolute top-6 right-0 z-50 w-56 space-y-1.5 font-mono normal-case tracking-normal font-normal"
         >
           <div className="flex items-center justify-between mb-1">
             <div className="font-bold text-neutral-900 dark:text-neutral-100 uppercase tracking-wider text-[10px]">Context Window</div>
@@ -608,7 +607,7 @@ function ContextWidgetBody({ usage, limit }: { usage: ContextUsage; limit: numbe
               </div>
             </div>
           )}
-        </div>
+        </InformationPopover>
       )}
     </div>
   );

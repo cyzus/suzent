@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { CitationSource } from '../../lib/streamEvents';
+import { InformationPopover } from '../InformationPopover';
 
 /**
  * Inline-citation rendering.
@@ -378,6 +379,7 @@ export const CitationBadge: React.FC<{ sourceIds: string[] }> = ({ sourceIds }) 
   const sourcesMap = useCitationSources();
   const { open, onEnter, onLeave } = useHoverCard();
   const anchorRef = useRef<HTMLSpanElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
   const [cardStyle, setCardStyle] = useState<React.CSSProperties | null>(null);
 
   const sources = sourceIds
@@ -389,34 +391,51 @@ export const CitationBadge: React.FC<{ sourceIds: string[] }> = ({ sourceIds }) 
     if (!open || !anchorRef.current) return;
 
     const updatePosition = () => {
-      const rect = anchorRef.current?.getBoundingClientRect();
-      if (!rect) return;
+      const anchor = anchorRef.current;
+      if (!anchor) return;
+      const rect = anchor.getBoundingClientRect();
+      const bounds = scrollContainerBounds(anchor);
 
       const margin = 12;
-      const width = Math.min(360, Math.max(220, window.innerWidth - margin * 2));
+      const gap = 6;
+      const availableWidth = bounds.right - bounds.left - margin * 2;
+      const width = Math.min(360, Math.max(220, availableWidth));
       const left = Math.min(
-        Math.max(rect.left + rect.width / 2 - width / 2, margin),
-        window.innerWidth - width - margin,
+        Math.max(rect.left + rect.width / 2 - width / 2, bounds.left + margin),
+        bounds.right - width - margin,
       );
-      const top = rect.top >= 132 ? rect.top - margin : rect.bottom + margin;
-      const placeBelow = rect.top < 132;
+      const spaceAbove = rect.top - bounds.top - margin - gap;
+      const spaceBelow = bounds.bottom - rect.bottom - margin - gap;
+      const naturalHeight = cardRef.current?.scrollHeight ?? 240;
+      const placeBelow = naturalHeight <= spaceBelow
+        || (naturalHeight > spaceAbove && spaceBelow > spaceAbove);
+      const availableHeight = Math.max(48, placeBelow ? spaceBelow : spaceAbove);
+      const height = Math.min(naturalHeight, availableHeight);
+      const rawTop = placeBelow ? rect.bottom + gap : rect.top - gap - height;
+      const top = Math.min(
+        Math.max(rawTop, bounds.top + margin),
+        bounds.bottom - height - margin,
+      );
 
       setCardStyle({
         left,
         top,
         width,
-        transform: placeBelow ? undefined : 'translateY(-100%)',
+        maxHeight: availableHeight,
+        overflowY: 'auto',
       });
     };
 
     updatePosition();
+    const raf = requestAnimationFrame(updatePosition);
     window.addEventListener('resize', updatePosition);
     window.addEventListener('scroll', updatePosition, true);
     return () => {
+      cancelAnimationFrame(raf);
       window.removeEventListener('resize', updatePosition);
       window.removeEventListener('scroll', updatePosition, true);
     };
-  }, [open]);
+  }, [open, sources.length]);
 
   if (sources.length === 0) {
     const label = sourceIds[0] || 'source';
@@ -444,18 +463,20 @@ export const CitationBadge: React.FC<{ sourceIds: string[] }> = ({ sourceIds }) 
   const label = sourceName(primary);
   const extra = sources.length + unresolvedIds.length - 1;
   const popover = open && typeof document !== 'undefined' ? createPortal(
-    <span
-      className="fixed z-[9999] block
-        bg-white dark:bg-zinc-800 border-2 border-brutal-black dark:border-zinc-500
-        rounded-[3px] p-1.5 min-w-0"
-      style={cardStyle ?? { left: -9999, top: -9999, width: 360 }}
+    <InformationPopover
+      ref={cardRef}
+      className="fixed min-w-0"
+      style={{
+        ...(cardStyle ?? { left: -9999, top: -9999, width: 360 }),
+        zIndex: 9999,
+      }}
       onMouseEnter={onEnter}
       onMouseLeave={onLeave}
     >
       {sources.map((s, i) => (
         <SourceCardRow key={i} source={s} />
       ))}
-    </span>,
+    </InformationPopover>,
     document.body,
   ) : null;
 
