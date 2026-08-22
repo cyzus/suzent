@@ -495,7 +495,7 @@ function ContextWidgetBody({ usage, limit }: { usage: ContextUsage; limit: numbe
   return (
     <div
       ref={rootRef}
-      className="relative flex-shrink-0 ml-3"
+      className="relative ml-3 min-w-0"
       onBlur={handleBlur}
       onMouseEnter={openPopover}
       onMouseLeave={closePopoverWithDelay}
@@ -503,19 +503,19 @@ function ContextWidgetBody({ usage, limit }: { usage: ContextUsage; limit: numbe
       <button
         type="button"
         onFocus={openPopover}
-        className="flex items-center gap-1.5 transition-opacity hover:opacity-80"
+        className="flex min-w-0 items-center gap-1.5 transition-opacity hover:opacity-80"
         title="Context usage"
         aria-haspopup="dialog"
         aria-expanded={open}
       >
-        <div className="w-12 h-1.5 rounded-full bg-neutral-300 dark:bg-zinc-600 overflow-hidden">
+        <div className="h-1.5 w-12 min-w-0 flex-shrink overflow-hidden rounded-full bg-neutral-300 dark:bg-zinc-600">
           <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${pct}%` }} />
         </div>
-        <span className="hidden md:inline text-[10px] font-bold uppercase tracking-wider">
+        <span className="hidden flex-shrink-0 text-[10px] font-bold uppercase tracking-wider md:inline">
           {fmt(contextTokens)}
         </span>
         {compactRecommended && !compacting && (
-          <span className="hidden md:inline text-[9px] font-bold uppercase tracking-wider text-brutal-red">
+          <span className="hidden flex-shrink-0 text-[9px] font-bold uppercase tracking-wider text-brutal-red md:inline">
             Compact?
           </span>
         )}
@@ -729,9 +729,9 @@ function BackendServiceWidget() {
     : label;
 
   return (
-    <div className="flex min-w-0 items-center gap-2" title={details}>
+    <div className="flex min-w-0 items-center gap-2 text-neutral-500 dark:text-neutral-400" title={details}>
       <span className={`h-2.5 w-2.5 flex-shrink-0 border border-brutal-black dark:border-neutral-300 ${dotClass}`} aria-hidden="true" />
-      <span className="truncate">{label}</span>
+      <span className="hidden truncate lg:inline">{label}</span>
     </div>
   );
 }
@@ -775,25 +775,26 @@ export const StatusBar: React.FC<StatusBarProps> = ({ onOpenMemorySettings, show
       transition-colors duration-200
       ${getStatusStyles(type)}
     `}>
-      {/* Left: transient toast area */}
-      <div className="flex min-w-0 flex-1 items-center gap-2.5">
-        {message ? (
-          <>
-            <span className="w-4 flex-shrink-0 text-center">{getStatusIcon(type)}</span>
-            <span className="truncate">{message}</span>
-          </>
-        ) : (
-          <BackendServiceWidget />
-        )}
-      </div>
+      {/* Left: service/toast followed by the selected conversation. */}
+      <div className="flex min-w-0 flex-1 items-center gap-4 pr-4">
+        <div className={`flex min-w-0 items-center gap-2.5 ${message ? 'flex-shrink' : 'flex-shrink-0'}`}>
+          {message ? (
+            <>
+              <span className="w-4 flex-shrink-0 text-center">{getStatusIcon(type)}</span>
+              <span className="truncate">{message}</span>
+            </>
+          ) : (
+            <BackendServiceWidget />
+          )}
+        </div>
 
-      {/* Center: selected conversation identity */}
-      <div className="hidden min-w-0 flex-1 justify-center px-4 lg:flex">
-        {showActiveChatTitle && <ActiveChatTitle />}
+        <div className="flex min-w-0 flex-1 justify-start overflow-hidden">
+          {showActiveChatTitle && <ActiveChatTitle />}
+        </div>
       </div>
 
       {/* Right: context usage + sub-agent indicator + heartbeat */}
-      <div className="flex min-w-0 flex-1 items-center justify-end">
+      <div className="flex flex-shrink-0 items-center justify-end">
         <ContextWidget />
         <SubAgentWidget />
         <DreamWidget onOpenMemorySettings={onOpenMemorySettings} />

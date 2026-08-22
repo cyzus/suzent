@@ -978,7 +978,7 @@ export function GitHubSyncSection({
             type="button"
             disabled={busy}
             onClick={handleSignIn}
-            className="w-full px-4 py-3 bg-brutal-black border-2 border-brutal-black font-black uppercase text-sm text-white shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:brightness-110 disabled:opacity-50"
+            className="w-full px-4 py-3 bg-brutal-black border-2 border-brutal-black font-black uppercase text-sm text-white shadow-brutal-sm hover:brightness-110 disabled:opacity-50"
           >
             {t('settings.data.githubSignInButton')}
           </button>

@@ -75,7 +75,7 @@ function ModelDropdown({ options, onSelect }: ModelDropdownProps) {
       </button>
 
       {open && (
-        <div className="absolute z-50 top-full mt-1 left-0 right-0 border-2 border-brutal-black bg-white dark:bg-zinc-800 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+        <div className="absolute z-50 top-full mt-1 left-0 right-0 border-2 border-brutal-black bg-white dark:bg-zinc-800 shadow-brutal">
           {/* Search doubles as custom-model entry: Enter adds the typed id */}
           <div className="border-b-2 border-brutal-black">
             <input
@@ -173,7 +173,7 @@ function RoleCard({ label, desc, selected, suggestions, onChange }: RoleCardProp
                   {idx + 1}
                 </span>
                 <span
-                  className="flex-1 font-mono text-xs truncate border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-700 dark:text-white px-2 py-1 shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]"
+                  className="flex-1 font-mono text-xs truncate border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-700 dark:text-white px-2 py-1 shadow-brutal-sm"
                   title={modelId}
                 >
                   {modelId}

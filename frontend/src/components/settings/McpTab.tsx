@@ -397,13 +397,13 @@ export function McpTab({
                                                 value={editDraft.url}
                                                 onChange={e => setEditDraft({ ...editDraft, url: e.target.value })}
                                                 placeholder="https://host/path"
-                                                className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs shadow-[2px_2px_0_0_#000] focus:outline-none focus:translate-y-[2px] focus:translate-x-[2px] focus:shadow-none transition-all dark:text-white dark:placeholder-neutral-500"
+                                                className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs shadow-brutal-sm focus:outline-none focus:translate-y-[2px] focus:translate-x-[2px] focus:shadow-none transition-all dark:text-white dark:placeholder-neutral-500"
                                             />
                                             <input
                                                 value={editDraft.headers}
                                                 onChange={e => setEditDraft({ ...editDraft, headers: e.target.value })}
                                                 placeholder={t('settings.mcp.headersPlaceholder')}
-                                                className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs shadow-[2px_2px_0_0_#000] focus:outline-none focus:translate-y-[2px] focus:translate-x-[2px] focus:shadow-none transition-all dark:text-white dark:placeholder-neutral-500"
+                                                className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs shadow-brutal-sm focus:outline-none focus:translate-y-[2px] focus:translate-x-[2px] focus:shadow-none transition-all dark:text-white dark:placeholder-neutral-500"
                                             />
                                         </div>
                                     ) : (
@@ -412,19 +412,19 @@ export function McpTab({
                                                 value={editDraft.command}
                                                 onChange={e => setEditDraft({ ...editDraft, command: e.target.value })}
                                                 placeholder={t('settings.mcp.commandPlaceholder')}
-                                                className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs shadow-[2px_2px_0_0_#000] focus:outline-none focus:translate-y-[2px] focus:translate-x-[2px] focus:shadow-none transition-all dark:text-white dark:placeholder-neutral-500"
+                                                className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs shadow-brutal-sm focus:outline-none focus:translate-y-[2px] focus:translate-x-[2px] focus:shadow-none transition-all dark:text-white dark:placeholder-neutral-500"
                                             />
                                             <input
                                                 value={editDraft.args}
                                                 onChange={e => setEditDraft({ ...editDraft, args: e.target.value })}
                                                 placeholder={t('settings.mcp.argsPlaceholder')}
-                                                className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs shadow-[2px_2px_0_0_#000] focus:outline-none focus:translate-y-[2px] focus:translate-x-[2px] focus:shadow-none transition-all dark:text-white dark:placeholder-neutral-500"
+                                                className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs shadow-brutal-sm focus:outline-none focus:translate-y-[2px] focus:translate-x-[2px] focus:shadow-none transition-all dark:text-white dark:placeholder-neutral-500"
                                             />
                                             <input
                                                 value={editDraft.env}
                                                 onChange={e => setEditDraft({ ...editDraft, env: e.target.value })}
                                                 placeholder={t('settings.mcp.envPlaceholder')}
-                                                className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs shadow-[2px_2px_0_0_#000] focus:outline-none focus:translate-y-[2px] focus:translate-x-[2px] focus:shadow-none transition-all dark:text-white dark:placeholder-neutral-500"
+                                                className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs shadow-brutal-sm focus:outline-none focus:translate-y-[2px] focus:translate-x-[2px] focus:shadow-none transition-all dark:text-white dark:placeholder-neutral-500"
                                             />
                                         </div>
                                     )}

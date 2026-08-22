@@ -1,8 +1,9 @@
 import React from 'react';
 import { useTheme, SCHEME_COLORS, SCHEME_SURFACES, type Scheme } from '../../hooks/useTheme';
-import { useI18n } from '../../i18n';
+import { useI18n, type Locale } from '../../i18n';
+import { BrutalSelect } from '../BrutalSelect';
 import { SettingsHeader } from './SettingsHeader';
-import { SettingsCard } from './SettingsCard';
+import { SectionCardHeader, SettingsCard } from './SettingsCard';
 
 /** Mini split preview: left = light half, right = dark half */
 function CardPreview({ s }: { s: Scheme }) {
@@ -40,7 +41,7 @@ function CardPreview({ s }: { s: Scheme }) {
 
 export function AppearanceTab(): React.ReactElement {
   const { scheme, setScheme } = useTheme();
-  const { t } = useI18n();
+  const { locale, setLocale, t } = useI18n();
 
   const schemeKeys: Scheme[] = ['warm', 'cold', 'green'];
 
@@ -49,9 +50,26 @@ export function AppearanceTab(): React.ReactElement {
       <SettingsHeader title={t('settings.appearance.title')} subtitle={t('settings.appearance.subtitle')} />
 
       <SettingsCard>
-        <div className="text-xs font-bold uppercase text-neutral-500 dark:text-neutral-400 mb-5">
-          {t('settings.appearance.colorScheme')}
-        </div>
+        <SectionCardHeader
+          title={t('settings.language')}
+          description={t('settings.appearance.languageDesc')}
+        />
+        <BrutalSelect
+          value={locale}
+          onChange={(value) => setLocale(value as Locale)}
+          options={[
+            { value: 'en', label: 'English' },
+            { value: 'zh-CN', label: '简体中文' },
+          ]}
+          className="max-w-sm"
+        />
+      </SettingsCard>
+
+      <SettingsCard>
+        <SectionCardHeader
+          title={t('settings.appearance.colorScheme')}
+          description={t('settings.appearance.colorSchemeDesc')}
+        />
 
         <div className="flex gap-5 flex-wrap">
           {schemeKeys.map((key) => {
@@ -68,8 +86,8 @@ export function AppearanceTab(): React.ReactElement {
                   className={[
                     'w-40 h-28 border-3 border-brutal-black overflow-hidden transition-all',
                     isActive
-                      ? 'shadow-[0_0_0_3px_#000,4px_4px_0_3px_#000]'
-                      : 'shadow-[3px_3px_0_0_#000] hover:shadow-[5px_5px_0_0_#000] hover:-translate-x-px hover:-translate-y-px',
+                      ? 'shadow-brutal ring-[3px] ring-black ring-offset-2 ring-offset-white dark:ring-white dark:ring-offset-zinc-800'
+                      : 'shadow-brutal hover:-translate-x-px hover:-translate-y-px',
                   ].join(' ')}
                 >
                   <CardPreview s={key} />

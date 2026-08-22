@@ -198,8 +198,14 @@ export const en = {
   },
   settings: {
     title: 'Settings',
+    category: 'Category',
     language: 'Language',
     usingSuzent: 'Using Suzent',
+    groups: {
+      agent: 'Agent',
+      connections: 'Connections',
+      application: 'Application',
+    },
     memoryConfig: {
       title: 'Memory Configuration',
       subtitle: 'Manage background consolidation and the notebook vault',
@@ -378,7 +384,7 @@ export const en = {
       acpAgents: 'ACP Agents',
       automation: 'Automation',
       service: 'Background Service',
-      data: 'Data',
+      data: 'Data & Sync',
       usage: 'Usage',
       appearance: 'Appearance',
       about: 'About',
@@ -518,8 +524,10 @@ export const en = {
     },
     appearance: {
       title: 'Appearance',
-      subtitle: 'Choose an accent color theme',
+      subtitle: 'Choose how Suzent looks and reads',
+      languageDesc: 'Choose the language used throughout the application.',
       colorScheme: 'Color Scheme',
+      colorSchemeDesc: 'Choose the accent palette used in light and dark mode.',
       schemes: { warm: 'Warm', cold: 'Cold', green: 'Green' },
     },
     about: {

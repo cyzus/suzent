@@ -66,7 +66,7 @@ function ProviderIcon({ provider }: { provider: ApiProvider }) {
     const initials = getProviderInitials(provider.label);
     return (
         <div
-            className="w-9 h-9 border-2 border-brutal-black flex items-center justify-center flex-shrink-0 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+            className="w-9 h-9 border-2 border-brutal-black flex items-center justify-center flex-shrink-0 shadow-brutal-sm"
             style={{ backgroundColor: `#${color}` }}
         >
             {logoUrl && !imgFailed ? (
@@ -138,7 +138,7 @@ function AddProviderForm({ onSave, onCancel }: AddProviderFormProps) {
     };
 
     return (
-        <div className="bg-white dark:bg-zinc-800 border-3 border-brutal-black shadow-brutal-xl p-6 space-y-4">
+        <div className="bg-white dark:bg-zinc-800 border-3 border-brutal-black shadow-brutal p-6 space-y-4">
             <h3 className="font-black uppercase text-lg tracking-wide dark:text-white">{t('settings.providers.addForm.title')}</h3>
 
             <div className="grid grid-cols-2 gap-4">
@@ -353,7 +353,7 @@ function ChatGPTProviderCard({
     const statusActionLabel = connected ? t('settings.providers.chatgpt.disconnect') : t('settings.providers.chatgpt.signIn');
 
     return (
-        <div className="bg-white dark:bg-zinc-800 dark:text-white border-3 border-brutal-black shadow-brutal-xl flex flex-col h-full">
+        <div className="bg-white dark:bg-zinc-800 dark:text-white border-3 border-brutal-black shadow-brutal flex flex-col h-full">
             <div className="relative p-4 pr-12 bg-neutral-50 dark:bg-zinc-900 flex justify-between items-center border-b-3 border-brutal-black gap-3 overflow-hidden">
                 <div className="relative z-0 flex flex-1 items-center gap-3 min-w-0">
                     <ProviderIcon provider={provider} />
@@ -617,7 +617,7 @@ export function ProvidersTab({
                     }
 
                     return (
-                        <div key={provider.id} className="bg-white dark:bg-zinc-800 dark:text-white border-3 border-brutal-black shadow-brutal-xl flex flex-col h-full">
+                        <div key={provider.id} className="bg-white dark:bg-zinc-800 dark:text-white border-3 border-brutal-black shadow-brutal flex flex-col h-full">
                             {/* Provider Header */}
                             <div className="p-4 bg-neutral-50 dark:bg-zinc-900 flex justify-between items-center border-b-3 border-brutal-black gap-3">
                                 <div className="flex flex-1 items-center gap-3 min-w-0">

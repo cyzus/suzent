@@ -18,6 +18,7 @@ interface SectionCardHeaderProps {
   description?: React.ReactNode;
   /** Controls aligned to the right of the header (badge, toggle, button…). */
   actions?: React.ReactNode;
+  className?: string;
 }
 
 /**
@@ -31,10 +32,11 @@ export function SectionCardHeader({
   title,
   description,
   actions,
+  className = '',
 }: SectionCardHeaderProps): React.ReactElement {
   return (
-    <div className="flex items-start justify-between gap-4 mb-6">
-      <div className="flex items-start gap-4 min-w-0">
+    <div className={`mb-5 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between ${className}`}>
+      <div className="flex min-w-0 items-start gap-3 sm:gap-4">
         {icon && (
           <div
             className={`w-12 h-12 border-2 border-brutal-black flex items-center justify-center shrink-0 shadow-brutal-sm ${ICON_TONE[iconTone]}`}
@@ -43,13 +45,13 @@ export function SectionCardHeader({
           </div>
         )}
         <div className="min-w-0">
-          <h3 className="text-xl font-bold uppercase">{title}</h3>
+          <h3 className="text-lg font-bold uppercase leading-tight sm:text-xl">{title}</h3>
           {description && (
-            <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">{description}</p>
+            <p className="mt-1 max-w-2xl text-sm leading-relaxed text-neutral-600 dark:text-neutral-400">{description}</p>
           )}
         </div>
       </div>
-      {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
+      {actions && <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">{actions}</div>}
     </div>
   );
 }
@@ -68,7 +70,7 @@ interface GridCardProps {
 }
 
 /**
- * Heavier grid card with a colored header strip and bold drop shadow. Used by
+ * Grid card with a colored header strip and the standard surface shadow. Used by
  * the equally-sized cards laid out in responsive grids (model roles, social
  * platforms) where each tile reads as a discrete unit.
  */
@@ -82,7 +84,7 @@ export function GridCard({
 }: GridCardProps): React.ReactElement {
   return (
     <div
-      className={`bg-white dark:bg-zinc-800 dark:text-white border-3 border-brutal-black shadow-brutal-xl flex flex-col ${className}`}
+      className={`bg-white dark:bg-zinc-800 dark:text-white border-3 border-brutal-black shadow-brutal flex flex-col ${className}`}
     >
       <div className="p-4 bg-neutral-50 dark:bg-zinc-900 border-b-3 border-brutal-black flex items-center justify-between gap-3">
         <div className="min-w-0">
@@ -118,7 +120,7 @@ interface SettingsCardProps {
 export function SettingsCard({ className = '', children }: SettingsCardProps): React.ReactElement {
   return (
     <div
-      className={`border-3 border-brutal-black bg-white dark:bg-zinc-800 dark:text-white shadow-brutal p-6 ${className}`}
+      className={`border-3 border-brutal-black bg-white p-4 shadow-brutal dark:bg-zinc-800 dark:text-white sm:p-6 ${className}`}
     >
       {children}
     </div>
@@ -197,11 +199,11 @@ interface SettingsListItemProps {
 
 /**
  * Common wrapper for list items in settings (MCP servers, Cron Jobs).
- * Applies the standard heavy border, drop shadow, and subtle textured background.
+ * Applies the standard surface border, shadow, and subtle textured background.
  */
 export function SettingsListItem({ children, className = '' }: SettingsListItemProps): React.ReactElement {
   return (
-    <div className={`group relative overflow-hidden bg-neutral-50 dark:bg-zinc-900 border-[3px] border-brutal-black shadow-[4px_4px_0_0_#000] dark:shadow-[4px_4px_0_0_#fff] ${className}`}>
+    <div className={`group relative overflow-hidden bg-neutral-50 dark:bg-zinc-900 border-3 border-brutal-black shadow-brutal ${className}`}>
       <div className="absolute inset-0 opacity-[0.03] bg-[radial-gradient(#000_2px,transparent_2px)] [background-size:16px_16px] pointer-events-none" />
       <div className="relative z-10 w-full h-full flex flex-col">
         {children}

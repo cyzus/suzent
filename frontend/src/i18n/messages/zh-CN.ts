@@ -238,8 +238,14 @@ export const zhCN = {
   },
   settings: {
     title: '设置',
+    category: '类别',
     language: '语言',
     usingSuzent: 'SUZENT 设置',
+    groups: {
+      agent: '智能体',
+      connections: '连接',
+      application: '应用',
+    },
     memoryConfig: {
       title: '记忆配置',
       subtitle: '管理后台记忆整理与笔记库',
@@ -418,7 +424,7 @@ export const zhCN = {
       acpAgents: 'ACP 智能体',
       automation: '自动化',
       service: '后台服务',
-      data: '数据',
+      data: '数据与同步',
       usage: '用量',
       appearance: '外观',
       about: '关于',
@@ -558,8 +564,10 @@ export const zhCN = {
     },
     appearance: {
       title: '外观',
-      subtitle: '选择强调色主题',
+      subtitle: '选择 Suzent 的外观与显示语言',
+      languageDesc: '选择整个应用使用的语言。',
       colorScheme: '颜色方案',
+      colorSchemeDesc: '选择浅色与深色模式使用的强调色。',
       schemes: { warm: '暖色', cold: '冷色', green: '绿色' },
     },
     about: {

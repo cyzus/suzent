@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useI18n } from '../../i18n';
 import { fetchAcpAgents, fetchAcpSessions, probeAcpAgent } from '../../lib/api';
 import type { AcpAgentDescriptor } from '../../types/api';
-import { SettingsCard, SectionCardHeader, SettingsListItem, SettingsListAction, Badge } from './SettingsCard';
+import { SectionCardHeader, SettingsListItem, SettingsListAction, Badge } from './SettingsCard';
 import { SettingsHeader } from './SettingsHeader';
 import { AcpAgentIcon } from '../AcpAgentIcon';
 
@@ -108,8 +108,9 @@ export function AcpAgentsTab(): React.ReactElement {
         subtitle={t('settings.acp.subtitle')}
       />
 
-      <SettingsCard>
+      <section>
         <SectionCardHeader
+          className="border-l-4 border-brutal-black bg-white p-4 dark:border-white dark:bg-zinc-800"
           iconTone="black"
           icon={
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -305,7 +306,7 @@ export function AcpAgentsTab(): React.ReactElement {
             })}
           </div>
         )}
-      </SettingsCard>
+      </section>
     </div>
   );
 }
@@ -328,7 +329,7 @@ function ExternalAction({
   primary?: boolean;
 }): React.ReactElement {
   const tone = primary
-    ? 'border-brutal-black bg-brutal-blue text-white shadow-[2px_2px_0_0_#000] hover:-translate-y-0.5'
+    ? 'border-brutal-black bg-brutal-blue text-white shadow-brutal-sm hover:-translate-y-0.5'
     : 'border-brutal-black/20 dark:border-white/10 text-neutral-500 dark:text-neutral-400 hover:border-brutal-black hover:text-brutal-black dark:hover:border-white dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-zinc-800';
   return (
     <a
