@@ -2,7 +2,14 @@
   "_doc": "Google Gemini model capabilities. Auto-updated by Fetch; manually curate the flags.",
   "models": {
     "gemini/gemini-3.1-flash-lite-image": {
-      "mode": "chat"
+      "mode": "image_generation",
+      "max_input_tokens": 65536,
+      "max_output_tokens": 4096,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": false,
+      "supports_reasoning": true,
+      "supports_prompt_caching": false
     },
     "gemini/gemini-omni-flash-preview": {
       "mode": "chat",
@@ -240,7 +247,9 @@
       "supports_prompt_caching": false
     },
     "gemini/gemini-3.1-flash-tts-preview": {
-      "mode": "chat"
+      "mode": "tts",
+      "max_input_tokens": 8192,
+      "max_output_tokens": 16384
     },
     "gemini/gemini-robotics-er-1.5-preview": {
       "mode": "chat",
@@ -539,6 +548,9 @@
       "mode": "chat",
       "supports_vision": true,
       "supports_function_calling": true
+    },
+    "gemini/gemini-3.5-live-translate-preview": {
+      "mode": "chat"
     }
   }
 }

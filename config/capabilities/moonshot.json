@@ -155,7 +155,13 @@
       "supports_response_schema": true
     },
     "moonshot/kimi-k3": {
-      "mode": "chat"
+      "mode": "chat",
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 1048576,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true
     },
     "moonshot/kimi-k2.7-code": {
       "mode": "chat"
