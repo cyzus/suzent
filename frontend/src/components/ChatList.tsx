@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   CheckIcon,
   EllipsisVerticalIcon,
-  FolderIcon,
   PencilSquareIcon,
   PlusIcon,
 } from '@heroicons/react/24/outline';
@@ -1213,14 +1212,14 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
                 </form>
               )}
 
-              <div>
+              <div className="space-y-0.5 px-2 pb-2">
                 {projects.map(project => {
                   const isOpen = filterId === project.id;
                   const isSystem = project.slug === 'default' || project.slug === 'social';
                   const isRenaming = renamingProjectId === project.id;
                   return (
-                    <div key={project.id} className="border-t border-neutral-200 dark:border-zinc-700">
-                      <div className={`group/proj grid min-h-10 grid-cols-[minmax(0,1fr)_28px] ${isOpen ? 'bg-yellow-50/70 shadow-[inset_3px_0_0_var(--brutal-yellow)] dark:bg-zinc-700' : ''}`}>
+                    <div key={project.id}>
+                      <div className={`group/proj relative grid min-h-9 grid-cols-[minmax(0,1fr)_24px] border-2 transition-all ${isOpen ? 'z-10 border-brutal-black bg-brutal-black text-white shadow-[2px_2px_0_0_#777] dark:border-white dark:bg-white dark:text-brutal-black dark:shadow-[2px_2px_0_0_#555]' : 'border-transparent bg-transparent hover:border-brutal-black hover:bg-white dark:hover:border-white dark:hover:bg-zinc-800'}`}>
                         {isRenaming ? (
                           <form
                             className="col-span-2 flex items-center gap-1 px-2 py-1"
@@ -1246,12 +1245,12 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
                             <button
                               type="button"
                               aria-expanded={isOpen}
+                              aria-current={isOpen ? 'true' : undefined}
                               onClick={() => isOpen ? setFilterId(ALL_PROJECTS_FILTER) : handleSelectFilter(project.id)}
-                              className="min-w-0 grid grid-cols-[18px_minmax(0,1fr)_28px] items-center gap-2 pl-3 pr-2 py-1.5 text-left hover:bg-neutral-50 dark:hover:bg-zinc-700"
+                              className="min-w-0 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-2.5 py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brutal-blue"
                             >
-                              <FolderIcon className="w-[18px] h-[18px] stroke-[2.2] text-brutal-black dark:text-white" />
-                              <span className="min-w-0 truncate text-[11px] font-extrabold text-brutal-black dark:text-white">{project.name}</span>
-                              <span className="text-right text-[10px] font-bold tabular-nums text-neutral-500 dark:text-neutral-400">{project.chatCount}</span>
+                              <span className={`min-w-0 truncate text-[11px] ${isOpen ? 'font-black text-white dark:text-brutal-black' : 'font-bold text-brutal-black dark:text-white'}`}>{project.name}</span>
+                              <span className={`min-w-6 px-1 text-right text-[9px] font-extrabold tabular-nums transition-colors ${isOpen ? 'text-white dark:text-brutal-black' : 'text-neutral-500 group-hover/proj:text-brutal-black dark:text-neutral-400 dark:group-hover/proj:text-white'}`}>{project.chatCount}</span>
                             </button>
                             {!isSystem && (
                               <button
@@ -1263,7 +1262,7 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
                                   const rect = event.currentTarget.getBoundingClientRect();
                                   setProjectMenu({ projectId: project.id, anchor: { rect } });
                                 }}
-                                className={`w-7 flex items-center justify-center hover:bg-neutral-100 dark:hover:bg-zinc-600 ${projectMenu?.projectId === project.id ? 'opacity-100' : 'opacity-0 group-hover/proj:opacity-100 focus:opacity-100'}`}
+                                className={`w-6 flex items-center justify-center ${isOpen ? 'text-white hover:bg-white hover:text-brutal-black dark:text-brutal-black dark:hover:bg-brutal-black dark:hover:text-white' : 'hover:bg-neutral-100 dark:hover:bg-zinc-600'} ${projectMenu?.projectId === project.id ? 'opacity-100' : 'opacity-0 group-hover/proj:opacity-100 focus:opacity-100'}`}
                               >
                                 <MoreActionsIcon />
                               </button>
