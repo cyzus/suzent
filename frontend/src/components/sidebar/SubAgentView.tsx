@@ -6,12 +6,14 @@
  * the stream does not carry (the tool-call log, the final result text).
  */
 import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import { getApiBase } from '../../lib/api';
 import { useSubAgentStatus } from '../../hooks/useSubAgentStatus';
 import { useI18n } from '../../i18n';
 import { getToolSummary, isFailedToolOutput } from '../chat/toolSummary';
 import type { ToolTense } from '../chat/toolSummary';
 import {
+  isStreamStateStale,
   isSubAgentActive,
   isSubAgentTerminal,
   subAgentOutcomeLabel,
@@ -98,7 +100,12 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
   const taskRef = useRef<SubAgentTask | null>(null);
 
   // The stream is the fast path; the fetch fills in what it does not carry.
-  const liveTask = taskStates[taskId];
+  const streamTask = taskStates[taskId];
+  // A stream that stopped mid-run must not paint "running" back over a fetch
+  // that has already seen the task finish.
+  const liveTask = isStreamStateStale(streamTask?.status, fetchedTask?.status)
+    ? undefined
+    : streamTask;
   const task: SubAgentTask | null = fetchedTask
     ? ({ ...fetchedTask, ...(liveTask ?? {}) } as SubAgentTask)
     : ((liveTask as SubAgentTask | undefined) ?? null);
@@ -358,10 +365,17 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
                               {summary.detail}
                             </span>
                           )}
+                          {/* The outcome glyph has to agree with the headline:
+                              a row reading "FAILED TO …" cannot also carry a
+                              green check. */}
                           {entry.output !== undefined && (
-                            <svg className="w-2.5 h-2.5 text-green-600 ml-auto shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                            </svg>
+                            entryTense === 'failed'
+                              ? <ExclamationTriangleIcon className="w-2.5 h-2.5 text-red-600 ml-auto shrink-0" />
+                              : (
+                                <svg className="w-2.5 h-2.5 text-green-600 ml-auto shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                </svg>
+                              )
                           )}
                         </summary>
                         <div className="mt-1 pl-2 border-l-2 border-neutral-200 dark:border-zinc-600 space-y-1">

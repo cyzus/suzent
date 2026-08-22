@@ -11,6 +11,7 @@ import { getApiBase } from '../../lib/api';
 import { useI18n } from '../../i18n';
 import { useSubAgentStatus } from '../../hooks/useSubAgentStatus';
 import {
+  isStreamStateStale,
   isSubAgentActive,
   isSubAgentTerminal,
   subAgentOutcomeLabel,
@@ -64,7 +65,12 @@ export const SubAgentCallBlock: React.FC<SubAgentCallBlockProps> = ({
   // being captured in a stale closure — avoids polling when already done.
   const resolvedStatusRef = useRef<SubAgentStatus>(externalStatus);
 
-  const liveTask = taskId ? taskStates[taskId] : undefined;
+  const streamTask = taskId ? taskStates[taskId] : undefined;
+  // The poll exists precisely for when the stream is not there; if it has seen
+  // the run end, its answer outranks whatever the stream last managed to say.
+  const liveTask = isStreamStateStale(streamTask?.status, polledStatus ?? undefined)
+    ? undefined
+    : streamTask;
   const status = liveTask?.status ?? polledStatus ?? externalStatus;
   const resultSummary = liveTask?.result_summary ?? polledResultSummary ?? externalResultSummary;
   const error = liveTask?.error ?? polledError ?? externalError;

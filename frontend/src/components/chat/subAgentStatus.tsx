@@ -71,6 +71,22 @@ function styleFor(status: string | undefined): StatusStyle {
   return STYLES[(status ?? 'queued') as SubAgentStatus] ?? STYLES.queued;
 }
 
+/**
+ * Whether a streamed status should give way to one from a fetch or poll.
+ *
+ * The EventSource can drop while a run is still going. It leaves behind the
+ * last state it saw — "running" — and the fetch that follows is the only thing
+ * that knows the run has since ended. Overlaying the stream on top of that
+ * would pin the card to "running" for good, so a finished answer from anywhere
+ * beats an unfinished one from the stream.
+ */
+export function isStreamStateStale(
+  streamStatus: string | undefined,
+  fetchedStatus: string | undefined,
+): boolean {
+  return !isSubAgentTerminal(streamStatus) && isSubAgentTerminal(fetchedStatus);
+}
+
 export function subAgentStatusLabel(status: string | undefined, t: TranslateFn): string {
   const known = STYLES[(status ?? '') as SubAgentStatus] ? (status as SubAgentStatus) : null;
   return known ? t(`subAgents.status.${known}`) : (status ?? '');

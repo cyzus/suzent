@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { tForLocale } from '../../i18n';
 import {
+  isStreamStateStale,
   isSubAgentActive,
   isSubAgentTerminal,
   subAgentOutcomeLabel,
@@ -30,6 +31,17 @@ describe('sub-agent status vocabulary', () => {
     expect(subAgentOutcomeLabel('completed', t)).toBe('Result');
     expect(subAgentOutcomeLabel('failed', t)).toBe('Error');
     expect(subAgentOutcomeLabel('cancelled', t)).toBe('Stopped');
+  });
+
+  it('lets a finished answer outrank a stream that stopped mid-run', () => {
+    // The EventSource dropped while the task was running; the poll that
+    // followed is the only thing that knows it has since finished.
+    expect(isStreamStateStale('running', 'completed')).toBe(true);
+    expect(isStreamStateStale(undefined, 'failed')).toBe(true);
+    // A live stream still ahead of the fetch keeps its say.
+    expect(isStreamStateStale('completed', 'running')).toBe(false);
+    expect(isStreamStateStale('running', 'running')).toBe(false);
+    expect(isStreamStateStale('running', undefined)).toBe(false);
   });
 
   it('passes an unknown status through rather than inventing a label', () => {
