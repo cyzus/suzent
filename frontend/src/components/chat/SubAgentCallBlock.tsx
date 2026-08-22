@@ -1,11 +1,25 @@
 /**
- * SubAgentCallBlock — renders a agent tool call as a special card
- * showing live status, description, allowed tools, and a sidebar open button.
+ * SubAgentCallBlock — the transcript card for an `agent` tool call.
+ *
+ * It is a tool call like any other, so it wears the same pill as ToolCallBlock:
+ * mono uppercase headline, the task itself as the detail, a status chip on the
+ * right. Live state comes off the shared sub-agent EventSource, with a poll as
+ * a fallback for when the parent stream ended before the child did.
  */
 import React, { useState, useEffect, useRef } from 'react';
 import { getApiBase } from '../../lib/api';
+import { useI18n } from '../../i18n';
+import { useSubAgentStatus } from '../../hooks/useSubAgentStatus';
+import {
+  isSubAgentActive,
+  isSubAgentTerminal,
+  subAgentOutcomeLabel,
+  SubAgentStatus,
+  SubAgentStatusBadge,
+  SubAgentStatusIcon,
+} from './subAgentStatus';
 
-export type SubAgentStatus = 'queued' | 'running' | 'completed' | 'failed';
+export type { SubAgentStatus } from './subAgentStatus';
 
 interface SubAgentCallBlockProps {
   taskId?: string;
@@ -14,25 +28,20 @@ interface SubAgentCallBlockProps {
   status: SubAgentStatus;
   resultSummary?: string;
   error?: string;
-  /** Called when user clicks "View in sidebar" */
+  /** Called when user clicks "View log" */
   onOpenSidebar?: (taskId: string) => void;
   /** Called when user clicks "Stop" */
   onStop?: (taskId: string) => void;
 }
 
-const STATUS_ICON: Record<SubAgentStatus, string> = {
-  queued: '⏳',
-  running: '🤖',
-  completed: '✅',
-  failed: '❌',
-};
+/** Long enough to carry a real task, short enough to stay a headline. */
+const HEADLINE_MAX = 72;
 
-const STATUS_LABEL: Record<SubAgentStatus, string> = {
-  queued: 'QUEUED',
-  running: 'RUNNING',
-  completed: 'DONE',
-  failed: 'FAILED',
-};
+function headline(description: string | undefined, fallback: string): string {
+  const compact = (description ?? '').replace(/\s+/g, ' ').trim();
+  if (!compact) return fallback;
+  return compact.length <= HEADLINE_MAX ? compact : `${compact.slice(0, HEADLINE_MAX - 1)}…`;
+}
 
 export const SubAgentCallBlock: React.FC<SubAgentCallBlockProps> = ({
   taskId,
@@ -44,6 +53,8 @@ export const SubAgentCallBlock: React.FC<SubAgentCallBlockProps> = ({
   onOpenSidebar,
   onStop,
 }) => {
+  const { t } = useI18n();
+  const { taskStates } = useSubAgentStatus();
   // Self-poll to get real status when the parent SSE stream may have ended before completion
   const [polledStatus, setPolledStatus] = useState<SubAgentStatus | null>(null);
   const [polledResultSummary, setPolledResultSummary] = useState<string | undefined>(undefined);
@@ -53,9 +64,10 @@ export const SubAgentCallBlock: React.FC<SubAgentCallBlockProps> = ({
   // being captured in a stale closure — avoids polling when already done.
   const resolvedStatusRef = useRef<SubAgentStatus>(externalStatus);
 
-  const status = polledStatus ?? externalStatus;
-  const resultSummary = polledResultSummary ?? externalResultSummary;
-  const error = polledError ?? externalError;
+  const liveTask = taskId ? taskStates[taskId] : undefined;
+  const status = liveTask?.status ?? polledStatus ?? externalStatus;
+  const resultSummary = liveTask?.result_summary ?? polledResultSummary ?? externalResultSummary;
+  const error = liveTask?.error ?? polledError ?? externalError;
 
   // Keep ref in sync on every render
   resolvedStatusRef.current = status;
@@ -63,11 +75,11 @@ export const SubAgentCallBlock: React.FC<SubAgentCallBlockProps> = ({
   useEffect(() => {
     if (!taskId) return;
     // Already terminal — no need to poll
-    if (resolvedStatusRef.current === 'completed' || resolvedStatusRef.current === 'failed') return;
+    if (isSubAgentTerminal(resolvedStatusRef.current)) return;
 
     const poll = async () => {
       // Stop polling if status was resolved externally while waiting
-      if (resolvedStatusRef.current === 'completed' || resolvedStatusRef.current === 'failed') {
+      if (isSubAgentTerminal(resolvedStatusRef.current)) {
         if (timerRef.current) clearInterval(timerRef.current);
         return;
       }
@@ -75,12 +87,12 @@ export const SubAgentCallBlock: React.FC<SubAgentCallBlockProps> = ({
         const res = await fetch(`${getApiBase()}/subagents/${taskId}`);
         if (!res.ok) return;
         const data = await res.json();
-        const t = data.task;
-        if (t) {
-          setPolledStatus(t.status);
-          if (t.result_summary) setPolledResultSummary(t.result_summary);
-          if (t.error) setPolledError(t.error);
-          if (t.status === 'completed' || t.status === 'failed') {
+        const task = data.task;
+        if (task) {
+          setPolledStatus(task.status);
+          if (task.result_summary) setPolledResultSummary(task.result_summary);
+          if (task.error) setPolledError(task.error);
+          if (isSubAgentTerminal(task.status)) {
             if (timerRef.current) clearInterval(timerRef.current);
           }
         }
@@ -92,13 +104,13 @@ export const SubAgentCallBlock: React.FC<SubAgentCallBlockProps> = ({
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [taskId]);
 
-  // Stop polling immediately when external status resolves (SSE arrived)
+  // Stop polling immediately when the status resolves elsewhere (stream arrived)
   useEffect(() => {
-    if ((externalStatus === 'completed' || externalStatus === 'failed') && timerRef.current) {
+    if (isSubAgentTerminal(status) && timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
-  }, [externalStatus]);
+  }, [status]);
 
   const [expanded, setExpanded] = useState(true);
   // Auto-collapse when completed
@@ -106,39 +118,36 @@ export const SubAgentCallBlock: React.FC<SubAgentCallBlockProps> = ({
     if (status === 'completed') setExpanded(false);
   }, [status]);
 
-  const isRunning = status === 'running' || status === 'queued';
+  const isRunning = isSubAgentActive(status);
+  const outcomeText = status === 'completed' ? resultSummary : error;
+
+  const headerClassName = [
+    'inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono font-bold uppercase tracking-wide rounded-sm cursor-pointer transition-colors select-none',
+    expanded
+      ? 'bg-neutral-100 dark:bg-zinc-700 text-brutal-black dark:text-white'
+      : 'bg-transparent text-neutral-500 dark:text-neutral-400 hover:text-brutal-black dark:hover:text-white',
+    isRunning
+      ? 'brutal-running-mono !text-brutal-black dark:!text-white border-2 !border-brutal-black dark:!border-white'
+      : 'border-2 border-transparent',
+  ].join(' ');
 
   return (
     <div className="my-2 min-w-0 w-full">
-      {/* Pill header */}
+      {/* Compact pill header — same shape as every other tool call */}
       <button
         onClick={() => setExpanded(!expanded)}
-        className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono font-bold uppercase tracking-wide rounded-sm cursor-pointer transition-colors select-none
-          ${expanded
-            ? 'bg-neutral-100 dark:bg-zinc-700 text-brutal-black dark:text-white'
-            : 'bg-transparent text-neutral-500 dark:text-neutral-400 hover:text-brutal-black dark:hover:text-white'
-          } ${isRunning ? 'brutal-running-mono !text-brutal-black dark:!text-white border-2 !border-brutal-black dark:!border-white' : 'border-2 border-transparent'}`}
+        className={headerClassName}
+        title={description || undefined}
       >
-        {/* Icon */}
-        <span className="text-[14px] shrink-0 drop-shadow-sm flex items-center justify-center">
-          {STATUS_ICON[status]}
+        <SubAgentStatusIcon status={status} />
+
+        {/* The job the sub-agent was given reads better than "spawn subagent" */}
+        <span className="shrink-0">{t('subAgents.delegated')}</span>
+        <span className="truncate min-w-0 max-w-[320px] font-normal normal-case tracking-normal opacity-80">
+          {headline(description, t('subAgents.title'))}
         </span>
 
-        {/* Label */}
-        <span className="truncate max-w-[240px]">spawn subagent</span>
-
-        {/* Status badge */}
-        <span className={`text-[9px] font-bold shrink-0 px-1 py-0.5 rounded-sm
-          ${status === 'running' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300' :
-            status === 'queued' ? 'bg-amber-100 text-amber-700' :
-            status === 'completed' ? 'bg-green-100 text-green-700' :
-            'bg-red-100 text-red-700'}`
-        }>
-          {STATUS_LABEL[status]}
-          {isRunning && (
-            <span className="ml-1 inline-block w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse align-middle" />
-          )}
-        </span>
+        <SubAgentStatusBadge status={status} t={t} />
 
         {/* Chevron */}
         <svg
@@ -158,7 +167,9 @@ export const SubAgentCallBlock: React.FC<SubAgentCallBlockProps> = ({
             {/* Task description */}
             {description && (
               <div className="min-w-0">
-                <div className="text-[10px] font-mono font-bold text-neutral-400 dark:text-neutral-500 uppercase mb-0.5">Task</div>
+                <div className="text-[10px] font-mono font-bold text-neutral-400 dark:text-neutral-500 uppercase tracking-wide mb-0.5">
+                  {t('subAgents.task')}
+                </div>
                 <div className="text-[11px] text-neutral-700 dark:text-neutral-300 leading-relaxed">
                   {description}
                 </div>
@@ -168,11 +179,16 @@ export const SubAgentCallBlock: React.FC<SubAgentCallBlockProps> = ({
             {/* Tools whitelist */}
             {toolsAllowed && toolsAllowed.length > 0 && (
               <div className="min-w-0">
-                <div className="text-[10px] font-mono font-bold text-neutral-400 dark:text-neutral-500 uppercase mb-0.5">Tools</div>
+                <div className="text-[10px] font-mono font-bold text-neutral-400 dark:text-neutral-500 uppercase tracking-wide mb-0.5">
+                  {t('subAgents.tools', { count: toolsAllowed.length })}
+                </div>
                 <div className="flex flex-wrap gap-1">
-                  {toolsAllowed.map((t) => (
-                    <span key={t} className="text-[10px] font-mono px-1.5 py-0.5 bg-neutral-100 dark:bg-zinc-700 text-neutral-600 dark:text-neutral-300 rounded-sm border border-neutral-200 dark:border-zinc-600">
-                      {t}
+                  {toolsAllowed.map((toolName) => (
+                    <span
+                      key={toolName}
+                      className="text-[10px] font-mono px-1.5 py-0.5 bg-neutral-100 dark:bg-zinc-700 text-neutral-600 dark:text-neutral-300 rounded-sm border border-neutral-200 dark:border-zinc-600"
+                    >
+                      {toolName}
                     </span>
                   ))}
                 </div>
@@ -186,22 +202,28 @@ export const SubAgentCallBlock: React.FC<SubAgentCallBlockProps> = ({
               </div>
             )}
 
-            {/* Result summary (completed) */}
-            {status === 'completed' && resultSummary && (
+            {/* How the run ended: a result, or why it stopped. Only a genuine
+                failure is painted red — a stop is not an error. */}
+            {!isRunning && outcomeText && (
               <div className="min-w-0">
-                <div className="text-[10px] font-mono font-bold text-neutral-400 dark:text-neutral-500 uppercase mb-0.5">Result</div>
+                <div
+                  className={`text-[10px] font-mono font-bold uppercase tracking-wide mb-0.5 ${
+                    status === 'failed' ? 'text-red-500' : 'text-neutral-400 dark:text-neutral-500'
+                  }`}
+                >
+                  {subAgentOutcomeLabel(status, t)}
+                </div>
                 <div className="max-h-[120px] overflow-y-auto scrollbar-thin">
-                  <pre className="tool-call-pre text-[11px] text-neutral-600 dark:text-neutral-300 leading-relaxed font-mono w-full whitespace-pre-wrap">
-                    {resultSummary}
+                  <pre
+                    className={`tool-call-pre text-[11px] leading-relaxed font-mono w-full whitespace-pre-wrap ${
+                      status === 'failed'
+                        ? 'text-red-600 dark:text-red-400'
+                        : 'text-neutral-600 dark:text-neutral-300'
+                    }`}
+                  >
+                    {outcomeText}
                   </pre>
                 </div>
-              </div>
-            )}
-
-            {/* Error (failed) */}
-            {status === 'failed' && error && (
-              <div className="text-[11px] text-red-600 dark:text-red-400 font-mono">
-                {error}
               </div>
             )}
 
@@ -210,23 +232,23 @@ export const SubAgentCallBlock: React.FC<SubAgentCallBlockProps> = ({
               {taskId && onOpenSidebar && (
                 <button
                   onClick={() => onOpenSidebar(taskId)}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide bg-neutral-50 dark:bg-zinc-800 border border-neutral-300 dark:border-zinc-600 rounded-sm hover:bg-neutral-100 dark:hover:bg-zinc-700 transition-colors"
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide bg-white dark:bg-zinc-900 text-brutal-black dark:text-white border-2 border-brutal-black dark:border-white rounded-sm hover:bg-neutral-100 dark:hover:bg-zinc-800 transition-colors"
                 >
                   <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                   </svg>
-                  View Log
+                  {t('subAgents.viewLog')}
                 </button>
               )}
               {taskId && isRunning && onStop && (
                 <button
                   onClick={() => onStop(taskId)}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide bg-red-50 text-red-700 border border-red-400 rounded-sm hover:bg-red-100 transition-colors"
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide bg-red-50 dark:bg-red-950 text-red-700 dark:text-red-300 border-2 border-red-600 rounded-sm hover:bg-red-100 dark:hover:bg-red-900 transition-colors"
                 >
-                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <rect x="6" y="6" width="12" height="12" rx="1" />
                   </svg>
-                  Stop
+                  {t('subAgents.stop')}
                 </button>
               )}
             </div>

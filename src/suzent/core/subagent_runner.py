@@ -54,7 +54,11 @@ class SubAgentTask:
     parent_chat_id: str
     description: str
     tools_allowed: list[str]
-    status: str = "queued"  # queued | running | completed | failed
+    # queued | running | completed | failed | cancelled.
+    # "cancelled" means the run was stopped on purpose (by you, by a server
+    # shutdown, by orphan cleanup) — it is not an error and the UI shows it
+    # in neutral colours rather than as a failure.
+    status: str = "queued"
     result_summary: Optional[str] = None
     citation_sources: list[dict] = field(default_factory=list)
     error: Optional[str] = None
@@ -83,12 +87,12 @@ class SubAgentTask:
 _tasks: Dict[str, SubAgentTask] = {}
 _tasks_lock = asyncio.Lock()
 
-# Cap on finished (completed/failed) tasks retained for UI history. Active
+# Cap on finished (completed/failed/cancelled) tasks retained for UI history. Active
 # (queued/running) tasks are never evicted. Without this, _tasks grows without
 # bound for the process lifetime — one SubAgentTask (with its result/error) per
 # spawn, forever — a slow leak on long-running servers.
 _MAX_FINISHED_TASKS = 200
-_TERMINAL_STATUSES = ("completed", "failed")
+_TERMINAL_STATUSES = ("completed", "failed", "cancelled")
 
 
 def _evict_old_finished_tasks() -> None:
@@ -377,6 +381,27 @@ async def spawn_subagent(
 # ─── Execution ───────────────────────────────────────────────────────────────
 
 
+def _cancellation_reason(task: SubAgentTask) -> str:
+    """Explain a cancellation in words the sidebar can show verbatim.
+
+    A bare `CancelledError` tells the user nothing — "Sub-agent cancelled" was
+    the old message and it left people guessing whether they had done something
+    wrong. Whoever cancels on purpose (a stop request, orphan cleanup) writes
+    `task.error` first, so anything reaching here is either a server shutdown or
+    an ancestor task going away.
+    """
+    if task.error:
+        return task.error
+    try:
+        from suzent.core.task_registry import get_task_registry
+
+        if get_task_registry().is_shutting_down:
+            return "Stopped because the server shut down before it finished"
+    except Exception:  # pragma: no cover - diagnostics must never mask the cancel
+        pass
+    return "Stopped before it finished (the run was cancelled)"
+
+
 async def _run_subagent(
     task: SubAgentTask,
     wakeup_parent: bool = True,
@@ -405,8 +430,8 @@ async def _run_subagent(
             if setup_error:
                 raise RuntimeError(setup_error)
     except asyncio.CancelledError:
-        task.status = "failed"
-        task.error = task.error or "Sub-agent cancelled during setup"
+        task.status = "cancelled"
+        task.error = _cancellation_reason(task)
         task.finished_at = datetime.now()
         _broadcast_task_update(task)
         _persist_task_state(task)
@@ -561,8 +586,8 @@ async def _run_subagent(
             _queue_parent_wakeup(task)
 
     except asyncio.CancelledError:
-        task.status = "failed"
-        task.error = task.error or "Sub-agent cancelled"
+        task.status = "cancelled"
+        task.error = _cancellation_reason(task)
         task.finished_at = datetime.now()
         _broadcast_task_update(task)
         _persist_task_state(task)
@@ -862,8 +887,8 @@ async def clear_stuck_tasks() -> list[str]:
             from suzent.core.stream_registry import stop_stream
 
             stop_stream(task.chat_id, reason=f"Sub-agent {task.task_id} cleared")
-            task.status = "failed"
-            task.error = "Cleared (orphaned task)"
+            task.status = "cancelled"
+            task.error = "Cleared — left running by an earlier server session"
             task.finished_at = datetime.now()
             _broadcast_task_update(task)
             _persist_task_state(task)
@@ -886,8 +911,8 @@ async def stop_subagent(task_id: str) -> bool:
     # Mark failed immediately so the UI clears it even if the coroutine is slow
     # to observe the cancel signal.
     if task.status in ("queued", "running"):
-        task.status = "failed"
-        task.error = "Stopped by user"
+        task.status = "cancelled"
+        task.error = "Stopped by you"
         task.finished_at = datetime.now()
         _broadcast_task_update(task)
         _persist_task_state(task)

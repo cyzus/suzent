@@ -1,9 +1,24 @@
 /**
  * SubAgentView — sidebar panel showing a sub-agent's execution status and log.
- * Polls /subagents/{task_id} for status, and /chats/{chat_id} for tool call log.
+ *
+ * Status arrives on the shared sub-agent EventSource, so the panel updates the
+ * moment a run finishes; the /subagents and /chats fetches fill in the parts
+ * the stream does not carry (the tool-call log, the final result text).
  */
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { getApiBase } from '../../lib/api';
+import { useSubAgentStatus } from '../../hooks/useSubAgentStatus';
+import { useI18n } from '../../i18n';
+import { getToolSummary, isFailedToolOutput } from '../chat/toolSummary';
+import type { ToolTense } from '../chat/toolSummary';
+import {
+  isSubAgentActive,
+  isSubAgentTerminal,
+  subAgentOutcomeLabel,
+  SubAgentStatus,
+  SubAgentStatusBadge,
+  SubAgentStatusIcon,
+} from '../chat/subAgentStatus';
 
 interface SubAgentTask {
   task_id: string;
@@ -11,7 +26,7 @@ interface SubAgentTask {
   chat_id: string;
   description: string;
   tools_allowed: string[];
-  status: 'queued' | 'running' | 'completed' | 'failed';
+  status: SubAgentStatus;
   result_summary: string | null;
   error: string | null;
   started_at: string | null;
@@ -72,20 +87,21 @@ function extractToolLog(messages: any[]): ToolLogEntry[] {
   return entries;
 }
 
-const STATUS_COLOR: Record<string, string> = {
-  running:   'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
-  queued:    'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300',
-  completed: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
-  failed:    'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300',
-};
-
 export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) => {
-  const [task, setTask] = useState<SubAgentTask | null>(null);
+  const { t } = useI18n();
+  const { taskStates } = useSubAgentStatus();
+  const [fetchedTask, setFetchedTask] = useState<SubAgentTask | null>(null);
   const [toolLog, setToolLog] = useState<ToolLogEntry[]>([]);
   const [elapsedTime, setElapsedTime] = useState('');
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const elapsedRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const taskRef = useRef<SubAgentTask | null>(null);
+
+  // The stream is the fast path; the fetch fills in what it does not carry.
+  const liveTask = taskStates[taskId];
+  const task: SubAgentTask | null = fetchedTask
+    ? ({ ...fetchedTask, ...(liveTask ?? {}) } as SubAgentTask)
+    : ((liveTask as SubAgentTask | undefined) ?? null);
 
   const fetchChatLog = useCallback(async (chatId: string) => {
     try {
@@ -102,10 +118,10 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
       const res = await fetch(`${getApiBase()}/subagents/${taskId}`);
       if (!res.ok) return;
       const data = await res.json();
-      const t: SubAgentTask = data.task;
-      setTask(t);
-      taskRef.current = t;
-      if (t.chat_id) fetchChatLog(t.chat_id);
+      const next: SubAgentTask = data.task;
+      setFetchedTask(next);
+      taskRef.current = next;
+      if (next.chat_id) fetchChatLog(next.chat_id);
     } catch { /* ignore */ }
   }, [taskId, fetchChatLog]);
 
@@ -117,15 +133,16 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
   };
 
   useEffect(() => {
-    setTask(null);
+    setFetchedTask(null);
     setToolLog([]);
     taskRef.current = null;
 
     fetchTask();
 
+    // Fallback poll only. The stream normally beats it to every transition;
+    // this covers a dropped EventSource.
     intervalRef.current = setInterval(() => {
-      const current = taskRef.current;
-      if (current?.status === 'completed' || current?.status === 'failed') {
+      if (isSubAgentTerminal(taskRef.current?.status)) {
         if (intervalRef.current) clearInterval(intervalRef.current);
         intervalRef.current = null;
         return;
@@ -135,7 +152,7 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
 
     elapsedRef.current = setInterval(() => {
       const current = taskRef.current;
-      if (current?.started_at && (current.status === 'running' || current.status === 'queued')) {
+      if (current?.started_at && isSubAgentActive(current.status)) {
         setElapsedTime(elapsed(current.started_at));
       }
     }, 1000);
@@ -146,8 +163,15 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
     };
   }, [taskId]);
 
+  // A finish arriving on the stream still needs one fetch: the result summary
+  // and the last tool calls are not part of the status payload.
+  const liveStatus = liveTask?.status;
   useEffect(() => {
-    if ((task?.status === 'completed' || task?.status === 'failed') && intervalRef.current) {
+    if (liveStatus && isSubAgentTerminal(liveStatus)) fetchTask();
+  }, [liveStatus, fetchTask]);
+
+  useEffect(() => {
+    if (isSubAgentTerminal(task?.status) && intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
     }
@@ -156,49 +180,48 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
     }
   }, [task?.status]);
 
-  const isRunning = task?.status === 'running' || task?.status === 'queued';
+  const isRunning = isSubAgentActive(task?.status);
   const duration = task ? formatDuration(task.started_at, task.finished_at) : '';
+  const outcomeText = task?.status === 'completed' ? task.result_summary : task?.error;
 
   return (
     <div className="flex flex-col h-full min-h-0 font-mono">
       {/* Header */}
       <div className="flex items-start justify-between px-3 py-2 border-b-3 border-brutal-black bg-white dark:bg-zinc-800 shrink-0 gap-2">
         <div className="flex items-start gap-2 min-w-0 pt-0.5">
-          <span className="text-[14px] drop-shadow-sm leading-none shrink-0 mt-0.5">
-            {task?.status === 'completed' ? '✅' : task?.status === 'failed' ? '❌' : '🤖'}
-          </span>
+          <SubAgentStatusIcon status={task?.status} className="w-4 h-4 mt-0.5" />
           <div className="min-w-0">
             <div className="text-[10px] font-bold uppercase tracking-widest font-mono truncate flex items-center gap-1.5 text-neutral-500 dark:text-neutral-400">
-              <span>Sub-agent</span>
+              <span>{t('subAgents.title')}</span>
               <span className="opacity-70 normal-case tracking-normal truncate font-normal">{task?.task_id ?? taskId}</span>
               {isRunning && (
                 <span className="text-[9px] leading-none px-1 py-[2px] border border-brutal-black bg-brutal-yellow text-brutal-black font-bold uppercase tracking-normal shrink-0">
-                  Live
+                  {t('subAgents.live')}
                 </span>
               )}
             </div>
             <div className="text-[12px] font-bold text-brutal-black dark:text-white leading-snug mt-0.5 max-h-[2.5rem] overflow-hidden line-clamp-2">
-              {task?.description || 'Loading task...'}
+              {task?.description || t('subAgents.loading')}
             </div>
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0 self-start mt-0.5">
           {isRunning && elapsedTime && (
-            <span className="text-[10px] font-mono text-neutral-400 dark:text-neutral-500">⏱ {elapsedTime}</span>
+            <span className="text-[10px] font-mono text-neutral-400 dark:text-neutral-500">{elapsedTime}</span>
           )}
           {isRunning && (
             <button
               onClick={stopAgent}
-              className="px-2 py-1 text-[10px] leading-none font-bold uppercase bg-red-50 text-red-700 border-2 border-red-400 hover:bg-red-100 transition-colors"
+              className="px-2 py-1 text-[10px] leading-none font-bold uppercase tracking-wide bg-red-50 dark:bg-red-950 text-red-700 dark:text-red-300 border-2 border-red-600 rounded-sm hover:bg-red-100 dark:hover:bg-red-900 transition-colors"
             >
-              Stop
+              {t('subAgents.stop')}
             </button>
           )}
           {onClose && (
             <button
               onClick={onClose}
               className="p-1 aspect-square flex items-center justify-center text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors"
-              title="Close"
+              title={t('subAgents.close')}
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -211,17 +234,14 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
       {/* Body */}
       <div className="flex-1 overflow-y-auto scrollbar-thin p-3 space-y-3 min-h-0">
         {!task && (
-          <div className="text-[11px] text-neutral-400 animate-pulse">Loading...</div>
+          <div className="text-[11px] text-neutral-400 animate-pulse">{t('subAgents.loading')}</div>
         )}
 
         {task && (
           <>
             {/* Status + timing row */}
             <div className="flex items-center gap-2 flex-wrap">
-              <span className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase px-2 py-0.5 rounded-sm ${STATUS_COLOR[task.status] ?? ''}`}>
-                {task.status}
-                {isRunning && <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />}
-              </span>
+              <SubAgentStatusBadge status={task.status} t={t} className="text-[10px] px-2 py-0.5" />
               {task.started_at && (
                 <span className="text-[10px] text-neutral-400 dark:text-neutral-500">
                   {new Date(task.started_at).toLocaleTimeString()}
@@ -229,13 +249,15 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
                 </span>
               )}
               {duration && !isRunning && (
-                <span className="text-[10px] text-neutral-400 dark:text-neutral-500">⏱ {duration}</span>
+                <span className="text-[10px] text-neutral-400 dark:text-neutral-500">{duration}</span>
               )}
             </div>
 
             {/* Task description */}
             <div>
-              <div className="text-[10px] font-bold uppercase text-neutral-400 dark:text-neutral-500 mb-0.5">Task</div>
+              <div className="text-[10px] font-bold uppercase tracking-wide text-neutral-400 dark:text-neutral-500 mb-0.5">
+                {t('subAgents.task')}
+              </div>
               <div className="text-[11px] text-neutral-700 dark:text-neutral-300 leading-relaxed">
                 {task.description}
               </div>
@@ -244,13 +266,16 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
             {/* Tools */}
             {task.tools_allowed.length > 0 && (
               <div>
-                <div className="text-[10px] font-bold uppercase text-neutral-400 dark:text-neutral-500 mb-1">
-                  Tools ({task.tools_allowed.length})
+                <div className="text-[10px] font-bold uppercase tracking-wide text-neutral-400 dark:text-neutral-500 mb-1">
+                  {t('subAgents.tools', { count: task.tools_allowed.length })}
                 </div>
                 <div className="flex flex-wrap gap-1">
-                  {task.tools_allowed.map((t) => (
-                    <span key={t} className="text-[10px] px-1.5 py-0.5 bg-neutral-100 dark:bg-zinc-700 rounded-sm border border-neutral-200 dark:border-zinc-600 text-neutral-600 dark:text-neutral-300">
-                      {t}
+                  {task.tools_allowed.map((toolName) => (
+                    <span
+                      key={toolName}
+                      className="text-[10px] px-1.5 py-0.5 bg-neutral-100 dark:bg-zinc-700 rounded-sm border border-neutral-200 dark:border-zinc-600 text-neutral-600 dark:text-neutral-300"
+                    >
+                      {toolName}
                     </span>
                   ))}
                 </div>
@@ -261,19 +286,13 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
             {(task.inherit_context || (task.isolation && task.isolation !== 'none')) && (
               <div className="flex flex-wrap gap-1.5">
                 {task.inherit_context && (
-                  <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 bg-purple-50 dark:bg-purple-950 border border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300 rounded-sm font-bold uppercase tracking-wide">
-                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                    </svg>
-                    Context forked
+                  <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 bg-white dark:bg-zinc-900 border-2 border-neutral-400 dark:border-zinc-500 text-neutral-600 dark:text-neutral-300 rounded-sm font-bold uppercase tracking-wide">
+                    {t('subAgents.contextForked')}
                   </span>
                 )}
                 {task.isolation === 'worktree' && (
-                  <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 bg-orange-50 dark:bg-orange-950 border border-orange-200 dark:border-orange-800 text-orange-700 dark:text-orange-300 rounded-sm font-bold uppercase tracking-wide">
-                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M5 12l4-4m-4 4l4 4" />
-                    </svg>
-                    Worktree isolated
+                  <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 bg-white dark:bg-zinc-900 border-2 border-neutral-400 dark:border-zinc-500 text-neutral-600 dark:text-neutral-300 rounded-sm font-bold uppercase tracking-wide">
+                    {t('subAgents.worktreeIsolated')}
                   </span>
                 )}
               </div>
@@ -282,17 +301,19 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
             {/* Worktree details */}
             {task.isolation === 'worktree' && task.worktree_branch && (
               <div>
-                <div className="text-[10px] font-bold uppercase text-neutral-400 dark:text-neutral-500 mb-1">Worktree</div>
+                <div className="text-[10px] font-bold uppercase tracking-wide text-neutral-400 dark:text-neutral-500 mb-1">
+                  {t('subAgents.worktree')}
+                </div>
                 <div className="space-y-0.5">
                   <div className="flex items-center gap-1.5 text-[10px]">
-                    <span className="text-neutral-400 shrink-0">Branch</span>
-                    <code className="text-orange-700 dark:text-orange-300 bg-orange-50 dark:bg-orange-950 px-1 py-px rounded-sm border border-orange-200 dark:border-orange-900 truncate">
+                    <span className="text-neutral-400 shrink-0 uppercase">{t('subAgents.branch')}</span>
+                    <code className="text-neutral-700 dark:text-neutral-200 bg-neutral-100 dark:bg-zinc-800 px-1 py-px rounded-sm border border-neutral-200 dark:border-zinc-600 truncate">
                       {task.worktree_branch}
                     </code>
                   </div>
                   {task.worktree_path && (
                     <div className="flex items-start gap-1.5 text-[10px]">
-                      <span className="text-neutral-400 shrink-0">Path</span>
+                      <span className="text-neutral-400 shrink-0 uppercase">{t('subAgents.path')}</span>
                       <code className="text-neutral-600 dark:text-neutral-400 break-all leading-relaxed">
                         {task.worktree_path}
                       </code>
@@ -302,56 +323,85 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
               </div>
             )}
 
-            {/* Tool call log */}
+            {/* Tool call log — worded exactly like the transcript pills, so a
+                call reads the same wherever you meet it. */}
             {toolLog.length > 0 && (
               <div>
-                <div className="text-[10px] font-bold uppercase text-neutral-400 dark:text-neutral-500 mb-1">
-                  Tool Calls ({toolLog.length})
+                <div className="text-[10px] font-bold uppercase tracking-wide text-neutral-400 dark:text-neutral-500 mb-1">
+                  {t('subAgents.toolCalls', { count: toolLog.length })}
                 </div>
                 <div className="space-y-1">
-                  {toolLog.map((entry, i) => (
-                    <details key={i} className="text-[10px] group">
-                      <summary className="flex items-center gap-1.5 cursor-pointer list-none select-none py-0.5 px-1 rounded-sm bg-neutral-50 dark:bg-zinc-800 hover:bg-neutral-100 dark:hover:bg-zinc-700">
-                        <span className="text-neutral-400">🔧</span>
-                        <span className="font-bold text-neutral-700 dark:text-neutral-200 truncate">{entry.toolName}</span>
-                        {entry.output !== undefined && (
-                          <span className="text-green-600 dark:text-green-400 ml-auto shrink-0">✓</span>
-                        )}
-                      </summary>
-                      <div className="mt-1 pl-2 border-l-2 border-neutral-200 dark:border-zinc-600 space-y-1">
-                        {entry.args && (
-                          <pre className="text-[10px] text-neutral-500 dark:text-neutral-400 whitespace-pre-wrap break-all">
-                            {entry.args.length > 200 ? entry.args.slice(0, 200) + '…' : entry.args}
-                          </pre>
-                        )}
-                        {entry.output !== undefined && (
-                          <pre className="text-[10px] text-neutral-600 dark:text-neutral-300 whitespace-pre-wrap break-all bg-neutral-50 dark:bg-zinc-800 p-1 rounded-sm">
-                            {entry.output.length > 300 ? entry.output.slice(0, 300) + '…' : entry.output}
-                          </pre>
-                        )}
-                      </div>
-                    </details>
-                  ))}
+                  {toolLog.map((entry, i) => {
+                    let parsedArgs: Record<string, unknown> | null = null;
+                    try {
+                      parsedArgs = entry.args ? JSON.parse(entry.args) : null;
+                    } catch { /* args may be truncated or non-JSON */ }
+                    // A logged call with output is done; one without is either
+                    // running now or was cut short when the agent stopped.
+                    const entryTense: ToolTense = entry.output !== undefined
+                      ? (isFailedToolOutput(entry.output) ? 'failed' : 'past')
+                      : isRunning
+                        ? 'active'
+                        : 'imperative';
+                    const summary = getToolSummary(entry.toolName, parsedArgs, t, entryTense);
+                    return (
+                      <details key={i} className="text-[10px] group">
+                        <summary
+                          className="flex items-center gap-1.5 cursor-pointer list-none select-none py-0.5 px-1 rounded-sm bg-neutral-50 dark:bg-zinc-800 hover:bg-neutral-100 dark:hover:bg-zinc-700"
+                          title={summary.title ?? undefined}
+                        >
+                          <span className="font-bold uppercase tracking-wide text-neutral-700 dark:text-neutral-200 shrink-0">
+                            {summary.verb}
+                          </span>
+                          {summary.detail && (
+                            <span className="truncate min-w-0 text-neutral-500 dark:text-neutral-400">
+                              {summary.detail}
+                            </span>
+                          )}
+                          {entry.output !== undefined && (
+                            <svg className="w-2.5 h-2.5 text-green-600 ml-auto shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                        </summary>
+                        <div className="mt-1 pl-2 border-l-2 border-neutral-200 dark:border-zinc-600 space-y-1">
+                          {entry.args && (
+                            <pre className="text-[10px] text-neutral-500 dark:text-neutral-400 whitespace-pre-wrap break-all">
+                              {entry.args.length > 200 ? entry.args.slice(0, 200) + '…' : entry.args}
+                            </pre>
+                          )}
+                          {entry.output !== undefined && (
+                            <pre className="text-[10px] text-neutral-600 dark:text-neutral-300 whitespace-pre-wrap break-all bg-neutral-50 dark:bg-zinc-800 p-1 rounded-sm">
+                              {entry.output.length > 300 ? entry.output.slice(0, 300) + '…' : entry.output}
+                            </pre>
+                          )}
+                        </div>
+                      </details>
+                    );
+                  })}
                 </div>
               </div>
             )}
 
-            {/* Result */}
-            {task.status === 'completed' && task.result_summary && (
+            {/* How the run ended. A stop is not an error, so it is not painted
+                like one — only a genuine failure gets red. */}
+            {!isRunning && outcomeText && (
               <div>
-                <div className="text-[10px] font-bold uppercase text-neutral-400 dark:text-neutral-500 mb-0.5">Result</div>
-                <pre className="text-[11px] text-neutral-700 dark:text-neutral-300 leading-relaxed whitespace-pre-wrap bg-neutral-50 dark:bg-zinc-800 p-2 rounded-sm border border-neutral-200 dark:border-zinc-600 max-h-[300px] overflow-y-auto scrollbar-thin">
-                  {task.result_summary}
-                </pre>
-              </div>
-            )}
-
-            {/* Error */}
-            {task.status === 'failed' && task.error && (
-              <div>
-                <div className="text-[10px] font-bold uppercase text-red-400 mb-0.5">Error</div>
-                <pre className="text-[11px] text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950 p-2 rounded-sm border border-red-200 dark:border-red-900 whitespace-pre-wrap max-h-[200px] overflow-y-auto scrollbar-thin">
-                  {task.error}
+                <div
+                  className={`text-[10px] font-bold uppercase tracking-wide mb-0.5 ${
+                    task.status === 'failed' ? 'text-red-500' : 'text-neutral-400 dark:text-neutral-500'
+                  }`}
+                >
+                  {subAgentOutcomeLabel(task.status, t)}
+                </div>
+                <pre
+                  className={`text-[11px] leading-relaxed whitespace-pre-wrap p-2 rounded-sm border-2 max-h-[300px] overflow-y-auto scrollbar-thin ${
+                    task.status === 'failed'
+                      ? 'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950 border-red-600'
+                      : 'text-neutral-700 dark:text-neutral-300 bg-neutral-50 dark:bg-zinc-800 border-neutral-200 dark:border-zinc-600'
+                  }`}
+                >
+                  {outcomeText}
                 </pre>
               </div>
             )}
@@ -360,9 +410,9 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
             {isRunning && (
               <div className="flex items-center gap-2 text-[10px] text-neutral-400 animate-pulse">
                 <div className="h-[2px] flex-1 bg-neutral-100 dark:bg-zinc-700 overflow-hidden rounded-full">
-                  <div className="h-full bg-blue-500 w-1/3 animate-neo-scan" />
+                  <div className="h-full bg-brutal-black dark:bg-white w-1/3 animate-neo-scan" />
                 </div>
-                <span>Executing...</span>
+                <span className="uppercase tracking-wide">{t('subAgents.working')}</span>
               </div>
             )}
           </>

@@ -416,9 +416,10 @@ class AgentTool(Tool):
                     ),
                     metadata={**metadata, "result_summary": task.result_summary},
                 )
+            outcome = "was stopped" if task.status == "cancelled" else "failed"
             return ToolResult.error_result(
                 ToolErrorCode.EXECUTION_FAILED,
-                f"Sub-agent {task.task_id} failed.",
+                f"Sub-agent {task.task_id} {outcome}. {task.error or ''}".strip(),
                 metadata={**metadata, "error": task.error},
             )
 

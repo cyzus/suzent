@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 
@@ -121,6 +122,44 @@ async def test_subagent_setup_failure_reaches_terminal_state(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_cancelled_setup_explains_itself(monkeypatch):
+    """A bare cancel must still say why, not just "cancelled"."""
+    task = _make_task("sub_cancel", "queued")
+    subagent_runner._tasks[task.task_id] = task
+
+    def cancel_now():
+        raise asyncio.CancelledError()
+
+    monkeypatch.setattr("suzent.core.providers.get_default_chat_model", cancel_now)
+    monkeypatch.setattr(subagent_runner, "_persist_task_state", lambda task: None)
+
+    try:
+        with pytest.raises(asyncio.CancelledError):
+            await subagent_runner._run_subagent(task)
+
+        assert task.status == "cancelled"
+        assert task.error and task.error != "Sub-agent cancelled"
+        assert "Stopped" in task.error
+        assert task.finished_at is not None
+    finally:
+        subagent_runner._tasks.pop(task.task_id, None)
+
+
+@pytest.mark.asyncio
+async def test_cancellation_reason_names_a_shutdown(monkeypatch):
+    from suzent.core import task_registry
+
+    task = _make_task("sub_shutdown", "running")
+    monkeypatch.setattr(
+        type(task_registry.get_task_registry()),
+        "is_shutting_down",
+        property(lambda self: True),
+    )
+
+    assert "shut down" in subagent_runner._cancellation_reason(task)
+
+
+@pytest.mark.asyncio
 async def test_stop_subagent_cancels_runner_and_rejects_terminal_retry(monkeypatch):
     cancelled = []
     stopped_streams = []
@@ -138,7 +177,10 @@ async def test_stop_subagent_cancels_runner_and_rejects_terminal_retry(monkeypat
     try:
         assert await stop_subagent(task.task_id) is True
         assert await stop_subagent(task.task_id) is False
-        assert task.status == "failed"
+        # A stop is not a failure: it gets its own state so the UI can say
+        # "stopped" in neutral colours instead of showing a red error.
+        assert task.status == "cancelled"
+        assert task.error == "Stopped by you"
         assert cancelled == [task.task_id]
         assert stopped_streams[0][0] == task.chat_id
     finally:
@@ -160,7 +202,7 @@ async def test_clear_stuck_tasks_cancels_registered_runners(monkeypatch):
 
     try:
         assert await clear_stuck_tasks() == [task.task_id]
-        assert task.status == "failed"
+        assert task.status == "cancelled"
         assert cancelled == [task.task_id]
     finally:
         subagent_runner._tasks.pop(task.task_id, None)

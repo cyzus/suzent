@@ -51,6 +51,15 @@ class BackgroundTaskRegistry:
         self._shutdown = False
 
     @property
+    def is_shutting_down(self) -> bool:
+        """Whether the registry has begun shutdown and refuses new tasks.
+
+        Callers use this to tell "the process is going away" apart from
+        "something cancelled me" when they observe a CancelledError.
+        """
+        return self._shutdown
+
+    @property
     def active_count(self) -> int:
         """Get the number of active (not done) tasks."""
         return sum(1 for info in self._tasks.values() if not info.task.done())

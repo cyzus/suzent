@@ -271,8 +271,8 @@ class ProjectOperationsMixin:
                 # Runtime tasks are merged over these persisted records by the
                 # caller. A persisted-only active state is an orphan from a
                 # previous process and must not appear to still be executing.
-                status = "failed"
-                error = error or "Interrupted by server restart"
+                status = "cancelled"
+                error = error or "Stopped when the server restarted"
 
             records.append(
                 {
