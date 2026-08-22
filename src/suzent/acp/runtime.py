@@ -187,6 +187,21 @@ async def stream_acp_turn(
     # typed. Comparing the annotated text against the stored row defeated the
     # duplicate check below and persisted the message twice.
     user_message = message
+    from suzent.core.system_reminder import (
+        extract_system_reminder_display_trigger,
+        strip_system_reminders,
+    )
+
+    display_trigger = extract_system_reminder_display_trigger(user_message)
+    visible_user_message = strip_system_reminders(user_message)
+    persisted_role = (
+        "system_triggered" if display_trigger and not visible_user_message else "user"
+    )
+    persisted_content = (
+        display_trigger
+        if persisted_role == "system_triggered"
+        else visible_user_message
+    )
     file_context = _build_acp_file_context(file_mentions, files)
     if file_context:
         message = f"{file_context}\n\n{message}" if message else file_context
@@ -254,22 +269,27 @@ async def stream_acp_turn(
 
         # /chat/send pre-writes the user's row so the UI has something to show
         # before the first token arrives; only append when that didn't happen.
-        if user_message.strip() and not (
+        if persisted_content.strip() and not (
             existing
-            and existing[-1].get("role") == "user"
-            and str(existing[-1].get("content") or "").strip() == user_message.strip()
+            and existing[-1].get("role") == persisted_role
+            and str(existing[-1].get("content") or "").strip()
+            == persisted_content.strip()
         ):
             db.append_chat_message(
-                chat_id, {"role": "user", "content": user_message.strip()}
+                chat_id, {"role": persisted_role, "content": persisted_content.strip()}
             )
 
         # Auto-titling lives in suzent.streaming, which an ACP turn never goes
         # through -- so every ACP chat stayed named "New Chat". The title comes
         # from the `cheap` role, not from the ACP agent, so it costs the turn
         # nothing and runs alongside it.
-        if user_message.strip() and should_generate_auto_title(latest):
+        if (
+            persisted_role == "user"
+            and persisted_content.strip()
+            and should_generate_auto_title(latest)
+        ):
             title_task = asyncio.create_task(
-                generate_auto_title(chat_id, user_message.strip())
+                generate_auto_title(chat_id, persisted_content.strip())
             )
 
         yield _sse(

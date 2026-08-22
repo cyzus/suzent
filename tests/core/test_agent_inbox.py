@@ -205,3 +205,37 @@ async def test_target_turn_uses_headless_config_and_delivery_marker(monkeypatch)
     assert "<!-- suzent-agent-inbox:msg-1 -->" in captured["message_content"]
     assert captured["message_content"].endswith("Please review")
     assert captured["incoming_citation_sources"][0]["id"] == "sa_sub_a_src_1"
+
+
+@pytest.mark.asyncio
+async def test_subagent_result_is_delivered_as_system_reminder(monkeypatch):
+    captured = {}
+    target = SimpleNamespace(title="Target", config={"platform": "personal"})
+    sender = SimpleNamespace(title="Research agent", config={})
+
+    class FakeDatabase:
+        def get_chat(self, chat_id):
+            return {"agent-target": target, "agent-source": sender}.get(chat_id)
+
+    class FakeProcessor:
+        async def process_background_turn(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr("suzent.core.agent_inbox.get_database", lambda: FakeDatabase())
+    monkeypatch.setattr(
+        "suzent.agent_manager.build_agent_config",
+        lambda base_config, require_social_tool=False: base_config,
+    )
+    monkeypatch.setattr(
+        "suzent.core.chat_processor.ChatProcessor", lambda: FakeProcessor()
+    )
+    monkeypatch.setattr("suzent.core.stream_registry.stream_controls", {})
+
+    message = _message()
+    message["kind"] = "subagent_result"
+    await AgentInboxDispatcher()._run_target_turn(message)
+
+    assert captured["message_content"] == ""
+    assert captured["system_reminders"] == [
+        "Please review\n<!-- suzent-agent-inbox:msg-1 -->"
+    ]

@@ -38,9 +38,20 @@ export const LoadingIndicator: React.FC = () => {
   );
 };
 
+const LONG_REMINDER_CHARACTER_LIMIT = 600;
+const LONG_REMINDER_LINE_LIMIT = 8;
+
+export function isLongSystemReminder(content: string): boolean {
+  return content.length > LONG_REMINDER_CHARACTER_LIMIT
+    || content.split('\n').length > LONG_REMINDER_LINE_LIMIT;
+}
+
 export const SystemTriggeredMessage: React.FC<{ message: Message }> = ({ message }) => {
-  const raw = (message.content || '').trim();
-  if (!raw) return null;
+  // Delivery markers are persisted for inbox idempotency, but are transport
+  // metadata rather than reminder content.
+  const raw = (message.content || '')
+    .replace(/<!--\s*suzent-agent-inbox:[\s\S]*?-->/gi, '')
+    .trim();
 
   // Pull out the leading title: prefer a **bold** first line, else first line.
   const lines = raw.split('\n');
@@ -48,22 +59,46 @@ export const SystemTriggeredMessage: React.FC<{ message: Message }> = ({ message
   const boldMatch = firstLine.match(/^\*\*(.+?)\*\*$/);
   const title = (boldMatch ? boldMatch[1] : firstLine).trim();
   const body = lines.slice(1).join('\n').trim();
+  const collapsible = isLongSystemReminder(body);
+  const [expanded, setExpanded] = React.useState(!collapsible);
+  if (!raw) return null;
 
   return (
     <div className="w-full max-w-3xl my-1 pl-2 md:pl-4">
       <div className="border-l-[3px] border-brutal-black/20 dark:border-neutral-700 px-4 py-2 opacity-50 hover:opacity-100 transition-opacity duration-300">
         {/* Title */}
-        <div className="flex items-center gap-2 mb-1.5">
+        <button
+          type="button"
+          className={`w-full flex items-center gap-2 text-left ${body ? 'mb-1.5' : ''}`}
+          onClick={() => body && setExpanded(value => !value)}
+          aria-expanded={body ? expanded : undefined}
+        >
           <span className="text-brutal-black/60 dark:text-neutral-400 text-[10px] leading-none" aria-hidden="true">⏱</span>
           <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-brutal-black/60 dark:text-neutral-400 truncate">
             {title}
           </span>
-        </div>
+          {body && (
+            <svg
+              className={`ml-auto h-3 w-3 shrink-0 text-brutal-black/50 dark:text-neutral-500 transition-transform duration-200 ${expanded ? 'rotate-90' : ''}`}
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={3}
+              aria-hidden="true"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+            </svg>
+          )}
+        </button>
 
         {/* Body */}
         {body && (
-          <div className="text-[12px] leading-relaxed text-brutal-black/80 dark:text-neutral-300">
-            <MarkdownRenderer content={body} />
+          <div className={`grid overflow-hidden transition-[grid-template-rows] duration-200 ${expanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
+            <div className="min-h-0 overflow-hidden">
+              <div className="text-[12px] leading-relaxed text-brutal-black/80 dark:text-neutral-300">
+                <MarkdownRenderer content={body} />
+              </div>
+            </div>
           </div>
         )}
       </div>

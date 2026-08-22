@@ -165,10 +165,17 @@ class AgentInboxDispatcher:
             payload.get("sender_agent_id") or sender_chat_id or "system"
         )
         marker = _delivery_marker(str(message["message_id"]))
-        delivered_content = (
-            f"[Agent message from {sender_label} ({sender_reference})]\n"
-            f"{marker}\n{message['content']}"
-        )
+        is_subagent_result = message.get("kind") == "subagent_result"
+        if is_subagent_result:
+            # Sub-agent completion is an autonomous trigger, like cron and
+            # heartbeat, rather than a new utterance from the user. Keep the
+            # durable marker inside the reminder so retries remain idempotent.
+            delivered_content = f"{message['content']}\n{marker}"
+        else:
+            delivered_content = (
+                f"[Agent message from {sender_label} ({sender_reference})]\n"
+                f"{marker}\n{message['content']}"
+            )
 
         base_config = dict(target_chat.config or {})
         runtime = base_config.get("runtime", "native")
@@ -185,16 +192,27 @@ class AgentInboxDispatcher:
 
             if runtime == "acp" or subagent_runtime == "acp":
                 from suzent.acp.runtime import run_acp_turn_text
+                from suzent.core.system_reminder import wrap_in_system_reminder
 
                 await run_acp_turn_text(
-                    target_chat_id, delivered_content, config_override, None
+                    target_chat_id,
+                    wrap_in_system_reminder(
+                        delivered_content, display_trigger=delivered_content
+                    )
+                    if is_subagent_result
+                    else delivered_content,
+                    config_override,
+                    None,
                 )
             else:
                 await ChatProcessor().process_background_turn(
                     chat_id=target_chat_id,
                     user_id=CONFIG.user_id,
-                    message_content=delivered_content,
+                    message_content="" if is_subagent_result else delivered_content,
                     config_override=config_override,
+                    system_reminders=[delivered_content]
+                    if is_subagent_result
+                    else None,
                     incoming_citation_sources=list(
                         payload.get("citation_sources") or []
                     ),
