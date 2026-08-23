@@ -83,8 +83,21 @@ nothing cannot wedge the backlog.
 Because the counter reset on every process start, retry-then-skip only fired if the app
 stayed up long enough for `memory_consolidation_max_retries` consecutive attempts on the
 same batch. On a desktop app that restarts regularly, a batch that failed once kept
-failing from a fresh counter forever, and the watermark never advanced — locally it sat
-at `2026-03-11` for five months.
+failing from a fresh counter forever.
+
+**Correction to the original diagnosis.** That first read said the watermark had sat at
+`2026-03-11` for five months and the dream "barely ran". It was measured against
+`CONFIG.notebook_dir`, which on this machine is a stale bootstrap skeleton — the real
+vault is mounted at `/mnt/notebook` and holds 91 consolidation entries, not 2. Read
+correctly, the live history is: daily ingest through April, **no ingest at all between
+2026-05-01 and 2026-06-11** (lint kept running on its own pacing), then a catch-up burst
+on 06-12/13 that walked the watermark from `2026-02-22` up to `2026-05-26`, and daily
+ingest since. So the wedge was real and did strand the watermark from February — but it
+cleared itself in June, before any of this work, and the current healthy cadence is not
+evidence that this fix works. The fix is verified by
+`tests/memory/test_dream_failures_persist.py`, not by production behaviour.
+
+`resolve_notebook_dir()` now exists so nothing else repeats that measurement mistake.
 
 The counters now live in the vault's `.state/dream_state.json`, hydrated once per
 process and written back on every mutation.

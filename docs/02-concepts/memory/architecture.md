@@ -140,7 +140,7 @@ marker survive either of them.
 
 | commit | what it fixes |
 | --- | --- |
-| `70994416` | The dream barely ran. Retry counters were in-memory, so retry-then-skip never fired across restarts and the watermark sat at `2026-03-11` for five months. |
+| `70994416` | Retry counters were in-memory, so retry-then-skip never fired across restarts and a wedged batch stranded the watermark at `2026-02-22`. (The original "barely ran" reading was measured against the wrong vault — see the correction in `deduplication.md`.) |
 | `50621860` | Indexer state was keyed by absolute path in a synced directory — 436 entries from two machines, and only 18 of 129 logs actually indexed. Now `label:filename`, versioned, pre-v2 discarded. |
 | `ca421b74` | Extraction was context-free. The prompt now carries the nearest known facts, with an explicit rule permitting updates. |
 | `5fc97850` | The dream resolved duplicates by doing nothing. It now retires folded-in log lines through the tombstone hand-off. |

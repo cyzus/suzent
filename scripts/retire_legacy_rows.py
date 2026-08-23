@@ -97,10 +97,14 @@ def count_unrecorded(rows: list) -> int:
     the question is "is this literally written down somewhere", not "is it implied".
     """
     from suzent.config import CONFIG
+    from suzent.memory.lifecycle import resolve_notebook_dir
 
+    # Not CONFIG.notebook_dir: when the user mounts their own vault at /mnt/notebook,
+    # that default path holds a stale bootstrap skeleton, and checking against it would
+    # report every row as unrecorded no matter what the real vault contains.
     corpus = _markdown_corpus(
         Path(CONFIG.sandbox_data_path) / "shared" / "memory" / "archive",
-        Path(CONFIG.notebook_dir),
+        Path(resolve_notebook_dir()),
     )
     if not corpus:
         return len(rows)
