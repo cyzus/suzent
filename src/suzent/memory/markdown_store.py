@@ -180,12 +180,6 @@ class MarkdownMemoryStore:
                     continue
         return out
 
-    def truncate_recalls(self) -> None:
-        try:
-            self.recall_log_path.write_text("", encoding="utf-8")
-        except Exception:
-            pass
-
     # --- Tombstones (user-deleted facts the indexer must skip) ---
 
     @property

@@ -404,9 +404,11 @@ DREAM_INSTRUCTIONS = f"""Consolidate the daily memory logs dated after {{start}}
    its marker by the count shown (step 3e); do not add a bullet, and do not treat one
    as a correction — a contradicting restatement never reaches this list.
 {{confirmations}}
-5. Claims past their `stale_after`. Re-confirm each against the logs you just read: if
-   it is supported, refresh the date; if it is contradicted, apply the correction case;
-   if the logs say nothing either way, leave it and let lint decide. Never delete here.
+5. Claims due for a revisit. Re-confirm each against the logs you just read: if it is
+   supported, refresh the date; if it is contradicted, apply the correction case; if the
+   logs say nothing either way, leave it and let lint decide. Never delete here.
+   A page listed as `stale_after unset` predates the rule and has no expiry at all: give
+   it one from step 3's category table while you are there, whatever the logs say.
 {{revisits}}
 6. Add `## Related` links using the schema's link style.
 7. Update index.md. Do NOT write the watermark to log.md — the runner records it.

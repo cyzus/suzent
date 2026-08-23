@@ -807,11 +807,20 @@ class DreamRunner(BaseBrain):
 
     @staticmethod
     def _due_revisits(mgr, limit: int = 25) -> List[dict]:
-        """Vault pages whose `stale_after` has passed, soonest-expired first.
+        """Vault pages due for a revisit, soonest-expired first.
 
         Built here rather than by the agent: it is a deterministic scan of frontmatter,
         and asking an LLM to find expired pages by reading the whole vault is both
         slower and less reliable than reading the dates ourselves.
+
+        A page with no `stale_after` at all is also due, and queues after every genuinely
+        expired one. Every page written before `07f24c4b` is in that state, and selecting
+        strictly on the field would mean they are never queued, so the dream never visits
+        them, so the field is never written — the pages that most need a first pass would
+        be the only ones permanently exempt from one. Queuing them is what lets the dream
+        backfill the field itself, which is better than a script guessing an expiry: a
+        wrong `stale_after` actively damps a good claim in ranking, and only the dream can
+        see which category the claim belongs to.
         """
         try:
             from suzent.memory.indexer import CoreMemoryFileIndexer
@@ -829,14 +838,21 @@ class DreamRunner(BaseBrain):
                 stale_after = lifecycle.get("stale_after", "")[:10]
                 if lifecycle.get("status", "").lower() == "deprecated":
                     continue
-                if len(stale_after) == 10 and stale_after < today:
-                    rows.append(
-                        {
-                            "page": store_md.notebook_rel(path),
-                            "stale_after": stale_after,
-                        }
-                    )
-            rows.sort(key=lambda r: r["stale_after"])
+                rel = store_md.notebook_rel(path)
+                dated = len(stale_after) == 10
+                if dated and stale_after >= today:
+                    continue
+                if not dated and not rel.replace("\\", "/").startswith("3_Personal/"):
+                    # `stale_after` is a personal-claim field. A wiki or project page
+                    # having none is correct, not a backlog item — only the pages the
+                    # rule actually applies to are missing anything.
+                    continue
+                rows.append(
+                    {"page": rel, "stale_after": stale_after if dated else "unset"}
+                )
+            # Expired pages first, oldest expiry first; the undated ones follow, since a
+            # known-stale claim is more urgent than one we simply have no expiry for.
+            rows.sort(key=lambda r: (r["stale_after"] == "unset", r["stale_after"]))
             return rows[:limit]
         except Exception as e:
             logger.warning(f"[dream] could not build the revisit queue: {e}")

@@ -215,7 +215,17 @@ The **revisit queue** is a deterministic frontmatter scan by the runner, handed 
 dream alongside the confirmations: vault pages past their `stale_after`, soonest first,
 to be re-confirmed against the logs being ingested — never deleted. Both queues are
 runner-owned for the same reason the watermark is: index and lifecycle mutation stays
-out of the agent's hands. The confirmations sidecar is truncated only by the number of
+out of the agent's hands.
+
+A `3_Personal/` page with no `stale_after` *at all* is queued too, after every genuinely
+expired one. Every page written before `07f24c4b` is in that state — 6 of the live vault's
+personal pages — and selecting strictly on the field would mean they are never queued, so
+the dream never visits them, so the field is never written: the pages most in need of a
+first pass would be the only ones permanently exempt from one. Letting the dream backfill
+the field beats a script guessing it, because a wrong `stale_after` actively damps a good
+claim in step 6's ranking and only the dream can see which category a claim belongs to.
+The undated branch is scoped to `3_Personal/`: a wiki or project page having no expiry is
+correct, not a backlog item. The confirmations sidecar is truncated only by the number of
 lines the agent was actually shown, since conversations keep appending to it while the
 dream runs.
 

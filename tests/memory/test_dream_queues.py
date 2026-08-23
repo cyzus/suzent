@@ -34,15 +34,38 @@ def store(tmp_path):
 # --- revisit queue ---
 
 
-def test_only_expired_pages_are_queued_soonest_first(store):
+def test_expired_pages_are_queued_soonest_first_and_fresh_ones_are_not(store):
     _page(store, "3_Personal/a.md", "---\nstale_after: 2020-01-01\n---\n- old")
     _page(store, "3_Personal/b.md", "---\nstale_after: 2019-01-01\n---\n- older")
     _page(store, "3_Personal/c.md", "---\nstale_after: 2099-01-01\n---\n- fresh")
-    _page(store, "3_Personal/d.md", "- no frontmatter at all")
 
     rows = DreamRunner._due_revisits(_Mgr(store))
 
     assert [r["page"] for r in rows] == ["3_Personal/b.md", "3_Personal/a.md"]
+
+
+def test_a_page_with_no_expiry_is_due_but_queues_last(store):
+    """Every page written before the rule existed has no `stale_after`. Selecting
+    strictly on the field would exempt exactly those pages from ever being visited,
+    which is how the field would stay unwritten forever."""
+    _page(store, "3_Personal/never_set.md", "---\nstatus: active\n---\n- a claim")
+    _page(store, "3_Personal/expired.md", "---\nstale_after: 2020-01-01\n---\n- old")
+    _page(store, "3_Personal/plain.md", "- no frontmatter at all")
+
+    rows = DreamRunner._due_revisits(_Mgr(store))
+
+    assert rows[0]["page"] == "3_Personal/expired.md"
+    assert {r["page"] for r in rows[1:]} == {
+        "3_Personal/never_set.md",
+        "3_Personal/plain.md",
+    }
+    assert all(r["stale_after"] == "unset" for r in rows[1:])
+
+
+def test_an_undated_page_is_still_skipped_when_deprecated(store):
+    _page(store, "3_Personal/a.md", "---\nstatus: deprecated\n---\n- retired")
+
+    assert DreamRunner._due_revisits(_Mgr(store)) == []
 
 
 def test_a_deprecated_page_is_not_worth_revisiting(store):
@@ -90,6 +113,8 @@ def test_the_instructions_carry_both_queues_and_never_delete():
 
     assert "likes tea — +3x, last 2026-01-02" in text
     assert "3_Personal/a.md (stale_after 2020-01-01)" in text
+    # An unset expiry has to be actionable in the prompt, not merely listed.
+    assert "stale_after unset" in text
     assert "Never delete here." in text
     # A restatement that contradicts the page is a correction and never reaches the
     # confirmations list; the prompt has to say so or the agent may bump the marker.
