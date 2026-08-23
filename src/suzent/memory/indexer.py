@@ -217,6 +217,9 @@ class CoreMemoryFileIndexer:
     """
 
     INDEX_STATE_FILENAME = ".index_state.json"
+    # Bumped when the shape or the key scheme of the state file changes; older
+    # payloads are discarded on load rather than migrated.
+    STATE_VERSION = 2
 
     # Map from block label → filename as stored in LanceDB metadata
     CORE_FILES: dict = {
@@ -233,19 +236,49 @@ class CoreMemoryFileIndexer:
         # watcher's check_and_update, and the dream's reconcile).
         self._lock = asyncio.Lock()
 
+    @staticmethod
+    def _state_key(label: str, filename: str) -> str:
+        """Portable identity for a tracked file: ``label:filename``.
+
+        Deliberately not the absolute path. Path-keyed state travels with a synced
+        vault and survives a moved base dir, so entries from another machine sit in
+        the file forever; any tracked file whose stale recorded mtime happens to
+        match is then skipped for good and never makes it into the index. The
+        (label, filename) pair is already the file's identity everywhere else —
+        it is what LanceDB deletion is keyed on.
+        """
+        return f"{label}:{filename}"
+
     def _load_state(self, markdown_store) -> None:
         """Load persisted mtime state from disk (called once on first check).
 
         If the state file does not exist, pre-populate mtimes from all existing
         files so that the first run after this change skips re-indexing entirely.
+
+        STATE_VERSION 1 state is keyed by absolute path and cannot be trusted (see
+        _state_key), so it is discarded rather than migrated. That costs one full
+        reindex, which is the point: the files it was wrongly skipping are exactly
+        the ones missing from the index.
         """
         import json as _json
 
         self._state_path = markdown_store.base_dir / self.INDEX_STATE_FILENAME
         if self._state_path.exists():
             try:
-                self._mtimes = _json.loads(self._state_path.read_text(encoding="utf-8"))
-                logger.debug(f"Loaded index state: {len(self._mtimes)} entries")
+                payload = _json.loads(self._state_path.read_text(encoding="utf-8"))
+                if (
+                    isinstance(payload, dict)
+                    and payload.get("version") == self.STATE_VERSION
+                ):
+                    mtimes = payload.get("mtimes")
+                    self._mtimes = mtimes if isinstance(mtimes, dict) else {}
+                    logger.debug(f"Loaded index state: {len(self._mtimes)} entries")
+                else:
+                    self._mtimes = {}
+                    logger.info(
+                        "Index state is path-keyed (pre-v%s); discarding it so every "
+                        "tracked file is re-indexed once." % self.STATE_VERSION
+                    )
             except Exception as e:
                 logger.warning(f"Failed to load index state, starting fresh: {e}")
                 self._mtimes = {}
@@ -258,9 +291,13 @@ class CoreMemoryFileIndexer:
                     else markdown_store._block_path(label)
                 )
                 if path.exists():
-                    self._mtimes[str(path)] = path.stat().st_mtime
+                    self._mtimes[self._state_key(label, filename)] = (
+                        path.stat().st_mtime
+                    )
             for archive_path in markdown_store.archive_dir.glob("????-??-??.md"):
-                self._mtimes[str(archive_path)] = archive_path.stat().st_mtime
+                self._mtimes[self._state_key("archive", archive_path.name)] = (
+                    archive_path.stat().st_mtime
+                )
             self._save_state()
             logger.info(
                 f"Initialized index state with {len(self._mtimes)} existing files (no reindex)"
@@ -274,7 +311,10 @@ class CoreMemoryFileIndexer:
             import json as _json
 
             self._state_path.write_text(
-                _json.dumps(self._mtimes, indent=2), encoding="utf-8"
+                _json.dumps(
+                    {"version": self.STATE_VERSION, "mtimes": self._mtimes}, indent=2
+                ),
+                encoding="utf-8",
             )
         except Exception as e:
             logger.warning(f"Failed to save index state: {e}")
@@ -345,7 +385,7 @@ class CoreMemoryFileIndexer:
             if not path.exists():
                 continue
 
-            path_key = str(path)
+            path_key = self._state_key(label, filename)
 
             # Watermark-aware archives: a log already folded into the vault (date ≤ W)
             # must NOT remain in the search index — drop it once.
@@ -425,7 +465,7 @@ class CoreMemoryFileIndexer:
 
             content = path.read_text(encoding="utf-8", errors="replace").strip()
             if not content:
-                self._mtimes[str(path)] = path.stat().st_mtime
+                self._mtimes[self._state_key(label, filename)] = path.stat().st_mtime
                 self._save_state()
                 return 0
 
@@ -439,7 +479,7 @@ class CoreMemoryFileIndexer:
                 tombstones=markdown_store.read_tombstones(),
             )
             # Record post-write mtime so the watcher treats this file as handled.
-            self._mtimes[str(path)] = path.stat().st_mtime
+            self._mtimes[self._state_key(label, filename)] = path.stat().st_mtime
             self._save_state()
             return n
 

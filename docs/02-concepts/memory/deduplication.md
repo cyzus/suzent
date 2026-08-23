@@ -168,9 +168,10 @@ formal `okf_version` conformance.
 
 1. Make the dream actually run — persist the retry counter so retry-then-skip survives
    restarts. Everything below assumes consolidation happens.
-2. Repair the index: backfill the window above the watermark, retire the legacy
-   pre-June rows, and key the indexer state on paths relative to the memory base dir so
-   it stops leaking between machines.
+2. Repair the index: key the indexer state on `label:filename` rather than absolute
+   paths so it stops leaking between machines, and retire the legacy pre-June rows.
+   Discarding the old path-keyed state costs one full reindex, which doubles as the
+   backfill for the window above the watermark.
 3. Add the already-known context to extraction. No schema change, independently
    valuable.
 4. Add OKF frontmatter to vault pages: writer first, then ranking.
