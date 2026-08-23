@@ -23,6 +23,17 @@ from suzent.logger import get_logger
 
 logger = get_logger(__name__)
 
+# MEMORY.md is written by two generators and edited directly by the agent, which the
+# core-memory prompt actively tells it to do. Only the region between these markers is
+# regenerated; everything after the end marker is preserved verbatim, so a note the
+# agent or the user adds is not destroyed by the next consolidation.
+MEMORY_GENERATED_START = "<!-- memory:generated - rewritten on consolidation -->"
+MEMORY_GENERATED_END = "<!-- /memory:generated - notes below this line are kept -->"
+
+# The footer written by every pre-marker version of write_memory_file. Its presence is
+# what identifies an unmarked file as generator-authored and therefore safe to replace.
+_LEGACY_FOOTER_RE = re.compile(r"^\*Last updated: .*UTC\*\s*$", re.MULTILINE)
+
 
 def _read_text(path: Path) -> str:
     """Read a memory file as UTF-8, tolerating stray non-UTF-8 bytes.
@@ -414,23 +425,56 @@ class MarkdownMemoryStore:
         """Path to the curated long-term memory file."""
         return self.base_dir / "MEMORY.md"
 
-    async def write_memory_file(self, content: str) -> None:
+    def manual_tail(self, existing: str) -> str:
+        """Whatever a generator must not touch, taken from the current MEMORY.md.
+
+        Three cases, in order:
+
+        - Marked file: everything after the end marker is the manual zone.
+        - Unmarked but generator-authored: nothing to keep. Recognised by the footer
+          only this method ever wrote, so the test cannot be fooled by an agent that
+          merely reused the heading.
+        - Anything else: the whole file. A file we did not write is somebody's work,
+          and a blind overwrite is exactly how it used to get lost.
         """
-        Write/update the MEMORY.md file.
+        if MEMORY_GENERATED_END in existing:
+            return existing.split(MEMORY_GENERATED_END, 1)[1].strip()
+        if not existing.strip():
+            return ""
+        if _LEGACY_FOOTER_RE.search(existing):
+            return ""
+        return existing.strip()
+
+    async def write_memory_file(self, content: str) -> None:
+        """Rewrite the generated zone of MEMORY.md, preserving the manual zone.
+
+        This file has two writers in code and a third in practice: the agent edits it
+        with its ordinary file tools because the core-memory prompt invites it to. The
+        write used to be an unconditional `write_text`, so whichever generator ran next
+        destroyed that work with no merge, no warning, and no way to notice afterwards.
 
         Args:
-            content: Full content to write (replaces existing)
+            content: the generated section. Everything after the end marker survives.
         """
         async with self._write_lock:
-            header = "# Long-term Memory\n\n"
+            path = self.memory_file_path
+            existing = path.read_text(encoding="utf-8") if path.exists() else ""
+            tail = self.manual_tail(existing)
             timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-            footer = f"\n\n---\n*Last updated: {timestamp}*\n"
 
-            self.memory_file_path.write_text(
-                header + content + footer, encoding="utf-8"
+            body = (
+                f"# Long-term Memory\n"
+                f"_Consolidated {timestamp}._\n\n"
+                f"{MEMORY_GENERATED_START}\n"
+                f"{content.strip()}\n"
+                f"{MEMORY_GENERATED_END}\n"
             )
+            if tail:
+                body += f"\n{tail}\n"
 
-        logger.info("Updated MEMORY.md")
+            path.write_text(body, encoding="utf-8")
+
+        logger.info("Updated MEMORY.md (generated zone, %d chars kept)", len(tail))
 
     async def read_memory_file(self) -> Optional[str]:
         """

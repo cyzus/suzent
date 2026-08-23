@@ -6,6 +6,8 @@ Centralizes all prompt engineering for the memory system.
 
 from typing import Dict, List, Any, Optional
 
+from suzent.memory.markdown_store import MEMORY_GENERATED_END
+
 
 # ===== Core Memory Context Prompts =====
 
@@ -101,6 +103,9 @@ Your memory lives in plain markdown files you can read and write directly:
 **How to update your memory:**
 - To update persona, user profile, or long-term context: use `edit_file` or `write_file` on the corresponding `.md` file
 - To update session scratchpad / task state: write to `context.md` in the sessions directory
+- `MEMORY.md` is part generated: consolidation rewrites everything above the
+  `{MEMORY_GENERATED_END}` marker, so put anything you want to keep **below** it. Text
+  above that line is not yours and will not survive the next pass
 - Do **not** append duplicate or ephemeral information; keep files concise and scannable
 
 {notebook_title}

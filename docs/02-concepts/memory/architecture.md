@@ -115,6 +115,21 @@ those days on its own.
    disappears. Every tombstone write must be paired with an explicit reindex.
 5. **Recall enrichment must never block a write.** A search outage degrades extraction
    quality, never durability.
+6. **Only the generated zone of `MEMORY.md` is generated.** The file has two generators
+   and an agent editing it directly; everything after the `<!-- /memory:generated -->`
+   marker is copied through untouched, and a file with no marker that we cannot prove we
+   wrote is treated as entirely manual.
+
+### Who owns MEMORY.md
+
+Two writers regenerate the same file. `refresh_core_memory_facts` (per turn, from the top
+archival rows) is the legacy path; `promote_memory_md` (per productive dream, from
+consolidated `3_Personal/` pages plus recall signal) is its replacement. The hand-over
+needs no flag day: the legacy path stands down as soon as the vault has any personal page,
+so as the dream fills the vault it simply stops firing.
+
+Both write through the same marked zone, so an agent's or user's own notes below the
+marker survive either of them.
 
 ## What landed in PR #118
 
@@ -125,6 +140,9 @@ those days on its own.
 | `ca421b74` | Extraction was context-free. The prompt now carries the nearest known facts, with an explicit rule permitting updates. |
 | `5fc97850` | The dream resolved duplicates by doing nothing. It now retires folded-in log lines through the tombstone hand-off. |
 | `07f24c4b` | Repeats had nowhere to go but the bin. Personal claims now carry `(confirmed 12x, last YYYY-MM-DD)` and a category-derived `stale_after`. |
+| `fb47218d` | This document. |
+| `2af08c7b` | Every append to a daily log re-embedded the whole file — 28.5x amplification over the real corpus, quadratic in appends per day, and ~374k single-row inserts fragmenting the table. Archive reindex is now a diff, falling back to full replace if the diff query fails. |
+| _this_ | `MEMORY.md` was a blind overwrite with three writers, and the per-turn refresh filtered on an importance column the indexer stamps with a constant — so it rebuilt the file exclusively from pre-June legacy rows. |
 
 ## Next steps
 
@@ -160,4 +178,6 @@ new. The revisit queue selects vault claims past their `stale_after`. Neither sh
 before step 7 — a classifier is only as good as the claims it compares against.
 
 **9 — Retire the legacy rows.** 2,833 pre-June rows predate the current write path and
-carry no source file, so they cannot be reindexed, only deleted.
+carry no source file, so they cannot be reindexed, only deleted. Deleting them is now
+safe: `MEMORY.md` no longer depends on them being the only rows above the old importance
+gate.

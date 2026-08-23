@@ -181,11 +181,16 @@ class MemoryManager:
 
     async def refresh_core_memory_facts(self, user_id: str):
         """
-        Refresh the 'facts' core memory block by summarizing highly important archival memories.
+        Refresh the 'facts' core memory block by summarizing top archival memories.
 
-        This condenses scattered archival memories into a high-density 'facts' block
-        that is always visible to the agent.
+        Legacy path, kept only until the vault has enough consolidated personal pages
+        for `promote_memory_md` to take over — which is why it stands down as soon as
+        those pages exist rather than racing the dream for the same file.
         """
+        if await self._vault_owns_memory_file():
+            logger.debug("Vault has personal pages; leaving MEMORY.md to the dream")
+            return
+
         try:
             # 1. Fetch top important memories
             # We use list_memories instead of search to get global top facts for user
@@ -199,15 +204,19 @@ class MemoryManager:
             if not memories:
                 return
 
-            # Filter for high importance only
+            # The rows are already the top 50 by importance, and that is as much
+            # selectivity as the column can offer: the indexer stamps every row it
+            # writes with a constant 0.5, so an additional
+            # `>= IMPORTANT_MEMORY_THRESHOLD` cut here matched nothing except the
+            # pre-June legacy rows — quietly rebuilding MEMORY.md from data months
+            # out of date, and set to produce an empty file the moment those rows
+            # are retired. Rank, then take what we get.
             important_facts = [
-                f"- {m['content']}"
-                for m in memories
-                if m.get("importance", 0) >= IMPORTANT_MEMORY_THRESHOLD
+                f"- {m['content']}" for m in memories if m.get("content", "").strip()
             ]
 
             if not important_facts:
-                logger.debug("No important facts found for core memory refresh")
+                logger.debug("No facts available for core memory refresh")
                 return
 
             facts_list_text = "\n".join(important_facts)
@@ -222,10 +231,15 @@ class MemoryManager:
                     max_tokens=1000,
                 )
 
-                # 3. Write summary to MEMORY.md (file-based SSoT)
+                # 3. Write summary to MEMORY.md (file-based SSoT). The store stamps
+                #    the file itself, in UTC; this used to add a second stamp from a
+                #    naive `datetime.now()`, so every generated file carried two
+                #    timestamps an hour apart wherever local time is not UTC.
                 if summary:
                     stats = await self.get_memory_stats(user_id)
-                    final_content = f"{summary.strip()}\n\n(Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M')} | Total Memories: {stats['total_memories']})"
+                    final_content = (
+                        f"{summary.strip()}\n\n_{stats['total_memories']} memories._"
+                    )
 
                     if self.markdown_store:
                         try:
@@ -239,6 +253,22 @@ class MemoryManager:
 
         except Exception as e:
             logger.error(f"Failed to refresh core memory facts: {e}")
+
+    async def _vault_owns_memory_file(self) -> bool:
+        """True once `promote_memory_md` has real material to work from.
+
+        Both writers regenerate the same file, and the newer one is strictly better
+        informed — it reads consolidated pages rather than raw extractions. Handing
+        over on the first personal page means the transition needs no flag day and no
+        config: as the dream fills the vault, the legacy path simply stops firing.
+        """
+        if not self.markdown_store:
+            return False
+        try:
+            personal_dir = self.markdown_store.notebook_dir / "3_Personal"
+            return any(personal_dir.rglob("*.md"))
+        except Exception:
+            return False
 
     async def promote_memory_md(self, user_id: str) -> None:
         """Regenerate the always-visible MEMORY.md from the vault's personal facts +
