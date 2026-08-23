@@ -542,6 +542,66 @@ class DreamRunner(BaseBrain):
     async def _advance_watermark(self, mgr, w_new: str):
         await mgr.markdown_store.write_watermark_entry(self._today_utc(), w_new)
 
+    # Below this, a "superseded" line is too generic to safely match a log line.
+    MIN_SUPERSEDED_CHARS = 24
+
+    async def _retire_superseded(self, mgr) -> int:
+        """Tombstone the fact lines the dream folded into the vault, then reindex.
+
+        The daily logs stay append-only — nothing is rewritten. Tombstoning is what
+        removes the derived row, and it is the runner's job rather than the agent's
+        so the agent never touches the index. The explicit per-date reindex is not
+        optional: appending a tombstone does not change the log's mtime, so
+        `check_and_update` would never revisit those days on its own.
+        """
+        store_md = mgr.markdown_store
+        try:
+            lines = store_md.read_superseded()
+        except Exception as e:
+            logger.warning(f"[dream] could not read superseded facts: {e}")
+            return 0
+        if not lines:
+            return 0
+
+        kept = [ln for ln in lines if len(ln) >= self.MIN_SUPERSEDED_CHARS]
+        if len(kept) != len(lines):
+            logger.info(
+                f"[dream] ignoring {len(lines) - len(kept)} superseded line(s) too "
+                "short to match a log line unambiguously"
+            )
+        if not kept:
+            store_md.clear_superseded()
+            return 0
+
+        dates = store_md.archive_dates_containing(kept)
+        for content in kept:
+            try:
+                await store_md.append_tombstone(content)
+            except Exception as e:
+                logger.warning(f"[dream] failed to tombstone a superseded fact: {e}")
+
+        for date in dates:
+            try:
+                await mgr._core_indexer.reindex_file_now(
+                    markdown_store=store_md,
+                    lancedb_store=mgr.store,
+                    embedding_gen=mgr.embedding_gen,
+                    user_id=CONFIG.user_id,
+                    label="archive",
+                    filename=f"{date}.md",
+                )
+            except Exception as e:
+                logger.error(f"[dream] reindex of {date} after supersede failed: {e}")
+
+        # Cleared only after the tombstones are durable: a crash before this point
+        # replays the same lines next run, which is idempotent. Clearing first would
+        # lose them.
+        store_md.clear_superseded()
+        logger.info(
+            f"[dream] retired {len(kept)} superseded fact(s) across {len(dates)} log(s)"
+        )
+        return len(kept)
+
     async def _reindex(self, mgr) -> None:
         """Reconcile the vault into the search index, with a hard timeout.
 
@@ -556,6 +616,11 @@ class DreamRunner(BaseBrain):
                 "[dream] skipping search reindex: no embedding model configured"
             )
             return
+
+        try:
+            await self._retire_superseded(mgr)
+        except Exception as e:
+            logger.error(f"[dream] retiring superseded facts failed: {e}")
 
         await asyncio.wait_for(
             mgr._core_indexer.check_and_update(

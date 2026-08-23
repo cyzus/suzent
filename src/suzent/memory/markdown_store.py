@@ -208,6 +208,64 @@ class MarkdownMemoryStore:
         ts = tombstones if tombstones is not None else self.read_tombstones()
         return self._normalize(content) in ts
 
+    # --- Superseded facts (dream hand-off to the runner) ---
+
+    @property
+    def superseded_path(self) -> Path:
+        return self.notebook_state_dir / "superseded.txt"
+
+    def read_superseded(self) -> List[str]:
+        """Fact lines the dream folded into the vault and wants out of the index.
+
+        The dream only ever appends here. Turning these into tombstones and
+        reindexing the affected logs is the runner's job, so that index mutation
+        stays out of the agent's hands and the daily logs stay append-only.
+        """
+        p = self.superseded_path
+        if not p.exists():
+            return []
+        out: List[str] = []
+        seen: set = set()
+        for line in _read_text(p).splitlines():
+            line = line.strip().lstrip("-").strip()
+            if not line:
+                continue
+            key = self._normalize(line)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(line)
+        return out
+
+    def clear_superseded(self) -> None:
+        """Truncate the hand-off file once its lines are tombstoned (never raises)."""
+        try:
+            if self.superseded_path.exists():
+                self.superseded_path.write_text("", encoding="utf-8")
+        except Exception as e:
+            logger.warning(f"Failed to clear superseded file: {e}")
+
+    def archive_dates_containing(self, contents: List[str]) -> List[str]:
+        """Dates whose daily log holds any of *contents*, oldest first.
+
+        Matching is normalized-substring against the whole log line rather than a
+        parse of it: the fact body sits inside the line, and a false positive only
+        costs one redundant reindex, which is delete-then-add and therefore
+        idempotent. Missing a date, by contrast, would leave the row in the index
+        with no mtime change to ever bring the watcher back to it.
+        """
+        wanted = [self._normalize(c) for c in contents if c and c.strip()]
+        if not wanted:
+            return []
+        dates: set = set()
+        for path in sorted(self.archive_dir.glob("????-??-??.md")):
+            if not path.is_file():
+                continue
+            body = self._normalize(_read_text(path))
+            if any(w in body for w in wanted):
+                dates.add(path.stem)
+        return sorted(dates)
+
     # --- Dream pacing state (durable across restarts) ---
 
     @property

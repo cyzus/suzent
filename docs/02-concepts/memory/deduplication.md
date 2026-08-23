@@ -45,16 +45,34 @@ explicitly prefers — emitting a fact that *changes* one of them. Recall is bes
 a search failure returns nothing and extraction proceeds exactly as before, because
 enriching the prompt must never be able to block a memory write.
 
-### Nothing deduplicates the archival index
+### Nothing deduplicates the archival index (fixed)
 
 Write-time deduplication was removed in `98a39a3b` (fixes #34) because a 0.85 cosine
 threshold silently dropped *updates* to facts. The intended replacement was the dream
 consolidation pass — but the dream consolidates into the notebook vault, while
 `DREAM_SYSTEM_PROMPT` declares the daily logs read-only and `DREAM_INSTRUCTIONS` step 3b
-resolves a duplicate by doing nothing. The lint pass audits the vault only.
+resolved a duplicate by doing nothing. The lint pass audits the vault only.
 
-The archival index is derived from the logs. A duplicate written today is therefore
-permanent.
+The archival index is derived from the logs, so a duplicate written today was permanent.
+
+Step 3b now ends in a retirement: after folding a log line into a page, the dream appends
+the fact text to `notebook/.state/superseded.txt`. That file is the hand-off. The runner —
+not the agent — reads it in `_retire_superseded`, tombstones each line, reindexes every
+day whose log contains it, and only then truncates it. Ordering is deliberate: a crash
+before the truncate replays the same lines, which is idempotent, while clearing first
+would lose them.
+
+The split keeps each side to what it is good at. The agent writes files, which is its only
+declared capability; index mutation stays with the runner. And the logs are still never
+rewritten, so the race with the live write path appending to today's log cannot happen.
+
+Two guards worth knowing about:
+
+- Lines shorter than `MIN_SUPERSEDED_CHARS` (24) are refused. Date lookup is a normalized
+  substring match, so a fragment like "dark mode" would match logs it never came from.
+- The match is deliberately loose in the other direction. A false positive costs one
+  redundant reindex, which is delete-then-add and therefore harmless; a *missed* date
+  would strand the row in the index with no mtime change to ever bring the watcher back.
 
 ### The dream barely runs (fixed)
 
@@ -140,12 +158,12 @@ The dream gains two queues beyond its current one:
 - **Confirm** — fold `confirmations.jsonl` into claim counters, then truncate it.
 - **Revisit** — vault claims past their `stale_after`.
 
-The duplicate rule in ingest changes from "do nothing" to four outcomes: increment the
-claim's confirmation count, supersede it, sharpen it (replace the body with the more
-specific wording, keep the accumulated counters), or add it as novel.
+The duplicate rule in ingest is no longer "do nothing": keep the richest wording on the
+page and retire the weaker log lines. Incrementing a confirmation count and sharpening in
+place both need the claim frontmatter from step 4; the retire half is live now.
 
-A reconcile phase then runs **in the runner, not the agent**: collect every date and
-page the run touched and call `reindex_file_now` for each.
+The reconcile phase runs **in the runner, not the agent** — `_retire_superseded` reads the
+hand-off file, tombstones, and calls `reindex_file_now` per affected date.
 
 ### Borrowed from the Open Knowledge Format
 
@@ -183,10 +201,13 @@ formal `okf_version` conformance.
    state costs one full reindex, which doubles as the backfill for the window above the
    watermark), and retire the legacy pre-June rows.
 3. ~~Add the already-known context to extraction.~~ Done.
-4. Add OKF frontmatter to vault pages: writer first, then ranking.
-5. Run a catch-up dream over the backlog with ingest and confirm enabled.
-6. Add the write-path classifier and the revisit queue, once there is a populated claim
+4. ~~Stop the dream from resolving duplicates by doing nothing — retire folded-in log
+   lines via the tombstone hand-off.~~ Done.
+5. Add OKF frontmatter to vault pages: writer first, then ranking. This is what unlocks
+   the remaining two duplicate outcomes (confirm, sharpen in place).
+6. Run a catch-up dream over the backlog with ingest and confirm enabled.
+7. Add the write-path classifier and the revisit queue, once there is a populated claim
    set for them to work against.
 
-Steps 3 and 4 are independent. Step 6 should not land before step 5 — the classifier is
+Steps 3 and 5 are independent. Step 7 should not land before step 6 — the classifier is
 only as good as the claims it compares against.

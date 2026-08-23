@@ -327,6 +327,13 @@ Max 2000 words. Respond with the summary only.
 DREAM_MEMORY_ROOT = "/shared/memory"  # daily logs: {DREAM_MEMORY_ROOT}/archive/*.md
 DREAM_NOTEBOOK_ROOT = "/mnt/notebook"  # the vault the agent maintains
 
+# Where the dream drops fact lines it has folded into the vault and wants dropped
+# from the search index. The agent only ever writes this file; the runner turns the
+# lines into tombstones and reindexes the affected logs, keeping index mutation out
+# of the agent's hands and the daily logs append-only.
+DREAM_SUPERSEDED_FILENAME = "superseded.txt"
+DREAM_SUPERSEDED_PATH = f"{DREAM_NOTEBOOK_ROOT}/.state/{DREAM_SUPERSEDED_FILENAME}"
+
 DREAM_SYSTEM_PROMPT = f"""You are Suzent's memory consolidation agent ("dream"). You run \
 autonomously to turn the raw, append-only daily memory logs into a clean, durable, \
 cross-referenced knowledge vault.
@@ -342,6 +349,7 @@ Rules:
 - Preserve history: when a fact changes over time, record "currently X; previously Y" — never silently overwrite.
 - Only remove a statement when it is a genuine correction or an exact duplicate.
 - Do NOT write to log.md — the runner records consolidation events there. Put conflicts on content pages.
+- {DREAM_SUPERSEDED_PATH} is append-only and write-only for you: read it if you must, never clear it.
 """
 
 DREAM_INSTRUCTIONS = f"""Consolidate the daily memory logs dated after {{start}} through {{end}} into the vault.
@@ -352,7 +360,11 @@ DREAM_INSTRUCTIONS = f"""Consolidate the daily memory logs dated after {{start}}
    a. Find the page it belongs to (index.md + glob_search/grep_search + memory_search).
       Personal facts about the user -> 3_Personal/ ; domain knowledge -> 2_Wiki/.
    b. Apply the matching case:
-      - Duplicate (same fact reworded)              -> do nothing.
+      - Duplicate (same fact reworded)              -> keep the richest wording on the
+                                                       page, then retire the weaker log
+                                                       lines (step 3d). Never keep a
+                                                       vaguer restatement of a fact you
+                                                       already hold in more detail.
       - New, non-conflicting                        -> add under the right section.
       - Correction (new entry shows old was wrong)  -> replace the wrong statement.
       - Change over time (both true at diff. times) -> rewrite as "Currently X (since {{end}});
@@ -362,6 +374,12 @@ DREAM_INSTRUCTIONS = f"""Consolidate the daily memory logs dated after {{start}}
         content page (or create a conflict-review page in the schema's appropriate location
         if no topical page exists) and apply the schema's needs-review marker.
    c. Convert relative dates ("yesterday") to absolute.
+   d. Retire what you folded in: append the exact log fact text (the part after the
+      `- [category] ` prefix, without the trailing backtick tags) to
+      {DREAM_SUPERSEDED_PATH}, one per line, for any line that is now fully represented
+      on a page AND adds nothing the page does not say. The runner drops those from the
+      search index; the daily logs themselves stay untouched. When in doubt, leave it
+      out — a duplicate in the index is cheaper than a fact that vanishes.
 4. Add `## Related` links using the schema's link style.
 5. Update index.md. Do NOT write the watermark to log.md — the runner records it.
 
