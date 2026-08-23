@@ -46,7 +46,10 @@ class DreamRunner(BaseBrain):
         self._lock = asyncio.Lock()
         # Ephemeral pacing state (NOT the watermark, which lives in log.md).
         self._last_attempt_at: float = 0.0
-        self._failures: dict = {}  # batch-end-date -> consecutive no-op count
+        # batch-end-date -> consecutive no-op count. Mirrors the durable copy in
+        # the vault's .state/dream_state.json; see _load_failures.
+        self._failures: dict = {}
+        self._failures_loaded = False
         self._last_started_at: Optional[str] = None
         self._last_finished_at: Optional[str] = None
         self._last_result: Optional[dict[str, Any]] = None
@@ -85,6 +88,28 @@ class DreamRunner(BaseBrain):
     @staticmethod
     def _today_utc() -> str:
         return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    def _load_failures(self, mgr) -> None:
+        """Hydrate retry counters from disk once per process.
+
+        Retry-then-skip only works if the count survives a restart: the runner is
+        gated to one attempt per batch per app run, so an in-memory counter never
+        reaches max_retries on a desktop app and the backlog wedges silently.
+        """
+        if self._failures_loaded:
+            return
+        try:
+            self._failures = mgr.markdown_store.read_dream_failures()
+        except Exception as e:
+            logger.warning(f"[dream] could not read pacing state: {e}")
+            self._failures = {}
+        self._failures_loaded = True
+
+    def _save_failures(self, mgr) -> None:
+        try:
+            mgr.markdown_store.write_dream_failures(self._failures)
+        except Exception as e:
+            logger.warning(f"[dream] could not persist pacing state: {e}")
 
     def _pending_dates(self, mgr, watermark: Optional[str]) -> List[str]:
         """Daily-log dates not yet consolidated and strictly before today (UTC)."""
@@ -167,6 +192,7 @@ class DreamRunner(BaseBrain):
                 "last_lint_result": last_lint_result,
             }
 
+        self._load_failures(mgr)
         watermark = mgr.markdown_store.read_watermark()
         pending = self._pending_dates(mgr, watermark)
         pending_facts = self._count_fact_lines(mgr, pending)
@@ -228,6 +254,7 @@ class DreamRunner(BaseBrain):
         mgr = get_memory_manager()
         if not mgr or not mgr.markdown_store or not mgr.llm_client:
             return
+        self._load_failures(mgr)
 
         watermark = mgr.markdown_store.read_watermark()
         pending = self._pending_dates(mgr, watermark)
@@ -339,6 +366,8 @@ class DreamRunner(BaseBrain):
             return {"ran": False, "reason": "already running"}
         async with self._lock:
             self._phase = "preparing"
+            # force_run reaches here without going through _tick.
+            self._load_failures(mgr)
             self._last_attempt_at = time.time()
             self._last_started_at = datetime.now(timezone.utc).isoformat()
             batch = pending[: CONFIG.memory_consolidation_max_days]
@@ -349,6 +378,7 @@ class DreamRunner(BaseBrain):
                 logger.warning(f"[dream] skipping un-consolidatable batch <= {w_new}")
                 await self._advance_watermark(mgr, w_new)
                 self._failures.pop(w_new, None)
+                self._save_failures(mgr)
                 result = {
                     "ran": True,
                     "phase": "ingest",
@@ -389,6 +419,7 @@ class DreamRunner(BaseBrain):
             changed = self._content_pages_state(mgr) != before
             if not (agent_ok and changed):
                 self._failures[w_new] = self._failures.get(w_new, 0) + 1
+                self._save_failures(mgr)
                 reason = (
                     "agent run failed/timed out"
                     if not agent_ok
@@ -409,6 +440,7 @@ class DreamRunner(BaseBrain):
                 return result
 
             self._failures.pop(w_new, None)
+            self._save_failures(mgr)
             result_summary = summary or f"Consolidated through {w_new}."
             await self._advance_watermark(mgr, w_new)
             # Promote MEMORY.md (bounded) so the curated summary reflects this batch.

@@ -208,6 +208,43 @@ class MarkdownMemoryStore:
         ts = tombstones if tombstones is not None else self.read_tombstones()
         return self._normalize(content) in ts
 
+    # --- Dream pacing state (durable across restarts) ---
+
+    @property
+    def dream_state_path(self) -> Path:
+        return self.notebook_state_dir / "dream_state.json"
+
+    def read_dream_failures(self) -> dict:
+        """Consecutive no-op counts per batch end date, `{"YYYY-MM-DD": int}`.
+
+        Durable because retry-then-skip is what stops one un-consolidatable batch
+        from wedging the backlog forever. Held only in memory, the counter resets
+        on every process start, so the skip never fires on a desktop app that
+        restarts between attempts and the watermark stops advancing for good.
+        """
+        p = self.dream_state_path
+        if not p.exists():
+            return {}
+        try:
+            data = json.loads(_read_text(p))
+        except Exception:
+            return {}
+        if not isinstance(data, dict):
+            return {}
+        failures = data.get("failures")
+        if not isinstance(failures, dict):
+            return {}
+        return {k: v for k, v in failures.items() if isinstance(v, int)}
+
+    def write_dream_failures(self, failures: dict) -> None:
+        """Best-effort persist of the retry counters (never raises)."""
+        try:
+            self.dream_state_path.write_text(
+                json.dumps({"failures": failures}, indent=2), encoding="utf-8"
+            )
+        except Exception as e:
+            logger.warning(f"Failed to persist dream state: {e}")
+
     # --- Daily Logs ---
 
     def _daily_log_path(self, date: str) -> Path:
