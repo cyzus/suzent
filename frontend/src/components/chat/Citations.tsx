@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { ImageWithFallback } from './ImageWithFallback';
 import { createPortal } from 'react-dom';
 import type { CitationSource } from '../../lib/streamEvents';
 import { InformationPopover } from '../InformationPopover';
@@ -297,17 +298,15 @@ const Favicon: React.FC<{ src?: string | null; type?: string; url?: string | nul
   url,
   className = 'w-3.5 h-3.5',
 }) => {
-  const [failed, setFailed] = useState(false);
-  if (!src || failed) {
+  if (!src) {
     return <span className={`inline-flex items-center justify-center leading-none ${className}`}>{typeIcon(type, url)}</span>;
   }
   return (
-    <img
+    <ImageWithFallback
       src={src}
-      alt=""
-      className={`${className} shrink-0 rounded-[2px] object-contain`}
-      onError={() => setFailed(true)}
-      loading="lazy"
+      imgClassName={`${className} shrink-0 rounded-[2px] object-contain`}
+      fallbackClassName={`inline-flex items-center justify-center leading-none ${className}`}
+      fallback={typeIcon(type, url)}
     />
   );
 };

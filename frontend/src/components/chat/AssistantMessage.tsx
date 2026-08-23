@@ -4,6 +4,7 @@ import type { AGUIPart, ApprovalRememberScope } from '../../hooks/useAGUI';
 import { splitAssistantContent, ContentBlock, formatMessageTime, hasStreamedOutput } from '../../lib/chatUtils';
 import { ThinkingAnimation, AgentBadge, RobotIcon } from './ThinkingAnimation';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { ImageWithFallback } from './ImageWithFallback';
 import { ToolCallBlock } from './ToolCallBlock';
 import { SubAgentCallBlock } from './SubAgentCallBlock';
 import { AcpPermissionPrompt } from './AcpPermissionPrompt';
@@ -531,7 +532,6 @@ const ForkButton: React.FC<{ onClick: () => void }> = ({ onClick }) => {
 };
 
 const ProviderFavicon: React.FC<{ model: string }> = ({ model }) => {
-  const [imgFailed, setImgFailed] = useState(false);
   const visual = getProviderVisualForModel(model);
   if (!visual) return null;
 
@@ -544,12 +544,13 @@ const ProviderFavicon: React.FC<{ model: string }> = ({ model }) => {
       style={{ backgroundColor: `#${visual.color}` }}
       aria-hidden="true"
     >
-      {logoUrl && !imgFailed ? (
-        <img
+      {logoUrl ? (
+        <ImageWithFallback
           src={logoUrl}
-          alt=""
-          className="h-2 w-2 object-contain"
-          onError={() => setImgFailed(true)}
+          imgClassName="h-2 w-2 object-contain"
+          fallbackClassName="text-[5px] font-black leading-none text-white"
+          fallback={initials}
+          loading="eager"
         />
       ) : (
         <span className="text-[5px] font-black leading-none text-white">

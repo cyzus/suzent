@@ -1,8 +1,9 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import DOMPurify from 'dompurify';
 import { useStatusStore } from '../../hooks/useStatusStore';
 import { useI18n } from '../../i18n';
 import { MermaidDiagram } from '../MermaidDiagram';
+import { useSelectionContainment } from '../../hooks/useSelectionContainment';
 
 interface CodeBlockComponentProps {
   lang?: string;
@@ -29,6 +30,11 @@ export const CodeBlockComponent: React.FC<CodeBlockComponentProps> = ({ lang, co
     () => (renderPreview && isHtml ? DOMPurify.sanitize(content) : ''),
     [renderPreview, isHtml, content],
   );
+
+  // A code line is often far wider than it is tall, so a drag that slips a few
+  // pixels off the line would otherwise select every block above or below it.
+  const preRef = useRef<HTMLPreElement>(null);
+  useSelectionContainment(preRef, !renderPreview);
 
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -100,7 +106,7 @@ export const CodeBlockComponent: React.FC<CodeBlockComponentProps> = ({ lang, co
             dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
           />
         ) : (
-          <pre className={`max-w-full text-[12px] text-brutal-black dark:text-neutral-100 px-3 py-2.5 leading-5 overflow-x-auto !bg-transparent whitespace-pre font-mono m-0`}>
+          <pre ref={preRef} className={`max-w-full text-[12px] text-brutal-black dark:text-neutral-100 px-3 py-2.5 leading-5 overflow-x-auto !bg-transparent whitespace-pre font-mono m-0`}>
             <code className={`language-${safeLang}`}>
               {content}
               {isStreaming && <span className="animate-brutal-blink inline-block w-2.5 h-4 bg-brutal-black align-middle ml-1"></span>}

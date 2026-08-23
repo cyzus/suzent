@@ -3,13 +3,18 @@ import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react
 interface UseAutoScrollOptions {
   tolerance?: number;
   resetKey?: unknown;
+  /**
+   * Set to false while content streams in: high-frequency smooth scrolls
+   * fight each other and make the viewport crawl behind the content.
+   */
+  smooth?: boolean;
 }
 
 export function useAutoScroll(
   dependencies: any[],
   options: UseAutoScrollOptions = {}
 ) {
-  const { tolerance = 50, resetKey } = options;
+  const { tolerance = 50, resetKey, smooth = true } = options;
 
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -28,6 +33,18 @@ export function useAutoScroll(
   const userScrollIntentRef = useRef(false);
   const userScrollIntentTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // While the user is selecting text inside the scroller, any programmatic
+  // scroll drags the content out from under the cursor and the browser extends
+  // the selection to whatever text lands there — the classic "selection drift".
+  const isPointerSelectingRef = useRef(false);
+
+  // Deliberately scoped to a live drag rather than "a selection exists": a
+  // resting selection stays anchored to its own DOM nodes, so scrolling or
+  // prepending around it is harmless. Gating on a resting selection instead
+  // wedges the scroller — autoscroll and older-message loading both stop until
+  // the user happens to click the selection away.
+  const isSelectionDragActive = useCallback(() => isPointerSelectingRef.current, []);
+
   // Set up scroll listeners
   useEffect(() => {
     const el = scrollContainerRef.current;
@@ -43,12 +60,44 @@ export function useAutoScroll(
       }, 250);
     };
 
+    const onPointerDown = (event: PointerEvent) => {
+      markUserIntent();
+      // Only a primary-button drag can create a selection.
+      if (event.button === 0) {
+        isPointerSelectingRef.current = true;
+      }
+    };
+
+    const endPointerSelection = () => {
+      isPointerSelectingRef.current = false;
+    };
+
+    const onPointerMove = (event: PointerEvent) => {
+      if (isPointerSelectingRef.current && event.buttons === 0) {
+        endPointerSelection();
+      }
+    };
+
+    // Keyboard scrolling produces a bare scroll event with no wheel/pointer to
+    // pair it with; without this it reads as a layout shift and gets ignored.
+    const SCROLL_KEYS = new Set([
+      'PageUp', 'PageDown', 'ArrowUp', 'ArrowDown', 'Home', 'End', ' ', 'Spacebar',
+    ]);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (SCROLL_KEYS.has(event.key)) {
+        markUserIntent();
+      }
+    };
+
     const onUserScroll = () => {
-      if (autoScrollInProgress.current) return;
+      // A deliberate user scroll wins even mid-animation: our own programmatic
+      // scrolls never set the intent flag, so this cannot swallow itself.
+      if (autoScrollInProgress.current && !userScrollIntentRef.current) return;
       const atBottom = isAtBottom(el);
 
       // Always re-enable autoscroll once we are back at bottom.
       if (atBottom) {
+        autoScrollInProgress.current = false;
         autoScrollEnabledRef.current = true;
         setShowScrollButton(false);
         return;
@@ -67,13 +116,25 @@ export function useAutoScroll(
     el.addEventListener('scroll', onUserScroll, { passive: true });
     el.addEventListener('wheel', markUserIntent, { passive: true });
     el.addEventListener('touchstart', markUserIntent, { passive: true });
-    el.addEventListener('pointerdown', markUserIntent, { passive: true });
+    el.addEventListener('pointerdown', onPointerDown, { passive: true });
+    el.addEventListener('keydown', onKeyDown, { passive: true });
+    window.addEventListener('pointerup', endPointerSelection, { passive: true });
+    window.addEventListener('pointercancel', endPointerSelection, { passive: true });
+    // Insurance against a dropped pointerup (release outside the window, a
+    // swallowed event): a stuck flag would silently wedge the scroller.
+    window.addEventListener('blur', endPointerSelection);
+    window.addEventListener('pointermove', onPointerMove, { passive: true });
 
     return () => {
       el.removeEventListener('scroll', onUserScroll);
       el.removeEventListener('wheel', markUserIntent);
       el.removeEventListener('touchstart', markUserIntent);
-      el.removeEventListener('pointerdown', markUserIntent);
+      el.removeEventListener('pointerdown', onPointerDown);
+      el.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('pointerup', endPointerSelection);
+      window.removeEventListener('pointercancel', endPointerSelection);
+      window.removeEventListener('blur', endPointerSelection);
+      window.removeEventListener('pointermove', onPointerMove);
       if (userScrollIntentTimeoutRef.current) {
         clearTimeout(userScrollIntentTimeoutRef.current);
       }
@@ -83,9 +144,22 @@ export function useAutoScroll(
   // Helper for programmatically scrolling
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
-  const performAutoScroll = useCallback((behavior: ScrollBehavior = 'auto') => {
+  const performAutoScroll = useCallback((
+    behavior: ScrollBehavior = 'auto',
+    { force = false }: { force?: boolean } = {},
+  ) => {
     if (!bottomRef.current) return;
-    
+
+    // Never move the viewport under an in-progress or existing selection —
+    // doing so makes the selection run away from the cursor. Autoscroll stays
+    // armed and resumes as soon as the selection is cleared.
+    if (!force && isSelectionDragActive()) {
+      if (!isAtBottom(scrollContainerRef.current)) {
+        setShowScrollButton(true);
+      }
+      return;
+    }
+
     // Set flag to ignore subsequent scroll events triggered by this action
     autoScrollInProgress.current = true;
     bottomRef.current.scrollIntoView({ behavior });
@@ -94,7 +168,8 @@ export function useAutoScroll(
       clearTimeout(scrollTimeoutRef.current);
     }
     
-    // Reset flag after browser has had time to process the scroll
+    // Reset flag after browser has had time to process the scroll.
+    // A smooth scroll animates well past the 150ms an instant jump needs.
     scrollTimeoutRef.current = setTimeout(() => {
       autoScrollInProgress.current = false;
       
@@ -106,8 +181,8 @@ export function useAutoScroll(
           autoScrollEnabledRef.current = true;
         }
       }
-    }, 150); // Give enough time for 'auto' or basic scrolling to settle
-  }, [isAtBottom]);
+    }, behavior === 'smooth' ? 450 : 150);
+  }, [isAtBottom, isSelectionDragActive]);
 
   const previousResetKeyRef = useRef(resetKey);
   const skipNextSmoothScrollRef = useRef(false);
@@ -119,7 +194,8 @@ export function useAutoScroll(
     skipNextSmoothScrollRef.current = true;
     autoScrollEnabledRef.current = true;
     setShowScrollButton(false);
-    performAutoScroll('auto');
+    // Switching chats: any selection belongs to the outgoing conversation.
+    performAutoScroll('auto', { force: true });
   }, [resetKey, performAutoScroll]);
 
   // Auto-scroll when dependencies change
@@ -131,7 +207,7 @@ export function useAutoScroll(
         return;
       }
 
-      performAutoScroll('smooth');
+      performAutoScroll(smooth ? 'smooth' : 'auto');
 
       // Re-apply after layout transitions (e.g. sidebar width animation)
       // to avoid being left slightly above bottom after rapid toggle/resizes.
@@ -180,13 +256,15 @@ export function useAutoScroll(
   const scrollToBottom = useCallback(() => {
     autoScrollEnabledRef.current = true;
     setShowScrollButton(false);
-    performAutoScroll('smooth');
+    performAutoScroll('smooth', { force: true });
   }, [performAutoScroll]);
 
   return {
     scrollContainerRef,
     bottomRef,
     showScrollButton,
-    scrollToBottom
+    scrollToBottom,
+    /** True only while a pointer drag is in progress inside the scroller. */
+    isSelectionDragActive,
   };
 }

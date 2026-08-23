@@ -1166,6 +1166,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   // (plus the live streaming parts) into one map. Source ids are globally unique
   // across turns (t{turn}_src_n), so a single flat map lets a badge in any
   // message resolve a source registered in any (earlier) turn.
+  const citationSourcesRef = useRef<CitationSourcesMap>(new Map());
   const chatCitationSources = useMemo<CitationSourcesMap>(() => {
     const map: CitationSourcesMap = new Map();
     const addParts = (parts?: AGUIPart[]) => {
@@ -1177,6 +1178,16 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     };
     for (const m of safeMessages) addParts(m.parts);
     if (showTransientAssistant) addParts(streamingParts);
+    // This map is a React context value read by every MarkdownRenderer. A fresh
+    // identity re-renders all of them, and their `components` map is keyed into
+    // React's element type — so a pointless new Map on each streaming chunk
+    // would remount every message's DOM and wipe the user's selection. Reuse
+    // the previous map whenever the set of sources is unchanged.
+    const previous = citationSourcesRef.current;
+    if (previous.size === map.size && [...map.keys()].every(id => previous.has(id))) {
+      return previous;
+    }
+    citationSourcesRef.current = map;
     return map;
   }, [safeMessages, streamingParts, showTransientAssistant]);
   const hasHiddenOlderMessages = visibleMessageStartIndex > 0;
@@ -1340,9 +1351,15 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
 
   // Auto-scroll
-  const { scrollContainerRef, bottomRef, scrollToBottom } = useAutoScroll(
-    [safeMessages, isStreaming],
-    { resetKey: `${currentChatId ?? 'new'}:${safeMessages.length > 0}` },
+  // Depend on the message count, not the array identity: `safeMessages` is a
+  // fresh array on every streaming chunk, which would fire a scroll per token.
+  // Growth within a message is already covered by the hook's ResizeObserver.
+  const { scrollContainerRef, bottomRef, scrollToBottom, isSelectionDragActive } = useAutoScroll(
+    [safeMessages.length, isStreaming],
+    {
+      resetKey: `${currentChatId ?? 'new'}:${safeMessages.length > 0}`,
+      smooth: !isStreaming,
+    },
   );
 
   // When a tool transitions into a pending approval, force-scroll to the bottom
@@ -1391,19 +1408,26 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     if (!el || !hasHiddenOlderMessages) return;
 
     const maybeLoadOlder = () => {
-      if (el.scrollTop <= LOAD_MORE_SCROLL_THRESHOLD_PX) {
-        loadOlderVisibleMessages();
-      }
+      if (el.scrollTop > LOAD_MORE_SCROLL_THRESHOLD_PX) return;
+      // Prepending a page of messages grows the scroller above the viewport and
+      // the compensating scrollTop write lands mid-drag, which yanks the
+      // selection focus across the message. Wait until the pointer is released.
+      if (isSelectionDragActive()) return;
+      loadOlderVisibleMessages();
     };
 
     el.addEventListener('scroll', maybeLoadOlder, { passive: true });
+    // Dragging to the top while selecting suppresses the load above; retry once
+    // the drag ends so the user is not stuck without a scroll event to retrigger.
+    window.addEventListener('pointerup', maybeLoadOlder, { passive: true });
 
     const raf = requestAnimationFrame(maybeLoadOlder);
     return () => {
       el.removeEventListener('scroll', maybeLoadOlder);
+      window.removeEventListener('pointerup', maybeLoadOlder);
       cancelAnimationFrame(raf);
     };
-  }, [hasHiddenOlderMessages, loadOlderVisibleMessages, scrollContainerRef]);
+  }, [hasHiddenOlderMessages, loadOlderVisibleMessages, scrollContainerRef, isSelectionDragActive]);
 
   useLayoutEffect(() => {
     const snapshot = prependScrollSnapshotRef.current;

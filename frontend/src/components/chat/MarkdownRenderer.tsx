@@ -346,10 +346,66 @@ const LiteMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
   return <div className="prose dark:prose-invert tight-lists prose-sm max-w-none break-words select-text space-y-3">{parts}</div>;
 };
 
+const REMARK_PLUGINS = [remarkGfm];
+const REHYPE_PLUGINS: never[] = [];
+
+/**
+ * Block dangerous protocols while allowing standard ones. Pure, so it lives at
+ * module scope: a fresh identity each render would re-run react-markdown's URL
+ * pass for nothing.
+ */
+function safeUrlTransform(url: string): string {
+  const normalizedUrl = normalizeMarkdownUrl(url);
+  const urlLower = normalizedUrl.toLowerCase().trim();
+
+  // Allow safe protocols. `file:` is permitted because the `a` renderer
+  // intercepts file:// hrefs into a FileButton (opened in the in-app file
+  // view via onFileClick) rather than letting the browser navigate to them —
+  // so it must survive this transform instead of being stripped to ''.
+  const safeProtocols = ['http:', 'https:', 'mailto:', 'tel:', 'file:'];
+  const hasProtocol = urlLower.includes(':');
+
+  if (urlLower.startsWith('data:image/')) {
+    return /^data:image\/(?:png|jpe?g|gif|webp|svg\+xml);base64,/i.test(normalizedUrl)
+      ? normalizedUrl
+      : '';
+  }
+
+  if (hasProtocol) {
+    const isAllowed = safeProtocols.some(protocol => urlLower.startsWith(protocol));
+    if (!isAllowed) {
+      // Block dangerous protocols like javascript:, unsupported data:, vbscript:, etc.
+      return '';
+    }
+  }
+
+  // Allow relative URLs and fragment links
+  return normalizedUrl;
+}
+
 export const MarkdownRenderer = React.memo<MarkdownRendererProps>(({ content, onFileClick, streamingLite = false }) => {
   const RM: any = ReactMarkdown;
   const sourcesMap = useCitationSources();
   const openingLinksRef = React.useRef(new Map<string, number>());
+
+  // The `components` map below is keyed into React's element type. A fresh
+  // identity for any entry makes React unmount and remount that entire subtree
+  // instead of reconciling it, which destroys any selection the user is holding
+  // — so every value the map closes over has to be identity-stable. `onFileClick`
+  // arrives fresh from the parent on most renders, so route it through a ref.
+  const onFileClickRef = React.useRef(onFileClick);
+  React.useEffect(() => {
+    onFileClickRef.current = onFileClick;
+  });
+
+  const hasFileClick = Boolean(onFileClick);
+  const handleFileClick = React.useMemo(
+    () => (hasFileClick
+      ? (filePath: string, fileName: string, shiftKey?: boolean) =>
+        onFileClickRef.current?.(filePath, fileName, shiftKey)
+      : undefined),
+    [hasFileClick],
+  );
 
   const isExternalLink = React.useCallback((href: string): boolean => {
     // Includes file: so renderers without an onFileClick handler still open the
@@ -427,247 +483,218 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(({ content, on
   // Sanitize code block languages
   const sanitized = sanitizeMarkdownCodeFenceLanguages(normalized);
 
+  const components = React.useMemo(() => ({
+      pre: (p: any) => {
+        if (p.node?.children?.length === 1 && p.node.children[0].tagName === 'code') {
+          const child = React.Children.toArray(p.children)[0];
+          const className = React.isValidElement(child)
+            ? String((child.props as { className?: string }).className || '')
+            : '';
+          const match = /language-([a-zA-Z0-9_-]+)/.exec(className);
+          const codeContent = extractCodeText(p.children).replace(/\n$/, '');
+
+          return <CodeBlockComponent lang={match?.[1] || 'text'} content={codeContent} />;
+        }
+        return (
+          <div className="bg-neutral-50 dark:bg-zinc-800 p-4 overflow-x-auto">
+            <pre className="font-mono text-xs text-brutal-black dark:text-neutral-200 leading-relaxed whitespace-pre-wrap break-all">
+              {p.children}
+            </pre>
+          </div>
+        );
+      },
+      code: (codeProps: any) => {
+        const { inline, className, children, ...rest } = codeProps;
+        const match = /language-([a-zA-Z0-9_-]+)/.exec(className || '');
+        const lang = match ? match[1] : null;
+
+        // Extract text content
+        const extractCodeText = (children: any): string => {
+          if (typeof children === 'string') return children;
+          if (Array.isArray(children)) return children.map(extractCodeText).join('');
+          if (React.isValidElement(children)) {
+            const props = children.props as any;
+            if (props?.children) {
+              return extractCodeText(props.children);
+            }
+          }
+          return String(children);
+        };
+
+        const codeContent = extractCodeText(children).replace(/\n$/, '');
+
+        // Detect if this is inline code (no language and not in a <pre> parent).
+        // Some models wrap multi-line ASCII diagrams in a single backtick span;
+        // render those as blocks so they don't become a stack of inline chips.
+        const isMultilineInlineCode = !lang && codeContent.includes('\n');
+        const isInline = inline !== false && !lang && !isMultilineInlineCode;
+
+        if (isInline && hasCitationMarker(codeContent)) {
+          return <>{renderTextWithCitations(codeContent, sourcesMap ?? null, 'code')}</>;
+        }
+
+        // Check if inline code contains a file path pattern
+        if (isInline && handleFileClick) {
+          // Pattern 1: Markdown file:// link in backticks: `[text](file:///path)`
+          const fileLinkMatch = codeContent.match(/^\[([^\]]+)\]\(file:\/\/([^\)]+)\)$/);
+          if (fileLinkMatch) {
+            const [, displayName, path] = fileLinkMatch;
+            return <FileButton path={path} displayName={displayName} onFileClick={handleFileClick} />;
+          }
+
+          // Pattern 2: Plain absolute path in backticks: `/workspace/file.txt`
+          const absolutePathMatch = codeContent.match(/^\/(workspace|shared|mnt)\/[\w\-./]+\.\w{2,5}$/);
+          if (absolutePathMatch) {
+            const path = codeContent.trim();
+            return <FileButton path={path} displayName={path} onFileClick={handleFileClick} />;
+          }
+        }
+
+        if (isMultilineInlineCode || !isInline) {
+          if (streamingLite) {
+            return (
+              <pre className="bg-neutral-50 dark:bg-zinc-900 border border-neutral-300 dark:border-zinc-700 px-3 py-2.5 overflow-x-auto font-mono text-[12px] text-neutral-800 dark:text-neutral-200 leading-5 whitespace-pre-wrap break-all">
+                <code>{codeContent}</code>
+              </pre>
+            );
+          }
+          return <CodeBlockComponent lang={lang || 'text'} content={codeContent} />;
+        }
+        return (
+          <code
+            className="bg-brutal-yellow px-1.5 py-0.5 border-2 border-brutal-black text-[11px] font-mono text-brutal-black font-bold break-words break-all whitespace-pre-wrap box-decoration-clone"
+            {...rest}
+          >
+            {children}
+          </code>
+        );
+      },
+      a: (props: any) => {
+        const { href, children } = props;
+        const hrefStr = href || '';
+
+        // Handle file:// links and absolute paths as clickable file buttons
+        if (handleFileClick && (hrefStr.startsWith('file://') || hrefStr.startsWith('/workspace/') || hrefStr.startsWith('/shared/') || hrefStr.startsWith('/mnt/'))) {
+          // file:// hrefs are percent-encoded (CJK, spaces, etc.) — decode via
+          // fileUrlToPath rather than a naive replace, otherwise the encoded
+          // bytes get double-encoded downstream and the file is never found.
+          const path = hrefStr.startsWith('file://')
+            ? (fileUrlToPath(hrefStr) ?? hrefStr.replace('file://', ''))
+            : hrefStr;
+          const displayName = extractNodeText(children) || path;
+          return <FileButton path={path} displayName={displayName} onFileClick={handleFileClick} />;
+        }
+
+        // Regular external links
+        return (
+          <a
+            href={hrefStr}
+            rel="noopener noreferrer"
+            onClick={(e) => {
+              if (!isExternalLink(hrefStr)) return;
+              e.preventDefault();
+              e.stopPropagation();
+              void openExternalLink(hrefStr);
+            }}
+            className="text-brutal-blue hover:bg-brutal-yellow font-bold underline break-words transition-colors duration-100"
+          >
+            {children}
+          </a>
+        );
+      },
+      img: (props: any) => {
+        const src = safeUrlTransform(String(props.src || ''));
+        if (!src) {
+          return <span className="text-neutral-500">{props.alt || ''}</span>;
+        }
+
+        return (
+          <img
+            src={src}
+            alt={props.alt || ''}
+            title={props.title}
+            className="max-w-full max-h-[60vh] object-contain border-2 border-brutal-black shadow-brutal-sm bg-white"
+            loading="lazy"
+          />
+        );
+      },
+      table: (p: any) => (
+        <div className="overflow-x-auto">
+          <table className="text-xs border-3 border-brutal-black">{p.children}</table>
+        </div>
+      ),
+      th: (p: any) => <th className="border-2 border-brutal-black px-2 py-1 bg-brutal-yellow font-bold">{applyCitations(p.children, 'th')}</th>,
+      td: (p: any) => <td className="border-2 border-brutal-black px-2 py-1 align-top">{applyCitations(p.children, 'td')}</td>,
+      ul: (p: any) => <ul className="list-disc pl-5">{p.children}</ul>,
+      ol: (p: any) => <ol className="list-decimal pl-5">{p.children}</ol>,
+      li: (p: any) => <li>{applyCitations(p.children, 'li')}</li>,
+      h1: (p: any) => <h1 className="text-xl font-brutal font-bold mb-2 break-words uppercase">{applyCitations(p.children, 'h1')}</h1>,
+      h2: (p: any) => <h2 className="text-lg font-brutal font-bold mb-2 break-words uppercase">{applyCitations(p.children, 'h2')}</h2>,
+      h3: (p: any) => <h3 className="text-base font-bold mb-1 break-words uppercase">{applyCitations(p.children, 'h3')}</h3>,
+      p: (pArg: any) => {
+        const text = String(pArg.children?.[0] || '');
+        if (text.startsWith('Step: ') && text.includes('tokens')) {
+          return (
+            <p className="flex items-center gap-3 text-xs sm:text-sm text-brutal-black border-4 border-brutal-black pt-4 pb-3 mt-6 font-mono font-black break-words whitespace-pre-wrap m-0 bg-brutal-yellow -mx-5 px-5 shadow-brutal-sm uppercase tracking-wider">
+              <span aria-hidden="true" className="text-lg leading-none">▣</span>
+              <span className="flex-1">{pArg.children}</span>
+            </p>
+          );
+        }
+
+        // Check if paragraph contains only simple text (for ClickableContent detection)
+        const isSimpleText = React.Children.toArray(pArg.children).every(
+          (child) => typeof child === 'string' ||
+            (React.isValidElement(child) && (child.type === 'strong' || child.type === 'em'))
+        );
+
+        // Apply ClickableContent for plain text paragraphs to detect file
+        // paths — but only when there are no citation markers, since that
+        // path flattens children to a string and would drop citation badges.
+        const hasCite = React.Children.toArray(pArg.children).some(
+          c => typeof c === 'string' && hasCitationMarker(c),
+        );
+        if (isSimpleText && handleFileClick && !hasCite) {
+          const extractText = (children: any): string => {
+            return React.Children.toArray(children)
+              .map((child) => {
+                if (typeof child === 'string') return child;
+                if (React.isValidElement(child) && child.props?.children) {
+                  return extractText(child.props.children);
+                }
+                return '';
+              })
+              .join('');
+          };
+
+          const textContent = extractText(pArg.children);
+          return (
+            <p className="leading-relaxed break-words whitespace-pre-wrap m-0">
+              <ClickableContent content={textContent} onFileClick={handleFileClick} />
+            </p>
+          );
+        }
+
+        return <p className="leading-relaxed break-words whitespace-pre-wrap m-0">{applyCitations(pArg.children, 'p')}</p>;
+      },
+      blockquote: (p: any) => (
+        <blockquote className="border-l-4 border-brutal-black pl-3 italic text-neutral-600 dark:text-neutral-400 break-words bg-neutral-50 dark:bg-zinc-800 py-1 pr-2">
+          {p.children}
+        </blockquote>
+      )
+  }), [applyCitations, handleFileClick, isExternalLink, openExternalLink, sourcesMap, streamingLite]);
+
   if (streamingLite) {
     return <LiteMarkdownRenderer content={sanitized} />;
   }
 
-  // Safe URL transform - block dangerous protocols while allowing standard protocols.
-  // Suzent-owned file:// session paths are rewritten to /sandbox/serve URLs.
-  const safeUrlTransform = (url: string): string => {
-    const normalizedUrl = normalizeMarkdownUrl(url);
-    const urlLower = normalizedUrl.toLowerCase().trim();
-
-    // Allow safe protocols. `file:` is permitted because the `a` renderer
-    // intercepts file:// hrefs into a FileButton (opened in the in-app file
-    // view via onFileClick) rather than letting the browser navigate to them —
-    // so it must survive this transform instead of being stripped to ''.
-    const safeProtocols = ['http:', 'https:', 'mailto:', 'tel:', 'file:'];
-    const hasProtocol = urlLower.includes(':');
-
-    if (urlLower.startsWith('data:image/')) {
-      return /^data:image\/(?:png|jpe?g|gif|webp|svg\+xml);base64,/i.test(normalizedUrl)
-        ? normalizedUrl
-        : '';
-    }
-
-    if (hasProtocol) {
-      const isAllowed = safeProtocols.some(protocol => urlLower.startsWith(protocol));
-      if (!isAllowed) {
-        // Block dangerous protocols like javascript:, unsupported data:, vbscript:, etc.
-        return '';
-      }
-    }
-
-    // Allow relative URLs and fragment links
-    return normalizedUrl;
-  };
-
   return (
     <div className="prose dark:prose-invert tight-lists prose-sm max-w-none break-words select-text">
       <RM
-        remarkPlugins={[remarkGfm]}
-        rehypePlugins={[]}
+        remarkPlugins={REMARK_PLUGINS}
+        rehypePlugins={REHYPE_PLUGINS}
         urlTransform={safeUrlTransform}
-        components={{
-          pre: (p: any) => {
-            if (p.node?.children?.length === 1 && p.node.children[0].tagName === 'code') {
-              const child = React.Children.toArray(p.children)[0];
-              const className = React.isValidElement(child)
-                ? String((child.props as { className?: string }).className || '')
-                : '';
-              const match = /language-([a-zA-Z0-9_-]+)/.exec(className);
-              const codeContent = extractCodeText(p.children).replace(/\n$/, '');
-
-              return <CodeBlockComponent lang={match?.[1] || 'text'} content={codeContent} />;
-            }
-            return (
-              <div className="bg-neutral-50 dark:bg-zinc-800 p-4 overflow-x-auto">
-                <pre className="font-mono text-xs text-brutal-black dark:text-neutral-200 leading-relaxed whitespace-pre-wrap break-all">
-                  {p.children}
-                </pre>
-              </div>
-            );
-          },
-          code: (codeProps: any) => {
-            const { inline, className, children, ...rest } = codeProps;
-            const match = /language-([a-zA-Z0-9_-]+)/.exec(className || '');
-            const lang = match ? match[1] : null;
-
-            // Extract text content
-            const extractCodeText = (children: any): string => {
-              if (typeof children === 'string') return children;
-              if (Array.isArray(children)) return children.map(extractCodeText).join('');
-              if (React.isValidElement(children)) {
-                const props = children.props as any;
-                if (props?.children) {
-                  return extractCodeText(props.children);
-                }
-              }
-              return String(children);
-            };
-
-            const codeContent = extractCodeText(children).replace(/\n$/, '');
-
-            // Detect if this is inline code (no language and not in a <pre> parent).
-            // Some models wrap multi-line ASCII diagrams in a single backtick span;
-            // render those as blocks so they don't become a stack of inline chips.
-            const isMultilineInlineCode = !lang && codeContent.includes('\n');
-            const isInline = inline !== false && !lang && !isMultilineInlineCode;
-
-            if (isInline && hasCitationMarker(codeContent)) {
-              return <>{renderTextWithCitations(codeContent, sourcesMap ?? null, 'code')}</>;
-            }
-
-            // Check if inline code contains a file path pattern
-            if (isInline && onFileClick) {
-              // Pattern 1: Markdown file:// link in backticks: `[text](file:///path)`
-              const fileLinkMatch = codeContent.match(/^\[([^\]]+)\]\(file:\/\/([^\)]+)\)$/);
-              if (fileLinkMatch) {
-                const [, displayName, path] = fileLinkMatch;
-                return <FileButton path={path} displayName={displayName} onFileClick={onFileClick} />;
-              }
-
-              // Pattern 2: Plain absolute path in backticks: `/workspace/file.txt`
-              const absolutePathMatch = codeContent.match(/^\/(workspace|shared|mnt)\/[\w\-./]+\.\w{2,5}$/);
-              if (absolutePathMatch) {
-                const path = codeContent.trim();
-                return <FileButton path={path} displayName={path} onFileClick={onFileClick} />;
-              }
-            }
-
-            if (isMultilineInlineCode || !isInline) {
-              if (streamingLite) {
-                return (
-                  <pre className="bg-neutral-50 dark:bg-zinc-900 border border-neutral-300 dark:border-zinc-700 px-3 py-2.5 overflow-x-auto font-mono text-[12px] text-neutral-800 dark:text-neutral-200 leading-5 whitespace-pre-wrap break-all">
-                    <code>{codeContent}</code>
-                  </pre>
-                );
-              }
-              return <CodeBlockComponent lang={lang || 'text'} content={codeContent} />;
-            }
-            return (
-              <code
-                className="bg-brutal-yellow px-1.5 py-0.5 border-2 border-brutal-black text-[11px] font-mono text-brutal-black font-bold break-words break-all whitespace-pre-wrap box-decoration-clone"
-                {...rest}
-              >
-                {children}
-              </code>
-            );
-          },
-          a: (props: any) => {
-            const { href, children } = props;
-            const hrefStr = href || '';
-
-            // Handle file:// links and absolute paths as clickable file buttons
-            if (onFileClick && (hrefStr.startsWith('file://') || hrefStr.startsWith('/workspace/') || hrefStr.startsWith('/shared/') || hrefStr.startsWith('/mnt/'))) {
-              // file:// hrefs are percent-encoded (CJK, spaces, etc.) — decode via
-              // fileUrlToPath rather than a naive replace, otherwise the encoded
-              // bytes get double-encoded downstream and the file is never found.
-              const path = hrefStr.startsWith('file://')
-                ? (fileUrlToPath(hrefStr) ?? hrefStr.replace('file://', ''))
-                : hrefStr;
-              const displayName = extractNodeText(children) || path;
-              return <FileButton path={path} displayName={displayName} onFileClick={onFileClick} />;
-            }
-
-            // Regular external links
-            return (
-              <a
-                href={hrefStr}
-                rel="noopener noreferrer"
-                onClick={(e) => {
-                  if (!isExternalLink(hrefStr)) return;
-                  e.preventDefault();
-                  e.stopPropagation();
-                  void openExternalLink(hrefStr);
-                }}
-                className="text-brutal-blue hover:bg-brutal-yellow font-bold underline break-words transition-colors duration-100"
-              >
-                {children}
-              </a>
-            );
-          },
-          img: (props: any) => {
-            const src = safeUrlTransform(String(props.src || ''));
-            if (!src) {
-              return <span className="text-neutral-500">{props.alt || ''}</span>;
-            }
-
-            return (
-              <img
-                src={src}
-                alt={props.alt || ''}
-                title={props.title}
-                className="max-w-full max-h-[60vh] object-contain border-2 border-brutal-black shadow-brutal-sm bg-white"
-                loading="lazy"
-              />
-            );
-          },
-          table: (p: any) => (
-            <div className="overflow-x-auto">
-              <table className="text-xs border-3 border-brutal-black">{p.children}</table>
-            </div>
-          ),
-          th: (p: any) => <th className="border-2 border-brutal-black px-2 py-1 bg-brutal-yellow font-bold">{applyCitations(p.children, 'th')}</th>,
-          td: (p: any) => <td className="border-2 border-brutal-black px-2 py-1 align-top">{applyCitations(p.children, 'td')}</td>,
-          ul: (p: any) => <ul className="list-disc pl-5">{p.children}</ul>,
-          ol: (p: any) => <ol className="list-decimal pl-5">{p.children}</ol>,
-          li: (p: any) => <li>{applyCitations(p.children, 'li')}</li>,
-          h1: (p: any) => <h1 className="text-xl font-brutal font-bold mb-2 break-words uppercase">{applyCitations(p.children, 'h1')}</h1>,
-          h2: (p: any) => <h2 className="text-lg font-brutal font-bold mb-2 break-words uppercase">{applyCitations(p.children, 'h2')}</h2>,
-          h3: (p: any) => <h3 className="text-base font-bold mb-1 break-words uppercase">{applyCitations(p.children, 'h3')}</h3>,
-          p: (pArg: any) => {
-            const text = String(pArg.children?.[0] || '');
-            if (text.startsWith('Step: ') && text.includes('tokens')) {
-              return (
-                <p className="flex items-center gap-3 text-xs sm:text-sm text-brutal-black border-4 border-brutal-black pt-4 pb-3 mt-6 font-mono font-black break-words whitespace-pre-wrap m-0 bg-brutal-yellow -mx-5 px-5 shadow-brutal-sm uppercase tracking-wider">
-                  <span aria-hidden="true" className="text-lg leading-none">▣</span>
-                  <span className="flex-1">{pArg.children}</span>
-                </p>
-              );
-            }
-
-            // Check if paragraph contains only simple text (for ClickableContent detection)
-            const isSimpleText = React.Children.toArray(pArg.children).every(
-              (child) => typeof child === 'string' ||
-                (React.isValidElement(child) && (child.type === 'strong' || child.type === 'em'))
-            );
-
-            // Apply ClickableContent for plain text paragraphs to detect file
-            // paths — but only when there are no citation markers, since that
-            // path flattens children to a string and would drop citation badges.
-            const hasCite = React.Children.toArray(pArg.children).some(
-              c => typeof c === 'string' && hasCitationMarker(c),
-            );
-            if (isSimpleText && onFileClick && !hasCite) {
-              const extractText = (children: any): string => {
-                return React.Children.toArray(children)
-                  .map((child) => {
-                    if (typeof child === 'string') return child;
-                    if (React.isValidElement(child) && child.props?.children) {
-                      return extractText(child.props.children);
-                    }
-                    return '';
-                  })
-                  .join('');
-              };
-
-              const textContent = extractText(pArg.children);
-              return (
-                <p className="leading-relaxed break-words whitespace-pre-wrap m-0">
-                  <ClickableContent content={textContent} onFileClick={onFileClick} />
-                </p>
-              );
-            }
-
-            return <p className="leading-relaxed break-words whitespace-pre-wrap m-0">{applyCitations(pArg.children, 'p')}</p>;
-          },
-          blockquote: (p: any) => (
-            <blockquote className="border-l-4 border-brutal-black pl-3 italic text-neutral-600 dark:text-neutral-400 break-words bg-neutral-50 dark:bg-zinc-800 py-1 pr-2">
-              {p.children}
-            </blockquote>
-          )
-        }}
+        components={components}
       >
         {sanitized}
       </RM>

@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { useI18n } from '../../i18n';
+import { ImageWithFallback } from './ImageWithFallback';
 
 interface WebSearchRendererProps {
   output: string;
@@ -24,18 +25,16 @@ function domainOf(url: string): string {
 
 /** Favicon via Google's service, with a 🔗 fallback if it fails to load. */
 const ResultFavicon: React.FC<{ url: string; className?: string }> = ({ url, className = 'w-4 h-4' }) => {
-  const [failed, setFailed] = useState(false);
   const domain = domainOf(url);
-  if (failed || !domain) {
+  if (!domain) {
     return <span className={`inline-flex items-center justify-center leading-none ${className}`}>🔗</span>;
   }
   return (
-    <img
+    <ImageWithFallback
       src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=32`}
-      alt=""
-      className={`${className} shrink-0 rounded-[2px] object-contain`}
-      onError={() => setFailed(true)}
-      loading="lazy"
+      imgClassName={`${className} shrink-0 rounded-[2px] object-contain`}
+      fallbackClassName={`inline-flex items-center justify-center leading-none ${className}`}
+      fallback="🔗"
     />
   );
 };
