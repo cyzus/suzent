@@ -61,6 +61,13 @@ def test_draft_ranks_just_below_stable():
     assert strength("- A guess", {"status": "draft"}) < strength("- A guess", {})
 
 
+def test_a_status_the_schema_does_not_know_is_neutral():
+    """The live vault predates the schema and writes `status: active`; a page must not
+    be demoted for having been written before the rule existed."""
+    for status in ("active", "stable", "Active", "whatever"):
+        assert strength("- Lives in Berlin", {"status": status}) == BASE
+
+
 # --- stale_after ---
 
 

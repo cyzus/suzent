@@ -143,7 +143,8 @@ marker survive either of them.
 | `fb47218d` | This document. |
 | `2af08c7b` | Every append to a daily log re-embedded the whole file — 28.5x amplification over the real corpus, quadratic in appends per day, and ~374k single-row inserts fragmenting the table. Archive reindex is now a diff, falling back to full replace if the diff query fails. |
 | `7842c41d` | `MEMORY.md` was a blind overwrite with three writers, and the per-turn refresh filtered on an importance column the indexer stamps with a constant — so it rebuilt the file exclusively from pre-June legacy rows. |
-| _this_ | The confirmation counts, `status`, and `stale_after` the dream writes were read by nothing; retrieval scored every row identically. |
+| `d1067d4e` | The confirmation counts, `status`, and `stale_after` the dream writes were read by nothing; retrieval scored every row identically. |
+| _this_ | A dry-run harness for the dream, and a ranker that reads the status the live vault actually writes (`active`, not `stable`). |
 
 ## Next steps
 
@@ -155,7 +156,7 @@ flowchart LR
     D3 --> D4["✓ retire duplicates"]
     D4 --> D5["✓ claim lifecycle (writer)"]
     D5 --> N6["✓ rank on the new signals"]
-    N6 --> N7["7 · catch-up dream<br/>over 129 logs"]
+    N6 --> N7["✓ catch-up dream<br/>(completed itself)"]
     N7 --> N8["8 · write-path classifier<br/>+ revisit queue"]
     N7 --> N9["9 · retire 2,833 legacy rows"]
 ```
@@ -166,17 +167,31 @@ is derived from its confirmation count (log-scaled, capped at +0.25), its `statu
 Daily-log facts keep the neutral 0.5 — raw capture has no lifecycle. A person's edit to the
 `facts` block is recorded as a `human:` verification in the manual zone of `MEMORY.md`.
 
-**7 — The catch-up dream.** 129 logs sit above the watermark. This is the first step that
-*mutates live memory* — it rewrites vault pages and tombstones archival rows across five
-months of backlog, driven by an LLM, and it is where a bad `superseded.txt` line costs
-real facts. It should run against a copy of `~/.suzent` first, with the diff reviewed
-before anything touches the real vault.
+**7 — The catch-up dream.** Done, and not by us. The backlog was 129 logs because the
+dream advanced the watermark by at most one day per run; the pacing fix in `70994416`
+removed that ceiling and the backlog drained itself in the field. Measured on the live
+system: watermark `2026-08-22`, 47 advances recorded in `log.md`, 130 archive logs
+spanning `2026-02-09`–`2026-08-23`, and exactly one date pending — today's, which the
+dream never ingests while it is still being appended to.
+
+`scripts/dream_dry_run.py` remains, because the next mutating pass deserves the same
+caution this one would have: it clones `~/.suzent`, redirects the `/mnt/notebook` volume
+at a copy of the vault, and drives the real `DreamRunner` over the clone, leaving a
+unified diff to review. The redirect is the point — the vault is a host path mounted into
+the sandbox, *not* a directory inside the data dir, so cloning `~/.suzent` alone isolates
+everything except the one thing the dream rewrites.
+
+What the catch-up left behind is a gap, not a backlog. Those 309 pages were consolidated
+under the pre-`07f24c4b` prompts: of the 18 `3_Personal` pages, 8 carry frontmatter and
+**none carry a confirmation marker or a `stale_after`**. Step 6's ranking is live but has
+nothing to read on existing pages — the lint pass is the backfill, and it should be
+exercised against a clone before the real vault.
 
 **8 — Write-path classifier and revisit queue.** Classify each extracted fact against the
 recalled set: ≥0.97 with no new specifics is a confirmation (one line to a
 `confirmations.jsonl` sidecar, folded in by the dream), 0.90–0.97 a revision, below that
-new. The revisit queue selects vault claims past their `stale_after`. Neither should land
-before step 7 — a classifier is only as good as the claims it compares against.
+new. The revisit queue selects vault claims past their `stale_after`. Unblocked: step 7
+finished, so there is a populated claim set to compare against.
 
 **9 — Retire the legacy rows.** 2,833 pre-June rows predate the current write path and
 carry no source file, so they cannot be reindexed, only deleted. Deleting them is now

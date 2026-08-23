@@ -768,6 +768,10 @@ class CoreMemoryFileIndexer:
         if confirmations > 1:
             score += min(0.25, 0.08 * math.log2(confirmations))
 
+        # Only `deprecated` and `draft` change the score. Everything else — `stable`,
+        # the `active` the live vault actually wrote before the schema said `stable`,
+        # a typo, nothing at all — is neutral: a page is never demoted for predating a
+        # rule, and an unrecognised status is missing information, not bad evidence.
         status = (lifecycle.get("status") or "").lower()
         if status == "deprecated":
             # A softer tombstone: still readable and linkable, out of the running.
