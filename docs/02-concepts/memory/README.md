@@ -25,6 +25,7 @@ Suzent remembers things across conversations — facts you've shared, preference
 
 - [Memory Consolidation](./consolidation.md): How daily logs become consolidated notebook memory.
 - [Memory Internals](./internals.md): Implementation-level architecture and data flow.
+- [Upgrade Notes](./upgrade-notes.md): What changes on an existing install after the deduplication work — read before deleting anything.
 
 ## Configuration
 
