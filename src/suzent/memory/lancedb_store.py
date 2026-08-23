@@ -808,6 +808,33 @@ class LanceDBMemoryStore:
             logger.error(f"delete_memories_by_source_date failed: {e}")
             return False
 
+    async def list_source_rows(
+        self, source_date: str, user_id: str
+    ) -> List[Dict[str, Any]]:
+        """`[{"id", "content"}]` for one archive date — no vectors.
+
+        Lets the indexer diff a daily log against what is already indexed instead of
+        re-embedding the whole file. Mirrors the matching in
+        `delete_memories_by_source_date`, including the legacy `source_date` rows, so
+        the diff sees exactly the rows that a full delete would have removed.
+        """
+        try:
+            safe_user = _escape_sql(user_id)
+            safe_date = source_date.replace("'", "")
+            safe_file = f"{safe_date}.md".replace('"', '\\"')
+            clause = (
+                f"user_id = '{safe_user}'"
+                f' AND (metadata LIKE \'%"source_date": "{safe_date}"%\''
+                f'   OR metadata LIKE \'%"source_file": "{safe_file}"%\')'
+            )
+            res = await (
+                self.archival_table.query().where(clause).select(["id", "content"])
+            ).to_arrow()
+            return res.to_pylist()
+        except Exception as e:
+            logger.error(f"list_source_rows failed for {source_date}: {e}")
+            return []
+
     async def delete_all_memory_blocks(
         self, user_id: str, chat_id: Optional[str] = None
     ) -> bool:

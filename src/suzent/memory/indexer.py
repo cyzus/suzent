@@ -564,13 +564,27 @@ class CoreMemoryFileIndexer:
                 if chunk.strip() and " ".join(chunk.lower().split()) not in tombstones
             ]
 
-        # 2. Embed ALL rows BEFORE mutating the index. embedding_gen.generate() raises
+        # 2. Archive logs are appended to many times a day, and every append used to
+        #    re-embed the whole file: ~28x more embedding calls than facts across the
+        #    real corpus, quadratic in appends per day, and hundreds of thousands of
+        #    single-row inserts fragmenting the table. Diff against what is already
+        #    indexed instead. Correctness is unchanged — the end state is the same set
+        #    of rows — and a diff that comes back empty degrades to the old full
+        #    replace, so a failed query costs work, never accuracy.
+        if label == "archive":
+            replaced = await self._sync_archive_rows(
+                filename, rows, lancedb_store, embedding_gen, user_id
+            )
+            if replaced is not None:
+                return replaced
+
+        # 3. Embed ALL rows BEFORE mutating the index. embedding_gen.generate() raises
         #    on failure (e.g. embedding backend unreachable) — letting it propagate here
         #    leaves the existing index untouched and the file gets retried next pass,
         #    instead of deleting rows and replacing them with poisoned zero vectors.
         embeddings = [await embedding_gen.generate(text) for text, _, _ in rows]
 
-        # 3. Replace: clear this file's old rows, then add the freshly-embedded ones.
+        # 4. Replace: clear this file's old rows, then add the freshly-embedded ones.
         #    Reached only after every embedding succeeded. Archive logs may also carry
         #    legacy source_date metadata, so use the broader date-based delete for them.
         if label == "archive":
@@ -593,6 +607,85 @@ class CoreMemoryFileIndexer:
             indexed += 1
 
         return indexed
+
+    async def _sync_archive_rows(
+        self,
+        filename: str,
+        rows: List[tuple],
+        lancedb_store,
+        embedding_gen,
+        user_id: str,
+    ) -> Optional[int]:
+        """Bring one daily log's rows in line by diffing, not by re-embedding it.
+
+        Returns the row count now indexed for the file, or None to fall back to the
+        full delete-then-add path. None is returned whenever the diff cannot be
+        trusted — the store has no `list_source_rows`, the query failed, or the index
+        holds nothing for this date yet (a first index, where the diff would be the
+        whole file anyway).
+        """
+        date = filename.removesuffix(".md")
+        lister = getattr(lancedb_store, "list_source_rows", None)
+        if lister is None:
+            return None
+        try:
+            existing = await lister(date, user_id)
+        except Exception as e:
+            logger.warning(f"Archive diff unavailable for {date}; full reindex: {e}")
+            return None
+        if not existing:
+            return None
+
+        # Duplicate content within one day collapses to a single key. That matches
+        # what the search index should hold anyway, and the extra copies get dropped
+        # here as stale — the log itself keeps every line.
+        indexed: dict = {}
+        stale_ids: List[str] = []
+        for row in existing:
+            key = " ".join(str(row.get("content", "")).lower().split())
+            if not key or key in indexed:
+                stale_ids.append(row.get("id"))
+                continue
+            indexed[key] = row.get("id")
+
+        wanted = {
+            " ".join(text.lower().split()): (text, meta, imp)
+            for text, meta, imp in rows
+        }
+
+        for key, row_id in indexed.items():
+            if key not in wanted and row_id:
+                stale_ids.append(row_id)
+
+        added = 0
+        for key, (text, metadata, importance) in wanted.items():
+            if key in indexed:
+                continue
+            embedding = await embedding_gen.generate(text)
+            await lancedb_store.add_memory(
+                content=text,
+                embedding=embedding,
+                user_id=user_id,
+                chat_id=None,
+                metadata=metadata,
+                importance=importance,
+            )
+            added += 1
+
+        # Removals last: a crash before this point leaves rows that a later pass will
+        # clear, whereas deleting first could drop a fact that never gets re-added.
+        for row_id in stale_ids:
+            try:
+                await lancedb_store.delete_memory(row_id)
+            except Exception as e:
+                logger.warning(f"Could not delete stale row {row_id}: {e}")
+
+        if added or stale_ids:
+            logger.debug(
+                f"Archive {date}: +{added} -{len(stale_ids)} (diffed, "
+                f"{len(wanted)} facts in file)"
+            )
+        return len(wanted)
 
     @staticmethod
     def _parse_archive_facts(content: str) -> List[dict]:
