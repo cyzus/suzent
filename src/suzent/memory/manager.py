@@ -161,8 +161,12 @@ class MemoryManager:
                         # No chat_id — skip silently (context is always session-scoped)
                         logger.debug("Skipping context write: no chat_id provided")
                 elif label == "facts":
-                    # MEMORY.md — write raw (no auto-header here; agent owns the file)
-                    await self.markdown_store.write_block("MEMORY", content)
+                    # MEMORY.md — a person editing this block is the highest-quality
+                    # signal the system gets, so it goes to the zone that generators
+                    # never touch, stamped with a `human:` actor.
+                    await self.markdown_store.write_memory_manual_zone(
+                        content, actor=f"human:{user_id or 'unknown'}"
+                    )
                 else:
                     await self.markdown_store.write_block(label, content)
             else:

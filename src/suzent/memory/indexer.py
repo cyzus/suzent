@@ -13,7 +13,9 @@ Also provides:
 
 import asyncio
 import json
+import math
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
@@ -522,8 +524,9 @@ class CoreMemoryFileIndexer:
         """
         tombstones = tombstones or set()
 
-        # 1. Build the rows to index: (text, metadata, importance). Importance is a
-        #    constant — ranking is relevance + recency, not a tuned lever.
+        # 1. Build the rows to index: (text, metadata, importance). Daily-log facts
+        #    are raw capture with no lifecycle, so they stay at the neutral 0.5;
+        #    vault pages are scored from the signals the dream records on them.
         if label == "archive":
             rows = [
                 (
@@ -547,6 +550,11 @@ class CoreMemoryFileIndexer:
                 if label == "notebook"
                 else ["core_memory", label, filename]
             )
+            # Vault pages carry a lifecycle (frontmatter status/stale_after, inline
+            # confirmation counts); core files do not, and get the neutral default.
+            lifecycle = (
+                self._parse_page_lifecycle(content) if source_type == "notebook" else {}
+            )
             rows = [
                 (
                     chunk,
@@ -557,8 +565,15 @@ class CoreMemoryFileIndexer:
                         "label": label,
                         "category": source_type,
                         "tags": tags,
+                        **(
+                            {k: v for k, v in lifecycle.items()}
+                            if source_type == "notebook"
+                            else {}
+                        ),
                     },
-                    0.5,
+                    self._claim_strength(chunk, lifecycle)
+                    if source_type == "notebook"
+                    else 0.5,
                 )
                 for i, chunk in enumerate(self._chunk_by_paragraphs(content))
                 if chunk.strip() and " ".join(chunk.lower().split()) not in tombstones
@@ -708,6 +723,67 @@ class CoreMemoryFileIndexer:
             if rest:
                 facts.append({"content": rest, "category": category, "tags": tags})
         return facts
+
+    @staticmethod
+    def _parse_page_lifecycle(content: str) -> dict:
+        """Read `status` and `stale_after` out of a vault page's frontmatter.
+
+        Deliberately not a YAML parse: the frontmatter is hand-editable and a page with
+        a malformed block must still be indexed. Unreadable keys simply go missing,
+        which lands the page on the neutral defaults.
+        """
+        lifecycle: dict = {}
+        m = re.match(r"^---\s*\n(.*?)\n---\s*(\n|$)", content, re.DOTALL)
+        if not m:
+            return lifecycle
+        for line in m.group(1).splitlines():
+            kv = re.match(r"^(status|stale_after)\s*:\s*(.+?)\s*$", line.strip())
+            if kv:
+                lifecycle[kv.group(1)] = kv.group(2).strip().strip("\"'")
+        return lifecycle
+
+    @staticmethod
+    def _claim_strength(
+        chunk: str, lifecycle: dict, today: Optional[str] = None
+    ) -> float:
+        """Importance for one vault chunk, from the signals the dream writes.
+
+        `importance` is already a scoring term in hybrid search (`importance_boost`),
+        and until now every row carried a constant 0.5 — so a claim confirmed twelve
+        times ranked exactly like a one-off, and a claim months past its expiry ranked
+        exactly like one confirmed yesterday. This is the read side of the lifecycle
+        the writer has been recording since `07f24c4b`.
+
+        Bounded to [0.1, 1.0] on purpose. Nothing here can push a claim out of
+        retrieval — `deprecated` demotes, it does not delete, and deletion stays with
+        tombstones so it remains reversible and auditable.
+        """
+        score = 0.5
+
+        # A repeated fact is one claim confirmed many times, not many facts. Log-scaled
+        # so the difference between 1x and 5x matters and 40x vs 60x does not.
+        confirmations = 0
+        for m in re.finditer(r"\(confirmed\s+(\d+)x", chunk, re.IGNORECASE):
+            confirmations = max(confirmations, int(m.group(1)))
+        if confirmations > 1:
+            score += min(0.25, 0.08 * math.log2(confirmations))
+
+        status = (lifecycle.get("status") or "").lower()
+        if status == "deprecated":
+            # A softer tombstone: still readable and linkable, out of the running.
+            return 0.1
+        if status == "draft":
+            score -= 0.05
+
+        # Past its stale_after the claim is not wrong, just unverified — decay it
+        # rather than dropping it, and let the revisit queue confirm or deprecate.
+        stale_after = lifecycle.get("stale_after", "")
+        if re.match(r"^\d{4}-\d{2}-\d{2}", stale_after):
+            now = today or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            if stale_after[:10] < now:
+                score *= 0.6
+
+        return max(0.1, min(1.0, score))
 
     @staticmethod
     def _chunk_by_paragraphs(

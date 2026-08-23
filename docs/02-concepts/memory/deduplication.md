@@ -174,14 +174,24 @@ marker's absence means confirmed once, so no page needs migrating. A repeat that
 *contradicts* the bullet is explicitly not a confirmation — it resets the count and takes
 the correction path, or a reversal would count as evidence for the thing it reverses.
 
+Retrieval reads all three. A vault chunk's indexed `importance` — already a term in
+hybrid search — is now derived from its confirmation count (log-scaled, capped), its
+`status` (`deprecated` demotes hard, `draft` slightly), and whether its `stale_after` has
+passed (a discount, not a veto). Daily-log facts stay at the neutral default: they are raw
+capture and carry no lifecycle. Nothing here can remove a claim from retrieval; deletion
+stays with tombstones, where it is reversible and auditable.
+
+A person editing the `facts` block is `human:` evidence and outranks anything the
+extractor produced, so it is written to the manual zone of `MEMORY.md` with a
+`<!-- verified: human:<id> at <ts> -->` stamp, where no generator can overwrite it.
+
 `stale_after` on `3_Personal/` pages is derived from the fact category rather than guessed:
 identity never, `preference` a year, `technical` six months, `goal` three months, `context`
 three weeks. Lint honours it by re-confirming or deprecating, never deleting.
 
 These rules are stated in `DREAM_INSTRUCTIONS` as well as in `schema_example.md`, because
 `schema.md` is copied into a vault once at bootstrap and is user-editable afterwards — every
-existing vault predates them. `verified:` is defined in the profile but nothing writes it
-yet; wiring a user's core-memory edit to a `human:` actor is still open.
+existing vault predates them.
 
 The reconcile phase runs **in the runner, not the agent** — `_retire_superseded` reads the
 hand-off file, tombstones, and calls `reindex_file_now` per affected date.
@@ -225,8 +235,10 @@ formal `okf_version` conformance.
 4. ~~Stop the dream from resolving duplicates by doing nothing — retire folded-in log
    lines via the tombstone hand-off.~~ Done.
 5. ~~Add OKF frontmatter to vault pages (writer side): the personal-page contract, the
-   confirmation marker, and category-derived `stale_after`.~~ Done. Ranking on those
-   signals is not wired yet.
+   confirmation marker, and category-derived `stale_after`.~~ Done.
+5b. ~~Read those signals back: derive a vault chunk's indexed importance from its
+   confirmation count, `status`, and `stale_after`, and record a human's core-memory edit
+   as a `human:` verification.~~ Done.
 6. Run a catch-up dream over the backlog with ingest and confirm enabled.
 7. Add the write-path classifier and the revisit queue, once there is a populated claim
    set for them to work against.

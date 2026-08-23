@@ -445,6 +445,47 @@ class MarkdownMemoryStore:
             return ""
         return existing.strip()
 
+    async def write_memory_manual_zone(self, content: str, actor: str) -> None:
+        """Replace the human-owned half of MEMORY.md, keeping the generated half.
+
+        This is the fourth writer to this file: a person editing the `facts` block in
+        the UI. It used to be a raw whole-file write, which meant a human correction
+        either got clobbered by the next consolidation or got copied down into the
+        manual zone alongside the generated original.
+
+        Their text lands in the manual zone, where nothing overwrites it, and carries
+        an OKF-style `human:` verification stamp — a person's correction is evidence
+        of a different quality than anything the extractor produced, and this is the
+        record of that. Anything they typed inside the generated zone is dropped: the
+        marker says outright that the region is rewritten, and silently preserving it
+        would duplicate every fact the next pass regenerates.
+        """
+        async with self._write_lock:
+            path = self.memory_file_path
+            existing = path.read_text(encoding="utf-8") if path.exists() else ""
+
+            if MEMORY_GENERATED_START in existing and MEMORY_GENERATED_END in existing:
+                head = existing.split(MEMORY_GENERATED_END, 1)[0] + MEMORY_GENERATED_END
+            else:
+                timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+                head = (
+                    f"# Long-term Memory\n_Consolidated {timestamp}._\n\n"
+                    f"{MEMORY_GENERATED_START}\n{MEMORY_GENERATED_END}"
+                )
+
+            submitted = content
+            if MEMORY_GENERATED_END in submitted:
+                submitted = submitted.split(MEMORY_GENERATED_END, 1)[1]
+
+            stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            body = f"{head}\n\n<!-- verified: {actor} at {stamp} -->\n"
+            if submitted.strip():
+                body += f"{submitted.strip()}\n"
+
+            path.write_text(body, encoding="utf-8")
+
+        logger.info("Updated MEMORY.md manual zone (%s)", actor)
+
     async def write_memory_file(self, content: str) -> None:
         """Rewrite the generated zone of MEMORY.md, preserving the manual zone.
 

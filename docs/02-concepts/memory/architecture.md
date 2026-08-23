@@ -142,7 +142,8 @@ marker survive either of them.
 | `07f24c4b` | Repeats had nowhere to go but the bin. Personal claims now carry `(confirmed 12x, last YYYY-MM-DD)` and a category-derived `stale_after`. |
 | `fb47218d` | This document. |
 | `2af08c7b` | Every append to a daily log re-embedded the whole file — 28.5x amplification over the real corpus, quadratic in appends per day, and ~374k single-row inserts fragmenting the table. Archive reindex is now a diff, falling back to full replace if the diff query fails. |
-| _this_ | `MEMORY.md` was a blind overwrite with three writers, and the per-turn refresh filtered on an importance column the indexer stamps with a constant — so it rebuilt the file exclusively from pre-June legacy rows. |
+| `7842c41d` | `MEMORY.md` was a blind overwrite with three writers, and the per-turn refresh filtered on an importance column the indexer stamps with a constant — so it rebuilt the file exclusively from pre-June legacy rows. |
+| _this_ | The confirmation counts, `status`, and `stale_after` the dream writes were read by nothing; retrieval scored every row identically. |
 
 ## Next steps
 
@@ -153,17 +154,17 @@ flowchart LR
     D2 --> D3["✓ context-aware extraction"]
     D3 --> D4["✓ retire duplicates"]
     D4 --> D5["✓ claim lifecycle (writer)"]
-    D5 --> N6["6 · rank on the new signals"]
+    D5 --> N6["✓ rank on the new signals"]
     N6 --> N7["7 · catch-up dream<br/>over 129 logs"]
     N7 --> N8["8 · write-path classifier<br/>+ revisit queue"]
     N7 --> N9["9 · retire 2,833 legacy rows"]
 ```
 
-**6 — Rank on the signals now being written.** Confirmation count, `stale_after`, and
-`status` are produced but nothing reads them. Retrieval still treats a claim confirmed
-twelve times exactly like a one-off. Also open here: recording a user's own edit to a core
-memory block as a `human:` `verified` actor, so a person's correction outranks anything the
-extractor produced.
+**6 — Rank on the signals now being written.** Done. A vault chunk's indexed `importance`
+is derived from its confirmation count (log-scaled, capped at +0.25), its `status`
+(`deprecated` drops it to 0.1, `draft` −0.05), and its `stale_after` (×0.6 once passed).
+Daily-log facts keep the neutral 0.5 — raw capture has no lifecycle. A person's edit to the
+`facts` block is recorded as a `human:` verification in the manual zone of `MEMORY.md`.
 
 **7 — The catch-up dream.** 129 logs sit above the watermark. This is the first step that
 *mutates live memory* — it rewrites vault pages and tombstones archival rows across five
