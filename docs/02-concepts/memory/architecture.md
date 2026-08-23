@@ -173,6 +173,18 @@ is derived from its confirmation count (log-scaled, capped at +0.25), its `statu
 Daily-log facts keep the neutral 0.5 — raw capture has no lifecycle. A person's edit to the
 `facts` block is recorded as a `human:` verification in the manual zone of `MEMORY.md`.
 
+A person editing the `facts` block is the one claim in the system that did not come from
+extraction — it is the claim's subject stating it directly — so `write_memory_manual_zone`
+stamps the manual zone with a `human:` actor and retrieval now reads that stamp. It takes
+an importance *floor* (`HUMAN_VERIFIED_FLOOR`, 0.9) rather than a bonus, so a low base
+score cannot dilute it, and it skips the `stale_after` decay: an expiry means nobody has
+re-confirmed the claim lately, which is exactly the question a human verification answers.
+`deprecated` still wins — a person retiring a claim is also a person — and only a `human:`
+actor qualifies, or an agent stamping itself would launder its own output into the
+strongest evidence class there is. Because the floor applies per row, MEMORY.md is now
+chunked per zone instead of per file: paragraph merging otherwise produced a single row
+spanning the generated half and the human half, which is neither.
+
 **7 — The catch-up dream.** Done, and not by us. The backlog was 129 logs because the
 dream advanced the watermark by at most one day per run; the pacing fix in `70994416`
 removed that ceiling and the backlog drained itself in the field. Measured on the live

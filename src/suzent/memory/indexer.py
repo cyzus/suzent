@@ -203,6 +203,11 @@ class TranscriptIndexer:
 # Core files are small, so we set a generous limit to keep context coherent.
 CORE_FILE_MAX_CHUNK_CHARS = 1200
 
+# Importance floor for a claim a person verified themselves. Below 1.0 so a verified
+# claim that is *also* heavily confirmed can still outrank a verified one-off, and so
+# the value stays a floor rather than a ceiling everything piles up against.
+HUMAN_VERIFIED_FLOOR = 0.9
+
 
 class CoreMemoryFileIndexer:
     """Watches persona.md, user.md, MEMORY.md, and archive/*.md for changes
@@ -551,33 +556,49 @@ class CoreMemoryFileIndexer:
                 else ["core_memory", label, filename]
             )
             # Vault pages carry a lifecycle (frontmatter status/stale_after, inline
-            # confirmation counts); core files do not, and get the neutral default.
+            # confirmation counts). Core files carry none of that, with one exception:
+            # MEMORY.md's manual zone is where a person edits their own memory, and
+            # `write_memory_manual_zone` stamps it with a `human:` actor. Everything
+            # else on this path stays on the neutral default.
             lifecycle = (
                 self._parse_page_lifecycle(content) if source_type == "notebook" else {}
             )
-            rows = [
-                (
-                    chunk,
-                    {
-                        "source_type": source_type,
-                        "source_file": filename,
-                        "chunk_index": i,
-                        "label": label,
-                        "category": source_type,
-                        "tags": tags,
-                        **(
-                            {k: v for k, v in lifecycle.items()}
-                            if source_type == "notebook"
-                            else {}
-                        ),
-                    },
-                    self._claim_strength(chunk, lifecycle)
-                    if source_type == "notebook"
-                    else 0.5,
-                )
-                for i, chunk in enumerate(self._chunk_by_paragraphs(content))
-                if chunk.strip() and " ".join(chunk.lower().split()) not in tombstones
-            ]
+            if source_type == "notebook":
+                segments = [(content, lifecycle)]
+            else:
+                # Chunked per zone, not per file: `_chunk_by_paragraphs` merges short
+                # paragraphs, so chunking MEMORY.md whole produces a single row
+                # spanning the generated half and the human half — one row that is
+                # both machine output and user-verified, which is neither.
+                segments = self._provenance_segments(content)
+
+            rows = []
+            i = 0
+            for segment, claim_lifecycle in segments:
+                for chunk in self._chunk_by_paragraphs(segment):
+                    i += 1
+                    if (
+                        not chunk.strip()
+                        or " ".join(chunk.lower().split()) in tombstones
+                    ):
+                        continue
+                    rows.append(
+                        (
+                            chunk,
+                            {
+                                "source_type": source_type,
+                                "source_file": filename,
+                                "chunk_index": i,
+                                "label": label,
+                                "category": source_type,
+                                "tags": tags,
+                                **claim_lifecycle,
+                            },
+                            self._claim_strength(chunk, claim_lifecycle)
+                            if claim_lifecycle
+                            else 0.5,
+                        )
+                    )
 
         # 2. Archive logs are appended to many times a day, and every append used to
         #    re-embed the whole file: ~28x more embedding calls than facts across the
@@ -737,10 +758,49 @@ class CoreMemoryFileIndexer:
         if not m:
             return lifecycle
         for line in m.group(1).splitlines():
-            kv = re.match(r"^(status|stale_after)\s*:\s*(.+?)\s*$", line.strip())
+            kv = re.match(
+                r"^(status|stale_after|verified_by|verified_at)\s*:\s*(.+?)\s*$",
+                line.strip(),
+            )
             if kv:
                 lifecycle[kv.group(1)] = kv.group(2).strip().strip("\"'")
         return lifecycle
+
+    @staticmethod
+    def _provenance_segments(content: str) -> List[tuple]:
+        """Split a core file into `(text, lifecycle)` regions by who wrote them.
+
+        MEMORY.md is the only file with two authors: a generated zone rewritten on
+        every consolidation, and a manual zone a person edits and `write_memory_manual_zone`
+        stamps with a `human:` actor. Only the region *after* the end marker carries
+        that verification — everything above it is machine output, and scoring it as
+        human-verified would launder the generator's own text into the strongest
+        evidence class the ranker has. Every other core file comes back as one
+        unstamped segment, which is the neutral default it had before.
+        """
+        from .markdown_store import MEMORY_GENERATED_END
+
+        if MEMORY_GENERATED_END not in content:
+            return [(content, {})]
+        head, _, tail = content.partition(MEMORY_GENERATED_END)
+        verification = CoreMemoryFileIndexer._parse_verification(tail)
+        return [(head, {}), (tail, verification)]
+
+    @staticmethod
+    def _parse_verification(content: str) -> dict:
+        """Read the `<!-- verified: <actor> at <ts> -->` stamp, if the text carries one.
+
+        Written by `write_memory_manual_zone` when a person edits MEMORY.md, which is
+        the only place in the system where a claim comes from the user directly rather
+        than from extraction. Returned in the same shape as the frontmatter lifecycle
+        so both paths feed `_claim_strength` through one argument.
+        """
+        m = re.search(
+            r"<!--\s*verified:\s*(.+?)\s+at\s+(\S+?)\s*-->", content, re.IGNORECASE
+        )
+        if not m:
+            return {}
+        return {"verified_by": m.group(1).strip(), "verified_at": m.group(2).strip()}
 
     @staticmethod
     def _claim_strength(
@@ -778,6 +838,16 @@ class CoreMemoryFileIndexer:
             return 0.1
         if status == "draft":
             score -= 0.05
+
+        # A person typed this. That outranks every other signal here: confirmation
+        # counts, extraction confidence and expiry dates are all evidence *about* a
+        # claim, whereas this is the claim's subject stating it directly. It takes a
+        # floor rather than a bonus so it cannot be diluted by a low base score, and
+        # it skips the staleness decay below — an expiry says "nobody has re-confirmed
+        # this lately", which is exactly the thing a human verification answers.
+        # `deprecated` still wins, above: a person retiring a claim is also a person.
+        if (lifecycle.get("verified_by") or "").lower().startswith("human:"):
+            return max(HUMAN_VERIFIED_FLOOR, min(1.0, score))
 
         # Past its stale_after the claim is not wrong, just unverified — decay it
         # rather than dropping it, and let the revisit queue confirm or deprecate.
