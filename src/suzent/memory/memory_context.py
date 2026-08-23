@@ -360,11 +360,15 @@ DREAM_INSTRUCTIONS = f"""Consolidate the daily memory logs dated after {{start}}
    a. Find the page it belongs to (index.md + glob_search/grep_search + memory_search).
       Personal facts about the user -> 3_Personal/ ; domain knowledge -> 2_Wiki/.
    b. Apply the matching case:
-      - Duplicate (same fact reworded)              -> keep the richest wording on the
-                                                       page, then retire the weaker log
-                                                       lines (step 3d). Never keep a
-                                                       vaguer restatement of a fact you
-                                                       already hold in more detail.
+      - Duplicate (same fact reworded)              -> confirm, do not restate. Bump the
+                                                       claim's confirmation marker
+                                                       (step 3e), replace the bullet text
+                                                       only if the new wording is MORE
+                                                       specific, then retire the log lines
+                                                       (step 3d). Never add a second
+                                                       bullet, and never let a vaguer
+                                                       restatement overwrite a detailed
+                                                       claim you already hold.
       - New, non-conflicting                        -> add under the right section.
       - Correction (new entry shows old was wrong)  -> replace the wrong statement.
       - Change over time (both true at diff. times) -> rewrite as "Currently X (since {{end}});
@@ -380,6 +384,15 @@ DREAM_INSTRUCTIONS = f"""Consolidate the daily memory logs dated after {{start}}
       on a page AND adds nothing the page does not say. The runner drops those from the
       search index; the daily logs themselves stay untouched. When in doubt, leave it
       out — a duplicate in the index is cheaper than a fact that vanishes.
+   e. Lifecycle on {DREAM_NOTEBOOK_ROOT}/3_Personal/ pages, whether or not this vault's
+      schema.md mentions it (older vaults were seeded before these rules existed):
+      - A repeated claim gets a marker on its bullet: `(confirmed 12x, last YYYY-MM-DD)`.
+        Absent marker means confirmed once. Increment it and set the date; a claim the user
+        keeps repeating is one claim confirmed many times, not many claims.
+      - A repeat that CONTRADICTS the bullet is a correction, not a confirmation — reset the
+        count and apply the correction case above.
+      - Give each page a `stale_after` derived from the fact category: identity none,
+        preference 1 year, technical 6 months, goal 3 months, context 3 weeks.
 4. Add `## Related` links using the schema's link style.
 5. Update index.md. Do NOT write the watermark to log.md — the runner records it.
 
@@ -418,6 +431,8 @@ LINT_INSTRUCTIONS = f"""Run an editorial lint pass over the notebook vault.
    related page, or delete only if truly obsolete.
 6. Reciprocal links: if A links B in `## Related`, add B→A where meaningful.
 7. Decay: apply page-level `stale_after` and the schema's fallback decay rule, using its review marker.
+   On 3_Personal/ pages a passed `stale_after` means re-confirm the claim against recent logs or mark it
+   `status: deprecated` — never delete it, and never reset a claim's confirmation marker during lint.
 8. Gaps: note recurring topics with no synthesized page and dangling internal links.
 
 Do NOT append the lint entry to log.md — the runner records it.

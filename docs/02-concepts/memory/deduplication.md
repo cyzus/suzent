@@ -158,9 +158,30 @@ The dream gains two queues beyond its current one:
 - **Confirm** — fold `confirmations.jsonl` into claim counters, then truncate it.
 - **Revisit** — vault claims past their `stale_after`.
 
-The duplicate rule in ingest is no longer "do nothing": keep the richest wording on the
-page and retire the weaker log lines. Incrementing a confirmation count and sharpening in
-place both need the claim frontmatter from step 4; the retire half is live now.
+The duplicate rule in ingest is no longer "do nothing". All four outcomes are live:
+confirm (bump the count), sharpen in place (replace the wording, keep the count), supersede,
+or add as novel.
+
+Confirmation is recorded on the bullet, not in frontmatter:
+
+```markdown
+- Wants to be reminded to drink water hourly from 9 AM to 9 PM. (confirmed 12x, last 2026-08-20)
+```
+
+This is OKF's `sources[].usage_count` in the only place it can go: OKF frontmatter is
+per-document, and these claims are bullets sharing a page rather than a document each. The
+marker's absence means confirmed once, so no page needs migrating. A repeat that
+*contradicts* the bullet is explicitly not a confirmation — it resets the count and takes
+the correction path, or a reversal would count as evidence for the thing it reverses.
+
+`stale_after` on `3_Personal/` pages is derived from the fact category rather than guessed:
+identity never, `preference` a year, `technical` six months, `goal` three months, `context`
+three weeks. Lint honours it by re-confirming or deprecating, never deleting.
+
+These rules are stated in `DREAM_INSTRUCTIONS` as well as in `schema_example.md`, because
+`schema.md` is copied into a vault once at bootstrap and is user-editable afterwards — every
+existing vault predates them. `verified:` is defined in the profile but nothing writes it
+yet; wiring a user's core-memory edit to a `human:` actor is still open.
 
 The reconcile phase runs **in the runner, not the agent** — `_retire_superseded` reads the
 hand-off file, tombstones, and calls `reindex_file_now` per affected date.
@@ -203,8 +224,9 @@ formal `okf_version` conformance.
 3. ~~Add the already-known context to extraction.~~ Done.
 4. ~~Stop the dream from resolving duplicates by doing nothing — retire folded-in log
    lines via the tombstone hand-off.~~ Done.
-5. Add OKF frontmatter to vault pages: writer first, then ranking. This is what unlocks
-   the remaining two duplicate outcomes (confirm, sharpen in place).
+5. ~~Add OKF frontmatter to vault pages (writer side): the personal-page contract, the
+   confirmation marker, and category-derived `stale_after`.~~ Done. Ranking on those
+   signals is not wired yet.
 6. Run a catch-up dream over the backlog with ingest and confirm enabled.
 7. Add the write-path classifier and the revisit queue, once there is a populated claim
    set for them to work against.
