@@ -250,22 +250,57 @@ For each fact:
 - State facts directly: "Prefers X" not "User mentioned they prefer X"
 - Skip greetings, ephemeral debugging, small talk
 - Fewer high-quality facts > many low-quality ones
+
+## Already-known facts
+The prompt may list facts already in memory. They are context, not material:
+
+- Do NOT re-extract one because it came up again. Stable facts (someone's name, how
+  they like to be addressed, a long-running project) surface constantly; re-stating
+  them is what fills memory with duplicates.
+- DO extract when the turn CHANGES a known fact — new specifics, a correction, a
+  reversal. Write the full updated fact, not the delta, and lead with what changed.
+- A near-repeat that adds nothing is not a change. "Wants water reminders" after
+  "Wants water reminders hourly 9am-9pm" is a step backwards; skip it.
+- When in doubt about a fact that carries NEW information, extract it. Losing an
+  update is worse than storing a duplicate.
 """
 
 
-def format_fact_extraction_user_prompt(content: str) -> str:
+def format_known_facts_block(known_facts: Optional[List[str]]) -> str:
+    """Render already-known facts for the extraction prompt, or "" if there are none.
+
+    Extraction is otherwise blind: it sees one conversation turn and no memory, so
+    every mention of a stable fact reads as new. Showing what is already stored is
+    what lets the model tell a repeat from an update.
+    """
+    if not known_facts:
+        return ""
+    lines = "\n".join(f"- {f}" for f in known_facts)
+    return f"""## Already in memory
+{lines}
+
+Do not re-extract these. Extract only what is new, or what CHANGES one of them.
+
+"""
+
+
+def format_fact_extraction_user_prompt(
+    content: str, known_facts: Optional[List[str]] = None
+) -> str:
     """
     Format user prompt for fact extraction from a conversation turn.
 
     Args:
         content: The formatted conversation turn text (user message + assistant response + actions)
+        known_facts: Facts already in memory, nearest-first. Omitted when retrieval
+            is unavailable — extraction then behaves exactly as it did before.
 
     Returns:
         Formatted extraction prompt
     """
     return f"""Extract memorable facts from this conversation turn. One concise sentence per fact.
 
----
+{format_known_facts_block(known_facts)}---
 {content}
 ---
 

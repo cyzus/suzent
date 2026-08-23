@@ -35,6 +35,13 @@ DEFAULT_IMPORTANCE = 0.5
 # Extraction settings
 LLM_EXTRACTION_TEMPERATURE = 1.0
 
+# Already-known facts shown to the extractor so a re-mention is not stored again.
+# Ten is enough to cover the stable identity/preference facts that dominate the
+# duplicate clusters without crowding out the turn itself.
+KNOWN_FACTS_LIMIT = 10
+KNOWN_FACTS_MAX_CHARS = 240
+KNOWN_FACTS_QUERY_CHARS = 2000
+
 
 class MemoryManager:
     """Central memory management service.
@@ -481,10 +488,13 @@ class MemoryManager:
             MemoryExtractionResult with the list of extracted fact contents.
 
         Append-only write path (fixes #34): facts are written to the markdown daily
-        log (the source of truth) and indexed into LanceDB. There is NO write-time
-        deduplication — duplicate/contradictory facts are resolved later by the dream
-        consolidation pass, which has full context. See
-        docs/02-concepts/memory/consolidation.md.
+        log (the source of truth) and indexed into LanceDB. There is still NO
+        write-time deduplication — an update to a fact must never be silently
+        dropped, which is what #34 was. Repetition is suppressed one step earlier
+        instead, by showing the extractor what memory already holds so a re-mention
+        is not extracted at all. What survives that is resolved by the dream
+        consolidation pass. See docs/02-concepts/memory/consolidation.md and
+        docs/02-concepts/memory/deduplication.md.
         """
         result = MemoryExtractionResult.empty()
 
@@ -495,10 +505,11 @@ class MemoryManager:
             else:
                 turn = conversation_turn
 
-            # Extract facts from the formatted turn
-            extracted_facts = await self._extract_facts_llm(
-                turn.format_for_extraction()
-            )
+            # Extract facts from the formatted turn, showing the model what memory
+            # already holds so a re-mention is not stored as a new fact.
+            turn_text = turn.format_for_extraction()
+            known_facts = await self._recall_known_facts(turn_text, user_id, chat_id)
+            extracted_facts = await self._extract_facts_llm(turn_text, known_facts)
 
             if not extracted_facts:
                 logger.debug("No facts extracted from conversation turn")
@@ -547,6 +558,41 @@ class MemoryManager:
 
         return result
 
+    async def _recall_known_facts(
+        self, turn_text: str, user_id: str, chat_id: Optional[str] = None
+    ) -> List[str]:
+        """Facts already in memory that are close to this turn, nearest-first.
+
+        Best-effort: any failure returns [] and extraction runs exactly as it did
+        before. Enriching the prompt must never be able to block a memory write.
+        """
+        query = turn_text[:KNOWN_FACTS_QUERY_CHARS]
+        if not query.strip():
+            return []
+        try:
+            results = await self.search_memories(
+                query=query,
+                limit=KNOWN_FACTS_LIMIT,
+                user_id=user_id,
+                chat_id=chat_id,
+            )
+        except Exception as e:
+            logger.warning(f"Known-fact recall failed; extracting without it: {e}")
+            return []
+
+        facts: List[str] = []
+        seen: set = set()
+        for r in results:
+            content = " ".join(str(r.get("content", "")).split())
+            if not content:
+                continue
+            key = content.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            facts.append(content[:KNOWN_FACTS_MAX_CHARS])
+        return facts
+
     async def _write_facts_to_markdown(
         self, facts: List[ExtractedFact], chat_id: str
     ) -> Optional[str]:
@@ -585,18 +631,27 @@ class MemoryManager:
             logger.warning(f"Failed to write facts to markdown daily log: {e}")
             return None
 
-    async def _extract_facts_llm(self, content: str) -> List[ExtractedFact]:
+    async def _extract_facts_llm(
+        self, content: str, known_facts: Optional[List[str]] = None
+    ) -> List[ExtractedFact]:
         """
         Extract facts using LLM with Pydantic schema-based structured output.
 
         Uses LiteLLM's structured output feature to enforce the FactExtractionResponse
         schema, ensuring validated ExtractedFact models are returned.
 
+        Args:
+            content: The formatted conversation turn.
+            known_facts: Facts already in memory, nearest-first, so the model can tell
+                a repeat from an update. Omitted when retrieval is unavailable.
+
         Returns:
             List of ExtractedFact models
         """
         system_prompt = memory_context.FACT_EXTRACTION_SYSTEM_PROMPT
-        user_prompt = memory_context.format_fact_extraction_user_prompt(content)
+        user_prompt = memory_context.format_fact_extraction_user_prompt(
+            content, known_facts
+        )
         extraction_model = self.llm_extraction_model or getattr(
             self.llm_client, "model", None
         )

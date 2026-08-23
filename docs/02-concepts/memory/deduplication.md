@@ -32,12 +32,18 @@ wrong one half the time.
 
 ## Why duplicates accumulate
 
-### Extraction is context-free
+### Extraction is context-free (fixed)
 
-`FACT_EXTRACTION_SYSTEM_PROMPT` and `format_fact_extraction_user_prompt` pass only the
-current conversation turn. The extraction model never sees existing memory and is never
-told to skip what is already known, so stable identity and preference facts are
-re-extracted every time they are mentioned.
+`FACT_EXTRACTION_SYSTEM_PROMPT` and `format_fact_extraction_user_prompt` passed only the
+current conversation turn. The extraction model never saw existing memory and was never
+told to skip what is already known, so stable identity and preference facts were
+re-extracted every time they were mentioned.
+
+The write path now retrieves the nearest `KNOWN_FACTS_LIMIT` facts and renders them into
+the prompt under an "already in memory" heading, with a rule that permits — and
+explicitly prefers — emitting a fact that *changes* one of them. Recall is best-effort:
+a search failure returns nothing and extraction proceeds exactly as before, because
+enriching the prompt must never be able to block a memory write.
 
 ### Nothing deduplicates the archival index
 
@@ -50,23 +56,27 @@ resolves a duplicate by doing nothing. The lint pass audits the vault only.
 The archival index is derived from the logs. A duplicate written today is therefore
 permanent.
 
-### The dream barely runs
+### The dream barely runs (fixed)
 
-`DreamRunner._failures` is documented as ephemeral pacing state and lives only in
-memory. It is the counter behind retry-then-skip, which exists so that a batch which
-keeps producing nothing cannot wedge the backlog.
+`DreamRunner._failures` was ephemeral pacing state, held only in memory. It is the
+counter behind retry-then-skip, which exists so that a batch which keeps producing
+nothing cannot wedge the backlog.
 
-Because the counter resets on every process start, retry-then-skip only fires if the
-app stays up long enough for `memory_consolidation_max_retries` consecutive attempts on
-the same batch. On a desktop app that restarts regularly, a batch that fails once keeps
-failing from a fresh counter forever, and the watermark never advances.
+Because the counter reset on every process start, retry-then-skip only fired if the app
+stayed up long enough for `memory_consolidation_max_retries` consecutive attempts on the
+same batch. On a desktop app that restarts regularly, a batch that failed once kept
+failing from a fresh counter forever, and the watermark never advanced — locally it sat
+at `2026-03-11` for five months.
+
+The counters now live in the vault's `.state/dream_state.json`, hydrated once per
+process and written back on every mutation.
 
 ## The indexer is not append-only
 
 Worth stating explicitly, because it is easy to assume otherwise: only the markdown
 history is append-only.
 
-`MarkdownIndexer._reindex_file` is delete-then-add, per file — `delete_memories_by_source_date`
+`CoreMemoryFileIndexer._reindex_file` is delete-then-add, per file — `delete_memories_by_source_date`
 for archive logs, `delete_memories_by_source_file` for notebook and core files — and its
 trigger is mtime. Rewriting a daily log would converge the index with no new machinery.
 
@@ -166,14 +176,13 @@ formal `okf_version` conformance.
 
 ## Sequence
 
-1. Make the dream actually run — persist the retry counter so retry-then-skip survives
-   restarts. Everything below assumes consolidation happens.
-2. Repair the index: key the indexer state on `label:filename` rather than absolute
-   paths so it stops leaking between machines, and retire the legacy pre-June rows.
-   Discarding the old path-keyed state costs one full reindex, which doubles as the
-   backfill for the window above the watermark.
-3. Add the already-known context to extraction. No schema change, independently
-   valuable.
+1. ~~Make the dream actually run — persist the retry counter so retry-then-skip
+   survives restarts.~~ Done. Everything below assumes consolidation happens.
+2. Repair the index: ~~key the indexer state on `label:filename` rather than absolute
+   paths so it stops leaking between machines~~ (done — discarding the old path-keyed
+   state costs one full reindex, which doubles as the backfill for the window above the
+   watermark), and retire the legacy pre-June rows.
+3. ~~Add the already-known context to extraction.~~ Done.
 4. Add OKF frontmatter to vault pages: writer first, then ranking.
 5. Run a catch-up dream over the backlog with ingest and confirm enabled.
 6. Add the write-path classifier and the revisit queue, once there is a populated claim
