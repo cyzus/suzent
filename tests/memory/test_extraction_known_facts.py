@@ -68,6 +68,25 @@ def test_system_prompt_permits_updates():
 
 
 @pytest.mark.asyncio
+async def test_recall_marks_which_matches_are_durably_recorded():
+    """Only a vault page or a daily log is a record the write path can defer to; a
+    transcript row is the user having said something, not memory holding it."""
+    mgr = _StubManager(
+        [
+            {"content": "on a page", "metadata": {"source_type": "notebook"}},
+            {"content": "in a log", "metadata": {"source_type": "archive_log"}},
+            {"content": "said once", "metadata": {"source_type": "transcript"}},
+            {"content": "generated", "metadata": {"source_type": "core_file"}},
+            {"content": "no metadata"},
+        ]
+    )
+
+    facts = await mgr._recall_known_facts("some turn", "user-1")
+
+    assert [f["durable"] for f in facts] == [True, True, False, False, False]
+
+
+@pytest.mark.asyncio
 async def test_recall_returns_contents_nearest_first():
     mgr = _StubManager(
         [{"content": "Prefers dark mode"}, {"content": "Uses Unreal Engine 5"}]
@@ -75,7 +94,10 @@ async def test_recall_returns_contents_nearest_first():
 
     facts = await mgr._recall_known_facts("some turn", "user-1", "chat-1")
 
-    assert facts == ["Prefers dark mode", "Uses Unreal Engine 5"]
+    assert [f["content"] for f in facts] == [
+        "Prefers dark mode",
+        "Uses Unreal Engine 5",
+    ]
     assert mgr.calls[0]["limit"] == KNOWN_FACTS_LIMIT
     assert mgr.calls[0]["user_id"] == "user-1"
 
@@ -92,7 +114,7 @@ async def test_recall_dedupes_and_normalises_whitespace():
 
     facts = await mgr._recall_known_facts("some turn", "user-1")
 
-    assert facts == ["Prefers dark mode"]
+    assert [f["content"] for f in facts] == ["Prefers dark mode"]
 
 
 @pytest.mark.asyncio

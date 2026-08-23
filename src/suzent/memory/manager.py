@@ -3,13 +3,14 @@ Memory Manager - orchestrates core and archival memory operations.
 """
 
 from typing import Dict, List, Any, Optional, Union, TYPE_CHECKING
-from datetime import datetime
+from datetime import datetime, timezone
 
 from suzent.logger import get_logger
 from suzent.llm import EmbeddingGenerator, LLMClient
 from .lancedb_store import LanceDBMemoryStore
 from .markdown_store import MarkdownMemoryStore
 from .indexer import CoreMemoryFileIndexer
+from .classifier import classify_fact
 from . import memory_context
 from .models import (
     ConversationTurn,
@@ -41,6 +42,11 @@ LLM_EXTRACTION_TEMPERATURE = 1.0
 KNOWN_FACTS_LIMIT = 10
 KNOWN_FACTS_MAX_CHARS = 240
 KNOWN_FACTS_QUERY_CHARS = 2000
+
+# Sources where a matched claim is already written down for good. A transcript row is
+# the user saying something, and MEMORY.md is generated from other rows -- neither is a
+# record the write path can defer to.
+DURABLE_SOURCE_TYPES = frozenset({"notebook", "archive_log"})
 
 
 class MemoryManager:
@@ -542,11 +548,25 @@ class MemoryManager:
             # Extract facts from the formatted turn, showing the model what memory
             # already holds so a re-mention is not stored as a new fact.
             turn_text = turn.format_for_extraction()
-            known_facts = await self._recall_known_facts(turn_text, user_id, chat_id)
-            extracted_facts = await self._extract_facts_llm(turn_text, known_facts)
+            known = await self._recall_known_facts(turn_text, user_id, chat_id)
+            extracted_facts = await self._extract_facts_llm(
+                turn_text, [k["content"] for k in known]
+            )
 
             if not extracted_facts:
                 logger.debug("No facts extracted from conversation turn")
+                return result
+
+            # Separate out the re-statements. What is left keeps the append-only path.
+            extracted_facts, confirmations = await self._split_confirmations(
+                extracted_facts, known, chat_id
+            )
+            result.confirmed_facts = [c[0] for c in confirmations]
+
+            if not extracted_facts:
+                logger.debug(
+                    f"Turn held only re-statements: {len(confirmations)} confirmed"
+                )
                 return result
 
             result.extracted_facts = [f.content for f in extracted_facts]
@@ -592,10 +612,73 @@ class MemoryManager:
 
         return result
 
+    async def _split_confirmations(
+        self,
+        facts: List[ExtractedFact],
+        known: List[Dict[str, Any]],
+        chat_id: str,
+    ) -> tuple:
+        """Divide extracted facts into ones to write and ones already on record.
+
+        Returns `(to_write, confirmations)`. A fact is a confirmation only when it
+        matches a *durably recorded* claim in the same words with no new specifics
+        (see `classifier.classify_fact`); it then becomes a line in the confirmations
+        sidecar instead of a redundant row in the daily log. Nothing is lost by that:
+        the identical text is already in a vault page or an earlier log, and the fact
+        that it recurred is what the sidecar records.
+
+        A revision is written exactly as before — issue #34 was a write-time dedup that
+        swallowed an update, and nothing here is allowed to do that again. It is only
+        tagged, so the dream knows to treat it as an update to a claim it already holds.
+
+        Best-effort: if the sidecar write fails, the fact falls back to the normal
+        append-only path.
+        """
+        if not self.markdown_store or not known:
+            return facts, []
+
+        date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        durable = [k["content"] for k in known if k.get("durable")]
+        to_write: List[ExtractedFact] = []
+        confirmations: List[tuple] = []
+
+        for fact in facts:
+            verdict = classify_fact(fact.content, durable)
+            if verdict.is_confirmation:
+                try:
+                    await self.markdown_store.append_confirmation(
+                        content=fact.content,
+                        matched=verdict.matched,
+                        date=date,
+                        chat_id=chat_id,
+                    )
+                    confirmations.append((fact.content, verdict.matched))
+                    continue
+                except Exception as e:
+                    logger.warning(
+                        f"Confirmation sidecar write failed; logging the fact: {e}"
+                    )
+            elif verdict.is_revision and "revision" not in (fact.tags or []):
+                fact.tags = list(fact.tags or []) + ["revision"]
+            to_write.append(fact)
+
+        if confirmations:
+            logger.info(
+                f"{len(confirmations)} fact(s) already on record; "
+                f"recorded as confirmations rather than new rows"
+            )
+        return to_write, confirmations
+
     async def _recall_known_facts(
         self, turn_text: str, user_id: str, chat_id: Optional[str] = None
-    ) -> List[str]:
+    ) -> List[Dict[str, Any]]:
         """Facts already in memory that are close to this turn, nearest-first.
+
+        Returns `[{"content", "durable"}]`. *durable* marks the rows that come from an
+        append-only store — a vault page or a daily log — as opposed to a chat
+        transcript or the generated `MEMORY.md`. Only a durable match can justify not
+        writing a repeat to the log, because only there is the claim already recorded
+        somewhere the write path is not about to record it.
 
         Best-effort: any failure returns [] and extraction runs exactly as it did
         before. Enriching the prompt must never be able to block a memory write.
@@ -614,7 +697,7 @@ class MemoryManager:
             logger.warning(f"Known-fact recall failed; extracting without it: {e}")
             return []
 
-        facts: List[str] = []
+        facts: List[Dict[str, Any]] = []
         seen: set = set()
         for r in results:
             content = " ".join(str(r.get("content", "")).split())
@@ -624,7 +707,13 @@ class MemoryManager:
             if key in seen:
                 continue
             seen.add(key)
-            facts.append(content[:KNOWN_FACTS_MAX_CHARS])
+            metadata = r.get("metadata") or {}
+            facts.append(
+                {
+                    "content": content[:KNOWN_FACTS_MAX_CHARS],
+                    "durable": metadata.get("source_type") in DURABLE_SOURCE_TYPES,
+                }
+            )
         return facts
 
     async def _write_facts_to_markdown(

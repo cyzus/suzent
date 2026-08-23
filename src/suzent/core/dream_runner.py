@@ -390,6 +390,12 @@ class DreamRunner(BaseBrain):
 
             start = watermark or "0000-00-00"
             before = self._content_pages_state(mgr)
+            # How many confirmations the agent is about to be shown. Conversations keep
+            # appending while it runs; only this many may be dropped afterwards.
+            try:
+                consumed_confirmations = len(mgr.markdown_store.read_confirmations())
+            except Exception:
+                consumed_confirmations = 0
 
             self._pause_watcher()
             agent_ok = False
@@ -400,7 +406,7 @@ class DreamRunner(BaseBrain):
                     title="Memory consolidation (dream ingest)",
                 )
                 self._phase = "running_agent"
-                summary = await self._run_agent(start, w_new)
+                summary = await self._run_agent(mgr, start, w_new)
                 agent_ok = True
             except Exception as e:
                 logger.error(f"[dream] agent run failed: {e}")
@@ -443,6 +449,10 @@ class DreamRunner(BaseBrain):
             self._save_failures(mgr)
             result_summary = summary or f"Consolidated through {w_new}."
             await self._advance_watermark(mgr, w_new)
+            # Only the confirmations the agent actually saw, and only now that the run
+            # is known good. A failed run keeps them queued for the next one.
+            if consumed_confirmations:
+                mgr.markdown_store.clear_confirmations(consumed_confirmations)
             # Promote MEMORY.md (bounded) so the curated summary reflects this batch.
             try:
                 await asyncio.wait_for(
@@ -795,15 +805,65 @@ class DreamRunner(BaseBrain):
             except Exception:
                 pass
 
-    async def _run_agent(self, start: str, end: str) -> str:
+    @staticmethod
+    def _due_revisits(mgr, limit: int = 25) -> List[dict]:
+        """Vault pages whose `stale_after` has passed, soonest-expired first.
+
+        Built here rather than by the agent: it is a deterministic scan of frontmatter,
+        and asking an LLM to find expired pages by reading the whole vault is both
+        slower and less reliable than reading the dates ourselves.
+        """
+        try:
+            from suzent.memory.indexer import CoreMemoryFileIndexer
+
+            store_md = mgr.markdown_store
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            rows: List[dict] = []
+            for path in store_md.list_notebook_pages():
+                try:
+                    lifecycle = CoreMemoryFileIndexer._parse_page_lifecycle(
+                        path.read_text(encoding="utf-8", errors="replace")
+                    )
+                except OSError:
+                    continue
+                stale_after = lifecycle.get("stale_after", "")[:10]
+                if lifecycle.get("status", "").lower() == "deprecated":
+                    continue
+                if len(stale_after) == 10 and stale_after < today:
+                    rows.append(
+                        {
+                            "page": store_md.notebook_rel(path),
+                            "stale_after": stale_after,
+                        }
+                    )
+            rows.sort(key=lambda r: r["stale_after"])
+            return rows[:limit]
+        except Exception as e:
+            logger.warning(f"[dream] could not build the revisit queue: {e}")
+            return []
+
+    async def _run_agent(self, mgr, start: str, end: str) -> str:
         """Ingest phase: fold daily logs in (start, end] into the vault.
 
-        Returns the agent's one-paragraph summary (shown in the dream panel).
+        Also hands the agent the two deterministic queues the runner owns: the
+        confirmations recorded by the write path, and the claims past their
+        `stale_after`. Returns the agent's one-paragraph summary (shown in the panel).
         """
+        try:
+            confirmations = mgr.markdown_store.summarize_confirmations()
+        except Exception as e:
+            logger.warning(f"[dream] could not read confirmations: {e}")
+            confirmations = []
+
         return await self._run_forked_agent(
             DREAM_CHAT_ID,
             memory_context.DREAM_SYSTEM_PROMPT,
-            memory_context.DREAM_INSTRUCTIONS.format(start=start, end=end),
+            memory_context.DREAM_INSTRUCTIONS.format(
+                start=start,
+                end=end,
+                confirmations=memory_context.format_confirmations_block(confirmations),
+                revisits=memory_context.format_revisits_block(self._due_revisits(mgr)),
+            ),
         )
 
     async def _run_lint_agent(self) -> str:

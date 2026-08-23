@@ -115,6 +115,11 @@ those days on its own.
    disappears. Every tombstone write must be paired with an explicit reindex.
 5. **Recall enrichment must never block a write.** A search outage degrades extraction
    quality, never durability.
+5b. **The write path may recognise a repeat, never an update.** The one case it is
+   allowed to divert is a word-for-word restatement of a claim already recorded in an
+   append-only store, adding no new specifics. Anything else — a new detail, a
+   contradiction, a match found only in a transcript — is written exactly as before.
+   Issue #34 was this line being crossed.
 6. **Only the generated zone of `MEMORY.md` is generated.** The file has two generators
    and an agent editing it directly; everything after the `<!-- /memory:generated -->`
    marker is copied through untouched, and a file with no marker that we cannot prove we
@@ -144,7 +149,8 @@ marker survive either of them.
 | `2af08c7b` | Every append to a daily log re-embedded the whole file — 28.5x amplification over the real corpus, quadratic in appends per day, and ~374k single-row inserts fragmenting the table. Archive reindex is now a diff, falling back to full replace if the diff query fails. |
 | `7842c41d` | `MEMORY.md` was a blind overwrite with three writers, and the per-turn refresh filtered on an importance column the indexer stamps with a constant — so it rebuilt the file exclusively from pre-June legacy rows. |
 | `d1067d4e` | The confirmation counts, `status`, and `stale_after` the dream writes were read by nothing; retrieval scored every row identically. |
-| _this_ | A dry-run harness for the dream, and a ranker that reads the status the live vault actually writes (`active`, not `stable`). |
+| `5b21f156` | A dry-run harness for the dream, and a ranker that reads the status the live vault actually writes (`active`, not `stable`). |
+| _this_ | Every re-statement of a known claim became another row competing with the original. The write path now recognises a word-for-word repeat of a durably recorded claim and records the recurrence instead. |
 
 ## Next steps
 
@@ -157,7 +163,7 @@ flowchart LR
     D4 --> D5["✓ claim lifecycle (writer)"]
     D5 --> N6["✓ rank on the new signals"]
     N6 --> N7["✓ catch-up dream<br/>(completed itself)"]
-    N7 --> N8["8 · write-path classifier<br/>+ revisit queue"]
+    N7 --> N8["✓ write-path classifier<br/>+ revisit queue"]
     N7 --> N9["9 · retire 2,833 legacy rows"]
 ```
 
@@ -187,11 +193,31 @@ under the pre-`07f24c4b` prompts: of the 18 `3_Personal` pages, 8 carry frontmat
 nothing to read on existing pages — the lint pass is the backfill, and it should be
 exercised against a clone before the real vault.
 
-**8 — Write-path classifier and revisit queue.** Classify each extracted fact against the
-recalled set: ≥0.97 with no new specifics is a confirmation (one line to a
-`confirmations.jsonl` sidecar, folded in by the dream), 0.90–0.97 a revision, below that
-new. The revisit queue selects vault claims past their `stale_after`. Unblocked: step 7
-finished, so there is a populated claim set to compare against.
+**8 — Write-path classifier and revisit queue.** Done. `memory/classifier.py` compares
+each extracted fact against the recall set already assembled for the extraction prompt,
+so it costs no extra retrieval and no extra model call — the comparison is lexical on
+purpose, because the only band that changes behaviour is "practically the same
+sentence", which is what a lexical measure is good at and what a semantic one is too
+generous about.
+
+Three outcomes. A **confirmation** (≥0.97 similar, no new specifics, matched against a
+*durable* source) is not written to the daily log; it becomes a line in
+`.state/confirmations.jsonl`, and the dream folds the count into the claim's
+`(confirmed Nx)` marker. A **revision** (similar, or a strict superset carrying a new
+specific) is written exactly as before and tagged `revision`. Everything else is
+**new**. Two guards do the real work: a match found only in a chat transcript or in the
+generated `MEMORY.md` can never divert a write, because neither is a record the write
+path can defer to; and any new number, date, quote, path, or version in the restatement
+makes it a revision however similar the surrounding prose (`moved to Berlin in 2024` is
+not a repeat of `moved to Berlin`).
+
+The **revisit queue** is a deterministic frontmatter scan by the runner, handed to the
+dream alongside the confirmations: vault pages past their `stale_after`, soonest first,
+to be re-confirmed against the logs being ingested — never deleted. Both queues are
+runner-owned for the same reason the watermark is: index and lifecycle mutation stays
+out of the agent's hands. The confirmations sidecar is truncated only by the number of
+lines the agent was actually shown, since conversations keep appending to it while the
+dream runs.
 
 **9 — Retire the legacy rows.** 2,833 pre-June rows predate the current write path and
 carry no source file, so they cannot be reindexed, only deleted. Deleting them is now

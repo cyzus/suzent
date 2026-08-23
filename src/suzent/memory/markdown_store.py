@@ -17,7 +17,7 @@ import json
 import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from suzent.logger import get_logger
 
@@ -255,6 +255,98 @@ class MarkdownMemoryStore:
                 self.superseded_path.write_text("", encoding="utf-8")
         except Exception as e:
             logger.warning(f"Failed to clear superseded file: {e}")
+
+    # --- Confirmations (write path hand-off to the dream) ---
+
+    @property
+    def confirmations_path(self) -> Path:
+        return self.notebook_state_dir / "confirmations.jsonl"
+
+    async def append_confirmation(
+        self, content: str, matched: str, date: str, chat_id: str = ""
+    ) -> None:
+        """Record that a claim already on record was stated again.
+
+        The line the user just said is not appended to the daily log — it is word-for-
+        word something durably recorded already, so the only new information is that
+        it recurred, and that is what this file holds. The dream folds these into the
+        vault's `(confirmed Nx, last YYYY-MM-DD)` markers.
+        """
+        async with self._write_lock:
+            with open(self.confirmations_path, "a", encoding="utf-8") as f:
+                f.write(
+                    json.dumps(
+                        {
+                            "content": content,
+                            "matched": matched,
+                            "date": date,
+                            "chat_id": chat_id,
+                        },
+                        ensure_ascii=False,
+                    )
+                    + "\n"
+                )
+
+    def read_confirmations(self) -> List[dict]:
+        """Pending confirmations, oldest first. Malformed lines are skipped."""
+        p = self.confirmations_path
+        if not p.exists():
+            return []
+        out: List[dict] = []
+        for line in _read_text(p).splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except Exception:
+                continue
+            if isinstance(rec, dict) and rec.get("content"):
+                out.append(rec)
+        return out
+
+    def summarize_confirmations(self, limit: int = 40) -> List[dict]:
+        """Pending confirmations collapsed to one row per claim, most-repeated first.
+
+        `[{"content", "count", "last"}]` — the shape the dream prompt needs to bump a
+        marker without reading the raw file.
+        """
+        grouped: Dict[str, dict] = {}
+        for rec in self.read_confirmations():
+            key = self._normalize(rec.get("content", ""))
+            if not key:
+                continue
+            row = grouped.setdefault(
+                key, {"content": rec["content"], "count": 0, "last": ""}
+            )
+            row["count"] += 1
+            date = str(rec.get("date") or "")
+            if date > row["last"]:
+                row["last"] = date
+        rows = sorted(grouped.values(), key=lambda r: (-r["count"], r["content"]))
+        return rows[:limit]
+
+    def clear_confirmations(self, consumed: Optional[int] = None) -> None:
+        """Drop the confirmations the dream has folded in (never raises).
+
+        *consumed* is the number of lines that were in the file when the prompt was
+        built. Conversations keep appending here while the dream runs, so truncating
+        the whole file would silently discard every confirmation recorded during the
+        run — the one thing this sidecar exists to not do. Passing None truncates.
+        """
+        try:
+            p = self.confirmations_path
+            if not p.exists():
+                return
+            if consumed is None:
+                p.write_text("", encoding="utf-8")
+                return
+            remaining = _read_text(p).splitlines()[consumed:]
+            p.write_text(
+                "\n".join(remaining) + ("\n" if remaining else ""), encoding="utf-8"
+            )
+        except Exception as e:
+            logger.warning(f"Failed to clear confirmations file: {e}")
 
     def archive_dates_containing(self, contents: List[str]) -> List[str]:
         """Dates whose daily log holds any of *contents*, oldest first.

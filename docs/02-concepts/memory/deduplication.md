@@ -239,9 +239,18 @@ formal `okf_version` conformance.
 5b. ~~Read those signals back: derive a vault chunk's indexed importance from its
    confirmation count, `status`, and `stale_after`, and record a human's core-memory edit
    as a `human:` verification.~~ Done.
-6. Run a catch-up dream over the backlog with ingest and confirm enabled.
-7. Add the write-path classifier and the revisit queue, once there is a populated claim
-   set for them to work against.
+6. ~~Run a catch-up dream over the backlog with ingest and confirm enabled.~~ Done, in
+   the field: once step 1 lifted the one-day-per-run ceiling the backlog drained itself
+   (watermark `2026-08-22`, 47 advances). What it left behind is a *backfill* gap, not a
+   backlog — the resulting pages were consolidated under the pre-step-5 prompts, so of
+   the 18 `3_Personal` pages none carries a confirmation marker or a `stale_after` yet.
+   The lint pass is the mechanism; `scripts/dream_dry_run.py` runs it against a clone
+   first.
+7. ~~Add the write-path classifier and the revisit queue.~~ Done. A restatement of a
+   durably recorded claim now goes to `.state/confirmations.jsonl` instead of becoming
+   another row; anything carrying a new specific, or matched only in a transcript, is
+   written exactly as before. See `memory/classifier.py` and the architecture doc.
+8. Retire the 2,833 legacy pre-June rows (the top row of the table above).
 
-Steps 3 and 5 are independent. Step 7 should not land before step 6 — the classifier is
+Steps 3 and 5 are independent. Step 7 did not land before step 6, because a classifier is
 only as good as the claims it compares against.

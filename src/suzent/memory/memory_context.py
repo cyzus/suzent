@@ -398,11 +398,50 @@ DREAM_INSTRUCTIONS = f"""Consolidate the daily memory logs dated after {{start}}
         count and apply the correction case above.
       - Give each page a `stale_after` derived from the fact category: identity none,
         preference 1 year, technical 6 months, goal 3 months, context 3 weeks.
-4. Add `## Related` links using the schema's link style.
-5. Update index.md. Do NOT write the watermark to log.md — the runner records it.
+4. Confirmations recorded by the write path since the last consolidation. These were
+   said again word-for-word and deliberately NOT written to a daily log, so this list
+   is the only record that they recurred. For each, find the claim on its page and bump
+   its marker by the count shown (step 3e); do not add a bullet, and do not treat one
+   as a correction — a contradicting restatement never reaches this list.
+{{confirmations}}
+5. Claims past their `stale_after`. Re-confirm each against the logs you just read: if
+   it is supported, refresh the date; if it is contradicted, apply the correction case;
+   if the logs say nothing either way, leave it and let lint decide. Never delete here.
+{{revisits}}
+6. Add `## Related` links using the schema's link style.
+7. Update index.md. Do NOT write the watermark to log.md — the runner records it.
 
 Return a one-paragraph summary of what you created, updated, superseded, or flagged.
 """
+
+
+def format_confirmations_block(rows: Optional[List[dict]]) -> str:
+    """Render the confirmations sidecar for the dream prompt.
+
+    `rows` is `markdown_store.summarize_confirmations()` output: one entry per claim
+    with a count and the last date it was restated.
+    """
+    if not rows:
+        return "   (none pending)"
+    lines = []
+    for row in rows:
+        content = " ".join(str(row.get("content", "")).split())
+        if not content:
+            continue
+        lines.append(
+            f"   - {content} — +{row.get('count', 1)}x, last {row.get('last')}"
+        )
+    return "\n".join(lines) or "   (none pending)"
+
+
+def format_revisits_block(rows: Optional[List[dict]]) -> str:
+    """Render the revisit queue: vault pages whose `stale_after` has passed."""
+    if not rows:
+        return "   (none due)"
+    return "\n".join(
+        f"   - {row['page']} (stale_after {row['stale_after']})" for row in rows
+    )
+
 
 # ---- Lint phase: periodic editorial audit of the vault (runs after ingest catches up) ----
 

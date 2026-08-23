@@ -271,6 +271,13 @@ class MemoryExtractionResult(BaseModel):
     extracted_facts: List[str] = Field(
         default_factory=list, description="List of extracted fact contents"
     )
+    confirmed_facts: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Facts that restated a claim already durably recorded. Not written to the "
+            "daily log; recorded in the confirmations sidecar for the dream to fold in."
+        ),
+    )
     conflicts_detected: List[Dict[str, Any]] = Field(
         default_factory=list, description="Any detected conflicts (reserved)"
     )
