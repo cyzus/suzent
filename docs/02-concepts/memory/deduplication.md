@@ -250,7 +250,8 @@ formal `okf_version` conformance.
    durably recorded claim now goes to `.state/confirmations.jsonl` instead of becoming
    another row; anything carrying a new specific, or matched only in a transcript, is
    written exactly as before. See `memory/classifier.py` and the architecture doc.
-8. Retire the 2,833 legacy pre-June rows (the top row of the table above).
+8. Export the 2,833 legacy pre-June rows (the top row of the table above) into daily
+   logs, then delete them. Not the other way round: they are recorded nowhere else.
 
 Steps 3 and 5 are independent. Step 7 did not land before step 6, because a classifier is
 only as good as the claims it compares against.

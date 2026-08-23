@@ -174,7 +174,12 @@ class LanceDBMemoryStore:
 
     async def _init_tables(self) -> None:
         """Initialize tables if they don't exist."""
-        table_names = await self.db.list_tables()
+        # list_tables() returns a paginated result object, not a list — `"x" not in
+        # <that object>` is always True, so both branches below took the create path on
+        # every startup and were saved only by exist_ok. Harmless today, but it means
+        # "the table did not exist" was never actually known.
+        listing = await self.db.list_tables()
+        table_names = list(getattr(listing, "tables", listing) or [])
 
         # Memory Blocks
         if "memory_blocks" not in table_names:

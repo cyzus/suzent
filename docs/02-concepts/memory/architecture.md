@@ -164,7 +164,7 @@ flowchart LR
     D5 --> N6["✓ rank on the new signals"]
     N6 --> N7["✓ catch-up dream<br/>(completed itself)"]
     N7 --> N8["✓ write-path classifier<br/>+ revisit queue"]
-    N7 --> N9["9 · retire 2,833 legacy rows"]
+    N7 --> N9["9 · export, then retire 2,833 legacy rows"]
 ```
 
 **6 — Rank on the signals now being written.** Done. A vault chunk's indexed `importance`
@@ -219,7 +219,21 @@ out of the agent's hands. The confirmations sidecar is truncated only by the num
 lines the agent was actually shown, since conversations keep appending to it while the
 dream runs.
 
-**9 — Retire the legacy rows.** 2,833 pre-June rows predate the current write path and
-carry no source file, so they cannot be reindexed, only deleted. Deleting them is now
-safe: `MEMORY.md` no longer depends on them being the only rows above the old importance
-gate.
+**9 — Retire the legacy rows: export first, then delete.** 2,833 pre-June rows predate
+the current write path and carry no source file, so no reindex can replace them and no
+tombstone can retire them. The plan said deleting them was safe once `MEMORY.md` stopped
+depending on them. Measuring rather than assuming overturned that: `scripts/retire_legacy_rows.py`
+checked every legacy row's first 90 characters against every daily log and every vault
+page, and **2,832 of 2,833 appear nowhere in markdown**. A separate 120-row random sample
+found zero matches — not reworded, not summarised, not at all. These rows predate the
+markdown tier, so the index is the only place that content exists; deleting them is data
+loss, not index cleanup.
+
+So the sequence is `--export` then `--apply`. The export appends each row to the daily
+log for its `created_at` date, which puts it in the append-only tier, gives it a
+`source_file` the indexer owns, and makes it something the dream can consolidate — only
+then is the delete removing a duplicate. `--apply` copies the table directory to a
+timestamped backup first, and refuses outright while any row is recorded nowhere else.
+Neither has been run against the live index: the delete is irreversible beyond that
+backup and the export writes 2,833 lines into the user's memory directory, so both are
+the user's call.
