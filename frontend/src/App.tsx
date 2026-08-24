@@ -316,21 +316,29 @@ function AppInner(): React.ReactElement {
   const [rightSidebarWidth, setRightSidebarWidth] = useState<number | null>(null);
   const [viewportWidth, setViewportWidth] = useState(window.innerWidth);
 
+  // The left sidebar only ever closes itself under layout pressure -- too narrow
+  // for three panes, or the window crossing into mobile width. That's a loan,
+  // not a state change: we remember that *we* closed it (not the user) and
+  // re-open it the moment there's room again.
+  const leftCollapsedByLayoutRef = React.useRef(false);
+  const panesCannotShareViewport = shouldCollapseLeftSidebarOnRightOpen(viewportWidth);
+  const leftSidebarReservedWidthPx = isLeftSidebarOpen ? LEFT_SIDEBAR_WIDTH_PX : 0;
+
   const rightSidebarMaxWidthPx = clampRightSidebarWidth(
     MAX_RIGHT_SIDEBAR_WIDTH_PX,
     viewportWidth,
-    isLeftSidebarOpen ? LEFT_SIDEBAR_WIDTH_PX : 0,
+    leftSidebarReservedWidthPx,
   );
   // Canvas scales with the viewport (ratio-based) and may squeeze the chat more
   // than other tabs — see getCanvasSidebarWidth. This is both its default width
   // and its drag ceiling.
   const rightSidebarCanvasMaxWidthPx = getCanvasSidebarWidth(
     viewportWidth,
-    isLeftSidebarOpen ? LEFT_SIDEBAR_WIDTH_PX : 0,
+    leftSidebarReservedWidthPx,
   );
   const rightSidebarForceFullView = shouldUseFullWidthRightSidebar(
     viewportWidth,
-    isLeftSidebarOpen ? LEFT_SIDEBAR_WIDTH_PX : 0,
+    leftSidebarReservedWidthPx,
   );
 
   const { refresh: refreshGoalTasks, refreshKanban } = useGoalTasks();
@@ -405,6 +413,8 @@ function AppInner(): React.ReactElement {
 
   function handleRightSidebarToggle(isOpen: boolean): void {
     setIsRightSidebarOpen(isOpen);
+    // Closing gives the space back -- the restore effect below re-docks the
+    // left sidebar if layout pressure was the only reason it went away.
     if (!isOpen) {
       return;
     }
@@ -415,21 +425,29 @@ function AppInner(): React.ReactElement {
       return;
     }
 
-    if (shouldCollapseLeftSidebarOnRightOpen(currentWidth, rightSidebarWidth)) {
+    if (shouldCollapseLeftSidebarOnRightOpen(currentWidth)) {
+      if (isLeftSidebarOpen) {
+        leftCollapsedByLayoutRef.current = true;
+      }
       setIsLeftSidebarOpen(false);
     }
   }
 
+  function closeLeftSidebar(): void {
+    // Closing it by hand settles the question -- nothing to restore later.
+    leftCollapsedByLayoutRef.current = false;
+    setIsLeftSidebarOpen(false);
+  }
+
   function toggleLeftSidebar(): void {
-    setIsLeftSidebarOpen(prev => {
-      const next = !prev;
-      // Only evict the right sidebar when the two genuinely can't share the
-      // viewport -- on a wide window both stay open.
-      if (next && shouldCollapseLeftSidebarOnRightOpen(window.innerWidth, rightSidebarWidth)) {
-        setIsRightSidebarOpen(false);
-      }
-      return next;
-    });
+    if (isLeftSidebarOpen) {
+      closeLeftSidebar();
+      return;
+    }
+
+    // Opening it by hand likewise: this is the user's choice now, not a loan.
+    leftCollapsedByLayoutRef.current = false;
+    setIsLeftSidebarOpen(true);
   }
 
   async function toggleWindowMaximize(): Promise<void> {
@@ -475,20 +493,37 @@ function AppInner(): React.ReactElement {
     }
   }, [currentChatId, refreshGoalTasks, refreshKanban]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Both open and the room ran out: the left one steps aside, on loan.
   React.useEffect(() => {
     if (!isLeftSidebarOpen || !isRightSidebarOpen) {
       return;
     }
 
-    if (shouldCollapseLeftSidebarOnRightOpen(viewportWidth, rightSidebarWidth)) {
+    if (panesCannotShareViewport) {
+      leftCollapsedByLayoutRef.current = true;
       setIsLeftSidebarOpen(false);
     }
   }, [
     isLeftSidebarOpen,
     isRightSidebarOpen,
-    viewportWidth,
-    rightSidebarWidth,
+    panesCannotShareViewport,
   ]);
+
+  // Room came back -- the right sidebar closed, or the window grew back past
+  // mobile width. Repay the loan.
+  React.useEffect(() => {
+    if (viewportWidth < DESKTOP_BREAKPOINT_PX) {
+      return;
+    }
+    if (isRightSidebarOpen && panesCannotShareViewport) {
+      return;
+    }
+
+    if (leftCollapsedByLayoutRef.current) {
+      leftCollapsedByLayoutRef.current = false;
+      setIsLeftSidebarOpen(true);
+    }
+  }, [isRightSidebarOpen, panesCannotShareViewport, viewportWidth]);
 
   // Track previous width to only auto-close when crossing the threshold
   const prevWidthRef = React.useRef(window.innerWidth);
@@ -496,9 +531,13 @@ function AppInner(): React.ReactElement {
   React.useEffect(() => {
     const handleResize = () => {
       const currentWidth = window.innerWidth;
-      // Close sidebar only when crossing the threshold from desktop to mobile
+      // Close sidebar only when crossing the threshold from desktop to mobile --
+      // on loan, so widening the window back hands it over again.
       if (prevWidthRef.current >= DESKTOP_BREAKPOINT_PX && currentWidth < DESKTOP_BREAKPOINT_PX) {
-        setIsLeftSidebarOpen(false);
+        setIsLeftSidebarOpen(prev => {
+          if (prev) leftCollapsedByLayoutRef.current = true;
+          return false;
+        });
       }
       setViewportWidth(currentWidth);
       prevWidthRef.current = currentWidth;
@@ -516,7 +555,7 @@ function AppInner(): React.ReactElement {
           chatsContent={<ChatList onOpenAutomation={() => openSettings('automation')} />}
           isOpen={isLeftSidebarOpen}
           onOpenSettings={() => openSettings()}
-          onClose={() => setIsLeftSidebarOpen(false)}
+          onClose={closeLeftSidebar}
           titlebarControls={
             showMacWindowControls && isLeftSidebarOpen ? (
               <MacTrafficLights isMaximized={isWindowMaximized} onMaximize={toggleWindowMaximize} />
