@@ -6,6 +6,7 @@
 import { useState, useEffect, Fragment } from 'react';
 import { memoryApi } from '../../lib/memoryApi';
 import { useI18n } from '../../i18n';
+import { MemoryMarkdown } from './MemoryMarkdown';
 import { useChatStore } from '../../hooks/useChatStore';
 import { BrutalSelect } from '../BrutalSelect';
 import type { TranscriptEntry } from '../../types/memory';
@@ -251,9 +252,20 @@ export const TranscriptPanel: React.FC = () => {
                       {formatTimestamp(entry.ts)}
                     </span>
                   </div>
-                  <p className="text-sm font-mono leading-relaxed text-brutal-black dark:text-neutral-200 whitespace-pre-wrap break-words">
-                    {formatEntryContent(entry.content)}
-                  </p>
+                  {/* A transcript turn is the message as written, and assistant
+                      turns are markdown — lists, code, headings. Monospace pre-wrap
+                      showed the syntax instead of the message. Non-string content
+                      stays verbatim: that path is a JSON dump, not prose. */}
+                  {typeof entry.content === 'string' ? (
+                    <MemoryMarkdown
+                      content={formatEntryContent(entry.content)}
+                      className="text-sm text-brutal-black dark:text-neutral-200"
+                    />
+                  ) : (
+                    <pre className="text-sm font-mono leading-relaxed text-brutal-black dark:text-neutral-200 whitespace-pre-wrap break-words">
+                      {formatEntryContent(entry.content)}
+                    </pre>
+                  )}
                   {entry.actions && entry.actions.length > 0 && (
                     <div className="mt-2 pt-2 border-t border-neutral-200 dark:border-zinc-700">
                       <span className="text-[10px] font-bold uppercase text-neutral-500 dark:text-neutral-400">

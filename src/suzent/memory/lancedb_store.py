@@ -449,8 +449,18 @@ class LanceDBMemoryStore:
         chat_id: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
         importance: float = 0.5,
+        created_at: Optional[datetime] = None,
     ) -> str:
-        """Add a memory with vector embedding."""
+        """Add a memory with vector embedding.
+
+        `created_at` is when the *content* dates from, not when this row was written.
+        Indexed rows must pass it: a vault page re-embedded today is not a memory
+        from today, and leaving it at the write time makes every reindex look like a
+        burst of new memories — to the date headers, to the "new" badge, and to the
+        recency term in `calculate_final_score`, which would hand a whole reindexed
+        corpus the maximum freshness boost. `updated_at` stays at write time, which
+        is what it actually means.
+        """
         try:
             mem_id = str(uuid.uuid4())
             new_mem = ArchivalMemoryModel(
@@ -461,7 +471,7 @@ class LanceDBMemoryStore:
                 chat_id=chat_id,
                 metadata=json.dumps(metadata or {}),
                 importance=importance,
-                created_at=_utc_now(),
+                created_at=created_at or _utc_now(),
                 updated_at=_utc_now(),
                 accessed_at=None,
                 access_count=0,

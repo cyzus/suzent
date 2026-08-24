@@ -461,6 +461,7 @@ class CoreMemoryFileIndexer:
                     embedding_gen=embedding_gen,
                     user_id=user_id,
                     tombstones=tombstones,
+                    mtime=mtime,
                 )
                 self._mtimes[path_key] = mtime
                 state_dirty = True
@@ -519,6 +520,7 @@ class CoreMemoryFileIndexer:
                 embedding_gen=embedding_gen,
                 user_id=user_id,
                 tombstones=markdown_store.read_tombstones(),
+                mtime=path.stat().st_mtime,
             )
             # Record post-write mtime so the watcher treats this file as handled.
             self._mtimes[self._state_key(label, filename)] = path.stat().st_mtime
@@ -555,6 +557,7 @@ class CoreMemoryFileIndexer:
         embedding_gen,
         user_id: str,
         tombstones: Optional[set] = None,
+        mtime: Optional[float] = None,
     ) -> int:
         """Delete stale rows and re-embed the content of one file. Idempotent.
 
@@ -564,6 +567,7 @@ class CoreMemoryFileIndexer:
         resurrects, even on a full clear-and-rebuild. Returns the number of rows indexed.
         """
         tombstones = tombstones or set()
+        source_time = self._source_time(label, filename, content, mtime)
 
         # 1. Build the rows to index: (text, metadata, importance). Daily-log facts
         #    are raw capture with no lifecycle, so they stay at the neutral 0.5;
@@ -641,7 +645,7 @@ class CoreMemoryFileIndexer:
         #    replace, so a failed query costs work, never accuracy.
         if label == "archive":
             replaced = await self._sync_archive_rows(
-                filename, rows, lancedb_store, embedding_gen, user_id
+                filename, rows, lancedb_store, embedding_gen, user_id, source_time
             )
             if replaced is not None:
                 return replaced
@@ -671,6 +675,7 @@ class CoreMemoryFileIndexer:
                 chat_id=None,
                 metadata=metadata,
                 importance=importance,
+                created_at=source_time,
             )
             indexed += 1
 
@@ -683,6 +688,7 @@ class CoreMemoryFileIndexer:
         lancedb_store,
         embedding_gen,
         user_id: str,
+        source_time: Optional[datetime] = None,
     ) -> Optional[int]:
         """Bring one daily log's rows in line by diffing, not by re-embedding it.
 
@@ -747,6 +753,7 @@ class CoreMemoryFileIndexer:
                 chat_id=None,
                 metadata=metadata,
                 importance=importance,
+                created_at=source_time,
             )
             added += 1
 
@@ -806,6 +813,47 @@ class CoreMemoryFileIndexer:
         "personal",
         "documentation",
     }
+
+    @classmethod
+    def _source_time(
+        cls, label: str, filename: str, content: str, mtime: Optional[float] = None
+    ) -> Optional[datetime]:
+        """When the content dates from — not when we happen to be embedding it.
+
+        Indexing is not authorship. A vault page written last October and re-embedded
+        today is still from last October, and stamping it with the write time is what
+        makes a reindex read as a flood of brand-new memories.
+
+        Best available signal, in order: the log's own date for a daily log (exact,
+        it is the filename); `updated:` in a page's frontmatter (what the author last
+        claims to have touched it); then file mtime. Returns None when nothing is
+        available, which leaves `add_memory` on its write-time default.
+        """
+        if label == "archive":
+            try:
+                return datetime.strptime(
+                    filename.removesuffix(".md"), "%Y-%m-%d"
+                ).replace(tzinfo=timezone.utc)
+            except ValueError:
+                pass
+
+        m = re.match(r"^---\s*\n(.*?)\n---\s*(\n|$)", content, re.DOTALL)
+        if m:
+            for key in ("updated", "created", "date"):
+                stamp = re.search(
+                    rf"^{key}\s*:\s*['\"]?(\d{{4}}-\d{{2}}-\d{{2}})", m.group(1), re.M
+                )
+                if stamp:
+                    try:
+                        return datetime.strptime(stamp.group(1), "%Y-%m-%d").replace(
+                            tzinfo=timezone.utc
+                        )
+                    except ValueError:
+                        continue
+
+        if mtime is not None:
+            return datetime.fromtimestamp(mtime, tz=timezone.utc)
+        return None
 
     @classmethod
     def _page_taxonomy(cls, label: str, filename: str, content: str) -> tuple:

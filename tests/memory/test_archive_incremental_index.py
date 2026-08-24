@@ -48,7 +48,14 @@ class _FakeStore:
         return [dict(r) for r in self.rows]
 
     async def add_memory(
-        self, content, embedding, user_id, chat_id, metadata, importance
+        self,
+        content,
+        embedding,
+        user_id,
+        chat_id,
+        metadata,
+        importance,
+        created_at=None,
     ):
         self._n += 1
         rid = f"id-{self._n}"
