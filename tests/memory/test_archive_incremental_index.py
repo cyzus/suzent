@@ -29,7 +29,14 @@ class _FakeStore:
     """Enough of the LanceDB surface for the archive path."""
 
     def __init__(self, rows=None, lister_raises=False):
-        self.rows = list(rows or [])
+        # Rows default to archive-owned. A row without `source_file` is a pre-June
+        # direct insert that no file maintains, and the diff deliberately retires it
+        # rather than counting it as the indexed form of a log line — see
+        # test_a_legacy_row_is_replaced_not_matched.
+        self.rows = [
+            {"metadata": {"source_file": f"{r.get('date', '2026-08-23')}.md"}, **r}
+            for r in (rows or [])
+        ]
         self.deleted_dates = []
         self.deleted_ids = []
         self.lister_raises = lister_raises
@@ -45,7 +52,7 @@ class _FakeStore:
     ):
         self._n += 1
         rid = f"id-{self._n}"
-        self.rows.append({"id": rid, "content": content})
+        self.rows.append({"id": rid, "content": content, "metadata": metadata})
         return rid
 
     async def delete_memory(self, memory_id):
@@ -182,3 +189,47 @@ async def test_notebook_pages_still_replace_wholesale():
     )
 
     assert n == 1
+
+
+@pytest.mark.asyncio
+async def test_a_legacy_row_is_replaced_not_matched():
+    """The one case where identical text must NOT count as already indexed.
+
+    `retire_legacy_rows.py --export` writes a pre-June row's text into the daily log
+    for its date, precisely so a row carrying `source_file` can take it over. If the
+    diff treated the legacy row as the indexed form of that line, no owned row would
+    be created — and the documented `--apply` step, seeing the text present in
+    markdown, would then delete the only copy. The fact would leave retrieval with
+    the file's mtime already recorded, so nothing would ever put it back.
+    """
+    store = _FakeStore()
+    store.rows = [{"id": "legacy", "content": "Prefers dark mode", "metadata": {}}]
+    emb = _FakeEmbeddings()
+
+    await _reindex(store, emb, _log("Prefers dark mode"))
+
+    assert emb.calls == ["Prefers dark mode"]
+    assert store.deleted_ids == ["legacy"]
+    assert [r["metadata"]["source_file"] for r in store.rows] == ["2026-08-23.md"]
+
+
+@pytest.mark.asyncio
+async def test_the_replacement_is_added_before_the_legacy_row_is_dropped():
+    """A crash between the two must leave a duplicate, never a hole."""
+    store = _FakeStore()
+    store.rows = [{"id": "legacy", "content": "Prefers dark mode", "metadata": {}}]
+    order = []
+    original_add, original_delete = store.add_memory, store.delete_memory
+
+    async def add(*a, **kw):
+        order.append("add")
+        return await original_add(*a, **kw)
+
+    async def delete(*a, **kw):
+        order.append("delete")
+        return await original_delete(*a, **kw)
+
+    store.add_memory, store.delete_memory = add, delete
+    await _reindex(store, _FakeEmbeddings(), _log("Prefers dark mode"))
+
+    assert order == ["add", "delete"]

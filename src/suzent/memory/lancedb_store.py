@@ -816,12 +816,16 @@ class LanceDBMemoryStore:
     async def list_source_rows(
         self, source_date: str, user_id: str
     ) -> List[Dict[str, Any]]:
-        """`[{"id", "content"}]` for one archive date — no vectors.
+        """`[{"id", "content", "metadata"}]` for one archive date — no vectors.
 
         Lets the indexer diff a daily log against what is already indexed instead of
         re-embedding the whole file. Mirrors the matching in
         `delete_memories_by_source_date`, including the legacy `source_date` rows, so
         the diff sees exactly the rows that a full delete would have removed.
+
+        `metadata` comes back because a legacy row matching a log line is not the same
+        as that line being indexed: only a row carrying `source_file` is owned by the
+        file and will be maintained with it. The indexer needs to tell them apart.
         """
         try:
             safe_user = _escape_sql(user_id)
@@ -833,7 +837,9 @@ class LanceDBMemoryStore:
                 f'   OR metadata LIKE \'%"source_file": "{safe_file}"%\')'
             )
             res = await (
-                self.archival_table.query().where(clause).select(["id", "content"])
+                self.archival_table.query()
+                .where(clause)
+                .select(["id", "content", "metadata"])
             ).to_arrow()
             return res.to_pylist()
         except Exception as e:

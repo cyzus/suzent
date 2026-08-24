@@ -125,3 +125,83 @@ def test_empty_queues_render_as_explicit_nothing():
     assert memory_context.format_confirmations_block([]) == "   (none pending)"
     assert memory_context.format_confirmations_block(None) == "   (none pending)"
     assert memory_context.format_revisits_block([]) == "   (none due)"
+
+
+# --- a caught-up install still has work ---
+
+
+@pytest.mark.asyncio
+async def test_pending_confirmations_alone_can_start_a_run(store, monkeypatch):
+    """The queues raise no pending date, so nothing else would ever start them.
+
+    A confirmation deliberately does not create a daily-log entry. On an install that
+    is caught up on logs, `_pending_dates` is empty forever and both the automatic
+    tick and the manual trigger report "nothing pending" while the sidecar grows
+    without bound — the recurrence evidence never reaching a page.
+    """
+    from suzent.config import CONFIG
+
+    for i in range(CONFIG.memory_consolidation_min_confirmations):
+        await store.append_confirmation(f"claim {i}", "x", "2026-08-01")
+
+    runner = DreamRunner()
+    ran = []
+
+    async def _fake_run_dream(mgr, watermark, pending):
+        ran.append((watermark, list(pending)))
+        return {"ran": True}
+
+    runner._run_dream = _fake_run_dream
+    runner._failures_loaded = True
+    monkeypatch.setattr(
+        "suzent.core.dream_runner.get_memory_manager", lambda: _Mgr(store)
+    )
+    mgr = _Mgr(store)
+    mgr.llm_client = object()
+    monkeypatch.setattr("suzent.core.dream_runner.get_memory_manager", lambda: mgr)
+
+    await runner._tick()
+
+    assert ran and ran[0][1] == []
+
+
+@pytest.mark.asyncio
+async def test_a_quiet_sidecar_does_not_start_a_run(store, monkeypatch):
+    """The threshold is what keeps this occasional rather than a second scheduler."""
+    await store.append_confirmation("one lonely claim", "x", "2026-08-01")
+
+    runner = DreamRunner()
+    ran = []
+    runner._run_dream = lambda *a, **kw: ran.append(a)
+    runner._failures_loaded = True
+    mgr = _Mgr(store)
+    mgr.llm_client = object()
+    monkeypatch.setattr("suzent.core.dream_runner.get_memory_manager", lambda: mgr)
+    runner._lint_due = lambda _mgr: False
+
+    await runner._tick()
+
+    assert ran == []
+
+
+@pytest.mark.asyncio
+async def test_the_manual_trigger_runs_for_a_single_confirmation(store, monkeypatch):
+    """A person pressing RUN NOW has said what they want; the volume gate is for the
+    scheduler, not for them."""
+    await store.append_confirmation("one lonely claim", "x", "2026-08-01")
+
+    runner = DreamRunner()
+    ran = []
+
+    async def _fake_run_dream(mgr, watermark, pending):
+        ran.append(list(pending))
+        return {"ran": True}
+
+    runner._run_dream = _fake_run_dream
+    mgr = _Mgr(store)
+    mgr.llm_client = object()
+    monkeypatch.setattr("suzent.core.dream_runner.get_memory_manager", lambda: mgr)
+
+    result = await runner.force_run()
+
+    assert ran == [[]] and result == {"ran": True}

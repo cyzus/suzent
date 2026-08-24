@@ -131,3 +131,45 @@ async def test_blank_turn_skips_the_search_entirely():
 
     assert await mgr._recall_known_facts("   \n  ", "user-1") == []
     assert mgr.calls == []
+
+
+@pytest.mark.asyncio
+async def test_only_durable_recalls_are_shown_to_the_extractor(monkeypatch):
+    """The suppression is one-way, so it must be spent only on durable rows.
+
+    The prompt tells the model not to re-extract what it is shown. A fact that lives
+    only in a transcript or in the generated MEMORY.md is not recorded anywhere the
+    write path is about to record it, and `_split_confirmations` runs *after*
+    extraction — it can divert a fact the model emitted, but it cannot recover one the
+    model was talked out of emitting. Showing a non-durable row would therefore drop
+    the fact entirely rather than deduplicate it.
+    """
+    from suzent.memory.models import ConversationTurn, Message
+
+    mgr = MemoryManager.__new__(MemoryManager)
+    mgr.markdown_store = None
+    shown = []
+
+    async def _recall(turn_text, user_id, chat_id=None):
+        return [
+            {"content": "on a page", "durable": True},
+            {"content": "said once in chat", "durable": False},
+        ]
+
+    async def _extract(content, known_facts=None):
+        shown.append(list(known_facts or []))
+        return []
+
+    mgr._recall_known_facts = _recall
+    mgr._extract_facts_llm = _extract
+
+    await mgr.process_conversation_turn_for_memories(
+        ConversationTurn(
+            user_message=Message(role="user", content="I use Unreal Engine 5"),
+            assistant_message=Message(role="assistant", content="Noted."),
+        ),
+        chat_id="c1",
+        user_id="user-1",
+    )
+
+    assert shown == [["on a page"]]

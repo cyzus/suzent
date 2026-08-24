@@ -124,6 +124,26 @@ class DreamRunner(BaseBrain):
             dates.append(d)
         return dates
 
+    def _pending_confirmations(self, mgr) -> int:
+        """How many confirmation records are waiting for a dream to fold them in.
+
+        These are the facts the write path deliberately kept out of the daily logs,
+        so they raise no pending date and cannot start a run by themselves. Without
+        counting them, an install that is caught up on logs reports nothing pending
+        while the sidecar grows without bound.
+        """
+        try:
+            return len(mgr.markdown_store.read_confirmations())
+        except Exception:
+            return 0
+
+    def _queues_due(self, mgr) -> bool:
+        """Whether the runner-owned queues justify a run with no new logs."""
+        return (
+            self._pending_confirmations(mgr)
+            >= CONFIG.memory_consolidation_min_confirmations
+        )
+
     def _count_fact_lines(self, mgr, dates: List[str]) -> int:
         n = 0
         for d in dates:
@@ -223,6 +243,10 @@ class DreamRunner(BaseBrain):
             "pending_dates": pending,
             "pending_count": len(pending),
             "pending_facts": pending_facts,
+            # Surfaced so a caught-up install does not read as "nothing pending" while
+            # the sidecar holds work: these are facts memory captured that no daily log
+            # shows, and only a dream retires them.
+            "pending_confirmations": self._pending_confirmations(mgr),
             "archive_count": total_count,
             "consolidated_count": consolidated_count,
             "progress_percent": progress_percent,
@@ -275,6 +299,15 @@ class DreamRunner(BaseBrain):
             await self._run_dream(mgr, watermark, pending)
             return
 
+        # Caught up on logs, but the queues the write path fills raise no pending date
+        # of their own. Same backoff as steady-state ingest, so this stays occasional.
+        if self._queues_due(mgr):
+            if (
+                time.time() - self._last_attempt_at
+            ) >= CONFIG.memory_consolidation_min_hours * 3600:
+                await self._run_dream(mgr, watermark, [])
+                return
+
         # Ingest is caught up. Only now consider the (slower) lint pass, so the
         # editorial audit never starves new-log consolidation.
         if self._lint_due(mgr):
@@ -287,7 +320,7 @@ class DreamRunner(BaseBrain):
             return {"ran": False, "reason": "memory system unavailable"}
         watermark = mgr.markdown_store.read_watermark()
         pending = self._pending_dates(mgr, watermark)
-        if not pending:
+        if not pending and not self._pending_confirmations(mgr):
             return {"ran": False, "reason": "nothing pending"}
         return await self._run_dream(mgr, watermark, pending)
 
@@ -306,11 +339,12 @@ class DreamRunner(BaseBrain):
 
         watermark = mgr.markdown_store.read_watermark()
         pending = self._pending_dates(mgr, watermark)
-        if not pending:
+        if not pending and not self._pending_confirmations(mgr):
             return {"ran": False, "started": False, "reason": "nothing pending"}
 
         self._phase = "queued"
-        target = pending[: CONFIG.memory_consolidation_max_days][-1]
+        batch = pending[: CONFIG.memory_consolidation_max_days]
+        target = batch[-1] if batch else (watermark or self._today_utc())
         task = asyncio.create_task(self._run_dream(mgr, watermark, pending))
         self._background_task = task
 
@@ -371,10 +405,20 @@ class DreamRunner(BaseBrain):
             self._last_attempt_at = time.time()
             self._last_started_at = datetime.now(timezone.utc).isoformat()
             batch = pending[: CONFIG.memory_consolidation_max_days]
-            w_new = batch[-1]
+            # A queue-only run has no new logs, so there is no new watermark: it stays
+            # where it is and the agent works the confirmations and revisit queues over
+            # an empty date range. `w_new` is still needed as the retry-counter key.
+            queues_only = not batch
+            w_new = batch[-1] if batch else (watermark or self._today_utc())
 
             # retry-then-skip: a batch that keeps producing nothing must not wedge the backlog.
-            if self._failures.get(w_new, 0) >= CONFIG.memory_consolidation_max_retries:
+            # A queue-only run has no backlog to wedge and shares its key with the date
+            # already consolidated, so it neither reads nor writes the retry counters.
+            if (
+                not queues_only
+                and self._failures.get(w_new, 0)
+                >= CONFIG.memory_consolidation_max_retries
+            ):
                 logger.warning(f"[dream] skipping un-consolidatable batch <= {w_new}")
                 await self._advance_watermark(mgr, w_new)
                 self._failures.pop(w_new, None)
@@ -390,12 +434,16 @@ class DreamRunner(BaseBrain):
 
             start = watermark or "0000-00-00"
             before = self._content_pages_state(mgr)
-            # How many confirmations the agent is about to be shown. Conversations keep
-            # appending while it runs; only this many may be dropped afterwards.
+            # What the agent is about to be shown, in both senses that matter when the
+            # sidecar is cleared: how long the file was (conversations keep appending
+            # while it runs, and none of that may be dropped) and which claims made it
+            # into the bounded prompt (the rest keep their evidence for the next run).
             try:
                 consumed_confirmations = len(mgr.markdown_store.read_confirmations())
+                shown_confirmations = mgr.markdown_store.summarize_confirmations()
             except Exception:
                 consumed_confirmations = 0
+                shown_confirmations = []
 
             self._pause_watcher()
             agent_ok = False
@@ -406,7 +454,7 @@ class DreamRunner(BaseBrain):
                     title="Memory consolidation (dream ingest)",
                 )
                 self._phase = "running_agent"
-                summary = await self._run_agent(mgr, start, w_new)
+                summary = await self._run_agent(mgr, start, w_new, shown_confirmations)
                 agent_ok = True
             except Exception as e:
                 logger.error(f"[dream] agent run failed: {e}")
@@ -424,8 +472,9 @@ class DreamRunner(BaseBrain):
             # eventually retry-skipped if it stays un-consolidatable).
             changed = self._content_pages_state(mgr) != before
             if not (agent_ok and changed):
-                self._failures[w_new] = self._failures.get(w_new, 0) + 1
-                self._save_failures(mgr)
+                if not queues_only:
+                    self._failures[w_new] = self._failures.get(w_new, 0) + 1
+                    self._save_failures(mgr)
                 reason = (
                     "agent run failed/timed out"
                     if not agent_ok
@@ -445,14 +494,22 @@ class DreamRunner(BaseBrain):
                 self._record_result(result)
                 return result
 
-            self._failures.pop(w_new, None)
-            self._save_failures(mgr)
-            result_summary = summary or f"Consolidated through {w_new}."
-            await self._advance_watermark(mgr, w_new)
+            if not queues_only:
+                self._failures.pop(w_new, None)
+                self._save_failures(mgr)
+                await self._advance_watermark(mgr, w_new)
+            result_summary = summary or (
+                "Worked the confirmation and revisit queues."
+                if queues_only
+                else f"Consolidated through {w_new}."
+            )
             # Only the confirmations the agent actually saw, and only now that the run
             # is known good. A failed run keeps them queued for the next one.
             if consumed_confirmations:
-                mgr.markdown_store.clear_confirmations(consumed_confirmations)
+                mgr.markdown_store.clear_confirmations(
+                    consumed_confirmations,
+                    folded=[r.get("content", "") for r in shown_confirmations],
+                )
             # Promote MEMORY.md (bounded) so the curated summary reflects this batch.
             try:
                 await asyncio.wait_for(
@@ -858,18 +915,26 @@ class DreamRunner(BaseBrain):
             logger.warning(f"[dream] could not build the revisit queue: {e}")
             return []
 
-    async def _run_agent(self, mgr, start: str, end: str) -> str:
+    async def _run_agent(
+        self, mgr, start: str, end: str, confirmations: Optional[List[dict]] = None
+    ) -> str:
         """Ingest phase: fold daily logs in (start, end] into the vault.
 
         Also hands the agent the two deterministic queues the runner owns: the
         confirmations recorded by the write path, and the claims past their
         `stale_after`. Returns the agent's one-paragraph summary (shown in the panel).
+
+        *confirmations* is passed in rather than read here so that the caller clears
+        exactly the claims that went into the prompt. Reading the sidecar twice would
+        let a conversation land between the two reads and put a claim in the cleared
+        set that the agent never saw.
         """
-        try:
-            confirmations = mgr.markdown_store.summarize_confirmations()
-        except Exception as e:
-            logger.warning(f"[dream] could not read confirmations: {e}")
-            confirmations = []
+        if confirmations is None:
+            try:
+                confirmations = mgr.markdown_store.summarize_confirmations()
+            except Exception as e:
+                logger.warning(f"[dream] could not read confirmations: {e}")
+                confirmations = []
 
         return await self._run_forked_agent(
             DREAM_CHAT_ID,

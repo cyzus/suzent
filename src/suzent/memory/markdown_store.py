@@ -320,27 +320,56 @@ class MarkdownMemoryStore:
         rows = sorted(grouped.values(), key=lambda r: (-r["count"], r["content"]))
         return rows[:limit]
 
-    def clear_confirmations(self, consumed: Optional[int] = None) -> None:
+    def clear_confirmations(
+        self,
+        consumed: Optional[int] = None,
+        folded: Optional[List[str]] = None,
+    ) -> None:
         """Drop the confirmations the dream has folded in (never raises).
 
-        *consumed* is the number of lines that were in the file when the prompt was
-        built. Conversations keep appending here while the dream runs, so truncating
-        the whole file would silently discard every confirmation recorded during the
-        run — the one thing this sidecar exists to not do. Passing None truncates.
+        Two things have to be true of what is dropped, and each guards a different way
+        of losing evidence this sidecar exists to keep.
+
+        *consumed* is how many lines the file held when the prompt was built. Anything
+        after that arrived while the dream ran and the agent never saw it, so the line
+        count bounds the damage a truncation could do. Passing None truncates.
+
+        *folded* is the claims that were actually in the prompt. `summarize_confirmations`
+        is bounded, so a busy period can leave the file holding more distinct claims
+        than the agent was shown; dropping by position alone would then delete the
+        unshown ones' evidence permanently. Lines whose claim is not in *folded* are
+        kept, wherever they sit. Passing None keeps the old positional behaviour, for
+        callers that show everything.
         """
         try:
             p = self.confirmations_path
             if not p.exists():
                 return
-            if consumed is None:
+            if consumed is None and folded is None:
                 p.write_text("", encoding="utf-8")
                 return
-            remaining = _read_text(p).splitlines()[consumed:]
+            lines = _read_text(p).splitlines()
+            head, tail = lines[: consumed or 0], lines[consumed or 0 :]
+            if folded is not None:
+                keys = {self._normalize(c) for c in folded if c}
+                head = [
+                    ln for ln in head if ln.strip() and self._line_claim(ln) not in keys
+                ]
+            else:
+                head = []
+            remaining = head + tail
             p.write_text(
                 "\n".join(remaining) + ("\n" if remaining else ""), encoding="utf-8"
             )
         except Exception as e:
             logger.warning(f"Failed to clear confirmations file: {e}")
+
+    def _line_claim(self, line: str) -> str:
+        """The normalized claim a raw sidecar line records, or "" if unreadable."""
+        try:
+            return self._normalize(json.loads(line).get("content", ""))
+        except Exception:
+            return ""
 
     def archive_dates_containing(self, contents: List[str]) -> List[str]:
         """Dates whose daily log holds any of *contents*, oldest first.

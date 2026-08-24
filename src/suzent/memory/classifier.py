@@ -38,8 +38,20 @@ REVISION_COVERAGE = 0.90
 _STOPWORDS = frozenset(
     """a an the and or but if then than that this these those is are was were be been
     being am do does did doing have has had having of in on at to for with from by as
-    it its his her their our my your user users he she they we you i not no also very
+    it its his her their our my your user users he she they we you i also very
     just really quite so such about into over under again more most some any each""".split()
+)
+
+# Negation is the one "small" word that reverses a claim rather than decorating it, so
+# it is never a stopword and never merely a token. "The project is active" and "the
+# project is not active" are a claim and its correction; on a long sentence the single
+# extra word barely moves a lexical score, so polarity is compared separately rather
+# than left to similarity. Step 4 of the dream prompt promises the agent that a
+# contradicting restatement never reaches the confirmations list -- this is what keeps
+# that true.
+_NEGATIONS = frozenset(
+    """not no never none nor neither cannot cant wont dont doesnt didnt isnt arent
+    wasnt werent hasnt havent hadnt without lacks lacking failed stopped""".split()
 )
 
 # Anything that pins a claim down: numbers, dates, versions, money, times, identifiers,
@@ -84,11 +96,27 @@ def normalize_claim(text: str) -> str:
     t = " ".join((text or "").split())
     t = re.sub(r"^-\s*", "", t)
     t = re.sub(r"^\[[^\]]+\]\s*", "", t)
-    return t.lower()
+    # Apostrophes go so that "isn't" and "isnt" are one token; the negation set would
+    # otherwise miss whichever spelling it did not list.
+    return t.lower().replace("’", "").replace("'", "")
 
 
 def _content_tokens(text: str) -> List[str]:
     return [w for w in _WORD_RE.findall(normalize_claim(text)) if w not in _STOPWORDS]
+
+
+def polarity_differs(a: str, b: str) -> bool:
+    """Whether one statement negates something the other does not.
+
+    Compared as a set of negation words rather than folded into similarity, because a
+    single "not" added to a long sentence moves a lexical score by almost nothing --
+    "the deployment pipeline runs nightly against staging" and the same sentence with
+    "does not run" are 0.97 apart on Dice, which is confirmation territory. The claim
+    they make is opposite.
+    """
+    na = {t for t in _WORD_RE.findall(normalize_claim(a)) if t in _NEGATIONS}
+    nb = {t for t in _WORD_RE.findall(normalize_claim(b)) if t in _NEGATIONS}
+    return na != nb
 
 
 def claim_similarity(a: str, b: str) -> float:
@@ -148,7 +176,8 @@ def classify_fact(content: str, known: Optional[List[str]]) -> ClaimVerdict:
     if best_score < REVISION_SIMILARITY and not superset:
         return ClaimVerdict(kind="new", similarity=best_score, matched=best_text)
 
-    if best_score >= CONFIRM_SIMILARITY and not specifics:
+    negated = bool(best_text) and polarity_differs(content, best_text)
+    if best_score >= CONFIRM_SIMILARITY and not specifics and not negated:
         return ClaimVerdict(
             kind="confirmation", similarity=best_score, matched=best_text
         )

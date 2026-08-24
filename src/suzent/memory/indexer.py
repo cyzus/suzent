@@ -23,6 +23,24 @@ from suzent.logger import get_logger
 
 logger = get_logger(__name__)
 
+
+def _owned_by_file(row: dict) -> bool:
+    """Whether a stored row is maintained by the markdown file it came from.
+
+    `source_file` is what makes a row reindexable: `_reindex_file` is delete-then-add
+    keyed on it. A row without one is a pre-June direct insert that no file owns, and
+    treating it as the indexed form of a log line is how an exported legacy fact ends
+    up deleted with nothing put back.
+    """
+    metadata = row.get("metadata")
+    if isinstance(metadata, str):
+        try:
+            metadata = json.loads(metadata or "{}")
+        except Exception:
+            return False
+    return bool((metadata or {}).get("source_file"))
+
+
 # ---------------------------------------------------------------------------
 # Transcript Indexer (Phase 5)
 # ---------------------------------------------------------------------------
@@ -675,10 +693,20 @@ class CoreMemoryFileIndexer:
         # Duplicate content within one day collapses to a single key. That matches
         # what the search index should hold anyway, and the extra copies get dropped
         # here as stale — the log itself keeps every line.
+        #
+        # A row without `source_file` is never a match, however identical its text.
+        # It is a pre-June direct insert that no file owns: nothing will ever reindex
+        # it, and `retire_legacy_rows.py --export` writes its text into this very log
+        # precisely so an owned row can replace it. Counting it as already-indexed
+        # would skip that replacement, and the export's `--apply` would then delete
+        # the only copy. So it is retired here and the line re-added under the file.
         indexed: dict = {}
         stale_ids: List[str] = []
         for row in existing:
             key = " ".join(str(row.get("content", "")).lower().split())
+            if not _owned_by_file(row):
+                stale_ids.append(row.get("id"))
+                continue
             if not key or key in indexed:
                 stale_ids.append(row.get("id"))
                 continue

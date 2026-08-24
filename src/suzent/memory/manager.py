@@ -549,8 +549,14 @@ class MemoryManager:
             # already holds so a re-mention is not stored as a new fact.
             turn_text = turn.format_for_extraction()
             known = await self._recall_known_facts(turn_text, user_id, chat_id)
+            # Only the durable ones. The prompt tells the model not to re-extract what
+            # it is shown, and a fact that exists solely in a transcript or in the
+            # generated MEMORY.md is not recorded anywhere the write path is about to
+            # record it -- suppressing it there means it never reaches the append-only
+            # log at all, and `_split_confirmations` cannot recover a fact the model
+            # already declined to emit.
             extracted_facts = await self._extract_facts_llm(
-                turn_text, [k["content"] for k in known]
+                turn_text, [k["content"] for k in known if k.get("durable")]
             )
 
             if not extracted_facts:

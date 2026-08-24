@@ -232,10 +232,11 @@ export function DreamingPanel(): React.ReactElement {
                     disabled={!canRunDream}
                     busy={runningIngest || (dreamStatus?.phase === 'running_agent')}
                 >
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                         <StatCard label={t('settings.memoryConfig.consolidatedThrough')} value={dreamStatus?.watermark || '—'} accent="green" />
                         <StatCard label={t('settings.memoryConfig.pendingLogs')} value={String(pendingCount)} accent={pendingCount > 0 ? 'amber' : 'neutral'} />
                         <StatCard label={t('settings.memoryConfig.pendingFacts')} value={String(dreamStatus?.pending_facts ?? 0)} accent={(dreamStatus?.pending_facts ?? 0) > 0 ? 'amber' : 'neutral'} />
+                        <StatCard label={t('settings.memoryConfig.pendingConfirmations')} value={String(dreamStatus?.pending_confirmations ?? 0)} accent={(dreamStatus?.pending_confirmations ?? 0) > 0 ? 'amber' : 'neutral'} />
                     </div>
                 </LastResultBox>
                 <LastResultBox

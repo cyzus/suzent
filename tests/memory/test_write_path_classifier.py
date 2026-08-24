@@ -10,10 +10,12 @@ was before this landed.
 import pytest
 
 from suzent.memory.classifier import (
+    CONFIRM_SIMILARITY,
     ClaimVerdict,
     claim_similarity,
     classify_fact,
     new_specifics,
+    polarity_differs,
 )
 from suzent.memory.markdown_store import MarkdownMemoryStore
 from suzent.memory.models import ExtractedFact
@@ -223,3 +225,98 @@ async def test_with_nothing_recalled_the_path_is_untouched(manager):
 def test_verdict_kinds_are_mutually_exclusive():
     assert not ClaimVerdict(kind="new").is_confirmation
     assert not ClaimVerdict(kind="new").is_revision
+
+
+# --- negation ---
+
+
+@pytest.mark.parametrize(
+    "correction",
+    [
+        "The user does not prefer dark mode in the editor",
+        "The user no longer prefers dark mode in the editor",
+        "The user doesn't prefer dark mode in the editor",
+    ],
+)
+def test_a_negated_restatement_is_never_a_confirmation(correction):
+    """Negation is the one word that reverses a claim instead of decorating it.
+
+    Step 4 of the dream prompt tells the agent a contradicting restatement never
+    reaches the confirmations list, and bumps the marker without re-reading the page.
+    If a correction were folded in as a confirmation, the write path would swallow an
+    update and the dream would count it as evidence *for* the claim it contradicts —
+    issue #34 all over again, with a false confirmation on top.
+    """
+    verdict = classify_fact(correction, KNOWN)
+
+    assert not verdict.is_confirmation
+
+
+def test_negation_survives_a_sentence_long_enough_to_dilute_it():
+    """The failure mode a lexical score alone cannot catch: on a long claim a single
+    "not" moves Dice by ~0.03, which lands inside the confirmation band."""
+    claim = (
+        "The nightly deployment pipeline is available on the staging cluster, "
+        "publishes a coverage report to the shared engineering channel each morning, "
+        "and mirrors its artifacts to the backup registry in Frankfurt"
+    )
+    negated = claim.replace("is available", "is not available")
+
+    assert claim_similarity(claim, negated) >= CONFIRM_SIMILARITY
+    assert polarity_differs(claim, negated)
+    assert not classify_fact(negated, [claim]).is_confirmation
+
+
+def test_matching_negations_still_confirm():
+    """Only a *difference* in polarity is claim-bearing. Two statements that are both
+    negative say the same thing, and must stay eligible for the sidecar."""
+    known = ["The user does not want email notifications"]
+
+    assert classify_fact(
+        "The user does not want email notifications", known
+    ).is_confirmation
+
+
+def test_spelling_a_contraction_out_is_not_a_difference():
+    assert not polarity_differs(
+        "the build isn't reproducible", "the build isnt reproducible"
+    )
+
+
+@pytest.mark.asyncio
+async def test_clearing_keeps_claims_the_prompt_could_not_fit(tmp_path):
+    """`summarize_confirmations` is bounded; the file is not.
+
+    A busy stretch can leave more distinct claims pending than the prompt shows. The
+    agent bumps markers only for what it saw, so dropping by position alone would
+    destroy the evidence for the rest — and the sidecar is the *only* record that
+    those facts recurred, because the write path deliberately kept them out of the
+    daily log.
+    """
+    store = MarkdownMemoryStore(
+        base_dir=tmp_path, notebook_dir=str(tmp_path / "notebook")
+    )
+    await store.append_confirmation("shown to the agent", "x", "2026-08-01")
+    await store.append_confirmation("did not fit in the prompt", "y", "2026-08-01")
+    consumed = len(store.read_confirmations())
+
+    store.clear_confirmations(consumed, folded=["shown to the agent"])
+
+    assert [r["content"] for r in store.read_confirmations()] == [
+        "did not fit in the prompt"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_folded_claim_is_cleared_however_its_repeats_are_interleaved(tmp_path):
+    store = MarkdownMemoryStore(
+        base_dir=tmp_path, notebook_dir=str(tmp_path / "notebook")
+    )
+    await store.append_confirmation("Prefers dark mode", "x", "2026-08-01")
+    await store.append_confirmation("unshown", "y", "2026-08-01")
+    await store.append_confirmation("prefers   DARK mode", "x", "2026-08-02")
+    consumed = len(store.read_confirmations())
+
+    store.clear_confirmations(consumed, folded=["Prefers dark mode"])
+
+    assert [r["content"] for r in store.read_confirmations()] == ["unshown"]

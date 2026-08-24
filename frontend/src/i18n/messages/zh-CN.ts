@@ -262,6 +262,7 @@ export const zhCN = {
       consolidatedThrough: '已整理至',
       pendingLogs: '待处理日志',
       pendingFacts: '待处理事实',
+      pendingConfirmations: '待处理确认',
       backlogProgress: '积压进度',
       progressCount: '{current}/{total} 条日志',
       complete: '完成',
