@@ -1,170 +1,117 @@
-# Configuration
+# Memory Configuration
 
-## YAML Configuration
+All memory settings live in `config/default.yaml`. Every one has a working default —
+memory runs without configuring anything.
 
-All memory and session settings go in `config/default.yaml`:
+## Turning memory on
 
 ```yaml
-# Memory system
 MEMORY_ENABLED: true
-MARKDOWN_MEMORY_ENABLED: true      # Dual-write to /shared/memory/ markdown files
-EXTRACTION_MODEL: gpt-4o-mini      # LLM for fact extraction
-USER_ID: default-user
-
-# Embedding
-EMBEDDING_MODEL: text-embedding-3-large
-EMBEDDING_DIMENSION: 3072           # 0 = auto-detect
-
-# Session lifecycle
-SESSION_DAILY_RESET_HOUR: 0         # UTC hour for daily reset (0 = disabled)
-SESSION_IDLE_TIMEOUT_MINUTES: 0     # 0 = disabled
-JSONL_TRANSCRIPTS_ENABLED: true     # Write per-session JSONL transcripts
-TRANSCRIPT_INDEXING_ENABLED: false   # Index transcripts into LanceDB for search
-
-# Context management
-MAX_HISTORY_STEPS: 20               # Steps before compression triggers
-MAX_CONTEXT_TOKENS: 800000          # Token threshold for compression
 ```
 
-## Environment Variables
+That's the only setting most installs need. Everything below is tuning.
 
-### API Keys
-```bash
-OPENAI_API_KEY=sk-xxx
-```
+## What gets captured
 
-### LanceDB Storage
-```bash
-# Path to LanceDB storage (default: .suzent/memory)
-LANCEDB_URI=.suzent/memory
-```
-
-## Manager Initialization
-
-```python
-from suzent.memory import MemoryManager, LanceDBMemoryStore
-from suzent.memory.markdown_store import MarkdownMemoryStore
-
-# Initialize stores
-store = LanceDBMemoryStore(uri=".suzent/memory", embedding_dim=3072)
-await store.connect()
-
-markdown_store = MarkdownMemoryStore("/shared/memory")
-
-manager = MemoryManager(
-    store=store,
-    embedding_model="text-embedding-3-large",
-    embedding_dimension=3072,
-    llm_for_extraction="gpt-4o-mini",
-    markdown_store=markdown_store,
-)
-```
-
-## System Constants
-
-Defined in `manager.py`:
-
-```python
-DEFAULT_MEMORY_RETRIEVAL_LIMIT = 5
-DEFAULT_MEMORY_SEARCH_LIMIT = 10
-IMPORTANT_MEMORY_THRESHOLD = 0.7
-DEDUPLICATION_SIMILARITY_THRESHOLD = 0.85
-DEFAULT_IMPORTANCE = 0.5
-```
-
-## Tuning
-
-### More Aggressive Storage
-```python
-DEDUPLICATION_SIMILARITY_THRESHOLD = 0.75
-DEFAULT_IMPORTANCE = 0.6
-```
-
-### Cleaner Memory
-```python
-DEDUPLICATION_SIMILARITY_THRESHOLD = 0.90
-DEFAULT_IMPORTANCE = 0.3
-```
-
-### Hybrid Search Weights
-```python
-results = await store.hybrid_search(
-    ...,
-    semantic_weight=0.7,      # Vector similarity
-    fts_weight=0.3,           # Full-text
-    importance_boost=0.2,     # Importance
-    recency_boost=0.1         # Recency
-)
-```
-
-### Session Lifecycle
 ```yaml
-# Reset sessions daily at 4am UTC
-SESSION_DAILY_RESET_HOUR: 4
-
-# Reset after 60 minutes of inactivity
-SESSION_IDLE_TIMEOUT_MINUTES: 60
+markdown_memory_enabled: true      # Write facts to /shared/memory/ as Markdown
+extraction_model: gpt-4o-mini      # Model that picks facts out of conversations
+user_id: default-user
 ```
 
-### Transcript Indexing
+The extraction model runs once per exchange, so a small fast model is the right choice
+here. If it's unset, Suzent uses the default chat model.
+
+## Consolidation
+
+How often the dream runs, and how much it takes on. See
+[How Consolidation Works](./consolidation.md).
+
 ```yaml
-# Enable to allow searching across past session transcripts
-TRANSCRIPT_INDEXING_ENABLED: true
+memory_consolidation_enabled: true
+memory_consolidation_interval_seconds: 1800   # How often to check whether a run is due
+memory_consolidation_min_hours: 24            # Minimum wait between runs
+memory_consolidation_min_facts: 20            # New facts needed before a run is worth it
+memory_consolidation_min_confirmations: 25    # Repeated facts that justify a run on their own
+memory_consolidation_max_days: 14             # Days of logs read in one run
+memory_consolidation_max_retries: 3           # Attempts before a stuck batch is skipped
+memory_consolidation_timeout_seconds: 600
+memory_consolidation_model: null              # Defaults to the main chat model
+memory_consolidation_memory_max_lines: 200    # Size cap on MEMORY.md
 ```
 
-This chunks transcripts into ~400-token segments with 80-token overlap and stores them in LanceDB. Increases storage but enables cross-session semantic search.
+The notebook audit runs on its own, slower schedule, and only once consolidation is
+caught up:
 
-## Embedding Models
-
-| Model | Dimension | Cost/1M tokens | Use Case |
-|-------|-----------|----------------|----------|
-| text-embedding-3-large | 3072 | $0.13 | Production |
-| text-embedding-3-small | 1536 | $0.02 | Development |
-| text-embedding-ada-002 | 1536 | $0.10 | Legacy |
-
-## Storage Layout
-
-```
-data/sandbox-data/shared/memory/    # Markdown source of truth (agent-accessible)
-  MEMORY.md                         # Curated long-term memory
-  2026-02-08.md                     # Daily logs
-
-.suzent/
-  memory/                           # LanceDB search index
-  transcripts/{session_id}.jsonl    # Session transcripts
-  state/{session_id}.json           # Agent state snapshots
-  chats.db                          # SQLite metadata
+```yaml
+memory_lint_enabled: true
+memory_lint_min_days: 7
 ```
 
-## Recovery
+## Where the notebook lives
 
-### Rebuild LanceDB from Markdown
-
-If the LanceDB index is corrupted or lost:
-
-```python
-from suzent.memory import MarkdownIndexer
-
-indexer = MarkdownIndexer()
-stats = await indexer.reindex_from_markdown(
-    markdown_store=manager.markdown_store,
-    lancedb_store=manager.store,
-    embedding_gen=manager.embedding_gen,
-    user_id="default-user",
-    clear_existing=True,
-)
-print(f"Indexed {stats['indexed']} facts from {stats['total_files']} files")
+```yaml
+notebook_dir: <data-dir>/notebook
 ```
 
-Or via the API:
+To use an existing Obsidian vault instead, mount it — this takes precedence over
+`notebook_dir`, which stays pointing at the default path:
+
+```yaml
+sandbox_volumes:
+  - "C:/Users/you/Documents/MyVault:/mnt/notebook"
+```
+
+## Search
+
+```yaml
+embedding_model: text-embedding-3-large
+embedding_dimension: 3072        # 0 = detect from the model
+embedding_timeout: 30            # Seconds before a slow provider is given up on
+lancedb_uri: <data-dir>/memory
+```
+
+| Model | Dimensions | Cost / 1M tokens |
+|---|---|---|
+| `text-embedding-3-large` | 3072 | $0.13 |
+| `text-embedding-3-small` | 1536 | $0.02 |
+
+Changing the embedding model means re-embedding everything you've stored, which costs one
+call per chunk across your whole memory. It is not a free switch.
+
+## Sessions and transcripts
+
+```yaml
+SESSION_DAILY_RESET_HOUR: 0        # UTC hour for a daily reset (0 = off)
+SESSION_IDLE_TIMEOUT_MINUTES: 0    # Reset after inactivity (0 = off)
+JSONL_TRANSCRIPTS_ENABLED: true    # Keep a transcript per session
+TRANSCRIPT_INDEXING_ENABLED: false # Also make transcripts searchable
+```
+
+Transcript indexing lets you search across past conversations, not just extracted facts.
+It costs storage and embedding calls proportional to everything you say, which is why it
+is off by default.
+
+## Context window
+
+```yaml
+MAX_HISTORY_STEPS: 20              # Steps before a conversation is compressed
+MAX_CONTEXT_TOKENS: 800000
+```
+
+## Rebuilding the search index
+
+The Markdown files are the real memory; the search index is derived from them. If search
+goes wrong, rebuild it — nothing is lost:
 
 ```bash
-curl -X POST http://localhost:25314/memory/reindex \
-  -H "Content-Type: application/json" \
-  -d '{"clear_existing": true}'
+curl -X POST http://localhost:25314/memory/reindex -H "Content-Type: application/json" -d '{"clear_existing": true}'
 ```
 
-## Debug Logging
+A full rebuild re-embeds every file, so expect it to take a while and to cost embedding
+calls.
+
+## Debug logging
 
 ```bash
 LOG_LEVEL=DEBUG uv run suzent

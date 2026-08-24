@@ -104,9 +104,3 @@ delete, and deletion stays with tombstones so it remains reversible and auditabl
 
 `scripts/retire_legacy_rows.py` and `scripts/dream_dry_run.py` both assume nothing else
 is writing. A concurrent reindex can race a delete. Stop the app, or accept the race.
-
-## 9. Tombstones do not change a file's mtime
-
-Worth knowing if you write tooling against this: the indexer is delete-then-add keyed on
-mtime, so appending a tombstone will not cause the affected file to be reindexed. Every
-tombstone write must be paired with an explicit reindex of the dates it touches.

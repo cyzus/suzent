@@ -33,5 +33,5 @@
 - [Docker Services](03-developing/docker-services.md): Redis, SearXNG, and sandbox configuration
 - [Release Guide](03-developing/releasing.md): Version bumping and release process
 - [Model Capability Updates](03-developing/model-capability-updates.md): Maintainer workflow for refreshing shipped model metadata
-- [Memory Internals](02-concepts/memory/internals.md): Memory system architecture for contributors
+- [Memory Internals](03-developing/memory/internals.md): Memory system architecture for contributors
 - [Logo Standard](03-developing/logo.md): Canonical logo geometry, component usage, and sizing guidelines

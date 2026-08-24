@@ -1,7 +1,7 @@
 # Memory Architecture
 
 How memory is written, consolidated, indexed, and read — and what is still missing.
-Companions: [Consolidation](./consolidation.md) for the dream's design intent,
+Companions: [Consolidation](../../02-concepts/memory/consolidation.md) for the dream's design intent,
 [Deduplication](./deduplication.md) for the duplicate problem and its fixes.
 
 ## Three tiers, one job each

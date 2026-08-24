@@ -5,7 +5,8 @@ forked, tool-restricted agent which consolidates the append-only daily memory lo
 into the notebook vault (the "wiki keeper", run autonomously). The runner owns the
 watermark (written to the vault's log.md) and regenerates MEMORY.md afterward.
 
-See docs/02-concepts/memory/consolidation.md (Phase 3).
+See docs/03-developing/memory/architecture.md for the design, and
+docs/02-concepts/memory/consolidation.md for the user-facing behaviour.
 """
 
 import asyncio

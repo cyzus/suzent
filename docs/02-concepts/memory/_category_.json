@@ -3,6 +3,6 @@
   "position": 2,
   "link": {
     "type": "generated-index",
-    "description": "Dual-tier memory architecture: fast markdown recall and semantic LanceDB search."
+    "description": "How Suzent remembers things across conversations, where it keeps them, and how to change what it knows."
   }
 }

@@ -1,6 +1,6 @@
 # Memory Deduplication
 
-Companion to [Memory Consolidation](./consolidation.md). That page describes how the
+Companion to [Memory Consolidation](../../02-concepts/memory/consolidation.md). That page describes how the
 append-only write path and the dream runner are *meant* to work. This page records
 what the live data actually looks like, why duplicates accumulate, and the plan for
 fixing it.

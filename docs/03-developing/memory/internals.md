@@ -174,3 +174,25 @@ The memory system is designed to avoid silent loss:
 - Embedding failures abort file replacement before old rows are deleted.
 - Tombstones are applied during every source-type reindex.
 - Invalid bytes in markdown are replaced during reads instead of aborting the whole pass.
+
+## HTTP API
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/memory/core` | GET | Get core memory blocks |
+| `/memory/core` | PUT | Update a core memory block |
+| `/memory/archival` | GET | Search archival memories |
+| `/memory/archival/{id}` | DELETE | Delete a memory |
+| `/memory/stats` | GET | Memory statistics |
+| `/memory/daily` | GET | List daily log dates |
+| `/memory/daily/{date}` | GET | Get daily log content |
+| `/memory/file` | GET | Get MEMORY.md content |
+| `/memory/reindex` | POST | Rebuild LanceDB from markdown |
+| `/session/{id}/transcript` | GET | Get session transcript |
+| `/session/{id}/state` | GET | Get agent state snapshot |
+
+## Tombstones do not change a file's mtime
+
+The indexer is delete-then-add keyed on mtime, so appending a tombstone does not cause the
+affected file to be reindexed. Every tombstone write must be paired with an explicit
+reindex of the dates it touches.
