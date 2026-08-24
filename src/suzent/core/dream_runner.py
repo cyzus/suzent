@@ -46,7 +46,10 @@ class DreamRunner(BaseBrain):
         self._lock = asyncio.Lock()
         # Ephemeral pacing state (NOT the watermark, which lives in log.md).
         self._last_attempt_at: float = 0.0
-        self._failures: dict = {}  # batch-end-date -> consecutive no-op count
+        # batch-end-date -> consecutive no-op count. Mirrors the durable copy in
+        # the vault's .state/dream_state.json; see _load_failures.
+        self._failures: dict = {}
+        self._failures_loaded = False
         self._last_started_at: Optional[str] = None
         self._last_finished_at: Optional[str] = None
         self._last_result: Optional[dict[str, Any]] = None
@@ -86,6 +89,28 @@ class DreamRunner(BaseBrain):
     def _today_utc() -> str:
         return datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
+    def _load_failures(self, mgr) -> None:
+        """Hydrate retry counters from disk once per process.
+
+        Retry-then-skip only works if the count survives a restart: the runner is
+        gated to one attempt per batch per app run, so an in-memory counter never
+        reaches max_retries on a desktop app and the backlog wedges silently.
+        """
+        if self._failures_loaded:
+            return
+        try:
+            self._failures = mgr.markdown_store.read_dream_failures()
+        except Exception as e:
+            logger.warning(f"[dream] could not read pacing state: {e}")
+            self._failures = {}
+        self._failures_loaded = True
+
+    def _save_failures(self, mgr) -> None:
+        try:
+            mgr.markdown_store.write_dream_failures(self._failures)
+        except Exception as e:
+            logger.warning(f"[dream] could not persist pacing state: {e}")
+
     def _pending_dates(self, mgr, watermark: Optional[str]) -> List[str]:
         """Daily-log dates not yet consolidated and strictly before today (UTC)."""
         today = self._today_utc()
@@ -98,6 +123,26 @@ class DreamRunner(BaseBrain):
                 continue
             dates.append(d)
         return dates
+
+    def _pending_confirmations(self, mgr) -> int:
+        """How many confirmation records are waiting for a dream to fold them in.
+
+        These are the facts the write path deliberately kept out of the daily logs,
+        so they raise no pending date and cannot start a run by themselves. Without
+        counting them, an install that is caught up on logs reports nothing pending
+        while the sidecar grows without bound.
+        """
+        try:
+            return len(mgr.markdown_store.read_confirmations())
+        except Exception:
+            return 0
+
+    def _queues_due(self, mgr) -> bool:
+        """Whether the runner-owned queues justify a run with no new logs."""
+        return (
+            self._pending_confirmations(mgr)
+            >= CONFIG.memory_consolidation_min_confirmations
+        )
 
     def _count_fact_lines(self, mgr, dates: List[str]) -> int:
         n = 0
@@ -167,6 +212,7 @@ class DreamRunner(BaseBrain):
                 "last_lint_result": last_lint_result,
             }
 
+        self._load_failures(mgr)
         watermark = mgr.markdown_store.read_watermark()
         pending = self._pending_dates(mgr, watermark)
         pending_facts = self._count_fact_lines(mgr, pending)
@@ -197,6 +243,10 @@ class DreamRunner(BaseBrain):
             "pending_dates": pending,
             "pending_count": len(pending),
             "pending_facts": pending_facts,
+            # Surfaced so a caught-up install does not read as "nothing pending" while
+            # the sidecar holds work: these are facts memory captured that no daily log
+            # shows, and only a dream retires them.
+            "pending_confirmations": self._pending_confirmations(mgr),
             "archive_count": total_count,
             "consolidated_count": consolidated_count,
             "progress_percent": progress_percent,
@@ -228,6 +278,7 @@ class DreamRunner(BaseBrain):
         mgr = get_memory_manager()
         if not mgr or not mgr.markdown_store or not mgr.llm_client:
             return
+        self._load_failures(mgr)
 
         watermark = mgr.markdown_store.read_watermark()
         pending = self._pending_dates(mgr, watermark)
@@ -248,6 +299,15 @@ class DreamRunner(BaseBrain):
             await self._run_dream(mgr, watermark, pending)
             return
 
+        # Caught up on logs, but the queues the write path fills raise no pending date
+        # of their own. Same backoff as steady-state ingest, so this stays occasional.
+        if self._queues_due(mgr):
+            if (
+                time.time() - self._last_attempt_at
+            ) >= CONFIG.memory_consolidation_min_hours * 3600:
+                await self._run_dream(mgr, watermark, [])
+                return
+
         # Ingest is caught up. Only now consider the (slower) lint pass, so the
         # editorial audit never starves new-log consolidation.
         if self._lint_due(mgr):
@@ -260,7 +320,7 @@ class DreamRunner(BaseBrain):
             return {"ran": False, "reason": "memory system unavailable"}
         watermark = mgr.markdown_store.read_watermark()
         pending = self._pending_dates(mgr, watermark)
-        if not pending:
+        if not pending and not self._pending_confirmations(mgr):
             return {"ran": False, "reason": "nothing pending"}
         return await self._run_dream(mgr, watermark, pending)
 
@@ -279,11 +339,12 @@ class DreamRunner(BaseBrain):
 
         watermark = mgr.markdown_store.read_watermark()
         pending = self._pending_dates(mgr, watermark)
-        if not pending:
+        if not pending and not self._pending_confirmations(mgr):
             return {"ran": False, "started": False, "reason": "nothing pending"}
 
         self._phase = "queued"
-        target = pending[: CONFIG.memory_consolidation_max_days][-1]
+        batch = pending[: CONFIG.memory_consolidation_max_days]
+        target = batch[-1] if batch else (watermark or self._today_utc())
         task = asyncio.create_task(self._run_dream(mgr, watermark, pending))
         self._background_task = task
 
@@ -339,16 +400,29 @@ class DreamRunner(BaseBrain):
             return {"ran": False, "reason": "already running"}
         async with self._lock:
             self._phase = "preparing"
+            # force_run reaches here without going through _tick.
+            self._load_failures(mgr)
             self._last_attempt_at = time.time()
             self._last_started_at = datetime.now(timezone.utc).isoformat()
             batch = pending[: CONFIG.memory_consolidation_max_days]
-            w_new = batch[-1]
+            # A queue-only run has no new logs, so there is no new watermark: it stays
+            # where it is and the agent works the confirmations and revisit queues over
+            # an empty date range. `w_new` is still needed as the retry-counter key.
+            queues_only = not batch
+            w_new = batch[-1] if batch else (watermark or self._today_utc())
 
             # retry-then-skip: a batch that keeps producing nothing must not wedge the backlog.
-            if self._failures.get(w_new, 0) >= CONFIG.memory_consolidation_max_retries:
+            # A queue-only run has no backlog to wedge and shares its key with the date
+            # already consolidated, so it neither reads nor writes the retry counters.
+            if (
+                not queues_only
+                and self._failures.get(w_new, 0)
+                >= CONFIG.memory_consolidation_max_retries
+            ):
                 logger.warning(f"[dream] skipping un-consolidatable batch <= {w_new}")
                 await self._advance_watermark(mgr, w_new)
                 self._failures.pop(w_new, None)
+                self._save_failures(mgr)
                 result = {
                     "ran": True,
                     "phase": "ingest",
@@ -360,6 +434,16 @@ class DreamRunner(BaseBrain):
 
             start = watermark or "0000-00-00"
             before = self._content_pages_state(mgr)
+            # What the agent is about to be shown, in both senses that matter when the
+            # sidecar is cleared: how long the file was (conversations keep appending
+            # while it runs, and none of that may be dropped) and which claims made it
+            # into the bounded prompt (the rest keep their evidence for the next run).
+            try:
+                consumed_confirmations = len(mgr.markdown_store.read_confirmations())
+                shown_confirmations = mgr.markdown_store.summarize_confirmations()
+            except Exception:
+                consumed_confirmations = 0
+                shown_confirmations = []
 
             self._pause_watcher()
             agent_ok = False
@@ -370,7 +454,7 @@ class DreamRunner(BaseBrain):
                     title="Memory consolidation (dream ingest)",
                 )
                 self._phase = "running_agent"
-                summary = await self._run_agent(start, w_new)
+                summary = await self._run_agent(mgr, start, w_new, shown_confirmations)
                 agent_ok = True
             except Exception as e:
                 logger.error(f"[dream] agent run failed: {e}")
@@ -388,7 +472,9 @@ class DreamRunner(BaseBrain):
             # eventually retry-skipped if it stays un-consolidatable).
             changed = self._content_pages_state(mgr) != before
             if not (agent_ok and changed):
-                self._failures[w_new] = self._failures.get(w_new, 0) + 1
+                if not queues_only:
+                    self._failures[w_new] = self._failures.get(w_new, 0) + 1
+                    self._save_failures(mgr)
                 reason = (
                     "agent run failed/timed out"
                     if not agent_ok
@@ -408,9 +494,22 @@ class DreamRunner(BaseBrain):
                 self._record_result(result)
                 return result
 
-            self._failures.pop(w_new, None)
-            result_summary = summary or f"Consolidated through {w_new}."
-            await self._advance_watermark(mgr, w_new)
+            if not queues_only:
+                self._failures.pop(w_new, None)
+                self._save_failures(mgr)
+                await self._advance_watermark(mgr, w_new)
+            result_summary = summary or (
+                "Worked the confirmation and revisit queues."
+                if queues_only
+                else f"Consolidated through {w_new}."
+            )
+            # Only the confirmations the agent actually saw, and only now that the run
+            # is known good. A failed run keeps them queued for the next one.
+            if consumed_confirmations:
+                mgr.markdown_store.clear_confirmations(
+                    consumed_confirmations,
+                    folded=[r.get("content", "") for r in shown_confirmations],
+                )
             # Promote MEMORY.md (bounded) so the curated summary reflects this batch.
             try:
                 await asyncio.wait_for(
@@ -510,6 +609,66 @@ class DreamRunner(BaseBrain):
     async def _advance_watermark(self, mgr, w_new: str):
         await mgr.markdown_store.write_watermark_entry(self._today_utc(), w_new)
 
+    # Below this, a "superseded" line is too generic to safely match a log line.
+    MIN_SUPERSEDED_CHARS = 24
+
+    async def _retire_superseded(self, mgr) -> int:
+        """Tombstone the fact lines the dream folded into the vault, then reindex.
+
+        The daily logs stay append-only — nothing is rewritten. Tombstoning is what
+        removes the derived row, and it is the runner's job rather than the agent's
+        so the agent never touches the index. The explicit per-date reindex is not
+        optional: appending a tombstone does not change the log's mtime, so
+        `check_and_update` would never revisit those days on its own.
+        """
+        store_md = mgr.markdown_store
+        try:
+            lines = store_md.read_superseded()
+        except Exception as e:
+            logger.warning(f"[dream] could not read superseded facts: {e}")
+            return 0
+        if not lines:
+            return 0
+
+        kept = [ln for ln in lines if len(ln) >= self.MIN_SUPERSEDED_CHARS]
+        if len(kept) != len(lines):
+            logger.info(
+                f"[dream] ignoring {len(lines) - len(kept)} superseded line(s) too "
+                "short to match a log line unambiguously"
+            )
+        if not kept:
+            store_md.clear_superseded()
+            return 0
+
+        dates = store_md.archive_dates_containing(kept)
+        for content in kept:
+            try:
+                await store_md.append_tombstone(content)
+            except Exception as e:
+                logger.warning(f"[dream] failed to tombstone a superseded fact: {e}")
+
+        for date in dates:
+            try:
+                await mgr._core_indexer.reindex_file_now(
+                    markdown_store=store_md,
+                    lancedb_store=mgr.store,
+                    embedding_gen=mgr.embedding_gen,
+                    user_id=CONFIG.user_id,
+                    label="archive",
+                    filename=f"{date}.md",
+                )
+            except Exception as e:
+                logger.error(f"[dream] reindex of {date} after supersede failed: {e}")
+
+        # Cleared only after the tombstones are durable: a crash before this point
+        # replays the same lines next run, which is idempotent. Clearing first would
+        # lose them.
+        store_md.clear_superseded()
+        logger.info(
+            f"[dream] retired {len(kept)} superseded fact(s) across {len(dates)} log(s)"
+        )
+        return len(kept)
+
     async def _reindex(self, mgr) -> None:
         """Reconcile the vault into the search index, with a hard timeout.
 
@@ -524,6 +683,11 @@ class DreamRunner(BaseBrain):
                 "[dream] skipping search reindex: no embedding model configured"
             )
             return
+
+        try:
+            await self._retire_superseded(mgr)
+        except Exception as e:
+            logger.error(f"[dream] retiring superseded facts failed: {e}")
 
         await asyncio.wait_for(
             mgr._core_indexer.check_and_update(
@@ -698,15 +862,89 @@ class DreamRunner(BaseBrain):
             except Exception:
                 pass
 
-    async def _run_agent(self, start: str, end: str) -> str:
+    @staticmethod
+    def _due_revisits(mgr, limit: int = 25) -> List[dict]:
+        """Vault pages due for a revisit, soonest-expired first.
+
+        Built here rather than by the agent: it is a deterministic scan of frontmatter,
+        and asking an LLM to find expired pages by reading the whole vault is both
+        slower and less reliable than reading the dates ourselves.
+
+        A page with no `stale_after` at all is also due, and queues after every genuinely
+        expired one. Every page written before `07f24c4b` is in that state, and selecting
+        strictly on the field would mean they are never queued, so the dream never visits
+        them, so the field is never written — the pages that most need a first pass would
+        be the only ones permanently exempt from one. Queuing them is what lets the dream
+        backfill the field itself, which is better than a script guessing an expiry: a
+        wrong `stale_after` actively damps a good claim in ranking, and only the dream can
+        see which category the claim belongs to.
+        """
+        try:
+            from suzent.memory.indexer import CoreMemoryFileIndexer
+
+            store_md = mgr.markdown_store
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            rows: List[dict] = []
+            for path in store_md.list_notebook_pages():
+                try:
+                    lifecycle = CoreMemoryFileIndexer._parse_page_lifecycle(
+                        path.read_text(encoding="utf-8", errors="replace")
+                    )
+                except OSError:
+                    continue
+                stale_after = lifecycle.get("stale_after", "")[:10]
+                if lifecycle.get("status", "").lower() == "deprecated":
+                    continue
+                rel = store_md.notebook_rel(path)
+                dated = len(stale_after) == 10
+                if dated and stale_after >= today:
+                    continue
+                if not dated and not rel.replace("\\", "/").startswith("3_Personal/"):
+                    # `stale_after` is a personal-claim field. A wiki or project page
+                    # having none is correct, not a backlog item — only the pages the
+                    # rule actually applies to are missing anything.
+                    continue
+                rows.append(
+                    {"page": rel, "stale_after": stale_after if dated else "unset"}
+                )
+            # Expired pages first, oldest expiry first; the undated ones follow, since a
+            # known-stale claim is more urgent than one we simply have no expiry for.
+            rows.sort(key=lambda r: (r["stale_after"] == "unset", r["stale_after"]))
+            return rows[:limit]
+        except Exception as e:
+            logger.warning(f"[dream] could not build the revisit queue: {e}")
+            return []
+
+    async def _run_agent(
+        self, mgr, start: str, end: str, confirmations: Optional[List[dict]] = None
+    ) -> str:
         """Ingest phase: fold daily logs in (start, end] into the vault.
 
-        Returns the agent's one-paragraph summary (shown in the dream panel).
+        Also hands the agent the two deterministic queues the runner owns: the
+        confirmations recorded by the write path, and the claims past their
+        `stale_after`. Returns the agent's one-paragraph summary (shown in the panel).
+
+        *confirmations* is passed in rather than read here so that the caller clears
+        exactly the claims that went into the prompt. Reading the sidecar twice would
+        let a conversation land between the two reads and put a claim in the cleared
+        set that the agent never saw.
         """
+        if confirmations is None:
+            try:
+                confirmations = mgr.markdown_store.summarize_confirmations()
+            except Exception as e:
+                logger.warning(f"[dream] could not read confirmations: {e}")
+                confirmations = []
+
         return await self._run_forked_agent(
             DREAM_CHAT_ID,
             memory_context.DREAM_SYSTEM_PROMPT,
-            memory_context.DREAM_INSTRUCTIONS.format(start=start, end=end),
+            memory_context.DREAM_INSTRUCTIONS.format(
+                start=start,
+                end=end,
+                confirmations=memory_context.format_confirmations_block(confirmations),
+                revisits=memory_context.format_revisits_block(self._due_revisits(mgr)),
+            ),
         )
 
     async def _run_lint_agent(self) -> str:

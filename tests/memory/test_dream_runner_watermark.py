@@ -168,7 +168,7 @@ async def test_watermark_not_advanced_when_agent_fails_after_partial_write(monke
     """Agent times out *after* changing one page → watermark must stay put."""
     runner = DreamRunner()
 
-    async def boom(start, end):
+    async def boom(*a, **kw):
         raise asyncio.TimeoutError("dream agent timed out mid-write")
 
     # before != after: a page WAS changed (the partial write), but the agent failed.
@@ -226,3 +226,52 @@ async def test_watermark_advances_on_clean_run_with_changes(monkeypatch):
     assert result["advanced"] is True
     assert result["changed"] is True
     assert "2026-06-03" not in runner._failures
+
+
+@pytest.mark.asyncio
+async def test_a_queue_only_run_leaves_the_watermark_alone(monkeypatch):
+    """With no new logs there is nothing to mark consolidated.
+
+    A run triggered by the confirmation queue works claims that are already on pages;
+    advancing the watermark would declare a date consolidated on the strength of work
+    that never touched its log.
+    """
+    runner = DreamRunner()
+    advanced = _wire(
+        runner,
+        monkeypatch,
+        _FakeManager(),
+        page_states=[{"p": 1.0}, {"p": 2.0}],
+        agent=_anoop,
+    )
+    monkeypatch.setattr(runner, "_pending_dates", lambda m, wm: [])
+
+    result = await runner._run_dream(_FakeManager(), "2026-06-01", [])
+
+    assert advanced == []
+    assert result["watermark"] == "2026-06-01"
+
+
+@pytest.mark.asyncio
+async def test_a_failed_queue_only_run_does_not_charge_the_ingest_retry_counter(
+    monkeypatch,
+):
+    """Its key is a date that ingest already consolidated. Counting a queue failure
+    against it would spend the retry budget of a batch that never ran, and three of
+    them would make retry-then-skip advance the watermark past unread logs."""
+    runner = DreamRunner()
+
+    async def boom(*a, **kw):
+        raise asyncio.TimeoutError("agent timed out")
+
+    _wire(
+        runner,
+        monkeypatch,
+        _FakeManager(),
+        page_states=[{"p": 1.0}, {"p": 1.0}],
+        agent=boom,
+    )
+
+    await runner._run_dream(_FakeManager(), "2026-06-01", [])
+
+    assert runner._failures == {}

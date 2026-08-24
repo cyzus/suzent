@@ -358,6 +358,12 @@ class ConfigModel(BaseModel):
     memory_consolidation_timeout_seconds: int = 600
     memory_consolidation_max_days: int = 14
     memory_consolidation_max_retries: int = 3
+    # Confirmations and expiring claims are queued by the write path, not by a daily
+    # log, so an install whose conversations only repeat known facts is "caught up"
+    # while the queues grow. This many pending confirmations makes a run worth doing
+    # on its own. Kept well above a single chatty afternoon so it never competes with
+    # ordinary ingest.
+    memory_consolidation_min_confirmations: int = 25
     memory_consolidation_memory_max_lines: int = 200
     memory_consolidation_model: Optional[str] = None
     memory_dream_tools: List[str] = [

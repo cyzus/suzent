@@ -130,6 +130,7 @@ export interface DreamStatus {
   pending_dates?: string[];
   pending_count?: number;
   pending_facts?: number;
+  pending_confirmations?: number;
   archive_count?: number;
   consolidated_count?: number;
   progress_percent?: number;

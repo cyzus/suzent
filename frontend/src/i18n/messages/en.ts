@@ -222,6 +222,7 @@ export const en = {
       consolidatedThrough: 'Consolidated through',
       pendingLogs: 'Pending logs',
       pendingFacts: 'Pending facts',
+      pendingConfirmations: 'Pending confirmations',
       backlogProgress: 'Backlog progress',
       progressCount: '{current}/{total} logs',
       complete: 'complete',

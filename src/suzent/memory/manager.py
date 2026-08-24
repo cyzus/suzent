@@ -3,13 +3,14 @@ Memory Manager - orchestrates core and archival memory operations.
 """
 
 from typing import Dict, List, Any, Optional, Union, TYPE_CHECKING
-from datetime import datetime
+from datetime import datetime, timezone
 
 from suzent.logger import get_logger
 from suzent.llm import EmbeddingGenerator, LLMClient
 from .lancedb_store import LanceDBMemoryStore
 from .markdown_store import MarkdownMemoryStore
 from .indexer import CoreMemoryFileIndexer
+from .classifier import classify_fact
 from . import memory_context
 from .models import (
     ConversationTurn,
@@ -34,6 +35,18 @@ DEFAULT_IMPORTANCE = 0.5
 
 # Extraction settings
 LLM_EXTRACTION_TEMPERATURE = 1.0
+
+# Already-known facts shown to the extractor so a re-mention is not stored again.
+# Ten is enough to cover the stable identity/preference facts that dominate the
+# duplicate clusters without crowding out the turn itself.
+KNOWN_FACTS_LIMIT = 10
+KNOWN_FACTS_MAX_CHARS = 240
+KNOWN_FACTS_QUERY_CHARS = 2000
+
+# Sources where a matched claim is already written down for good. A transcript row is
+# the user saying something, and MEMORY.md is generated from other rows -- neither is a
+# record the write path can defer to.
+DURABLE_SOURCE_TYPES = frozenset({"notebook", "archive_log"})
 
 
 class MemoryManager:
@@ -154,8 +167,12 @@ class MemoryManager:
                         # No chat_id — skip silently (context is always session-scoped)
                         logger.debug("Skipping context write: no chat_id provided")
                 elif label == "facts":
-                    # MEMORY.md — write raw (no auto-header here; agent owns the file)
-                    await self.markdown_store.write_block("MEMORY", content)
+                    # MEMORY.md — a person editing this block is the highest-quality
+                    # signal the system gets, so it goes to the zone that generators
+                    # never touch, stamped with a `human:` actor.
+                    await self.markdown_store.write_memory_manual_zone(
+                        content, actor=f"human:{user_id or 'unknown'}"
+                    )
                 else:
                     await self.markdown_store.write_block(label, content)
             else:
@@ -174,11 +191,16 @@ class MemoryManager:
 
     async def refresh_core_memory_facts(self, user_id: str):
         """
-        Refresh the 'facts' core memory block by summarizing highly important archival memories.
+        Refresh the 'facts' core memory block by summarizing top archival memories.
 
-        This condenses scattered archival memories into a high-density 'facts' block
-        that is always visible to the agent.
+        Legacy path, kept only until the vault has enough consolidated personal pages
+        for `promote_memory_md` to take over — which is why it stands down as soon as
+        those pages exist rather than racing the dream for the same file.
         """
+        if await self._vault_owns_memory_file():
+            logger.debug("Vault has personal pages; leaving MEMORY.md to the dream")
+            return
+
         try:
             # 1. Fetch top important memories
             # We use list_memories instead of search to get global top facts for user
@@ -192,15 +214,19 @@ class MemoryManager:
             if not memories:
                 return
 
-            # Filter for high importance only
+            # The rows are already the top 50 by importance, and that is as much
+            # selectivity as the column can offer: the indexer stamps every row it
+            # writes with a constant 0.5, so an additional
+            # `>= IMPORTANT_MEMORY_THRESHOLD` cut here matched nothing except the
+            # pre-June legacy rows — quietly rebuilding MEMORY.md from data months
+            # out of date, and set to produce an empty file the moment those rows
+            # are retired. Rank, then take what we get.
             important_facts = [
-                f"- {m['content']}"
-                for m in memories
-                if m.get("importance", 0) >= IMPORTANT_MEMORY_THRESHOLD
+                f"- {m['content']}" for m in memories if m.get("content", "").strip()
             ]
 
             if not important_facts:
-                logger.debug("No important facts found for core memory refresh")
+                logger.debug("No facts available for core memory refresh")
                 return
 
             facts_list_text = "\n".join(important_facts)
@@ -215,10 +241,15 @@ class MemoryManager:
                     max_tokens=1000,
                 )
 
-                # 3. Write summary to MEMORY.md (file-based SSoT)
+                # 3. Write summary to MEMORY.md (file-based SSoT). The store stamps
+                #    the file itself, in UTC; this used to add a second stamp from a
+                #    naive `datetime.now()`, so every generated file carried two
+                #    timestamps an hour apart wherever local time is not UTC.
                 if summary:
                     stats = await self.get_memory_stats(user_id)
-                    final_content = f"{summary.strip()}\n\n(Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M')} | Total Memories: {stats['total_memories']})"
+                    final_content = (
+                        f"{summary.strip()}\n\n_{stats['total_memories']} memories._"
+                    )
 
                     if self.markdown_store:
                         try:
@@ -232,6 +263,22 @@ class MemoryManager:
 
         except Exception as e:
             logger.error(f"Failed to refresh core memory facts: {e}")
+
+    async def _vault_owns_memory_file(self) -> bool:
+        """True once `promote_memory_md` has real material to work from.
+
+        Both writers regenerate the same file, and the newer one is strictly better
+        informed — it reads consolidated pages rather than raw extractions. Handing
+        over on the first personal page means the transition needs no flag day and no
+        config: as the dream fills the vault, the legacy path simply stops firing.
+        """
+        if not self.markdown_store:
+            return False
+        try:
+            personal_dir = self.markdown_store.notebook_dir / "3_Personal"
+            return any(personal_dir.rglob("*.md"))
+        except Exception:
+            return False
 
     async def promote_memory_md(self, user_id: str) -> None:
         """Regenerate the always-visible MEMORY.md from the vault's personal facts +
@@ -481,10 +528,13 @@ class MemoryManager:
             MemoryExtractionResult with the list of extracted fact contents.
 
         Append-only write path (fixes #34): facts are written to the markdown daily
-        log (the source of truth) and indexed into LanceDB. There is NO write-time
-        deduplication — duplicate/contradictory facts are resolved later by the dream
-        consolidation pass, which has full context. See
-        docs/02-concepts/memory/consolidation.md.
+        log (the source of truth) and indexed into LanceDB. There is still NO
+        write-time deduplication — an update to a fact must never be silently
+        dropped, which is what #34 was. Repetition is suppressed one step earlier
+        instead, by showing the extractor what memory already holds so a re-mention
+        is not extracted at all. What survives that is resolved by the dream
+        consolidation pass. See docs/02-concepts/memory/consolidation.md and
+        docs/02-concepts/memory/deduplication.md.
         """
         result = MemoryExtractionResult.empty()
 
@@ -495,13 +545,34 @@ class MemoryManager:
             else:
                 turn = conversation_turn
 
-            # Extract facts from the formatted turn
+            # Extract facts from the formatted turn, showing the model what memory
+            # already holds so a re-mention is not stored as a new fact.
+            turn_text = turn.format_for_extraction()
+            known = await self._recall_known_facts(turn_text, user_id, chat_id)
+            # Only the durable ones. The prompt tells the model not to re-extract what
+            # it is shown, and a fact that exists solely in a transcript or in the
+            # generated MEMORY.md is not recorded anywhere the write path is about to
+            # record it -- suppressing it there means it never reaches the append-only
+            # log at all, and `_split_confirmations` cannot recover a fact the model
+            # already declined to emit.
             extracted_facts = await self._extract_facts_llm(
-                turn.format_for_extraction()
+                turn_text, [k["content"] for k in known if k.get("durable")]
             )
 
             if not extracted_facts:
                 logger.debug("No facts extracted from conversation turn")
+                return result
+
+            # Separate out the re-statements. What is left keeps the append-only path.
+            extracted_facts, confirmations = await self._split_confirmations(
+                extracted_facts, known, chat_id
+            )
+            result.confirmed_facts = [c[0] for c in confirmations]
+
+            if not extracted_facts:
+                logger.debug(
+                    f"Turn held only re-statements: {len(confirmations)} confirmed"
+                )
                 return result
 
             result.extracted_facts = [f.content for f in extracted_facts]
@@ -547,6 +618,110 @@ class MemoryManager:
 
         return result
 
+    async def _split_confirmations(
+        self,
+        facts: List[ExtractedFact],
+        known: List[Dict[str, Any]],
+        chat_id: str,
+    ) -> tuple:
+        """Divide extracted facts into ones to write and ones already on record.
+
+        Returns `(to_write, confirmations)`. A fact is a confirmation only when it
+        matches a *durably recorded* claim in the same words with no new specifics
+        (see `classifier.classify_fact`); it then becomes a line in the confirmations
+        sidecar instead of a redundant row in the daily log. Nothing is lost by that:
+        the identical text is already in a vault page or an earlier log, and the fact
+        that it recurred is what the sidecar records.
+
+        A revision is written exactly as before — issue #34 was a write-time dedup that
+        swallowed an update, and nothing here is allowed to do that again. It is only
+        tagged, so the dream knows to treat it as an update to a claim it already holds.
+
+        Best-effort: if the sidecar write fails, the fact falls back to the normal
+        append-only path.
+        """
+        if not self.markdown_store or not known:
+            return facts, []
+
+        date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        durable = [k["content"] for k in known if k.get("durable")]
+        to_write: List[ExtractedFact] = []
+        confirmations: List[tuple] = []
+
+        for fact in facts:
+            verdict = classify_fact(fact.content, durable)
+            if verdict.is_confirmation:
+                try:
+                    await self.markdown_store.append_confirmation(
+                        content=fact.content,
+                        matched=verdict.matched,
+                        date=date,
+                        chat_id=chat_id,
+                    )
+                    confirmations.append((fact.content, verdict.matched))
+                    continue
+                except Exception as e:
+                    logger.warning(
+                        f"Confirmation sidecar write failed; logging the fact: {e}"
+                    )
+            elif verdict.is_revision and "revision" not in (fact.tags or []):
+                fact.tags = list(fact.tags or []) + ["revision"]
+            to_write.append(fact)
+
+        if confirmations:
+            logger.info(
+                f"{len(confirmations)} fact(s) already on record; "
+                f"recorded as confirmations rather than new rows"
+            )
+        return to_write, confirmations
+
+    async def _recall_known_facts(
+        self, turn_text: str, user_id: str, chat_id: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """Facts already in memory that are close to this turn, nearest-first.
+
+        Returns `[{"content", "durable"}]`. *durable* marks the rows that come from an
+        append-only store — a vault page or a daily log — as opposed to a chat
+        transcript or the generated `MEMORY.md`. Only a durable match can justify not
+        writing a repeat to the log, because only there is the claim already recorded
+        somewhere the write path is not about to record it.
+
+        Best-effort: any failure returns [] and extraction runs exactly as it did
+        before. Enriching the prompt must never be able to block a memory write.
+        """
+        query = turn_text[:KNOWN_FACTS_QUERY_CHARS]
+        if not query.strip():
+            return []
+        try:
+            results = await self.search_memories(
+                query=query,
+                limit=KNOWN_FACTS_LIMIT,
+                user_id=user_id,
+                chat_id=chat_id,
+            )
+        except Exception as e:
+            logger.warning(f"Known-fact recall failed; extracting without it: {e}")
+            return []
+
+        facts: List[Dict[str, Any]] = []
+        seen: set = set()
+        for r in results:
+            content = " ".join(str(r.get("content", "")).split())
+            if not content:
+                continue
+            key = content.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            metadata = r.get("metadata") or {}
+            facts.append(
+                {
+                    "content": content[:KNOWN_FACTS_MAX_CHARS],
+                    "durable": metadata.get("source_type") in DURABLE_SOURCE_TYPES,
+                }
+            )
+        return facts
+
     async def _write_facts_to_markdown(
         self, facts: List[ExtractedFact], chat_id: str
     ) -> Optional[str]:
@@ -585,18 +760,27 @@ class MemoryManager:
             logger.warning(f"Failed to write facts to markdown daily log: {e}")
             return None
 
-    async def _extract_facts_llm(self, content: str) -> List[ExtractedFact]:
+    async def _extract_facts_llm(
+        self, content: str, known_facts: Optional[List[str]] = None
+    ) -> List[ExtractedFact]:
         """
         Extract facts using LLM with Pydantic schema-based structured output.
 
         Uses LiteLLM's structured output feature to enforce the FactExtractionResponse
         schema, ensuring validated ExtractedFact models are returned.
 
+        Args:
+            content: The formatted conversation turn.
+            known_facts: Facts already in memory, nearest-first, so the model can tell
+                a repeat from an update. Omitted when retrieval is unavailable.
+
         Returns:
             List of ExtractedFact models
         """
         system_prompt = memory_context.FACT_EXTRACTION_SYSTEM_PROMPT
-        user_prompt = memory_context.format_fact_extraction_user_prompt(content)
+        user_prompt = memory_context.format_fact_extraction_user_prompt(
+            content, known_facts
+        )
         extraction_model = self.llm_extraction_model or getattr(
             self.llm_client, "model", None
         )

@@ -1,0 +1,207 @@
+"""The two queues the runner hands the dream: confirmations, and claims to revisit.
+
+Both are deterministic scans the runner owns. Asking the agent to find expired pages
+by reading the whole vault, or to discover confirmations by re-reading logs that were
+deliberately not written, would be slower and less reliable than reading the files.
+"""
+
+import pytest
+
+from suzent.core.dream_runner import DreamRunner
+from suzent.memory import memory_context
+from suzent.memory.markdown_store import MarkdownMemoryStore
+
+
+class _Mgr:
+    def __init__(self, store):
+        self.markdown_store = store
+
+
+def _page(store, rel: str, body: str):
+    path = store.notebook_dir / rel
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(body, encoding="utf-8")
+    return path
+
+
+@pytest.fixture
+def store(tmp_path):
+    return MarkdownMemoryStore(
+        base_dir=tmp_path, notebook_dir=str(tmp_path / "notebook")
+    )
+
+
+# --- revisit queue ---
+
+
+def test_expired_pages_are_queued_soonest_first_and_fresh_ones_are_not(store):
+    _page(store, "3_Personal/a.md", "---\nstale_after: 2020-01-01\n---\n- old")
+    _page(store, "3_Personal/b.md", "---\nstale_after: 2019-01-01\n---\n- older")
+    _page(store, "3_Personal/c.md", "---\nstale_after: 2099-01-01\n---\n- fresh")
+
+    rows = DreamRunner._due_revisits(_Mgr(store))
+
+    assert [r["page"] for r in rows] == ["3_Personal/b.md", "3_Personal/a.md"]
+
+
+def test_a_page_with_no_expiry_is_due_but_queues_last(store):
+    """Every page written before the rule existed has no `stale_after`. Selecting
+    strictly on the field would exempt exactly those pages from ever being visited,
+    which is how the field would stay unwritten forever."""
+    _page(store, "3_Personal/never_set.md", "---\nstatus: active\n---\n- a claim")
+    _page(store, "3_Personal/expired.md", "---\nstale_after: 2020-01-01\n---\n- old")
+    _page(store, "3_Personal/plain.md", "- no frontmatter at all")
+
+    rows = DreamRunner._due_revisits(_Mgr(store))
+
+    assert rows[0]["page"] == "3_Personal/expired.md"
+    assert {r["page"] for r in rows[1:]} == {
+        "3_Personal/never_set.md",
+        "3_Personal/plain.md",
+    }
+    assert all(r["stale_after"] == "unset" for r in rows[1:])
+
+
+def test_an_undated_page_is_still_skipped_when_deprecated(store):
+    _page(store, "3_Personal/a.md", "---\nstatus: deprecated\n---\n- retired")
+
+    assert DreamRunner._due_revisits(_Mgr(store)) == []
+
+
+def test_a_deprecated_page_is_not_worth_revisiting(store):
+    _page(
+        store,
+        "3_Personal/a.md",
+        "---\nstatus: deprecated\nstale_after: 2020-01-01\n---\n- old",
+    )
+
+    assert DreamRunner._due_revisits(_Mgr(store)) == []
+
+
+def test_the_queue_is_bounded(store):
+    for i in range(30):
+        _page(
+            store, f"3_Personal/p{i:02d}.md", "---\nstale_after: 2020-01-01\n---\n- x"
+        )
+
+    assert len(DreamRunner._due_revisits(_Mgr(store), limit=5)) == 5
+
+
+def test_an_unreadable_vault_yields_an_empty_queue():
+    class _Broken:
+        @property
+        def markdown_store(self):
+            raise RuntimeError("no vault")
+
+    assert DreamRunner._due_revisits(_Broken()) == []
+
+
+# --- prompt rendering ---
+
+
+def test_the_instructions_carry_both_queues_and_never_delete():
+    text = memory_context.DREAM_INSTRUCTIONS.format(
+        start="2026-01-01",
+        end="2026-01-02",
+        confirmations=memory_context.format_confirmations_block(
+            [{"content": "likes tea", "count": 3, "last": "2026-01-02"}]
+        ),
+        revisits=memory_context.format_revisits_block(
+            [{"page": "3_Personal/a.md", "stale_after": "2020-01-01"}]
+        ),
+    )
+
+    assert "likes tea — +3x, last 2026-01-02" in text
+    assert "3_Personal/a.md (stale_after 2020-01-01)" in text
+    # An unset expiry has to be actionable in the prompt, not merely listed.
+    assert "stale_after unset" in text
+    assert "Never delete here." in text
+    # A restatement that contradicts the page is a correction and never reaches the
+    # confirmations list; the prompt has to say so or the agent may bump the marker.
+    assert "a contradicting restatement never reaches this list" in text
+
+
+def test_empty_queues_render_as_explicit_nothing():
+    assert memory_context.format_confirmations_block([]) == "   (none pending)"
+    assert memory_context.format_confirmations_block(None) == "   (none pending)"
+    assert memory_context.format_revisits_block([]) == "   (none due)"
+
+
+# --- a caught-up install still has work ---
+
+
+@pytest.mark.asyncio
+async def test_pending_confirmations_alone_can_start_a_run(store, monkeypatch):
+    """The queues raise no pending date, so nothing else would ever start them.
+
+    A confirmation deliberately does not create a daily-log entry. On an install that
+    is caught up on logs, `_pending_dates` is empty forever and both the automatic
+    tick and the manual trigger report "nothing pending" while the sidecar grows
+    without bound — the recurrence evidence never reaching a page.
+    """
+    from suzent.config import CONFIG
+
+    for i in range(CONFIG.memory_consolidation_min_confirmations):
+        await store.append_confirmation(f"claim {i}", "x", "2026-08-01")
+
+    runner = DreamRunner()
+    ran = []
+
+    async def _fake_run_dream(mgr, watermark, pending):
+        ran.append((watermark, list(pending)))
+        return {"ran": True}
+
+    runner._run_dream = _fake_run_dream
+    runner._failures_loaded = True
+    monkeypatch.setattr(
+        "suzent.core.dream_runner.get_memory_manager", lambda: _Mgr(store)
+    )
+    mgr = _Mgr(store)
+    mgr.llm_client = object()
+    monkeypatch.setattr("suzent.core.dream_runner.get_memory_manager", lambda: mgr)
+
+    await runner._tick()
+
+    assert ran and ran[0][1] == []
+
+
+@pytest.mark.asyncio
+async def test_a_quiet_sidecar_does_not_start_a_run(store, monkeypatch):
+    """The threshold is what keeps this occasional rather than a second scheduler."""
+    await store.append_confirmation("one lonely claim", "x", "2026-08-01")
+
+    runner = DreamRunner()
+    ran = []
+    runner._run_dream = lambda *a, **kw: ran.append(a)
+    runner._failures_loaded = True
+    mgr = _Mgr(store)
+    mgr.llm_client = object()
+    monkeypatch.setattr("suzent.core.dream_runner.get_memory_manager", lambda: mgr)
+    runner._lint_due = lambda _mgr: False
+
+    await runner._tick()
+
+    assert ran == []
+
+
+@pytest.mark.asyncio
+async def test_the_manual_trigger_runs_for_a_single_confirmation(store, monkeypatch):
+    """A person pressing RUN NOW has said what they want; the volume gate is for the
+    scheduler, not for them."""
+    await store.append_confirmation("one lonely claim", "x", "2026-08-01")
+
+    runner = DreamRunner()
+    ran = []
+
+    async def _fake_run_dream(mgr, watermark, pending):
+        ran.append(list(pending))
+        return {"ran": True}
+
+    runner._run_dream = _fake_run_dream
+    mgr = _Mgr(store)
+    mgr.llm_client = object()
+    monkeypatch.setattr("suzent.core.dream_runner.get_memory_manager", lambda: mgr)
+
+    result = await runner.force_run()
+
+    assert ran == [[]] and result == {"ran": True}

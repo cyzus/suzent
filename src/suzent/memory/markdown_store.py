@@ -17,11 +17,22 @@ import json
 import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from suzent.logger import get_logger
 
 logger = get_logger(__name__)
+
+# MEMORY.md is written by two generators and edited directly by the agent, which the
+# core-memory prompt actively tells it to do. Only the region between these markers is
+# regenerated; everything after the end marker is preserved verbatim, so a note the
+# agent or the user adds is not destroyed by the next consolidation.
+MEMORY_GENERATED_START = "<!-- memory:generated - rewritten on consolidation -->"
+MEMORY_GENERATED_END = "<!-- /memory:generated - notes below this line are kept -->"
+
+# The footer written by every pre-marker version of write_memory_file. Its presence is
+# what identifies an unmarked file as generator-authored and therefore safe to replace.
+_LEGACY_FOOTER_RE = re.compile(r"^\*Last updated: .*UTC\*\s*$", re.MULTILINE)
 
 
 def _read_text(path: Path) -> str:
@@ -169,12 +180,6 @@ class MarkdownMemoryStore:
                     continue
         return out
 
-    def truncate_recalls(self) -> None:
-        try:
-            self.recall_log_path.write_text("", encoding="utf-8")
-        except Exception:
-            pass
-
     # --- Tombstones (user-deleted facts the indexer must skip) ---
 
     @property
@@ -207,6 +212,222 @@ class MarkdownMemoryStore:
     def is_tombstoned(self, content: str, tombstones: Optional[set] = None) -> bool:
         ts = tombstones if tombstones is not None else self.read_tombstones()
         return self._normalize(content) in ts
+
+    # --- Superseded facts (dream hand-off to the runner) ---
+
+    @property
+    def superseded_path(self) -> Path:
+        return self.notebook_state_dir / "superseded.txt"
+
+    def read_superseded(self) -> List[str]:
+        """Fact lines the dream folded into the vault and wants out of the index.
+
+        The dream only ever appends here. Turning these into tombstones and
+        reindexing the affected logs is the runner's job, so that index mutation
+        stays out of the agent's hands and the daily logs stay append-only.
+        """
+        p = self.superseded_path
+        if not p.exists():
+            return []
+        out: List[str] = []
+        seen: set = set()
+        for line in _read_text(p).splitlines():
+            line = line.strip().lstrip("-").strip()
+            if not line:
+                continue
+            key = self._normalize(line)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(line)
+        return out
+
+    def clear_superseded(self) -> None:
+        """Truncate the hand-off file once its lines are tombstoned (never raises)."""
+        try:
+            if self.superseded_path.exists():
+                self.superseded_path.write_text("", encoding="utf-8")
+        except Exception as e:
+            logger.warning(f"Failed to clear superseded file: {e}")
+
+    # --- Confirmations (write path hand-off to the dream) ---
+
+    @property
+    def confirmations_path(self) -> Path:
+        return self.notebook_state_dir / "confirmations.jsonl"
+
+    async def append_confirmation(
+        self, content: str, matched: str, date: str, chat_id: str = ""
+    ) -> None:
+        """Record that a claim already on record was stated again.
+
+        The line the user just said is not appended to the daily log — it is word-for-
+        word something durably recorded already, so the only new information is that
+        it recurred, and that is what this file holds. The dream folds these into the
+        vault's `(confirmed Nx, last YYYY-MM-DD)` markers.
+        """
+        async with self._write_lock:
+            with open(self.confirmations_path, "a", encoding="utf-8") as f:
+                f.write(
+                    json.dumps(
+                        {
+                            "content": content,
+                            "matched": matched,
+                            "date": date,
+                            "chat_id": chat_id,
+                        },
+                        ensure_ascii=False,
+                    )
+                    + "\n"
+                )
+
+    def read_confirmations(self) -> List[dict]:
+        """Pending confirmations, oldest first. Malformed lines are skipped."""
+        p = self.confirmations_path
+        if not p.exists():
+            return []
+        out: List[dict] = []
+        for line in _read_text(p).splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except Exception:
+                continue
+            if isinstance(rec, dict) and rec.get("content"):
+                out.append(rec)
+        return out
+
+    def summarize_confirmations(self, limit: int = 40) -> List[dict]:
+        """Pending confirmations collapsed to one row per claim, most-repeated first.
+
+        `[{"content", "count", "last"}]` — the shape the dream prompt needs to bump a
+        marker without reading the raw file.
+        """
+        grouped: Dict[str, dict] = {}
+        for rec in self.read_confirmations():
+            key = self._normalize(rec.get("content", ""))
+            if not key:
+                continue
+            row = grouped.setdefault(
+                key, {"content": rec["content"], "count": 0, "last": ""}
+            )
+            row["count"] += 1
+            date = str(rec.get("date") or "")
+            if date > row["last"]:
+                row["last"] = date
+        rows = sorted(grouped.values(), key=lambda r: (-r["count"], r["content"]))
+        return rows[:limit]
+
+    def clear_confirmations(
+        self,
+        consumed: Optional[int] = None,
+        folded: Optional[List[str]] = None,
+    ) -> None:
+        """Drop the confirmations the dream has folded in (never raises).
+
+        Two things have to be true of what is dropped, and each guards a different way
+        of losing evidence this sidecar exists to keep.
+
+        *consumed* is how many lines the file held when the prompt was built. Anything
+        after that arrived while the dream ran and the agent never saw it, so the line
+        count bounds the damage a truncation could do. Passing None truncates.
+
+        *folded* is the claims that were actually in the prompt. `summarize_confirmations`
+        is bounded, so a busy period can leave the file holding more distinct claims
+        than the agent was shown; dropping by position alone would then delete the
+        unshown ones' evidence permanently. Lines whose claim is not in *folded* are
+        kept, wherever they sit. Passing None keeps the old positional behaviour, for
+        callers that show everything.
+        """
+        try:
+            p = self.confirmations_path
+            if not p.exists():
+                return
+            if consumed is None and folded is None:
+                p.write_text("", encoding="utf-8")
+                return
+            lines = _read_text(p).splitlines()
+            head, tail = lines[: consumed or 0], lines[consumed or 0 :]
+            if folded is not None:
+                keys = {self._normalize(c) for c in folded if c}
+                head = [
+                    ln for ln in head if ln.strip() and self._line_claim(ln) not in keys
+                ]
+            else:
+                head = []
+            remaining = head + tail
+            p.write_text(
+                "\n".join(remaining) + ("\n" if remaining else ""), encoding="utf-8"
+            )
+        except Exception as e:
+            logger.warning(f"Failed to clear confirmations file: {e}")
+
+    def _line_claim(self, line: str) -> str:
+        """The normalized claim a raw sidecar line records, or "" if unreadable."""
+        try:
+            return self._normalize(json.loads(line).get("content", ""))
+        except Exception:
+            return ""
+
+    def archive_dates_containing(self, contents: List[str]) -> List[str]:
+        """Dates whose daily log holds any of *contents*, oldest first.
+
+        Matching is normalized-substring against the whole log line rather than a
+        parse of it: the fact body sits inside the line, and a false positive only
+        costs one redundant reindex, which is delete-then-add and therefore
+        idempotent. Missing a date, by contrast, would leave the row in the index
+        with no mtime change to ever bring the watcher back to it.
+        """
+        wanted = [self._normalize(c) for c in contents if c and c.strip()]
+        if not wanted:
+            return []
+        dates: set = set()
+        for path in sorted(self.archive_dir.glob("????-??-??.md")):
+            if not path.is_file():
+                continue
+            body = self._normalize(_read_text(path))
+            if any(w in body for w in wanted):
+                dates.add(path.stem)
+        return sorted(dates)
+
+    # --- Dream pacing state (durable across restarts) ---
+
+    @property
+    def dream_state_path(self) -> Path:
+        return self.notebook_state_dir / "dream_state.json"
+
+    def read_dream_failures(self) -> dict:
+        """Consecutive no-op counts per batch end date, `{"YYYY-MM-DD": int}`.
+
+        Durable because retry-then-skip is what stops one un-consolidatable batch
+        from wedging the backlog forever. Held only in memory, the counter resets
+        on every process start, so the skip never fires on a desktop app that
+        restarts between attempts and the watermark stops advancing for good.
+        """
+        p = self.dream_state_path
+        if not p.exists():
+            return {}
+        try:
+            data = json.loads(_read_text(p))
+        except Exception:
+            return {}
+        if not isinstance(data, dict):
+            return {}
+        failures = data.get("failures")
+        if not isinstance(failures, dict):
+            return {}
+        return {k: v for k, v in failures.items() if isinstance(v, int)}
+
+    def write_dream_failures(self, failures: dict) -> None:
+        """Best-effort persist of the retry counters (never raises)."""
+        try:
+            self.dream_state_path.write_text(
+                json.dumps({"failures": failures}, indent=2), encoding="utf-8"
+            )
+        except Exception as e:
+            logger.warning(f"Failed to persist dream state: {e}")
 
     # --- Daily Logs ---
 
@@ -319,23 +540,97 @@ class MarkdownMemoryStore:
         """Path to the curated long-term memory file."""
         return self.base_dir / "MEMORY.md"
 
-    async def write_memory_file(self, content: str) -> None:
-        """
-        Write/update the MEMORY.md file.
+    def manual_tail(self, existing: str) -> str:
+        """Whatever a generator must not touch, taken from the current MEMORY.md.
 
-        Args:
-            content: Full content to write (replaces existing)
+        Three cases, in order:
+
+        - Marked file: everything after the end marker is the manual zone.
+        - Unmarked but generator-authored: nothing to keep. Recognised by the footer
+          only this method ever wrote, so the test cannot be fooled by an agent that
+          merely reused the heading.
+        - Anything else: the whole file. A file we did not write is somebody's work,
+          and a blind overwrite is exactly how it used to get lost.
+        """
+        if MEMORY_GENERATED_END in existing:
+            return existing.split(MEMORY_GENERATED_END, 1)[1].strip()
+        if not existing.strip():
+            return ""
+        if _LEGACY_FOOTER_RE.search(existing):
+            return ""
+        return existing.strip()
+
+    async def write_memory_manual_zone(self, content: str, actor: str) -> None:
+        """Replace the human-owned half of MEMORY.md, keeping the generated half.
+
+        This is the fourth writer to this file: a person editing the `facts` block in
+        the UI. It used to be a raw whole-file write, which meant a human correction
+        either got clobbered by the next consolidation or got copied down into the
+        manual zone alongside the generated original.
+
+        Their text lands in the manual zone, where nothing overwrites it, and carries
+        an OKF-style `human:` verification stamp — a person's correction is evidence
+        of a different quality than anything the extractor produced, and this is the
+        record of that. Anything they typed inside the generated zone is dropped: the
+        marker says outright that the region is rewritten, and silently preserving it
+        would duplicate every fact the next pass regenerates.
         """
         async with self._write_lock:
-            header = "# Long-term Memory\n\n"
+            path = self.memory_file_path
+            existing = path.read_text(encoding="utf-8") if path.exists() else ""
+
+            if MEMORY_GENERATED_START in existing and MEMORY_GENERATED_END in existing:
+                head = existing.split(MEMORY_GENERATED_END, 1)[0] + MEMORY_GENERATED_END
+            else:
+                timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+                head = (
+                    f"# Long-term Memory\n_Consolidated {timestamp}._\n\n"
+                    f"{MEMORY_GENERATED_START}\n{MEMORY_GENERATED_END}"
+                )
+
+            submitted = content
+            if MEMORY_GENERATED_END in submitted:
+                submitted = submitted.split(MEMORY_GENERATED_END, 1)[1]
+
+            stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            body = f"{head}\n\n<!-- verified: {actor} at {stamp} -->\n"
+            if submitted.strip():
+                body += f"{submitted.strip()}\n"
+
+            path.write_text(body, encoding="utf-8")
+
+        logger.info("Updated MEMORY.md manual zone (%s)", actor)
+
+    async def write_memory_file(self, content: str) -> None:
+        """Rewrite the generated zone of MEMORY.md, preserving the manual zone.
+
+        This file has two writers in code and a third in practice: the agent edits it
+        with its ordinary file tools because the core-memory prompt invites it to. The
+        write used to be an unconditional `write_text`, so whichever generator ran next
+        destroyed that work with no merge, no warning, and no way to notice afterwards.
+
+        Args:
+            content: the generated section. Everything after the end marker survives.
+        """
+        async with self._write_lock:
+            path = self.memory_file_path
+            existing = path.read_text(encoding="utf-8") if path.exists() else ""
+            tail = self.manual_tail(existing)
             timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-            footer = f"\n\n---\n*Last updated: {timestamp}*\n"
 
-            self.memory_file_path.write_text(
-                header + content + footer, encoding="utf-8"
+            body = (
+                f"# Long-term Memory\n"
+                f"_Consolidated {timestamp}._\n\n"
+                f"{MEMORY_GENERATED_START}\n"
+                f"{content.strip()}\n"
+                f"{MEMORY_GENERATED_END}\n"
             )
+            if tail:
+                body += f"\n{tail}\n"
 
-        logger.info("Updated MEMORY.md")
+            path.write_text(body, encoding="utf-8")
+
+        logger.info("Updated MEMORY.md (generated zone, %d chars kept)", len(tail))
 
     async def read_memory_file(self) -> Optional[str]:
         """

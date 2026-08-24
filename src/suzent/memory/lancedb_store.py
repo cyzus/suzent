@@ -174,7 +174,12 @@ class LanceDBMemoryStore:
 
     async def _init_tables(self) -> None:
         """Initialize tables if they don't exist."""
-        table_names = await self.db.list_tables()
+        # list_tables() returns a paginated result object, not a list — `"x" not in
+        # <that object>` is always True, so both branches below took the create path on
+        # every startup and were saved only by exist_ok. Harmless today, but it means
+        # "the table did not exist" was never actually known.
+        listing = await self.db.list_tables()
+        table_names = list(getattr(listing, "tables", listing) or [])
 
         # Memory Blocks
         if "memory_blocks" not in table_names:
@@ -807,6 +812,39 @@ class LanceDBMemoryStore:
         except Exception as e:
             logger.error(f"delete_memories_by_source_date failed: {e}")
             return False
+
+    async def list_source_rows(
+        self, source_date: str, user_id: str
+    ) -> List[Dict[str, Any]]:
+        """`[{"id", "content", "metadata"}]` for one archive date — no vectors.
+
+        Lets the indexer diff a daily log against what is already indexed instead of
+        re-embedding the whole file. Mirrors the matching in
+        `delete_memories_by_source_date`, including the legacy `source_date` rows, so
+        the diff sees exactly the rows that a full delete would have removed.
+
+        `metadata` comes back because a legacy row matching a log line is not the same
+        as that line being indexed: only a row carrying `source_file` is owned by the
+        file and will be maintained with it. The indexer needs to tell them apart.
+        """
+        try:
+            safe_user = _escape_sql(user_id)
+            safe_date = source_date.replace("'", "")
+            safe_file = f"{safe_date}.md".replace('"', '\\"')
+            clause = (
+                f"user_id = '{safe_user}'"
+                f' AND (metadata LIKE \'%"source_date": "{safe_date}"%\''
+                f'   OR metadata LIKE \'%"source_file": "{safe_file}"%\')'
+            )
+            res = await (
+                self.archival_table.query()
+                .where(clause)
+                .select(["id", "content", "metadata"])
+            ).to_arrow()
+            return res.to_pylist()
+        except Exception as e:
+            logger.error(f"list_source_rows failed for {source_date}: {e}")
+            return []
 
     async def delete_all_memory_blocks(
         self, user_id: str, chat_id: Optional[str] = None

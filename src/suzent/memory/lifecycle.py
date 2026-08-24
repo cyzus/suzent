@@ -14,6 +14,29 @@ from suzent.logger import get_logger
 
 logger = get_logger(__name__)
 
+
+def resolve_notebook_dir() -> str:
+    """The vault the app actually uses, which is often not `CONFIG.notebook_dir`.
+
+    A user who mounts their own vault at `/mnt/notebook` (an Obsidian folder, say) is
+    mapping the agent's side of the sandbox; `CONFIG.notebook_dir` keeps pointing at
+    the default under the data dir, which `_build_volumes` still creates and which then
+    sits there empty apart from whatever a first run bootstrapped into it. Anything
+    that reads `CONFIG.notebook_dir` directly is therefore liable to read a stale
+    skeleton and conclude the vault is nearly empty — so every caller resolves the
+    mapped volume first, through here.
+    """
+    from pathlib import Path
+
+    from suzent.tools.filesystem.path_resolver import PathResolver
+
+    for vol in CONFIG.sandbox_volumes or []:
+        parsed = PathResolver.parse_volume_string(vol)
+        if parsed and parsed[1] == "/mnt/notebook":
+            return str(Path(parsed[0]).resolve())
+    return str(Path(CONFIG.notebook_dir).resolve())
+
+
 # --- Memory System State ---
 memory_manager = None
 memory_store = None
@@ -237,22 +260,10 @@ async def _initialize_memory_system() -> bool:
         # if they provided one, else the default CONFIG.notebook_dir. The vault is
         # bootstrapped (nav files + zone folders) unconditionally so the dream
         # consolidation can always run.
-        from suzent.tools.filesystem.path_resolver import PathResolver
         from suzent.memory.wiki_manager import WikiManager
         from pathlib import Path
 
-        notebook_host_path = None
-        for vol in CONFIG.sandbox_volumes or []:
-            parsed = PathResolver.parse_volume_string(vol)
-            if parsed and parsed[1] == "/mnt/notebook":
-                notebook_host_path = parsed[0]
-                break
-
-        resolved_notebook = str(
-            Path(notebook_host_path).resolve()
-            if notebook_host_path
-            else Path(CONFIG.notebook_dir).resolve()
-        )
+        resolved_notebook = resolve_notebook_dir()
         memory_manager.notebook_dir = resolved_notebook
         memory_manager.wiki_manager = WikiManager(notebook_path=resolved_notebook)
         # Align the markdown store's vault pointer (it may default differently).

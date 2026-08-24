@@ -6,6 +6,8 @@ Centralizes all prompt engineering for the memory system.
 
 from typing import Dict, List, Any, Optional
 
+from suzent.memory.markdown_store import MEMORY_GENERATED_END
+
 
 # ===== Core Memory Context Prompts =====
 
@@ -101,6 +103,9 @@ Your memory lives in plain markdown files you can read and write directly:
 **How to update your memory:**
 - To update persona, user profile, or long-term context: use `edit_file` or `write_file` on the corresponding `.md` file
 - To update session scratchpad / task state: write to `context.md` in the sessions directory
+- `MEMORY.md` is part generated: consolidation rewrites everything above the
+  `{MEMORY_GENERATED_END}` marker, so put anything you want to keep **below** it. Text
+  above that line is not yours and will not survive the next pass
 - Do **not** append duplicate or ephemeral information; keep files concise and scannable
 
 {notebook_title}
@@ -250,22 +255,57 @@ For each fact:
 - State facts directly: "Prefers X" not "User mentioned they prefer X"
 - Skip greetings, ephemeral debugging, small talk
 - Fewer high-quality facts > many low-quality ones
+
+## Already-known facts
+The prompt may list facts already in memory. They are context, not material:
+
+- Do NOT re-extract one because it came up again. Stable facts (someone's name, how
+  they like to be addressed, a long-running project) surface constantly; re-stating
+  them is what fills memory with duplicates.
+- DO extract when the turn CHANGES a known fact — new specifics, a correction, a
+  reversal. Write the full updated fact, not the delta, and lead with what changed.
+- A near-repeat that adds nothing is not a change. "Wants water reminders" after
+  "Wants water reminders hourly 9am-9pm" is a step backwards; skip it.
+- When in doubt about a fact that carries NEW information, extract it. Losing an
+  update is worse than storing a duplicate.
 """
 
 
-def format_fact_extraction_user_prompt(content: str) -> str:
+def format_known_facts_block(known_facts: Optional[List[str]]) -> str:
+    """Render already-known facts for the extraction prompt, or "" if there are none.
+
+    Extraction is otherwise blind: it sees one conversation turn and no memory, so
+    every mention of a stable fact reads as new. Showing what is already stored is
+    what lets the model tell a repeat from an update.
+    """
+    if not known_facts:
+        return ""
+    lines = "\n".join(f"- {f}" for f in known_facts)
+    return f"""## Already in memory
+{lines}
+
+Do not re-extract these. Extract only what is new, or what CHANGES one of them.
+
+"""
+
+
+def format_fact_extraction_user_prompt(
+    content: str, known_facts: Optional[List[str]] = None
+) -> str:
     """
     Format user prompt for fact extraction from a conversation turn.
 
     Args:
         content: The formatted conversation turn text (user message + assistant response + actions)
+        known_facts: Facts already in memory, nearest-first. Omitted when retrieval
+            is unavailable — extraction then behaves exactly as it did before.
 
     Returns:
         Formatted extraction prompt
     """
     return f"""Extract memorable facts from this conversation turn. One concise sentence per fact.
 
----
+{format_known_facts_block(known_facts)}---
 {content}
 ---
 
@@ -292,6 +332,13 @@ Max 2000 words. Respond with the summary only.
 DREAM_MEMORY_ROOT = "/shared/memory"  # daily logs: {DREAM_MEMORY_ROOT}/archive/*.md
 DREAM_NOTEBOOK_ROOT = "/mnt/notebook"  # the vault the agent maintains
 
+# Where the dream drops fact lines it has folded into the vault and wants dropped
+# from the search index. The agent only ever writes this file; the runner turns the
+# lines into tombstones and reindexes the affected logs, keeping index mutation out
+# of the agent's hands and the daily logs append-only.
+DREAM_SUPERSEDED_FILENAME = "superseded.txt"
+DREAM_SUPERSEDED_PATH = f"{DREAM_NOTEBOOK_ROOT}/.state/{DREAM_SUPERSEDED_FILENAME}"
+
 DREAM_SYSTEM_PROMPT = f"""You are Suzent's memory consolidation agent ("dream"). You run \
 autonomously to turn the raw, append-only daily memory logs into a clean, durable, \
 cross-referenced knowledge vault.
@@ -307,6 +354,7 @@ Rules:
 - Preserve history: when a fact changes over time, record "currently X; previously Y" — never silently overwrite.
 - Only remove a statement when it is a genuine correction or an exact duplicate.
 - Do NOT write to log.md — the runner records consolidation events there. Put conflicts on content pages.
+- {DREAM_SUPERSEDED_PATH} is append-only and write-only for you: read it if you must, never clear it.
 """
 
 DREAM_INSTRUCTIONS = f"""Consolidate the daily memory logs dated after {{start}} through {{end}} into the vault.
@@ -317,7 +365,15 @@ DREAM_INSTRUCTIONS = f"""Consolidate the daily memory logs dated after {{start}}
    a. Find the page it belongs to (index.md + glob_search/grep_search + memory_search).
       Personal facts about the user -> 3_Personal/ ; domain knowledge -> 2_Wiki/.
    b. Apply the matching case:
-      - Duplicate (same fact reworded)              -> do nothing.
+      - Duplicate (same fact reworded)              -> confirm, do not restate. Bump the
+                                                       claim's confirmation marker
+                                                       (step 3e), replace the bullet text
+                                                       only if the new wording is MORE
+                                                       specific, then retire the log lines
+                                                       (step 3d). Never add a second
+                                                       bullet, and never let a vaguer
+                                                       restatement overwrite a detailed
+                                                       claim you already hold.
       - New, non-conflicting                        -> add under the right section.
       - Correction (new entry shows old was wrong)  -> replace the wrong statement.
       - Change over time (both true at diff. times) -> rewrite as "Currently X (since {{end}});
@@ -327,11 +383,67 @@ DREAM_INSTRUCTIONS = f"""Consolidate the daily memory logs dated after {{start}}
         content page (or create a conflict-review page in the schema's appropriate location
         if no topical page exists) and apply the schema's needs-review marker.
    c. Convert relative dates ("yesterday") to absolute.
-4. Add `## Related` links using the schema's link style.
-5. Update index.md. Do NOT write the watermark to log.md — the runner records it.
+   d. Retire what you folded in: append the exact log fact text (the part after the
+      `- [category] ` prefix, without the trailing backtick tags) to
+      {DREAM_SUPERSEDED_PATH}, one per line, for any line that is now fully represented
+      on a page AND adds nothing the page does not say. The runner drops those from the
+      search index; the daily logs themselves stay untouched. When in doubt, leave it
+      out — a duplicate in the index is cheaper than a fact that vanishes.
+   e. Lifecycle on {DREAM_NOTEBOOK_ROOT}/3_Personal/ pages, whether or not this vault's
+      schema.md mentions it (older vaults were seeded before these rules existed):
+      - A repeated claim gets a marker on its bullet: `(confirmed 12x, last YYYY-MM-DD)`.
+        Absent marker means confirmed once. Increment it and set the date; a claim the user
+        keeps repeating is one claim confirmed many times, not many claims.
+      - A repeat that CONTRADICTS the bullet is a correction, not a confirmation — reset the
+        count and apply the correction case above.
+      - Give each page a `stale_after` derived from the fact category: identity none,
+        preference 1 year, technical 6 months, goal 3 months, context 3 weeks.
+4. Confirmations recorded by the write path since the last consolidation. These were
+   said again word-for-word and deliberately NOT written to a daily log, so this list
+   is the only record that they recurred. For each, find the claim on its page and bump
+   its marker by the count shown (step 3e); do not add a bullet, and do not treat one
+   as a correction — a contradicting restatement never reaches this list.
+{{confirmations}}
+5. Claims due for a revisit. Re-confirm each against the logs you just read: if it is
+   supported, refresh the date; if it is contradicted, apply the correction case; if the
+   logs say nothing either way, leave it and let lint decide. Never delete here.
+   A page listed as `stale_after unset` predates the rule and has no expiry at all: give
+   it one from step 3's category table while you are there, whatever the logs say.
+{{revisits}}
+6. Add `## Related` links using the schema's link style.
+7. Update index.md. Do NOT write the watermark to log.md — the runner records it.
 
 Return a one-paragraph summary of what you created, updated, superseded, or flagged.
 """
+
+
+def format_confirmations_block(rows: Optional[List[dict]]) -> str:
+    """Render the confirmations sidecar for the dream prompt.
+
+    `rows` is `markdown_store.summarize_confirmations()` output: one entry per claim
+    with a count and the last date it was restated.
+    """
+    if not rows:
+        return "   (none pending)"
+    lines = []
+    for row in rows:
+        content = " ".join(str(row.get("content", "")).split())
+        if not content:
+            continue
+        lines.append(
+            f"   - {content} — +{row.get('count', 1)}x, last {row.get('last')}"
+        )
+    return "\n".join(lines) or "   (none pending)"
+
+
+def format_revisits_block(rows: Optional[List[dict]]) -> str:
+    """Render the revisit queue: vault pages whose `stale_after` has passed."""
+    if not rows:
+        return "   (none due)"
+    return "\n".join(
+        f"   - {row['page']} (stale_after {row['stale_after']})" for row in rows
+    )
+
 
 # ---- Lint phase: periodic editorial audit of the vault (runs after ingest catches up) ----
 
@@ -365,6 +477,8 @@ LINT_INSTRUCTIONS = f"""Run an editorial lint pass over the notebook vault.
    related page, or delete only if truly obsolete.
 6. Reciprocal links: if A links B in `## Related`, add B→A where meaningful.
 7. Decay: apply page-level `stale_after` and the schema's fallback decay rule, using its review marker.
+   On 3_Personal/ pages a passed `stale_after` means re-confirm the claim against recent logs or mark it
+   `status: deprecated` — never delete it, and never reset a claim's confirmation marker during lint.
 8. Gaps: note recurring topics with no synthesized page and dangling internal links.
 
 Do NOT append the lint entry to log.md — the runner records it.
