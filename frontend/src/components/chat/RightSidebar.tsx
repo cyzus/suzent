@@ -222,15 +222,22 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   // ── Open sidebar automatically when content arrives ─────────────────
   // Auto-open only when content transitions absent → present *within the same
   // chat*. On a chat switch we re-baseline without opening, so loading an
-  // existing chat's content doesn't pop the sidebar. Each content flag is
-  // already chat-scoped (canvas is keyed by chatId in localStorage; goal via
-  // hasGoalContent/goalChatId), so no load-timing heuristic is needed.
+  // existing chat's content doesn't pop the sidebar.
+  //
+  // Canvas and goal load asynchronously, so right after a switch their flags
+  // read false simply because the fetch hasn't landed — baselining on that and
+  // then seeing the data arrive would look like a rise and pop the sidebar
+  // (collapsing the left one with it). Each carries a "resolved" signal
+  // (surfacesChatId / goalChatId stamped for the chat we're viewing); a rise
+  // only counts if the flag was already resolved for this chat while false.
   const autoOpenRef = useRef({
     chatId: currentChatId,
     file: false,
     canvas: false,
+    canvasResolved: false,
     subAgent: false,
     goal: false,
+    goalResolved: false,
   });
 
   useEffect(() => {
@@ -239,22 +246,34 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       chatId: currentChatId,
       file: !!fileToPreview,
       canvas: hasCanvasContent,
+      canvasResolved: canvasMatchesChat,
       subAgent: !!viewingSubAgentTaskId,
       goal: hasGoalContent,
+      goalResolved: goalMatchesChat,
     };
 
     // Same chat + a flag rose false→true + sidebar closed → open it.
     if (prev.chatId === currentChatId && !isOpen) {
       const rose =
         (!prev.file && flags.file) ||
-        (!prev.canvas && flags.canvas) ||
+        (prev.canvasResolved && !prev.canvas && flags.canvas) ||
         (!prev.subAgent && flags.subAgent) ||
-        (!prev.goal && flags.goal);
+        (prev.goalResolved && !prev.goal && flags.goal);
       if (rose) onOpen();
     }
 
     autoOpenRef.current = flags;
-  }, [currentChatId, fileToPreview, hasCanvasContent, viewingSubAgentTaskId, hasGoalContent, isOpen, onOpen]);
+  }, [
+    currentChatId,
+    fileToPreview,
+    hasCanvasContent,
+    canvasMatchesChat,
+    viewingSubAgentTaskId,
+    hasGoalContent,
+    goalMatchesChat,
+    isOpen,
+    onOpen,
+  ]);
 
 
   // In a new chat only the Tools tab is usable — the rest have no chat context

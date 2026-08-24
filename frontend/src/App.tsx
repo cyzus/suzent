@@ -423,7 +423,9 @@ function AppInner(): React.ReactElement {
   function toggleLeftSidebar(): void {
     setIsLeftSidebarOpen(prev => {
       const next = !prev;
-      if (next) {
+      // Only evict the right sidebar when the two genuinely can't share the
+      // viewport -- on a wide window both stay open.
+      if (next && shouldCollapseLeftSidebarOnRightOpen(window.innerWidth, rightSidebarWidth)) {
         setIsRightSidebarOpen(false);
       }
       return next;
