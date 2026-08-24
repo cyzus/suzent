@@ -15,6 +15,7 @@ import type { ArchivalMemory } from '../../types/memory';
 import { BrutalDeleteButton } from '../BrutalDeleteButton';
 import { BrutalDeleteOverlay } from '../BrutalDeleteOverlay';
 import { useI18n } from '../../i18n';
+import { MemoryMarkdown, stripFrontmatter } from './MemoryMarkdown';
 
 interface MemoryCardProps {
   memory: ArchivalMemory;
@@ -54,11 +55,14 @@ function escapeRegExp(value: string): string {
 }
 
 /**
- * Memories are stored as light markdown. Full rendering would fight the card, but
- * leaving the syntax in makes prose read like source code — so drop the markers.
+ * Plain-text reduction, for the compact row only.
+ *
+ * The full card renders markdown properly (see `MemoryMarkdown`), but a compact row
+ * is one truncated line: a heading or a code fence has nowhere to go there, so the
+ * markers are dropped rather than rendered.
  */
 function readableContent(raw: string): string {
-  return raw
+  return stripFrontmatter(raw)
     .replace(/^#{1,6}\s+/gm, '')
     .replace(/\*\*([^*]+)\*\*/g, '$1')
     .replace(/(^|[\s(])\*([^*\n]+)\*/g, '$1$2')
@@ -241,14 +245,20 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({
         />
 
         <div className="min-w-0 flex-1 p-4">
-          {/* Content leads */}
-          <p
-            className={`max-w-[68ch] whitespace-pre-line break-words text-[15px] leading-7 text-brutal-black dark:text-neutral-100 ${
-              !isExpanded && shouldTruncate ? 'line-clamp-4' : ''
+          {/* Content leads. Collapsed cards clamp by height rather than by line
+              count: markdown emits headings, lists and code blocks of differing
+              heights, so `line-clamp` would cut a long card and a short one to
+              visibly different sizes. */}
+          <div
+            className={`relative max-w-[68ch] text-brutal-black dark:text-neutral-100 ${
+              !isExpanded && shouldTruncate ? 'max-h-32 overflow-hidden' : ''
             }`}
           >
-            {highlightText(content, searchQuery)}
-          </p>
+            <MemoryMarkdown content={memory.content} searchQuery={searchQuery} />
+            {!isExpanded && shouldTruncate && (
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-white to-transparent dark:from-zinc-800" />
+            )}
+          </div>
           {shouldTruncate && (
             <button
               onClick={() => setIsExpanded(!isExpanded)}

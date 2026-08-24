@@ -6,6 +6,7 @@
 import { useState, useEffect } from 'react';
 import { memoryApi } from '../../lib/memoryApi';
 import { useI18n } from '../../i18n';
+import { MemoryMarkdown } from './MemoryMarkdown';
 
 function formatDateLabel(dateStr: string, t: (key: string, params?: Record<string, string>) => string): string {
   try {
@@ -54,9 +55,11 @@ function LogContentArea({ loading, error, content }: {
   if (content) {
     return (
       <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 shadow-brutal">
-        <pre className="whitespace-pre-wrap font-mono text-sm p-6 max-h-[65vh] overflow-y-auto scrollbar-thin leading-relaxed text-brutal-black dark:text-neutral-200">
-          {content}
-        </pre>
+        <MemoryMarkdown
+          content={content}
+          variant="document"
+          className="p-6 max-h-[65vh] overflow-y-auto scrollbar-thin text-brutal-black dark:text-neutral-200"
+        />
       </div>
     );
   }
