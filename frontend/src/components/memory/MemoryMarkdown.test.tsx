@@ -66,4 +66,19 @@ describe('MemoryMarkdown', () => {
 
     expect(html).not.toContain('<h1');
   });
+
+  it('renders a line break inside a table cell as a break, not as text', () => {
+    // A markdown table row cannot contain a newline, so Obsidian writes `<br>`.
+    const html = render(['| a | b |', '| --- | --- |', '| one<br>two | x |'].join('\n'));
+
+    expect(html).toContain('<br');
+    expect(html).not.toContain('&lt;br');
+  });
+
+  it('drops raw html that the content is not allowed to bring', () => {
+    const html = render('<script>alert(1)</script><b onclick="x()">hi</b>');
+
+    expect(html).not.toContain('<script');
+    expect(html).not.toContain('onclick');
+  });
 });

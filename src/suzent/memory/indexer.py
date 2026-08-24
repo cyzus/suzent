@@ -442,9 +442,9 @@ class CoreMemoryFileIndexer:
                         state_dirty = True
                     continue
 
-            mtime = path.stat().st_mtime
-            if self._mtimes.get(path_key) == mtime:
-                continue  # File unchanged — nothing to do
+            mtime, birthtime = self.file_times(path)
+            if mtime is None or self._mtimes.get(path_key) == mtime:
+                continue  # File unchanged (or unreadable) — nothing to do
 
             try:
                 content = path.read_text(encoding="utf-8", errors="replace").strip()
@@ -462,6 +462,7 @@ class CoreMemoryFileIndexer:
                     user_id=user_id,
                     tombstones=tombstones,
                     mtime=mtime,
+                    birthtime=birthtime,
                 )
                 self._mtimes[path_key] = mtime
                 state_dirty = True
@@ -506,6 +507,7 @@ class CoreMemoryFileIndexer:
             if not path.exists():
                 return 0
 
+            file_mtime, file_birthtime = self.file_times(path)
             content = path.read_text(encoding="utf-8", errors="replace").strip()
             if not content:
                 self._mtimes[self._state_key(label, filename)] = path.stat().st_mtime
@@ -520,7 +522,8 @@ class CoreMemoryFileIndexer:
                 embedding_gen=embedding_gen,
                 user_id=user_id,
                 tombstones=markdown_store.read_tombstones(),
-                mtime=path.stat().st_mtime,
+                mtime=file_mtime,
+                birthtime=file_birthtime,
             )
             # Record post-write mtime so the watcher treats this file as handled.
             self._mtimes[self._state_key(label, filename)] = path.stat().st_mtime
@@ -558,6 +561,7 @@ class CoreMemoryFileIndexer:
         user_id: str,
         tombstones: Optional[set] = None,
         mtime: Optional[float] = None,
+        birthtime: Optional[float] = None,
     ) -> int:
         """Delete stale rows and re-embed the content of one file. Idempotent.
 
@@ -567,7 +571,7 @@ class CoreMemoryFileIndexer:
         resurrects, even on a full clear-and-rebuild. Returns the number of rows indexed.
         """
         tombstones = tombstones or set()
-        source_time = self._source_time(label, filename, content, mtime)
+        source_time = self._source_time(label, filename, content, mtime, birthtime)
 
         # 1. Build the rows to index: (text, metadata, importance). Daily-log facts
         #    are raw capture with no lifecycle, so they stay at the neutral 0.5;
@@ -814,9 +818,29 @@ class CoreMemoryFileIndexer:
         "documentation",
     }
 
+    @staticmethod
+    def file_times(path: Path) -> tuple:
+        """`(mtime, birthtime)` for a file, either of which may be None.
+
+        Birth time is a real field on Windows and macOS. Linux exposes it only on
+        newer kernels and filesystems, and `st_ctime` there is inode-change time —
+        which a rewrite also moves — so it is deliberately not used as a stand-in.
+        """
+        try:
+            st = path.stat()
+        except OSError:
+            return None, None
+        birth = getattr(st, "st_birthtime", None)
+        return st.st_mtime, birth
+
     @classmethod
     def _source_time(
-        cls, label: str, filename: str, content: str, mtime: Optional[float] = None
+        cls,
+        label: str,
+        filename: str,
+        content: str,
+        mtime: Optional[float] = None,
+        birthtime: Optional[float] = None,
     ) -> Optional[datetime]:
         """When the content dates from — not when we happen to be embedding it.
 
@@ -824,10 +848,18 @@ class CoreMemoryFileIndexer:
         today is still from last October, and stamping it with the write time is what
         makes a reindex read as a flood of brand-new memories.
 
-        Best available signal, in order: the log's own date for a daily log (exact,
-        it is the filename); `updated:` in a page's frontmatter (what the author last
-        claims to have touched it); then file mtime. Returns None when nothing is
-        available, which leaves `add_memory` on its write-time default.
+        A daily log is exact: its date is its filename. Everything else takes the
+        *earliest* plausible signal among frontmatter dates, file birth time, and
+        mtime — not the first one found in a priority order.
+
+        Earliest, because this column is `created_at` and every one of those signals
+        is an upper bound on creation. mtime especially: the dream rewrites vault
+        pages in place, so a page it touched this morning has today's mtime and a
+        birth time from January. Preferring mtime made exactly those pages — the ones
+        the agent works on most — permanently claim to be new.
+
+        Returns None when nothing is available, which leaves `add_memory` on its
+        write-time default.
         """
         if label == "archive":
             try:
@@ -837,23 +869,39 @@ class CoreMemoryFileIndexer:
             except ValueError:
                 pass
 
+        candidates = []
+
         m = re.match(r"^---\s*\n(.*?)\n---\s*(\n|$)", content, re.DOTALL)
         if m:
-            for key in ("updated", "created", "date"):
+            for key in ("created", "date", "updated"):
                 stamp = re.search(
                     rf"^{key}\s*:\s*['\"]?(\d{{4}}-\d{{2}}-\d{{2}})", m.group(1), re.M
                 )
                 if stamp:
                     try:
-                        return datetime.strptime(stamp.group(1), "%Y-%m-%d").replace(
-                            tzinfo=timezone.utc
+                        candidates.append(
+                            datetime.strptime(stamp.group(1), "%Y-%m-%d").replace(
+                                tzinfo=timezone.utc
+                            )
                         )
                     except ValueError:
                         continue
 
-        if mtime is not None:
-            return datetime.fromtimestamp(mtime, tz=timezone.utc)
-        return None
+        for stamp in (birthtime, mtime):
+            if stamp is None:
+                continue
+            try:
+                candidates.append(datetime.fromtimestamp(stamp, tz=timezone.utc))
+            except (OverflowError, OSError, ValueError):
+                continue
+
+        # A timestamp before the epoch-ish floor is a filesystem artefact (copied
+        # archives land at 1980), and one in the future is a clock skew or a typo.
+        # Either would win an earliest-wins vote outright, so both are discarded.
+        now = datetime.now(timezone.utc)
+        floor = datetime(2000, 1, 1, tzinfo=timezone.utc)
+        credible = [c for c in candidates if floor <= c <= now]
+        return min(credible) if credible else None
 
     @classmethod
     def _page_taxonomy(cls, label: str, filename: str, content: str) -> tuple:

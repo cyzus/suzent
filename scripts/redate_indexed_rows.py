@@ -60,15 +60,17 @@ def _source_time(metadata: dict, path: Path | None):
     source_file = metadata.get("source_file") or ""
     label = "archive" if (metadata.get("source_type") == "archive_log") else "notebook"
     content = ""
-    mtime = None
+    mtime = birthtime = None
     if path is not None:
-        mtime = path.stat().st_mtime
+        mtime, birthtime = CoreMemoryFileIndexer.file_times(path)
         try:
             # Only the frontmatter is needed, and some vault pages are large.
             content = path.read_text(encoding="utf-8", errors="replace")[:2000]
         except OSError:
             content = ""
-    return CoreMemoryFileIndexer._source_time(label, source_file, content, mtime)
+    return CoreMemoryFileIndexer._source_time(
+        label, source_file, content, mtime, birthtime
+    )
 
 
 async def main_async(args: argparse.Namespace) -> int:

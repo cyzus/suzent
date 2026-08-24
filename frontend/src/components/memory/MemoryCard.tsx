@@ -248,10 +248,12 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({
           {/* Content leads. Collapsed cards clamp by height rather than by line
               count: markdown emits headings, lists and code blocks of differing
               heights, so `line-clamp` would cut a long card and a short one to
-              visibly different sizes. */}
+              visibly different sizes. The clamp is deep enough to show a table's
+              header plus a few rows — cutting one after its header alone reads
+              as a rendering bug rather than as an excerpt. */}
           <div
             className={`relative max-w-[68ch] text-brutal-black dark:text-neutral-100 ${
-              !isExpanded && shouldTruncate ? 'max-h-32 overflow-hidden' : ''
+              !isExpanded && shouldTruncate ? 'max-h-56 overflow-hidden' : ''
             }`}
           >
             <MemoryMarkdown content={memory.content} searchQuery={searchQuery} />

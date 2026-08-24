@@ -13,7 +13,10 @@
 
 import React, { useMemo } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
+import type { PluggableList } from 'unified';
 import remarkGfm from 'remark-gfm';
+import rehypeRaw from 'rehype-raw';
+import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 
 /**
  * `card` is an excerpt in a scrolling list, where an `h1` must not shout over the
@@ -108,6 +111,25 @@ function rehypeHighlight(query?: string) {
     walk(tree);
   };
 }
+
+/**
+ * Obsidian tables use `<br>` for a line break inside a cell — a markdown table row
+ * cannot contain a newline, so there is no other way to write one. Without raw HTML
+ * enabled those tags render as the literal text "<br>" mid-sentence.
+ *
+ * Raw HTML in indexed content is not automatically the user's own writing: vault
+ * pages are built from web research and pasted material. So it is sanitized, and the
+ * highlight plugin runs *after* the sanitizer — otherwise its `<mark>` would be
+ * stripped along with everything else the content might have tried to inject.
+ */
+const SANITIZE_SCHEMA = {
+  ...defaultSchema,
+  attributes: {
+    ...defaultSchema.attributes,
+    // Class names come from the component map below, never from the content.
+    '*': (defaultSchema.attributes?.['*'] || []).filter((a) => a !== 'className'),
+  },
+};
 
 /** Heading sizes are the only thing the two variants disagree about. */
 const HEADINGS: Record<MemoryMarkdownVariant, string[]> = {
@@ -204,7 +226,12 @@ export const MemoryMarkdown: React.FC<MemoryMarkdownProps> = ({
   className = '',
 }) => {
   const prepared = useMemo(() => renderWikiLinks(stripFrontmatter(content)), [content]);
-  const plugins = useMemo(() => [rehypeHighlight(searchQuery)], [searchQuery]);
+  // Order matters: raw -> sanitize -> highlight. The highlighter's `<mark>` is
+  // added after sanitizing, or its classNames would be stripped with the rest.
+  const plugins: PluggableList = useMemo(
+    () => [rehypeRaw, [rehypeSanitize, SANITIZE_SCHEMA], rehypeHighlight(searchQuery)],
+    [searchQuery]
+  );
   const components = useMemo(() => componentsFor(variant), [variant]);
 
   return (

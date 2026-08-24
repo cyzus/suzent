@@ -36,11 +36,48 @@ def test_created_and_date_are_accepted_too():
         assert got == datetime(2026, 1, 9, tzinfo=timezone.utc)
 
 
+def test_birth_time_beats_an_mtime_the_dream_moved():
+    """The case that made Work_Logs pages permanently "new".
+
+    The dream rewrites vault pages in place. A page it touched this morning has
+    today's mtime and a birth time from January — and the page is from January.
+    """
+    birth = datetime(2026, 1, 30, 12, 3, tzinfo=timezone.utc).timestamp()
+    mtime = datetime(2026, 8, 24, 16, 25, tzinfo=timezone.utc).timestamp()
+    got = Indexer._source_time("notebook", "x.md", "no frontmatter", mtime, birth)
+    assert got == datetime(2026, 1, 30, 12, 3, tzinfo=timezone.utc)
+
+
 def test_mtime_is_the_fallback():
     """144 of the 309 vault pages carry no date at all; the file still has one."""
     mtime = datetime(2025, 10, 29, 15, 27, tzinfo=timezone.utc).timestamp()
     got = Indexer._source_time("notebook", "x.md", "no frontmatter", mtime)
     assert got == datetime(2025, 10, 29, 15, 27, tzinfo=timezone.utc)
+
+
+def test_the_earliest_signal_wins_not_the_first_one_found():
+    """Every signal is an upper bound on creation, so the earliest is the closest."""
+    birth = datetime(2026, 3, 1, tzinfo=timezone.utc).timestamp()
+    mtime = datetime(2026, 8, 24, tzinfo=timezone.utc).timestamp()
+    got = Indexer._source_time(
+        "notebook", "x.md", "---\nupdated: 2026-01-15\n---\nbody", mtime, birth
+    )
+    assert got == datetime(2026, 1, 15, tzinfo=timezone.utc)
+
+
+def test_an_absurdly_old_timestamp_is_not_trusted():
+    """Copied archives land at 1980, and earliest-wins would hand them the corpus."""
+    birth = datetime(1980, 1, 1, tzinfo=timezone.utc).timestamp()
+    mtime = datetime(2026, 5, 5, tzinfo=timezone.utc).timestamp()
+    got = Indexer._source_time("notebook", "x.md", "body", mtime, birth)
+    assert got == datetime(2026, 5, 5, tzinfo=timezone.utc)
+
+
+def test_a_future_timestamp_is_not_trusted():
+    ahead = datetime.now(timezone.utc).timestamp() + 86400 * 400
+    mtime = datetime(2026, 5, 5, tzinfo=timezone.utc).timestamp()
+    got = Indexer._source_time("notebook", "x.md", "body", mtime, ahead)
+    assert got == datetime(2026, 5, 5, tzinfo=timezone.utc)
 
 
 def test_no_signal_returns_none_rather_than_a_wrong_date():
@@ -49,11 +86,11 @@ def test_no_signal_returns_none_rather_than_a_wrong_date():
 
 
 def test_a_malformed_date_does_not_become_the_timestamp():
-    mtime = datetime(2026, 8, 24, tzinfo=timezone.utc).timestamp()
+    mtime = datetime(2026, 5, 5, tzinfo=timezone.utc).timestamp()
     got = Indexer._source_time(
         "notebook", "x.md", "---\nupdated: last tuesday\n---\nbody", mtime
     )
-    assert got == datetime(2026, 8, 24, tzinfo=timezone.utc)
+    assert got == datetime(2026, 5, 5, tzinfo=timezone.utc)
 
 
 def test_an_undated_log_filename_falls_through_to_mtime():
