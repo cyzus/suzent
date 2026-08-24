@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'patch, minor, major, or an exact version such as 0.8.0'
+        description: 'auto (derive from commit history), patch, minor, major, or an exact version such as 0.8.0'
         required: true
-        default: patch
+        default: auto
         type: string
       desktop_assets:
         description: 'Build new desktop assets, or reuse the previous release for a backend-only hotfix'
@@ -46,6 +46,13 @@ jobs:
         id: version
         shell: bash
         run: |
+          # `auto` reads the range since the last release: feat -> minor,
+          # fix/perf -> patch, `!` or a BREAKING CHANGE footer -> major (minor
+          # while pre-1.0). Printed into the log so the PR reviewer can see
+          # which commit set the bump and override it by editing this PR.
+          python scripts/bump_version.py --suggest-bump | tee .bump-reason
+          echo "reason=$(sed -n 's/^because: //p' .bump-reason)" >> "$GITHUB_OUTPUT"
+          rm -f .bump-reason
           python scripts/bump_version.py "$RELEASE_INPUT"
           python scripts/bump_version.py --check
           printf '%s\n' "$DESKTOP_ASSETS" > .release-assets-mode
@@ -105,12 +112,17 @@ jobs:
             --title "chore: release $RELEASE_TAG" \
             --body "Automated release preparation for **$RELEASE_TAG**.
 
+          Bump requested as \`$RELEASE_INPUT\`; history pointed at: $BUMP_REASON
+
           Review and edit the generated changelog, wait for required checks, then merge.
+          To override the version, close this PR and re-run with an explicit bump.
 
           Merging this PR creates the \`$RELEASE_TAG\` tag and starts the draft build and publication workflow."
         env:
           GH_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN || github.token }}
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          RELEASE_INPUT: ${{ inputs.version }}
+          BUMP_REASON: ${{ steps.version.outputs.reason }}
 
       - name: Start Release PR CI
         run: gh workflow run ci.yml --ref "release/$RELEASE_TAG"

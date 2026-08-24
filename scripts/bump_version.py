@@ -63,6 +63,72 @@ def bump_semver(current_version: str, bump_type: str) -> str:
     raise ValueError(f"Unknown bump type: {bump_type}")
 
 
+#: A commit that changes what users see, and by how much. `refactor`/`docs`/
+#: `chore` are absent deliberately: they carry no user-visible change and so
+#: earn no bump. Pick the prefix by who notices the change, not by what the
+#: work did to the code — a refactor a user can see is a `feat` or a `fix`.
+BUMP_BY_TYPE = {"feat": "minor", "fix": "patch", "perf": "patch"}
+
+BREAKING_SUBJECT = re.compile(r"^[a-z]+(?:\([^)]*\))?!:", re.IGNORECASE)
+BREAKING_FOOTER = re.compile(r"(?m)^BREAKING[ -]CHANGE\s*:")
+COMMIT_TYPE = re.compile(r"^([a-z]+)(?:\([^)]*\))?!?:", re.IGNORECASE)
+
+
+def infer_bump(
+    commits: list[tuple[str, str]],
+    current_version: str,
+) -> tuple[str, str]:
+    """Derive the release bump from commit history. Returns (bump, reason).
+
+    The decision moves from release day to commit time: whoever writes the
+    prefix picks the bump. That is the point — it is made while the change is
+    in front of you rather than reconstructed from a diff days later.
+
+    `patch` is the floor rather than "no release": every caller here is a human
+    who explicitly asked for a release, so a range of pure chores still ships.
+    """
+    breaking = [
+        s
+        for s, body in commits
+        if BREAKING_SUBJECT.match(s) or BREAKING_FOOTER.search(body)
+    ]
+    if breaking:
+        # Below 1.0 a breaking change must not silently declare stability.
+        # Bumping the minor keeps 1.0.0 a deliberate human act.
+        if current_version.split(".")[0] == "0":
+            return "minor", f"breaking change while pre-1.0 ({breaking[0]})"
+        return "major", f"breaking change ({breaking[0]})"
+
+    ranked = {"patch": 0, "minor": 1, "major": 2}
+    best, reason = "patch", "no user-visible commits; releasing as maintenance"
+    for subject, _ in commits:
+        match = COMMIT_TYPE.match(subject)
+        bump = BUMP_BY_TYPE.get(match.group(1).lower()) if match else None
+        if bump and ranked[bump] > ranked[best]:
+            best, reason = bump, subject
+    return best, reason
+
+
+KNOWN_TYPES = frozenset(
+    {"feat", "fix", "perf", "refactor", "docs", "chore", "ci", "test", "style", "build"}
+)
+
+
+def audit_commit_subjects(subjects: list[str]) -> list[str]:
+    """Subjects whose prefix will not be understood when the bump is derived.
+
+    Advisory, not a gate. Before the bump came from history a bad prefix only
+    mis-sorted a changelog line; now it silently changes the released version,
+    which is worth a word in the log even though it should never block a merge.
+    """
+    unreadable = []
+    for subject in subjects:
+        match = COMMIT_TYPE.match(subject)
+        if not match or match.group(1).lower() not in KNOWN_TYPES:
+            unreadable.append(subject)
+    return unreadable
+
+
 def _named_lock_pattern(package: str) -> re.Pattern[str]:
     return re.compile(
         rf'(\[\[package\]\]\r?\nname = "{re.escape(package)}"\r?\n'
@@ -201,21 +267,36 @@ def _release_boundary(root: Path, next_version: str) -> str | None:
     return reachable_tag or None
 
 
-def _git_subjects_since_last_release(
+def _git_commits_since_last_release(
     root: Path,
     next_version: str,
-) -> list[str]:
+) -> list[tuple[str, str]]:
+    """(subject, body) per commit. The body carries `BREAKING CHANGE:` footers."""
     boundary = _release_boundary(root, next_version)
     range_spec = f"{boundary}..HEAD" if boundary else "HEAD"
+    # Bodies are multi-line, so records and fields need separators that cannot
+    # occur in a commit message: unit and record separators.
     result = subprocess.run(
-        ["git", "log", range_spec, "--format=%s", "--no-merges"],
+        ["git", "log", range_spec, "--format=%s%x1f%b%x1e", "--no-merges"],
         cwd=root,
         capture_output=True,
         text=True,
         encoding="utf-8",
         check=True,
     )
-    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    commits = []
+    for record in result.stdout.split("\x1e"):
+        subject, _, body = record.strip().partition("\x1f")
+        if subject.strip():
+            commits.append((subject.strip(), body))
+    return commits
+
+
+def _git_subjects_since_last_release(
+    root: Path,
+    next_version: str,
+) -> list[str]:
+    return [s for s, _ in _git_commits_since_last_release(root, next_version)]
 
 
 def generate_changelog_draft(
@@ -318,7 +399,24 @@ def update_changelog(
     return True
 
 
-def parse_version_argument(current_version: str, value: str) -> str:
+def resolve_bump(root: Path, current_version: str, value: str) -> tuple[str, str]:
+    """Turn a bump request into a concrete bump type, resolving `auto`."""
+    if value != "auto":
+        return value, "requested explicitly"
+    commits = _git_commits_since_last_release(root, current_version)
+    return infer_bump(commits, current_version)
+
+
+def parse_version_argument(
+    current_version: str,
+    value: str,
+    root: Path | None = None,
+) -> str:
+    if value == "auto":
+        if root is None:
+            raise ValueError("auto requires a repository root")
+        value, reason = resolve_bump(root, current_version, value)
+        print(f"Inferred bump from history: {value} ({reason})")
     if value in {"major", "minor", "patch"}:
         return bump_semver(current_version, value)
     if not VERSION_PATTERN.fullmatch(value):
@@ -336,7 +434,7 @@ def main() -> int:
     parser.add_argument(
         "version",
         nargs="?",
-        help="New version (x.y.z) or bump type (major/minor/patch)",
+        help="New version (x.y.z), bump type (major/minor/patch), or auto",
     )
     parser.add_argument(
         "--check",
@@ -363,6 +461,16 @@ def main() -> int:
         action="store_true",
         help="Print only the canonical version",
     )
+    parser.add_argument(
+        "--audit-commits",
+        metavar="RANGE",
+        help="Warn about commits in RANGE whose prefix the bump cannot read",
+    )
+    parser.add_argument(
+        "--suggest-bump",
+        action="store_true",
+        help="Print the bump the commit history implies, without changing files",
+    )
     args = parser.parse_args()
 
     root = Path(__file__).resolve().parent.parent
@@ -371,12 +479,27 @@ def main() -> int:
     if args.print_version:
         print(current_version)
         return 0
+    if args.audit_commits:
+        log = _run_git(root, "log", args.audit_commits, "--format=%s", "--no-merges")
+        subjects = [line.strip() for line in log.stdout.splitlines() if line.strip()]
+        unreadable = audit_commit_subjects(subjects)
+        for subject in unreadable:
+            print(
+                f"::warning::Unrecognized commit prefix, earns no version bump: {subject}"
+            )
+        print(f"{len(subjects) - len(unreadable)}/{len(subjects)} commit(s) readable")
+        return 0
+    if args.suggest_bump:
+        bump, reason = resolve_bump(root, current_version, "auto")
+        print(f"{bump}  ({current_version} -> {bump_semver(current_version, bump)})")
+        print(f"because: {reason}")
+        return 0
     if args.check:
         print(f"Expected version: {current_version}")
         return 0 if check_versions(root, current_version) else 1
     if args.changelog:
         preview_version = (
-            parse_version_argument(current_version, args.version)
+            parse_version_argument(current_version, args.version, root)
             if args.version
             else current_version
         )
@@ -392,7 +515,7 @@ def main() -> int:
         )
 
     try:
-        new_version = parse_version_argument(current_version, args.version)
+        new_version = parse_version_argument(current_version, args.version, root)
         print(f"Synchronizing version: {current_version} -> {new_version}")
         for target in VERSION_FILES:
             write_version(root / target.path, target, new_version)

@@ -30,6 +30,7 @@ write_version = bump_version.write_version
 git_subjects_since_last_release = bump_version._git_subjects_since_last_release
 replace_changelog_entry = bump_version._replace_changelog_entry
 update_changelog = bump_version.update_changelog
+infer_bump = bump_version.infer_bump
 
 
 @pytest.mark.parametrize(
@@ -211,3 +212,66 @@ def test_changelog_cli_uses_utf8_when_console_defaults_to_gbk() -> None:
     assert result.returncode == 0
     output = result.stdout.decode("utf-8")
     assert any(marker in output for marker in ("🚀", "⚡", "🐛"))
+
+
+def test_a_feature_outranks_a_fix() -> None:
+    """The highest-ranking commit in the range sets the bump, not the last one."""
+    commits = [("fix(memory): stop a re-render", ""), ("feat(ui): add a panel", "")]
+
+    assert infer_bump(commits, "1.2.3")[0] == "minor"
+
+
+def test_only_fixes_stay_a_patch() -> None:
+    commits = [("fix: one", ""), ("perf: two", "")]
+
+    assert infer_bump(commits, "1.2.3")[0] == "patch"
+
+
+def test_a_breaking_change_before_1_0_does_not_declare_stability() -> None:
+    """0.9.1 plus a breaking change is 0.10.0. Reaching 1.0.0 stays deliberate."""
+    commits = [("feat!: drop the legacy key bundle", "")]
+
+    bump, reason = infer_bump(commits, "0.9.1")
+
+    assert bump == "minor"
+    assert "pre-1.0" in reason
+
+
+def test_a_breaking_change_after_1_0_is_major() -> None:
+    commits = [("feat!: drop the legacy key bundle", "")]
+
+    assert infer_bump(commits, "1.4.0")[0] == "major"
+
+
+def test_a_breaking_change_footer_counts_as_breaking() -> None:
+    """Not every breaking commit marks its subject with `!`."""
+    commits = [("feat: rework the secret backend", "BREAKING CHANGE: bundles are gone")]
+
+    assert infer_bump(commits, "1.4.0")[0] == "major"
+
+
+def test_invisible_work_alone_is_a_maintenance_patch() -> None:
+    """refactor/docs/chore earn no bump, but a requested release still ships."""
+    commits = [
+        ("refactor: tidy", ""),
+        ("docs: fix a typo", ""),
+        ("chore: bump deps", ""),
+    ]
+
+    bump, reason = infer_bump(commits, "1.2.3")
+
+    assert bump == "patch"
+    assert "maintenance" in reason
+
+
+def test_auto_resolves_to_a_concrete_version(tmp_path: Path) -> None:
+    """`auto` is what the workflow passes; it must reach a real version string."""
+    commits = [("feat: something", "")]
+    monkey = bump_version._git_commits_since_last_release
+    bump_version._git_commits_since_last_release = lambda root, version: commits
+    try:
+        assert (
+            bump_version.parse_version_argument("0.9.1", "auto", tmp_path) == "0.10.0"
+        )
+    finally:
+        bump_version._git_commits_since_last_release = monkey

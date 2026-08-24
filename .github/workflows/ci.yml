@@ -31,6 +31,17 @@ jobs:
     - name: Check version consistency
       run: python scripts/bump_version.py --check
 
+    # Advisory only. The release bump is derived from these prefixes, so an
+    # unreadable one silently changes the version that ships - but a wording
+    # nit must never block a merge.
+    - name: Audit commit prefixes
+      if: github.event_name == 'pull_request'
+      run: |
+        git fetch --no-tags --depth=50 origin "$BASE_REF"
+        python scripts/bump_version.py --audit-commits "origin/$BASE_REF..HEAD"
+      env:
+        BASE_REF: ${{ github.base_ref }}
+
     - name: Lint with Ruff
       run: |
         source .venv/bin/activate
