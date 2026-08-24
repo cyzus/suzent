@@ -75,6 +75,10 @@ If you audit what memory captured by grepping daily logs, that file is now part 
 picture. A *revision* — anything adding a new number, date, path, quote, or version — is
 still written to the log as before, tagged `revision`.
 
+The dreaming panel gained a **pending confirmations** tile for the same reason, and a
+dream can now run on that queue alone. So an install that is caught up on logs may still
+start a consolidation, and it will not move the watermark when it does.
+
 ## 6. Expect vault churn on the first few dreams
 
 Two changes rewrite frontmatter on pages that predate them:
