@@ -2,8 +2,12 @@
  * Memory Card Component
  * Displays a single archival memory, content first — the text is the thing worth
  * reading, so metadata is demoted to a quiet footer and only shown when it says
- * something. (Indexed memories all carry importance 0.5, so a badge repeating that
- * on every card is noise.)
+ * something. Importance is a spine and a badge rather than a number: most rows sit
+ * at the neutral 0.5, so a figure repeated on every card would be noise.
+ *
+ * The category is the one piece of metadata that gets prominence, because it is
+ * what makes a scrolled list legible: a journal entry and a wiki concept should not
+ * look identical.
  */
 
 import React, { useState } from 'react';
@@ -17,7 +21,32 @@ interface MemoryCardProps {
   onDelete: (memoryId: string) => Promise<void>;
   searchQuery?: string;
   compact?: boolean;
+  /** Clicking a tag on a card filters the list by it. */
+  onTagClick?: (tag: string) => void;
+  activeTags?: string[];
 }
+
+/**
+ * Per-category card treatment. Only the accent varies — shape and spacing stay
+ * constant so the list still reads as one list, not six competing ones.
+ */
+const CATEGORY_ACCENTS: Record<string, string> = {
+  personal: 'bg-brutal-yellow text-brutal-black',
+  preference: 'bg-brutal-yellow text-brutal-black',
+  project: 'bg-brutal-black text-white dark:bg-white dark:text-brutal-black',
+  knowledge: 'bg-white text-brutal-black dark:bg-zinc-700 dark:text-white',
+  concept: 'bg-white text-brutal-black dark:bg-zinc-700 dark:text-white',
+  synthesis: 'bg-white text-brutal-black dark:bg-zinc-700 dark:text-white',
+  entity: 'bg-white text-brutal-black dark:bg-zinc-700 dark:text-white',
+  literature: 'bg-white text-brutal-black dark:bg-zinc-700 dark:text-white',
+  documentation: 'bg-white text-brutal-black dark:bg-zinc-700 dark:text-white',
+  inbox: 'bg-neutral-200 text-brutal-black dark:bg-zinc-600 dark:text-white',
+  archive: 'bg-neutral-200 text-brutal-black dark:bg-zinc-600 dark:text-white',
+  asset: 'bg-neutral-200 text-brutal-black dark:bg-zinc-600 dark:text-white',
+  profile: 'bg-brutal-black text-white dark:bg-white dark:text-brutal-black',
+};
+
+const DEFAULT_ACCENT = 'bg-neutral-100 text-brutal-black dark:bg-zinc-700 dark:text-white';
 
 /** Escape a user-typed query so it can go into a RegExp literal safely. */
 function escapeRegExp(value: string): string {
@@ -38,7 +67,14 @@ function readableContent(raw: string): string {
     .trim();
 }
 
-export const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, searchQuery, compact = false }) => {
+export const MemoryCard: React.FC<MemoryCardProps> = ({
+  memory,
+  onDelete,
+  searchQuery,
+  compact = false,
+  onTagClick,
+  activeTags = [],
+}) => {
   const { t } = useI18n();
   const [isDeleting, setIsDeleting] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -113,8 +149,9 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, search
     );
   };
 
-  const tags = memory.metadata?.tags || [];
-  const category = memory.metadata?.category;
+  const tags: string[] = memory.metadata?.tags || [];
+  const category = memory.metadata?.category as string | undefined;
+  const categoryAccent = (category && CATEGORY_ACCENTS[category]) || DEFAULT_ACCENT;
   const sourceFile = memory.metadata?.source_file as string | undefined;
   const content = readableContent(memory.content);
   // Importance is a constant for indexed memories; only surface it when it deviates.
@@ -157,6 +194,11 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, search
               {highlightText(content, searchQuery)}
             </p>
             <div className="flex items-center gap-2 text-[10px] text-neutral-500 dark:text-neutral-400 mt-0.5">
+              {category && (
+                <span className={`border border-brutal-black px-1 font-bold uppercase ${categoryAccent}`}>
+                  {category.replace(/_/g, ' ')}
+                </span>
+              )}
               <span className="font-bold uppercase">{formatDate(memory.created_at)}</span>
               {sourceFile && <span className="truncate font-mono">{sourceFile}</span>}
               {tags.length > 0 && <span>#{tags[0]}</span>}
@@ -218,6 +260,14 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, search
 
           {/* Quiet footer: only what actually varies between memories */}
           <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-neutral-500 dark:text-neutral-400">
+            {category && (
+              <span
+                className={`border border-brutal-black px-1 font-bold uppercase tracking-wide ${categoryAccent}`}
+              >
+                {category.replace(/_/g, ' ')}
+              </span>
+            )}
+
             <span className="font-bold uppercase tracking-wide">{formatDate(memory.created_at)}</span>
 
             {sourceFile && (
@@ -226,11 +276,26 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, search
               </span>
             )}
 
-            {tags.slice(0, 3).map((tag: string, idx: number) => (
-              <span key={idx} className="text-neutral-400 dark:text-neutral-500">
-                #{tag}
-              </span>
-            ))}
+            {tags.slice(0, 3).map((tag: string) =>
+              onTagClick ? (
+                <button
+                  key={tag}
+                  onClick={() => onTagClick(tag)}
+                  className={`transition-colors hover:text-brutal-black dark:hover:text-white ${
+                    activeTags.includes(tag)
+                      ? 'font-bold text-brutal-black dark:text-white'
+                      : 'text-neutral-400 dark:text-neutral-500'
+                  }`}
+                  title={t('memoryCard.meta.filterByTag', { tag })}
+                >
+                  #{tag}
+                </button>
+              ) : (
+                <span key={tag} className="text-neutral-400 dark:text-neutral-500">
+                  #{tag}
+                </span>
+              )
+            )}
 
             {memory.access_count > 0 && (
               <span>

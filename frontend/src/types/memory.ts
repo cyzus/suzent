@@ -49,6 +49,18 @@ export interface MemorySearchResponse {
   limit: number;
   /** Size of the whole matching set. Absent for relevance searches, which have no total. */
   total?: number;
+  /** Only returned when facets were asked for — i.e. on the first page. */
+  facets?: MemoryFacets;
+}
+
+/**
+ * Counts the filter UI is drawn from. Computed before metadata filtering, so a
+ * count never changes just because you ticked its own box.
+ */
+export interface MemoryFacets {
+  source_types: Record<string, number>;
+  categories: Record<string, number>;
+  tags: Record<string, number>;
 }
 
 /** Server-side ordering and filtering for the archival list. */
@@ -58,6 +70,12 @@ export interface ArchivalQueryOptions {
   /** Half-open importance band: min inclusive, max exclusive. */
   minImportance?: number;
   maxImportance?: number;
+  /** Metadata filters: OR within each list, AND across the three. */
+  sourceTypes?: string[];
+  categories?: string[];
+  tags?: string[];
+  /** Ask the server for facet counts; only worth it on the first page. */
+  withFacets?: boolean;
 }
 
 // --- Session & Transcript types (Phase 6: Frontend Integration) ---

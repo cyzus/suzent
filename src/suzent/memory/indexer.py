@@ -256,6 +256,10 @@ class CoreMemoryFileIndexer:
     def __init__(self) -> None:
         # path_str → last known mtime (float)
         self._mtimes: dict = {}
+        # Archive files already dropped from the index for being at or below the
+        # watermark. Tracked separately from `_mtimes` because the drop must happen
+        # even for a file this indexer has no memory of ever having indexed.
+        self._swept: set = set()
         self._state_path: Optional[Path] = None
         # Serializes all index mutations (per-turn reindex_file_now, the background
         # watcher's check_and_update, and the dream's reconcile).
@@ -297,9 +301,12 @@ class CoreMemoryFileIndexer:
                 ):
                     mtimes = payload.get("mtimes")
                     self._mtimes = mtimes if isinstance(mtimes, dict) else {}
+                    swept = payload.get("swept")
+                    self._swept = set(swept) if isinstance(swept, list) else set()
                     logger.debug(f"Loaded index state: {len(self._mtimes)} entries")
                 else:
                     self._mtimes = {}
+                    self._swept = set()
                     logger.info(
                         "Index state is path-keyed (pre-v%s); discarding it so every "
                         "tracked file is re-indexed once." % self.STATE_VERSION
@@ -307,6 +314,7 @@ class CoreMemoryFileIndexer:
             except Exception as e:
                 logger.warning(f"Failed to load index state, starting fresh: {e}")
                 self._mtimes = {}
+                self._swept = set()
         else:
             # First run — snapshot current mtimes without indexing anything.
             for label, filename in self.CORE_FILES.items():
@@ -337,7 +345,12 @@ class CoreMemoryFileIndexer:
 
             self._state_path.write_text(
                 _json.dumps(
-                    {"version": self.STATE_VERSION, "mtimes": self._mtimes}, indent=2
+                    {
+                        "version": self.STATE_VERSION,
+                        "mtimes": self._mtimes,
+                        "swept": sorted(self._swept),
+                    },
+                    indent=2,
                 ),
                 encoding="utf-8",
             )
@@ -417,11 +430,15 @@ class CoreMemoryFileIndexer:
             if label == "archive" and watermark:
                 date = filename.removesuffix(".md")
                 if date <= watermark:
-                    if path_key in self._mtimes:
+                    # Sweep once per log, whether or not *this* indexer remembers
+                    # having written it: rows from an older chunking scheme, or from
+                    # before a state reset, are otherwise stranded forever.
+                    if path_key not in self._swept:
                         await lancedb_store.delete_memories_by_source_date(
                             date, user_id
                         )
-                        del self._mtimes[path_key]
+                        self._mtimes.pop(path_key, None)
+                        self._swept.add(path_key)
                         state_dirty = True
                     continue
 
@@ -521,6 +538,7 @@ class CoreMemoryFileIndexer:
         async with self._lock:
             await lancedb_store.delete_all_memories(user_id=user_id)
             self._mtimes = {}
+            self._swept = set()
             if self._state_path is None:
                 self._state_path = markdown_store.base_dir / self.INDEX_STATE_FILENAME
             self._save_state()
@@ -568,11 +586,7 @@ class CoreMemoryFileIndexer:
             ]
         else:
             source_type = "notebook" if label == "notebook" else "core_file"
-            tags = (
-                ["notebook", filename]
-                if label == "notebook"
-                else ["core_memory", label, filename]
-            )
+            category, tags = self._page_taxonomy(label, filename, content)
             # Vault pages carry a lifecycle (frontmatter status/stale_after, inline
             # confirmation counts). Core files carry none of that, with one exception:
             # MEMORY.md's manual zone is where a person edits their own memory, and
@@ -608,7 +622,7 @@ class CoreMemoryFileIndexer:
                                 "source_file": filename,
                                 "chunk_index": i,
                                 "label": label,
-                                "category": source_type,
+                                "category": category,
                                 "tags": tags,
                                 **claim_lifecycle,
                             },
@@ -772,6 +786,61 @@ class CoreMemoryFileIndexer:
             if rest:
                 facts.append({"content": rest, "category": category, "tags": tags})
         return facts
+
+    # Vault zone → what the pages in it are *about*. The zone is the only signal
+    # every page has; `type:` in frontmatter overrides it where present.
+    ZONE_CATEGORIES: dict = {
+        "0_Inbox": "inbox",
+        "1_Projects": "project",
+        "2_Wiki": "knowledge",
+        "3_Personal": "personal",
+        "4_Assets": "asset",
+        "5_Archives": "archive",
+    }
+    KNOWN_PAGE_TYPES: set = {
+        "concept",
+        "synthesis",
+        "entity",
+        "literature",
+        "project",
+        "personal",
+        "documentation",
+    }
+
+    @classmethod
+    def _page_taxonomy(cls, label: str, filename: str, content: str) -> tuple:
+        """`(category, tags)` for a notebook page or core file.
+
+        Category answers "what kind of thing is this", which is what a reader filters
+        on. It deliberately does *not* answer "where did this come from" — that is
+        `source_type`, already its own field. Filenames and source labels are excluded
+        from tags for the same reason: a tag every row in a source shares carries no
+        information, and one that is unique per row cannot group anything.
+        """
+        if label != "notebook":
+            return "profile", []
+
+        frontmatter = {}
+        m = re.match(r"^---\s*\n(.*?)\n---\s*(\n|$)", content, re.DOTALL)
+        if m:
+            for line in m.group(1).splitlines():
+                kv = re.match(r"^(type|tags)\s*:\s*(.+?)\s*$", line.strip())
+                if kv:
+                    frontmatter[kv.group(1)] = kv.group(2).strip().strip("\"'")
+
+        zone = filename.replace("\\", "/").split("/")[0]
+        category = cls.ZONE_CATEGORIES.get(zone, "knowledge")
+        declared = frontmatter.get("type", "").strip().lower()
+        if declared in cls.KNOWN_PAGE_TYPES:
+            category = declared
+
+        tags = []
+        raw = frontmatter.get("tags", "")
+        for tag in re.split(r"[,\s]+", raw.strip("[]")):
+            tag = tag.strip().strip("\"'#").lower()
+            if tag and tag not in tags:
+                tags.append(tag)
+        return category, tags[:8]
 
     @staticmethod
     def _parse_page_lifecycle(content: str) -> dict:

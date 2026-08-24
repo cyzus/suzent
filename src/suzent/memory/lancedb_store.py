@@ -49,6 +49,35 @@ def _escape_sql(value: Optional[str]) -> str:
     return value.replace("'", "''")
 
 
+def matches_metadata(
+    meta: Dict[str, Any],
+    source_types: Optional[List[str]] = None,
+    categories: Optional[List[str]] = None,
+    tags: Optional[List[str]] = None,
+) -> bool:
+    """Whether a memory's metadata passes the source/category/tag filters.
+
+    Each list is an OR within itself and an AND across the three. `metadata` is a
+    JSON *string* column, so none of this can be pushed into a SQL clause — it has
+    to happen in Python, after the rows are read. The list path already materialises
+    and sorts the full set there, so this costs one more pass over the same list;
+    the search path reuses it so both routes filter identically.
+    """
+    # A row written before `source_type` existed reports as "unknown" here and in
+    # the facet counts, so the two agree on what the filter bar is offering.
+    if source_types and (meta.get("source_type") or "unknown") not in source_types:
+        return False
+    if categories and meta.get("category") not in categories:
+        return False
+    if tags:
+        row_tags = meta.get("tags") or []
+        if not isinstance(row_tags, list):
+            return False
+        if not set(tags) & {str(t) for t in row_tags}:
+            return False
+    return True
+
+
 def _utc_now() -> datetime:
     """Get current UTC datetime."""
     return datetime.now(timezone.utc)
@@ -866,27 +895,141 @@ class LanceDBMemoryStore:
 
     # --- Query Operations ---
 
+    # Columns the list view needs. Never the embedding `vector`: reading thousands of
+    # high-dimensional rows off disk for a list nobody scrolls is what made this slow.
+    LIST_COLUMNS = [
+        "id",
+        "content",
+        "metadata",
+        "importance",
+        "created_at",
+        "updated_at",
+        "accessed_at",
+        "access_count",
+    ]
+
+    def _scalar_clause(
+        self,
+        user_id: str,
+        chat_id: Optional[str],
+        min_importance: Optional[float],
+        max_importance: Optional[float],
+    ) -> str:
+        """The part of a list filter SQL can do: scope and importance band."""
+        clause = f"user_id = '{_escape_sql(user_id)}'"
+        if chat_id:
+            clause += f" AND chat_id = '{_escape_sql(chat_id)}'"
+        if min_importance is not None:
+            clause += f" AND importance >= {float(min_importance)}"
+        if max_importance is not None:
+            clause += f" AND importance < {float(max_importance)}"
+        return clause
+
+    @staticmethod
+    def _row_metadata(row: Dict[str, Any]) -> Dict[str, Any]:
+        """Metadata of a raw row as a dict, whatever shape it is stored in."""
+        meta = row.get("metadata")
+        if isinstance(meta, str):
+            try:
+                meta = json.loads(meta or "{}")
+            except Exception:
+                return {}
+        return meta if isinstance(meta, dict) else {}
+
+    _matches_metadata = staticmethod(matches_metadata)
+
+    async def _list_rows(
+        self,
+        user_id: str,
+        chat_id: Optional[str] = None,
+        min_importance: Optional[float] = None,
+        max_importance: Optional[float] = None,
+    ) -> List[Dict[str, Any]]:
+        """Every row matching the scalar filters, minus the embedding column."""
+        query = (
+            self.archival_table.query()
+            .where(
+                self._scalar_clause(user_id, chat_id, min_importance, max_importance)
+            )
+            .select(self.LIST_COLUMNS)
+        )
+        return (await query.to_arrow()).to_pylist()
+
     async def get_memory_count(
         self,
         user_id: str,
         chat_id: Optional[str] = None,
         min_importance: Optional[float] = None,
         max_importance: Optional[float] = None,
+        source_types: Optional[List[str]] = None,
+        categories: Optional[List[str]] = None,
+        tags: Optional[List[str]] = None,
     ) -> int:
         """Get the number of memories for a user, optionally within an importance band."""
         try:
-            clause = f"user_id = '{_escape_sql(user_id)}'"
-            if chat_id:
-                clause += f" AND chat_id = '{_escape_sql(chat_id)}'"
-            if min_importance is not None:
-                clause += f" AND importance >= {float(min_importance)}"
-            if max_importance is not None:
-                clause += f" AND importance < {float(max_importance)}"
+            if not (source_types or categories or tags):
+                return await self.archival_table.count_rows(
+                    self._scalar_clause(
+                        user_id, chat_id, min_importance, max_importance
+                    )
+                )
 
-            return await self.archival_table.count_rows(clause)
+            rows = await self._list_rows(
+                user_id, chat_id, min_importance, max_importance
+            )
+            return sum(
+                1
+                for r in rows
+                if self._matches_metadata(
+                    self._row_metadata(r), source_types, categories, tags
+                )
+            )
         except Exception as e:
             logger.error(f"Get memory count failed: {e}")
             return 0
+
+    async def get_memory_facets(
+        self,
+        user_id: str,
+        chat_id: Optional[str] = None,
+        min_importance: Optional[float] = None,
+        max_importance: Optional[float] = None,
+        max_tags: int = 24,
+    ) -> Dict[str, Any]:
+        """Counts per source type, per category, and for the commonest tags.
+
+        Deliberately computed over the set *before* metadata filtering: a facet count
+        that shrinks as you tick its own box tells you nothing about what else you
+        could have picked.
+        """
+        try:
+            rows = await self._list_rows(
+                user_id, chat_id, min_importance, max_importance
+            )
+            source_types: Dict[str, int] = {}
+            categories: Dict[str, int] = {}
+            tag_counts: Dict[str, int] = {}
+            for row in rows:
+                meta = self._row_metadata(row)
+                st = meta.get("source_type") or "unknown"
+                source_types[st] = source_types.get(st, 0) + 1
+                cat = meta.get("category") or "uncategorized"
+                categories[cat] = categories.get(cat, 0) + 1
+                for tag in meta.get("tags") or []:
+                    tag = str(tag)
+                    tag_counts[tag] = tag_counts.get(tag, 0) + 1
+
+            top_tags = sorted(tag_counts.items(), key=lambda kv: (-kv[1], kv[0]))
+            return {
+                "source_types": dict(
+                    sorted(source_types.items(), key=lambda kv: -kv[1])
+                ),
+                "categories": dict(sorted(categories.items(), key=lambda kv: -kv[1])),
+                "tags": dict(top_tags[:max_tags]),
+            }
+        except Exception as e:
+            logger.error(f"Get memory facets failed: {e}")
+            return {"source_types": {}, "categories": {}, "tags": {}}
 
     async def list_memories(
         self,
@@ -898,44 +1041,30 @@ class LanceDBMemoryStore:
         order_desc: bool = True,
         min_importance: Optional[float] = None,
         max_importance: Optional[float] = None,
+        source_types: Optional[List[str]] = None,
+        categories: Optional[List[str]] = None,
+        tags: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
         """List memories with pagination, ordering, and an importance band.
 
         The importance band is half-open — `min_importance` is inclusive and
         `max_importance` exclusive — so adjacent bands (low/medium/high) tile the
-        range without overlapping. Filtering happens before pagination, so offset
-        paging stays correct for the filtered set.
+        range without overlapping. `source_types`, `categories` and `tags` narrow by
+        metadata; each is an OR within itself and an AND across the three. Filtering
+        happens before pagination, so offset paging stays correct for the filtered set.
         """
         try:
-            clause = f"user_id = '{_escape_sql(user_id)}'"
-            if chat_id:
-                clause += f" AND chat_id = '{_escape_sql(chat_id)}'"
-            if min_importance is not None:
-                clause += f" AND importance >= {float(min_importance)}"
-            if max_importance is not None:
-                clause += f" AND importance < {float(max_importance)}"
-
-            # Select only the columns the list view needs — never the embedding
-            # `vector` (thousands of high-dim rows would be read off disk for nothing,
-            # which is what made this endpoint slow). accessed_at is pulled for sorting.
-            query = (
-                self.archival_table.query()
-                .where(clause)
-                .select(
-                    [
-                        "id",
-                        "content",
-                        "metadata",
-                        "importance",
-                        "created_at",
-                        "updated_at",
-                        "accessed_at",
-                        "access_count",
-                    ]
-                )
+            rows = await self._list_rows(
+                user_id, chat_id, min_importance, max_importance
             )
-            res = await query.to_arrow()
-            rows = res.to_pylist()
+            if source_types or categories or tags:
+                rows = [
+                    r
+                    for r in rows
+                    if self._matches_metadata(
+                        self._row_metadata(r), source_types, categories, tags
+                    )
+                ]
 
             # Sort by specified column (full set, so offset paging is stable/correct).
             reverse = order_desc

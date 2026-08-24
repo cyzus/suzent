@@ -8,6 +8,7 @@ import type {
   CoreMemoryLabel,
   ArchivalMemory,
   ArchivalQueryOptions,
+  MemoryFacets,
   MemoryStats,
 } from '../types/memory';
 import { memoryApi } from '../lib/memoryApi';
@@ -26,6 +27,8 @@ interface MemoryState {
   archivalQuery: string;
   /** Size of the whole matching set, when the server can report one. */
   archivalTotal: number | null;
+  /** Facet counts for the filter bar; null until a first page has come back. */
+  archivalFacets: MemoryFacets | null;
 
   // Stats
   stats: MemoryStats | null;
@@ -58,6 +61,7 @@ const initialState = {
   archivalHasMore: true,
   archivalQuery: '',
   archivalTotal: null,
+  archivalFacets: null,
   stats: null,
   statsLoading: false,
   userId: 'default-user',
@@ -125,7 +129,9 @@ export const useMemory = create<MemoryState>((set, get) => ({
         state.userId,
         20,
         offset,
-        options
+        // Facets describe the whole set, so they are fetched with the first page
+        // and reused for every "load more" after it.
+        { ...options, withFacets: !append }
       );
 
       if (requestId !== archivalRequestId) return;
@@ -137,6 +143,9 @@ export const useMemory = create<MemoryState>((set, get) => ({
         archivalLoading: false,
         archivalHasMore: result.memories.length === result.limit,
         archivalTotal: result.total ?? null,
+        // Facets only come back on a first page. Keeping the previous ones on an
+        // append stops the filter bar from emptying itself as you scroll.
+        archivalFacets: result.facets ?? state.archivalFacets,
       }));
     } catch (error) {
       if (requestId !== archivalRequestId) return;

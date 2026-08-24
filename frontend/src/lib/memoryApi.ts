@@ -96,6 +96,18 @@ export const memoryApi = {
     if (options.maxImportance !== undefined) {
       params.set('max_importance', options.maxImportance.toString());
     }
+    if (options.sourceTypes?.length) {
+      params.set('source_types', options.sourceTypes.join(','));
+    }
+    if (options.categories?.length) {
+      params.set('categories', options.categories.join(','));
+    }
+    if (options.tags?.length) {
+      params.set('tags', options.tags.join(','));
+    }
+    if (options.withFacets) {
+      params.set('facets', 'true');
+    }
 
     const response = await fetch(`${memoryEndpoint()}/archival?${params}`);
     if (!response.ok) {

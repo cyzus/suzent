@@ -9,10 +9,26 @@ import { useMemory } from '../../hooks/useMemory';
 import { MemoryCard } from './MemoryCard';
 import { BrutalButton } from '../BrutalButton';
 import { BrutalSelect } from '../BrutalSelect';
-import type { ArchivalMemory, ArchivalQueryOptions } from '../../types/memory';
+import type { ArchivalMemory, ArchivalQueryOptions, MemoryFacets } from '../../types/memory';
 
 type SortOption = 'date-desc' | 'date-asc' | 'importance-desc' | 'importance-asc' | 'relevance' | 'access-desc';
 type ImportanceFilter = 'all' | 'high' | 'medium' | 'low';
+type SourceTab = 'facts' | 'notebook' | 'profile' | 'all';
+
+/**
+ * Notebook pages are indexed in page-sized chunks, so left in the main feed they
+ * bury the one-line facts that make the list worth scrolling. They get their own
+ * tab instead of being dropped: still there, just not in the way.
+ *
+ * `unknown` covers rows written before `source_type` existed — extracted facts by
+ * shape, so they belong with the facts.
+ */
+const SOURCE_TABS: { value: SourceTab; sourceTypes?: string[] }[] = [
+  { value: 'facts', sourceTypes: ['archive_log', 'unknown'] },
+  { value: 'notebook', sourceTypes: ['notebook'] },
+  { value: 'profile', sourceTypes: ['core_file'] },
+  { value: 'all', sourceTypes: undefined },
+];
 
 /**
  * Sorting and filtering happen in the database, not over the loaded pages —
@@ -57,6 +73,7 @@ export const ArchivalMemoryList: React.FC = () => {
     archivalError,
     archivalHasMore,
     archivalTotal,
+    archivalFacets,
     loadArchivalMemories,
     deleteArchivalMemory,
   } = useMemory();
@@ -67,6 +84,9 @@ export const ArchivalMemoryList: React.FC = () => {
   const [importanceFilter, setImportanceFilter] = useState<ImportanceFilter>('all');
   const [showFilters, setShowFilters] = useState(false);
   const [isCompact, setIsCompact] = useState(false);
+  const [sourceTab, setSourceTab] = useState<SourceTab>('facts');
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
 
   // Debounce search query
   useEffect(() => {
@@ -84,11 +104,56 @@ export const ArchivalMemoryList: React.FC = () => {
     }
   }, [debouncedQuery, sortBy]);
 
+  // Joined so the effect below re-runs on content change, not array identity.
+  const categoryKey = selectedCategories.join(',');
+  const tagKey = selectedTags.join(',');
+
   const queryOptions = useMemo<ArchivalQueryOptions>(() => {
     const sort = sortBy === 'relevance' ? undefined : SORT_PARAMS[sortBy];
     const band = importanceFilter === 'all' ? undefined : IMPORTANCE_BANDS[importanceFilter];
-    return { ...sort, ...band };
-  }, [sortBy, importanceFilter]);
+    const tab = SOURCE_TABS.find((entry) => entry.value === sourceTab);
+    return {
+      ...sort,
+      ...band,
+      sourceTypes: tab?.sourceTypes,
+      categories: categoryKey ? categoryKey.split(',') : undefined,
+      tags: tagKey ? tagKey.split(',') : undefined,
+    };
+  }, [sortBy, importanceFilter, sourceTab, categoryKey, tagKey]);
+
+  /** Facet counts, restricted to what the current tab can actually show. */
+  const visibleFacets = useMemo(() => {
+    const facets: MemoryFacets | null = archivalFacets;
+    if (!facets) return { categories: [] as [string, number][], tags: [] as [string, number][] };
+    return {
+      categories: Object.entries(facets.categories ?? {}),
+      tags: Object.entries(facets.tags ?? {}).slice(0, 12),
+    };
+  }, [archivalFacets]);
+
+  const sourceCounts = useMemo(() => {
+    const counts = archivalFacets?.source_types ?? {};
+    const total = Object.values(counts).reduce((sum, n) => sum + n, 0);
+    return SOURCE_TABS.reduce<Record<SourceTab, number>>((acc, tab) => {
+      acc[tab.value] = tab.sourceTypes
+        ? tab.sourceTypes.reduce((sum, key) => sum + (counts[key] ?? 0), 0)
+        : total;
+      return acc;
+    }, {} as Record<SourceTab, number>);
+  }, [archivalFacets]);
+
+  /** A category or tag name with no translation falls back to the raw value. */
+  const labelFor = (prefix: string, value: string) => {
+    const translated = t(`${prefix}.${value}`);
+    return translated === `${prefix}.${value}` ? value.replace(/_/g, ' ') : translated;
+  };
+
+  const toggle = (list: string[], value: string) =>
+    list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
+
+  const handleTagClick = (tag: string) => {
+    setSelectedTags((current) => toggle(current, tag));
+  };
 
   // Refetch from the top whenever the query, the ordering, or the band changes —
   // page 1 of the new ordering is a different set of rows, not a re-sort of this one.
@@ -161,7 +226,14 @@ export const ArchivalMemoryList: React.FC = () => {
     });
   }
 
-  const activeFiltersCount = (importanceFilter !== 'all' ? 1 : 0);
+  const activeFiltersCount =
+    (importanceFilter !== 'all' ? 1 : 0) + selectedCategories.length + selectedTags.length;
+
+  const clearAll = () => {
+    setImportanceFilter('all');
+    setSelectedCategories([]);
+    setSelectedTags([]);
+  };
 
   return (
     <div className="space-y-4">
@@ -195,6 +267,23 @@ export const ArchivalMemoryList: React.FC = () => {
               {activeFiltersCount > 0 && ` (${activeFiltersCount})`}
             </BrutalButton>
           </div>
+        </div>
+
+        {/* Source tabs — which shelf of memory you are reading */}
+        <div className="mb-3 flex flex-wrap gap-2">
+          {SOURCE_TABS.map((tab) => (
+            <BrutalButton
+              key={tab.value}
+              onClick={() => setSourceTab(tab.value)}
+              size="xs"
+              isActive={sourceTab === tab.value}
+            >
+              {t(`archival.source.${tab.value}`)}
+              {sourceCounts[tab.value] > 0 && (
+                <span className="ml-1.5 font-mono opacity-60">{sourceCounts[tab.value]}</span>
+              )}
+            </BrutalButton>
+          ))}
         </div>
 
         {/* Search Bar */}
@@ -277,11 +366,58 @@ export const ArchivalMemoryList: React.FC = () => {
               </div>
             </div>
 
+            {/* Category pills */}
+            {visibleFacets.categories.length > 0 && (
+              <div className="flex items-start gap-3">
+                <label className="w-24 shrink-0 pt-1 text-[10px] font-bold uppercase text-neutral-600 dark:text-neutral-400">
+                  {t('archival.categoryLabel')}
+                </label>
+                <div className="flex flex-1 flex-wrap gap-2">
+                  {visibleFacets.categories.map(([name, count]) => (
+                    <BrutalButton
+                      key={name}
+                      onClick={() => setSelectedCategories((current) => toggle(current, name))}
+                      size="xs"
+                      isActive={selectedCategories.includes(name)}
+                    >
+                      {labelFor('archival.category', name)}
+                      <span className="ml-1.5 font-mono opacity-60">{count}</span>
+                    </BrutalButton>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Tag chips */}
+            {visibleFacets.tags.length > 0 && (
+              <div className="flex items-start gap-3">
+                <label className="w-24 shrink-0 pt-1 text-[10px] font-bold uppercase text-neutral-600 dark:text-neutral-400">
+                  {t('archival.tagLabel')}
+                </label>
+                <div className="flex flex-1 flex-wrap gap-1.5">
+                  {visibleFacets.tags.map(([tag, count]) => (
+                    <button
+                      key={tag}
+                      onClick={() => handleTagClick(tag)}
+                      className={`border-2 border-brutal-black px-1.5 py-0.5 font-mono text-[10px] transition-colors ${
+                        selectedTags.includes(tag)
+                          ? 'bg-brutal-black text-white dark:bg-white dark:text-brutal-black'
+                          : 'bg-white text-brutal-black hover:bg-neutral-100 dark:bg-zinc-700 dark:text-white dark:hover:bg-zinc-600'
+                      }`}
+                    >
+                      #{tag}
+                      <span className="ml-1 opacity-60">{count}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Clear Filters */}
             {activeFiltersCount > 0 && (
               <BrutalButton
                 onClick={() => {
-                  setImportanceFilter('all');
+                  clearAll();
                   setSortBy('date-desc');
                 }}
                 size="xs"
@@ -305,6 +441,7 @@ export const ArchivalMemoryList: React.FC = () => {
                   total: String(archivalTotal),
                 })}
             {importanceFilter !== 'all' && ` (${t('archival.filteredBy', { importance: importanceFilter })})`}
+            {selectedTags.length > 0 && ` (${selectedTags.map((tag) => `#${tag}`).join(' ')})`}
           </span>
           {/* Only a relevance search still sorts over the loaded pages. */}
           {archivalHasMore && debouncedQuery && sortBy !== 'relevance' && (
@@ -332,7 +469,7 @@ export const ArchivalMemoryList: React.FC = () => {
       {processedMemories.length === 0 && !archivalLoading && (
         <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 p-12 text-center">
           <h4 className="font-brutal text-2xl uppercase mb-2 dark:text-white">
-            {debouncedQuery || importanceFilter !== 'all'
+            {debouncedQuery || activeFiltersCount > 0
               ? t('archival.empty.noMatchesTitle')
               : t('archival.empty.noMemoriesTitle')}
           </h4>
@@ -343,11 +480,11 @@ export const ArchivalMemoryList: React.FC = () => {
                 ? t('archival.empty.noImportanceDesc', { importance: importanceFilter })
                 : t('archival.empty.noMemoriesDesc')}
           </p>
-          {(debouncedQuery || importanceFilter !== 'all') && (
+          {(debouncedQuery || activeFiltersCount > 0) && (
             <button
               onClick={() => {
                 setSearchQuery('');
-                setImportanceFilter('all');
+                clearAll();
               }}
               className="mt-4 px-4 py-2 border-2 border-brutal-black bg-white dark:bg-zinc-700 dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-600 font-bold text-xs uppercase shadow-brutal-sm"
             >
@@ -379,6 +516,8 @@ export const ArchivalMemoryList: React.FC = () => {
                     onDelete={deleteArchivalMemory}
                     searchQuery={debouncedQuery}
                     compact={isCompact}
+                    onTagClick={handleTagClick}
+                    activeTags={selectedTags}
                   />
                 ))}
               </div>
@@ -394,6 +533,8 @@ export const ArchivalMemoryList: React.FC = () => {
               onDelete={deleteArchivalMemory}
               searchQuery={debouncedQuery}
               compact={isCompact}
+              onTagClick={handleTagClick}
+              activeTags={selectedTags}
             />
           ))}
         </div>

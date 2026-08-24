@@ -14,6 +14,7 @@ from starlette.responses import JSONResponse
 
 from suzent.logger import get_logger
 from suzent.config import CONFIG
+from suzent.memory.lancedb_store import matches_metadata
 from suzent.memory.lifecycle import get_memory_manager, init_memory_system
 
 logger = get_logger(__name__)
@@ -35,6 +36,15 @@ def _optional_float(raw: Optional[str]) -> Optional[float]:
     if raw is None or raw == "":
         return None
     return float(raw)
+
+
+def _csv_list(raw: Optional[str]) -> Optional[list]:
+    """Parse a comma-separated filter param. Blank, missing, and all-blank mean None
+    (i.e. no filter) rather than "match nothing"."""
+    if not raw:
+        return None
+    values = [v.strip() for v in raw.split(",") if v.strip()]
+    return values or None
 
 
 async def _get_or_initialize_memory_manager() -> Any:
@@ -162,6 +172,10 @@ async def search_archival_memory(request: Request) -> JSONResponse:
         order_desc = request.query_params.get("order_desc", "true").lower() != "false"
         min_importance = _optional_float(request.query_params.get("min_importance"))
         max_importance = _optional_float(request.query_params.get("max_importance"))
+        source_types = _csv_list(request.query_params.get("source_types"))
+        categories = _csv_list(request.query_params.get("categories"))
+        tags = _csv_list(request.query_params.get("tags"))
+        want_facets = request.query_params.get("facets", "").lower() in ("1", "true")
 
         if order_by not in ARCHIVAL_ORDER_COLUMNS:
             return JSONResponse(
@@ -199,6 +213,19 @@ async def search_archival_memory(request: Request) -> JSONResponse:
                     for m in memories
                     if float(m.get("importance", 0)) < max_importance
                 ]
+            if source_types or categories or tags:
+                memories = [
+                    m
+                    for m in memories
+                    if matches_metadata(
+                        m.get("metadata")
+                        if isinstance(m.get("metadata"), dict)
+                        else {},
+                        source_types,
+                        categories,
+                        tags,
+                    )
+                ]
             memories = memories[offset : offset + limit]
         else:
             # List all memories (no search). Ordering and the importance band are
@@ -213,12 +240,18 @@ async def search_archival_memory(request: Request) -> JSONResponse:
                 order_desc=order_desc,
                 min_importance=min_importance,
                 max_importance=max_importance,
+                source_types=source_types,
+                categories=categories,
+                tags=tags,
             )
             total = await manager.store.get_memory_count(
                 user_id=user_id,
                 chat_id=None,
                 min_importance=min_importance,
                 max_importance=max_importance,
+                source_types=source_types,
+                categories=categories,
+                tags=tags,
             )
 
         # Format memories for frontend
@@ -257,6 +290,16 @@ async def search_archival_memory(request: Request) -> JSONResponse:
         # search has no meaningful total.
         if total is not None:
             payload["total"] = total
+
+        # Facets are what the filter UI is drawn from, so they are only worth the
+        # extra scan on the first page — later pages reuse what the client already has.
+        if want_facets:
+            payload["facets"] = await manager.store.get_memory_facets(
+                user_id=user_id,
+                chat_id=None,
+                min_importance=min_importance,
+                max_importance=max_importance,
+            )
 
         return JSONResponse(payload)
 
