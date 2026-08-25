@@ -2,8 +2,12 @@
 
 **Sovereign authority.** Proactive action is the sharpest edge of agent
 autonomy: work that happens when you are not watching. Both systems below run
-on schedules and instructions you write, inside the same permission boundaries
-as interactive work. See [what makes an agent sovereign](https://suzent.com/sovereign).
+on schedules and instructions you write. Neither inherits the permission mode of
+the chat you scheduled it from: background turns always run in Auto mode under a
+headless profile, where an action that cannot be classified as safe is denied
+rather than queued for an approval nobody is present to give. See
+[Headless Runs](https://suzent.com/docs/concepts/tools/human-in-the-loop#headless-runs)
+for what that permits, and [what makes an agent sovereign](https://suzent.com/sovereign).
 
 This guide covers the automation systems in Suzent — scheduled cron jobs and periodic heartbeat check-ins.
 
