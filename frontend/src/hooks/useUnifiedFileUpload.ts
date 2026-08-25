@@ -44,39 +44,45 @@ export function useUnifiedFileUpload() {
     return { valid: validFiles };
   }, []);
 
-  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    const { valid, error: validationError } = validateFiles(files);
+  const handleFileSelect = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = Array.from(e.target.files || []);
+      const { valid, error: validationError } = validateFiles(files);
 
-    if (validationError) {
-      setError(validationError);
-      return;
-    }
+      if (validationError) {
+        setError(validationError);
+        return;
+      }
 
-    setSelectedFiles(prev => [...prev, ...valid]);
-    setError(null);
-
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-  }, [validateFiles]);
-
-  const handlePaste = useCallback((files: File[]) => {
-    const { valid, error: validationError } = validateFiles(files);
-
-    if (validationError) {
-      setError(validationError);
-      return;
-    }
-
-    if (valid.length > 0) {
-      setSelectedFiles(prev => [...prev, ...valid]);
+      setSelectedFiles((prev) => [...prev, ...valid]);
       setError(null);
-    }
-  }, [validateFiles]);
+
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    },
+    [validateFiles]
+  );
+
+  const handlePaste = useCallback(
+    (files: File[]) => {
+      const { valid, error: validationError } = validateFiles(files);
+
+      if (validationError) {
+        setError(validationError);
+        return;
+      }
+
+      if (valid.length > 0) {
+        setSelectedFiles((prev) => [...prev, ...valid]);
+        setError(null);
+      }
+    },
+    [validateFiles]
+  );
 
   const removeFile = useCallback((index: number) => {
-    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
+    setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
     setError(null);
   }, []);
 
@@ -114,31 +120,34 @@ export function useUnifiedFileUpload() {
     e.stopPropagation();
   }, []);
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
 
-    // Reset drag state
-    dragCounterRef.current = 0;
-    setIsDragging(false);
+      // Reset drag state
+      dragCounterRef.current = 0;
+      setIsDragging(false);
 
-    const files = Array.from(e.dataTransfer.files);
-    const { valid, error: validationError } = validateFiles(files);
+      const files = Array.from(e.dataTransfer.files);
+      const { valid, error: validationError } = validateFiles(files);
 
-    if (validationError) {
-      setError(validationError);
-      return;
-    }
+      if (validationError) {
+        setError(validationError);
+        return;
+      }
 
-    if (valid.length > 0) {
-      setSelectedFiles(prev => [...prev, ...valid]);
-      setError(null);
-    }
-  }, [validateFiles]);
+      if (valid.length > 0) {
+        setSelectedFiles((prev) => [...prev, ...valid]);
+        setError(null);
+      }
+    },
+    [validateFiles]
+  );
 
   // Handle Tauri Drag and Drop
   useEffect(() => {
-    // Check if running in Tauri by checking for window.__TAURI__ or similar if needed, 
+    // Check if running in Tauri by checking for window.__TAURI__ or similar if needed,
     // but the listen function works gracefully or we can just try/catch.
     // Actually, explicit check is better to avoid errors in browser mode if imports usually fail?
     // The imports are standard modules handled by Vite, so they exist but might throw or no-op.
@@ -168,7 +177,7 @@ export function useUnifiedFileUpload() {
             if (validationError) {
               setError(validationError);
             } else {
-              setSelectedFiles(prev => [...prev, ...valid]);
+              setSelectedFiles((prev) => [...prev, ...valid]);
               setError(null);
             }
           }
@@ -181,7 +190,6 @@ export function useUnifiedFileUpload() {
         unlistenLeave = await listen('tauri://drag-leave', () => {
           setIsDragging(false);
         });
-
       } catch (err) {
         // Not in Tauri or plugin not initialized
         console.debug('Tauri drag-drop listener failed to initialize (expected in browser)', err);
@@ -199,7 +207,7 @@ export function useUnifiedFileUpload() {
 
   // Convert images to base64 for preview
   const convertImagesToBase64 = useCallback(async (images: File[]): Promise<ImageAttachment[]> => {
-    const promises = images.map(file => {
+    const promises = images.map((file) => {
       return new Promise<ImageAttachment>((resolve) => {
         const reader = new FileReader();
         reader.onload = (e) => {
@@ -209,7 +217,7 @@ export function useUnifiedFileUpload() {
             id: crypto.randomUUID(),
             data: base64Data,
             mime_type: file.type,
-            filename: file.name
+            filename: file.name,
           });
         };
         reader.readAsDataURL(file);
@@ -219,82 +227,83 @@ export function useUnifiedFileUpload() {
   }, []);
 
   // Upload all files to server and generate image previews
-  const uploadFiles = useCallback(async (files: File[], chatId: string): Promise<UploadResult> => {
-    setIsUploading(true);
-    setUploadProgress(0);
-    setError(null);
+  const uploadFiles = useCallback(
+    async (files: File[], chatId: string): Promise<UploadResult> => {
+      setIsUploading(true);
+      setUploadProgress(0);
+      setError(null);
 
-    try {
-      // Step 1: Upload ALL files to server
-      const formData = new FormData();
-      files.forEach(file => {
-        formData.append('files', file);
-      });
-
-      const fileMetadata = await new Promise<FileAttachment[]>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-
-        xhr.upload.addEventListener('progress', (e) => {
-          if (e.lengthComputable) {
-            const progress = (e.loaded / e.total) * 100;
-            setUploadProgress(progress);
-          }
+      try {
+        // Step 1: Upload ALL files to server
+        const formData = new FormData();
+        files.forEach((file) => {
+          formData.append('files', file);
         });
 
-        xhr.addEventListener('load', () => {
-          if (xhr.status === 200) {
-            try {
-              const response = JSON.parse(xhr.responseText);
-              setUploadProgress(100);
-              resolve(response.files);
-            } catch (err) {
-              reject(new Error('Failed to parse upload response'));
+        const fileMetadata = await new Promise<FileAttachment[]>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+
+          xhr.upload.addEventListener('progress', (e) => {
+            if (e.lengthComputable) {
+              const progress = (e.loaded / e.total) * 100;
+              setUploadProgress(progress);
             }
-          } else {
-            reject(new Error(`Upload failed with status ${xhr.status}`));
+          });
+
+          xhr.addEventListener('load', () => {
+            if (xhr.status === 200) {
+              try {
+                const response = JSON.parse(xhr.responseText);
+                setUploadProgress(100);
+                resolve(response.files);
+              } catch (err) {
+                reject(new Error('Failed to parse upload response'));
+              }
+            } else {
+              reject(new Error(`Upload failed with status ${xhr.status}`));
+            }
+          });
+
+          xhr.addEventListener('error', () => {
+            reject(new Error('Upload failed due to network error'));
+          });
+
+          xhr.addEventListener('abort', () => {
+            reject(new Error('Upload was cancelled'));
+          });
+
+          xhr.open('POST', `${getApiBase()}/sandbox/upload?chat_id=${chatId}`);
+          xhr.send(formData);
+        });
+
+        // Step 2: For images, ALSO convert to base64 for preview
+        const imageFiles = files.filter((f) => f.type.startsWith('image/'));
+        const imagePreviews = imageFiles.length > 0 ? await convertImagesToBase64(imageFiles) : [];
+
+        // Attach each preview's base64 to the matching image metadata entry so the
+        // optimistic message can render instantly (no flicker while the serve URL
+        // loads). Correlate by ORDER, not filename: the server may rename colliding
+        // files (e.g. several pasted "image.png"), so filenames aren't reliable, but
+        // both the upload loop and the preview list preserve the input order.
+        let previewIdx = 0;
+        for (const meta of fileMetadata) {
+          if (meta.mime_type.startsWith('image/') && previewIdx < imagePreviews.length) {
+            meta.preview_data = imagePreviews[previewIdx].data;
+            previewIdx += 1;
           }
-        });
-
-        xhr.addEventListener('error', () => {
-          reject(new Error('Upload failed due to network error'));
-        });
-
-        xhr.addEventListener('abort', () => {
-          reject(new Error('Upload was cancelled'));
-        });
-
-        xhr.open('POST', `${getApiBase()}/sandbox/upload?chat_id=${chatId}`);
-        xhr.send(formData);
-      });
-
-      // Step 2: For images, ALSO convert to base64 for preview
-      const imageFiles = files.filter(f => f.type.startsWith('image/'));
-      const imagePreviews = imageFiles.length > 0
-        ? await convertImagesToBase64(imageFiles)
-        : [];
-
-      // Attach each preview's base64 to the matching image metadata entry so the
-      // optimistic message can render instantly (no flicker while the serve URL
-      // loads). Correlate by ORDER, not filename: the server may rename colliding
-      // files (e.g. several pasted "image.png"), so filenames aren't reliable, but
-      // both the upload loop and the preview list preserve the input order.
-      let previewIdx = 0;
-      for (const meta of fileMetadata) {
-        if (meta.mime_type.startsWith('image/') && previewIdx < imagePreviews.length) {
-          meta.preview_data = imagePreviews[previewIdx].data;
-          previewIdx += 1;
         }
-      }
 
-      return { fileMetadata, imagePreviews };
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Upload failed';
-      setError(errorMessage);
-      throw err;
-    } finally {
-      setIsUploading(false);
-    }
-  }, [convertImagesToBase64]);
+        return { fileMetadata, imagePreviews };
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Upload failed';
+        setError(errorMessage);
+        throw err;
+      } finally {
+        setIsUploading(false);
+      }
+    },
+    [convertImagesToBase64]
+  );
 
   return {
     selectedFiles,
@@ -322,23 +331,23 @@ function getMimeType(filename: string): string {
   if (!ext) return 'application/octet-stream';
 
   const mimeMap: Record<string, string> = {
-    'png': 'image/png',
-    'jpg': 'image/jpeg',
-    'jpeg': 'image/jpeg',
-    'gif': 'image/gif',
-    'webp': 'image/webp',
-    'svg': 'image/svg+xml',
-    'pdf': 'application/pdf',
-    'txt': 'text/plain',
-    'md': 'text/markdown',
-    'json': 'application/json',
-    'js': 'text/javascript',
-    'jsx': 'text/javascript',
-    'ts': 'text/typescript',
-    'tsx': 'text/typescript',
-    'py': 'text/x-python',
-    'html': 'text/html',
-    'css': 'text/css',
+    png: 'image/png',
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    gif: 'image/gif',
+    webp: 'image/webp',
+    svg: 'image/svg+xml',
+    pdf: 'application/pdf',
+    txt: 'text/plain',
+    md: 'text/markdown',
+    json: 'application/json',
+    js: 'text/javascript',
+    jsx: 'text/javascript',
+    ts: 'text/typescript',
+    tsx: 'text/typescript',
+    py: 'text/x-python',
+    html: 'text/html',
+    css: 'text/css',
   };
 
   return mimeMap[ext] || 'application/octet-stream';

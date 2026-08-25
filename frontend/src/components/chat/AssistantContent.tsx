@@ -10,7 +10,11 @@ import { MarkdownRenderer } from './MarkdownRenderer';
 import { SubAgentCallBlock, type SubAgentStatus } from './SubAgentCallBlock';
 import { ToolCallBlock } from './ToolCallBlock';
 import { ToolGroupIcon } from './toolGroupIcon';
-import type { PermissionPrompt, ToolPermissionDecision, ToolPermissionResolution } from '../../types/agui';
+import type {
+  PermissionPrompt,
+  ToolPermissionDecision,
+  ToolPermissionResolution,
+} from '../../types/agui';
 
 const LARGE_MARKDOWN_RENDER_THRESHOLD = 12000;
 
@@ -39,8 +43,8 @@ export const ToolSequenceGroup: React.FC<{
   onRemoveApprovalPolicy?: (toolName: string) => void;
   onForceWebContext?: (contextId: string) => void;
 }> = ({ tools, isStreaming, toolApprovalPolicy, onRemoveApprovalPolicy, onForceWebContext }) => {
-  const hasPending = tools.some(t => t.approvalState === 'pending');
-  const isAnyRunning = isStreaming && tools.some(t => !t.output);
+  const hasPending = tools.some((t) => t.approvalState === 'pending');
+  const isAnyRunning = isStreaming && tools.some((t) => !t.output);
   const [expanded, setExpanded] = useState(hasPending);
 
   useEffect(() => {
@@ -71,7 +75,11 @@ export const ToolSequenceGroup: React.FC<{
               permissionDecision={t.permissionDecision}
               permissionResolution={t.permissionResolution}
               isAutoApproved={isAutoApproved}
-              onRemovePolicy={isAutoApproved && onRemoveApprovalPolicy ? () => onRemoveApprovalPolicy(t.toolName) : undefined}
+              onRemovePolicy={
+                isAutoApproved && onRemoveApprovalPolicy
+                  ? () => onRemoveApprovalPolicy(t.toolName)
+                  : undefined
+              }
               onForceWebContext={onForceWebContext}
               toolCallId={t.toolCallId}
             />
@@ -88,10 +96,14 @@ export const ToolSequenceGroup: React.FC<{
         className={`tool-group-summary group/tools transition-all ${
           hasPending ? 'active-approval' : ''
         } ${
-          isAnyRunning ? 'brutal-running-mono border-2 !border-brutal-black dark:!border-white' : 'border-2 border-transparent'
+          isAnyRunning
+            ? 'brutal-running-mono border-2 !border-brutal-black dark:!border-white'
+            : 'border-2 border-transparent'
         }`}
       >
-        <div className={`flex items-center gap-2 w-full ${isAnyRunning ? 'text-brutal-black dark:text-white' : 'text-neutral-500 dark:text-neutral-400 group-hover/tools:text-brutal-black dark:group-hover/tools:text-white transition-colors'}`}>
+        <div
+          className={`flex items-center gap-2 w-full ${isAnyRunning ? 'text-brutal-black dark:text-white' : 'text-neutral-500 dark:text-neutral-400 group-hover/tools:text-brutal-black dark:group-hover/tools:text-white transition-colors'}`}
+        >
           {!expanded ? (
             <>
               <div className="tool-group-icons">
@@ -132,10 +144,12 @@ export const ToolSequenceGroup: React.FC<{
         </div>
       </button>
 
-      <div className={`
+      <div
+        className={`
         grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] overflow-hidden w-full
         ${expanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}
-      `}>
+      `}
+      >
         <div className="overflow-hidden min-h-0 min-w-0 w-full ml-1 pl-1.5 space-y-1">
           {tools.map((t, i) => {
             const isAutoApproved = toolApprovalPolicy?.[t.toolName] === 'always_allow';
@@ -154,7 +168,11 @@ export const ToolSequenceGroup: React.FC<{
                 permissionDecision={t.permissionDecision}
                 permissionResolution={t.permissionResolution}
                 isAutoApproved={isAutoApproved}
-                onRemovePolicy={isAutoApproved && onRemoveApprovalPolicy ? () => onRemoveApprovalPolicy(t.toolName) : undefined}
+                onRemovePolicy={
+                  isAutoApproved && onRemoveApprovalPolicy
+                    ? () => onRemoveApprovalPolicy(t.toolName)
+                    : undefined
+                }
                 onForceWebContext={onForceWebContext}
                 toolCallId={t.toolCallId}
               />
@@ -170,19 +188,33 @@ export const StepPills: React.FC<{
   blocks: ContentBlock[];
   messageIndex: number;
   isStreaming?: boolean;
-  onToolApproval?: (approvalId: string, toolCallId: string, approved: boolean, remember?: ApprovalRememberScope, toolName?: string) => void;
+  onToolApproval?: (
+    approvalId: string,
+    toolCallId: string,
+    approved: boolean,
+    remember?: ApprovalRememberScope,
+    toolName?: string
+  ) => void;
   toolApprovalPolicy?: Record<string, string>;
   onRemoveApprovalPolicy?: (toolName: string) => void;
   onForceWebContext?: (contextId: string) => void;
-}> = ({ blocks, isStreaming, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy, onForceWebContext }) => {
+}> = ({
+  blocks,
+  isStreaming,
+  onToolApproval,
+  toolApprovalPolicy,
+  onRemoveApprovalPolicy,
+  onForceWebContext,
+}) => {
   const tools = blocks
-    .filter(b => b.type === 'toolCall')
+    .filter((b) => b.type === 'toolCall')
     .map((b, bi) => {
-      const hasOutput = !!(b.content);
-      const isActionablyPending = b.approvalState === 'pending' && !hasOutput && !!b.approvalId && !!isStreaming;
+      const hasOutput = !!b.content;
+      const isActionablyPending =
+        b.approvalState === 'pending' && !hasOutput && !!b.approvalId && !!isStreaming;
       const effectiveApprovalState = isActionablyPending
         ? 'pending'
-        : (b.approvalState === 'denied' || (b.approvalState === 'pending' && !hasOutput))
+        : b.approvalState === 'denied' || (b.approvalState === 'pending' && !hasOutput)
           ? 'denied'
           : undefined;
       return {
@@ -191,17 +223,28 @@ export const StepPills: React.FC<{
         toolArgs: b.toolArgs,
         output: b.content || undefined,
         approvalState: effectiveApprovalState as 'pending' | 'denied' | undefined,
-        onApprove: (isActionablyPending && b.approvalId && onToolApproval)
-          ? (remember: ApprovalRememberScope) => onToolApproval(b.approvalId!, b.toolCallId || '', true, remember, b.toolName)
-          : undefined,
-        onDeny: (isActionablyPending && b.approvalId && onToolApproval)
-          ? () => onToolApproval(b.approvalId!, b.toolCallId || '', false, null, b.toolName)
-          : undefined,
+        onApprove:
+          isActionablyPending && b.approvalId && onToolApproval
+            ? (remember: ApprovalRememberScope) =>
+                onToolApproval(b.approvalId!, b.toolCallId || '', true, remember, b.toolName)
+            : undefined,
+        onDeny:
+          isActionablyPending && b.approvalId && onToolApproval
+            ? () => onToolApproval(b.approvalId!, b.toolCallId || '', false, null, b.toolName)
+            : undefined,
       };
     });
 
   if (tools.length === 0) return null;
-  return <ToolSequenceGroup tools={tools} isStreaming={isStreaming} toolApprovalPolicy={toolApprovalPolicy} onRemoveApprovalPolicy={onRemoveApprovalPolicy} onForceWebContext={onForceWebContext} />;
+  return (
+    <ToolSequenceGroup
+      tools={tools}
+      isStreaming={isStreaming}
+      toolApprovalPolicy={toolApprovalPolicy}
+      onRemoveApprovalPolicy={onRemoveApprovalPolicy}
+      onForceWebContext={onForceWebContext}
+    />
+  );
 };
 
 const StreamingMarkdownBlock: React.FC<{
@@ -215,8 +258,14 @@ const StreamingMarkdownBlock: React.FC<{
 
   return (
     <>
-      <MarkdownRenderer content={renderedContent} onFileClick={onFileClick} streamingLite={isLastBlock} />
-      {isLastBlock && showCursor && <span className="animate-brutal-blink inline-block w-2.5 h-4 bg-brutal-black align-middle ml-1" />}
+      <MarkdownRenderer
+        content={renderedContent}
+        onFileClick={onFileClick}
+        streamingLite={isLastBlock}
+      />
+      {isLastBlock && showCursor && (
+        <span className="animate-brutal-blink inline-block w-2.5 h-4 bg-brutal-black align-middle ml-1" />
+      )}
     </>
   );
 };
@@ -249,18 +298,30 @@ export const StreamingContent: React.FC<{
           return null;
         } else if (b.type === 'code') {
           return (
-            <div key={blockKey} className="border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900/70">
+            <div
+              key={blockKey}
+              className="border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900/70"
+            >
               <div className="px-3 py-1 border-b-2 border-brutal-black text-[10px] font-mono font-bold uppercase text-neutral-600 dark:text-neutral-300 bg-white dark:bg-zinc-800">
                 {(b as any).lang || 'text'}
               </div>
               <pre className="p-3 text-xs font-mono leading-relaxed whitespace-pre-wrap break-all overflow-x-auto max-h-[48vh]">
                 <code>{b.content}</code>
-                {isLastBlock && showCursor && <span className="animate-brutal-blink inline-block w-2 h-4 bg-neutral-700 dark:bg-neutral-300 align-middle ml-1" />}
+                {isLastBlock && showCursor && (
+                  <span className="animate-brutal-blink inline-block w-2 h-4 bg-neutral-700 dark:bg-neutral-300 align-middle ml-1" />
+                )}
               </pre>
             </div>
           );
         } else {
-          return <CodeBlockComponent key={blockKey} lang={(b as any).lang} content={b.content} isStreaming={isLastBlock} />;
+          return (
+            <CodeBlockComponent
+              key={blockKey}
+              lang={(b as any).lang}
+              content={b.content}
+              isStreaming={isLastBlock}
+            />
+          );
         }
       })}
     </>
@@ -271,16 +332,38 @@ export const StaticContent: React.FC<{
   blocks: ContentBlock[];
   messageIndex: number;
   onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
-  onToolApproval?: (approvalId: string, toolCallId: string, approved: boolean, remember?: ApprovalRememberScope, toolName?: string) => void;
+  onToolApproval?: (
+    approvalId: string,
+    toolCallId: string,
+    approved: boolean,
+    remember?: ApprovalRememberScope,
+    toolName?: string
+  ) => void;
   toolApprovalPolicy?: Record<string, string>;
   onRemoveApprovalPolicy?: (toolName: string) => void;
   onInlineAction?: (surfaceId: string, action: string, context: Record<string, unknown>) => void;
-  subAgentTasks?: Record<string, { status: SubAgentStatus; resultSummary?: string; error?: string }>;
+  subAgentTasks?: Record<
+    string,
+    { status: SubAgentStatus; resultSummary?: string; error?: string }
+  >;
   onOpenSubAgentSidebar?: (taskId: string) => void;
   onStopSubAgent?: (taskId: string) => void;
   onForceWebContext?: (contextId: string) => void;
   inActivityRail?: boolean;
-}> = ({ blocks, messageIndex, onFileClick, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy, onInlineAction, subAgentTasks, onOpenSubAgentSidebar, onStopSubAgent, onForceWebContext, inActivityRail }) => {
+}> = ({
+  blocks,
+  messageIndex,
+  onFileClick,
+  onToolApproval,
+  toolApprovalPolicy,
+  onRemoveApprovalPolicy,
+  onInlineAction,
+  subAgentTasks,
+  onOpenSubAgentSidebar,
+  onStopSubAgent,
+  onForceWebContext,
+  inActivityRail,
+}) => {
   return (
     <>
       {blocks.map((b, bi) => {
@@ -308,13 +391,23 @@ export const StaticContent: React.FC<{
           );
         } else if (b.type === 'toolCall') {
           const isPending = b.approvalState === 'pending' && !b.content;
-          const effectiveApprovalState = (isPending ? 'pending' : b.approvalState === 'denied' ? 'denied' : undefined) as 'pending' | 'denied' | undefined;
+          const effectiveApprovalState = (
+            isPending ? 'pending' : b.approvalState === 'denied' ? 'denied' : undefined
+          ) as 'pending' | 'denied' | undefined;
           const isAutoApproved = toolApprovalPolicy?.[b.toolName || ''] === 'always_allow';
 
           if (b.toolName === 'agent') {
             const taskId = parseSubAgentTaskId(b.content || undefined);
             const taskState = taskId ? subAgentTasks?.[taskId] : undefined;
-            const args = b.toolArgs ? (() => { try { return JSON.parse(b.toolArgs!); } catch { return {}; } })() : {};
+            const args = b.toolArgs
+              ? (() => {
+                  try {
+                    return JSON.parse(b.toolArgs!);
+                  } catch {
+                    return {};
+                  }
+                })()
+              : {};
             const defaultStatus = b.content ? 'completed' : 'running';
             return (
               <SubAgentCallBlock
@@ -341,15 +434,24 @@ export const StaticContent: React.FC<{
               permission={b.permission}
               permissionDecision={b.permissionDecision}
               permissionResolution={b.permissionResolution}
-              onApprove={(isPending && b.approvalId && onToolApproval)
-                ? (remember) => onToolApproval(b.approvalId!, b.toolCallId || '', true, remember, b.toolName)
-                : undefined}
-              onDeny={(isPending && b.approvalId && onToolApproval)
-                ? () => onToolApproval(b.approvalId!, b.toolCallId || '', false, null, b.toolName)
-                : undefined}
+              onApprove={
+                isPending && b.approvalId && onToolApproval
+                  ? (remember) =>
+                      onToolApproval(b.approvalId!, b.toolCallId || '', true, remember, b.toolName)
+                  : undefined
+              }
+              onDeny={
+                isPending && b.approvalId && onToolApproval
+                  ? () => onToolApproval(b.approvalId!, b.toolCallId || '', false, null, b.toolName)
+                  : undefined
+              }
               defaultCollapsed={!isPending}
               isAutoApproved={isAutoApproved}
-              onRemovePolicy={isAutoApproved && onRemoveApprovalPolicy && b.toolName ? () => onRemoveApprovalPolicy(b.toolName!) : undefined}
+              onRemovePolicy={
+                isAutoApproved && onRemoveApprovalPolicy && b.toolName
+                  ? () => onRemoveApprovalPolicy(b.toolName!)
+                  : undefined
+              }
               onForceWebContext={onForceWebContext}
               toolCallId={b.toolCallId}
               inActivityRail={inActivityRail}

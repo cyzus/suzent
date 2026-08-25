@@ -46,7 +46,7 @@ const OBJ_MARKER = /\ufffc([a-zA-Z]+)\ufffc([a-zA-Z0-9_,\s]+(?:\ufffc[a-zA-Z0-9_
 const LOOSE_CITE_MARKER = /\bcite[-:]((?:t\d+_src_\d+)(?:\s*,\s*t\d+_src_\d+)*)\b/;
 export const CITATION_MARKER_RE = new RegExp(
   `${ASCII_MARKER.source}|${PUA_MARKER.source}|${OBJ_MARKER.source}|${LOOSE_CITE_MARKER.source}`,
-  'g',
+  'g'
 );
 
 /** True when the string may contain a typed marker (either form). */
@@ -64,8 +64,7 @@ export function hasCitationMarker(text: string): boolean {
 // delimiter (`]]`, `\ue201`, trailing `\ufffc`) may not have arrived yet, so the
 // full marker regexes don't match and the raw glyphs (including the U+E200/E202
 // private-use boxes/stars) would otherwise leak into the rendered text.
-const PARTIAL_MARKER_RE =
-  /(?:\[\[|\ue200|\ufffc)[a-zA-Z]*(?:[:\ue202\ufffc][^\]\ue201]*)?$/;
+const PARTIAL_MARKER_RE = /(?:\[\[|\ue200|\ufffc)[a-zA-Z]*(?:[:\ue202\ufffc][^\]\ue201]*)?$/;
 
 /**
  * Strip a single incomplete typed marker anchored at the end of the string. Used
@@ -80,14 +79,20 @@ export function stripTrailingPartialMarker(text: string): string {
 const ID_SEPARATORS = /[,\ue202\ufffc]/;
 
 /** A parsed marker: its TYPE keyword and the list of payload tokens (e.g. ids). */
-interface ParsedMarker { type: string; tokens: string[]; }
+interface ParsedMarker {
+  type: string;
+  tokens: string[];
+}
 
 function parseMarker(m: RegExpExecArray): ParsedMarker {
   // ASCII groups are 1/2; PUA groups are 3/4; OBJ groups are 5/6;
   // loose fallback is group 7 and always means "cite".
   const type = (m[1] ?? m[3] ?? m[5] ?? (m[7] ? 'cite' : '')).toLowerCase();
   const payload = m[2] ?? m[4] ?? m[6] ?? m[7] ?? '';
-  const tokens = payload.split(ID_SEPARATORS).map(s => s.trim()).filter(Boolean);
+  const tokens = payload
+    .split(ID_SEPARATORS)
+    .map((s) => s.trim())
+    .filter(Boolean);
   return { type, tokens };
 }
 
@@ -106,7 +111,7 @@ function escapeMarkdownReferenceTitle(text: string): string {
  */
 export function formatTextWithCitationReferences(
   text: string,
-  sourcesMap: CitationSourcesMap,
+  sourcesMap: CitationSourcesMap
 ): string {
   if (!hasCitationMarker(text)) return text;
 
@@ -120,7 +125,7 @@ export function formatTextWithCitationReferences(
     const { type, tokens } = parseMarker(match);
     if (type !== 'cite' || tokens.length === 0) return '';
 
-    const labels = tokens.map(id => {
+    const labels = tokens.map((id) => {
       const source = sourcesMap.get(id);
       if (!source || !source.url) return `[source: ${id}]`;
       let ref = refById.get(id);
@@ -154,7 +159,7 @@ export function formatTextWithCitationReferences(
 export function renderTextWithCitations(
   text: string,
   sourcesMap: CitationSourcesMap | null,
-  keyPrefix: string,
+  keyPrefix: string
 ): React.ReactNode[] {
   if (!hasCitationMarker(text)) {
     // No complete marker, but a partial one may be mid-stream at the end.
@@ -182,9 +187,7 @@ export function renderTextWithCitations(
 
     if (type === 'cite' && tokens.length > 0 && hasSources) {
       nodes.push(before);
-      nodes.push(
-        <CitationBadge key={`${keyPrefix}-cite-${n++}`} sourceIds={tokens} />,
-      );
+      nodes.push(<CitationBadge key={`${keyPrefix}-cite-${n++}`} sourceIds={tokens} />);
     } else {
       // Unknown/unsupported marker type, or a cite marker with no sources to
       // resolve against: keep the leading text, drop the marker.
@@ -212,10 +215,23 @@ const TYPE_ICON: Record<string, string> = {
 
 /** Per-extension emoji for `file` sources that have no favicon. */
 const FILE_EXT_ICONS: Record<string, string> = {
-  md: '📝', txt: '📄', pdf: '📕',
-  py: '🐍', ts: '📘', tsx: '📘', js: '📜', jsx: '📜',
-  json: '📋', yaml: '📋', yml: '📋', toml: '📋',
-  png: '🖼️', jpg: '🖼️', jpeg: '🖼️', gif: '🎞️', svg: '🖼️',
+  md: '📝',
+  txt: '📄',
+  pdf: '📕',
+  py: '🐍',
+  ts: '📘',
+  tsx: '📘',
+  js: '📜',
+  jsx: '📜',
+  json: '📋',
+  yaml: '📋',
+  yml: '📋',
+  toml: '📋',
+  png: '🖼️',
+  jpg: '🖼️',
+  jpeg: '🖼️',
+  gif: '🎞️',
+  svg: '🖼️',
 };
 
 function typeIcon(type?: string, url?: string | null): string {
@@ -292,14 +308,18 @@ async function openSource(url: string) {
  * favicon url), render the source type's emoji instead so we never show a
  * broken-image glyph.
  */
-const Favicon: React.FC<{ src?: string | null; type?: string; url?: string | null; className?: string }> = ({
-  src,
-  type,
-  url,
-  className = 'w-3.5 h-3.5',
-}) => {
+const Favicon: React.FC<{
+  src?: string | null;
+  type?: string;
+  url?: string | null;
+  className?: string;
+}> = ({ src, type, url, className = 'w-3.5 h-3.5' }) => {
   if (!src) {
-    return <span className={`inline-flex items-center justify-center leading-none ${className}`}>{typeIcon(type, url)}</span>;
+    return (
+      <span className={`inline-flex items-center justify-center leading-none ${className}`}>
+        {typeIcon(type, url)}
+      </span>
+    );
   }
   return (
     <ImageWithFallback
@@ -340,7 +360,7 @@ const SourceCardRow: React.FC<{ source: CitationSource }> = ({ source: s }) => {
       href={s.url || '#'}
       target="_blank"
       rel="noopener noreferrer"
-      onClick={e => {
+      onClick={(e) => {
         if (!s.url) return;
         e.preventDefault();
         e.stopPropagation();
@@ -354,7 +374,9 @@ const SourceCardRow: React.FC<{ source: CitationSource }> = ({ source: s }) => {
           {sourceLabel(s)}
         </span>
         {domain && (
-          <span className="mt-0.5 text-[10px] font-medium text-neutral-500 dark:text-neutral-400 truncate">{domain}</span>
+          <span className="mt-0.5 text-[10px] font-medium text-neutral-500 dark:text-neutral-400 truncate">
+            {domain}
+          </span>
         )}
         {s.snippet && (
           <span className="mt-1 text-[10px] text-neutral-500 dark:text-neutral-400 line-clamp-2 break-words">
@@ -382,9 +404,9 @@ export const CitationBadge: React.FC<{ sourceIds: string[] }> = ({ sourceIds }) 
   const [cardStyle, setCardStyle] = useState<React.CSSProperties | null>(null);
 
   const sources = sourceIds
-    .map(id => sourcesMap?.get(id))
+    .map((id) => sourcesMap?.get(id))
     .filter((s): s is CitationSource => Boolean(s));
-  const unresolvedIds = sourceIds.filter(id => !sourcesMap?.has(id));
+  const unresolvedIds = sourceIds.filter((id) => !sourcesMap?.has(id));
 
   useEffect(() => {
     if (!open || !anchorRef.current) return;
@@ -401,20 +423,17 @@ export const CitationBadge: React.FC<{ sourceIds: string[] }> = ({ sourceIds }) 
       const width = Math.min(360, Math.max(220, availableWidth));
       const left = Math.min(
         Math.max(rect.left + rect.width / 2 - width / 2, bounds.left + margin),
-        bounds.right - width - margin,
+        bounds.right - width - margin
       );
       const spaceAbove = rect.top - bounds.top - margin - gap;
       const spaceBelow = bounds.bottom - rect.bottom - margin - gap;
       const naturalHeight = cardRef.current?.scrollHeight ?? 240;
-      const placeBelow = naturalHeight <= spaceBelow
-        || (naturalHeight > spaceAbove && spaceBelow > spaceAbove);
+      const placeBelow =
+        naturalHeight <= spaceBelow || (naturalHeight > spaceAbove && spaceBelow > spaceAbove);
       const availableHeight = Math.max(48, placeBelow ? spaceBelow : spaceAbove);
       const height = Math.min(naturalHeight, availableHeight);
       const rawTop = placeBelow ? rect.bottom + gap : rect.top - gap - height;
-      const top = Math.min(
-        Math.max(rawTop, bounds.top + margin),
-        bounds.bottom - height - margin,
-      );
+      const top = Math.min(Math.max(rawTop, bounds.top + margin), bounds.bottom - height - margin);
 
       setCardStyle({
         left,
@@ -461,23 +480,26 @@ export const CitationBadge: React.FC<{ sourceIds: string[] }> = ({ sourceIds }) 
   const primary = sources[0];
   const label = sourceName(primary);
   const extra = sources.length + unresolvedIds.length - 1;
-  const popover = open && typeof document !== 'undefined' ? createPortal(
-    <InformationPopover
-      ref={cardRef}
-      className="fixed min-w-0"
-      style={{
-        ...(cardStyle ?? { left: -9999, top: -9999, width: 360 }),
-        zIndex: 9999,
-      }}
-      onMouseEnter={onEnter}
-      onMouseLeave={onLeave}
-    >
-      {sources.map((s, i) => (
-        <SourceCardRow key={i} source={s} />
-      ))}
-    </InformationPopover>,
-    document.body,
-  ) : null;
+  const popover =
+    open && typeof document !== 'undefined'
+      ? createPortal(
+          <InformationPopover
+            ref={cardRef}
+            className="fixed min-w-0"
+            style={{
+              ...(cardStyle ?? { left: -9999, top: -9999, width: 360 }),
+              zIndex: 9999,
+            }}
+            onMouseEnter={onEnter}
+            onMouseLeave={onLeave}
+          >
+            {sources.map((s, i) => (
+              <SourceCardRow key={i} source={s} />
+            ))}
+          </InformationPopover>,
+          document.body
+        )
+      : null;
 
   return (
     <span
@@ -532,7 +554,12 @@ export const CitationBadge: React.FC<{ sourceIds: string[] }> = ({ sourceIds }) 
  * rect, intersected with the viewport (so we never exceed the window either).
  * Falls back to the viewport when no scroll container is found.
  */
-function scrollContainerBounds(el: HTMLElement): { top: number; bottom: number; left: number; right: number } {
+function scrollContainerBounds(el: HTMLElement): {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+} {
   const viewport = { top: 0, bottom: window.innerHeight, left: 0, right: window.innerWidth };
   let node: HTMLElement | null = el.parentElement;
   while (node) {
@@ -542,8 +569,10 @@ function scrollContainerBounds(el: HTMLElement): { top: number; bottom: number; 
     // even when it never scrolls — so we also require the element to overflow on
     // that axis, otherwise these `overflow-x-hidden` message wrappers would be
     // mistaken for the chat's scroll container (full height -> bounds too tall).
-    const scrollsY = /(auto|scroll|overlay)/.test(style.overflowY) && node.scrollHeight > node.clientHeight;
-    const scrollsX = /(auto|scroll|overlay)/.test(style.overflowX) && node.scrollWidth > node.clientWidth;
+    const scrollsY =
+      /(auto|scroll|overlay)/.test(style.overflowY) && node.scrollHeight > node.clientHeight;
+    const scrollsX =
+      /(auto|scroll|overlay)/.test(style.overflowX) && node.scrollWidth > node.clientWidth;
     if (scrollsY || scrollsX) {
       const r = node.getBoundingClientRect();
       return {
@@ -606,7 +635,7 @@ export const SourcesPanel: React.FC<{ sources: CitationSource[] }> = ({ sources 
       const width = Math.min(440, Math.max(220, availWidth));
       const left = Math.min(
         Math.max(rect.left, bounds.left + margin),
-        bounds.right - width - margin,
+        bounds.right - width - margin
       );
       const spaceAbove = rect.top - bounds.top - margin;
       const spaceBelow = bounds.bottom - rect.bottom - margin;
@@ -620,10 +649,7 @@ export const SourcesPanel: React.FC<{ sources: CitationSource[] }> = ({ sources 
       const naturalHeight = panelRef.current?.scrollHeight ?? maxHeight;
       const height = Math.min(naturalHeight, maxHeight);
       const rawTop = placeBelow ? rect.bottom + gap : rect.top - gap - height;
-      const top = Math.min(
-        Math.max(rawTop, bounds.top + margin),
-        bounds.bottom - height - margin,
-      );
+      const top = Math.min(Math.max(rawTop, bounds.top + margin), bounds.bottom - height - margin);
 
       setPanelStyle({ left, top, width, maxHeight });
     };
@@ -647,7 +673,7 @@ export const SourcesPanel: React.FC<{ sources: CitationSource[] }> = ({ sources 
   return (
     <span ref={ref} className="relative inline-flex">
       <button
-        onClick={() => setExpanded(e => !e)}
+        onClick={() => setExpanded((e) => !e)}
         className="flex items-center gap-1.5 text-[10px] font-mono font-bold uppercase tracking-tight
           text-neutral-400 hover:text-brutal-black dark:hover:text-white transition-colors"
       >
@@ -665,7 +691,9 @@ export const SourcesPanel: React.FC<{ sources: CitationSource[] }> = ({ sources 
             <span className="text-[9px] text-neutral-400 ml-1">+{sources.length - 4}</span>
           )}
         </span>
-        <span>{sources.length} {sources.length === 1 ? 'Source' : 'Sources'}</span>
+        <span>
+          {sources.length} {sources.length === 1 ? 'Source' : 'Sources'}
+        </span>
         <svg
           className={`w-3 h-3 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
           fill="none"
@@ -677,46 +705,52 @@ export const SourcesPanel: React.FC<{ sources: CitationSource[] }> = ({ sources 
         </svg>
       </button>
 
-      {expanded && typeof document !== 'undefined' && createPortal(
-        <div
-          ref={panelRef}
-          className="fixed z-[9999] flex flex-col gap-0.5
+      {expanded &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            ref={panelRef}
+            className="fixed z-[9999] flex flex-col gap-0.5
             bg-white dark:bg-zinc-800 border-2 border-brutal-black dark:border-zinc-500
             rounded-[3px] p-1.5 overflow-y-auto"
-          style={panelStyle ?? { left: -9999, top: -9999, width: 360 }}
-        >
-          {sources.map((s, i) => {
-            const domain = domainOf(s.url);
-            return (
-              <a
-                key={s.id}
-                href={s.url || '#'}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={e => {
-                  if (!s.url) return;
-                  e.preventDefault();
-                  e.stopPropagation();
-                  void openSource(s.url);
-                }}
-                className="flex items-start gap-2 p-2 rounded-[2px] hover:bg-neutral-100 dark:hover:bg-zinc-700/70 group no-underline"
-              >
-                <span className="font-mono font-bold text-neutral-400 text-[11px] w-4 shrink-0 mt-0.5 text-right">{i + 1}</span>
-                <Favicon src={s.favicon} type={s.type} url={s.url} className="w-4 h-4 mt-0.5" />
-                <span className="min-w-0 flex flex-col leading-tight">
-                  <span className="text-[12px] font-semibold text-brutal-black dark:text-neutral-100 line-clamp-1 group-hover:underline">
-                    {sourceLabel(s)}
+            style={panelStyle ?? { left: -9999, top: -9999, width: 360 }}
+          >
+            {sources.map((s, i) => {
+              const domain = domainOf(s.url);
+              return (
+                <a
+                  key={s.id}
+                  href={s.url || '#'}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => {
+                    if (!s.url) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    void openSource(s.url);
+                  }}
+                  className="flex items-start gap-2 p-2 rounded-[2px] hover:bg-neutral-100 dark:hover:bg-zinc-700/70 group no-underline"
+                >
+                  <span className="font-mono font-bold text-neutral-400 text-[11px] w-4 shrink-0 mt-0.5 text-right">
+                    {i + 1}
                   </span>
-                  {domain && (
-                    <span className="text-[10px] text-neutral-500 dark:text-neutral-400 truncate">{domain}</span>
-                  )}
-                </span>
-              </a>
-            );
-          })}
-        </div>,
-        document.body,
-      )}
+                  <Favicon src={s.favicon} type={s.type} url={s.url} className="w-4 h-4 mt-0.5" />
+                  <span className="min-w-0 flex flex-col leading-tight">
+                    <span className="text-[12px] font-semibold text-brutal-black dark:text-neutral-100 line-clamp-1 group-hover:underline">
+                      {sourceLabel(s)}
+                    </span>
+                    {domain && (
+                      <span className="text-[10px] text-neutral-500 dark:text-neutral-400 truncate">
+                        {domain}
+                      </span>
+                    )}
+                  </span>
+                </a>
+              );
+            })}
+          </div>,
+          document.body
+        )}
     </span>
   );
 };

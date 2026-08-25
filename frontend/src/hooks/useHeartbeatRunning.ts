@@ -36,7 +36,8 @@ export const useHeartbeatRunning = create<HeartbeatRunningState>((set) => ({
       statusError: s.last_error ?? s.error ?? null,
     });
   },
-  setChatStatus: (chatId, status) => set(s => ({
-    chatStatus: { ...s.chatStatus, [chatId]: status },
-  })),
+  setChatStatus: (chatId, status) =>
+    set((s) => ({
+      chatStatus: { ...s.chatStatus, [chatId]: status },
+    })),
 }));

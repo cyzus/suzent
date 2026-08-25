@@ -43,7 +43,7 @@ export function BackendLoadingScreen({
 
   async function handleMaximize(): Promise<void> {
     await appWindow?.toggleMaximize();
-    setIsMaximized(prev => !prev);
+    setIsMaximized((prev) => !prev);
   }
 
   React.useEffect(() => {
@@ -166,13 +166,17 @@ export function BackendLoadingScreen({
         <div
           className="pointer-events-none absolute inset-0 opacity-[0.035]"
           style={{
-            backgroundImage: 'linear-gradient(to right, #000 1px, transparent 1px), linear-gradient(to bottom, #000 1px, transparent 1px)',
+            backgroundImage:
+              'linear-gradient(to right, #000 1px, transparent 1px), linear-gradient(to bottom, #000 1px, transparent 1px)',
             backgroundSize: '44px 44px',
             maskImage: 'radial-gradient(circle at center, black, transparent 68%)',
           }}
         />
         <main className="relative flex w-full max-w-sm flex-col items-center">
-          <div className="relative mb-10 flex h-40 w-40 items-center justify-center" aria-hidden="true">
+          <div
+            className="relative mb-10 flex h-40 w-40 items-center justify-center"
+            aria-hidden="true"
+          >
             <div
               className="suzent-core-glow absolute h-32 w-32 rounded-full bg-black blur-3xl"
               style={{ animation: !error ? 'suzentCoreGlow 3.4s ease-in-out infinite' : undefined }}
@@ -186,19 +190,40 @@ export function BackendLoadingScreen({
             </div>
             <div
               className="suzent-orbit-reverse absolute h-[7.75rem] w-[7.75rem] rounded-full border border-dashed border-neutral-400/70"
-              style={{ animation: !error ? 'suzentOrbitTurnReverse 18s linear infinite' : undefined }}
+              style={{
+                animation: !error ? 'suzentOrbitTurnReverse 18s linear infinite' : undefined,
+              }}
             />
             <div className={`suzent-cube-scene relative h-20 w-20 ${error ? 'opacity-30' : ''}`}>
               <div
                 className="suzent-cube absolute inset-0"
-                style={error ? { animation: 'none', transform: 'rotateX(-20deg) rotateY(32deg)' } : undefined}
+                style={
+                  error
+                    ? { animation: 'none', transform: 'rotateX(-20deg) rotateY(32deg)' }
+                    : undefined
+                }
               >
                 <div className="suzent-cube-face" style={{ transform: 'translateZ(40px)' }} />
-                <div className="suzent-cube-face" style={{ transform: 'rotateY(180deg) translateZ(40px)', opacity: .72 }} />
-                <div className="suzent-cube-face" style={{ transform: 'rotateY(90deg) translateZ(40px)', opacity: .86 }} />
-                <div className="suzent-cube-face" style={{ transform: 'rotateY(-90deg) translateZ(40px)', opacity: .58 }} />
-                <div className="suzent-cube-face" style={{ transform: 'rotateX(90deg) translateZ(40px)', opacity: .92 }} />
-                <div className="suzent-cube-face" style={{ transform: 'rotateX(-90deg) translateZ(40px)', opacity: .5 }} />
+                <div
+                  className="suzent-cube-face"
+                  style={{ transform: 'rotateY(180deg) translateZ(40px)', opacity: 0.72 }}
+                />
+                <div
+                  className="suzent-cube-face"
+                  style={{ transform: 'rotateY(90deg) translateZ(40px)', opacity: 0.86 }}
+                />
+                <div
+                  className="suzent-cube-face"
+                  style={{ transform: 'rotateY(-90deg) translateZ(40px)', opacity: 0.58 }}
+                />
+                <div
+                  className="suzent-cube-face"
+                  style={{ transform: 'rotateX(90deg) translateZ(40px)', opacity: 0.92 }}
+                />
+                <div
+                  className="suzent-cube-face"
+                  style={{ transform: 'rotateX(-90deg) translateZ(40px)', opacity: 0.5 }}
+                />
               </div>
             </div>
           </div>
@@ -237,7 +262,9 @@ export function BackendLoadingScreen({
             >
               <div className="mb-2 flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.16em] text-neutral-500">
                 <span>{t('app.systemStartup')}</span>
-                <span className="tabular-nums">{effectiveProgress.toString().padStart(2, '0')}%</span>
+                <span className="tabular-nums">
+                  {effectiveProgress.toString().padStart(2, '0')}%
+                </span>
               </div>
               <div className="relative h-px w-full overflow-hidden bg-neutral-300">
                 <div
@@ -247,18 +274,17 @@ export function BackendLoadingScreen({
               </div>
             </div>
           ) : (
-            <div
-              className="w-full"
-              role="progressbar"
-              aria-label={t('app.connectingToCore')}
-            >
+            <div className="w-full" role="progressbar" aria-label={t('app.connectingToCore')}>
               <div className="mb-2 text-left font-mono text-[10px] uppercase tracking-[0.16em] text-neutral-500">
                 {t('app.systemStartup')}
               </div>
               <div className="relative h-px w-full overflow-hidden bg-neutral-300">
                 <div
                   className="suzent-indeterminate-progress absolute inset-y-0 bg-brutal-black"
-                  style={{ animation: 'suzentIndeterminateProgress 1.8s cubic-bezier(.65, 0, .35, 1) infinite' }}
+                  style={{
+                    animation:
+                      'suzentIndeterminateProgress 1.8s cubic-bezier(.65, 0, .35, 1) infinite',
+                  }}
                 />
               </div>
             </div>

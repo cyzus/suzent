@@ -1,5 +1,21 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { normalizePermissionMode, type Message, type ChatConfig, type ConfigOptions, type Chat, type ChatSummary, type ChatKindCounts } from '../types/api';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  useMemo,
+} from 'react';
+import {
+  normalizePermissionMode,
+  type Message,
+  type ChatConfig,
+  type ConfigOptions,
+  type Chat,
+  type ChatSummary,
+  type ChatKindCounts,
+} from '../types/api';
 import { getApiBase } from '../lib/api';
 import { stripDenyApprovalPolicies } from '../lib/approvalPolicy';
 import { shouldKeepLocalAssistantContent } from '../lib/chatSyncGuards';
@@ -7,16 +23,20 @@ import { useContextUsageStore } from './useContextUsageStore';
 import { useProjects } from './useProjects';
 
 function escapeHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 function userMessageFingerprint(message: Message): string {
   const files = (message.files ?? [])
-    .map(file => `${file.filename}:${file.path}:${file.mime_type}:${file.size}`)
+    .map((file) => `${file.filename}:${file.path}:${file.mime_type}:${file.size}`)
     .sort()
     .join('|');
   const images = (message.images ?? [])
-    .map(image => `${image.filename}:${image.mime_type}`)
+    .map((image) => `${image.filename}:${image.mime_type}`)
     .sort()
     .join('|');
   return JSON.stringify({
@@ -27,14 +47,19 @@ function userMessageFingerprint(message: Message): string {
 }
 
 function countUserMessageFingerprint(messages: Message[], fingerprint: string): number {
-  return messages.reduce((count, message) => (
-    message.role === 'user' && userMessageFingerprint(message) === fingerprint
-      ? count + 1
-      : count
-  ), 0);
+  return messages.reduce(
+    (count, message) =>
+      message.role === 'user' && userMessageFingerprint(message) === fingerprint
+        ? count + 1
+        : count,
+    0
+  );
 }
 
-function shouldKeepOptimisticUserMessage(localMessages: Message[], serverMessages: Message[]): boolean {
+function shouldKeepOptimisticUserMessage(
+  localMessages: Message[],
+  serverMessages: Message[]
+): boolean {
   const lastLocal = localMessages[localMessages.length - 1];
   if (!lastLocal || lastLocal.role !== 'user') return false;
 
@@ -142,7 +167,7 @@ const stripReusableConfig = (config: ChatConfig): ChatConfig => {
     'acp_agent_id',
     'acp_agent_name',
     'acp_session_id',
-  ].forEach(key => delete reusable[key]);
+  ].forEach((key) => delete reusable[key]);
   return reusable as unknown as ChatConfig;
 };
 
@@ -159,7 +184,7 @@ const buildConfigFromPreferences = (
   sandbox_volumes: prefs?.sandbox_volumes || [],
   permission_mode: backendDefaults.defaultPermissionMode ?? 'default',
   mcp_urls: [],
-  mcp_enabled: {}
+  mcp_enabled: {},
 });
 
 const hydrateChatConfig = (
@@ -177,7 +202,7 @@ const hydrateChatConfig = (
     sandbox_enabled: savedConfig.sandbox_enabled ?? fallbackConfig.sandbox_enabled,
     sandbox_volumes: savedConfig.sandbox_volumes ?? fallbackConfig.sandbox_volumes,
     permission_mode: normalizePermissionMode(
-      savedConfig.permission_mode ?? fallbackConfig.permission_mode,
+      savedConfig.permission_mode ?? fallbackConfig.permission_mode
     ),
     mcp_urls: savedConfig.mcp_urls ?? fallbackConfig.mcp_urls,
     mcp_enabled: savedConfig.mcp_enabled ?? fallbackConfig.mcp_enabled,
@@ -203,7 +228,10 @@ const configsEqual = (a?: ChatConfig | null, b?: ChatConfig | null): boolean => 
     if (l.length !== r.length) return false;
     return l.every((value, index) => value === r[index]);
   };
-  const mcpUrlsEqual = (left?: string[] | Record<string, string>, right?: string[] | Record<string, string>) => {
+  const mcpUrlsEqual = (
+    left?: string[] | Record<string, string>,
+    right?: string[] | Record<string, string>
+  ) => {
     if (left === right) return true;
     if (!left || !right) return false;
 
@@ -223,24 +251,21 @@ const configsEqual = (a?: ChatConfig | null, b?: ChatConfig | null): boolean => 
       const rKeys = Object.keys(r).sort();
 
       if (!arrayEqual(lKeys, rKeys)) return false;
-      return lKeys.every(key => l[key] === r[key]);
+      return lKeys.every((key) => l[key] === r[key]);
     }
 
     // Mismatched types
     return false;
   };
 
-  const recordEqual = (
-    left?: Record<string, unknown>,
-    right?: Record<string, unknown>
-  ) => {
+  const recordEqual = (left?: Record<string, unknown>, right?: Record<string, unknown>) => {
     if (left === right) return true;
     const l = left ?? {};
     const r = right ?? {};
     const lKeys = Object.keys(l).sort();
     const rKeys = Object.keys(r).sort();
     if (!arrayEqual(lKeys, rKeys)) return false;
-    return lKeys.every(key => l[key] === r[key]);
+    return lKeys.every((key) => l[key] === r[key]);
   };
 
   return (
@@ -301,12 +326,14 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
   // Must be wrapped in ProjectProvider (see App.tsx).
   const { currentProjectId, projects } = useProjects();
   const currentProjectIdRef = useRef<string | null>(currentProjectId);
-  useEffect(() => { currentProjectIdRef.current = currentProjectId; }, [currentProjectId]);
+  useEffect(() => {
+    currentProjectIdRef.current = currentProjectId;
+  }, [currentProjectId]);
   const [messagesByChat, setMessagesByChat] = useState<Record<string, Message[]>>({
-    [UNSAVED_CHAT_KEY]: []
+    [UNSAVED_CHAT_KEY]: [],
   });
   const [configByChat, setConfigByChat] = useState<Record<string, ChatConfig>>({
-    [UNSAVED_CHAT_KEY]: defaultConfig
+    [UNSAVED_CHAT_KEY]: defaultConfig,
   });
   const [config, setConfigState] = useState<ChatConfig>(defaultConfig);
   const [backendConfig, setBackendConfig] = useState<ConfigOptions | null>(null);
@@ -323,7 +350,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
   const [chatOffset, setChatOffset] = useState<number>(0);
   const chatOffsetRef = useRef<number>(0);
   // Keep refs in sync so refresh callbacks always see the latest offset values
-  useEffect(() => { chatOffsetRef.current = chatOffset; }, [chatOffset]);
+  useEffect(() => {
+    chatOffsetRef.current = chatOffset;
+  }, [chatOffset]);
   const [loadingChats, setLoadingChats] = useState(false);
   const [loadingMoreChats, setLoadingMoreChats] = useState(false);
   const [refreshingChats, setRefreshingChats] = useState(false);
@@ -347,13 +376,22 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
     }
   });
   const toggleHideToolCalls = useCallback(() => {
-    setHideToolCalls(prev => {
+    setHideToolCalls((prev) => {
       const next = !prev;
-      try { localStorage.setItem('suzent_hide_tool_calls', String(next)); } catch { }
+      try {
+        localStorage.setItem('suzent_hide_tool_calls', String(next));
+      } catch {}
       return next;
     });
   }, []);
-  const lastSavedPreferencesRef = useRef<{ model: string, agent: string, tools: string[], memory_enabled?: boolean, sandbox_enabled?: boolean, sandbox_volumes?: string[] } | null>(null);
+  const lastSavedPreferencesRef = useRef<{
+    model: string;
+    agent: string;
+    tools: string[];
+    memory_enabled?: boolean;
+    sandbox_enabled?: boolean;
+    sandbox_volumes?: string[];
+  } | null>(null);
 
   // Keep refs in sync with state
   useEffect(() => {
@@ -374,10 +412,13 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
     }
   }, []);
 
-  const getMessagesForChat = useCallback((chatId: string | null) => {
-    const key = keyForChat(chatId);
-    return messagesByChat[key] ?? [];
-  }, [messagesByChat]);
+  const getMessagesForChat = useCallback(
+    (chatId: string | null) => {
+      const key = keyForChat(chatId);
+      return messagesByChat[key] ?? [];
+    },
+    [messagesByChat]
+  );
 
   const computeDefaultConfig = useCallback((): ChatConfig => {
     // First priority: user preferences from backend database
@@ -418,7 +459,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
         sandbox_enabled: backendConfig.sandboxEnabled ?? true,
         permission_mode: backendConfig.defaultPermissionMode ?? 'default',
         mcp_urls: [],
-        mcp_enabled: {}
+        mcp_enabled: {},
       };
     }
     return defaultConfig;
@@ -433,42 +474,57 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
     setCurrentChatId(null);
     setCurrentChatTitle('New Chat');
     setShouldResetNext(true);
-    setMessagesByChat(prev => ({ ...prev, [UNSAVED_CHAT_KEY]: [] }));
-    setConfigByChat(prev => ({ ...prev, [UNSAVED_CHAT_KEY]: fallbackConfig }));
+    setMessagesByChat((prev) => ({ ...prev, [UNSAVED_CHAT_KEY]: [] }));
+    setConfigByChat((prev) => ({ ...prev, [UNSAVED_CHAT_KEY]: fallbackConfig }));
     setConfigState(fallbackConfig);
   }, [computeDefaultConfig, config.permission_mode]);
 
-  const setMessagesForChat = useCallback((chatId: string | null, updater: Message[] | ((prev: Message[]) => Message[])) => {
-    const key = keyForChat(chatId);
-    setMessagesByChat(prev => {
-      const previous = prev[key] ?? [];
-      const next = typeof updater === 'function' ? (updater as (prev: Message[]) => Message[])(previous) : updater;
-      if (next === previous) return prev;
+  const setMessagesForChat = useCallback(
+    (chatId: string | null, updater: Message[] | ((prev: Message[]) => Message[])) => {
+      const key = keyForChat(chatId);
+      setMessagesByChat((prev) => {
+        const previous = prev[key] ?? [];
+        const next =
+          typeof updater === 'function'
+            ? (updater as (prev: Message[]) => Message[])(previous)
+            : updater;
+        if (next === previous) return prev;
 
-      // Only update sidebar summary if we're not actively streaming for this chat
-      // This prevents constant re-renders during streaming
-      // Use ref for synchronous access to avoid timing issues with state updates
-      if (chatId && chatId !== activeStreamingChatIdRef.current) {
-        setChats(current => {
-          const index = current.findIndex(c => c.id === chatId);
-          if (index === -1) return current;
-          const updated = [...current];
-          const summary = updated[index];
-          updated[index] = {
-            ...summary,
-            messageCount: next.length,
-            lastMessage: next.length ? next[next.length - 1].content.replace(/<details\b[^>]*>[\s\S]*?<\/details>/gi, '').replace(/<[^>]+>/g, '').trim().slice(0, 100) : undefined,
-            updatedAt: new Date().toISOString()
-          };
-          return updated;
-        });
-      }
+        // Only update sidebar summary if we're not actively streaming for this chat
+        // This prevents constant re-renders during streaming
+        // Use ref for synchronous access to avoid timing issues with state updates
+        if (chatId && chatId !== activeStreamingChatIdRef.current) {
+          setChats((current) => {
+            const index = current.findIndex((c) => c.id === chatId);
+            if (index === -1) return current;
+            const updated = [...current];
+            const summary = updated[index];
+            updated[index] = {
+              ...summary,
+              messageCount: next.length,
+              lastMessage: next.length
+                ? next[next.length - 1].content
+                    .replace(/<details\b[^>]*>[\s\S]*?<\/details>/gi, '')
+                    .replace(/<[^>]+>/g, '')
+                    .trim()
+                    .slice(0, 100)
+                : undefined,
+              updatedAt: new Date().toISOString(),
+            };
+            return updated;
+          });
+        }
 
-      return { ...prev, [key]: next };
-    });
-  }, []); // No dependencies needed since we use ref
+        return { ...prev, [key]: next };
+      });
+    },
+    []
+  ); // No dependencies needed since we use ref
 
-  const messages = useMemo(() => getMessagesForChat(currentChatId), [getMessagesForChat, currentChatId]);
+  const messages = useMemo(
+    () => getMessagesForChat(currentChatId),
+    [getMessagesForChat, currentChatId]
+  );
 
   // Fetch backend config with retry logic
   const fetchConfigWithRetry = useCallback(async (attempt = 1, maxAttempts = 5) => {
@@ -490,10 +546,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
         }
 
         // Build initial config from user preferences or backend defaults
-        const firstConfig: ChatConfig = buildConfigFromPreferences(
-          data.userPreferences,
-          data
-        );
+        const firstConfig: ChatConfig = buildConfigFromPreferences(data.userPreferences, data);
 
         // Track saved preferences to avoid re-saving on initial load
         if (data.userPreferences) {
@@ -501,20 +554,30 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
         }
 
         setConfigState(firstConfig);
-        setConfigByChat(prev => ({ ...prev, [UNSAVED_CHAT_KEY]: firstConfig }));
+        setConfigByChat((prev) => ({ ...prev, [UNSAVED_CHAT_KEY]: firstConfig }));
       } else if (attempt < maxAttempts) {
         // Backend not ready, retry with exponential backoff
         const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
-        console.log(`Backend not ready (${res.status}), retrying in ${delay}ms... (attempt ${attempt}/${maxAttempts})`);
+        console.log(
+          `Backend not ready (${res.status}), retrying in ${delay}ms... (attempt ${attempt}/${maxAttempts})`
+        );
         setTimeout(() => fetchConfigWithRetry(attempt + 1, maxAttempts), delay);
       } else {
-        console.error('Failed to fetch config after', maxAttempts, 'attempts:', res.status, res.statusText);
+        console.error(
+          'Failed to fetch config after',
+          maxAttempts,
+          'attempts:',
+          res.status,
+          res.statusText
+        );
       }
     } catch (error) {
       if (attempt < maxAttempts) {
         // Network error, retry with exponential backoff
         const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
-        console.log(`Error fetching config, retrying in ${delay}ms... (attempt ${attempt}/${maxAttempts})`);
+        console.log(
+          `Error fetching config, retrying in ${delay}ms... (attempt ${attempt}/${maxAttempts})`
+        );
         setTimeout(() => fetchConfigWithRetry(attempt + 1, maxAttempts), delay);
       } else {
         console.error('Error fetching config after', maxAttempts, 'attempts:', error);
@@ -532,135 +595,158 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
     fetchConfigWithRetry();
   }, [enabled, fetchConfigWithRetry]);
 
-  const refreshChatListInternal = useCallback(async (
-    search?: string,
-    options?: { silent?: boolean; force?: boolean },
-    attempt = 1,
-    maxAttempts = 5,
-  ) => {
-    const silent = !!options?.silent;
-    const force = !!options?.force;
-    const isFirstLoad = !chatsLoadedRef.current;
+  const refreshChatListInternal = useCallback(
+    async (
+      search?: string,
+      options?: { silent?: boolean; force?: boolean },
+      attempt = 1,
+      maxAttempts = 5
+    ) => {
+      const silent = !!options?.silent;
+      const force = !!options?.force;
+      const isFirstLoad = !chatsLoadedRef.current;
 
-    // Deduplicate overlapping non-initial refreshes to reduce repeated /chats traffic.
-    // Skip throttle when force=true (e.g. search queries must always go through).
-    // Do NOT update lastRefreshAtRef for forced requests so background consistency
-    // refreshes (e.g. after deleteChat) are not accidentally suppressed.
-    let requestId = 0;
-    if (!isFirstLoad && !force) {
-      const now = Date.now();
-      if (refreshInFlightRef.current) return;
-      if (now - lastRefreshAtRef.current < 3500) return;
-      refreshInFlightRef.current = true;
-      lastRefreshAtRef.current = now;
-    } else if (!isFirstLoad && force) {
-      // Assign a monotonically increasing ID; only apply the response if it's still latest.
-      searchRequestIdRef.current += 1;
-      requestId = searchRequestIdRef.current;
-      // Reset offsets so the fetch covers only the first page for the new query
-      chatOffsetRef.current = 0;
-      setChatOffset(0);
-    }
-
-    if (isFirstLoad) {
-      setLoadingChats(true);
-    } else if (!silent) {
-      setRefreshingChats(true);
-    }
-    const currentMessages = currentChatId ? getMessagesForChat(currentChatId) : null;
-    try {
-      const searchParam = search !== undefined ? search : searchQuery;
-      const apiBase = getApiBase();
-      // Re-fetch enough rows to cover what the user has already loaded via "load more"
-      const limit = chatOffsetRef.current + 50;
-      let url = `${apiBase}/chats?limit=${limit}`;
-      if (searchParam) url += `&search=${encodeURIComponent(searchParam)}`;
-      const res = await fetch(url);
-      if (res.ok) {
-        // Discard stale forced-search responses that arrived out of order.
-        if (force && requestId !== searchRequestIdRef.current) return;
-
-        const data = await res.json();
-        const serverList: ChatSummary[] = data.chats || [];
-        setChatTotal(data.total ?? serverList.length);
-        setChatKindTotals(data.kindCounts ?? {
-          you: serverList.filter(chat => (chat.platform || '').toLowerCase() !== 'cron').length,
-          scheduled: serverList.filter(chat => (chat.platform || '').toLowerCase() === 'cron').length,
-          all: data.total ?? serverList.length,
-        });
-
-        // Merge server list with local state, preserving local updates
-        setChats(prev => {
-          const merged = serverList.map(serverChat => {
-            const localChat = prev.find(c => c.id === serverChat.id);
-            if (localChat && localChat.messageCount > serverChat.messageCount) {
-              return localChat;
-            }
-            return serverChat;
-          });
-          return merged;
-        });
-
-        if (currentChatId) {
-          const summary = serverList.find(c => c.id === currentChatId);
-          if (summary && summary.title && summary.title !== currentChatTitle) {
-            const localCount = currentMessages?.length ?? 0;
-            if (summary.messageCount >= localCount) {
-              setCurrentChatTitle(summary.title);
-            }
-          }
-        }
-
-        // Success - mark as loaded
-        if (isFirstLoad) {
-          chatsLoadedRef.current = true;
-        }
-      } else if (isFirstLoad && attempt < maxAttempts) {
-        // Backend not ready on first load, retry with exponential backoff
-        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
-        console.log(`Backend not ready for chat list (${res.status}), retrying in ${delay}ms... (attempt ${attempt}/${maxAttempts})`);
-        setTimeout(() => refreshChatListInternal(search, options, attempt + 1, maxAttempts), delay);
-        return; // Don't clear loading state yet
-      } else {
-        console.error('Failed to fetch chats:', res.status, res.statusText);
+      // Deduplicate overlapping non-initial refreshes to reduce repeated /chats traffic.
+      // Skip throttle when force=true (e.g. search queries must always go through).
+      // Do NOT update lastRefreshAtRef for forced requests so background consistency
+      // refreshes (e.g. after deleteChat) are not accidentally suppressed.
+      let requestId = 0;
+      if (!isFirstLoad && !force) {
+        const now = Date.now();
+        if (refreshInFlightRef.current) return;
+        if (now - lastRefreshAtRef.current < 3500) return;
+        refreshInFlightRef.current = true;
+        lastRefreshAtRef.current = now;
+      } else if (!isFirstLoad && force) {
+        // Assign a monotonically increasing ID; only apply the response if it's still latest.
+        searchRequestIdRef.current += 1;
+        requestId = searchRequestIdRef.current;
+        // Reset offsets so the fetch covers only the first page for the new query
+        chatOffsetRef.current = 0;
+        setChatOffset(0);
       }
-    } catch (error) {
-      if (isFirstLoad && attempt < maxAttempts) {
-        // Network error on first load, retry with exponential backoff
-        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
-        console.log(`Error fetching chat list, retrying in ${delay}ms... (attempt ${attempt}/${maxAttempts})`);
-        setTimeout(() => refreshChatListInternal(search, options, attempt + 1, maxAttempts), delay);
-        return; // Don't clear loading state yet
-      } else {
-        console.error('Error fetching chats:', error);
-      }
-    } finally {
-      // Clear loading state if we're done (success or final failure)
+
       if (isFirstLoad) {
-        // Clear loading if we succeeded OR if this was the final attempt
-        if (chatsLoadedRef.current || attempt >= maxAttempts) {
-          setLoadingChats(false);
-          if (!chatsLoadedRef.current) {
-            chatsLoadedRef.current = true; // Mark as attempted even if failed
+        setLoadingChats(true);
+      } else if (!silent) {
+        setRefreshingChats(true);
+      }
+      const currentMessages = currentChatId ? getMessagesForChat(currentChatId) : null;
+      try {
+        const searchParam = search !== undefined ? search : searchQuery;
+        const apiBase = getApiBase();
+        // Re-fetch enough rows to cover what the user has already loaded via "load more"
+        const limit = chatOffsetRef.current + 50;
+        let url = `${apiBase}/chats?limit=${limit}`;
+        if (searchParam) url += `&search=${encodeURIComponent(searchParam)}`;
+        const res = await fetch(url);
+        if (res.ok) {
+          // Discard stale forced-search responses that arrived out of order.
+          if (force && requestId !== searchRequestIdRef.current) return;
+
+          const data = await res.json();
+          const serverList: ChatSummary[] = data.chats || [];
+          setChatTotal(data.total ?? serverList.length);
+          setChatKindTotals(
+            data.kindCounts ?? {
+              you: serverList.filter((chat) => (chat.platform || '').toLowerCase() !== 'cron')
+                .length,
+              scheduled: serverList.filter((chat) => (chat.platform || '').toLowerCase() === 'cron')
+                .length,
+              all: data.total ?? serverList.length,
+            }
+          );
+
+          // Merge server list with local state, preserving local updates
+          setChats((prev) => {
+            const merged = serverList.map((serverChat) => {
+              const localChat = prev.find((c) => c.id === serverChat.id);
+              if (localChat && localChat.messageCount > serverChat.messageCount) {
+                return localChat;
+              }
+              return serverChat;
+            });
+            return merged;
+          });
+
+          if (currentChatId) {
+            const summary = serverList.find((c) => c.id === currentChatId);
+            if (summary && summary.title && summary.title !== currentChatTitle) {
+              const localCount = currentMessages?.length ?? 0;
+              if (summary.messageCount >= localCount) {
+                setCurrentChatTitle(summary.title);
+              }
+            }
+          }
+
+          // Success - mark as loaded
+          if (isFirstLoad) {
+            chatsLoadedRef.current = true;
+          }
+        } else if (isFirstLoad && attempt < maxAttempts) {
+          // Backend not ready on first load, retry with exponential backoff
+          const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+          console.log(
+            `Backend not ready for chat list (${res.status}), retrying in ${delay}ms... (attempt ${attempt}/${maxAttempts})`
+          );
+          setTimeout(
+            () => refreshChatListInternal(search, options, attempt + 1, maxAttempts),
+            delay
+          );
+          return; // Don't clear loading state yet
+        } else {
+          console.error('Failed to fetch chats:', res.status, res.statusText);
+        }
+      } catch (error) {
+        if (isFirstLoad && attempt < maxAttempts) {
+          // Network error on first load, retry with exponential backoff
+          const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+          console.log(
+            `Error fetching chat list, retrying in ${delay}ms... (attempt ${attempt}/${maxAttempts})`
+          );
+          setTimeout(
+            () => refreshChatListInternal(search, options, attempt + 1, maxAttempts),
+            delay
+          );
+          return; // Don't clear loading state yet
+        } else {
+          console.error('Error fetching chats:', error);
+        }
+      } finally {
+        // Clear loading state if we're done (success or final failure)
+        if (isFirstLoad) {
+          // Clear loading if we succeeded OR if this was the final attempt
+          if (chatsLoadedRef.current || attempt >= maxAttempts) {
+            setLoadingChats(false);
+            if (!chatsLoadedRef.current) {
+              chatsLoadedRef.current = true; // Mark as attempted even if failed
+            }
           }
         }
+        if (!isFirstLoad && !silent) {
+          setRefreshingChats(false);
+        }
+        if (!isFirstLoad) {
+          refreshInFlightRef.current = false;
+        }
       }
-      if (!isFirstLoad && !silent) {
-        setRefreshingChats(false);
-      }
-      if (!isFirstLoad) {
-        refreshInFlightRef.current = false;
-      }
-    }
-  }, [currentChatId, currentChatTitle, getMessagesForChat, searchQuery]);
+    },
+    [currentChatId, currentChatTitle, getMessagesForChat, searchQuery]
+  );
 
-  const refreshChatList = useCallback(async (search?: string, force?: boolean) => {
-    await refreshChatListInternal(search, { silent: false, force });
-  }, [refreshChatListInternal]);
+  const refreshChatList = useCallback(
+    async (search?: string, force?: boolean) => {
+      await refreshChatListInternal(search, { silent: false, force });
+    },
+    [refreshChatListInternal]
+  );
 
-  const refreshChatListSilently = useCallback(async (search?: string, force?: boolean) => {
-    await refreshChatListInternal(search, { silent: true, force });
-  }, [refreshChatListInternal]);
+  const refreshChatListSilently = useCallback(
+    async (search?: string, force?: boolean) => {
+      await refreshChatListInternal(search, { silent: true, force });
+    },
+    [refreshChatListInternal]
+  );
 
   const loadMoreChats = useCallback(async () => {
     if (loadingMoreChats) return;
@@ -678,9 +764,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
         if (data.total != null) setChatTotal(data.total);
         if (data.kindCounts) setChatKindTotals(data.kindCounts);
         setChatOffset(nextOffset);
-        setChats(prev => {
-          const existingIds = new Set(prev.map(c => c.id));
-          const appended = newChats.filter(c => !existingIds.has(c.id));
+        setChats((prev) => {
+          const existingIds = new Set(prev.map((c) => c.id));
+          const appended = newChats.filter((c) => !existingIds.has(c.id));
           return [...prev, ...appended];
         });
       }
@@ -691,10 +777,13 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
     }
   }, [chatOffset, loadingMoreChats, searchQuery]);
 
-  const updateChatTitleLocally = useCallback((chatId: string, title: string) => {
-    setChats(prev => prev.map(c => c.id === chatId ? { ...c, title } : c));
-    if (chatId === currentChatId) setCurrentChatTitle(title);
-  }, [currentChatId]);
+  const updateChatTitleLocally = useCallback(
+    (chatId: string, title: string) => {
+      setChats((prev) => prev.map((c) => (c.id === chatId ? { ...c, title } : c)));
+      if (chatId === currentChatId) setCurrentChatTitle(title);
+    },
+    [currentChatId]
+  );
 
   // Load chat list on mount (and when refreshChatList reference changes)
   useEffect(() => {
@@ -702,71 +791,81 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
     refreshChatList();
   }, [enabled, refreshChatList]);
 
-  const saveChatById = useCallback(async (chatId: string | null, skipRefresh = false) => {
-    const key = keyForChat(chatId);
-    // Use refs to get current state, not stale closure
-    const chatMessages = messagesByChatRef.current[key] ?? [];
-    const chatConfig = configByChatRef.current[key] ?? config;
+  const saveChatById = useCallback(
+    async (chatId: string | null, skipRefresh = false) => {
+      const key = keyForChat(chatId);
+      // Use refs to get current state, not stale closure
+      const chatMessages = messagesByChatRef.current[key] ?? [];
+      const chatConfig = configByChatRef.current[key] ?? config;
 
-    if (!chatId) {
-      if (chatMessages.length === 0) return;
-      const chatTitle = 'New Chat';
+      if (!chatId) {
+        if (chatMessages.length === 0) return;
+        const chatTitle = 'New Chat';
+        try {
+          const res = await fetch(`${getApiBase()}/chats`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              title: chatTitle,
+              config: stripDenyApprovalPolicies(chatConfig),
+              messages: chatMessages,
+            }),
+          });
+          if (res.ok) {
+            const newChat: Chat = await res.json();
+            const newKey = keyForChat(newChat.id);
+            setMessagesByChat((prev) => {
+              const next = { ...prev };
+              delete next[key];
+              next[newKey] = chatMessages;
+              return next;
+            });
+            setConfigByChat((prev) => {
+              const next = { ...prev };
+              delete next[key];
+              next[newKey] = chatConfig;
+              return next;
+            });
+            setCurrentChatId(newChat.id);
+            setCurrentChatTitle(newChat.title);
+            if (!skipRefresh) await refreshChatList();
+          } else {
+            console.error('Failed to create chat:', res.status, res.statusText);
+          }
+        } catch (error) {
+          console.error('Error saving new chat:', error);
+        }
+        return;
+      }
+
       try {
-        const res = await fetch(`${getApiBase()}/chats`, {
-          method: 'POST',
+        const payload: any = { config: stripDenyApprovalPolicies(chatConfig) };
+
+        const res = await fetch(`${getApiBase()}/chats/${chatId}`, {
+          method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title: chatTitle, config: stripDenyApprovalPolicies(chatConfig), messages: chatMessages })
+          body: JSON.stringify(payload),
         });
+
         if (res.ok) {
-          const newChat: Chat = await res.json();
-          const newKey = keyForChat(newChat.id);
-          setMessagesByChat(prev => {
-            const next = { ...prev };
-            delete next[key];
-            next[newKey] = chatMessages;
-            return next;
-          });
-          setConfigByChat(prev => {
-            const next = { ...prev };
-            delete next[key];
-            next[newKey] = chatConfig;
-            return next;
-          });
-          setCurrentChatId(newChat.id);
-          setCurrentChatTitle(newChat.title);
           if (!skipRefresh) await refreshChatList();
         } else {
-          console.error('Failed to create chat:', res.status, res.statusText);
+          console.error('Failed to save chat:', res.status, res.statusText);
         }
       } catch (error) {
-        console.error('Error saving new chat:', error);
+        console.error('Error saving chat:', error);
       }
-      return;
-    }
-
-    try {
-      const payload: any = { config: stripDenyApprovalPolicies(chatConfig) };
-
-      const res = await fetch(`${getApiBase()}/chats/${chatId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      if (res.ok) {
-        if (!skipRefresh) await refreshChatList();
-      } else {
-        console.error('Failed to save chat:', res.status, res.statusText);
-      }
-    } catch (error) {
-      console.error('Error saving chat:', error);
-    }
-  }, [chats, config, currentChatId, currentChatTitle, refreshChatList]);
+    },
+    [chats, config, currentChatId, currentChatTitle, refreshChatList]
+  );
   // Note: messagesByChat and configByChat removed from deps - using refs instead
 
-  const saveCurrentChat = useCallback(async (skipRefresh = false) => {
-    await saveChatById(currentChatId, skipRefresh);
-  }, [currentChatId, saveChatById]);
+  const saveCurrentChat = useCallback(
+    async (skipRefresh = false) => {
+      await saveChatById(currentChatId, skipRefresh);
+    },
+    [currentChatId, saveChatById]
+  );
 
   const clearScheduledSave = useCallback((chatId: string | null) => {
     const key = keyForChat(chatId);
@@ -777,104 +876,127 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
     }
   }, []);
 
-  const scheduleSave = useCallback((chatId: string | null, delay: number) => {
-    const key = keyForChat(chatId);
-    const registry = saveTimeoutsRef.current;
-    if (registry[key]) {
-      clearTimeout(registry[key]);
-    }
-    registry[key] = setTimeout(() => {
-      saveChatById(chatId, true).catch(error => {
-        console.error('Error during scheduled save:', error);
-      });
-    }, delay);
-  }, [saveChatById]);
-
-  const forceSaveNow = useCallback(async (chatId?: string | null) => {
-    const targetChatId = chatId ?? currentChatId;
-    clearScheduledSave(targetChatId);
-    await saveChatById(targetChatId, false);
-  }, [clearScheduledSave, currentChatId, saveChatById]);
-
-  const finalSave = useCallback(async (chatId?: string | null) => {
-    await forceSaveNow(chatId);
-  }, [forceSaveNow]);
-
-  const optimizedSetConfig = useCallback((nextConfig: ChatConfig | ((prev: ChatConfig) => ChatConfig)) => {
-    const resolved = typeof nextConfig === 'function' ? (nextConfig as (prev: ChatConfig) => ChatConfig)(config) : nextConfig;
-    const key = keyForChat(currentChatId);
-    const previousConfig = configByChat[key];
-    setConfigState(resolved);
-    setConfigByChat(prevConfigs => ({ ...prevConfigs, [key]: resolved }));
-
-    // Platform chats own model/tool settings independently (for example,
-    // social chat config and cron model_override). Do not let editing one
-    // silently replace the defaults used by new personal chats.
-    if (!resolved.platform) {
-      try {
-        localStorage.setItem(LAST_CONFIG_KEY, JSON.stringify(stripReusableConfig(resolved)));
-      } catch (e) {
-        console.warn('Failed to save config to localStorage:', e);
+  const scheduleSave = useCallback(
+    (chatId: string | null, delay: number) => {
+      const key = keyForChat(chatId);
+      const registry = saveTimeoutsRef.current;
+      if (registry[key]) {
+        clearTimeout(registry[key]);
       }
-
-      const newPrefs = {
-        model: resolved.model,
-        agent: resolved.agent,
-        tools: resolved.tools,
-        memory_enabled: resolved.memory_enabled,
-        sandbox_enabled: resolved.sandbox_enabled,
-        sandbox_volumes: resolved.sandbox_volumes
-      };
-
-      const lastSaved = lastSavedPreferencesRef.current;
-      const prefsChanged = !preferencesEqual(lastSaved, newPrefs);
-
-      if (prefsChanged) {
-        // Save preferences to backend database (async, don't await)
-        import('../lib/api').then(({ saveUserPreferences }) => {
-          saveUserPreferences(newPrefs).then(() => {
-            // Update ref after successful save
-            lastSavedPreferencesRef.current = newPrefs;
-
-            // Keep local defaults in sync for subsequently created chats.
-            setBackendConfig(prev => {
-              if (!prev) return prev;
-              return {
-                ...prev,
-                userPreferences: {
-                  ...(prev.userPreferences || {
-                    model: '',
-                    agent: '',
-                    tools: [],
-                    memory_enabled: false
-                  }),
-                  ...newPrefs,
-                  memory_enabled: !!newPrefs.memory_enabled
-                }
-              };
-            });
-          }).catch(err => {
-            console.warn('Failed to save preferences to backend:', err);
-          });
+      registry[key] = setTimeout(() => {
+        saveChatById(chatId, true).catch((error) => {
+          console.error('Error during scheduled save:', error);
         });
-      }
-    }
+      }, delay);
+    },
+    [saveChatById]
+  );
 
-    if (currentChatId && !configsEqual(previousConfig, resolved)) {
-      scheduleSave(currentChatId, 1500);
-    }
-  }, [config, currentChatId, configByChat, scheduleSave]);
+  const forceSaveNow = useCallback(
+    async (chatId?: string | null) => {
+      const targetChatId = chatId ?? currentChatId;
+      clearScheduledSave(targetChatId);
+      await saveChatById(targetChatId, false);
+    },
+    [clearScheduledSave, currentChatId, saveChatById]
+  );
+
+  const finalSave = useCallback(
+    async (chatId?: string | null) => {
+      await forceSaveNow(chatId);
+    },
+    [forceSaveNow]
+  );
+
+  const optimizedSetConfig = useCallback(
+    (nextConfig: ChatConfig | ((prev: ChatConfig) => ChatConfig)) => {
+      const resolved =
+        typeof nextConfig === 'function'
+          ? (nextConfig as (prev: ChatConfig) => ChatConfig)(config)
+          : nextConfig;
+      const key = keyForChat(currentChatId);
+      const previousConfig = configByChat[key];
+      setConfigState(resolved);
+      setConfigByChat((prevConfigs) => ({ ...prevConfigs, [key]: resolved }));
+
+      // Platform chats own model/tool settings independently (for example,
+      // social chat config and cron model_override). Do not let editing one
+      // silently replace the defaults used by new personal chats.
+      if (!resolved.platform) {
+        try {
+          localStorage.setItem(LAST_CONFIG_KEY, JSON.stringify(stripReusableConfig(resolved)));
+        } catch (e) {
+          console.warn('Failed to save config to localStorage:', e);
+        }
+
+        const newPrefs = {
+          model: resolved.model,
+          agent: resolved.agent,
+          tools: resolved.tools,
+          memory_enabled: resolved.memory_enabled,
+          sandbox_enabled: resolved.sandbox_enabled,
+          sandbox_volumes: resolved.sandbox_volumes,
+        };
+
+        const lastSaved = lastSavedPreferencesRef.current;
+        const prefsChanged = !preferencesEqual(lastSaved, newPrefs);
+
+        if (prefsChanged) {
+          // Save preferences to backend database (async, don't await)
+          import('../lib/api').then(({ saveUserPreferences }) => {
+            saveUserPreferences(newPrefs)
+              .then(() => {
+                // Update ref after successful save
+                lastSavedPreferencesRef.current = newPrefs;
+
+                // Keep local defaults in sync for subsequently created chats.
+                setBackendConfig((prev) => {
+                  if (!prev) return prev;
+                  return {
+                    ...prev,
+                    userPreferences: {
+                      ...(prev.userPreferences || {
+                        model: '',
+                        agent: '',
+                        tools: [],
+                        memory_enabled: false,
+                      }),
+                      ...newPrefs,
+                      memory_enabled: !!newPrefs.memory_enabled,
+                    },
+                  };
+                });
+              })
+              .catch((err) => {
+                console.warn('Failed to save preferences to backend:', err);
+              });
+          });
+        }
+      }
+
+      if (currentChatId && !configsEqual(previousConfig, resolved)) {
+        scheduleSave(currentChatId, 1500);
+      }
+    },
+    [config, currentChatId, configByChat, scheduleSave]
+  );
 
   const setChatConfigForId = useCallback(async (chatId: string, nextConfig: ChatConfig) => {
     const key = keyForChat(chatId);
-    setConfigByChat(prev => ({ ...prev, [key]: nextConfig }));
+    setConfigByChat((prev) => ({ ...prev, [key]: nextConfig }));
     setConfigState(nextConfig);
-    setChats(prev => prev.map(chat => chat.id === chatId ? {
-      ...chat,
-      acpAgentId: nextConfig.acp_agent_id ?? null,
-      acpAgentName: nextConfig.acp_agent_name ?? null,
-      acpSessionId: nextConfig.acp_session_id ?? null,
-    } : chat));
+    setChats((prev) =>
+      prev.map((chat) =>
+        chat.id === chatId
+          ? {
+              ...chat,
+              acpAgentId: nextConfig.acp_agent_id ?? null,
+              acpAgentName: nextConfig.acp_agent_name ?? null,
+              acpSessionId: nextConfig.acp_session_id ?? null,
+            }
+          : chat
+      )
+    );
     const res = await fetch(`${getApiBase()}/chats/${chatId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -883,88 +1005,106 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
     if (!res.ok) throw new Error(`Failed to save ACP chat config: ${res.status}`);
   }, []);
 
-  const addMessage = useCallback((message: Message, chatId: string | null = currentChatId) => {
-    setMessagesForChat(chatId, prev => [...prev, message]);
-    scheduleSave(chatId, 800);
-  }, [currentChatId, scheduleSave, setMessagesForChat]);
+  const addMessage = useCallback(
+    (message: Message, chatId: string | null = currentChatId) => {
+      setMessagesForChat(chatId, (prev) => [...prev, message]);
+      scheduleSave(chatId, 800);
+    },
+    [currentChatId, scheduleSave, setMessagesForChat]
+  );
 
-  const updateLastUserMessageImages = useCallback((images: any[], chatId: string | null = currentChatId) => {
-    setMessagesForChat(chatId, prev => {
-      if (!prev.length) {
-        return prev;
-      }
-
-      // Find the last user message (search backward)
-      let userMessageIndex = -1;
-      for (let i = prev.length - 1; i >= 0; i--) {
-        if (prev[i].role === 'user') {
-          userMessageIndex = i;
-          break;
+  const updateLastUserMessageImages = useCallback(
+    (images: any[], chatId: string | null = currentChatId) => {
+      setMessagesForChat(chatId, (prev) => {
+        if (!prev.length) {
+          return prev;
         }
-      }
 
-      if (userMessageIndex === -1) {
-        return prev;
-      }
+        // Find the last user message (search backward)
+        let userMessageIndex = -1;
+        for (let i = prev.length - 1; i >= 0; i--) {
+          if (prev[i].role === 'user') {
+            userMessageIndex = i;
+            break;
+          }
+        }
 
-      const updated = [...prev];
-      updated[userMessageIndex] = { ...updated[userMessageIndex], images };
-      return updated;
-    });
-    scheduleSave(chatId, 800);
-  }, [currentChatId, scheduleSave, setMessagesForChat]);
+        if (userMessageIndex === -1) {
+          return prev;
+        }
 
-  const updateAssistantStreaming = useCallback((delta: string, chatId: string | null = currentChatId) => {
-    // Preserve leading/trailing newlines so streamed code stays line-accurate
-    const norm = String(delta)
-      .replace(/\r\n/g, '\n')
-      .replace(/\n{3,}/g, '\n\n');
-
-    setMessagesForChat(chatId, prev => {
-      const last = prev[prev.length - 1];
-      if (!last || last.role !== 'assistant') {
-        return [...prev, { role: 'assistant', content: norm }];
-      }
-      const updated = [...prev];
-      updated[updated.length - 1] = { ...last, content: last.content + norm };
-      return updated;
-    });
-    scheduleSave(chatId, 2000);
-  }, [currentChatId, scheduleSave, setMessagesForChat]);
-
-  const newAssistantMessage = useCallback((chatId: string | null = currentChatId) => {
-    setMessagesForChat(chatId, prev => [...prev, { role: 'assistant', content: '' }]);
-  }, [currentChatId, setMessagesForChat]);
-
-  const setStepInfo = useCallback((stepInfo: string, chatId: string | null = currentChatId) => {
-    setMessagesForChat(chatId, prev => {
-      if (!prev.length) return prev;
-      const last = prev[prev.length - 1];
-      if (last.role === 'assistant') {
         const updated = [...prev];
-        updated[updated.length - 1] = { ...last, stepInfo };
+        updated[userMessageIndex] = { ...updated[userMessageIndex], images };
         return updated;
-      }
-      return prev;
-    });
-  }, [currentChatId, setMessagesForChat]);
+      });
+      scheduleSave(chatId, 800);
+    },
+    [currentChatId, scheduleSave, setMessagesForChat]
+  );
 
-  const removeEmptyAssistantMessage = useCallback((chatId: string | null = currentChatId) => {
-    setMessagesForChat(chatId, prev => {
-      if (!prev.length) return prev;
-      const last = prev[prev.length - 1];
-      if (last.role === 'assistant' && !last.content.trim()) {
-        return prev.slice(0, -1);
-      }
-      return prev;
-    });
-  }, [currentChatId, setMessagesForChat]);
+  const updateAssistantStreaming = useCallback(
+    (delta: string, chatId: string | null = currentChatId) => {
+      // Preserve leading/trailing newlines so streamed code stays line-accurate
+      const norm = String(delta)
+        .replace(/\r\n/g, '\n')
+        .replace(/\n{3,}/g, '\n\n');
+
+      setMessagesForChat(chatId, (prev) => {
+        const last = prev[prev.length - 1];
+        if (!last || last.role !== 'assistant') {
+          return [...prev, { role: 'assistant', content: norm }];
+        }
+        const updated = [...prev];
+        updated[updated.length - 1] = { ...last, content: last.content + norm };
+        return updated;
+      });
+      scheduleSave(chatId, 2000);
+    },
+    [currentChatId, scheduleSave, setMessagesForChat]
+  );
+
+  const newAssistantMessage = useCallback(
+    (chatId: string | null = currentChatId) => {
+      setMessagesForChat(chatId, (prev) => [...prev, { role: 'assistant', content: '' }]);
+    },
+    [currentChatId, setMessagesForChat]
+  );
+
+  const setStepInfo = useCallback(
+    (stepInfo: string, chatId: string | null = currentChatId) => {
+      setMessagesForChat(chatId, (prev) => {
+        if (!prev.length) return prev;
+        const last = prev[prev.length - 1];
+        if (last.role === 'assistant') {
+          const updated = [...prev];
+          updated[updated.length - 1] = { ...last, stepInfo };
+          return updated;
+        }
+        return prev;
+      });
+    },
+    [currentChatId, setMessagesForChat]
+  );
+
+  const removeEmptyAssistantMessage = useCallback(
+    (chatId: string | null = currentChatId) => {
+      setMessagesForChat(chatId, (prev) => {
+        if (!prev.length) return prev;
+        const last = prev[prev.length - 1];
+        if (last.role === 'assistant' && !last.content.trim()) {
+          return prev.slice(0, -1);
+        }
+        return prev;
+      });
+    },
+    [currentChatId, setMessagesForChat]
+  );
 
   const resetChat = useCallback(() => {
     const key = keyForChat(currentChatId);
     const fallbackConfig = computeDefaultConfig();
-    setMessagesByChat(prev => ({ ...prev, [key]: [] }));
-    setConfigByChat(prev => ({ ...prev, [key]: fallbackConfig }));
+    setMessagesByChat((prev) => ({ ...prev, [key]: [] }));
+    setConfigByChat((prev) => ({ ...prev, [key]: fallbackConfig }));
     setConfigState(fallbackConfig);
     setShouldResetNext(true);
     setCurrentChatId(null);
@@ -975,71 +1115,87 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
     setShouldResetNext(false);
   }, []);
 
-  const updateMessage = useCallback((index: number, update: Partial<Message>, chatId: string | null = currentChatId) => {
-    setMessagesForChat(chatId, prev => {
-      if (index < 0 || index >= prev.length) return prev;
-      const updated = [...prev];
-      updated[index] = { ...updated[index], ...update };
-      return updated;
-    });
-    scheduleSave(chatId, 800);
-  }, [currentChatId, scheduleSave, setMessagesForChat]);
+  const updateMessage = useCallback(
+    (index: number, update: Partial<Message>, chatId: string | null = currentChatId) => {
+      setMessagesForChat(chatId, (prev) => {
+        if (index < 0 || index >= prev.length) return prev;
+        const updated = [...prev];
+        updated[index] = { ...updated[index], ...update };
+        return updated;
+      });
+      scheduleSave(chatId, 800);
+    },
+    [currentChatId, scheduleSave, setMessagesForChat]
+  );
 
   // Remove all messages at or after `fromIndex`. Used by retry to strip the
   // last assistant response before re-streaming.
-  const truncateMessagesFrom = useCallback((fromIndex: number, chatId: string | null = currentChatId) => {
-    setMessagesForChat(chatId, prev => {
-      if (fromIndex <= 0) return [];
-      return prev.slice(0, fromIndex);
-    });
-  }, [currentChatId, setMessagesForChat]);
+  const truncateMessagesFrom = useCallback(
+    (fromIndex: number, chatId: string | null = currentChatId) => {
+      setMessagesForChat(chatId, (prev) => {
+        if (fromIndex <= 0) return [];
+        return prev.slice(0, fromIndex);
+      });
+    },
+    [currentChatId, setMessagesForChat]
+  );
 
-  const markChatRollbackExpected = useCallback((chatId: string | null = currentChatId) => {
-    if (!chatId) return;
-    rollbackExpectedChatIdsRef.current.add(chatId);
-  }, [currentChatId]);
+  const markChatRollbackExpected = useCallback(
+    (chatId: string | null = currentChatId) => {
+      if (!chatId) return;
+      rollbackExpectedChatIdsRef.current.add(chatId);
+    },
+    [currentChatId]
+  );
 
-  const setStreamingState = useCallback((streaming: boolean, chatId?: string | null) => {
-    setIsStreamingState(streaming);
-    const targetChatId = chatId ?? currentChatId;
+  const setStreamingState = useCallback(
+    (streaming: boolean, chatId?: string | null) => {
+      setIsStreamingState(streaming);
+      const targetChatId = chatId ?? currentChatId;
 
-    // Update ref synchronously for immediate access
-    if (streaming) {
-      activeStreamingChatIdRef.current = targetChatId;
-    } else {
-      activeStreamingChatIdRef.current = null;
-    }
-
-    setActiveStreamingChatId(prev => {
+      // Update ref synchronously for immediate access
       if (streaming) {
-        return targetChatId;
+        activeStreamingChatIdRef.current = targetChatId;
+      } else {
+        activeStreamingChatIdRef.current = null;
       }
-      // When streaming stops, update the sidebar summary for this chat
-      if (!streaming && targetChatId) {
-        const key = keyForChat(targetChatId);
-        const chatMessages = messagesByChatRef.current[key] ?? [];
-        if (chatMessages.length > 0) {
-          setChats(current => {
-            const index = current.findIndex(c => c.id === targetChatId);
-            if (index === -1) return current;
-            const updated = [...current];
-            const summary = updated[index];
-            updated[index] = {
-              ...summary,
-              messageCount: chatMessages.length,
-              lastMessage: chatMessages[chatMessages.length - 1].content.replace(/<details\b[^>]*>[\s\S]*?<\/details>/gi, '').replace(/<[^>]+>/g, '').trim().slice(0, 100),
-              updatedAt: new Date().toISOString()
-            };
-            return updated;
-          });
+
+      setActiveStreamingChatId((prev) => {
+        if (streaming) {
+          return targetChatId;
         }
-      }
-      if (chatId && prev && prev !== chatId) {
-        return prev;
-      }
-      return null;
-    });
-  }, [currentChatId]);
+        // When streaming stops, update the sidebar summary for this chat
+        if (!streaming && targetChatId) {
+          const key = keyForChat(targetChatId);
+          const chatMessages = messagesByChatRef.current[key] ?? [];
+          if (chatMessages.length > 0) {
+            setChats((current) => {
+              const index = current.findIndex((c) => c.id === targetChatId);
+              if (index === -1) return current;
+              const updated = [...current];
+              const summary = updated[index];
+              updated[index] = {
+                ...summary,
+                messageCount: chatMessages.length,
+                lastMessage: chatMessages[chatMessages.length - 1].content
+                  .replace(/<details\b[^>]*>[\s\S]*?<\/details>/gi, '')
+                  .replace(/<[^>]+>/g, '')
+                  .trim()
+                  .slice(0, 100),
+                updatedAt: new Date().toISOString(),
+              };
+              return updated;
+            });
+          }
+        }
+        if (chatId && prev && prev !== chatId) {
+          return prev;
+        }
+        return null;
+      });
+    },
+    [currentChatId]
+  );
 
   const createNewChat = useCallback(async (): Promise<string | null> => {
     if (currentChatId) {
@@ -1061,7 +1217,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
         tools: [...(baseConfig.tools || [])],
         mcp_urls: Array.isArray(baseConfig.mcp_urls)
           ? [...baseConfig.mcp_urls]
-          : { ...(baseConfig.mcp_urls || {}) }
+          : { ...(baseConfig.mcp_urls || {}) },
       };
 
       const chatTitle = 'New Chat';
@@ -1076,7 +1232,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
             config: effectiveConfig,
             messages: chatMessages,
             project_id: projectId || undefined,
-          })
+          }),
         });
 
         if (!res.ok) {
@@ -1089,14 +1245,14 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
 
         setCurrentChatId(newChat.id);
         setCurrentChatTitle(newChat.title);
-        setMessagesByChat(prev => {
+        setMessagesByChat((prev) => {
           const next = { ...prev };
           delete next[UNSAVED_CHAT_KEY];
           next[newKey] = chatMessages;
           return next;
         });
         setConfigState(effectiveConfig);
-        setConfigByChat(prev => {
+        setConfigByChat((prev) => {
           const next = { ...prev };
           delete next[UNSAVED_CHAT_KEY];
           next[newKey] = effectiveConfig;
@@ -1105,14 +1261,18 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
         setShouldResetNext(false);
 
         const createdProjectId = projectId || undefined;
-        const createdProject = createdProjectId ? projects.find(p => p.id === createdProjectId) : undefined;
+        const createdProject = createdProjectId
+          ? projects.find((p) => p.id === createdProjectId)
+          : undefined;
         const summary: ChatSummary = {
           id: newChat.id,
           title: newChat.title,
           createdAt: newChat.createdAt,
           updatedAt: newChat.updatedAt,
           messageCount: chatMessages.length,
-          lastMessage: chatMessages.length ? chatMessages[chatMessages.length - 1].content.slice(0, 100) : undefined,
+          lastMessage: chatMessages.length
+            ? chatMessages[chatMessages.length - 1].content.slice(0, 100)
+            : undefined,
           projectId: createdProjectId ?? null,
           projectName: createdProject?.name ?? null,
           projectSlug: createdProject?.slug ?? null,
@@ -1121,8 +1281,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
           acpSessionId: effectiveConfig.acp_session_id ?? null,
         };
 
-        setChats(prev => {
-          const existingIndex = prev.findIndex(c => c.id === newChat.id);
+        setChats((prev) => {
+          const existingIndex = prev.findIndex((c) => c.id === newChat.id);
           if (existingIndex !== -1) {
             const updated = [...prev];
             updated[existingIndex] = summary;
@@ -1144,388 +1304,470 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
     const result = await promise;
     chatCreationPromiseRef.current = null;
     return result;
-  }, [currentChatId, messagesByChat, configByChat, computeDefaultConfig, refreshChatListInternal, clearScheduledSave]);
+  }, [
+    currentChatId,
+    messagesByChat,
+    configByChat,
+    computeDefaultConfig,
+    refreshChatListInternal,
+    clearScheduledSave,
+  ]);
 
-  const loadChat = useCallback(async (chatId: string, options?: { force?: boolean }) => {
-    const force = !!options?.force;
-    // Clear any pending saves for the previous chat before switching
-    if (currentChatId && currentChatId !== chatId) {
-      clearScheduledSave(currentChatId);
-    }
-
-    const key = keyForChat(chatId);
-    const cachedMessages = messagesByChatRef.current[key];
-    setCurrentChatId(chatId);
-    setShouldResetNext(false);
-
-    const summary = chats.find(c => c.id === chatId);
-    if (summary) {
-      setCurrentChatTitle(summary.title);
-    }
-
-    const cachedConfig = configByChat[key];
-    if (cachedConfig) {
-      setConfigState(cachedConfig);
-      // Save reusable preferences for the next new chat without chat-scoped state.
-      try {
-        localStorage.setItem(LAST_CONFIG_KEY, JSON.stringify(stripReusableConfig(cachedConfig)));
-      } catch (e) {
-        console.warn('Failed to save config to localStorage:', e);
+  const loadChat = useCallback(
+    async (chatId: string, options?: { force?: boolean }) => {
+      const force = !!options?.force;
+      // Clear any pending saves for the previous chat before switching
+      if (currentChatId && currentChatId !== chatId) {
+        clearScheduledSave(currentChatId);
       }
-    }
 
-    if (!force && cachedMessages) {
-      return;
-    }
+      const key = keyForChat(chatId);
+      const cachedMessages = messagesByChatRef.current[key];
+      setCurrentChatId(chatId);
+      setShouldResetNext(false);
 
-    try {
-      const res = await fetch(`${getApiBase()}/chats/${chatId}`);
-      if (res.ok) {
-        const chat: Chat = await res.json();
-        setCurrentChatTitle(chat.title);
+      const summary = chats.find((c) => c.id === chatId);
+      if (summary) {
+        setCurrentChatTitle(summary.title);
+      }
 
-        if (chat.contextUsage || chat.contextTokens) {
-          const contextUsageStore = useContextUsageStore.getState();
-          const existingUsage = contextUsageStore.getUsageForChat(chatId);
-          const serverUsage = chat.contextUsage;
-          const contextTokens = serverUsage?.context_tokens ?? chat.contextTokens ?? existingUsage?.context_tokens ?? 0;
-          contextUsageStore.setUsageForChat(chatId, {
-            input_tokens: serverUsage?.input_tokens ?? existingUsage?.input_tokens ?? contextTokens,
-            output_tokens: serverUsage?.output_tokens ?? existingUsage?.output_tokens ?? 0,
-            total_tokens: serverUsage?.total_tokens ?? existingUsage?.total_tokens ?? contextTokens,
-            context_tokens: contextTokens,
-            cache_write_tokens: serverUsage?.cache_write_tokens ?? existingUsage?.cache_write_tokens ?? 0,
-            cache_read_tokens: serverUsage?.cache_read_tokens ?? existingUsage?.cache_read_tokens ?? 0,
-            requests: serverUsage?.requests ?? existingUsage?.requests ?? 0,
-            details: serverUsage?.details ?? existingUsage?.details,
-          });
-        }
-        const loadedConfig = hydrateChatConfig(
-          stripDenyApprovalPolicies(chat.config),
-          computeDefaultConfig(),
-        );
-        setConfigByChat(prev => ({ ...prev, [key]: loadedConfig }));
-        setConfigState(loadedConfig);
+      const cachedConfig = configByChat[key];
+      if (cachedConfig) {
+        setConfigState(cachedConfig);
         // Save reusable preferences for the next new chat without chat-scoped state.
         try {
-          localStorage.setItem(LAST_CONFIG_KEY, JSON.stringify(stripReusableConfig(loadedConfig)));
+          localStorage.setItem(LAST_CONFIG_KEY, JSON.stringify(stripReusableConfig(cachedConfig)));
         } catch (e) {
           console.warn('Failed to save config to localStorage:', e);
         }
-        setMessagesByChat(prev => {
-          const rollbackExpected = rollbackExpectedChatIdsRef.current.has(chatId);
-          // 100% Backend Authored: backend is ALWAYS the source of truth for ALL chats.
-          // Map backend JSON (which includes strict tool_calls arrays and 'tool' roles)
-          // into the legacy HTML `<details>` string blocks that the UI parser expects.
-          const serverMessages: any[] = chat.messages || [];
-          const mappedMessages: Message[] = [];
-          
-          let currentAssistant: Partial<Message> | null = null;
-          // True while the currentAssistant had tool_calls but hasn't yet received
-          // a follow-up assistant message (the final-text continuation of that turn).
-          // Reset to false once the continuation arrives so the NEXT assistant is a
-          // new independent bubble (e.g. a wakeup turn).
-          let awaitingToolContinuation = false;
+      }
 
-          for (const [serverMessageIndex, msg] of serverMessages.entries()) {
-            if (msg.role === 'user') {
-              // Empty user rows are tool-resume continuations (system-reminder injected
-              // by the backend, then stripped to empty). Drop them — they don't represent
-              // a real turn and must not flush the assistant buffer or act as boundaries.
-              if (!(msg.content || '').trim() && !(msg.images?.length) && !(msg.files?.length)) {
-                continue;
-              }
-              if (currentAssistant) { mappedMessages.push(currentAssistant as Message); currentAssistant = null; }
-              awaitingToolContinuation = false;
-              mappedMessages.push({
-                ...msg,
-                raw_message_end_index: serverMessageIndex + 1,
-              });
-            } else if (msg.role === 'system_triggered' || msg.role === 'trigger') {
-              // 'trigger' is the legacy name; normalize to 'system_triggered' so the
-              // rest of the render pipeline only needs to handle one role.
-              if (currentAssistant) { mappedMessages.push(currentAssistant as Message); currentAssistant = null; }
-              awaitingToolContinuation = false;
-              mappedMessages.push({
-                ...msg,
-                role: 'system_triggered',
-                raw_message_end_index: serverMessageIndex + 1,
-              } as Message);
-            } else if (msg.role === 'assistant') {
-              if (!currentAssistant) {
-                currentAssistant = {
-                  ...msg,
-                  content: msg.content || '',
-                  raw_message_end_index: serverMessageIndex + 1,
-                  file_change_message_index: msg.file_changes?.length
-                    ? serverMessageIndex
-                    : undefined,
-                };
-                awaitingToolContinuation = false;
-              } else if (awaitingToolContinuation) {
-                // This assistant message is the final-text continuation of the
-                // preceding tool-call turn — merge it into the same bubble.
-                if (msg.content) {
-                  currentAssistant.content = (currentAssistant.content ? currentAssistant.content + '\n\n' : '') + msg.content;
-                }
-                if (Array.isArray(msg.parts) && msg.parts.length > 0) {
-                  currentAssistant.parts = [
-                    ...((currentAssistant.parts as any[] | undefined) || []),
-                    ...msg.parts,
-                  ];
-                }
-                if (Array.isArray(msg.file_changes) && msg.file_changes.length > 0) {
-                  currentAssistant.file_changes = msg.file_changes;
-                  currentAssistant.file_changes_undone = msg.file_changes_undone === true;
-                  currentAssistant.file_change_message_index = serverMessageIndex;
-                }
-                currentAssistant.raw_message_end_index = serverMessageIndex + 1;
-                awaitingToolContinuation = false;
-              } else {
-                // Independent assistant turn (e.g. wakeup) — new bubble.
-                mappedMessages.push(currentAssistant as Message);
-                currentAssistant = {
-                  ...msg,
-                  content: msg.content || '',
-                  raw_message_end_index: serverMessageIndex + 1,
-                  file_change_message_index: msg.file_changes?.length
-                    ? serverMessageIndex
-                    : undefined,
-                };
-                awaitingToolContinuation = false;
-              }
-              if (msg.tool_calls && Array.isArray(msg.tool_calls)) {
-                msg.tool_calls.forEach((tc: any) => {
-                  const args = escapeHtml(typeof tc.function.arguments === 'string' ? tc.function.arguments : JSON.stringify(tc.function.arguments));
-                  const stateAttr = tc.state === 'approval-requested' ? ' data-approval-state="pending"' : '';
-                  const idAttr = tc.id ? ` data-approval-id="${escapeHtml(tc.id)}"` : '';
-                  currentAssistant!.content += `\n<details data-tool-call-id="${escapeHtml(tc.id ?? '')}"${idAttr}${stateAttr}><summary>🔧 ${escapeHtml(tc.function.name)}</summary>\n<pre><code class="language-json">${args}</code></pre>\n</details>\n`;
-                });
-                awaitingToolContinuation = true;
-              }
-            } else if (msg.role === 'tool') {
-              if (!currentAssistant) {
-                currentAssistant = {
-                  role: 'assistant',
-                  content: '',
-                  raw_message_end_index: serverMessageIndex + 1,
-                };
-              }
-              currentAssistant.content += `\n<details data-tool-call-id="${escapeHtml(msg.tool_call_id ?? '')}"><summary>📦 ${escapeHtml(msg.name ?? '')}</summary>\n<pre><code class="language-text">${escapeHtml(msg.content ?? '')}</code></pre>\n</details>\n`;
-              currentAssistant.raw_message_end_index = serverMessageIndex + 1;
-              awaitingToolContinuation = true;
-            } else {
-              if (currentAssistant) { mappedMessages.push(currentAssistant as Message); currentAssistant = null; }
-              awaitingToolContinuation = false;
-              mappedMessages.push({
-                ...msg,
-                raw_message_end_index: serverMessageIndex + 1,
-              });
-            }
-          }
-          if (currentAssistant) { mappedMessages.push(currentAssistant as Message); }
+      if (!force && cachedMessages) {
+        return;
+      }
 
-          // Prevent UI flicker: if local store has more messages (e.g. optimistic append right after stream),
-          // don't let stale backend DB state overwrite it. Wait until DB catches up.
-          const existing = prev[key] || [];
-          if (rollbackExpected && existing.length > 0 && mappedMessages.length > existing.length) {
-            return prev;
+      try {
+        const res = await fetch(`${getApiBase()}/chats/${chatId}`);
+        if (res.ok) {
+          const chat: Chat = await res.json();
+          setCurrentChatTitle(chat.title);
+
+          if (chat.contextUsage || chat.contextTokens) {
+            const contextUsageStore = useContextUsageStore.getState();
+            const existingUsage = contextUsageStore.getUsageForChat(chatId);
+            const serverUsage = chat.contextUsage;
+            const contextTokens =
+              serverUsage?.context_tokens ??
+              chat.contextTokens ??
+              existingUsage?.context_tokens ??
+              0;
+            contextUsageStore.setUsageForChat(chatId, {
+              input_tokens:
+                serverUsage?.input_tokens ?? existingUsage?.input_tokens ?? contextTokens,
+              output_tokens: serverUsage?.output_tokens ?? existingUsage?.output_tokens ?? 0,
+              total_tokens:
+                serverUsage?.total_tokens ?? existingUsage?.total_tokens ?? contextTokens,
+              context_tokens: contextTokens,
+              cache_write_tokens:
+                serverUsage?.cache_write_tokens ?? existingUsage?.cache_write_tokens ?? 0,
+              cache_read_tokens:
+                serverUsage?.cache_read_tokens ?? existingUsage?.cache_read_tokens ?? 0,
+              requests: serverUsage?.requests ?? existingUsage?.requests ?? 0,
+              details: serverUsage?.details ?? existingUsage?.details,
+            });
           }
-          // Guard (edit flow): an edit optimistically replaces the last user
-          // message with new text, then the backend rolls history back and
-          // replays it via /retry-edit. Until that replay re-persists the edited
-          // message, the server snapshot still carries the ORIGINAL text. Keep the
-          // optimistic local state — and crucially preserve the rollback flag — so
-          // a sync arriving mid-rollback can't revert the bubble to the old text.
-          if (rollbackExpected) {
-            const lastLocalUser = [...existing].reverse().find((m: Message) => m.role === 'user');
-            const lastServerUser = [...mappedMessages].reverse().find((m: Message) => m.role === 'user');
-            if (
-              lastLocalUser &&
-              typeof lastLocalUser.content === 'string' &&
-              lastLocalUser.content.trim() &&
-              (!lastServerUser ||
-                (typeof lastServerUser.content === 'string' &&
-                  lastServerUser.content.trim() !== lastLocalUser.content.trim()))
-            ) {
-              return prev;
-            }
-          }
-          if (existing.length > mappedMessages.length && !rollbackExpected) {
-            return prev;
-          }
-          // Guard: a force reload can arrive after the frontend optimistically
-          // appended the user's message but before the backend display log has
-          // caught up. Keep the local user bubble visible while the agent stream
-          // continues, then let the next fresh server snapshot replace it.
-          if (!rollbackExpected && shouldKeepOptimisticUserMessage(existing, mappedMessages)) {
-            return prev;
-          }
-          // Guard: keep optimistic local content when server is still mid-postprocess.
-          // Covers both equal-count and server-has-more cases: if local last assistant has
-          // real text and server last assistant is tool-only (intermediate), backend hasn't
-          // finished writing the final reply yet.
-          if (!rollbackExpected && shouldKeepLocalAssistantContent(existing, mappedMessages)) {
-            return prev;
-          }
-          // Guard against replacing locally-resolved content with a stale pending-approval
-          // DB state. This race occurs when loadChat is called immediately after a resume
-          // stream ends but before the backend persists the final resolved state.
-          // Compare the LAST assistant message on each side — this avoids false negatives
-          // when earlier history messages happen to contain pending state from old sessions.
-          const msgHasPendingApproval = (m: Message) => {
-            if (typeof m.content === 'string' && m.content.includes('data-approval-state="pending"')) return true;
-            if (Array.isArray((m as any).parts)) {
-              return (m as any).parts.some((p: any) => p.type === 'tool' && p.state === 'approval-requested');
-            }
-            return false;
-          };
-          const serverHasPendingApproval = mappedMessages.some(msgHasPendingApproval);
-          const lastLocalAssistant = existing.length > 0
-            ? [...existing].reverse().find((m: Message) => m.role === 'assistant')
-            : undefined;
-          const localLastAssistantHasNoPending = lastLocalAssistant != null && !msgHasPendingApproval(lastLocalAssistant);
-          if (!rollbackExpected && serverHasPendingApproval && localLastAssistantHasNoPending) {
-            return prev;
-          }
-          // Guard: local has completed tool outputs (📦) that the server hasn't persisted yet.
-          // Count output blocks — if local has more, server is still catching up.
-          const countOutputs = (msgs: Message[]) => msgs.reduce(
-            (n, m) => n + (typeof m.content === 'string' ? (m.content.match(/<summary>📦/g) ?? []).length : 0), 0
+          const loadedConfig = hydrateChatConfig(
+            stripDenyApprovalPolicies(chat.config),
+            computeDefaultConfig()
           );
-          if (!rollbackExpected && existing.length > 0 && countOutputs(existing) > countOutputs(mappedMessages)) {
-            return prev;
+          setConfigByChat((prev) => ({ ...prev, [key]: loadedConfig }));
+          setConfigState(loadedConfig);
+          // Save reusable preferences for the next new chat without chat-scoped state.
+          try {
+            localStorage.setItem(
+              LAST_CONFIG_KEY,
+              JSON.stringify(stripReusableConfig(loadedConfig))
+            );
+          } catch (e) {
+            console.warn('Failed to save config to localStorage:', e);
           }
+          setMessagesByChat((prev) => {
+            const rollbackExpected = rollbackExpectedChatIdsRef.current.has(chatId);
+            // 100% Backend Authored: backend is ALWAYS the source of truth for ALL chats.
+            // Map backend JSON (which includes strict tool_calls arrays and 'tool' roles)
+            // into the legacy HTML `<details>` string blocks that the UI parser expects.
+            const serverMessages: any[] = chat.messages || [];
+            const mappedMessages: Message[] = [];
 
-          // Guard: prevent stale backend snapshots from replacing richer local assistant
-          // content with a shorter/empty variant when counts are otherwise equal.
-          const getLastAssistant = (msgs: Message[]) =>
-            msgs.length > 0 ? [...msgs].reverse().find((m: Message) => m.role === 'assistant') : undefined;
-          const localLastAssistant = getLastAssistant(existing);
-          const serverLastAssistant = getLastAssistant(mappedMessages);
-          if (!rollbackExpected && localLastAssistant && serverLastAssistant) {
-            const localContent = typeof localLastAssistant.content === 'string' ? localLastAssistant.content.trim() : '';
-            const serverContent = typeof serverLastAssistant.content === 'string' ? serverLastAssistant.content.trim() : '';
+            let currentAssistant: Partial<Message> | null = null;
+            // True while the currentAssistant had tool_calls but hasn't yet received
+            // a follow-up assistant message (the final-text continuation of that turn).
+            // Reset to false once the continuation arrives so the NEXT assistant is a
+            // new independent bubble (e.g. a wakeup turn).
+            let awaitingToolContinuation = false;
 
-            // If server regresses to much shorter content while structure counts are equal,
-            // keep optimistic local data until the backend catches up.
+            for (const [serverMessageIndex, msg] of serverMessages.entries()) {
+              if (msg.role === 'user') {
+                // Empty user rows are tool-resume continuations (system-reminder injected
+                // by the backend, then stripped to empty). Drop them — they don't represent
+                // a real turn and must not flush the assistant buffer or act as boundaries.
+                if (!(msg.content || '').trim() && !msg.images?.length && !msg.files?.length) {
+                  continue;
+                }
+                if (currentAssistant) {
+                  mappedMessages.push(currentAssistant as Message);
+                  currentAssistant = null;
+                }
+                awaitingToolContinuation = false;
+                mappedMessages.push({
+                  ...msg,
+                  raw_message_end_index: serverMessageIndex + 1,
+                });
+              } else if (msg.role === 'system_triggered' || msg.role === 'trigger') {
+                // 'trigger' is the legacy name; normalize to 'system_triggered' so the
+                // rest of the render pipeline only needs to handle one role.
+                if (currentAssistant) {
+                  mappedMessages.push(currentAssistant as Message);
+                  currentAssistant = null;
+                }
+                awaitingToolContinuation = false;
+                mappedMessages.push({
+                  ...msg,
+                  role: 'system_triggered',
+                  raw_message_end_index: serverMessageIndex + 1,
+                } as Message);
+              } else if (msg.role === 'assistant') {
+                if (!currentAssistant) {
+                  currentAssistant = {
+                    ...msg,
+                    content: msg.content || '',
+                    raw_message_end_index: serverMessageIndex + 1,
+                    file_change_message_index: msg.file_changes?.length
+                      ? serverMessageIndex
+                      : undefined,
+                  };
+                  awaitingToolContinuation = false;
+                } else if (awaitingToolContinuation) {
+                  // This assistant message is the final-text continuation of the
+                  // preceding tool-call turn — merge it into the same bubble.
+                  if (msg.content) {
+                    currentAssistant.content =
+                      (currentAssistant.content ? currentAssistant.content + '\n\n' : '') +
+                      msg.content;
+                  }
+                  if (Array.isArray(msg.parts) && msg.parts.length > 0) {
+                    currentAssistant.parts = [
+                      ...((currentAssistant.parts as any[] | undefined) || []),
+                      ...msg.parts,
+                    ];
+                  }
+                  if (Array.isArray(msg.file_changes) && msg.file_changes.length > 0) {
+                    currentAssistant.file_changes = msg.file_changes;
+                    currentAssistant.file_changes_undone = msg.file_changes_undone === true;
+                    currentAssistant.file_change_message_index = serverMessageIndex;
+                  }
+                  currentAssistant.raw_message_end_index = serverMessageIndex + 1;
+                  awaitingToolContinuation = false;
+                } else {
+                  // Independent assistant turn (e.g. wakeup) — new bubble.
+                  mappedMessages.push(currentAssistant as Message);
+                  currentAssistant = {
+                    ...msg,
+                    content: msg.content || '',
+                    raw_message_end_index: serverMessageIndex + 1,
+                    file_change_message_index: msg.file_changes?.length
+                      ? serverMessageIndex
+                      : undefined,
+                  };
+                  awaitingToolContinuation = false;
+                }
+                if (msg.tool_calls && Array.isArray(msg.tool_calls)) {
+                  msg.tool_calls.forEach((tc: any) => {
+                    const args = escapeHtml(
+                      typeof tc.function.arguments === 'string'
+                        ? tc.function.arguments
+                        : JSON.stringify(tc.function.arguments)
+                    );
+                    const stateAttr =
+                      tc.state === 'approval-requested' ? ' data-approval-state="pending"' : '';
+                    const idAttr = tc.id ? ` data-approval-id="${escapeHtml(tc.id)}"` : '';
+                    currentAssistant!.content += `\n<details data-tool-call-id="${escapeHtml(tc.id ?? '')}"${idAttr}${stateAttr}><summary>🔧 ${escapeHtml(tc.function.name)}</summary>\n<pre><code class="language-json">${args}</code></pre>\n</details>\n`;
+                  });
+                  awaitingToolContinuation = true;
+                }
+              } else if (msg.role === 'tool') {
+                if (!currentAssistant) {
+                  currentAssistant = {
+                    role: 'assistant',
+                    content: '',
+                    raw_message_end_index: serverMessageIndex + 1,
+                  };
+                }
+                currentAssistant.content += `\n<details data-tool-call-id="${escapeHtml(msg.tool_call_id ?? '')}"><summary>📦 ${escapeHtml(msg.name ?? '')}</summary>\n<pre><code class="language-text">${escapeHtml(msg.content ?? '')}</code></pre>\n</details>\n`;
+                currentAssistant.raw_message_end_index = serverMessageIndex + 1;
+                awaitingToolContinuation = true;
+              } else {
+                if (currentAssistant) {
+                  mappedMessages.push(currentAssistant as Message);
+                  currentAssistant = null;
+                }
+                awaitingToolContinuation = false;
+                mappedMessages.push({
+                  ...msg,
+                  raw_message_end_index: serverMessageIndex + 1,
+                });
+              }
+            }
+            if (currentAssistant) {
+              mappedMessages.push(currentAssistant as Message);
+            }
+
+            // Prevent UI flicker: if local store has more messages (e.g. optimistic append right after stream),
+            // don't let stale backend DB state overwrite it. Wait until DB catches up.
+            const existing = prev[key] || [];
             if (
-              localContent.length > 0 &&
-              serverContent.length > 0 &&
-              existing.length === mappedMessages.length &&
-              countOutputs(existing) === countOutputs(mappedMessages) &&
-              serverContent.length + 40 < localContent.length
+              rollbackExpected &&
+              existing.length > 0 &&
+              mappedMessages.length > existing.length
+            ) {
+              return prev;
+            }
+            // Guard (edit flow): an edit optimistically replaces the last user
+            // message with new text, then the backend rolls history back and
+            // replays it via /retry-edit. Until that replay re-persists the edited
+            // message, the server snapshot still carries the ORIGINAL text. Keep the
+            // optimistic local state — and crucially preserve the rollback flag — so
+            // a sync arriving mid-rollback can't revert the bubble to the old text.
+            if (rollbackExpected) {
+              const lastLocalUser = [...existing].reverse().find((m: Message) => m.role === 'user');
+              const lastServerUser = [...mappedMessages]
+                .reverse()
+                .find((m: Message) => m.role === 'user');
+              if (
+                lastLocalUser &&
+                typeof lastLocalUser.content === 'string' &&
+                lastLocalUser.content.trim() &&
+                (!lastServerUser ||
+                  (typeof lastServerUser.content === 'string' &&
+                    lastServerUser.content.trim() !== lastLocalUser.content.trim()))
+              ) {
+                return prev;
+              }
+            }
+            if (existing.length > mappedMessages.length && !rollbackExpected) {
+              return prev;
+            }
+            // Guard: a force reload can arrive after the frontend optimistically
+            // appended the user's message but before the backend display log has
+            // caught up. Keep the local user bubble visible while the agent stream
+            // continues, then let the next fresh server snapshot replace it.
+            if (!rollbackExpected && shouldKeepOptimisticUserMessage(existing, mappedMessages)) {
+              return prev;
+            }
+            // Guard: keep optimistic local content when server is still mid-postprocess.
+            // Covers both equal-count and server-has-more cases: if local last assistant has
+            // real text and server last assistant is tool-only (intermediate), backend hasn't
+            // finished writing the final reply yet.
+            if (!rollbackExpected && shouldKeepLocalAssistantContent(existing, mappedMessages)) {
+              return prev;
+            }
+            // Guard against replacing locally-resolved content with a stale pending-approval
+            // DB state. This race occurs when loadChat is called immediately after a resume
+            // stream ends but before the backend persists the final resolved state.
+            // Compare the LAST assistant message on each side — this avoids false negatives
+            // when earlier history messages happen to contain pending state from old sessions.
+            const msgHasPendingApproval = (m: Message) => {
+              if (
+                typeof m.content === 'string' &&
+                m.content.includes('data-approval-state="pending"')
+              )
+                return true;
+              if (Array.isArray((m as any).parts)) {
+                return (m as any).parts.some(
+                  (p: any) => p.type === 'tool' && p.state === 'approval-requested'
+                );
+              }
+              return false;
+            };
+            const serverHasPendingApproval = mappedMessages.some(msgHasPendingApproval);
+            const lastLocalAssistant =
+              existing.length > 0
+                ? [...existing].reverse().find((m: Message) => m.role === 'assistant')
+                : undefined;
+            const localLastAssistantHasNoPending =
+              lastLocalAssistant != null && !msgHasPendingApproval(lastLocalAssistant);
+            if (!rollbackExpected && serverHasPendingApproval && localLastAssistantHasNoPending) {
+              return prev;
+            }
+            // Guard: local has completed tool outputs (📦) that the server hasn't persisted yet.
+            // Count output blocks — if local has more, server is still catching up.
+            const countOutputs = (msgs: Message[]) =>
+              msgs.reduce(
+                (n, m) =>
+                  n +
+                  (typeof m.content === 'string'
+                    ? (m.content.match(/<summary>📦/g) ?? []).length
+                    : 0),
+                0
+              );
+            if (
+              !rollbackExpected &&
+              existing.length > 0 &&
+              countOutputs(existing) > countOutputs(mappedMessages)
             ) {
               return prev;
             }
 
-            if (
-              localContent.length > 0 &&
-              serverContent.length === 0 &&
-              existing.length === mappedMessages.length
-            ) {
-              return prev;
+            // Guard: prevent stale backend snapshots from replacing richer local assistant
+            // content with a shorter/empty variant when counts are otherwise equal.
+            const getLastAssistant = (msgs: Message[]) =>
+              msgs.length > 0
+                ? [...msgs].reverse().find((m: Message) => m.role === 'assistant')
+                : undefined;
+            const localLastAssistant = getLastAssistant(existing);
+            const serverLastAssistant = getLastAssistant(mappedMessages);
+            if (!rollbackExpected && localLastAssistant && serverLastAssistant) {
+              const localContent =
+                typeof localLastAssistant.content === 'string'
+                  ? localLastAssistant.content.trim()
+                  : '';
+              const serverContent =
+                typeof serverLastAssistant.content === 'string'
+                  ? serverLastAssistant.content.trim()
+                  : '';
+
+              // If server regresses to much shorter content while structure counts are equal,
+              // keep optimistic local data until the backend catches up.
+              if (
+                localContent.length > 0 &&
+                serverContent.length > 0 &&
+                existing.length === mappedMessages.length &&
+                countOutputs(existing) === countOutputs(mappedMessages) &&
+                serverContent.length + 40 < localContent.length
+              ) {
+                return prev;
+              }
+
+              if (
+                localContent.length > 0 &&
+                serverContent.length === 0 &&
+                existing.length === mappedMessages.length
+              ) {
+                return prev;
+              }
             }
-          }
-          rollbackExpectedChatIdsRef.current.delete(chatId);
-          return { ...prev, [key]: mappedMessages };
-        });
-        setShouldResetNext(false);
-      } else {
-        console.error('Failed to load chat:', res.status, res.statusText);
+            rollbackExpectedChatIdsRef.current.delete(chatId);
+            return { ...prev, [key]: mappedMessages };
+          });
+          setShouldResetNext(false);
+        } else {
+          console.error('Failed to load chat:', res.status, res.statusText);
+        }
+      } catch (error) {
+        console.error('Error loading chat:', error);
       }
-    } catch (error) {
-      console.error('Error loading chat:', error);
-    }
-  }, [chats, configByChat, currentChatId, clearScheduledSave]);
+    },
+    [chats, configByChat, currentChatId, clearScheduledSave]
+  );
 
-  const deleteChat = useCallback(async (chatId: string, { cascade = false }: { cascade?: boolean } = {}) => {
-    const key = keyForChat(chatId);
-    const deletedSummary = chats.find(c => c.id === chatId);
-    const deletedIndex = chats.findIndex(c => c.id === chatId);
-    const deletedMessages = messagesByChatRef.current[key];
-    const deletedConfig = configByChatRef.current[key];
-    const wasCurrent = currentChatId === chatId;
+  const deleteChat = useCallback(
+    async (chatId: string, { cascade = false }: { cascade?: boolean } = {}) => {
+      const key = keyForChat(chatId);
+      const deletedSummary = chats.find((c) => c.id === chatId);
+      const deletedIndex = chats.findIndex((c) => c.id === chatId);
+      const deletedMessages = messagesByChatRef.current[key];
+      const deletedConfig = configByChatRef.current[key];
+      const wasCurrent = currentChatId === chatId;
 
-    // Optimistic UI: remove immediately so delete feels instant.
-    // When cascading, also remove subagent children from the local chats list.
-    setChats(prev => {
-      if (!cascade) return prev.filter(c => c.id !== chatId);
-      return prev.filter(c => {
-        if (c.id === chatId) return false;
-        const config = (c as any).config;
-        const parentId = (c as any).parentChatId;
-        return !(parentId === chatId);
+      // Optimistic UI: remove immediately so delete feels instant.
+      // When cascading, also remove subagent children from the local chats list.
+      setChats((prev) => {
+        if (!cascade) return prev.filter((c) => c.id !== chatId);
+        return prev.filter((c) => {
+          if (c.id === chatId) return false;
+          const config = (c as any).config;
+          const parentId = (c as any).parentChatId;
+          return !(parentId === chatId);
+        });
       });
-    });
-    setMessagesByChat(prev => {
-      const next = { ...prev };
-      delete next[key];
-      return next;
-    });
-    setConfigByChat(prev => {
-      const next = { ...prev };
-      delete next[key];
-      return next;
-    });
-    if (wasCurrent) {
-      beginNewChat();
-    }
-
-    try {
-      const url = cascade
-        ? `${getApiBase()}/chats/${chatId}?cascade=true`
-        : `${getApiBase()}/chats/${chatId}`;
-      const res = await fetch(url, { method: 'DELETE' });
-      if (!res.ok) {
-        throw new Error(`Failed to delete chat: ${res.status} ${res.statusText}`);
-      }
-
-      // Background consistency sync (non-blocking).
-      void refreshChatListSilently();
-    } catch (error) {
-      console.error('Error deleting chat:', error);
-
-      // Roll back optimistic removal if delete fails.
-      if (deletedSummary) {
-        setChats(prev => {
-          if (prev.some(c => c.id === deletedSummary.id)) return prev;
-          const next = [...prev];
-          const idx = deletedIndex >= 0 ? Math.min(deletedIndex, next.length) : next.length;
-          next.splice(idx, 0, deletedSummary);
-          return next;
-        });
-      }
-      if (deletedMessages) {
-        setMessagesByChat(prev => ({ ...prev, [key]: deletedMessages }));
-      }
-      if (deletedConfig) {
-        setConfigByChat(prev => ({ ...prev, [key]: deletedConfig }));
-      }
+      setMessagesByChat((prev) => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+      setConfigByChat((prev) => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
       if (wasCurrent) {
-        // Try to restore the previously selected chat after rollback.
-        try { await loadChat(chatId, { force: true }); } catch { /* ignore */ }
+        beginNewChat();
       }
-    }
-  }, [beginNewChat, chats, currentChatId, loadChat, refreshChatListSilently]);
 
-  const renameChat = useCallback(async (chatId: string, title: string) => {
-    const prev = chats.find(c => c.id === chatId);
-    updateChatTitleLocally(chatId, title);
-    try {
-      const res = await fetch(`${getApiBase()}/chats/${chatId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title }),
-      });
-      if (!res.ok) throw new Error(`Failed to rename chat: ${res.status}`);
-    } catch (error) {
-      console.error('Error renaming chat:', error);
-      if (prev) updateChatTitleLocally(chatId, prev.title ?? '');
-    }
-  }, [chats, updateChatTitleLocally]);
+      try {
+        const url = cascade
+          ? `${getApiBase()}/chats/${chatId}?cascade=true`
+          : `${getApiBase()}/chats/${chatId}`;
+        const res = await fetch(url, { method: 'DELETE' });
+        if (!res.ok) {
+          throw new Error(`Failed to delete chat: ${res.status} ${res.statusText}`);
+        }
 
-  const coreValue = useMemo<ChatCoreContextValue>(() => ({
+        // Background consistency sync (non-blocking).
+        void refreshChatListSilently();
+      } catch (error) {
+        console.error('Error deleting chat:', error);
+
+        // Roll back optimistic removal if delete fails.
+        if (deletedSummary) {
+          setChats((prev) => {
+            if (prev.some((c) => c.id === deletedSummary.id)) return prev;
+            const next = [...prev];
+            const idx = deletedIndex >= 0 ? Math.min(deletedIndex, next.length) : next.length;
+            next.splice(idx, 0, deletedSummary);
+            return next;
+          });
+        }
+        if (deletedMessages) {
+          setMessagesByChat((prev) => ({ ...prev, [key]: deletedMessages }));
+        }
+        if (deletedConfig) {
+          setConfigByChat((prev) => ({ ...prev, [key]: deletedConfig }));
+        }
+        if (wasCurrent) {
+          // Try to restore the previously selected chat after rollback.
+          try {
+            await loadChat(chatId, { force: true });
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+    },
+    [beginNewChat, chats, currentChatId, loadChat, refreshChatListSilently]
+  );
+
+  const renameChat = useCallback(
+    async (chatId: string, title: string) => {
+      const prev = chats.find((c) => c.id === chatId);
+      updateChatTitleLocally(chatId, title);
+      try {
+        const res = await fetch(`${getApiBase()}/chats/${chatId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title }),
+        });
+        if (!res.ok) throw new Error(`Failed to rename chat: ${res.status}`);
+      } catch (error) {
+        console.error('Error renaming chat:', error);
+        if (prev) updateChatTitleLocally(chatId, prev.title ?? '');
+      }
+    },
+    [chats, updateChatTitleLocally]
+  );
+
+  const coreValue = useMemo<ChatCoreContextValue>(
+    () => ({
       config,
       setConfig: optimizedSetConfig,
       setChatConfigForId,
@@ -1568,58 +1810,63 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
       setViewSwitcher,
       switchToView,
       hideToolCalls,
-      toggleHideToolCalls
-  }), [
-    config,
-    optimizedSetConfig,
-    setChatConfigForId,
-    addMessage,
-    updateLastUserMessageImages,
-    updateAssistantStreaming,
-    backendConfig,
-    refreshBackendConfig,
-    newAssistantMessage,
-    setStepInfo,
-    resetChat,
-    shouldResetNext,
-    consumeResetFlag,
-    setStreamingState,
-    removeEmptyAssistantMessage,
-    currentChatId,
-    chats,
-    chatTotal,
-    chatKindTotals,
-    loadingChats,
-    loadingMoreChats,
-    refreshingChats,
-    searchQuery,
-    setSearchQuery,
-    beginNewChat,
-    createNewChat,
-    loadChat,
-    saveCurrentChat,
-    finalSave,
-    forceSaveNow,
-    deleteChat,
-    renameChat,
-    refreshChatList,
-    refreshChatListSilently,
-    loadMoreChats,
-    updateChatTitleLocally,
-    updateMessage,
-    truncateMessagesFrom,
-    markChatRollbackExpected,
-    setViewSwitcher,
-    switchToView,
-    hideToolCalls,
-    toggleHideToolCalls,
-  ]);
+      toggleHideToolCalls,
+    }),
+    [
+      config,
+      optimizedSetConfig,
+      setChatConfigForId,
+      addMessage,
+      updateLastUserMessageImages,
+      updateAssistantStreaming,
+      backendConfig,
+      refreshBackendConfig,
+      newAssistantMessage,
+      setStepInfo,
+      resetChat,
+      shouldResetNext,
+      consumeResetFlag,
+      setStreamingState,
+      removeEmptyAssistantMessage,
+      currentChatId,
+      chats,
+      chatTotal,
+      chatKindTotals,
+      loadingChats,
+      loadingMoreChats,
+      refreshingChats,
+      searchQuery,
+      setSearchQuery,
+      beginNewChat,
+      createNewChat,
+      loadChat,
+      saveCurrentChat,
+      finalSave,
+      forceSaveNow,
+      deleteChat,
+      renameChat,
+      refreshChatList,
+      refreshChatListSilently,
+      loadMoreChats,
+      updateChatTitleLocally,
+      updateMessage,
+      truncateMessagesFrom,
+      markChatRollbackExpected,
+      setViewSwitcher,
+      switchToView,
+      hideToolCalls,
+      toggleHideToolCalls,
+    ]
+  );
 
-  const streamingValue = useMemo<ChatStreamingContextValue>(() => ({
-    messages,
-    isStreaming,
-    activeStreamingChatId,
-  }), [messages, isStreaming, activeStreamingChatId]);
+  const streamingValue = useMemo<ChatStreamingContextValue>(
+    () => ({
+      messages,
+      isStreaming,
+      activeStreamingChatId,
+    }),
+    [messages, isStreaming, activeStreamingChatId]
+  );
 
   return (
     <ChatCoreContext.Provider value={coreValue}>

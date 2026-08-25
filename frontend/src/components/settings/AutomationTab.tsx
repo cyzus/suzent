@@ -18,7 +18,14 @@ import { BrutalMultiSelect } from '../BrutalMultiSelect';
 import { BrutalSelect } from '../BrutalSelect';
 import { ScheduleBuilder, describeCron } from './ScheduleBuilder';
 import { SettingsHeader } from './SettingsHeader';
-import { CollapsibleSettingsCard, SettingsCard, SectionCardHeader, SettingsListItem, SettingsListAction, SettingsPage } from './SettingsCard';
+import {
+  CollapsibleSettingsCard,
+  SettingsCard,
+  SectionCardHeader,
+  SettingsListItem,
+  SettingsListAction,
+  SettingsPage,
+} from './SettingsCard';
 import { BrutalOnOff } from '../BrutalOnOff';
 import { BrutalButton } from '../BrutalButton';
 
@@ -30,7 +37,11 @@ interface AutomationTabProps {
 export function AutomationTab({ models, tools = [] }: AutomationTabProps): React.ReactElement {
   const { t } = useI18n();
   const [jobs, setJobs] = useState<CronJob[]>([]);
-  const [status, setStatus] = useState<{ scheduler_running: boolean; total_jobs: number; active_jobs: number } | null>(null);
+  const [status, setStatus] = useState<{
+    scheduler_running: boolean;
+    total_jobs: number;
+    active_jobs: number;
+  } | null>(null);
   const [loading, setLoading] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
 
@@ -57,9 +68,7 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
 
   const refresh = async () => {
     try {
-      const [jobList, statusData] = await Promise.all([
-        fetchCronJobs(), fetchCronStatus()
-      ]);
+      const [jobList, statusData] = await Promise.all([fetchCronJobs(), fetchCronStatus()]);
       setJobs(jobList);
       setStatus(statusData);
     } catch (e) {
@@ -69,7 +78,7 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
 
   useEffect(() => {
     refresh();
-    fetchHeartbeatGlobalConfig().then(cfg => {
+    fetchHeartbeatGlobalConfig().then((cfg) => {
       const allowed = cfg.allowed_tools || [];
       setHeartbeatAllowedTools(allowed);
       setUseCustomHeartbeatTools(allowed.length > 0);
@@ -186,27 +195,53 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
 
   const modelOptions = [
     { value: '', label: t('settings.automation.defaultModel') },
-    ...models.map(m => ({ value: m, label: m })),
+    ...models.map((m) => ({ value: m, label: m })),
   ];
 
   return (
     <SettingsPage>
-      <SettingsHeader title={t('settings.automation.title')} subtitle={t('settings.automation.subtitle')} />
+      <SettingsHeader
+        title={t('settings.automation.title')}
+        subtitle={t('settings.automation.subtitle')}
+      />
 
       {/* Compact status strip: this is a summary, not a full settings section. */}
       <div className="flex items-center gap-3 border-2 border-brutal-black bg-white p-3 shadow-brutal-sm dark:bg-zinc-800 dark:text-white">
-        <div className={`flex h-9 w-9 shrink-0 items-center justify-center border-2 border-brutal-black ${status?.scheduler_running ? 'bg-brutal-green' : 'bg-neutral-300'}`}>
-          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+        <div
+          className={`flex h-9 w-9 shrink-0 items-center justify-center border-2 border-brutal-black ${status?.scheduler_running ? 'bg-brutal-green' : 'bg-neutral-300'}`}
+        >
+          <svg
+            className="h-5 w-5"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+            strokeWidth={2}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+            />
           </svg>
         </div>
         <div className="min-w-0">
-          <h3 className="text-sm font-black uppercase">{t('settings.automation.schedulerStatusTitle')}</h3>
+          <h3 className="text-sm font-black uppercase">
+            {t('settings.automation.schedulerStatusTitle')}
+          </h3>
           <p className="text-xs text-neutral-600 dark:text-neutral-400">
-            <span className={status?.scheduler_running ? 'font-bold text-green-700 dark:text-green-400' : 'font-bold text-red-700 dark:text-red-400'}>
-              {status?.scheduler_running ? t('settings.automation.running') : t('settings.automation.stopped')}
+            <span
+              className={
+                status?.scheduler_running
+                  ? 'font-bold text-green-700 dark:text-green-400'
+                  : 'font-bold text-red-700 dark:text-red-400'
+              }
+            >
+              {status?.scheduler_running
+                ? t('settings.automation.running')
+                : t('settings.automation.stopped')}
             </span>
-            {status && ` \u2014 ${t('settings.automation.activeOfTotal', { active: String(status.active_jobs), total: String(status.total_jobs) })}`}
+            {status &&
+              ` \u2014 ${t('settings.automation.activeOfTotal', { active: String(status.active_jobs), total: String(status.total_jobs) })}`}
           </p>
         </div>
       </div>
@@ -217,8 +252,18 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
           <SectionCardHeader
             iconTone="green"
             icon={
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+              <svg
+                className="w-6 h-6"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
+                />
               </svg>
             }
             title={t('settings.automation.heartbeatToolsTitle')}
@@ -254,12 +299,13 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
                   setHeartbeatAllowedTools(newTools);
                   saveHeartbeatGlobalConfig({ allowed_tools: newTools });
                 }}
-                options={tools
-                  .map(t => ({
-                    value: t,
-                    label: t.replace(/Tool$/, '').replace(/([a-z])([A-Z])/g, '$1 $2').toUpperCase(),
-                  }))
-                }
+                options={tools.map((t) => ({
+                  value: t,
+                  label: t
+                    .replace(/Tool$/, '')
+                    .replace(/([a-z])([A-Z])/g, '$1 $2')
+                    .toUpperCase(),
+                }))}
                 emptyMessage={t('settings.automation.noToolsSelected')}
               />
             )}
@@ -273,16 +319,24 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
         onOpenChange={setShowCreateForm}
         openLabel={t('common.add')}
         closeLabel={t('common.close')}
-          iconTone="blue"
-          icon={<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>}
-          title={t('settings.automation.addNewJobTitle')}
-          description={t('settings.automation.addNewJobDesc')}
+        iconTone="blue"
+        icon={
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+            />
+          </svg>
+        }
+        title={t('settings.automation.addNewJobTitle')}
+        description={t('settings.automation.addNewJobDesc')}
       >
-
         <div className="space-y-4">
           <input
             value={name}
-            onChange={e => setName(e.target.value)}
+            onChange={(e) => setName(e.target.value)}
             placeholder={t('settings.automation.jobNamePlaceholder')}
             className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 dark:focus:bg-zinc-800 dark:text-white dark:placeholder-neutral-500"
           />
@@ -291,7 +345,7 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
 
           <textarea
             value={prompt}
-            onChange={e => setPrompt(e.target.value)}
+            onChange={(e) => setPrompt(e.target.value)}
             placeholder={t('settings.automation.promptPlaceholder')}
             rows={3}
             className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 dark:focus:bg-zinc-800 dark:text-white dark:placeholder-neutral-500 resize-y"
@@ -300,7 +354,7 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
           <div className="flex flex-wrap gap-4 items-center">
             <BrutalSelect
               value={deliveryMode}
-              onChange={val => setDeliveryMode(val as 'announce' | 'none')}
+              onChange={(val) => setDeliveryMode(val as 'announce' | 'none')}
               options={[
                 { value: 'announce', label: t('settings.automation.announce') },
                 { value: 'none', label: t('settings.automation.silent') },
@@ -321,7 +375,7 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
               <input
                 type="checkbox"
                 checked={isActive}
-                onChange={e => setIsActive(e.target.checked)}
+                onChange={(e) => setIsActive(e.target.checked)}
                 className="w-5 h-5 border-2 border-brutal-black accent-brutal-black"
               />
               <span className="font-bold text-xs uppercase">{t('settings.automation.active')}</span>
@@ -344,8 +398,18 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
         <SectionCardHeader
           iconTone="black"
           icon={
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+            <svg
+              className="w-6 h-6"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+              />
             </svg>
           }
           title={t('settings.automation.scheduledJobsTitle')}
@@ -358,162 +422,194 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
           </div>
         ) : (
           <div className="space-y-3">
-            {jobs.map(job => (
+            {jobs.map((job) => (
               <SettingsListItem key={job.id}>
                 <div className="p-4 md:p-5">
-                {editingJobId === job.id ? (
-                  /* Edit mode */
-                  <div className="space-y-3">
-                    <input
-                      value={editFields.name || ''}
-                      onChange={e => setEditFields({ ...editFields, name: e.target.value })}
-                      placeholder={t('settings.automation.jobNamePlaceholder')}
-                      className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 dark:focus:bg-zinc-800 dark:text-white dark:placeholder-neutral-500"
-                    />
-                    <ScheduleBuilder
-                      value={editFields.cron_expr || '0 9 * * *'}
-                      onChange={cron => setEditFields({ ...editFields, cron_expr: cron })}
-                    />
-                    <textarea
-                      value={editFields.prompt || ''}
-                      onChange={e => setEditFields({ ...editFields, prompt: e.target.value })}
-                      rows={3}
-                      className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 dark:focus:bg-zinc-800 dark:text-white dark:placeholder-neutral-500 resize-y"
-                    />
-                    <div className="flex flex-wrap gap-4 items-center">
-                      <BrutalSelect
-                        value={editFields.delivery_mode || 'announce'}
-                        onChange={val => setEditFields({ ...editFields, delivery_mode: val as 'announce' | 'none' })}
-                        options={[
-                          { value: 'announce', label: t('settings.automation.announce') },
-                          { value: 'none', label: t('settings.automation.silent') },
-                        ]}
-                        label={t('settings.automation.delivery')}
-                        className="w-36"
+                  {editingJobId === job.id ? (
+                    /* Edit mode */
+                    <div className="space-y-3">
+                      <input
+                        value={editFields.name || ''}
+                        onChange={(e) => setEditFields({ ...editFields, name: e.target.value })}
+                        placeholder={t('settings.automation.jobNamePlaceholder')}
+                        className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 dark:focus:bg-zinc-800 dark:text-white dark:placeholder-neutral-500"
                       />
-                      <BrutalSelect
-                        value={editFields.model_override || ''}
-                        onChange={val => setEditFields({ ...editFields, model_override: val || null })}
-                        options={modelOptions}
-                        label={t('settings.automation.model')}
-                        className="w-48"
+                      <ScheduleBuilder
+                        value={editFields.cron_expr || '0 9 * * *'}
+                        onChange={(cron) => setEditFields({ ...editFields, cron_expr: cron })}
                       />
-                    </div>
-                    <div className="flex gap-2">
-                      <SettingsListAction
-                        tone="blue"
-                        onClick={handleSaveEdit}
-                        disabled={loading}
-                      >
-                        {t('common.save')}
-                      </SettingsListAction>
-                      <SettingsListAction
-                        onClick={cancelEdit}
-                        disabled={loading}
-                      >
-                        {t('common.cancel')}
-                      </SettingsListAction>
-                    </div>
-                  </div>
-                ) : (
-                  /* View mode */
-                  <>
-                    <div className="flex items-center gap-4 mb-2">
-                      <BrutalOnOff
-                        size="sm"
-                        checked={job.active}
-                        onChange={() => handleToggle(job)}
-                        disabled={loading}
+                      <textarea
+                        value={editFields.prompt || ''}
+                        onChange={(e) => setEditFields({ ...editFields, prompt: e.target.value })}
+                        rows={3}
+                        className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 dark:focus:bg-zinc-800 dark:text-white dark:placeholder-neutral-500 resize-y"
                       />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-bold text-brutal-black dark:text-white">{job.name}</span>
-                          <span className="text-[10px] px-2 py-0.5 border border-neutral-400 text-neutral-500 dark:text-neutral-400 uppercase">
-                            {job.delivery_mode}
-                          </span>
-                        </div>
-                        <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
-                          <span className="font-bold">{describeCron(job.cron_expr, t)}</span>
-                          <span className="ml-2 font-mono text-neutral-400 dark:text-neutral-500">({job.cron_expr})</span>
-                          {job.model_override && <span className="ml-2">model: {job.model_override}</span>}
-                        </div>
+                      <div className="flex flex-wrap gap-4 items-center">
+                        <BrutalSelect
+                          value={editFields.delivery_mode || 'announce'}
+                          onChange={(val) =>
+                            setEditFields({
+                              ...editFields,
+                              delivery_mode: val as 'announce' | 'none',
+                            })
+                          }
+                          options={[
+                            { value: 'announce', label: t('settings.automation.announce') },
+                            { value: 'none', label: t('settings.automation.silent') },
+                          ]}
+                          label={t('settings.automation.delivery')}
+                          className="w-36"
+                        />
+                        <BrutalSelect
+                          value={editFields.model_override || ''}
+                          onChange={(val) =>
+                            setEditFields({ ...editFields, model_override: val || null })
+                          }
+                          options={modelOptions}
+                          label={t('settings.automation.model')}
+                          className="w-48"
+                        />
                       </div>
-                      <div className="flex gap-2 shrink-0 md:self-start mt-3 md:mt-0 md:ml-4">
-                        <SettingsListAction
-                          tone="blue"
-                          onClick={() => handleTrigger(job)}
-                          disabled={loading}
-                        >
-                          {t('settings.automation.run')}
+                      <div className="flex gap-2">
+                        <SettingsListAction tone="blue" onClick={handleSaveEdit} disabled={loading}>
+                          {t('common.save')}
                         </SettingsListAction>
-                        <SettingsListAction
-                          onClick={() => startEdit(job)}
-                          disabled={loading}
-                        >
-                          {t('common.edit')}
-                        </SettingsListAction>
-                        <SettingsListAction
-                          tone="red"
-                          onClick={() => handleDelete(job)}
-                          disabled={loading}
-                        >
-                          {t('common.remove')}
+                        <SettingsListAction onClick={cancelEdit} disabled={loading}>
+                          {t('common.cancel')}
                         </SettingsListAction>
                       </div>
                     </div>
-
-                    {/* Run details */}
-                    <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-2 grid grid-cols-2 gap-x-4 gap-y-1">
-                      <div>Last run: {formatDate(job.last_run_at)}</div>
-                      <div>{t('settings.automation.nextRun')} {formatDate(job.next_run_at)}</div>
-                      {job.last_result && (
-                        <div className="col-span-2 truncate" title={job.last_result}>
-                          {t('settings.automation.result')} {job.last_result.substring(0, 120)}{job.last_result.length > 120 ? '...' : ''}
+                  ) : (
+                    /* View mode */
+                    <>
+                      <div className="flex items-center gap-4 mb-2">
+                        <BrutalOnOff
+                          size="sm"
+                          checked={job.active}
+                          onChange={() => handleToggle(job)}
+                          disabled={loading}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-brutal-black dark:text-white">
+                              {job.name}
+                            </span>
+                            <span className="text-[10px] px-2 py-0.5 border border-neutral-400 text-neutral-500 dark:text-neutral-400 uppercase">
+                              {job.delivery_mode}
+                            </span>
+                          </div>
+                          <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
+                            <span className="font-bold">{describeCron(job.cron_expr, t)}</span>
+                            <span className="ml-2 font-mono text-neutral-400 dark:text-neutral-500">
+                              ({job.cron_expr})
+                            </span>
+                            {job.model_override && (
+                              <span className="ml-2">model: {job.model_override}</span>
+                            )}
+                          </div>
                         </div>
-                      )}
-                      {job.last_error && (
-                        <div className="col-span-2 text-red-600 dark:text-red-400 truncate" title={job.last_error}>
-                          {t('settings.automation.errorLabel')} {job.last_error}
+                        <div className="flex gap-2 shrink-0 md:self-start mt-3 md:mt-0 md:ml-4">
+                          <SettingsListAction
+                            tone="blue"
+                            onClick={() => handleTrigger(job)}
+                            disabled={loading}
+                          >
+                            {t('settings.automation.run')}
+                          </SettingsListAction>
+                          <SettingsListAction onClick={() => startEdit(job)} disabled={loading}>
+                            {t('common.edit')}
+                          </SettingsListAction>
+                          <SettingsListAction
+                            tone="red"
+                            onClick={() => handleDelete(job)}
+                            disabled={loading}
+                          >
+                            {t('common.remove')}
+                          </SettingsListAction>
                         </div>
-                      )}
-                    </div>
+                      </div>
 
-                    {/* Prompt preview */}
-                    <div className="mt-2 text-xs font-mono text-neutral-400 dark:text-neutral-500 truncate" title={job.prompt}>
-                      {job.prompt.substring(0, 150)}{job.prompt.length > 150 ? '...' : ''}
-                    </div>
-
-                    {/* History toggle */}
-                    <button
-                      onClick={() => toggleHistory(job.id)}
-                      className="mt-2 text-[10px] font-bold uppercase text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 transition-colors"
-                    >
-                      {historyJobId === job.id ? t('settings.automation.hideHistory') : t('settings.automation.showHistory')}
-                    </button>
-
-                    {historyJobId === job.id && (
-                      <div className="mt-2 border-t border-neutral-200 dark:border-zinc-700 pt-2">
-                        {historyRuns.length === 0 ? (
-                          <div className="text-xs text-neutral-400 dark:text-neutral-500">{t('settings.automation.noRunHistory')}</div>
-                        ) : (
-                          <div className="space-y-1">
-                            {historyRuns.map(run => (
-                              <div key={run.id} className="text-xs flex items-start gap-2">
-                                <span className={`font-bold ${run.status === 'success' ? 'text-green-600' : run.status === 'error' ? 'text-red-600' : 'text-yellow-600'}`}>
-                                  {run.status === 'success' ? '+' : run.status === 'error' ? 'x' : '~'}
-                                </span>
-                                <span className="text-neutral-500 dark:text-neutral-400 shrink-0">{formatDate(run.started_at)}</span>
-                                <span className="text-neutral-400 dark:text-neutral-500 truncate" title={run.result || run.error || ''}>
-                                  {run.error ? `ERROR: ${run.error.substring(0, 80)}` : run.result ? run.result.substring(0, 80) : ''}
-                                </span>
-                              </div>
-                            ))}
+                      {/* Run details */}
+                      <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-2 grid grid-cols-2 gap-x-4 gap-y-1">
+                        <div>Last run: {formatDate(job.last_run_at)}</div>
+                        <div>
+                          {t('settings.automation.nextRun')} {formatDate(job.next_run_at)}
+                        </div>
+                        {job.last_result && (
+                          <div className="col-span-2 truncate" title={job.last_result}>
+                            {t('settings.automation.result')} {job.last_result.substring(0, 120)}
+                            {job.last_result.length > 120 ? '...' : ''}
+                          </div>
+                        )}
+                        {job.last_error && (
+                          <div
+                            className="col-span-2 text-red-600 dark:text-red-400 truncate"
+                            title={job.last_error}
+                          >
+                            {t('settings.automation.errorLabel')} {job.last_error}
                           </div>
                         )}
                       </div>
-                    )}
-                  </>
-                )}
+
+                      {/* Prompt preview */}
+                      <div
+                        className="mt-2 text-xs font-mono text-neutral-400 dark:text-neutral-500 truncate"
+                        title={job.prompt}
+                      >
+                        {job.prompt.substring(0, 150)}
+                        {job.prompt.length > 150 ? '...' : ''}
+                      </div>
+
+                      {/* History toggle */}
+                      <button
+                        onClick={() => toggleHistory(job.id)}
+                        className="mt-2 text-[10px] font-bold uppercase text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 transition-colors"
+                      >
+                        {historyJobId === job.id
+                          ? t('settings.automation.hideHistory')
+                          : t('settings.automation.showHistory')}
+                      </button>
+
+                      {historyJobId === job.id && (
+                        <div className="mt-2 border-t border-neutral-200 dark:border-zinc-700 pt-2">
+                          {historyRuns.length === 0 ? (
+                            <div className="text-xs text-neutral-400 dark:text-neutral-500">
+                              {t('settings.automation.noRunHistory')}
+                            </div>
+                          ) : (
+                            <div className="space-y-1">
+                              {historyRuns.map((run) => (
+                                <div key={run.id} className="text-xs flex items-start gap-2">
+                                  <span
+                                    className={`font-bold ${run.status === 'success' ? 'text-green-600' : run.status === 'error' ? 'text-red-600' : 'text-yellow-600'}`}
+                                  >
+                                    {run.status === 'success'
+                                      ? '+'
+                                      : run.status === 'error'
+                                        ? 'x'
+                                        : '~'}
+                                  </span>
+                                  <span className="text-neutral-500 dark:text-neutral-400 shrink-0">
+                                    {formatDate(run.started_at)}
+                                  </span>
+                                  <span
+                                    className="text-neutral-400 dark:text-neutral-500 truncate"
+                                    title={run.result || run.error || ''}
+                                  >
+                                    {run.error
+                                      ? `ERROR: ${run.error.substring(0, 80)}`
+                                      : run.result
+                                        ? run.result.substring(0, 80)
+                                        : ''}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
               </SettingsListItem>
             ))}

@@ -82,23 +82,24 @@ export function useCanvas(chatId: string | null): CanvasState {
     setSurfacesChatId(chatId);
   }, [chatId]);
 
-  const setSurface = useCallback((surface: A2UISurface) => {
-    setSurfaces(prev => {
-      const idx = prev.findIndex(s => s.id === surface.id);
-      const next = idx >= 0
-        ? prev.map((s, i) => i === idx ? surface : s)
-        : [...prev, surface];
-      if (chatId) saveToStorage(chatId, next);
-      return next;
-    });
-    setActiveSurfaceId(prev => prev ?? surface.id);
-    if (surface.deferred) {
-      setDeferredIds(prev => new Set([...prev, surface.id]));
-    }
-  }, [chatId]);
+  const setSurface = useCallback(
+    (surface: A2UISurface) => {
+      setSurfaces((prev) => {
+        const idx = prev.findIndex((s) => s.id === surface.id);
+        const next = idx >= 0 ? prev.map((s, i) => (i === idx ? surface : s)) : [...prev, surface];
+        if (chatId) saveToStorage(chatId, next);
+        return next;
+      });
+      setActiveSurfaceId((prev) => prev ?? surface.id);
+      if (surface.deferred) {
+        setDeferredIds((prev) => new Set([...prev, surface.id]));
+      }
+    },
+    [chatId]
+  );
 
   const markDeferred = useCallback((id: string) => {
-    setDeferredIds(prev => new Set([...prev, id]));
+    setDeferredIds((prev) => new Set([...prev, id]));
   }, []);
 
   const setActiveSurface = useCallback((id: string) => {
@@ -109,7 +110,11 @@ export function useCanvas(chatId: string | null): CanvasState {
     setSurfaces([]);
     setActiveSurfaceId(null);
     if (chatId) {
-      try { localStorage.removeItem(storageKey(chatId)); } catch { /* ignore */ }
+      try {
+        localStorage.removeItem(storageKey(chatId));
+      } catch {
+        /* ignore */
+      }
     }
   }, [chatId]);
 

@@ -17,11 +17,18 @@ function domainOf(url: string): string {
 }
 
 /** Favicon via Google's service, with a 🔗 fallback if it fails to load. */
-const ResultFavicon: React.FC<{ url: string; className?: string }> = ({ url, className = 'w-4 h-4' }) => {
+const ResultFavicon: React.FC<{ url: string; className?: string }> = ({
+  url,
+  className = 'w-4 h-4',
+}) => {
   const [failed, setFailed] = useState(false);
   const domain = domainOf(url);
   if (failed || !domain) {
-    return <span className={`inline-flex items-center justify-center leading-none ${className}`}>🔗</span>;
+    return (
+      <span className={`inline-flex items-center justify-center leading-none ${className}`}>
+        🔗
+      </span>
+    );
   }
   return (
     <img
@@ -57,7 +64,9 @@ export const WebSearchSidebarView: React.FC<WebSearchSidebarViewProps> = ({ outp
             {source}
           </span>
           <span className="text-xs font-mono font-bold text-brutal-black bg-brutal-yellow border-2 border-brutal-black px-2 py-1">
-            {t(results.length === 1 ? 'toolCallBlock.resultOne' : 'toolCallBlock.resultMany', { count: results.length })}
+            {t(results.length === 1 ? 'toolCallBlock.resultOne' : 'toolCallBlock.resultMany', {
+              count: results.length,
+            })}
           </span>
         </div>
       </div>

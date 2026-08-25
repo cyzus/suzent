@@ -43,7 +43,10 @@ export const ProjectRowMenu: React.FC<ProjectRowMenuProps> = ({
     const minLeft = bounds.left + margin;
     const maxLeft = Math.max(minLeft, bounds.right - menuW - margin);
     const minTop = Math.max(margin, bounds.top + margin);
-    const maxTop = Math.max(minTop, Math.min(window.innerHeight - menuH - margin, bounds.bottom - menuH - margin));
+    const maxTop = Math.max(
+      minTop,
+      Math.min(window.innerHeight - menuH - margin, bounds.bottom - menuH - margin)
+    );
     let left = anchorPoint.x;
     let top = anchorPoint.y;
     if (left > maxLeft) left = maxLeft;
@@ -74,7 +77,8 @@ export const ProjectRowMenu: React.FC<ProjectRowMenuProps> = ({
     };
   }, [onClose]);
 
-  const surface = 'bg-white dark:bg-zinc-800 border-2 border-brutal-black shadow-[3px_3px_0_0_#000]';
+  const surface =
+    'bg-white dark:bg-zinc-800 border-2 border-brutal-black shadow-[3px_3px_0_0_#000]';
   const itemBase =
     'w-full text-left px-3 py-2 text-xs font-extrabold uppercase tracking-wider flex items-center gap-2.5 transition-colors';
 
@@ -101,10 +105,23 @@ export const ProjectRowMenu: React.FC<ProjectRowMenuProps> = ({
         type="button"
         role="menuitem"
         className={`${itemBase} text-brutal-black dark:text-white hover:bg-brutal-yellow dark:hover:bg-brutal-yellow dark:hover:text-brutal-black`}
-        onClick={() => { onRename(); onClose(); }}
+        onClick={() => {
+          onRename();
+          onClose();
+        }}
       >
-        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+        <svg
+          className="w-3.5 h-3.5"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+          strokeWidth={3}
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+          />
         </svg>
         {t('chatList.menu.rename')}
       </button>
@@ -114,11 +131,24 @@ export const ProjectRowMenu: React.FC<ProjectRowMenuProps> = ({
       <button
         type="button"
         role="menuitem"
-        onClick={() => { onDelete(); onClose(); }}
+        onClick={() => {
+          onDelete();
+          onClose();
+        }}
         className={`${itemBase} text-brutal-red hover:bg-brutal-red hover:text-white`}
       >
-        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3" />
+        <svg
+          className="w-3.5 h-3.5"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+          strokeWidth={3}
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3"
+          />
         </svg>
         {t('chatList.menu.delete')}
       </button>

@@ -47,7 +47,10 @@ export function AppearanceTab(): React.ReactElement {
 
   return (
     <SettingsPage>
-      <SettingsHeader title={t('settings.appearance.title')} subtitle={t('settings.appearance.subtitle')} />
+      <SettingsHeader
+        title={t('settings.appearance.title')}
+        subtitle={t('settings.appearance.subtitle')}
+      />
 
       <SettingsCard>
         <SectionCardHeader
@@ -96,7 +99,11 @@ export function AppearanceTab(): React.ReactElement {
                 {/* Label + checkmark */}
                 <div className="flex items-center gap-1.5">
                   {isActive && (
-                    <svg className="w-3 h-3 text-brutal-black dark:text-white flex-shrink-0" fill="currentColor" viewBox="0 0 12 12">
+                    <svg
+                      className="w-3 h-3 text-brutal-black dark:text-white flex-shrink-0"
+                      fill="currentColor"
+                      viewBox="0 0 12 12"
+                    >
                       <path d="M10 3L5 8.5 2 5.5 1 6.5l4 4 6-7z" />
                     </svg>
                   )}

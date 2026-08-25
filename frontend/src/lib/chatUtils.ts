@@ -1,4 +1,9 @@
-import type { AGUIPart, PermissionPrompt, ToolPermissionDecision, ToolPermissionResolution } from '../types/agui';
+import type {
+  AGUIPart,
+  PermissionPrompt,
+  ToolPermissionDecision,
+  ToolPermissionResolution,
+} from '../types/agui';
 
 /**
  * Has the run produced anything the user can actually see yet?
@@ -10,8 +15,8 @@ import type { AGUIPart, PermissionPrompt, ToolPermissionDecision, ToolPermission
  * it. A tool or notice part counts; an empty text/reasoning shell does not.
  */
 export function hasStreamedOutput(parts: AGUIPart[] | undefined): boolean {
-  return !!parts?.some(part =>
-    part.type === 'text' || part.type === 'reasoning' ? !!part.text : true,
+  return !!parts?.some((part) =>
+    part.type === 'text' || part.type === 'reasoning' ? !!part.text : true
   );
 }
 
@@ -21,7 +26,11 @@ export function formatMessageTime(iso: string): string {
   if (date.toDateString() === now.toDateString()) {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
-  return date.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return (
+    date.toLocaleDateString([], { month: 'short', day: 'numeric' }) +
+    ' ' +
+    date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  );
 }
 
 export interface ContentBlock {
@@ -57,9 +66,7 @@ export function normalizePythonCode(code: string): string {
 
   // Remove the minimum indentation from all lines
   if (minIndent > 0 && minIndent !== Infinity) {
-    return lines.map(line =>
-      line.trim().length > 0 ? line.slice(minIndent) : line
-    ).join('\n');
+    return lines.map((line) => (line.trim().length > 0 ? line.slice(minIndent) : line)).join('\n');
   }
 
   return code;
@@ -83,18 +90,20 @@ export function isToolOnlyContent(content: string | undefined): boolean {
   if (!content?.trim()) return false;
   const blocks = splitAssistantContent(content);
   // Filter out ignored tool calls
-  const filtered = blocks.filter(b => {
+  const filtered = blocks.filter((b) => {
     if (b.type !== 'toolCall') return true;
     return !IGNORED_TOOL_NAMES.includes((b.toolName || '').toLowerCase());
   });
   if (filtered.length === 0) return false;
   // Prominent tools always render as standalone cards, never as step pills
-  if (filtered.some(b => b.type === 'toolCall' && PROMINENT_TOOL_NAMES.includes(b.toolName || ''))) {
+  if (
+    filtered.some((b) => b.type === 'toolCall' && PROMINENT_TOOL_NAMES.includes(b.toolName || ''))
+  ) {
     return false;
   }
   // Reasoning blocks (Thought:...) are not final user-facing content; treat like tool calls.
-  const contentBlocks = filtered.filter(b => b.type !== 'toolCall' && b.type !== 'reasoning');
-  const hasContent = contentBlocks.some(b => b.type === 'a2ui' || b.content.trim().length > 0);
+  const contentBlocks = filtered.filter((b) => b.type !== 'toolCall' && b.type !== 'reasoning');
+  const hasContent = contentBlocks.some((b) => b.type === 'a2ui' || b.content.trim().length > 0);
   return !hasContent;
 }
 
@@ -107,7 +116,6 @@ export function isIntermediateStepContent(content: string | undefined, stepInfo?
   }
   return isToolOnlyContent(content);
 }
-
 
 const SPLIT_CACHE_LIMIT = 80;
 const splitAssistantContentCache = new Map<string, ContentBlock[]>();
@@ -149,7 +157,8 @@ function parseAssistantContent(content: string): ContentBlock[] {
   });
 
   // Regex to find <details> blocks (logs, tool calls, and now reasoning)
-  const detailsRegex = /<details(?:\s+data-tool-call-id="([^"]*)")?(?:\s+data-approval-id="([^"]*)")?(?:\s+data-approval-state="([^"]*)")?(?:\s+data-reasoning="([^"]*)")?\s*>\s*<summary>\s*(.*?)\s*<\/summary>\s*(?:<pre><code(?:\s+class="language-[^"]*")?\s*>([\s\S]*?)<\/code><\/pre>|([\s\S]*?))\s*<\/details>/g;
+  const detailsRegex =
+    /<details(?:\s+data-tool-call-id="([^"]*)")?(?:\s+data-approval-id="([^"]*)")?(?:\s+data-approval-state="([^"]*)")?(?:\s+data-reasoning="([^"]*)")?\s*>\s*<summary>\s*(.*?)\s*<\/summary>\s*(?:<pre><code(?:\s+class="language-[^"]*")?\s*>([\s\S]*?)<\/code><\/pre>|([\s\S]*?))\s*<\/details>/g;
 
   let lastIndex = 0;
   let match;
@@ -157,7 +166,14 @@ function parseAssistantContent(content: string): ContentBlock[] {
   const content_ref = processedContent;
 
   // First pass: split by log/details blocks
-  const splits: { type: 'markdown' | 'log' | 'reasoning'; content: string; title?: string; toolCallId?: string; approvalId?: string; approvalState?: string }[] = [];
+  const splits: {
+    type: 'markdown' | 'log' | 'reasoning';
+    content: string;
+    title?: string;
+    toolCallId?: string;
+    approvalId?: string;
+    approvalState?: string;
+  }[] = [];
 
   while ((match = detailsRegex.exec(content_ref)) !== null) {
     const before = content_ref.slice(lastIndex, match.index);
@@ -176,7 +192,7 @@ function parseAssistantContent(content: string): ContentBlock[] {
     if (isReasoning) {
       splits.push({
         type: 'reasoning',
-        content: (rawContent || '').trim()
+        content: (rawContent || '').trim(),
       });
     } else {
       // Decode HTML entities in content for display
@@ -193,7 +209,7 @@ function parseAssistantContent(content: string): ContentBlock[] {
         approvalId,
         approvalState,
         title,
-        content: decodedContent
+        content: decodedContent,
       });
     }
 
@@ -232,7 +248,7 @@ function parseAssistantContent(content: string): ContentBlock[] {
         if (currentMarkdown.trim() !== '') {
           blocks.push({
             type: 'markdown',
-            content: currentMarkdown.replace(/<details\b[^>]*>[\s\S]*?<\/details>/gi, '').trim()
+            content: currentMarkdown.replace(/<details\b[^>]*>[\s\S]*?<\/details>/gi, '').trim(),
           });
           currentMarkdown = '';
         }
@@ -241,9 +257,53 @@ function parseAssistantContent(content: string): ContentBlock[] {
         // Given the original logic, if langLineEnd is -1, it means the fence is not properly closed or is on the last line.
         // In this case, the content from fenceStart to the end is treated as code.
         // We'll use a default 'text' lang for this case, or infer from the token if possible.
-        const langToken = subContent.slice(fenceStart + 3).split('\n')[0].trim();
+        const langToken = subContent
+          .slice(fenceStart + 3)
+          .split('\n')[0]
+          .trim();
         const cleanLang = langToken.replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase();
-        const validLanguages = ['python', 'javascript', 'typescript', 'java', 'cpp', 'c', 'go', 'rust', 'sql', 'html', 'css', 'json', 'yaml', 'xml', 'bash', 'shell', 'powershell', 'php', 'ruby', 'swift', 'kotlin', 'dart', 'r', 'matlab', 'scala', 'perl', 'lua', 'haskell', 'clojure', 'elixir', 'erlang', 'fsharp', 'ocaml', 'pascal', 'fortran', 'cobol', 'assembly', 'asm', 'text', 'plain'];
+        const validLanguages = [
+          'python',
+          'javascript',
+          'typescript',
+          'java',
+          'cpp',
+          'c',
+          'go',
+          'rust',
+          'sql',
+          'html',
+          'css',
+          'json',
+          'yaml',
+          'xml',
+          'bash',
+          'shell',
+          'powershell',
+          'php',
+          'ruby',
+          'swift',
+          'kotlin',
+          'dart',
+          'r',
+          'matlab',
+          'scala',
+          'perl',
+          'lua',
+          'haskell',
+          'clojure',
+          'elixir',
+          'erlang',
+          'fsharp',
+          'ocaml',
+          'pascal',
+          'fortran',
+          'cobol',
+          'assembly',
+          'asm',
+          'text',
+          'plain',
+        ];
         const lang = validLanguages.includes(cleanLang) ? cleanLang : 'text';
 
         if (lang === 'python') codeBody = normalizePythonCode(codeBody);
@@ -254,7 +314,48 @@ function parseAssistantContent(content: string): ContentBlock[] {
 
       const langToken = subContent.slice(fenceStart + 3, langLineEnd).trim();
       const cleanLang = langToken.replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase();
-      const validLanguages = ['python', 'javascript', 'typescript', 'java', 'cpp', 'c', 'go', 'rust', 'sql', 'html', 'css', 'json', 'yaml', 'xml', 'bash', 'shell', 'powershell', 'php', 'ruby', 'swift', 'kotlin', 'dart', 'r', 'matlab', 'scala', 'perl', 'lua', 'haskell', 'clojure', 'elixir', 'erlang', 'fsharp', 'ocaml', 'pascal', 'fortran', 'cobol', 'assembly', 'asm', 'text', 'plain'];
+      const validLanguages = [
+        'python',
+        'javascript',
+        'typescript',
+        'java',
+        'cpp',
+        'c',
+        'go',
+        'rust',
+        'sql',
+        'html',
+        'css',
+        'json',
+        'yaml',
+        'xml',
+        'bash',
+        'shell',
+        'powershell',
+        'php',
+        'ruby',
+        'swift',
+        'kotlin',
+        'dart',
+        'r',
+        'matlab',
+        'scala',
+        'perl',
+        'lua',
+        'haskell',
+        'clojure',
+        'elixir',
+        'erlang',
+        'fsharp',
+        'ocaml',
+        'pascal',
+        'fortran',
+        'cobol',
+        'assembly',
+        'asm',
+        'text',
+        'plain',
+      ];
       const lang = validLanguages.includes(cleanLang) ? cleanLang : 'text';
 
       const closingFenceRegex = /\n[ \t]*```/g;
@@ -266,7 +367,7 @@ function parseAssistantContent(content: string): ContentBlock[] {
         if (currentMarkdown.trim() !== '') {
           blocks.push({
             type: 'markdown',
-            content: currentMarkdown.replace(/<details\b[^>]*>[\s\S]*?<\/details>/gi, '').trim()
+            content: currentMarkdown.replace(/<details\b[^>]*>[\s\S]*?<\/details>/gi, '').trim(),
           });
           currentMarkdown = '';
         }
@@ -279,7 +380,7 @@ function parseAssistantContent(content: string): ContentBlock[] {
         if (currentMarkdown.trim() !== '') {
           blocks.push({
             type: 'markdown',
-            content: currentMarkdown.replace(/<details\b[^>]*>[\s\S]*?<\/details>/gi, '').trim()
+            content: currentMarkdown.replace(/<details\b[^>]*>[\s\S]*?<\/details>/gi, '').trim(),
           });
           currentMarkdown = '';
         }
@@ -292,7 +393,7 @@ function parseAssistantContent(content: string): ContentBlock[] {
     if (currentMarkdown.trim() !== '') {
       blocks.push({
         type: 'markdown',
-        content: currentMarkdown.replace(/<details\b[^>]*>[\s\S]*?<\/details>/gi, '').trim()
+        content: currentMarkdown.replace(/<details\b[^>]*>[\s\S]*?<\/details>/gi, '').trim(),
       });
     }
   }
@@ -330,7 +431,7 @@ function parseAssistantContent(content: string): ContentBlock[] {
   // Post-process: convert tool-titled log blocks to toolCall blocks FIRST
   // Tool call invocations have title starting with 🔧, tool outputs with 📦
   const converted = expandedBlocks
-    .map(b => {
+    .map((b) => {
       if (b.type !== 'log' || !b.title) return b;
 
       const toolInvokeMatch = b.title.match(/^\u{1F527}\s+(.+)$/u);
@@ -359,11 +460,10 @@ function parseAssistantContent(content: string): ContentBlock[] {
       return b;
     })
     // Filter AFTER conversion so toolCall blocks with empty content are kept
-    .filter(b => b.content !== '' || b.type === 'toolCall' || b.type === 'a2ui');
+    .filter((b) => b.content !== '' || b.type === 'toolCall' || b.type === 'a2ui');
 
   return mergeToolCallPairs(converted);
 }
-
 
 /**
  * Merge tool call invocations with their outputs by position.
@@ -393,8 +493,8 @@ export function mergeToolCallPairs(blocks: ContentBlock[]): ContentBlock[] {
       if (b.toolCallId) {
         if (processedIds.has(b.toolCallId)) continue;
 
-        const inv = invocations.find(x => x.toolCallId === b.toolCallId);
-        const out = outputs.find(x => x.toolCallId === b.toolCallId);
+        const inv = invocations.find((x) => x.toolCallId === b.toolCallId);
+        const out = outputs.find((x) => x.toolCallId === b.toolCallId);
 
         if (inv && out) {
           mergedBlocks.push({

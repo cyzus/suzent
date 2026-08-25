@@ -41,12 +41,28 @@ export const BashCommandRenderer: React.FC<BashRendererProps> = ({ parsedArgs })
           title="Copy command"
         >
           {copied ? (
-            <svg className="w-3.5 h-3.5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <svg
+              className="w-3.5 h-3.5 text-green-500"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2.5}
+            >
               <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
             </svg>
           ) : (
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            <svg
+              className="w-3.5 h-3.5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+              />
             </svg>
           )}
         </button>
@@ -68,10 +84,14 @@ export const BashOutputRenderer: React.FC<BashRendererProps> = ({ metadata, outp
 
   return (
     <div className="flex items-start min-w-0">
-      <span className={`w-14 shrink-0 text-[10px] font-mono font-bold uppercase pt-[5px] pr-2 text-right select-none ${failed ? 'text-red-500' : 'text-neutral-400 dark:text-neutral-500'}`}>
+      <span
+        className={`w-14 shrink-0 text-[10px] font-mono font-bold uppercase pt-[5px] pr-2 text-right select-none ${failed ? 'text-red-500' : 'text-neutral-400 dark:text-neutral-500'}`}
+      >
         {outLabel}
       </span>
-      <pre className={`tool-call-pre flex-1 font-mono text-[12px] leading-5 px-2 py-1.5 rounded-sm overflow-x-auto max-h-[240px] overflow-y-auto whitespace-pre-wrap break-all m-0 ${failed ? 'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30' : 'text-neutral-600 dark:text-neutral-300 bg-neutral-50 dark:bg-zinc-900'}`}>
+      <pre
+        className={`tool-call-pre flex-1 font-mono text-[12px] leading-5 px-2 py-1.5 rounded-sm overflow-x-auto max-h-[240px] overflow-y-auto whitespace-pre-wrap break-all m-0 ${failed ? 'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30' : 'text-neutral-600 dark:text-neutral-300 bg-neutral-50 dark:bg-zinc-900'}`}
+      >
         {outputText.trim() || '(no output)'}
       </pre>
     </div>

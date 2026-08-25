@@ -22,10 +22,7 @@ import type { A2UISurface } from '../types/a2ui';
 import { useAutoScroll } from '../hooks/useAutoScroll';
 import { useUnifiedFileUpload } from '../hooks/useUnifiedFileUpload';
 import { useToolApproval } from '../hooks/chat/useToolApproval';
-import {
-  permissionApprovalsToParts,
-  useApprovalRestore,
-} from '../hooks/chat/useApprovalRestore';
+import { permissionApprovalsToParts, useApprovalRestore } from '../hooks/chat/useApprovalRestore';
 import { NewChatView } from './NewChatView';
 import { ChatInputPanel, type FileMentionSelection } from './ChatInputPanel';
 import { ImageViewer } from './ImageViewer';
@@ -47,7 +44,12 @@ import { useHeartbeatRunning } from '../hooks/useHeartbeatRunning';
 import { SubAgentView } from './sidebar/SubAgentView';
 import { ProjectKanbanView } from './sidebar/ProjectKanbanView';
 import { useSubAgentStatus } from '../hooks/useSubAgentStatus';
-import { useEventBus, isBusStreaming, subscribeToBusPayloads, subscribeToStreamEvents } from '../hooks/useEventBus';
+import {
+  useEventBus,
+  isBusStreaming,
+  subscribeToBusPayloads,
+  subscribeToStreamEvents,
+} from '../hooks/useEventBus';
 import { useStatusStore } from '../hooks/useStatusStore';
 import { useContextUsageStore } from '../hooks/useContextUsageStore';
 import { useActivatedToolsStore } from '../hooks/useActivatedToolsStore';
@@ -170,10 +172,17 @@ function extractFileMentionPaths(value: string): string[] {
   return Array.from(paths);
 }
 
-function extractSelectedFileMentions(value: string, mentions: FileMentionSelection[]): FileMentionSelection[] {
-  const manualPaths = extractFileMentionPaths(value).map(path => ({ name: path.split('/').pop() || path, path, type: 'file' as const }));
+function extractSelectedFileMentions(
+  value: string,
+  mentions: FileMentionSelection[]
+): FileMentionSelection[] {
+  const manualPaths = extractFileMentionPaths(value).map((path) => ({
+    name: path.split('/').pop() || path,
+    path,
+    type: 'file' as const,
+  }));
   // A tracked mention is present if its `@[<path>]` token is still in the text.
-  const selected = mentions.filter(mention => value.includes(`@[${mention.path}]`));
+  const selected = mentions.filter((mention) => value.includes(`@[${mention.path}]`));
   const byPath = new Map<string, FileMentionSelection>();
   // Prefer the richer tracked mention (correct name/type) over the path-derived
   // fallback when both resolve to the same path.
@@ -195,7 +204,12 @@ function formatToolArgsForStore(toolName: string, args: string): string {
  * Tool invocations are serialized as HTML <details> blocks with emoji conventions
  * so the existing historical message rendering pipeline can display them.
  */
-function aguiPartsToStoreMessage(parts: AGUIPart[], usage?: any, role: Message['role'] = 'assistant', model?: string): Message {
+function aguiPartsToStoreMessage(
+  parts: AGUIPart[],
+  usage?: any,
+  role: Message['role'] = 'assistant',
+  model?: string
+): Message {
   // Normalize: merge duplicate tool parts (same toolCallId) so only the final
   // state is stored. Without this, a tool that went through approval-requested →
   // completed would write two 🔧 blocks, the first with data-approval-state="pending".
@@ -243,8 +257,14 @@ function aguiPartsToStoreMessage(parts: AGUIPart[], usage?: any, role: Message['
       const argsStr = formatToolArgsForStore(toolName, part.args || '');
       const outputStr = part.output != null ? truncateForStore(part.output, 12000) : undefined;
       const approvalId = part.approvalId || '';
-      const stateAttr = (part.state === 'approval-requested' && !outputStr) ? 'pending' : (part.state === 'error' ? 'denied' : '');
-      const attrs = ` data-tool-call-id="${toolCallId}"` +
+      const stateAttr =
+        part.state === 'approval-requested' && !outputStr
+          ? 'pending'
+          : part.state === 'error'
+            ? 'denied'
+            : '';
+      const attrs =
+        ` data-tool-call-id="${toolCallId}"` +
         (approvalId ? ` data-approval-id="${approvalId}"` : '') +
         (stateAttr ? ` data-approval-state="${stateAttr}"` : '');
 
@@ -265,11 +285,18 @@ function aguiPartsToStoreMessage(parts: AGUIPart[], usage?: any, role: Message['
       persistedParts.push({ ...part, citationSources: [...part.citationSources] });
     }
   }
-  return { role, content, parts: persistedParts, timestamp: new Date().toISOString(), model: model || undefined, stepInfo: usage ? formatUsage(usage) : undefined };
+  return {
+    role,
+    content,
+    parts: persistedParts,
+    timestamp: new Date().toISOString(),
+    model: model || undefined,
+    stepInfo: usage ? formatUsage(usage) : undefined,
+  };
 }
 
 function finalizeInterruptedParts(parts: AGUIPart[]): AGUIPart[] {
-  return parts.map(part => {
+  return parts.map((part) => {
     if (part.type === 'tool' && part.state === 'approval-requested') {
       return {
         ...part,
@@ -297,8 +324,14 @@ function groupedBlocksToAssistantContent(blocks: ContentBlock[]): string {
       const toolCallId = block.toolCallId || '';
       const argsStr = block.toolArgs || '';
       const approvalId = block.approvalId || '';
-      const stateAttr = block.approvalState === 'pending' ? 'pending' : (block.approvalState === 'denied' ? 'denied' : '');
-      const attrs = ` data-tool-call-id="${toolCallId}"` +
+      const stateAttr =
+        block.approvalState === 'pending'
+          ? 'pending'
+          : block.approvalState === 'denied'
+            ? 'denied'
+            : '';
+      const attrs =
+        ` data-tool-call-id="${toolCallId}"` +
         (approvalId ? ` data-approval-id="${approvalId}"` : '') +
         (stateAttr ? ` data-approval-state="${stateAttr}"` : '');
 
@@ -328,7 +361,9 @@ function _saveStreamSeed(chatId: string, parts: AGUIPart[]): void {
   try {
     const seed: StreamSeed = { chatId, parts, ts: Date.now() };
     sessionStorage.setItem(STREAM_SEED_KEY, JSON.stringify(seed));
-  } catch { /* storage may be full or unavailable */ }
+  } catch {
+    /* storage may be full or unavailable */
+  }
 }
 
 function _loadStreamSeed(chatId: string): StreamSeed | null {
@@ -342,11 +377,17 @@ function _loadStreamSeed(chatId: string): StreamSeed | null {
       return null;
     }
     return seed;
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 function _clearStreamSeed(): void {
-  try { sessionStorage.removeItem(STREAM_SEED_KEY); } catch { /* ignore */ }
+  try {
+    sessionStorage.removeItem(STREAM_SEED_KEY);
+  } catch {
+    /* ignore */
+  }
 }
 
 // Message list component (renders historical / store messages only)
@@ -357,11 +398,20 @@ const MessageList: React.FC<{
   chatId?: string;
   onImageClick?: (src: string) => void;
   onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
-  onToolApproval?: (approvalId: string, toolCallId: string, approved: boolean, remember?: ApprovalRememberScope, toolName?: string) => void;
+  onToolApproval?: (
+    approvalId: string,
+    toolCallId: string,
+    approved: boolean,
+    remember?: ApprovalRememberScope,
+    toolName?: string
+  ) => void;
   toolApprovalPolicy?: Record<string, string>;
   onRemoveApprovalPolicy?: (toolName: string) => void;
   onInlineAction?: (surfaceId: string, action: string, context: Record<string, unknown>) => void;
-  subAgentTasks?: Record<string, { status: SubAgentStatus; resultSummary?: string; error?: string }>;
+  subAgentTasks?: Record<
+    string,
+    { status: SubAgentStatus; resultSummary?: string; error?: string }
+  >;
   onOpenSubAgentSidebar?: (taskId: string) => void;
   onStopSubAgent?: (taskId: string) => void;
   onForceWebContext?: (contextId: string) => void;
@@ -372,10 +422,32 @@ const MessageList: React.FC<{
   onEditUserMessage?: (newContent: string) => void;
   chatCitationSources?: CitationSourcesMap;
   fallbackModel?: string;
-}> = ({ messages, streamingForCurrentChat, messageIndexOffset = 0, chatId, onImageClick, onFileClick, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy, onInlineAction, subAgentTasks, onOpenSubAgentSidebar, onStopSubAgent, onForceWebContext, onRetry, onFork, forkOrigin, onOpenForkOrigin, onEditUserMessage, chatCitationSources, fallbackModel }) => {
+}> = ({
+  messages,
+  streamingForCurrentChat,
+  messageIndexOffset = 0,
+  chatId,
+  onImageClick,
+  onFileClick,
+  onToolApproval,
+  toolApprovalPolicy,
+  onRemoveApprovalPolicy,
+  onInlineAction,
+  subAgentTasks,
+  onOpenSubAgentSidebar,
+  onStopSubAgent,
+  onForceWebContext,
+  onRetry,
+  onFork,
+  forkOrigin,
+  onOpenForkOrigin,
+  onEditUserMessage,
+  chatCitationSources,
+  fallbackModel,
+}) => {
   const { skipIndices, groupRenders, stepSummaryByMessageIndex } = useMemo(
     () => buildMessageRenderPlan(messages),
-    [messages],
+    [messages]
   );
 
   // Index of the last non-skipped assistant message — only it shows the retry button.
@@ -424,7 +496,11 @@ const MessageList: React.FC<{
             file_change_message_index: m.file_change_message_index,
           };
           return (
-            <div key={globalIdx} data-message-index={globalIdx} className="chat-msg-row w-full flex flex-col group/message">
+            <div
+              key={globalIdx}
+              data-message-index={globalIdx}
+              className="chat-msg-row w-full flex flex-col group/message"
+            >
               <div className="flex justify-start w-full">
                 <AssistantMessage
                   message={groupedMessage}
@@ -451,12 +527,16 @@ const MessageList: React.FC<{
         }
 
         // Regular message rendering
-        const stepSummary = isAssistant ? (stepSummaryByMessageIndex.get(idx) || null) : null;
+        const stepSummary = isAssistant ? stepSummaryByMessageIndex.get(idx) || null : null;
 
         // Canvas action message — lightweight dashed pill
         if (m.role === 'canvas_action') {
           return (
-            <div key={globalIdx} data-message-index={globalIdx} className="chat-msg-row w-full flex justify-start pl-2 pr-2 min-w-0">
+            <div
+              key={globalIdx}
+              data-message-index={globalIdx}
+              className="chat-msg-row w-full flex justify-start pl-2 pr-2 min-w-0"
+            >
               <div className="max-w-full min-w-0 border-2 border-dashed border-brutal-black px-4 py-2 text-sm font-mono text-neutral-500 dark:text-neutral-400 italic bg-white dark:bg-zinc-800 whitespace-pre-wrap break-words break-all">
                 {m.content}
               </div>
@@ -468,7 +548,11 @@ const MessageList: React.FC<{
         // showing what kicked off this agent turn.
         if (m.role === 'system_triggered') {
           return (
-            <div key={globalIdx} data-message-index={globalIdx} className="chat-msg-row w-full flex justify-start">
+            <div
+              key={globalIdx}
+              data-message-index={globalIdx}
+              className="chat-msg-row w-full flex justify-start"
+            >
               <SystemTriggeredMessage message={m} />
             </div>
           );
@@ -476,21 +560,25 @@ const MessageList: React.FC<{
 
         if (isNotice) {
           return (
-            <div key={globalIdx} data-message-index={globalIdx} className="chat-msg-row w-full flex justify-start">
+            <div
+              key={globalIdx}
+              data-message-index={globalIdx}
+              className="chat-msg-row w-full flex justify-start"
+            >
               <NoticeMessage message={m} />
             </div>
           );
         }
 
-        const showForkOrigin = (
-          forkOrigin
-          && onOpenForkOrigin
-          && m.raw_message_end_index === forkOrigin.messageIndex
-        );
+        const showForkOrigin =
+          forkOrigin && onOpenForkOrigin && m.raw_message_end_index === forkOrigin.messageIndex;
 
         return (
           <React.Fragment key={globalIdx}>
-            <div data-message-index={globalIdx} className="chat-msg-row w-full flex flex-col group/message">
+            <div
+              data-message-index={globalIdx}
+              className="chat-msg-row w-full flex flex-col group/message"
+            >
               <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} w-full`}>
                 {isUser ? (
                   <UserMessage
@@ -499,7 +587,11 @@ const MessageList: React.FC<{
                     onImageClick={onImageClick}
                     onFileClick={onFileClick}
                     isLatest={idx === lastUserIdx && !streamingForCurrentChat}
-                    onEdit={idx === lastUserIdx && !streamingForCurrentChat ? onEditUserMessage : undefined}
+                    onEdit={
+                      idx === lastUserIdx && !streamingForCurrentChat
+                        ? onEditUserMessage
+                        : undefined
+                    }
                     onRerun={idx === lastUserIdx && !streamingForCurrentChat ? onRetry : undefined}
                   />
                 ) : (
@@ -518,11 +610,13 @@ const MessageList: React.FC<{
                     onOpenSubAgentSidebar={onOpenSubAgentSidebar}
                     onStopSubAgent={onStopSubAgent}
                     onForceWebContext={onForceWebContext}
-                    onRetry={idx === lastAssistantIdx && !streamingForCurrentChat ? onRetry : undefined}
+                    onRetry={
+                      idx === lastAssistantIdx && !streamingForCurrentChat ? onRetry : undefined
+                    }
                     onFork={
-                      onFork
-                        && !streamingForCurrentChat
-                        && typeof m.raw_message_end_index === 'number'
+                      onFork &&
+                      !streamingForCurrentChat &&
+                      typeof m.raw_message_end_index === 'number'
                         ? () => onFork(m.raw_message_end_index)
                         : undefined
                     }
@@ -541,9 +635,7 @@ const MessageList: React.FC<{
                 </div>
               )}
             </div>
-            {showForkOrigin && (
-              <ForkOriginMarker origin={forkOrigin} onOpen={onOpenForkOrigin} />
-            )}
+            {showForkOrigin && <ForkOriginMarker origin={forkOrigin} onOpen={onOpenForkOrigin} />}
           </React.Fragment>
         );
       })}
@@ -567,14 +659,13 @@ interface ChatWindowProps {
 
 export const ChatWindow: React.FC<ChatWindowProps> = ({
   isRightSidebarOpen = false,
-  onRightSidebarToggle = () => { },
+  onRightSidebarToggle = () => {},
   onRightSidebarWidthChange,
   rightSidebarMaxWidthPx,
   rightSidebarCanvasMaxWidthPx,
   viewportWidthPx,
   rightSidebarForceFullView = false,
 }) => {
-
   // Store hooks
   const {
     messages,
@@ -598,11 +689,18 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     updateChatTitleLocally,
   } = useChatStore();
 
-  const { refresh: refreshGoalTasks, refreshKanban, goal, tasks, goalChatId, kanban } = useGoalTasks();
+  const {
+    refresh: refreshGoalTasks,
+    refreshKanban,
+    goal,
+    tasks,
+    goalChatId,
+    kanban,
+  } = useGoalTasks();
   const { loadCoreMemory, loadStats } = useMemory();
   const canvas = useCanvas(currentChatId);
   const { t } = useI18n();
-  const setHeartbeatRunning = useHeartbeatRunning(s => s.setRunning);
+  const setHeartbeatRunning = useHeartbeatRunning((s) => s.setRunning);
 
   // Local state
   const [input, setInput] = useState('');
@@ -613,7 +711,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const [forkError, setForkError] = useState<string | null>(null);
   // `nonce` bumps on every click so re-selecting the *same* file re-triggers the
   // preview even after the user navigated back to the file list.
-  const [sidebarFilePreview, setSidebarFilePreview] = useState<{ path: string; name: string; nonce: number } | null>(null);
+  const [sidebarFilePreview, setSidebarFilePreview] = useState<{
+    path: string;
+    name: string;
+    nonce: number;
+  } | null>(null);
   const [currentUsage, setCurrentUsage] = useState<any>(null);
   const {
     setUsage: setLastKnownUsage,
@@ -621,7 +723,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     clearUsage: clearLastKnownUsage,
   } = useContextUsageStore();
   const { addActivatedTools, clearActivatedTools } = useActivatedToolsStore();
-  const [subAgentTasks, setSubAgentTasks] = useState<Record<string, { status: SubAgentStatus; resultSummary?: string; error?: string }>>({});
+  const [subAgentTasks, setSubAgentTasks] = useState<
+    Record<string, { status: SubAgentStatus; resultSummary?: string; error?: string }>
+  >({});
   const [viewingSubAgentTaskId, setViewingSubAgentTaskId] = useState<string | null>(null);
   const [forcedWebContextId, setForcedWebContextId] = useState<string | null>(null);
   const [isBoardFullscreen, setIsBoardFullscreen] = useState(false);
@@ -635,7 +739,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const pendingMinimapJumpRef = useRef<number | null>(null);
   const messagesRef = useRef<Message[]>(messages || []);
   const compactNoticeMessageRef = useRef<{ chatId: string; index: number } | null>(null);
-  const { onSpawned: onSubAgentSpawned, onCompleted: onSubAgentCompleted, onFailed: onSubAgentFailed } = useSubAgentStatus();
+  const {
+    onSpawned: onSubAgentSpawned,
+    onCompleted: onSubAgentCompleted,
+    onFailed: onSubAgentFailed,
+  } = useSubAgentStatus();
   const { setStatus: setStatusBar } = useStatusStore();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const stopInFlightRef = useRef(false);
@@ -681,33 +789,40 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     messagesRef.current = messages || [];
   }, [messages]);
 
-  const upsertCompactNotice = useCallback((content: string | null) => {
-    const notice = content?.trim();
-    if (!notice || !currentChatId) return;
+  const upsertCompactNotice = useCallback(
+    (content: string | null) => {
+      const notice = content?.trim();
+      if (!notice || !currentChatId) return;
 
-    const existing = compactNoticeMessageRef.current;
-    const currentMessages = messagesRef.current;
-    const timestamp = new Date().toISOString();
+      const existing = compactNoticeMessageRef.current;
+      const currentMessages = messagesRef.current;
+      const timestamp = new Date().toISOString();
 
-    if (
-      existing?.chatId === currentChatId &&
-      currentMessages[existing.index]?.role === 'notice'
-    ) {
-      const updatedMessages = [...currentMessages];
-      updatedMessages[existing.index] = { ...updatedMessages[existing.index], content: notice, timestamp };
-      messagesRef.current = updatedMessages;
-      updateMessage(existing.index, { content: notice, timestamp }, currentChatId);
-      return;
-    }
+      if (
+        existing?.chatId === currentChatId &&
+        currentMessages[existing.index]?.role === 'notice'
+      ) {
+        const updatedMessages = [...currentMessages];
+        updatedMessages[existing.index] = {
+          ...updatedMessages[existing.index],
+          content: notice,
+          timestamp,
+        };
+        messagesRef.current = updatedMessages;
+        updateMessage(existing.index, { content: notice, timestamp }, currentChatId);
+        return;
+      }
 
-    const message: Message = { role: 'notice', content: notice, timestamp };
-    compactNoticeMessageRef.current = {
-      chatId: currentChatId,
-      index: currentMessages.length,
-    };
-    messagesRef.current = [...currentMessages, message];
-    addMessage(message, currentChatId);
-  }, [addMessage, currentChatId, updateMessage]);
+      const message: Message = { role: 'notice', content: notice, timestamp };
+      compactNoticeMessageRef.current = {
+        chatId: currentChatId,
+        index: currentMessages.length,
+      };
+      messagesRef.current = [...currentMessages, message];
+      addMessage(message, currentChatId);
+    },
+    [addMessage, currentChatId, updateMessage]
+  );
 
   useEffect(() => {
     if (!currentChatId) return;
@@ -783,10 +898,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       const chatId = streamingChatIdRef.current || activeChatIdRef.current;
 
       const hasPendingApprovals = parts.some(
-        p => p.type === 'tool'
-          && p.state === 'approval-requested'
-          && !p.output
-          && !!p.approvalId
+        (p) => p.type === 'tool' && p.state === 'approval-requested' && !p.output && !!p.approvalId
       );
 
       if (heartbeatOkRef.current) {
@@ -801,7 +913,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         setCurrentUsage(null);
         setCurrentStreamDisplayRole('assistant');
         // Reload chat from DB to reflect rolled-back state.
-        setTimeout(() => { try { loadChat(chatId!, { force: true }); } catch { } }, 300);
+        setTimeout(() => {
+          try {
+            loadChat(chatId!, { force: true });
+          } catch {}
+        }, 300);
         return;
       }
 
@@ -846,7 +962,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
       // Optimistic append: convert parts to HTML and store locally so the
       // message is visible immediately — no blank flash while loadChat fetches DB.
-      const storeMsg = aguiPartsToStoreMessage(parts, currentUsage, streamDisplayRoleRef.current, safeConfig.model);
+      const storeMsg = aguiPartsToStoreMessage(
+        parts,
+        currentUsage,
+        streamDisplayRoleRef.current,
+        safeConfig.model
+      );
       if (storeMsg.content.trim()) {
         addMessage(storeMsg, chatId!);
         if (/context compacted/i.test(storeMsg.content)) {
@@ -869,10 +990,20 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       // results before we reload. An immediate reload risks getting stale
       // approval-requested state that the guards may not catch in all edge cases.
       const _syncChatId = chatId!;
-      setTimeout(() => { try { loadChat(_syncChatId, { force: true }); } catch { } }, 800);
+      setTimeout(() => {
+        try {
+          loadChat(_syncChatId, { force: true });
+        } catch {}
+      }, 800);
 
-      try { loadCoreMemory(); loadStats(); } catch { }
-      try { refreshGoalTasks(); refreshKanban(); } catch { }
+      try {
+        loadCoreMemory();
+        loadStats();
+      } catch {}
+      try {
+        refreshGoalTasks();
+        refreshKanban();
+      } catch {}
     },
     onMarkDeferred: (surfaceId) => {
       canvas.markDeferred(surfaceId);
@@ -907,16 +1038,22 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       } else if (name === 'subagent_spawned') {
         const p = value as SubAgentSpawnedPayload;
         onSubAgentSpawned(p);
-        setSubAgentTasks(prev => ({ ...prev, [p.task_id]: { status: 'running' } }));
+        setSubAgentTasks((prev) => ({ ...prev, [p.task_id]: { status: 'running' } }));
       } else if (name === 'subagent_completed') {
         const p = value as SubAgentCompletedPayload;
         onSubAgentCompleted(p);
-        setSubAgentTasks(prev => ({ ...prev, [p.task_id]: { status: 'completed', resultSummary: p.result_summary } }));
+        setSubAgentTasks((prev) => ({
+          ...prev,
+          [p.task_id]: { status: 'completed', resultSummary: p.result_summary },
+        }));
         setStatusBar(`Sub-agent completed — ${p.task_id}`, 'success', 5000);
       } else if (name === 'subagent_failed') {
         const p = value as SubAgentFailedPayload;
         onSubAgentFailed(p);
-        setSubAgentTasks(prev => ({ ...prev, [p.task_id]: { status: 'failed', error: p.error } }));
+        setSubAgentTasks((prev) => ({
+          ...prev,
+          [p.task_id]: { status: 'failed', error: p.error },
+        }));
         setStatusBar(`Sub-agent failed — ${p.task_id}`, 'error', 5000);
       } else if (name === 'image_not_supported') {
         // Active model lacks vision; backend stripped the image(s) but kept them
@@ -924,9 +1061,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         // as an in-chat notice rather than a transient status-bar toast.
         const payload = value as { message?: string; chat_id?: string } | null;
         const msg = payload?.message || "The current model can't read images.";
-        const targetChatId = payload?.chat_id
-          || streamingChatIdRef.current
-          || activeChatIdRef.current;
+        const targetChatId =
+          payload?.chat_id || streamingChatIdRef.current || activeChatIdRef.current;
         if (targetChatId) {
           addMessage({ role: 'notice', content: `⚠️ ${msg}` }, targetChatId);
         }
@@ -935,10 +1071,16 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         if (Array.isArray(toolNames)) addActivatedTools(toolNames);
       } else if (name === 'a2ui.render') {
         const rawSurface = value as (A2UISurface & { chatId?: string }) | null;
-        if (!rawSurface || typeof rawSurface !== 'object' || !('id' in rawSurface) || !('component' in rawSurface)) {
+        if (
+          !rawSurface ||
+          typeof rawSurface !== 'object' ||
+          !('id' in rawSurface) ||
+          !('component' in rawSurface)
+        ) {
           return;
         }
-        const sourceChatId = rawSurface.chatId || streamingChatIdRef.current || activeStreamingChatId || null;
+        const sourceChatId =
+          rawSurface.chatId || streamingChatIdRef.current || activeStreamingChatId || null;
         const viewedChatId = activeChatIdRef.current;
         if (sourceChatId && viewedChatId && sourceChatId !== viewedChatId) {
           return;
@@ -976,15 +1118,23 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
       const displayMessage = isOutputValidationRetryError
         ? t('chatWindow.outputValidationRetryError')
-        : (errorMessage || t('chatWindow.genericError'));
+        : errorMessage || t('chatWindow.genericError');
 
       if (!wasHeartbeat && !isNetworkError) {
-        const partialMessage = aguiPartsToStoreMessage(parts, currentUsage, streamDisplayRoleRef.current, safeConfig.model);
+        const partialMessage = aguiPartsToStoreMessage(
+          parts,
+          currentUsage,
+          streamDisplayRoleRef.current,
+          safeConfig.model
+        );
         if (partialMessage.content.trim()) {
           addMessage(partialMessage, chatId);
           addMessage({ role: 'notice', content: `\u26a0\ufe0f Error: ${displayMessage}` }, chatId);
         } else {
-          addMessage({ role: 'assistant', content: `\u26a0\ufe0f Error: ${displayMessage}` }, chatId);
+          addMessage(
+            { role: 'assistant', content: `\u26a0\ufe0f Error: ${displayMessage}` },
+            chatId
+          );
         }
       }
       clearParts();
@@ -1007,13 +1157,15 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         // Mirror what handleSend does so the streaming overlay renders.
         setIsStreaming(true, chatId);
         streamingChatIdRef.current = chatId;
-        sendAGUI(body, options).catch(err => {
-          heartbeatInFlightRef.current = false;
-          if (isHeartbeat) setHeartbeatRunning(false, null);
-          console.error('[ChatWindow] External sendAGUI failed:', err);
-        }).finally(() => {
-          setIsStreaming(false, chatId);
-        });
+        sendAGUI(body, options)
+          .catch((err) => {
+            heartbeatInFlightRef.current = false;
+            if (isHeartbeat) setHeartbeatRunning(false, null);
+            console.error('[ChatWindow] External sendAGUI failed:', err);
+          })
+          .finally(() => {
+            setIsStreaming(false, chatId);
+          });
       }
     };
     window.addEventListener('agui:send-message', handler);
@@ -1037,42 +1189,46 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       document.removeEventListener('visibilitychange', saveOnHide);
       window.removeEventListener('beforeunload', saveOnHide);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [getStreamingParts]);
 
   // Resume a tool-approval stream via the background queue so it is
   // reconnectable after a page refresh (same pattern as /chat/send).
-  const resumeViaQueue = useCallback(async (body: Record<string, unknown>) => {
-    const chatId = (body.chat_id as string) || streamingChatIdRef.current || currentChatId;
-    if (!chatId) return;
+  const resumeViaQueue = useCallback(
+    async (body: Record<string, unknown>) => {
+      const chatId = (body.chat_id as string) || streamingChatIdRef.current || currentChatId;
+      if (!chatId) return;
 
-    // Save current parts as seed so tryConnect's reconnect can show prior steps.
-    const currentParts = getStreamingParts();
-    if (currentParts.length > 0) {
-      abandonedPartsRef.current.set(chatId, currentParts);
-    }
+      // Save current parts as seed so tryConnect's reconnect can show prior steps.
+      const currentParts = getStreamingParts();
+      if (currentParts.length > 0) {
+        abandonedPartsRef.current.set(chatId, currentParts);
+      }
 
-    const resp = await fetch(`${getApiBase()}/chat/send`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
+      const resp = await fetch(`${getApiBase()}/chat/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
 
-    if (!resp.ok) {
-      const msg = resp.status === 409 ? 'Chat is already responding' : `Resume failed (${resp.status})`;
-      setStatusBar(msg, 'error', 4000);
-      throw new Error(msg);
-    }
-    // 202: the previous (suspended) stream has ended, but its onFinish pending-
-    // approval branch left streamingChatIdRef pinned to this chat. That pin would
-    // make tryConnect's guard skip the reconnect, so the resume stream would never
-    // be consumed. Clear the live-stream refs so tryConnect can attach; its
-    // onStreamStart re-pins streamingChatIdRef correctly.
-    streamingChatIdRef.current = null;
-    isLiveStreamRef.current = false;
-    // Connect immediately rather than waiting for stream_started from the bus.
-    tryConnectRef.current?.();
-  }, [currentChatId, getStreamingParts, setStatusBar]);
+      if (!resp.ok) {
+        const msg =
+          resp.status === 409 ? 'Chat is already responding' : `Resume failed (${resp.status})`;
+        setStatusBar(msg, 'error', 4000);
+        throw new Error(msg);
+      }
+      // 202: the previous (suspended) stream has ended, but its onFinish pending-
+      // approval branch left streamingChatIdRef pinned to this chat. That pin would
+      // make tryConnect's guard skip the reconnect, so the resume stream would never
+      // be consumed. Clear the live-stream refs so tryConnect can attach; its
+      // onStreamStart re-pins streamingChatIdRef correctly.
+      streamingChatIdRef.current = null;
+      isLiveStreamRef.current = false;
+      // Connect immediately rather than waiting for stream_started from the bus.
+      tryConnectRef.current?.();
+    },
+    [currentChatId, getStreamingParts, setStatusBar]
+  );
 
   const { handleToolApproval } = useToolApproval({
     currentChatId,
@@ -1100,16 +1256,19 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   });
 
   // Remove a tool from the approval policy
-  const handleRemoveApprovalPolicy = useCallback((toolName: string) => {
-    setConfig(prev => {
-      if (!prev.tool_approval_policy) return prev;
-      const { [toolName]: _, ...rest } = prev.tool_approval_policy;
-      return {
-        ...prev,
-        tool_approval_policy: rest
-      };
-    });
-  }, [setConfig]);
+  const handleRemoveApprovalPolicy = useCallback(
+    (toolName: string) => {
+      setConfig((prev) => {
+        if (!prev.tool_approval_policy) return prev;
+        const { [toolName]: _, ...rest } = prev.tool_approval_policy;
+        return {
+          ...prev,
+          tool_approval_policy: rest,
+        };
+      });
+    },
+    [setConfig]
+  );
 
   // handleCanvasDispatch is defined after safeConfig below
 
@@ -1141,25 +1300,23 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const hasPendingTransientApprovals =
     transientPartsChatId === currentChatId &&
     streamingParts.some(
-      p => p.type === 'tool'
-        && p.state === 'approval-requested'
-        && !p.output
-        && !!p.approvalId,
+      (p) => p.type === 'tool' && p.state === 'approval-requested' && !p.output && !!p.approvalId
     );
   const showTransientAssistant = streamingForCurrentChat || hasPendingTransientApprovals;
 
   // Safe values
   const safeMessages = useMemo(
-    () => reconcileToolCallMessages(
-      hideStreamingDrafts(messages || [], showTransientAssistant),
-      showTransientAssistant ? streamingParts : [],
-    ),
-    [messages, showTransientAssistant, streamingParts],
+    () =>
+      reconcileToolCallMessages(
+        hideStreamingDrafts(messages || [], showTransientAssistant),
+        showTransientAssistant ? streamingParts : []
+      ),
+    [messages, showTransientAssistant, streamingParts]
   );
   const visibleMessageStartIndex = Math.max(0, safeMessages.length - visibleMessageCount);
   const visibleMessages = useMemo(
     () => safeMessages.slice(visibleMessageStartIndex),
-    [safeMessages, visibleMessageStartIndex],
+    [safeMessages, visibleMessageStartIndex]
   );
 
   // Chat-wide citation sources: aggregate every message's citation-sources parts
@@ -1184,7 +1341,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     // would remount every message's DOM and wipe the user's selection. Reuse
     // the previous map whenever the set of sources is unchanged.
     const previous = citationSourcesRef.current;
-    if (previous.size === map.size && [...map.keys()].every(id => previous.has(id))) {
+    if (previous.size === map.size && [...map.keys()].every((id) => previous.has(id))) {
       return previous;
     }
     citationSourcesRef.current = map;
@@ -1198,24 +1355,22 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   // chats additionally synchronize it with the scheduled job's model_override.
   const _isPlatformChat = !!config?.platform;
   const _isCronChat = config?.platform?.toLowerCase() === 'cron';
-  const cronJobId = config?.cron_job_id ?? (
-    _isCronChat && currentChatId?.startsWith('cron-')
+  const cronJobId =
+    config?.cron_job_id ??
+    (_isCronChat && currentChatId?.startsWith('cron-')
       ? Number(currentChatId.slice('cron-'.length))
-      : undefined
-  );
+      : undefined);
   const cronModelOverride =
-    cronModelSelection && cronModelSelection.jobId === cronJobId
-      ? cronModelSelection.model
-      : null;
+    cronModelSelection && cronModelSelection.jobId === cronJobId ? cronModelSelection.model : null;
   const safeConfig = stripDenyApprovalPolicies({
     ..._base,
-    model: (
+    model:
       (_isCronChat ? cronModelOverride : null) ||
       _base.model ||
-      (_isPlatformChat ? (_prefs?.model || backendConfig?.models?.[0] || '') : '')
-    ),
-    agent: _base.agent || (_isPlatformChat ? (_prefs?.agent || backendConfig?.agents?.[0] || '') : ''),
-    tools: _base.tools?.length ? _base.tools : (_isPlatformChat ? (_prefs?.tools ?? []) : []),
+      (_isPlatformChat ? _prefs?.model || backendConfig?.models?.[0] || '' : ''),
+    agent:
+      _base.agent || (_isPlatformChat ? _prefs?.agent || backendConfig?.agents?.[0] || '' : ''),
+    tools: _base.tools?.length ? _base.tools : _isPlatformChat ? (_prefs?.tools ?? []) : [],
   });
 
   useEffect(() => {
@@ -1226,15 +1381,15 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
     let cancelled = false;
     fetchCronJobs()
-      .then(jobs => {
+      .then((jobs) => {
         if (cancelled) return;
-        const job = jobs.find(item => item.id === cronJobId);
+        const job = jobs.find((item) => item.id === cronJobId);
         setCronModelSelection({
           jobId: cronJobId!,
           model: job?.model_override || null,
         });
       })
-      .catch(error => {
+      .catch((error) => {
         if (!cancelled) {
           console.warn('Failed to load cron model override:', error);
           setCronModelSelection(null);
@@ -1246,95 +1401,102 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     };
   }, [_isCronChat, cronJobId]);
 
-  const handleInputModelChange = useCallback((model: string) => {
-    const previousModel = safeConfig.model;
-    setConfig(prev => ({ ...prev, model }));
+  const handleInputModelChange = useCallback(
+    (model: string) => {
+      const previousModel = safeConfig.model;
+      setConfig((prev) => ({ ...prev, model }));
 
-    if (!_isCronChat || !Number.isFinite(cronJobId)) return;
+      if (!_isCronChat || !Number.isFinite(cronJobId)) return;
 
-    setCronModelSelection({ jobId: cronJobId!, model });
-    void updateCronJob(cronJobId!, { model_override: model })
-      .catch(error => {
+      setCronModelSelection({ jobId: cronJobId!, model });
+      void updateCronJob(cronJobId!, { model_override: model }).catch((error) => {
         console.error('Failed to update cron model override:', error);
         setCronModelSelection({ jobId: cronJobId!, model: previousModel });
-        setConfig(prev => ({ ...prev, model: previousModel }));
+        setConfig((prev) => ({ ...prev, model: previousModel }));
         setStatusBar(t('chatInput.modelUpdateError'), 'error', 4000);
       });
-  }, [_isCronChat, cronJobId, safeConfig.model, setConfig, setStatusBar, t]);
+    },
+    [_isCronChat, cronJobId, safeConfig.model, setConfig, setStatusBar, t]
+  );
 
   // Unified canvas action dispatcher — used by both the canvas sidebar panel and inline surfaces.
   // Adds a decorative canvas_action pill to the chat, then starts a real AG-UI stream so the
   // agent's reply appears with full streaming (tool calls, typewriter, etc.).
-  const handleCanvasDispatch = useCallback(async (
-    action: string,
-    context: Record<string, unknown>,
-    surfaceId: string,
-  ) => {
-    if (!currentChatId) return;
+  const handleCanvasDispatch = useCallback(
+    async (action: string, context: Record<string, unknown>, surfaceId: string) => {
+      if (!currentChatId) return;
 
-    // Deferred surface (ask_question): resolve the waiting tool call directly,
-    // no new agent turn needed — the existing stream will continue.
-    if (canvas.deferredIds.has(surfaceId)) {
-      const answer = { ...context };
-      delete answer.button_label;
-      // If it was a button click, use the label as the answer value
-      if (context.button_label) answer.answer = context.button_label;
-      // Remove the form immediately — the tool is done, no need to keep it visible
-      removeInlineSurface(surfaceId);
-      try {
-        await fetch(`${getApiBase()}/canvas/${currentChatId}/answer`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ surface_id: surfaceId, answer }),
-        });
-      } catch (err) {
-        console.error('[A2UI] answer dispatch failed:', err);
+      // Deferred surface (ask_question): resolve the waiting tool call directly,
+      // no new agent turn needed — the existing stream will continue.
+      if (canvas.deferredIds.has(surfaceId)) {
+        const answer = { ...context };
+        delete answer.button_label;
+        // If it was a button click, use the label as the answer value
+        if (context.button_label) answer.answer = context.button_label;
+        // Remove the form immediately — the tool is done, no need to keep it visible
+        removeInlineSurface(surfaceId);
+        try {
+          await fetch(`${getApiBase()}/canvas/${currentChatId}/answer`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ surface_id: surfaceId, answer }),
+          });
+        } catch (err) {
+          console.error('[A2UI] answer dispatch failed:', err);
+        }
+        return;
       }
-      return;
-    }
 
-    // Regular canvas action: add a pill message and start a new agent stream.
-    const buttonLabel = context.button_label as string | undefined;
-    const ctxRest = { ...context };
-    delete ctxRest.button_label;
-    if (surfaceId && !('surface_id' in ctxRest)) {
-      ctxRest.surface_id = surfaceId;
-    }
-    const labelStr = buttonLabel ? ` "${buttonLabel}"` : '';
-    const contextStr = Object.keys(ctxRest).length > 0 ? ` ${JSON.stringify(ctxRest)}` : '';
-    const messageContent = `[canvas: ${action}]${labelStr}${contextStr}`;
+      // Regular canvas action: add a pill message and start a new agent stream.
+      const buttonLabel = context.button_label as string | undefined;
+      const ctxRest = { ...context };
+      delete ctxRest.button_label;
+      if (surfaceId && !('surface_id' in ctxRest)) {
+        ctxRest.surface_id = surfaceId;
+      }
+      const labelStr = buttonLabel ? ` "${buttonLabel}"` : '';
+      const contextStr = Object.keys(ctxRest).length > 0 ? ` ${JSON.stringify(ctxRest)}` : '';
+      const messageContent = `[canvas: ${action}]${labelStr}${contextStr}`;
 
-    addMessage(
-      { role: 'canvas_action', content: messageContent, timestamp: new Date().toISOString() },
-      currentChatId,
-    );
+      addMessage(
+        { role: 'canvas_action', content: messageContent, timestamp: new Date().toISOString() },
+        currentChatId
+      );
 
-    setIsStreaming(true, currentChatId);
-    streamingChatIdRef.current = currentChatId;
-    activeChatIdRef.current = currentChatId;
-    stopInFlightRef.current = false;
+      setIsStreaming(true, currentChatId);
+      streamingChatIdRef.current = currentChatId;
+      activeChatIdRef.current = currentChatId;
+      stopInFlightRef.current = false;
 
-    try {
-      await sendAGUI({ message: messageContent, config: safeConfig, chat_id: currentChatId });
-    } catch (err) {
-      console.error('[A2UI] canvas dispatch failed:', err);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentChatId, canvas.deferredIds, addMessage, setIsStreaming, sendAGUI]);
+      try {
+        await sendAGUI({ message: messageContent, config: safeConfig, chat_id: currentChatId });
+      } catch (err) {
+        console.error('[A2UI] canvas dispatch failed:', err);
+      }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    },
+    [currentChatId, canvas.deferredIds, addMessage, setIsStreaming, sendAGUI]
+  );
 
-  const handleForceWebContext = useCallback((contextId: string) => {
-    setForcedWebContextId(contextId);
-    if (!isRightSidebarOpen) {
-      onRightSidebarToggle(true);
-    }
-  }, [isRightSidebarOpen, onRightSidebarToggle]);
+  const handleForceWebContext = useCallback(
+    (contextId: string) => {
+      setForcedWebContextId(contextId);
+      if (!isRightSidebarOpen) {
+        onRightSidebarToggle(true);
+      }
+    },
+    [isRightSidebarOpen, onRightSidebarToggle]
+  );
 
   const configReady = !!(safeBackendConfig && safeConfig.model && safeConfig.agent);
 
-  const handleOpenSubAgentSidebar = useCallback((taskId: string) => {
-    setViewingSubAgentTaskId(taskId);
-    onRightSidebarToggle(true);
-  }, [onRightSidebarToggle]);
+  const handleOpenSubAgentSidebar = useCallback(
+    (taskId: string) => {
+      setViewingSubAgentTaskId(taskId);
+      onRightSidebarToggle(true);
+    },
+    [onRightSidebarToggle]
+  );
 
   // Turns saved before the runtime stamped a per-message model fall back to
   // the chat's engine -- which for an ACP chat is the agent, not the unused
@@ -1346,9 +1508,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const handleStopSubAgent = useCallback(async (taskId: string) => {
     try {
       await fetch(`${getApiBase()}/subagents/${taskId}/stop`, { method: 'POST' });
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }, []);
-
 
   // Auto-scroll
   // Depend on the message count, not the array identity: `safeMessages` is a
@@ -1359,7 +1522,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     {
       resetKey: `${currentChatId ?? 'new'}:${safeMessages.length > 0}`,
       smooth: !isStreaming,
-    },
+    }
   );
 
   // When a tool transitions into a pending approval, force-scroll to the bottom
@@ -1380,28 +1543,36 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       scrollHeight: el.scrollHeight,
       scrollTop: el.scrollTop,
     };
-    setVisibleMessageCount(prev => Math.min(safeMessages.length, prev + LOAD_MORE_MESSAGES));
+    setVisibleMessageCount((prev) => Math.min(safeMessages.length, prev + LOAD_MORE_MESSAGES));
   }, [hasHiddenOlderMessages, safeMessages.length, scrollContainerRef]);
 
-  const scrollToMessageIndex = useCallback((index: number) => {
-    const el = scrollContainerRef.current;
-    if (!el) return false;
+  const scrollToMessageIndex = useCallback(
+    (index: number) => {
+      const el = scrollContainerRef.current;
+      if (!el) return false;
 
-    const row = el.querySelector<HTMLElement>(`[data-message-index="${index}"]`);
-    if (!row) return false;
+      const row = el.querySelector<HTMLElement>(`[data-message-index="${index}"]`);
+      if (!row) return false;
 
-    const targetTop = row.offsetTop - 24;
-    el.scrollTo({ top: Math.max(0, targetTop), behavior: 'smooth' });
-    return true;
-  }, [scrollContainerRef]);
+      const targetTop = row.offsetTop - 24;
+      el.scrollTo({ top: Math.max(0, targetTop), behavior: 'smooth' });
+      return true;
+    },
+    [scrollContainerRef]
+  );
 
-  const jumpToMinimapMessage = useCallback((index: number) => {
-    if (scrollToMessageIndex(index)) return;
+  const jumpToMinimapMessage = useCallback(
+    (index: number) => {
+      if (scrollToMessageIndex(index)) return;
 
-    pendingMinimapJumpRef.current = index;
-    const messagesNeeded = safeMessages.length - index;
-    setVisibleMessageCount(prev => Math.max(prev, Math.min(safeMessages.length, messagesNeeded)));
-  }, [safeMessages.length, scrollToMessageIndex]);
+      pendingMinimapJumpRef.current = index;
+      const messagesNeeded = safeMessages.length - index;
+      setVisibleMessageCount((prev) =>
+        Math.max(prev, Math.min(safeMessages.length, messagesNeeded))
+      );
+    },
+    [safeMessages.length, scrollToMessageIndex]
+  );
 
   useEffect(() => {
     const el = scrollContainerRef.current;
@@ -1451,7 +1622,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   // Background stream subscription: connect to /chat/live the moment the event bus
   // fires stream_started for this chat. Works for all chat types (heartbeat, cron,
   // social, and regular chats receiving a subagent wakeup).
-  const currentChatSummary = chats.find(c => c.id === currentChatId);
+  const currentChatSummary = chats.find((c) => c.id === currentChatId);
   const isProbablyLoadingChatMessages =
     !!currentChatId && safeMessages.length === 0 && (currentChatSummary?.messageCount ?? 0) > 0;
   const isBackgroundChat = !!currentChatSummary?.platform || !!currentChatSummary?.heartbeatEnabled;
@@ -1494,25 +1665,21 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     // sessionStorage snapshot even though its tool calls are already resolved.
     if (!isBusStreaming(chatIdAtMount)) {
       getChatPermissionState(chatIdAtMount)
-        .then(state => {
+        .then((state) => {
           if (cancelled || isBusStreaming(chatIdAtMount)) return;
           if (state.pendingApprovals.length > 0) {
             restorePendingApprovals(
               chatIdAtMount,
-              permissionApprovalsToParts(state.pendingApprovals),
+              permissionApprovalsToParts(state.pendingApprovals)
             );
             return;
           }
 
           const hasRestoredApprovals = getStreamingParts().some(
-            part => part.type === 'tool'
-              && part.state === 'approval-requested'
-              && !!part.approvalId,
+            (part) =>
+              part.type === 'tool' && part.state === 'approval-requested' && !!part.approvalId
           );
-          if (
-            hasRestoredApprovals
-            && streamingChatIdRef.current === chatIdAtMount
-          ) {
+          if (hasRestoredApprovals && streamingChatIdRef.current === chatIdAtMount) {
             setIsStreaming(false, chatIdAtMount);
             streamingChatIdRef.current = null;
             abandonedPartsRef.current.delete(chatIdAtMount);
@@ -1543,7 +1710,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       if (cancelled) return;
       // If a live stream, a connection attempt, or a user turn is already in
       // progress, mark pending so we retry immediately after it finishes.
-      if (isLiveStreamRef.current || connectingRef.current || streamingChatIdRef.current === chatIdAtMount) {
+      if (
+        isLiveStreamRef.current ||
+        connectingRef.current ||
+        streamingChatIdRef.current === chatIdAtMount
+      ) {
         pendingConnectRef.current = true;
         return;
       }
@@ -1558,23 +1729,26 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
       let streamed: boolean;
       try {
-        streamed = await sendAGUI({ chat_id: chatIdAtMount, wait_ms: 8000 }, {
-          urlOverride: liveUrl,
-          seedParts,
-          onStreamStart: () => {
-            isLiveStreamRef.current = true;
-            // Pin the streaming chat ID so onFinish uses the correct chat even if
-            // the user navigates away mid-stream.
-            streamingChatIdRef.current = chatIdAtMount;
-            // Preserve the original start time across reconnects so the activity
-            // timer continues; only set it if this is the first time we see it.
-            if (!streamStartByChatRef.current.has(chatIdAtMount)) {
-              streamStartByChatRef.current.set(chatIdAtMount, Date.now());
-            }
-            setIsStreaming(true, chatIdAtMount);
-            loadChat(chatIdAtMount, { force: true }).catch(() => {});
-          },
-        });
+        streamed = await sendAGUI(
+          { chat_id: chatIdAtMount, wait_ms: 8000 },
+          {
+            urlOverride: liveUrl,
+            seedParts,
+            onStreamStart: () => {
+              isLiveStreamRef.current = true;
+              // Pin the streaming chat ID so onFinish uses the correct chat even if
+              // the user navigates away mid-stream.
+              streamingChatIdRef.current = chatIdAtMount;
+              // Preserve the original start time across reconnects so the activity
+              // timer continues; only set it if this is the first time we see it.
+              if (!streamStartByChatRef.current.has(chatIdAtMount)) {
+                streamStartByChatRef.current.set(chatIdAtMount, Date.now());
+              }
+              setIsStreaming(true, chatIdAtMount);
+              loadChat(chatIdAtMount, { force: true }).catch(() => {});
+            },
+          }
+        );
       } finally {
         // Always release the connect guard, even if sendAGUI rejected — otherwise
         // connectingRef stays true forever and every future tryConnect (send,
@@ -1591,10 +1765,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       // If the stream paused for tool approval, keep the approval UI visible.
       // The event bus will fire stream_started again when the resume stream begins.
       const pendingApproval = liveStreamPartsRef.current.some(
-        p => p.type === 'tool'
-          && p.state === 'approval-requested'
-          && !p.output
-          && !!p.approvalId
+        (p) => p.type === 'tool' && p.state === 'approval-requested' && !p.output && !!p.approvalId
       );
       if (pendingApproval) {
         isLiveStreamRef.current = false;
@@ -1602,7 +1773,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         return;
       }
 
-      const richMsg = aguiPartsToStoreMessage(liveStreamPartsRef.current, null, 'assistant', safeConfig.model);
+      const richMsg = aguiPartsToStoreMessage(
+        liveStreamPartsRef.current,
+        null,
+        'assistant',
+        safeConfig.model
+      );
       setIsStreaming(false, chatIdAtMount);
       // Stream finished cleanly — drop preserved reconnect state for this chat.
       streamStartByChatRef.current.delete(chatIdAtMount);
@@ -1614,7 +1790,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       // must reload here; limiting this sync to social chats left desktop diffs hidden
       // until the user manually refreshed.
       if (richMsg.content.trim()) addMessage(richMsg, chatIdAtMount);
-      try { await loadChat(chatIdAtMount, { force: true }); } catch { /* ignore */ }
+      try {
+        await loadChat(chatIdAtMount, { force: true });
+      } catch {
+        /* ignore */
+      }
 
       clearParts();
       liveStreamPartsRef.current = [];
@@ -1640,10 +1820,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     // there is zero frame delay between the SSE event arriving and tryConnect() firing.
     const handleStreamEnd = () => {
       const pendingApproval = getStreamingParts().some(
-        p => p.type === 'tool'
-          && p.state === 'approval-requested'
-          && !p.output
-          && !!p.approvalId
+        (p) => p.type === 'tool' && p.state === 'approval-requested' && !p.output && !!p.approvalId
       );
       if (pendingApproval) return;
 
@@ -1697,7 +1874,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         setIsStreaming(false, chatIdAtMount);
       }
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentChatId, isBackgroundChat]);
 
   // Tear down restored approval UI once the reloaded DB state proves the
@@ -1757,13 +1934,16 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         finalizeInterruptedParts(streamingParts),
         currentUsage,
         streamDisplayRoleRef.current,
-        safeConfig.model,
+        safeConfig.model
       );
       if (interruptedMessage.content.trim()) {
         addMessage(interruptedMessage, currentChatId);
       }
       setInput('');
-      addMessage({ role: 'user', content: prompt, timestamp: new Date().toISOString() }, currentChatId);
+      addMessage(
+        { role: 'user', content: prompt, timestamp: new Date().toISOString() },
+        currentChatId
+      );
       setCurrentUsage(null);
 
       steeringRef.current = true;
@@ -1785,21 +1965,25 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ chat_id: steerChatId, message: prompt, config: safeConfig }),
-      }).then(resp => {
-        if (!resp.ok) {
-          const msg = resp.status === 409 ? 'Steer failed — chat is busy' : `Steer failed (${resp.status})`;
-          setStatusBar(msg, 'error', 4000);
+      })
+        .then((resp) => {
+          if (!resp.ok) {
+            const msg =
+              resp.status === 409 ? 'Steer failed — chat is busy' : `Steer failed (${resp.status})`;
+            setStatusBar(msg, 'error', 4000);
+            setIsStreaming(false, steerChatId);
+            return;
+          }
+          tryConnectRef.current?.();
+        })
+        .catch((err) => {
+          console.error('[send] /chat/steer-send failed:', err);
           setIsStreaming(false, steerChatId);
-          return;
-        }
-        tryConnectRef.current?.();
-      }).catch(err => {
-        console.error('[send] /chat/steer-send failed:', err);
-        setIsStreaming(false, steerChatId);
-      }).finally(() => {
-        steeringRef.current = false;
-        stopInFlightRef.current = false;
-      });
+        })
+        .finally(() => {
+          steeringRef.current = false;
+          stopInFlightRef.current = false;
+        });
       return;
     }
 
@@ -1840,7 +2024,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
     if (filesToSend.length > 0) {
       try {
-        const { fileMetadata, imagePreviews: imagePreviewData } = await uploadFiles(filesToSend, chatIdForSend);
+        const { fileMetadata, imagePreviews: imagePreviewData } = await uploadFiles(
+          filesToSend,
+          chatIdForSend
+        );
         uploadedFileMetadata = fileMetadata;
         imagePreviews = imagePreviewData.length > 0 ? imagePreviewData : undefined;
       } catch (error) {
@@ -1856,13 +2043,16 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     setFileMentions([]);
     setCurrentUsage(null);
 
-    addMessage({
-      role: 'user',
-      content: prompt,
-      timestamp: new Date().toISOString(),
-      images: uploadedFileMetadata ? undefined : imagePreviews,
-      files: uploadedFileMetadata
-    }, chatIdForSend);
+    addMessage(
+      {
+        role: 'user',
+        content: prompt,
+        timestamp: new Date().toISOString(),
+        images: uploadedFileMetadata ? undefined : imagePreviews,
+        files: uploadedFileMetadata,
+      },
+      chatIdForSend
+    );
 
     // Show loading indicator immediately before the network round-trip.
     clearParts();
@@ -1892,21 +2082,24 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
-    }).then(resp => {
-      if (!resp.ok) {
-        const msg = resp.status === 409 ? 'Chat is already responding' : `Send failed (${resp.status})`;
-        setStatusBar(msg, 'error', 4000);
+    })
+      .then((resp) => {
+        if (!resp.ok) {
+          const msg =
+            resp.status === 409 ? 'Chat is already responding' : `Send failed (${resp.status})`;
+          setStatusBar(msg, 'error', 4000);
+          setIsStreaming(false, chatIdForSend);
+          clearPartsIfStillViewingSendChat();
+          return;
+        }
+        // 202: stream registered — connect to /chat/live immediately.
+        tryConnectRef.current?.();
+      })
+      .catch((err) => {
+        console.error('[send] /chat/send failed:', err);
         setIsStreaming(false, chatIdForSend);
         clearPartsIfStillViewingSendChat();
-        return;
-      }
-      // 202: stream registered — connect to /chat/live immediately.
-      tryConnectRef.current?.();
-    }).catch(err => {
-      console.error('[send] /chat/send failed:', err);
-      setIsStreaming(false, chatIdForSend);
-      clearPartsIfStillViewingSendChat();
-    });
+      });
   };
 
   const requestFork = useCallback((messageIndex?: number) => {
@@ -1928,13 +2121,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     } finally {
       setForkBusy(false);
     }
-  }, [
-    currentChatId,
-    forkBusy,
-    loadChat,
-    pendingFork,
-    refreshChatListSilently,
-  ]);
+  }, [currentChatId, forkBusy, loadChat, pendingFork, refreshChatListSilently]);
 
   // Retry handler — restores last checkpoint and re-runs the original message.
   // Uses the background queue (/chat/send) so the stream is reconnectable after
@@ -1971,85 +2158,124 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message: '/retry', chat_id: chatIdForRetry, config: safeConfig }),
-    }).then(resp => {
-      if (!resp.ok) {
-        const msg = resp.status === 409 ? 'Chat is already responding' : `Retry failed (${resp.status})`;
-        setStatusBar(msg, 'error', 4000);
+    })
+      .then((resp) => {
+        if (!resp.ok) {
+          const msg =
+            resp.status === 409 ? 'Chat is already responding' : `Retry failed (${resp.status})`;
+          setStatusBar(msg, 'error', 4000);
+          setIsStreaming(false, chatIdForRetry);
+          return;
+        }
+        tryConnectRef.current?.();
+      })
+      .catch((err) => {
+        console.error('[handleRetry] /chat/send failed:', err);
         setIsStreaming(false, chatIdForRetry);
-        return;
-      }
-      tryConnectRef.current?.();
-    }).catch(err => {
-      console.error('[handleRetry] /chat/send failed:', err);
-      setIsStreaming(false, chatIdForRetry);
-    }).finally(() => {
-      stopInFlightRef.current = false;
-    });
-  }, [currentChatId, isStreaming, messages, markChatRollbackExpected, truncateMessagesFrom, setIsStreaming, clearParts, safeConfig, setStatusBar]);
+      })
+      .finally(() => {
+        stopInFlightRef.current = false;
+      });
+  }, [
+    currentChatId,
+    isStreaming,
+    messages,
+    markChatRollbackExpected,
+    truncateMessagesFrom,
+    setIsStreaming,
+    clearParts,
+    safeConfig,
+    setStatusBar,
+  ]);
 
   // Edit handler — re-sends the last user message with new text, dropping that
   // message and everything after it, then streaming a fresh response. Uses the
   // background queue (/chat/send) so it is reconnectable after a page refresh,
   // matching handleRetry / the main send path.
-  const handleEditUserMessage = useCallback((newContent: string) => {
-    if (!currentChatId || isStreaming) return;
-    const prompt = newContent.trim();
-    if (!prompt) return;
+  const handleEditUserMessage = useCallback(
+    (newContent: string) => {
+      if (!currentChatId || isStreaming) return;
+      const prompt = newContent.trim();
+      if (!prompt) return;
 
-    const safeMessages = messages ?? [];
-    let lastUserIdx = -1;
-    for (let i = safeMessages.length - 1; i >= 0; i--) {
-      if (safeMessages[i].role === 'user') {
-        lastUserIdx = i;
-        break;
+      const safeMessages = messages ?? [];
+      let lastUserIdx = -1;
+      for (let i = safeMessages.length - 1; i >= 0; i--) {
+        if (safeMessages[i].role === 'user') {
+          lastUserIdx = i;
+          break;
+        }
       }
-    }
-    if (lastUserIdx < 0) return;
+      if (lastUserIdx < 0) return;
 
-    const original = safeMessages[lastUserIdx];
+      const original = safeMessages[lastUserIdx];
 
-    // Optimistically drop the original user message and all responses below it,
-    // then re-add the edited message. The backend's /retry-edit command restores
-    // history to before this turn and replays it with the new text, so the
-    // persisted state will match.
-    markChatRollbackExpected(currentChatId);
-    truncateMessagesFrom(lastUserIdx, currentChatId);
+      // Optimistically drop the original user message and all responses below it,
+      // then re-add the edited message. The backend's /retry-edit command restores
+      // history to before this turn and replays it with the new text, so the
+      // persisted state will match.
+      markChatRollbackExpected(currentChatId);
+      truncateMessagesFrom(lastUserIdx, currentChatId);
 
-    const chatIdForEdit = currentChatId;
-    addMessage({
-      role: 'user',
-      content: prompt,
-      timestamp: new Date().toISOString(),
-      images: original.images,
-      files: original.files,
-    }, chatIdForEdit);
+      const chatIdForEdit = currentChatId;
+      addMessage(
+        {
+          role: 'user',
+          content: prompt,
+          timestamp: new Date().toISOString(),
+          images: original.images,
+          files: original.files,
+        },
+        chatIdForEdit
+      );
 
-    clearParts();
-    liveStreamPartsRef.current = [];
-    streamStartByChatRef.current.set(chatIdForEdit, Date.now());
-    setIsStreaming(true, chatIdForEdit);
-    activeChatIdRef.current = chatIdForEdit;
-    stopInFlightRef.current = false;
-
-    fetch(`${getApiBase()}/chat/send`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: `/retry-edit ${prompt}`, chat_id: chatIdForEdit, config: safeConfig }),
-    }).then(resp => {
-      if (!resp.ok) {
-        const msg = resp.status === 409 ? 'Chat is already responding' : `Edit failed (${resp.status})`;
-        setStatusBar(msg, 'error', 4000);
-        setIsStreaming(false, chatIdForEdit);
-        return;
-      }
-      tryConnectRef.current?.();
-    }).catch(err => {
-      console.error('[handleEditUserMessage] /chat/send failed:', err);
-      setIsStreaming(false, chatIdForEdit);
-    }).finally(() => {
+      clearParts();
+      liveStreamPartsRef.current = [];
+      streamStartByChatRef.current.set(chatIdForEdit, Date.now());
+      setIsStreaming(true, chatIdForEdit);
+      activeChatIdRef.current = chatIdForEdit;
       stopInFlightRef.current = false;
-    });
-  }, [currentChatId, isStreaming, messages, markChatRollbackExpected, truncateMessagesFrom, addMessage, setIsStreaming, clearParts, safeConfig, setStatusBar]);
+
+      fetch(`${getApiBase()}/chat/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: `/retry-edit ${prompt}`,
+          chat_id: chatIdForEdit,
+          config: safeConfig,
+        }),
+      })
+        .then((resp) => {
+          if (!resp.ok) {
+            const msg =
+              resp.status === 409 ? 'Chat is already responding' : `Edit failed (${resp.status})`;
+            setStatusBar(msg, 'error', 4000);
+            setIsStreaming(false, chatIdForEdit);
+            return;
+          }
+          tryConnectRef.current?.();
+        })
+        .catch((err) => {
+          console.error('[handleEditUserMessage] /chat/send failed:', err);
+          setIsStreaming(false, chatIdForEdit);
+        })
+        .finally(() => {
+          stopInFlightRef.current = false;
+        });
+    },
+    [
+      currentChatId,
+      isStreaming,
+      messages,
+      markChatRollbackExpected,
+      truncateMessagesFrom,
+      addMessage,
+      setIsStreaming,
+      clearParts,
+      safeConfig,
+      setStatusBar,
+    ]
+  );
 
   // Stop streaming handler
   const stopStreaming = async () => {
@@ -2070,7 +2296,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     // Reload chat from DB so the partial response (saved by backend on cancel)
     // appears immediately — prevents the blank flash while waiting for DB commit.
     if (targetChatId) {
-      setTimeout(() => { try { loadChat(targetChatId, { force: true }); } catch { } }, 500);
+      setTimeout(() => {
+        try {
+          loadChat(targetChatId, { force: true });
+        } catch {}
+      }, 500);
     }
 
     stopInFlightRef.current = false;
@@ -2081,7 +2311,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       const res = await fetch(`${getApiBase()}/chat/stop`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: targetChatId, reason: 'User requested stop' })
+        body: JSON.stringify({ chat_id: targetChatId, reason: 'User requested stop' }),
       });
       if (!res.ok) {
         console.error('Stop request failed:', res.status, res.statusText);
@@ -2092,43 +2322,49 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   };
 
   // Handle file click from chat messages
-  const handleFileClick = useCallback(async (path: string, name: string, shiftKey?: boolean) => {
-    // Let the click animation finish first
-    await new Promise(resolve => setTimeout(resolve, 150));
+  const handleFileClick = useCallback(
+    async (path: string, name: string, shiftKey?: boolean) => {
+      // Let the click animation finish first
+      await new Promise((resolve) => setTimeout(resolve, 150));
 
-    // The serve endpoint's resolver handles both virtual paths ("/workspace/x",
-    // "/mnt/notebook/x") and absolute host paths under a mount ("C:/Users/.../x"),
-    // so we pass the path straight through — no client-side mapping needed.
-    try {
-      const queryParams = getSandboxParams(currentChatId || '', path, config.sandbox_volumes);
-      const response = await fetch(`${getApiBase()}/sandbox/serve?${queryParams}`, {
-        method: 'HEAD'
-      });
+      // The serve endpoint's resolver handles both virtual paths ("/workspace/x",
+      // "/mnt/notebook/x") and absolute host paths under a mount ("C:/Users/.../x"),
+      // so we pass the path straight through — no client-side mapping needed.
+      try {
+        const queryParams = getSandboxParams(currentChatId || '', path, config.sandbox_volumes);
+        const response = await fetch(`${getApiBase()}/sandbox/serve?${queryParams}`, {
+          method: 'HEAD',
+        });
 
-      if (!response.ok) {
-        // File doesn't exist / not under a mount - do nothing (animation already played)
-        return;
-      }
-
-      if (shiftKey) {
-        // Shift+Click: Open full-screen modal directly
-        setViewingFile({ path, name });
-      } else {
-        // Normal click: Open in right sidebar (bump nonce so re-clicking the same
-        // file after going back re-opens it).
-        setSidebarFilePreview(prev => ({ path, name, nonce: (prev?.nonce ?? 0) + 1 }));
-        if (!isRightSidebarOpen) {
-          onRightSidebarToggle(true);
+        if (!response.ok) {
+          // File doesn't exist / not under a mount - do nothing (animation already played)
+          return;
         }
-      }
-    } catch (error) {
-      // Error checking file - do nothing (animation already played)
-    }
-  }, [currentChatId, config.sandbox_volumes, isRightSidebarOpen, onRightSidebarToggle]);
 
-  const handleInlineAction = useCallback((surfaceId: string, action: string, context: Record<string, unknown>) => {
-    handleCanvasDispatch(action, context, surfaceId);
-  }, [handleCanvasDispatch]);
+        if (shiftKey) {
+          // Shift+Click: Open full-screen modal directly
+          setViewingFile({ path, name });
+        } else {
+          // Normal click: Open in right sidebar (bump nonce so re-clicking the same
+          // file after going back re-opens it).
+          setSidebarFilePreview((prev) => ({ path, name, nonce: (prev?.nonce ?? 0) + 1 }));
+          if (!isRightSidebarOpen) {
+            onRightSidebarToggle(true);
+          }
+        }
+      } catch (error) {
+        // Error checking file - do nothing (animation already played)
+      }
+    },
+    [currentChatId, config.sandbox_volumes, isRightSidebarOpen, onRightSidebarToggle]
+  );
+
+  const handleInlineAction = useCallback(
+    (surfaceId: string, action: string, context: Record<string, unknown>) => {
+      handleCanvasDispatch(action, context, surfaceId);
+    },
+    [handleCanvasDispatch]
+  );
 
   // Handle maximize button from sidebar
   const handleMaximizeFile = (path: string, name: string) => {
@@ -2161,11 +2397,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       {isDragging && <DragOverlay />}
       <BrutalDialog
         open={pendingFork !== null}
-        title={
-          forkError
-            ? t('conversationFork.errorTitle')
-            : t('conversationFork.title')
-        }
+        title={forkError ? t('conversationFork.errorTitle') : t('conversationFork.title')}
         message={forkError || t('conversationFork.message')}
         onClose={() => {
           if (!forkBusy) {
@@ -2190,9 +2422,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                   onClick: () => setPendingFork(null),
                 },
                 {
-                  label: forkBusy
-                    ? t('conversationFork.creating')
-                    : t('conversationFork.confirm'),
+                  label: forkBusy ? t('conversationFork.creating') : t('conversationFork.confirm'),
                   tone: 'primary',
                   preventDismiss: true,
                   onClick: confirmFork,
@@ -2207,10 +2437,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         {isBoardFullscreen && (
           <div className="absolute inset-0 z-20 bg-neutral-50 dark:bg-zinc-900 overflow-hidden">
             <ProjectKanbanView
-              projectName={chats.find(c => c.id === currentChatId)?.projectName ?? null}
-              projectId={chats.find(c => c.id === currentChatId)?.projectId ?? null}
+              projectName={chats.find((c) => c.id === currentChatId)?.projectName ?? null}
+              projectId={chats.find((c) => c.id === currentChatId)?.projectId ?? null}
               kanban={kanban}
-              chatTitles={Object.fromEntries(chats.map(c => [c.id, c.title]))}
+              chatTitles={Object.fromEntries(chats.map((c) => [c.id, c.title]))}
               onClose={() => setIsBoardFullscreen(false)}
             />
           </div>
@@ -2218,9 +2448,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         <div className="relative flex-1 min-h-0">
           <div
             ref={scrollContainerRef}
-            className={safeMessages.length === 0
-              ? "h-full overflow-hidden p-4 md:p-6 pb-2 bg-neutral-50 dark:bg-zinc-900"
-              : "h-full overflow-y-auto overflow-x-hidden px-4 md:px-6 pt-3 pb-2 scrollbar-thin bg-neutral-50 dark:bg-zinc-900"
+            className={
+              safeMessages.length === 0
+                ? 'h-full overflow-hidden p-4 md:p-6 pb-2 bg-neutral-50 dark:bg-zinc-900'
+                : 'h-full overflow-y-auto overflow-x-hidden px-4 md:px-6 pt-3 pb-2 scrollbar-thin bg-neutral-50 dark:bg-zinc-900'
             }
           >
             {isProbablyLoadingChatMessages ? (
@@ -2246,7 +2477,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 onPaste={handlePaste}
                 onImageClick={setViewingImage}
                 currentChatId={currentChatId}
-                onFileMentionSelected={(mention) => setFileMentions(prev => [...prev.filter(item => item.name !== mention.name), mention])}
+                onFileMentionSelected={(mention) =>
+                  setFileMentions((prev) => [
+                    ...prev.filter((item) => item.name !== mention.name),
+                    mention,
+                  ])
+                }
               />
             ) : (
               <>
@@ -2281,7 +2517,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                     <div className="w-full flex flex-col group/message">
                       <div className="flex justify-start w-full">
                         {streamDisplayRole === 'notice' ? (
-                          <NoticeMessage message={aguiPartsToStoreMessage(streamingParts, currentUsage, 'notice')} />
+                          <NoticeMessage
+                            message={aguiPartsToStoreMessage(
+                              streamingParts,
+                              currentUsage,
+                              'notice'
+                            )}
+                          />
                         ) : (
                           <AssistantMessage
                             message={{ role: 'assistant', content: '' }}
@@ -2291,7 +2533,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                             isLastMessage={true}
                             onFileClick={handleFileClick}
                             aguiParts={streamingParts}
-                            streamStartedAtMs={currentChatId ? streamStartByChatRef.current.get(currentChatId) : undefined}
+                            streamStartedAtMs={
+                              currentChatId
+                                ? streamStartByChatRef.current.get(currentChatId)
+                                : undefined
+                            }
                             usage={currentUsage}
                             toolApprovalPolicy={safeConfig.tool_approval_policy}
                             onRemoveApprovalPolicy={handleRemoveApprovalPolicy}
@@ -2328,10 +2574,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         {safeMessages.length > 0 && (
           <div className="px-2 pt-2 pb-1 flex flex-col gap-2 bg-neutral-50 dark:bg-zinc-900 relative z-10 shrink-0">
             {hasPendingTransientApprovals && (
-              <PermissionApprovalDock
-                parts={streamingParts}
-                onDecision={handleToolApproval}
-              />
+              <PermissionApprovalDock parts={streamingParts} onDecision={handleToolApproval} />
             )}
             <ChatInputPanel
               input={input}
@@ -2358,7 +2601,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               onPaste={handlePaste}
               onImageClick={setViewingImage}
               currentChatId={currentChatId}
-              onFileMentionSelected={(mention) => setFileMentions(prev => [...prev.filter(item => item.name !== mention.name), mention])}
+              onFileMentionSelected={(mention) =>
+                setFileMentions((prev) => [
+                  ...prev.filter((item) => item.name !== mention.name),
+                  mention,
+                ])
+              }
             />
           </div>
         )}
@@ -2378,11 +2626,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         tasks={tasks}
         goalChatId={goalChatId}
         kanban={kanban}
-        currentProjectName={chats.find(c => c.id === currentChatId)?.projectName ?? null}
-        currentProjectId={chats.find(c => c.id === currentChatId)?.projectId ?? null}
-        chatTitles={Object.fromEntries(chats.map(c => [c.id, c.title]))}
+        currentProjectName={chats.find((c) => c.id === currentChatId)?.projectName ?? null}
+        currentProjectId={chats.find((c) => c.id === currentChatId)?.projectId ?? null}
+        chatTitles={Object.fromEntries(chats.map((c) => [c.id, c.title]))}
         onProjectBoardChange={setIsBoardFullscreen}
-        isNewChat={safeMessages.length === 0 && !showTransientAssistant && !isProbablyLoadingChatMessages}
+        isNewChat={
+          safeMessages.length === 0 && !showTransientAssistant && !isProbablyLoadingChatMessages
+        }
         fileToPreview={sidebarFilePreview}
         onMaximizeFile={handleMaximizeFile}
         canvas={canvas}
@@ -2401,10 +2651,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         onClearForcedWebContext={() => setForcedWebContextId(null)}
       />
 
-      <ImageViewer
-        src={viewingImage}
-        onClose={() => setViewingImage(null)}
-      />
+      <ImageViewer src={viewingImage} onClose={() => setViewingImage(null)} />
 
       <FileViewer
         filePath={viewingFile?.path ?? null}

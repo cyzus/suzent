@@ -117,7 +117,9 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
       const data = await res.json();
       const entries = extractToolLog(data.messages ?? []);
       if (entries.length > 0) setToolLog(entries);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }, []);
 
   const fetchTask = useCallback(async () => {
@@ -129,14 +131,18 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
       setFetchedTask(next);
       taskRef.current = next;
       if (next.chat_id) fetchChatLog(next.chat_id);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }, [taskId, fetchChatLog]);
 
   const stopAgent = async () => {
     try {
       await fetch(`${getApiBase()}/subagents/${taskId}/stop`, { method: 'POST' });
       fetchTask();
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   };
 
   useEffect(() => {
@@ -200,7 +206,9 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
           <div className="min-w-0">
             <div className="text-[10px] font-bold uppercase tracking-widest font-mono truncate flex items-center gap-1.5 text-neutral-500 dark:text-neutral-400">
               <span>{t('subAgents.title')}</span>
-              <span className="opacity-70 normal-case tracking-normal truncate font-normal">{task?.task_id ?? taskId}</span>
+              <span className="opacity-70 normal-case tracking-normal truncate font-normal">
+                {task?.task_id ?? taskId}
+              </span>
               {isRunning && (
                 <span className="text-[9px] leading-none px-1 py-[2px] border border-brutal-black bg-brutal-yellow text-brutal-black font-bold uppercase tracking-normal shrink-0">
                   {t('subAgents.live')}
@@ -214,7 +222,9 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
         </div>
         <div className="flex items-center gap-2 shrink-0 self-start mt-0.5">
           {isRunning && elapsedTime && (
-            <span className="text-[10px] font-mono text-neutral-400 dark:text-neutral-500">{elapsedTime}</span>
+            <span className="text-[10px] font-mono text-neutral-400 dark:text-neutral-500">
+              {elapsedTime}
+            </span>
           )}
           {isRunning && (
             <button
@@ -230,7 +240,13 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
               className="p-1 aspect-square flex items-center justify-center text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors"
               title={t('subAgents.close')}
             >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2.5}
+              >
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
@@ -256,7 +272,9 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
                 </span>
               )}
               {duration && !isRunning && (
-                <span className="text-[10px] text-neutral-400 dark:text-neutral-500">{duration}</span>
+                <span className="text-[10px] text-neutral-400 dark:text-neutral-500">
+                  {duration}
+                </span>
               )}
             </div>
 
@@ -313,14 +331,18 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
                 </div>
                 <div className="space-y-0.5">
                   <div className="flex items-center gap-1.5 text-[10px]">
-                    <span className="text-neutral-400 shrink-0 uppercase">{t('subAgents.branch')}</span>
+                    <span className="text-neutral-400 shrink-0 uppercase">
+                      {t('subAgents.branch')}
+                    </span>
                     <code className="text-neutral-700 dark:text-neutral-200 bg-neutral-100 dark:bg-zinc-800 px-1 py-px rounded-sm border border-neutral-200 dark:border-zinc-600 truncate">
                       {task.worktree_branch}
                     </code>
                   </div>
                   {task.worktree_path && (
                     <div className="flex items-start gap-1.5 text-[10px]">
-                      <span className="text-neutral-400 shrink-0 uppercase">{t('subAgents.path')}</span>
+                      <span className="text-neutral-400 shrink-0 uppercase">
+                        {t('subAgents.path')}
+                      </span>
                       <code className="text-neutral-600 dark:text-neutral-400 break-all leading-relaxed">
                         {task.worktree_path}
                       </code>
@@ -342,14 +364,19 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
                     let parsedArgs: Record<string, unknown> | null = null;
                     try {
                       parsedArgs = entry.args ? JSON.parse(entry.args) : null;
-                    } catch { /* args may be truncated or non-JSON */ }
+                    } catch {
+                      /* args may be truncated or non-JSON */
+                    }
                     // A logged call with output is done; one without is either
                     // running now or was cut short when the agent stopped.
-                    const entryTense: ToolTense = entry.output !== undefined
-                      ? (isFailedToolOutput(entry.output) ? 'failed' : 'past')
-                      : isRunning
-                        ? 'active'
-                        : 'imperative';
+                    const entryTense: ToolTense =
+                      entry.output !== undefined
+                        ? isFailedToolOutput(entry.output)
+                          ? 'failed'
+                          : 'past'
+                        : isRunning
+                          ? 'active'
+                          : 'imperative';
                     const summary = getToolSummary(entry.toolName, parsedArgs, t, entryTense);
                     return (
                       <details key={i} className="text-[10px] group">
@@ -368,25 +395,38 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
                           {/* The outcome glyph has to agree with the headline:
                               a row reading "FAILED TO …" cannot also carry a
                               green check. */}
-                          {entry.output !== undefined && (
-                            entryTense === 'failed'
-                              ? <ExclamationTriangleIcon className="w-2.5 h-2.5 text-red-600 ml-auto shrink-0" />
-                              : (
-                                <svg className="w-2.5 h-2.5 text-green-600 ml-auto shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                                </svg>
-                              )
-                          )}
+                          {entry.output !== undefined &&
+                            (entryTense === 'failed' ? (
+                              <ExclamationTriangleIcon className="w-2.5 h-2.5 text-red-600 ml-auto shrink-0" />
+                            ) : (
+                              <svg
+                                className="w-2.5 h-2.5 text-green-600 ml-auto shrink-0"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                                strokeWidth={3}
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M5 13l4 4L19 7"
+                                />
+                              </svg>
+                            ))}
                         </summary>
                         <div className="mt-1 pl-2 border-l-2 border-neutral-200 dark:border-zinc-600 space-y-1">
                           {entry.args && (
                             <pre className="text-[10px] text-neutral-500 dark:text-neutral-400 whitespace-pre-wrap break-all">
-                              {entry.args.length > 200 ? entry.args.slice(0, 200) + '…' : entry.args}
+                              {entry.args.length > 200
+                                ? entry.args.slice(0, 200) + '…'
+                                : entry.args}
                             </pre>
                           )}
                           {entry.output !== undefined && (
                             <pre className="text-[10px] text-neutral-600 dark:text-neutral-300 whitespace-pre-wrap break-all bg-neutral-50 dark:bg-zinc-800 p-1 rounded-sm">
-                              {entry.output.length > 300 ? entry.output.slice(0, 300) + '…' : entry.output}
+                              {entry.output.length > 300
+                                ? entry.output.slice(0, 300) + '…'
+                                : entry.output}
                             </pre>
                           )}
                         </div>
@@ -403,7 +443,9 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
               <div>
                 <div
                   className={`text-[10px] font-bold uppercase tracking-wide mb-0.5 ${
-                    task.status === 'failed' ? 'text-red-500' : 'text-neutral-400 dark:text-neutral-500'
+                    task.status === 'failed'
+                      ? 'text-red-500'
+                      : 'text-neutral-400 dark:text-neutral-500'
                   }`}
                 >
                   {subAgentOutcomeLabel(task.status, t)}

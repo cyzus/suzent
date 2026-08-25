@@ -1,7 +1,8 @@
 import { useState, useCallback } from 'react';
 import { getApiBase } from '../lib/api';
 
-export type CompactionStage = 'idle' | 'loading' | 'analyzing' | 'summarizing' | 'saving' | 'complete' | 'error';
+export type CompactionStage =
+  'idle' | 'loading' | 'analyzing' | 'summarizing' | 'saving' | 'complete' | 'error';
 
 export type CompactionProgress = {
   stage: CompactionStage;

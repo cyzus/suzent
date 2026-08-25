@@ -43,17 +43,21 @@ export const BrutalSelect: React.FC<BrutalSelectProps> = ({
   const { t } = useI18n();
   const effectivePlaceholder = placeholder ?? t('select.placeholder');
   const [isOpen, setIsOpen] = useState(false);
-  const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number; width: number } | null>(null);
+  const [dropdownPosition, setDropdownPosition] = useState<{
+    top: number;
+    left: number;
+    width: number;
+  } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Normalize options to Option objects
-  const normalizedOptions: Option[] = options.map(opt =>
+  const normalizedOptions: Option[] = options.map((opt) =>
     typeof opt === 'string' ? { value: opt, label: opt } : opt
   );
 
-  const selectedOption = normalizedOptions.find(opt => opt.value === value);
+  const selectedOption = normalizedOptions.find((opt) => opt.value === value);
 
   // Heuristic for scrollbar: average item height is ~38px. max-h-60 is 240px. 6 items ~ 228px.
   const showScrollbar = normalizedOptions.length > 6;
@@ -129,54 +133,59 @@ export const BrutalSelect: React.FC<BrutalSelectProps> = ({
     };
   }, []);
 
-  const dropdown = isOpen && dropdownPosition && createPortal(
-    <div
-      ref={dropdownRef}
-      className={`fixed z-[9999] bg-white dark:bg-zinc-800 border-3 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] max-h-60 overflow-x-hidden animate-brutal-drop ${showScrollbar ? 'overflow-y-auto scrollbar-thin' : 'overflow-y-hidden'} ${dropdownClassName}`}
-      style={{
-        top: dropdownPosition.top,
-        left: dropdownPosition.left,
-        width: dropdownPosition.width,
-      }}
-    >
-      {normalizedOptions.map((option, optionIndex) => {
-        const previousGroup = optionIndex > 0 ? normalizedOptions[optionIndex - 1].group : undefined;
-        const showGroupHeader = !!option.group && option.group !== previousGroup;
-        return (
-          <React.Fragment key={option.value}>
-            {showGroupHeader && (
-              <div className="px-3 pt-2 pb-1 text-[10px] font-mono font-bold uppercase tracking-widest text-neutral-500 dark:text-neutral-400 bg-neutral-50 dark:bg-zinc-900 border-b-2 border-neutral-100 dark:border-zinc-700">
-                {option.group}
-              </div>
-            )}
-            <button
-              type="button"
-              disabled={option.disabled}
-              onClick={() => {
-                if (option.disabled) return;
-                onChange(option.value);
-                setIsOpen(false);
-              }}
-              className={`w-full text-left px-3 py-2 font-bold text-sm uppercase transition-colors border-b-2 border-neutral-100 dark:border-zinc-700 last:border-0 ${option.disabled
-                ? 'bg-white dark:bg-zinc-800 text-neutral-400 dark:text-neutral-600 cursor-not-allowed'
-                : value === option.value
-                  ? 'bg-brutal-black text-white dark:bg-brutal-yellow dark:text-brutal-black'
-                  : 'bg-white dark:bg-zinc-800 text-brutal-black dark:text-white hover:bg-brutal-yellow dark:hover:bg-zinc-700'
-                }`}
-            >
-              {option.label}
-              {option.hint && (
-                <span className="block normal-case font-normal text-[10px] text-neutral-500 dark:text-neutral-500 mt-0.5">
-                  {option.hint}
-                </span>
+  const dropdown =
+    isOpen &&
+    dropdownPosition &&
+    createPortal(
+      <div
+        ref={dropdownRef}
+        className={`fixed z-[9999] bg-white dark:bg-zinc-800 border-3 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] max-h-60 overflow-x-hidden animate-brutal-drop ${showScrollbar ? 'overflow-y-auto scrollbar-thin' : 'overflow-y-hidden'} ${dropdownClassName}`}
+        style={{
+          top: dropdownPosition.top,
+          left: dropdownPosition.left,
+          width: dropdownPosition.width,
+        }}
+      >
+        {normalizedOptions.map((option, optionIndex) => {
+          const previousGroup =
+            optionIndex > 0 ? normalizedOptions[optionIndex - 1].group : undefined;
+          const showGroupHeader = !!option.group && option.group !== previousGroup;
+          return (
+            <React.Fragment key={option.value}>
+              {showGroupHeader && (
+                <div className="px-3 pt-2 pb-1 text-[10px] font-mono font-bold uppercase tracking-widest text-neutral-500 dark:text-neutral-400 bg-neutral-50 dark:bg-zinc-900 border-b-2 border-neutral-100 dark:border-zinc-700">
+                  {option.group}
+                </div>
               )}
-            </button>
-          </React.Fragment>
-        );
-      })}
-    </div>,
-    document.body
-  );
+              <button
+                type="button"
+                disabled={option.disabled}
+                onClick={() => {
+                  if (option.disabled) return;
+                  onChange(option.value);
+                  setIsOpen(false);
+                }}
+                className={`w-full text-left px-3 py-2 font-bold text-sm uppercase transition-colors border-b-2 border-neutral-100 dark:border-zinc-700 last:border-0 ${
+                  option.disabled
+                    ? 'bg-white dark:bg-zinc-800 text-neutral-400 dark:text-neutral-600 cursor-not-allowed'
+                    : value === option.value
+                      ? 'bg-brutal-black text-white dark:bg-brutal-yellow dark:text-brutal-black'
+                      : 'bg-white dark:bg-zinc-800 text-brutal-black dark:text-white hover:bg-brutal-yellow dark:hover:bg-zinc-700'
+                }`}
+              >
+                {option.label}
+                {option.hint && (
+                  <span className="block normal-case font-normal text-[10px] text-neutral-500 dark:text-neutral-500 mt-0.5">
+                    {option.hint}
+                  </span>
+                )}
+              </button>
+            </React.Fragment>
+          );
+        })}
+      </div>,
+      document.body
+    );
 
   return (
     <div className={`relative ${className}`} ref={containerRef}>
@@ -197,14 +206,14 @@ export const BrutalSelect: React.FC<BrutalSelectProps> = ({
       >
         <span className="truncate">
           {selectedOption
-            ? (selectedOption.label.includes('/')
-                ? selectedOption.label.split('/').pop()
-                : selectedOption.label)
+            ? selectedOption.label.includes('/')
+              ? selectedOption.label.split('/').pop()
+              : selectedOption.label
             : effectivePlaceholder}
         </span>
         {!hideChevron && (
           <svg
-            className={`w-4 h-4 transition-transform duration-200 ${isOpen ? (effectiveDropUp ? 'rotate-0' : 'rotate-180') : (effectiveDropUp ? 'rotate-180' : 'rotate-0')}`}
+            className={`w-4 h-4 transition-transform duration-200 ${isOpen ? (effectiveDropUp ? 'rotate-0' : 'rotate-180') : effectiveDropUp ? 'rotate-180' : 'rotate-0'}`}
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"

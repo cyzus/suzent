@@ -118,10 +118,11 @@ export const TranscriptPanel: React.FC = () => {
     }
   };
 
-  const sessionOptions = chats?.map((c) => ({
-    id: c.id,
-    label: c.title || c.id.slice(0, 12) + '...',
-  })) ?? [];
+  const sessionOptions =
+    chats?.map((c) => ({
+      id: c.id,
+      label: c.title || c.id.slice(0, 12) + '...',
+    })) ?? [];
 
   return (
     <div className="space-y-6">
@@ -209,7 +210,9 @@ export const TranscriptPanel: React.FC = () => {
       {/* No session selected */}
       {!selectedSessionId && !loading && (
         <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 p-12 text-center">
-          <h4 className="font-brutal text-2xl uppercase mb-2 dark:text-white">{t('transcripts.selectTitle')}</h4>
+          <h4 className="font-brutal text-2xl uppercase mb-2 dark:text-white">
+            {t('transcripts.selectTitle')}
+          </h4>
           <p className="text-neutral-600 dark:text-neutral-400 text-sm max-w-md mx-auto">
             {t('transcripts.selectDesc')}
           </p>
@@ -219,7 +222,9 @@ export const TranscriptPanel: React.FC = () => {
       {/* Empty state */}
       {selectedSessionId && !loading && !error && entries.length === 0 && (
         <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 p-12 text-center">
-          <h4 className="font-brutal text-2xl uppercase mb-2 dark:text-white">{t('transcripts.emptyTitle')}</h4>
+          <h4 className="font-brutal text-2xl uppercase mb-2 dark:text-white">
+            {t('transcripts.emptyTitle')}
+          </h4>
           <p className="text-neutral-600 dark:text-neutral-400 text-sm max-w-md mx-auto">
             {t('transcripts.emptyDesc')}
           </p>
@@ -230,7 +235,8 @@ export const TranscriptPanel: React.FC = () => {
       {!loading && entries.length > 0 && (
         <div className="space-y-2">
           {entries.map((entry, index) => {
-            const showDate = index === 0 || formatDate(entry.ts) !== formatDate(entries[index - 1].ts);
+            const showDate =
+              index === 0 || formatDate(entry.ts) !== formatDate(entries[index - 1].ts);
 
             return (
               <Fragment key={index}>

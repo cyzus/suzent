@@ -70,19 +70,16 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
   const undoStartedRef = useRef(initiallyUndone);
   const additions = useMemo(
     () => files.reduce((total, file) => total + file.additions, 0),
-    [files],
+    [files]
   );
   const deletions = useMemo(
     () => files.reduce((total, file) => total + file.deletions, 0),
-    [files],
+    [files]
   );
   const visibleFiles = expanded ? files : files.slice(0, DEFAULT_VISIBLE_FILES);
   const hiddenCount = Math.max(0, files.length - DEFAULT_VISIBLE_FILES);
-  const selectedFile = files.find(file => file.path === selectedPath) ?? files[0];
-  const selectedDiff = useMemo(
-    () => parseUnifiedDiff(selectedFile?.diff ?? ''),
-    [selectedFile],
-  );
+  const selectedFile = files.find((file) => file.path === selectedPath) ?? files[0];
+  const selectedDiff = useMemo(() => parseUnifiedDiff(selectedFile?.diff ?? ''), [selectedFile]);
 
   const openDiffForFile = (file: MessageFileChange): void => {
     const isCurrentOpen = reviewing && selectedFile?.path === file.path;
@@ -95,7 +92,7 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
   };
 
   useEffect(() => {
-    if (!files.some(file => file.path === selectedPath)) {
+    if (!files.some((file) => file.path === selectedPath)) {
       setSelectedPath(files[0]?.path ?? '');
     }
   }, [files, selectedPath]);
@@ -113,7 +110,7 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
       setMessage(
         result.changed_files.length > 0
           ? t('fileChanges.undoSuccess', { count: result.changed_files.length })
-          : t('fileChanges.undoNoChanges'),
+          : t('fileChanges.undoNoChanges')
       );
     } catch (error) {
       undoStartedRef.current = false;
@@ -121,7 +118,7 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
       setMessage(
         conflicts?.length
           ? t('fileChanges.conflict', { files: conflicts.join(', ') })
-          : (error as Error).message,
+          : (error as Error).message
       );
     } finally {
       setBusy(false);
@@ -160,7 +157,7 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
           <button
             type="button"
             aria-expanded={reviewing}
-            onClick={() => setReviewing(value => !value)}
+            onClick={() => setReviewing((value) => !value)}
             className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-black transition-colors ${
               reviewing
                 ? 'bg-black/[0.08] text-brutal-black dark:bg-white/10 dark:text-white'
@@ -174,7 +171,7 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
       </div>
 
       <div className="py-1">
-        {visibleFiles.map(file => (
+        {visibleFiles.map((file) => (
           <div
             key={file.path}
             className={`group/file-row flex w-full min-w-0 items-center gap-2 px-3 py-1.5 text-xs transition-colors ${
@@ -200,7 +197,7 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
             {onFileClick && (
               <button
                 type="button"
-                onClick={event => openFilePreview(file, event.shiftKey)}
+                onClick={(event) => openFilePreview(file, event.shiftKey)}
                 title={t('fileChanges.openFile')}
                 aria-label={t('fileChanges.openFile')}
                 className="inline-flex h-6 w-6 shrink-0 items-center justify-center text-neutral-500 opacity-70 transition hover:bg-black/[0.06] hover:text-brutal-black group-hover/file-row:opacity-100 dark:text-neutral-400 dark:hover:bg-white/[0.08] dark:hover:text-white"
@@ -213,7 +210,7 @@ export const FileChangeSummary: React.FC<FileChangeSummaryProps> = ({
         {hiddenCount > 0 && (
           <button
             type="button"
-            onClick={() => setExpanded(value => !value)}
+            onClick={() => setExpanded((value) => !value)}
             className="ml-3 inline-flex items-center gap-1 py-1.5 text-xs font-black text-brutal-black hover:underline dark:text-white"
           >
             {expanded

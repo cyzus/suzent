@@ -71,7 +71,9 @@ function ActionBtn({
   return (
     <button
       type="button"
-      onClick={() => { void onClick(); }}
+      onClick={() => {
+        void onClick();
+      }}
       disabled={disabled}
       title={title}
       className={`flex items-center gap-1.5 px-3 py-2 border-l-2 border-brutal-black font-bold uppercase text-xs disabled:opacity-40 hover:brightness-95 dark:hover:brightness-125 transition-all ${
@@ -131,14 +133,15 @@ type DiffRowKind = 'add' | 'delete' | 'hunk' | 'context';
 function diffRows(diffPreview: string): { kind: DiffRowKind; text: string }[] {
   return diffPreview
     .split('\n')
-    .filter((line) => (
-      !line.startsWith('diff --git ')
-      && !line.startsWith('index ')
-      && !line.startsWith('deleted file mode ')
-      && !line.startsWith('new file mode ')
-      && !line.startsWith('--- ')
-      && !line.startsWith('+++ ')
-    ))
+    .filter(
+      (line) =>
+        !line.startsWith('diff --git ') &&
+        !line.startsWith('index ') &&
+        !line.startsWith('deleted file mode ') &&
+        !line.startsWith('new file mode ') &&
+        !line.startsWith('--- ') &&
+        !line.startsWith('+++ ')
+    )
     .map((line) => {
       if (line.startsWith('@@')) return { kind: 'hunk', text: line };
       if (line.startsWith('+')) return { kind: 'add', text: line.slice(1) };
@@ -161,14 +164,22 @@ function DiffPreview({ value }: { value: string }): React.ReactElement {
         </div>
       ) : (
         rows.map((row, index) => {
-          const tone = row.kind === 'add'
-            ? 'bg-green-50 text-green-900 dark:bg-green-950/30 dark:text-green-200'
-            : row.kind === 'delete'
-              ? 'bg-red-50 text-red-900 dark:bg-red-950/30 dark:text-red-200'
-              : row.kind === 'hunk'
-                ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-300'
-                : 'text-neutral-700 dark:text-neutral-300';
-          const marker = row.kind === 'add' ? '+' : row.kind === 'delete' ? '-' : row.kind === 'hunk' ? '@' : ' ';
+          const tone =
+            row.kind === 'add'
+              ? 'bg-green-50 text-green-900 dark:bg-green-950/30 dark:text-green-200'
+              : row.kind === 'delete'
+                ? 'bg-red-50 text-red-900 dark:bg-red-950/30 dark:text-red-200'
+                : row.kind === 'hunk'
+                  ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-300'
+                  : 'text-neutral-700 dark:text-neutral-300';
+          const marker =
+            row.kind === 'add'
+              ? '+'
+              : row.kind === 'delete'
+                ? '-'
+                : row.kind === 'hunk'
+                  ? '@'
+                  : ' ';
           return (
             <div key={`${index}:${row.text}`} className={`grid grid-cols-[24px_1fr] ${tone}`}>
               <span className="select-none border-r border-black/10 px-1 text-right text-neutral-400 dark:border-white/10 dark:text-neutral-500">
@@ -215,31 +226,41 @@ function SyncReviewPanel({
       if (file.risk === 'high') acc.high_risk += 1;
       return acc;
     },
-    { added: 0, modified: 0, deleted: 0, high_risk: 0 },
+    { added: 0, modified: 0, deleted: 0, high_risk: 0 }
   );
-  const operationLabel = plan.operation === 'auto'
-    ? t('settings.data.githubReviewSync')
-    : plan.operation === 'pull'
-      ? t('settings.data.githubPull')
-      : t('settings.data.githubPush');
-  const directionGroups = visibleFiles.reduce<Record<SyncDirection, Record<string, SyncFileChange[]>>>((acc, file) => {
-    const direction = syncDirectionOf(file);
-    const category = syncGroupLabel(file.category);
-    (acc[direction][category] ??= []).push(file);
-    return acc;
-  }, { outgoing: {}, incoming: {} });
-  const sortedCategoryNames = (groups: Record<string, SyncFileChange[]>): string[] => Object.keys(groups).sort((a, b) => {
-    const order = ['memory', 'config', 'skills', 'other'];
-    return (order.indexOf(a) === -1 ? 99 : order.indexOf(a)) - (order.indexOf(b) === -1 ? 99 : order.indexOf(b));
-  });
+  const operationLabel =
+    plan.operation === 'auto'
+      ? t('settings.data.githubReviewSync')
+      : plan.operation === 'pull'
+        ? t('settings.data.githubPull')
+        : t('settings.data.githubPush');
+  const directionGroups = visibleFiles.reduce<
+    Record<SyncDirection, Record<string, SyncFileChange[]>>
+  >(
+    (acc, file) => {
+      const direction = syncDirectionOf(file);
+      const category = syncGroupLabel(file.category);
+      (acc[direction][category] ??= []).push(file);
+      return acc;
+    },
+    { outgoing: {}, incoming: {} }
+  );
+  const sortedCategoryNames = (groups: Record<string, SyncFileChange[]>): string[] =>
+    Object.keys(groups).sort((a, b) => {
+      const order = ['memory', 'config', 'skills', 'other'];
+      return (
+        (order.indexOf(a) === -1 ? 99 : order.indexOf(a)) -
+        (order.indexOf(b) === -1 ? 99 : order.indexOf(b))
+      );
+    });
   const directionOrder: SyncDirection[] = ['outgoing', 'incoming'];
   const outgoingCount = Object.values(directionGroups.outgoing).reduce(
     (total, files) => total + files.length,
-    0,
+    0
   );
   const incomingCount = Object.values(directionGroups.incoming).reduce(
     (total, files) => total + files.length,
-    0,
+    0
   );
 
   const fileKey = (file: SyncFileChange): string => `${syncDirectionOf(file)}:${file.path}`;
@@ -274,13 +295,22 @@ function SyncReviewPanel({
           </p>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
-          <span className="font-mono text-[10px] font-bold text-green-700 dark:text-green-300" title={t('settings.data.githubReviewAdded')}>
+          <span
+            className="font-mono text-[10px] font-bold text-green-700 dark:text-green-300"
+            title={t('settings.data.githubReviewAdded')}
+          >
             +{summary.added ?? 0}
           </span>
-          <span className="font-mono text-[10px] font-bold text-amber-700 dark:text-amber-300" title={t('settings.data.githubReviewModified')}>
+          <span
+            className="font-mono text-[10px] font-bold text-amber-700 dark:text-amber-300"
+            title={t('settings.data.githubReviewModified')}
+          >
             ~{summary.modified ?? 0}
           </span>
-          <span className="font-mono text-[10px] font-bold text-red-700 dark:text-red-300" title={t('settings.data.githubReviewDeleted')}>
+          <span
+            className="font-mono text-[10px] font-bold text-red-700 dark:text-red-300"
+            title={t('settings.data.githubReviewDeleted')}
+          >
             -{summary.deleted ?? 0}
           </span>
         </div>
@@ -300,7 +330,10 @@ function SyncReviewPanel({
         {directionOrder.map((direction) => {
           const categoryGroups = directionGroups[direction];
           const categoryNames = sortedCategoryNames(categoryGroups);
-          const count = categoryNames.reduce((total, category) => total + (categoryGroups[category]?.length ?? 0), 0);
+          const count = categoryNames.reduce(
+            (total, category) => total + (categoryGroups[category]?.length ?? 0),
+            0
+          );
           if (count === 0) return null;
           return (
             <div key={direction} className="border-b-2 border-brutal-black/20 last:border-b-0">
@@ -310,7 +343,9 @@ function SyncReviewPanel({
                     ? t('settings.data.githubReviewOutgoing')
                     : t('settings.data.githubReviewIncoming')}
                 </span>
-                <span className="font-mono text-[10px] text-neutral-500 dark:text-neutral-400">{count}</span>
+                <span className="font-mono text-[10px] text-neutral-500 dark:text-neutral-400">
+                  {count}
+                </span>
               </div>
               {categoryNames.map((group) => {
                 const files = categoryGroups[group] ?? [];
@@ -318,9 +353,13 @@ function SyncReviewPanel({
                   <div key={`${direction}:${group}`} className="border-t border-brutal-black/10">
                     <div className="flex items-center justify-between bg-[#eeeeee] dark:bg-[#252526] px-3 py-1.5">
                       <div className="flex items-center gap-1.5 min-w-0">
-                        <span className="text-[10px] text-neutral-500 dark:text-neutral-400">v</span>
+                        <span className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                          v
+                        </span>
                         <span className="text-[10px] font-black uppercase text-neutral-600 dark:text-neutral-300 truncate">
-                          {t(`settings.data.githubReviewCategory${group.charAt(0).toUpperCase()}${group.slice(1)}`)}
+                          {t(
+                            `settings.data.githubReviewCategory${group.charAt(0).toUpperCase()}${group.slice(1)}`
+                          )}
                         </span>
                       </div>
                       <span className="font-mono text-[10px] text-neutral-500 dark:text-neutral-400">
@@ -329,11 +368,16 @@ function SyncReviewPanel({
                     </div>
                     <div>
                       {files.map((file) => (
-                        <div key={`${syncDirectionOf(file)}:${file.change_type}:${file.path}`} className="border-t border-brutal-black/5 first:border-t-0">
+                        <div
+                          key={`${syncDirectionOf(file)}:${file.change_type}:${file.path}`}
+                          className="border-t border-brutal-black/5 first:border-t-0"
+                        >
                           <div
                             role="button"
                             tabIndex={0}
-                            onClick={() => { void toggleFile(file); }}
+                            onClick={() => {
+                              void toggleFile(file);
+                            }}
                             onKeyDown={(event) => {
                               if (event.key === 'Enter' || event.key === ' ') {
                                 event.preventDefault();
@@ -346,7 +390,9 @@ function SyncReviewPanel({
                             <span className="text-[10px] text-neutral-500">
                               {expandedFile === fileKey(file) ? 'v' : '>'}
                             </span>
-                            <span className={`font-mono text-[11px] font-black ${syncChangeTone(file)}`}>
+                            <span
+                              className={`font-mono text-[11px] font-black ${syncChangeTone(file)}`}
+                            >
                               {syncChangeStatus(file.change_type)}
                             </span>
                             <span className="min-w-0">
@@ -373,19 +419,20 @@ function SyncReviewPanel({
                                 </button>
                               )}
                             </span>
-                            <span className={`text-right font-mono text-[10px] font-bold uppercase ${syncChangeTone(file)}`}>
+                            <span
+                              className={`text-right font-mono text-[10px] font-bold uppercase ${syncChangeTone(file)}`}
+                            >
                               {file.risk === 'high' ? '!' : file.risk === 'medium' ? '*' : ''}
                             </span>
                           </div>
-                          {expandedFile === fileKey(file) && (
-                            loadingFile === fileKey(file)
-                              ? (
-                                <div className="mx-3 mb-2 px-2 py-3 font-mono text-[10px] text-neutral-500">
-                                  {t('settings.data.githubReviewLoadingDiff')}
-                                </div>
-                              )
-                              : <DiffPreview value={loadedDiffs[fileKey(file)] ?? ''} />
-                          )}
+                          {expandedFile === fileKey(file) &&
+                            (loadingFile === fileKey(file) ? (
+                              <div className="mx-3 mb-2 px-2 py-3 font-mono text-[10px] text-neutral-500">
+                                {t('settings.data.githubReviewLoadingDiff')}
+                              </div>
+                            ) : (
+                              <DiffPreview value={loadedDiffs[fileKey(file)] ?? ''} />
+                            ))}
                         </div>
                       ))}
                     </div>
@@ -403,11 +450,13 @@ function SyncReviewPanel({
       </div>
 
       <div className="flex items-center justify-between border-t-2 border-brutal-black bg-[#eeeeee] dark:bg-[#252526] px-3 py-2">
-        <span className={`font-mono text-[10px] font-bold uppercase ${
-          (summary.high_risk ?? 0) > 0
-            ? 'text-red-700 dark:text-red-300'
-            : 'text-neutral-500 dark:text-neutral-400'
-        }`}>
+        <span
+          className={`font-mono text-[10px] font-bold uppercase ${
+            (summary.high_risk ?? 0) > 0
+              ? 'text-red-700 dark:text-red-300'
+              : 'text-neutral-500 dark:text-neutral-400'
+          }`}
+        >
           {t('settings.data.githubReviewHighRisk', { count: summary.high_risk ?? 0 })}
         </span>
         <div className="flex gap-2">
@@ -572,8 +621,12 @@ export function GitHubSyncSection({
     };
 
     void refreshWatchedPlan(true);
-    const interval = window.setInterval(() => { void refreshWatchedPlan(false); }, 8000);
-    const handleFocus = (): void => { void refreshWatchedPlan(true); };
+    const interval = window.setInterval(() => {
+      void refreshWatchedPlan(false);
+    }, 8000);
+    const handleFocus = (): void => {
+      void refreshWatchedPlan(true);
+    };
     window.addEventListener('focus', handleFocus);
     return () => {
       cancelled = true;
@@ -634,10 +687,7 @@ export function GitHubSyncSection({
         setGithubAuthenticated(true);
         setGithubUsername(result.username ?? null);
         setGithubTokenExpired(false);
-        onNotify(
-          t('settings.data.githubSignInDone', { username: result.username ?? '' }),
-          false,
-        );
+        onNotify(t('settings.data.githubSignInDone', { username: result.username ?? '' }), false);
       } else if (result.status === 'expired') {
         setDevicePhase('expired');
       } else if (result.status === 'denied') {
@@ -698,7 +748,7 @@ export function GitHubSyncSection({
           repo: result.github_repo || repoName,
           summary,
         }) + warn,
-        Boolean(result.warnings.length && !result.git?.valid),
+        Boolean(result.warnings.length && !result.git?.valid)
       );
     } catch (error) {
       onNotify(t('settings.data.githubFailed', { error: errMsg(error) }), true);
@@ -743,7 +793,7 @@ export function GitHubSyncSection({
     operation: SyncOperation,
     apiFn: (profileId: string, confirmDestructive?: boolean) => Promise<unknown>,
     successKey: string,
-    notifyComplete = false,
+    notifyComplete = false
   ) {
     return async function (confirmDestructive = false): Promise<void> {
       onBusyChange(true);
@@ -760,8 +810,7 @@ export function GitHubSyncSection({
         }
 
         const result = (await apiFn(profile.id, confirmDestructive)) as
-          | { blocked_review_required?: boolean; plan?: SyncPlan }
-          | undefined;
+          { blocked_review_required?: boolean; plan?: SyncPlan } | undefined;
         if (result?.blocked_review_required && result.plan) {
           openReview(result.plan, operation);
           return;
@@ -792,12 +841,12 @@ export function GitHubSyncSection({
     'pull',
     (profileId, confirmDestructive) => githubSyncPull(profileId, confirmDestructive),
     'settings.data.githubPulled',
-    true,
+    true
   );
   const handlePush = makeSyncHandler(
     'push',
     (profileId, confirmDestructive) => githubSyncPush(profileId, confirmDestructive),
-    'settings.data.githubPushed',
+    'settings.data.githubPushed'
   );
 
   function handleReviewConfirm(): void {
@@ -811,7 +860,7 @@ export function GitHubSyncSection({
     try {
       const profile = syncStatus?.profile;
       if (!profile) throw new Error(t('settings.data.githubNotConfigured'));
-      const result = await githubSyncDiscardOutgoing(profile.id) as { discarded?: string[] };
+      const result = (await githubSyncDiscardOutgoing(profile.id)) as { discarded?: string[] };
       setReviewPlan(null);
       setReviewOperation(null);
       setDismissedPlanKey(null);
@@ -823,7 +872,7 @@ export function GitHubSyncSection({
         count > 0
           ? t('settings.data.githubDiscardedOutgoing', { count })
           : t('settings.data.githubNoOutgoing'),
-        false,
+        false
       );
     } catch (error) {
       onNotify(t('settings.data.githubFailed', { error: errMsg(error) }), true);
@@ -839,17 +888,20 @@ export function GitHubSyncSection({
       if (!profile) throw new Error(t('settings.data.githubNotConfigured'));
       await githubSyncDiscardOutgoing(profile.id, [file.path]);
       const operation = reviewOperation ?? 'auto';
-      const remaining = reviewPlan?.files.filter(
-        (item) => !(item.path === file.path && syncDirectionOf(item) === 'outgoing'),
-      ) ?? [];
-      setPendingPlan((current) => current
-        ? {
-            ...current,
-            files: current.files.filter(
-              (item) => !(item.path === file.path && syncDirectionOf(item) === 'outgoing'),
-            ),
-          }
-        : current);
+      const remaining =
+        reviewPlan?.files.filter(
+          (item) => !(item.path === file.path && syncDirectionOf(item) === 'outgoing')
+        ) ?? [];
+      setPendingPlan((current) =>
+        current
+          ? {
+              ...current,
+              files: current.files.filter(
+                (item) => !(item.path === file.path && syncDirectionOf(item) === 'outgoing')
+              ),
+            }
+          : current
+      );
       if (remaining.length > 0 && reviewPlan) {
         setReviewPlan({ ...reviewPlan, files: remaining });
       } else {
@@ -858,13 +910,15 @@ export function GitHubSyncSection({
         setDismissedPlanKey(null);
       }
       onNotify(t('settings.data.githubDiscardedFile', { path: file.path }), false);
-      void githubSyncPlan(operation, profile.id, false).then((plan) => {
-        setPendingPlan(plan.files.length > 0 ? plan : null);
-        if (plan.files.length > 0) {
-          setReviewPlan(plan);
-          setReviewOperation(operation);
-        }
-      }).catch(() => {});
+      void githubSyncPlan(operation, profile.id, false)
+        .then((plan) => {
+          setPendingPlan(plan.files.length > 0 ? plan : null);
+          if (plan.files.length > 0) {
+            setReviewPlan(plan);
+            setReviewOperation(operation);
+          }
+        })
+        .catch(() => {});
     } catch (error) {
       onNotify(t('settings.data.githubFailed', { error: errMsg(error) }), true);
     } finally {
@@ -875,11 +929,7 @@ export function GitHubSyncSection({
   async function handleLoadFileDiff(file: SyncFileChange): Promise<string> {
     const profile = syncStatus?.profile;
     if (!profile) throw new Error(t('settings.data.githubNotConfigured'));
-    const result = await githubSyncFileDiff(
-      profile.id,
-      file.path,
-      syncDirectionOf(file),
-    );
+    const result = await githubSyncFileDiff(profile.id, file.path, syncDirectionOf(file));
     return result.diff;
   }
 
@@ -912,10 +962,10 @@ export function GitHubSyncSection({
   const configured = Boolean(syncStatus?.configured && syncStatus.profile);
   const pendingFiles = pendingPlan?.files ?? [];
   const incomingFileCount = pendingFiles.filter(
-    (file) => syncDirectionOf(file) === 'incoming',
+    (file) => syncDirectionOf(file) === 'incoming'
   ).length;
   const outgoingFileCount = pendingFiles.filter(
-    (file) => syncDirectionOf(file) === 'outgoing',
+    (file) => syncDirectionOf(file) === 'outgoing'
   ).length;
   const pullCount = incomingFileCount;
   const pushCount = outgoingFileCount;
@@ -926,7 +976,11 @@ export function GitHubSyncSection({
         iconTone="black"
         icon={
           <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-            <path fillRule="evenodd" clipRule="evenodd" d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49 0-.24-.01-.87-.01-1.71-2.78.62-3.37-1.22-3.37-1.22-.46-1.18-1.11-1.49-1.11-1.49-.91-.63.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.89 1.56 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.37-2.22-.26-4.56-1.14-4.56-5.05 0-1.12.39-2.03 1.03-2.74-.1-.26-.45-1.3.1-2.71 0 0 .84-.28 2.75 1.05a9.36 9.36 0 0 1 5 0c1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.71 1.03 1.62 1.03 2.74 0 3.92-2.34 4.79-4.57 5.04.36.32.68.94.68 1.9 0 1.37-.01 2.48-.01 2.82 0 .27.18.6.69.49A10.02 10.02 0 0 0 22 12.25C22 6.58 17.52 2 12 2Z" />
+            <path
+              fillRule="evenodd"
+              clipRule="evenodd"
+              d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49 0-.24-.01-.87-.01-1.71-2.78.62-3.37-1.22-3.37-1.22-.46-1.18-1.11-1.49-1.11-1.49-.91-.63.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.89 1.56 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.37-2.22-.26-4.56-1.14-4.56-5.05 0-1.12.39-2.03 1.03-2.74-.1-.26-.45-1.3.1-2.71 0 0 .84-.28 2.75 1.05a9.36 9.36 0 0 1 5 0c1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.71 1.03 1.62 1.03 2.74 0 3.92-2.34 4.79-4.57 5.04.36.32.68.94.68 1.9 0 1.37-.01 2.48-.01 2.82 0 .27.18.6.69.49A10.02 10.02 0 0 0 22 12.25C22 6.58 17.52 2 12 2Z"
+            />
           </svg>
         }
         title={t('settings.data.githubTitle')}
@@ -955,16 +1009,26 @@ export function GitHubSyncSection({
       {/* GitHub sign-in / device flow */}
       {!githubAuthLoading && githubTokenExpired && devicePhase === 'idle' && (
         <div className="mb-3 border-2 border-brutal-black bg-red-50 dark:bg-red-900/20 p-3 flex items-start gap-2">
-          <span className="text-red-600 dark:text-red-400 text-xs font-bold uppercase shrink-0">⚠</span>
+          <span className="text-red-600 dark:text-red-400 text-xs font-bold uppercase shrink-0">
+            ⚠
+          </span>
           <div className="flex-1 min-w-0">
             <p className="text-xs font-bold text-red-700 dark:text-red-400">GitHub token expired</p>
-            <p className="text-[10px] text-red-600 dark:text-red-400 mt-0.5">Sign in again to re-authenticate.</p>
+            <p className="text-[10px] text-red-600 dark:text-red-400 mt-0.5">
+              Sign in again to re-authenticate.
+            </p>
           </div>
         </div>
       )}
       {githubAuthLoading && devicePhase === 'idle' && (
         <div className="mb-4 flex items-center justify-center gap-2 border-2 border-brutal-black/20 bg-neutral-100 px-4 py-3 text-neutral-500 dark:bg-zinc-900 dark:text-neutral-400">
-          <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
+          <svg
+            className="h-3.5 w-3.5 animate-spin"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+          >
             <path strokeLinecap="round" d="M8 2a6 6 0 1 1-4.243 1.757" />
           </svg>
           <span className="text-xs font-bold uppercase">
@@ -1023,7 +1087,10 @@ export function GitHubSyncSection({
           </p>
           <button
             type="button"
-            onClick={() => { setDevicePhase('idle'); setDeviceCode(''); }}
+            onClick={() => {
+              setDevicePhase('idle');
+              setDeviceCode('');
+            }}
             className="px-3 py-2 border-2 border-brutal-black font-bold uppercase text-xs bg-white dark:bg-zinc-700"
           >
             {t('settings.data.githubSignInButton')}
@@ -1036,7 +1103,8 @@ export function GitHubSyncSection({
         <div className="mb-4 border-2 border-brutal-yellow bg-brutal-yellow/20 p-4 space-y-2">
           <p className="text-xs font-bold uppercase">GitHub App installation required</p>
           <p className="text-xs text-neutral-700 dark:text-neutral-300">
-            The Suzent GitHub App needs to be installed on your account before it can create repositories.
+            The Suzent GitHub App needs to be installed on your account before it can create
+            repositories.
           </p>
           <button
             type="button"
@@ -1078,7 +1146,13 @@ export function GitHubSyncSection({
                 disabled={busy}
                 title={t('settings.data.githubPullTitle', { count: pullCount })}
               >
-                <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <svg
+                  className="w-3.5 h-3.5"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                >
                   <path strokeLinecap="round" strokeLinejoin="round" d="M8 2v9M5 8l3 3 3-3" />
                   <path strokeLinecap="round" strokeLinejoin="round" d="M2 13h12" />
                 </svg>
@@ -1093,7 +1167,13 @@ export function GitHubSyncSection({
                 disabled={busy}
                 title={t('settings.data.githubPushTitle', { count: pushCount })}
               >
-                <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <svg
+                  className="w-3.5 h-3.5"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                >
                   <path strokeLinecap="round" strokeLinejoin="round" d="M8 14V5M5 8L8 5l3 3" />
                   <path strokeLinecap="round" strokeLinejoin="round" d="M2 3h12" />
                 </svg>
@@ -1106,12 +1186,37 @@ export function GitHubSyncSection({
         ) : (
           <>
             <div className="w-px bg-brutal-black/20 dark:bg-white/10" />
-            <ActionBtn onClick={handleQuickStart} disabled={busy || githubAuthLoading || !githubAuthenticated} title={t('settings.data.githubQuickStartButton')} primary>
-              {busy
-                ? <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" d="M8 2a6 6 0 1 1-4.243 1.757" /></svg>
-                : <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" strokeLinejoin="round" d="M13 8A5 5 0 1 1 8 3" /><path strokeLinecap="round" strokeLinejoin="round" d="M13 3v4h-4" /></svg>
-              }
-              <span className="text-xs font-bold uppercase">{busy ? t('settings.data.working') : t('settings.data.githubQuickStartButton')}</span>
+            <ActionBtn
+              onClick={handleQuickStart}
+              disabled={busy || githubAuthLoading || !githubAuthenticated}
+              title={t('settings.data.githubQuickStartButton')}
+              primary
+            >
+              {busy ? (
+                <svg
+                  className="w-3.5 h-3.5 animate-spin"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                >
+                  <path strokeLinecap="round" d="M8 2a6 6 0 1 1-4.243 1.757" />
+                </svg>
+              ) : (
+                <svg
+                  className="w-3.5 h-3.5"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 8A5 5 0 1 1 8 3" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 3v4h-4" />
+                </svg>
+              )}
+              <span className="text-xs font-bold uppercase">
+                {busy ? t('settings.data.working') : t('settings.data.githubQuickStartButton')}
+              </span>
             </ActionBtn>
           </>
         )}
@@ -1138,10 +1243,16 @@ export function GitHubSyncSection({
             setReviewOperation(null);
           }}
           onConfirm={handleReviewConfirm}
-          onDiscardOutgoing={() => { void handleDiscardOutgoing(); }}
-          onDiscardFile={(file) => { void handleDiscardFile(file); }}
+          onDiscardOutgoing={() => {
+            void handleDiscardOutgoing();
+          }}
+          onDiscardFile={(file) => {
+            void handleDiscardFile(file);
+          }}
           onLoadDiff={handleLoadFileDiff}
-          onPullCloud={() => { void handlePullCloud(); }}
+          onPullCloud={() => {
+            void handlePullCloud();
+          }}
         />
       )}
 
@@ -1164,25 +1275,48 @@ export function GitHubSyncSection({
         <div className="mt-3 space-y-4 border-2 border-brutal-black border-dashed p-4">
           <div className="block text-xs font-bold uppercase">
             {t('settings.data.githubRepoPlaceholder')}
-            <p className="mt-1 w-full bg-neutral-100 dark:bg-zinc-800 border-2 border-brutal-black/30 px-3 py-2 font-mono text-xs dark:text-neutral-400 text-neutral-500 select-all">{repoPath || '—'}</p>
+            <p className="mt-1 w-full bg-neutral-100 dark:bg-zinc-800 border-2 border-brutal-black/30 px-3 py-2 font-mono text-xs dark:text-neutral-400 text-neutral-500 select-all">
+              {repoPath || '—'}
+            </p>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="block text-xs font-bold uppercase">
               {t('settings.data.githubBranch')}
-              <p className="mt-1 w-full bg-neutral-100 dark:bg-zinc-800 border-2 border-brutal-black/30 px-3 py-2 font-mono text-xs dark:text-neutral-400 text-neutral-500">{branch || 'main'}</p>
+              <p className="mt-1 w-full bg-neutral-100 dark:bg-zinc-800 border-2 border-brutal-black/30 px-3 py-2 font-mono text-xs dark:text-neutral-400 text-neutral-500">
+                {branch || 'main'}
+              </p>
             </div>
             <div className="block text-xs font-bold uppercase">
               {t('settings.data.githubRemote')}
-              <p className="mt-1 w-full bg-neutral-100 dark:bg-zinc-800 border-2 border-brutal-black/30 px-3 py-2 font-mono text-xs dark:text-neutral-400 text-neutral-500">{remote || 'origin'}</p>
+              <p className="mt-1 w-full bg-neutral-100 dark:bg-zinc-800 border-2 border-brutal-black/30 px-3 py-2 font-mono text-xs dark:text-neutral-400 text-neutral-500">
+                {remote || 'origin'}
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-4">
             <label className="flex items-center gap-2 text-xs font-bold uppercase">
-              <input type="checkbox" checked={autoSync} onChange={(e) => { setAutoSync(e.target.checked); void saveAutoConfig(e.target.checked, intervalHours); }} />
+              <input
+                type="checkbox"
+                checked={autoSync}
+                onChange={(e) => {
+                  setAutoSync(e.target.checked);
+                  void saveAutoConfig(e.target.checked, intervalHours);
+                }}
+              />
               Auto-sync every
             </label>
             <label className="flex items-center gap-2 text-xs font-bold uppercase">
-              <input type="number" min={1} value={intervalHours} onChange={(e) => { const v = Number(e.target.value) || 4; setIntervalHours(v); void saveAutoConfig(autoSync, v); }} className="w-16 bg-white dark:bg-zinc-800 border-2 border-brutal-black px-2 py-1" />
+              <input
+                type="number"
+                min={1}
+                value={intervalHours}
+                onChange={(e) => {
+                  const v = Number(e.target.value) || 4;
+                  setIntervalHours(v);
+                  void saveAutoConfig(autoSync, v);
+                }}
+                className="w-16 bg-white dark:bg-zinc-800 border-2 border-brutal-black px-2 py-1"
+              />
               hours
             </label>
           </div>

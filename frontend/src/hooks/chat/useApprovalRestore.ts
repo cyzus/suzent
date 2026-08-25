@@ -62,40 +62,35 @@ export interface UseApprovalRestoreReturn {
   clearIfResolved: (
     chatId: string,
     transientParts: AGUIPart[],
-    resolvedToolCallIds: Set<string>,
+    resolvedToolCallIds: Set<string>
   ) => void;
 }
 
 function seedHasPendingApprovals(parts: AGUIPart[]): boolean {
-  return parts.some(
-    p => p.type === 'tool' && p.state === 'approval-requested' && !!p.approvalId,
-  );
+  return parts.some((p) => p.type === 'tool' && p.state === 'approval-requested' && !!p.approvalId);
 }
 
-export function permissionApprovalsToParts(
-  approvals: PendingPermissionApproval[],
-): AGUIPart[] {
-  return approvals.flatMap(approval => {
+export function permissionApprovalsToParts(approvals: PendingPermissionApproval[]): AGUIPart[] {
+  return approvals.flatMap((approval) => {
     if (!approval.approvalId || !approval.toolCallId || !approval.decision) {
       return [];
     }
-    return [{
-      type: 'tool' as const,
-      toolCallId: approval.toolCallId,
-      toolName: approval.toolName || 'unknown',
-      args: JSON.stringify(approval.args || {}, null, 2),
-      state: 'approval-requested' as const,
-      approvalId: approval.approvalId,
-      permission: approval.decision,
-    }];
+    return [
+      {
+        type: 'tool' as const,
+        toolCallId: approval.toolCallId,
+        toolName: approval.toolName || 'unknown',
+        args: JSON.stringify(approval.args || {}, null, 2),
+        state: 'approval-requested' as const,
+        approvalId: approval.approvalId,
+        permission: approval.decision,
+      },
+    ];
   });
 }
 
-export function useApprovalRestore(
-  options: UseApprovalRestoreOptions,
-): UseApprovalRestoreReturn {
-  const { restorePartsFromSeed, setIsStreaming, clearParts, streamingChatIdRef } =
-    options;
+export function useApprovalRestore(options: UseApprovalRestoreOptions): UseApprovalRestoreReturn {
+  const { restorePartsFromSeed, setIsStreaming, clearParts, streamingChatIdRef } = options;
 
   const restorePendingApprovals = useCallback(
     (chatId: string, seedParts: AGUIPart[]): boolean => {
@@ -113,21 +108,17 @@ export function useApprovalRestore(
       streamingChatIdRef.current = chatId;
       return true;
     },
-    [restorePartsFromSeed, setIsStreaming, streamingChatIdRef],
+    [restorePartsFromSeed, setIsStreaming, streamingChatIdRef]
   );
 
   const clearIfResolved = useCallback(
-    (
-      chatId: string,
-      transientParts: AGUIPart[],
-      resolvedToolCallIds: Set<string>,
-    ): void => {
+    (chatId: string, transientParts: AGUIPart[], resolvedToolCallIds: Set<string>): void => {
       // Only act while we hold restored transient state for this chat.
       if (streamingChatIdRef.current !== chatId) {
         return;
       }
       const restoredPending = transientParts.filter(
-        p => p.type === 'tool' && p.state === 'approval-requested' && !!p.approvalId,
+        (p) => p.type === 'tool' && p.state === 'approval-requested' && !!p.approvalId
       );
       if (restoredPending.length === 0) {
         return;
@@ -136,7 +127,7 @@ export function useApprovalRestore(
       // the DB. Only when every restored approval is resolved server-side do we
       // tear down — so a genuinely-pending approval never gets cleared.
       const stillOutstanding = restoredPending.some(
-        p => !p.toolCallId || !resolvedToolCallIds.has(p.toolCallId),
+        (p) => !p.toolCallId || !resolvedToolCallIds.has(p.toolCallId)
       );
       if (stillOutstanding) {
         return;
@@ -145,7 +136,7 @@ export function useApprovalRestore(
       streamingChatIdRef.current = null;
       clearParts();
     },
-    [clearParts, setIsStreaming, streamingChatIdRef],
+    [clearParts, setIsStreaming, streamingChatIdRef]
   );
 
   return { restorePendingApprovals, clearIfResolved };

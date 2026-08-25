@@ -11,7 +11,7 @@ const respond = (agents: unknown[]) => {
   vi.stubGlobal('window', {});
   vi.stubGlobal(
     'fetch',
-    vi.fn().mockResolvedValue(new Response(JSON.stringify({ agents }), { status: 200 })),
+    vi.fn().mockResolvedValue(new Response(JSON.stringify({ agents }), { status: 200 }))
   );
 };
 

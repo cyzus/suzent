@@ -2,9 +2,10 @@ import React from 'react';
 import type { A2UIButton } from '../../../types/a2ui';
 
 const VARIANT_CLASSES: Record<string, string> = {
-  primary:   'bg-brutal-yellow border-brutal-black text-brutal-black hover:bg-yellow-300',
-  secondary: 'bg-white border-brutal-black text-brutal-black hover:bg-neutral-100 dark:bg-zinc-800 dark:text-white dark:hover:bg-zinc-700',
-  danger:    'bg-red-500 border-red-700 text-white hover:bg-red-600',
+  primary: 'bg-brutal-yellow border-brutal-black text-brutal-black hover:bg-yellow-300',
+  secondary:
+    'bg-white border-brutal-black text-brutal-black hover:bg-neutral-100 dark:bg-zinc-800 dark:text-white dark:hover:bg-zinc-700',
+  danger: 'bg-red-500 border-red-700 text-white hover:bg-red-600',
 };
 
 interface Props {
@@ -21,7 +22,8 @@ export const A2UIButtonComponent: React.FC<Props> = ({ component, onAction }) =>
         const label = component.label || (component as any).text || '';
         const action = component.action || 'button_click';
         const rawCtx = component.context;
-        const context: Record<string, unknown> = (rawCtx && typeof rawCtx === 'object' && !Array.isArray(rawCtx)) ? { ...rawCtx } : {};
+        const context: Record<string, unknown> =
+          rawCtx && typeof rawCtx === 'object' && !Array.isArray(rawCtx) ? { ...rawCtx } : {};
         if (label) context.button_label = label;
         onAction(action, context);
       }}

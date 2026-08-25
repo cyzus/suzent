@@ -71,7 +71,9 @@ export const MemoryFilePanel: React.FC = () => {
       <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 p-6 shadow-brutal">
         <div className="flex items-center gap-3">
           <div className="w-4 h-4 border-3 border-brutal-black dark:border-white border-t-transparent animate-spin rounded-full"></div>
-          <span className="font-bold uppercase text-sm dark:text-white">{t('memoryFile.loading')}</span>
+          <span className="font-bold uppercase text-sm dark:text-white">
+            {t('memoryFile.loading')}
+          </span>
         </div>
       </div>
     );
@@ -80,7 +82,9 @@ export const MemoryFilePanel: React.FC = () => {
   if (error) {
     return (
       <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 p-6 shadow-brutal">
-        <h3 className="font-brutal text-xl text-brutal-black dark:text-white mb-2 uppercase">{t('common.error')}</h3>
+        <h3 className="font-brutal text-xl text-brutal-black dark:text-white mb-2 uppercase">
+          {t('common.error')}
+        </h3>
         <p className="text-sm text-brutal-black dark:text-neutral-300 font-mono mb-4">{error}</p>
         <button
           onClick={loadMemoryFile}
@@ -97,9 +101,13 @@ export const MemoryFilePanel: React.FC = () => {
       {/* Header */}
       <div className="flex items-center justify-between bg-brutal-black text-white p-3 border-3 border-brutal-black">
         <div>
-          <h3 className="font-brutal text-xl uppercase tracking-tight">{t('memoryFile.fileName')}</h3>
+          <h3 className="font-brutal text-xl uppercase tracking-tight">
+            {t('memoryFile.fileName')}
+          </h3>
           <p className="text-xs text-neutral-300 font-mono">
-            {content ? t('memoryFile.headerWithSize', { size: formatSize(sizeBytes) }) : t('memoryFile.notCreatedYet')}
+            {content
+              ? t('memoryFile.headerWithSize', { size: formatSize(sizeBytes) })
+              : t('memoryFile.notCreatedYet')}
           </p>
         </div>
         <div className="flex gap-2">
@@ -137,7 +145,9 @@ export const MemoryFilePanel: React.FC = () => {
         </div>
       ) : (
         <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 p-12 text-center shadow-brutal">
-          <h4 className="font-brutal text-2xl uppercase mb-2 dark:text-white">{t('memoryFile.emptyTitle')}</h4>
+          <h4 className="font-brutal text-2xl uppercase mb-2 dark:text-white">
+            {t('memoryFile.emptyTitle')}
+          </h4>
           <p className="text-neutral-600 dark:text-neutral-400 text-sm max-w-md mx-auto">
             {t('memoryFile.emptyDesc')}
           </p>

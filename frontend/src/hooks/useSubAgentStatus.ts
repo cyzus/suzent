@@ -99,7 +99,9 @@ function _openEventSource() {
         _applyTask(msg.task as SubAgentSummary);
         notify();
       }
-    } catch { /* ignore parse errors */ }
+    } catch {
+      /* ignore parse errors */
+    }
   };
 
   _es.onerror = () => {

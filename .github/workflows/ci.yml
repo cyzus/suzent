@@ -90,6 +90,12 @@ jobs:
       continue-on-error: true
       run: npm run lint
 
+    # Blocking, unlike the linter: the whole tree was formatted in one commit,
+    # so this starts clean and only fails on something newly unformatted.
+    - name: Check formatting
+      working-directory: frontend
+      run: npm run format:check
+
   rust:
     name: Rust
     runs-on: ubuntu-22.04

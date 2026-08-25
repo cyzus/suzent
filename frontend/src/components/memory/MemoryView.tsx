@@ -68,8 +68,12 @@ export const MemoryView: React.FC<{ initialTab?: MemoryTab }> = ({ initialTab })
           <div className="flex items-start gap-4">
             <span className="text-4xl">&#9888;&#65039;</span>
             <div className="flex-1">
-              <h3 className="font-brutal text-xl text-brutal-red mb-2 uppercase">{t('memoryView.systemError')}</h3>
-              <p className="text-brutal-black dark:text-white font-mono text-sm mb-4">{coreMemoryError}</p>
+              <h3 className="font-brutal text-xl text-brutal-red mb-2 uppercase">
+                {t('memoryView.systemError')}
+              </h3>
+              <p className="text-brutal-black dark:text-white font-mono text-sm mb-4">
+                {coreMemoryError}
+              </p>
               <button
                 onClick={() => loadCoreMemory()}
                 className="px-6 py-2 border-3 border-brutal-black bg-white dark:bg-zinc-700 hover:bg-neutral-100 dark:hover:bg-zinc-600 font-bold uppercase shadow-[2px_2px_0_0_#000] brutal-btn transition-all"
@@ -125,38 +129,45 @@ export const MemoryView: React.FC<{ initialTab?: MemoryTab }> = ({ initialTab })
                   onClick={() => setShowCoreMemory(!showCoreMemory)}
                   size="icon"
                   aria-expanded={showCoreMemory}
-                  title={showCoreMemory ? t('memoryView.collapseSection') : t('memoryView.expandSection')}
-                  aria-label={showCoreMemory ? t('memoryView.collapseSection') : t('memoryView.expandSection')}
+                  title={
+                    showCoreMemory ? t('memoryView.collapseSection') : t('memoryView.expandSection')
+                  }
+                  aria-label={
+                    showCoreMemory ? t('memoryView.collapseSection') : t('memoryView.expandSection')
+                  }
                 >
-                  <ChevronDownIcon className={`h-4 w-4 stroke-2 transition-transform ${showCoreMemory ? '' : '-rotate-90'}`} />
+                  <ChevronDownIcon
+                    className={`h-4 w-4 stroke-2 transition-transform ${showCoreMemory ? '' : '-rotate-90'}`}
+                  />
                 </BrutalButton>
               </div>
 
               {showCoreMemory && (
                 <div className="space-y-4">
-                  {coreMemoryLoading && !coreMemory ? (
-                    [1, 2].map((i) => (
-                      <div key={i} className="border-3 border-brutal-black bg-white dark:bg-zinc-800 p-4 animate-brutal-blink">
-                        <div className="h-3 bg-neutral-200 dark:bg-zinc-700 mb-3 w-1/3"></div>
-                        <div className="h-16 bg-neutral-200 dark:bg-zinc-700"></div>
-                      </div>
-                    ))
-                  ) : (
-                    coreMemory &&
-                    // Filter out session-scoped 'context' from the global view —
-                    // it only makes sense inside an active chat session.
-                    (Object.keys(coreMemory) as CoreMemoryLabel[])
-                      .filter((label) => label !== 'context')
-                      .map((label) => (
-                        <div key={label}>
-                          <CoreMemoryBlock
-                            label={label}
-                            content={coreMemory[label]}
-                            onUpdate={updateCoreMemoryBlock}
-                          />
+                  {coreMemoryLoading && !coreMemory
+                    ? [1, 2].map((i) => (
+                        <div
+                          key={i}
+                          className="border-3 border-brutal-black bg-white dark:bg-zinc-800 p-4 animate-brutal-blink"
+                        >
+                          <div className="h-3 bg-neutral-200 dark:bg-zinc-700 mb-3 w-1/3"></div>
+                          <div className="h-16 bg-neutral-200 dark:bg-zinc-700"></div>
                         </div>
                       ))
-                  )}
+                    : coreMemory &&
+                      // Filter out session-scoped 'context' from the global view —
+                      // it only makes sense inside an active chat session.
+                      (Object.keys(coreMemory) as CoreMemoryLabel[])
+                        .filter((label) => label !== 'context')
+                        .map((label) => (
+                          <div key={label}>
+                            <CoreMemoryBlock
+                              label={label}
+                              content={coreMemory[label]}
+                              onUpdate={updateCoreMemoryBlock}
+                            />
+                          </div>
+                        ))}
                 </div>
               )}
             </div>

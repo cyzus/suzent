@@ -55,7 +55,10 @@ export const ChatRowMenu: React.FC<ChatRowMenuProps> = ({
     const minLeft = bounds.left + margin;
     const maxLeft = Math.max(minLeft, bounds.right - menuW - margin);
     const minTop = Math.max(margin, bounds.top + margin);
-    const maxTop = Math.max(minTop, Math.min(window.innerHeight - menuH - margin, bounds.bottom - menuH - margin));
+    const maxTop = Math.max(
+      minTop,
+      Math.min(window.innerHeight - menuH - margin, bounds.bottom - menuH - margin)
+    );
 
     let left = anchorPoint.x;
     let top = anchorPoint.y;
@@ -96,13 +99,13 @@ export const ChatRowMenu: React.FC<ChatRowMenuProps> = ({
   }, [onClose, view]);
 
   // Brutalist styles
-  const surface = 'bg-white dark:bg-zinc-800 border-2 border-brutal-black shadow-[3px_3px_0_0_#000]';
+  const surface =
+    'bg-white dark:bg-zinc-800 border-2 border-brutal-black shadow-[3px_3px_0_0_#000]';
   const itemBase =
     'w-full text-left px-3 py-2 text-xs font-extrabold uppercase tracking-wider flex items-center gap-2.5 transition-colors';
   const itemDefault =
     'text-brutal-black dark:text-white hover:bg-brutal-yellow dark:hover:bg-brutal-yellow dark:hover:text-brutal-black';
-  const itemDanger =
-    'text-brutal-red hover:bg-brutal-red hover:text-white';
+  const itemDanger = 'text-brutal-red hover:bg-brutal-red hover:text-white';
 
   const rootView = (
     <>
@@ -110,10 +113,23 @@ export const ChatRowMenu: React.FC<ChatRowMenuProps> = ({
         type="button"
         role="menuitem"
         className={`${itemBase} ${itemDefault}`}
-        onClick={() => { onRename(); onClose(); }}
+        onClick={() => {
+          onRename();
+          onClose();
+        }}
       >
-        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+        <svg
+          className="w-3.5 h-3.5"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+          strokeWidth={3}
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+          />
         </svg>
         {t('chatList.menu.rename')}
       </button>
@@ -124,11 +140,27 @@ export const ChatRowMenu: React.FC<ChatRowMenuProps> = ({
         className={`${itemBase} ${itemDefault}`}
         onClick={() => setView('move')}
       >
-        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M3 7l9-4 9 4M3 7v10l9 4 9-4V7M3 7l9 4 9-4" />
+        <svg
+          className="w-3.5 h-3.5"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+          strokeWidth={3}
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M3 7l9-4 9 4M3 7v10l9 4 9-4V7M3 7l9 4 9-4"
+          />
         </svg>
         <span className="flex-1">{t('chatList.menu.moveToProject')}</span>
-        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
+        <svg
+          className="w-3 h-3"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+          strokeWidth={3}
+        >
           <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
         </svg>
       </button>
@@ -139,10 +171,23 @@ export const ChatRowMenu: React.FC<ChatRowMenuProps> = ({
         type="button"
         role="menuitem"
         className={`${itemBase} ${itemDanger}`}
-        onClick={() => { onDelete(); onClose(); }}
+        onClick={() => {
+          onDelete();
+          onClose();
+        }}
       >
-        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3" />
+        <svg
+          className="w-3.5 h-3.5"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+          strokeWidth={3}
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3"
+          />
         </svg>
         {t('chatList.menu.delete')}
       </button>
@@ -157,7 +202,13 @@ export const ChatRowMenu: React.FC<ChatRowMenuProps> = ({
         onClick={() => setView('root')}
         className="w-full text-left px-3 py-2 text-[10px] font-extrabold uppercase tracking-widest flex items-center gap-2 border-b-2 border-brutal-black bg-brutal-yellow text-brutal-black hover:bg-yellow-300 transition-colors"
       >
-        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
+        <svg
+          className="w-3 h-3"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+          strokeWidth={3}
+        >
           <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
         </svg>
         {t('chatList.menu.moveToProject')}

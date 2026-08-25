@@ -18,13 +18,10 @@ interface CanvasViewProps {
   onDispatch: (action: string, context: Record<string, unknown>, surfaceId: string) => void;
 }
 
-export const CanvasView: React.FC<CanvasViewProps> = ({
-  canvas,
-  onDispatch,
-}) => {
+export const CanvasView: React.FC<CanvasViewProps> = ({ canvas, onDispatch }) => {
   const { surfaces, activeSurfaceId, setActiveSurface } = canvas;
   const hasMultipleSurfaces = surfaces.length > 1;
-  const activeSurface = surfaces.find(s => s.id === activeSurfaceId) ?? surfaces[0] ?? null;
+  const activeSurface = surfaces.find((s) => s.id === activeSurfaceId) ?? surfaces[0] ?? null;
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   const dispatchAction = useCallback(
@@ -49,19 +46,22 @@ export const CanvasView: React.FC<CanvasViewProps> = ({
 
   const surfaceNav = (
     <div className="flex-1 overflow-x-auto flex min-w-0 h-11 items-stretch">
-      {hasMultipleSurfaces ? surfaces.map(s => (
-        <button
-          key={s.id}
-          onClick={() => setActiveSurface(s.id)}
-          className={`px-3 h-full flex items-center text-[10px] font-bold uppercase tracking-widest font-mono whitespace-nowrap border-r-2 border-brutal-black transition-colors shrink-0
-            ${s.id === activeSurfaceId
-              ? 'bg-brutal-black text-white'
-              : 'bg-white dark:bg-zinc-800 text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-700'
+      {hasMultipleSurfaces ? (
+        surfaces.map((s) => (
+          <button
+            key={s.id}
+            onClick={() => setActiveSurface(s.id)}
+            className={`px-3 h-full flex items-center text-[10px] font-bold uppercase tracking-widest font-mono whitespace-nowrap border-r-2 border-brutal-black transition-colors shrink-0
+            ${
+              s.id === activeSurfaceId
+                ? 'bg-brutal-black text-white'
+                : 'bg-white dark:bg-zinc-800 text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-700'
             }`}
-        >
-          {s.title ?? s.id}
-        </button>
-      )) : (
+          >
+            {s.title ?? s.id}
+          </button>
+        ))
+      ) : (
         <div className="px-3 h-full flex-1 min-w-0 flex items-center bg-white dark:bg-zinc-800">
           <span className="text-[10px] font-bold uppercase tracking-widest font-mono text-neutral-500 dark:text-neutral-400 truncate w-full block">
             {activeSurface.title ?? activeSurface.id}
@@ -80,7 +80,9 @@ export const CanvasView: React.FC<CanvasViewProps> = ({
   return (
     <>
       <div className="flex flex-col h-full min-h-0 min-w-0">
-        <div className={`flex items-stretch border-b-3 border-brutal-black shrink-0 ${hasMultipleSurfaces ? 'bg-neutral-100 dark:bg-zinc-900' : 'bg-white dark:bg-zinc-800'}`}>
+        <div
+          className={`flex items-stretch border-b-3 border-brutal-black shrink-0 ${hasMultipleSurfaces ? 'bg-neutral-100 dark:bg-zinc-900' : 'bg-white dark:bg-zinc-800'}`}
+        >
           <div className="flex-1 min-w-0">{surfaceNav}</div>
           <div className="px-2 h-11 flex items-center justify-center bg-white dark:bg-zinc-800 shrink-0">
             <BrutalButton
@@ -120,9 +122,7 @@ export const CanvasView: React.FC<CanvasViewProps> = ({
         <div className="flex flex-col min-h-0 flex-1">
           {/* surfaceNav carries flex-1 for the horizontal header; in this vertical
               column it must not grow vertically, so pin it with shrink-0 + h-11. */}
-          <div className="shrink-0 h-11 flex border-b-2 border-brutal-black">
-            {surfaceNav}
-          </div>
+          <div className="shrink-0 h-11 flex border-b-2 border-brutal-black">{surfaceNav}</div>
           {content}
         </div>
       </FullscreenOverlay>

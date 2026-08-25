@@ -56,7 +56,10 @@
     transform-origin: right center;
     border-radius: 1px;
     background: rgba(var(--minimap-ink), calc(0.28 + (0.62 * var(--minimap-wave))));
-    transition: width 130ms cubic-bezier(0.2, 0.8, 0.2, 1), transform 130ms cubic-bezier(0.2, 0.8, 0.2, 1), background-color 130ms ease;
+    transition:
+      width 130ms cubic-bezier(0.2, 0.8, 0.2, 1),
+      transform 130ms cubic-bezier(0.2, 0.8, 0.2, 1),
+      background-color 130ms ease;
   }
 
   .chat-minimap-marker-hovered,
@@ -117,7 +120,7 @@ body,
   --scrollbar-thumb: #000000;
   --scrollbar-thumb-hover: #333333;
   --scrollbar-edge: #000000;
-  --brutal-yellow: #FFE666;
+  --brutal-yellow: #ffe666;
 }
 
 .dark {
@@ -125,23 +128,35 @@ body,
   --scrollbar-thumb: var(--brutal-yellow);
   --scrollbar-thumb-hover: var(--brutal-yellow);
   --scrollbar-edge: var(--brutal-yellow);
-  --brutal-yellow: #FF6600;
+  --brutal-yellow: #ff6600;
 }
 
 /* ── Cold scheme: subtly blue-tinted dark surfaces ─────────────────────── */
-[data-scheme="cold"].dark .dark\:bg-zinc-900 { background-color: #14161e; }
-[data-scheme="cold"].dark .dark\:bg-zinc-800 { background-color: #1e222e; }
-[data-scheme="cold"].dark .dark\:bg-zinc-700 { background-color: #2b3040; }
-[data-scheme="cold"].dark .bg-dot-pattern {
+[data-scheme='cold'].dark .dark\:bg-zinc-900 {
+  background-color: #14161e;
+}
+[data-scheme='cold'].dark .dark\:bg-zinc-800 {
+  background-color: #1e222e;
+}
+[data-scheme='cold'].dark .dark\:bg-zinc-700 {
+  background-color: #2b3040;
+}
+[data-scheme='cold'].dark .bg-dot-pattern {
   background-image: radial-gradient(rgba(56, 189, 248, 0.12) 1px, transparent 1px);
 }
 
 /* ── Green scheme: subtly green-tinted dark surfaces ───────────────────── */
-[data-scheme="green"].dark .dark\:bg-zinc-900 { background-color: #131816; }
-[data-scheme="green"].dark .dark\:bg-zinc-800 { background-color: #202622; }
-[data-scheme="green"].dark .dark\:bg-zinc-700 { background-color: #2d352e; }
-[data-scheme="green"].dark .bg-dot-pattern {
-  background-image: radial-gradient(rgba(74, 222, 128, 0.10) 1px, transparent 1px);
+[data-scheme='green'].dark .dark\:bg-zinc-900 {
+  background-color: #131816;
+}
+[data-scheme='green'].dark .dark\:bg-zinc-800 {
+  background-color: #202622;
+}
+[data-scheme='green'].dark .dark\:bg-zinc-700 {
+  background-color: #2d352e;
+}
+[data-scheme='green'].dark .bg-dot-pattern {
+  background-image: radial-gradient(rgba(74, 222, 128, 0.1) 1px, transparent 1px);
 }
 
 /* Global themed scrollbar tuned for the neo-brutalist palette */
@@ -211,7 +226,7 @@ pre {
 
 /* Sticky spacer keeps a constant buffer between top line and content */
 .memory-scroll::before {
-  content: "";
+  content: '';
   display: block;
   position: sticky;
   top: 0;
@@ -223,12 +238,14 @@ pre {
 }
 
 /* Code block styling */
-pre[class*="language-"] {
+pre[class*='language-'] {
   position: relative;
 }
 
 pre code {
-  font-family: Consolas, 'JetBrains Mono', 'Fira Code', 'SFMono-Regular', Menlo, Monaco, 'Liberation Mono', 'Ubuntu Mono', 'DejaVu Sans Mono', 'Segoe UI Symbol', 'Courier New', monospace;
+  font-family:
+    Consolas, 'JetBrains Mono', 'Fira Code', 'SFMono-Regular', Menlo, Monaco, 'Liberation Mono',
+    'Ubuntu Mono', 'DejaVu Sans Mono', 'Segoe UI Symbol', 'Courier New', monospace;
 }
 
 /* Ensure all pre and code elements preserve whitespace */
@@ -239,7 +256,9 @@ pre {
 
 code {
   white-space: pre;
-  font-family: Consolas, 'JetBrains Mono', 'Fira Code', 'SFMono-Regular', Menlo, Monaco, 'Liberation Mono', 'Ubuntu Mono', 'DejaVu Sans Mono', 'Segoe UI Symbol', 'Courier New', monospace;
+  font-family:
+    Consolas, 'JetBrains Mono', 'Fira Code', 'SFMono-Regular', Menlo, Monaco, 'Liberation Mono',
+    'Ubuntu Mono', 'DejaVu Sans Mono', 'Segoe UI Symbol', 'Courier New', monospace;
 }
 
 .tool-call-pre {
@@ -346,11 +365,15 @@ code {
   padding: 0.45rem 0.25rem;
   border-bottom: 2px solid #e5e5e5;
   color: #525252;
-  font-family: Consolas, 'JetBrains Mono', 'Fira Code', 'SFMono-Regular', Menlo, Monaco, 'Liberation Mono', 'Ubuntu Mono', 'DejaVu Sans Mono', 'Segoe UI Symbol', 'Courier New', monospace;
+  font-family:
+    Consolas, 'JetBrains Mono', 'Fira Code', 'SFMono-Regular', Menlo, Monaco, 'Liberation Mono',
+    'Ubuntu Mono', 'DejaVu Sans Mono', 'Segoe UI Symbol', 'Courier New', monospace;
   font-size: 0.68rem;
   font-weight: 700;
   text-transform: uppercase;
-  transition: color 0.15s ease, background-color 0.15s ease;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease;
 }
 
 .activity-rail-header:hover {
@@ -460,41 +483,41 @@ code {
  * transparent at rest and only colors in on hover.
  */
 .activity-rail-scroll,
-.activity-rail [class*="overflow-y-auto"] {
+.activity-rail [class*='overflow-y-auto'] {
   scrollbar-gutter: stable;
   scrollbar-width: thin; /* Firefox */
   scrollbar-color: transparent transparent; /* Firefox: hidden thumb */
 }
 
 .activity-rail-scroll:hover,
-.activity-rail [class*="overflow-y-auto"]:hover {
+.activity-rail [class*='overflow-y-auto']:hover {
   scrollbar-color: rgba(0, 0, 0, 0.25) transparent; /* Firefox */
 }
 
 .dark .activity-rail-scroll:hover,
-.dark .activity-rail [class*="overflow-y-auto"]:hover {
+.dark .activity-rail [class*='overflow-y-auto']:hover {
   scrollbar-color: rgba(255, 255, 255, 0.25) transparent;
 }
 
 .activity-rail-scroll::-webkit-scrollbar,
-.activity-rail [class*="overflow-y-auto"]::-webkit-scrollbar {
+.activity-rail [class*='overflow-y-auto']::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
 .activity-rail-scroll::-webkit-scrollbar-thumb,
-.activity-rail [class*="overflow-y-auto"]::-webkit-scrollbar-thumb {
+.activity-rail [class*='overflow-y-auto']::-webkit-scrollbar-thumb {
   background: transparent;
   border-radius: 0;
 }
 
 .activity-rail-scroll:hover::-webkit-scrollbar-thumb,
-.activity-rail [class*="overflow-y-auto"]:hover::-webkit-scrollbar-thumb {
+.activity-rail [class*='overflow-y-auto']:hover::-webkit-scrollbar-thumb {
   background: rgba(0, 0, 0, 0.25);
 }
 
 .dark .activity-rail-scroll:hover::-webkit-scrollbar-thumb,
-.dark .activity-rail [class*="overflow-y-auto"]:hover::-webkit-scrollbar-thumb {
+.dark .activity-rail [class*='overflow-y-auto']:hover::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.25);
 }
 
@@ -507,7 +530,7 @@ code {
 }
 
 .activity-rail::before {
-  content: "";
+  content: '';
   position: absolute;
   left: 0.55rem;
   top: 0.85rem;
@@ -548,7 +571,7 @@ code {
 }
 
 .activity-rail-dot-done::after {
-  content: "";
+  content: '';
   position: absolute;
   left: 0.1rem;
   top: -0.02rem;
@@ -575,7 +598,7 @@ code {
 
 .activity-rail-dot-error::before,
 .activity-rail-dot-error::after {
-  content: "";
+  content: '';
   position: absolute;
   left: 0.19rem;
   top: -0.01rem;
@@ -624,7 +647,7 @@ code {
 }
 
 .activity-rail-dot-pending::after {
-  content: "";
+  content: '';
   position: absolute;
   left: 50%;
   top: 50%;
@@ -709,7 +732,6 @@ code {
 }
 
 @keyframes brutal-pulse {
-
   0%,
   100% {
     opacity: 1;
@@ -727,10 +749,12 @@ code {
 }
 
 @keyframes pixelHeartBeat {
-  0%, 100% {
+  0%,
+  100% {
     transform: scale(1);
   }
-  15%, 35% {
+  15%,
+  35% {
     transform: scale(1.3);
   }
   25% {
@@ -744,10 +768,12 @@ code {
 }
 
 @keyframes pixelHeartBeatFast {
-  0%, 100% {
+  0%,
+  100% {
     transform: scale(1);
   }
-  25%, 75% {
+  25%,
+  75% {
     transform: scale(1.3);
   }
   50% {
@@ -761,8 +787,12 @@ code {
 
 /* Compact EKG Trace Animation */
 @keyframes ekgTraceAndErase {
-  0% { stroke-dashoffset: 100; }
-  100% { stroke-dashoffset: -100; }
+  0% {
+    stroke-dashoffset: 100;
+  }
+  100% {
+    stroke-dashoffset: -100;
+  }
 }
 
 .ekg-active-wave {
@@ -795,7 +825,6 @@ code {
 }
 
 @keyframes robotEyeBlink {
-
   0%,
   80%,
   100% {
@@ -816,7 +845,6 @@ code {
 }
 
 @keyframes robotEyeIdleBlink {
-
   0%,
   94%,
   100% {
@@ -969,8 +997,6 @@ code {
   animation: brutalGlitchShape 0.3s steps(5) infinite;
 }
 
-
-
 /* Background Dot Pattern */
 .bg-dot-pattern {
   background-image: radial-gradient(#000 1px, transparent 1px);
@@ -1108,7 +1134,6 @@ code {
 }
 
 @keyframes ghostFloat {
-
   0%,
   100% {
     transform: translateY(0) scale(1);
@@ -1174,8 +1199,15 @@ code {
   animation: rotate-slow 3s linear infinite;
 }
 @keyframes neo-pulse {
-  0%, 100% { opacity: 0.3; transform: scaleX(0.5); }
-  50% { opacity: 1; transform: scaleX(1); }
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: scaleX(0.5);
+  }
+  50% {
+    opacity: 1;
+    transform: scaleX(1);
+  }
 }
 
 .animate-neo-pulse {
@@ -1184,12 +1216,16 @@ code {
 }
 
 @keyframes neo-scan {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(100%); }
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
 }
 
 .animate-neo-scan {
-  animation: neo-scan 2.0s linear infinite;
+  animation: neo-scan 2s linear infinite;
 }
 .brutal-running-mono {
   background-image: repeating-linear-gradient(

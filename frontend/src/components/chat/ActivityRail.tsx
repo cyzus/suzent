@@ -12,7 +12,7 @@ export type ActivityRenderGroup<T> =
 
 export function groupActivityChunks<T>(
   chunks: T[],
-  isActivityChunk: (chunk: T) => boolean,
+  isActivityChunk: (chunk: T) => boolean
 ): ActivityRenderGroup<T>[] {
   const renderGroups: ActivityRenderGroup<T>[] = [];
   let activityChunks: Array<{ chunk: T; index: number }> = [];
@@ -37,11 +37,11 @@ export function groupActivityChunks<T>(
   return renderGroups;
 }
 
-export function getActivityGroupOrdinal<T>(groups: ActivityRenderGroup<T>[], index: number): number {
-  return groups
-    .slice(0, index)
-    .filter(group => group.type === 'activity')
-    .length;
+export function getActivityGroupOrdinal<T>(
+  groups: ActivityRenderGroup<T>[],
+  index: number
+): number {
+  return groups.slice(0, index).filter((group) => group.type === 'activity').length;
 }
 
 function findLastIndex<T>(items: T[], predicate: (item: T) => boolean): number {
@@ -52,13 +52,21 @@ function findLastIndex<T>(items: T[], predicate: (item: T) => boolean): number {
 }
 
 export function getReasoningHeader(text: string, isStreaming: boolean = false): string {
-  const firstLine = text.trim().split('\n')[0].replace(/^[#*>-\s]+/, '').replace(/\*\*/g, '').trim();
-  const summary = firstLine.length > 80 ? firstLine.substring(0, 77) + '...' : firstLine || 'Processing...';
+  const firstLine = text
+    .trim()
+    .split('\n')[0]
+    .replace(/^[#*>-\s]+/, '')
+    .replace(/\*\*/g, '')
+    .trim();
+  const summary =
+    firstLine.length > 80 ? firstLine.substring(0, 77) + '...' : firstLine || 'Processing...';
   const prefix = isStreaming ? 'Thinking' : 'Thought';
   return `${prefix}: ${summary}`;
 }
 
-export function countActivityItems(chunks: Array<{ chunk: { type: string; items?: unknown[]; blocks?: unknown[] } }>): number {
+export function countActivityItems(
+  chunks: Array<{ chunk: { type: string; items?: unknown[]; blocks?: unknown[] } }>
+): number {
   return chunks.reduce((total, { chunk }) => {
     if (chunk.type === 'reasoning') return total + 1;
     if (chunk.type === 'tool') return total + (chunk.items?.length ?? 0);
@@ -82,7 +90,7 @@ function capitalize(value: string): string {
 export function formatActivityToolName(
   toolName: string | undefined,
   args?: string,
-  tense: ToolTense = 'imperative',
+  tense: ToolTense = 'imperative'
 ): string {
   if (!toolName) return 'unknown tool';
   const fallback = capitalize(toolName.replace(/_/g, ' '));
@@ -135,7 +143,7 @@ function formatActiveToolLabel(
   toolNames: Array<string | undefined>,
   toolName: string | undefined,
   args: string | undefined,
-  tense: ToolTense,
+  tense: ToolTense
 ): string {
   // Two calls still read fine individually; from three on, the count says more
   // than a label that rewrites itself every second.
@@ -150,7 +158,10 @@ export function isActionableAguiApproval(part: AGUIPart): boolean {
   return part.state === 'approval-requested' && !part.output && Boolean(part.approvalId);
 }
 
-export function getTimestampDeltaSeconds(previousTimestamp?: string, currentTimestamp?: string): number | undefined {
+export function getTimestampDeltaSeconds(
+  previousTimestamp?: string,
+  currentTimestamp?: string
+): number | undefined {
   if (!previousTimestamp || !currentTimestamp) return undefined;
   const previousTime = new Date(previousTimestamp).getTime();
   const currentTime = new Date(currentTimestamp).getTime();
@@ -159,77 +170,105 @@ export function getTimestampDeltaSeconds(previousTimestamp?: string, currentTime
   return deltaSeconds >= 0 ? deltaSeconds : undefined;
 }
 
-export function getAguiActivityLabel(chunks: Array<{ chunk: { type: string; items?: AGUIPart[] } }>, isStreaming: boolean): string | undefined {
+export function getAguiActivityLabel(
+  chunks: Array<{ chunk: { type: string; items?: AGUIPart[] } }>,
+  isStreaming: boolean
+): string | undefined {
   for (let i = chunks.length - 1; i >= 0; i -= 1) {
     const chunk = chunks[i].chunk;
     if (chunk.type === 'tool') {
       const pendingTool = [...(chunk.items ?? [])].reverse().find(isActionableAguiApproval);
-      if (pendingTool) return `Approval needed: ${formatActivityToolName(pendingTool.toolName, pendingTool.args)}`;
+      if (pendingTool)
+        return `Approval needed: ${formatActivityToolName(pendingTool.toolName, pendingTool.args)}`;
       // Count the streak across the whole group, not just this chunk: the
       // agent's own thinking between two shell calls does not make them
       // unrelated pieces of work.
       const items = chunks
         .slice(0, i + 1)
-        .flatMap(entry => (entry.chunk.type === 'tool' ? entry.chunk.items ?? [] : []));
-      const toolIndex = findLastIndex(items, part => !part.output || part.state === 'approval-requested');
+        .flatMap((entry) => (entry.chunk.type === 'tool' ? (entry.chunk.items ?? []) : []));
+      const toolIndex = findLastIndex(
+        items,
+        (part) => !part.output || part.state === 'approval-requested'
+      );
       if (toolIndex >= 0) {
         const tool = items[toolIndex];
         return formatActiveToolLabel(
-          items.slice(0, toolIndex + 1).map(part => part.toolName),
+          items.slice(0, toolIndex + 1).map((part) => part.toolName),
           tool.toolName,
           tool.args,
-          isStreaming && !tool.output ? 'active' : 'past',
+          isStreaming && !tool.output ? 'active' : 'past'
         );
       }
     }
     if (chunk.type === 'reasoning') {
-      const text = (chunk.items ?? []).map(part => part.text || '').join('').trim();
+      const text = (chunk.items ?? [])
+        .map((part) => part.text || '')
+        .join('')
+        .trim();
       if (text) return getReasoningHeader(text, isStreaming);
     }
   }
   return undefined;
 }
 
-export function hasAguiPendingApproval(chunks: Array<{ chunk: { type: string; items?: AGUIPart[] } }>): boolean {
-  return chunks.some(({ chunk }) => (
-    chunk.type === 'tool'
-    && (chunk.items ?? []).some(isActionableAguiApproval)
-  ));
+export function hasAguiPendingApproval(
+  chunks: Array<{ chunk: { type: string; items?: AGUIPart[] } }>
+): boolean {
+  return chunks.some(
+    ({ chunk }) => chunk.type === 'tool' && (chunk.items ?? []).some(isActionableAguiApproval)
+  );
 }
 
-export function getLegacyActivityLabel(chunks: Array<{ chunk: { type: string; blocks?: ContentBlock[] } }>, isStreaming: boolean): string | undefined {
+export function getLegacyActivityLabel(
+  chunks: Array<{ chunk: { type: string; blocks?: ContentBlock[] } }>,
+  isStreaming: boolean
+): string | undefined {
   for (let i = chunks.length - 1; i >= 0; i -= 1) {
     const chunk = chunks[i].chunk;
     if (chunk.type === 'toolCall') {
-      const pendingTool = [...(chunk.blocks ?? [])].reverse().find(block => block.approvalState === 'pending' && !block.content && !!block.approvalId);
-      if (pendingTool) return `Approval needed: ${formatActivityToolName(pendingTool.toolName, pendingTool.toolArgs)}`;
+      const pendingTool = [...(chunk.blocks ?? [])]
+        .reverse()
+        .find((block) => block.approvalState === 'pending' && !block.content && !!block.approvalId);
+      if (pendingTool)
+        return `Approval needed: ${formatActivityToolName(pendingTool.toolName, pendingTool.toolArgs)}`;
       const blocks = chunks
         .slice(0, i + 1)
-        .flatMap(entry => (entry.chunk.type === 'toolCall' ? entry.chunk.blocks ?? [] : []));
-      const toolIndex = findLastIndex(blocks, block => !block.content || block.approvalState === 'pending');
+        .flatMap((entry) => (entry.chunk.type === 'toolCall' ? (entry.chunk.blocks ?? []) : []));
+      const toolIndex = findLastIndex(
+        blocks,
+        (block) => !block.content || block.approvalState === 'pending'
+      );
       if (toolIndex >= 0) {
         const tool = blocks[toolIndex];
         return formatActiveToolLabel(
-          blocks.slice(0, toolIndex + 1).map(block => block.toolName),
+          blocks.slice(0, toolIndex + 1).map((block) => block.toolName),
           tool.toolName,
           tool.toolArgs,
-          isStreaming && !tool.content ? 'active' : 'past',
+          isStreaming && !tool.content ? 'active' : 'past'
         );
       }
     }
     if (chunk.type === 'reasoning') {
-      const text = (chunk.blocks ?? []).map(block => block.content).join('\n').trim();
+      const text = (chunk.blocks ?? [])
+        .map((block) => block.content)
+        .join('\n')
+        .trim();
       if (text) return getReasoningHeader(text, isStreaming);
     }
   }
   return undefined;
 }
 
-export function hasLegacyPendingApproval(chunks: Array<{ chunk: { type: string; blocks?: ContentBlock[] } }>): boolean {
-  return chunks.some(({ chunk }) => (
-    chunk.type === 'toolCall'
-    && (chunk.blocks ?? []).some(block => block.approvalState === 'pending' && !block.content && !!block.approvalId)
-  ));
+export function hasLegacyPendingApproval(
+  chunks: Array<{ chunk: { type: string; blocks?: ContentBlock[] } }>
+): boolean {
+  return chunks.some(
+    ({ chunk }) =>
+      chunk.type === 'toolCall' &&
+      (chunk.blocks ?? []).some(
+        (block) => block.approvalState === 'pending' && !block.content && !!block.approvalId
+      )
+  );
 }
 
 function formatActivityDuration(totalSeconds: number): string {
@@ -249,7 +288,17 @@ export const ActivityRail: React.FC<{
   isActive?: boolean;
   hasPending?: boolean;
   currentLabel?: string;
-}> = ({ children, itemCount, durationSeconds, startedAtMs, showDuration = true, defaultExpanded = false, isActive = false, hasPending = false, currentLabel }) => {
+}> = ({
+  children,
+  itemCount,
+  durationSeconds,
+  startedAtMs,
+  showDuration = true,
+  defaultExpanded = false,
+  isActive = false,
+  hasPending = false,
+  currentLabel,
+}) => {
   const [expanded, setExpanded] = useState(defaultExpanded);
   // Use the caller-provided start time when available so the timer resumes from
   // the original start across remounts (e.g. reconnecting to a stream after a
@@ -288,13 +337,13 @@ export const ActivityRail: React.FC<{
   // the later ones show what is happening instead of starting a second clock.
   const headerLabel = showDuration
     ? durationLabel
-    : currentLabel ?? (isActive ? durationLabel : 'Activity');
+    : (currentLabel ?? (isActive ? durationLabel : 'Activity'));
 
   return (
     <div className="activity-rail-shell min-w-0 w-full">
       <button
         type="button"
-        onClick={() => setExpanded(value => !value)}
+        onClick={() => setExpanded((value) => !value)}
         className={`activity-rail-header ${
           hasPending && !expanded
             ? 'activity-rail-header-pending'
@@ -304,14 +353,12 @@ export const ActivityRail: React.FC<{
         }`}
       >
         <span className="truncate min-w-0">
-          {hasPending && !expanded
-            ? currentLabel ?? 'Approval needed'
-            : headerLabel}
+          {hasPending && !expanded ? (currentLabel ?? 'Approval needed') : headerLabel}
         </span>
-        {hasPending && !expanded && (
-          <span className="activity-rail-pending-badge">Pending</span>
-        )}
-        <span className="text-neutral-300 dark:text-neutral-600" aria-hidden="true">|</span>
+        {hasPending && !expanded && <span className="activity-rail-pending-badge">Pending</span>}
+        <span className="text-neutral-300 dark:text-neutral-600" aria-hidden="true">
+          |
+        </span>
         <span className="text-neutral-500 dark:text-neutral-400">
           {itemCount} {itemCount === 1 ? 'step' : 'steps'}
         </span>
@@ -325,12 +372,12 @@ export const ActivityRail: React.FC<{
           <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
         </svg>
       </button>
-      <div className={`grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] overflow-hidden ${expanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
+      <div
+        className={`grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] overflow-hidden ${expanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}
+      >
         <div className="min-h-0 overflow-hidden">
           <div className="activity-rail-scroll min-w-0 w-full">
-            <div className="activity-rail min-w-0 w-full">
-              {children}
-            </div>
+            <div className="activity-rail min-w-0 w-full">{children}</div>
           </div>
         </div>
       </div>
@@ -348,23 +395,25 @@ export const ActivityRailItem: React.FC<{
         state === 'pending'
           ? 'activity-rail-dot-pending'
           : state === 'active'
-          ? 'activity-rail-dot-active'
-          : state === 'error'
-            ? 'activity-rail-dot-error'
-          : state === 'done'
-            ? 'activity-rail-dot-done'
-            : ''
+            ? 'activity-rail-dot-active'
+            : state === 'error'
+              ? 'activity-rail-dot-error'
+              : state === 'done'
+                ? 'activity-rail-dot-done'
+                : ''
       }`}
     />
-    <div className={`activity-rail-card ${
-      state === 'pending'
-        ? 'activity-rail-card-pending'
-        : state === 'error'
-          ? 'activity-rail-card-error'
-        : state === 'active'
-          ? 'activity-rail-card-active'
-          : ''
-    }`}>
+    <div
+      className={`activity-rail-card ${
+        state === 'pending'
+          ? 'activity-rail-card-pending'
+          : state === 'error'
+            ? 'activity-rail-card-error'
+            : state === 'active'
+              ? 'activity-rail-card-active'
+              : ''
+      }`}
+    >
       {children}
     </div>
   </div>
@@ -381,7 +430,7 @@ export const ReasoningRailItem: React.FC<{
       <div className="min-w-0">
         <button
           type="button"
-          onClick={() => setExpanded(value => !value)}
+          onClick={() => setExpanded((value) => !value)}
           className="group/thought-header inline-flex items-center gap-1.5 px-2.5 cursor-pointer select-none min-w-0 max-w-full"
         >
           <span className="text-[11px] font-mono font-bold uppercase tracking-wide text-neutral-500 dark:text-neutral-400 shrink-0">
@@ -397,11 +446,17 @@ export const ReasoningRailItem: React.FC<{
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
           </svg>
         </button>
-        <div className={`grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] overflow-hidden ${expanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
+        <div
+          className={`grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] overflow-hidden ${expanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}
+        >
           <div className="min-h-0 overflow-hidden">
             <div className="mt-2 pt-1">
               <div className="text-[13px] md:text-sm text-brutal-black/85 dark:text-neutral-300 leading-relaxed break-words opacity-90">
-                <MarkdownRenderer content={text} onFileClick={onFileClick} streamingLite={isStreaming} />
+                <MarkdownRenderer
+                  content={text}
+                  onFileClick={onFileClick}
+                  streamingLite={isStreaming}
+                />
               </div>
             </div>
           </div>

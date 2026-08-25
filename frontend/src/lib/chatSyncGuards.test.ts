@@ -12,7 +12,8 @@ describe('shouldKeepLocalAssistantContent', () => {
       { role: 'user', content: 'question' },
       {
         role: 'assistant',
-        content: '<details data-tool-call-id="t1"><summary>🔧 tool</summary><pre><code class="language-json">{"x":1}</code></pre></details>',
+        content:
+          '<details data-tool-call-id="t1"><summary>🔧 tool</summary><pre><code class="language-json">{"x":1}</code></pre></details>',
       },
     ];
 
@@ -33,7 +34,8 @@ describe('shouldKeepLocalAssistantContent', () => {
   });
 
   it('keeps local final answer when server last assistant is tool-only and message counts match', () => {
-    const toolOnlyContent = '<details data-tool-call-id="t1"><summary>🔧 tool</summary><pre><code class="language-json">{"x":1}</code></pre></details>\n<details data-tool-call-id="t1"><summary>📦 tool</summary><pre><code class="language-text">result</code></pre></details>';
+    const toolOnlyContent =
+      '<details data-tool-call-id="t1"><summary>🔧 tool</summary><pre><code class="language-json">{"x":1}</code></pre></details>\n<details data-tool-call-id="t1"><summary>📦 tool</summary><pre><code class="language-text">result</code></pre></details>';
     const local: Message[] = [
       { role: 'user', content: 'question' },
       { role: 'assistant', content: toolOnlyContent },
@@ -44,7 +46,7 @@ describe('shouldKeepLocalAssistantContent', () => {
       { role: 'user', content: 'question' },
       { role: 'assistant', content: toolOnlyContent },
       { role: 'user', content: 'follow-up' },
-      { role: 'assistant', content: toolOnlyContent },  // post-process hasn't written final text yet
+      { role: 'assistant', content: toolOnlyContent }, // post-process hasn't written final text yet
     ];
     expect(shouldKeepLocalAssistantContent(local, server)).toBe(true);
   });
@@ -57,7 +59,11 @@ describe('shouldKeepLocalAssistantContent', () => {
       '<details data-tool-call-id="t1"><summary>📦 tool</summary><pre><code class="language-text">result text here</code></pre></details>';
     const local: Message[] = [
       { role: 'user', content: 'question' },
-      { role: 'assistant', content: 'This is a long and complete final answer with real prose content for the user. It explains everything clearly.' },
+      {
+        role: 'assistant',
+        content:
+          'This is a long and complete final answer with real prose content for the user. It explains everything clearly.',
+      },
     ];
     const server: Message[] = [
       { role: 'user', content: 'question' },
@@ -73,7 +79,10 @@ describe('shouldKeepLocalAssistantContent', () => {
     ];
     const server: Message[] = [
       { role: 'user', content: 'question' },
-      { role: 'assistant', content: 'Server final answer that is reasonably long and authoritative.' },
+      {
+        role: 'assistant',
+        content: 'Server final answer that is reasonably long and authoritative.',
+      },
     ];
     expect(shouldKeepLocalAssistantContent(local, server)).toBe(false);
   });
@@ -83,7 +92,8 @@ describe('shouldKeepLocalAssistantContent', () => {
       { role: 'user', content: 'question' },
       {
         role: 'assistant',
-        content: '<details data-tool-call-id="t1"><summary>🔧 tool</summary><pre><code class="language-json">{"x":1}</code></pre></details>',
+        content:
+          '<details data-tool-call-id="t1"><summary>🔧 tool</summary><pre><code class="language-json">{"x":1}</code></pre></details>',
       },
     ];
     const server: Message[] = [

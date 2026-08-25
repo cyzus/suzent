@@ -76,15 +76,20 @@ function previewSnippet(content: string, title: string): string {
   return text && text !== title ? text : '';
 }
 
-function buildStandaloneMarker(message: Message, index: number, labels: MinimapLabels): ChatMinimapMarker {
+function buildStandaloneMarker(
+  message: Message,
+  index: number,
+  labels: MinimapLabels
+): ChatMinimapMarker {
   const tone = getMessageTone(message);
-  const fallbackTitle = tone === 'user'
-    ? labels.user
-    : tone === 'assistant'
-      ? labels.assistant
-      : tone === 'notice'
-        ? labels.notice
-        : labels.activity;
+  const fallbackTitle =
+    tone === 'user'
+      ? labels.user
+      : tone === 'assistant'
+        ? labels.assistant
+        : tone === 'notice'
+          ? labels.notice
+          : labels.activity;
 
   const title = previewTitle(message.content || '', fallbackTitle);
   const snippet = previewSnippet(message.content || '', title);
@@ -110,10 +115,12 @@ function buildTurnMarker(
   userIndex: number,
   assistantMessage: Message | null,
   assistantIndex: number | null,
-  labels: MinimapLabels,
+  labels: MinimapLabels
 ): ChatMinimapMarker {
   const title = previewTitle(userMessage.content || '', labels.user);
-  const assistantSnippet = assistantMessage ? previewSnippet(assistantMessage.content || '', '') : '';
+  const assistantSnippet = assistantMessage
+    ? previewSnippet(assistantMessage.content || '', '')
+    : '';
   const userSnippet = previewSnippet(userMessage.content || '', title);
   const meta = [
     userMessage.timestamp ? formatMessageTime(userMessage.timestamp) : '',
@@ -159,13 +166,15 @@ function buildMarkers(messages: Message[], labels: MinimapLabels): ChatMinimapMa
       }
     }
 
-    markers.push(buildTurnMarker(
-      message,
-      index,
-      finalAssistantIndex == null ? null : messages[finalAssistantIndex],
-      finalAssistantIndex,
-      labels,
-    ));
+    markers.push(
+      buildTurnMarker(
+        message,
+        index,
+        finalAssistantIndex == null ? null : messages[finalAssistantIndex],
+        finalAssistantIndex,
+        labels
+      )
+    );
 
     index = nextUserIndex - 1;
   }
@@ -184,43 +193,51 @@ export const ChatMinimap: React.FC<ChatMinimapProps> = ({
   const [hoveredMarkerId, setHoveredMarkerId] = useState<string | null>(null);
   const [hoverPercent, setHoverPercent] = useState<number | null>(null);
 
-  const labels = useMemo<MinimapLabels>(() => ({
-    user: t('chatWindow.minimapPreview.user'),
-    assistant: t('chatWindow.minimapPreview.assistant'),
-    notice: t('chatWindow.minimapPreview.notice'),
-    activity: t('chatWindow.minimapPreview.activity'),
-    files: (count) => t('chatWindow.minimapPreview.files', { count }),
-    images: (count) => t('chatWindow.minimapPreview.images', { count }),
-  }), [t]);
-
-  const markers = useMemo(
-    () => buildMarkers(messages, labels),
-    [messages, labels],
+  const labels = useMemo<MinimapLabels>(
+    () => ({
+      user: t('chatWindow.minimapPreview.user'),
+      assistant: t('chatWindow.minimapPreview.assistant'),
+      notice: t('chatWindow.minimapPreview.notice'),
+      activity: t('chatWindow.minimapPreview.activity'),
+      files: (count) => t('chatWindow.minimapPreview.files', { count }),
+      images: (count) => t('chatWindow.minimapPreview.images', { count }),
+    }),
+    [t]
   );
+
+  const markers = useMemo(() => buildMarkers(messages, labels), [messages, labels]);
 
   // The rail's pixel height grows with the marker count up to a cap, so
   // ticks land a fixed distance apart and the centered stack stays compact
   // when sparse. Within that height, ticks are spaced evenly by list order.
-  const railHeightPx = markers.length < 2
-    ? 0
-    : Math.min(MAX_RAIL_PX, (markers.length - 1) * TICK_INTERVAL_PX);
+  const railHeightPx =
+    markers.length < 2 ? 0 : Math.min(MAX_RAIL_PX, (markers.length - 1) * TICK_INTERVAL_PX);
 
-  const getMarkerTop = useCallback((marker: ChatMinimapMarker): number => {
-    const order = markers.indexOf(marker);
-    if (order < 0 || markers.length === 1) return 50;
-    return (order / (markers.length - 1)) * 100;
-  }, [markers]);
+  const getMarkerTop = useCallback(
+    (marker: ChatMinimapMarker): number => {
+      const order = markers.indexOf(marker);
+      if (order < 0 || markers.length === 1) return 50;
+      return (order / (markers.length - 1)) * 100;
+    },
+    [markers]
+  );
 
-  const getNearestMarkerAtPercent = useCallback((percent: number): ChatMinimapMarker | null => {
-    if (markers.length === 0) return null;
-    return markers.reduce((nearest, marker) => {
-      const nearestDistance = Math.abs(getMarkerTop(nearest) - percent);
-      const markerDistance = Math.abs(getMarkerTop(marker) - percent);
-      return markerDistance < nearestDistance ? marker : nearest;
-    }, markers[0]);
-  }, [getMarkerTop, markers]);
+  const getNearestMarkerAtPercent = useCallback(
+    (percent: number): ChatMinimapMarker | null => {
+      if (markers.length === 0) return null;
+      return markers.reduce((nearest, marker) => {
+        const nearestDistance = Math.abs(getMarkerTop(nearest) - percent);
+        const markerDistance = Math.abs(getMarkerTop(marker) - percent);
+        return markerDistance < nearestDistance ? marker : nearest;
+      }, markers[0]);
+    },
+    [getMarkerTop, markers]
+  );
 
-  const hoveredMarker = hoveredMarkerId == null ? null : markers.find(marker => marker.id === hoveredMarkerId) ?? null;
+  const hoveredMarker =
+    hoveredMarkerId == null
+      ? null
+      : (markers.find((marker) => marker.id === hoveredMarkerId) ?? null);
   // Aligned to the hovered tick within the (short, centered) rail; the
   // card is translateY(-50%) centered on it and the container doesn't clip.
   const previewTop = hoveredMarker ? getMarkerTop(hoveredMarker) : 50;
@@ -232,7 +249,9 @@ export const ChatMinimap: React.FC<ChatMinimapProps> = ({
       return;
     }
 
-    setScrollCenterTop(Math.max(0, Math.min(100, ((el.scrollTop + el.clientHeight / 2) / el.scrollHeight) * 100)));
+    setScrollCenterTop(
+      Math.max(0, Math.min(100, ((el.scrollTop + el.clientHeight / 2) / el.scrollHeight) * 100))
+    );
   }, [scrollContainerRef]);
 
   useEffect(() => {
@@ -251,25 +270,31 @@ export const ChatMinimap: React.FC<ChatMinimapProps> = ({
     };
   }, [markers.length, scrollContainerRef, updateMetrics]);
 
-  const scrollFromRailPointer = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    const rail = railRef.current;
-    const el = scrollContainerRef.current;
-    if (!rail || !el || el.scrollHeight <= el.clientHeight) return;
+  const scrollFromRailPointer = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      const rail = railRef.current;
+      const el = scrollContainerRef.current;
+      if (!rail || !el || el.scrollHeight <= el.clientHeight) return;
 
-    const rect = rail.getBoundingClientRect();
-    const ratio = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
-    el.scrollTo({ top: ratio * (el.scrollHeight - el.clientHeight), behavior: 'smooth' });
-  }, [scrollContainerRef]);
+      const rect = rail.getBoundingClientRect();
+      const ratio = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
+      el.scrollTo({ top: ratio * (el.scrollHeight - el.clientHeight), behavior: 'smooth' });
+    },
+    [scrollContainerRef]
+  );
 
-  const updateHoverFromPointer = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    const rail = railRef.current;
-    if (!rail) return;
+  const updateHoverFromPointer = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      const rail = railRef.current;
+      if (!rail) return;
 
-    const rect = rail.getBoundingClientRect();
-    const percent = Math.max(0, Math.min(100, ((event.clientY - rect.top) / rect.height) * 100));
-    setHoverPercent(percent);
-    setHoveredMarkerId(getNearestMarkerAtPercent(percent)?.id ?? null);
-  }, [getNearestMarkerAtPercent]);
+      const rect = rail.getBoundingClientRect();
+      const percent = Math.max(0, Math.min(100, ((event.clientY - rect.top) / rect.height) * 100));
+      setHoverPercent(percent);
+      setHoveredMarkerId(getNearestMarkerAtPercent(percent)?.id ?? null);
+    },
+    [getNearestMarkerAtPercent]
+  );
 
   // Below this, the conversation fits on screen and a near-empty rail
   // just looks sparse — skip the minimap entirely until it earns its place.
@@ -313,8 +338,10 @@ export const ChatMinimap: React.FC<ChatMinimapProps> = ({
               )}
               {hoveredMarker.meta.length > 0 && (
                 <div className="mt-2 flex min-w-0 items-center gap-2 text-[10px] font-bold uppercase text-neutral-400 dark:text-neutral-500">
-                  {hoveredMarker.meta.map(item => (
-                    <span key={item} className="truncate">{item}</span>
+                  {hoveredMarker.meta.map((item) => (
+                    <span key={item} className="truncate">
+                      {item}
+                    </span>
                   ))}
                 </div>
               )}
@@ -322,7 +349,7 @@ export const ChatMinimap: React.FC<ChatMinimapProps> = ({
           </InformationPopover>
         )}
 
-        {markers.map(marker => {
+        {markers.map((marker) => {
           const top = getMarkerTop(marker);
           const hoverDistance = hoverPercent == null ? null : Math.abs(top - hoverPercent);
           const influence = hoverDistance == null ? 0 : Math.max(0, 1 - hoverDistance / 12);

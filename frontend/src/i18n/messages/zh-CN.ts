@@ -167,7 +167,10 @@ export const zhCN = {
       deactivateTool: '停用{name}',
       capabilityAria: '{name} 能力',
       capabilities: {
-        filesystem: { name: '文件系统', description: '读取、搜索、创建和修改已配置工作区中的文件。' },
+        filesystem: {
+          name: '文件系统',
+          description: '读取、搜索、创建和修改已配置工作区中的文件。',
+        },
         shell: { name: '命令执行', description: '运行有时限的命令，并控制长期运行的后台进程。' },
         web: { name: '网络', description: '搜索网络、读取网页并与浏览器内容交互。' },
         'tasks-goals': { name: '任务与目标', description: '规划持久目标并跟踪结构化项目任务。' },
@@ -181,28 +184,64 @@ export const zhCN = {
         EditFileTool: { name: '编辑文件', description: '在现有文件中进行精确字符串替换。' },
         GlobTool: { name: '查找文件', description: '查找路径符合 glob 模式的文件。' },
         GrepTool: { name: '搜索文件内容', description: '使用正则表达式搜索文件内容。' },
-        RunCommandTool: { name: '运行命令', description: '运行有时限的 Shell 命令、Python 或 Node.js 代码，并等待完整输出。' },
-        StartCommandTool: { name: '启动命令', description: '在后台启动长期运行的命令，并返回用于检查或停止的 ID。' },
+        RunCommandTool: {
+          name: '运行命令',
+          description: '运行有时限的 Shell 命令、Python 或 Node.js 代码，并等待完整输出。',
+        },
+        StartCommandTool: {
+          name: '启动命令',
+          description: '在后台启动长期运行的命令，并返回用于检查或停止的 ID。',
+        },
         CheckCommandTool: { name: '检查命令', description: '读取后台命令的新输出及当前运行状态。' },
         StopCommandTool: { name: '停止命令', description: '停止后台命令并清理相关进程资源。' },
-        BrowsingTool: { name: '浏览器', description: '打开并操作浏览器页面，包括导航、点击、表单和截图。' },
+        BrowsingTool: {
+          name: '浏览器',
+          description: '打开并操作浏览器页面，包括导航、点击、表单和截图。',
+        },
         WebpageTool: { name: '读取网页', description: '获取网页并提取其中可读的内容。' },
-        WebSearchTool: { name: '网络搜索', description: '通过 SearXNG 或已配置的备用服务搜索网络。' },
-        AskQuestionTool: { name: '询问问题', description: '需要用户输入时暂停执行并提出明确的问题。' },
+        WebSearchTool: {
+          name: '网络搜索',
+          description: '通过 SearXNG 或已配置的备用服务搜索网络。',
+        },
+        AskQuestionTool: {
+          name: '询问问题',
+          description: '需要用户输入时暂停执行并提出明确的问题。',
+        },
         GoalTool: { name: '管理目标', description: '创建、查看和完成能够跨回合持续执行的目标。' },
-        TaskCreateTool: { name: '创建任务', description: '创建包含依赖、负责人和进度信息的结构化项目任务。' },
-        TaskUpdateTool: { name: '更新任务', description: '更新现有任务的状态、负责人、描述或依赖关系。' },
+        TaskCreateTool: {
+          name: '创建任务',
+          description: '创建包含依赖、负责人和进度信息的结构化项目任务。',
+        },
+        TaskUpdateTool: {
+          name: '更新任务',
+          description: '更新现有任务的状态、负责人、描述或依赖关系。',
+        },
         TaskListTool: { name: '列出任务', description: '列出项目任务及其状态、负责人和依赖关系。' },
         RenderUITool: { name: '渲染界面', description: '渲染交互式表单、表格、卡片或操作面板。' },
         AgentTool: { name: '子智能体', description: '将独立任务以前台或后台方式委派给子智能体。' },
-        AgentListTool: { name: '列出智能体', description: '列出当前项目中的智能体和已配对的远端 Suzent 智能体。' },
-        AgentReadTool: { name: '读取智能体', description: '读取可访问智能体会话的有界可见对话记录。' },
-        AgentSendTool: { name: '发送智能体消息', description: '向另一个智能体会话持久化投递消息并将其唤醒。' },
-        AgentStopTool: { name: '停止智能体', description: '停止正在运行的本地或已配对远端智能体会话。' },
+        AgentListTool: {
+          name: '列出智能体',
+          description: '列出当前项目中的智能体和已配对的远端 Suzent 智能体。',
+        },
+        AgentReadTool: {
+          name: '读取智能体',
+          description: '读取可访问智能体会话的有界可见对话记录。',
+        },
+        AgentSendTool: {
+          name: '发送智能体消息',
+          description: '向另一个智能体会话持久化投递消息并将其唤醒。',
+        },
+        AgentStopTool: {
+          name: '停止智能体',
+          description: '停止正在运行的本地或已配对远端智能体会话。',
+        },
         ImageGenerationTool: { name: '生成图片', description: '根据文本提示生成图片。' },
         ImageVisionTool: { name: '分析图片', description: '使用具备视觉能力的语言模型分析图片。' },
         SpeakTool: { name: '朗读', description: '将回复转换为可播放的语音。' },
-        SocialMessageTool: { name: '社交消息', description: '经审批后通过已配置的社交渠道发送消息。' },
+        SocialMessageTool: {
+          name: '社交消息',
+          description: '经审批后通过已配置的社交渠道发送消息。',
+        },
         MemorySearchTool: { name: '搜索记忆', description: '搜索长期归档记忆中的相关信息。' },
         SessionSearchTool: { name: '搜索会话', description: '搜索并读取相关的历史对话会话。' },
       },
@@ -385,7 +424,8 @@ export const zhCN = {
       title: 'ACP 智能体',
       subtitle: '通过 Agent Client Protocol 运行的本地智能体进程',
       registeredTitle: '已注册智能体',
-      registeredDesc: '内置和用户自定义的 ACP 智能体。在 ~/.suzent/acp_agents.json 中添加自定义智能体。',
+      registeredDesc:
+        '内置和用户自定义的 ACP 智能体。在 ~/.suzent/acp_agents.json 中添加自定义智能体。',
       noAgents: '暂无已注册的 ACP 智能体。',
       ready: '就绪',
       notInstalled: '未安装',
@@ -454,9 +494,11 @@ export const zhCN = {
       title: '数据',
       subtitle: '在多设备间同步可移植配置、技能与记忆',
       githubTitle: 'GitHub 同步',
-      githubDesc: '通过带 GitHub remote 的本地 Git 仓库同步可迁移配置、技能和 Markdown 记忆。对话、运行时数据、索引和明文密钥只保留在本机。',
+      githubDesc:
+        '通过带 GitHub remote 的本地 Git 仓库同步可迁移配置、技能和 Markdown 记忆。对话、运行时数据、索引和明文密钥只保留在本机。',
       githubQuickStartTitle: '快速开始',
-      githubQuickStartDesc: '创建私有 GitHub 仓库（默认 suzent-brain）并连接。一次登录即可，无需 CLI 或个人访问令牌。',
+      githubQuickStartDesc:
+        '创建私有 GitHub 仓库（默认 suzent-brain）并连接。一次登录即可，无需 CLI 或个人访问令牌。',
       githubQuickStartDefaultPath: '默认目录：{path}',
       githubQuickStartRepoPlaceholder: '可选：your-username/suzent-brain 或 GitHub 克隆地址',
       githubQuickStartButton: '快速开始',
@@ -659,7 +701,8 @@ export const zhCN = {
       title: '自动化',
       subtitle: '调度周期性智能体任务并管理调度器',
       heartbeatToolsTitle: '心跳工具授权',
-      heartbeatToolsDesc: '心跳运行时自动批准的工具。保持「全部工具」可批准所有工具，或选择「自定义」进行限制。',
+      heartbeatToolsDesc:
+        '心跳运行时自动批准的工具。保持「全部工具」可批准所有工具，或选择「自定义」进行限制。',
       noToolsSelected: '未选择任何工具',
       failedToCreateJob: '创建任务失败',
       failedToUpdateJob: '更新任务失败',
@@ -929,11 +972,13 @@ export const zhCN = {
     heartbeatOff: '心跳已关闭',
     permissionModeTitle: '工具权限模式',
     permissionModeLabel: '模式',
-    autoModeConfirmation: '自动模式会使用安全分类器在不询问的情况下批准低风险操作，强制拒绝规则仍然生效。是否启用自动模式？',
+    autoModeConfirmation:
+      '自动模式会使用安全分类器在不询问的情况下批准低风险操作，强制拒绝规则仍然生效。是否启用自动模式？',
     autoModeDialogTitle: '启用自动模式？',
     autoModeCancel: '取消',
     autoModeEnable: '启用',
-    fullAccessModeConfirmation: '完全访问模式会在不请求批准的情况下执行工具操作。显式拒绝规则和强制安全检查仍然生效。是否启用完全访问？',
+    fullAccessModeConfirmation:
+      '完全访问模式会在不请求批准的情况下执行工具操作。显式拒绝规则和强制安全检查仍然生效。是否启用完全访问？',
     fullAccessModeDialogTitle: '启用完全访问？',
     fullAccessModeEnable: '启用',
     permissionModes: {

@@ -1,9 +1,6 @@
 export type DesktopPlatform = 'windows' | 'macos' | 'linux' | 'unknown';
 
-export function detectDesktopPlatform(
-  userAgent: string,
-  platform: string,
-): DesktopPlatform {
+export function detectDesktopPlatform(userAgent: string, platform: string): DesktopPlatform {
   const ua = userAgent.toLowerCase();
   const pf = platform.toLowerCase();
 

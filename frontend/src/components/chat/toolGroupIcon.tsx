@@ -25,14 +25,25 @@ function pickIcon(toolName: string, approvalState?: ApprovalState) {
   if (toolName.includes('search') || toolName.includes('web')) return MagnifyingGlassIcon;
   if (toolName.includes('file') || toolName.includes('dir')) return FolderIcon;
   if (toolName.includes('read') || toolName.includes('write')) return DocumentTextIcon;
-  if (toolName.includes('bash') || toolName.includes('shell') || toolName.includes('python') || toolName.includes('cmd')) return CommandLineIcon;
+  if (
+    toolName.includes('bash') ||
+    toolName.includes('shell') ||
+    toolName.includes('python') ||
+    toolName.includes('cmd')
+  )
+    return CommandLineIcon;
   if (toolName.includes('database') || toolName.includes('sql')) return CircleStackIcon;
   if (toolName.includes('plan')) return ClipboardDocumentListIcon;
   if (toolName.includes('agent') || toolName.includes('subagent')) return ComputerDesktopIcon;
   return WrenchScrewdriverIcon;
 }
 
-export function ToolGroupIcon({ toolName, approvalState, isStreaming = false, hasOutput = false }: ToolGroupIconProps) {
+export function ToolGroupIcon({
+  toolName,
+  approvalState,
+  isStreaming = false,
+  hasOutput = false,
+}: ToolGroupIconProps) {
   const Icon = pickIcon(toolName, approvalState);
 
   return (

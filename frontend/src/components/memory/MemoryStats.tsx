@@ -31,18 +31,26 @@ const Rate: React.FC<RateProps> = ({ label, value, detail, ratio }) => (
     <div className="text-[10px] font-bold uppercase tracking-wide text-neutral-600 dark:text-neutral-400">
       {label}
     </div>
-    <div className="font-brutal text-xl leading-tight text-brutal-black dark:text-white">{value}</div>
+    <div className="font-brutal text-xl leading-tight text-brutal-black dark:text-white">
+      {value}
+    </div>
     <div className="mt-1 h-1.5 w-24 border-2 border-brutal-black bg-white dark:bg-zinc-700">
       <div
         className="h-full bg-brutal-black transition-all duration-500 dark:bg-white"
         style={{ width: `${Math.min(Math.max(ratio * 100, 0), 100)}%` }}
       />
     </div>
-    <div className="mt-1 font-mono text-[10px] text-neutral-500 dark:text-neutral-400">{detail}</div>
+    <div className="mt-1 font-mono text-[10px] text-neutral-500 dark:text-neutral-400">
+      {detail}
+    </div>
   </div>
 );
 
-export const MemoryStatsComponent: React.FC<MemoryStatsProps> = ({ stats, isLoading, onRefresh }) => {
+export const MemoryStatsComponent: React.FC<MemoryStatsProps> = ({
+  stats,
+  isLoading,
+  onRefresh,
+}) => {
   const { t } = useI18n();
 
   if (isLoading && !stats) {

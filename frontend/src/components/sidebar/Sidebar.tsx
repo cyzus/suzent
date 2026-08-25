@@ -16,14 +16,15 @@ export function Sidebar({
   isOpen = false,
   onOpenSettings,
   onClose,
-  titlebarControls
+  titlebarControls,
 }: SidebarProps): React.ReactElement {
   const { t } = useI18n();
   const desktopPlatform = React.useMemo(
     () => detectDesktopPlatform(navigator.userAgent, navigator.platform),
-    [],
+    []
   );
-  const canDragWindowFromSidebar = !!window.__TAURI__ && (desktopPlatform === 'windows' || desktopPlatform === 'macos');
+  const canDragWindowFromSidebar =
+    !!window.__TAURI__ && (desktopPlatform === 'windows' || desktopPlatform === 'macos');
   const appWindow = window.__TAURI__?.window.getCurrentWindow();
 
   function handleSidebarHeaderMouseDown(event: React.MouseEvent<HTMLElement>): void {
@@ -45,12 +46,14 @@ export function Sidebar({
         />
       )}
 
-      <aside className={`
+      <aside
+        className={`
         fixed lg:relative z-50 h-full shrink-0
         w-80 border-r-3 border-brutal-black flex flex-col bg-neutral-50 dark:bg-zinc-900
         transform-gpu will-change-transform transition-transform duration-300 ease-in-out
         ${isOpen ? 'translate-x-0 lg:ml-0' : '-translate-x-full lg:translate-x-0 lg:-ml-80'}
-      `}>
+      `}
+      >
         <div
           className="h-12 flex items-center justify-start px-4 border-b-3 border-brutal-black bg-white dark:bg-zinc-800 sticky top-0 z-10 shrink-0"
           onMouseDown={handleSidebarHeaderMouseDown}
@@ -64,7 +67,14 @@ export function Sidebar({
             aria-label={t('sidebar.close')}
             title={t('sidebar.close')}
           >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-6 w-6"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
               <rect x="4" y="4" width="16" height="16" rx="2" />
               <line x1="9" y1="4" x2="9" y2="20" />
             </svg>
@@ -78,9 +88,7 @@ export function Sidebar({
         </div>
 
         <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-          <div className="h-full min-h-0 flex flex-col">
-            {chatsContent}
-          </div>
+          <div className="h-full min-h-0 flex flex-col">{chatsContent}</div>
         </div>
 
         {/* User / Global Settings - Bottom Stick */}
@@ -88,17 +96,33 @@ export function Sidebar({
           onClick={onOpenSettings}
           className="w-full flex items-center h-[52px] px-4 bg-white dark:bg-zinc-800 border-t border-neutral-200 dark:border-zinc-700 hover:bg-neutral-50 dark:hover:bg-zinc-700/80 transition-colors group shrink-0 relative z-20"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-[18px] w-[18px] shrink-0 text-neutral-500 dark:text-neutral-400 group-hover:text-brutal-black dark:group-hover:text-white transition-colors" viewBox="0 0 20 20" fill="currentColor">
-            <path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            className="h-[18px] w-[18px] shrink-0 text-neutral-500 dark:text-neutral-400 group-hover:text-brutal-black dark:group-hover:text-white transition-colors"
+            viewBox="0 0 20 20"
+            fill="currentColor"
+          >
+            <path
+              fillRule="evenodd"
+              d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z"
+              clipRule="evenodd"
+            />
           </svg>
           <span className="font-bold text-xs truncate uppercase tracking-tight text-neutral-500 dark:text-neutral-400 group-hover:text-brutal-black dark:group-hover:text-white transition-colors ml-2.5">
             {t('sidebar.settings')}
           </span>
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 ml-auto opacity-0 group-hover:opacity-100 text-neutral-400 group-hover:text-brutal-black dark:group-hover:text-white transition-all shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            className="h-4 w-4 ml-auto opacity-0 group-hover:opacity-100 text-neutral-400 group-hover:text-brutal-black dark:group-hover:text-white transition-all shrink-0"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={3}
+          >
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
           </svg>
         </button>
       </aside>
     </>
   );
-};
+}

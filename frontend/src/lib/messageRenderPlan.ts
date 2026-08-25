@@ -1,5 +1,10 @@
 import type { Message } from '../types/api';
-import { isIntermediateStepContent, splitAssistantContent, mergeToolCallPairs, type ContentBlock } from './chatUtils';
+import {
+  isIntermediateStepContent,
+  splitAssistantContent,
+  mergeToolCallPairs,
+  type ContentBlock,
+} from './chatUtils';
 
 export interface StepGroupRender {
   mergedBlocks: ContentBlock[];
@@ -136,7 +141,7 @@ export function buildMessageRenderPlan(messages: Message[]): MessageRenderPlan {
       for (const idx of intermediateIndices) {
         const parsedBlocks = filterIgnoredToolCalls(splitAssistantContent(messages[idx].content));
         const stepBlocks = parsedBlocks.filter(
-          (block) => block.type === 'toolCall' || block.type === 'reasoning',
+          (block) => block.type === 'toolCall' || block.type === 'reasoning'
         );
         if (stepBlocks.length > 0) {
           allBlocks.push(...stepBlocks);

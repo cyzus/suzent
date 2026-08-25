@@ -2,7 +2,15 @@ import React, { useState } from 'react';
 import { SettingsListAction } from './SettingsCard';
 
 /** A small button that confirms it copied to the clipboard. */
-export function CopyButton({ value, tone = 'neutral', label = 'Copy' }: { value: string; tone?: 'blue' | 'red' | 'neutral'; label?: string }): React.ReactElement {
+export function CopyButton({
+  value,
+  tone = 'neutral',
+  label = 'Copy',
+}: {
+  value: string;
+  tone?: 'blue' | 'red' | 'neutral';
+  label?: string;
+}): React.ReactElement {
   const [copied, setCopied] = useState(false);
   return (
     <SettingsListAction
@@ -19,4 +27,3 @@ export function CopyButton({ value, tone = 'neutral', label = 'Copy' }: { value:
     </SettingsListAction>
   );
 }
-

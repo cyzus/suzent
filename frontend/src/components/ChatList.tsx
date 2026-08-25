@@ -72,7 +72,9 @@ function SessionStatusBadges({
 
 function SidebarRowSkeleton({ compact = false }: { compact?: boolean }): React.ReactElement {
   return (
-    <div className={`${compact ? 'min-h-11 px-3.5 py-2' : 'min-h-[58px] px-3.5 py-3'} border-b border-neutral-200 dark:border-zinc-700`}>
+    <div
+      className={`${compact ? 'min-h-11 px-3.5 py-2' : 'min-h-[58px] px-3.5 py-3'} border-b border-neutral-200 dark:border-zinc-700`}
+    >
       <div className="flex animate-pulse items-center justify-between gap-4">
         <div className="h-3 w-3/5 bg-neutral-200 dark:bg-zinc-700" />
         <div className="h-2 w-9 bg-neutral-200 dark:bg-zinc-700" />
@@ -159,19 +161,28 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
   const [dialog, setDialog] = useState<{
     title?: string;
     message: React.ReactNode;
-    actions: { label: string; tone?: 'default' | 'primary' | 'danger'; onClick?: () => void | Promise<void>; preventDismiss?: boolean }[];
+    actions: {
+      label: string;
+      tone?: 'default' | 'primary' | 'danger';
+      onClick?: () => void | Promise<void>;
+      preventDismiss?: boolean;
+    }[];
   } | null>(null);
 
   // A single expanded project keeps the sidebar compact.
   const [filterId, setFilterId] = useState<string>(ALL_PROJECTS_FILTER);
   const [expandedSubagentParents, setExpandedSubagentParents] = useState<Set<string>>(
-    () => new Set(),
+    () => new Set()
   );
   const [creatingProjectInline, setCreatingProjectInline] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const sidebarBoundsRef = useRef<HTMLDivElement | null>(null);
   const [projectChats, setProjectChats] = useState<ChatSummary[]>([]);
-  const [projectChatKindTotals, setProjectChatKindTotals] = useState<ChatKindCounts>({ you: 0, scheduled: 0, all: 0 });
+  const [projectChatKindTotals, setProjectChatKindTotals] = useState<ChatKindCounts>({
+    you: 0,
+    scheduled: 0,
+    all: 0,
+  });
   const [projectChatOffset, setProjectChatOffset] = useState(0);
   const [loadingProjectChats, setLoadingProjectChats] = useState(false);
   const [loadingMoreProjectChats, setLoadingMoreProjectChats] = useState(false);
@@ -220,15 +231,19 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
   };
 
   const chatsRef = useRef(chats);
-  useEffect(() => { chatsRef.current = chats; }, [chats]);
+  useEffect(() => {
+    chatsRef.current = chats;
+  }, [chats]);
   const projectChatsRef = useRef(projectChats);
-  useEffect(() => { projectChatsRef.current = projectChats; }, [projectChats]);
+  useEffect(() => {
+    projectChatsRef.current = projectChats;
+  }, [projectChats]);
   const initialProjectSelectedRef = useRef(false);
 
   useEffect(() => {
     if (initialProjectSelectedRef.current || projects.length === 0) return;
-    const selectedProjectId = chats.find(chat => chat.id === currentChatId)?.projectId;
-    if (selectedProjectId && projects.some(project => project.id === selectedProjectId)) {
+    const selectedProjectId = chats.find((chat) => chat.id === currentChatId)?.projectId;
+    if (selectedProjectId && projects.some((project) => project.id === selectedProjectId)) {
       setFilterId(selectedProjectId);
     }
     initialProjectSelectedRef.current = true;
@@ -254,26 +269,24 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
       // A chat was added — prepend it if it belongs to the active project.
       const newest = chats[0];
       if (!newest || newest.projectId !== filterId) return;
-      setProjectChats(prev => {
-        if (prev.some(c => c.id === newest.id)) return prev;
+      setProjectChats((prev) => {
+        if (prev.some((c) => c.id === newest.id)) return prev;
         return [newest, ...prev];
       });
-      setProjectChatKindTotals(prev => ({ ...prev, all: prev.all + 1, you: prev.you + 1 }));
+      setProjectChatKindTotals((prev) => ({ ...prev, all: prev.all + 1, you: prev.you + 1 }));
     } else {
       // No length change — propagate live summary fields such as title, unread,
       // and running state to the project-scoped list.
-      setProjectChats(prev => {
+      setProjectChats((prev) => {
         let changed = false;
-        const next = prev.map(pc => {
-          const updated = chats.find(c => c.id === pc.id);
+        const next = prev.map((pc) => {
+          const updated = chats.find((c) => c.id === pc.id);
           if (
-            updated
-            && (
-              updated.title !== pc.title
-              || updated.updatedAt !== pc.updatedAt
-              || updated.unreadCount !== pc.unreadCount
-              || updated.isRunning !== pc.isRunning
-            )
+            updated &&
+            (updated.title !== pc.title ||
+              updated.updatedAt !== pc.updatedAt ||
+              updated.unreadCount !== pc.unreadCount ||
+              updated.isRunning !== pc.isRunning)
           ) {
             changed = true;
             return { ...pc, ...updated };
@@ -286,20 +299,24 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
   }, [chats, filterId]);
 
   const markRead = useCallback((chatId: string) => {
-    const chat = chatsRef.current.find(c => c.id === chatId);
+    const chat = chatsRef.current.find((c) => c.id === chatId);
     if (chat) chat.unreadCount = 0;
-    setProjectChats(prev => prev.map(item => (
-      item.id === chatId ? { ...item, unreadCount: 0 } : item
-    )));
-    setCronJobs(prev => prev.map(job => (
-      `cron-${job.id}` === chatId ? { ...job, unread_count: 0 } : job
-    )));
-    setHeartbeatStatus(prev => prev ? {
-      ...prev,
-      active_sessions: prev.active_sessions?.map(session => (
-        session.chat_id === chatId ? { ...session, unread_count: 0 } : session
-      )),
-    } : prev);
+    setProjectChats((prev) =>
+      prev.map((item) => (item.id === chatId ? { ...item, unreadCount: 0 } : item))
+    );
+    setCronJobs((prev) =>
+      prev.map((job) => (`cron-${job.id}` === chatId ? { ...job, unread_count: 0 } : job))
+    );
+    setHeartbeatStatus((prev) =>
+      prev
+        ? {
+            ...prev,
+            active_sessions: prev.active_sessions?.map((session) =>
+              session.chat_id === chatId ? { ...session, unread_count: 0 } : session
+            ),
+          }
+        : prev
+    );
     void markChatRead(chatId);
   }, []);
 
@@ -341,56 +358,59 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
     };
   }, [refreshingChats]);
 
-  const fetchProjectChats = useCallback(async (
-    projectId: string,
-    options?: { offset?: number; append?: boolean },
-  ) => {
-    const offset = options?.offset ?? 0;
-    const append = !!options?.append;
-    if (append) setLoadingMoreProjectChats(true);
-    else {
-      setLoadingProjectChats(true);
-      setProjectChats([]);
-      setProjectChatKindTotals({ you: 0, scheduled: 0, all: 0 });
-      setProjectChatOffset(0);
-    }
-
-    try {
-      const params = new URLSearchParams({
-        limit: '50',
-        offset: String(offset),
-        project_id: projectId,
-      });
-
-      const res = await fetch(`${getApiBase()}/chats?${params.toString()}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-      const data = await res.json();
-      const nextChats: ChatSummary[] = data.chats || [];
-      setProjectChatKindTotals(data.kindCounts ?? {
-        you: nextChats.filter(chat => (chat.platform || '').toLowerCase() !== 'cron').length,
-        scheduled: nextChats.filter(chat => (chat.platform || '').toLowerCase() === 'cron').length,
-        all: data.total ?? nextChats.length,
-      });
-      setProjectChatOffset(offset);
-      setProjectChats(prev => {
-        if (!append) return nextChats;
-        const existingIds = new Set(prev.map(c => c.id));
-        const appended = nextChats.filter(c => !existingIds.has(c.id));
-        return [...prev, ...appended];
-      });
-    } catch (error) {
-      console.error('Error fetching project chats:', error);
-      if (!append) {
+  const fetchProjectChats = useCallback(
+    async (projectId: string, options?: { offset?: number; append?: boolean }) => {
+      const offset = options?.offset ?? 0;
+      const append = !!options?.append;
+      if (append) setLoadingMoreProjectChats(true);
+      else {
+        setLoadingProjectChats(true);
         setProjectChats([]);
         setProjectChatKindTotals({ you: 0, scheduled: 0, all: 0 });
         setProjectChatOffset(0);
       }
-    } finally {
-      if (append) setLoadingMoreProjectChats(false);
-      else setLoadingProjectChats(false);
-    }
-  }, []);
+
+      try {
+        const params = new URLSearchParams({
+          limit: '50',
+          offset: String(offset),
+          project_id: projectId,
+        });
+
+        const res = await fetch(`${getApiBase()}/chats?${params.toString()}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        const data = await res.json();
+        const nextChats: ChatSummary[] = data.chats || [];
+        setProjectChatKindTotals(
+          data.kindCounts ?? {
+            you: nextChats.filter((chat) => (chat.platform || '').toLowerCase() !== 'cron').length,
+            scheduled: nextChats.filter((chat) => (chat.platform || '').toLowerCase() === 'cron')
+              .length,
+            all: data.total ?? nextChats.length,
+          }
+        );
+        setProjectChatOffset(offset);
+        setProjectChats((prev) => {
+          if (!append) return nextChats;
+          const existingIds = new Set(prev.map((c) => c.id));
+          const appended = nextChats.filter((c) => !existingIds.has(c.id));
+          return [...prev, ...appended];
+        });
+      } catch (error) {
+        console.error('Error fetching project chats:', error);
+        if (!append) {
+          setProjectChats([]);
+          setProjectChatKindTotals({ you: 0, scheduled: 0, all: 0 });
+          setProjectChatOffset(0);
+        }
+      } finally {
+        if (append) setLoadingMoreProjectChats(false);
+        else setLoadingProjectChats(false);
+      }
+    },
+    []
+  );
 
   useEffect(() => {
     if (filterId === ALL_PROJECTS_FILTER) {
@@ -426,9 +446,9 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
   }, [filteredChats]);
 
   useEffect(() => {
-    const selected = filteredChats.find(chat => chat.id === currentChatId);
+    const selected = filteredChats.find((chat) => chat.id === currentChatId);
     if (!selected?.parentChatId) return;
-    setExpandedSubagentParents(prev => {
+    setExpandedSubagentParents((prev) => {
       if (prev.has(selected.parentChatId!)) return prev;
       const next = new Set(prev);
       next.add(selected.parentChatId!);
@@ -437,7 +457,7 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
   }, [currentChatId, filteredChats]);
 
   const toggleSubagentParent = (chatId: string) => {
-    setExpandedSubagentParents(prev => {
+    setExpandedSubagentParents((prev) => {
       const next = new Set(prev);
       if (next.has(chatId)) next.delete(chatId);
       else next.add(chatId);
@@ -466,9 +486,9 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
     }
 
     for (const chat of source) {
-      if (childIds.has(chat.id) && !arranged.some(item => item.id === chat.id)) {
+      if (childIds.has(chat.id) && !arranged.some((item) => item.id === chat.id)) {
         const parentId = chat.parentChatId;
-        const parentInSource = parentId ? source.some(p => p.id === parentId) : false;
+        const parentInSource = parentId ? source.some((p) => p.id === parentId) : false;
         if (!parentInSource) {
           arranged.push(chat);
         }
@@ -493,11 +513,15 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
   const handleRequestDelete = (chatId: string) => {
     const hasSubagents = (subagentsByParent.get(chatId)?.length ?? 0) > 0;
     const doDelete = async (cascade: boolean) => {
-      setProjectChats(prev => {
-        const filtered = prev.filter(c => c.id !== chatId);
-        return cascade ? filtered.filter(c => c.parentChatId !== chatId) : filtered;
+      setProjectChats((prev) => {
+        const filtered = prev.filter((c) => c.id !== chatId);
+        return cascade ? filtered.filter((c) => c.parentChatId !== chatId) : filtered;
       });
-      try { await deleteChat(chatId, { cascade }); } catch { /* ignore */ }
+      try {
+        await deleteChat(chatId, { cascade });
+      } catch {
+        /* ignore */
+      }
     };
 
     if (hasSubagents) {
@@ -506,7 +530,11 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
         message: t('chatList.delete.cascadeMessage'),
         actions: [
           { label: t('common.cancel'), tone: 'default' },
-          { label: t('chatList.delete.cascadeNo'), tone: 'default', onClick: () => doDelete(false) },
+          {
+            label: t('chatList.delete.cascadeNo'),
+            tone: 'default',
+            onClick: () => doDelete(false),
+          },
           { label: t('chatList.delete.cascadeYes'), tone: 'danger', onClick: () => doDelete(true) },
         ],
       });
@@ -535,10 +563,7 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
     setRenamingChatId(null);
   };
 
-  const handleTaskRenameSubmit = async (
-    job: CronJob,
-    event: React.FormEvent,
-  ): Promise<void> => {
+  const handleTaskRenameSubmit = async (job: CronJob, event: React.FormEvent): Promise<void> => {
     event.preventDefault();
     event.stopPropagation();
     const trimmed = taskRenameValue.trim();
@@ -566,11 +591,7 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
           // The scheduled task is already removed even if its chat was absent.
         }
       }
-      await Promise.all([
-        refreshAutomation(),
-        refreshChatList(undefined, true),
-        refreshProjects(),
-      ]);
+      await Promise.all([refreshAutomation(), refreshChatList(undefined, true), refreshProjects()]);
     };
     setDialog({
       title: t('chatList.automation.deleteTaskTitle', { name: job.name }),
@@ -621,20 +642,23 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
     const date = new Date(dateString);
     const now = new Date();
     const sameDay =
-      date.getFullYear() === now.getFullYear()
-      && date.getMonth() === now.getMonth()
-      && date.getDate() === now.getDate();
-    return date.toLocaleString([], sameDay
-      ? { hour: '2-digit', minute: '2-digit' }
-      : { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+      date.getFullYear() === now.getFullYear() &&
+      date.getMonth() === now.getMonth() &&
+      date.getDate() === now.getDate();
+    return date.toLocaleString(
+      [],
+      sameDay
+        ? { hour: '2-digit', minute: '2-digit' }
+        : { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }
+    );
   };
 
   // ── Move chat to project ──
 
   const handleMoveChatToProject = async (chatId: string, projectId: string) => {
     const chat =
-      chatsRef.current.find(c => c.id === chatId) ??
-      projectChatsRef.current.find(c => c.id === chatId);
+      chatsRef.current.find((c) => c.id === chatId) ??
+      projectChatsRef.current.find((c) => c.id === chatId);
     if (!chat || chat.projectId === projectId) return;
     const ok = await moveChat(chatId, projectId, chat.projectId);
     if (ok) {
@@ -651,13 +675,10 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
   const platformLabel = (platform?: string | null) => {
     if (!platform) return null;
     if (platform.toLowerCase() === 'cron') return t('chatList.kind.scheduled');
-    return platform.toLowerCase().replace(/^\w/, c => c.toUpperCase());
+    return platform.toLowerCase().replace(/^\w/, (c) => c.toUpperCase());
   };
 
-  const openChatMenu = (
-    chatId: string,
-    anchor: { x: number; y: number } | { rect: DOMRect },
-  ) => {
+  const openChatMenu = (chatId: string, anchor: { x: number; y: number } | { rect: DOMRect }) => {
     setOpenMenu({ chatId, anchor });
   };
 
@@ -666,24 +687,25 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
     const chatKind = getChatKind(chat);
     const relatedChatId = chat.parentChatId ?? chat.forkedFromChatId;
     const parentTitle = relatedChatId
-      ? filteredChats.find(item => item.id === relatedChatId)?.title
-        ?? chats.find(item => item.id === relatedChatId)?.title
-        ?? chat.forkedFromChatTitle
+      ? (filteredChats.find((item) => item.id === relatedChatId)?.title ??
+        chats.find((item) => item.id === relatedChatId)?.title ??
+        chat.forkedFromChatTitle)
       : null;
     const childSubagents = subagentsByParent.get(chat.id) ?? [];
     const hasCollapsedChildren = childSubagents.length > 0;
     const childrenExpanded = expandedSubagentParents.has(chat.id);
-    const rowSurface = currentChatId === chat.id
-      ? 'bg-neutral-100 dark:bg-zinc-700 border-neutral-300 dark:border-zinc-600 shadow-[inset_3px_0_0_#171717] dark:shadow-[inset_3px_0_0_#f5f5f5]'
-      : chat.heartbeatEnabled
-        ? 'bg-yellow-50 border-neutral-200 dark:bg-zinc-800 dark:border-zinc-700 shadow-[inset_4px_0_0_var(--brutal-yellow)] hover:bg-yellow-100/70 dark:hover:bg-zinc-700/80'
-        : chatKind === 'subagent'
-          ? 'bg-neutral-50 border-neutral-200 dark:bg-zinc-800/80 dark:border-zinc-700 hover:bg-neutral-100 dark:hover:bg-zinc-700/80'
-          : chatKind === 'scheduled'
-            ? 'border-neutral-200 dark:border-zinc-700 hover:bg-neutral-50 dark:hover:bg-zinc-700/80'
-            : isUnread(chat)
-              ? 'bg-white border-neutral-200 dark:bg-zinc-800 dark:border-zinc-700 shadow-[inset_4px_0_0_#000] dark:shadow-[inset_4px_0_0_var(--brutal-yellow)] hover:bg-neutral-50 dark:hover:bg-zinc-700/80'
-              : 'border-neutral-200 dark:border-zinc-700 hover:bg-neutral-50 dark:hover:bg-zinc-700/80 hover:border-neutral-300 dark:hover:border-zinc-600';
+    const rowSurface =
+      currentChatId === chat.id
+        ? 'bg-neutral-100 dark:bg-zinc-700 border-neutral-300 dark:border-zinc-600 shadow-[inset_3px_0_0_#171717] dark:shadow-[inset_3px_0_0_#f5f5f5]'
+        : chat.heartbeatEnabled
+          ? 'bg-yellow-50 border-neutral-200 dark:bg-zinc-800 dark:border-zinc-700 shadow-[inset_4px_0_0_var(--brutal-yellow)] hover:bg-yellow-100/70 dark:hover:bg-zinc-700/80'
+          : chatKind === 'subagent'
+            ? 'bg-neutral-50 border-neutral-200 dark:bg-zinc-800/80 dark:border-zinc-700 hover:bg-neutral-100 dark:hover:bg-zinc-700/80'
+            : chatKind === 'scheduled'
+              ? 'border-neutral-200 dark:border-zinc-700 hover:bg-neutral-50 dark:hover:bg-zinc-700/80'
+              : isUnread(chat)
+                ? 'bg-white border-neutral-200 dark:bg-zinc-800 dark:border-zinc-700 shadow-[inset_4px_0_0_#000] dark:shadow-[inset_4px_0_0_var(--brutal-yellow)] hover:bg-neutral-50 dark:hover:bg-zinc-700/80'
+                : 'border-neutral-200 dark:border-zinc-700 hover:bg-neutral-50 dark:hover:bg-zinc-700/80 hover:border-neutral-300 dark:hover:border-zinc-600';
     return (
       <div
         key={chat.id}
@@ -700,7 +722,7 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
           openChatMenu(chat.id, { x: e.clientX, y: e.clientY });
         }}
         className={`group relative py-2 transition-all border-b last:border-b-0
-          ${chatKind === 'subagent' ? (nested ? 'pl-10 pr-3' : 'pl-8 pr-3.5') : (nested ? 'pl-8 pr-3' : 'px-3.5')}
+          ${chatKind === 'subagent' ? (nested ? 'pl-10 pr-3' : 'pl-8 pr-3.5') : nested ? 'pl-8 pr-3' : 'px-3.5'}
           ${renamingChatId ? (renamingChatId === chat.id ? 'cursor-default' : 'opacity-50 pointer-events-none') : 'cursor-pointer'}
           ${rowSurface}`}
       >
@@ -715,14 +737,23 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
               type="text"
               value={renameValue}
               onChange={(e) => setRenameValue(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Escape') handleRenameCancel(e); }}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') handleRenameCancel(e);
+              }}
               className="flex-1 min-w-0 px-2 py-1 text-xs font-bold bg-neutral-50 dark:bg-zinc-700 dark:text-white border-2 border-brutal-black focus:outline-none"
               placeholder={t('chatList.rename.placeholder')}
             />
-            <button type="submit" className="px-2 py-1 text-[10px] font-extrabold uppercase border-2 border-brutal-black bg-brutal-yellow hover:bg-yellow-300 text-brutal-black transition-colors shrink-0">
+            <button
+              type="submit"
+              className="px-2 py-1 text-[10px] font-extrabold uppercase border-2 border-brutal-black bg-brutal-yellow hover:bg-yellow-300 text-brutal-black transition-colors shrink-0"
+            >
               {t('chatList.rename.confirm')}
             </button>
-            <button type="button" onClick={handleRenameCancel} className="px-2 py-1 text-[10px] font-extrabold uppercase border-2 border-brutal-black bg-white dark:bg-zinc-700 dark:text-white hover:bg-neutral-100 transition-colors shrink-0">
+            <button
+              type="button"
+              onClick={handleRenameCancel}
+              className="px-2 py-1 text-[10px] font-extrabold uppercase border-2 border-brutal-black bg-white dark:bg-zinc-700 dark:text-white hover:bg-neutral-100 transition-colors shrink-0"
+            >
               {t('chatList.rename.cancel')}
             </button>
           </form>
@@ -730,7 +761,9 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
 
         <div className="min-w-0 space-y-1 pr-8">
           <div className="flex items-start gap-2 overflow-hidden">
-            <h3 className={`font-extrabold text-xs leading-snug truncate flex-1 min-w-0 transition-colors ${currentChatId === chat.id ? 'text-brutal-black dark:text-white' : isUnread(chat) ? 'text-neutral-950 dark:text-white' : 'text-neutral-800 dark:text-neutral-100 group-hover:text-brutal-black dark:group-hover:text-white'}`}>
+            <h3
+              className={`font-extrabold text-xs leading-snug truncate flex-1 min-w-0 transition-colors ${currentChatId === chat.id ? 'text-brutal-black dark:text-white' : isUnread(chat) ? 'text-neutral-950 dark:text-white' : 'text-neutral-800 dark:text-neutral-100 group-hover:text-brutal-black dark:group-hover:text-white'}`}
+            >
               {chat.title || t('chatList.untitled')}
             </h3>
           </div>
@@ -749,13 +782,26 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
                 {chat.projectName}
               </span>
             )}
-            {(chat.acpAgentName || chat.acpAgentId || (chat as any).acp_agent_name || (chat as any).acp_agent_id) && (
-              <span className={`inline-flex items-center h-5 px-2 rounded-sm text-[10px] font-extrabold uppercase tracking-wide border shrink-0 ${currentChatId === chat.id ? 'bg-brutal-black text-white border-brutal-black dark:bg-white dark:text-black' : 'bg-white text-brutal-black border-brutal-black dark:bg-zinc-900 dark:text-white dark:border-white'}`} title={chat.acpAgentName || (chat as any).acp_agent_name || chat.acpAgentId || (chat as any).acp_agent_id}>
+            {(chat.acpAgentName ||
+              chat.acpAgentId ||
+              (chat as any).acp_agent_name ||
+              (chat as any).acp_agent_id) && (
+              <span
+                className={`inline-flex items-center h-5 px-2 rounded-sm text-[10px] font-extrabold uppercase tracking-wide border shrink-0 ${currentChatId === chat.id ? 'bg-brutal-black text-white border-brutal-black dark:bg-white dark:text-black' : 'bg-white text-brutal-black border-brutal-black dark:bg-zinc-900 dark:text-white dark:border-white'}`}
+                title={
+                  chat.acpAgentName ||
+                  (chat as any).acp_agent_name ||
+                  chat.acpAgentId ||
+                  (chat as any).acp_agent_id
+                }
+              >
                 ACP
               </span>
             )}
             {chat.platform && (
-              <span className={`inline-flex items-center h-5 px-2 rounded-sm text-[10px] font-extrabold uppercase tracking-wide border shrink-0 ${currentChatId === chat.id ? 'bg-white text-brutal-black border-neutral-500 dark:bg-zinc-900 dark:text-white dark:border-neutral-500' : 'bg-neutral-100 text-neutral-700 border-neutral-300 dark:bg-zinc-700 dark:text-neutral-200 dark:border-zinc-500'}`}>
+              <span
+                className={`inline-flex items-center h-5 px-2 rounded-sm text-[10px] font-extrabold uppercase tracking-wide border shrink-0 ${currentChatId === chat.id ? 'bg-white text-brutal-black border-neutral-500 dark:bg-zinc-900 dark:text-white dark:border-neutral-500' : 'bg-neutral-100 text-neutral-700 border-neutral-300 dark:bg-zinc-700 dark:text-neutral-200 dark:border-zinc-500'}`}
+              >
                 {platformLabel(chat.platform)}
               </span>
             )}
@@ -764,7 +810,15 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
                 className={`shrink-0 flex items-center gap-1 h-5 px-1.5 rounded-sm border text-[9px] font-extrabold uppercase tracking-wide ${currentChatId === chat.id ? 'bg-white text-brutal-black border-neutral-500 dark:bg-zinc-900 dark:text-white dark:border-neutral-500' : 'bg-brutal-yellow text-brutal-black border-brutal-black transition-all'}`}
                 title={t('chatWindow.heartbeatEnabled')}
               >
-                <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="square" strokeLinejoin="miter">
+                <svg
+                  className="w-3 h-3"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="3"
+                  strokeLinecap="square"
+                  strokeLinejoin="miter"
+                >
                   <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
                 </svg>
                 <span>{t('chatList.labels.heartbeat')}</span>
@@ -797,7 +851,9 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
                 {t('chatList.labels.branchOf', { name: parentTitle })}
               </span>
             )}
-            <span className={`text-[10px] font-bold uppercase ml-auto shrink-0 ${currentChatId === chat.id ? 'text-neutral-600 dark:text-neutral-300' : 'text-neutral-400 dark:text-neutral-500'}`}>
+            <span
+              className={`text-[10px] font-bold uppercase ml-auto shrink-0 ${currentChatId === chat.id ? 'text-neutral-600 dark:text-neutral-300' : 'text-neutral-400 dark:text-neutral-500'}`}
+            >
               {formatDate(chat.updatedAt)}
             </span>
           </div>
@@ -833,7 +889,11 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
   };
 
   const renderListSkeleton = () => (
-    <div className="h-full bg-white dark:bg-zinc-800" role="status" aria-label={t('common.loading')}>
+    <div
+      className="h-full bg-white dark:bg-zinc-800"
+      role="status"
+      aria-label={t('common.loading')}
+    >
       <div className="border-b border-neutral-200 p-3 dark:border-zinc-700">
         <div className="h-10 animate-pulse border-2 border-neutral-300 bg-neutral-100 dark:border-zinc-600 dark:bg-zinc-700" />
       </div>
@@ -858,11 +918,17 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
   const isSearching = localSearchQuery.trim().length > 0;
   const visibleCronJobs = [...cronJobs]
     .sort((left, right) => {
-      const leftPriority = left.last_error && !isCronFailureHandledInChat(left) ? 0 : left.active ? 1 : 2;
-      const rightPriority = right.last_error && !isCronFailureHandledInChat(right) ? 0 : right.active ? 1 : 2;
+      const leftPriority =
+        left.last_error && !isCronFailureHandledInChat(left) ? 0 : left.active ? 1 : 2;
+      const rightPriority =
+        right.last_error && !isCronFailureHandledInChat(right) ? 0 : right.active ? 1 : 2;
       if (leftPriority !== rightPriority) return leftPriority - rightPriority;
-      const leftNext = left.next_run_at ? new Date(left.next_run_at).getTime() : Number.MAX_SAFE_INTEGER;
-      const rightNext = right.next_run_at ? new Date(right.next_run_at).getTime() : Number.MAX_SAFE_INTEGER;
+      const leftNext = left.next_run_at
+        ? new Date(left.next_run_at).getTime()
+        : Number.MAX_SAFE_INTEGER;
+      const rightNext = right.next_run_at
+        ? new Date(right.next_run_at).getTime()
+        : Number.MAX_SAFE_INTEGER;
       return leftNext - rightNext;
     })
     .slice(0, AUTOMATION_PREVIEW_LIMIT);
@@ -894,8 +960,18 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
               placeholder={t('chatList.searchChatsPlaceholder').toUpperCase()}
               className="h-10 w-full px-3 pl-9 bg-neutral-50 dark:bg-zinc-700 dark:text-white dark:placeholder-neutral-500 border-2 border-brutal-black font-bold text-xs uppercase placeholder-neutral-400 focus:outline-none focus:bg-white dark:focus:bg-zinc-600 focus:shadow-[inset_3px_0_0_var(--brutal-yellow)] transition-all"
             />
-            <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-brutal-black dark:text-neutral-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            <svg
+              className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-brutal-black dark:text-neutral-400 pointer-events-none"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              strokeWidth={2.5}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+              />
             </svg>
             {localSearchQuery && (
               <button
@@ -903,7 +979,13 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
                 className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 hover:bg-neutral-200 dark:hover:bg-zinc-600 rounded transition-colors"
                 title={t('chatList.clearSearch')}
               >
-                <svg className="w-3 h-3 text-brutal-black dark:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
+                <svg
+                  className="w-3 h-3 text-brutal-black dark:text-white"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  strokeWidth={3}
+                >
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
@@ -913,7 +995,10 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
             type="button"
             variant="primary"
             size="icon"
-            onClick={() => { beginNewChat(); if (switchToView) switchToView('chat'); }}
+            onClick={() => {
+              beginNewChat();
+              if (switchToView) switchToView('chat');
+            }}
             className="!h-10 !w-10 !flex-shrink-0 !p-0"
             title={t('chatList.newChat')}
             aria-label={t('chatList.newChat')}
@@ -921,7 +1006,6 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
             <PencilSquareIcon className="h-5 w-5 stroke-[2.4]" />
           </BrutalButton>
         </div>
-
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin bg-white dark:bg-zinc-800">
@@ -946,7 +1030,7 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
                 </p>
               </div>
             ) : (
-              <div>{chats.map(chat => renderChatRow(chat, true))}</div>
+              <div>{chats.map((chat) => renderChatRow(chat, true))}</div>
             )}
             {chatTotal > chats.length && (
               <button
@@ -955,7 +1039,9 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
                 disabled={loadingMoreChats}
                 className="w-full py-3 border-t border-neutral-200 dark:border-zinc-700 text-[10px] font-extrabold uppercase text-neutral-500 hover:bg-neutral-50 hover:text-brutal-black dark:hover:bg-zinc-700 dark:hover:text-white disabled:opacity-50"
               >
-                {loadingMoreChats ? t('chatList.loadingMore') : t('chatList.loadMore', { count: chatTotal - chats.length })}
+                {loadingMoreChats
+                  ? t('chatList.loadingMore')
+                  : t('chatList.loadMore', { count: chatTotal - chats.length })}
               </button>
             )}
           </section>
@@ -984,104 +1070,140 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
                     {cronJobs.length > 0 && (
                       <div className="border-b border-neutral-200 bg-white dark:border-zinc-700 dark:bg-zinc-800">
                         <div>
-                            {visibleCronJobs.map(job => {
-                              const chatId = `cron-${job.id}`;
-                              const canOpen = !!job.last_run_at;
-                              const failureHandled = isCronFailureHandledInChat(job);
-                              const unresolvedError = job.last_error && !failureHandled ? job.last_error : null;
-                              const subtitle = !job.active
-                                ? unresolvedError
-                                  ? `${t('chatList.automation.paused')} · ${unresolvedError}`
-                                  : t('chatList.automation.paused')
-                                : unresolvedError
-                                  ? t('chatList.automation.lastRunFailed', { error: unresolvedError })
-                                  : job.next_run_at
-                                    ? t('chatList.automation.nextRunAt', { time: formatNextRun(job.next_run_at) })
-                                    : t('chatList.automation.active');
-                              const latestActivityAt = failureHandled
-                                ? job.chat_updated_at
-                                : job.last_run_at;
-                              return (
-                                <div
-                                  key={job.id}
-                                  onContextMenu={(event) => {
-                                    event.preventDefault();
-                                    setTaskMenu({ jobId: job.id, anchor: { rect: event.currentTarget.getBoundingClientRect() } });
-                                  }}
-                                  className={`group/task relative min-h-11 border-b border-neutral-200 transition-colors dark:border-zinc-700 ${
-                                    currentChatId === chatId
-                                      ? 'bg-neutral-100 shadow-[inset_3px_0_0_#171717] dark:bg-zinc-700 dark:shadow-[inset_3px_0_0_#f5f5f5]'
-                                      : 'bg-white hover:bg-neutral-50 dark:bg-zinc-800 dark:hover:bg-zinc-700'
-                                  }`}
-                                >
-                                  {renamingTaskId === job.id ? (
-                                    <form
-                                      className="flex min-h-11 items-center gap-1 px-2"
-                                      onSubmit={(event) => void handleTaskRenameSubmit(job, event)}
+                          {visibleCronJobs.map((job) => {
+                            const chatId = `cron-${job.id}`;
+                            const canOpen = !!job.last_run_at;
+                            const failureHandled = isCronFailureHandledInChat(job);
+                            const unresolvedError =
+                              job.last_error && !failureHandled ? job.last_error : null;
+                            const subtitle = !job.active
+                              ? unresolvedError
+                                ? `${t('chatList.automation.paused')} · ${unresolvedError}`
+                                : t('chatList.automation.paused')
+                              : unresolvedError
+                                ? t('chatList.automation.lastRunFailed', { error: unresolvedError })
+                                : job.next_run_at
+                                  ? t('chatList.automation.nextRunAt', {
+                                      time: formatNextRun(job.next_run_at),
+                                    })
+                                  : t('chatList.automation.active');
+                            const latestActivityAt = failureHandled
+                              ? job.chat_updated_at
+                              : job.last_run_at;
+                            return (
+                              <div
+                                key={job.id}
+                                onContextMenu={(event) => {
+                                  event.preventDefault();
+                                  setTaskMenu({
+                                    jobId: job.id,
+                                    anchor: { rect: event.currentTarget.getBoundingClientRect() },
+                                  });
+                                }}
+                                className={`group/task relative min-h-11 border-b border-neutral-200 transition-colors dark:border-zinc-700 ${
+                                  currentChatId === chatId
+                                    ? 'bg-neutral-100 shadow-[inset_3px_0_0_#171717] dark:bg-zinc-700 dark:shadow-[inset_3px_0_0_#f5f5f5]'
+                                    : 'bg-white hover:bg-neutral-50 dark:bg-zinc-800 dark:hover:bg-zinc-700'
+                                }`}
+                              >
+                                {renamingTaskId === job.id ? (
+                                  <form
+                                    className="flex min-h-11 items-center gap-1 px-2"
+                                    onSubmit={(event) => void handleTaskRenameSubmit(job, event)}
+                                  >
+                                    <input
+                                      autoFocus
+                                      value={taskRenameValue}
+                                      onChange={(event) => setTaskRenameValue(event.target.value)}
+                                      onKeyDown={(event) => {
+                                        if (event.key === 'Escape') setRenamingTaskId(null);
+                                      }}
+                                      className="min-w-0 flex-1 border-2 border-brutal-black bg-white px-2 py-1 text-xs font-bold focus:outline-none dark:bg-zinc-700 dark:text-white"
+                                    />
+                                    <button
+                                      type="submit"
+                                      className="border-2 border-brutal-black bg-brutal-yellow px-2 py-1 text-[10px] font-extrabold"
                                     >
-                                      <input
-                                        autoFocus
-                                        value={taskRenameValue}
-                                        onChange={(event) => setTaskRenameValue(event.target.value)}
-                                        onKeyDown={(event) => {
-                                          if (event.key === 'Escape') setRenamingTaskId(null);
-                                        }}
-                                        className="min-w-0 flex-1 border-2 border-brutal-black bg-white px-2 py-1 text-xs font-bold focus:outline-none dark:bg-zinc-700 dark:text-white"
-                                      />
-                                      <button type="submit" className="border-2 border-brutal-black bg-brutal-yellow px-2 py-1 text-[10px] font-extrabold">✓</button>
-                                      <button type="button" onClick={() => setRenamingTaskId(null)} className="border-2 border-brutal-black bg-white px-2 py-1 text-[10px] font-extrabold dark:bg-zinc-700 dark:text-white">✕</button>
-                                    </form>
-                                  ) : (
-                                    <>
-                                      <button
-                                        type="button"
-                                        disabled={!canOpen && !onOpenAutomation}
-                                        onClick={() => canOpen ? openChatById(chatId) : onOpenAutomation?.()}
-                                        title={unresolvedError ?? job.last_result ?? undefined}
-                                        className="grid min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2 bg-transparent px-3.5 py-2 pr-10 text-left disabled:cursor-default"
-                                      >
-                                        <span className="min-w-0">
-                                          <span className="block truncate text-xs font-extrabold leading-tight text-brutal-black dark:text-white">{job.name}</span>
-                                          <span className="mt-1 flex min-w-0 items-center gap-1.5">
-                                            <SessionStatusBadges
-                                              running={job.is_running}
-                                              unreadCount={currentChatId === chatId ? 0 : job.unread_count}
-                                            />
-                                            <span className={`truncate text-[9px] font-bold leading-tight ${unresolvedError ? 'text-red-600 dark:text-red-400' : 'text-neutral-500 dark:text-neutral-400'}`}>
-                                              {subtitle}
-                                            </span>
+                                      ✓
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setRenamingTaskId(null)}
+                                      className="border-2 border-brutal-black bg-white px-2 py-1 text-[10px] font-extrabold dark:bg-zinc-700 dark:text-white"
+                                    >
+                                      ✕
+                                    </button>
+                                  </form>
+                                ) : (
+                                  <>
+                                    <button
+                                      type="button"
+                                      disabled={!canOpen && !onOpenAutomation}
+                                      onClick={() =>
+                                        canOpen ? openChatById(chatId) : onOpenAutomation?.()
+                                      }
+                                      title={unresolvedError ?? job.last_result ?? undefined}
+                                      className="grid min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2 bg-transparent px-3.5 py-2 pr-10 text-left disabled:cursor-default"
+                                    >
+                                      <span className="min-w-0">
+                                        <span className="block truncate text-xs font-extrabold leading-tight text-brutal-black dark:text-white">
+                                          {job.name}
+                                        </span>
+                                        <span className="mt-1 flex min-w-0 items-center gap-1.5">
+                                          <SessionStatusBadges
+                                            running={job.is_running}
+                                            unreadCount={
+                                              currentChatId === chatId ? 0 : job.unread_count
+                                            }
+                                          />
+                                          <span
+                                            className={`truncate text-[9px] font-bold leading-tight ${unresolvedError ? 'text-red-600 dark:text-red-400' : 'text-neutral-500 dark:text-neutral-400'}`}
+                                          >
+                                            {subtitle}
                                           </span>
                                         </span>
-                                        <span className="shrink-0 text-[9px] font-bold uppercase text-neutral-400 dark:text-neutral-500">
-                                          {latestActivityAt ? formatDate(latestActivityAt) : t('chatList.automation.notYet')}
-                                        </span>
-                                      </button>
-                                      <button
-                                        type="button"
-                                        aria-label={t('chatList.menu.title')}
-                                        title={t('chatList.menu.title')}
-                                        onClick={(event) => {
-                                          event.stopPropagation();
-                                          setTaskMenu({ jobId: job.id, anchor: { rect: event.currentTarget.getBoundingClientRect() } });
-                                        }}
-                                        className={`absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center justify-center p-1 text-neutral-500 transition-opacity hover:bg-neutral-200 hover:text-brutal-black dark:text-neutral-400 dark:hover:bg-zinc-600 dark:hover:text-white ${
-                                          taskMenu?.jobId === job.id ? 'opacity-100' : 'opacity-0 group-hover/task:opacity-100 focus:opacity-100'
-                                        }`}
-                                      >
-                                        <MoreActionsIcon />
-                                      </button>
-                                    </>
-                                  )}
-                                </div>
-                              );
-                            })}
+                                      </span>
+                                      <span className="shrink-0 text-[9px] font-bold uppercase text-neutral-400 dark:text-neutral-500">
+                                        {latestActivityAt
+                                          ? formatDate(latestActivityAt)
+                                          : t('chatList.automation.notYet')}
+                                      </span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      aria-label={t('chatList.menu.title')}
+                                      title={t('chatList.menu.title')}
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        setTaskMenu({
+                                          jobId: job.id,
+                                          anchor: {
+                                            rect: event.currentTarget.getBoundingClientRect(),
+                                          },
+                                        });
+                                      }}
+                                      className={`absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center justify-center p-1 text-neutral-500 transition-opacity hover:bg-neutral-200 hover:text-brutal-black dark:text-neutral-400 dark:hover:bg-zinc-600 dark:hover:text-white ${
+                                        taskMenu?.jobId === job.id
+                                          ? 'opacity-100'
+                                          : 'opacity-0 group-hover/task:opacity-100 focus:opacity-100'
+                                      }`}
+                                    >
+                                      <MoreActionsIcon />
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            );
+                          })}
                           {cronJobs.length > AUTOMATION_PREVIEW_LIMIT && onOpenAutomation && (
                             <button
                               type="button"
                               onClick={onOpenAutomation}
                               className="w-full px-3 py-2.5 text-[9px] font-extrabold uppercase tracking-wide text-brutal-blue border-b border-neutral-200 hover:bg-brutal-yellow hover:text-brutal-black dark:border-zinc-700 dark:text-brutal-yellow"
                             >
-                              {t('chatList.automation.viewAllScheduled', { count: cronJobs.length })}
+                              {t('chatList.automation.viewAllScheduled', {
+                                count: cronJobs.length,
+                              })}
                             </button>
                           )}
                         </div>
@@ -1091,37 +1213,47 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
                     {heartbeatSessions.length > 0 && (
                       <div className="border-b border-neutral-200 bg-white dark:border-zinc-700 dark:bg-zinc-800">
                         <div>
-                          {heartbeatSessions.slice(0, AUTOMATION_PREVIEW_LIMIT).map(session => (
-                              <button
-                                key={session.chat_id}
-                                type="button"
-                                onClick={() => openChatById(session.chat_id)}
-                                className={`w-full min-h-11 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-3.5 py-2 text-left border-b border-neutral-200 transition-colors dark:border-zinc-700 ${
-                                  currentChatId === session.chat_id
-                                    ? 'bg-neutral-100 shadow-[inset_3px_0_0_#171717] dark:bg-zinc-700 dark:shadow-[inset_3px_0_0_#f5f5f5]'
-                                    : 'bg-white hover:bg-neutral-50 dark:bg-zinc-800 dark:hover:bg-zinc-700'
-                                }`}
-                              >
-                                <span className="min-w-0">
-                                  <span className="block text-xs leading-tight font-extrabold truncate text-brutal-black dark:text-white">{session.title}</span>
-                                  <span className="mt-1 flex min-w-0 items-center gap-1.5">
-                                    <SessionStatusBadges
-                                      running={session.is_running}
-                                      unreadCount={currentChatId === session.chat_id ? 0 : session.unread_count}
-                                    />
-                                    <span className="truncate text-[9px] leading-tight font-bold text-neutral-500 dark:text-neutral-400">
-                                      {t('chatList.automation.everyMinutes', { minutes: session.interval_minutes })}
-                                    </span>
+                          {heartbeatSessions.slice(0, AUTOMATION_PREVIEW_LIMIT).map((session) => (
+                            <button
+                              key={session.chat_id}
+                              type="button"
+                              onClick={() => openChatById(session.chat_id)}
+                              className={`w-full min-h-11 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-3.5 py-2 text-left border-b border-neutral-200 transition-colors dark:border-zinc-700 ${
+                                currentChatId === session.chat_id
+                                  ? 'bg-neutral-100 shadow-[inset_3px_0_0_#171717] dark:bg-zinc-700 dark:shadow-[inset_3px_0_0_#f5f5f5]'
+                                  : 'bg-white hover:bg-neutral-50 dark:bg-zinc-800 dark:hover:bg-zinc-700'
+                              }`}
+                            >
+                              <span className="min-w-0">
+                                <span className="block text-xs leading-tight font-extrabold truncate text-brutal-black dark:text-white">
+                                  {session.title}
+                                </span>
+                                <span className="mt-1 flex min-w-0 items-center gap-1.5">
+                                  <SessionStatusBadges
+                                    running={session.is_running}
+                                    unreadCount={
+                                      currentChatId === session.chat_id ? 0 : session.unread_count
+                                    }
+                                  />
+                                  <span className="truncate text-[9px] leading-tight font-bold text-neutral-500 dark:text-neutral-400">
+                                    {t('chatList.automation.everyMinutes', {
+                                      minutes: session.interval_minutes,
+                                    })}
                                   </span>
                                 </span>
-                                <span className="text-[9px] font-extrabold uppercase text-neutral-500 dark:text-neutral-400">
-                                  {session.last_run_at ? formatDate(session.last_run_at) : t('chatList.automation.notYet')}
-                                </span>
-                              </button>
+                              </span>
+                              <span className="text-[9px] font-extrabold uppercase text-neutral-500 dark:text-neutral-400">
+                                {session.last_run_at
+                                  ? formatDate(session.last_run_at)
+                                  : t('chatList.automation.notYet')}
+                              </span>
+                            </button>
                           ))}
                           {heartbeatSessions.length > AUTOMATION_PREVIEW_LIMIT && (
                             <div className="px-3 py-2.5 text-center text-[9px] font-extrabold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
-                              {t('chatList.automation.moreHeartbeat', { count: heartbeatSessions.length - AUTOMATION_PREVIEW_LIMIT })}
+                              {t('chatList.automation.moreHeartbeat', {
+                                count: heartbeatSessions.length - AUTOMATION_PREVIEW_LIMIT,
+                              })}
                             </div>
                           )}
                         </div>
@@ -1133,14 +1265,19 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
             )}
 
             <section className="relative order-1 border-t-2 border-brutal-black">
-              <div ref={organizationMenuRef} className="relative flex items-center justify-between px-3 py-1.5">
+              <div
+                ref={organizationMenuRef}
+                className="relative flex items-center justify-between px-3 py-1.5"
+              >
                 <h2 className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-neutral-400 dark:text-neutral-500">
-                  {organization === 'projects' ? t('chatList.sections.projects') : t('chatList.sections.chats')}
+                  {organization === 'projects'
+                    ? t('chatList.sections.projects')
+                    : t('chatList.sections.chats')}
                 </h2>
                 <div className="flex items-center gap-0.5">
                   <button
                     type="button"
-                    onClick={() => setOrganizationMenuOpen(value => !value)}
+                    onClick={() => setOrganizationMenuOpen((value) => !value)}
                     className="flex h-6 w-6 items-center justify-center text-neutral-500 hover:bg-neutral-100 hover:text-brutal-black dark:text-neutral-400 dark:hover:bg-zinc-700 dark:hover:text-white"
                     title={t('chatList.organization.title')}
                     aria-label={t('chatList.organization.title')}
@@ -1159,8 +1296,12 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
                       setCreatingProjectInline(true);
                     }}
                     className="w-6 h-6 flex items-center justify-center text-neutral-500 hover:bg-brutal-yellow hover:text-brutal-black dark:text-neutral-400"
-                    title={organization === 'list' ? t('chatList.newChat') : t('chatList.newProject')}
-                    aria-label={organization === 'list' ? t('chatList.newChat') : t('chatList.newProject')}
+                    title={
+                      organization === 'list' ? t('chatList.newChat') : t('chatList.newProject')
+                    }
+                    aria-label={
+                      organization === 'list' ? t('chatList.newChat') : t('chatList.newProject')
+                    }
                   >
                     <PlusIcon className="w-4 h-4 stroke-[3]" />
                   </button>
@@ -1173,7 +1314,7 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
                     <div className="px-3 py-1.5 text-[9px] font-extrabold uppercase tracking-[0.14em] text-neutral-400 dark:text-neutral-500">
                       {t('chatList.organization.title')}
                     </div>
-                    {(['projects', 'list'] as const).map(mode => (
+                    {(['projects', 'list'] as const).map((mode) => (
                       <button
                         key={mode}
                         type="button"
@@ -1196,119 +1337,171 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
 
               {organization === 'projects' ? (
                 <>
-              {creatingProjectInline && (
-                <form onSubmit={handleCreateProjectInline} className="flex items-center gap-1 px-3 pb-2">
-                  <input
-                    autoFocus
-                    type="text"
-                    value={newProjectName}
-                    onChange={(event) => setNewProjectName(event.target.value)}
-                    onKeyDown={(event) => { if (event.key === 'Escape') { setCreatingProjectInline(false); setNewProjectName(''); } }}
-                    placeholder={t('chatList.newProjectPlaceholder')}
-                    className="flex-1 min-w-0 px-2 py-1.5 text-xs font-bold bg-white dark:bg-zinc-700 dark:text-white border-2 border-brutal-black focus:outline-none"
-                  />
-                  <button type="submit" className="px-2 py-1.5 text-[10px] font-extrabold border-2 border-brutal-black bg-brutal-yellow">✓</button>
-                  <button type="button" onClick={() => { setCreatingProjectInline(false); setNewProjectName(''); }} className="px-2 py-1.5 text-[10px] font-extrabold border-2 border-brutal-black bg-white dark:bg-zinc-700 dark:text-white">✕</button>
-                </form>
-              )}
+                  {creatingProjectInline && (
+                    <form
+                      onSubmit={handleCreateProjectInline}
+                      className="flex items-center gap-1 px-3 pb-2"
+                    >
+                      <input
+                        autoFocus
+                        type="text"
+                        value={newProjectName}
+                        onChange={(event) => setNewProjectName(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Escape') {
+                            setCreatingProjectInline(false);
+                            setNewProjectName('');
+                          }
+                        }}
+                        placeholder={t('chatList.newProjectPlaceholder')}
+                        className="flex-1 min-w-0 px-2 py-1.5 text-xs font-bold bg-white dark:bg-zinc-700 dark:text-white border-2 border-brutal-black focus:outline-none"
+                      />
+                      <button
+                        type="submit"
+                        className="px-2 py-1.5 text-[10px] font-extrabold border-2 border-brutal-black bg-brutal-yellow"
+                      >
+                        ✓
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCreatingProjectInline(false);
+                          setNewProjectName('');
+                        }}
+                        className="px-2 py-1.5 text-[10px] font-extrabold border-2 border-brutal-black bg-white dark:bg-zinc-700 dark:text-white"
+                      >
+                        ✕
+                      </button>
+                    </form>
+                  )}
 
-              <div className="space-y-0.5 px-2 pb-2">
-                {projects.map(project => {
-                  const isOpen = filterId === project.id;
-                  const isSystem = project.slug === 'default' || project.slug === 'social';
-                  const isRenaming = renamingProjectId === project.id;
-                  return (
-                    <div key={project.id}>
-                      <div className={`group/proj relative grid min-h-9 grid-cols-[minmax(0,1fr)_24px] border-2 transition-all ${isOpen ? 'z-10 border-brutal-black bg-brutal-black text-white shadow-[2px_2px_0_0_#777] dark:border-white dark:bg-white dark:text-brutal-black dark:shadow-[2px_2px_0_0_#555]' : 'border-transparent bg-transparent hover:border-brutal-black hover:bg-white dark:hover:border-white dark:hover:bg-zinc-800'}`}>
-                        {isRenaming ? (
-                          <form
-                            className="col-span-2 flex items-center gap-1 px-2 py-1"
-                            onSubmit={async (event) => {
-                              event.preventDefault();
-                              const trimmed = projectRenameValue.trim();
-                              if (trimmed && trimmed !== project.name) await renameProject(project.id, trimmed);
-                              setRenamingProjectId(null);
-                            }}
+                  <div className="space-y-0.5 px-2 pb-2">
+                    {projects.map((project) => {
+                      const isOpen = filterId === project.id;
+                      const isSystem = project.slug === 'default' || project.slug === 'social';
+                      const isRenaming = renamingProjectId === project.id;
+                      return (
+                        <div key={project.id}>
+                          <div
+                            className={`group/proj relative grid min-h-9 grid-cols-[minmax(0,1fr)_24px] border-2 transition-all ${isOpen ? 'z-10 border-brutal-black bg-brutal-black text-white shadow-[2px_2px_0_0_#777] dark:border-white dark:bg-white dark:text-brutal-black dark:shadow-[2px_2px_0_0_#555]' : 'border-transparent bg-transparent hover:border-brutal-black hover:bg-white dark:hover:border-white dark:hover:bg-zinc-800'}`}
                           >
-                            <input
-                              autoFocus
-                              value={projectRenameValue}
-                              onChange={(event) => setProjectRenameValue(event.target.value)}
-                              onKeyDown={(event) => { if (event.key === 'Escape') setRenamingProjectId(null); }}
-                              className="flex-1 min-w-0 px-2 py-1 text-xs font-bold bg-white dark:bg-zinc-700 dark:text-white border-2 border-brutal-black focus:outline-none"
-                            />
-                            <button type="submit" className="px-2 py-1 text-[10px] font-extrabold border-2 border-brutal-black bg-brutal-yellow">✓</button>
-                            <button type="button" onClick={() => setRenamingProjectId(null)} className="px-2 py-1 text-[10px] font-extrabold border-2 border-brutal-black bg-white dark:bg-zinc-700 dark:text-white">✕</button>
-                          </form>
-                        ) : (
-                          <>
-                            <button
-                              type="button"
-                              aria-expanded={isOpen}
-                              aria-current={isOpen ? 'true' : undefined}
-                              onClick={() => isOpen ? setFilterId(ALL_PROJECTS_FILTER) : handleSelectFilter(project.id)}
-                              className="min-w-0 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-2.5 py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brutal-blue"
-                            >
-                              <span className={`min-w-0 truncate text-[11px] ${isOpen ? 'font-black text-white dark:text-brutal-black' : 'font-bold text-brutal-black dark:text-white'}`}>{project.name}</span>
-                              <span className={`min-w-6 px-1 text-right text-[9px] font-extrabold tabular-nums transition-colors ${isOpen ? 'text-white dark:text-brutal-black' : 'text-neutral-500 group-hover/proj:text-brutal-black dark:text-neutral-400 dark:group-hover/proj:text-white'}`}>{project.chatCount}</span>
-                            </button>
-                            {!isSystem && (
-                              <button
-                                type="button"
-                                aria-label={t('chatList.menu.title')}
-                                title={t('chatList.menu.title')}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  const rect = event.currentTarget.getBoundingClientRect();
-                                  setProjectMenu({ projectId: project.id, anchor: { rect } });
+                            {isRenaming ? (
+                              <form
+                                className="col-span-2 flex items-center gap-1 px-2 py-1"
+                                onSubmit={async (event) => {
+                                  event.preventDefault();
+                                  const trimmed = projectRenameValue.trim();
+                                  if (trimmed && trimmed !== project.name)
+                                    await renameProject(project.id, trimmed);
+                                  setRenamingProjectId(null);
                                 }}
-                                className={`w-6 flex items-center justify-center ${isOpen ? 'text-white hover:bg-white hover:text-brutal-black dark:text-brutal-black dark:hover:bg-brutal-black dark:hover:text-white' : 'hover:bg-neutral-100 dark:hover:bg-zinc-600'} ${projectMenu?.projectId === project.id ? 'opacity-100' : 'opacity-0 group-hover/proj:opacity-100 focus:opacity-100'}`}
                               >
-                                <MoreActionsIcon />
-                              </button>
-                            )}
-                            {isSystem && <span aria-hidden="true" />}
-                          </>
-                        )}
-                      </div>
-
-                      {isOpen && (
-                        <div className="bg-neutral-50/50 dark:bg-zinc-900/20">
-                          {loadingProjectChats ? (
-                            renderListSkeleton()
-                          ) : visibleChats.length === 0 ? (
-                            <div className="px-4 py-6 text-center text-[10px] font-bold uppercase text-neutral-400">
-                              {t('chatList.empty.noChatsTitle')}
-                            </div>
-                          ) : (
-                            <>
-                              {visibleChats
-                                .filter(chat => getChatKind(chat) !== 'scheduled')
-                                .map(chat => renderChatRow(chat, false, true))}
-                              {remaining > 0 && (
+                                <input
+                                  autoFocus
+                                  value={projectRenameValue}
+                                  onChange={(event) => setProjectRenameValue(event.target.value)}
+                                  onKeyDown={(event) => {
+                                    if (event.key === 'Escape') setRenamingProjectId(null);
+                                  }}
+                                  className="flex-1 min-w-0 px-2 py-1 text-xs font-bold bg-white dark:bg-zinc-700 dark:text-white border-2 border-brutal-black focus:outline-none"
+                                />
+                                <button
+                                  type="submit"
+                                  className="px-2 py-1 text-[10px] font-extrabold border-2 border-brutal-black bg-brutal-yellow"
+                                >
+                                  ✓
+                                </button>
                                 <button
                                   type="button"
-                                  onClick={() => void handleLoadMore()}
-                                  disabled={loadingMoreProjectChats}
-                                  className="w-full py-2.5 border-t border-neutral-200 dark:border-zinc-700 text-[10px] font-extrabold uppercase text-neutral-500 hover:bg-neutral-50 hover:text-brutal-black dark:hover:bg-zinc-700 dark:hover:text-white disabled:opacity-50"
+                                  onClick={() => setRenamingProjectId(null)}
+                                  className="px-2 py-1 text-[10px] font-extrabold border-2 border-brutal-black bg-white dark:bg-zinc-700 dark:text-white"
                                 >
-                                  {loadingMoreProjectChats ? t('chatList.loadingMore') : t('chatList.loadMore', { count: remaining })}
+                                  ✕
                                 </button>
+                              </form>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  aria-expanded={isOpen}
+                                  aria-current={isOpen ? 'true' : undefined}
+                                  onClick={() =>
+                                    isOpen
+                                      ? setFilterId(ALL_PROJECTS_FILTER)
+                                      : handleSelectFilter(project.id)
+                                  }
+                                  className="min-w-0 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-2.5 py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brutal-blue"
+                                >
+                                  <span
+                                    className={`min-w-0 truncate text-[11px] ${isOpen ? 'font-black text-white dark:text-brutal-black' : 'font-bold text-brutal-black dark:text-white'}`}
+                                  >
+                                    {project.name}
+                                  </span>
+                                  <span
+                                    className={`min-w-6 px-1 text-right text-[9px] font-extrabold tabular-nums transition-colors ${isOpen ? 'text-white dark:text-brutal-black' : 'text-neutral-500 group-hover/proj:text-brutal-black dark:text-neutral-400 dark:group-hover/proj:text-white'}`}
+                                  >
+                                    {project.chatCount}
+                                  </span>
+                                </button>
+                                {!isSystem && (
+                                  <button
+                                    type="button"
+                                    aria-label={t('chatList.menu.title')}
+                                    title={t('chatList.menu.title')}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      const rect = event.currentTarget.getBoundingClientRect();
+                                      setProjectMenu({ projectId: project.id, anchor: { rect } });
+                                    }}
+                                    className={`w-6 flex items-center justify-center ${isOpen ? 'text-white hover:bg-white hover:text-brutal-black dark:text-brutal-black dark:hover:bg-brutal-black dark:hover:text-white' : 'hover:bg-neutral-100 dark:hover:bg-zinc-600'} ${projectMenu?.projectId === project.id ? 'opacity-100' : 'opacity-0 group-hover/proj:opacity-100 focus:opacity-100'}`}
+                                  >
+                                    <MoreActionsIcon />
+                                  </button>
+                                )}
+                                {isSystem && <span aria-hidden="true" />}
+                              </>
+                            )}
+                          </div>
+
+                          {isOpen && (
+                            <div className="bg-neutral-50/50 dark:bg-zinc-900/20">
+                              {loadingProjectChats ? (
+                                renderListSkeleton()
+                              ) : visibleChats.length === 0 ? (
+                                <div className="px-4 py-6 text-center text-[10px] font-bold uppercase text-neutral-400">
+                                  {t('chatList.empty.noChatsTitle')}
+                                </div>
+                              ) : (
+                                <>
+                                  {visibleChats
+                                    .filter((chat) => getChatKind(chat) !== 'scheduled')
+                                    .map((chat) => renderChatRow(chat, false, true))}
+                                  {remaining > 0 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => void handleLoadMore()}
+                                      disabled={loadingMoreProjectChats}
+                                      className="w-full py-2.5 border-t border-neutral-200 dark:border-zinc-700 text-[10px] font-extrabold uppercase text-neutral-500 hover:bg-neutral-50 hover:text-brutal-black dark:hover:bg-zinc-700 dark:hover:text-white disabled:opacity-50"
+                                    >
+                                      {loadingMoreProjectChats
+                                        ? t('chatList.loadingMore')
+                                        : t('chatList.loadMore', { count: remaining })}
+                                    </button>
+                                  )}
+                                </>
                               )}
-                            </>
+                            </div>
                           )}
                         </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+                      );
+                    })}
+                  </div>
                 </>
               ) : (
                 <div className="border-t border-neutral-200 dark:border-zinc-700">
                   {visibleChats
-                    .filter(chat => getChatKind(chat) !== 'scheduled')
-                    .map(chat => renderChatRow(chat, true))}
+                    .filter((chat) => getChatKind(chat) !== 'scheduled')
+                    .map((chat) => renderChatRow(chat, true))}
                   {remaining > 0 && (
                     <button
                       type="button"
@@ -1316,7 +1509,9 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
                       disabled={loadingMoreChats}
                       className="w-full border-t border-neutral-200 py-2.5 text-[10px] font-extrabold uppercase text-neutral-500 hover:bg-neutral-50 hover:text-brutal-black disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-white"
                     >
-                      {loadingMoreChats ? t('chatList.loadingMore') : t('chatList.loadMore', { count: remaining })}
+                      {loadingMoreChats
+                        ? t('chatList.loadingMore')
+                        : t('chatList.loadMore', { count: remaining })}
                     </button>
                   )}
                 </div>
@@ -1327,45 +1522,50 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
       </div>
 
       {/* Floating row menu (portalled, never clipped) */}
-      {openMenu && (() => {
-        const chat =
-          chatsRef.current.find(c => c.id === openMenu.chatId) ??
-          projectChatsRef.current.find(c => c.id === openMenu.chatId);
-        if (!chat) return null;
-        return (
-          <ChatRowMenu
-            anchor={openMenu.anchor}
-            boundary={sidebarBoundsRef.current?.getBoundingClientRect() ?? null}
-            projects={projects}
-            currentProjectId={chat.projectId ?? undefined}
-            onRename={() => {
-              setRenamingChatId(chat.id);
-              setRenameValue(chat.title || '');
-            }}
-            onDelete={() => { setOpenMenu(null); handleRequestDelete(chat.id); }}
-            onMoveToProject={(pid) => handleMoveChatToProject(chat.id, pid)}
-            onClose={() => setOpenMenu(null)}
-          />
-        );
-      })()}
+      {openMenu &&
+        (() => {
+          const chat =
+            chatsRef.current.find((c) => c.id === openMenu.chatId) ??
+            projectChatsRef.current.find((c) => c.id === openMenu.chatId);
+          if (!chat) return null;
+          return (
+            <ChatRowMenu
+              anchor={openMenu.anchor}
+              boundary={sidebarBoundsRef.current?.getBoundingClientRect() ?? null}
+              projects={projects}
+              currentProjectId={chat.projectId ?? undefined}
+              onRename={() => {
+                setRenamingChatId(chat.id);
+                setRenameValue(chat.title || '');
+              }}
+              onDelete={() => {
+                setOpenMenu(null);
+                handleRequestDelete(chat.id);
+              }}
+              onMoveToProject={(pid) => handleMoveChatToProject(chat.id, pid)}
+              onClose={() => setOpenMenu(null)}
+            />
+          );
+        })()}
 
-      {taskMenu && (() => {
-        const job = cronJobs.find(item => item.id === taskMenu.jobId);
-        if (!job) return null;
-        return (
-          <ProjectRowMenu
-            anchor={taskMenu.anchor}
-            boundary={sidebarBoundsRef.current?.getBoundingClientRect() ?? null}
-            rootDataAttrs={{ 'data-popover-source': 'task-row' }}
-            onRename={() => {
-              setTaskRenameValue(job.name);
-              setRenamingTaskId(job.id);
-            }}
-            onDelete={() => handleRequestTaskDelete(job)}
-            onClose={() => setTaskMenu(null)}
-          />
-        );
-      })()}
+      {taskMenu &&
+        (() => {
+          const job = cronJobs.find((item) => item.id === taskMenu.jobId);
+          if (!job) return null;
+          return (
+            <ProjectRowMenu
+              anchor={taskMenu.anchor}
+              boundary={sidebarBoundsRef.current?.getBoundingClientRect() ?? null}
+              rootDataAttrs={{ 'data-popover-source': 'task-row' }}
+              onRename={() => {
+                setTaskRenameValue(job.name);
+                setRenamingTaskId(job.id);
+              }}
+              onDelete={() => handleRequestTaskDelete(job)}
+              onClose={() => setTaskMenu(null)}
+            />
+          );
+        })()}
 
       {/* Modal dialog (replaces window.alert / window.confirm) */}
       <BrutalDialog
@@ -1378,88 +1578,89 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
       />
 
       {/* Floating project menu */}
-      {projectMenu && (() => {
-        const p = projects.find(pr => pr.id === projectMenu.projectId);
-        if (!p) return null;
-        return (
-          <ProjectRowMenu
-            anchor={projectMenu.anchor}
-            boundary={sidebarBoundsRef.current?.getBoundingClientRect() ?? null}
-            rootDataAttrs={{ 'data-popover-source': 'project-filter' }}
-            onRename={() => {
-              setProjectRenameValue(p.name);
-              setRenamingProjectId(p.id);
-            }}
-            onDelete={() => {
-              // Always allow delete. If the project has chats, prompt the user
-              // to confirm — chats will be moved to the default project first.
-              const fallback = projects.find(pr => pr.slug === 'default');
-              const finalizeDelete = async () => {
-                const result = await deleteProject(p.id);
-                if (!result.success) {
+      {projectMenu &&
+        (() => {
+          const p = projects.find((pr) => pr.id === projectMenu.projectId);
+          if (!p) return null;
+          return (
+            <ProjectRowMenu
+              anchor={projectMenu.anchor}
+              boundary={sidebarBoundsRef.current?.getBoundingClientRect() ?? null}
+              rootDataAttrs={{ 'data-popover-source': 'project-filter' }}
+              onRename={() => {
+                setProjectRenameValue(p.name);
+                setRenamingProjectId(p.id);
+              }}
+              onDelete={() => {
+                // Always allow delete. If the project has chats, prompt the user
+                // to confirm — chats will be moved to the default project first.
+                const fallback = projects.find((pr) => pr.slug === 'default');
+                const finalizeDelete = async () => {
+                  const result = await deleteProject(p.id);
+                  if (!result.success) {
+                    setDialog({
+                      title: p.name,
+                      message: result.error || t('chatList.menu.deleteFailed'),
+                      actions: [{ label: t('common.ok'), tone: 'primary' }],
+                    });
+                    return;
+                  }
+                  if (filterId === p.id) setFilterId(ALL_PROJECTS_FILTER);
+                  await Promise.all([refreshChatList(undefined, true), refreshProjects()]);
+                };
+
+                if (p.chatCount === 0) {
+                  setDialog({
+                    title: t('chatList.menu.deleteConfirmTitle', { name: p.name }),
+                    message: t('chatList.menu.deleteConfirmEmpty'),
+                    actions: [
+                      { label: t('common.cancel') },
+                      { label: t('chatList.menu.delete'), tone: 'danger', onClick: finalizeDelete },
+                    ],
+                  });
+                  return;
+                }
+
+                if (!fallback) {
                   setDialog({
                     title: p.name,
-                    message: result.error || t('chatList.menu.deleteFailed'),
+                    message: t('chatList.menu.deleteFailed'),
                     actions: [{ label: t('common.ok'), tone: 'primary' }],
                   });
                   return;
                 }
-                if (filterId === p.id) setFilterId(ALL_PROJECTS_FILTER);
-                await Promise.all([refreshChatList(undefined, true), refreshProjects()]);
-              };
 
-              if (p.chatCount === 0) {
                 setDialog({
                   title: t('chatList.menu.deleteConfirmTitle', { name: p.name }),
-                  message: t('chatList.menu.deleteConfirmEmpty'),
+                  message: t('chatList.menu.deleteConfirmWithChats', {
+                    count: p.chatCount,
+                    target: fallback.name,
+                  }),
                   actions: [
                     { label: t('common.cancel') },
-                    { label: t('chatList.menu.delete'), tone: 'danger', onClick: finalizeDelete },
+                    {
+                      label: t('chatList.menu.delete'),
+                      tone: 'danger',
+                      onClick: async () => {
+                        const moveResult = await moveAllChats(p.id, fallback.id);
+                        if (!moveResult.success) {
+                          setDialog({
+                            title: p.name,
+                            message: moveResult.error || t('chatList.menu.deleteFailed'),
+                            actions: [{ label: t('common.ok'), tone: 'primary' }],
+                          });
+                          return;
+                        }
+                        await finalizeDelete();
+                      },
+                    },
                   ],
                 });
-                return;
-              }
-
-              if (!fallback) {
-                setDialog({
-                  title: p.name,
-                  message: t('chatList.menu.deleteFailed'),
-                  actions: [{ label: t('common.ok'), tone: 'primary' }],
-                });
-                return;
-              }
-
-              setDialog({
-                title: t('chatList.menu.deleteConfirmTitle', { name: p.name }),
-                message: t('chatList.menu.deleteConfirmWithChats', {
-                  count: p.chatCount,
-                  target: fallback.name,
-                }),
-                actions: [
-                  { label: t('common.cancel') },
-                  {
-                    label: t('chatList.menu.delete'),
-                    tone: 'danger',
-                    onClick: async () => {
-                      const moveResult = await moveAllChats(p.id, fallback.id);
-                      if (!moveResult.success) {
-                        setDialog({
-                          title: p.name,
-                          message: moveResult.error || t('chatList.menu.deleteFailed'),
-                          actions: [{ label: t('common.ok'), tone: 'primary' }],
-                        });
-                        return;
-                      }
-                      await finalizeDelete();
-                    },
-                  },
-                ],
-              });
-            }}
-            onClose={() => setProjectMenu(null)}
-          />
-        );
-      })()}
+              }}
+              onClose={() => setProjectMenu(null)}
+            />
+          );
+        })()}
     </div>
   );
 };

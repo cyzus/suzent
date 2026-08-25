@@ -7,7 +7,7 @@ import {
   VideoCameraIcon,
   MusicalNoteIcon,
   ArchiveBoxIcon,
-  CircleStackIcon
+  CircleStackIcon,
 } from '@heroicons/react/24/outline';
 
 interface FileIconProps {
@@ -15,7 +15,7 @@ interface FileIconProps {
   className?: string;
 }
 
-export function FileIcon({ mimeType, className = "w-4 h-4" }: FileIconProps) {
+export function FileIcon({ mimeType, className = 'w-4 h-4' }: FileIconProps) {
   const getIcon = () => {
     // PDF
     if (mimeType === 'application/pdf') {
@@ -23,40 +23,41 @@ export function FileIcon({ mimeType, className = "w-4 h-4" }: FileIconProps) {
     }
 
     // Documents
-    if (mimeType.includes('word') ||
-        mimeType.includes('document') ||
-        mimeType === 'application/vnd.oasis.opendocument.text') {
+    if (
+      mimeType.includes('word') ||
+      mimeType.includes('document') ||
+      mimeType === 'application/vnd.oasis.opendocument.text'
+    ) {
       return <DocumentTextIcon className={className} />;
     }
 
     // Spreadsheets
-    if (mimeType.includes('sheet') ||
-        mimeType.includes('excel') ||
-        mimeType === 'text/csv') {
+    if (mimeType.includes('sheet') || mimeType.includes('excel') || mimeType === 'text/csv') {
       return <TableCellsIcon className={className} />;
     }
 
     // Presentations
-    if (mimeType.includes('presentation') ||
-        mimeType.includes('powerpoint')) {
+    if (mimeType.includes('presentation') || mimeType.includes('powerpoint')) {
       return <DocumentTextIcon className={className} />;
     }
 
     // Code files
-    if (mimeType.includes('javascript') ||
-        mimeType.includes('typescript') ||
-        mimeType.includes('python') ||
-        mimeType.includes('java') ||
-        mimeType.includes('c++') ||
-        mimeType.includes('rust') ||
-        mimeType.includes('go') ||
-        mimeType === 'text/html' ||
-        mimeType === 'text/css' ||
-        mimeType === 'application/xml' ||
-        mimeType === 'text/x-python' ||
-        mimeType === 'text/x-java' ||
-        mimeType === 'text/x-c' ||
-        mimeType === 'text/x-rust') {
+    if (
+      mimeType.includes('javascript') ||
+      mimeType.includes('typescript') ||
+      mimeType.includes('python') ||
+      mimeType.includes('java') ||
+      mimeType.includes('c++') ||
+      mimeType.includes('rust') ||
+      mimeType.includes('go') ||
+      mimeType === 'text/html' ||
+      mimeType === 'text/css' ||
+      mimeType === 'application/xml' ||
+      mimeType === 'text/x-python' ||
+      mimeType === 'text/x-java' ||
+      mimeType === 'text/x-c' ||
+      mimeType === 'text/x-rust'
+    ) {
       return <CodeBracketIcon className={className} />;
     }
 
@@ -81,18 +82,19 @@ export function FileIcon({ mimeType, className = "w-4 h-4" }: FileIconProps) {
     }
 
     // Archives
-    if (mimeType.includes('zip') ||
-        mimeType.includes('rar') ||
-        mimeType.includes('tar') ||
-        mimeType.includes('7z') ||
-        mimeType.includes('gzip') ||
-        mimeType.includes('compress')) {
+    if (
+      mimeType.includes('zip') ||
+      mimeType.includes('rar') ||
+      mimeType.includes('tar') ||
+      mimeType.includes('7z') ||
+      mimeType.includes('gzip') ||
+      mimeType.includes('compress')
+    ) {
       return <ArchiveBoxIcon className={className} />;
     }
 
     // Databases
-    if (mimeType.includes('sqlite') ||
-        mimeType.includes('database')) {
+    if (mimeType.includes('sqlite') || mimeType.includes('database')) {
       return <CircleStackIcon className={className} />;
     }
 

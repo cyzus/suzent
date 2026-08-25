@@ -25,12 +25,14 @@ export function buildMountedVolumes(currentVolumes: string[], paths: string[]): 
     let containerPath = `/mnt/${folderName}`;
     let counter = 1;
 
-    while (nextVolumes.some(volume => getContainerPath(volume) === containerPath)) {
+    while (nextVolumes.some((volume) => getContainerPath(volume) === containerPath)) {
       containerPath = `/mnt/${folderName}-${counter}`;
       counter += 1;
     }
 
-    const alreadyMounted = nextVolumes.some(volume => normalizeHostPath(getHostPath(volume)) === normalizedHost);
+    const alreadyMounted = nextVolumes.some(
+      (volume) => normalizeHostPath(getHostPath(volume)) === normalizedHost
+    );
     if (!alreadyMounted) {
       nextVolumes.push(`${hostPath}:${containerPath}`);
     }

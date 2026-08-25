@@ -28,51 +28,47 @@ const build = (over: Partial<Parameters<typeof buildEngineOptions>[0]> = {}) =>
 describe('buildEngineOptions', () => {
   it('lists models first, then ACP agents in their own group', () => {
     const options = build();
-    expect(options.slice(0, 2).map(o => o.label)).toEqual(['gpt-5', 'claude-opus-5']);
-    expect(options.slice(0, 2).every(o => o.group === 'Models')).toBe(true);
-    expect(options.slice(2).every(o => o.group === 'ACP agents')).toBe(true);
+    expect(options.slice(0, 2).map((o) => o.label)).toEqual(['gpt-5', 'claude-opus-5']);
+    expect(options.slice(0, 2).every((o) => o.group === 'Models')).toBe(true);
+    expect(options.slice(2).every((o) => o.group === 'ACP agents')).toBe(true);
   });
 
   it('hides agents that are not installed instead of greying them out', () => {
-    const values = build().map(o => o.value);
+    const values = build().map((o) => o.value);
     expect(values).toContain('acp:claude-code');
     expect(values).not.toContain('acp:codex');
     expect(values).not.toContain('acp:bare');
   });
 
   it('keeps a missing agent visible when the chat is already bound to it', () => {
-    const byId = Object.fromEntries(
-      build({ selectedAgentId: 'codex' }).map(o => [o.value, o]),
-    );
+    const byId = Object.fromEntries(build({ selectedAgentId: 'codex' }).map((o) => [o.value, o]));
     expect(byId['acp:codex'].disabled).toBe(true);
     expect(byId['acp:codex'].hint).toBe(LABELS.installHint);
     expect(byId['acp:bare']).toBeUndefined();
   });
 
   it('points at the install path only when there is somewhere to point', () => {
-    const byId = Object.fromEntries(
-      build({ selectedAgentId: 'bare' }).map(o => [o.value, o]),
-    );
+    const byId = Object.fromEntries(build({ selectedAgentId: 'bare' }).map((o) => [o.value, o]));
     expect(byId['acp:bare'].hint).toBe(LABELS.notInstalled);
     expect(byId['acp:claude-code'].hint).toBeUndefined();
   });
 
   it('treats vendor docs as an install path, the way built-ins now describe one', () => {
     const byId = Object.fromEntries(
-      build({ selectedAgentId: 'documented' }).map(o => [o.value, o]),
+      build({ selectedAgentId: 'documented' }).map((o) => [o.value, o])
     );
     expect(byId['acp:documented'].hint).toBe(LABELS.installHint);
   });
 
   it('drops the ACP group once the chat exists, keeping the agent in use', () => {
     const options = build({ canChooseRuntime: false, selectedAgentId: 'claude-code' });
-    const acp = options.filter(o => o.group === LABELS.acp);
-    expect(acp.map(o => o.value)).toEqual(['acp:claude-code']);
+    const acp = options.filter((o) => o.group === LABELS.acp);
+    expect(acp.map((o) => o.value)).toEqual(['acp:claude-code']);
   });
 
   it('offers no ACP entries on an existing native chat', () => {
     const options = build({ canChooseRuntime: false });
-    expect(options.some(o => o.group === LABELS.acp)).toBe(false);
+    expect(options.some((o) => o.group === LABELS.acp)).toBe(false);
   });
 
   it('falls back to the id when an agent has no name', () => {
@@ -99,7 +95,7 @@ describe('engineValue / parseEngineValue', () => {
 
   it('matches the value the option list uses, so the button resolves a label', () => {
     const v = engineValue({ isAcpRuntime: true, acpAgentId: 'claude-code' });
-    expect(build().some(o => o.value === v)).toBe(true);
+    expect(build().some((o) => o.value === v)).toBe(true);
   });
 
   it('tolerates a model id containing a colon', () => {

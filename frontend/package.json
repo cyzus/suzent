@@ -10,6 +10,8 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
+    "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\"",
     "i18n:check-ui": "node scripts/check-ui-english.mjs"
   },
   "dependencies": {
@@ -50,6 +52,7 @@
     "eslint-plugin-react-refresh": "^0.4.26",
     "globals": "^15.15.0",
     "postcss": "^8.4.41",
+    "prettier": "^3.9.6",
     "tailwindcss": "^3.4.7",
     "typescript": "^5.5.4",
     "typescript-eslint": "^8.68.0",

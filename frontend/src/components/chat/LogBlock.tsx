@@ -46,13 +46,29 @@ export const LogBlock: React.FC<LogBlockProps> = ({ title, content }) => {
             title={t('status.copyToClipboard')}
           >
             {copied ? (
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={3}
+              >
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
               </svg>
             ) : (
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2.5}
+              >
                 <rect x="8" y="8" width="12" height="12" rx="2" ry="2" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2"
+                />
               </svg>
             )}
           </button>
@@ -67,7 +83,9 @@ export const LogBlock: React.FC<LogBlockProps> = ({ title, content }) => {
       </div>
 
       {/* Content Area */}
-      <div className={`bg-neutral-50 dark:bg-zinc-900 transition-all duration-300 ease-in-out overflow-y-auto scrollbar-thin ${expanded ? 'max-h-[800px] opacity-100' : 'max-h-0 opacity-0'}`}>
+      <div
+        className={`bg-neutral-50 dark:bg-zinc-900 transition-all duration-300 ease-in-out overflow-y-auto scrollbar-thin ${expanded ? 'max-h-[800px] opacity-100' : 'max-h-0 opacity-0'}`}
+      >
         <div className="w-full p-3">
           <pre className="text-xs text-brutal-black dark:text-neutral-200 leading-relaxed font-mono whitespace-pre-wrap break-all">
             {content}

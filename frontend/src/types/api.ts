@@ -12,8 +12,8 @@ export interface ImageAttachment {
 export interface FileAttachment {
   id: string;
   filename: string;
-  path: string;           // Virtual path: /workspace/uploads/filename
-  size: number;           // Bytes
+  path: string; // Virtual path: /workspace/uploads/filename
+  size: number; // Bytes
   mime_type: string;
   uploaded_at?: string;
   // Client-only: base64 image data captured at upload time so the optimistic
@@ -33,14 +33,14 @@ export interface MessageFileChange {
 export interface Message {
   role: 'user' | 'assistant' | 'notice' | 'canvas_action' | 'system_triggered';
   content: string;
-  timestamp?: string;         // ISO 8601 timestamp when the message was created
-  model?: string;             // Model used to produce an assistant message
+  timestamp?: string; // ISO 8601 timestamp when the message was created
+  model?: string; // Model used to produce an assistant message
   stepInfo?: string; // Step metadata like "Step: 1 | Input tokens: 100 | Output tokens: 50"
   parts?: AGUIPart[]; // Structured assistant display parts; content remains as fallback.
   _streaming_draft?: boolean; // Backend recovery snapshot for in-progress streams.
   _streaming_run_id?: string;
   images?: ImageAttachment[]; // Optional image attachments
-  files?: FileAttachment[];   // Optional file attachments
+  files?: FileAttachment[]; // Optional file attachments
   file_changes?: MessageFileChange[]; // Persisted file snapshot for this assistant turn
   file_changes_undone?: boolean; // Whether this message-scoped snapshot was restored
   file_change_message_index?: number; // Raw backend index used for message-scoped undo
@@ -73,10 +73,7 @@ export interface ChatConfig {
   runtime?: 'native' | 'acp';
 }
 
-export type PermissionMode =
-  | 'default'
-  | 'auto'
-  | 'full_access';
+export type PermissionMode = 'default' | 'auto' | 'full_access';
 
 export function normalizePermissionMode(value: unknown): PermissionMode {
   return value === 'auto' || value === 'full_access' ? value : 'default';
@@ -181,16 +178,17 @@ export interface ConfigOptions {
   models: string[];
   defaultModel?: string | null; // first model from a provider with credentials; null if none configured
   agents: string[];
-  tools: string[];        // full list of tool options
+  tools: string[]; // full list of tool options
   defaultTools: string[]; // default enabled tools
   toolCapabilities?: ToolCapabilityOption[];
-  codeTag: string;        // CODE_TAG (e.g. <code>) so frontend can parse blocks consistently
-  userId?: string;        // backend-provided user identifier for memory system alignment
-  globalSandboxVolumes?: string[];  // global volumes from config file
-  sandboxEnabled?: boolean;         // global sandbox enable setting
+  codeTag: string; // CODE_TAG (e.g. <code>) so frontend can parse blocks consistently
+  userId?: string; // backend-provided user identifier for memory system alignment
+  globalSandboxVolumes?: string[]; // global volumes from config file
+  sandboxEnabled?: boolean; // global sandbox enable setting
   defaultPermissionMode?: PermissionMode; // default permission mode for new chats
-  maxContextTokens?: number;        // max context window size in tokens
-  userPreferences?: {     // saved user preferences from database
+  maxContextTokens?: number; // max context window size in tokens
+  userPreferences?: {
+    // saved user preferences from database
     model: string;
     agent: string;
     tools: string[];
@@ -252,7 +250,6 @@ export interface ChatGPTLoginResponse {
   interval?: string;
   error?: string;
 }
-
 
 // Note: Stream event types removed — the frontend now uses AG-UI protocol
 // via the useAGUI hook instead of manual SSE parsing.

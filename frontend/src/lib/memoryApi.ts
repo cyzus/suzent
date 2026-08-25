@@ -26,7 +26,10 @@ export const memoryApi = {
   /**
    * Get all core memory blocks
    */
-  async getCoreMemory(userId: string = 'default-user', chatId?: string | null): Promise<CoreMemoryBlocks> {
+  async getCoreMemory(
+    userId: string = 'default-user',
+    chatId?: string | null
+  ): Promise<CoreMemoryBlocks> {
     const params = new URLSearchParams({ user_id: userId });
     if (chatId) {
       params.set('chat_id', chatId);

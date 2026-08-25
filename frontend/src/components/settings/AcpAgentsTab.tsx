@@ -3,7 +3,13 @@ import { useI18n } from '../../i18n';
 import { fetchAcpAgents, fetchAcpSessions, probeAcpAgent } from '../../lib/api';
 import type { AcpAgentDescriptor } from '../../types/api';
 import { BrutalLink } from '../BrutalButton';
-import { SectionCardHeader, SettingsListItem, SettingsListAction, Badge, SettingsPage } from './SettingsCard';
+import {
+  SectionCardHeader,
+  SettingsListItem,
+  SettingsListAction,
+  Badge,
+  SettingsPage,
+} from './SettingsCard';
 import { SettingsHeader } from './SettingsHeader';
 import { AcpAgentIcon } from '../AcpAgentIcon';
 
@@ -49,15 +55,15 @@ export function AcpAgentsTab(): React.ReactElement {
       const counts: Record<string, { saved: number; active: number }> = {};
       await Promise.allSettled(
         loaded
-          .filter(a => a.status === 'ready')
-          .map(async a => {
+          .filter((a) => a.status === 'ready')
+          .map(async (a) => {
             try {
               const { saved, active } = await fetchAcpSessions(a.id);
               counts[a.id] = { saved: saved.length, active };
             } catch {
               /* skip */
             }
-          }),
+          })
       );
       setSessionCounts(counts);
     } catch (e) {
@@ -68,11 +74,11 @@ export function AcpAgentsTab(): React.ReactElement {
   };
 
   const handleProbe = async (agent: AcpAgentDescriptor) => {
-    setProbes(prev => ({ ...prev, [agent.id]: { status: 'probing' } }));
+    setProbes((prev) => ({ ...prev, [agent.id]: { status: 'probing' } }));
     try {
       if (agent.probe) {
         const ok = await agent.probe();
-        setProbes(prev => ({
+        setProbes((prev) => ({
           ...prev,
           [agent.id]: ok
             ? { status: 'ok', data: {} }
@@ -81,9 +87,9 @@ export function AcpAgentsTab(): React.ReactElement {
         return;
       }
       const data = await probeAcpAgent(agent.id);
-      setProbes(prev => ({ ...prev, [agent.id]: { status: 'ok', data } }));
+      setProbes((prev) => ({ ...prev, [agent.id]: { status: 'ok', data } }));
     } catch (e) {
-      setProbes(prev => ({
+      setProbes((prev) => ({
         ...prev,
         [agent.id]: { status: 'error', message: String(e) },
       }));
@@ -93,7 +99,7 @@ export function AcpAgentsTab(): React.ReactElement {
   const handleCopy = (id: string, text: string) => {
     navigator.clipboard.writeText(text);
     setCopiedId(id);
-    setTimeout(() => setCopiedId(prev => (prev === id ? null : prev)), 1500);
+    setTimeout(() => setCopiedId((prev) => (prev === id ? null : prev)), 1500);
   };
 
   useEffect(() => {
@@ -104,10 +110,7 @@ export function AcpAgentsTab(): React.ReactElement {
 
   return (
     <SettingsPage>
-      <SettingsHeader
-        title={t('settings.acp.title')}
-        subtitle={t('settings.acp.subtitle')}
-      />
+      <SettingsHeader title={t('settings.acp.title')} subtitle={t('settings.acp.subtitle')} />
 
       <section>
         <SectionCardHeader
@@ -115,7 +118,12 @@ export function AcpAgentsTab(): React.ReactElement {
           iconTone="black"
           icon={
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M13 10V3L4 14h7v7l9-11h-7z"
+              />
             </svg>
           }
           title={t('settings.acp.registeredTitle')}
@@ -132,7 +140,7 @@ export function AcpAgentsTab(): React.ReactElement {
           </div>
         ) : (
           <div className="space-y-4">
-            {agents.map(agent => {
+            {agents.map((agent) => {
               const probe = probes[agent.id];
               const ready = isReady(agent);
               const counts = sessionCounts[agent.id];
@@ -195,19 +203,16 @@ export function AcpAgentsTab(): React.ReactElement {
                     {ready && (
                       // "Active" means a live agent process; a chat bound to
                       // this agent with nothing running is only "saved".
-                      <Badge
-                        tone={activeSessions > 0 ? 'blue' : 'neutral'}
-                        className="shrink-0"
-                      >
+                      <Badge tone={activeSessions > 0 ? 'blue' : 'neutral'} className="shrink-0">
                         {activeSessions > 0
                           ? t('settings.acp.activeSessions').replace(
                               '{count}',
-                              String(activeSessions),
+                              String(activeSessions)
                             )
                           : savedSessions > 0
                             ? t('settings.acp.savedSessions').replace(
                                 '{count}',
-                                String(savedSessions),
+                                String(savedSessions)
                               )
                             : t('settings.acp.noSessions')}
                       </Badge>
@@ -272,10 +277,7 @@ export function AcpAgentsTab(): React.ReactElement {
                     {ready && agent.login_command && (
                       <SettingsListAction
                         onClick={() =>
-                          handleCopy(
-                            `login-${agent.id}`,
-                            agent.login_command!.join(' '),
-                          )
+                          handleCopy(`login-${agent.id}`, agent.login_command!.join(' '))
                         }
                       >
                         {copiedId === `login-${agent.id}`

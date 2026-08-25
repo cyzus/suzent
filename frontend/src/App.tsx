@@ -1,6 +1,10 @@
 import React, { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { ArrowPathIcon, CheckCircleIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import {
+  ArrowPathIcon,
+  CheckCircleIcon,
+  ExclamationTriangleIcon,
+} from '@heroicons/react/24/outline';
 
 import { ChatList } from './components/ChatList';
 import { ChatWindow } from './components/ChatWindow';
@@ -95,7 +99,7 @@ function BootstrapWindowBar(): React.ReactElement {
 
   async function handleMaximize(): Promise<void> {
     await appWindow?.toggleMaximize();
-    setIsMaximized(prev => !prev);
+    setIsMaximized((prev) => !prev);
   }
 
   return (
@@ -149,7 +153,7 @@ function HeaderTitle({ text, onUnlock }: HeaderTitleProps): React.ReactElement {
   const timerRef = React.useRef<NodeJS.Timeout | null>(null);
 
   function handleClick(): void {
-    setClicks(c => c + 1);
+    setClicks((c) => c + 1);
 
     if (timerRef.current) {
       clearTimeout(timerRef.current);
@@ -232,7 +236,13 @@ function MacTrafficLights({ isMaximized, onMaximize }: MacTrafficLightsProps): R
 
 type MainView = 'chat' | 'memory' | 'skills' | 'emotes';
 
-function NavTabs({ mainView, setMainView }: { mainView: MainView; setMainView: (v: MainView) => void }): React.ReactElement {
+function NavTabs({
+  mainView,
+  setMainView,
+}: {
+  mainView: MainView;
+  setMainView: (v: MainView) => void;
+}): React.ReactElement {
   const { t } = useI18n();
   return (
     <BrutalSegmentedTabs
@@ -249,7 +259,7 @@ function NavTabs({ mainView, setMainView }: { mainView: MainView; setMainView: (
 
 function UpdateButton(): React.ReactElement | null {
   const { t } = useI18n();
-  const setStatusMsg = useStatusStore(s => s.setStatus);
+  const setStatusMsg = useStatusStore((s) => s.setStatus);
   const [updateStatus, setUpdateStatus] = React.useState<UpdateStatus | null>(null);
   const [isStartingUpdate, setIsStartingUpdate] = React.useState(false);
 
@@ -295,7 +305,9 @@ function UpdateButton(): React.ReactElement | null {
       disabled={isStartingUpdate}
       className="h-10 w-10 flex items-center justify-center rounded-md hover:bg-neutral-200 dark:hover:bg-zinc-700 transition-colors text-brutal-black dark:text-white disabled:opacity-50 disabled:cursor-wait"
       aria-label={t('updates.available')}
-      title={t('updates.availableTitle', { version: updateStatus.latest_version || t('updates.latestVersion') })}
+      title={t('updates.availableTitle', {
+        version: updateStatus.latest_version || t('updates.latestVersion'),
+      })}
     >
       <ArrowPathIcon className={`h-5 w-5 ${isStartingUpdate ? 'animate-spin' : ''}`} />
     </button>
@@ -304,14 +316,29 @@ function UpdateButton(): React.ReactElement | null {
 
 function AppInner(): React.ReactElement {
   const [mainView, setMainView] = useState<MainView>('chat');
-  const [memoryInitialTab, setMemoryInitialTab] = useState<'overview' | 'dreaming' | 'daily-logs' | 'transcripts' | undefined>(undefined);
+  const [memoryInitialTab, setMemoryInitialTab] = useState<
+    'overview' | 'dreaming' | 'daily-logs' | 'transcripts' | undefined
+  >(undefined);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [settingsInitialCategory, setSettingsInitialCategory] = useState<'providers' | 'roles' | 'memory' | 'security' | 'social' | 'mcp' | 'automation' | 'data' | 'usage' | 'appearance'>('providers');
+  const [settingsInitialCategory, setSettingsInitialCategory] = useState<
+    | 'providers'
+    | 'roles'
+    | 'memory'
+    | 'security'
+    | 'social'
+    | 'mcp'
+    | 'automation'
+    | 'data'
+    | 'usage'
+    | 'appearance'
+  >('providers');
   const openSettings = (category: typeof settingsInitialCategory = 'providers') => {
     setSettingsInitialCategory(category);
     setIsSettingsOpen(true);
   };
-  const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(window.innerWidth >= DESKTOP_BREAKPOINT_PX);
+  const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(
+    window.innerWidth >= DESKTOP_BREAKPOINT_PX
+  );
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(false);
   const [rightSidebarWidth, setRightSidebarWidth] = useState<number | null>(null);
   const [viewportWidth, setViewportWidth] = useState(window.innerWidth);
@@ -327,32 +354,39 @@ function AppInner(): React.ReactElement {
   const rightSidebarMaxWidthPx = clampRightSidebarWidth(
     MAX_RIGHT_SIDEBAR_WIDTH_PX,
     viewportWidth,
-    leftSidebarReservedWidthPx,
+    leftSidebarReservedWidthPx
   );
   // Canvas scales with the viewport (ratio-based) and may squeeze the chat more
   // than other tabs — see getCanvasSidebarWidth. This is both its default width
   // and its drag ceiling.
   const rightSidebarCanvasMaxWidthPx = getCanvasSidebarWidth(
     viewportWidth,
-    leftSidebarReservedWidthPx,
+    leftSidebarReservedWidthPx
   );
   const rightSidebarForceFullView = shouldUseFullWidthRightSidebar(
     viewportWidth,
-    leftSidebarReservedWidthPx,
+    leftSidebarReservedWidthPx
   );
 
   const { refresh: refreshGoalTasks, refreshKanban } = useGoalTasks();
-  const { currentChatId, setViewSwitcher, refreshChatList, refreshChatListSilently, chats, loadChat } = useChatCoreStore();
-  const setStatusMsg = useStatusStore(s => s.setStatus);
-  const setHeartbeatStatus = useHeartbeatRunning(s => s.setStatus);
-  const setChatHeartbeatStatus = useHeartbeatRunning(s => s.setChatStatus);
+  const {
+    currentChatId,
+    setViewSwitcher,
+    refreshChatList,
+    refreshChatListSilently,
+    chats,
+    loadChat,
+  } = useChatCoreStore();
+  const setStatusMsg = useStatusStore((s) => s.setStatus);
+  const setHeartbeatStatus = useHeartbeatRunning((s) => s.setStatus);
+  const setChatHeartbeatStatus = useHeartbeatRunning((s) => s.setChatStatus);
   const { theme, toggleTheme } = useTheme();
   const { t } = useI18n();
   const [isWindowMaximized, setIsWindowMaximized] = useState(false);
 
   const desktopPlatform = React.useMemo(
     () => detectDesktopPlatform(navigator.userAgent, navigator.platform),
-    [],
+    []
   );
   const showStandaloneTitleBar = desktopPlatform !== 'windows' && desktopPlatform !== 'macos';
   const showWindowsWindowControls = desktopPlatform === 'windows';
@@ -366,12 +400,24 @@ function AppInner(): React.ReactElement {
   const currentChatIdRef = React.useRef(currentChatId);
   const chatsRef = React.useRef(chats);
   const setChatHeartbeatStatusRef = React.useRef(setChatHeartbeatStatus);
-  React.useEffect(() => { refreshChatListRef.current = refreshChatList; }, [refreshChatList]);
-  React.useEffect(() => { refreshChatListSilentRef.current = refreshChatListSilently; }, [refreshChatListSilently]);
-  React.useEffect(() => { loadChatRef.current = loadChat; }, [loadChat]);
-  React.useEffect(() => { currentChatIdRef.current = currentChatId; }, [currentChatId]);
-  React.useEffect(() => { chatsRef.current = chats; }, [chats]);
-  React.useEffect(() => { setChatHeartbeatStatusRef.current = setChatHeartbeatStatus; }, [setChatHeartbeatStatus]);
+  React.useEffect(() => {
+    refreshChatListRef.current = refreshChatList;
+  }, [refreshChatList]);
+  React.useEffect(() => {
+    refreshChatListSilentRef.current = refreshChatListSilently;
+  }, [refreshChatListSilently]);
+  React.useEffect(() => {
+    loadChatRef.current = loadChat;
+  }, [loadChat]);
+  React.useEffect(() => {
+    currentChatIdRef.current = currentChatId;
+  }, [currentChatId]);
+  React.useEffect(() => {
+    chatsRef.current = chats;
+  }, [chats]);
+  React.useEffect(() => {
+    setChatHeartbeatStatusRef.current = setChatHeartbeatStatus;
+  }, [setChatHeartbeatStatus]);
 
   // Poll every 8 s: drain cron notifications + heartbeat status + refresh sidebar + reload open chat.
   React.useEffect(() => {
@@ -383,9 +429,13 @@ function AppInner(): React.ReactElement {
       const chatId = currentChatIdRef.current;
       const [notifications] = await Promise.all([
         drainCronNotifications(),
-        fetchHeartbeatStatus().then(setHeartbeatStatus).catch(() => {}),
+        fetchHeartbeatStatus()
+          .then(setHeartbeatStatus)
+          .catch(() => {}),
         chatId
-          ? fetchHeartbeatStatus(chatId).then(s => setChatHeartbeatStatusRef.current(chatId, s)).catch(() => {})
+          ? fetchHeartbeatStatus(chatId)
+              .then((s) => setChatHeartbeatStatusRef.current(chatId, s))
+              .catch(() => {})
           : Promise.resolve(),
       ]);
       if (notifications.length === 1) {
@@ -396,7 +446,7 @@ function AppInner(): React.ReactElement {
 
       // If a platform chat (cron/social) is open, reload its messages from DB.
       // Skip if a live background stream is active — the SSE connection already delivers events.
-      const openChat = chatsRef.current.find(c => c.id === chatId);
+      const openChat = chatsRef.current.find((c) => c.id === chatId);
       const isLiveStreamRunning = chatId ? isBusStreaming(chatId) : false;
 
       // Avoid redundant sidebar refreshes while SSE is already updating the active chat.
@@ -452,7 +502,7 @@ function AppInner(): React.ReactElement {
 
   async function toggleWindowMaximize(): Promise<void> {
     await appWindow?.toggleMaximize();
-    setIsWindowMaximized(prev => !prev);
+    setIsWindowMaximized((prev) => !prev);
   }
 
   function handleHeaderMouseDown(event: React.MouseEvent<HTMLElement>): void {
@@ -478,7 +528,7 @@ function AppInner(): React.ReactElement {
   React.useEffect(() => {
     // Use chatsRef (not chats) so this effect only re-runs on chat selection change,
     // not on every chat list update (which would cause spurious re-renders mid-stream).
-    const chat = currentChatId ? chatsRef.current.find(c => c.id === currentChatId) : null;
+    const chat = currentChatId ? chatsRef.current.find((c) => c.id === currentChatId) : null;
     const projectId = chat?.projectId ?? null;
     refreshGoalTasks(projectId, currentChatId ?? null);
     refreshKanban(projectId);
@@ -503,11 +553,7 @@ function AppInner(): React.ReactElement {
       leftCollapsedByLayoutRef.current = true;
       setIsLeftSidebarOpen(false);
     }
-  }, [
-    isLeftSidebarOpen,
-    isRightSidebarOpen,
-    panesCannotShareViewport,
-  ]);
+  }, [isLeftSidebarOpen, isRightSidebarOpen, panesCannotShareViewport]);
 
   // Room came back -- the right sidebar closed, or the window grew back past
   // mobile width. Repay the loan.
@@ -534,7 +580,7 @@ function AppInner(): React.ReactElement {
       // Close sidebar only when crossing the threshold from desktop to mobile --
       // on loan, so widening the window back hands it over again.
       if (prevWidthRef.current >= DESKTOP_BREAKPOINT_PX && currentWidth < DESKTOP_BREAKPOINT_PX) {
-        setIsLeftSidebarOpen(prev => {
+        setIsLeftSidebarOpen((prev) => {
           if (prev) leftCollapsedByLayoutRef.current = true;
           return false;
         });
@@ -569,7 +615,10 @@ function AppInner(): React.ReactElement {
           >
             <div className="flex min-w-0 flex-1 items-center gap-2 md:gap-0">
               {showMacWindowControls && !isLeftSidebarOpen ? (
-                <MacTrafficLights isMaximized={isWindowMaximized} onMaximize={toggleWindowMaximize} />
+                <MacTrafficLights
+                  isMaximized={isWindowMaximized}
+                  onMaximize={toggleWindowMaximize}
+                />
               ) : null}
               {isLeftSidebarOpen ? (
                 <div className="h-10 w-10 mr-3" aria-hidden="true" />
@@ -585,7 +634,14 @@ function AppInner(): React.ReactElement {
                     <SuzentLogo className="h-7 w-7" interactive />
                   </div>
                   <div className="hidden h-full w-full items-center justify-center group-hover:flex">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-brutal-black dark:text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="h-6 w-6 text-brutal-black dark:text-white"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                    >
                       <rect x="4" y="4" width="16" height="16" rx="2" />
                       <line x1="9" y1="4" x2="9" y2="20" />
                     </svg>
@@ -595,19 +651,36 @@ function AppInner(): React.ReactElement {
               <HeaderTitle text="SUZENT" onUnlock={() => setMainView('emotes')} />
             </div>
 
-            <div className={`flex shrink-0 items-center gap-3 ${showWindowsWindowControls ? 'pr-[108px]' : ''}`}>
-              <NavTabs mainView={mainView} setMainView={(v) => { setMemoryInitialTab(undefined); setMainView(v); }} />
+            <div
+              className={`flex shrink-0 items-center gap-3 ${showWindowsWindowControls ? 'pr-[108px]' : ''}`}
+            >
+              <NavTabs
+                mainView={mainView}
+                setMainView={(v) => {
+                  setMemoryInitialTab(undefined);
+                  setMainView(v);
+                }}
+              />
               <UpdateButton />
 
               {/* Dark mode toggle */}
               <button
                 onClick={toggleTheme}
                 className="h-10 w-10 flex items-center justify-center rounded-md hover:bg-neutral-200 dark:hover:bg-zinc-700 transition-colors text-brutal-black dark:text-white"
-                aria-label={theme === 'dark' ? t('settings.switchToLight') : t('settings.switchToDark')}
+                aria-label={
+                  theme === 'dark' ? t('settings.switchToLight') : t('settings.switchToDark')
+                }
                 title={theme === 'dark' ? t('settings.switchToLight') : t('settings.switchToDark')}
               >
                 {theme === 'dark' ? (
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-5 w-5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                  >
                     <circle cx="12" cy="12" r="5" />
                     <line x1="12" y1="1" x2="12" y2="3" />
                     <line x1="12" y1="21" x2="12" y2="23" />
@@ -619,8 +692,19 @@ function AppInner(): React.ReactElement {
                     <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
                   </svg>
                 ) : (
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-5 w-5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"
+                    />
                   </svg>
                 )}
               </button>
@@ -630,14 +714,23 @@ function AppInner(): React.ReactElement {
                   onClick={() => handleRightSidebarToggle(!isRightSidebarOpen)}
                   className={`
                     h-10 w-10 flex items-center justify-center rounded-md transition-colors
-                    ${isRightSidebarOpen
-                      ? 'bg-neutral-200 dark:bg-zinc-700 text-brutal-black dark:text-white'
-                      : 'hover:bg-neutral-200 dark:hover:bg-zinc-700 text-brutal-black dark:text-white'}
+                    ${
+                      isRightSidebarOpen
+                        ? 'bg-neutral-200 dark:bg-zinc-700 text-brutal-black dark:text-white'
+                        : 'hover:bg-neutral-200 dark:hover:bg-zinc-700 text-brutal-black dark:text-white'
+                    }
                   `}
                   aria-label={isRightSidebarOpen ? t('sidebar.close') : t('sidebar.open')}
                   title={isRightSidebarOpen ? t('sidebar.close') : t('sidebar.open')}
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-6 w-6"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                  >
                     <rect x="4" y="4" width="16" height="16" rx="2" />
                     <line x1="15" y1="4" x2="15" y2="20" />
                   </svg>
@@ -663,12 +756,26 @@ function AppInner(): React.ReactElement {
                     title={isWindowMaximized ? t('titlebar.restore') : t('titlebar.maximize')}
                   >
                     {isWindowMaximized ? (
-                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="2">
+                      <svg
+                        width="10"
+                        height="10"
+                        viewBox="0 0 10 10"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                      >
                         <rect x="2" y="0" width="8" height="8" rx="0" />
                         <rect x="0" y="2" width="8" height="8" rx="0" />
                       </svg>
                     ) : (
-                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="2">
+                      <svg
+                        width="10"
+                        height="10"
+                        viewBox="0 0 10 10"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                      >
                         <rect x="0" y="0" width="10" height="10" rx="0" />
                       </svg>
                     )}
@@ -678,7 +785,14 @@ function AppInner(): React.ReactElement {
                     className="h-full w-9 flex items-center justify-center hover:bg-brutal-red hover:text-white transition-colors"
                     title={t('titlebar.close')}
                   >
-                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="2">
+                    <svg
+                      width="10"
+                      height="10"
+                      viewBox="0 0 10 10"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
                       <line x1="0" y1="0" x2="10" y2="10" />
                       <line x1="10" y1="0" x2="0" y2="10" />
                     </svg>
@@ -690,7 +804,10 @@ function AppInner(): React.ReactElement {
 
           <StatusBar
             showActiveChatTitle={mainView === 'chat'}
-            onOpenMemorySettings={() => { setMemoryInitialTab('dreaming'); setMainView('memory'); }}
+            onOpenMemorySettings={() => {
+              setMemoryInitialTab('dreaming');
+              setMainView('memory');
+            }}
           />
 
           {mainView === 'chat' && (
@@ -730,8 +847,7 @@ function AppInner(): React.ReactElement {
       />
     </div>
   );
-};
-
+}
 
 function BootstrapInstallScreen({
   status,
@@ -750,21 +866,24 @@ function BootstrapInstallScreen({
   const [details, setDetails] = React.useState<string[]>([]);
   const [installDir, setInstallDir] = React.useState(status.workspace_dir);
 
-  const completedCount = stages.filter(stage => {
+  const completedCount = stages.filter((stage) => {
     const state = stageStates[stage.name];
     return state === 'succeeded' || state === 'skipped';
   }).length;
   const progress = stages.length > 0 ? Math.round((completedCount / stages.length) * 100) : 0;
-  const stageTitle = React.useCallback((stage: BootstrapStage): string => {
-    const translated = t(`bootstrap.stages.${stage.name}`);
-    return translated === `bootstrap.stages.${stage.name}` ? stage.title : translated;
-  }, [t]);
+  const stageTitle = React.useCallback(
+    (stage: BootstrapStage): string => {
+      const translated = t(`bootstrap.stages.${stage.name}`);
+      return translated === `bootstrap.stages.${stage.name}` ? stage.title : translated;
+    },
+    [t]
+  );
 
   const loadManifest = React.useCallback(async () => {
     const raw = await invoke<string>('bootstrap_manifest');
     const manifest = JSON.parse(raw) as BootstrapManifest;
     setStages(manifest.stages);
-    setStageStates(Object.fromEntries(manifest.stages.map(stage => [stage.name, 'pending'])));
+    setStageStates(Object.fromEntries(manifest.stages.map((stage) => [stage.name, 'pending'])));
   }, []);
 
   React.useEffect(() => {
@@ -806,24 +925,26 @@ function BootstrapInstallScreen({
       await invoke('set_install_workspace', { request: { dir: installDir } });
       for (const stage of stages) {
         setActiveStage(stage.name);
-        setStageStates(prev => ({ ...prev, [stage.name]: 'running' }));
-        const raw = await invoke<string>('run_bootstrap_stage', { request: { stage: stage.name, dir: installDir } });
+        setStageStates((prev) => ({ ...prev, [stage.name]: 'running' }));
+        const raw = await invoke<string>('run_bootstrap_stage', {
+          request: { stage: stage.name, dir: installDir },
+        });
         const result = JSON.parse(raw) as BootstrapStageResult;
 
         if (!result.ok) {
           const reason = result.reason || t('bootstrap.stageFailed', { stage: stageTitle(stage) });
-          setStageStates(prev => ({ ...prev, [stage.name]: 'failed' }));
+          setStageStates((prev) => ({ ...prev, [stage.name]: 'failed' }));
           setError(reason);
-          setDetails(prev => [...prev, `${stageTitle(stage)}: ${reason}`]);
+          setDetails((prev) => [...prev, `${stageTitle(stage)}: ${reason}`]);
           return;
         }
 
-        setStageStates(prev => ({
+        setStageStates((prev) => ({
           ...prev,
           [stage.name]: result.skipped ? 'skipped' : 'succeeded',
         }));
         if (result.reason) {
-          setDetails(prev => [...prev, `${stageTitle(stage)}: ${result.reason}`]);
+          setDetails((prev) => [...prev, `${stageTitle(stage)}: ${result.reason}`]);
         }
       }
 
@@ -841,94 +962,101 @@ function BootstrapInstallScreen({
     <div className="h-screen overflow-hidden bg-neutral-100 font-sans text-brutal-black flex flex-col">
       <BootstrapWindowBar />
       <div className="flex-1 min-h-0 flex items-center justify-center p-6">
-      <div className="w-full max-w-3xl max-h-full min-h-0 bg-white border border-neutral-300 shadow-[0_18px_48px_rgba(0,0,0,0.12)] p-6 flex flex-col">
-        <div className="flex items-start gap-5">
-          <div className="w-24 h-24 shrink-0">
-            <RobotAvatar variant={error ? 'ghost' : running ? 'scanner' : 'idle'} className="w-full h-full" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <h1 className="text-3xl font-brutal font-black uppercase text-brutal-black">
-              {t('bootstrap.title')}
-            </h1>
-            <div className="mt-2 flex items-center gap-2">
-              <p className="font-mono text-xs text-neutral-500 truncate" title={installDir}>
-                {installDir}
-              </p>
-              <button
-                type="button"
-                disabled={running}
-                onClick={chooseInstallDir}
-                className="shrink-0 px-2 py-1 text-xs font-bold uppercase border border-neutral-300 hover:bg-neutral-100 disabled:opacity-50"
-              >
-                {t('bootstrap.changeDir')}
-              </button>
+        <div className="w-full max-w-3xl max-h-full min-h-0 bg-white border border-neutral-300 shadow-[0_18px_48px_rgba(0,0,0,0.12)] p-6 flex flex-col">
+          <div className="flex items-start gap-5">
+            <div className="w-24 h-24 shrink-0">
+              <RobotAvatar
+                variant={error ? 'ghost' : running ? 'scanner' : 'idle'}
+                className="w-full h-full"
+              />
             </div>
-            {!status.installer_available && (
-              <p className="mt-3 text-sm font-bold text-brutal-red">
-                {t('bootstrap.installerMissing')}
-              </p>
-            )}
-          </div>
-        </div>
-
-        <div className="mt-6 h-3 bg-neutral-200 border border-neutral-300 overflow-hidden">
-          <div
-            className="h-full bg-blue-500 transition-all duration-300"
-            style={{ width: `${progress}%` }}
-          />
-        </div>
-        <p className="text-right text-xs font-mono mt-1 text-neutral-500">{progress}%</p>
-
-        <div className="mt-5 min-h-0 flex-1 overflow-y-auto pr-2 grid gap-2 content-start">
-          {stages.map(stage => {
-            const state = stageStates[stage.name] || 'pending';
-            const isActive = activeStage === stage.name;
-            return (
-              <div
-                key={stage.name}
-                className={`flex items-center justify-between border px-3 py-2 ${
-                  isActive ? 'border-blue-400 bg-blue-50' : 'border-neutral-200 bg-neutral-50'
-                }`}
-              >
-                <div className="min-w-0">
-                  <p className="font-bold uppercase text-sm truncate">{stageTitle(stage)}</p>
-                </div>
-                <div className="ml-3 flex items-center gap-2 font-mono text-xs uppercase">
-                  {state === 'running' && <ArrowPathIcon className="w-4 h-4 animate-spin" />}
-                  {state === 'succeeded' && <CheckCircleIcon className="w-4 h-4" />}
-                  {state === 'failed' && <ExclamationTriangleIcon className="w-4 h-4 text-brutal-red" />}
-                  <span>{t(`bootstrap.state.${state}`)}</span>
-                </div>
+            <div className="min-w-0 flex-1">
+              <h1 className="text-3xl font-brutal font-black uppercase text-brutal-black">
+                {t('bootstrap.title')}
+              </h1>
+              <div className="mt-2 flex items-center gap-2">
+                <p className="font-mono text-xs text-neutral-500 truncate" title={installDir}>
+                  {installDir}
+                </p>
+                <button
+                  type="button"
+                  disabled={running}
+                  onClick={chooseInstallDir}
+                  className="shrink-0 px-2 py-1 text-xs font-bold uppercase border border-neutral-300 hover:bg-neutral-100 disabled:opacity-50"
+                >
+                  {t('bootstrap.changeDir')}
+                </button>
               </div>
-            );
-          })}
-        </div>
-
-        {details.length > 0 && (
-          <div className="mt-4 shrink-0 bg-neutral-100 border border-neutral-300 p-3 max-h-28 overflow-auto text-left">
-            {details.map((line, idx) => (
-              <p key={`${line}-${idx}`} className="font-mono text-xs text-neutral-700">{line}</p>
-            ))}
+              {!status.installer_available && (
+                <p className="mt-3 text-sm font-bold text-brutal-red">
+                  {t('bootstrap.installerMissing')}
+                </p>
+              )}
+            </div>
           </div>
-        )}
 
-        {error && (
-          <p className="mt-4 text-sm font-bold text-brutal-red border-2 border-brutal-red p-3">
-            {error}
-          </p>
-        )}
+          <div className="mt-6 h-3 bg-neutral-200 border border-neutral-300 overflow-hidden">
+            <div
+              className="h-full bg-blue-500 transition-all duration-300"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+          <p className="text-right text-xs font-mono mt-1 text-neutral-500">{progress}%</p>
 
-        <div className="mt-6 shrink-0 flex justify-end gap-3">
-          <button
-            type="button"
-            disabled={running || !status.installer_available || stages.length === 0}
-            onClick={runInstall}
-            className="px-5 py-3 bg-blue-500 text-white font-bold uppercase border border-blue-600 hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {running ? t('bootstrap.running') : error ? t('common.retry') : t('bootstrap.start')}
-          </button>
+          <div className="mt-5 min-h-0 flex-1 overflow-y-auto pr-2 grid gap-2 content-start">
+            {stages.map((stage) => {
+              const state = stageStates[stage.name] || 'pending';
+              const isActive = activeStage === stage.name;
+              return (
+                <div
+                  key={stage.name}
+                  className={`flex items-center justify-between border px-3 py-2 ${
+                    isActive ? 'border-blue-400 bg-blue-50' : 'border-neutral-200 bg-neutral-50'
+                  }`}
+                >
+                  <div className="min-w-0">
+                    <p className="font-bold uppercase text-sm truncate">{stageTitle(stage)}</p>
+                  </div>
+                  <div className="ml-3 flex items-center gap-2 font-mono text-xs uppercase">
+                    {state === 'running' && <ArrowPathIcon className="w-4 h-4 animate-spin" />}
+                    {state === 'succeeded' && <CheckCircleIcon className="w-4 h-4" />}
+                    {state === 'failed' && (
+                      <ExclamationTriangleIcon className="w-4 h-4 text-brutal-red" />
+                    )}
+                    <span>{t(`bootstrap.state.${state}`)}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {details.length > 0 && (
+            <div className="mt-4 shrink-0 bg-neutral-100 border border-neutral-300 p-3 max-h-28 overflow-auto text-left">
+              {details.map((line, idx) => (
+                <p key={`${line}-${idx}`} className="font-mono text-xs text-neutral-700">
+                  {line}
+                </p>
+              ))}
+            </div>
+          )}
+
+          {error && (
+            <p className="mt-4 text-sm font-bold text-brutal-red border-2 border-brutal-red p-3">
+              {error}
+            </p>
+          )}
+
+          <div className="mt-6 shrink-0 flex justify-end gap-3">
+            <button
+              type="button"
+              disabled={running || !status.installer_available || stages.length === 0}
+              onClick={runInstall}
+              className="px-5 py-3 bg-blue-500 text-white font-bold uppercase border border-blue-600 hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {running ? t('bootstrap.running') : error ? t('common.retry') : t('bootstrap.start')}
+            </button>
+          </div>
         </div>
-      </div>
       </div>
     </div>
   );
@@ -1003,7 +1131,7 @@ async function waitForBackendPort(options?: { attempts?: number }): Promise<numb
     }
 
     const remembered = getRememberedBackendPort();
-    if (remembered && await isBackendPortReachable(remembered)) {
+    if (remembered && (await isBackendPortReachable(remembered))) {
       rememberBackendPort(remembered);
       return remembered;
     }
@@ -1016,7 +1144,9 @@ async function waitForBackendPort(options?: { attempts?: number }): Promise<numb
       // Older/dev shells may not expose startup error persistence yet.
     }
 
-    await new Promise(resolve => window.setTimeout(resolve, Math.min(500 * Math.pow(1.35, attempt), 2500)));
+    await new Promise((resolve) =>
+      window.setTimeout(resolve, Math.min(500 * Math.pow(1.35, attempt), 2500))
+    );
   }
   return null;
 }
@@ -1037,10 +1167,10 @@ export default function App() {
           <div className="w-32 h-32 mb-6">
             <RobotAvatar variant="ghost" className="w-full h-full" />
           </div>
-          <h1 className="text-4xl font-brutal font-black uppercase mb-4 text-brutal-black">{t('app.desktopRequiredTitle')}</h1>
-          <p className="font-bold text-lg mb-6 leading-tight">
-            {t('app.desktopRequiredDesc')}
-          </p>
+          <h1 className="text-4xl font-brutal font-black uppercase mb-4 text-brutal-black">
+            {t('app.desktopRequiredTitle')}
+          </h1>
+          <p className="font-bold text-lg mb-6 leading-tight">{t('app.desktopRequiredDesc')}</p>
           <div className="font-mono text-xs bg-neutral-100 p-4 border-2 border-brutal-black text-left w-full">
             $ npm run tauri dev
           </div>
@@ -1063,7 +1193,9 @@ export default function App() {
   const [backendReady, setBackendReady] = React.useState<boolean>(false);
   const [backendError, setBackendError] = React.useState<string | null>(null);
   const [backendCompatible, setBackendCompatible] = React.useState(false);
-  const [bootstrapStatusState, setBootstrapStatusState] = React.useState<BootstrapStatus | null>(null);
+  const [bootstrapStatusState, setBootstrapStatusState] = React.useState<BootstrapStatus | null>(
+    null
+  );
   const [bootstrapChecked, setBootstrapChecked] = React.useState(false);
   const [backendStartingAtStartup, setBackendStartingAtStartup] = React.useState(false);
   const [backendStartingAfterInstall, setBackendStartingAfterInstall] = React.useState(false);
@@ -1088,10 +1220,7 @@ export default function App() {
               if (cancelled) return;
               if (port === null) {
                 setBackendStartingAtStartup(false);
-                setBackendError(tForLocale(
-                  getInitialLocale(),
-                  'app.backendStartTimeout',
-                ));
+                setBackendError(tForLocale(getInitialLocale(), 'app.backendStartTimeout'));
                 return;
               }
               setBackendReady(true);
@@ -1125,20 +1254,22 @@ export default function App() {
     // Handle WebView refresh race: backend-ready may have been emitted before listeners attach.
     // If we have a persisted port, probe backend health and continue without waiting forever.
     if (hasPersistedBackendPort()) {
-      waitForBackendPort({ attempts: 8 }).then((port) => {
-        if (!cancelled && port !== null) {
-          setBackendReady(true);
-          setBackendError(null);
-          setBackendStartingAtStartup(false);
-          setBackendStartingAfterInstall(false);
-        }
-      }).catch((error: unknown) => {
-        if (!cancelled) {
-          setBackendStartingAtStartup(false);
-          setBackendStartingAfterInstall(false);
-          setBackendError(String(error));
-        }
-      });
+      waitForBackendPort({ attempts: 8 })
+        .then((port) => {
+          if (!cancelled && port !== null) {
+            setBackendReady(true);
+            setBackendError(null);
+            setBackendStartingAtStartup(false);
+            setBackendStartingAfterInstall(false);
+          }
+        })
+        .catch((error: unknown) => {
+          if (!cancelled) {
+            setBackendStartingAtStartup(false);
+            setBackendStartingAfterInstall(false);
+            setBackendError(String(error));
+          }
+        });
     }
 
     import('@tauri-apps/api/event').then(({ listen }) => {
@@ -1149,12 +1280,16 @@ export default function App() {
         setBackendStartingAtStartup(false);
         setBackendStartingAfterInstall(false);
         setBootstrapStatusState(null);
-      }).then((fn) => { unlisten = fn; });
+      }).then((fn) => {
+        unlisten = fn;
+      });
       listen<string>('backend-error', (event) => {
         setBackendStartingAtStartup(false);
         setBackendStartingAfterInstall(false);
         setBackendError(event.payload);
-      }).then((fn) => { unlistenErr = fn; });
+      }).then((fn) => {
+        unlistenErr = fn;
+      });
       listen<BootstrapStatus>('bootstrap-required', (event) => {
         setBootstrapChecked(true);
         setBackendError(null);
@@ -1162,7 +1297,9 @@ export default function App() {
         setBackendStartingAtStartup(false);
         setBackendStartingAfterInstall(false);
         setBootstrapStatusState(event.payload);
-      }).then((fn) => { unlistenBootstrap = fn; });
+      }).then((fn) => {
+        unlistenBootstrap = fn;
+      });
     });
     return () => {
       cancelled = true;
@@ -1183,11 +1320,13 @@ export default function App() {
         if (cancelled) return;
         const compatibilityIssue = getBackendCompatibilityIssue(identity);
         if (compatibilityIssue) {
-          setBackendError(tForLocale(
-            getInitialLocale(),
-            `app.backendCompatibility.${compatibilityIssue.kind}`,
-            compatibilityIssue,
-          ));
+          setBackendError(
+            tForLocale(
+              getInitialLocale(),
+              `app.backendCompatibility.${compatibilityIssue.kind}`,
+              compatibilityIssue
+            )
+          );
           setBackendCompatible(false);
           return;
         }
@@ -1196,15 +1335,15 @@ export default function App() {
       })
       .catch((error: unknown) => {
         if (!cancelled) {
-          setBackendError(tForLocale(
-            getInitialLocale(),
-            error instanceof BackendVersionTimeoutError
-              ? 'app.backendCompatibility.verifyTimeout'
-              : 'app.backendCompatibility.verifyFailed',
-            error instanceof BackendVersionTimeoutError
-              ? undefined
-              : { error: String(error) },
-          ));
+          setBackendError(
+            tForLocale(
+              getInitialLocale(),
+              error instanceof BackendVersionTimeoutError
+                ? 'app.backendCompatibility.verifyTimeout'
+                : 'app.backendCompatibility.verifyFailed',
+              error instanceof BackendVersionTimeoutError ? undefined : { error: String(error) }
+            )
+          );
           setBackendCompatible(false);
         }
       });
@@ -1229,17 +1368,11 @@ export default function App() {
       ) : backendError ? (
         <BackendLoadingScreen error={backendError} />
       ) : backendStartingAfterInstall || backendStartingAtStartup ? (
-        <BackendLoadingScreen
-          status={t('app.startingBackend')}
-          progressHint={45}
-        />
+        <BackendLoadingScreen status={t('app.startingBackend')} progressHint={45} />
       ) : !backendReady ? (
         <StartupDecisionScreen />
       ) : !backendCompatible ? (
-        <BackendLoadingScreen
-          status={t('app.verifyingBackend')}
-          progressHint={85}
-        />
+        <BackendLoadingScreen status={t('app.verifyingBackend')} progressHint={85} />
       ) : (
         <ProjectProvider>
           <ChatProvider>
@@ -1252,11 +1385,3 @@ export default function App() {
     </ErrorBoundary>
   );
 }
-
-
-
-
-
-
-
-

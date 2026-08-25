@@ -2,7 +2,9 @@ import React from 'react';
 import type { A2UIText } from '../../../types/a2ui';
 import { MarkdownRenderer } from '../../chat/MarkdownRenderer';
 
-interface Props { component: A2UIText; }
+interface Props {
+  component: A2UIText;
+}
 
 function looksLikeMarkdown(input: string): boolean {
   const text = input.trim();
@@ -37,9 +39,15 @@ export const A2UITextComponent: React.FC<Props> = ({ component }) => {
 
   switch (variant) {
     case 'heading':
-      return <h2 className="text-xl font-brutal font-black text-brutal-black dark:text-white mb-2">{content}</h2>;
+      return (
+        <h2 className="text-xl font-brutal font-black text-brutal-black dark:text-white mb-2">
+          {content}
+        </h2>
+      );
     case 'subheading':
-      return <h3 className="text-base font-bold text-brutal-black dark:text-white mb-1">{content}</h3>;
+      return (
+        <h3 className="text-base font-bold text-brutal-black dark:text-white mb-1">{content}</h3>
+      );
     case 'caption':
       return <p className="text-xs text-neutral-500 dark:text-neutral-400">{content}</p>;
     case 'code':
@@ -49,6 +57,8 @@ export const A2UITextComponent: React.FC<Props> = ({ component }) => {
         </pre>
       );
     default:
-      return <p className="text-sm text-brutal-black dark:text-neutral-200 leading-relaxed">{content}</p>;
+      return (
+        <p className="text-sm text-brutal-black dark:text-neutral-200 leading-relaxed">{content}</p>
+      );
   }
 };

@@ -2,7 +2,11 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { MarkdownRenderer } from './MarkdownRenderer';
-import { CitationProvider, formatTextWithCitationReferences, type CitationSourcesMap } from './Citations';
+import {
+  CitationProvider,
+  formatTextWithCitationReferences,
+  type CitationSourcesMap,
+} from './Citations';
 
 const sources: CitationSourcesMap = new Map([
   [
@@ -29,7 +33,7 @@ function render(content: string): string {
   return renderToStaticMarkup(
     <CitationProvider sources={sources}>
       <MarkdownRenderer content={content} />
-    </CitationProvider>,
+    </CitationProvider>
   );
 }
 
@@ -37,7 +41,7 @@ function renderWithSources(content: string, sourceMap: CitationSourcesMap): stri
   return renderToStaticMarkup(
     <CitationProvider sources={sourceMap}>
       <MarkdownRenderer content={content} />
-    </CitationProvider>,
+    </CitationProvider>
   );
 }
 
@@ -128,7 +132,7 @@ describe('citation rendering', () => {
   it('formats citation markers as markdown references for copy', () => {
     const text = formatTextWithCitationReferences(
       'Fact\ue200cite\ue202t0_src_1\ue201. More\ufffccite\ufffct0_src_1\ufffct0_src_2\ufffc.',
-      sources,
+      sources
     );
 
     expect(text).toContain('Fact [example.com][1].');

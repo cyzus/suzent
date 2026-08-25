@@ -29,18 +29,18 @@ export function getCanvasSidebarWidth(viewportWidth: number, reservedWidth = 0):
   const maxByChatWidth = available - CANVAS_MIN_CHAT_WIDTH_PX;
   return Math.max(
     MIN_RIGHT_SIDEBAR_WIDTH_PX,
-    Math.min(MAX_CANVAS_SIDEBAR_WIDTH_PX, maxByChatWidth, byRatio),
+    Math.min(MAX_CANVAS_SIDEBAR_WIDTH_PX, maxByChatWidth, byRatio)
   );
 }
 
 export function getRightSidebarMaxWidth(
   viewportWidth: number,
   reservedWidth = 0,
-  hardCap: number = MAX_RIGHT_SIDEBAR_WIDTH_PX,
+  hardCap: number = MAX_RIGHT_SIDEBAR_WIDTH_PX
 ): number {
   const dynamicMaxByChatWidth = Math.max(
     MIN_RIGHT_SIDEBAR_WIDTH_PX,
-    viewportWidth - MIN_CHAT_WIDTH_PX - reservedWidth,
+    viewportWidth - MIN_CHAT_WIDTH_PX - reservedWidth
   );
   return Math.min(hardCap, dynamicMaxByChatWidth);
 }
@@ -61,8 +61,7 @@ export function shouldCollapseLeftSidebarOnRightOpen(viewportWidth: number): boo
     return true;
   }
 
-  const squeezedChatWidth =
-    viewportWidth - LEFT_SIDEBAR_WIDTH_PX - MIN_RIGHT_SIDEBAR_WIDTH_PX;
+  const squeezedChatWidth = viewportWidth - LEFT_SIDEBAR_WIDTH_PX - MIN_RIGHT_SIDEBAR_WIDTH_PX;
   return squeezedChatWidth < SQUEEZED_MIN_CHAT_WIDTH_PX;
 }
 
@@ -70,7 +69,7 @@ export function clampRightSidebarWidth(
   width: number,
   viewportWidth: number,
   reservedWidth = 0,
-  hardCap: number = MAX_RIGHT_SIDEBAR_WIDTH_PX,
+  hardCap: number = MAX_RIGHT_SIDEBAR_WIDTH_PX
 ): number {
   const effectiveMaxWidth = getRightSidebarMaxWidth(viewportWidth, reservedWidth, hardCap);
   return Math.max(MIN_RIGHT_SIDEBAR_WIDTH_PX, Math.min(effectiveMaxWidth, width));
@@ -82,5 +81,5 @@ export function clampRightSidebarWidth(
  * panel beside a cramped chat beats covering the chat entirely.
  */
 export function shouldUseFullWidthRightSidebar(viewportWidth: number, reservedWidth = 0): boolean {
-  return viewportWidth - reservedWidth < (SQUEEZED_MIN_CHAT_WIDTH_PX + MIN_RIGHT_SIDEBAR_WIDTH_PX);
+  return viewportWidth - reservedWidth < SQUEEZED_MIN_CHAT_WIDTH_PX + MIN_RIGHT_SIDEBAR_WIDTH_PX;
 }

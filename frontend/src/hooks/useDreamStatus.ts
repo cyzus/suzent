@@ -39,41 +39,43 @@ export function useDreamStatus(): DreamStatusState {
     }
   }, []);
 
-  const runPhase = useCallback(async (phase: 'ingest' | 'lint') => {
-    if (phase === 'ingest') {
-      setRunningIngest(true);
-    } else {
-      setRunningLint(true);
-    }
-    setError(null);
-    try {
-      const response = phase === 'ingest'
-        ? await memoryApi.consolidateMemory()
-        : await memoryApi.lintMemory();
-      if (!mountedRef.current) return;
-      setStatus(prev => ({
-        ...(prev ?? { active: true, available: true, enabled: true, running: false }),
-        running: response.result.started ? true : false,
-        phase: response.result.started ? 'queued' : prev?.phase,
-        last_result: phase === 'ingest' ? response.result : prev?.last_result,
-        last_ingest_result: phase === 'ingest' ? response.result : prev?.last_ingest_result,
-        last_lint_result: phase === 'lint' ? response.result : prev?.last_lint_result,
-      }));
-      await refresh();
-    } catch (err) {
-      if (!mountedRef.current) return;
-      setError(err instanceof Error ? err.message : 'Failed to run dream agent');
-      await refresh();
-    } finally {
-      if (mountedRef.current) {
-        if (phase === 'ingest') {
-          setRunningIngest(false);
-        } else {
-          setRunningLint(false);
+  const runPhase = useCallback(
+    async (phase: 'ingest' | 'lint') => {
+      if (phase === 'ingest') {
+        setRunningIngest(true);
+      } else {
+        setRunningLint(true);
+      }
+      setError(null);
+      try {
+        const response =
+          phase === 'ingest' ? await memoryApi.consolidateMemory() : await memoryApi.lintMemory();
+        if (!mountedRef.current) return;
+        setStatus((prev) => ({
+          ...(prev ?? { active: true, available: true, enabled: true, running: false }),
+          running: response.result.started ? true : false,
+          phase: response.result.started ? 'queued' : prev?.phase,
+          last_result: phase === 'ingest' ? response.result : prev?.last_result,
+          last_ingest_result: phase === 'ingest' ? response.result : prev?.last_ingest_result,
+          last_lint_result: phase === 'lint' ? response.result : prev?.last_lint_result,
+        }));
+        await refresh();
+      } catch (err) {
+        if (!mountedRef.current) return;
+        setError(err instanceof Error ? err.message : 'Failed to run dream agent');
+        await refresh();
+      } finally {
+        if (mountedRef.current) {
+          if (phase === 'ingest') {
+            setRunningIngest(false);
+          } else {
+            setRunningLint(false);
+          }
         }
       }
-    }
-  }, [refresh]);
+    },
+    [refresh]
+  );
 
   const runIngest = useCallback(async () => {
     await runPhase('ingest');

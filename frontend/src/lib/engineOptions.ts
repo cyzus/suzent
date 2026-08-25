@@ -9,9 +9,7 @@ export interface EngineOption {
   hint?: string;
 }
 
-export type EngineSelection =
-  | { kind: 'model'; model: string }
-  | { kind: 'acp'; agentId: string };
+export type EngineSelection = { kind: 'model'; model: string } | { kind: 'acp'; agentId: string };
 
 const MODEL_PREFIX = 'model:';
 const ACP_PREFIX = 'acp:';
@@ -43,7 +41,7 @@ export function buildEngineOptions(params: {
 }): EngineOption[] {
   const { models, agents, canChooseRuntime, selectedAgentId, labels } = params;
 
-  const modelOptions: EngineOption[] = models.map(model => ({
+  const modelOptions: EngineOption[] = models.map((model) => ({
     value: `${MODEL_PREFIX}${model}`,
     label: model,
     group: labels.models,
@@ -52,10 +50,10 @@ export function buildEngineOptions(params: {
   const isInstalled = (agent: AcpAgentDescriptor) => agent.status !== 'not_installed';
 
   const visible = canChooseRuntime
-    ? agents.filter(agent => isInstalled(agent) || agent.id === selectedAgentId)
-    : agents.filter(agent => agent.id === selectedAgentId);
+    ? agents.filter((agent) => isInstalled(agent) || agent.id === selectedAgentId)
+    : agents.filter((agent) => agent.id === selectedAgentId);
 
-  const agentOptions: EngineOption[] = visible.map(agent => {
+  const agentOptions: EngineOption[] = visible.map((agent) => {
     const unavailable = !isInstalled(agent);
     return {
       value: `${ACP_PREFIX}${agent.id}`,
@@ -63,7 +61,9 @@ export function buildEngineOptions(params: {
       group: labels.acp,
       disabled: unavailable,
       hint: unavailable
-        ? (agent.docs_url || agent.install_command?.length ? labels.installHint : labels.notInstalled)
+        ? agent.docs_url || agent.install_command?.length
+          ? labels.installHint
+          : labels.notInstalled
         : undefined,
     };
   });

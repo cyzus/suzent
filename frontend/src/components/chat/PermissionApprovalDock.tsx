@@ -1,10 +1,6 @@
 import React from 'react';
 import { useI18n } from '../../i18n';
-import type {
-  AGUIPart,
-  ApprovalRememberScope,
-  PermissionAction,
-} from '../../types/agui';
+import type { AGUIPart, ApprovalRememberScope, PermissionAction } from '../../types/agui';
 
 interface PermissionApprovalDockProps {
   parts: AGUIPart[];
@@ -15,7 +11,7 @@ interface PermissionApprovalDockProps {
     remember?: ApprovalRememberScope,
     toolName?: string,
     actionId?: string,
-    feedback?: string,
+    feedback?: string
   ) => void;
 }
 
@@ -38,7 +34,7 @@ function parseArgs(raw: string | undefined): Record<string, unknown> {
   try {
     const parsed = JSON.parse(raw);
     return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? parsed as Record<string, unknown>
+      ? (parsed as Record<string, unknown>)
       : {};
   } catch {
     return { input: raw };
@@ -46,54 +42,57 @@ function parseArgs(raw: string | undefined): Record<string, unknown> {
 }
 
 export function getPendingApprovals(parts: AGUIPart[]): PendingApproval[] {
-  return parts.flatMap(part => {
+  return parts.flatMap((part) => {
     if (
-      part.type !== 'tool'
-      || part.state !== 'approval-requested'
-      || !part.approvalId
-      || !part.toolCallId
-      || !part.permission
+      part.type !== 'tool' ||
+      part.state !== 'approval-requested' ||
+      !part.approvalId ||
+      !part.toolCallId ||
+      !part.permission
     ) {
       return [];
     }
-    return [{
-      approvalId: part.approvalId,
-      toolCallId: part.toolCallId,
-      toolName: part.toolName || 'unknown',
-      args: parseArgs(part.args),
-      actions: part.permission.actions || [],
-      reason: part.permission.reason,
-      risk: part.permission.risk,
-      source: part.permissionDecision?.source || part.permission.source,
-      confidence: part.permissionDecision?.confidence
-        ?? (typeof part.permission.metadata?.confidence === 'number'
-          || part.permission.metadata?.confidence === 'low'
-          || part.permission.metadata?.confidence === 'medium'
-          || part.permission.metadata?.confidence === 'high'
-          ? part.permission.metadata.confidence
-          : null),
-      reviewerModel: part.permissionDecision?.reviewerModel
-        ?? (typeof part.permission.metadata?.reviewer_model === 'string'
-          ? part.permission.metadata.reviewer_model
-          : null),
-      riskCategories: part.permissionDecision?.riskCategories
-        ?? (Array.isArray(part.permission.metadata?.risk_categories)
-          ? part.permission.metadata.risk_categories.filter(
-            (item): item is string => typeof item === 'string',
-          )
-          : []),
-    }];
+    return [
+      {
+        approvalId: part.approvalId,
+        toolCallId: part.toolCallId,
+        toolName: part.toolName || 'unknown',
+        args: parseArgs(part.args),
+        actions: part.permission.actions || [],
+        reason: part.permission.reason,
+        risk: part.permission.risk,
+        source: part.permissionDecision?.source || part.permission.source,
+        confidence:
+          part.permissionDecision?.confidence ??
+          (typeof part.permission.metadata?.confidence === 'number' ||
+          part.permission.metadata?.confidence === 'low' ||
+          part.permission.metadata?.confidence === 'medium' ||
+          part.permission.metadata?.confidence === 'high'
+            ? part.permission.metadata.confidence
+            : null),
+        reviewerModel:
+          part.permissionDecision?.reviewerModel ??
+          (typeof part.permission.metadata?.reviewer_model === 'string'
+            ? part.permission.metadata.reviewer_model
+            : null),
+        riskCategories:
+          part.permissionDecision?.riskCategories ??
+          (Array.isArray(part.permission.metadata?.risk_categories)
+            ? part.permission.metadata.risk_categories.filter(
+                (item): item is string => typeof item === 'string'
+              )
+            : []),
+      },
+    ];
   });
 }
 
 function getActionDisplayOrder(actions: PermissionAction[]): PermissionAction[] {
-  const once = actions.filter(
-    action => action.behavior === 'allow' && action.scope === 'once',
-  );
+  const once = actions.filter((action) => action.behavior === 'allow' && action.scope === 'once');
   const persistent = actions.filter(
-    action => action.behavior === 'allow' && action.scope !== 'once',
+    (action) => action.behavior === 'allow' && action.scope !== 'once'
   );
-  const deny = actions.filter(action => action.behavior === 'deny');
+  const deny = actions.filter((action) => action.behavior === 'deny');
   return [...once, ...persistent, ...deny];
 }
 
@@ -134,72 +133,72 @@ const ApprovalCard: React.FC<{
   const { t } = useI18n();
   const [feedback, setFeedback] = React.useState('');
   const displayName = approval.toolName.replace(/_/g, ' ');
-  const description = typeof approval.args.description === 'string'
-    ? approval.args.description.trim()
-    : '';
+  const description =
+    typeof approval.args.description === 'string' ? approval.args.description.trim() : '';
   const promptAction = description
     ? `${description.charAt(0).toLowerCase()}${description.slice(1)}`
     : t('permissionDock.useTool', { tool: displayName });
-  const command = typeof approval.args.content === 'string'
-    ? approval.args.content
-    : typeof approval.args.command === 'string'
-      ? approval.args.command
-      : '';
-  const filePath = typeof approval.args.file_path === 'string'
-    ? approval.args.file_path
-    : typeof approval.args.path === 'string'
-      ? approval.args.path
-      : '';
+  const command =
+    typeof approval.args.content === 'string'
+      ? approval.args.content
+      : typeof approval.args.command === 'string'
+        ? approval.args.command
+        : '';
+  const filePath =
+    typeof approval.args.file_path === 'string'
+      ? approval.args.file_path
+      : typeof approval.args.path === 'string'
+        ? approval.args.path
+        : '';
   const detail = command || filePath || JSON.stringify(approval.args, null, 2);
-  const confidenceLabel = approval.confidence == null
-    ? null
-    : typeof approval.confidence === 'number'
-      ? `${Math.round(approval.confidence * 100)}%`
-      : t(`toolCallBlock.permissionConfidenceLevels.${approval.confidence}`);
+  const confidenceLabel =
+    approval.confidence == null
+      ? null
+      : typeof approval.confidence === 'number'
+        ? `${Math.round(approval.confidence * 100)}%`
+        : t(`toolCallBlock.permissionConfidenceLevels.${approval.confidence}`);
   const confidenceSummary = confidenceLabel
     ? t('toolCallBlock.permissionConfidenceSummary', { value: confidenceLabel })
     : null;
   const orderedActions = React.useMemo(
     () => getActionDisplayOrder(approval.actions),
-    [approval.actions],
+    [approval.actions]
   );
 
-  const submitAction = React.useCallback((
-    action: PermissionAction,
-    actionFeedback?: string,
-  ) => {
-    onDecision(
-      approval.approvalId,
-      approval.toolCallId,
-      action.behavior === 'allow',
-      action.scope === 'session' || action.scope === 'global'
-        ? action.scope
-        : null,
-      approval.toolName,
-      action.id,
-      action.behavior === 'deny'
-        ? actionFeedback?.trim() || undefined
-        : undefined,
-    );
-  }, [approval, onDecision]);
+  const submitAction = React.useCallback(
+    (action: PermissionAction, actionFeedback?: string) => {
+      onDecision(
+        approval.approvalId,
+        approval.toolCallId,
+        action.behavior === 'allow',
+        action.scope === 'session' || action.scope === 'global' ? action.scope : null,
+        approval.toolName,
+        action.id,
+        action.behavior === 'deny' ? actionFeedback?.trim() || undefined : undefined
+      );
+    },
+    [approval, onDecision]
+  );
 
-  const selectAction = React.useCallback((action: PermissionAction) => {
-    submitAction(action);
-  }, [submitAction]);
+  const selectAction = React.useCallback(
+    (action: PermissionAction) => {
+      submitAction(action);
+    },
+    [submitAction]
+  );
 
-  const rejectAction = orderedActions.find(action => action.behavior === 'deny');
+  const rejectAction = orderedActions.find((action) => action.behavior === 'deny');
   React.useEffect(() => {
     if (!keyboardActive) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
-      const isTyping = target?.tagName === 'INPUT'
-        || target?.tagName === 'TEXTAREA'
-        || target?.isContentEditable;
+      const isTyping =
+        target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.isContentEditable;
       if (isTyping) return;
 
       if (event.ctrlKey && event.key === 'Enter') {
         const allowOnce = orderedActions.find(
-          action => action.behavior === 'allow' && action.scope === 'once',
+          (action) => action.behavior === 'allow' && action.scope === 'once'
         );
         if (allowOnce) {
           event.preventDefault();
@@ -221,7 +220,7 @@ const ApprovalCard: React.FC<{
   }, [keyboardActive, orderedActions, selectAction]);
 
   const shortcutFor = (action: PermissionAction) =>
-    orderedActions.findIndex(candidate => candidate.id === action.id) + 1;
+    orderedActions.findIndex((candidate) => candidate.id === action.id) + 1;
 
   const actionLabel = (action: PermissionAction): string => {
     if (action.behavior === 'deny') return t('permissionDock.no');
@@ -270,22 +269,27 @@ const ApprovalCard: React.FC<{
                 {approval.risk}
               </span>
             )}
-            <span className="truncate" title={approval.reason}>{approval.reason}</span>
+            <span className="truncate" title={approval.reason}>
+              {approval.reason}
+            </span>
           </div>
           {(approval.source || approval.confidence != null || approval.reviewerModel) && (
             <div className="mt-1 truncate uppercase tracking-wide">
-              {[approval.source,
+              {[
+                approval.source,
                 confidenceSummary,
                 approval.reviewerModel,
                 ...approval.riskCategories,
-              ].filter(Boolean).join(' · ')}
+              ]
+                .filter(Boolean)
+                .join(' · ')}
             </div>
           )}
         </div>
       )}
 
       <div className="mx-3 mt-2 overflow-hidden border border-neutral-300 dark:border-zinc-700">
-        {orderedActions.map(action => (
+        {orderedActions.map((action) => (
           <button
             key={action.id}
             type="button"
@@ -310,16 +314,27 @@ const ApprovalCard: React.FC<{
       {rejectAction && (
         <div className="mt-3 flex min-w-0 items-center gap-1.5 border-t-2 border-brutal-black bg-neutral-50 px-3 py-2 dark:border-neutral-500 dark:bg-zinc-950/40">
           <span className="flex h-7 w-7 shrink-0 items-center justify-center border border-brutal-black bg-white text-neutral-500 dark:border-neutral-500 dark:bg-zinc-800 dark:text-neutral-300">
-            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-              <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.862 4.487Z" />
+            <svg
+              viewBox="0 0 24 24"
+              className="h-3.5 w-3.5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              aria-hidden="true"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.862 4.487Z"
+              />
               <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 7.125 16.875 4.5" />
             </svg>
           </span>
           <input
             type="text"
             value={feedback}
-            onChange={event => setFeedback(event.target.value)}
-            onKeyDown={event => {
+            onChange={(event) => setFeedback(event.target.value)}
+            onKeyDown={(event) => {
               if (event.key === 'Enter' && feedback.trim()) {
                 event.preventDefault();
                 submitAction(rejectAction, feedback);

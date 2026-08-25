@@ -1,7 +1,9 @@
 import React from 'react';
 import type { A2UIProgress } from '../../../types/a2ui';
 
-interface Props { component: A2UIProgress; }
+interface Props {
+  component: A2UIProgress;
+}
 
 export const A2UIProgressComponent: React.FC<Props> = ({ component }) => {
   const clamped = Math.min(100, Math.max(0, component.value));
