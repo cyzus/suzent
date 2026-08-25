@@ -1,34 +1,45 @@
-// Generates static/llms-full.txt: a single concatenated corpus that answer
-// engines can retrieve in one fetch, instead of crawling the site page by page.
+// Generates static/llms-full.txt: the complete documentation corpus in one file,
+// so an answer engine can retrieve it in a single fetch instead of crawling the
+// site page by page.
 //
-// llms.txt stays the short index of links; llms-full.txt carries the actual
-// text of the pages that define what a sovereign AI agent is and how Suzent
-// implements it.
+// llms.txt stays the short index of links; llms-full.txt carries the text.
+//
+// Two things this has to get right:
+//
+//   1. Coverage. Every published doc goes in, discovered from the filesystem, so
+//      adding a page to docs/ does not silently leave it out of the "full" file.
+//   2. Links. A relative link is only meaningful next to the page it came from.
+//      Concatenating bodies unchanged would leave `[Quickstart](./quickstart)`
+//      resolving against /llms-full.txt, so every relative target is rewritten
+//      to an absolute URL first.
 
 const fs = require('fs');
 const path = require('path');
+const posix = path.posix;
 
 const DOCS_DIR = path.resolve(__dirname, '../../docs');
 const OUT_FILE = path.resolve(__dirname, '../static/llms-full.txt');
 const SITE = 'https://suzent.com';
+const BLOB = 'https://github.com/cyzus/suzent/blob/main';
 
-// Ordered so the definitional material comes first: retrieval tends to favour
-// the head of a long document.
-const SECTIONS = [
-  { file: '01-getting-started/intro.md', url: '/docs/getting-started/intro' },
-  { file: '01-getting-started/quickstart.md', url: '/docs/getting-started/quickstart' },
-  { file: '02-concepts/memory/README.md', url: '/docs/concepts/memory' },
-  { file: '02-concepts/tools/human-in-the-loop.md', url: '/docs/concepts/tools/human-in-the-loop' },
-  { file: '02-concepts/filesystem.md', url: '/docs/concepts/filesystem' },
-  { file: '02-concepts/github-sync/README.md', url: '/docs/concepts/github-sync' },
-  { file: '02-concepts/automation/automation.md', url: '/docs/concepts/automation' },
-  { file: '02-concepts/skills/skills.md', url: '/docs/concepts/skills' },
-  { file: '02-concepts/tools/tools.md', url: '/docs/concepts/tools' },
-  { file: '02-concepts/nodes/nodes.md', url: '/docs/concepts/nodes' },
+// Ordered first, because retrieval favours the head of a long document and
+// these are the pages that define what the project is. Everything else follows
+// in path order.
+const LEAD = [
+  '01-getting-started/intro.md',
+  '01-getting-started/quickstart.md',
+  '02-concepts/memory/README.md',
+  '02-concepts/tools/human-in-the-loop.md',
+  '02-concepts/filesystem.md',
+  '02-concepts/github-sync/README.md',
+  '02-concepts/providers/README.md',
+  '02-concepts/skills/skills.md',
+  '02-concepts/automation/automation.md',
+  '02-concepts/nodes/nodes.md',
 ];
 
-// The /sovereign page is a React page, not markdown, so its canonical text is
-// kept here and must stay in sync with src/pages/sovereign.tsx.
+// The /sovereign page is a React page rather than markdown, so its canonical
+// text lives here and must stay in sync with src/pages/sovereign.tsx.
 const SOVEREIGN = `# What Is a Sovereign AI Agent?
 
 Source: ${SITE}/sovereign
@@ -88,42 +99,161 @@ shutting down costs you an API key, not an agent.
 If the answer depends on a vendor's permission, the agent is not fully yours.
 `;
 
+/** Every .md file under docs/, as paths relative to DOCS_DIR, in path order. */
+function discoverDocs(dir = DOCS_DIR, prefix = '') {
+  const found = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+    const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) {
+      if (entry.name === 'assets' || entry.name.startsWith('.')) continue;
+      found.push(...discoverDocs(path.join(dir, entry.name), rel));
+    } else if (/\.mdx?$/i.test(entry.name)) {
+      found.push(rel);
+    }
+  }
+  return found;
+}
+
+/**
+ * Site URL for a docs-relative file path, following Docusaurus routing:
+ * numeric folder prefixes are stripped, and a doc that indexes its folder
+ * (README.md, index.md, or <folder>.md) takes the folder's URL, which carries a
+ * trailing slash. That slash matters — relative links on those pages resolve
+ * against it.
+ */
+function docUrl(relFile) {
+  const segs = relFile
+    .replace(/\.mdx?$/i, '')
+    .split('/')
+    .map((s) => s.replace(/^\d+-/, ''));
+  const last = segs[segs.length - 1];
+  const parent = segs.length > 1 ? segs[segs.length - 2] : null;
+  const isFolderIndex = /^(readme|index)$/i.test(last) || last === parent;
+
+  if (isFolderIndex) {
+    segs.pop();
+    return segs.length ? `/docs/${segs.join('/')}/` : '/docs/';
+  }
+  return `/docs/${segs.join('/')}`;
+}
+
+const DOC_FILES = discoverDocs();
+const KNOWN_DOC_PATHS = new Set(DOC_FILES.map((f) => f.replace(/\.mdx?$/i, '')));
+
+/** Resolve one link target found in `relFile` (whose page lives at `pageUrl`). */
+function resolveTarget(target, relFile) {
+  if (/^(https?:|mailto:|tel:|data:)/i.test(target)) return target;
+
+  const pageUrl = docUrl(relFile);
+  const [rawPath, anchor = ''] = splitAnchor(target);
+
+  if (rawPath === '') return anchor ? `${SITE}${pageUrl}${anchor}` : target;
+  if (rawPath.startsWith('/')) return `${SITE}${rawPath}${anchor}`;
+
+  // Markdown targets resolve against the file tree; everything else resolves
+  // as a plain URL against the page, the way a browser would.
+  if (/\.mdx?$/i.test(rawPath)) {
+    const resolved = posix.normalize(posix.join(posix.dirname(relFile), rawPath));
+    if (resolved.startsWith('..')) return `${repoBlob(relFile, rawPath)}${anchor}`;
+    return `${SITE}${docUrl(resolved)}${anchor}`;
+  }
+
+  // A relative path with some other extension points at a repository file
+  // (an image, a component, a script), not at a doc page.
+  if (/\.[a-z0-9]{1,5}$/i.test(rawPath)) return `${repoBlob(relFile, rawPath)}${anchor}`;
+
+  const base = pageUrl.endsWith('/') ? pageUrl : `${posix.dirname(pageUrl)}/`;
+  const resolved = posix.normalize(posix.join(base, rawPath));
+
+  // Extensionless links that do not land on a real doc are left for a human to
+  // look at rather than silently rewritten into a plausible-looking URL.
+  const asFile = resolved.replace(/^\/docs\//, '').replace(/\/$/, '');
+  if (!resolvesToKnownDoc(asFile)) {
+    console.warn(`  ! llms-full.txt: ${relFile} links to "${target}" (no matching doc)`);
+  }
+  return `${SITE}${resolved}${anchor}`;
+}
+
+function splitAnchor(target) {
+  const i = target.indexOf('#');
+  return i === -1 ? [target, ''] : [target.slice(0, i), target.slice(i)];
+}
+
+function repoBlob(relFile, rawPath) {
+  const fromRoot = posix.normalize(posix.join('docs', posix.dirname(relFile), rawPath));
+  return `${BLOB}/${fromRoot}`;
+}
+
+/**
+ * A resolved URL path such as "concepts/memory" corresponds to some doc file,
+ * allowing for numeric folder prefixes and the three folder-index spellings.
+ */
+function resolvesToKnownDoc(urlPath) {
+  if (urlPath === '') return true;
+  for (const known of KNOWN_DOC_PATHS) {
+    const stripped = known
+      .split('/')
+      .map((s) => s.replace(/^\d+-/, ''))
+      .join('/');
+    if (stripped === urlPath) return true;
+    const segs = stripped.split('/');
+    const last = segs[segs.length - 1];
+    const parent = segs.length > 1 ? segs[segs.length - 2] : null;
+    if ((/^(readme|index)$/i.test(last) || last === parent) && segs.slice(0, -1).join('/') === urlPath) {
+      return true;
+    }
+  }
+  return false;
+}
+
+const LINK_RE = /(!?\[[^\]]*\])\(\s*<?([^)<>\s]+)>?(\s+"[^"]*")?\s*\)/g;
+
+function rewriteLinks(body, relFile) {
+  return body.replace(LINK_RE, (match, label, target, title = '') =>
+    `${label}(${resolveTarget(target, relFile)}${title})`,
+  );
+}
+
 function stripFrontmatter(text) {
   return text.startsWith('---')
     ? text.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '')
     : text;
 }
 
+// ── Assemble ────────────────────────────────────────────────────────────────
+
+const missingLead = LEAD.filter((f) => !DOC_FILES.includes(f));
+if (missingLead.length) {
+  console.warn(`  ! llms-full.txt: lead pages no longer present: ${missingLead.join(', ')}`);
+}
+
+const ordered = [
+  ...LEAD.filter((f) => DOC_FILES.includes(f)),
+  ...DOC_FILES.filter((f) => !LEAD.includes(f)),
+];
+
 const parts = [
-  `# Suzent: the sovereign AI agent`,
+  '# Suzent: the sovereign AI agent',
   '',
-  `> Full text of the Suzent documentation, for answer engines and retrieval.`,
+  '> Full text of the Suzent documentation, for answer engines and retrieval.',
   `> Short link index: ${SITE}/llms.txt`,
   `> Source: ${SITE} — https://github.com/cyzus/suzent (Apache-2.0)`,
   `> Generated: ${new Date().toISOString().slice(0, 10)}`,
+  `> Pages: ${ordered.length} documentation pages, plus the sovereignty protocol.`,
   '',
   '---',
   '',
   SOVEREIGN,
 ];
 
-let missing = 0;
-
-for (const { file, url } of SECTIONS) {
-  const abs = path.join(DOCS_DIR, file);
-  if (!fs.existsSync(abs)) {
-    console.warn(`  ! llms-full.txt: missing ${file}, skipping`);
-    missing += 1;
-    continue;
-  }
-  const body = stripFrontmatter(fs.readFileSync(abs, 'utf8')).trim();
-  parts.push('', '---', '', `Source: ${SITE}${url}`, '', body);
+for (const relFile of ordered) {
+  const raw = fs.readFileSync(path.join(DOCS_DIR, relFile), 'utf8');
+  const body = rewriteLinks(stripFrontmatter(raw).trim(), relFile);
+  parts.push('', '---', '', `Source: ${SITE}${docUrl(relFile)}`, '', body);
 }
 
 fs.mkdirSync(path.dirname(OUT_FILE), { recursive: true });
 fs.writeFileSync(OUT_FILE, `${parts.join('\n')}\n`, 'utf8');
 
 const kb = (fs.statSync(OUT_FILE).size / 1024).toFixed(1);
-console.log(
-  `Generated static/llms-full.txt (${SECTIONS.length - missing} doc pages, ${kb} KB)`,
-);
+console.log(`Generated static/llms-full.txt (${ordered.length} doc pages, ${kb} KB)`);
