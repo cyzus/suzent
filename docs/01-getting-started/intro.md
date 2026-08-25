@@ -9,12 +9,25 @@ Suzent is a **sovereign AI agent** whose identity, memory, skills, workspace,
 and runtime remain under your control. Models are replaceable, platforms are
 temporary, and the continuity of your agent belongs to you.
 
+## What is a sovereign AI agent?
+
+A sovereign AI agent is an AI agent whose identity, memory, skills, workspace,
+and runtime are owned and governed by its user rather than by a model provider
+or platform. Its durable state lives in files you can read, edit, version, and
+move; its actions run inside permission boundaries you define; and replacing the
+underlying model does not reset the agent that knows your work.
+
+The phrase "sovereign AI" is also used at the scale of nations, for
+state-controlled models, data, and compute. A sovereign agent applies the same
+idea at the scale of a person.
+
 ## Core ideas
 
-**Sovereign** means more than running locally. You own the agent's mind,
-authority, vessel, and continuity: its durable state lives in files you can
-inspect and move, its actions follow boundaries you define, and changing a
-model or provider does not reset the agent that knows your work.
+**Sovereign** means more than running locally. Agent sovereignty has four
+conditions — a sovereign mind, sovereign authority, a sovereign vessel, and
+sovereign continuity. The full definition, and a five-question test for deciding
+whether any agent meets it, is on
+[what makes an agent sovereign](https://suzent.com/sovereign).
 
 **Local agent** means it is built for more than one-off answers. It can keep long-term memory, schedule recurring work, and run the operations you explicitly allow.
 

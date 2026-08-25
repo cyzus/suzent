@@ -5,6 +5,11 @@ title: Providers
 
 # Providers
 
+**Sovereign mind.** The model is an engine, not the self. Being able to
+configure many providers and switch between them per session is what keeps
+identity in your memory, skills, and workspace rather than in any one vendor's
+account. See [what makes an agent sovereign](https://suzent.com/sovereign).
+
 Suzent is model-agnostic. Configure any number of providers in **Settings → Providers** and switch between them per session.
 
 API keys are stored in the local database — never in plain text config files.

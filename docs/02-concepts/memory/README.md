@@ -1,5 +1,12 @@
 # Memory System
 
+**Sovereign continuity.** Memory is where a sovereign AI agent keeps its self.
+Because Suzent's memory is Markdown on your own disk rather than rows in a
+vendor's database, you can read it, edit it, track it in Git, and carry it to
+another machine. That is the first question in the
+[sovereignty test](https://suzent.com/sovereign) — and the reason a model swap does not reset the agent
+that knows your work.
+
 Suzent remembers things across conversations — facts you've shared, your preferences, and
 context from past sessions. Everything it remembers is stored as plain Markdown files you
 can open, edit, or delete yourself.

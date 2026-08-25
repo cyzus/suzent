@@ -1,5 +1,10 @@
 # Suzent Automation Guide
 
+**Sovereign authority.** Proactive action is the sharpest edge of agent
+autonomy: work that happens when you are not watching. Both systems below run
+on schedules and instructions you write, inside the same permission boundaries
+as interactive work. See [what makes an agent sovereign](https://suzent.com/sovereign).
+
 This guide covers the automation systems in Suzent — scheduled cron jobs and periodic heartbeat check-ins.
 
 ## Overview

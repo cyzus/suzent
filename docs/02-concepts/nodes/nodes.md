@@ -1,5 +1,10 @@
 # Suzent Nodes Guide
 
+**Sovereign vessel.** Extending an agent across devices is where most
+systems quietly hand control to a cloud relay. Nodes instead reach only the
+machines you pair, over links you approve, with capabilities each device
+declares. See [what makes an agent sovereign](https://suzent.com/sovereign).
+
 This guide covers the node system in Suzent — how to connect companion devices and control them remotely.
 
 ## Overview
