@@ -10,6 +10,7 @@ This package splits CLI commands into focused modules:
 
 import typer
 
+from suzent.cli.acp import register_acp_command
 from suzent.cli.agent import agent_app
 from suzent.cli.config import config_app
 from suzent.cli.main import (
@@ -31,6 +32,7 @@ app = typer.Typer(help="Suzent CLI - Your Digital Co-worker Manager")
 
 @app.callback()
 def main(
+    ctx: typer.Context,
     verbose: bool = typer.Option(
         False, "--verbose", "-v", help="Enable verbose logging (DEBUG level)"
     ),
@@ -39,12 +41,20 @@ def main(
     Suzent CLI - Your Digital Co-worker Manager.
     """
     _configure_console_encoding()
-    configure_logging(verbose)
+    if ctx.invoked_subcommand == "acp":
+        # `suzent acp` speaks JSON-RPC on stdout, so no log line may land there
+        # -- not even the DEBUG output -v would otherwise enable.
+        from suzent.acp.server import redirect_logs_to_stderr
+
+        redirect_logs_to_stderr("DEBUG" if verbose else "WARNING")
+    else:
+        configure_logging(verbose)
     load_environment()
 
 
 # Register top-level commands (start, doctor, update, upgrade, setup-build_tools)
 register_commands(app)
+register_acp_command(app)
 
 # Attach subcommand groups
 app.add_typer(node_app, name="nodes")
