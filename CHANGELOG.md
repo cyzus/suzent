@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Serve Suzent as an ACP agent (#126)
 
 ### 🐛 Fixed
+- Read the real AG-UI field names for tool call events (#127)
 - Stop refresh-release failing on the push that merges a release
 
 ## [v0.10.0] - 2026-08-25
