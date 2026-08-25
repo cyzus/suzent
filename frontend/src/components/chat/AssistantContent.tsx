@@ -253,20 +253,16 @@ const StreamingMarkdownBlock: React.FC<{
   showCursor: boolean;
   onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
 }> = ({ content, isLastBlock, showCursor, onFileClick }) => {
-  const typedContent = useTypewriter(content, 10, isLastBlock);
+  const typedContent = useTypewriter(content, isLastBlock);
   const renderedContent = isLastBlock ? typedContent : content;
 
   return (
-    <>
-      <MarkdownRenderer
-        content={renderedContent}
-        onFileClick={onFileClick}
-        streamingLite={isLastBlock}
-      />
-      {isLastBlock && showCursor && (
-        <span className="animate-brutal-blink inline-block w-2.5 h-4 bg-brutal-black align-middle ml-1" />
-      )}
-    </>
+    <MarkdownRenderer
+      content={renderedContent}
+      onFileClick={onFileClick}
+      streamingLite={isLastBlock}
+      caret={isLastBlock && showCursor}
+    />
   );
 };
 

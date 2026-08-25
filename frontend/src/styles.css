@@ -1269,3 +1269,41 @@ code {
 .dark .mention-editor.is-empty::before {
   color: rgb(115 115 115); /* neutral-500 */
 }
+
+/*
+ * Streaming caret.
+ *
+ * The caret belongs immediately after the last character the agent has
+ * emitted, and that character lives inside whatever block the markdown
+ * renderer produced. Rendering the caret as a sibling element left it
+ * stranded on its own line below the text, so it is drawn as an ::after
+ * inside the final block instead, where it joins the text's own inline flow.
+ *
+ * One rule per block shape the lite renderer can end on: a list row is a flex
+ * row, so the caret goes in the text cell rather than becoming a new column,
+ * and a code block ends in <pre><code>, so it goes after the last character
+ * rather than below the frame.
+ */
+.streaming-caret > :last-child:not(.lite-list-row):not(.lite-code):not(.lite-table)::after,
+.streaming-caret > .lite-list-row:last-child > span:last-child::after,
+.streaming-caret > .lite-code:last-child pre code::after,
+.streaming-caret > .lite-table:last-child::after {
+  content: '';
+  display: inline-block;
+  width: 0.5em;
+  height: 1em;
+  margin-left: 0.15em;
+  vertical-align: text-bottom;
+  background: currentColor;
+  animation: streamCaretBlink 1s step-end infinite;
+}
+
+@keyframes streamCaretBlink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}

@@ -4,7 +4,7 @@
  * Replaces Vercel AI SDK's useChat with a lightweight SSE client
  * that parses AG-UI events and builds up parts-based state.
  */
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import type { A2UISurface } from '../types/a2ui';
 import type { AGUIPart, AcpPermissionRequest, ApprovalRememberScope } from '../types/agui';
 import type { CitationSource } from '../lib/streamEvents';
@@ -539,7 +539,46 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
   const suppressFinishRef = useRef(false);
   // Keep a ref to latest parts so onFinish gets the final value
   const partsRef = useRef<AGUIPart[]>([]);
-  partsRef.current = parts;
+  // Publishing a token delta straight to React state re-renders the whole chat
+  // view; at streaming rates that starves the main thread and scrolling crawls.
+  // `publishParts` keeps `partsRef` exact and synchronous but coalesces the
+  // render into one update per frame. While a flush is queued the ref is ahead
+  // of `parts`, so it must not be rewound to the state value here.
+  const flushFrameRef = useRef<number | null>(null);
+  if (flushFrameRef.current === null) {
+    partsRef.current = parts;
+  }
+
+  const cancelPartsFlush = useCallback(() => {
+    if (flushFrameRef.current !== null) {
+      cancelAnimationFrame(flushFrameRef.current);
+      flushFrameRef.current = null;
+    }
+  }, []);
+
+  /**
+   * Record the newest parts. Renders are batched to the next animation frame
+   * unless `immediate`, which every terminal path (error, finish, abort) uses so
+   * the last state of a turn is never left sitting in a cancelled frame.
+   */
+  const publishParts = useCallback(
+    (next: AGUIPart[], immediate = false) => {
+      partsRef.current = next;
+      if (immediate) {
+        cancelPartsFlush();
+        setParts(next);
+        return;
+      }
+      if (flushFrameRef.current !== null) return;
+      flushFrameRef.current = requestAnimationFrame(() => {
+        flushFrameRef.current = null;
+        setParts(partsRef.current);
+      });
+    },
+    [cancelPartsFlush]
+  );
+
+  useEffect(() => cancelPartsFlush, [cancelPartsFlush]);
 
   // Pending approval tracking
   const [pendingApprovalCount, setPendingApprovalCount] = useState(0);
@@ -562,9 +601,8 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
   optionsRef.current = options;
 
   const clearParts = useCallback(() => {
-    setParts([]);
-    partsRef.current = [];
-  }, []);
+    publishParts([], true);
+  }, [publishParts]);
 
   const setPendingApprovalCountSync = useCallback((count: number) => {
     pendingApprovalCountRef.current = count;
@@ -576,15 +614,17 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
     approvalDecisionsRef.current = [];
   }, [setPendingApprovalCountSync]);
 
-  const removeInlineSurface = useCallback((surfaceId: string) => {
-    setParts((prev) => {
-      const next = prev.filter(
-        (p) => !(p.type === 'a2ui' && (p.surface as A2UISurface)?.id === surfaceId)
+  const removeInlineSurface = useCallback(
+    (surfaceId: string) => {
+      publishParts(
+        partsRef.current.filter(
+          (p) => !(p.type === 'a2ui' && (p.surface as A2UISurface)?.id === surfaceId)
+        ),
+        true
       );
-      partsRef.current = next;
-      return next;
-    });
-  }, []);
+    },
+    [publishParts]
+  );
 
   const stop = useCallback(() => {
     abortRef.current?.abort();
@@ -603,35 +643,35 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
 
   const restorePartsFromSeed = useCallback(
     (seed: AGUIPart[]) => {
-      setParts(seed);
-      partsRef.current = seed;
+      publishParts(seed, true);
       setStatus('idle');
       const approvalCount = seed.filter(
         (p) => p.type === 'tool' && p.state === 'approval-requested'
       ).length;
       setPendingApprovalCountSync(approvalCount);
     },
-    [setPendingApprovalCountSync]
+    [publishParts, setPendingApprovalCountSync]
   );
 
   // Optimistically update a tool part's state when user approves/denies
   // so buttons disappear instantly (no waiting for backend round-trip)
-  const resolveApproval = useCallback((approvalId: string, approved: boolean) => {
-    setParts((prev) => {
-      const next = prev.map((p) => {
-        if (p.type === 'tool' && p.approvalId === approvalId) {
-          return {
-            ...p,
-            state: approved ? ('running' as const) : ('error' as const),
-            approvalId: undefined,
-          };
-        }
-        return p;
-      });
-      partsRef.current = next;
-      return next;
-    });
-  }, []);
+  const resolveApproval = useCallback(
+    (approvalId: string, approved: boolean) => {
+      publishParts(
+        partsRef.current.map((p) =>
+          p.type === 'tool' && p.approvalId === approvalId
+            ? {
+                ...p,
+                state: approved ? ('running' as const) : ('error' as const),
+                approvalId: undefined,
+              }
+            : p
+        ),
+        true
+      );
+    },
+    [publishParts]
+  );
 
   // Track pending approval count from parts
   const addApprovalDecision = useCallback(
@@ -740,20 +780,21 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
           if (result.error) {
             setError(result.error);
             setStatus('error');
-            setParts(currentParts);
-            partsRef.current = currentParts;
+            publishParts(currentParts, true);
             onError?.(new Error(result.error), currentParts);
             return;
           }
         }
 
         if (events.length > 0) {
-          setParts(currentParts);
-          partsRef.current = currentParts;
+          publishParts(currentParts);
           setPendingApprovalCountSync(pendingApprovalIds.size);
         }
       }
 
+      // `currentParts` is still empty when the stream closed before any event
+      // arrived, so flush the ref -- it always holds the newest parts.
+      publishParts(partsRef.current, true);
       setStatus('idle');
       onFinish?.(currentParts);
     } catch (err) {
@@ -761,6 +802,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
         // If the abort was triggered by steerStream, do nothing here —
         // steerStream owns the status and will call onFinish when done.
         if (!isSteeringRef.current) {
+          publishParts(partsRef.current, true);
           setStatus('idle');
           onFinish?.(partsRef.current);
         }
@@ -795,8 +837,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
           ? { ...p, state: 'error' as const, approvalId: undefined }
           : p
       );
-      partsRef.current = resolved;
-      setParts(resolved);
+      publishParts(resolved, true);
     }
 
     // 1. Abort the current fetch — set flag so the AbortError handler is a no-op
@@ -830,8 +871,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
       }
 
       // Steer stream is confirmed active; start with a fresh transient message.
-      setParts([]);
-      partsRef.current = [];
+      publishParts([], true);
       setStatus('streaming');
 
       const reader = response.body.getReader();
@@ -866,33 +906,32 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
             isSteeringRef.current = false;
             setError(result.error);
             setStatus('error');
-            setParts(currentParts);
-            partsRef.current = currentParts;
+            publishParts(currentParts, true);
             onError?.(new Error(result.error), currentParts);
             return;
           }
         }
 
         if (events.length > 0) {
-          setParts(currentParts);
-          partsRef.current = currentParts;
+          publishParts(currentParts);
           setPendingApprovalCountSync(pendingApprovalIds.size);
         }
       }
 
       isSteeringRef.current = false;
+      publishParts(partsRef.current, true);
       setStatus('idle');
       onFinish?.(currentParts);
     } catch (err) {
       isSteeringRef.current = false;
       if ((err as Error).name === 'AbortError') {
+        publishParts(partsRef.current, true);
         setStatus('idle');
         onFinish?.(partsRef.current);
       } else {
         // Restore previous parts if steer failed before the replacement stream started.
         if (partsRef.current.length === 0 && previousParts.length > 0) {
-          partsRef.current = previousParts;
-          setParts(previousParts);
+          publishParts(previousParts, true);
         }
         const errorMsg = (err as Error).message;
         setError(errorMsg);
@@ -921,8 +960,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
 
       if (!isProbe) {
         // Normal send: reset immediately so the UI shows "submitted" while waiting.
-        setParts([]);
-        partsRef.current = [];
+        publishParts([], true);
         setError(undefined);
         setStatus('submitted');
         resetApprovalTracking();
@@ -967,8 +1005,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
           // consume-once, so it only replays chunks from the reconnect point —
           // the seed supplies everything before it.
           const seed = opts?.seedParts ?? [];
-          setParts(seed);
-          partsRef.current = seed;
+          publishParts(seed, true);
           setError(undefined);
           setStatus('submitted');
           resetApprovalTracking();
@@ -1013,20 +1050,22 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
             if (result.error) {
               setError(result.error);
               setStatus('error');
-              setParts(currentParts);
-              partsRef.current = currentParts;
+              publishParts(currentParts, true);
               onError?.(new Error(result.error), currentParts);
               return true;
             }
           }
 
           if (events.length > 0) {
-            setParts(currentParts);
-            partsRef.current = currentParts;
+            publishParts(currentParts);
             setPendingApprovalCountSync(pendingApprovalIds.size);
           }
         }
 
+        // Land the turn's last tokens in the same commit as the status flip
+        // instead of a frame behind it. The ref, not `currentParts`: the latter is
+        // still empty when the stream closed before delivering an event.
+        publishParts(partsRef.current, true);
         setStatus('idle');
         onFinish?.(currentParts);
         return true;
@@ -1039,6 +1078,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
           } else if (!isSteeringRef.current) {
             // If the abort was triggered by steerStream, do nothing here —
             // steerStream owns the status and will call onFinish when done.
+            publishParts(partsRef.current, true);
             setStatus('idle');
             onFinish?.(partsRef.current);
           }
@@ -1051,7 +1091,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
         return false;
       }
     },
-    [resetApprovalTracking, setPendingApprovalCountSync]
+    [publishParts, resetApprovalTracking, setPendingApprovalCountSync]
   );
 
   return {

@@ -48,6 +48,7 @@ import {
   hasAguiPendingApproval,
   hasLegacyPendingApproval,
 } from './ActivityRail';
+import { useTypewriter } from '../../hooks/useTypewriter';
 import { useI18n } from '../../i18n';
 import {
   getProviderInitials,
@@ -56,6 +57,42 @@ import {
 } from '../../lib/providerVisuals';
 
 const LARGE_MARKDOWN_RENDER_THRESHOLD = 12000;
+
+/**
+ * One prose block of an assistant turn.
+ *
+ * While the block is the live one its text is revealed at a steady rate rather
+ * than in the uneven bursts the stream delivers, and it renders through the
+ * lightweight markdown path so the reveal stays cheap frame to frame.
+ */
+const AssistantTextChunk: React.FC<{
+  text: string;
+  isStreaming: boolean;
+  onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
+}> = ({ text, isStreaming, onFileClick }) => {
+  const revealedText = useTypewriter(text, isStreaming);
+
+  return (
+    <div className="relative px-1 py-1 text-brutal-black dark:text-neutral-100">
+      <div className="space-y-4">
+        <MarkdownRenderer
+          content={revealedText}
+          onFileClick={onFileClick}
+          streamingLite={isStreaming}
+          caret={isStreaming}
+        />
+      </div>
+    </div>
+  );
+};
+
+/** Index of the turn's last activity group — the only one that can be live. */
+function findLastActivityGroupIndex(groups: Array<{ type: string }>): number {
+  for (let i = groups.length - 1; i >= 0; i -= 1) {
+    if (groups[i].type === 'activity') return i;
+  }
+  return -1;
+}
 
 interface AssistantMessageProps {
   message: Message;
@@ -246,12 +283,16 @@ const AGUIPartsContent: React.FC<{
     chunks,
     (chunk) => chunk.type === 'tool' || chunk.type === 'reasoning'
   );
+  // Only the turn's final rail is live. Earlier ones are finished work: they
+  // must not animate, and must not each start their own worked-for clock.
+  const currentActivityGroupIndex = findLastActivityGroupIndex(renderGroups);
 
   return (
     <>
       {renderGroups.map((group, gi) => {
         if (group.type === 'activity') {
           const activityGroupOrdinal = getActivityGroupOrdinal(renderGroups, gi);
+          const isCurrentGroup = Boolean(isStreaming) && gi === currentActivityGroupIndex;
           return (
             <ActivityRail
               key={`activity-${gi}`}
@@ -259,10 +300,11 @@ const AGUIPartsContent: React.FC<{
               durationSeconds={workedDurationSeconds}
               startedAtMs={streamStartedAtMs}
               showDuration={activityGroupOrdinal === 0}
-              defaultExpanded={Boolean(isStreaming)}
+              defaultExpanded={isCurrentGroup}
               isActive={Boolean(isStreaming)}
+              isCurrent={isCurrentGroup}
               hasPending={hasAguiPendingApproval(group.chunks)}
-              currentLabel={getAguiActivityLabel(group.chunks, Boolean(isStreaming))}
+              currentLabel={getAguiActivityLabel(group.chunks, isCurrentGroup)}
             >
               {group.chunks.map(({ chunk, index: ci }) => {
                 if (chunk.type === 'reasoning') {
@@ -598,18 +640,12 @@ const AGUIPartsContent: React.FC<{
         // bordered box with a blinking cursor under the assembly animation.
         if (!fullText.trim()) return null;
         return (
-          <div key={ci} className="relative px-1 py-1 text-brutal-black dark:text-neutral-100">
-            <div className="space-y-4">
-              <MarkdownRenderer
-                content={fullText}
-                onFileClick={onFileClick}
-                streamingLite={Boolean(isStreaming && isLastChunk)}
-              />
-              {isStreaming && isLastChunk && (
-                <span className="animate-brutal-blink inline-block w-2.5 h-4 bg-brutal-black align-middle ml-1" />
-              )}
-            </div>
-          </div>
+          <AssistantTextChunk
+            key={ci}
+            text={fullText}
+            isStreaming={Boolean(isStreaming && isLastChunk)}
+            onFileClick={onFileClick}
+          />
         );
       })}
     </>
@@ -1092,6 +1128,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
     validChunks,
     (chunk) => chunk.type === 'reasoning' || chunk.type === 'toolCall'
   );
+  const currentLegacyActivityGroupIndex = findLastActivityGroupIndex(legacyRenderGroups);
 
   return (
     <CitationProvider sources={citationSourcesMap}>
@@ -1109,6 +1146,8 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
                   legacyRenderGroups,
                   groupIndex
                 );
+                const isCurrentGroup =
+                  isStreamingThis && groupIndex === currentLegacyActivityGroupIndex;
                 return (
                   <ActivityRail
                     key={`legacy-activity-${groupIndex}`}
@@ -1116,10 +1155,11 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
                     durationSeconds={workedDurationSeconds}
                     startedAtMs={streamStartedAtMs}
                     showDuration={activityGroupOrdinal === 0}
-                    defaultExpanded={isStreamingThis}
+                    defaultExpanded={isCurrentGroup}
                     isActive={isStreamingThis}
+                    isCurrent={isCurrentGroup}
                     hasPending={hasLegacyPendingApproval(group.chunks)}
-                    currentLabel={getLegacyActivityLabel(group.chunks, isStreamingThis)}
+                    currentLabel={getLegacyActivityLabel(group.chunks, isCurrentGroup)}
                   >
                     {group.chunks.map(({ chunk, index: idx }) => {
                       if (chunk.type === 'reasoning') {

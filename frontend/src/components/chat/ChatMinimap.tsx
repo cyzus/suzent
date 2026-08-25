@@ -182,7 +182,7 @@ function buildMarkers(messages: Message[], labels: MinimapLabels): ChatMinimapMa
   return markers;
 }
 
-export const ChatMinimap: React.FC<ChatMinimapProps> = ({
+const ChatMinimapComponent: React.FC<ChatMinimapProps> = ({
   messages,
   scrollContainerRef,
   onJumpToMessage,
@@ -259,13 +259,26 @@ export const ChatMinimap: React.FC<ChatMinimapProps> = ({
     const el = scrollContainerRef.current;
     if (!el) return;
 
-    el.addEventListener('scroll', updateMetrics, { passive: true });
-    const resizeObserver = new ResizeObserver(updateMetrics);
+    // Scroll fires far faster than the screen refreshes, and each event here
+    // would otherwise re-render the whole rail. Coalesce to one update per
+    // frame so dragging the scrollbar stays smooth while a turn streams.
+    let frame: number | null = null;
+    const scheduleUpdate = () => {
+      if (frame !== null) return;
+      frame = requestAnimationFrame(() => {
+        frame = null;
+        updateMetrics();
+      });
+    };
+
+    el.addEventListener('scroll', scheduleUpdate, { passive: true });
+    const resizeObserver = new ResizeObserver(scheduleUpdate);
     resizeObserver.observe(el);
     if (el.firstElementChild) resizeObserver.observe(el.firstElementChild);
 
     return () => {
-      el.removeEventListener('scroll', updateMetrics);
+      if (frame !== null) cancelAnimationFrame(frame);
+      el.removeEventListener('scroll', scheduleUpdate);
       resizeObserver.disconnect();
     };
   }, [markers.length, scrollContainerRef, updateMetrics]);
@@ -390,3 +403,8 @@ export const ChatMinimap: React.FC<ChatMinimapProps> = ({
     </div>
   );
 };
+
+// The rail re-renders on every scroll frame from its own state; without this it
+// would also re-render on each of the parent's streaming-chunk renders and
+// rebuild every marker preview from scratch.
+export const ChatMinimap = React.memo(ChatMinimapComponent);

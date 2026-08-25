@@ -154,7 +154,7 @@ interface ToolCallBlockProps {
   inActivityRail?: boolean;
 }
 
-export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
+const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
   toolName,
   toolArgs,
   output,
@@ -898,3 +898,11 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
     </div>
   );
 };
+
+/**
+ * A streaming turn re-renders on every token, and its activity rail can hold
+ * dozens of settled tool blocks whose props never change again. Each one runs a
+ * JSON parse and an LCS diff on render, so skipping them is what keeps the page
+ * responsive while the agent works.
+ */
+export const ToolCallBlock = React.memo(ToolCallBlockComponent);
