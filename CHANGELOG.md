@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [v0.10.0] - 2026-08-25
 
+<!-- highlights -->
+Memory is most of this release. Claims now carry a confirmation count and an
+expiry, duplicate facts retire instead of piling up, and a page is dated from
+when it was written rather than from the last time the indexer ran - so what
+Suzent remembers about you ages the way it should. The memory tab was rebuilt
+around actually reading it.
+
+Releasing changed shape too: a release PR now stays open against main and
+derives its own version from commit history, so shipping is a merge rather than
+a decision about numbers.
+
+Also worth knowing: file diffs no longer hang at "Loading viewer", streaming
+replies render correctly again, and selecting text in a chat survives the next
+token arriving.
+<!-- /highlights -->
+
 ### 🚀 Added
 - Keep hand-written release highlights across changelog refreshes
 - Keep a release PR open instead of triggering one
