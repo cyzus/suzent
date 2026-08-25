@@ -23,6 +23,7 @@
 - [GitHub Sync](02-concepts/github-sync/README.md): Sync portable brain data to a private GitHub repo
 - [Social Messaging](02-concepts/social-messaging/README.md): Telegram, Discord, Slack, and Feishu integration
 - [Nodes](02-concepts/nodes/nodes.md): Connect and control companion devices remotely
+- [ACP](02-concepts/nodes/acp.md): Serve Suzent as an ACP agent for editors and other clients
 
 ### Runtime
 - [Retry](02-concepts/runtime/retry.md): Roll back the last agent turn and rerun
