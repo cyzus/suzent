@@ -1,7 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import type { Message } from '../../types/api';
 import type { AGUIPart, ApprovalRememberScope } from '../../hooks/useAGUI';
-import { splitAssistantContent, ContentBlock, formatMessageTime, hasStreamedOutput } from '../../lib/chatUtils';
+import {
+  splitAssistantContent,
+  ContentBlock,
+  formatMessageTime,
+  hasStreamedOutput,
+} from '../../lib/chatUtils';
 import { ThinkingAnimation, AgentBadge, RobotIcon } from './ThinkingAnimation';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { ImageWithFallback } from './ImageWithFallback';
@@ -22,7 +27,12 @@ import {
   ToolSequenceGroup,
   parseSubAgentTaskId,
 } from './AssistantContent';
-import { CitationProvider, SourcesPanel, formatTextWithCitationReferences, type CitationSourcesMap } from './Citations';
+import {
+  CitationProvider,
+  SourcesPanel,
+  formatTextWithCitationReferences,
+  type CitationSourcesMap,
+} from './Citations';
 import type { CitationSource } from '../../lib/streamEvents';
 import {
   ActivityRail,
@@ -39,7 +49,11 @@ import {
   hasLegacyPendingApproval,
 } from './ActivityRail';
 import { useI18n } from '../../i18n';
-import { getProviderInitials, getProviderVisualForModel, normalizeProviderLogoUrl } from '../../lib/providerVisuals';
+import {
+  getProviderInitials,
+  getProviderVisualForModel,
+  normalizeProviderLogoUrl,
+} from '../../lib/providerVisuals';
 
 const LARGE_MARKDOWN_RENDER_THRESHOLD = 12000;
 
@@ -57,7 +71,15 @@ interface AssistantMessageProps {
   /** Wall-clock start time (ms) of the active stream, so the activity timer resumes across reconnects */
   streamStartedAtMs?: number;
   /** HITL approval handler: (approvalId, toolCallId, approved, remember?, toolName?) */
-  onToolApproval?: (approvalId: string, toolCallId: string, approved: boolean, remember?: ApprovalRememberScope, toolName?: string, actionId?: string, feedback?: string) => void;
+  onToolApproval?: (
+    approvalId: string,
+    toolCallId: string,
+    approved: boolean,
+    remember?: ApprovalRememberScope,
+    toolName?: string,
+    actionId?: string,
+    feedback?: string
+  ) => void;
   /** Tool approval policy for showing auto-approval badges */
   toolApprovalPolicy?: Record<string, string>;
   /** Callback to remove a tool from auto-approval */
@@ -65,7 +87,10 @@ interface AssistantMessageProps {
   /** Handler for inline A2UI button actions */
   onInlineAction?: (surfaceId: string, action: string, context: Record<string, unknown>) => void;
   /** Sub-agent task state map: taskId -> status (driven by SSE events) */
-  subAgentTasks?: Record<string, { status: SubAgentStatus; resultSummary?: string; error?: string }>;
+  subAgentTasks?: Record<
+    string,
+    { status: SubAgentStatus; resultSummary?: string; error?: string }
+  >;
   /** Open the SubAgentView sidebar for the given task_id */
   onOpenSubAgentSidebar?: (taskId: string) => void;
   /** Stop a running sub-agent */
@@ -98,8 +123,8 @@ const FINAL_ANSWER_CALL_RE = /^\s*final_answer\s*\([\s\S]*\)\s*$/;
 
 function filterBlocks(blocks: ContentBlock[]): ContentBlock[] {
   return blocks
-    .filter(b => !isIgnoredToolCall(b))
-    .filter(b => {
+    .filter((b) => !isIgnoredToolCall(b))
+    .filter((b) => {
       // Strip markdown blocks that are just raw final_answer(...) calls
       if (b.type === 'markdown' && FINAL_ANSWER_CALL_RE.test(b.content.trim())) return false;
       // Strip code blocks that only call final_answer
@@ -110,7 +135,7 @@ function filterBlocks(blocks: ContentBlock[]): ContentBlock[] {
 
 /** Check if a message consists only of toolCall/codeStep blocks (no real prose/code content) */
 function isToolOnlyMessage(blocks: ContentBlock[]): boolean {
-  return blocks.length > 0 && blocks.every(b => b.type === 'toolCall' || b.type === 'codeStep');
+  return blocks.length > 0 && blocks.every((b) => b.type === 'toolCall' || b.type === 'codeStep');
 }
 
 // ── AG-UI Parts-based rendering (for streaming messages) ────────────
@@ -122,15 +147,41 @@ const AGUIPartsContent: React.FC<{
   streamStartedAtMs?: number;
   isStreaming?: boolean;
   onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
-  onToolApproval?: (approvalId: string, toolCallId: string, approved: boolean, remember?: ApprovalRememberScope, toolName?: string, actionId?: string, feedback?: string) => void;
+  onToolApproval?: (
+    approvalId: string,
+    toolCallId: string,
+    approved: boolean,
+    remember?: ApprovalRememberScope,
+    toolName?: string,
+    actionId?: string,
+    feedback?: string
+  ) => void;
   toolApprovalPolicy?: Record<string, string>;
   onRemoveApprovalPolicy?: (toolName: string) => void;
   onInlineAction?: (surfaceId: string, action: string, context: Record<string, unknown>) => void;
-  subAgentTasks?: Record<string, { status: SubAgentStatus; resultSummary?: string; error?: string }>;
+  subAgentTasks?: Record<
+    string,
+    { status: SubAgentStatus; resultSummary?: string; error?: string }
+  >;
   onOpenSubAgentSidebar?: (taskId: string) => void;
   onStopSubAgent?: (taskId: string) => void;
   onForceWebContext?: (contextId: string) => void;
-}> = ({ parts, messageIndex, workedDurationSeconds, streamStartedAtMs, isStreaming, onFileClick, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy, onInlineAction, subAgentTasks, onOpenSubAgentSidebar, onStopSubAgent, onForceWebContext }) => {
+}> = ({
+  parts,
+  messageIndex,
+  workedDurationSeconds,
+  streamStartedAtMs,
+  isStreaming,
+  onFileClick,
+  onToolApproval,
+  toolApprovalPolicy,
+  onRemoveApprovalPolicy,
+  onInlineAction,
+  subAgentTasks,
+  onOpenSubAgentSidebar,
+  onStopSubAgent,
+  onForceWebContext,
+}) => {
   // Normalize tool parts: when resume/recovery emits another tool part with the
   // same toolCallId later in the stream, merge it into the first occurrence so
   // output stays under the initial tool call instead of rendering a split block.
@@ -193,7 +244,7 @@ const AGUIPartsContent: React.FC<{
 
   const renderGroups = groupActivityChunks(
     chunks,
-    chunk => chunk.type === 'tool' || chunk.type === 'reasoning',
+    (chunk) => chunk.type === 'tool' || chunk.type === 'reasoning'
   );
 
   return (
@@ -215,7 +266,7 @@ const AGUIPartsContent: React.FC<{
             >
               {group.chunks.map(({ chunk, index: ci }) => {
                 if (chunk.type === 'reasoning') {
-                  const reasoningText = chunk.items.map(p => p.text || '').join('');
+                  const reasoningText = chunk.items.map((p) => p.text || '').join('');
                   if (!reasoningText.trim()) return null;
                   const isChunkStreaming = isStreaming && ci === chunks.length - 1;
                   return (
@@ -231,9 +282,15 @@ const AGUIPartsContent: React.FC<{
                 const tools = chunk.items.map((tp, ti) => {
                   // A historical approval snapshot without an actionable ID is
                   // unresolved/stale, not proof that the user denied the call.
-                  const isActionablyPending = tp.state === 'approval-requested' && !tp.output && !!tp.approvalId && !!isStreaming;
-                  const approvalState = isActionablyPending ? 'pending' as const
-                    : tp.state === 'error' ? 'denied' as const
+                  const isActionablyPending =
+                    tp.state === 'approval-requested' &&
+                    !tp.output &&
+                    !!tp.approvalId &&
+                    !!isStreaming;
+                  const approvalState = isActionablyPending
+                    ? ('pending' as const)
+                    : tp.state === 'error'
+                      ? ('denied' as const)
                       : undefined;
 
                   return {
@@ -245,33 +302,61 @@ const AGUIPartsContent: React.FC<{
                     permission: tp.permission,
                     permissionDecision: tp.permissionDecision,
                     permissionResolution: tp.permissionResolution,
-                    onApprove: (isActionablyPending && tp.approvalId && onToolApproval)
-                      ? (remember: ApprovalRememberScope, actionId?: string, feedback?: string) => onToolApproval(tp.approvalId!, tp.toolCallId || '', true, remember, tp.toolName, actionId, feedback)
-                      : undefined,
-                    onDeny: (isActionablyPending && tp.approvalId && onToolApproval)
-                      ? (actionId?: string, feedback?: string) => onToolApproval(tp.approvalId!, tp.toolCallId || '', false, null, tp.toolName, actionId, feedback)
-                      : undefined,
+                    onApprove:
+                      isActionablyPending && tp.approvalId && onToolApproval
+                        ? (remember: ApprovalRememberScope, actionId?: string, feedback?: string) =>
+                            onToolApproval(
+                              tp.approvalId!,
+                              tp.toolCallId || '',
+                              true,
+                              remember,
+                              tp.toolName,
+                              actionId,
+                              feedback
+                            )
+                        : undefined,
+                    onDeny:
+                      isActionablyPending && tp.approvalId && onToolApproval
+                        ? (actionId?: string, feedback?: string) =>
+                            onToolApproval(
+                              tp.approvalId!,
+                              tp.toolCallId || '',
+                              false,
+                              null,
+                              tp.toolName,
+                              actionId,
+                              feedback
+                            )
+                        : undefined,
                   };
                 });
 
                 return tools.map((t, i) => {
-                  const itemState = t.approvalState === 'pending'
-                    ? 'pending' as const
-                    : t.approvalState === 'denied'
-                      ? 'error' as const
-                    : isStreaming && !t.output
-                      ? 'active' as const
-                      : t.output
-                      ? 'done' as const
-                      : 'neutral' as const;
+                  const itemState =
+                    t.approvalState === 'pending'
+                      ? ('pending' as const)
+                      : t.approvalState === 'denied'
+                        ? ('error' as const)
+                        : isStreaming && !t.output
+                          ? ('active' as const)
+                          : t.output
+                            ? ('done' as const)
+                            : ('neutral' as const);
 
                   if (t.toolName === 'agent') {
                     const taskId = parseSubAgentTaskId(t.output);
                     const taskState = taskId ? subAgentTasks?.[taskId] : undefined;
-                    const args = t.toolArgs ? (() => { try { return JSON.parse(t.toolArgs!); } catch { return {}; } })() : {};
-                    const defaultStatus = t.approvalState === 'pending' ? 'queued'
-                      : t.output ? 'completed'
-                      : 'running';
+                    const args = t.toolArgs
+                      ? (() => {
+                          try {
+                            return JSON.parse(t.toolArgs!);
+                          } catch {
+                            return {};
+                          }
+                        })()
+                      : {};
+                    const defaultStatus =
+                      t.approvalState === 'pending' ? 'queued' : t.output ? 'completed' : 'running';
                     return (
                       <ActivityRailItem key={t.toolCallId || `sa-${ci}-${i}`} state={itemState}>
                         <SubAgentCallBlock
@@ -304,7 +389,11 @@ const AGUIPartsContent: React.FC<{
                         permissionDecision={t.permissionDecision}
                         permissionResolution={t.permissionResolution}
                         isAutoApproved={isAutoApproved}
-                        onRemovePolicy={isAutoApproved && onRemoveApprovalPolicy ? () => onRemoveApprovalPolicy(t.toolName) : undefined}
+                        onRemovePolicy={
+                          isAutoApproved && onRemoveApprovalPolicy
+                            ? () => onRemoveApprovalPolicy(t.toolName)
+                            : undefined
+                        }
                         onForceWebContext={onForceWebContext}
                         toolCallId={t.toolCallId}
                         inActivityRail
@@ -322,9 +411,12 @@ const AGUIPartsContent: React.FC<{
           const tools = chunk.items.map((tp, ti) => {
             // A historical approval snapshot without an actionable ID is
             // unresolved/stale, not proof that the user denied the call.
-            const isActionablyPending = tp.state === 'approval-requested' && !tp.output && !!tp.approvalId && !!isStreaming;
-            const approvalState = isActionablyPending ? 'pending' as const
-              : tp.state === 'error' ? 'denied' as const
+            const isActionablyPending =
+              tp.state === 'approval-requested' && !tp.output && !!tp.approvalId && !!isStreaming;
+            const approvalState = isActionablyPending
+              ? ('pending' as const)
+              : tp.state === 'error'
+                ? ('denied' as const)
                 : undefined;
 
             return {
@@ -336,32 +428,59 @@ const AGUIPartsContent: React.FC<{
               permission: tp.permission,
               permissionDecision: tp.permissionDecision,
               permissionResolution: tp.permissionResolution,
-              onApprove: (isActionablyPending && tp.approvalId && onToolApproval)
-                ? (remember: ApprovalRememberScope, actionId?: string, feedback?: string) => onToolApproval(tp.approvalId!, tp.toolCallId || '', true, remember, tp.toolName, actionId, feedback)
-                : undefined,
-              onDeny: (isActionablyPending && tp.approvalId && onToolApproval)
-                ? (actionId?: string, feedback?: string) => onToolApproval(tp.approvalId!, tp.toolCallId || '', false, null, tp.toolName, actionId, feedback)
-                : undefined,
+              onApprove:
+                isActionablyPending && tp.approvalId && onToolApproval
+                  ? (remember: ApprovalRememberScope, actionId?: string, feedback?: string) =>
+                      onToolApproval(
+                        tp.approvalId!,
+                        tp.toolCallId || '',
+                        true,
+                        remember,
+                        tp.toolName,
+                        actionId,
+                        feedback
+                      )
+                  : undefined,
+              onDeny:
+                isActionablyPending && tp.approvalId && onToolApproval
+                  ? (actionId?: string, feedback?: string) =>
+                      onToolApproval(
+                        tp.approvalId!,
+                        tp.toolCallId || '',
+                        false,
+                        null,
+                        tp.toolName,
+                        actionId,
+                        feedback
+                      )
+                  : undefined,
             };
           });
 
           // Separate agent calls from regular tool calls
-          const subAgentTools = tools.filter(t => t.toolName === 'agent');
-          const regularTools = tools.filter(t => t.toolName !== 'agent');
+          const subAgentTools = tools.filter((t) => t.toolName === 'agent');
+          const regularTools = tools.filter((t) => t.toolName !== 'agent');
 
           return (
             <div key={ci} className="pl-1 min-w-0 overflow-x-hidden">
               {subAgentTools.map((t, i) => {
                 const taskId = parseSubAgentTaskId(t.output);
                 const taskState = taskId ? subAgentTasks?.[taskId] : undefined;
-                const args = t.toolArgs ? (() => { try { return JSON.parse(t.toolArgs!); } catch { return {}; } })() : {};
+                const args = t.toolArgs
+                  ? (() => {
+                      try {
+                        return JSON.parse(t.toolArgs!);
+                      } catch {
+                        return {};
+                      }
+                    })()
+                  : {};
                 // If output exists, the tool call returned — default to 'completed'.
                 // This correctly handles linear (synchronous) subagents that run inline
                 // without emitting SSE events. Polling will correct if the backend
                 // reports a different status (e.g. background agent still in-flight).
-                const defaultStatus = t.approvalState === 'pending' ? 'queued'
-                  : t.output ? 'completed'
-                  : 'running';
+                const defaultStatus =
+                  t.approvalState === 'pending' ? 'queued' : t.output ? 'completed' : 'running';
                 return (
                   <SubAgentCallBlock
                     key={t.toolCallId || `sa-${i}`}
@@ -377,14 +496,20 @@ const AGUIPartsContent: React.FC<{
                 );
               })}
               {regularTools.length > 0 && (
-                <ToolSequenceGroup tools={regularTools} isStreaming={isStreaming} toolApprovalPolicy={toolApprovalPolicy} onRemoveApprovalPolicy={onRemoveApprovalPolicy} onForceWebContext={onForceWebContext} />
+                <ToolSequenceGroup
+                  tools={regularTools}
+                  isStreaming={isStreaming}
+                  toolApprovalPolicy={toolApprovalPolicy}
+                  onRemoveApprovalPolicy={onRemoveApprovalPolicy}
+                  onForceWebContext={onForceWebContext}
+                />
               )}
             </div>
           );
         }
 
         if (chunk.type === 'reasoning') {
-          const reasoningText = chunk.items.map(p => p.text || '').join('');
+          const reasoningText = chunk.items.map((p) => p.text || '').join('');
           if (!reasoningText.trim()) return null;
           const isChunkStreaming = isStreaming && ci === chunks.length - 1;
           const header = getReasoningHeader(reasoningText, !!isChunkStreaming);
@@ -392,18 +517,24 @@ const AGUIPartsContent: React.FC<{
           return (
             <div key={ci} className="my-1.5 min-w-0 w-full pl-1">
               <details className="group">
-                <summary className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono font-bold tracking-wide uppercase border-2 rounded-sm transition-all select-none cursor-pointer max-w-full ${
-                  isChunkStreaming 
-                    ? 'brutal-running-mono !text-brutal-black dark:!text-white border-brutal-black dark:border-white shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]' 
-                    : 'bg-transparent text-neutral-600 dark:text-neutral-400 border-neutral-400 dark:border-zinc-600 hover:border-brutal-black dark:hover:border-white hover:text-brutal-black dark:hover:text-white hover:shadow-[2px_2px_0px_#000] dark:hover:shadow-[2px_2px_0px_#fff]'
-                }`}>
+                <summary
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono font-bold tracking-wide uppercase border-2 rounded-sm transition-all select-none cursor-pointer max-w-full ${
+                    isChunkStreaming
+                      ? 'brutal-running-mono !text-brutal-black dark:!text-white border-brutal-black dark:border-white shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]'
+                      : 'bg-transparent text-neutral-600 dark:text-neutral-400 border-neutral-400 dark:border-zinc-600 hover:border-brutal-black dark:hover:border-white hover:text-brutal-black dark:hover:text-white hover:shadow-[2px_2px_0px_#000] dark:hover:shadow-[2px_2px_0px_#fff]'
+                  }`}
+                >
                   <span className="truncate flex items-center gap-1.5 flex-1 min-w-0 font-mono">
                     {header}
                   </span>
                 </summary>
                 <div className="mt-1.5 p-4 bg-neutral-50 dark:bg-zinc-900 border-2 rounded-sm border-brutal-black dark:border-white w-full overflow-x-hidden shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]">
                   <div className="text-[13px] md:text-sm text-brutal-black/90 dark:text-neutral-300 leading-relaxed break-words opacity-90">
-                    <MarkdownRenderer content={reasoningText} onFileClick={onFileClick} streamingLite={isChunkStreaming} />
+                    <MarkdownRenderer
+                      content={reasoningText}
+                      onFileClick={onFileClick}
+                      streamingLite={isChunkStreaming}
+                    />
                   </div>
                 </div>
               </details>
@@ -421,7 +552,7 @@ const AGUIPartsContent: React.FC<{
                     request={p.acpPermission}
                     stale={!isStreaming}
                   />
-                ) : null,
+                ) : null
               )}
             </React.Fragment>
           );
@@ -431,9 +562,7 @@ const AGUIPartsContent: React.FC<{
           return (
             <React.Fragment key={ci}>
               {chunk.items.map((p, pi) =>
-                p.acpNotice ? (
-                  <AcpSessionResetNotice key={pi} notice={p.acpNotice} />
-                ) : null,
+                p.acpNotice ? <AcpSessionResetNotice key={pi} notice={p.acpNotice} /> : null
               )}
             </React.Fragment>
           );
@@ -449,7 +578,9 @@ const AGUIPartsContent: React.FC<{
                   <div key={pi} className="my-2">
                     <A2UIRenderer
                       component={surface.component}
-                      onAction={(action, context) => onInlineAction?.(surface.id, action, context ?? {})}
+                      onAction={(action, context) =>
+                        onInlineAction?.(surface.id, action, context ?? {})
+                      }
                     />
                   </div>
                 );
@@ -459,7 +590,7 @@ const AGUIPartsContent: React.FC<{
         }
 
         // Text chunk
-        const fullText = chunk.items.map(p => p.text || '').join('');
+        const fullText = chunk.items.map((p) => p.text || '').join('');
         const isLastChunk = ci === chunks.length - 1;
         // An empty chunk gets no bubble, not even the last one. The stream
         // opens its text part before the first token -- seconds early under
@@ -469,7 +600,11 @@ const AGUIPartsContent: React.FC<{
         return (
           <div key={ci} className="relative px-1 py-1 text-brutal-black dark:text-neutral-100">
             <div className="space-y-4">
-              <MarkdownRenderer content={fullText} onFileClick={onFileClick} streamingLite={Boolean(isStreaming && isLastChunk)} />
+              <MarkdownRenderer
+                content={fullText}
+                onFileClick={onFileClick}
+                streamingLite={Boolean(isStreaming && isLastChunk)}
+              />
               {isStreaming && isLastChunk && (
                 <span className="animate-brutal-blink inline-block w-2.5 h-4 bg-brutal-black align-middle ml-1" />
               )}
@@ -481,7 +616,10 @@ const AGUIPartsContent: React.FC<{
   );
 };
 
-const RetryButton: React.FC<{ onClick: () => void; className?: string }> = ({ onClick, className }) => {
+const RetryButton: React.FC<{ onClick: () => void; className?: string }> = ({
+  onClick,
+  className,
+}) => {
   const [retrying, setRetrying] = useState(false);
 
   const handleClick = async () => {
@@ -508,7 +646,11 @@ const RetryButton: React.FC<{ onClick: () => void; className?: string }> = ({ on
         stroke="currentColor"
         strokeWidth={2.5}
       >
-        <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M20 20v-5h-5M4 9a9 9 0 0115-3M20 15a9 9 0 01-15 3" />
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M4 4v5h5M20 20v-5h-5M4 9a9 9 0 0115-3M20 15a9 9 0 01-15 3"
+        />
       </svg>
     </button>
   );
@@ -524,8 +666,18 @@ const ForkButton: React.FC<{ onClick: () => void }> = ({ onClick }) => {
       aria-label={t('conversationFork.button')}
       className="w-6 h-6 flex items-center justify-center bg-transparent text-neutral-400 hover:text-brutal-black dark:hover:text-white transition-colors"
     >
-      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M6 3v6a3 3 0 003 3h9M15 8l4 4-4 4M6 21v-4" />
+      <svg
+        className="h-3.5 w-3.5"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+        strokeWidth={2.5}
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M6 3v6a3 3 0 003 3h9M15 8l4 4-4 4M6 21v-4"
+        />
       </svg>
     </button>
   );
@@ -553,9 +705,7 @@ const ProviderFavicon: React.FC<{ model: string }> = ({ model }) => {
           loading="eager"
         />
       ) : (
-        <span className="text-[5px] font-black leading-none text-white">
-          {initials}
-        </span>
+        <span className="text-[5px] font-black leading-none text-white">{initials}</span>
       )}
     </span>
   );
@@ -616,11 +766,14 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   const isThinking = isStreamingThis && !message.content && !hasStreamedOutput(effectiveParts);
   const workedDurationSeconds = useMemo(
     () => getTimestampDeltaSeconds(previousMessageTimestamp, message.timestamp),
-    [previousMessageTimestamp, message.timestamp],
+    [previousMessageTimestamp, message.timestamp]
   );
   const legacyBlocks = useMemo(
-    () => (effectiveParts === undefined ? filterBlocks(splitAssistantContent(message.content || '')) : []),
-    [effectiveParts, message.content],
+    () =>
+      effectiveParts === undefined
+        ? filterBlocks(splitAssistantContent(message.content || ''))
+        : [],
+    [effectiveParts, message.content]
   );
 
   // Citation sources for this message: collected from the 'citation-sources'
@@ -633,7 +786,10 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
     for (const p of parts) {
       if (p.type === 'citation-sources' && p.citationSources) {
         for (const s of p.citationSources) {
-          if (!seen.has(s.id)) { seen.add(s.id); out.push(s); }
+          if (!seen.has(s.id)) {
+            seen.add(s.id);
+            out.push(s);
+          }
         }
       }
     }
@@ -646,7 +802,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   // citationSourcesList still drives the bottom SourcesPanel.
   const citationSourcesMap = useMemo<CitationSourcesMap>(() => {
     if (chatCitationSources && chatCitationSources.size > 0) return chatCitationSources;
-    return new Map(citationSourcesList.map(s => [s.id, s]));
+    return new Map(citationSourcesList.map((s) => [s.id, s]));
   }, [chatCitationSources, citationSourcesList]);
 
   // Suppress the streaming cursor during the assembly→reveal animation.
@@ -670,15 +826,20 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
     if (effectiveParts) {
       return formatTextWithCitationReferences(
         effectiveParts
-          .filter(p => p.type === 'text')
-          .map(p => p.text || '')
+          .filter((p) => p.type === 'text')
+          .map((p) => p.text || '')
           .join(''),
-        citationSourcesMap,
+        citationSourcesMap
       ).trim();
     } else {
       const text = legacyBlocks
-        .filter(b => b.type !== 'log' && b.type !== 'reasoning' && b.type !== 'toolCall' && b.type !== 'a2ui')
-        .map(b => (b.type === 'code' ? '```' + (b.lang || '') + '\n' + b.content + '\n```' : b.content))
+        .filter(
+          (b) =>
+            b.type !== 'log' && b.type !== 'reasoning' && b.type !== 'toolCall' && b.type !== 'a2ui'
+        )
+        .map((b) =>
+          b.type === 'code' ? '```' + (b.lang || '') + '\n' + b.content + '\n```' : b.content
+        )
         .join('\n\n');
       return formatTextWithCitationReferences(text, citationSourcesMap).trim();
     }
@@ -692,16 +853,13 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   let isPendingApproval: boolean = false;
 
   if (effectiveParts && effectiveParts.length > 0) {
-    hasError = effectiveParts.some(p => p.type === 'tool' && p.state === 'error');
+    hasError = effectiveParts.some((p) => p.type === 'tool' && p.state === 'error');
     isPendingApproval = effectiveParts.some(
-      p => p.type === 'tool'
-        && p.state === 'approval-requested'
-        && !p.output
-        && !!p.approvalId,
+      (p) => p.type === 'tool' && p.state === 'approval-requested' && !p.output && !!p.approvalId
     );
 
     // 优先找正在 running 的 tool
-    const runningTool = effectiveParts.find(p => p.type === 'tool' && !p.output);
+    const runningTool = effectiveParts.find((p) => p.type === 'tool' && !p.output);
     if (runningTool) {
       currentToolName = runningTool.toolName;
     } else {
@@ -714,10 +872,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   } else {
     // For legacy blocks, check if there's a pending tool call
     isPendingApproval = legacyBlocks.some(
-      b => b.type === 'toolCall'
-        && b.approvalState === 'pending'
-        && !b.content
-        && !!b.approvalId,
+      (b) => b.type === 'toolCall' && b.approvalState === 'pending' && !b.content && !!b.approvalId
     );
   }
 
@@ -754,12 +909,14 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
       </div>
     </div>
   ) : (
-    <div className={`
+    <div
+      className={`
       sticky top-2 z-20 ml-0 mr-auto mb-3 overflow-hidden
       transition-all duration-500 ease-[cubic-bezier(0.4,0,0.2,1)] max-w-full
       bg-white dark:bg-zinc-800 border-3 border-brutal-black shadow-brutal-lg
       ${isThinking ? 'w-[400px] h-[80px]' : 'w-[90px] h-[40px]'}
-    `}>
+    `}
+    >
       <div className="absolute inset-0 opacity-100 scale-100">
         <ThinkingAnimation isThinking={isThinking} />
         <AgentBadge
@@ -768,11 +925,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
           currentToolName={currentToolName}
           hasError={hasError}
           isPendingApproval={isPendingApproval}
-          icon={
-            isAcp ? (
-              <AcpAgentIcon id={acpAgent} className="w-6 h-6 shrink-0" />
-            ) : undefined
-          }
+          icon={isAcp ? <AcpAgentIcon id={acpAgent} className="w-6 h-6 shrink-0" /> : undefined}
         />
         {isAcp && (
           // The badge box is only 90px wide, so keep this to a marker and let
@@ -788,29 +941,24 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
     </div>
   );
 
-  const fileChangeSummary = fileChangeChatId && message.file_changes ? (
-    <div className="px-1 pt-1">
-      <FileChangeSummary
-        chatId={fileChangeChatId}
-        messageIndex={message.file_change_message_index ?? messageIndex}
-        files={message.file_changes}
-        initiallyUndone={message.file_changes_undone === true}
-        onFileClick={onFileClick}
-      />
-    </div>
-  ) : null;
+  const fileChangeSummary =
+    fileChangeChatId && message.file_changes ? (
+      <div className="px-1 pt-1">
+        <FileChangeSummary
+          chatId={fileChangeChatId}
+          messageIndex={message.file_change_message_index ?? messageIndex}
+          files={message.file_changes}
+          initiallyUndone={message.file_changes_undone === true}
+          onFileClick={onFileClick}
+        />
+      </div>
+    ) : null;
 
   const messageFooter = (
     <div className="flex min-h-6 flex-wrap items-center gap-x-2 gap-y-1 px-1 pt-0.5">
-      {fullMessageText && !isThinking && (
-        <CopyButton text={fullMessageText} className="relative" />
-      )}
-      {onRetry && !isStreamingThis && !isThinking && (
-        <RetryButton onClick={onRetry} />
-      )}
-      {onFork && !isStreamingThis && !isThinking && (
-        <ForkButton onClick={onFork} />
-      )}
+      {fullMessageText && !isThinking && <CopyButton text={fullMessageText} className="relative" />}
+      {onRetry && !isStreamingThis && !isThinking && <RetryButton onClick={onRetry} />}
+      {onFork && !isStreamingThis && !isThinking && <ForkButton onClick={onFork} />}
       {!isThinking && <SourcesPanel sources={citationSourcesList} />}
       {!isThinking && <ModelSignature model={modelSignature} />}
       {message.timestamp && !isStreamingThis && (
@@ -825,35 +973,37 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   if (effectiveParts !== undefined) {
     return (
       <CitationProvider sources={citationSourcesMap}>
-      <div className="group w-full max-w-4xl break-all overflow-x-clip text-sm leading-relaxed relative pr-4 md:pr-12 animate-brutal-pop">
-        {/* Badge/Assembly Container */}
-        {badgeContainer}
+        <div className="group w-full max-w-4xl break-all overflow-x-clip text-sm leading-relaxed relative pr-4 md:pr-12 animate-brutal-pop">
+          {/* Badge/Assembly Container */}
+          {badgeContainer}
 
-        <div className={`grid transition-[grid-template-rows] duration-500 ease-out ${isThinking ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]'}`}>
-          <div className="overflow-hidden min-h-0 min-w-0 flex flex-col space-y-3 pr-2 pb-2">
-            {hasParts ? (
-              <AGUIPartsContent
-                parts={effectiveParts}
-                messageIndex={messageIndex}
-                workedDurationSeconds={workedDurationSeconds}
-                streamStartedAtMs={streamStartedAtMs}
-                isStreaming={isStreamingThis}
-                onFileClick={onFileClick}
-                onToolApproval={onToolApproval}
-                toolApprovalPolicy={toolApprovalPolicy}
-                onRemoveApprovalPolicy={onRemoveApprovalPolicy}
-                onInlineAction={onInlineAction}
-                subAgentTasks={subAgentTasks}
-                onOpenSubAgentSidebar={onOpenSubAgentSidebar}
-                onStopSubAgent={onStopSubAgent}
-                onForceWebContext={onForceWebContext}
-              />
-            ) : null}
-            {fileChangeSummary}
-            {messageFooter}
+          <div
+            className={`grid transition-[grid-template-rows] duration-500 ease-out ${isThinking ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]'}`}
+          >
+            <div className="overflow-hidden min-h-0 min-w-0 flex flex-col space-y-3 pr-2 pb-2">
+              {hasParts ? (
+                <AGUIPartsContent
+                  parts={effectiveParts}
+                  messageIndex={messageIndex}
+                  workedDurationSeconds={workedDurationSeconds}
+                  streamStartedAtMs={streamStartedAtMs}
+                  isStreaming={isStreamingThis}
+                  onFileClick={onFileClick}
+                  onToolApproval={onToolApproval}
+                  toolApprovalPolicy={toolApprovalPolicy}
+                  onRemoveApprovalPolicy={onRemoveApprovalPolicy}
+                  onInlineAction={onInlineAction}
+                  subAgentTasks={subAgentTasks}
+                  onOpenSubAgentSidebar={onOpenSubAgentSidebar}
+                  onStopSubAgent={onStopSubAgent}
+                  onForceWebContext={onForceWebContext}
+                />
+              ) : null}
+              {fileChangeSummary}
+              {messageFooter}
+            </div>
           </div>
         </div>
-      </div>
       </CitationProvider>
     );
   }
@@ -874,7 +1024,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
 
   // Detect tool-only messages — but agent tool always needs StaticContent
   // because it renders SubAgentCallBlock, not a step pill.
-  const hasSubAgentCall = blocks.some(b => b.type === 'toolCall' && b.toolName === 'agent');
+  const hasSubAgentCall = blocks.some((b) => b.type === 'toolCall' && b.toolName === 'agent');
   const toolOnly = !isStreamingThis && isToolOnlyMessage(blocks) && !hasSubAgentCall;
 
   if (toolOnly) {
@@ -904,7 +1054,12 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
     const isStep = b.type === 'toolCall';
     const isReasoning = b.type === 'reasoning';
     // Use the type directly for chunking to preserve interleaved order
-    const type = (b.type === 'markdown' || b.type === 'code' || b.type === 'log') ? 'content' : b.type === 'a2ui' ? 'a2ui' : b.type;
+    const type =
+      b.type === 'markdown' || b.type === 'code' || b.type === 'log'
+        ? 'content'
+        : b.type === 'a2ui'
+          ? 'a2ui'
+          : b.type;
 
     if (currentGroup.length === 0) {
       currentType = type;
@@ -924,7 +1079,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   // Filter out empty content chunks, unless it's the active streaming head
   const validChunks = chunks.filter((chunk, idx) => {
     if (chunk.type !== 'content') return true;
-    const hasText = chunk.blocks.some(b => b.content.trim().length > 0);
+    const hasText = chunk.blocks.some((b) => b.content.trim().length > 0);
     const isLastAndStreaming = isStreamingThis && idx === chunks.length - 1;
     return hasText || isLastAndStreaming;
   });
@@ -935,181 +1090,246 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
 
   const legacyRenderGroups = groupActivityChunks(
     validChunks,
-    chunk => chunk.type === 'reasoning' || chunk.type === 'toolCall',
+    (chunk) => chunk.type === 'reasoning' || chunk.type === 'toolCall'
   );
 
   return (
     <CitationProvider sources={citationSourcesMap}>
-    <div className="group w-full max-w-4xl break-all overflow-x-clip text-sm leading-relaxed relative pr-4 md:pr-12 animate-brutal-pop">
-      {/* Badge/Assembly Container is rendered at the top of the entire message timeline */}
-      {badgeContainer}
+      <div className="group w-full max-w-4xl break-all overflow-x-clip text-sm leading-relaxed relative pr-4 md:pr-12 animate-brutal-pop">
+        {/* Badge/Assembly Container is rendered at the top of the entire message timeline */}
+        {badgeContainer}
 
-      <div className={`grid transition-[grid-template-rows] duration-500 ease-out ${isThinking ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]'}`}>
-        <div className="overflow-hidden min-h-0 flex flex-col space-y-3 pr-2 pb-2">
-          {legacyRenderGroups.map((group, groupIndex) => {
-            if (group.type === 'activity') {
-              const activityGroupOrdinal = getActivityGroupOrdinal(legacyRenderGroups, groupIndex);
-              return (
-                <ActivityRail
-                  key={`legacy-activity-${groupIndex}`}
-                  itemCount={countActivityItems(group.chunks)}
-                  durationSeconds={workedDurationSeconds}
-                  startedAtMs={streamStartedAtMs}
-                  showDuration={activityGroupOrdinal === 0}
-                  defaultExpanded={isStreamingThis}
-                  isActive={isStreamingThis}
-                  hasPending={hasLegacyPendingApproval(group.chunks)}
-                  currentLabel={getLegacyActivityLabel(group.chunks, isStreamingThis)}
-                >
-                  {group.chunks.map(({ chunk, index: idx }) => {
-                    if (chunk.type === 'reasoning') {
-                      const isChunkStreaming = isStreamingThis && idx === validChunks.length - 1;
-                      return chunk.blocks.map((rb, ri) => (
-                        <ReasoningRailItem
-                          key={`legacy-reasoning-${idx}-${ri}`}
-                          text={rb.content}
-                          isStreaming={isChunkStreaming && ri === chunk.blocks.length - 1}
-                          onFileClick={onFileClick}
-                        />
-                      ));
-                    }
-
-                    return chunk.blocks.map((b, bi) => {
-                      const isPending = b.approvalState === 'pending' && !b.content;
-                      const isActive = isStreamingThis && !b.content;
-                      const isDenied = b.approvalState === 'denied';
-                      const isDone = Boolean(b.content);
-                      return (
-                        <ActivityRailItem
-                          key={`legacy-tool-${idx}-${bi}`}
-                          state={isPending ? 'pending' : isDenied ? 'error' : isActive ? 'active' : isDone ? 'done' : 'neutral'}
-                        >
-                          <StaticContent
-                            blocks={[b]}
-                            messageIndex={messageIndex}
+        <div
+          className={`grid transition-[grid-template-rows] duration-500 ease-out ${isThinking ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]'}`}
+        >
+          <div className="overflow-hidden min-h-0 flex flex-col space-y-3 pr-2 pb-2">
+            {legacyRenderGroups.map((group, groupIndex) => {
+              if (group.type === 'activity') {
+                const activityGroupOrdinal = getActivityGroupOrdinal(
+                  legacyRenderGroups,
+                  groupIndex
+                );
+                return (
+                  <ActivityRail
+                    key={`legacy-activity-${groupIndex}`}
+                    itemCount={countActivityItems(group.chunks)}
+                    durationSeconds={workedDurationSeconds}
+                    startedAtMs={streamStartedAtMs}
+                    showDuration={activityGroupOrdinal === 0}
+                    defaultExpanded={isStreamingThis}
+                    isActive={isStreamingThis}
+                    hasPending={hasLegacyPendingApproval(group.chunks)}
+                    currentLabel={getLegacyActivityLabel(group.chunks, isStreamingThis)}
+                  >
+                    {group.chunks.map(({ chunk, index: idx }) => {
+                      if (chunk.type === 'reasoning') {
+                        const isChunkStreaming = isStreamingThis && idx === validChunks.length - 1;
+                        return chunk.blocks.map((rb, ri) => (
+                          <ReasoningRailItem
+                            key={`legacy-reasoning-${idx}-${ri}`}
+                            text={rb.content}
+                            isStreaming={isChunkStreaming && ri === chunk.blocks.length - 1}
                             onFileClick={onFileClick}
-                            onToolApproval={onToolApproval}
-                            toolApprovalPolicy={toolApprovalPolicy}
-                            onRemoveApprovalPolicy={onRemoveApprovalPolicy}
-                            onInlineAction={onInlineAction}
-                            subAgentTasks={subAgentTasks}
-                            onOpenSubAgentSidebar={onOpenSubAgentSidebar}
-                            onStopSubAgent={onStopSubAgent}
-                            onForceWebContext={onForceWebContext}
-                            inActivityRail
                           />
-                        </ActivityRailItem>
-                      );
-                    });
-                  })}
-                </ActivityRail>
-              );
-            }
+                        ));
+                      }
 
-            const { chunk, index: idx } = group;
-            if (chunk.type === 'reasoning') {
-              const isChunkStreaming = isStreamingThis && idx === validChunks.length - 1;
-              return (
-                <div key={idx} className="flex flex-col space-y-2">
-                  {chunk.blocks.map((rb, ri) => (
-                    <div key={`rb-${idx}-${ri}`} className="my-1.5 min-w-0 w-full pl-1">
-                      <details className="group">
-                        <summary className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono font-bold tracking-wide uppercase border-2 rounded-sm transition-all select-none cursor-pointer max-w-full ${
-                          isChunkStreaming 
-                            ? 'brutal-running-mono !text-brutal-black dark:!text-white border-brutal-black dark:border-white shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]' 
-                            : 'bg-transparent text-neutral-600 dark:text-neutral-400 border-neutral-400 dark:border-zinc-600 hover:border-brutal-black dark:hover:border-white hover:text-brutal-black dark:hover:text-white hover:shadow-[2px_2px_0px_#000] dark:hover:shadow-[2px_2px_0px_#fff]'
-                        }`}>
-                          <span className="truncate flex items-center gap-1.5 flex-1 min-w-0 font-mono">
-                            {getReasoningHeader(rb.content, !!isChunkStreaming)}
-                          </span>
-                        </summary>
-                        <div className="mt-1.5 p-4 bg-neutral-50 dark:bg-zinc-900 border-2 rounded-sm border-brutal-black dark:border-white w-full overflow-x-hidden shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]">
-                          <div className="text-[13px] md:text-sm text-brutal-black/90 dark:text-neutral-300 leading-relaxed break-words opacity-90">
-                            <MarkdownRenderer
-                              content={rb.content}
+                      return chunk.blocks.map((b, bi) => {
+                        const isPending = b.approvalState === 'pending' && !b.content;
+                        const isActive = isStreamingThis && !b.content;
+                        const isDenied = b.approvalState === 'denied';
+                        const isDone = Boolean(b.content);
+                        return (
+                          <ActivityRailItem
+                            key={`legacy-tool-${idx}-${bi}`}
+                            state={
+                              isPending
+                                ? 'pending'
+                                : isDenied
+                                  ? 'error'
+                                  : isActive
+                                    ? 'active'
+                                    : isDone
+                                      ? 'done'
+                                      : 'neutral'
+                            }
+                          >
+                            <StaticContent
+                              blocks={[b]}
+                              messageIndex={messageIndex}
                               onFileClick={onFileClick}
-                              streamingLite={(isChunkStreaming && ri === chunk.blocks.length - 1) || rb.content.length > LARGE_MARKDOWN_RENDER_THRESHOLD}
+                              onToolApproval={onToolApproval}
+                              toolApprovalPolicy={toolApprovalPolicy}
+                              onRemoveApprovalPolicy={onRemoveApprovalPolicy}
+                              onInlineAction={onInlineAction}
+                              subAgentTasks={subAgentTasks}
+                              onOpenSubAgentSidebar={onOpenSubAgentSidebar}
+                              onStopSubAgent={onStopSubAgent}
+                              onForceWebContext={onForceWebContext}
+                              inActivityRail
                             />
+                          </ActivityRailItem>
+                        );
+                      });
+                    })}
+                  </ActivityRail>
+                );
+              }
+
+              const { chunk, index: idx } = group;
+              if (chunk.type === 'reasoning') {
+                const isChunkStreaming = isStreamingThis && idx === validChunks.length - 1;
+                return (
+                  <div key={idx} className="flex flex-col space-y-2">
+                    {chunk.blocks.map((rb, ri) => (
+                      <div key={`rb-${idx}-${ri}`} className="my-1.5 min-w-0 w-full pl-1">
+                        <details className="group">
+                          <summary
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono font-bold tracking-wide uppercase border-2 rounded-sm transition-all select-none cursor-pointer max-w-full ${
+                              isChunkStreaming
+                                ? 'brutal-running-mono !text-brutal-black dark:!text-white border-brutal-black dark:border-white shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]'
+                                : 'bg-transparent text-neutral-600 dark:text-neutral-400 border-neutral-400 dark:border-zinc-600 hover:border-brutal-black dark:hover:border-white hover:text-brutal-black dark:hover:text-white hover:shadow-[2px_2px_0px_#000] dark:hover:shadow-[2px_2px_0px_#fff]'
+                            }`}
+                          >
+                            <span className="truncate flex items-center gap-1.5 flex-1 min-w-0 font-mono">
+                              {getReasoningHeader(rb.content, !!isChunkStreaming)}
+                            </span>
+                          </summary>
+                          <div className="mt-1.5 p-4 bg-neutral-50 dark:bg-zinc-900 border-2 rounded-sm border-brutal-black dark:border-white w-full overflow-x-hidden shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]">
+                            <div className="text-[13px] md:text-sm text-brutal-black/90 dark:text-neutral-300 leading-relaxed break-words opacity-90">
+                              <MarkdownRenderer
+                                content={rb.content}
+                                onFileClick={onFileClick}
+                                streamingLite={
+                                  (isChunkStreaming && ri === chunk.blocks.length - 1) ||
+                                  rb.content.length > LARGE_MARKDOWN_RENDER_THRESHOLD
+                                }
+                              />
+                            </div>
                           </div>
-                        </div>
-                      </details>
-                    </div>
-                  ))}
-                </div>
-              );
-            }
+                        </details>
+                      </div>
+                    ))}
+                  </div>
+                );
+              }
 
-            if (chunk.type === 'toolCall') {
-              const subAgentBlocks = chunk.blocks.filter(b => b.toolName === 'agent');
-              const regularBlocks = chunk.blocks.filter(b => b.toolName !== 'agent');
-              return (
-                <div key={idx} className="flex flex-col space-y-2">
-                  {subAgentBlocks.length > 0 && (
-                    <div className="pl-1">
-                      <StaticContent blocks={subAgentBlocks} messageIndex={messageIndex} onFileClick={onFileClick} onToolApproval={onToolApproval} toolApprovalPolicy={toolApprovalPolicy} onRemoveApprovalPolicy={onRemoveApprovalPolicy} onInlineAction={onInlineAction} subAgentTasks={subAgentTasks} onOpenSubAgentSidebar={onOpenSubAgentSidebar} onStopSubAgent={onStopSubAgent} />
-                    </div>
-                  )}
-                  {regularBlocks.length > 0 && (
-                    <div className="pl-1">
-                      <StepPills blocks={regularBlocks} messageIndex={messageIndex} isStreaming={isStreamingThis} onToolApproval={onToolApproval} toolApprovalPolicy={toolApprovalPolicy} onRemoveApprovalPolicy={onRemoveApprovalPolicy} />
-                    </div>
-                  )}
-                </div>
-              );
-            }
-
-            if (chunk.type === 'a2ui') {
-              return (
-                <div key={idx} className="flex flex-col space-y-2">
-                  {chunk.blocks.map((b, bi) => {
-                    const surface = b.a2uiSurface as A2UISurface | undefined;
-                    if (!surface) return null;
-                    return (
-                      <div key={bi} className="my-2">
-                        <A2UIRenderer
-                          component={surface.component}
-                          onAction={(action, context) => onInlineAction?.(surface.id, action, context ?? {})}
+              if (chunk.type === 'toolCall') {
+                const subAgentBlocks = chunk.blocks.filter((b) => b.toolName === 'agent');
+                const regularBlocks = chunk.blocks.filter((b) => b.toolName !== 'agent');
+                return (
+                  <div key={idx} className="flex flex-col space-y-2">
+                    {subAgentBlocks.length > 0 && (
+                      <div className="pl-1">
+                        <StaticContent
+                          blocks={subAgentBlocks}
+                          messageIndex={messageIndex}
+                          onFileClick={onFileClick}
+                          onToolApproval={onToolApproval}
+                          toolApprovalPolicy={toolApprovalPolicy}
+                          onRemoveApprovalPolicy={onRemoveApprovalPolicy}
+                          onInlineAction={onInlineAction}
+                          subAgentTasks={subAgentTasks}
+                          onOpenSubAgentSidebar={onOpenSubAgentSidebar}
+                          onStopSubAgent={onStopSubAgent}
                         />
                       </div>
-                    );
-                  })}
+                    )}
+                    {regularBlocks.length > 0 && (
+                      <div className="pl-1">
+                        <StepPills
+                          blocks={regularBlocks}
+                          messageIndex={messageIndex}
+                          isStreaming={isStreamingThis}
+                          onToolApproval={onToolApproval}
+                          toolApprovalPolicy={toolApprovalPolicy}
+                          onRemoveApprovalPolicy={onRemoveApprovalPolicy}
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+
+              if (chunk.type === 'a2ui') {
+                return (
+                  <div key={idx} className="flex flex-col space-y-2">
+                    {chunk.blocks.map((b, bi) => {
+                      const surface = b.a2uiSurface as A2UISurface | undefined;
+                      if (!surface) return null;
+                      return (
+                        <div key={bi} className="my-2">
+                          <A2UIRenderer
+                            component={surface.component}
+                            onAction={(action, context) =>
+                              onInlineAction?.(surface.id, action, context ?? {})
+                            }
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              }
+
+              const cleanContent = chunk.blocks
+                .filter((b) => b.type !== 'log' && b.type !== 'reasoning')
+                .map((b) =>
+                  b.type === 'code'
+                    ? '```' + (b.lang || '') + '\n' + b.content + '\n```'
+                    : b.content
+                )
+                .join('')
+                .trim();
+
+              const isThought = cleanContent.startsWith('Thought:');
+              const hasStepInfo = !!message.stepInfo;
+              const showCopyButton = cleanContent && !isThought && !hasStepInfo;
+              const isLastChunk = idx === validChunks.length - 1;
+              const isStreamingChunk = isStreamingThis && isLastChunk;
+
+              // For non-step chunks, filter out reasoning (should only appear in step chunks)
+              const contentBlocks =
+                chunk.type === 'reasoning' || chunk.type === 'toolCall'
+                  ? chunk.blocks
+                  : chunk.blocks.filter((b) => b.type !== 'reasoning');
+
+              return (
+                <div
+                  key={idx}
+                  className="relative px-1 py-1 text-brutal-black dark:text-neutral-100"
+                >
+                  <div className="space-y-4">
+                    {isStreamingChunk ? (
+                      <StreamingContent
+                        blocks={contentBlocks}
+                        messageIndex={messageIndex}
+                        showCursor={cursorReady}
+                        onFileClick={onFileClick}
+                      />
+                    ) : (
+                      <StaticContent
+                        blocks={contentBlocks}
+                        messageIndex={messageIndex}
+                        onFileClick={onFileClick}
+                        onToolApproval={onToolApproval}
+                        toolApprovalPolicy={toolApprovalPolicy}
+                        onRemoveApprovalPolicy={onRemoveApprovalPolicy}
+                        onInlineAction={onInlineAction}
+                        subAgentTasks={subAgentTasks}
+                        onOpenSubAgentSidebar={onOpenSubAgentSidebar}
+                        onStopSubAgent={onStopSubAgent}
+                      />
+                    )}
+                  </div>
                 </div>
               );
-            }
-
-            const cleanContent = chunk.blocks
-              .filter(b => b.type !== 'log' && b.type !== 'reasoning')
-              .map(b => (b.type === 'code' ? '```' + (b.lang || '') + '\n' + b.content + '\n```' : b.content))
-              .join('').trim();
-
-            const isThought = cleanContent.startsWith('Thought:');
-            const hasStepInfo = !!message.stepInfo;
-            const showCopyButton = cleanContent && !isThought && !hasStepInfo;
-            const isLastChunk = idx === validChunks.length - 1;
-            const isStreamingChunk = isStreamingThis && isLastChunk;
-
-            // For non-step chunks, filter out reasoning (should only appear in step chunks)
-            const contentBlocks = chunk.type === 'reasoning' || chunk.type === 'toolCall'
-              ? chunk.blocks
-              : chunk.blocks.filter(b => b.type !== 'reasoning');
-
-            return (
-              <div key={idx} className="relative px-1 py-1 text-brutal-black dark:text-neutral-100">
-                <div className="space-y-4">
-                  {isStreamingChunk ? (
-                    <StreamingContent blocks={contentBlocks} messageIndex={messageIndex} showCursor={cursorReady} onFileClick={onFileClick} />
-                  ) : (
-                    <StaticContent blocks={contentBlocks} messageIndex={messageIndex} onFileClick={onFileClick} onToolApproval={onToolApproval} toolApprovalPolicy={toolApprovalPolicy} onRemoveApprovalPolicy={onRemoveApprovalPolicy} onInlineAction={onInlineAction} subAgentTasks={subAgentTasks} onOpenSubAgentSidebar={onOpenSubAgentSidebar} onStopSubAgent={onStopSubAgent} />
-                  )}
-                </div>
-              </div>
-            );
-          })}
-          {fileChangeSummary}
-          {messageFooter}
+            })}
+            {fileChangeSummary}
+            {messageFooter}
+          </div>
         </div>
       </div>
-    </div>
     </CitationProvider>
   );
 };

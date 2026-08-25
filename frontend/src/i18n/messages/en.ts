@@ -28,18 +28,21 @@ export const en = {
     systemIdentity: 'SUZENT / SYSTEM',
     systemStartup: 'System startup',
     backendErrorTitle: 'CONNECTION FAILED',
-    backendStartTimeout: 'Backend startup timed out. Check ~/.suzent/runtime/server.log for details.',
+    backendStartTimeout:
+      'Backend startup timed out. Check ~/.suzent/runtime/server.log for details.',
     startingBackend: 'Starting and checking the backend service',
     verifyingBackend: 'Verifying backend compatibility',
     startupElapsed: 'Elapsed {seconds}s',
     desktopRequiredTitle: 'Desktop required',
-    desktopRequiredDesc: 'Suzent is a desktop-only application. Please run this application using the native desktop launcher.',
+    desktopRequiredDesc:
+      'Suzent is a desktop-only application. Please run this application using the native desktop launcher.',
     logoAriaLabel: 'Suzent logo',
     backendCompatibility: {
       api: 'Frontend/backend API mismatch ({frontend} vs {backend}). Run suzent update.',
       build: 'Frontend/backend build mismatch ({frontend} vs {backend}). Run suzent update.',
       version: 'Frontend/backend version mismatch ({frontend} vs {backend}). Run suzent update.',
-      verifyTimeout: 'Backend version verification timed out. The backend may still be recovering; close and reopen Suzent.',
+      verifyTimeout:
+        'Backend version verification timed out. The backend may still be recovering; close and reopen Suzent.',
       verifyFailed: 'Failed to verify backend version: {error}',
     },
   },
@@ -50,7 +53,8 @@ export const en = {
     running: 'Installing...',
     changeDir: 'Change',
     chooseInstallDir: 'Choose Suzent install folder',
-    installerMissing: 'Suzent is not installed yet. Download and run the Suzent Installer, then reopen the app.',
+    installerMissing:
+      'Suzent is not installed yet. Download and run the Suzent Installer, then reopen the app.',
     stageFailed: '{stage} failed',
     state: {
       pending: 'Pending',
@@ -327,7 +331,8 @@ export const en = {
       adding: 'Adding...',
       addServer: 'Add Server',
       configuredServersTitle: 'Configured Servers',
-      configuredServersDesc: 'Manage your MCP servers. You can enable/disable servers for the current session.',
+      configuredServersDesc:
+        'Manage your MCP servers. You can enable/disable servers for the current session.',
       noServersConfigured: 'No servers configured yet.',
       test: 'Test',
       testing: 'Testing...',
@@ -345,7 +350,8 @@ export const en = {
       title: 'ACP Agents',
       subtitle: 'Local agent processes that speak the Agent Client Protocol',
       registeredTitle: 'Registered Agents',
-      registeredDesc: 'Built-in and user-defined ACP agents. Add custom agents in ~/.suzent/acp_agents.json.',
+      registeredDesc:
+        'Built-in and user-defined ACP agents. Add custom agents in ~/.suzent/acp_agents.json.',
       noAgents: 'No ACP agents registered.',
       ready: 'Ready',
       notInstalled: 'Not installed',
@@ -360,9 +366,11 @@ export const en = {
       docs: 'Docs',
       setupTitle: 'Setup Required',
       installGuide: 'Install Guide',
-      installHint: 'Install routes differ by platform. Follow the official guide, then reopen this tab.',
+      installHint:
+        'Install routes differ by platform. Follow the official guide, then reopen this tab.',
       adapterTitle: 'Adapter Package',
-      adapterHint: 'Suzent launches this agent through an npm adapter. Installing it up front keeps the first message from waiting on a download.',
+      adapterHint:
+        'Suzent launches this agent through an npm adapter. Installing it up front keeps the first message from waiting on a download.',
       builtIn: 'Built-in',
       custom: 'Custom',
       command: 'Command',
@@ -392,9 +400,11 @@ export const en = {
     },
     service: {
       title: 'Background Service',
-      subtitle: 'Keep automations, channels, and background tasks running when the window is closed',
+      subtitle:
+        'Keep automations, channels, and background tasks running when the window is closed',
       backgroundTitle: 'Run Suzent in the background',
-      backgroundDesc: 'Starts Suzent when you sign in and keeps it available after the desktop window closes.',
+      backgroundDesc:
+        'Starts Suzent when you sign in and keeps it available after the desktop window closes.',
       status: 'Status',
       uptime: 'Uptime',
       memory: 'Memory',
@@ -414,16 +424,19 @@ export const en = {
       title: 'Data',
       subtitle: 'Sync portable config, skills, and memory across devices',
       githubTitle: 'GitHub Sync',
-      githubDesc: 'Share portable config, skills, and markdown memory through a local Git repo with a GitHub remote. Chats, runtime data, indexes, and plaintext secrets stay local.',
+      githubDesc:
+        'Share portable config, skills, and markdown memory through a local Git repo with a GitHub remote. Chats, runtime data, indexes, and plaintext secrets stay local.',
       githubQuickStartTitle: 'Quick start',
-      githubQuickStartDesc: 'Create a private GitHub repo (default suzent-brain) and connect. Sign in with GitHub once — no CLI or personal access token needed.',
+      githubQuickStartDesc:
+        'Create a private GitHub repo (default suzent-brain) and connect. Sign in with GitHub once — no CLI or personal access token needed.',
       githubQuickStartDefaultPath: 'Default folder: {path}',
       githubQuickStartRepoPlaceholder: 'Optional: your-username/suzent-brain or GitHub clone URL',
       githubQuickStartButton: 'Quick start',
       githubQuickStartRunning: 'Setting up GitHub sync...',
       githubQuickStartDone: 'Connected to {repo}. {summary}',
       githubRepoNameLabel: 'GitHub repository name',
-      githubRepoNameHint: 'Creates or links username/{name} on GitHub (private). You can rename it before starting.',
+      githubRepoNameHint:
+        'Creates or links username/{name} on GitHub (private). You can rename it before starting.',
       githubSignInButton: 'Sign in with GitHub',
       githubCheckingAuth: 'Checking GitHub sign-in',
       githubSignInDesc: 'Authorize Suzent to access your GitHub repositories.',
@@ -442,7 +455,8 @@ export const en = {
       githubAutoSync: 'Auto-sync',
       githubAutoResolve: 'Agent conflict resolve',
       githubInterval: 'Hours',
-      githubFileOnlyScope: 'Syncs config, skills, and memory. API keys and credentials stay on this device.',
+      githubFileOnlyScope:
+        'Syncs config, skills, and memory. API keys and credentials stay on this device.',
       githubNotConfigured: 'GitHub sync is not configured.',
       githubCloudApplied: 'Cloud changes pulled and applied as the source of truth.',
       githubReviewTitle: 'Source Control: GitHub Sync',
@@ -464,14 +478,16 @@ export const en = {
       githubReviewFilesHidden: '{count} more files hidden',
       githubReviewHighRisk: '{count} high risk',
       githubReviewDiscard: 'Discard Outgoing',
-      githubReviewDiscardTitle: 'Restore local synced files from the current cloud payload and clear outgoing changes',
+      githubReviewDiscardTitle:
+        'Restore local synced files from the current cloud payload and clear outgoing changes',
       githubReviewDiscardFile: 'Discard',
       githubReviewDiscardFileTitle: 'Restore this local file from the committed sync payload',
       githubDiscardedOutgoing: 'Discarded {count} outgoing sync changes.',
       githubNoOutgoing: 'No outgoing sync changes to discard.',
       githubDiscardedFile: 'Discarded local change to {path}.',
       githubReviewPull: 'Pull Cloud',
-      githubReviewPullTitle: 'Pull cloud changes and let cloud synced content replace local synced content',
+      githubReviewPullTitle:
+        'Pull cloud changes and let cloud synced content replace local synced content',
       githubReviewConfirm: 'Confirm {operation}',
       githubSave: 'Save profile',
       githubValidate: 'Validate',
@@ -487,11 +503,13 @@ export const en = {
       githubPushed: 'GitHub sync payload pushed.',
       githubPulled: 'GitHub sync payload pulled.',
       githubFailed: 'GitHub sync failed: {error}',
-      githubPullConfirm: 'Pull from GitHub sync and replace local portable config, skills, and markdown memory?',
+      githubPullConfirm:
+        'Pull from GitHub sync and replace local portable config, skills, and markdown memory?',
     },
     roles: {
       title: 'Model Roles',
-      subtitle: 'Build an ordered fallback chain for each role. Only empty Cheap and Vision roles inherit from Primary.',
+      subtitle:
+        'Build an ordered fallback chain for each role. Only empty Cheap and Vision roles inherit from Primary.',
       primary: 'Primary',
       primaryDesc: 'Main chat agent. Needs tool use and large context.',
       cheap: 'Cheap',
@@ -517,13 +535,18 @@ export const en = {
       firstChoice: 'First choice',
       fallbackNumber: 'Fallback {number}',
       lastResort: 'Last resort',
-      chainStops: 'If every model in this chain fails, this role stops. It does not switch to another role.',
+      chainStops:
+        'If every model in this chain fails, this role stops. It does not switch to another role.',
       inheritsPrimary: 'Uses the complete Primary chain while this role is empty.',
-      inheritsVisionPrimary: 'Uses only confirmed vision-capable models from Primary. Models with unknown capabilities are skipped.',
-      noImplicitFallback: 'No implicit fallback. This feature remains unavailable until a model is assigned.',
+      inheritsVisionPrimary:
+        'Uses only confirmed vision-capable models from Primary. Models with unknown capabilities are skipped.',
+      noImplicitFallback:
+        'No implicit fallback. This feature remains unavailable until a model is assigned.',
       unverified: 'Unverified',
-      explicitOverride: 'Not in the verified suggestions for this role. The explicit assignment is still allowed.',
-      unregisteredAvailable: 'Capability-unverified enabled models are also available as explicit overrides.',
+      explicitOverride:
+        'Not in the verified suggestions for this role. The explicit assignment is still allowed.',
+      unregisteredAvailable:
+        'Capability-unverified enabled models are also available as explicit overrides.',
     },
     sandbox: {
       title: 'Notebook',
@@ -623,7 +646,8 @@ export const en = {
       defaultModel: 'Default',
       schedulerStatusTitle: 'Scheduler Status',
       heartbeatToolsTitle: 'Heartbeat Tool Approvals',
-      heartbeatToolsDesc: 'Tools that are automatically approved when heartbeat runs. Leave on All Tools to approve everything, or pick Custom to restrict.',
+      heartbeatToolsDesc:
+        'Tools that are automatically approved when heartbeat runs. Leave on All Tools to approve everything, or pick Custom to restrict.',
       noToolsSelected: 'No tools selected',
       running: 'Running',
       stopped: 'Stopped',
@@ -663,7 +687,8 @@ export const en = {
       weekdaysShort: 'Weekdays',
       everyDayShort: 'Every day',
       weekdays: 'Sunday,Monday,Tuesday,Wednesday,Thursday,Friday,Saturday',
-      advancedHint: 'Five fields: minute hour day-of-month month day-of-week. Leave a field as * for "any".',
+      advancedHint:
+        'Five fields: minute hour day-of-month month day-of-week. Leave a field as * for "any".',
       summaryMinutes: 'Runs every {n} minutes',
       summaryHourly: 'Runs hourly at :{m}',
       summaryDaily: 'Runs daily at {time}',
@@ -745,7 +770,8 @@ export const en = {
     reindexSuccess: 'Reindex completed successfully',
     reindexFailed: 'Reindex failed',
     emptyTitle: 'No MEMORY.md yet',
-    emptyDesc: 'The curated long-term memory file will be created automatically as the agent processes conversations and extracts key facts.',
+    emptyDesc:
+      'The curated long-term memory file will be created automatically as the agent processes conversations and extracts key facts.',
   },
   transcripts: {
     title: 'Session transcripts',
@@ -761,7 +787,8 @@ export const en = {
     selectTitle: 'Select a session',
     selectDesc: 'Choose a session from the dropdown above to view its conversation transcript.',
     emptyTitle: 'No transcript data',
-    emptyDesc: 'This session does not have a transcript yet. Transcripts are created when JSONL transcript logging is enabled.',
+    emptyDesc:
+      'This session does not have a transcript yet. Transcripts are created when JSONL transcript logging is enabled.',
     actionsCount: '{count} actions',
   },
   chat: {
@@ -791,7 +818,8 @@ export const en = {
   conversationFork: {
     button: 'Branch from here',
     title: 'Branch conversation?',
-    message: 'A new independent conversation will start from this message. The original conversation and your current workspace files will stay unchanged.',
+    message:
+      'A new independent conversation will start from this message. The original conversation and your current workspace files will stay unchanged.',
     cancel: 'Cancel',
     confirm: 'Create branch',
     creating: 'Creating…',
@@ -841,7 +869,8 @@ export const en = {
       viewAllScheduled: 'View all {count} scheduled tasks',
       moreHeartbeat: '{count} more heartbeat sessions',
       deleteTaskTitle: 'Delete {name}?',
-      deleteTaskMessage: 'This removes the scheduled task and its conversation. This cannot be undone.',
+      deleteTaskMessage:
+        'This removes the scheduled task and its conversation. This cannot be undone.',
     },
     organization: {
       title: 'Organize',
@@ -870,7 +899,8 @@ export const en = {
       deleteFailed: 'Could not delete project',
       deleteConfirmTitle: 'Delete {name}?',
       deleteConfirmEmpty: 'This project has no chats. This cannot be undone.',
-      deleteConfirmWithChats: 'This project has {count} chat(s). They will be moved to {target}, then the project will be deleted.',
+      deleteConfirmWithChats:
+        'This project has {count} chat(s). They will be moved to {target}, then the project will be deleted.',
     },
     empty: {
       noResultsTitle: 'No results found',
@@ -959,17 +989,20 @@ export const en = {
       images: '{count} images',
     },
     connecting: 'Connecting to Neural Core...',
-    outputValidationRetryError: 'The model response format failed validation too many times. Please retry this message.',
+    outputValidationRetryError:
+      'The model response format failed validation too many times. Please retry this message.',
     genericError: 'Something went wrong. Please try again.',
     acpAgentLocked: 'ACP agent is fixed for this chat',
     heartbeatOff: 'Heartbeat off',
     permissionModeTitle: 'Tool permission mode',
     permissionModeLabel: 'Mode',
-    autoModeConfirmation: 'Auto mode uses a security classifier to approve low-risk actions without asking. Hard denies still apply. Enable Auto mode?',
+    autoModeConfirmation:
+      'Auto mode uses a security classifier to approve low-risk actions without asking. Hard denies still apply. Enable Auto mode?',
     autoModeDialogTitle: 'Enable Auto mode?',
     autoModeCancel: 'Cancel',
     autoModeEnable: 'Enable',
-    fullAccessModeConfirmation: 'Full Access runs tool actions without asking for approval. Explicit deny rules and hard safety checks still apply. Enable Full Access?',
+    fullAccessModeConfirmation:
+      'Full Access runs tool actions without asking for approval. Explicit deny rules and hard safety checks still apply. Enable Full Access?',
     fullAccessModeDialogTitle: 'Enable Full Access?',
     fullAccessModeEnable: 'Enable',
     permissionModes: {
@@ -1370,7 +1403,8 @@ export const en = {
   },
   toolCallBlock: {
     permissionRejectPlaceholder: 'Optional reason or safer direction',
-    permissionContractUnavailable: 'This approval is missing its server permission contract. Retry the request.',
+    permissionContractUnavailable:
+      'This approval is missing its server permission contract. Retry the request.',
     permissionDecisionTitle: 'Permission decision',
     permissionOutcome: 'Outcome',
     permissionEvaluator: 'Evaluator',
@@ -1527,8 +1561,14 @@ export const en = {
     labels: {
       persona: { title: 'Persona', desc: 'Identity, role, and workflow principles — persona.md' },
       user: { title: 'User', desc: 'Preferences, tech stack, and communication habits — user.md' },
-      facts: { title: 'Long-term Memory', desc: 'Condensed knowledge and key decisions — MEMORY.md' },
-      context: { title: 'Session Context', desc: 'Current task state and scratchpad — sessions/{id}/context.md' },
+      facts: {
+        title: 'Long-term Memory',
+        desc: 'Condensed knowledge and key decisions — MEMORY.md',
+      },
+      context: {
+        title: 'Session Context',
+        desc: 'Current task state and scratchpad — sessions/{id}/context.md',
+      },
     },
   },
   planProgress: {

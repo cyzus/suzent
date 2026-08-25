@@ -22,12 +22,14 @@ const BADGE_WEIGHTS: { variant: RobotVariant; weight: number }[] = [
   { variant: 'observer', weight: 20 },
   { variant: 'peeker', weight: 10 },
   { variant: 'jumper', weight: 5 },
-  { variant: 'party', weight: 5 },  // Occasional cool
-  { variant: 'love', weight: 2 },  // Rare heartwarming
-  { variant: 'dj', weight: 2 },  // Very rare music
+  { variant: 'party', weight: 5 }, // Occasional cool
+  { variant: 'love', weight: 2 }, // Rare heartwarming
+  { variant: 'dj', weight: 2 }, // Very rare music
 ];
 
-const selectWeightedVariant = (weights: { variant: RobotVariant; weight: number }[]): RobotVariant => {
+const selectWeightedVariant = (
+  weights: { variant: RobotVariant; weight: number }[]
+): RobotVariant => {
   const totalWeight = weights.reduce((sum, item) => sum + item.weight, 0);
   let random = Math.random() * totalWeight;
 
@@ -45,11 +47,13 @@ const ThinkingAnimationComponent: React.FC<ThinkingAnimationProps> = ({ isThinki
   }, []);
 
   return (
-    <div className={`
+    <div
+      className={`
       absolute inset-0 pointer-events-none overflow-hidden
       transition-opacity duration-500 rounded-lg
       ${isThinking ? 'opacity-100' : 'opacity-0'}
-    `}>
+    `}
+    >
       {/* Background Pattern */}
       <div className="absolute inset-0 bg-dot-pattern opacity-10"></div>
 
@@ -59,11 +63,7 @@ const ThinkingAnimationComponent: React.FC<ThinkingAnimationProps> = ({ isThinki
       {/* Robots Layer */}
       <div className="absolute inset-0 z-10">
         {variants.map((variant, i) => (
-          <div
-            key={i}
-            className="conveyor-item"
-            style={{ animationDelay: `${i * 0.8}s` }}
-          >
+          <div key={i} className="conveyor-item" style={{ animationDelay: `${i * 0.8}s` }}>
             <div className="w-full h-full flex items-center justify-center text-brutal-black relative">
               <div className="robot-carrier"></div>
               <div className="w-10 h-10 relative z-10">
@@ -83,8 +83,6 @@ const ThinkingAnimationComponent: React.FC<ThinkingAnimationProps> = ({ isThinki
 export const ThinkingAnimation = React.memo(ThinkingAnimationComponent);
 ThinkingAnimation.displayName = 'ThinkingAnimation';
 
-
-
 interface RobotIconProps {
   className?: string;
   isStreaming?: boolean;
@@ -96,7 +94,7 @@ export const RobotIcon: React.FC<RobotIconProps> = ({
   className = '',
   isStreaming = false,
   eyeClass = 'robot-eye robot-eye-idle',
-  rightEyeStyle
+  rightEyeStyle,
 }) => {
   return (
     <svg
@@ -108,12 +106,19 @@ export const RobotIcon: React.FC<RobotIconProps> = ({
       <rect x="2" y="2" width="20" height="20" rx="3" fill="currentColor" />
       <rect x="4" y="4" width="16" height="16" rx="3" fill="#000000" />
       <rect className={eyeClass} x="5.5" y="7" width="5" height="5" rx="1.5" fill="currentColor" />
-      <rect className={eyeClass} style={rightEyeStyle} x="13.5" y="7" width="5" height="5" rx="1.5" fill="currentColor" />
+      <rect
+        className={eyeClass}
+        style={rightEyeStyle}
+        x="13.5"
+        y="7"
+        width="5"
+        height="5"
+        rx="1.5"
+        fill="currentColor"
+      />
     </svg>
   );
 };
-
-
 
 interface AgentBadgeProps {
   isThinking: boolean;
@@ -140,7 +145,9 @@ const AgentBadgeComponent: React.FC<AgentBadgeProps> = ({
   icon,
 }) => {
   // Determine variant based on state
-  const [baseVariant, setBaseVariant] = useState<RobotVariant>(() => selectWeightedVariant(BADGE_WEIGHTS));
+  const [baseVariant, setBaseVariant] = useState<RobotVariant>(() =>
+    selectWeightedVariant(BADGE_WEIGHTS)
+  );
 
   // Effect to handle snoozing
   useEffect(() => {
@@ -179,7 +186,7 @@ const AgentBadgeComponent: React.FC<AgentBadgeProps> = ({
           variant = 'scanner'; // scanning data
           break;
         case 'web_search':
-          variant = 'peeker';  // peeking search
+          variant = 'peeker'; // peeking search
           break;
         case 'run_command':
         case 'start_command':
@@ -188,7 +195,7 @@ const AgentBadgeComponent: React.FC<AgentBadgeProps> = ({
           variant = 'workout'; // working out (writing/editing code)
           break;
         case 'agent':
-          variant = 'portal';  // spawning portal
+          variant = 'portal'; // spawning portal
           break;
         case 'skill_execute':
           variant = 'dj';
@@ -202,16 +209,18 @@ const AgentBadgeComponent: React.FC<AgentBadgeProps> = ({
   }
 
   return (
-    <div className={`
+    <div
+      className={`
       absolute inset-0 flex items-center justify-center text-white
       transition-opacity duration-500 delay-200
       ${isThinking ? 'opacity-0 pointer-events-none' : 'opacity-100'}
-    `}>
+    `}
+    >
       <div
         key={icon ? 'icon' : variant}
         className="w-8 h-8 shrink-0 relative flex items-center justify-center text-brutal-black dark:text-white"
         style={{
-          animation: 'robot-drop-in 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
+          animation: 'robot-drop-in 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
         }}
       >
         {icon ?? <RobotAvatar variant={variant} />}

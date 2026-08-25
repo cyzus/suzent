@@ -77,7 +77,12 @@ function _handleMessage(evt: MessageEvent) {
 }
 
 function _hasSubscribers(): boolean {
-  return _listeners.size > 0 || _chunkHandlers.size > 0 || _streamEventListeners.size > 0 || _busPayloadHandlers.size > 0;
+  return (
+    _listeners.size > 0 ||
+    _chunkHandlers.size > 0 ||
+    _streamEventListeners.size > 0 ||
+    _busPayloadHandlers.size > 0
+  );
 }
 
 function _openEventSource() {
@@ -121,7 +126,7 @@ export function isBusStreaming(chatId: string): boolean {
  */
 export function subscribeToStreamEvents(
   chatId: string,
-  callbacks: StreamEventCallbacks,
+  callbacks: StreamEventCallbacks
 ): () => void {
   if (!_streamEventListeners.has(chatId)) {
     _streamEventListeners.set(chatId, new Set());

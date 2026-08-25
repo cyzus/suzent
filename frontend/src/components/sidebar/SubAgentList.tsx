@@ -10,11 +10,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { CpuChipIcon } from '@heroicons/react/24/outline';
 import { getApiBase } from '../../lib/api';
 import { useSubAgentStatus, SubAgentSummary } from '../../hooks/useSubAgentStatus';
-import {
-  isSubAgentActive,
-  SubAgentStatusBadge,
-  SubAgentStatusIcon,
-} from '../chat/subAgentStatus';
+import { isSubAgentActive, SubAgentStatusBadge, SubAgentStatusIcon } from '../chat/subAgentStatus';
 import { useI18n } from '../../i18n';
 
 interface SubAgentListProps {
@@ -24,7 +20,10 @@ interface SubAgentListProps {
 
 type SubAgentRow = SubAgentSummary;
 
-function formatDuration(startedAt: string | null | undefined, finishedAt: string | null | undefined): string {
+function formatDuration(
+  startedAt: string | null | undefined,
+  finishedAt: string | null | undefined
+): string {
   if (!startedAt) return '';
   const end = finishedAt ? new Date(finishedAt).getTime() : Date.now();
   const ms = end - new Date(startedAt).getTime();
@@ -58,8 +57,8 @@ export const SubAgentList: React.FC<SubAgentListProps> = ({ chatId, onSelect }) 
 
   const fetchTasks = (chatId: string) =>
     fetch(`${getApiBase()}/subagents?parent_chat_id=${encodeURIComponent(chatId)}`)
-      .then(r => r.json())
-      .then(d => setHistoricTasks(d.tasks ?? []))
+      .then((r) => r.json())
+      .then((d) => setHistoricTasks(d.tasks ?? []))
       .catch(() => {});
 
   useEffect(() => {
@@ -68,21 +67,27 @@ export const SubAgentList: React.FC<SubAgentListProps> = ({ chatId, onSelect }) 
     fetchTasks(chatId).finally(() => setLoading(false));
   }, [chatId]);
 
-  const liveTasks = Object.values(taskStates).filter(task => task.parent_chat_id === chatId);
+  const liveTasks = Object.values(taskStates).filter((task) => task.parent_chat_id === chatId);
 
   // Refetch whenever a task appears or changes state, so persisted-only fields
   // (worktree branch, result summary) catch up with the live overlay.
-  const signature = liveTasks.map(task => `${task.task_id}:${task.status}`).sort().join('|');
+  const signature = liveTasks
+    .map((task) => `${task.task_id}:${task.status}`)
+    .sort()
+    .join('|');
   useEffect(() => {
     if (!signature || signature === lastSignatureRef.current) return;
     lastSignatureRef.current = signature;
     fetchTasks(chatId);
   }, [signature, chatId]);
 
-  const liveById = new Map(liveTasks.map(task => [task.task_id, task]));
+  const liveById = new Map(liveTasks.map((task) => [task.task_id, task]));
   const merged = [
-    ...liveTasks.map(task => ({ ...historicTasks.find(h => h.task_id === task.task_id), ...task })),
-    ...historicTasks.filter(task => !liveById.has(task.task_id)),
+    ...liveTasks.map((task) => ({
+      ...historicTasks.find((h) => h.task_id === task.task_id),
+      ...task,
+    })),
+    ...historicTasks.filter((task) => !liveById.has(task.task_id)),
   ];
   const tasks = sortRows(merged as SubAgentRow[]);
 
@@ -144,9 +149,13 @@ export const SubAgentList: React.FC<SubAgentListProps> = ({ chatId, onSelect }) 
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          setStopping(s => new Set(s).add(task.task_id));
+                          setStopping((s) => new Set(s).add(task.task_id));
                           stopSubAgent(task.task_id).finally(() =>
-                            setStopping(s => { const n = new Set(s); n.delete(task.task_id); return n; })
+                            setStopping((s) => {
+                              const n = new Set(s);
+                              n.delete(task.task_id);
+                              return n;
+                            })
                           );
                         }}
                         disabled={stopping.has(task.task_id)}
@@ -177,11 +186,13 @@ export const SubAgentList: React.FC<SubAgentListProps> = ({ chatId, onSelect }) 
 
                   {/* Why a stopped or failed run ended, right on the row. */}
                   {!isActive && task.status !== 'completed' && task.error && (
-                    <div className={`mt-1 text-[10px] leading-snug line-clamp-2 ${
-                      task.status === 'failed'
-                        ? 'text-red-600 dark:text-red-400'
-                        : 'text-neutral-500 dark:text-neutral-400'
-                    }`}>
+                    <div
+                      className={`mt-1 text-[10px] leading-snug line-clamp-2 ${
+                        task.status === 'failed'
+                          ? 'text-red-600 dark:text-red-400'
+                          : 'text-neutral-500 dark:text-neutral-400'
+                      }`}
+                    >
                       {task.error}
                     </div>
                   )}

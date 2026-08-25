@@ -16,7 +16,6 @@ const container = {
 } as unknown as Node;
 
 describe('resolveClampTarget', () => {
-
   it('leaves a focus inside the container alone', () => {
     // Chrome reports CONTAINED_BY | FOLLOWING for a descendant.
     expect(resolveClampTarget(container, node(CONTAINED_BY | FOLLOWING))).toBeNull();

@@ -93,7 +93,7 @@ describe('capability tool picker', () => {
     const capabilities = getCapabilities(config);
     expect(capabilities).toHaveLength(1);
     expect(capabilities[0].description).toBe('Run and manage commands.');
-    expect(capabilities[0].tools.map(tool => tool.id)).toEqual([
+    expect(capabilities[0].tools.map((tool) => tool.id)).toEqual([
       'RunCommandTool',
       'CheckCommandTool',
     ]);
@@ -110,16 +110,13 @@ describe('capability tool picker', () => {
 
   it('toggles the whole capability without losing unrelated selections', () => {
     expect(
-      toggleCapabilitySelection(['ReadFileTool'], [
-        'RunCommandTool',
-        'CheckCommandTool',
-      ]),
+      toggleCapabilitySelection(['ReadFileTool'], ['RunCommandTool', 'CheckCommandTool'])
     ).toEqual(['ReadFileTool', 'RunCommandTool', 'CheckCommandTool']);
     expect(
       toggleCapabilitySelection(
         ['ReadFileTool', 'RunCommandTool', 'CheckCommandTool'],
-        ['RunCommandTool', 'CheckCommandTool'],
-      ),
+        ['RunCommandTool', 'CheckCommandTool']
+      )
     ).toEqual(['ReadFileTool']);
   });
 
@@ -134,8 +131,8 @@ describe('capability tool picker', () => {
           onChange: () => undefined,
           activatedByAI: new Set(['RunCommandTool']),
           onDeactivate: () => undefined,
-        }),
-      ),
+        })
+      )
     );
 
     expect(html).not.toContain('role="button"');
@@ -144,7 +141,9 @@ describe('capability tool picker', () => {
 
   it('localizes capability and tool metadata by stable IDs', () => {
     expect(tForLocale('zh-CN', 'config.toolCatalog.capabilities.shell.name')).toBe('命令执行');
-    expect(tForLocale('zh-CN', 'config.toolCatalog.tools.RunCommandTool.description')).toContain('Shell 命令');
+    expect(tForLocale('zh-CN', 'config.toolCatalog.tools.RunCommandTool.description')).toContain(
+      'Shell 命令'
+    );
   });
 
   it('uses backend metadata as the English source of truth', () => {
@@ -153,11 +152,7 @@ describe('capability tool picker', () => {
 
     expect(tForLocale('en', key)).toBe(key);
     expect(
-      resolveCatalogText(
-        lookupKey => tForLocale('en', lookupKey),
-        key,
-        backendDescription,
-      ),
+      resolveCatalogText((lookupKey) => tForLocale('en', lookupKey), key, backendDescription)
     ).toBe(backendDescription);
   });
 

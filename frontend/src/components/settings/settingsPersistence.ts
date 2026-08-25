@@ -1,7 +1,7 @@
 export function closeImmediatelyAndPersist(
   onClose: () => void,
   persist: () => Promise<void>,
-  onError: (error: unknown) => void,
+  onError: (error: unknown) => void
 ): void {
   onClose();
 

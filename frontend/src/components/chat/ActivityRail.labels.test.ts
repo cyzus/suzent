@@ -20,10 +20,15 @@ function toolPart(overrides: Partial<AGUIPart> = {}): AGUIPart {
 
 describe('formatActivityToolName', () => {
   it('describes the call with its own arguments', () => {
-    expect(formatActivityToolName('read_file', JSON.stringify({ file_path: 'src/main.py' })))
-      .toBe('Read main.py');
-    expect(formatActivityToolName('run_command', JSON.stringify({ content: 'npm test', description: 'Run the tests' })))
-      .toBe('Run the tests npm test');
+    expect(formatActivityToolName('read_file', JSON.stringify({ file_path: 'src/main.py' }))).toBe(
+      'Read main.py'
+    );
+    expect(
+      formatActivityToolName(
+        'run_command',
+        JSON.stringify({ content: 'npm test', description: 'Run the tests' })
+      )
+    ).toBe('Run the tests npm test');
   });
 
   it('falls back to the tool name while args are still streaming', () => {
@@ -69,7 +74,11 @@ describe('getAguiActivityLabel', () => {
   it('keeps describing the call until the streak is long enough to matter', () => {
     const items = [
       toolPart(),
-      toolPart({ output: undefined, state: 'running', args: JSON.stringify({ content: 'npm test' }) }),
+      toolPart({
+        output: undefined,
+        state: 'running',
+        args: JSON.stringify({ content: 'npm test' }),
+      }),
     ];
     const chunks = [{ chunk: { type: 'tool', items } }];
 

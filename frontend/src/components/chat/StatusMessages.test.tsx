@@ -5,7 +5,7 @@ import { SystemTriggeredMessage } from './StatusMessages';
 
 function renderReminder(content: string): string {
   return renderToStaticMarkup(
-    <SystemTriggeredMessage message={{ role: 'system_triggered', content }} />,
+    <SystemTriggeredMessage message={{ role: 'system_triggered', content }} />
   );
 }
 
@@ -26,7 +26,7 @@ describe('SystemTriggeredMessage', () => {
 
   it('does not render durable inbox markers', () => {
     const html = renderReminder(
-      'Sub-agent finished\n\nResult\n<!-- suzent-agent-inbox:subagent-result-sub_123 -->',
+      'Sub-agent finished\n\nResult\n<!-- suzent-agent-inbox:subagent-result-sub_123 -->'
     );
 
     expect(html).not.toContain('suzent-agent-inbox');

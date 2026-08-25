@@ -8,7 +8,10 @@ import { memoryApi } from '../../lib/memoryApi';
 import { useI18n } from '../../i18n';
 import { MemoryMarkdown } from './MemoryMarkdown';
 
-function formatDateLabel(dateStr: string, t: (key: string, params?: Record<string, string>) => string): string {
+function formatDateLabel(
+  dateStr: string,
+  t: (key: string, params?: Record<string, string>) => string
+): string {
   try {
     const date = new Date(dateStr + 'T00:00:00');
     const today = new Date();
@@ -29,7 +32,11 @@ function formatDateLabel(dateStr: string, t: (key: string, params?: Record<strin
   }
 }
 
-function LogContentArea({ loading, error, content }: {
+function LogContentArea({
+  loading,
+  error,
+  content,
+}: {
   loading: boolean;
   error: string | null;
   content: string | null;
@@ -116,7 +123,9 @@ export const DailyLogsPanel: React.FC = () => {
       <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 p-6 shadow-brutal">
         <div className="flex items-center gap-3">
           <div className="w-4 h-4 border-3 border-brutal-black dark:border-white border-t-transparent animate-spin rounded-full"></div>
-          <span className="font-bold uppercase text-sm dark:text-white">{t('dailyLogs.loading')}</span>
+          <span className="font-bold uppercase text-sm dark:text-white">
+            {t('dailyLogs.loading')}
+          </span>
         </div>
       </div>
     );
@@ -125,7 +134,9 @@ export const DailyLogsPanel: React.FC = () => {
   if (error && dates.length === 0) {
     return (
       <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 p-6 shadow-brutal">
-        <h3 className="font-brutal text-xl text-brutal-black dark:text-white mb-2 uppercase">{t('common.error')}</h3>
+        <h3 className="font-brutal text-xl text-brutal-black dark:text-white mb-2 uppercase">
+          {t('common.error')}
+        </h3>
         <p className="text-sm text-brutal-black dark:text-neutral-300 font-mono mb-4">{error}</p>
         <button
           onClick={loadDates}
@@ -140,7 +151,9 @@ export const DailyLogsPanel: React.FC = () => {
   if (dates.length === 0) {
     return (
       <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 p-12 text-center shadow-brutal">
-        <h4 className="font-brutal text-2xl uppercase mb-2 dark:text-white">{t('dailyLogs.emptyTitle')}</h4>
+        <h4 className="font-brutal text-2xl uppercase mb-2 dark:text-white">
+          {t('dailyLogs.emptyTitle')}
+        </h4>
         <p className="text-neutral-600 dark:text-neutral-400 text-sm max-w-md mx-auto">
           {t('dailyLogs.emptyDesc')}
         </p>
@@ -154,7 +167,9 @@ export const DailyLogsPanel: React.FC = () => {
       <div className="lg:col-span-3 space-y-2">
         <div className="bg-brutal-black text-white p-3 border-3 border-brutal-black">
           <h3 className="font-brutal text-lg uppercase tracking-tight">{t('dailyLogs.title')}</h3>
-          <p className="text-xs text-neutral-300 font-mono">{t('dailyLogs.entries', { count: String(dates.length) })}</p>
+          <p className="text-xs text-neutral-300 font-mono">
+            {t('dailyLogs.entries', { count: String(dates.length) })}
+          </p>
         </div>
         <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 shadow-brutal max-h-[60vh] overflow-y-auto scrollbar-thin">
           {dates.map((date) => (

@@ -11,9 +11,7 @@ import { describe, expect, it } from 'vitest';
 import { MemoryMarkdown, stripFrontmatter } from './MemoryMarkdown';
 
 function render(content: string, searchQuery?: string): string {
-  return renderToStaticMarkup(
-    <MemoryMarkdown content={content} searchQuery={searchQuery} />,
-  );
+  return renderToStaticMarkup(<MemoryMarkdown content={content} searchQuery={searchQuery} />);
 }
 
 describe('MemoryMarkdown', () => {

@@ -13,7 +13,8 @@ const EDITOR_OPTIONS = {
   minimap: { enabled: false },
   scrollBeyondLastLine: false,
   fontSize: 12,
-  fontFamily: "Consolas, 'JetBrains Mono', 'Fira Code', 'SFMono-Regular', Menlo, Monaco, 'Liberation Mono', 'Ubuntu Mono', 'DejaVu Sans Mono', 'Segoe UI Symbol', 'Courier New', monospace",
+  fontFamily:
+    "Consolas, 'JetBrains Mono', 'Fira Code', 'SFMono-Regular', Menlo, Monaco, 'Liberation Mono', 'Ubuntu Mono', 'DejaVu Sans Mono', 'Segoe UI Symbol', 'Courier New', monospace",
   wordWrap: 'on' as const,
   renderSideBySide: false, // Unified diff is better for inline chat context
   automaticLayout: true,
@@ -44,7 +45,8 @@ const REGISTERED_THEMES = new Set<string>();
 
 const stripHash = (color: string): string => color.replace(/^#/, '');
 
-const transparentize = (color: string, alphaHex: string): string => `${stripHash(color)}${alphaHex}`;
+const transparentize = (color: string, alphaHex: string): string =>
+  `${stripHash(color)}${alphaHex}`;
 
 const getMonacoThemeName = (theme: 'light' | 'dark', scheme: Scheme): string => {
   return `${THEME_PREFIX}-${theme}-${scheme}`;
@@ -147,40 +149,65 @@ const FILE_TOOL_PREVIEW_CONFIG: Record<string, FileToolPreviewConfig | undefined
 const getLanguageFromPath = (filePath: string): string => {
   const ext = filePath.split('.').pop()?.toLowerCase();
   switch (ext) {
-    case 'py': return 'python';
+    case 'py':
+      return 'python';
     case 'ts':
-    case 'tsx': return 'typescript';
+    case 'tsx':
+      return 'typescript';
     case 'js':
-    case 'jsx': return 'javascript';
-    case 'html': return 'html';
-    case 'css': return 'css';
-    case 'json': return 'json';
-    case 'md': return 'markdown';
+    case 'jsx':
+      return 'javascript';
+    case 'html':
+      return 'html';
+    case 'css':
+      return 'css';
+    case 'json':
+      return 'json';
+    case 'md':
+      return 'markdown';
     case 'sh':
-    case 'bash': return 'shell';
+    case 'bash':
+      return 'shell';
     case 'yml':
-    case 'yaml': return 'yaml';
-    case 'toml': return 'toml';
-    case 'sql': return 'sql';
-    case 'rs': return 'rust';
-    case 'go': return 'go';
-    case 'c': return 'c';
-    case 'cpp': return 'cpp';
-    default: return 'plaintext';
+    case 'yaml':
+      return 'yaml';
+    case 'toml':
+      return 'toml';
+    case 'sql':
+      return 'sql';
+    case 'rs':
+      return 'rust';
+    case 'go':
+      return 'go';
+    case 'c':
+      return 'c';
+    case 'cpp':
+      return 'cpp';
+    default:
+      return 'plaintext';
   }
 };
 
-const getStringProp = (source: Record<string, unknown> | null | undefined, key: string | undefined): string | undefined => {
+const getStringProp = (
+  source: Record<string, unknown> | null | undefined,
+  key: string | undefined
+): string | undefined => {
   if (!source || !key) return undefined;
   const value = source[key];
   return typeof value === 'string' ? value : undefined;
 };
 
-const hasProp = (source: Record<string, unknown> | null | undefined, key: string | undefined): boolean => {
+const hasProp = (
+  source: Record<string, unknown> | null | undefined,
+  key: string | undefined
+): boolean => {
   return Boolean(source && key && Object.prototype.hasOwnProperty.call(source, key));
 };
 
-function countChangedLines(original: string, modified: string): { addedLines: number; removedLines: number } {
+function countChangedLines(
+  original: string,
+  modified: string
+): { addedLines: number; removedLines: number } {
   const originalLines = original.split('\n');
   const modifiedLines = modified.split('\n');
   const lengths = Array.from({ length: originalLines.length + 1 }, () =>
@@ -189,9 +216,10 @@ function countChangedLines(original: string, modified: string): { addedLines: nu
 
   for (let i = originalLines.length - 1; i >= 0; i -= 1) {
     for (let j = modifiedLines.length - 1; j >= 0; j -= 1) {
-      lengths[i][j] = originalLines[i] === modifiedLines[j]
-        ? lengths[i + 1][j + 1] + 1
-        : Math.max(lengths[i + 1][j], lengths[i][j + 1]);
+      lengths[i][j] =
+        originalLines[i] === modifiedLines[j]
+          ? lengths[i + 1][j + 1] + 1
+          : Math.max(lengths[i + 1][j], lengths[i][j + 1]);
     }
   }
 
@@ -248,33 +276,42 @@ export const FileContentDiffViewer: React.FC<FileContentDiffViewerProps> = ({
   const segments = filePath.split(/[/\\]/).filter(Boolean);
   const namePart = segments.pop() || filePath;
   const counts = useMemo(
-    () => addedLines === undefined || removedLines === undefined
-      ? countChangedLines(original, modified)
-      : { addedLines, removedLines },
-    [addedLines, modified, original, removedLines],
+    () =>
+      addedLines === undefined || removedLines === undefined
+        ? countChangedLines(original, modified)
+        : { addedLines, removedLines },
+    [addedLines, modified, original, removedLines]
   );
 
   return (
-    <div className={[
-      'flex w-full flex-col overflow-hidden bg-white transition-all dark:bg-[#1e1e1e]',
-      embedded
-        ? 'border-0 shadow-none'
-        : 'mt-2 border-2 border-brutal-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:border-zinc-600 dark:shadow-none',
-    ].join(' ')}>
-      <div className={[
-        'flex items-center justify-between gap-3 px-3 py-1.5 font-mono text-xs font-bold tracking-wider text-brutal-black dark:text-neutral-300',
+    <div
+      className={[
+        'flex w-full flex-col overflow-hidden bg-white transition-all dark:bg-[#1e1e1e]',
         embedded
-          ? 'border-b border-neutral-300 bg-white/50 dark:border-zinc-700 dark:bg-white/[0.025]'
-          : 'border-b-2 border-brutal-black bg-neutral-100 dark:border-zinc-600 dark:bg-zinc-800',
-      ].join(' ')}>
+          ? 'border-0 shadow-none'
+          : 'mt-2 border-2 border-brutal-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:border-zinc-600 dark:shadow-none',
+      ].join(' ')}
+    >
+      <div
+        className={[
+          'flex items-center justify-between gap-3 px-3 py-1.5 font-mono text-xs font-bold tracking-wider text-brutal-black dark:text-neutral-300',
+          embedded
+            ? 'border-b border-neutral-300 bg-white/50 dark:border-zinc-700 dark:bg-white/[0.025]'
+            : 'border-b-2 border-brutal-black bg-neutral-100 dark:border-zinc-600 dark:bg-zinc-800',
+        ].join(' ')}
+      >
         <span className="flex min-w-0 items-center gap-3">
           <span className={`${showFullPath ? '' : 'uppercase'} truncate`} title={filePath}>
             {showFullPath ? filePath : namePart}
           </span>
           {isDiff && (counts.addedLines > 0 || counts.removedLines > 0) && (
             <span className="flex items-center gap-1.5 opacity-90 text-[11px] shrink-0 font-bold">
-              {counts.addedLines > 0 && <span className="text-green-600 dark:text-green-400">+{counts.addedLines}</span>}
-              {counts.removedLines > 0 && <span className="text-red-600 dark:text-red-400">-{counts.removedLines}</span>}
+              {counts.addedLines > 0 && (
+                <span className="text-green-600 dark:text-green-400">+{counts.addedLines}</span>
+              )}
+              {counts.removedLines > 0 && (
+                <span className="text-red-600 dark:text-red-400">-{counts.removedLines}</span>
+              )}
             </span>
           )}
         </span>
@@ -312,60 +349,74 @@ export const FileContentDiffViewer: React.FC<FileContentDiffViewerProps> = ({
   );
 };
 
-export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ toolName, parsedArgs, metadata, output }) => {
-  const { filePath, isDiff, original, modified, canPreview, addedLines, removedLines } = useMemo(() => {
-    const config = FILE_TOOL_PREVIEW_CONFIG[toolName];
-    const rawPath = typeof metadata?.abs_path === 'string'
-      ? metadata.abs_path
-      : typeof parsedArgs?.file_path === 'string' ? parsedArgs.file_path
-        : typeof parsedArgs?.path === 'string' ? parsedArgs.path
-          : '';
+export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({
+  toolName,
+  parsedArgs,
+  metadata,
+  output,
+}) => {
+  const { filePath, isDiff, original, modified, canPreview, addedLines, removedLines } =
+    useMemo(() => {
+      const config = FILE_TOOL_PREVIEW_CONFIG[toolName];
+      const rawPath =
+        typeof metadata?.abs_path === 'string'
+          ? metadata.abs_path
+          : typeof parsedArgs?.file_path === 'string'
+            ? parsedArgs.file_path
+            : typeof parsedArgs?.path === 'string'
+              ? parsedArgs.path
+              : '';
 
-    const filePath = rawPath;
+      const filePath = rawPath;
 
-    let isDiff = false;
-    let original = '';
-    let modified = '';
-    let canPreview = false;
-    let addedLines = 0;
-    let removedLines = 0;
+      let isDiff = false;
+      let original = '';
+      let modified = '';
+      let canPreview = false;
+      let addedLines = 0;
+      let removedLines = 0;
 
-    if (config) {
-      if (toolName === 'read_file' && output) {
-        // Strip the "[Lines X-Y of Z]\n" header and tab-prefixed line numbers
-        const bodyStart = output.indexOf('\n');
-        const body = bodyStart >= 0 ? output.slice(bodyStart + 1) : output;
-        modified = body.replace(/^\d+\t/gm, '');
-        canPreview = modified.length > 0;
-        isDiff = false;
-      } else {
-        const metadataOriginal = getStringProp(metadata, 'old_content');
-        const metadataModified = getStringProp(metadata, 'new_content');
-        const hasArgModified = hasProp(parsedArgs, config.modifiedArg);
-        const hasArgOriginal = hasProp(parsedArgs, config.originalArg);
-
-        original = metadataOriginal ?? getStringProp(parsedArgs, config.originalArg) ?? '';
-        modified = metadataModified ?? getStringProp(parsedArgs, config.modifiedArg) ?? '';
-        canPreview = metadataModified !== undefined || (
-          hasArgModified && (!config.requireOriginalArg || hasArgOriginal)
-        );
-        isDiff = Boolean(config.alwaysDiff || metadataOriginal !== undefined || config.originalArg);
-        if (metadataOriginal === undefined && !config.alwaysDiff) {
+      if (config) {
+        if (toolName === 'read_file' && output) {
+          // Strip the "[Lines X-Y of Z]\n" header and tab-prefixed line numbers
+          const bodyStart = output.indexOf('\n');
+          const body = bodyStart >= 0 ? output.slice(bodyStart + 1) : output;
+          modified = body.replace(/^\d+\t/gm, '');
+          canPreview = modified.length > 0;
           isDiff = false;
-        }
+        } else {
+          const metadataOriginal = getStringProp(metadata, 'old_content');
+          const metadataModified = getStringProp(metadata, 'new_content');
+          const hasArgModified = hasProp(parsedArgs, config.modifiedArg);
+          const hasArgOriginal = hasProp(parsedArgs, config.originalArg);
 
-        if (isDiff) {
-          ({ addedLines, removedLines } = countChangedLines(original, modified));
+          original = metadataOriginal ?? getStringProp(parsedArgs, config.originalArg) ?? '';
+          modified = metadataModified ?? getStringProp(parsedArgs, config.modifiedArg) ?? '';
+          canPreview =
+            metadataModified !== undefined ||
+            (hasArgModified && (!config.requireOriginalArg || hasArgOriginal));
+          isDiff = Boolean(
+            config.alwaysDiff || metadataOriginal !== undefined || config.originalArg
+          );
+          if (metadataOriginal === undefined && !config.alwaysDiff) {
+            isDiff = false;
+          }
+
+          if (isDiff) {
+            ({ addedLines, removedLines } = countChangedLines(original, modified));
+          }
         }
       }
-    }
 
-    return { filePath, isDiff, original, modified, canPreview, addedLines, removedLines };
-  }, [toolName, parsedArgs, metadata]);
+      return { filePath, isDiff, original, modified, canPreview, addedLines, removedLines };
+    }, [toolName, parsedArgs, metadata]);
 
   if (!canPreview) {
     return (
-      <div className="max-h-[320px] overflow-y-auto scrollbar-thin w-full rounded-sm bg-neutral-50/70 dark:bg-zinc-800/40 px-2.5 py-2" style={{ overflowX: 'hidden' }}>
+      <div
+        className="max-h-[320px] overflow-y-auto scrollbar-thin w-full rounded-sm bg-neutral-50/70 dark:bg-zinc-800/40 px-2.5 py-2"
+        style={{ overflowX: 'hidden' }}
+      >
         <pre className="tool-call-pre font-mono text-[12px] leading-5 text-neutral-600 dark:text-neutral-300 w-full m-0">
           {output || '(no preview available)'}
         </pre>

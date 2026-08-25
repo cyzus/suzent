@@ -1,8 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  ComputerDesktopIcon,
-  MagnifyingGlassIcon,
-} from '@heroicons/react/24/outline';
+import { ComputerDesktopIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 
 import {
   fetchNodes,
@@ -44,7 +41,13 @@ import { CopyButton } from './CopyButton';
 import { BrowserNodeQR } from './BrowserNodeQR';
 import { NetworkAccessStrip } from './NetworkAccessCard';
 import { PeerTriggerPanel } from './PeerTriggerPanel';
-import { SectionCardHeader, SettingsCard, SettingsListItem, SettingsListAction, SettingsPage } from './SettingsCard';
+import {
+  SectionCardHeader,
+  SettingsCard,
+  SettingsListItem,
+  SettingsListAction,
+  SettingsPage,
+} from './SettingsCard';
 import { relativeTime } from '../../lib/chatUtils';
 
 const POLL_MS = 4000;
@@ -59,7 +62,13 @@ function isAgent(node: { capabilities: { name: string }[] }): boolean {
 }
 
 /** Read-only status pill (used for the outbound direction and empty states). */
-function StatusPill({ tone, label }: { tone: 'green' | 'neutral' | 'red'; label: string }): React.ReactElement {
+function StatusPill({
+  tone,
+  label,
+}: {
+  tone: 'green' | 'neutral' | 'red';
+  label: string;
+}): React.ReactElement {
   if (tone === 'neutral') {
     return (
       <span className="inline-flex min-w-14 items-center justify-center border border-neutral-300 dark:border-white/10 bg-white/70 dark:bg-zinc-900 px-2 py-1 text-[10px] font-black uppercase text-neutral-400 dark:text-neutral-500">
@@ -67,18 +76,29 @@ function StatusPill({ tone, label }: { tone: 'green' | 'neutral' | 'red'; label:
       </span>
     );
   }
-  const cls = tone === 'red'
-    ? 'border-brutal-red bg-red-50 text-brutal-red dark:bg-red-950/40'
-    : 'border-brutal-black bg-brutal-green text-brutal-black';
+  const cls =
+    tone === 'red'
+      ? 'border-brutal-red bg-red-50 text-brutal-red dark:bg-red-950/40'
+      : 'border-brutal-black bg-brutal-green text-brutal-black';
   return (
-    <span className={`inline-flex min-w-16 items-center justify-center border-2 px-2 py-1 text-[10px] font-black uppercase tracking-wide ${cls}`}>
+    <span
+      className={`inline-flex min-w-16 items-center justify-center border-2 px-2 py-1 text-[10px] font-black uppercase tracking-wide ${cls}`}
+    >
       {label}
     </span>
   );
 }
 
 /** A compact on/off toggle for a direction the user owns (inbound grants). */
-function DirectionToggle({ on, busy, onToggle }: { on: boolean; busy: boolean; onToggle: () => void }): React.ReactElement {
+function DirectionToggle({
+  on,
+  busy,
+  onToggle,
+}: {
+  on: boolean;
+  busy: boolean;
+  onToggle: () => void;
+}): React.ReactElement {
   return (
     <button
       role="switch"
@@ -91,7 +111,9 @@ function DirectionToggle({ on, busy, onToggle }: { on: boolean; busy: boolean; o
           : 'border-brutal-black bg-white text-neutral-500 hover:bg-neutral-100 dark:bg-zinc-900 dark:text-neutral-300 dark:hover:bg-zinc-800'
       }`}
     >
-      <span className={`h-2 w-2 border border-brutal-black ${on ? 'bg-brutal-black' : 'bg-transparent dark:border-white'}`} />
+      <span
+        className={`h-2 w-2 border border-brutal-black ${on ? 'bg-brutal-black' : 'bg-transparent dark:border-white'}`}
+      />
       {on ? 'Granted' : 'Off'}
     </button>
   );
@@ -108,7 +130,10 @@ export function DevicesTab(): React.ReactElement {
   const [connections, setConnections] = useState<OutboundConnection[]>([]);
   const [grants, setGrants] = useState<ControlRequest[]>([]);
   const [peers, setPeers] = useState<ControlledPeer[]>([]);
-  const [discovered, setDiscovered] = useState<{ lan: DiscoveredPeer[]; tailscale: DiscoveredPeer[] } | null>(null);
+  const [discovered, setDiscovered] = useState<{
+    lan: DiscoveredPeer[];
+    tailscale: DiscoveredPeer[];
+  } | null>(null);
   const [discovering, setDiscovering] = useState(false);
   const [showScreenPairing, setShowScreenPairing] = useState(false);
   const [unauthorized, setUnauthorized] = useState<UnauthorizedTrigger[]>([]);
@@ -187,7 +212,9 @@ export function DevicesTab(): React.ReactElement {
 
   useEffect(() => {
     refresh();
-    fetchNodeConfig().then(setConfig).catch(() => {});
+    fetchNodeConfig()
+      .then(setConfig)
+      .catch(() => {});
     const id = setInterval(refresh, POLL_MS);
     return () => clearInterval(id);
   }, [refresh]);
@@ -217,8 +244,7 @@ export function DevicesTab(): React.ReactElement {
 
   const addresses = config?.addresses ?? [];
   // Pick the selected pairing address (default: first / LAN).
-  const selectedAddr =
-    addresses.find((a) => a.host === addrHost) ?? addresses[0] ?? null;
+  const selectedAddr = addresses.find((a) => a.host === addrHost) ?? addresses[0] ?? null;
   const gatewayUrl =
     selectedAddr?.gateway_url ?? config?.gateway_url ?? 'ws://<this-machine>:25314/ws/node';
   const hasTailscale = addresses.some((a) => a.label.startsWith('Tailscale'));
@@ -298,9 +324,7 @@ export function DevicesTab(): React.ReactElement {
       const addrKey = keyForUrl(p.base_url);
       const nameKey = keyForName(p.name);
       const existing =
-        (idKey && byKey.get(idKey)) ||
-        (addrKey && byKey.get(addrKey)) ||
-        byKey.get(nameKey);
+        (idKey && byKey.get(idKey)) || (addrKey && byKey.get(addrKey)) || byKey.get(nameKey);
       if (existing) {
         existing.peer = p;
         existing.online = existing.online || !!p.online;
@@ -344,9 +368,7 @@ export function DevicesTab(): React.ReactElement {
       const addrKey = keyForUrl(d.callback_url);
       const nameKey = keyForName(d.display_name);
       const existing =
-        (idKey && byKey.get(idKey)) ||
-        (addrKey && byKey.get(addrKey)) ||
-        byKey.get(nameKey);
+        (idKey && byKey.get(idKey)) || (addrKey && byKey.get(addrKey)) || byKey.get(nameKey);
       if (existing) {
         existing.deviceId = d.device_id;
         existing.scope = d.scope;
@@ -396,9 +418,7 @@ export function DevicesTab(): React.ReactElement {
       seen.add(row.key);
       rows.push(row);
     }
-    return rows.sort(
-      (a, b) => Number(b.online) - Number(a.online) || a.name.localeCompare(b.name)
-    );
+    return rows.sort((a, b) => Number(b.online) - Number(a.online) || a.name.localeCompare(b.name));
   })();
 
   // Pending requests NOT matched to an existing device row (genuinely new).
@@ -409,10 +429,7 @@ export function DevicesTab(): React.ReactElement {
 
   return (
     <SettingsPage>
-      <SettingsHeader
-        title="Devices"
-        subtitle="Connect and control trusted devices."
-      />
+      <SettingsHeader title="Devices" subtitle="Connect and control trusted devices." />
 
       {error && (
         <div className="border-2 border-brutal-red bg-red-50 dark:bg-red-900/20 text-brutal-red px-3 py-2 text-xs font-mono">
@@ -439,10 +456,12 @@ export function DevicesTab(): React.ReactElement {
         <div className="space-y-4">
           {discovered && (
             <>
-              {([
-                { key: 'lan', title: 'LAN (mDNS)', items: discovered.lan },
-                { key: 'tailscale', title: 'Tailscale', items: discovered.tailscale },
-              ] as const).map((group) => (
+              {(
+                [
+                  { key: 'lan', title: 'LAN (mDNS)', items: discovered.lan },
+                  { key: 'tailscale', title: 'Tailscale', items: discovered.tailscale },
+                ] as const
+              ).map((group) => (
                 <div key={group.key} className="space-y-2">
                   <div className="font-bold uppercase text-xs text-neutral-500 dark:text-neutral-400">
                     {group.title} ({group.items.length})
@@ -469,12 +488,19 @@ export function DevicesTab(): React.ReactElement {
                         <div className="flex items-center justify-between gap-3 w-full">
                           <div className="min-w-0">
                             <div className="font-bold truncate flex items-center gap-2">
-                              <span className={`h-3 w-3 shrink-0 border border-brutal-black ${peer.reachable === false ? 'bg-neutral-300 dark:bg-zinc-700' : 'bg-brutal-green'}`} />
+                              <span
+                                className={`h-3 w-3 shrink-0 border border-brutal-black ${peer.reachable === false ? 'bg-neutral-300 dark:bg-zinc-700' : 'bg-brutal-green'}`}
+                              />
                               {peer.name}
                             </div>
                             <div className="text-xs text-neutral-500 dark:text-neutral-400 font-mono truncate">
                               {peerBase}
-                              {peer.reachable === false && <span className="text-neutral-400"> · unreachable (not running Suzent?)</span>}
+                              {peer.reachable === false && (
+                                <span className="text-neutral-400">
+                                  {' '}
+                                  · unreachable (not running Suzent?)
+                                </span>
+                              )}
                             </div>
                           </div>
                           <SettingsListAction
@@ -537,7 +563,10 @@ export function DevicesTab(): React.ReactElement {
                 <BrutalSelect
                   value={selectedAddr?.host ?? ''}
                   onChange={setAddrHost}
-                  options={addresses.map((a) => ({ value: a.host, label: `${a.label} · ${a.host}` }))}
+                  options={addresses.map((a) => ({
+                    value: a.host,
+                    label: `${a.label} · ${a.host}`,
+                  }))}
                 />
               )}
               <div className="flex items-start gap-2">
@@ -568,12 +597,15 @@ export function DevicesTab(): React.ReactElement {
                 {unauthorized.length} blocked trigger attempt{unauthorized.length > 1 ? 's' : ''}
               </summary>
               <div className="mt-1 pl-3 space-y-0.5 text-neutral-400">
-                {unauthorized.slice(-5).reverse().map((u, i) => (
-                  <div key={i} className="truncate">
-                    {relativeTime(u.at)} · from {u.client_host}
-                    {u.claimed_id ? ` (claimed "${u.claimed_id}")` : ''}
-                  </div>
-                ))}
+                {unauthorized
+                  .slice(-5)
+                  .reverse()
+                  .map((u, i) => (
+                    <div key={i} className="truncate">
+                      {relativeTime(u.at)} · from {u.client_host}
+                      {u.claimed_id ? ` (claimed "${u.claimed_id}")` : ''}
+                    </div>
+                  ))}
               </div>
             </details>
           )}
@@ -584,17 +616,28 @@ export function DevicesTab(): React.ReactElement {
                 <div className="min-w-0">
                   <div className="font-bold truncate">
                     {g.controller_name}
-                    <span className="text-neutral-400 font-normal"> ({g.controller_host || 'unknown'})</span>
+                    <span className="text-neutral-400 font-normal">
+                      {' '}
+                      ({g.controller_host || 'unknown'})
+                    </span>
                   </div>
                   <div className="text-xs text-brutal-blue font-mono truncate">
                     wants to control this device
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <SettingsListAction tone="blue" disabled={busy === g.request_id} onClick={() => act(g.request_id, () => approveGrant(g.request_id))}>
+                  <SettingsListAction
+                    tone="blue"
+                    disabled={busy === g.request_id}
+                    onClick={() => act(g.request_id, () => approveGrant(g.request_id))}
+                  >
                     Approve
                   </SettingsListAction>
-                  <SettingsListAction tone="red" disabled={busy === g.request_id} onClick={() => act(g.request_id, () => denyGrant(g.request_id))}>
+                  <SettingsListAction
+                    tone="red"
+                    disabled={busy === g.request_id}
+                    onClick={() => act(g.request_id, () => denyGrant(g.request_id))}
+                  >
                     Deny
                   </SettingsListAction>
                 </div>
@@ -616,10 +659,18 @@ export function DevicesTab(): React.ReactElement {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <SettingsListAction tone="blue" disabled={busy === p.pairing_code} onClick={() => act(p.pairing_code, () => approvePendingNode(p.pairing_code))}>
+                  <SettingsListAction
+                    tone="blue"
+                    disabled={busy === p.pairing_code}
+                    onClick={() => act(p.pairing_code, () => approvePendingNode(p.pairing_code))}
+                  >
                     Approve
                   </SettingsListAction>
-                  <SettingsListAction tone="red" disabled={busy === p.pairing_code} onClick={() => act(p.pairing_code, () => denyPendingNode(p.pairing_code))}>
+                  <SettingsListAction
+                    tone="red"
+                    disabled={busy === p.pairing_code}
+                    onClick={() => act(p.pairing_code, () => denyPendingNode(p.pairing_code))}
+                  >
                     Deny
                   </SettingsListAction>
                 </div>
@@ -661,23 +712,37 @@ export function DevicesTab(): React.ReactElement {
                         />
                       )}
                       <span className="font-bold truncate">{d.name}</span>
-                      {d.platform && !isHostToken && <span className="text-neutral-400 font-normal text-sm">{d.platform}</span>}
+                      {d.platform && !isHostToken && (
+                        <span className="text-neutral-400 font-normal text-sm">{d.platform}</span>
+                      )}
                       {d.isAgent && (
-                        <span className="border border-brutal-black bg-brutal-blue px-1.5 py-0.5 text-[10px] font-black uppercase text-white">Agent</span>
+                        <span className="border border-brutal-black bg-brutal-blue px-1.5 py-0.5 text-[10px] font-black uppercase text-white">
+                          Agent
+                        </span>
                       )}
                       {d.scope === 'full' && (
-                        <span className="border border-brutal-black bg-brutal-red px-1.5 py-0.5 text-[10px] font-black uppercase text-white">Host</span>
+                        <span className="border border-brutal-black bg-brutal-red px-1.5 py-0.5 text-[10px] font-black uppercase text-white">
+                          Host
+                        </span>
                       )}
                     </div>
                     {isHostToken && d.deviceId ? (
-                      <SettingsListAction tone="red" disabled={busy === d.deviceId} onClick={() => act(d.deviceId!, () => revokeDevice(d.deviceId!))}>
+                      <SettingsListAction
+                        tone="red"
+                        disabled={busy === d.deviceId}
+                        onClick={() => act(d.deviceId!, () => revokeDevice(d.deviceId!))}
+                      >
                         Revoke
                       </SettingsListAction>
-                    ) : (hasOutbound || hasInbound) ? (
+                    ) : hasOutbound || hasInbound ? (
                       <SettingsListAction
                         tone="red"
                         disabled={busy === (d.peer?.peer_id ?? d.deviceId)}
-                        onClick={() => act(d.peer?.peer_id ?? d.deviceId!, () => unlinkDevice(d.peer?.peer_id, d.deviceId))}
+                        onClick={() =>
+                          act(d.peer?.peer_id ?? d.deviceId!, () =>
+                            unlinkDevice(d.peer?.peer_id, d.deviceId)
+                          )
+                        }
                       >
                         Remove
                       </SettingsListAction>
@@ -700,14 +765,13 @@ export function DevicesTab(): React.ReactElement {
                     )}
 
                     {d.nodeId && (d.nodeCapabilities?.length ?? 0) > 0 && (
-                      <NodeInvokePanel
-                        nodeId={d.nodeId}
-                        capabilities={d.nodeCapabilities ?? []}
-                      />
+                      <NodeInvokePanel nodeId={d.nodeId} capabilities={d.nodeCapabilities ?? []} />
                     )}
 
                     {d.peer?.base_url && (
-                      <div className="border-l-4 border-brutal-blue bg-white/80 px-2 py-1 text-[11px] text-neutral-500 font-mono truncate dark:bg-zinc-950/50 dark:text-neutral-400">{d.peer.base_url}</div>
+                      <div className="border-l-4 border-brutal-blue bg-white/80 px-2 py-1 text-[11px] text-neutral-500 font-mono truncate dark:bg-zinc-950/50 dark:text-neutral-400">
+                        {d.peer.base_url}
+                      </div>
                     )}
 
                     {/* Inbound usage: how often / when this grant last drove us. */}
@@ -737,8 +801,7 @@ export function DevicesTab(): React.ReactElement {
                           </span>
                           {hasOutbound && d.peer ? (
                             (() => {
-                              const st = d.peer.outbound_status
-                                ?? (d.online ? 'ready' : 'offline');
+                              const st = d.peer.outbound_status ?? (d.online ? 'ready' : 'offline');
                               if (st === 'revoked') {
                                 return (
                                   <span className="flex items-center gap-2">
@@ -777,7 +840,11 @@ export function DevicesTab(): React.ReactElement {
                               <button
                                 className="text-[10px] text-brutal-green font-black uppercase hover:underline disabled:opacity-40"
                                 disabled={busy === d.pendingGrant.request_id}
-                                onClick={() => act(d.pendingGrant!.request_id, () => approveGrant(d.pendingGrant!.request_id))}
+                                onClick={() =>
+                                  act(d.pendingGrant!.request_id, () =>
+                                    approveGrant(d.pendingGrant!.request_id)
+                                  )
+                                }
                               >
                                 Approve
                               </button>
@@ -785,7 +852,11 @@ export function DevicesTab(): React.ReactElement {
                               <button
                                 className="text-[10px] text-brutal-red font-black uppercase hover:underline disabled:opacity-40"
                                 disabled={busy === d.pendingGrant.request_id}
-                                onClick={() => act(d.pendingGrant!.request_id, () => denyGrant(d.pendingGrant!.request_id))}
+                                onClick={() =>
+                                  act(d.pendingGrant!.request_id, () =>
+                                    denyGrant(d.pendingGrant!.request_id)
+                                  )
+                                }
                               >
                                 Deny
                               </button>
@@ -797,7 +868,11 @@ export function DevicesTab(): React.ReactElement {
                             <DirectionToggle
                               on={inboundGranted}
                               busy={busy === d.deviceId}
-                              onToggle={() => act(d.deviceId!, () => setDeviceStatus(d.deviceId!, inboundGranted ? 'paused' : 'active'))}
+                              onToggle={() =>
+                                act(d.deviceId!, () =>
+                                  setDeviceStatus(d.deviceId!, inboundGranted ? 'paused' : 'active')
+                                )
+                              }
                             />
                           ) : hasOutbound && d.peer ? (
                             // No issued grant yet — offer to mint a reverse grant so
@@ -805,7 +880,11 @@ export function DevicesTab(): React.ReactElement {
                             <DirectionToggle
                               on={inboundGranted}
                               busy={busy === `rev:${d.peer.peer_id}`}
-                              onToggle={() => act(`rev:${d.peer!.peer_id}`, () => setPeerReverse(d.peer!.peer_id, !inboundGranted))}
+                              onToggle={() =>
+                                act(`rev:${d.peer!.peer_id}`, () =>
+                                  setPeerReverse(d.peer!.peer_id, !inboundGranted)
+                                )
+                              }
                             />
                           ) : (
                             <StatusPill tone="neutral" label="—" />

@@ -53,8 +53,8 @@ export const BrutalDialog: React.FC<BrutalDialogProps> = ({
     document.addEventListener('keydown', onKey);
     // Move focus to the first button so the user can immediately Enter / Tab.
     const t = setTimeout(() => {
-      cardRef.current?.querySelector<HTMLButtonElement>('button[data-primary="true"]')?.focus()
-        ?? cardRef.current?.querySelector<HTMLButtonElement>('button')?.focus();
+      cardRef.current?.querySelector<HTMLButtonElement>('button[data-primary="true"]')?.focus() ??
+        cardRef.current?.querySelector<HTMLButtonElement>('button')?.focus();
     }, 0);
     return () => {
       document.removeEventListener('keydown', onKey);
@@ -118,7 +118,13 @@ export const BrutalDialog: React.FC<BrutalDialogProps> = ({
                 onClick={onClose}
                 className="ml-auto p-1 text-brutal-black dark:text-white hover:bg-brutal-black/10 dark:hover:bg-white/10 transition-colors"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2.5}
+                >
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
@@ -137,7 +143,9 @@ export const BrutalDialog: React.FC<BrutalDialogProps> = ({
             <button
               key={action.label + i}
               type="button"
-              data-primary={action.tone === 'primary' || action.tone === 'danger' ? 'true' : undefined}
+              data-primary={
+                action.tone === 'primary' || action.tone === 'danger' ? 'true' : undefined
+              }
               onClick={() => handleActionClick(action)}
               className={`flex-1 py-3 text-xs font-bold uppercase tracking-wide transition-colors ${i > 0 ? 'border-l-2 border-brutal-black dark:border-zinc-500' : ''} ${toneClass(action.tone)}`}
             >

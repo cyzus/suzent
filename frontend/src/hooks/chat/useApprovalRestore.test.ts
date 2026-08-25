@@ -14,12 +14,14 @@ describe('permissionApprovalsToParts', () => {
           reason: 'Needs approval',
           reasonCode: 'shell_policy_ask',
           risk: 'high',
-          actions: [{
-            id: 'allow_once',
-            label: 'Allow',
-            behavior: 'allow',
-            scope: 'once',
-          }],
+          actions: [
+            {
+              id: 'allow_once',
+              label: 'Allow',
+              behavior: 'allow',
+              scope: 'once',
+            },
+          ],
         },
       },
     ]);

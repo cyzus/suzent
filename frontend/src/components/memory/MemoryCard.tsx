@@ -199,7 +199,9 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({
             </p>
             <div className="flex items-center gap-2 text-[10px] text-neutral-500 dark:text-neutral-400 mt-0.5">
               {category && (
-                <span className={`border border-brutal-black px-1 font-bold uppercase ${categoryAccent}`}>
+                <span
+                  className={`border border-brutal-black px-1 font-bold uppercase ${categoryAccent}`}
+                >
                   {category.replace(/_/g, ' ')}
                 </span>
               )}
@@ -280,7 +282,9 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({
               </span>
             )}
 
-            <span className="font-bold uppercase tracking-wide">{formatDate(memory.created_at)}</span>
+            <span className="font-bold uppercase tracking-wide">
+              {formatDate(memory.created_at)}
+            </span>
 
             {sourceFile && (
               <span className="font-mono" title={String(category || '')}>

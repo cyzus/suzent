@@ -37,12 +37,18 @@ const getStatusStyles = (type: StatusType) => {
 
 const getStatusIcon = (type: StatusType) => {
   switch (type) {
-    case 'error': return '!';
-    case 'success': return '✓';
-    case 'warning': return '⚠';
-    case 'info': return 'i';
-    case 'idle': return '•';
-    default: return '';
+    case 'error':
+      return '!';
+    case 'success':
+      return '✓';
+    case 'warning':
+      return '⚠';
+    case 'info':
+      return 'i';
+    case 'idle':
+      return '•';
+    default:
+      return '';
   }
 };
 
@@ -67,10 +73,14 @@ function formatRelativeTime(iso: string | null): string | null {
 
 const HEARTBEAT_INTERVAL_PRESETS = [5, 15, 30, 60, 120] as const;
 
-const SECTION_LABEL = 'text-[10px] font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400';
-const PILL_BUTTON = 'px-1.5 py-0.5 border border-brutal-black dark:border-neutral-400 text-[10px] font-bold uppercase tracking-wider transition-colors';
-const PILL_BUTTON_IDLE = 'bg-white text-brutal-black hover:bg-neutral-100 dark:bg-zinc-800 dark:text-white dark:hover:bg-zinc-700';
-const PILL_BUTTON_ACTIVE = 'bg-brutal-black text-white border-brutal-black dark:bg-neutral-200 dark:text-brutal-black';
+const SECTION_LABEL =
+  'text-[10px] font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400';
+const PILL_BUTTON =
+  'px-1.5 py-0.5 border border-brutal-black dark:border-neutral-400 text-[10px] font-bold uppercase tracking-wider transition-colors';
+const PILL_BUTTON_IDLE =
+  'bg-white text-brutal-black hover:bg-neutral-100 dark:bg-zinc-800 dark:text-white dark:hover:bg-zinc-700';
+const PILL_BUTTON_ACTIVE =
+  'bg-brutal-black text-white border-brutal-black dark:bg-neutral-200 dark:text-brutal-black';
 function useStatusHoverPopover() {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -148,7 +158,9 @@ function HeartbeatWidget() {
   const { currentChatId, config, setConfig } = useChatCoreStore();
   const { t } = useI18n();
   const { inFlight, inFlightChatId, lastPingAt, statusError } = useHeartbeatRunning();
-  const chatStatus = useHeartbeatRunning(s => currentChatId ? s.chatStatus[currentChatId] : undefined);
+  const chatStatus = useHeartbeatRunning((s) =>
+    currentChatId ? s.chatStatus[currentChatId] : undefined
+  );
   const [toggling, setToggling] = useState(false);
   const { handleBlur, open, openPopover, rootRef, closePopoverWithDelay } = useStatusHoverPopover();
 
@@ -175,7 +187,7 @@ function HeartbeatWidget() {
     if (!currentChatId || toggling) return;
     const newEnabled = !enabled;
     setToggling(true);
-    setConfig(prev => ({ ...prev, heartbeat_enabled: newEnabled }));
+    setConfig((prev) => ({ ...prev, heartbeat_enabled: newEnabled }));
     try {
       if (newEnabled) {
         await enableHeartbeat(currentChatId);
@@ -183,7 +195,7 @@ function HeartbeatWidget() {
         await disableHeartbeat(currentChatId);
       }
     } catch {
-      setConfig(prev => ({ ...prev, heartbeat_enabled: !newEnabled }));
+      setConfig((prev) => ({ ...prev, heartbeat_enabled: !newEnabled }));
     } finally {
       setToggling(false);
     }
@@ -192,11 +204,11 @@ function HeartbeatWidget() {
   const handleSetInterval = async (mins: number) => {
     if (!currentChatId || mins < 1) return;
     const prevMins = intervalMinutes;
-    setConfig(prev => ({ ...prev, heartbeat_interval_minutes: mins }));
+    setConfig((prev) => ({ ...prev, heartbeat_interval_minutes: mins }));
     try {
       await setHeartbeatInterval(mins, currentChatId);
     } catch {
-      setConfig(prev => ({ ...prev, heartbeat_interval_minutes: prevMins }));
+      setConfig((prev) => ({ ...prev, heartbeat_interval_minutes: prevMins }));
     }
   };
 
@@ -225,9 +237,15 @@ function HeartbeatWidget() {
         loadedForChatRef.current = currentChatId;
         if (content?.trim()) setShowText(true);
       })
-      .catch(() => { if (!cancelled) setMdDraft(''); })
-      .finally(() => { if (!cancelled) setMdLoading(false); });
-    return () => { cancelled = true; };
+      .catch(() => {
+        if (!cancelled) setMdDraft('');
+      })
+      .finally(() => {
+        if (!cancelled) setMdLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [open, currentChatId, chatStatus?.heartbeat_instructions]);
 
   const handleSaveText = async () => {
@@ -235,7 +253,7 @@ function HeartbeatWidget() {
     setMdSaving(true);
     try {
       await saveHeartbeatMd(mdDraft, currentChatId);
-      setConfig(prev => ({ ...prev, heartbeat_instructions: mdDraft }));
+      setConfig((prev) => ({ ...prev, heartbeat_instructions: mdDraft }));
       // Keep the polled store in sync so the editor doesn't revert on reopen.
       const prevStatus = chatStatus;
       if (prevStatus) {
@@ -252,7 +270,7 @@ function HeartbeatWidget() {
   };
 
   const lastPingMs = lastPingAt ? new Date(lastPingAt).getTime() : 0;
-  const fresh = enabled && lastPingMs > 0 && (Date.now() - lastPingMs) <= HEARTBEAT_HEALTHY_WINDOW_MS;
+  const fresh = enabled && lastPingMs > 0 && Date.now() - lastPingMs <= HEARTBEAT_HEALTHY_WINDOW_MS;
   const relative = formatRelativeTime(lastPingAt);
 
   type EkgMode = 'fast' | 'active' | 'slow' | 'flat';
@@ -261,29 +279,41 @@ function HeartbeatWidget() {
   let text: string;
 
   if (!enabled) {
-    ekg = 'flat'; heartClass = ''; text = t('chatWindow.heartbeatOff');
+    ekg = 'flat';
+    heartClass = '';
+    text = t('chatWindow.heartbeatOff');
   } else if (inFlightForChat) {
-    ekg = 'fast'; heartClass = 'pixel-heart-beat-fast'; text = t('chatWindow.heartbeatRunning');
+    ekg = 'fast';
+    heartClass = 'pixel-heart-beat-fast';
+    text = t('chatWindow.heartbeatRunning');
   } else if (statusError) {
-    ekg = 'slow'; heartClass = ''; text = statusError.slice(0, 32);
+    ekg = 'slow';
+    heartClass = '';
+    text = statusError.slice(0, 32);
   } else if (fresh) {
-    ekg = 'active'; heartClass = 'pixel-heart-beat'; text = t('chatWindow.heartbeatHealthy');
+    ekg = 'active';
+    heartClass = 'pixel-heart-beat';
+    text = t('chatWindow.heartbeatHealthy');
   } else if (relative) {
-    ekg = 'slow'; heartClass = ''; text = t('chatWindow.heartbeatLastRun', { time: relative });
+    ekg = 'slow';
+    heartClass = '';
+    text = t('chatWindow.heartbeatLastRun', { time: relative });
   } else {
-    ekg = 'slow'; heartClass = ''; text = t('chatWindow.heartbeatEnabled');
+    ekg = 'slow';
+    heartClass = '';
+    text = t('chatWindow.heartbeatEnabled');
   }
 
-  const ekgClass = ekg === 'fast'
-    ? 'ekg-active-wave [animation-duration:1.5s]'
-    : ekg === 'active'
-    ? 'ekg-active-wave [animation-duration:3s]'
-    : ekg === 'slow'
-    ? 'ekg-active-wave [animation-duration:6s] opacity-50'
-    : 'ekg-flatline';
-  const ekgPath = ekg !== 'flat'
-    ? "M 0 25 L 10 25 L 14 30 L 22 5 L 28 45 L 34 25 L 100 25"
-    : "M 0 25 L 100 25";
+  const ekgClass =
+    ekg === 'fast'
+      ? 'ekg-active-wave [animation-duration:1.5s]'
+      : ekg === 'active'
+        ? 'ekg-active-wave [animation-duration:3s]'
+        : ekg === 'slow'
+          ? 'ekg-active-wave [animation-duration:6s] opacity-50'
+          : 'ekg-flatline';
+  const ekgPath =
+    ekg !== 'flat' ? 'M 0 25 L 10 25 L 14 30 L 22 5 L 28 45 L 34 25 L 100 25' : 'M 0 25 L 100 25';
 
   return (
     <div
@@ -308,7 +338,7 @@ function HeartbeatWidget() {
           fill="currentColor"
           aria-hidden="true"
         >
-          <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+          <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
         </svg>
         <div className="hidden md:block w-8 h-3 flex-shrink-0">
           <svg viewBox="0 0 100 50" preserveAspectRatio="none" className="w-full h-full">
@@ -322,14 +352,13 @@ function HeartbeatWidget() {
             />
           </svg>
         </div>
-        <span className="hidden md:inline text-[10px] font-bold uppercase tracking-wider">{text}</span>
+        <span className="hidden md:inline text-[10px] font-bold uppercase tracking-wider">
+          {text}
+        </span>
       </button>
 
       {open && (
-        <InformationPopover
-          role="dialog"
-          className="absolute top-6 right-0 z-50 w-60 space-y-2"
-        >
+        <InformationPopover role="dialog" className="absolute top-6 right-0 z-50 w-60 space-y-2">
           {/* On/off */}
           <div className="flex items-center justify-between gap-3">
             <span className={SECTION_LABEL}>{t('chatWindow.heartbeatLabel')}</span>
@@ -337,17 +366,21 @@ function HeartbeatWidget() {
           </div>
 
           {/* Interval */}
-          <div className={`border-t border-neutral-100 dark:border-zinc-800 pt-2 ${enabled ? '' : 'opacity-50 pointer-events-none'}`}>
+          <div
+            className={`border-t border-neutral-100 dark:border-zinc-800 pt-2 ${enabled ? '' : 'opacity-50 pointer-events-none'}`}
+          >
             <div className={SECTION_LABEL}>{t('chatWindow.heartbeatInterval')}</div>
             <div className="flex flex-wrap gap-1 mt-1.5">
-              {HEARTBEAT_INTERVAL_PRESETS.map(mins => (
+              {HEARTBEAT_INTERVAL_PRESETS.map((mins) => (
                 <button
                   key={mins}
                   type="button"
                   onClick={() => handleSetInterval(mins)}
                   className={`${PILL_BUTTON} min-w-12 text-center ${intervalMinutes === mins ? PILL_BUTTON_ACTIVE : PILL_BUTTON_IDLE}`}
                 >
-                  {mins >= 60 ? t('chatWindow.heartbeatHours', { hours: mins / 60 }) : t('chatWindow.heartbeatMinutes', { minutes: mins })}
+                  {mins >= 60
+                    ? t('chatWindow.heartbeatHours', { hours: mins / 60 })
+                    : t('chatWindow.heartbeatMinutes', { minutes: mins })}
                 </button>
               ))}
             </div>
@@ -356,11 +389,18 @@ function HeartbeatWidget() {
                 type="number"
                 min={1}
                 value={intervalMinutes}
-                onChange={e => setConfig(prev => ({ ...prev, heartbeat_interval_minutes: parseInt(e.target.value, 10) || 1 }))}
-                onBlur={e => handleSetInterval(parseInt(e.target.value, 10) || 1)}
+                onChange={(e) =>
+                  setConfig((prev) => ({
+                    ...prev,
+                    heartbeat_interval_minutes: parseInt(e.target.value, 10) || 1,
+                  }))
+                }
+                onBlur={(e) => handleSetInterval(parseInt(e.target.value, 10) || 1)}
                 className="w-14 bg-white dark:bg-zinc-800 border border-brutal-black dark:border-neutral-400 px-1.5 py-0.5 font-mono text-[11px] focus:outline-none dark:text-white"
               />
-              <span className="text-neutral-500 dark:text-neutral-400">{t('chatWindow.heartbeatMinutesUnit')}</span>
+              <span className="text-neutral-500 dark:text-neutral-400">
+                {t('chatWindow.heartbeatMinutesUnit')}
+              </span>
             </div>
           </div>
 
@@ -368,11 +408,17 @@ function HeartbeatWidget() {
           <div className="border-t border-neutral-100 dark:border-zinc-800 pt-2">
             <button
               type="button"
-              onClick={() => setShowText(s => !s)}
+              onClick={() => setShowText((s) => !s)}
               className={`flex items-center justify-between w-full ${SECTION_LABEL} hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors`}
             >
               <span>{t('chatWindow.heartbeatInstructions')}</span>
-              <svg className={`w-3 h-3 transition-transform ${showText ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
+              <svg
+                className={`w-3 h-3 transition-transform ${showText ? 'rotate-180' : ''}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                strokeWidth={3}
+              >
                 <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
               </svg>
             </button>
@@ -385,7 +431,7 @@ function HeartbeatWidget() {
                   <>
                     <textarea
                       value={mdDraft}
-                      onChange={e => setMdDraft(e.target.value)}
+                      onChange={(e) => setMdDraft(e.target.value)}
                       rows={5}
                       placeholder={t('chatWindow.heartbeatInstructionsPlaceholder')}
                       className="w-full bg-white dark:bg-zinc-800 border border-brutal-black dark:border-neutral-400 px-1.5 py-1 font-mono text-[11px] leading-relaxed resize-y focus:outline-none dark:text-white dark:placeholder-neutral-500"
@@ -417,12 +463,10 @@ function ContextWidget() {
 
   if (!usage || !backendConfig?.maxContextTokens) return null;
 
-  return (
-    <ContextWidgetBody usage={usage} limit={backendConfig.maxContextTokens} />
-  );
+  return <ContextWidgetBody usage={usage} limit={backendConfig.maxContextTokens} />;
 }
 
-function ContextWidgetBody({ usage, limit }: { usage: ContextUsage; limit: number; }) {
+function ContextWidgetBody({ usage, limit }: { usage: ContextUsage; limit: number }) {
   const { compactNotice, setCompactNotice, clearCompactNotice } = useContextUsageStore();
   const { currentChatId, isStreaming } = useChatStore();
   const { setStatus } = useStatusStore();
@@ -432,18 +476,25 @@ function ContextWidgetBody({ usage, limit }: { usage: ContextUsage; limit: numbe
 
   const contextTokens = usage.context_tokens ?? usage.total_tokens ?? 0;
   const pct = Math.min(100, (contextTokens / limit) * 100);
-  const barColor = pct >= 80 ? 'bg-brutal-red' : pct >= 60 ? 'bg-brutal-yellow' : 'bg-neutral-400 dark:bg-neutral-500';
+  const barColor =
+    pct >= 80
+      ? 'bg-brutal-red'
+      : pct >= 60
+        ? 'bg-brutal-yellow'
+        : 'bg-neutral-400 dark:bg-neutral-500';
 
   const inputTokens = usage.input_tokens ?? 0;
   const outputTokens = usage.output_tokens ?? 0;
   const cacheRead = usage.cache_read_tokens ?? 0;
   const cacheWrite = usage.cache_write_tokens ?? 0;
   const details = usage.details ?? {};
-  const extraDetails = Object.entries(details).filter(([, v]) => Number(v) > 0) as Array<[string, number]>;
+  const extraDetails = Object.entries(details).filter(([, v]) => Number(v) > 0) as Array<
+    [string, number]
+  >;
   const compactRecommended = pct >= 80;
   const compacting = ['loading', 'analyzing', 'summarizing', 'saving'].includes(progress.stage);
 
-  const fmt = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${n}`;
+  const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${n}`);
   const clearHintTimer = () => {
     if (hintTimerRef.current != null) {
       window.clearTimeout(hintTimerRef.current);
@@ -490,7 +541,9 @@ function ContextWidgetBody({ usage, limit }: { usage: ContextUsage; limit: numbe
   };
 
   const canManualCompact = !!currentChatId && !isStreaming && !compacting;
-  const compactLabel = compacting ? (compactStageLabel[progress.stage] || 'Compacting...') : compactNotice;
+  const compactLabel = compacting
+    ? compactStageLabel[progress.stage] || 'Compacting...'
+    : compactNotice;
 
   return (
     <div
@@ -509,7 +562,10 @@ function ContextWidgetBody({ usage, limit }: { usage: ContextUsage; limit: numbe
         aria-expanded={open}
       >
         <div className="h-1.5 w-12 min-w-0 flex-shrink overflow-hidden rounded-full bg-neutral-300 dark:bg-zinc-600">
-          <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${pct}%` }} />
+          <div
+            className={`h-full rounded-full transition-all ${barColor}`}
+            style={{ width: `${pct}%` }}
+          />
         </div>
         <span className="hidden flex-shrink-0 text-[10px] font-bold uppercase tracking-wider md:inline">
           {fmt(contextTokens)}
@@ -527,19 +583,25 @@ function ContextWidgetBody({ usage, limit }: { usage: ContextUsage; limit: numbe
           className="absolute top-6 right-0 z-50 w-56 space-y-1.5 font-mono normal-case tracking-normal font-normal"
         >
           <div className="flex items-center justify-between mb-1">
-            <div className="font-bold text-neutral-900 dark:text-neutral-100 uppercase tracking-wider text-[10px]">Context Window</div>
+            <div className="font-bold text-neutral-900 dark:text-neutral-100 uppercase tracking-wider text-[10px]">
+              Context Window
+            </div>
             <button
               type="button"
               onClick={handleManualCompact}
               disabled={!canManualCompact}
               className="px-1.5 py-0.5 border border-brutal-black dark:border-neutral-400 text-[9px] font-bold uppercase tracking-wider bg-white dark:bg-zinc-800 hover:bg-neutral-100 dark:hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed"
-              title={canManualCompact ? 'Compact context now' : 'Compaction unavailable while streaming'}
+              title={
+                canManualCompact ? 'Compact context now' : 'Compaction unavailable while streaming'
+              }
             >
               {compacting ? '...' : 'Compact'}
             </button>
           </div>
           {compactLabel && (
-            <div className={`px-1.5 py-1 border rounded text-[10px] font-bold ${progress.stage === 'error' ? 'border-brutal-red text-brutal-red' : 'border-neutral-300 dark:border-zinc-700 text-neutral-600 dark:text-neutral-300'}`}>
+            <div
+              className={`px-1.5 py-1 border rounded text-[10px] font-bold ${progress.stage === 'error' ? 'border-brutal-red text-brutal-red' : 'border-neutral-300 dark:border-zinc-700 text-neutral-600 dark:text-neutral-300'}`}
+            >
               {compactLabel}
             </div>
           )}
@@ -548,10 +610,15 @@ function ContextWidgetBody({ usage, limit }: { usage: ContextUsage; limit: numbe
           <div className="space-y-0.5">
             <div className="flex justify-between">
               <span className="text-neutral-500 dark:text-neutral-400">Total</span>
-              <span>{fmt(contextTokens)} / {fmt(limit)}</span>
+              <span>
+                {fmt(contextTokens)} / {fmt(limit)}
+              </span>
             </div>
             <div className="w-full h-1 rounded-full bg-neutral-100 dark:bg-zinc-800">
-              <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${pct}%` }} />
+              <div
+                className={`h-full rounded-full transition-all ${barColor}`}
+                style={{ width: `${pct}%` }}
+              />
             </div>
           </div>
 
@@ -570,7 +637,9 @@ function ContextWidgetBody({ usage, limit }: { usage: ContextUsage; limit: numbe
           {/* Cache */}
           {(cacheRead > 0 || cacheWrite > 0) && (
             <div className="border-t border-neutral-100 dark:border-zinc-800 pt-1.5 space-y-1">
-              <div className="text-neutral-400 dark:text-neutral-500 text-[10px] uppercase tracking-wide mb-0.5">Cache</div>
+              <div className="text-neutral-400 dark:text-neutral-500 text-[10px] uppercase tracking-wide mb-0.5">
+                Cache
+              </div>
               {cacheRead > 0 && (
                 <div className="flex justify-between">
                   <span>Cache Read</span>
@@ -589,10 +658,14 @@ function ContextWidgetBody({ usage, limit }: { usage: ContextUsage; limit: numbe
           {/* Extra details from model */}
           {extraDetails.length > 0 && (
             <div className="border-t border-neutral-100 dark:border-zinc-800 pt-1.5 space-y-1">
-              <div className="text-neutral-400 dark:text-neutral-500 text-[10px] uppercase tracking-wide mb-0.5">Details</div>
+              <div className="text-neutral-400 dark:text-neutral-500 text-[10px] uppercase tracking-wide mb-0.5">
+                Details
+              </div>
               {extraDetails.map(([key, val]) => (
                 <div key={key} className="flex justify-between">
-                  <span className="text-neutral-500 dark:text-neutral-400 truncate mr-2">{key.replace(/_/g, ' ')}</span>
+                  <span className="text-neutral-500 dark:text-neutral-400 truncate mr-2">
+                    {key.replace(/_/g, ' ')}
+                  </span>
                   <span className="flex-shrink-0">{fmt(Number(val))}</span>
                 </div>
               ))}
@@ -618,7 +691,10 @@ function SubAgentWidget() {
   if (activeTasks.length === 0) return null;
 
   return (
-    <div className="flex items-center gap-1.5 flex-shrink-0 ml-3 brutal-running-mono !shadow-none dark:!shadow-none px-1.5 py-0.5 border-2 border-brutal-black dark:border-white text-brutal-black dark:text-white font-bold" title={`${activeTasks.length} sub-agent(s) running`}>
+    <div
+      className="flex items-center gap-1.5 flex-shrink-0 ml-3 brutal-running-mono !shadow-none dark:!shadow-none px-1.5 py-0.5 border-2 border-brutal-black dark:border-white text-brutal-black dark:text-white font-bold"
+      title={`${activeTasks.length} sub-agent(s) running`}
+    >
       <span className="text-[10px]">🤖</span>
       <span className="hidden md:inline text-[9px] font-bold uppercase tracking-wider">
         {activeTasks.length} sub-agent{activeTasks.length > 1 ? 's' : ''} running
@@ -643,22 +719,25 @@ function DreamWidget({ onOpenMemorySettings }: { onOpenMemorySettings?: () => vo
       ? t('settings.memoryConfig.dreamStatus.finalizing')
       : t('settings.memoryConfig.dreamStatus.running')
     : failed
-    ? t('settings.memoryConfig.statusBarNeedsReview')
-    : pending > 0
-    ? t('settings.memoryConfig.statusBarPending', { count: String(pending) })
-    : t('settings.memoryConfig.statusBarIdle');
+      ? t('settings.memoryConfig.statusBarNeedsReview')
+      : pending > 0
+        ? t('settings.memoryConfig.statusBarPending', { count: String(pending) })
+        : t('settings.memoryConfig.statusBarIdle');
 
   const badgeClass = running
     ? 'bg-brutal-blue text-white animate-pulse border-2 border-brutal-black dark:border-neutral-500'
     : failed
-    ? 'bg-brutal-red text-white border-2 border-brutal-black dark:border-neutral-500'
-    : pending > 0
-    ? 'bg-brutal-yellow text-brutal-black border-2 border-brutal-black dark:border-neutral-500'
-    : 'bg-neutral-200 dark:bg-zinc-700 text-neutral-600 dark:text-neutral-300';
+      ? 'bg-brutal-red text-white border-2 border-brutal-black dark:border-neutral-500'
+      : pending > 0
+        ? 'bg-brutal-yellow text-brutal-black border-2 border-brutal-black dark:border-neutral-500'
+        : 'bg-neutral-200 dark:bg-zinc-700 text-neutral-600 dark:text-neutral-300';
 
-  const title = error || status.reason || (status.watermark
-    ? t('settings.memoryConfig.statusBarWatermark', { watermark: status.watermark })
-    : t('settings.memoryConfig.dreamTitle'));
+  const title =
+    error ||
+    status.reason ||
+    (status.watermark
+      ? t('settings.memoryConfig.statusBarWatermark', { watermark: status.watermark })
+      : t('settings.memoryConfig.dreamTitle'));
 
   return (
     <button
@@ -667,7 +746,9 @@ function DreamWidget({ onOpenMemorySettings }: { onOpenMemorySettings?: () => vo
       className={`flex items-center gap-1.5 flex-shrink-0 ml-3 px-1.5 py-0.5 font-bold uppercase tracking-wider ${badgeClass}`}
       title={title}
     >
-      <span className="text-[10px]" aria-hidden="true">{running ? '◐' : failed ? '!' : '◌'}</span>
+      <span className="text-[10px]" aria-hidden="true">
+        {running ? '◐' : failed ? '!' : '◌'}
+      </span>
       <span className="hidden md:inline text-[9px]">{label}</span>
     </button>
   );
@@ -704,33 +785,42 @@ function BackendServiceWidget() {
   const state = unavailable
     ? 'offline'
     : service?.ready
-    ? 'online'
-    : service
-    ? 'starting'
-    : 'checking';
-  const label = state === 'online'
-    ? t('status.backgroundOnline')
-    : state === 'starting'
-    ? t('status.backgroundStarting')
-    : state === 'offline'
-    ? t('status.backgroundOffline')
-    : t('status.backgroundChecking');
-  const dotClass = state === 'online'
-    ? 'bg-brutal-green'
-    : state === 'offline'
-    ? 'bg-brutal-red'
-    : 'bg-brutal-yellow animate-pulse';
-  const details = service && !unavailable
-    ? t('status.backgroundDetails', {
-        scheduler: service.schedulerRunning ? t('common.on') : t('common.off'),
-        heartbeat: service.heartbeatRunning ? t('common.on') : t('common.off'),
-        channels: String(service.channelsConfigured),
-      })
-    : label;
+      ? 'online'
+      : service
+        ? 'starting'
+        : 'checking';
+  const label =
+    state === 'online'
+      ? t('status.backgroundOnline')
+      : state === 'starting'
+        ? t('status.backgroundStarting')
+        : state === 'offline'
+          ? t('status.backgroundOffline')
+          : t('status.backgroundChecking');
+  const dotClass =
+    state === 'online'
+      ? 'bg-brutal-green'
+      : state === 'offline'
+        ? 'bg-brutal-red'
+        : 'bg-brutal-yellow animate-pulse';
+  const details =
+    service && !unavailable
+      ? t('status.backgroundDetails', {
+          scheduler: service.schedulerRunning ? t('common.on') : t('common.off'),
+          heartbeat: service.heartbeatRunning ? t('common.on') : t('common.off'),
+          channels: String(service.channelsConfigured),
+        })
+      : label;
 
   return (
-    <div className="flex min-w-0 items-center gap-2 text-neutral-500 dark:text-neutral-400" title={details}>
-      <span className={`h-2.5 w-2.5 flex-shrink-0 border border-brutal-black dark:border-neutral-300 ${dotClass}`} aria-hidden="true" />
+    <div
+      className="flex min-w-0 items-center gap-2 text-neutral-500 dark:text-neutral-400"
+      title={details}
+    >
+      <span
+        className={`h-2.5 w-2.5 flex-shrink-0 border border-brutal-black dark:border-neutral-300 ${dotClass}`}
+        aria-hidden="true"
+      />
       <span className="hidden truncate lg:inline">{label}</span>
     </div>
   );
@@ -739,7 +829,7 @@ function BackendServiceWidget() {
 function ActiveChatTitle() {
   const { currentChatId, chats } = useChatCoreStore();
   const activeTitle = currentChatId
-    ? chats.find(chat => chat.id === currentChatId)?.title.trim()
+    ? chats.find((chat) => chat.id === currentChatId)?.title.trim()
     : null;
 
   if (!activeTitle) return null;
@@ -749,7 +839,10 @@ function ActiveChatTitle() {
       className="flex h-5 max-w-full min-w-0 items-center gap-2 border border-neutral-400/80 bg-white/70 px-2.5 text-neutral-700 shadow-[2px_2px_0_rgba(0,0,0,0.12)] dark:border-neutral-600 dark:bg-zinc-900/80 dark:text-neutral-200 dark:shadow-[2px_2px_0_rgba(255,255,255,0.08)]"
       title={activeTitle}
     >
-      <span className="relative flex h-3 w-3 flex-shrink-0 items-center justify-center border border-current/50" aria-hidden="true">
+      <span
+        className="relative flex h-3 w-3 flex-shrink-0 items-center justify-center border border-current/50"
+        aria-hidden="true"
+      >
         <span className="h-1 w-1 bg-current" />
       </span>
       <span className="truncate text-[11px] font-semibold normal-case tracking-normal" dir="auto">
@@ -764,20 +857,27 @@ interface StatusBarProps {
   showActiveChatTitle?: boolean;
 }
 
-export const StatusBar: React.FC<StatusBarProps> = ({ onOpenMemorySettings, showActiveChatTitle = false }) => {
+export const StatusBar: React.FC<StatusBarProps> = ({
+  onOpenMemorySettings,
+  showActiveChatTitle = false,
+}) => {
   const { message, type } = useStatusStore();
 
   return (
-    <div className={`
+    <div
+      className={`
       w-full h-8 flex items-center px-3 md:px-5
       border-b-3 border-brutal-black
       font-mono text-[10px] md:text-xs font-bold uppercase tracking-wider
       transition-colors duration-200
       ${getStatusStyles(type)}
-    `}>
+    `}
+    >
       {/* Left: service/toast followed by the selected conversation. */}
       <div className="flex min-w-0 flex-1 items-center gap-4 pr-4">
-        <div className={`flex min-w-0 items-center gap-2.5 ${message ? 'flex-shrink' : 'flex-shrink-0'}`}>
+        <div
+          className={`flex min-w-0 items-center gap-2.5 ${message ? 'flex-shrink' : 'flex-shrink-0'}`}
+        >
           {message ? (
             <>
               <span className="w-4 flex-shrink-0 text-center">{getStatusIcon(type)}</span>

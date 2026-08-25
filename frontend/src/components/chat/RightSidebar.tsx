@@ -132,15 +132,19 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
 
   const shouldBuildWebHistory = isOpen || isBrowserStreamActive || Boolean(forcedWebContextId);
   const webHistoryMessages = useMemo(
-    () => shouldBuildWebHistory ? messages : [],
-    [messages, shouldBuildWebHistory],
+    () => (shouldBuildWebHistory ? messages : []),
+    [messages, shouldBuildWebHistory]
   );
   const webHistory = useWebHistory(webHistoryMessages);
-  const hasWebActivity = webHistory.length > 0 || (!shouldBuildWebHistory && messages.some(
-    message => message.role === 'assistant' && typeof message.content === 'string' && (
-      message.content.includes('web_search') || message.content.includes('webpage_fetch')
-    ),
-  ));
+  const hasWebActivity =
+    webHistory.length > 0 ||
+    (!shouldBuildWebHistory &&
+      messages.some(
+        (message) =>
+          message.role === 'assistant' &&
+          typeof message.content === 'string' &&
+          (message.content.includes('web_search') || message.content.includes('webpage_fetch'))
+      ));
   // Goal/tasks load async on chat switch; only treat them as content once the
   // fetched data is stamped for the chat we're viewing (see canvas scoping above).
   const goalMatchesChat = goalChatId === undefined || goalChatId === currentChatId;
@@ -188,7 +192,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       icon: ClipboardDocumentListIcon,
       labelKey: 'sidebar.tabs.plan',
       fallbackLabel: 'Goal',
-      hasContent: true,  // always accessible — shows empty state + board button
+      hasContent: true, // always accessible — shows empty state + board button
       hasActivity: hasGoalContent,
       activityClass: 'bg-brutal-yellow',
     },
@@ -197,7 +201,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       icon: WrenchScrewdriverIcon,
       labelKey: 'sidebar.tabs.tools',
       fallbackLabel: 'Tools',
-      hasContent: true,  // always accessible
+      hasContent: true, // always accessible
       hasActivity: false,
     },
   ];
@@ -275,79 +279,86 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     onOpen,
   ]);
 
-
   // In a new chat only the Tools tab is usable — the rest have no chat context
   // yet, so they can't be selected (avoids opening an empty/collapsed panel).
-  const isTabLocked = useCallback(
-    (tabId: TabId) => isNewChat && tabId !== 'tools',
-    [isNewChat],
-  );
+  const isTabLocked = useCallback((tabId: TabId) => isNewChat && tabId !== 'tools', [isNewChat]);
 
   // ── Icon strip click: toggle panel or switch tab ───────────────────
-  const handleTabClick = useCallback((tabId: TabId) => {
-    const targetTab = tabs.find(tab => tab.id === tabId);
-    if (!targetTab) return;
-    if (isTabLocked(tabId)) return;
-    if (targetTab.id !== 'files' && targetTab.id !== 'plan' && targetTab.id !== 'tools' && !targetTab.hasContent) {
-      return;
-    }
+  const handleTabClick = useCallback(
+    (tabId: TabId) => {
+      const targetTab = tabs.find((tab) => tab.id === tabId);
+      if (!targetTab) return;
+      if (isTabLocked(tabId)) return;
+      if (
+        targetTab.id !== 'files' &&
+        targetTab.id !== 'plan' &&
+        targetTab.id !== 'tools' &&
+        !targetTab.hasContent
+      ) {
+        return;
+      }
 
-    if (isOpen && activeTab === tabId) {
-      onClose();
-    } else {
-      setActiveTab(tabId);
-      if (!isOpen) onOpen();
-    }
-  }, [tabs, isOpen, activeTab, onClose, onOpen, isTabLocked]);
+      if (isOpen && activeTab === tabId) {
+        onClose();
+      } else {
+        setActiveTab(tabId);
+        if (!isOpen) onOpen();
+      }
+    },
+    [tabs, isOpen, activeTab, onClose, onOpen, isTabLocked]
+  );
 
   // ── Resize ─────────────────────────────────────────────────────────
   // During the drag we write the width straight to the DOM (no React state, so
   // the heavy canvas/content subtree never re-renders per mouse move) and
   // coalesce moves into a single rAF write. React state is committed only once
   // on mouseup — that's the sole re-render the resize triggers.
-  const handleResizeStart = useCallback((e: React.MouseEvent) => {
-    if (forceFullView) return;
-    e.preventDefault();
-    const element = sidebarRef.current;
-    if (!element) return;
+  const handleResizeStart = useCallback(
+    (e: React.MouseEvent) => {
+      if (forceFullView) return;
+      e.preventDefault();
+      const element = sidebarRef.current;
+      if (!element) return;
 
-    const startWidth = element.getBoundingClientRect().width;
-    dragState.current = { startX: e.clientX, startWidth };
-    let latestWidth = startWidth;
-    let rafId = 0;
+      const startWidth = element.getBoundingClientRect().width;
+      dragState.current = { startX: e.clientX, startWidth };
+      let latestWidth = startWidth;
+      let rafId = 0;
 
-    // Freeze children from reflowing mid-drag work; keeps the paint cheap.
-    const prevUserSelect = document.body.style.userSelect;
-    document.body.style.userSelect = 'none';
+      // Freeze children from reflowing mid-drag work; keeps the paint cheap.
+      const prevUserSelect = document.body.style.userSelect;
+      document.body.style.userSelect = 'none';
 
-    const applyWidth = () => {
-      rafId = 0;
-      element.style.width = `${latestWidth}px`;
-    };
+      const applyWidth = () => {
+        rafId = 0;
+        element.style.width = `${latestWidth}px`;
+      };
 
-    const onMouseMove = (ev: MouseEvent) => {
-      if (!dragState.current) return;
-      const delta = dragState.current.startX - ev.clientX;
-      latestWidth = Math.max(
-        MIN_RIGHT_SIDEBAR_WIDTH_PX,
-        Math.min(effectiveMaxWidth, dragState.current.startWidth + delta),
-      );
-      if (!rafId) rafId = requestAnimationFrame(applyWidth);
-    };
+      const onMouseMove = (ev: MouseEvent) => {
+        if (!dragState.current) return;
+        const delta = dragState.current.startX - ev.clientX;
+        latestWidth = Math.max(
+          MIN_RIGHT_SIDEBAR_WIDTH_PX,
+          Math.min(effectiveMaxWidth, dragState.current.startWidth + delta)
+        );
+        if (!rafId) rafId = requestAnimationFrame(applyWidth);
+      };
 
-    const onMouseUp = () => {
-      dragState.current = null;
-      if (rafId) cancelAnimationFrame(rafId);
-      document.body.style.userSelect = prevUserSelect;
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('mouseup', onMouseUp);
-      // Commit the final width to React state (single re-render).
-      setSidebarWidth(latestWidth);
-    };
+      const onMouseUp = () => {
+        dragState.current = null;
+        if (rafId) cancelAnimationFrame(rafId);
+        document.body.style.userSelect = prevUserSelect;
+        window.removeEventListener('mousemove', onMouseMove);
+        window.removeEventListener('mouseup', onMouseUp);
+        // Commit the final width to React state (single re-render).
+        setSidebarWidth(latestWidth);
+      };
 
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
-  }, [effectiveMaxWidth, forceFullView]);
+      window.addEventListener('mousemove', onMouseMove);
+      window.addEventListener('mouseup', onMouseUp);
+    },
+    [effectiveMaxWidth, forceFullView]
+  );
 
   useEffect(() => {
     if (sidebarWidth === null || forceFullView) return;
@@ -360,7 +371,8 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   }, [forceFullView, sidebarWidth]);
 
   // ── Width calculation ───────────────────────────────────────────────
-  const isAutoExpanded = (activeTab === 'files' && isFileExpanded) || (activeTab === 'browser' && isBrowserStreamActive);
+  const isAutoExpanded =
+    (activeTab === 'files' && isFileExpanded) || (activeTab === 'browser' && isBrowserStreamActive);
   const hasCustomWidth = sidebarWidth !== null;
   const shouldUseCustomWidth = hasCustomWidth && !isOverlayMode;
 
@@ -374,7 +386,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
 
   const desktopOpenWidth = Math.max(
     MIN_RIGHT_SIDEBAR_WIDTH_PX,
-    Math.min(effectiveMaxWidth, shouldUseCustomWidth ? sidebarWidth! : getDesktopDefaultWidth()),
+    Math.min(effectiveMaxWidth, shouldUseCustomWidth ? sidebarWidth! : getDesktopDefaultWidth())
   );
 
   // Desktop: icon strip always visible (44px), content panel expands on open
@@ -382,7 +394,11 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   // New chat: in overlay mode hide entirely; in desktop mode show icon strip but only expand for tools tab
   const isNewChatOverlayHidden = isNewChat && isOverlayMode;
   const effectiveOpen = isOpen && (!isNewChat || activeTab === 'tools');
-  const desktopWidth = isNewChatOverlayHidden ? 0 : effectiveOpen ? desktopOpenWidth : ICON_STRIP_WIDTH;
+  const desktopWidth = isNewChatOverlayHidden
+    ? 0
+    : effectiveOpen
+      ? desktopOpenWidth
+      : ICON_STRIP_WIDTH;
 
   // ── Report width via ResizeObserver ────────────────────────────────
   useEffect(() => {
@@ -407,16 +423,26 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       observer.disconnect();
       window.removeEventListener('resize', reportWidth);
     };
-  }, [onWidthChange, isOpen, activeTab, isAutoExpanded, isCanvasActive, sidebarWidth, forceFullView]);
+  }, [
+    onWidthChange,
+    isOpen,
+    activeTab,
+    isAutoExpanded,
+    isCanvasActive,
+    sidebarWidth,
+    forceFullView,
+  ]);
 
   return (
     <div
       ref={sidebarRef}
-      style={isNewChatOverlayHidden
-        ? { width: 0 }
-        : isOverlayMode
-          ? { width: ICON_STRIP_WIDTH, maxWidth: ICON_STRIP_WIDTH }
-          : { width: desktopWidth, maxWidth: effectiveMaxWidth }}
+      style={
+        isNewChatOverlayHidden
+          ? { width: 0 }
+          : isOverlayMode
+            ? { width: ICON_STRIP_WIDTH, maxWidth: ICON_STRIP_WIDTH }
+            : { width: desktopWidth, maxWidth: effectiveMaxWidth }
+      }
       className={`
         z-20 flex flex-row shrink-0 min-h-0 h-full overflow-visible
         ${isNewChatOverlayHidden ? 'pointer-events-none' : `bg-white dark:bg-zinc-900 ${!isOverlayMode || isOpen ? 'border-l-3 border-brutal-black' : ''}`}
@@ -449,7 +475,9 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                   onMaximize={onMaximizeFile}
                 />
               </div>
-              <div className={`flex-1 h-full flex flex-col ${activeTab === 'browser' ? 'flex' : 'hidden'}`}>
+              <div
+                className={`flex-1 h-full flex flex-col ${activeTab === 'browser' ? 'flex' : 'hidden'}`}
+              >
                 <WebActivitiesView
                   history={webHistory}
                   isBrowserStreamActive={isBrowserStreamActive}
@@ -458,19 +486,32 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                   onClearForcedContext={onClearForcedWebContext}
                 />
               </div>
-              <div className={`flex-1 h-full flex flex-col min-h-0 ${activeTab === 'canvas' ? 'flex' : 'hidden'}`}>
-                {canvas && <CanvasView canvas={canvas} onDispatch={onCanvasDispatch ?? (() => {})} />}
+              <div
+                className={`flex-1 h-full flex flex-col min-h-0 ${activeTab === 'canvas' ? 'flex' : 'hidden'}`}
+              >
+                {canvas && (
+                  <CanvasView canvas={canvas} onDispatch={onCanvasDispatch ?? (() => {})} />
+                )}
               </div>
-              <div className={`flex-1 h-full flex flex-col min-h-0 ${activeTab === 'agents' ? 'flex' : 'hidden'}`}>
+              <div
+                className={`flex-1 h-full flex flex-col min-h-0 ${activeTab === 'agents' ? 'flex' : 'hidden'}`}
+              >
                 {viewingSubAgentTaskId ? (
                   <SubAgentView taskId={viewingSubAgentTaskId} onClose={onCloseSubAgent} />
                 ) : currentChatId ? (
-                  <SubAgentList chatId={currentChatId} onSelect={(taskId) => onSelectSubAgent?.(taskId)} />
+                  <SubAgentList
+                    chatId={currentChatId}
+                    onSelect={(taskId) => onSelectSubAgent?.(taskId)}
+                  />
                 ) : (
-                  <div className="flex items-center justify-center h-full text-[10px] font-bold uppercase tracking-widest font-mono text-neutral-400">No sub-agent selected</div>
+                  <div className="flex items-center justify-center h-full text-[10px] font-bold uppercase tracking-widest font-mono text-neutral-400">
+                    No sub-agent selected
+                  </div>
                 )}
               </div>
-              <div className={`flex-1 h-full flex flex-col min-h-0 ${activeTab === 'plan' ? 'flex' : 'hidden'}`}>
+              <div
+                className={`flex-1 h-full flex flex-col min-h-0 ${activeTab === 'plan' ? 'flex' : 'hidden'}`}
+              >
                 <GoalTaskView
                   goal={goal}
                   tasks={tasks}
@@ -478,7 +519,9 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                   projectTaskCount={kanban?.tasks.length}
                 />
               </div>
-              <div className={`flex-1 h-full flex flex-col min-h-0 ${activeTab === 'tools' ? 'flex' : 'hidden'}`}>
+              <div
+                className={`flex-1 h-full flex flex-col min-h-0 ${activeTab === 'tools' ? 'flex' : 'hidden'}`}
+              >
                 <ToolsPanel />
               </div>
             </div>
@@ -493,7 +536,9 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
               title="Drag to resize"
             />
           )}
-          <div className={`flex flex-col min-h-0 min-w-0 flex-1 overflow-hidden transform-gpu will-change-transform transition-[opacity,transform] duration-200 ease-out ${effectiveOpen ? 'opacity-100 translate-x-0 border-r-3 border-brutal-black' : 'opacity-0 translate-x-3 pointer-events-none'}`}>
+          <div
+            className={`flex flex-col min-h-0 min-w-0 flex-1 overflow-hidden transform-gpu will-change-transform transition-[opacity,transform] duration-200 ease-out ${effectiveOpen ? 'opacity-100 translate-x-0 border-r-3 border-brutal-black' : 'opacity-0 translate-x-3 pointer-events-none'}`}
+          >
             <div className="flex-1 overflow-y-auto bg-neutral-50/50 dark:bg-zinc-900 scrollbar-thin scrollbar-track-neutral-200 dark:scrollbar-track-zinc-700 scrollbar-thumb-brutal-black flex flex-col min-h-0">
               <div className={`flex-1 h-full ${activeTab === 'files' ? 'block' : 'hidden'}`}>
                 <SandboxFiles
@@ -504,7 +549,9 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                   onMaximize={onMaximizeFile}
                 />
               </div>
-              <div className={`flex-1 h-full flex flex-col ${activeTab === 'browser' ? 'flex' : 'hidden'}`}>
+              <div
+                className={`flex-1 h-full flex flex-col ${activeTab === 'browser' ? 'flex' : 'hidden'}`}
+              >
                 <WebActivitiesView
                   history={webHistory}
                   isBrowserStreamActive={isBrowserStreamActive}
@@ -513,19 +560,32 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                   onClearForcedContext={onClearForcedWebContext}
                 />
               </div>
-              <div className={`flex-1 h-full flex flex-col min-h-0 ${activeTab === 'canvas' ? 'flex' : 'hidden'}`}>
-                {canvas && <CanvasView canvas={canvas} onDispatch={onCanvasDispatch ?? (() => {})} />}
+              <div
+                className={`flex-1 h-full flex flex-col min-h-0 ${activeTab === 'canvas' ? 'flex' : 'hidden'}`}
+              >
+                {canvas && (
+                  <CanvasView canvas={canvas} onDispatch={onCanvasDispatch ?? (() => {})} />
+                )}
               </div>
-              <div className={`flex-1 h-full flex flex-col min-h-0 ${activeTab === 'agents' ? 'flex' : 'hidden'}`}>
+              <div
+                className={`flex-1 h-full flex flex-col min-h-0 ${activeTab === 'agents' ? 'flex' : 'hidden'}`}
+              >
                 {viewingSubAgentTaskId ? (
                   <SubAgentView taskId={viewingSubAgentTaskId} onClose={onCloseSubAgent} />
                 ) : currentChatId ? (
-                  <SubAgentList chatId={currentChatId} onSelect={(taskId) => onSelectSubAgent?.(taskId)} />
+                  <SubAgentList
+                    chatId={currentChatId}
+                    onSelect={(taskId) => onSelectSubAgent?.(taskId)}
+                  />
                 ) : (
-                  <div className="flex items-center justify-center h-full text-[10px] font-bold uppercase tracking-widest font-mono text-neutral-400">No sub-agent selected</div>
+                  <div className="flex items-center justify-center h-full text-[10px] font-bold uppercase tracking-widest font-mono text-neutral-400">
+                    No sub-agent selected
+                  </div>
                 )}
               </div>
-              <div className={`flex-1 h-full flex flex-col min-h-0 ${activeTab === 'plan' ? 'flex' : 'hidden'}`}>
+              <div
+                className={`flex-1 h-full flex flex-col min-h-0 ${activeTab === 'plan' ? 'flex' : 'hidden'}`}
+              >
                 <GoalTaskView
                   goal={goal}
                   tasks={tasks}
@@ -533,7 +593,9 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                   projectTaskCount={kanban?.tasks.length}
                 />
               </div>
-              <div className={`flex-1 h-full flex flex-col min-h-0 ${activeTab === 'tools' ? 'flex' : 'hidden'}`}>
+              <div
+                className={`flex-1 h-full flex flex-col min-h-0 ${activeTab === 'tools' ? 'flex' : 'hidden'}`}
+              >
                 <ToolsPanel />
               </div>
             </div>
@@ -559,20 +621,23 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
               aria-disabled={isDisabled}
               className={`
                 relative flex items-center justify-center w-9 h-9 rounded transition-colors
-                ${isActive
-                  ? 'bg-brutal-black text-white'
-                  : isDisabled
-                    ? 'text-neutral-300 dark:text-zinc-600 cursor-default'
-                    : isIdle
-                    ? 'text-neutral-300 dark:text-zinc-600 hover:text-neutral-500 dark:hover:text-zinc-400 hover:bg-neutral-100 dark:hover:bg-zinc-700'
-                    : 'text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-700'
+                ${
+                  isActive
+                    ? 'bg-brutal-black text-white'
+                    : isDisabled
+                      ? 'text-neutral-300 dark:text-zinc-600 cursor-default'
+                      : isIdle
+                        ? 'text-neutral-300 dark:text-zinc-600 hover:text-neutral-500 dark:hover:text-zinc-400 hover:bg-neutral-100 dark:hover:bg-zinc-700'
+                        : 'text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-700'
                 }
               `}
             >
               <Icon className="w-5 h-5" />
               {/* Activity dot — shown when content exists and panel not active */}
               {tab.hasActivity && !isActive && (
-                <span className={`absolute top-1 right-1 w-2 h-2 border border-brutal-black rounded-full ${tab.activityClass ?? 'bg-brutal-yellow'}`} />
+                <span
+                  className={`absolute top-1 right-1 w-2 h-2 border border-brutal-black rounded-full ${tab.activityClass ?? 'bg-brutal-yellow'}`}
+                />
               )}
             </button>
           );

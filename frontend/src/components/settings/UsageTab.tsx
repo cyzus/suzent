@@ -1,5 +1,11 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { fetchGlobalCost, fetchDailyCost, fetchModelsCost, fetchActivityStats, fetchActivityGrid } from '../../lib/api';
+import {
+  fetchGlobalCost,
+  fetchDailyCost,
+  fetchModelsCost,
+  fetchActivityStats,
+  fetchActivityGrid,
+} from '../../lib/api';
 import type { CostGlobal, CostDaily, CostModel, ActivityStats } from '../../lib/api';
 import { useI18n } from '../../i18n';
 import { SettingsHeader } from './SettingsHeader';
@@ -25,19 +31,21 @@ function DailyChart({ data, range }: { data: CostDaily[]; range: TimeRange }) {
 
   const filled = useMemo(() => {
     const today = new Date();
-    const map = new Map(data.map(d => [d.date, d]));
+    const map = new Map(data.map((d) => [d.date, d]));
     const result: CostDaily[] = [];
     const daysCount = range === 'all' ? 30 : range; // fallback to 30 for the bar chart if 'all' is selected to avoid squishing
     for (let i = daysCount - 1; i >= 0; i--) {
       const d = new Date(today);
       d.setDate(d.getDate() - i);
       const key = d.toISOString().slice(0, 10);
-      result.push(map.get(key) ?? { date: key, cost_usd: 0, input_tokens: 0, output_tokens: 0, calls: 0 });
+      result.push(
+        map.get(key) ?? { date: key, cost_usd: 0, input_tokens: 0, output_tokens: 0, calls: 0 }
+      );
     }
     return result;
   }, [data, range]);
 
-  const maxCost = useMemo(() => Math.max(...filled.map(d => d.cost_usd), 0.001), [filled]);
+  const maxCost = useMemo(() => Math.max(...filled.map((d) => d.cost_usd), 0.001), [filled]);
 
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
 
@@ -67,7 +75,10 @@ function DailyChart({ data, range }: { data: CostDaily[]; range: TimeRange }) {
                 <div className="absolute bottom-full mb-2 z-10 bg-brutal-black text-white text-[10px] font-mono p-2 border-2 border-brutal-black shadow-brutal whitespace-nowrap pointer-events-none">
                   <div className="font-bold">{d.date}</div>
                   <div>{formatCost(d.cost_usd)}</div>
-                  <div>{t('settings.usage.tooltipCalls', { count: String(d.calls) }) || `${d.calls} calls`}</div>
+                  <div>
+                    {t('settings.usage.tooltipCalls', { count: String(d.calls) }) ||
+                      `${d.calls} calls`}
+                  </div>
                 </div>
               )}
 
@@ -117,18 +128,18 @@ function utcDateKey(date: Date): string {
 
 function activityLevel(tokens: number, thresholds: number[]): number {
   if (tokens === 0) return 0;
-  const level = thresholds.findIndex(threshold => tokens <= threshold);
+  const level = thresholds.findIndex((threshold) => tokens <= threshold);
   return level === -1 ? 4 : level + 1;
 }
 
 function getActivityThresholds(cells: ActivityCell[]): number[] {
   const nonZero = cells
-    .map(cell => cell.inputTokens + cell.outputTokens)
-    .filter(tokens => tokens > 0)
+    .map((cell) => cell.inputTokens + cell.outputTokens)
+    .filter((tokens) => tokens > 0)
     .sort((a, b) => a - b);
 
   if (nonZero.length === 0) return [1, 1, 1];
-  return [0.25, 0.5, 0.75].map(quantile => {
+  return [0.25, 0.5, 0.75].map((quantile) => {
     const index = Math.min(Math.floor((nonZero.length - 1) * quantile), nonZero.length - 1);
     return nonZero[index];
   });
@@ -147,9 +158,10 @@ function ActivitySquare({
 }) {
   const { locale, t } = useI18n();
   const level = activityLevel(cell.inputTokens + cell.outputTokens, thresholds);
-  const backgroundColor = level === 0
-    ? undefined
-    : `color-mix(in srgb, var(--brutal-yellow) ${ACTIVITY_LEVEL_STRENGTH[level]}%, transparent)`;
+  const backgroundColor =
+    level === 0
+      ? undefined
+      : `color-mix(in srgb, var(--brutal-yellow) ${ACTIVITY_LEVEL_STRENGTH[level]}%, transparent)`;
 
   return (
     <button
@@ -190,7 +202,10 @@ function TokenActivity({ data, range }: { data: CostDaily[]; range: TimeRange })
       const current = totals.get(key) ?? {
         key,
         label: new Date(`${key}T00:00:00Z`).toLocaleDateString(locale, {
-          timeZone: 'UTC', month: 'short', day: 'numeric', year: 'numeric',
+          timeZone: 'UTC',
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
         }),
         inputTokens: 0,
         outputTokens: 0,
@@ -214,15 +229,20 @@ function TokenActivity({ data, range }: { data: CostDaily[]; range: TimeRange })
           week.push(null);
           continue;
         }
-        week.push(totals.get(key) ?? {
-          key,
-          label: date.toLocaleDateString(locale, {
-            timeZone: 'UTC', month: 'short', day: 'numeric', year: 'numeric',
-          }),
-          inputTokens: 0,
-          outputTokens: 0,
-          calls: 0,
-        });
+        week.push(
+          totals.get(key) ?? {
+            key,
+            label: date.toLocaleDateString(locale, {
+              timeZone: 'UTC',
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+            }),
+            inputTokens: 0,
+            outputTokens: 0,
+            calls: 0,
+          }
+        );
       }
       weeks.push(week);
     }
@@ -238,7 +258,7 @@ function TokenActivity({ data, range }: { data: CostDaily[]; range: TimeRange })
       const currentHour = new Date();
       currentHour.setUTCMinutes(0, 0, 0);
       const firstHour = new Date(currentHour.getTime() - 23 * 3_600_000);
-      const cells = Array.from({ length: 4 }, (_, quarter) => (
+      const cells = Array.from({ length: 4 }, (_, quarter) =>
         Array.from({ length: 24 }, (_, hourOffset) => {
           const hour = new Date(firstHour.getTime() + hourOffset * 3_600_000);
           const minute = quarter * 15;
@@ -246,14 +266,19 @@ function TokenActivity({ data, range }: { data: CostDaily[]; range: TimeRange })
           return {
             key: start.toISOString(),
             label: start.toLocaleString(locale, {
-              timeZone: 'UTC', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false,
+              timeZone: 'UTC',
+              month: 'short',
+              day: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+              hour12: false,
             }),
             inputTokens: 0,
             outputTokens: 0,
             calls: 0,
           };
         })
-      ));
+      );
       for (const item of data) {
         const timestamp = new Date(item.date);
         const hourOffset = Math.floor((timestamp.getTime() - firstHour.getTime()) / 3_600_000);
@@ -281,7 +306,12 @@ function TokenActivity({ data, range }: { data: CostDaily[]; range: TimeRange })
       return Array.from({ length: 24 }, (_, hour) => ({
         key: `${utcDateKey(date)}-${hour}`,
         label: new Date(date.getTime() + hour * 3_600_000).toLocaleString(locale, {
-          timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', hour12: false,
+          timeZone: 'UTC',
+          weekday: 'short',
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          hour12: false,
         }),
         inputTokens: 0,
         outputTokens: 0,
@@ -290,9 +320,11 @@ function TokenActivity({ data, range }: { data: CostDaily[]; range: TimeRange })
     });
     for (const item of data) {
       const timestamp = new Date(item.date);
-      const dayOffset = Math.floor((Date.UTC(
-        timestamp.getUTCFullYear(), timestamp.getUTCMonth(), timestamp.getUTCDate(),
-      ) - firstDay.getTime()) / DAY_MS);
+      const dayOffset = Math.floor(
+        (Date.UTC(timestamp.getUTCFullYear(), timestamp.getUTCMonth(), timestamp.getUTCDate()) -
+          firstDay.getTime()) /
+          DAY_MS
+      );
       if (dayOffset < 0 || dayOffset >= 7) continue;
       const cell = cells[dayOffset][timestamp.getUTCHours()];
       cell.inputTokens += item.input_tokens;
@@ -301,20 +333,26 @@ function TokenActivity({ data, range }: { data: CostDaily[]; range: TimeRange })
     }
     return {
       cells,
-      columnLabels: Array.from({ length: 24 }, (_, hour) => hour % 4 === 0 ? `${String(hour).padStart(2, '0')}:00` : ''),
-      rowLabels: cells.map(row => new Date(`${row[0].key.slice(0, 10)}T00:00:00Z`).toLocaleDateString(locale, {
-        timeZone: 'UTC', weekday: 'short',
-      })),
+      columnLabels: Array.from({ length: 24 }, (_, hour) =>
+        hour % 4 === 0 ? `${String(hour).padStart(2, '0')}:00` : ''
+      ),
+      rowLabels: cells.map((row) =>
+        new Date(`${row[0].key.slice(0, 10)}T00:00:00Z`).toLocaleDateString(locale, {
+          timeZone: 'UTC',
+          weekday: 'short',
+        })
+      ),
       thresholds: getActivityThresholds(cells.flat()),
     };
   }, [data, locale, range, today]);
 
   const allCells = calendar?.cells ?? hourly?.cells.flat() ?? [];
-  const activeCells = allCells.filter(cell => cell.inputTokens + cell.outputTokens > 0).length;
+  const activeCells = allCells.filter((cell) => cell.inputTokens + cell.outputTokens > 0).length;
   const totalTokens = allCells.reduce((sum, cell) => sum + cell.inputTokens + cell.outputTokens, 0);
-  const rangeLabel = range === 1
-    ? t('settings.usage.last24Hours')
-    : t('settings.usage.lastNDays', { count: range === 'all' ? 365 : range });
+  const rangeLabel =
+    range === 1
+      ? t('settings.usage.last24Hours')
+      : t('settings.usage.lastNDays', { count: range === 'all' ? 365 : range });
   const thresholds = calendar?.thresholds ?? hourly?.thresholds ?? [1, 1, 1];
 
   return (
@@ -331,9 +369,15 @@ function TokenActivity({ data, range }: { data: CostDaily[]; range: TimeRange })
         <div className="min-h-9 text-left sm:text-right font-mono">
           {inspected ? (
             <>
-              <div className="text-xs font-bold text-brutal-black dark:text-white">{inspected.label}</div>
+              <div className="text-xs font-bold text-brutal-black dark:text-white">
+                {inspected.label}
+              </div>
               <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
-                {(inspected.inputTokens + inspected.outputTokens).toLocaleString(locale)} {t('settings.usage.tokensLowercase')} · {t('settings.usage.tooltipCalls', { count: inspected.calls.toLocaleString(locale) })}
+                {(inspected.inputTokens + inspected.outputTokens).toLocaleString(locale)}{' '}
+                {t('settings.usage.tokensLowercase')} ·{' '}
+                {t('settings.usage.tooltipCalls', {
+                  count: inspected.calls.toLocaleString(locale),
+                })}
               </div>
             </>
           ) : (
@@ -361,27 +405,53 @@ function TokenActivity({ data, range }: { data: CostDaily[]; range: TimeRange })
             {calendar.weeks.map((week, weekIndex) => {
               const firstVisible = week.find((cell): cell is ActivityCell => cell !== null);
               const previousWeek = weekIndex > 0 ? calendar.weeks[weekIndex - 1] : [];
-              const previousVisible = previousWeek.find((cell): cell is ActivityCell => cell !== null);
+              const previousVisible = previousWeek.find(
+                (cell): cell is ActivityCell => cell !== null
+              );
               const month = firstVisible?.key.slice(5, 7);
-              const showMonth = firstVisible && (weekIndex === 0 || month !== previousVisible?.key.slice(5, 7));
+              const showMonth =
+                firstVisible && (weekIndex === 0 || month !== previousVisible?.key.slice(5, 7));
               return (
-                <div key={`month-${weekIndex}`} className="h-4 overflow-visible whitespace-nowrap text-[9px] font-mono text-neutral-400 dark:text-neutral-500">
-                  {showMonth ? new Date(`${firstVisible.key}T00:00:00Z`).toLocaleDateString(locale, { timeZone: 'UTC', month: 'short' }) : ''}
+                <div
+                  key={`month-${weekIndex}`}
+                  className="h-4 overflow-visible whitespace-nowrap text-[9px] font-mono text-neutral-400 dark:text-neutral-500"
+                >
+                  {showMonth
+                    ? new Date(`${firstVisible.key}T00:00:00Z`).toLocaleDateString(locale, {
+                        timeZone: 'UTC',
+                        month: 'short',
+                      })
+                    : ''}
                 </div>
               );
             })}
             <div className="grid grid-rows-7 gap-[2px] sm:gap-[3px] text-[9px] font-mono leading-none text-neutral-400 dark:text-neutral-500">
               {Array.from({ length: 7 }, (_, day) => (
                 <div key={day} className="flex items-center">
-                  {day % 2 === 1 ? new Date(Date.UTC(2024, 0, 7 + day)).toLocaleDateString(locale, { timeZone: 'UTC', weekday: 'short' }) : ''}
+                  {day % 2 === 1
+                    ? new Date(Date.UTC(2024, 0, 7 + day)).toLocaleDateString(locale, {
+                        timeZone: 'UTC',
+                        weekday: 'short',
+                      })
+                    : ''}
                 </div>
               ))}
             </div>
             {calendar.weeks.map((week, weekIndex) => (
               <div key={`week-${weekIndex}`} className="grid grid-rows-7 gap-[2px] sm:gap-[3px]">
-                {week.map((cell, dayIndex) => cell ? (
-                  <ActivitySquare key={cell.key} cell={cell} thresholds={thresholds} onInspect={setInspected} sizeClass="w-full aspect-square" />
-                ) : <div key={`empty-${dayIndex}`} className="w-full aspect-square" />)}
+                {week.map((cell, dayIndex) =>
+                  cell ? (
+                    <ActivitySquare
+                      key={cell.key}
+                      cell={cell}
+                      thresholds={thresholds}
+                      onInspect={setInspected}
+                      sizeClass="w-full aspect-square"
+                    />
+                  ) : (
+                    <div key={`empty-${dayIndex}`} className="w-full aspect-square" />
+                  )
+                )}
               </div>
             ))}
           </div>
@@ -391,8 +461,14 @@ function TokenActivity({ data, range }: { data: CostDaily[]; range: TimeRange })
       {calendar && range === 30 && (
         <div className="overflow-x-auto pb-1 scrollbar-thin scrollbar-thumb-brutal-black dark:scrollbar-thumb-neutral-600">
           <div className="grid min-w-[620px] grid-cols-[repeat(30,minmax(18px,1fr))] gap-1">
-            {calendar.cells.map(cell => (
-              <ActivitySquare key={cell.key} cell={cell} thresholds={thresholds} onInspect={setInspected} sizeClass="h-7 w-full" />
+            {calendar.cells.map((cell) => (
+              <ActivitySquare
+                key={cell.key}
+                cell={cell}
+                thresholds={thresholds}
+                onInspect={setInspected}
+                sizeClass="h-7 w-full"
+              />
             ))}
             {calendar.cells.map((cell, index) => (
               <div
@@ -400,7 +476,11 @@ function TokenActivity({ data, range }: { data: CostDaily[]; range: TimeRange })
                 className={`overflow-visible whitespace-nowrap text-[8px] font-mono text-neutral-400 dark:text-neutral-500 ${index === calendar.cells.length - 1 ? 'text-right' : ''}`}
               >
                 {index % 5 === 0 || index === calendar.cells.length - 1
-                  ? new Date(`${cell.key}T00:00:00Z`).toLocaleDateString(locale, { timeZone: 'UTC', month: 'short', day: 'numeric' })
+                  ? new Date(`${cell.key}T00:00:00Z`).toLocaleDateString(locale, {
+                      timeZone: 'UTC',
+                      month: 'short',
+                      day: 'numeric',
+                    })
                   : ''}
               </div>
             ))}
@@ -410,16 +490,32 @@ function TokenActivity({ data, range }: { data: CostDaily[]; range: TimeRange })
 
       {hourly && (
         <div className="overflow-x-auto pb-1 scrollbar-thin scrollbar-thumb-brutal-black dark:scrollbar-thumb-neutral-600">
-          <div className="grid min-w-[620px] gap-1" style={{ gridTemplateColumns: '2.5rem repeat(24, minmax(18px, 1fr))' }}>
+          <div
+            className="grid min-w-[620px] gap-1"
+            style={{ gridTemplateColumns: '2.5rem repeat(24, minmax(18px, 1fr))' }}
+          >
             <div />
             {hourly.columnLabels.map((label, index) => (
-              <div key={`hour-${index}`} className="text-[8px] font-mono text-neutral-400 dark:text-neutral-500">{label}</div>
+              <div
+                key={`hour-${index}`}
+                className="text-[8px] font-mono text-neutral-400 dark:text-neutral-500"
+              >
+                {label}
+              </div>
             ))}
             {hourly.cells.map((row, rowIndex) => (
               <React.Fragment key={`row-${rowIndex}`}>
-                <div className="flex items-center text-[9px] font-mono text-neutral-400 dark:text-neutral-500">{hourly.rowLabels[rowIndex]}</div>
-                {row.map(cell => (
-                  <ActivitySquare key={cell.key} cell={cell} thresholds={thresholds} onInspect={setInspected} sizeClass="w-full h-4" />
+                <div className="flex items-center text-[9px] font-mono text-neutral-400 dark:text-neutral-500">
+                  {hourly.rowLabels[rowIndex]}
+                </div>
+                {row.map((cell) => (
+                  <ActivitySquare
+                    key={cell.key}
+                    cell={cell}
+                    thresholds={thresholds}
+                    onInspect={setInspected}
+                    sizeClass="w-full h-4"
+                  />
                 ))}
               </React.Fragment>
             ))}
@@ -429,14 +525,15 @@ function TokenActivity({ data, range }: { data: CostDaily[]; range: TimeRange })
 
       <div className="flex items-center justify-end gap-1.5 text-[9px] font-mono text-neutral-400 dark:text-neutral-500">
         <span>{t('settings.usage.less')}</span>
-        {[0, 1, 2, 3, 4].map(level => (
+        {[0, 1, 2, 3, 4].map((level) => (
           <span
             key={level}
             className={`h-3 w-3 border-2 border-brutal-black ${level === 0 ? 'bg-neutral-100 dark:bg-zinc-700/70' : ''}`}
             style={{
-              backgroundColor: level === 0
-                ? undefined
-                : `color-mix(in srgb, var(--brutal-yellow) ${ACTIVITY_LEVEL_STRENGTH[level]}%, transparent)`,
+              backgroundColor:
+                level === 0
+                  ? undefined
+                  : `color-mix(in srgb, var(--brutal-yellow) ${ACTIVITY_LEVEL_STRENGTH[level]}%, transparent)`,
             }}
           />
         ))}
@@ -448,7 +545,7 @@ function TokenActivity({ data, range }: { data: CostDaily[]; range: TimeRange })
 
 function ModelBreakdown({ models }: { models: CostModel[] }) {
   if (models.length === 0) return null;
-  const maxTokens = Math.max(...models.map(m => m.input_tokens + m.output_tokens), 1);
+  const maxTokens = Math.max(...models.map((m) => m.input_tokens + m.output_tokens), 1);
 
   return (
     <div className="space-y-4">
@@ -456,25 +553,28 @@ function ModelBreakdown({ models }: { models: CostModel[] }) {
         Model Breakdown
       </div>
       <div className="space-y-4">
-        {models.map(m => (
+        {models.map((m) => (
           <div key={m.model} className="space-y-1">
             <div className="flex justify-between text-xs font-mono">
-              <span className="font-bold text-brutal-black dark:text-white truncate" title={m.model}>
+              <span
+                className="font-bold text-brutal-black dark:text-white truncate"
+                title={m.model}
+              >
                 {m.model}
               </span>
               <span className="text-neutral-500">{formatCost(m.cost_usd)}</span>
             </div>
             <div className="h-2 bg-neutral-100 dark:bg-zinc-700 border border-brutal-black flex">
-               <div 
-                 className="h-full bg-neutral-500 dark:bg-neutral-400 transition-all duration-500" 
-                 style={{ width: `${(m.input_tokens / maxTokens) * 100}%` }} 
-                 title={`Input: ${m.input_tokens}`}
-               />
-               <div 
-                 className="h-full bg-brutal-yellow dark:bg-brutal-yellow transition-all duration-500" 
-                 style={{ width: `${(m.output_tokens / maxTokens) * 100}%` }} 
-                 title={`Output: ${m.output_tokens}`}
-               />
+              <div
+                className="h-full bg-neutral-500 dark:bg-neutral-400 transition-all duration-500"
+                style={{ width: `${(m.input_tokens / maxTokens) * 100}%` }}
+                title={`Input: ${m.input_tokens}`}
+              />
+              <div
+                className="h-full bg-brutal-yellow dark:bg-brutal-yellow transition-all duration-500"
+                style={{ width: `${(m.output_tokens / maxTokens) * 100}%` }}
+                title={`Output: ${m.output_tokens}`}
+              />
             </div>
             <div className="flex justify-between text-[10px] text-neutral-400 font-mono">
               <span>{m.calls.toLocaleString()} calls</span>
@@ -497,9 +597,7 @@ function StatCard({ label, value, sub }: { label: string; value: string; sub?: s
         {value}
       </span>
       {sub && (
-        <span className="text-xs font-mono text-neutral-500 dark:text-neutral-400 mt-1">
-          {sub}
-        </span>
+        <span className="text-xs font-mono text-neutral-500 dark:text-neutral-400 mt-1">{sub}</span>
       )}
     </div>
   );
@@ -513,7 +611,7 @@ export function UsageTab(): React.ReactElement {
   const [models, setModels] = useState<CostModel[]>([]);
   const [stats, setStats] = useState<ActivityStats | null>(null);
   const [heatmap, setHeatmap] = useState<CostDaily[]>([]);
-  
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -529,7 +627,7 @@ export function UsageTab(): React.ReactElement {
       fetchDailyCost(apiDays),
       fetchModelsCost(apiDays),
       fetchActivityStats(),
-      fetchActivityGrid(String(range))
+      fetchActivityGrid(String(range)),
     ])
       .then(([g, d, m, s, h]) => {
         if (cancelled) return;
@@ -539,7 +637,7 @@ export function UsageTab(): React.ReactElement {
         setStats(s);
         setHeatmap(h);
       })
-      .catch(e => {
+      .catch((e) => {
         if (cancelled) return;
         setError(String(e));
       })
@@ -547,7 +645,9 @@ export function UsageTab(): React.ReactElement {
         if (!cancelled) setLoading(false);
       });
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [range]);
 
   const avgDaily = useMemo(() => {
@@ -563,7 +663,7 @@ export function UsageTab(): React.ReactElement {
 
       {/* Time range selector */}
       <div className="flex gap-2">
-        {([1, 7, 30, 'all'] as TimeRange[]).map(r => (
+        {([1, 7, 30, 'all'] as TimeRange[]).map((r) => (
           <button
             key={r}
             onClick={() => setRange(r)}
@@ -592,22 +692,10 @@ export function UsageTab(): React.ReactElement {
           {/* Top Activity Stats */}
           {stats && (
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <StatCard
-                label="Cumulative Tokens"
-                value={formatTokens(stats.cumulative_tokens)}
-              />
-              <StatCard
-                label="Peak Tokens/Day"
-                value={formatTokens(stats.peak_tokens)}
-              />
-              <StatCard
-                label="Current Streak"
-                value={`${stats.current_streak} d`}
-              />
-              <StatCard
-                label="Longest Streak"
-                value={`${stats.longest_streak} d`}
-              />
+              <StatCard label="Cumulative Tokens" value={formatTokens(stats.cumulative_tokens)} />
+              <StatCard label="Peak Tokens/Day" value={formatTokens(stats.peak_tokens)} />
+              <StatCard label="Current Streak" value={`${stats.current_streak} d`} />
+              <StatCard label="Longest Streak" value={`${stats.longest_streak} d`} />
             </div>
           )}
 
@@ -659,7 +747,9 @@ export function UsageTab(): React.ReactElement {
                   {/* Input tokens bar */}
                   <div>
                     <div className="flex justify-between text-xs font-mono mb-1">
-                      <span className="text-neutral-600 dark:text-neutral-300">{t('settings.usage.inputTokens')}</span>
+                      <span className="text-neutral-600 dark:text-neutral-300">
+                        {t('settings.usage.inputTokens')}
+                      </span>
                       <span className="font-bold text-brutal-black dark:text-white">
                         {formatTokens(global.total_input_tokens)}
                       </span>
@@ -677,7 +767,9 @@ export function UsageTab(): React.ReactElement {
                   {/* Output tokens bar */}
                   <div>
                     <div className="flex justify-between text-xs font-mono mb-1">
-                      <span className="text-neutral-600 dark:text-neutral-300">{t('settings.usage.outputTokens')}</span>
+                      <span className="text-neutral-600 dark:text-neutral-300">
+                        {t('settings.usage.outputTokens')}
+                      </span>
                       <span className="font-bold text-brutal-black dark:text-white">
                         {formatTokens(global.total_output_tokens)}
                       </span>
@@ -696,12 +788,12 @@ export function UsageTab(): React.ReactElement {
             </div>
 
             <div className="space-y-6">
-               {/* Model Breakdown */}
-               {models.length > 0 && (
-                 <SettingsCard>
-                   <ModelBreakdown models={models} />
-                 </SettingsCard>
-               )}
+              {/* Model Breakdown */}
+              {models.length > 0 && (
+                <SettingsCard>
+                  <ModelBreakdown models={models} />
+                </SettingsCard>
+              )}
             </div>
           </div>
 

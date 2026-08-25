@@ -11,7 +11,11 @@ interface CodeBlockComponentProps {
   isStreaming?: boolean;
 }
 
-export const CodeBlockComponent: React.FC<CodeBlockComponentProps> = ({ lang, content, isStreaming }) => {
+export const CodeBlockComponent: React.FC<CodeBlockComponentProps> = ({
+  lang,
+  content,
+  isStreaming,
+}) => {
   const [expanded, setExpanded] = useState(true);
   const { setStatus } = useStatusStore();
   const { t } = useI18n();
@@ -28,7 +32,7 @@ export const CodeBlockComponent: React.FC<CodeBlockComponentProps> = ({ lang, co
   const renderPreview = isRenderable && showPreview && !isStreaming;
   const sanitizedHtml = useMemo(
     () => (renderPreview && isHtml ? DOMPurify.sanitize(content) : ''),
-    [renderPreview, isHtml, content],
+    [renderPreview, isHtml, content]
   );
 
   // A code line is often far wider than it is tall, so a drag that slips a few
@@ -61,7 +65,10 @@ export const CodeBlockComponent: React.FC<CodeBlockComponentProps> = ({ lang, co
         <div className="flex items-center gap-1 opacity-0 group-hover/code:opacity-100 focus-within:opacity-100 transition-opacity">
           {isRenderable && !isStreaming && (
             <button
-              onClick={(e) => { e.stopPropagation(); setShowPreview(v => !v); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowPreview((v) => !v);
+              }}
               className="h-6 px-1.5 flex items-center justify-center text-white dark:text-neutral-200 text-[10px] font-black uppercase border border-transparent hover:border-white dark:hover:border-zinc-400 hover:bg-white hover:text-brutal-black dark:hover:bg-zinc-700 transition-colors"
               title={showPreview ? t('codeBlock.viewSource') : t('codeBlock.viewPreview')}
             >
@@ -74,13 +81,29 @@ export const CodeBlockComponent: React.FC<CodeBlockComponentProps> = ({ lang, co
             title={t('codeBlock.copyCode')}
           >
             {copied ? (
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+              <svg
+                className="w-3.5 h-3.5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={3}
+              >
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
               </svg>
             ) : (
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <svg
+                className="w-3.5 h-3.5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2.5}
+              >
                 <rect x="8" y="8" width="12" height="12" rx="2" ry="2" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2"
+                />
               </svg>
             )}
           </button>
@@ -106,10 +129,15 @@ export const CodeBlockComponent: React.FC<CodeBlockComponentProps> = ({ lang, co
             dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
           />
         ) : (
-          <pre ref={preRef} className={`max-w-full text-[12px] text-brutal-black dark:text-neutral-100 px-3 py-2.5 leading-5 overflow-x-auto !bg-transparent whitespace-pre font-mono m-0`}>
+          <pre
+            ref={preRef}
+            className={`max-w-full text-[12px] text-brutal-black dark:text-neutral-100 px-3 py-2.5 leading-5 overflow-x-auto !bg-transparent whitespace-pre font-mono m-0`}
+          >
             <code className={`language-${safeLang}`}>
               {content}
-              {isStreaming && <span className="animate-brutal-blink inline-block w-2.5 h-4 bg-brutal-black align-middle ml-1"></span>}
+              {isStreaming && (
+                <span className="animate-brutal-blink inline-block w-2.5 h-4 bg-brutal-black align-middle ml-1"></span>
+              )}
             </code>
           </pre>
         )}

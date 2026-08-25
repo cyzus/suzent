@@ -36,10 +36,7 @@ function InvokeForm({
     () => capabilities.find((c) => c.name === command) ?? null,
     [capabilities, command]
   );
-  const fields = useMemo(
-    () => Object.entries(selected?.params_schema ?? {}),
-    [selected]
-  );
+  const fields = useMemo(() => Object.entries(selected?.params_schema ?? {}), [selected]);
 
   const run = async () => {
     if (!command) return;
@@ -52,11 +49,13 @@ function InvokeForm({
         const raw = values[`${command}:${name}`] ?? '';
         if (raw === '') continue;
         const t = String(type).toLowerCase();
-        params[name] =
-          t.startsWith('int') ? Number.parseInt(raw, 10)
-          : t.startsWith('float') || t.startsWith('number') ? Number.parseFloat(raw)
-          : t.startsWith('bool') ? raw === 'true'
-          : raw;
+        params[name] = t.startsWith('int')
+          ? Number.parseInt(raw, 10)
+          : t.startsWith('float') || t.startsWith('number')
+            ? Number.parseFloat(raw)
+            : t.startsWith('bool')
+              ? raw === 'true'
+              : raw;
       }
       const res = await invoke(command, params);
       setOutcome(
@@ -97,9 +96,7 @@ function InvokeForm({
               placeholder={`${name} (${type})`}
               value={values[`${command}:${name}`] ?? ''}
               disabled={busy}
-              onChange={(e) =>
-                setValues((v) => ({ ...v, [`${command}:${name}`]: e.target.value }))
-              }
+              onChange={(e) => setValues((v) => ({ ...v, [`${command}:${name}`]: e.target.value }))}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') run();
               }}
@@ -112,9 +109,7 @@ function InvokeForm({
         </SettingsListAction>
       </div>
 
-      {selected?.description && (
-        <p className="text-xs text-neutral-500">{selected.description}</p>
-      )}
+      {selected?.description && <p className="text-xs text-neutral-500">{selected.description}</p>}
 
       {outcome && (
         <pre
@@ -141,9 +136,7 @@ export function NodeInvokePanel({
 }): React.ReactElement {
   if (!capabilities.length) {
     return (
-      <p className="text-xs text-neutral-500">
-        This device advertises no capabilities to invoke.
-      </p>
+      <p className="text-xs text-neutral-500">This device advertises no capabilities to invoke.</p>
     );
   }
   return (
@@ -208,18 +201,14 @@ export function PeerInvokePanel({ peerId }: { peerId: string }): React.ReactElem
     return (
       <div className="space-y-1">
         <p className="text-xs text-brutal-red">{error}</p>
-        <SettingsListAction onClick={() => setAttempt((n) => n + 1)}>
-          Retry
-        </SettingsListAction>
+        <SettingsListAction onClick={() => setAttempt((n) => n + 1)}>Retry</SettingsListAction>
       </div>
     );
   }
 
   if (!capabilities?.length) {
     return (
-      <p className="text-xs text-neutral-500">
-        This device has no hardware capabilities attached.
-      </p>
+      <p className="text-xs text-neutral-500">This device has no hardware capabilities attached.</p>
     );
   }
 

@@ -223,9 +223,7 @@ export function MeshTab(): React.ReactElement {
           iconTone="black"
           title="This device"
           description={
-            status
-              ? `${status.name} · ${status.environment}`
-              : 'Loading this device’s agent card…'
+            status ? `${status.name} · ${status.environment}` : 'Loading this device’s agent card…'
           }
           actions={
             <BrutalOnOff
@@ -242,15 +240,15 @@ export function MeshTab(): React.ReactElement {
         <p className="text-sm text-neutral-600 dark:text-neutral-400">
           {status?.enabled ? (
             <>
-              Published. Any agent that can reach this address can read your card and
-              discover that this device exists — it still needs a grant you approve
-              before it can actually do anything.
+              Published. Any agent that can reach this address can read your card and discover that
+              this device exists — it still needs a grant you approve before it can actually do
+              anything.
             </>
           ) : (
             <>
-              Not published. Your agent card is hidden and the well-known path returns
-              404, so this device is indistinguishable from one that never spoke A2A.
-              You can still delegate <em>out</em> to other agents.
+              Not published. Your agent card is hidden and the well-known path returns 404, so this
+              device is indistinguishable from one that never spoke A2A. You can still delegate{' '}
+              <em>out</em> to other agents.
             </>
           )}
         </p>
@@ -387,9 +385,7 @@ export function MeshTab(): React.ReactElement {
                         </span>
                       )}
                     </div>
-                    <code className="text-[11px] text-neutral-500 break-all">
-                      {agent.base_url}
-                    </code>
+                    <code className="text-[11px] text-neutral-500 break-all">{agent.base_url}</code>
                     {agent.card?.skills?.length ? (
                       <p className="text-xs text-neutral-500 mt-1">
                         Skills: {agent.card.skills.map((s) => s.name).join(', ')}
@@ -468,8 +464,8 @@ export function MeshTab(): React.ReactElement {
 
           {peers.length === 0 && agents.length === 0 && (
             <p className="text-sm text-neutral-500">
-              Nothing in the mesh yet. Pair a Suzent device from the Devices tab, or add
-              an external agent below.
+              Nothing in the mesh yet. Pair a Suzent device from the Devices tab, or add an external
+              agent below.
             </p>
           )}
         </div>
@@ -500,8 +496,8 @@ export function MeshTab(): React.ReactElement {
             </BrutalButton>
           </div>
           <p className="text-xs text-neutral-500 mt-2">
-            We fetch <code>/.well-known/agent-card.json</code> to confirm the address is a
-            real A2A agent before saving it.
+            We fetch <code>/.well-known/agent-card.json</code> to confirm the address is a real A2A
+            agent before saving it.
           </p>
         </div>
       </SettingsCard>
@@ -524,9 +520,7 @@ export function MeshTab(): React.ReactElement {
                   <StatePill state={task.state} />
                   <span className="text-xs text-neutral-500 truncate">{task.message}</span>
                 </div>
-                <code className="text-[11px] text-neutral-500 shrink-0">
-                  {task.context_id}
-                </code>
+                <code className="text-[11px] text-neutral-500 shrink-0">{task.context_id}</code>
               </div>
             ))}
           </div>

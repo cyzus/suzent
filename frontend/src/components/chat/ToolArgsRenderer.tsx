@@ -32,13 +32,21 @@ const PRIMARY_BY_HINT: Array<{ test: RegExp; keys: string[] }> = [
 ];
 
 // Generic primary-field preference order, used when no per-tool hint matches.
-const PRIMARY_KEYS = ['query', 'q', 'command', 'cmd', 'url', 'path', 'file_path', 'prompt', 'content', 'text'];
+const PRIMARY_KEYS = [
+  'query',
+  'q',
+  'command',
+  'cmd',
+  'url',
+  'path',
+  'file_path',
+  'prompt',
+  'content',
+  'text',
+];
 
-function pickPrimaryKey(
-  args: Record<string, unknown>,
-  toolName?: string,
-): string | null {
-  const hint = toolName ? PRIMARY_BY_HINT.find(h => h.test.test(toolName)) : undefined;
+function pickPrimaryKey(args: Record<string, unknown>, toolName?: string): string | null {
+  const hint = toolName ? PRIMARY_BY_HINT.find((h) => h.test.test(toolName)) : undefined;
   const order = hint ? [...hint.keys, ...PRIMARY_KEYS] : PRIMARY_KEYS;
   for (const key of order) {
     if (typeof args[key] === 'string' && (args[key] as string).trim()) {
@@ -49,7 +57,7 @@ function pickPrimaryKey(
 }
 
 function humanizeKey(key: string): string {
-  return key.replace(/[_-]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  return key.replace(/[_-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function isEmptyValue(value: unknown): boolean {
@@ -69,11 +77,7 @@ function formatScalar(value: unknown): string {
 
 /** Scalars (string/number/boolean) render inline; everything else gets a block. */
 function isScalar(value: unknown): boolean {
-  return (
-    typeof value === 'string' ||
-    typeof value === 'number' ||
-    typeof value === 'boolean'
-  );
+  return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean';
 }
 
 const Field: React.FC<{ name: string; value: unknown }> = ({ name, value }) => {
@@ -126,7 +130,10 @@ export const ToolArgsRenderer: React.FC<ToolArgsRendererProps & { toolName?: str
   // Not a JSON object (a bare string/number/array, or unparseable): show raw.
   if (!parsedArgs) {
     return (
-      <div className="max-h-[220px] overflow-y-auto scrollbar-thin w-full rounded-sm bg-neutral-50/70 dark:bg-zinc-800/40 px-2.5 py-2" style={{ overflowX: 'hidden' }}>
+      <div
+        className="max-h-[220px] overflow-y-auto scrollbar-thin w-full rounded-sm bg-neutral-50/70 dark:bg-zinc-800/40 px-2.5 py-2"
+        style={{ overflowX: 'hidden' }}
+      >
         <pre className="tool-call-pre font-mono text-[12px] leading-5 text-neutral-600 dark:text-neutral-300 w-full m-0">
           {raw ?? ''}
         </pre>
@@ -136,7 +143,7 @@ export const ToolArgsRenderer: React.FC<ToolArgsRendererProps & { toolName?: str
 
   const primaryKey = pickPrimaryKey(parsedArgs, toolName);
   const restKeys = Object.keys(parsedArgs).filter(
-    k => k !== primaryKey && !isEmptyValue(parsedArgs[k]),
+    (k) => k !== primaryKey && !isEmptyValue(parsedArgs[k])
   );
 
   const primaryValue = primaryKey ? (parsedArgs[primaryKey] as string) : null;
@@ -145,8 +152,17 @@ export const ToolArgsRenderer: React.FC<ToolArgsRendererProps & { toolName?: str
     <div className="w-full font-brutal bg-neutral-50/70 dark:bg-zinc-800/40 px-2.5 py-2 space-y-2 min-w-0 overflow-hidden">
       {primaryValue !== null && (
         <div className="flex items-start gap-2 bg-white dark:bg-zinc-800 border-2 border-brutal-black dark:border-zinc-500 px-2.5 py-1.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] min-w-0">
-          <svg className="w-3.5 h-3.5 mt-0.5 stroke-[2.5] shrink-0 text-brutal-black dark:text-neutral-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          <svg
+            className="w-3.5 h-3.5 mt-0.5 stroke-[2.5] shrink-0 text-brutal-black dark:text-neutral-300"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+            />
           </svg>
           <span className="font-mono text-[12.5px] font-bold text-brutal-black dark:text-neutral-100 break-words min-w-0 leading-snug">
             {primaryValue}
@@ -156,7 +172,7 @@ export const ToolArgsRenderer: React.FC<ToolArgsRendererProps & { toolName?: str
 
       {restKeys.length > 0 && (
         <div className="space-y-1.5">
-          {restKeys.map(key => (
+          {restKeys.map((key) => (
             <Field key={key} name={key} value={parsedArgs[key]} />
           ))}
         </div>

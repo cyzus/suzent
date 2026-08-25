@@ -94,11 +94,23 @@ export const CompactionCube: React.FC<{ size?: number; className?: string }> = (
     >
       <div className="suzent-cc-cube absolute inset-0">
         <div className="suzent-cc-face" style={face(`translateZ(${half}px)`)} />
-        <div className="suzent-cc-face" style={face(`rotateY(180deg) translateZ(${half}px)`, 0.7)} />
-        <div className="suzent-cc-face" style={face(`rotateY(90deg) translateZ(${half}px)`, 0.85)} />
-        <div className="suzent-cc-face" style={face(`rotateY(-90deg) translateZ(${half}px)`, 0.6)} />
+        <div
+          className="suzent-cc-face"
+          style={face(`rotateY(180deg) translateZ(${half}px)`, 0.7)}
+        />
+        <div
+          className="suzent-cc-face"
+          style={face(`rotateY(90deg) translateZ(${half}px)`, 0.85)}
+        />
+        <div
+          className="suzent-cc-face"
+          style={face(`rotateY(-90deg) translateZ(${half}px)`, 0.6)}
+        />
         <div className="suzent-cc-face" style={face(`rotateX(90deg) translateZ(${half}px)`, 0.9)} />
-        <div className="suzent-cc-face" style={face(`rotateX(-90deg) translateZ(${half}px)`, 0.55)} />
+        <div
+          className="suzent-cc-face"
+          style={face(`rotateX(-90deg) translateZ(${half}px)`, 0.55)}
+        />
       </div>
     </div>
   );

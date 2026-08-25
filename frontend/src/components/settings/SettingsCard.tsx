@@ -36,7 +36,9 @@ export function SectionCardHeader({
   className = '',
 }: SectionCardHeaderProps): React.ReactElement {
   return (
-    <div className={`mb-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between ${className}`}>
+    <div
+      className={`mb-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between ${className}`}
+    >
       <div className="flex min-w-0 items-start gap-3">
         {icon && (
           <div
@@ -48,11 +50,15 @@ export function SectionCardHeader({
         <div className="min-w-0">
           <h3 className="text-base font-black uppercase leading-tight sm:text-lg">{title}</h3>
           {description && (
-            <p className="mt-1 max-w-2xl text-xs leading-relaxed text-neutral-600 dark:text-neutral-400 sm:text-sm">{description}</p>
+            <p className="mt-1 max-w-2xl text-xs leading-relaxed text-neutral-600 dark:text-neutral-400 sm:text-sm">
+              {description}
+            </p>
           )}
         </div>
       </div>
-      {actions && <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">{actions}</div>}
+      {actions && (
+        <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">{actions}</div>
+      )}
     </div>
   );
 }
@@ -96,13 +102,12 @@ export function GridCard({
             </div>
           )}
         </div>
-        {headerRight ?? (
-          active !== undefined && (
+        {headerRight ??
+          (active !== undefined && (
             <div
               className={`w-4 h-4 rounded-full border-2 border-brutal-black flex-shrink-0 ${active ? 'bg-brutal-green' : 'bg-transparent'}`}
             />
-          )
-        )}
+          ))}
       </div>
       <div className="flex-1">{children}</div>
     </div>
@@ -190,9 +195,10 @@ export function SettingsGrid({
   className = '',
   children,
 }: SettingsGridProps): React.ReactElement {
-  const columns = density === 'compact'
-    ? 'grid-cols-[repeat(auto-fit,minmax(min(100%,19rem),1fr))]'
-    : 'grid-cols-[repeat(auto-fit,minmax(min(100%,23rem),1fr))]';
+  const columns =
+    density === 'compact'
+      ? 'grid-cols-[repeat(auto-fit,minmax(min(100%,19rem),1fr))]'
+      : 'grid-cols-[repeat(auto-fit,minmax(min(100%,23rem),1fr))]';
 
   return <div className={`grid items-start gap-4 ${columns} ${className}`}>{children}</div>;
 }
@@ -220,7 +226,13 @@ interface BadgeProps {
  * `<span className="px-2 py-1 border-2 border-brutal-black text-[10px]…">`
  * badges that were duplicated across the sync UI (connected, signed-in, lock).
  */
-export function Badge({ tone = 'neutral', icon, title, className = '', children }: BadgeProps): React.ReactElement {
+export function Badge({
+  tone = 'neutral',
+  icon,
+  title,
+  className = '',
+  children,
+}: BadgeProps): React.ReactElement {
   return (
     <span
       title={title}
@@ -240,16 +252,26 @@ interface SettingsListActionProps extends React.ButtonHTMLAttributes<HTMLButtonE
 /**
  * Standard soft action button for list items (edit, remove, test, etc).
  */
-export function SettingsListAction({ tone = 'neutral', active, className = '', children, ...props }: SettingsListActionProps): React.ReactElement {
+export function SettingsListAction({
+  tone = 'neutral',
+  active,
+  className = '',
+  children,
+  ...props
+}: SettingsListActionProps): React.ReactElement {
   let colorClasses = '';
   if (active) {
-    colorClasses = 'bg-brutal-black text-white border-brutal-black dark:bg-white dark:text-black dark:border-white';
+    colorClasses =
+      'bg-brutal-black text-white border-brutal-black dark:bg-white dark:text-black dark:border-white';
   } else if (tone === 'blue') {
-    colorClasses = 'border-brutal-black/20 dark:border-white/10 bg-transparent text-neutral-500 dark:text-neutral-400 hover:border-brutal-blue hover:text-brutal-blue dark:hover:border-blue-400 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20';
+    colorClasses =
+      'border-brutal-black/20 dark:border-white/10 bg-transparent text-neutral-500 dark:text-neutral-400 hover:border-brutal-blue hover:text-brutal-blue dark:hover:border-blue-400 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20';
   } else if (tone === 'red') {
-    colorClasses = 'border-brutal-black/20 dark:border-white/10 bg-transparent text-neutral-500 dark:text-neutral-400 hover:border-brutal-red hover:text-brutal-red dark:hover:border-red-400 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20';
+    colorClasses =
+      'border-brutal-black/20 dark:border-white/10 bg-transparent text-neutral-500 dark:text-neutral-400 hover:border-brutal-red hover:text-brutal-red dark:hover:border-red-400 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20';
   } else {
-    colorClasses = 'border-brutal-black/20 dark:border-white/10 bg-transparent text-neutral-500 dark:text-neutral-400 hover:border-brutal-black hover:text-brutal-black dark:hover:border-white dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-zinc-800';
+    colorClasses =
+      'border-brutal-black/20 dark:border-white/10 bg-transparent text-neutral-500 dark:text-neutral-400 hover:border-brutal-black hover:text-brutal-black dark:hover:border-white dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-zinc-800';
   }
 
   return (
@@ -271,13 +293,16 @@ interface SettingsListItemProps {
  * Common wrapper for list items in settings (MCP servers, Cron Jobs).
  * Applies the standard surface border, shadow, and subtle textured background.
  */
-export function SettingsListItem({ children, className = '' }: SettingsListItemProps): React.ReactElement {
+export function SettingsListItem({
+  children,
+  className = '',
+}: SettingsListItemProps): React.ReactElement {
   return (
-    <div className={`group relative overflow-hidden border-2 border-brutal-black bg-neutral-50 shadow-brutal-sm dark:bg-zinc-900 ${className}`}>
+    <div
+      className={`group relative overflow-hidden border-2 border-brutal-black bg-neutral-50 shadow-brutal-sm dark:bg-zinc-900 ${className}`}
+    >
       <div className="absolute inset-0 opacity-[0.03] bg-[radial-gradient(#000_2px,transparent_2px)] [background-size:16px_16px] pointer-events-none" />
-      <div className="relative z-10 w-full h-full flex flex-col">
-        {children}
-      </div>
+      <div className="relative z-10 w-full h-full flex flex-col">{children}</div>
     </div>
   );
 }

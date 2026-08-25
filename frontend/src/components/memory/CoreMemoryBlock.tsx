@@ -21,7 +21,7 @@ const KNOWN_LABELS = ['persona', 'user', 'facts', 'context'] as const;
 // Helper to get label info with fallback for unknown labels
 const getLabelInfo = (
   label: string,
-  t: (key: string, params?: Record<string, unknown>) => string,
+  t: (key: string, params?: Record<string, unknown>) => string
 ): { title: string; description: string } => {
   if ((KNOWN_LABELS as readonly string[]).includes(label)) {
     return {
@@ -42,11 +42,7 @@ const countWords = (text: string): number => {
   return trimmed ? trimmed.split(/\s+/).length : 0;
 };
 
-export const CoreMemoryBlock: React.FC<CoreMemoryBlockProps> = ({
-  label,
-  content,
-  onUpdate,
-}) => {
+export const CoreMemoryBlock: React.FC<CoreMemoryBlockProps> = ({ label, content, onUpdate }) => {
   const { t } = useI18n();
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState(content);

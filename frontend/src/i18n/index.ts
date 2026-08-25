@@ -88,11 +88,7 @@ function interpolate(template: string, params?: Record<string, unknown>): string
   });
 }
 
-export function tForLocale(
-  locale: Locale,
-  key: string,
-  params?: Record<string, unknown>,
-): string {
+export function tForLocale(locale: Locale, key: string, params?: Record<string, unknown>): string {
   const primary = getByKey(messages[locale], key);
   if (primary != null) return interpolate(primary, params);
 
@@ -118,15 +114,21 @@ export function I18nProvider(props: { children: React.ReactNode }): React.ReactE
     setStoredLocale(next);
   }, []);
 
-  const t = useCallback((key: string, params?: Record<string, unknown>) => {
-    return tForLocale(locale, key, params);
-  }, [locale]);
+  const t = useCallback(
+    (key: string, params?: Record<string, unknown>) => {
+      return tForLocale(locale, key, params);
+    },
+    [locale]
+  );
 
-  const value = useMemo<I18nContextValue>(() => ({
-    locale,
-    setLocale,
-    t,
-  }), [locale, setLocale, t]);
+  const value = useMemo<I18nContextValue>(
+    () => ({
+      locale,
+      setLocale,
+      t,
+    }),
+    [locale, setLocale, t]
+  );
 
   return React.createElement(I18nContext.Provider, { value }, props.children);
 }

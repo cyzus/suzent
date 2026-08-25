@@ -20,10 +20,17 @@ export function DataTab({ onSyncComplete }: { onSyncComplete?: () => void }): Re
     <SettingsPage>
       <SettingsHeader title={t('settings.data.title')} subtitle={t('settings.data.subtitle')} />
 
-      <GitHubSyncSection busy={busy} onBusyChange={setBusy} onNotify={notify} onSyncComplete={onSyncComplete} />
+      <GitHubSyncSection
+        busy={busy}
+        onBusyChange={setBusy}
+        onNotify={notify}
+        onSyncComplete={onSyncComplete}
+      />
 
       {notification && (
-        <div className={`border-2 border-brutal-black p-3 font-mono text-sm shadow-brutal-sm ${notification.isError ? 'bg-red-100 text-brutal-black' : 'bg-green-100 text-brutal-black'}`}>
+        <div
+          className={`border-2 border-brutal-black p-3 font-mono text-sm shadow-brutal-sm ${notification.isError ? 'bg-red-100 text-brutal-black' : 'bg-green-100 text-brutal-black'}`}
+        >
           {notification.text}
         </div>
       )}

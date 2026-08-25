@@ -7,15 +7,15 @@
 
 import React from 'react';
 import type { A2UIComponent } from '../../types/a2ui';
-import { A2UITextComponent }     from './components/A2UITextComponent';
-import { A2UIBadgeComponent }    from './components/A2UIBadgeComponent';
-import { A2UIButtonComponent }   from './components/A2UIButtonComponent';
-import { A2UITableComponent }    from './components/A2UITableComponent';
-import { A2UIFormComponent }     from './components/A2UIFormComponent';
-import { A2UIListComponent }     from './components/A2UIListComponent';
+import { A2UITextComponent } from './components/A2UITextComponent';
+import { A2UIBadgeComponent } from './components/A2UIBadgeComponent';
+import { A2UIButtonComponent } from './components/A2UIButtonComponent';
+import { A2UITableComponent } from './components/A2UITableComponent';
+import { A2UIFormComponent } from './components/A2UIFormComponent';
+import { A2UIListComponent } from './components/A2UIListComponent';
 import { A2UIProgressComponent } from './components/A2UIProgressComponent';
-import { A2UIDividerComponent }  from './components/A2UIDividerComponent';
-import { A2UIHtmlComponent }     from './components/A2UIHtmlComponent';
+import { A2UIDividerComponent } from './components/A2UIDividerComponent';
+import { A2UIHtmlComponent } from './components/A2UIHtmlComponent';
 
 interface Props {
   component: A2UIComponent;
@@ -96,14 +96,13 @@ export const A2UIRenderer: React.FC<Props> = ({ component, onAction, depth = 0 }
         <div className={frameCls}>
           {component.title && <div className={headerCls}>{component.title}</div>}
           <div className="p-3 flex flex-col gap-3">
-            {cardChildren.length > 0
-              ? cardChildren.map((child, i) => (
-                  <A2UIRenderer key={i} component={child} onAction={onAction} depth={depth + 1} />
-                ))
-              : (
-                <span className="text-xs text-neutral-400 dark:text-neutral-500 italic">—</span>
-              )
-            }
+            {cardChildren.length > 0 ? (
+              cardChildren.map((child, i) => (
+                <A2UIRenderer key={i} component={child} onAction={onAction} depth={depth + 1} />
+              ))
+            ) : (
+              <span className="text-xs text-neutral-400 dark:text-neutral-500 italic">—</span>
+            )}
           </div>
         </div>
       );

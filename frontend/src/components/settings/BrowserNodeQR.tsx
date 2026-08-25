@@ -44,8 +44,8 @@ export function BrowserNodeQR({ host, port }: { host: string; port: number }): R
       </div>
       <div className="min-w-0 space-y-2 text-center sm:text-left">
         <p className="text-xs text-neutral-600 dark:text-neutral-400">
-          Scan with a phone, tablet, or TV browser. The page turns that screen into
-          a device your agent can write to and speak through — nothing is installed.
+          Scan with a phone, tablet, or TV browser. The page turns that screen into a device your
+          agent can write to and speak through — nothing is installed.
         </p>
         <div className="flex items-center gap-2 justify-center sm:justify-start">
           <code className="text-[11px] font-mono text-neutral-500 break-all">{url}</code>

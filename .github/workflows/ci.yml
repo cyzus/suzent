@@ -11,7 +11,8 @@ permissions:
   contents: read
 
 jobs:
-  build:
+  backend:
+    name: Backend
     runs-on: ubuntu-latest
 
     steps:
@@ -21,7 +22,7 @@ jobs:
       uses: actions/setup-python@v5
       with:
         python-version: "3.12"
-    
+
     - name: Install uv
       run: curl -LsSf https://astral.sh/uv/install.sh | sh
 
@@ -52,3 +53,113 @@ jobs:
       run: |
         source .venv/bin/activate
         pytest tests/ -m "not sandbox"
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        cache: npm
+        cache-dependency-path: frontend/package-lock.json
+
+    - name: Install dependencies
+      working-directory: frontend
+      run: npm ci
+
+    # `tsc` used to run only inside `npm run build`, which only runs in
+    # build-desktop - after a release is merged and tagged. A type error could
+    # reach a tag before anything noticed. This is the gate that was missing.
+    - name: Typecheck
+      working-directory: frontend
+      run: npm run typecheck
+
+    - name: Run tests
+      working-directory: frontend
+      run: npm test
+
+    # Advisory while the existing violations are worked through; the report is
+    # the point. Flip to a blocking step once `npm run lint` is clean.
+    - name: Lint
+      working-directory: frontend
+      continue-on-error: true
+      run: npm run lint
+
+    # Blocking, unlike the linter: the whole tree was formatted in one commit,
+    # so this starts clean and only fails on something newly unformatted.
+    - name: Check formatting
+      working-directory: frontend
+      run: npm run format:check
+
+  rust:
+    name: Rust
+    runs-on: ubuntu-22.04
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    # A Tauri crate pulls in webkit2gtk and a full Rust compile, which is far
+    # too much to spend on every docs or backend PR. Both crates are only built
+    # when Rust actually changed.
+    - name: Detect Rust changes
+      id: changed
+      shell: bash
+      run: |
+        if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+          git fetch --no-tags origin "$BASE_REF"
+          range="origin/$BASE_REF...HEAD"
+        elif git rev-parse -q --verify HEAD~1 >/dev/null; then
+          range="HEAD~1..HEAD"
+        else
+          range=""
+        fi
+
+        if [[ -z "$range" ]]; then
+          touched=true
+        elif git diff --name-only "$range" | grep -qE '^(src-tauri|apps)/'; then
+          touched=true
+        else
+          touched=false
+        fi
+
+        echo "Rust sources touched: $touched"
+        echo "touched=$touched" >> "$GITHUB_OUTPUT"
+      env:
+        BASE_REF: ${{ github.base_ref }}
+
+    - name: Install Linux system dependencies
+      if: steps.changed.outputs.touched == 'true'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          libwebkit2gtk-4.1-dev \
+          libayatana-appindicator3-dev \
+          librsvg2-dev \
+          patchelf
+
+    - uses: dtolnay/rust-toolchain@stable
+      if: steps.changed.outputs.touched == 'true'
+
+    - uses: Swatinem/rust-cache@v2
+      if: steps.changed.outputs.touched == 'true'
+      with:
+        workspaces: |
+          src-tauri
+          apps/suzent-installer
+
+    - name: Test the desktop shell
+      if: steps.changed.outputs.touched == 'true'
+      working-directory: src-tauri
+      run: cargo test
+
+    - name: Test the installer
+      if: steps.changed.outputs.touched == 'true'
+      working-directory: apps/suzent-installer
+      run: cargo test

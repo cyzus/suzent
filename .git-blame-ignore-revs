@@ -1,0 +1,10 @@
+# Commits that only moved whitespace around. `git blame` skips these so it
+# still points at whoever last changed the code, not at the reformat.
+#
+# Enable locally with:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# GitHub reads this file automatically.
+
+# style(frontend): adopt Prettier across the frontend
+e1da26450f7f9730a6f367637c00806339345edd

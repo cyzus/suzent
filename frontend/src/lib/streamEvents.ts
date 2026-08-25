@@ -57,15 +57,7 @@ export enum CustomEventName {
 // ─── Inline citation payloads ──────────────────────────────────────────────
 
 export type CitationSourceType =
-  | 'search'
-  | 'webpage'
-  | 'file'
-  | 'notebook'
-  | 'memory'
-  | 'mcp'
-  | 'code'
-  | 'browser'
-  | 'subagent';
+  'search' | 'webpage' | 'file' | 'notebook' | 'memory' | 'mcp' | 'code' | 'browser' | 'subagent';
 
 export interface CitationSource {
   id: string; // "src_1", "src_2", ...

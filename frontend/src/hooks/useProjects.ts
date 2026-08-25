@@ -19,7 +19,10 @@ interface ProjectContextValue {
   archiveProject: (id: string, archived: boolean) => Promise<void>;
   deleteProject: (id: string) => Promise<{ success: boolean; error?: string }>;
   moveChat: (chatId: string, projectId: string, fromProjectId?: string | null) => Promise<boolean>;
-  moveAllChats: (fromProjectId: string, toProjectId: string) => Promise<{ success: boolean; moved?: number; error?: string }>;
+  moveAllChats: (
+    fromProjectId: string,
+    toProjectId: string
+  ) => Promise<{ success: boolean; moved?: number; error?: string }>;
   getProject: (id: string | null | undefined) => Project | undefined;
   getProjectBySlug: (slug: string) => Project | undefined;
 }
@@ -84,134 +87,152 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     refresh();
   }, [refresh]);
 
-  const createProject = useCallback(async (name: string, slug?: string): Promise<Project | null> => {
-    try {
-      const res = await fetch(`${getApiBase()}/projects`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, slug }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        console.warn('createProject failed:', err);
+  const createProject = useCallback(
+    async (name: string, slug?: string): Promise<Project | null> => {
+      try {
+        const res = await fetch(`${getApiBase()}/projects`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, slug }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          console.warn('createProject failed:', err);
+          return null;
+        }
+        const project: Project = await res.json();
+        setProjects((prev) => [...prev, project]);
+        return project;
+      } catch (e) {
+        console.warn('createProject error:', e);
         return null;
       }
-      const project: Project = await res.json();
-      setProjects((prev) => [...prev, project]);
-      return project;
-    } catch (e) {
-      console.warn('createProject error:', e);
-      return null;
-    }
-  }, []);
+    },
+    []
+  );
 
-  const renameProject = useCallback(async (id: string, name: string) => {
-    const previousProjects = projects;
-    setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, name } : p)));
-    try {
-      const res = await fetch(`${getApiBase()}/projects/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name }),
-      });
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
+  const renameProject = useCallback(
+    async (id: string, name: string) => {
+      const previousProjects = projects;
+      setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, name } : p)));
+      try {
+        const res = await fetch(`${getApiBase()}/projects/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name }),
+        });
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
+      } catch (e) {
+        console.warn('renameProject error:', e);
+        setProjects(previousProjects);
+        await refresh();
       }
-    } catch (e) {
-      console.warn('renameProject error:', e);
-      setProjects(previousProjects);
-      await refresh();
-    }
-  }, [projects, refresh]);
+    },
+    [projects, refresh]
+  );
 
-  const archiveProject = useCallback(async (id: string, archived: boolean) => {
-    const previousProjects = projects;
-    setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, archived } : p)));
-    try {
-      const res = await fetch(`${getApiBase()}/projects/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ archived }),
-      });
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
+  const archiveProject = useCallback(
+    async (id: string, archived: boolean) => {
+      const previousProjects = projects;
+      setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, archived } : p)));
+      try {
+        const res = await fetch(`${getApiBase()}/projects/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ archived }),
+        });
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
+      } catch (e) {
+        console.warn('archiveProject error:', e);
+        setProjects(previousProjects);
+        await refresh();
       }
-    } catch (e) {
-      console.warn('archiveProject error:', e);
-      setProjects(previousProjects);
-      await refresh();
-    }
-  }, [projects, refresh]);
+    },
+    [projects, refresh]
+  );
 
-  const deleteProject = useCallback(async (id: string): Promise<{ success: boolean; error?: string }> => {
-    try {
-      const res = await fetch(`${getApiBase()}/projects/${id}`, { method: 'DELETE' });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        return { success: false, error: err.error || `HTTP ${res.status}` };
+  const deleteProject = useCallback(
+    async (id: string): Promise<{ success: boolean; error?: string }> => {
+      try {
+        const res = await fetch(`${getApiBase()}/projects/${id}`, { method: 'DELETE' });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          return { success: false, error: err.error || `HTTP ${res.status}` };
+        }
+        setProjects((prev) => prev.filter((p) => p.id !== id));
+        return { success: true };
+      } catch (e: any) {
+        return { success: false, error: String(e) };
       }
-      setProjects((prev) => prev.filter((p) => p.id !== id));
-      return { success: true };
-    } catch (e: any) {
-      return { success: false, error: String(e) };
-    }
-  }, []);
+    },
+    []
+  );
 
-  const moveAllChats = useCallback(async (fromProjectId: string, toProjectId: string) => {
-    try {
-      const res = await fetch(`${getApiBase()}/projects/${fromProjectId}/move-chats`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ target_project_id: toProjectId }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        return { success: false, error: err.error || `HTTP ${res.status}` };
+  const moveAllChats = useCallback(
+    async (fromProjectId: string, toProjectId: string) => {
+      try {
+        const res = await fetch(`${getApiBase()}/projects/${fromProjectId}/move-chats`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ target_project_id: toProjectId }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          return { success: false, error: err.error || `HTTP ${res.status}` };
+        }
+        const data = await res.json();
+        await refresh();
+        return { success: true, moved: data.moved };
+      } catch (e: any) {
+        return { success: false, error: String(e) };
       }
-      const data = await res.json();
-      await refresh();
-      return { success: true, moved: data.moved };
-    } catch (e: any) {
-      return { success: false, error: String(e) };
-    }
-  }, [refresh]);
+    },
+    [refresh]
+  );
 
-  const moveChat = useCallback(async (chatId: string, projectId: string, fromProjectId?: string | null): Promise<boolean> => {
-    try {
-      const res = await fetch(`${getApiBase()}/chats/${chatId}/project`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ project_id: projectId }),
-      });
-      if (!res.ok) return false;
-      // Optimistic update: +1 destination, -1 source. Authoritative counts come
-      // from refresh() right after — but the optimistic step prevents flicker.
-      setProjects((prev) =>
-        prev.map((p) => {
-          if (p.id === projectId) return { ...p, chatCount: p.chatCount + 1 };
-          if (fromProjectId && p.id === fromProjectId) {
-            return { ...p, chatCount: Math.max(0, p.chatCount - 1) };
-          }
-          return p;
-        }),
-      );
-      // Re-fetch authoritative counts from the server.
-      refresh();
-      return true;
-    } catch (e) {
-      console.warn('moveChat error:', e);
-      return false;
-    }
-  }, [refresh]);
+  const moveChat = useCallback(
+    async (chatId: string, projectId: string, fromProjectId?: string | null): Promise<boolean> => {
+      try {
+        const res = await fetch(`${getApiBase()}/chats/${chatId}/project`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ project_id: projectId }),
+        });
+        if (!res.ok) return false;
+        // Optimistic update: +1 destination, -1 source. Authoritative counts come
+        // from refresh() right after — but the optimistic step prevents flicker.
+        setProjects((prev) =>
+          prev.map((p) => {
+            if (p.id === projectId) return { ...p, chatCount: p.chatCount + 1 };
+            if (fromProjectId && p.id === fromProjectId) {
+              return { ...p, chatCount: Math.max(0, p.chatCount - 1) };
+            }
+            return p;
+          })
+        );
+        // Re-fetch authoritative counts from the server.
+        refresh();
+        return true;
+      } catch (e) {
+        console.warn('moveChat error:', e);
+        return false;
+      }
+    },
+    [refresh]
+  );
 
   const getProject = useCallback(
     (id: string | null | undefined) => projects.find((p) => p.id === id),
-    [projects],
+    [projects]
   );
 
   const getProjectBySlug = useCallback(
     (slug: string) => projects.find((p) => p.slug === slug),
-    [projects],
+    [projects]
   );
 
   const contextValue: ProjectContextValue = useMemo(
@@ -244,7 +265,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       moveAllChats,
       getProject,
       getProjectBySlug,
-    ],
+    ]
   );
 
   return React.createElement(ProjectContext.Provider, { value: contextValue }, children);

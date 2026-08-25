@@ -37,24 +37,21 @@ export function NetworkAccessCard(): React.ReactElement {
     refresh();
   }, [refresh]);
 
-  const toggle = useCallback(
-    async (enabled: boolean) => {
-      setError(null);
-      try {
-        const next = await saveNodeConfig({ node_lan_bind: enabled });
-        setConfig((prev) => ({ ...(prev ?? {}), ...next }));
-        if (next.restart_required) {
-          setRestarting(true);
-          await new Promise((r) => setTimeout(r, 150));
-          await invoke('restart_app');
-        }
-      } catch (e) {
-        setRestarting(false);
-        setError(e instanceof Error ? e.message : String(e));
+  const toggle = useCallback(async (enabled: boolean) => {
+    setError(null);
+    try {
+      const next = await saveNodeConfig({ node_lan_bind: enabled });
+      setConfig((prev) => ({ ...(prev ?? {}), ...next }));
+      if (next.restart_required) {
+        setRestarting(true);
+        await new Promise((r) => setTimeout(r, 150));
+        await invoke('restart_app');
       }
-    },
-    []
-  );
+    } catch (e) {
+      setRestarting(false);
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }, []);
 
   const bound = !!config?.node_lan_bind;
   const active = !!config?.binding_active;
@@ -76,20 +73,24 @@ export function NetworkAccessCard(): React.ReactElement {
     <SettingsCard>
       <SectionCardHeader
         icon={
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M8.288 15.038a5.25 5.25 0 017.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M1.924 8.674c5.565-5.565 14.587-5.565 20.152 0M12.53 18.22l-.53.53-.53-.53a.75.75 0 011.06 0z" />
+          <svg
+            className="w-6 h-6"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+            strokeWidth={2}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M8.288 15.038a5.25 5.25 0 017.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M1.924 8.674c5.565-5.565 14.587-5.565 20.152 0M12.53 18.22l-.53.53-.53-.53a.75.75 0 011.06 0z"
+            />
           </svg>
         }
         iconTone="green"
         title="Network access"
         description="Expose this device on your LAN or tailnet so other devices and agents can reach it."
-        actions={
-          <BrutalOnOff
-            checked={bound}
-            disabled={restarting}
-            onChange={toggle}
-          />
-        }
+        actions={<BrutalOnOff checked={bound} disabled={restarting} onChange={toggle} />}
       />
 
       {restarting && (
@@ -134,8 +135,8 @@ export function NetworkAccessCard(): React.ReactElement {
 
       {!bound && (
         <p className="text-xs text-neutral-500">
-          Listening on 127.0.0.1 only. Other devices cannot reach this machine until
-          you enable network access.
+          Listening on 127.0.0.1 only. Other devices cannot reach this machine until you enable
+          network access.
         </p>
       )}
 
@@ -154,7 +155,9 @@ export function NetworkAccessStrip(): React.ReactElement {
   const [config, setConfig] = useState<NodeAuthConfig | null>(null);
 
   useEffect(() => {
-    fetchNodeConfig().then(setConfig).catch(() => {});
+    fetchNodeConfig()
+      .then(setConfig)
+      .catch(() => {});
   }, []);
 
   const bound = !!config?.node_lan_bind;
@@ -180,9 +183,7 @@ export function NetworkAccessStrip(): React.ReactElement {
               : 'Loopback only'}
         </span>
       </div>
-      <span className="text-[10px] text-neutral-500 uppercase font-bold">
-        Manage in Mesh tab
-      </span>
+      <span className="text-[10px] text-neutral-500 uppercase font-bold">Manage in Mesh tab</span>
     </div>
   );
 }

@@ -2,7 +2,8 @@ import type { A2UISurface } from './a2ui';
 import type { CitationSource } from '../lib/streamEvents';
 
 export interface AGUIPart {
-  type: 'text' | 'reasoning' | 'tool' | 'a2ui' | 'citation-sources' | 'acp-permission' | 'acp-notice';
+  type:
+    'text' | 'reasoning' | 'tool' | 'a2ui' | 'citation-sources' | 'acp-permission' | 'acp-notice';
   text?: string;
   messageId?: string;
   toolCallId?: string;

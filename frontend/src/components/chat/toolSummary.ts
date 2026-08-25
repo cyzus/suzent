@@ -76,8 +76,8 @@ function quoted(value: string): string {
 
 /** First meaningful line of a shell command, ignoring blank and comment lines. */
 function firstCommandLine(command: string): string {
-  const lines = command.split('\n').map(line => line.trim());
-  const meaningful = lines.find(line => line && !line.startsWith('#'));
+  const lines = command.split('\n').map((line) => line.trim());
+  const meaningful = lines.find((line) => line && !line.startsWith('#'));
   const head = meaningful ?? compact(command);
   // A trailing `&& ...` chain is noise in a one-line pill; mark it instead.
   return lines.length > 1 || head.length > DETAIL_MAX ? `${head} …` : head;
@@ -198,11 +198,13 @@ function frameToolName(name: string, tense: ToolTense, t: TranslateFn): string {
 function humanizeToolName(toolName: string): string {
   const mcp = /^mcp__([^_]+(?:_[^_]+)*?)__(.+)$/.exec(toolName.trim());
   const base = mcp ? mcp[2] : toolName.trim();
-  return base
-    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-    .replace(/[_-]+/g, ' ')
-    .trim()
-    .toLowerCase() || toolName;
+  return (
+    base
+      .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+      .replace(/[_-]+/g, ' ')
+      .trim()
+      .toLowerCase() || toolName
+  );
 }
 
 /** Generic detail for unknown tools: the most headline-ish argument value. */
@@ -330,9 +332,7 @@ const BUILDERS: Record<string, Builder> = {
     if (!pattern) return { verb: verb(t, 'searchCode') };
     return {
       verb: verb(t, 'searchCode'),
-      detail: scope
-        ? t('toolSummary.inScope', { value: quoted(pattern), scope })
-        : quoted(pattern),
+      detail: scope ? t('toolSummary.inScope', { value: quoted(pattern), scope }) : quoted(pattern),
     };
   },
 
@@ -349,7 +349,7 @@ const BUILDERS: Record<string, Builder> = {
       (args.arguments && typeof args.arguments === 'object' && !Array.isArray(args.arguments)
         ? args.arguments
         : {}) as Args,
-      ['url', 'selector', 'text', 'query'],
+      ['url', 'selector', 'text', 'query']
     );
     const detail = [command, target && shortUrl(target)].filter(Boolean).join(' · ');
     return { verb: verb(t, 'browser'), detail: detail || null };
@@ -380,9 +380,8 @@ const BUILDERS: Record<string, Builder> = {
   create_tasks: (args, t) => {
     const tasks = Array.isArray(args.tasks) ? args.tasks : [];
     const first = firstItemLabel(args.tasks, ['title', 'description', 'name', 'content']);
-    const label = tasks.length > 1
-      ? verb(t, 'addTasks', { count: tasks.length })
-      : verb(t, 'addTask');
+    const label =
+      tasks.length > 1 ? verb(t, 'addTasks', { count: tasks.length }) : verb(t, 'addTask');
     return { verb: label, detail: first ? compact(first) : null };
   },
 
@@ -422,9 +421,10 @@ const BUILDERS: Record<string, Builder> = {
     if (args.list_contacts === true) return { verb: verb(t, 'listContacts') };
     const recipient = str(args.recipient);
     const channel = str(args.channel);
-    const detail = recipient && channel
-      ? t('toolSummary.onChannel', { value: recipient, channel })
-      : recipient ?? channel;
+    const detail =
+      recipient && channel
+        ? t('toolSummary.onChannel', { value: recipient, channel })
+        : (recipient ?? channel);
     return { verb: verb(t, 'sendMessage'), detail };
   },
 
@@ -445,9 +445,7 @@ const BUILDERS: Record<string, Builder> = {
   agent: (args, t) => {
     const description = str(args.description);
     const type = str(args.subagent_type);
-    const who = type
-      ? t('toolSummary.namedAgent', { type })
-      : t('toolSummary.anyAgent');
+    const who = type ? t('toolSummary.namedAgent', { type }) : t('toolSummary.anyAgent');
     if (description) {
       return { verb: truncate(compact(description), VERB_MAX), detail: who };
     }
@@ -459,7 +457,8 @@ const BUILDERS: Record<string, Builder> = {
   agent_send: (args, t) => {
     const id = str(args.agent_id);
     const message = str(args.message);
-    const detail = id && message ? `${id} · ${compact(message)}` : id ?? (message && compact(message));
+    const detail =
+      id && message ? `${id} · ${compact(message)}` : (id ?? (message && compact(message)));
     return { verb: verb(t, 'messageAgent'), detail: detail || null };
   },
   agent_stop: (args, t) => ({ verb: verb(t, 'stopAgent'), detail: str(args.agent_id) }),
@@ -479,11 +478,10 @@ export function getToolSummary(
   toolName: string,
   parsedArgs: Record<string, unknown> | null | undefined,
   t: TranslateFn,
-  tense: ToolTense = 'imperative',
+  tense: ToolTense = 'imperative'
 ): ToolSummary {
-  const args = parsedArgs && typeof parsedArgs === 'object' && !Array.isArray(parsedArgs)
-    ? parsedArgs
-    : {};
+  const args =
+    parsedArgs && typeof parsedArgs === 'object' && !Array.isArray(parsedArgs) ? parsedArgs : {};
   const canonical = normalizeToolName(toolName);
   const builder = BUILDERS[canonical];
 
@@ -541,7 +539,7 @@ export function getRepeatedToolLabel(
   toolName: string,
   count: number,
   t: TranslateFn,
-  tense: ToolTense = 'past',
+  tense: ToolTense = 'past'
 ): string {
   const group = tense === 'active' ? 'repeatsActive' : 'repeats';
   const key = REPEAT_KEYS[normalizeToolName(toolName)];

@@ -142,7 +142,8 @@ export interface DreamStatus {
   available: boolean;
   enabled: boolean;
   running: boolean;
-  phase?: 'idle' | 'queued' | 'preparing' | 'running_agent' | 'running_lint' | 'finalizing' | string;
+  phase?:
+    'idle' | 'queued' | 'preparing' | 'running_agent' | 'running_lint' | 'finalizing' | string;
   reason?: string;
   watermark?: string | null;
   pending_dates?: string[];

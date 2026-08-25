@@ -41,7 +41,7 @@ export function resolveClampTarget(container: Node, focusNode: Node | null): Cla
  */
 export function useSelectionContainment<T extends HTMLElement>(
   ref: React.RefObject<T | null>,
-  enabled = true,
+  enabled = true
 ) {
   const isDraggingRef = useRef(false);
 

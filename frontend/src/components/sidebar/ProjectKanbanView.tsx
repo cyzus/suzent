@@ -22,9 +22,9 @@ const NEXT_STATUS: Record<string, TaskStatus> = {
 };
 
 const COLUMNS: { id: TaskStatus | 'blocked'; label: string }[] = [
-  { id: 'pending',     label: 'Todo'   },
+  { id: 'pending', label: 'Todo' },
   { id: 'in_progress', label: 'Active' },
-  { id: 'completed',   label: 'Done'   },
+  { id: 'completed', label: 'Done' },
 ];
 
 const DOT_PATTERNS = ['●', '○', '◆', '◇'] as const;
@@ -47,10 +47,16 @@ const AssigneeChip: React.FC<AssigneeChipProps> = ({ chatId, chatTitle }) => {
 
   return (
     <span className="inline-flex items-center gap-1 border-2 border-brutal-black bg-white dark:bg-zinc-800 pl-1 pr-2 py-0.5 max-w-[140px]">
-      <span className="text-[10px] font-black text-brutal-black dark:text-white shrink-0 leading-none">{pattern}</span>
-      <span className="text-[8px] font-black text-brutal-black dark:text-white truncate font-mono">{title}</span>
+      <span className="text-[10px] font-black text-brutal-black dark:text-white shrink-0 leading-none">
+        {pattern}
+      </span>
+      <span className="text-[8px] font-black text-brutal-black dark:text-white truncate font-mono">
+        {title}
+      </span>
       {chatId && (
-        <span className="text-[7px] font-mono text-neutral-400 dark:text-zinc-500 shrink-0">{short}</span>
+        <span className="text-[7px] font-mono text-neutral-400 dark:text-zinc-500 shrink-0">
+          {short}
+        </span>
       )}
     </span>
   );
@@ -68,8 +74,8 @@ const AddCardForm: React.FC<AddCardFormProps> = ({ onAdd, onCancel }) => {
       <input
         autoFocus
         value={value}
-        onChange={e => setValue(e.target.value)}
-        onKeyDown={e => {
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
           if (e.key === 'Enter' && value.trim()) onAdd(value.trim());
           if (e.key === 'Escape') onCancel();
         }}
@@ -133,14 +139,16 @@ const KanbanCard: React.FC<KanbanCardProps> = ({ task, chatTitle, onStatusCycle,
       </div>
 
       <div className="text-[7px] font-mono font-black opacity-25 mb-1">#{task.id}</div>
-      <div className={`text-xs font-black leading-snug text-brutal-black dark:text-white mb-2 pr-14 ${isDone ? 'line-through' : ''}`}>
+      <div
+        className={`text-xs font-black leading-snug text-brutal-black dark:text-white mb-2 pr-14 ${isDone ? 'line-through' : ''}`}
+      >
         {isActive && task.activeForm ? task.activeForm : task.title}
       </div>
       <div className="flex items-center justify-between gap-1 flex-wrap">
         <AssigneeChip chatId={task.assignee} chatTitle={chatTitle} />
         {isBlocked && task.blockedBy.length > 0 && (
           <span className="text-[7px] font-black border border-brutal-black bg-brutal-yellow px-1 py-0.5 text-brutal-black">
-            blocked by {task.blockedBy.map(b => `#${b}`).join(', ')}
+            blocked by {task.blockedBy.map((b) => `#${b}`).join(', ')}
           </span>
         )}
       </div>
@@ -170,9 +178,9 @@ export const ProjectKanbanView: React.FC<ProjectKanbanViewProps> = ({
   const { goals, tasks } = kanban;
 
   const colTasks: Record<string, Task[]> = {
-    pending: tasks.filter(t => t.status === 'pending' || t.status === 'blocked'),
-    in_progress: tasks.filter(t => t.status === 'in_progress'),
-    completed: tasks.filter(t => t.status === 'completed'),
+    pending: tasks.filter((t) => t.status === 'pending' || t.status === 'blocked'),
+    in_progress: tasks.filter((t) => t.status === 'in_progress'),
+    completed: tasks.filter((t) => t.status === 'completed'),
   };
 
   const handleStatusCycle = async (task: Task) => {
@@ -181,20 +189,24 @@ export const ProjectKanbanView: React.FC<ProjectKanbanViewProps> = ({
 
   const handleAdd = async (colId: string, title: string) => {
     if (!projectId) return;
-    const status = colId === 'in_progress' ? 'in_progress' : colId === 'completed' ? 'completed' : 'pending';
+    const status =
+      colId === 'in_progress' ? 'in_progress' : colId === 'completed' ? 'completed' : 'pending';
     await createTask(projectId, title, status);
     setAddingIn(null);
   };
 
   return (
     <div className="flex flex-col h-full min-h-0">
-
       {/* ── Header ── */}
       <div className="shrink-0 bg-brutal-black text-white px-3 py-2 border-b-3 border-brutal-black flex items-center justify-between gap-4">
         <div>
-          <div className="text-[9px] font-black uppercase tracking-widest opacity-50">{t('projectBoard.title')}</div>
+          <div className="text-[9px] font-black uppercase tracking-widest opacity-50">
+            {t('projectBoard.title')}
+          </div>
           {projectName && (
-            <div className="text-base font-black tracking-tight uppercase leading-tight">{projectName}</div>
+            <div className="text-base font-black tracking-tight uppercase leading-tight">
+              {projectName}
+            </div>
           )}
         </div>
         {onClose && (
@@ -210,10 +222,15 @@ export const ProjectKanbanView: React.FC<ProjectKanbanViewProps> = ({
       {/* ── Goal chips ── */}
       {goals.length > 0 && (
         <div className="shrink-0 border-b-2 border-brutal-black bg-white dark:bg-zinc-800 px-3 py-2 flex flex-wrap gap-1.5">
-          {goals.map(goal => (
-            <span key={goal.id} className="inline-flex items-center gap-1.5 border-2 border-brutal-black bg-white dark:bg-zinc-700 px-2 py-0.5 shadow-[2px_2px_0_0_#000]">
+          {goals.map((goal) => (
+            <span
+              key={goal.id}
+              className="inline-flex items-center gap-1.5 border-2 border-brutal-black bg-white dark:bg-zinc-700 px-2 py-0.5 shadow-[2px_2px_0_0_#000]"
+            >
               <span className="text-[9px] font-black text-brutal-black dark:text-white">◆</span>
-              <span className="text-[9px] font-black text-brutal-black dark:text-white truncate max-w-[140px]">{goal.objective}</span>
+              <span className="text-[9px] font-black text-brutal-black dark:text-white truncate max-w-[140px]">
+                {goal.objective}
+              </span>
             </span>
           ))}
         </div>
@@ -233,14 +250,16 @@ export const ProjectKanbanView: React.FC<ProjectKanbanViewProps> = ({
                 <span className="text-[9px] font-black uppercase tracking-widest text-brutal-black dark:text-white">
                   {col.label}
                 </span>
-                <span className={`text-[9px] font-black font-mono px-1.5 border border-brutal-black leading-snug ${col.id === 'completed' ? 'bg-brutal-green text-brutal-black' : 'bg-white dark:bg-zinc-700 text-brutal-black dark:text-white'}`}>
+                <span
+                  className={`text-[9px] font-black font-mono px-1.5 border border-brutal-black leading-snug ${col.id === 'completed' ? 'bg-brutal-green text-brutal-black' : 'bg-white dark:bg-zinc-700 text-brutal-black dark:text-white'}`}
+                >
                   {colItems.length}
                 </span>
               </div>
 
               {/* Cards */}
               <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-track-neutral-200 dark:scrollbar-track-zinc-700 scrollbar-thumb-brutal-black bg-neutral-100 dark:bg-zinc-900 p-1.5 flex flex-col gap-1.5">
-                {colItems.map(task => (
+                {colItems.map((task) => (
                   <KanbanCard
                     key={task.id}
                     task={task}
@@ -252,7 +271,7 @@ export const ProjectKanbanView: React.FC<ProjectKanbanViewProps> = ({
 
                 {addingIn === col.id && (
                   <AddCardForm
-                    onAdd={title => handleAdd(col.id, title)}
+                    onAdd={(title) => handleAdd(col.id, title)}
                     onCancel={() => setAddingIn(null)}
                   />
                 )}

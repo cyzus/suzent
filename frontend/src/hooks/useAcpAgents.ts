@@ -21,8 +21,12 @@ export function useAcpAgents(): AcpAgentDescriptor[] {
   useEffect(() => {
     if (!cached) cached = fetchAcpAgents().catch(() => []);
     let cancelled = false;
-    void cached.then(items => { if (!cancelled) setAgents(items); });
-    return () => { cancelled = true; };
+    void cached.then((items) => {
+      if (!cancelled) setAgents(items);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return agents;

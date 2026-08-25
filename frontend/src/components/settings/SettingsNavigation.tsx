@@ -120,13 +120,20 @@ function SettingsTitle({ onClose }: { onClose: () => void }): React.ReactElement
   );
 }
 
-export function SettingsNavigation({ activeCategory, onCategoryChange, onClose }: SettingsNavigationProps): React.ReactElement {
+export function SettingsNavigation({
+  activeCategory,
+  onCategoryChange,
+  onClose,
+}: SettingsNavigationProps): React.ReactElement {
   const { t } = useI18n();
 
   return (
     <aside className="hidden w-60 shrink-0 flex-col border-r-4 border-brutal-black bg-white dark:bg-zinc-800 md:flex lg:w-64">
       <SettingsTitle onClose={onClose} />
-      <nav className="flex-1 overflow-y-auto px-3 py-3 scrollbar-thin" aria-label={t('settings.title')}>
+      <nav
+        className="flex-1 overflow-y-auto px-3 py-3 scrollbar-thin"
+        aria-label={t('settings.title')}
+      >
         <div className="space-y-3">
           {CATEGORY_GROUPS.map((group) => (
             <section key={group.id} aria-labelledby={`settings-group-${group.id}`}>
@@ -165,14 +172,18 @@ export function SettingsNavigation({ activeCategory, onCategoryChange, onClose }
   );
 }
 
-export function SettingsMobileNavigation({ activeCategory, onCategoryChange, onClose }: SettingsNavigationProps): React.ReactElement {
+export function SettingsMobileNavigation({
+  activeCategory,
+  onCategoryChange,
+  onClose,
+}: SettingsNavigationProps): React.ReactElement {
   const { t } = useI18n();
   const options = CATEGORY_GROUPS.flatMap((group) =>
     group.categories.map((category) => ({
       value: category.id,
       label: t(category.labelKey),
       group: t(group.labelKey),
-    })),
+    }))
   );
 
   return (

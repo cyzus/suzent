@@ -40,7 +40,8 @@ interface StatusStyle {
 
 const STYLES: Record<SubAgentStatus, StatusStyle> = {
   queued: {
-    badge: 'bg-white dark:bg-zinc-900 text-neutral-500 dark:text-neutral-400 border-neutral-400 dark:border-zinc-500',
+    badge:
+      'bg-white dark:bg-zinc-900 text-neutral-500 dark:text-neutral-400 border-neutral-400 dark:border-zinc-500',
     icon: ClockIcon,
     iconTone: 'text-neutral-400',
   },
@@ -61,7 +62,8 @@ const STYLES: Record<SubAgentStatus, StatusStyle> = {
     iconTone: 'text-red-600 dark:text-red-400',
   },
   cancelled: {
-    badge: 'bg-neutral-100 dark:bg-zinc-800 text-neutral-600 dark:text-neutral-300 border-neutral-500 dark:border-zinc-500',
+    badge:
+      'bg-neutral-100 dark:bg-zinc-800 text-neutral-600 dark:text-neutral-300 border-neutral-500 dark:border-zinc-500',
     icon: NoSymbolIcon,
     iconTone: 'text-neutral-500 dark:text-neutral-400',
   },
@@ -82,7 +84,7 @@ function styleFor(status: string | undefined): StatusStyle {
  */
 export function isStreamStateStale(
   streamStatus: string | undefined,
-  fetchedStatus: string | undefined,
+  fetchedStatus: string | undefined
 ): boolean {
   return !isSubAgentTerminal(streamStatus) && isSubAgentTerminal(fetchedStatus);
 }
@@ -108,7 +110,9 @@ export const SubAgentStatusIcon: React.FC<{ status: string | undefined; classNam
 }) => {
   const style = styleFor(status);
   const Icon = style.icon;
-  return <Icon className={`${className} ${style.iconTone} stroke-[2.25] shrink-0`} aria-hidden="true" />;
+  return (
+    <Icon className={`${className} ${style.iconTone} stroke-[2.25] shrink-0`} aria-hidden="true" />
+  );
 };
 
 /** The uppercase state chip: `⏱ RUNNING`, `DONE`, `STOPPED`. */

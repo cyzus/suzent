@@ -171,11 +171,17 @@ export async function fetchSyncStatus(): Promise<SyncStatus> {
   return res.json();
 }
 
-export function saveSyncProfile(profile: Partial<SyncProfile> & { repo_path: string }): Promise<SyncProfile> {
+export function saveSyncProfile(
+  profile: Partial<SyncProfile> & { repo_path: string }
+): Promise<SyncProfile> {
   return postJson<SyncProfile>('/sync/profiles', profile);
 }
 
-export function githubSyncPlan(operation: SyncOperation, profileId?: string, refreshRemote = true): Promise<SyncPlan> {
+export function githubSyncPlan(
+  operation: SyncOperation,
+  profileId?: string,
+  refreshRemote = true
+): Promise<SyncPlan> {
   const body: Record<string, unknown> = { operation };
   if (profileId) body.profile_id = profileId;
   body.refresh_remote = refreshRemote;
@@ -185,7 +191,7 @@ export function githubSyncPlan(operation: SyncOperation, profileId?: string, ref
 export function githubSyncFileDiff(
   profileId: string,
   path: string,
-  direction: SyncDirection,
+  direction: SyncDirection
 ): Promise<{ path: string; diff: string }> {
   return postJson<{ path: string; diff: string }>('/sync/diff', {
     profile_id: profileId,
@@ -197,7 +203,7 @@ export function githubSyncFileDiff(
 export function githubSyncPull(
   profileId?: string,
   confirmDestructive = false,
-  preferCloud = false,
+  preferCloud = false
 ): Promise<Record<string, unknown>> {
   const body: Record<string, unknown> = profileId ? { profile_id: profileId } : {};
   if (confirmDestructive) body.confirm_destructive = true;
@@ -205,7 +211,10 @@ export function githubSyncPull(
   return postJson<Record<string, unknown>>('/sync/pull', body);
 }
 
-export function githubSyncDiscardOutgoing(profileId?: string, paths?: string[]): Promise<Record<string, unknown>> {
+export function githubSyncDiscardOutgoing(
+  profileId?: string,
+  paths?: string[]
+): Promise<Record<string, unknown>> {
   const body: Record<string, unknown> = profileId ? { profile_id: profileId } : {};
   if (paths) body.paths = paths;
   return postJson<Record<string, unknown>>('/sync/discard-outgoing', body);
@@ -213,20 +222,27 @@ export function githubSyncDiscardOutgoing(profileId?: string, paths?: string[]):
 
 export function githubSyncPush(
   profileId?: string,
-  confirmDestructive = false,
+  confirmDestructive = false
 ): Promise<Record<string, unknown>> {
   const body: Record<string, unknown> = profileId ? { profile_id: profileId } : {};
   if (confirmDestructive) body.confirm_destructive = true;
   return postJson<Record<string, unknown>>('/sync/push', body);
 }
 
-export function runSync(profileId?: string, confirmDestructive = false): Promise<Record<string, unknown>> {
+export function runSync(
+  profileId?: string,
+  confirmDestructive = false
+): Promise<Record<string, unknown>> {
   const body: Record<string, unknown> = profileId ? { profile_id: profileId } : {};
   if (confirmDestructive) body.confirm_destructive = true;
   return postJson<Record<string, unknown>>('/sync/auto/run', body);
 }
 
-export function saveSyncAutoConfig(profileId: string, autoSyncEnabled: boolean, intervalHours: number): Promise<SyncProfile> {
+export function saveSyncAutoConfig(
+  profileId: string,
+  autoSyncEnabled: boolean,
+  intervalHours: number
+): Promise<SyncProfile> {
   return postJson<SyncProfile>('/sync/auto', {
     profile_id: profileId,
     auto_sync_enabled: autoSyncEnabled,

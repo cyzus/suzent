@@ -13,12 +13,27 @@ interface ModelRolesTabProps {
 type FallbackBehavior = 'none' | 'primary' | 'vision-primary';
 
 const ROLES: { key: string; labelKey: string; descKey: string; fallback: FallbackBehavior }[] = [
-  { key: 'primary',          labelKey: 'roles.primary',          descKey: 'roles.primaryDesc',         fallback: 'none' },
-  { key: 'cheap',            labelKey: 'roles.cheap',            descKey: 'roles.cheapDesc',           fallback: 'primary' },
-  { key: 'vision',           labelKey: 'roles.vision',           descKey: 'roles.visionDesc',          fallback: 'vision-primary' },
-  { key: 'embedding',        labelKey: 'roles.embedding',        descKey: 'roles.embeddingDesc',       fallback: 'none' },
-  { key: 'image_generation', labelKey: 'roles.imageGeneration',  descKey: 'roles.imageGenerationDesc', fallback: 'none' },
-  { key: 'tts',              labelKey: 'roles.tts',              descKey: 'roles.ttsDesc',             fallback: 'none' },
+  { key: 'primary', labelKey: 'roles.primary', descKey: 'roles.primaryDesc', fallback: 'none' },
+  { key: 'cheap', labelKey: 'roles.cheap', descKey: 'roles.cheapDesc', fallback: 'primary' },
+  {
+    key: 'vision',
+    labelKey: 'roles.vision',
+    descKey: 'roles.visionDesc',
+    fallback: 'vision-primary',
+  },
+  {
+    key: 'embedding',
+    labelKey: 'roles.embedding',
+    descKey: 'roles.embeddingDesc',
+    fallback: 'none',
+  },
+  {
+    key: 'image_generation',
+    labelKey: 'roles.imageGeneration',
+    descKey: 'roles.imageGenerationDesc',
+    fallback: 'none',
+  },
+  { key: 'tts', labelKey: 'roles.tts', descKey: 'roles.ttsDesc', fallback: 'none' },
 ];
 
 // ── Searchable dropdown ──────────────────────────────────────────────────────
@@ -37,7 +52,7 @@ function ModelDropdown({ options, unregisteredModels, onSelect }: ModelDropdownP
   const inputRef = useRef<HTMLInputElement>(null);
 
   const filtered = query.trim()
-    ? options.filter(m => m.toLowerCase().includes(query.toLowerCase()))
+    ? options.filter((m) => m.toLowerCase().includes(query.toLowerCase()))
     : options;
 
   // Close on outside click
@@ -86,8 +101,10 @@ function ModelDropdown({ options, unregisteredModels, onSelect }: ModelDropdownP
               ref={inputRef}
               type="text"
               value={query}
-              onChange={e => setQuery(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter' && trimmed) handleSelect(trimmed); }}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && trimmed) handleSelect(trimmed);
+              }}
               placeholder={t('settings.roles.searchPlaceholder')}
               className="w-full px-3 py-2 font-mono text-xs bg-neutral-50 dark:bg-zinc-700 dark:text-white focus:outline-none"
               spellCheck={false}
@@ -101,7 +118,7 @@ function ModelDropdown({ options, unregisteredModels, onSelect }: ModelDropdownP
                 {t('settings.roles.noModelsFound')}
               </li>
             )}
-            {filtered.map(m => (
+            {filtered.map((m) => (
               <li key={m}>
                 <button
                   type="button"
@@ -150,13 +167,23 @@ interface RoleCardProps {
   onChange: (models: string[]) => void;
 }
 
-function RoleCard({ roleKey, label, desc, selected, suggestions, unregisteredModels, fallback, onChange }: RoleCardProps) {
+function RoleCard({
+  roleKey,
+  label,
+  desc,
+  selected,
+  suggestions,
+  unregisteredModels,
+  fallback,
+  onChange,
+}: RoleCardProps) {
   const { t } = useI18n();
 
   const unregistered = new Set(unregisteredModels);
   const explicitOverrides = new Set(selected.filter((model) => !suggestions.includes(model)));
-  const available = [...new Set([...suggestions, ...unregisteredModels])]
-    .filter(m => !selected.includes(m));
+  const available = [...new Set([...suggestions, ...unregisteredModels])].filter(
+    (m) => !selected.includes(m)
+  );
 
   function addModel(modelId: string) {
     const id = modelId.trim();
@@ -164,7 +191,7 @@ function RoleCard({ roleKey, label, desc, selected, suggestions, unregisteredMod
   }
 
   function removeModel(modelId: string) {
-    onChange(selected.filter(m => m !== modelId));
+    onChange(selected.filter((m) => m !== modelId));
   }
 
   function moveUp(idx: number) {
@@ -187,17 +214,17 @@ function RoleCard({ roleKey, label, desc, selected, suggestions, unregisteredMod
     return t('settings.roles.fallbackNumber', { number: String(index) });
   }
 
-  const emptyFallback = fallback === 'primary'
-    ? t('settings.roles.inheritsPrimary')
-    : fallback === 'vision-primary'
-      ? t('settings.roles.inheritsVisionPrimary')
-      : t('settings.roles.noImplicitFallback');
+  const emptyFallback =
+    fallback === 'primary'
+      ? t('settings.roles.inheritsPrimary')
+      : fallback === 'vision-primary'
+        ? t('settings.roles.inheritsVisionPrimary')
+        : t('settings.roles.noImplicitFallback');
 
   return (
     <GridCard title={label} subtitle={desc} active={selected.length > 0}>
       {/* Body */}
       <div className="flex flex-1 flex-col gap-3 p-3">
-
         {/* Selected model chain */}
         {selected.length > 0 ? (
           <div>
@@ -223,36 +250,49 @@ function RoleCard({ roleKey, label, desc, selected, suggestions, unregisteredMod
                     )}
                   </span>
                   <div className="flex items-center gap-1">
-                  {idx > 0 ? (
-                  <button
-                    type="button"
-                    onClick={() => moveUp(idx)}
-                    className="w-6 h-6 flex items-center justify-center border-2 border-brutal-black bg-white dark:bg-zinc-700 hover:bg-neutral-100 dark:hover:bg-zinc-600 dark:text-white text-xs flex-shrink-0 font-bold"
-                    title={t('settings.roles.moveUp')}
-                  >↑</button>
-                ) : (
-                  selected.length > 1 && <span className="w-6 h-6 flex-shrink-0" aria-hidden="true" />
-                )}
-                {idx < selected.length - 1 ? (
-                  <button
-                    type="button"
-                    onClick={() => moveDown(idx)}
-                    className="w-6 h-6 flex items-center justify-center border-2 border-brutal-black bg-white dark:bg-zinc-700 hover:bg-neutral-100 dark:hover:bg-zinc-600 dark:text-white text-xs flex-shrink-0 font-bold"
-                    title={t('settings.roles.moveDown')}
-                  >↓</button>
-                ) : (
-                  selected.length > 1 && <span className="w-6 h-6 flex-shrink-0" aria-hidden="true" />
-                )}
-                <button
-                  type="button"
-                  onClick={() => removeModel(modelId)}
-                  className="w-6 h-6 flex items-center justify-center border-2 border-brutal-black bg-white dark:bg-zinc-700 hover:bg-red-50 dark:hover:bg-red-900/30 dark:text-white text-xs flex-shrink-0 font-bold"
-                  title={t('common.remove')}
-                >×</button>
+                    {idx > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => moveUp(idx)}
+                        className="w-6 h-6 flex items-center justify-center border-2 border-brutal-black bg-white dark:bg-zinc-700 hover:bg-neutral-100 dark:hover:bg-zinc-600 dark:text-white text-xs flex-shrink-0 font-bold"
+                        title={t('settings.roles.moveUp')}
+                      >
+                        ↑
+                      </button>
+                    ) : (
+                      selected.length > 1 && (
+                        <span className="w-6 h-6 flex-shrink-0" aria-hidden="true" />
+                      )
+                    )}
+                    {idx < selected.length - 1 ? (
+                      <button
+                        type="button"
+                        onClick={() => moveDown(idx)}
+                        className="w-6 h-6 flex items-center justify-center border-2 border-brutal-black bg-white dark:bg-zinc-700 hover:bg-neutral-100 dark:hover:bg-zinc-600 dark:text-white text-xs flex-shrink-0 font-bold"
+                        title={t('settings.roles.moveDown')}
+                      >
+                        ↓
+                      </button>
+                    ) : (
+                      selected.length > 1 && (
+                        <span className="w-6 h-6 flex-shrink-0" aria-hidden="true" />
+                      )
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => removeModel(modelId)}
+                      className="w-6 h-6 flex items-center justify-center border-2 border-brutal-black bg-white dark:bg-zinc-700 hover:bg-red-50 dark:hover:bg-red-900/30 dark:text-white text-xs flex-shrink-0 font-bold"
+                      title={t('common.remove')}
+                    >
+                      ×
+                    </button>
                   </div>
                 </div>
                 {idx < selected.length - 1 && (
-                  <div className="ml-[5.55rem] h-3 border-l-2 border-dashed border-neutral-400" aria-hidden="true" />
+                  <div
+                    className="ml-[5.55rem] h-3 border-l-2 border-dashed border-neutral-400"
+                    aria-hidden="true"
+                  />
                 )}
               </React.Fragment>
             ))}
@@ -265,7 +305,9 @@ function RoleCard({ roleKey, label, desc, selected, suggestions, unregisteredMod
             <p className="text-[10px] font-black uppercase text-neutral-500 dark:text-neutral-400">
               {t('settings.roles.notConfigured')}
             </p>
-            <p className="mt-1 text-xs leading-relaxed text-neutral-600 dark:text-neutral-400">{emptyFallback}</p>
+            <p className="mt-1 text-xs leading-relaxed text-neutral-600 dark:text-neutral-400">
+              {emptyFallback}
+            </p>
           </div>
         )}
 
@@ -283,7 +325,12 @@ function RoleCard({ roleKey, label, desc, selected, suggestions, unregisteredMod
 
 // ── Tab ──────────────────────────────────────────────────────────────────────
 
-export function ModelRolesTab({ roleModels, suggestions, unregisteredModels, onChange }: ModelRolesTabProps): React.ReactElement {
+export function ModelRolesTab({
+  roleModels,
+  suggestions,
+  unregisteredModels,
+  onChange,
+}: ModelRolesTabProps): React.ReactElement {
   const { t } = useI18n();
 
   return (
@@ -301,7 +348,7 @@ export function ModelRolesTab({ roleModels, suggestions, unregisteredModels, onC
             suggestions={suggestions[key] || []}
             unregisteredModels={unregisteredModels}
             fallback={fallback}
-            onChange={models => onChange({ ...roleModels, [key]: models })}
+            onChange={(models) => onChange({ ...roleModels, [key]: models })}
           />
         ))}
       </SettingsGrid>

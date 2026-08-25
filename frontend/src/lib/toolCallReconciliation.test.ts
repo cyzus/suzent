@@ -21,12 +21,14 @@ describe('reconcileToolCallMessages', () => {
         state: 'approval-requested',
       }),
     ];
-    const transient: AGUIPart[] = [{
-      type: 'tool',
-      toolCallId: 'call-1',
-      toolName: 'run_command',
-      state: 'running',
-    }];
+    const transient: AGUIPart[] = [
+      {
+        type: 'tool',
+        toolCallId: 'call-1',
+        toolName: 'run_command',
+        state: 'running',
+      },
+    ];
 
     expect(reconcileToolCallMessages(messages, transient)).toEqual([]);
   });
@@ -53,30 +55,32 @@ describe('reconcileToolCallMessages', () => {
   });
 
   it('preserves real text when removing a shadowed tool part', () => {
-    const messages: Message[] = [{
-      role: 'assistant',
-      content: 'Useful explanation',
-      parts: [
-        { type: 'text', text: 'Useful explanation' },
-        {
-          type: 'tool',
-          toolCallId: 'call-1',
-          toolName: 'run_command',
-          state: 'approval-requested',
-        },
-      ],
-    }];
+    const messages: Message[] = [
+      {
+        role: 'assistant',
+        content: 'Useful explanation',
+        parts: [
+          { type: 'text', text: 'Useful explanation' },
+          {
+            type: 'tool',
+            toolCallId: 'call-1',
+            toolName: 'run_command',
+            state: 'approval-requested',
+          },
+        ],
+      },
+    ];
 
-    const result = reconcileToolCallMessages(messages, [{
-      type: 'tool',
-      toolCallId: 'call-1',
-      state: 'completed',
-      output: 'ok',
-    }]);
+    const result = reconcileToolCallMessages(messages, [
+      {
+        type: 'tool',
+        toolCallId: 'call-1',
+        state: 'completed',
+        output: 'ok',
+      },
+    ]);
 
     expect(result).toHaveLength(1);
-    expect(result[0].parts).toEqual([
-      { type: 'text', text: 'Useful explanation' },
-    ]);
+    expect(result[0].parts).toEqual([{ type: 'text', text: 'Useful explanation' }]);
   });
 });

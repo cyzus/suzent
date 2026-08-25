@@ -16,7 +16,7 @@ describe('closeImmediatelyAndPersist', () => {
       async () => {
         events.push('persisted');
       },
-      () => events.push('failed'),
+      () => events.push('failed')
     );
 
     expect(events).toEqual(['closed']);
@@ -35,7 +35,7 @@ describe('closeImmediatelyAndPersist', () => {
       async () => {
         throw new Error('save failed');
       },
-      onError,
+      onError
     );
 
     await vi.runAllTimersAsync();

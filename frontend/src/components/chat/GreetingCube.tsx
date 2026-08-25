@@ -30,14 +30,14 @@ export const GreetingCube: React.FC<GreetingCubeProps> = React.memo(({ engaged =
   }, []);
 
   return (
-  <div
-    ref={presenceRef}
-    className={`suzent-greeting-presence ${engaged ? 'is-input-engaged' : ''}`}
-    aria-hidden="true"
-    onPointerMove={handlePointerMove}
-    onPointerLeave={resetPointer}
-  >
-    <style>{`
+    <div
+      ref={presenceRef}
+      className={`suzent-greeting-presence ${engaged ? 'is-input-engaged' : ''}`}
+      aria-hidden="true"
+      onPointerMove={handlePointerMove}
+      onPointerLeave={resetPointer}
+    >
+      <style>{`
       @keyframes suzentGreetingFloat {
         0%, 100% { transform: translateY(2px); }
         50% { transform: translateY(-5px); }
@@ -254,47 +254,100 @@ export const GreetingCube: React.FC<GreetingCubeProps> = React.memo(({ engaged =
       }
     `}</style>
 
-    <svg className="suzent-greeting-sigil" viewBox="0 0 156 156">
-      <g className="suzent-greeting-sigil-outer" fill="none" stroke="currentColor" strokeWidth=".8">
-        <path d="M78 8 L148 78 L78 148 L8 78 Z" />
-        <path d="M28 28 H128 V128 H28 Z" />
-        <path d="M78 8 V20 M148 78 H136 M78 148 V136 M8 78 H20" />
-      </g>
-      <g className="suzent-greeting-sigil-inner" fill="none" stroke="currentColor" strokeWidth=".7">
-        <path d="M78 30 L120 104 H36 Z" />
-        <path d="M78 126 L36 52 H120 Z" />
-      </g>
-      <path
-        className="suzent-greeting-sigil-axis"
-        d="M78 18 V138 M18 78 H138"
-        fill="none"
-        stroke="currentColor"
-        strokeDasharray="4 14"
-        strokeWidth=".7"
-      />
-      <rect className="suzent-greeting-sigil-node" x="75.5" y="5.5" width="5" height="5" fill="currentColor" />
-      <rect className="suzent-greeting-sigil-node" x="145.5" y="75.5" width="5" height="5" fill="currentColor" />
-      <rect className="suzent-greeting-sigil-node" x="75.5" y="145.5" width="5" height="5" fill="currentColor" />
-      <rect className="suzent-greeting-sigil-node" x="5.5" y="75.5" width="5" height="5" fill="currentColor" />
-    </svg>
+      <svg className="suzent-greeting-sigil" viewBox="0 0 156 156">
+        <g
+          className="suzent-greeting-sigil-outer"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth=".8"
+        >
+          <path d="M78 8 L148 78 L78 148 L8 78 Z" />
+          <path d="M28 28 H128 V128 H28 Z" />
+          <path d="M78 8 V20 M148 78 H136 M78 148 V136 M8 78 H20" />
+        </g>
+        <g
+          className="suzent-greeting-sigil-inner"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth=".7"
+        >
+          <path d="M78 30 L120 104 H36 Z" />
+          <path d="M78 126 L36 52 H120 Z" />
+        </g>
+        <path
+          className="suzent-greeting-sigil-axis"
+          d="M78 18 V138 M18 78 H138"
+          fill="none"
+          stroke="currentColor"
+          strokeDasharray="4 14"
+          strokeWidth=".7"
+        />
+        <rect
+          className="suzent-greeting-sigil-node"
+          x="75.5"
+          y="5.5"
+          width="5"
+          height="5"
+          fill="currentColor"
+        />
+        <rect
+          className="suzent-greeting-sigil-node"
+          x="145.5"
+          y="75.5"
+          width="5"
+          height="5"
+          fill="currentColor"
+        />
+        <rect
+          className="suzent-greeting-sigil-node"
+          x="75.5"
+          y="145.5"
+          width="5"
+          height="5"
+          fill="currentColor"
+        />
+        <rect
+          className="suzent-greeting-sigil-node"
+          x="5.5"
+          y="75.5"
+          width="5"
+          height="5"
+          fill="currentColor"
+        />
+      </svg>
 
-    <div className="suzent-greeting-float">
-      <div className="suzent-greeting-idle">
-        <div className="suzent-greeting-cube">
-          <div className="suzent-greeting-face" style={faceStyle(`translateZ(${HALF_CUBE}px)`)}>
-            <SuzentLogo className="suzent-greeting-logo" interactive />
+      <div className="suzent-greeting-float">
+        <div className="suzent-greeting-idle">
+          <div className="suzent-greeting-cube">
+            <div className="suzent-greeting-face" style={faceStyle(`translateZ(${HALF_CUBE}px)`)}>
+              <SuzentLogo className="suzent-greeting-logo" interactive />
+            </div>
+            <div
+              className="suzent-greeting-face"
+              style={faceStyle(`rotateY(180deg) translateZ(${HALF_CUBE}px)`)}
+            />
+            <div
+              className="suzent-greeting-face"
+              style={faceStyle(`rotateY(90deg) translateZ(${HALF_CUBE}px)`)}
+            />
+            <div
+              className="suzent-greeting-face"
+              style={faceStyle(`rotateY(-90deg) translateZ(${HALF_CUBE}px)`)}
+            />
+            <div
+              className="suzent-greeting-face"
+              style={faceStyle(`rotateX(90deg) translateZ(${HALF_CUBE}px)`)}
+            />
+            <div
+              className="suzent-greeting-face"
+              style={faceStyle(`rotateX(-90deg) translateZ(${HALF_CUBE}px)`)}
+            />
           </div>
-          <div className="suzent-greeting-face" style={faceStyle(`rotateY(180deg) translateZ(${HALF_CUBE}px)`)} />
-          <div className="suzent-greeting-face" style={faceStyle(`rotateY(90deg) translateZ(${HALF_CUBE}px)`)} />
-          <div className="suzent-greeting-face" style={faceStyle(`rotateY(-90deg) translateZ(${HALF_CUBE}px)`)} />
-          <div className="suzent-greeting-face" style={faceStyle(`rotateX(90deg) translateZ(${HALF_CUBE}px)`)} />
-          <div className="suzent-greeting-face" style={faceStyle(`rotateX(-90deg) translateZ(${HALF_CUBE}px)`)} />
         </div>
       </div>
-    </div>
 
-    <div className="suzent-greeting-shadow" />
-  </div>
+      <div className="suzent-greeting-shadow" />
+    </div>
   );
 });
 

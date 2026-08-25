@@ -24,10 +24,17 @@ function domainOf(url: string): string {
 }
 
 /** Favicon via Google's service, with a 🔗 fallback if it fails to load. */
-const ResultFavicon: React.FC<{ url: string; className?: string }> = ({ url, className = 'w-4 h-4' }) => {
+const ResultFavicon: React.FC<{ url: string; className?: string }> = ({
+  url,
+  className = 'w-4 h-4',
+}) => {
   const domain = domainOf(url);
   if (!domain) {
-    return <span className={`inline-flex items-center justify-center leading-none ${className}`}>🔗</span>;
+    return (
+      <span className={`inline-flex items-center justify-center leading-none ${className}`}>
+        🔗
+      </span>
+    );
   }
   return (
     <ImageWithFallback
@@ -39,13 +46,22 @@ const ResultFavicon: React.FC<{ url: string; className?: string }> = ({ url, cla
   );
 };
 
-export function parseSearchResults(output: string): { source: string; results: SearchResult[]; isSuccess: boolean } {
+export function parseSearchResults(output: string): {
+  source: string;
+  results: SearchResult[];
+  isSuccess: boolean;
+} {
   try {
     const parsedOutput = JSON.parse(output);
 
     // Check if it is a ToolResult envelope
     let data = parsedOutput;
-    if (parsedOutput && typeof parsedOutput === 'object' && 'success' in parsedOutput && typeof parsedOutput.message === 'string') {
+    if (
+      parsedOutput &&
+      typeof parsedOutput === 'object' &&
+      'success' in parsedOutput &&
+      typeof parsedOutput.message === 'string'
+    ) {
       if (!parsedOutput.success) {
         return { source: 'Web Search', results: [], isSuccess: false };
       }
@@ -73,7 +89,8 @@ export function parseSearchResults(output: string): { source: string; results: S
       const source = sourceMatch ? sourceMatch[1] : 'Web Search';
 
       const results: SearchResult[] = [];
-      const resultRegex = /## \d+\. (.*?)\n\*\*URL:\*\* (.*?)\n\*\*Description:\*\* (.*?)(?:\n\*\*Sources:\*\* (.*?))?(?=\n## \d+\. |\n*$)/gs;
+      const resultRegex =
+        /## \d+\. (.*?)\n\*\*URL:\*\* (.*?)\n\*\*Description:\*\* (.*?)(?:\n\*\*Sources:\*\* (.*?))?(?=\n## \d+\. |\n*$)/gs;
 
       let match;
       while ((match = resultRegex.exec(output)) !== null) {
@@ -112,7 +129,9 @@ export const WebSearchRenderer: React.FC<WebSearchRendererProps> = ({ output }) 
           {source}
         </span>
         <span className="text-[10px] font-mono font-bold text-brutal-black bg-brutal-yellow border-2 border-brutal-black px-2 py-0.5">
-          {t(results.length === 1 ? 'toolCallBlock.resultOne' : 'toolCallBlock.resultMany', { count: results.length })}
+          {t(results.length === 1 ? 'toolCallBlock.resultOne' : 'toolCallBlock.resultMany', {
+            count: results.length,
+          })}
         </span>
       </div>
 

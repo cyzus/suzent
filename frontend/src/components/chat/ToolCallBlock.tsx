@@ -41,12 +41,12 @@ const OUTPUT_RENDERERS: Record<string, React.FC<ToolRendererProps> | undefined> 
 
 export type ApprovalState = 'pending' | 'approved' | 'denied' | undefined;
 
-export function shouldShowPolicyAllowedBadge(
-  decision: ToolPermissionDecision,
-): boolean {
-  return decision.source === 'policy'
-    && decision.behavior === 'allow'
-    && decision.reasonCode !== 'readonly_operation';
+export function shouldShowPolicyAllowedBadge(decision: ToolPermissionDecision): boolean {
+  return (
+    decision.source === 'policy' &&
+    decision.behavior === 'allow' &&
+    decision.reasonCode !== 'readonly_operation'
+  );
 }
 
 interface ToolResultEnvelope {
@@ -75,8 +75,9 @@ function parseToolResultEnvelope(output: string | undefined): ToolResultEnvelope
         // Python repr fallback: {'success': True, 'message': '...', 'metadata': {...}}
         if (typeof current !== 'string') return null;
         const repr = current;
-        const msgMatch = repr.match(/'message':\s*'((?:[^'\\]|\\.)*)'/s)
-          ?? repr.match(/"message":\s*"((?:[^"\\]|\\.)*)"/s);
+        const msgMatch =
+          repr.match(/'message':\s*'((?:[^'\\]|\\.)*)'/s) ??
+          repr.match(/"message":\s*"((?:[^"\\]|\\.)*)"/s);
         if (!msgMatch) return null;
         const message = msgMatch[1].replace(/\\n/g, '\n').replace(/\\'/g, "'").replace(/\\"/g, '"');
         const rcMatch = repr.match(/'returncode':\s*(-?\d+)/);
@@ -211,10 +212,13 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
       reason: permission.reason,
       reasonCode: permission.reasonCode,
       risk: permission.risk,
-      confidence: typeof confidence === 'number' || confidence === 'low'
-        || confidence === 'medium' || confidence === 'high'
-        ? confidence
-        : null,
+      confidence:
+        typeof confidence === 'number' ||
+        confidence === 'low' ||
+        confidence === 'medium' ||
+        confidence === 'high'
+          ? confidence
+          : null,
       riskCategories: Array.isArray(categories)
         ? categories.filter((item): item is string => typeof item === 'string')
         : [],
@@ -230,39 +234,64 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
   const isShellCommand = toolName === 'run_command' || toolName === 'start_command';
   const ArgsRenderer = ARGS_RENDERERS[toolName];
   const OutputRenderer = OUTPUT_RENDERERS[toolName];
-  const confidenceValueLabel = visibleDecision?.confidence == null
-    ? null
-    : typeof visibleDecision.confidence === 'number'
-      ? `${Math.round(visibleDecision.confidence * 100)}%`
-      : t(`toolCallBlock.permissionConfidenceLevels.${visibleDecision.confidence}`);
+  const confidenceValueLabel =
+    visibleDecision?.confidence == null
+      ? null
+      : typeof visibleDecision.confidence === 'number'
+        ? `${Math.round(visibleDecision.confidence * 100)}%`
+        : t(`toolCallBlock.permissionConfidenceLevels.${visibleDecision.confidence}`);
   const confidenceBadgeLabel = confidenceValueLabel
     ? t('toolCallBlock.permissionConfidenceBadge', { value: confidenceValueLabel })
     : null;
   const decisionBadge = (() => {
     if (!visibleDecision) return null;
     if (visibleDecision.source === 'full_access') {
-      return { label: t('toolCallBlock.permissionFullAccess'), className: 'border-violet-500 text-violet-700 dark:text-violet-300' };
+      return {
+        label: t('toolCallBlock.permissionFullAccess'),
+        className: 'border-violet-500 text-violet-700 dark:text-violet-300',
+      };
     }
     if (permissionResolution) {
       return permissionResolution.behavior === 'allow'
-        ? { label: t('toolCallBlock.permissionUserAllowed'), className: 'border-green-500 text-green-700 dark:text-green-300' }
-        : { label: t('toolCallBlock.permissionUserDenied'), className: 'border-red-500 text-red-700 dark:text-red-300' };
+        ? {
+            label: t('toolCallBlock.permissionUserAllowed'),
+            className: 'border-green-500 text-green-700 dark:text-green-300',
+          }
+        : {
+            label: t('toolCallBlock.permissionUserDenied'),
+            className: 'border-red-500 text-red-700 dark:text-red-300',
+          };
     }
     if (visibleDecision.behavior === 'ask') {
-      return { label: `${t('toolCallBlock.permissionReviewRequired')} · ${visibleDecision.risk}`, className: 'border-amber-500 text-amber-700 dark:text-amber-300' };
+      return {
+        label: `${t('toolCallBlock.permissionReviewRequired')} · ${visibleDecision.risk}`,
+        className: 'border-amber-500 text-amber-700 dark:text-amber-300',
+      };
     }
     if (visibleDecision.behavior === 'deny') {
-      return { label: `${t('toolCallBlock.permissionDenied')} · ${visibleDecision.risk}`, className: 'border-red-500 text-red-700 dark:text-red-300' };
+      return {
+        label: `${t('toolCallBlock.permissionDenied')} · ${visibleDecision.risk}`,
+        className: 'border-red-500 text-red-700 dark:text-red-300',
+      };
     }
     if (visibleDecision.source === 'auto_classifier') {
       const suffix = confidenceBadgeLabel ? ` · ${confidenceBadgeLabel}` : '';
-      return { label: `${t('toolCallBlock.permissionAutoAllowed')}${suffix}`, className: 'border-blue-500 text-blue-700 dark:text-blue-300' };
+      return {
+        label: `${t('toolCallBlock.permissionAutoAllowed')}${suffix}`,
+        className: 'border-blue-500 text-blue-700 dark:text-blue-300',
+      };
     }
     if (visibleDecision.source === 'rule') {
-      return { label: t('toolCallBlock.permissionRuleAllowed'), className: 'border-emerald-500 text-emerald-700 dark:text-emerald-300' };
+      return {
+        label: t('toolCallBlock.permissionRuleAllowed'),
+        className: 'border-emerald-500 text-emerald-700 dark:text-emerald-300',
+      };
     }
     if (shouldShowPolicyAllowedBadge(visibleDecision)) {
-      return { label: t('toolCallBlock.permissionPolicyAllowed'), className: 'border-neutral-500 text-neutral-700 dark:text-neutral-300' };
+      return {
+        label: t('toolCallBlock.permissionPolicyAllowed'),
+        className: 'border-neutral-500 text-neutral-700 dark:text-neutral-300',
+      };
     }
     return null;
   })();
@@ -274,7 +303,7 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
   const rendererMetadata = React.useMemo<Record<string, unknown> | undefined>(() => {
     const m = parsedOutput?.metadata;
     return m && typeof m === 'object' && !Array.isArray(m)
-      ? m as Record<string, unknown>
+      ? (m as Record<string, unknown>)
       : undefined;
   }, [parsedOutput]);
 
@@ -295,19 +324,22 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
   // proposal awaiting approval ("RUN npm test"), a call in flight ("RUNNING npm
   // test"), a finished one ("RAN npm test"). A call with neither output nor a
   // live stream never ran, so it stays a proposal.
-  const tense: ToolTense = isPending || isDenied
-    ? 'imperative'
-    : hasOutput
-      ? (parsedOutput?.success === false || parsedOutput?.error_code ? 'failed' : 'past')
-      : isStreaming
-        ? 'active'
-        : 'imperative';
+  const tense: ToolTense =
+    isPending || isDenied
+      ? 'imperative'
+      : hasOutput
+        ? parsedOutput?.success === false || parsedOutput?.error_code
+          ? 'failed'
+          : 'past'
+        : isStreaming
+          ? 'active'
+          : 'imperative';
 
   // Headline for the collapsed pill: an action verb plus the tool's own
   // arguments ("READ ToolCallBlock.tsx") instead of just the tool name.
   const summary = React.useMemo(
     () => getToolSummary(toolName, parsedToolArgs, t, tense),
-    [toolName, parsedToolArgs, t, tense],
+    [toolName, parsedToolArgs, t, tense]
   );
 
   const { addedLines, removedLines } = React.useMemo(() => {
@@ -315,21 +347,23 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
     let removed = 0;
     const isEditOrWrite = toolName === 'edit_file' || toolName === 'write_file';
     if (!isEditOrWrite) return { addedLines: 0, removedLines: 0 };
-    
+
     try {
-      const original = typeof rendererMetadata?.old_content === 'string' 
-        ? rendererMetadata.old_content 
-        : typeof parsedToolArgs?.old_string === 'string'
-          ? parsedToolArgs.old_string
-          : '';
-      const modified = typeof rendererMetadata?.new_content === 'string'
-        ? rendererMetadata.new_content
-        : typeof parsedToolArgs?.new_string === 'string'
-          ? parsedToolArgs.new_string
-          : typeof parsedToolArgs?.content === 'string'
-            ? parsedToolArgs.content
+      const original =
+        typeof rendererMetadata?.old_content === 'string'
+          ? rendererMetadata.old_content
+          : typeof parsedToolArgs?.old_string === 'string'
+            ? parsedToolArgs.old_string
             : '';
-      
+      const modified =
+        typeof rendererMetadata?.new_content === 'string'
+          ? rendererMetadata.new_content
+          : typeof parsedToolArgs?.new_string === 'string'
+            ? parsedToolArgs.new_string
+            : typeof parsedToolArgs?.content === 'string'
+              ? parsedToolArgs.content
+              : '';
+
       if (!original && !modified) return { addedLines: 0, removedLines: 0 };
 
       const originalLines = original.split('\n');
@@ -340,9 +374,10 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
 
       for (let i = originalLines.length - 1; i >= 0; i -= 1) {
         for (let j = modifiedLines.length - 1; j >= 0; j -= 1) {
-          lengths[i][j] = originalLines[i] === modifiedLines[j]
-            ? lengths[i + 1][j + 1] + 1
-            : Math.max(lengths[i + 1][j], lengths[i][j + 1]);
+          lengths[i][j] =
+            originalLines[i] === modifiedLines[j]
+              ? lengths[i + 1][j + 1] + 1
+              : Math.max(lengths[i + 1][j], lengths[i][j + 1]);
         }
       }
 
@@ -370,9 +405,7 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
     return { addedLines: added, removedLines: removed };
   }, [toolName, parsedToolArgs, rendererMetadata]);
 
-  const toolResultMessage = typeof parsedOutput?.message === 'string'
-    ? parsedOutput.message
-    : null;
+  const toolResultMessage = typeof parsedOutput?.message === 'string' ? parsedOutput.message : null;
   const displayToolArgs = React.useMemo(() => formatToolArgsForDisplay(toolArgs), [toolArgs]);
 
   const descriptionText = (() => {
@@ -391,10 +424,8 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
       return;
     }
     onApprove?.(
-      action.scope === 'session' || action.scope === 'global'
-        ? action.scope
-        : null,
-      action.id,
+      action.scope === 'session' || action.scope === 'global' ? action.scope : null,
+      action.id
     );
   };
 
@@ -412,47 +443,58 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
     return knownLabels[action.id] || action.label;
   };
 
-  const persistentActionExplanations = permissionActions.flatMap(action => {
-    const update = action.permissionUpdates?.find(item => item.type === 'add_rule');
+  const persistentActionExplanations = permissionActions.flatMap((action) => {
+    const update = action.permissionUpdates?.find((item) => item.type === 'add_rule');
     if (!update) return [];
     const matcher = update.payload.matcher;
-    const matcherObject = matcher && typeof matcher === 'object' && !Array.isArray(matcher)
-      ? matcher as Record<string, unknown>
-      : {};
-    const destination = update.destination === 'global'
-      ? t('toolCallBlock.ruleScopeGlobal')
-      : t('toolCallBlock.ruleScopeSession');
+    const matcherObject =
+      matcher && typeof matcher === 'object' && !Array.isArray(matcher)
+        ? (matcher as Record<string, unknown>)
+        : {};
+    const destination =
+      update.destination === 'global'
+        ? t('toolCallBlock.ruleScopeGlobal')
+        : t('toolCallBlock.ruleScopeSession');
     if (matcherObject.type === 'exact_input') {
       const value = matcherObject.value;
-      const valueObject = value && typeof value === 'object' && !Array.isArray(value)
-        ? value as Record<string, unknown>
-        : {};
+      const valueObject =
+        value && typeof value === 'object' && !Array.isArray(value)
+          ? (value as Record<string, unknown>)
+          : {};
       const rawCommand = String(valueObject.command || '');
       const compact = rawCommand.trim().replace(/\s+/g, ' ');
       const command = compact.length > 120 ? `${compact.slice(0, 117)}...` : compact;
-      return [t('toolCallBlock.ruleExplanationCommand', {
-        action: permissionActionLabel(action),
-        scope: destination,
-        command,
-      })];
+      return [
+        t('toolCallBlock.ruleExplanationCommand', {
+          action: permissionActionLabel(action),
+          scope: destination,
+          command,
+        }),
+      ];
     }
     if (matcherObject.type === 'all') {
-      return [t('toolCallBlock.ruleExplanationTool', {
+      return [
+        t('toolCallBlock.ruleExplanationTool', {
+          action: permissionActionLabel(action),
+          scope: destination,
+          tool: displayName,
+        }),
+      ];
+    }
+    return [
+      t('toolCallBlock.ruleExplanationGeneric', {
         action: permissionActionLabel(action),
         scope: destination,
-        tool: displayName,
-      })];
-    }
-    return [t('toolCallBlock.ruleExplanationGeneric', {
-      action: permissionActionLabel(action),
-      scope: destination,
-    })];
+      }),
+    ];
   });
 
   const headerClassName = [
     'group/tool-header inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono font-bold uppercase tracking-wide rounded-sm transition-colors select-none',
     hasDetails ? 'cursor-pointer hover:bg-neutral-100 dark:hover:bg-zinc-700' : 'cursor-default',
-    expanded ? 'bg-neutral-100 dark:bg-zinc-700 text-brutal-black dark:text-white' : 'bg-transparent text-neutral-500 dark:text-neutral-400 hover:text-brutal-black dark:hover:text-white',
+    expanded
+      ? 'bg-neutral-100 dark:bg-zinc-700 text-brutal-black dark:text-white'
+      : 'bg-transparent text-neutral-500 dark:text-neutral-400 hover:text-brutal-black dark:hover:text-white',
     isPending && inActivityRail
       ? 'tool-call-header-pending'
       : isStreaming && !hasOutput
@@ -517,8 +559,12 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
         {/* Diff lines if available */}
         {!expanded && (addedLines > 0 || removedLines > 0) && (
           <span className="flex items-center gap-1.5 opacity-90 text-[10px] ml-1 shrink-0 font-bold">
-            {addedLines > 0 && <span className="text-green-600 dark:text-green-400">+{addedLines}</span>}
-            {removedLines > 0 && <span className="text-red-600 dark:text-red-400">-{removedLines}</span>}
+            {addedLines > 0 && (
+              <span className="text-green-600 dark:text-green-400">+{addedLines}</span>
+            )}
+            {removedLines > 0 && (
+              <span className="text-red-600 dark:text-red-400">-{removedLines}</span>
+            )}
           </span>
         )}
 
@@ -530,16 +576,22 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
         )}
         {hasOutput && !isPending && !isDenied && (
           <span className="flex items-center gap-0.5 shrink-0">
-            <svg className="w-2.5 h-2.5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+            <svg
+              className="w-2.5 h-2.5 text-green-600"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={3}
+            >
               <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
             </svg>
           </span>
         )}
-        {isDenied && (
-          <span className="text-[10px] text-red-500 font-bold shrink-0">DENIED</span>
-        )}
+        {isDenied && <span className="text-[10px] text-red-500 font-bold shrink-0">DENIED</span>}
         {!expanded && decisionBadge && (
-          <span className={`rounded-sm border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide shrink-0 ${decisionBadge.className}`}>
+          <span
+            className={`rounded-sm border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide shrink-0 ${decisionBadge.className}`}
+          >
             {decisionBadge.label}
           </span>
         )}
@@ -554,11 +606,27 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
             className="flex items-center gap-1 px-1.5 py-0.5 bg-blue-50 border border-blue-600 rounded-sm hover:bg-blue-100 transition-colors shrink-0"
             title="This tool is auto-approved. Click to remove."
           >
-            <svg className="w-2.5 h-2.5 text-blue-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+            <svg
+              className="w-2.5 h-2.5 text-blue-700"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={3}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
+              />
             </svg>
             <span className="text-[9px] font-bold text-blue-700 uppercase">Auto</span>
-            <svg className="w-2 h-2 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+            <svg
+              className="w-2 h-2 text-blue-600"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={3}
+            >
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
@@ -590,12 +658,16 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
       </div>
 
       {/* Expandable content */}
-      <div className={`
+      <div
+        className={`
         grid transition-[grid-template-rows] duration-200 ease-out overflow-hidden w-full
         ${expanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}
-      `}>
+      `}
+      >
         <div className="overflow-hidden min-h-0 min-w-0 w-full">
-          <div className={`${inActivityRail ? 'ml-0 pl-0 pr-0 border-l-0' : 'ml-2 pl-3 pr-2 border-l-2 border-neutral-200 dark:border-zinc-700'} mt-1 mb-2 space-y-3 min-w-0 overflow-x-hidden`}>
+          <div
+            className={`${inActivityRail ? 'ml-0 pl-0 pr-0 border-l-0' : 'ml-2 pl-3 pr-2 border-l-2 border-neutral-200 dark:border-zinc-700'} mt-1 mb-2 space-y-3 min-w-0 overflow-x-hidden`}
+          >
             {visibleDecision && (
               <details className="group/permission rounded-sm border border-neutral-200 bg-neutral-50/60 text-[11px] text-neutral-700 dark:border-zinc-700 dark:bg-zinc-900/60 dark:text-neutral-300">
                 <summary className="flex cursor-pointer list-none items-center gap-2 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wide text-neutral-500 transition-colors hover:bg-neutral-100 dark:hover:bg-zinc-800 [&::-webkit-details-marker]:hidden">
@@ -610,7 +682,9 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
                   </svg>
                   <span>{t('toolCallBlock.permissionDecisionTitle')}</span>
                   {decisionBadge && (
-                    <span className={`ml-auto rounded-sm border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${decisionBadge.className}`}>
+                    <span
+                      className={`ml-auto rounded-sm border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${decisionBadge.className}`}
+                    >
                       {decisionBadge.label}
                     </span>
                   )}
@@ -623,19 +697,25 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
                   {visibleDecision.source === 'full_access' ? (
                     <>
                       <dt className="text-neutral-500">{t('toolCallBlock.permissionReview')}</dt>
-                      <dd className="font-medium text-violet-700 dark:text-violet-300">{t('toolCallBlock.permissionNotReviewed')}</dd>
+                      <dd className="font-medium text-violet-700 dark:text-violet-300">
+                        {t('toolCallBlock.permissionNotReviewed')}
+                      </dd>
                     </>
                   ) : (
                     <>
                       {visibleDecision.reviewerModel && (
                         <>
-                          <dt className="text-neutral-500">{t('toolCallBlock.permissionReviewer')}</dt>
+                          <dt className="text-neutral-500">
+                            {t('toolCallBlock.permissionReviewer')}
+                          </dt>
                           <dd className="break-all">{visibleDecision.reviewerModel}</dd>
                         </>
                       )}
                       {confidenceValueLabel && (
                         <>
-                          <dt className="text-neutral-500">{t('toolCallBlock.permissionConfidence')}</dt>
+                          <dt className="text-neutral-500">
+                            {t('toolCallBlock.permissionConfidence')}
+                          </dt>
                           <dd>{confidenceValueLabel}</dd>
                         </>
                       )}
@@ -645,7 +725,9 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
                   <dd>{visibleDecision.risk}</dd>
                   {visibleDecision.riskCategories.length > 0 && (
                     <>
-                      <dt className="text-neutral-500">{t('toolCallBlock.permissionCategories')}</dt>
+                      <dt className="text-neutral-500">
+                        {t('toolCallBlock.permissionCategories')}
+                      </dt>
                       <dd>{visibleDecision.riskCategories.join(', ')}</dd>
                     </>
                   )}
@@ -653,61 +735,72 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
                   <dd className="break-words">{visibleDecision.reason}</dd>
                   {permissionResolution && (
                     <>
-                      <dt className="text-neutral-500">{t('toolCallBlock.permissionResolution')}</dt>
-                      <dd>{permissionResolution.behavior} · {permissionResolution.scope}</dd>
+                      <dt className="text-neutral-500">
+                        {t('toolCallBlock.permissionResolution')}
+                      </dt>
+                      <dd>
+                        {permissionResolution.behavior} · {permissionResolution.scope}
+                      </dd>
                     </>
                   )}
                 </dl>
               </details>
             )}
             {/* Arguments or Running status */}
-            {(toolArgs || (isStreaming && !output)) && !(OutputRenderer && hasOutput && !ArgsRenderer) && (
-              <div className="min-w-0 w-full overflow-hidden">
-                <div className="text-[10px] font-mono font-bold text-neutral-400 dark:text-neutral-500 uppercase mb-1.5 flex items-center gap-2 tracking-wide">
-            {isStreaming && !output ? (
-              <>
-                      <span className="text-brutal-black dark:text-neutral-300 animate-pulse">
-                        {isPending ? 'Approval needed' : `Running ${displayName}...`}
-                      </span>
-                      {!isPending && (
-                        <div className="h-[2px] flex-1 bg-neutral-100 dark:bg-zinc-700 overflow-hidden rounded-full">
-                          <div className="h-full bg-brutal-black dark:bg-neutral-400 w-1/3 animate-neo-scan" />
-                        </div>
-                      )}
-                    </>
-                  ) : (
-                    t('toolCallBlock.arguments')
-                  )}
-                </div>
-                {toolArgs && (
-                  ArgsRenderer ? (
-                    <ArgsRenderer
-                      toolName={toolName}
-                      parsedArgs={parsedToolArgs}
-                      metadata={rendererMetadata}
-                    />
-                  ) : OutputRenderer ? (
-                    <OutputRenderer
-                      toolName={toolName}
-                      parsedArgs={parsedToolArgs}
-                      metadata={rendererMetadata}
-                    />
-                  ) : (
-                    <div className="max-h-[260px] overflow-y-auto scrollbar-thin w-full" style={{ overflowX: 'hidden' }}>
-                      <ToolArgsRenderer
+            {(toolArgs || (isStreaming && !output)) &&
+              !(OutputRenderer && hasOutput && !ArgsRenderer) && (
+                <div className="min-w-0 w-full overflow-hidden">
+                  <div className="text-[10px] font-mono font-bold text-neutral-400 dark:text-neutral-500 uppercase mb-1.5 flex items-center gap-2 tracking-wide">
+                    {isStreaming && !output ? (
+                      <>
+                        <span className="text-brutal-black dark:text-neutral-300 animate-pulse">
+                          {isPending ? 'Approval needed' : `Running ${displayName}...`}
+                        </span>
+                        {!isPending && (
+                          <div className="h-[2px] flex-1 bg-neutral-100 dark:bg-zinc-700 overflow-hidden rounded-full">
+                            <div className="h-full bg-brutal-black dark:bg-neutral-400 w-1/3 animate-neo-scan" />
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      t('toolCallBlock.arguments')
+                    )}
+                  </div>
+                  {toolArgs &&
+                    (ArgsRenderer ? (
+                      <ArgsRenderer
                         toolName={toolName}
                         parsedArgs={parsedToolArgs}
-                        raw={displayToolArgs}
+                        metadata={rendererMetadata}
                       />
-                    </div>
-                  )
-                )}
-              </div>
-            )}
+                    ) : OutputRenderer ? (
+                      <OutputRenderer
+                        toolName={toolName}
+                        parsedArgs={parsedToolArgs}
+                        metadata={rendererMetadata}
+                      />
+                    ) : (
+                      <div
+                        className="max-h-[260px] overflow-y-auto scrollbar-thin w-full"
+                        style={{ overflowX: 'hidden' }}
+                      >
+                        <ToolArgsRenderer
+                          toolName={toolName}
+                          parsedArgs={parsedToolArgs}
+                          raw={displayToolArgs}
+                        />
+                      </div>
+                    ))}
+                </div>
+              )}
 
             {isPending && descriptionText && (
-              <div className={`${inActivityRail ? 'border-brutal-black bg-white dark:bg-zinc-900 text-brutal-black dark:text-neutral-100' : 'border-amber-500 bg-amber-50 text-amber-900'} w-full min-w-0 rounded-sm border-2 border-solid px-2.5 py-2 overflow-hidden`}>
-                <div className={`${inActivityRail ? 'text-brutal-black dark:text-neutral-300' : 'text-amber-700'} text-[10px] font-mono font-bold uppercase tracking-wide`}>
+              <div
+                className={`${inActivityRail ? 'border-brutal-black bg-white dark:bg-zinc-900 text-brutal-black dark:text-neutral-100' : 'border-amber-500 bg-amber-50 text-amber-900'} w-full min-w-0 rounded-sm border-2 border-solid px-2.5 py-2 overflow-hidden`}
+              >
+                <div
+                  className={`${inActivityRail ? 'text-brutal-black dark:text-neutral-300' : 'text-amber-700'} text-[10px] font-mono font-bold uppercase tracking-wide`}
+                >
                   Requested Action
                 </div>
                 <div className="mt-1 text-[12px] leading-relaxed break-words whitespace-pre-wrap">
@@ -719,10 +812,10 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
             {/* Approval buttons — shown when tool is waiting for user decision */}
             {isPending && onApprove && onDeny && (
               <>
-                {permissionActions.some(action => action.feedbackKind === 'reject') && (
+                {permissionActions.some((action) => action.feedbackKind === 'reject') && (
                   <textarea
                     value={rejectFeedback}
-                    onChange={event => setRejectFeedback(event.target.value)}
+                    onChange={(event) => setRejectFeedback(event.target.value)}
                     rows={2}
                     placeholder={t('toolCallBlock.permissionRejectPlaceholder')}
                     className="w-full resize-y rounded-sm border border-neutral-300 bg-white px-2 py-1.5 text-[11px] text-neutral-800 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-neutral-200"
@@ -734,7 +827,7 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
                   </div>
                 )}
                 <div className="flex flex-wrap items-center gap-2 py-2">
-                  {permissionActions.map(action => (
+                  {permissionActions.map((action) => (
                     <button
                       key={action.id}
                       onClick={() => selectPermissionAction(action)}
@@ -754,7 +847,7 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
                 </div>
                 {persistentActionExplanations.length > 0 && (
                   <div className="space-y-1 text-[10px] text-neutral-500 leading-tight min-w-0 w-full overflow-hidden">
-                    {persistentActionExplanations.map(explanation => (
+                    {persistentActionExplanations.map((explanation) => (
                       <div key={explanation} className="break-words">
                         {explanation}
                       </div>
@@ -778,7 +871,10 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
                     output={toolResultMessage ?? output}
                   />
                 ) : (
-                  <div className="max-h-[320px] overflow-y-auto scrollbar-thin w-full rounded-sm bg-neutral-50/70 dark:bg-zinc-800/40 px-2.5 py-2" style={{ overflowX: 'hidden' }}>
+                  <div
+                    className="max-h-[320px] overflow-y-auto scrollbar-thin w-full rounded-sm bg-neutral-50/70 dark:bg-zinc-800/40 px-2.5 py-2"
+                    style={{ overflowX: 'hidden' }}
+                  >
                     {isWebTool ? (
                       <WebSearchRenderer output={output} />
                     ) : toolResultMessage ? (

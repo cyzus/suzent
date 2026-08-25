@@ -19,7 +19,7 @@ export function useWebHistory(messages: Message[]): WebHistoryLog[] {
     messages.forEach((msg, mIdx) => {
       // Only process assistant messages with content
       if (msg.role !== 'assistant' || !msg.content) return;
-      
+
       const blocks = splitAssistantContent(msg.content);
 
       for (const block of blocks) {
@@ -32,7 +32,7 @@ export function useWebHistory(messages: Message[]): WebHistoryLog[] {
               output: block.content, // tool output is stored in content for toolCall
               args: block.toolArgs,
               timestamp: msg.timestamp || new Date().toISOString(),
-              messageIndex: mIdx
+              messageIndex: mIdx,
             });
           } else if (block.toolName === 'webpage_fetch') {
             history.push({
@@ -42,7 +42,7 @@ export function useWebHistory(messages: Message[]): WebHistoryLog[] {
               output: block.content,
               args: block.toolArgs,
               timestamp: msg.timestamp || new Date().toISOString(),
-              messageIndex: mIdx
+              messageIndex: mIdx,
             });
           }
         }
@@ -71,9 +71,13 @@ function extractPageTitle(args?: string): string {
     try {
       if (url.startsWith('http')) {
         const urlObj = new URL(url);
-        url = urlObj.hostname + (urlObj.pathname !== '/' ? urlObj.pathname.substring(0, 15) + '...' : '');
+        url =
+          urlObj.hostname +
+          (urlObj.pathname !== '/' ? urlObj.pathname.substring(0, 15) + '...' : '');
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     return `\uD83D\uDCC4 ${url}`;
   } catch {
     return '\uD83D\uDCC4 Web Page';

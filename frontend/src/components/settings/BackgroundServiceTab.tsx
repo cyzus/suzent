@@ -89,9 +89,8 @@ export function BackgroundServiceTab(): React.ReactElement {
     }
   };
 
-  const memory = status?.rss_bytes == null
-    ? '—'
-    : `${(status.rss_bytes / 1024 / 1024).toFixed(1)} MiB`;
+  const memory =
+    status?.rss_bytes == null ? '—' : `${(status.rss_bytes / 1024 / 1024).toFixed(1)} MiB`;
   const stateLabel = !status?.installed
     ? t('settings.service.notInstalled')
     : status.ready
@@ -110,20 +109,30 @@ export function BackgroundServiceTab(): React.ReactElement {
       <SettingsCard>
         <SectionCardHeader
           iconTone={status?.ready ? 'green' : 'neutral'}
-          icon={(
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2" />
+          icon={
+            <svg
+              className="w-6 h-6"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2"
+              />
             </svg>
-          )}
+          }
           title={t('settings.service.backgroundTitle')}
           description={t('settings.service.backgroundDesc')}
-          actions={(
+          actions={
             <BrutalOnOff
               checked={status?.installed ?? false}
               disabled={busy || status === null}
               onChange={(enabled) => void setEnabled(enabled)}
             />
-          )}
+          }
         />
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 font-mono text-xs">

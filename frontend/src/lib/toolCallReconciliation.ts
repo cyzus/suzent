@@ -10,7 +10,7 @@ function toolStateScore(part: AGUIPart): number {
 }
 
 function hasVisibleNonToolPart(parts: AGUIPart[]): boolean {
-  return parts.some(part => {
+  return parts.some((part) => {
     if (part.type === 'text') {
       return Boolean(part.text?.trim());
     }
@@ -28,26 +28,26 @@ function hasVisibleNonToolPart(parts: AGUIPart[]): boolean {
  */
 export function reconcileToolCallMessages(
   messages: Message[],
-  transientParts: AGUIPart[] = [],
+  transientParts: AGUIPart[] = []
 ): Message[] {
   const transientToolIds = new Set(
     transientParts
-      .filter(part => part.type === 'tool' && Boolean(part.toolCallId))
-      .map(part => part.toolCallId as string),
+      .filter((part) => part.type === 'tool' && Boolean(part.toolCallId))
+      .map((part) => part.toolCallId as string)
   );
 
   const ownerByToolId = new Map<string, { messageIndex: number; score: number }>();
   messages.forEach((message, messageIndex) => {
     if (message.role !== 'assistant' || !Array.isArray(message.parts)) return;
-    message.parts.forEach(part => {
+    message.parts.forEach((part) => {
       if (part.type !== 'tool' || !part.toolCallId) return;
       if (transientToolIds.has(part.toolCallId)) return;
       const score = toolStateScore(part);
       const current = ownerByToolId.get(part.toolCallId);
       if (
-        !current
-        || score > current.score
-        || (score === current.score && messageIndex > current.messageIndex)
+        !current ||
+        score > current.score ||
+        (score === current.score && messageIndex > current.messageIndex)
       ) {
         ownerByToolId.set(part.toolCallId, { messageIndex, score });
       }
@@ -60,18 +60,17 @@ export function reconcileToolCallMessages(
     }
 
     let removedTool = false;
-    const parts = message.parts.filter(part => {
+    const parts = message.parts.filter((part) => {
       if (part.type !== 'tool' || !part.toolCallId) return true;
       const owner = ownerByToolId.get(part.toolCallId);
-      const keep = !transientToolIds.has(part.toolCallId)
-        && owner?.messageIndex === messageIndex;
+      const keep = !transientToolIds.has(part.toolCallId) && owner?.messageIndex === messageIndex;
       if (!keep) removedTool = true;
       return keep;
     });
 
     if (!removedTool) return [message];
 
-    const hasRemainingTool = parts.some(part => part.type === 'tool');
+    const hasRemainingTool = parts.some((part) => part.type === 'tool');
     if (!hasRemainingTool && !hasVisibleNonToolPart(parts)) {
       return [];
     }

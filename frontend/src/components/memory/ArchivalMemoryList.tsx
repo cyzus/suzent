@@ -11,7 +11,8 @@ import { BrutalButton } from '../BrutalButton';
 import { BrutalSelect } from '../BrutalSelect';
 import type { ArchivalMemory, ArchivalQueryOptions, MemoryFacets } from '../../types/memory';
 
-type SortOption = 'date-desc' | 'date-asc' | 'importance-desc' | 'importance-asc' | 'relevance' | 'access-desc';
+type SortOption =
+  'date-desc' | 'date-asc' | 'importance-desc' | 'importance-asc' | 'relevance' | 'access-desc';
 type ImportanceFilter = 'all' | 'high' | 'medium' | 'low';
 type SourceTab = 'facts' | 'notebook' | 'profile' | 'all';
 
@@ -134,12 +135,15 @@ export const ArchivalMemoryList: React.FC = () => {
   const sourceCounts = useMemo(() => {
     const counts = archivalFacets?.source_types ?? {};
     const total = Object.values(counts).reduce((sum, n) => sum + n, 0);
-    return SOURCE_TABS.reduce<Record<SourceTab, number>>((acc, tab) => {
-      acc[tab.value] = tab.sourceTypes
-        ? tab.sourceTypes.reduce((sum, key) => sum + (counts[key] ?? 0), 0)
-        : total;
-      return acc;
-    }, {} as Record<SourceTab, number>);
+    return SOURCE_TABS.reduce<Record<SourceTab, number>>(
+      (acc, tab) => {
+        acc[tab.value] = tab.sourceTypes
+          ? tab.sourceTypes.reduce((sum, key) => sum + (counts[key] ?? 0), 0)
+          : total;
+        return acc;
+      },
+      {} as Record<SourceTab, number>
+    );
   }, [archivalFacets]);
 
   /** A category or tag name with no translation falls back to the raw value. */
@@ -440,7 +444,8 @@ export const ArchivalMemoryList: React.FC = () => {
                   count: String(processedMemories.length),
                   total: String(archivalTotal),
                 })}
-            {importanceFilter !== 'all' && ` (${t('archival.filteredBy', { importance: importanceFilter })})`}
+            {importanceFilter !== 'all' &&
+              ` (${t('archival.filteredBy', { importance: importanceFilter })})`}
             {selectedTags.length > 0 && ` (${selectedTags.map((tag) => `#${tag}`).join(' ')})`}
           </span>
           {/* Only a relevance search still sorts over the loaded pages. */}
@@ -458,7 +463,9 @@ export const ArchivalMemoryList: React.FC = () => {
           <div className="flex items-start gap-3">
             <span className="text-3xl">⚠️</span>
             <div>
-              <p className="font-bold text-brutal-black dark:text-white mb-1">{t('archival.errorTitle')}</p>
+              <p className="font-bold text-brutal-black dark:text-white mb-1">
+                {t('archival.errorTitle')}
+              </p>
               <p className="text-sm text-brutal-black dark:text-neutral-300">{archivalError}</p>
             </div>
           </div>
@@ -545,7 +552,9 @@ export const ArchivalMemoryList: React.FC = () => {
         <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 p-8 text-center">
           <div className="flex items-center justify-center gap-3 mb-2">
             <div className="w-4 h-4 border-3 border-brutal-black dark:border-white border-t-transparent animate-spin rounded-full"></div>
-            <p className="text-neutral-800 dark:text-white font-bold uppercase">{t('archival.loading')}</p>
+            <p className="text-neutral-800 dark:text-white font-bold uppercase">
+              {t('archival.loading')}
+            </p>
           </div>
         </div>
       )}

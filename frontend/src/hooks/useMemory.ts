@@ -95,10 +95,8 @@ export const useMemory = create<MemoryState>((set, get) => ({
       await memoryApi.updateCoreMemoryBlock(label, content, get().userId);
 
       // Update local state
-      set(state => ({
-        coreMemory: state.coreMemory
-          ? { ...state.coreMemory, [label]: content }
-          : null,
+      set((state) => ({
+        coreMemory: state.coreMemory ? { ...state.coreMemory, [label]: content } : null,
       }));
     } catch (error) {
       set({
@@ -136,7 +134,7 @@ export const useMemory = create<MemoryState>((set, get) => ({
 
       if (requestId !== archivalRequestId) return;
 
-      set(state => ({
+      set((state) => ({
         archivalMemories: append
           ? [...state.archivalMemories, ...result.memories]
           : result.memories,
@@ -161,8 +159,8 @@ export const useMemory = create<MemoryState>((set, get) => ({
       await memoryApi.deleteArchivalMemory(memoryId);
 
       // Remove from local state
-      set(state => ({
-        archivalMemories: state.archivalMemories.filter(m => m.id !== memoryId),
+      set((state) => ({
+        archivalMemories: state.archivalMemories.filter((m) => m.id !== memoryId),
         archivalTotal: state.archivalTotal === null ? null : Math.max(state.archivalTotal - 1, 0),
       }));
 

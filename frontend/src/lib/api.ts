@@ -1,4 +1,10 @@
-import { AcpAgentDescriptor, ChatGPTLoginResponse, ChatGPTStatusResponse, ConfigOptions, PermissionMode } from '../types/api';
+import {
+  AcpAgentDescriptor,
+  ChatGPTLoginResponse,
+  ChatGPTStatusResponse,
+  ConfigOptions,
+  PermissionMode,
+} from '../types/api';
 import type { PermissionPrompt } from '../types/agui';
 import socialExampleConfig from '../../../config/social.example.json';
 
@@ -57,17 +63,14 @@ export async function fetchServiceRuntimeStatus(): Promise<ServiceRuntimeStatus>
     throw new Error(`Failed to load service status: ${response.status}`);
   }
 
-  const payload = await response.json() as Record<string, unknown>;
+  const payload = (await response.json()) as Record<string, unknown>;
   return {
     ready: payload.ready === true,
     schedulerRunning: payload.scheduler_running === true,
     heartbeatRunning: payload.heartbeat_running === true,
-    channelsConfigured: typeof payload.channels_configured === 'number'
-      ? payload.channels_configured
-      : 0,
-    uptimeSeconds: typeof payload.uptime_seconds === 'number'
-      ? payload.uptime_seconds
-      : 0,
+    channelsConfigured:
+      typeof payload.channels_configured === 'number' ? payload.channels_configured : 0,
+    uptimeSeconds: typeof payload.uptime_seconds === 'number' ? payload.uptime_seconds : 0,
   };
 }
 
@@ -96,7 +99,7 @@ function isAbortError(error: unknown): boolean {
 }
 
 export async function fetchSystemVersion(
-  options: FetchSystemVersionOptions = {},
+  options: FetchSystemVersionOptions = {}
 ): Promise<SystemVersionResponse> {
   const attempts = options.attempts ?? 2;
   const timeoutMs = options.timeoutMs ?? 15000;
@@ -114,7 +117,7 @@ export async function fetchSystemVersion(
     } catch (error) {
       if (!isAbortError(error)) throw error;
       if (attempt === attempts - 1) throw new BackendVersionTimeoutError();
-      await new Promise(resolve => window.setTimeout(resolve, retryDelayMs));
+      await new Promise((resolve) => window.setTimeout(resolve, retryDelayMs));
     } finally {
       window.clearTimeout(timeout);
     }
@@ -124,20 +127,17 @@ export async function fetchSystemVersion(
   if (!response.ok) {
     throw new Error(`Failed to load backend version: ${response.status}`);
   }
-  const payload = await response.json() as {
+  const payload = (await response.json()) as {
     backend_version?: unknown;
     api_version?: unknown;
     build_commit?: unknown;
     development_mode?: unknown;
   };
   return {
-    backendVersion: typeof payload.backend_version === 'string'
-      ? payload.backend_version
-      : 'unknown',
+    backendVersion:
+      typeof payload.backend_version === 'string' ? payload.backend_version : 'unknown',
     apiVersion: typeof payload.api_version === 'number' ? payload.api_version : 0,
-    buildCommit: typeof payload.build_commit === 'string'
-      ? payload.build_commit
-      : 'unknown',
+    buildCommit: typeof payload.build_commit === 'string' ? payload.build_commit : 'unknown',
     developmentMode: payload.development_mode === true,
   };
 }
@@ -157,7 +157,7 @@ export function getBackendCompatibilityIssue(
     // Release identity may differ for backend-only hotfixes. API_VERSION is
     // the compatibility contract; bump it whenever the desktop API breaks.
     enforceBuildCommit: false,
-  },
+  }
 ): BackendCompatibilityIssue | null {
   if (backend.apiVersion !== frontend.apiVersion) {
     return {
@@ -166,24 +166,22 @@ export function getBackendCompatibilityIssue(
       backend: String(backend.apiVersion),
     };
   }
-  const commitsKnown = backend.buildCommit !== 'unknown'
-    && frontend.buildCommit !== 'unknown';
-  const enforceBuildCommit = (frontend.enforceBuildCommit ?? true)
-    && !backend.developmentMode;
-  if (enforceBuildCommit
-    && commitsKnown
-    && backend.buildCommit !== frontend.buildCommit) {
+  const commitsKnown = backend.buildCommit !== 'unknown' && frontend.buildCommit !== 'unknown';
+  const enforceBuildCommit = (frontend.enforceBuildCommit ?? true) && !backend.developmentMode;
+  if (enforceBuildCommit && commitsKnown && backend.buildCommit !== frontend.buildCommit) {
     return {
       kind: 'build',
       frontend: frontend.buildCommit.slice(0, 8),
       backend: backend.buildCommit.slice(0, 8),
     };
   }
-  if (enforceBuildCommit
-    && !commitsKnown
-    && backend.backendVersion !== 'unknown'
-    && frontend.version !== 'unknown'
-    && backend.backendVersion !== frontend.version) {
+  if (
+    enforceBuildCommit &&
+    !commitsKnown &&
+    backend.backendVersion !== 'unknown' &&
+    frontend.version !== 'unknown' &&
+    backend.backendVersion !== frontend.version
+  ) {
     return {
       kind: 'version',
       frontend: frontend.version,
@@ -203,7 +201,7 @@ export interface PermissionModeState {
 
 export async function setChatPermissionMode(
   chatId: string,
-  mode: PermissionMode,
+  mode: PermissionMode
 ): Promise<PermissionModeState> {
   const response = await fetch(`${getApiBase()}/chats/${chatId}/permission-mode`, {
     method: 'PUT',
@@ -217,7 +215,7 @@ export async function setChatPermissionMode(
 }
 
 export async function setDefaultPermissionMode(
-  mode: PermissionMode,
+  mode: PermissionMode
 ): Promise<{ mode: PermissionMode }> {
   const response = await fetch(`${getApiBase()}/config/default-permission-mode`, {
     method: 'PUT',
@@ -230,9 +228,7 @@ export async function setDefaultPermissionMode(
   return response.json();
 }
 
-export async function restoreChatPermissionMode(
-  chatId: string,
-): Promise<PermissionModeState> {
+export async function restoreChatPermissionMode(chatId: string): Promise<PermissionModeState> {
   const response = await fetch(`${getApiBase()}/chats/${chatId}/permission-mode`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
@@ -260,9 +256,7 @@ export interface ChatPermissionState {
   pendingApprovals: PendingPermissionApproval[];
 }
 
-export async function getChatPermissionState(
-  chatId: string,
-): Promise<ChatPermissionState> {
+export async function getChatPermissionState(chatId: string): Promise<ChatPermissionState> {
   const response = await fetch(`${getApiBase()}/chats/${chatId}/permission-state`);
   if (!response.ok) {
     throw new Error(`Failed to load permission state: ${response.status}`);
@@ -350,7 +344,7 @@ export async function approveTool(
   chatId: string,
   requestId: string,
   approved: boolean,
-  remember?: 'session' | 'global' | null,
+  remember?: 'session' | 'global' | null
 ): Promise<boolean> {
   return postOk('/chat/approve-tool', {
     chat_id: chatId,
@@ -392,7 +386,12 @@ export async function addMcpServer(
   stdio?: StdioConfig,
   headers?: Record<string, string>
 ): Promise<McpProbeResult | undefined> {
-  const body: { name: string; url?: string; stdio?: StdioConfig; headers?: Record<string, string> } = { name };
+  const body: {
+    name: string;
+    url?: string;
+    stdio?: StdioConfig;
+    headers?: Record<string, string>;
+  } = { name };
   if (url) body.url = url;
   if (stdio) body.stdio = stdio;
   if (headers && Object.keys(headers).length > 0) body.headers = headers;
@@ -400,7 +399,7 @@ export async function addMcpServer(
   const res = await fetch(`${getApiBase()}/mcp_servers`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
+    body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error('Failed to add MCP server');
   const data = await res.json();
@@ -413,7 +412,12 @@ export async function updateMcpServer(
   stdio?: StdioConfig,
   headers?: Record<string, string>
 ): Promise<McpProbeResult | undefined> {
-  const body: { name: string; url?: string; stdio?: StdioConfig; headers?: Record<string, string> } = { name };
+  const body: {
+    name: string;
+    url?: string;
+    stdio?: StdioConfig;
+    headers?: Record<string, string>;
+  } = { name };
   if (url) body.url = url;
   if (stdio) body.stdio = stdio;
   if (headers && Object.keys(headers).length > 0) body.headers = headers;
@@ -421,7 +425,7 @@ export async function updateMcpServer(
   const res = await fetch(`${getApiBase()}/mcp_servers/update`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
+    body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error('Failed to update MCP server');
   const data = await res.json();
@@ -432,7 +436,7 @@ export async function testMcpServer(name: string): Promise<McpProbeResult> {
   const res = await fetch(`${getApiBase()}/mcp_servers/test`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name })
+    body: JSON.stringify({ name }),
   });
   if (!res.ok) throw new Error('Failed to test MCP server');
   return res.json();
@@ -442,7 +446,7 @@ export async function removeMcpServer(name: string): Promise<void> {
   const res = await fetch(`${getApiBase()}/mcp_servers/remove`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name })
+    body: JSON.stringify({ name }),
   });
   if (!res.ok) throw new Error('Failed to remove MCP server');
 }
@@ -451,7 +455,7 @@ export async function setMcpServerEnabled(name: string, enabled: boolean): Promi
   const res = await fetch(`${getApiBase()}/mcp_servers/enabled`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, enabled })
+    body: JSON.stringify({ name, enabled }),
   });
   if (!res.ok) throw new Error('Failed to update MCP server');
 }
@@ -514,14 +518,14 @@ function unwrapList<T>(payload: unknown, key: string): T[] {
 }
 
 function unwrapAcpSession(payload: unknown): ACPSession {
-  const record = payload && typeof payload === 'object'
-    ? payload as Record<string, unknown>
-    : {};
-  const nested = record.session && typeof record.session === 'object'
-    ? record.session as Record<string, unknown>
-    : record;
+  const record = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {};
+  const nested =
+    record.session && typeof record.session === 'object'
+      ? (record.session as Record<string, unknown>)
+      : record;
   const id = nested.id ?? nested.session_id;
-  if (typeof id !== 'string' || !id) throw new Error('ACP session response did not include a session id');
+  if (typeof id !== 'string' || !id)
+    throw new Error('ACP session response did not include a session id');
   return {
     ...(nested as unknown as ACPSession),
     id,
@@ -531,7 +535,9 @@ function unwrapAcpSession(payload: unknown): ACPSession {
 }
 
 export async function probeAcpAgent(id: string): Promise<Record<string, unknown>> {
-  const res = await fetch(`${getApiBase()}/acp/agents/${encodeURIComponent(id)}/probe`, { method: 'POST' });
+  const res = await fetch(`${getApiBase()}/acp/agents/${encodeURIComponent(id)}/probe`, {
+    method: 'POST',
+  });
   if (!res.ok) throw new Error(`Failed to probe agent: ${res.status}`);
   return res.json();
 }
@@ -547,10 +553,12 @@ export async function fetchAcpSessions(agentId: string): Promise<AcpAgentSession
   const res = await fetch(`${getApiBase()}/acp/sessions?agent_id=${encodeURIComponent(agentId)}`);
   if (!res.ok) throw new Error(`Failed to load ACP sessions: ${res.status}`);
   const payload = await res.json();
-  const saved = unwrapList<ACPSession>(payload, 'sessions').map(session => ({
-    ...session,
-    id: session.id || (session as ACPSession & { session_id?: string }).session_id || '',
-  })).filter(session => !!session.id);
+  const saved = unwrapList<ACPSession>(payload, 'sessions')
+    .map((session) => ({
+      ...session,
+      id: session.id || (session as ACPSession & { session_id?: string }).session_id || '',
+    }))
+    .filter((session) => !!session.id);
   return { saved, active: unwrapList<unknown>(payload, 'active').length };
 }
 
@@ -567,7 +575,7 @@ export async function createAcpSession(agentId: string, chatId: string): Promise
 export async function resumeAcpSession(
   agentId: string,
   sessionId: string,
-  chatId: string,
+  chatId: string
 ): Promise<ACPSession> {
   const res = await fetch(`${getApiBase()}/acp/sessions/resume`, {
     method: 'POST',
@@ -672,7 +680,9 @@ export async function fetchUnauthorizedTriggers(): Promise<UnauthorizedTrigger[]
 }
 
 export async function approvePendingNode(pairingCode: string): Promise<void> {
-  const res = await fetch(`${getApiBase()}/nodes/pending/${pairingCode}/approve`, { method: 'POST' });
+  const res = await fetch(`${getApiBase()}/nodes/pending/${pairingCode}/approve`, {
+    method: 'POST',
+  });
   if (!res.ok) throw new Error((await res.text()) || 'Failed to approve');
 }
 
@@ -687,7 +697,10 @@ export async function revokeDevice(deviceId: string): Promise<void> {
 }
 
 /** Pause or resume an inbound grant (a device that can drive us). */
-export async function setDeviceStatus(deviceId: string, status: 'active' | 'paused'): Promise<void> {
+export async function setDeviceStatus(
+  deviceId: string,
+  status: 'active' | 'paused'
+): Promise<void> {
   const res = await fetch(`${getApiBase()}/nodes/devices/${deviceId}/status`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -726,7 +739,9 @@ export interface OutboundConnection {
   error: string | null;
 }
 
-export async function discoverNodes(timeout = 2.0): Promise<{ lan: DiscoveredPeer[]; tailscale: DiscoveredPeer[] }> {
+export async function discoverNodes(
+  timeout = 2.0
+): Promise<{ lan: DiscoveredPeer[]; tailscale: DiscoveredPeer[] }> {
   const res = await fetch(`${getApiBase()}/nodes/discover?timeout=${timeout}`);
   if (!res.ok) return { lan: [], tailscale: [] };
   return await res.json();
@@ -829,7 +844,9 @@ export async function removePeer(peerId: string): Promise<void> {
 }
 
 /** Start controlling a peer: request a grant, then poll until approved. */
-export async function requestControl(baseUrl: string): Promise<{ request_id: string; base_url: string }> {
+export async function requestControl(
+  baseUrl: string
+): Promise<{ request_id: string; base_url: string }> {
   const res = await fetch(`${getApiBase()}/nodes/control`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -839,7 +856,11 @@ export async function requestControl(baseUrl: string): Promise<{ request_id: str
   return await res.json();
 }
 
-export async function controlStatus(baseUrl: string, requestId: string, name = ''): Promise<{ status: string; peer_id?: string }> {
+export async function controlStatus(
+  baseUrl: string,
+  requestId: string,
+  name = ''
+): Promise<{ status: string; peer_id?: string }> {
   const url = `${getApiBase()}/nodes/control-status?base_url=${encodeURIComponent(baseUrl)}&request_id=${encodeURIComponent(requestId)}&name=${encodeURIComponent(name)}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error((await res.text()) || 'Failed to poll control status');
@@ -852,9 +873,9 @@ export async function fetchNodeConfig(): Promise<NodeAuthConfig> {
   return await res.json();
 }
 
-export async function saveNodeConfig(
-  updates: { node_lan_bind?: boolean }
-): Promise<NodeAuthConfig & { restart_required?: boolean }> {
+export async function saveNodeConfig(updates: {
+  node_lan_bind?: boolean;
+}): Promise<NodeAuthConfig & { restart_required?: boolean }> {
   const res = await fetch(`${getApiBase()}/nodes/config`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -868,7 +889,7 @@ export async function saveGlobalSandboxConfig(sandbox_volumes: string[]): Promis
   const res = await fetch(`${getApiBase()}/config/sandbox-global`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sandbox_volumes })
+    body: JSON.stringify({ sandbox_volumes }),
   });
 
   if (!res.ok) {
@@ -894,7 +915,7 @@ export async function saveUserPreferences(preferences: {
     const res = await fetch(`${getApiBase()}/preferences`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(preferences)
+      body: JSON.stringify(preferences),
     });
     if (!res.ok) {
       console.error('Failed to save preferences:', res.status, res.statusText);
@@ -939,7 +960,7 @@ export async function saveApiKeys(keys: Record<string, string>): Promise<boolean
     const res = await fetch(`${getApiBase()}/config/api-keys`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ keys })
+      body: JSON.stringify({ keys }),
     });
     if (!res.ok) throw new Error('Failed to save API keys');
     return true;
@@ -957,7 +978,7 @@ export async function verifyProvider(
     const res = await fetch(`${getApiBase()}/config/providers/${providerId}/verify`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ config })
+      body: JSON.stringify({ config }),
     });
     return await res.json();
   } catch (e) {
@@ -977,7 +998,9 @@ export interface CustomProviderPayload {
   logo_url?: string;
 }
 
-export async function saveCustomProvider(payload: CustomProviderPayload): Promise<{ success: boolean; error?: string }> {
+export async function saveCustomProvider(
+  payload: CustomProviderPayload
+): Promise<{ success: boolean; error?: string }> {
   try {
     const res = await fetch(`${getApiBase()}/config/providers/custom`, {
       method: 'POST',
@@ -990,7 +1013,9 @@ export async function saveCustomProvider(payload: CustomProviderPayload): Promis
   }
 }
 
-export async function deleteCustomProvider(providerId: string): Promise<{ success: boolean; error?: string }> {
+export async function deleteCustomProvider(
+  providerId: string
+): Promise<{ success: boolean; error?: string }> {
   try {
     const res = await fetch(`${getApiBase()}/config/providers/custom/${providerId}`, {
       method: 'DELETE',
@@ -1001,7 +1026,12 @@ export async function deleteCustomProvider(providerId: string): Promise<{ succes
   }
 }
 
-export async function syncCapabilities(): Promise<{ success: boolean; providers?: number; models?: number; error?: string }> {
+export async function syncCapabilities(): Promise<{
+  success: boolean;
+  providers?: number;
+  models?: number;
+  error?: string;
+}> {
   try {
     const res = await fetch(`${getApiBase()}/config/capabilities/sync`, { method: 'POST' });
     return await res.json();
@@ -1236,7 +1266,9 @@ export async function startWeChatLogin(baseUrl?: string): Promise<WeChatLoginSes
   if (!res.ok) {
     const error = await res.json().catch(() => ({}));
     if (res.status === 404) {
-      throw new Error('WeChat login is not available in the running backend. Restart Suzent after updating.');
+      throw new Error(
+        'WeChat login is not available in the running backend. Restart Suzent after updating.'
+      );
     }
     throw new Error(error.error || 'Failed to start WeChat login');
   }
@@ -1248,7 +1280,9 @@ export async function pollWeChatLogin(sessionId: string): Promise<WeChatLoginSta
   if (!res.ok) {
     const error = await res.json().catch(() => ({}));
     if (res.status === 404) {
-      throw new Error('WeChat login is not available in the running backend. Restart Suzent after updating.');
+      throw new Error(
+        'WeChat login is not available in the running backend. Restart Suzent after updating.'
+      );
     }
     throw new Error(error.error || 'Failed to poll WeChat login');
   }
@@ -1368,7 +1402,7 @@ export async function markChatRead(chatId: string): Promise<void> {
       headers: { 'Content-Type': 'application/json' },
       body: '{}',
     });
-  } catch { }
+  } catch {}
 }
 
 export interface FileChangeSummaryItem {
@@ -1386,7 +1420,7 @@ export interface FileChangeSummaryResponse {
 
 export async function fetchChatFileChanges(chatId: string): Promise<FileChangeSummaryResponse> {
   const response = await fetch(
-    `${getApiBase()}/api/chats/${encodeURIComponent(chatId)}/file-changes`,
+    `${getApiBase()}/api/chats/${encodeURIComponent(chatId)}/file-changes`
   );
   if (!response.ok) throw new Error('Failed to load file changes');
   return response.json();
@@ -1394,16 +1428,13 @@ export async function fetchChatFileChanges(chatId: string): Promise<FileChangeSu
 
 export async function undoChatFiles(
   chatId: string,
-  messageIndex: number,
+  messageIndex: number
 ): Promise<{ changed_files: string[] }> {
-  const response = await fetch(
-    `${getApiBase()}/api/chats/${encodeURIComponent(chatId)}/undo`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message_index: messageIndex }),
-    },
-  );
+  const response = await fetch(`${getApiBase()}/api/chats/${encodeURIComponent(chatId)}/undo`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message_index: messageIndex }),
+  });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
     const error = new Error(body.error || 'Failed to undo file changes') as Error & {
@@ -1420,20 +1451,12 @@ export interface ForkChatResponse {
   restored_files_count: number;
 }
 
-export async function forkChat(
-  chatId: string,
-  messageIndex?: number,
-): Promise<ForkChatResponse> {
-  const response = await fetch(
-    `${getApiBase()}/api/chats/${encodeURIComponent(chatId)}/fork`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(
-        messageIndex === undefined ? {} : { message_index: messageIndex },
-      ),
-    },
-  );
+export async function forkChat(chatId: string, messageIndex?: number): Promise<ForkChatResponse> {
+  const response = await fetch(`${getApiBase()}/api/chats/${encodeURIComponent(chatId)}/fork`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(messageIndex === undefined ? {} : { message_index: messageIndex }),
+  });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(body.error || 'Failed to fork conversation');
   return body;
@@ -1449,7 +1472,6 @@ export async function drainCronNotifications(): Promise<CronNotification[]> {
     return [];
   }
 }
-
 
 export interface CronRun {
   id: number;
@@ -1493,7 +1515,9 @@ export interface HeartbeatStatus {
 }
 
 export async function fetchHeartbeatStatus(chatId?: string): Promise<HeartbeatStatus> {
-  const url = chatId ? `${getApiBase()}/heartbeat/status?chat_id=${encodeURIComponent(chatId)}` : `${getApiBase()}/heartbeat/status`;
+  const url = chatId
+    ? `${getApiBase()}/heartbeat/status?chat_id=${encodeURIComponent(chatId)}`
+    : `${getApiBase()}/heartbeat/status`;
   const res = await fetch(url);
   if (!res.ok) throw new Error('Failed to fetch heartbeat status');
   return res.json();
@@ -1503,7 +1527,7 @@ export async function enableHeartbeat(chatId?: string): Promise<void> {
   const res = await fetch(`${getApiBase()}/heartbeat/enable`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(chatId ? { chat_id: chatId } : {})
+    body: JSON.stringify(chatId ? { chat_id: chatId } : {}),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -1515,7 +1539,7 @@ export async function disableHeartbeat(chatId?: string): Promise<void> {
   const res = await fetch(`${getApiBase()}/heartbeat/disable`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(chatId ? { chat_id: chatId } : {})
+    body: JSON.stringify(chatId ? { chat_id: chatId } : {}),
   });
   if (!res.ok) throw new Error('Failed to disable heartbeat');
 }
@@ -1524,7 +1548,7 @@ export async function triggerHeartbeat(chatId?: string): Promise<void> {
   const res = await fetch(`${getApiBase()}/heartbeat/trigger`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(chatId ? { chat_id: chatId } : {})
+    body: JSON.stringify(chatId ? { chat_id: chatId } : {}),
   });
   if (!res.ok) throw new Error('Failed to trigger heartbeat');
 }
@@ -1541,7 +1565,9 @@ export async function setHeartbeatInterval(minutes: number, chatId?: string): Pr
   }
 }
 
-export async function fetchHeartbeatMd(chatId?: string): Promise<{ content: string; exists: boolean }> {
+export async function fetchHeartbeatMd(
+  chatId?: string
+): Promise<{ content: string; exists: boolean }> {
   if (!chatId) return { content: '', exists: false };
   const res = await fetch(`${getApiBase()}/heartbeat/md?chat_id=${encodeURIComponent(chatId)}`);
   if (!res.ok) return { content: '', exists: false };
@@ -1656,7 +1682,7 @@ export async function saveSocialConfig(config: SocialConfig): Promise<boolean> {
     const res = await fetch(`${getApiBase()}/config/social`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ config })
+      body: JSON.stringify({ config }),
     });
     if (!res.ok) throw new Error('Failed to save social config');
     return true;
@@ -1666,23 +1692,21 @@ export async function saveSocialConfig(config: SocialConfig): Promise<boolean> {
   }
 }
 
-
 export async function resolveAcpPermission(
   requestId: string,
   approved: boolean,
-  optionId?: string,
+  optionId?: string
 ): Promise<void> {
-  const res = await fetch(
-    `${getApiBase()}/acp/permissions/${encodeURIComponent(requestId)}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ approved, option_id: optionId }),
-    },
-  );
+  const res = await fetch(`${getApiBase()}/acp/permissions/${encodeURIComponent(requestId)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ approved, option_id: optionId }),
+  });
   if (!res.ok) {
     const detail = await res.json().catch(() => ({}));
-    throw new Error((detail as { error?: string }).error || `Failed to resolve permission: ${res.status}`);
+    throw new Error(
+      (detail as { error?: string }).error || `Failed to resolve permission: ${res.status}`
+    );
   }
 }
 
@@ -1981,9 +2005,7 @@ export async function triggerPeer(
  * This crosses the network, so call it on demand (when a row is expanded),
  * never on the polling loop.
  */
-export async function fetchPeerCapabilities(
-  peerId: string
-): Promise<NodeCapabilityInfo[]> {
+export async function fetchPeerCapabilities(peerId: string): Promise<NodeCapabilityInfo[]> {
   // The server already caps its own call to the peer, but an unreachable peer
   // or a stalled socket must never leave the UI spinning — fail loudly instead.
   const controller = new AbortController();

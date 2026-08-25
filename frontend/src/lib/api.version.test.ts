@@ -23,14 +23,20 @@ describe('backend version request', () => {
     vi.stubGlobal('window', { setTimeout, clearTimeout });
     const abortError = new Error('signal is aborted without reason');
     abortError.name = 'AbortError';
-    const fetchMock = vi.fn()
+    const fetchMock = vi
+      .fn()
       .mockRejectedValueOnce(abortError)
-      .mockResolvedValueOnce(new Response(JSON.stringify({
-        backend_version: '1.2.3',
-        api_version: 1,
-        build_commit: 'abcdef123456',
-        development_mode: false,
-      }), { status: 200 }));
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            backend_version: '1.2.3',
+            api_version: 1,
+            build_commit: 'abcdef123456',
+            development_mode: false,
+          }),
+          { status: 200 }
+        )
+      );
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(fetchSystemVersion({ retryDelayMs: 0 })).resolves.toEqual({
@@ -48,21 +54,30 @@ describe('backend version request', () => {
     abortError.name = 'AbortError';
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(abortError));
 
-    await expect(fetchSystemVersion({ attempts: 2, retryDelayMs: 0 }))
-      .rejects.toBeInstanceOf(BackendVersionTimeoutError);
+    await expect(fetchSystemVersion({ attempts: 2, retryDelayMs: 0 })).rejects.toBeInstanceOf(
+      BackendVersionTimeoutError
+    );
   });
 });
 
 describe('background service status request', () => {
   it('maps the backend runtime fields used by the status bar', async () => {
     vi.stubGlobal('window', {});
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
-      ready: true,
-      scheduler_running: true,
-      heartbeat_running: false,
-      channels_configured: 2,
-      uptime_seconds: 123.5,
-    }), { status: 200 })));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            ready: true,
+            scheduler_running: true,
+            heartbeat_running: false,
+            channels_configured: 2,
+            uptime_seconds: 123.5,
+          }),
+          { status: 200 }
+        )
+      )
+    );
 
     await expect(fetchServiceRuntimeStatus()).resolves.toEqual({
       ready: true,
@@ -76,56 +91,86 @@ describe('background service status request', () => {
 
 describe('backend compatibility', () => {
   it('accepts an exact release identity match', () => {
-    expect(getBackendCompatibilityIssue({
-      backendVersion: '1.2.3',
-      apiVersion: 1,
-      buildCommit: 'abcdef123456',
-      developmentMode: false,
-    }, frontend)).toBeNull();
+    expect(
+      getBackendCompatibilityIssue(
+        {
+          backendVersion: '1.2.3',
+          apiVersion: 1,
+          buildCommit: 'abcdef123456',
+          developmentMode: false,
+        },
+        frontend
+      )
+    ).toBeNull();
   });
 
   it('rejects API protocol mismatches', () => {
-    expect(getBackendCompatibilityIssue({
-      backendVersion: '1.2.3',
-      apiVersion: 2,
-      buildCommit: 'abcdef123456',
-      developmentMode: false,
-    }, frontend)).toEqual({ kind: 'api', frontend: '1', backend: '2' });
+    expect(
+      getBackendCompatibilityIssue(
+        {
+          backendVersion: '1.2.3',
+          apiVersion: 2,
+          buildCommit: 'abcdef123456',
+          developmentMode: false,
+        },
+        frontend
+      )
+    ).toEqual({ kind: 'api', frontend: '1', backend: '2' });
   });
 
   it('rejects different known build commits', () => {
-    expect(getBackendCompatibilityIssue({
-      backendVersion: '1.2.3',
-      apiVersion: 1,
-      buildCommit: '999999999999',
-      developmentMode: false,
-    }, frontend)).toEqual({ kind: 'build', frontend: 'abcdef12', backend: '99999999' });
+    expect(
+      getBackendCompatibilityIssue(
+        {
+          backendVersion: '1.2.3',
+          apiVersion: 1,
+          buildCommit: '999999999999',
+          developmentMode: false,
+        },
+        frontend
+      )
+    ).toEqual({ kind: 'build', frontend: 'abcdef12', backend: '99999999' });
   });
 
   it('allows backend-only hotfix identities when the API contract is stable', () => {
-    expect(getBackendCompatibilityIssue({
-      backendVersion: '1.2.4',
-      apiVersion: 1,
-      buildCommit: '999999999999',
-      developmentMode: false,
-    }, { ...frontend, enforceBuildCommit: false })).toBeNull();
+    expect(
+      getBackendCompatibilityIssue(
+        {
+          backendVersion: '1.2.4',
+          apiVersion: 1,
+          buildCommit: '999999999999',
+          developmentMode: false,
+        },
+        { ...frontend, enforceBuildCommit: false }
+      )
+    ).toBeNull();
   });
 
   it('allows commit changes for a backend launched with suzent serve', () => {
-    expect(getBackendCompatibilityIssue({
-      backendVersion: '1.2.3',
-      apiVersion: 1,
-      buildCommit: '999999999999',
-      developmentMode: true,
-    }, frontend)).toBeNull();
+    expect(
+      getBackendCompatibilityIssue(
+        {
+          backendVersion: '1.2.3',
+          apiVersion: 1,
+          buildCommit: '999999999999',
+          developmentMode: true,
+        },
+        frontend
+      )
+    ).toBeNull();
   });
 
   it('falls back to semantic versions when commits are unavailable', () => {
-    expect(getBackendCompatibilityIssue({
-      backendVersion: '1.2.2',
-      apiVersion: 1,
-      buildCommit: 'unknown',
-      developmentMode: false,
-    }, frontend)).toEqual({ kind: 'version', frontend: '1.2.3', backend: '1.2.2' });
+    expect(
+      getBackendCompatibilityIssue(
+        {
+          backendVersion: '1.2.2',
+          apiVersion: 1,
+          buildCommit: 'unknown',
+          developmentMode: false,
+        },
+        frontend
+      )
+    ).toEqual({ kind: 'version', frontend: '1.2.3', backend: '1.2.2' });
   });
 });

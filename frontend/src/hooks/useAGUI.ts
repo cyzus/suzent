@@ -25,7 +25,15 @@ interface UseAGUIReturn {
   parts: AGUIPart[];
   status: AGUIStatus;
   error: string | undefined;
-  sendMessage: (body: Record<string, unknown>, opts?: { formData?: FormData; urlOverride?: string; onStreamStart?: () => void; seedParts?: AGUIPart[] }) => Promise<boolean>;
+  sendMessage: (
+    body: Record<string, unknown>,
+    opts?: {
+      formData?: FormData;
+      urlOverride?: string;
+      onStreamStart?: () => void;
+      seedParts?: AGUIPart[];
+    }
+  ) => Promise<boolean>;
   /** Resume a stream after approval without clearing existing parts */
   resumeStream: (body: Record<string, unknown>) => Promise<void>;
   /** Interrupt the current stream and redirect the agent with a new message */
@@ -56,7 +64,7 @@ interface UseAGUIReturn {
     toolName?: string,
     args?: Record<string, unknown> | null,
     actionId?: string,
-    feedback?: string,
+    feedback?: string
   ) => boolean;
   /** Get accumulated approval decisions and clear the buffer */
   consumeApprovalDecisions: () => Array<{
@@ -141,7 +149,7 @@ export function processEvent(
   event: ParsedSSEEvent,
   parts: AGUIPart[],
   onCustomEvent?: (name: string, value: unknown) => void,
-  onMarkDeferred?: (surfaceId: string) => void,
+  onMarkDeferred?: (surfaceId: string) => void
 ): { parts: AGUIPart[]; error?: string } {
   const { type, data } = event;
   // Clone parts array for immutable update
@@ -178,7 +186,11 @@ export function processEvent(
     case 'THINKING_TEXT_MESSAGE_START': {
       // Only push a new reasoning part if the last one isn't an empty reasoning part
       const lastPart = next[next.length - 1];
-      if (!lastPart || lastPart.type !== 'reasoning' || (lastPart.text && lastPart.text.length > 0)) {
+      if (
+        !lastPart ||
+        lastPart.type !== 'reasoning' ||
+        (lastPart.text && lastPart.text.length > 0)
+      ) {
         next.push({ type: 'reasoning', text: '' });
       }
       break;
@@ -318,7 +330,7 @@ export function processEvent(
         // as its own part; it is answered via the ACP endpoint, not the native
         // resume_approvals flow.
         const req = value as AcpPermissionRequest;
-        if (req?.requestId && !next.some(p => p.acpPermission?.requestId === req.requestId)) {
+        if (req?.requestId && !next.some((p) => p.acpPermission?.requestId === req.requestId)) {
           next.push({ type: 'acp-permission', acpPermission: req });
         }
       } else if (name === 'acp.session_reset') {
@@ -347,11 +359,13 @@ export function processEvent(
               permission: approval.decision as AGUIPart['permission'],
               // Fill in name/args if not yet present (approval may arrive before tool_call_start)
               toolName: next[i].toolName || (approval.toolName as string) || 'unknown',
-              args: next[i].args || (
-                approval.args
-                  ? (typeof approval.args === 'string' ? approval.args : JSON.stringify(approval.args, null, 2))
-                  : ''
-              ),
+              args:
+                next[i].args ||
+                (approval.args
+                  ? typeof approval.args === 'string'
+                    ? approval.args
+                    : JSON.stringify(approval.args, null, 2)
+                  : ''),
             };
             found = true;
             break;
@@ -364,7 +378,9 @@ export function processEvent(
             toolCallId: tcId,
             toolName: (approval.toolName as string) || 'unknown',
             args: approval.args
-              ? (typeof approval.args === 'string' ? approval.args as string : JSON.stringify(approval.args, null, 2))
+              ? typeof approval.args === 'string'
+                ? (approval.args as string)
+                : JSON.stringify(approval.args, null, 2)
               : '',
             state: 'approval-requested',
             approvalId,
@@ -385,7 +401,7 @@ export function processEvent(
               state: resultData.status === 'executed' ? 'completed' : 'error',
               output,
               argsReplayPending: false,
-              approvalId: undefined // clear approval badge
+              approvalId: undefined, // clear approval badge
             };
             found = true;
             break;
@@ -406,8 +422,7 @@ export function processEvent(
             if (
               p.type === 'tool' &&
               (p.toolName || 'unknown') === toolName &&
-              (p.state === 'approval-requested' ||
-                (p.state === 'running' && !p.output))
+              (p.state === 'approval-requested' || (p.state === 'running' && !p.output))
             ) {
               candidateIdxs.push(i);
             }
@@ -454,10 +469,10 @@ export function processEvent(
         const payload = value as { sources?: CitationSource[] };
         const incoming = Array.isArray(payload?.sources) ? payload.sources : [];
         if (incoming.length > 0) {
-          const idx = next.findIndex(p => p.type === 'citation-sources');
+          const idx = next.findIndex((p) => p.type === 'citation-sources');
           if (idx >= 0) {
             const existing = next[idx].citationSources || [];
-            const byId = new Map(existing.map(s => [s.id, s]));
+            const byId = new Map(existing.map((s) => [s.id, s]));
             for (const s of incoming) byId.set(s.id, s);
             next[idx] = { ...next[idx], citationSources: Array.from(byId.values()) };
           } else {
@@ -489,7 +504,10 @@ export function processEvent(
 
     case 'error': {
       const message = data.message ?? data.data ?? data.error;
-      return { parts: next, error: typeof message === 'string' && message ? message : 'Unknown error' };
+      return {
+        parts: next,
+        error: typeof message === 'string' && message ? message : 'Unknown error',
+      };
     }
 
     case 'RUN_STARTED':
@@ -526,16 +544,18 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
   // Pending approval tracking
   const [pendingApprovalCount, setPendingApprovalCount] = useState(0);
   const pendingApprovalCountRef = useRef(0);
-  const approvalDecisionsRef = useRef<Array<{
-    approvalId: string;
-    toolCallId: string;
-    approved: boolean;
-    remember?: ApprovalRememberScope;
-    toolName?: string;
-    args?: Record<string, unknown> | null;
-    actionId?: string;
-    feedback?: string;
-  }>>([]);
+  const approvalDecisionsRef = useRef<
+    Array<{
+      approvalId: string;
+      toolCallId: string;
+      approved: boolean;
+      remember?: ApprovalRememberScope;
+      toolName?: string;
+      args?: Record<string, unknown> | null;
+      actionId?: string;
+      feedback?: string;
+    }>
+  >([]);
 
   // Stable refs for callbacks to avoid re-creating sendMessage
   const optionsRef = useRef(options);
@@ -548,7 +568,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
 
   const setPendingApprovalCountSync = useCallback((count: number) => {
     pendingApprovalCountRef.current = count;
-    setPendingApprovalCount(prev => (prev === count ? prev : count));
+    setPendingApprovalCount((prev) => (prev === count ? prev : count));
   }, []);
 
   const resetApprovalTracking = useCallback(() => {
@@ -557,9 +577,9 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
   }, [setPendingApprovalCountSync]);
 
   const removeInlineSurface = useCallback((surfaceId: string) => {
-    setParts(prev => {
+    setParts((prev) => {
       const next = prev.filter(
-        p => !(p.type === 'a2ui' && (p.surface as A2UISurface)?.id === surfaceId)
+        (p) => !(p.type === 'a2ui' && (p.surface as A2UISurface)?.id === surfaceId)
       );
       partsRef.current = next;
       return next;
@@ -581,23 +601,28 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
 
   const getParts = useCallback(() => partsRef.current, []);
 
-  const restorePartsFromSeed = useCallback((seed: AGUIPart[]) => {
-    setParts(seed);
-    partsRef.current = seed;
-    setStatus('idle');
-    const approvalCount = seed.filter(p => p.type === 'tool' && p.state === 'approval-requested').length;
-    setPendingApprovalCountSync(approvalCount);
-  }, [setPendingApprovalCountSync]);
+  const restorePartsFromSeed = useCallback(
+    (seed: AGUIPart[]) => {
+      setParts(seed);
+      partsRef.current = seed;
+      setStatus('idle');
+      const approvalCount = seed.filter(
+        (p) => p.type === 'tool' && p.state === 'approval-requested'
+      ).length;
+      setPendingApprovalCountSync(approvalCount);
+    },
+    [setPendingApprovalCountSync]
+  );
 
   // Optimistically update a tool part's state when user approves/denies
   // so buttons disappear instantly (no waiting for backend round-trip)
   const resolveApproval = useCallback((approvalId: string, approved: boolean) => {
-    setParts(prev => {
-      const next = prev.map(p => {
+    setParts((prev) => {
+      const next = prev.map((p) => {
         if (p.type === 'tool' && p.approvalId === approvalId) {
           return {
             ...p,
-            state: approved ? 'running' as const : 'error' as const,
+            state: approved ? ('running' as const) : ('error' as const),
             approvalId: undefined,
           };
         }
@@ -609,28 +634,40 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
   }, []);
 
   // Track pending approval count from parts
-  const addApprovalDecision = useCallback((
-    approvalId: string,
-    toolCallId: string,
-    approved: boolean,
-    remember?: ApprovalRememberScope,
-    toolName?: string,
-    args?: Record<string, unknown> | null,
-    actionId?: string,
-    feedback?: string,
-  ): boolean => {
-    const nextDecision = { approvalId, toolCallId, approved, remember, toolName, args, actionId, feedback };
-    const existingIdx = approvalDecisionsRef.current.findIndex(
-      d => d.approvalId === approvalId
-    );
-    if (existingIdx >= 0) {
-      approvalDecisionsRef.current[existingIdx] = nextDecision;
-    } else {
-      approvalDecisionsRef.current.push(nextDecision);
-    }
-    const requiredDecisions = pendingApprovalCountRef.current;
-    return requiredDecisions > 0 && approvalDecisionsRef.current.length >= requiredDecisions;
-  }, []);
+  const addApprovalDecision = useCallback(
+    (
+      approvalId: string,
+      toolCallId: string,
+      approved: boolean,
+      remember?: ApprovalRememberScope,
+      toolName?: string,
+      args?: Record<string, unknown> | null,
+      actionId?: string,
+      feedback?: string
+    ): boolean => {
+      const nextDecision = {
+        approvalId,
+        toolCallId,
+        approved,
+        remember,
+        toolName,
+        args,
+        actionId,
+        feedback,
+      };
+      const existingIdx = approvalDecisionsRef.current.findIndex(
+        (d) => d.approvalId === approvalId
+      );
+      if (existingIdx >= 0) {
+        approvalDecisionsRef.current[existingIdx] = nextDecision;
+      } else {
+        approvalDecisionsRef.current.push(nextDecision);
+      }
+      const requiredDecisions = pendingApprovalCountRef.current;
+      return requiredDecisions > 0 && approvalDecisionsRef.current.length >= requiredDecisions;
+    },
+    []
+  );
 
   const consumeApprovalDecisions = useCallback(() => {
     const decisions = [...approvalDecisionsRef.current];
@@ -719,7 +756,6 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
 
       setStatus('idle');
       onFinish?.(currentParts);
-
     } catch (err) {
       if ((err as Error).name === 'AbortError') {
         // If the abort was triggered by steerStream, do nothing here —
@@ -751,10 +787,10 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
     // Mark any pending approvals as cancelled before aborting,
     // so they won't show approval buttons after being saved to the store
     const hasApprovals = partsRef.current.some(
-      p => p.type === 'tool' && p.state === 'approval-requested'
+      (p) => p.type === 'tool' && p.state === 'approval-requested'
     );
     if (hasApprovals) {
-      const resolved = partsRef.current.map(p =>
+      const resolved = partsRef.current.map((p) =>
         p.type === 'tool' && p.state === 'approval-requested'
           ? { ...p, state: 'error' as const, approvalId: undefined }
           : p
@@ -847,7 +883,6 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
       isSteeringRef.current = false;
       setStatus('idle');
       onFinish?.(currentParts);
-
     } catch (err) {
       isSteeringRef.current = false;
       if ((err as Error).name === 'AbortError') {
@@ -867,147 +902,174 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
     }
   }, []);
 
-  const sendMessage = useCallback(async (
-    body: Record<string, unknown>,
-    opts?: { formData?: FormData; urlOverride?: string; onStreamStart?: () => void; seedParts?: AGUIPart[] },
-  ): Promise<boolean> => {
-    const { url, onFinish, onCustomEvent, onMarkDeferred, onError } = optionsRef.current;
-    const targetUrl = opts?.urlOverride ?? url;
-    // For live-stream probes (urlOverride) we defer the state reset until we know
-    // there is actually an active stream — this prevents every 204 probe from
-    // clearing streaming parts that should stay visible.
-    const isProbe = !!opts?.urlOverride;
-
-    if (!isProbe) {
-      // Normal send: reset immediately so the UI shows "submitted" while waiting.
-      setParts([]);
-      partsRef.current = [];
-      setError(undefined);
-      setStatus('submitted');
-      resetApprovalTracking();
-    }
-
-    const controller = new AbortController();
-    abortRef.current = controller;
-
-    try {
-      const fetchBody = opts?.formData || JSON.stringify(body);
-      const headers: Record<string, string> = opts?.formData
-        ? {} // Let browser set Content-Type for FormData
-        : { 'Content-Type': 'application/json' };
-
-      const response = await fetch(targetUrl, {
-        method: 'POST',
-        headers,
-        body: fetchBody,
-        signal: controller.signal,
-      });
-
-      // 204: no active stream (e.g. /chat/live when no background run is in progress)
-      if (response.status === 204) {
-        if (!isProbe) setStatus('idle');
-        return false;
+  const sendMessage = useCallback(
+    async (
+      body: Record<string, unknown>,
+      opts?: {
+        formData?: FormData;
+        urlOverride?: string;
+        onStreamStart?: () => void;
+        seedParts?: AGUIPart[];
       }
+    ): Promise<boolean> => {
+      const { url, onFinish, onCustomEvent, onMarkDeferred, onError } = optionsRef.current;
+      const targetUrl = opts?.urlOverride ?? url;
+      // For live-stream probes (urlOverride) we defer the state reset until we know
+      // there is actually an active stream — this prevents every 204 probe from
+      // clearing streaming parts that should stay visible.
+      const isProbe = !!opts?.urlOverride;
 
-      if (!response.ok) {
-        const text = await response.text().catch(() => response.statusText);
-        throw new Error(`HTTP ${response.status}: ${text}`);
-      }
-
-      if (!response.body) {
-        throw new Error('Response body is null');
-      }
-
-      if (isProbe) {
-        // Stream confirmed active — reset state now (not on every silent 204 probe).
-        // Seed with prior parts when reconnecting to a stream we abandoned on a
-        // chat switch, so previously-shown steps (and in-flight tool states)
-        // are preserved instead of resetting. The background queue is
-        // consume-once, so it only replays chunks from the reconnect point —
-        // the seed supplies everything before it.
-        const seed = opts?.seedParts ?? [];
-        setParts(seed);
-        partsRef.current = seed;
+      if (!isProbe) {
+        // Normal send: reset immediately so the UI shows "submitted" while waiting.
+        setParts([]);
+        partsRef.current = [];
         setError(undefined);
         setStatus('submitted');
         resetApprovalTracking();
       }
 
-      // Notify caller (e.g. set isLiveStreamRef) before entering the read loop.
-      opts?.onStreamStart?.();
-      setStatus('streaming');
+      const controller = new AbortController();
+      abortRef.current = controller;
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let currentParts: AGUIPart[] = [];
-      const pendingApprovalIds = new Set<string>();
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      try {
+        const fetchBody = opts?.formData || JSON.stringify(body);
+        const headers: Record<string, string> = opts?.formData
+          ? {} // Let browser set Content-Type for FormData
+          : { 'Content-Type': 'application/json' };
 
-        // Sync with any out-of-band part mutations (e.g. removeInlineSurface)
-        // that may have updated partsRef.current between read() calls.
-        currentParts = [...partsRef.current];
+        const response = await fetch(targetUrl, {
+          method: 'POST',
+          headers,
+          body: fetchBody,
+          signal: controller.signal,
+        });
 
-        buffer += decoder.decode(value, { stream: true });
-        const { events, remainder } = parseSSEBuffer(buffer);
-        buffer = remainder;
+        // 204: no active stream (e.g. /chat/live when no background run is in progress)
+        if (response.status === 204) {
+          if (!isProbe) setStatus('idle');
+          return false;
+        }
 
-        for (const event of events) {
-          // Track approval requests
-          if (event.type === 'CUSTOM' && (event.data.name as string) === 'tool_approval_request') {
-            const approval = event.data.value as Record<string, unknown> | undefined;
-            const approvalId = approval?.approvalId;
-            if (typeof approvalId === 'string' && approvalId.length > 0) {
-              pendingApprovalIds.add(approvalId);
+        if (!response.ok) {
+          const text = await response.text().catch(() => response.statusText);
+          throw new Error(`HTTP ${response.status}: ${text}`);
+        }
+
+        if (!response.body) {
+          throw new Error('Response body is null');
+        }
+
+        if (isProbe) {
+          // Stream confirmed active — reset state now (not on every silent 204 probe).
+          // Seed with prior parts when reconnecting to a stream we abandoned on a
+          // chat switch, so previously-shown steps (and in-flight tool states)
+          // are preserved instead of resetting. The background queue is
+          // consume-once, so it only replays chunks from the reconnect point —
+          // the seed supplies everything before it.
+          const seed = opts?.seedParts ?? [];
+          setParts(seed);
+          partsRef.current = seed;
+          setError(undefined);
+          setStatus('submitted');
+          resetApprovalTracking();
+        }
+
+        // Notify caller (e.g. set isLiveStreamRef) before entering the read loop.
+        opts?.onStreamStart?.();
+        setStatus('streaming');
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let currentParts: AGUIPart[] = [];
+        const pendingApprovalIds = new Set<string>();
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          // Sync with any out-of-band part mutations (e.g. removeInlineSurface)
+          // that may have updated partsRef.current between read() calls.
+          currentParts = [...partsRef.current];
+
+          buffer += decoder.decode(value, { stream: true });
+          const { events, remainder } = parseSSEBuffer(buffer);
+          buffer = remainder;
+
+          for (const event of events) {
+            // Track approval requests
+            if (
+              event.type === 'CUSTOM' &&
+              (event.data.name as string) === 'tool_approval_request'
+            ) {
+              const approval = event.data.value as Record<string, unknown> | undefined;
+              const approvalId = approval?.approvalId;
+              if (typeof approvalId === 'string' && approvalId.length > 0) {
+                pendingApprovalIds.add(approvalId);
+              }
+            }
+            const result = processEvent(event, currentParts, onCustomEvent, onMarkDeferred);
+            currentParts = result.parts;
+
+            if (result.error) {
+              setError(result.error);
+              setStatus('error');
+              setParts(currentParts);
+              partsRef.current = currentParts;
+              onError?.(new Error(result.error), currentParts);
+              return true;
             }
           }
-          const result = processEvent(event, currentParts, onCustomEvent, onMarkDeferred);
-          currentParts = result.parts;
 
-          if (result.error) {
-            setError(result.error);
-            setStatus('error');
+          if (events.length > 0) {
             setParts(currentParts);
             partsRef.current = currentParts;
-            onError?.(new Error(result.error), currentParts);
-            return true;
+            setPendingApprovalCountSync(pendingApprovalIds.size);
           }
         }
 
-        if (events.length > 0) {
-          setParts(currentParts);
-          partsRef.current = currentParts;
-          setPendingApprovalCountSync(pendingApprovalIds.size);
+        setStatus('idle');
+        onFinish?.(currentParts);
+        return true;
+      } catch (err) {
+        if ((err as Error).name === 'AbortError') {
+          // Silent stop (chat switch): discard parts, never finalize.
+          if (suppressFinishRef.current) {
+            suppressFinishRef.current = false;
+            setStatus('idle');
+          } else if (!isSteeringRef.current) {
+            // If the abort was triggered by steerStream, do nothing here —
+            // steerStream owns the status and will call onFinish when done.
+            setStatus('idle');
+            onFinish?.(partsRef.current);
+          }
+        } else {
+          const errorMsg = (err as Error).message;
+          setError(errorMsg);
+          setStatus('error');
+          onError?.(err as Error, partsRef.current);
         }
+        return false;
       }
+    },
+    [resetApprovalTracking, setPendingApprovalCountSync]
+  );
 
-      setStatus('idle');
-      onFinish?.(currentParts);
-      return true;
-
-    } catch (err) {
-      if ((err as Error).name === 'AbortError') {
-        // Silent stop (chat switch): discard parts, never finalize.
-        if (suppressFinishRef.current) {
-          suppressFinishRef.current = false;
-          setStatus('idle');
-        } else if (!isSteeringRef.current) {
-          // If the abort was triggered by steerStream, do nothing here —
-          // steerStream owns the status and will call onFinish when done.
-          setStatus('idle');
-          onFinish?.(partsRef.current);
-        }
-      } else {
-        const errorMsg = (err as Error).message;
-        setError(errorMsg);
-        setStatus('error');
-        onError?.(err as Error, partsRef.current);
-      }
-      return false;
-    }
-  }, [resetApprovalTracking, setPendingApprovalCountSync]);
-
-  return { parts, status, error, sendMessage, resumeStream, steerStream, stop, stopSilently, getParts, clearParts, restorePartsFromSeed, removeInlineSurface, resolveApproval, pendingApprovalCount, addApprovalDecision, consumeApprovalDecisions };
+  return {
+    parts,
+    status,
+    error,
+    sendMessage,
+    resumeStream,
+    steerStream,
+    stop,
+    stopSilently,
+    getParts,
+    clearParts,
+    restorePartsFromSeed,
+    removeInlineSurface,
+    resolveApproval,
+    pendingApprovalCount,
+    addApprovalDecision,
+    consumeApprovalDecisions,
+  };
 }

@@ -14,8 +14,8 @@ function getLastAssistantMessage(messages: Message[]): Message | undefined {
 function extractProseContent(content: string): string {
   const blocks = splitAssistantContent(content);
   return blocks
-    .filter(b => b.type === 'markdown' || b.type === 'code')
-    .map(b => b.content)
+    .filter((b) => b.type === 'markdown' || b.type === 'code')
+    .map((b) => b.content)
     .join('')
     .trim();
 }
@@ -29,13 +29,15 @@ function extractProseContent(content: string): string {
  * prose reply — in that case the server message has no prose while the
  * optimistic local message has the full final answer.
  */
-export function shouldKeepLocalAssistantContent(localMessages: Message[], serverMessages: Message[]): boolean {
+export function shouldKeepLocalAssistantContent(
+  localMessages: Message[],
+  serverMessages: Message[]
+): boolean {
   const localLastAssistant = getLastAssistantMessage(localMessages);
   if (!localLastAssistant) return false;
 
-  const localContent = typeof localLastAssistant.content === 'string'
-    ? localLastAssistant.content.trim()
-    : '';
+  const localContent =
+    typeof localLastAssistant.content === 'string' ? localLastAssistant.content.trim() : '';
   if (!localContent) return false;
 
   const localIsIntermediate = isIntermediateStepContent(localContent, localLastAssistant.stepInfo);
@@ -44,10 +46,12 @@ export function shouldKeepLocalAssistantContent(localMessages: Message[], server
   const serverLastAssistant = getLastAssistantMessage(serverMessages);
   if (!serverLastAssistant) return true;
 
-  const serverContent = typeof serverLastAssistant.content === 'string'
-    ? serverLastAssistant.content.trim()
-    : '';
-  const serverIsIntermediate = isIntermediateStepContent(serverContent, serverLastAssistant.stepInfo);
+  const serverContent =
+    typeof serverLastAssistant.content === 'string' ? serverLastAssistant.content.trim() : '';
+  const serverIsIntermediate = isIntermediateStepContent(
+    serverContent,
+    serverLastAssistant.stepInfo
+  );
   if (serverIsIntermediate) return true;
 
   // Server message is non-empty and non-intermediate (contains some prose), but

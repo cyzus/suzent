@@ -28,13 +28,14 @@ export const useContextUsageStore = create<ContextUsageState>((set, get) => ({
   usageByChatId: {},
   compactNotice: null,
   setUsage: (usage) => set({ usage }),
-  setUsageForChat: (chatId, usage) => set((state) => ({
-    usage,
-    usageByChatId: {
-      ...state.usageByChatId,
-      [chatId]: usage,
-    },
-  })),
+  setUsageForChat: (chatId, usage) =>
+    set((state) => ({
+      usage,
+      usageByChatId: {
+        ...state.usageByChatId,
+        [chatId]: usage,
+      },
+    })),
   getUsageForChat: (chatId) => get().usageByChatId[chatId] ?? null,
   clearUsage: () => set({ usage: null }),
   setCompactNotice: (compactNotice) => set({ compactNotice }),

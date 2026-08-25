@@ -2,7 +2,9 @@ import React from 'react';
 import type { A2UITable } from '../../../types/a2ui';
 import { MarkdownRenderer } from '../../chat/MarkdownRenderer';
 
-interface Props { component: A2UITable; }
+interface Props {
+  component: A2UITable;
+}
 
 export const A2UITableComponent: React.FC<Props> = ({ component }) => {
   const { columns = [], rows = [] } = component;
@@ -11,7 +13,7 @@ export const A2UITableComponent: React.FC<Props> = ({ component }) => {
       <table className="w-max min-w-full text-sm border-collapse">
         <thead>
           <tr className="bg-neutral-800 dark:bg-zinc-950 text-white">
-            {columns.map(col => (
+            {columns.map((col) => (
               <th
                 key={col.key}
                 style={col.width ? { width: col.width } : undefined}
@@ -28,7 +30,7 @@ export const A2UITableComponent: React.FC<Props> = ({ component }) => {
               key={i}
               className="border-t border-neutral-200 dark:border-zinc-700 odd:bg-white even:bg-neutral-50 dark:odd:bg-zinc-900 dark:even:bg-zinc-800"
             >
-              {columns.map(col => (
+              {columns.map((col) => (
                 <td
                   key={col.key}
                   className="px-3 py-2 border-r border-neutral-200 dark:border-zinc-700 last:border-r-0 text-brutal-black dark:text-neutral-200 whitespace-nowrap align-top"

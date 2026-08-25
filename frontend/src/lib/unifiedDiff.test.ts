@@ -3,15 +3,17 @@ import { parseUnifiedDiff } from './unifiedDiff';
 
 describe('parseUnifiedDiff', () => {
   it('reconstructs original and modified content from a unified diff', () => {
-    const parsed = parseUnifiedDiff([
-      '--- a/example.txt',
-      '+++ b/example.txt',
-      '@@ -1,2 +1,2 @@',
-      ' unchanged',
-      '-before',
-      '+after',
-      '',
-    ].join('\n'));
+    const parsed = parseUnifiedDiff(
+      [
+        '--- a/example.txt',
+        '+++ b/example.txt',
+        '@@ -1,2 +1,2 @@',
+        ' unchanged',
+        '-before',
+        '+after',
+        '',
+      ].join('\n')
+    );
 
     expect(parsed).toEqual({
       original: 'unchanged\nbefore',
@@ -20,16 +22,18 @@ describe('parseUnifiedDiff', () => {
   });
 
   it('separates multiple hunks without rendering diff metadata', () => {
-    const parsed = parseUnifiedDiff([
-      '--- a/example.txt',
-      '+++ b/example.txt',
-      '@@ -1 +1 @@',
-      '-first',
-      '+updated first',
-      '@@ -20 +20 @@',
-      '-last',
-      '+updated last',
-    ].join('\n'));
+    const parsed = parseUnifiedDiff(
+      [
+        '--- a/example.txt',
+        '+++ b/example.txt',
+        '@@ -1 +1 @@',
+        '-first',
+        '+updated first',
+        '@@ -20 +20 @@',
+        '-last',
+        '+updated last',
+      ].join('\n')
+    );
 
     expect(parsed).toEqual({
       original: 'first\n⋯\nlast',

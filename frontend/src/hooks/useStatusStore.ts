@@ -6,7 +6,7 @@ interface StatusState {
   message: string | null;
   type: StatusType;
   timeoutId: NodeJS.Timeout | null;
-  
+
   setStatus: (message: string, type?: StatusType, duration?: number) => void;
   clearStatus: () => void;
 }

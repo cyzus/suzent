@@ -24,7 +24,7 @@ describe('permission approval events', () => {
           },
         },
       },
-      [] as AGUIPart[],
+      [] as AGUIPart[]
     );
     const resolutionResult = processEvent(
       {
@@ -41,7 +41,7 @@ describe('permission approval events', () => {
           },
         },
       },
-      decisionResult.parts,
+      decisionResult.parts
     );
 
     expect(resolutionResult.parts[0].permissionDecision?.source).toBe('auto_classifier');
@@ -92,7 +92,7 @@ describe('permission approval events', () => {
           },
         },
       },
-      [] as AGUIPart[],
+      [] as AGUIPart[]
     );
 
     expect(result.parts).toHaveLength(1);

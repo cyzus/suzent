@@ -10,10 +10,7 @@ interface UseAutoScrollOptions {
   smooth?: boolean;
 }
 
-export function useAutoScroll(
-  dependencies: any[],
-  options: UseAutoScrollOptions = {}
-) {
+export function useAutoScroll(dependencies: any[], options: UseAutoScrollOptions = {}) {
   const { tolerance = 50, resetKey, smooth = true } = options;
 
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -22,11 +19,14 @@ export function useAutoScroll(
   const [showScrollButton, setShowScrollButton] = useState(false);
 
   // Helper to determine if at bottom
-  const isAtBottom = useCallback((el: Element | null) => {
-    if (!el) return true;
-    // Allow a larger tolerance for pixel rounding and intermediate layout shifts
-    return el.scrollHeight - el.scrollTop - el.clientHeight <= tolerance + 10;
-  }, [tolerance]);
+  const isAtBottom = useCallback(
+    (el: Element | null) => {
+      if (!el) return true;
+      // Allow a larger tolerance for pixel rounding and intermediate layout shifts
+      return el.scrollHeight - el.scrollTop - el.clientHeight <= tolerance + 10;
+    },
+    [tolerance]
+  );
 
   // Use a ref to ignore scroll events triggered by our own programmatic scrolling
   const autoScrollInProgress = useRef(false);
@@ -81,7 +81,14 @@ export function useAutoScroll(
     // Keyboard scrolling produces a bare scroll event with no wheel/pointer to
     // pair it with; without this it reads as a layout shift and gets ignored.
     const SCROLL_KEYS = new Set([
-      'PageUp', 'PageDown', 'ArrowUp', 'ArrowDown', 'Home', 'End', ' ', 'Spacebar',
+      'PageUp',
+      'PageDown',
+      'ArrowUp',
+      'ArrowDown',
+      'Home',
+      'End',
+      ' ',
+      'Spacebar',
     ]);
     const onKeyDown = (event: KeyboardEvent) => {
       if (SCROLL_KEYS.has(event.key)) {
@@ -143,46 +150,49 @@ export function useAutoScroll(
 
   // Helper for programmatically scrolling
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  
-  const performAutoScroll = useCallback((
-    behavior: ScrollBehavior = 'auto',
-    { force = false }: { force?: boolean } = {},
-  ) => {
-    if (!bottomRef.current) return;
 
-    // Never move the viewport under an in-progress or existing selection —
-    // doing so makes the selection run away from the cursor. Autoscroll stays
-    // armed and resumes as soon as the selection is cleared.
-    if (!force && isSelectionDragActive()) {
-      if (!isAtBottom(scrollContainerRef.current)) {
-        setShowScrollButton(true);
-      }
-      return;
-    }
+  const performAutoScroll = useCallback(
+    (behavior: ScrollBehavior = 'auto', { force = false }: { force?: boolean } = {}) => {
+      if (!bottomRef.current) return;
 
-    // Set flag to ignore subsequent scroll events triggered by this action
-    autoScrollInProgress.current = true;
-    bottomRef.current.scrollIntoView({ behavior });
-    
-    if (scrollTimeoutRef.current) {
-      clearTimeout(scrollTimeoutRef.current);
-    }
-    
-    // Reset flag after browser has had time to process the scroll.
-    // A smooth scroll animates well past the 150ms an instant jump needs.
-    scrollTimeoutRef.current = setTimeout(() => {
-      autoScrollInProgress.current = false;
-      
-      // Double check if we need to update state after forced scroll
-      if (scrollContainerRef.current) {
-        const atBottom = isAtBottom(scrollContainerRef.current);
-        if (atBottom) {
-          setShowScrollButton(false);
-          autoScrollEnabledRef.current = true;
+      // Never move the viewport under an in-progress or existing selection —
+      // doing so makes the selection run away from the cursor. Autoscroll stays
+      // armed and resumes as soon as the selection is cleared.
+      if (!force && isSelectionDragActive()) {
+        if (!isAtBottom(scrollContainerRef.current)) {
+          setShowScrollButton(true);
         }
+        return;
       }
-    }, behavior === 'smooth' ? 450 : 150);
-  }, [isAtBottom, isSelectionDragActive]);
+
+      // Set flag to ignore subsequent scroll events triggered by this action
+      autoScrollInProgress.current = true;
+      bottomRef.current.scrollIntoView({ behavior });
+
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+
+      // Reset flag after browser has had time to process the scroll.
+      // A smooth scroll animates well past the 150ms an instant jump needs.
+      scrollTimeoutRef.current = setTimeout(
+        () => {
+          autoScrollInProgress.current = false;
+
+          // Double check if we need to update state after forced scroll
+          if (scrollContainerRef.current) {
+            const atBottom = isAtBottom(scrollContainerRef.current);
+            if (atBottom) {
+              setShowScrollButton(false);
+              autoScrollEnabledRef.current = true;
+            }
+          }
+        },
+        behavior === 'smooth' ? 450 : 150
+      );
+    },
+    [isAtBottom, isSelectionDragActive]
+  );
 
   const previousResetKeyRef = useRef(resetKey);
   const skipNextSmoothScrollRef = useRef(false);

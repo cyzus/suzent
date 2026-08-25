@@ -1,7 +1,25 @@
 import React, { useEffect, useRef, useState } from 'react';
 
 import { useChatStore } from '../../hooks/useChatStore';
-import { ApiProvider, CustomProviderPayload, deleteCustomProvider, fetchApiKeys, fetchRoleModels, fetchRoleSuggestions, fetchSocialConfig, fetchMcpServers, saveApiKeys, saveCustomProvider, saveGlobalSandboxConfig, saveRoleModels, saveSocialConfig, saveUserPreferences, SocialConfig, UserConfig, verifyProvider } from '../../lib/api';
+import {
+  ApiProvider,
+  CustomProviderPayload,
+  deleteCustomProvider,
+  fetchApiKeys,
+  fetchRoleModels,
+  fetchRoleSuggestions,
+  fetchSocialConfig,
+  fetchMcpServers,
+  saveApiKeys,
+  saveCustomProvider,
+  saveGlobalSandboxConfig,
+  saveRoleModels,
+  saveSocialConfig,
+  saveUserPreferences,
+  SocialConfig,
+  UserConfig,
+  verifyProvider,
+} from '../../lib/api';
 import { AcpAgentsTab } from './AcpAgentsTab';
 import { AppearanceTab } from './AppearanceTab';
 import { AboutTab } from './AboutTab';
@@ -53,7 +71,11 @@ interface SettingsModalProps {
 type ProviderTab = 'credentials' | 'models';
 type CategoryType = SettingsCategory;
 
-export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }: SettingsModalProps): React.ReactElement | null {
+export function SettingsModal({
+  isOpen,
+  onClose,
+  initialCategory = 'providers',
+}: SettingsModalProps): React.ReactElement | null {
   const { refreshBackendConfig, backendConfig } = useChatStore();
   const { t } = useI18n();
   const [providers, setProviders] = useState<ApiProvider[]>([]);
@@ -86,7 +108,11 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }
 
   // Social Config State
   const [socialConfig, setSocialConfig] = useState<SocialConfig>({});
-  const [mcpServers, setMcpServers] = useState<{ urls: Record<string, string>; stdio: Record<string, any>; enabled: Record<string, boolean> } | null>(null);
+  const [mcpServers, setMcpServers] = useState<{
+    urls: Record<string, string>;
+    stdio: Record<string, any>;
+    enabled: Record<string, boolean>;
+  } | null>(null);
   const [useCustomTools, setUseCustomTools] = useState(false);
   const [useCustomMcp, setUseCustomMcp] = useState(false);
   const [globalNotebookHostPath, setGlobalNotebookHostPath] = useState('');
@@ -97,7 +123,7 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }
   const [mcpServerList, setMcpServerList] = useState<MCPServer[]>([]);
 
   function refreshProviders(): void {
-    fetchApiKeys().then(data => {
+    fetchApiKeys().then((data) => {
       if (!data?.providers) return;
       setProviders(data.providers);
       const keys: Record<string, string> = {};
@@ -133,7 +159,7 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }
     savedNotebookPath.current = null;
 
     setLoading(true);
-    fetchApiKeys().then(data => {
+    fetchApiKeys().then((data) => {
       if (!data?.providers) {
         setLoading(false);
         return;
@@ -151,7 +177,10 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }
             initialKeys[field.key] = field.value;
           }
         }
-        initialConfigs[provider.id] = provider.user_config || { enabled_models: [], custom_models: [] };
+        initialConfigs[provider.id] = provider.user_config || {
+          enabled_models: [],
+          custom_models: [],
+        };
         initialTabs[provider.id] = 'credentials';
       }
 
@@ -167,14 +196,14 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }
       setLoading(false);
     });
 
-    fetchRoleModels().then(models => {
+    fetchRoleModels().then((models) => {
       setRoleModels(models);
       savedRolesSnapshot.current = JSON.stringify(models);
       setRolesLoaded(true);
     });
     fetchRoleSuggestions().then(setRoleSuggestions);
 
-    fetchSocialConfig().then(config => {
+    fetchSocialConfig().then((config) => {
       setSocialConfig(config);
       setUseCustomTools(config.tools !== null && config.tools !== undefined);
       setUseCustomMcp(config.mcp_enabled !== null && config.mcp_enabled !== undefined);
@@ -184,30 +213,34 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }
       setSocialLoaded(true);
     });
 
-    fetchMcpServers().then(data => {
-      setMcpServers(data);
-      const urls = data.urls || {};
-      const stdio = data.stdio || {};
-      const enabled = data.enabled || {};
+    fetchMcpServers()
+      .then((data) => {
+        setMcpServers(data);
+        const urls = data.urls || {};
+        const stdio = data.stdio || {};
+        const enabled = data.enabled || {};
 
-      const urlServers: MCPServer[] = Object.entries(urls).map(([name, url]) => ({
-        type: 'url',
-        name,
-        url: String(url),
-        enabled: !!enabled[name]
-      }));
+        const urlServers: MCPServer[] = Object.entries(urls).map(([name, url]) => ({
+          type: 'url',
+          name,
+          url: String(url),
+          enabled: !!enabled[name],
+        }));
 
-      const stdioServers: MCPServer[] = Object.entries(stdio).map(([name, params]: [string, any]) => ({
-        type: 'stdio',
-        name,
-        command: params.command,
-        args: params.args,
-        env: params.env,
-        enabled: !!enabled[name],
-      }));
+        const stdioServers: MCPServer[] = Object.entries(stdio).map(
+          ([name, params]: [string, any]) => ({
+            type: 'stdio',
+            name,
+            command: params.command,
+            args: params.args,
+            env: params.env,
+            enabled: !!enabled[name],
+          })
+        );
 
-      setMcpServerList([...urlServers, ...stdioServers]);
-    }).catch(() => setMcpServers(null));
+        setMcpServerList([...urlServers, ...stdioServers]);
+      })
+      .catch(() => setMcpServers(null));
 
     const globalVolumes = backendConfig?.globalSandboxVolumes || [];
     const notebookVolume = globalVolumes.find((volume) => {
@@ -225,8 +258,10 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }
       ? notebookVolume.substring(0, notebookVolume.lastIndexOf(':')).trim()
       : '';
     setNotebookLoaded(true);
-    setMemoryEnabled(!!(backendConfig?.userPreferences?.memory_enabled));
-    setSandboxEnabled(!!(backendConfig?.userPreferences?.sandbox_enabled ?? backendConfig?.sandboxEnabled));
+    setMemoryEnabled(!!backendConfig?.userPreferences?.memory_enabled);
+    setSandboxEnabled(
+      !!(backendConfig?.userPreferences?.sandbox_enabled ?? backendConfig?.sandboxEnabled)
+    );
   }, [isOpen, initialCategory]);
 
   async function saveProviderSettings(): Promise<void> {
@@ -241,13 +276,13 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }
 
     const saved = await saveApiKeys({
       ...keysToSave,
-      "_PROVIDER_CONFIG_": JSON.stringify(userConfigs),
+      _PROVIDER_CONFIG_: JSON.stringify(userConfigs),
     });
     if (!saved) throw new Error('Failed to save provider settings');
 
     savedProviderSnapshot.current = snapshot;
     if (Object.keys(keysToSave).length > 0) {
-      setOriginalDisplayValues(prev => ({ ...prev, ...keysToSave }));
+      setOriginalDisplayValues((prev) => ({ ...prev, ...keysToSave }));
     }
 
     // Enabling/disabling provider models changes what the rest of the app can
@@ -307,9 +342,7 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }
     const notebookPath = globalNotebookHostPath.trim();
     if (notebookPath === savedNotebookPath.current) return;
 
-    const sandboxVolumes = notebookPath
-      ? [`${notebookPath}:/mnt/notebook`]
-      : [];
+    const sandboxVolumes = notebookPath ? [`${notebookPath}:/mnt/notebook`] : [];
 
     await saveGlobalSandboxConfig(sandboxVolumes);
     savedNotebookPath.current = notebookPath;
@@ -333,7 +366,7 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }
           }
         }
       },
-      error => console.error('Failed to persist settings after close', error),
+      (error) => console.error('Failed to persist settings after close', error)
     );
   }
 
@@ -410,14 +443,14 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }
   }, [globalNotebookHostPath, isOpen, notebookLoaded, refreshBackendConfig]);
 
   function handleKeyChange(key: string, val: string): void {
-    setApiKeys(prev => ({ ...prev, [key]: val }));
+    setApiKeys((prev) => ({ ...prev, [key]: val }));
   }
 
   function addCustomModel(providerId: string, modelId: string): void {
     const trimmed = modelId.trim();
     if (!trimmed) return;
 
-    setUserConfigs(prev => {
+    setUserConfigs((prev) => {
       const current = prev[providerId] || { enabled_models: [], custom_models: [] };
       if (current.custom_models.includes(trimmed)) return prev;
 
@@ -426,14 +459,14 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }
         [providerId]: {
           ...current,
           custom_models: [...current.custom_models, trimmed],
-          enabled_models: [...current.enabled_models, trimmed]
-        }
+          enabled_models: [...current.enabled_models, trimmed],
+        },
       };
     });
   }
 
   async function handleVerify(provider: ApiProvider): Promise<void> {
-    setVerifying(prev => ({ ...prev, [provider.id]: true }));
+    setVerifying((prev) => ({ ...prev, [provider.id]: true }));
 
     const configForProvider: Record<string, string> = {};
     for (const field of provider.fields) {
@@ -446,18 +479,17 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }
     const result = await verifyProvider(provider.id, configForProvider);
 
     if (result.success && result.models.length > 0) {
-      setProviders(prev => prev.map(p =>
-        p.id === provider.id ? { ...p, models: result.models } : p
-      ));
+      setProviders((prev) =>
+        prev.map((p) => (p.id === provider.id ? { ...p, models: result.models } : p))
+      );
     } else {
       alert(result.message || result.error || t('settings.verifyFailed'));
     }
 
-    setVerifying(prev => ({ ...prev, [provider.id]: false }));
+    setVerifying((prev) => ({ ...prev, [provider.id]: false }));
   }
 
   if (!isOpen) return null;
-
 
   return (
     <FullscreenOverlay
@@ -467,157 +499,150 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }
       backdropClassName="bg-brutal-black/80 backdrop-blur-sm animate-view-fade"
       containerClassName="relative w-full h-[95vh] md:w-[95vw] lg:w-[90vw] xl:w-[82vw] 2xl:max-w-[1600px] bg-neutral-100 dark:bg-zinc-900 border-4 border-brutal-black shadow-brutal-xl flex overflow-hidden"
     >
-        <SettingsNavigation
+      <SettingsNavigation
+        activeCategory={activeCategory}
+        onCategoryChange={setActiveCategory}
+        onClose={handleClose}
+      />
+
+      {/* Content Area */}
+      <div className="flex-1 overflow-hidden bg-dot-pattern flex flex-col">
+        <SettingsMobileNavigation
           activeCategory={activeCategory}
           onCategoryChange={setActiveCategory}
           onClose={handleClose}
         />
-
-        {/* Content Area */}
-        <div className="flex-1 overflow-hidden bg-dot-pattern flex flex-col">
-          <SettingsMobileNavigation
-            activeCategory={activeCategory}
-            onCategoryChange={setActiveCategory}
-            onClose={handleClose}
-          />
-          <div className="settings-content flex-1 overflow-y-auto p-3 scrollbar-thin sm:p-5 lg:p-6">
-            <div className={`${activeCategory === 'usage' ? 'max-w-6xl' : 'max-w-5xl'} mx-auto`}>
-              {loading ? (
-                <div className="flex justify-center items-center h-full">
-                  <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-brutal-black"></div>
-                </div>
-              ) : (
-                <>
-                  {activeCategory === 'providers' && (
-                    <ProvidersTab
-                      providers={providers}
-                      apiKeys={apiKeys}
-                      userConfigs={userConfigs}
-                      showKey={showKey}
-                      activeTabs={activeTabs}
-                      verifying={verifying}
-                      onKeyChange={handleKeyChange}
-                      onToggleShowKey={(key) => setShowKey(prev => ({ ...prev, [key]: !prev[key] }))}
-                      onTabChange={(providerId, tab) => setActiveTabs(prev => ({ ...prev, [providerId]: tab }))}
-                      onConfigChange={(providerId, config) => setUserConfigs(prev => ({ ...prev, [providerId]: config }))}
-                      onAddCustomModel={addCustomModel}
-                      onVerify={handleVerify}
-                      onAddProvider={async (payload: CustomProviderPayload) => {
-                        const result = await saveCustomProvider(payload);
-                        if (!result.success) throw new Error(result.error || 'Failed to save');
-                        const data = await fetchApiKeys();
-                        if (data?.providers) {
-                          setProviders(data.providers);
-                          const configs: Record<string, UserConfig> = {};
-                          const tabs: Record<string, 'credentials' | 'models'> = {};
-                          for (const p of data.providers) {
-                            configs[p.id] = p.user_config || { enabled_models: [], custom_models: [] };
-                            tabs[p.id] = activeTabs[p.id] || 'credentials';
-                          }
-                          setUserConfigs(configs);
-                          setActiveTabs(tabs);
+        <div className="settings-content flex-1 overflow-y-auto p-3 scrollbar-thin sm:p-5 lg:p-6">
+          <div className={`${activeCategory === 'usage' ? 'max-w-6xl' : 'max-w-5xl'} mx-auto`}>
+            {loading ? (
+              <div className="flex justify-center items-center h-full">
+                <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-brutal-black"></div>
+              </div>
+            ) : (
+              <>
+                {activeCategory === 'providers' && (
+                  <ProvidersTab
+                    providers={providers}
+                    apiKeys={apiKeys}
+                    userConfigs={userConfigs}
+                    showKey={showKey}
+                    activeTabs={activeTabs}
+                    verifying={verifying}
+                    onKeyChange={handleKeyChange}
+                    onToggleShowKey={(key) =>
+                      setShowKey((prev) => ({ ...prev, [key]: !prev[key] }))
+                    }
+                    onTabChange={(providerId, tab) =>
+                      setActiveTabs((prev) => ({ ...prev, [providerId]: tab }))
+                    }
+                    onConfigChange={(providerId, config) =>
+                      setUserConfigs((prev) => ({ ...prev, [providerId]: config }))
+                    }
+                    onAddCustomModel={addCustomModel}
+                    onVerify={handleVerify}
+                    onAddProvider={async (payload: CustomProviderPayload) => {
+                      const result = await saveCustomProvider(payload);
+                      if (!result.success) throw new Error(result.error || 'Failed to save');
+                      const data = await fetchApiKeys();
+                      if (data?.providers) {
+                        setProviders(data.providers);
+                        const configs: Record<string, UserConfig> = {};
+                        const tabs: Record<string, 'credentials' | 'models'> = {};
+                        for (const p of data.providers) {
+                          configs[p.id] = p.user_config || {
+                            enabled_models: [],
+                            custom_models: [],
+                          };
+                          tabs[p.id] = activeTabs[p.id] || 'credentials';
                         }
-                      }}
-                      onDeleteProvider={async (providerId: string) => {
-                        await deleteCustomProvider(providerId);
-                        setProviders(prev => prev.filter(p => p.id !== providerId));
-                      }}
-                      onChatGPTAuthChanged={refreshBackendConfig}
-                    />
-                  )}
+                        setUserConfigs(configs);
+                        setActiveTabs(tabs);
+                      }
+                    }}
+                    onDeleteProvider={async (providerId: string) => {
+                      await deleteCustomProvider(providerId);
+                      setProviders((prev) => prev.filter((p) => p.id !== providerId));
+                    }}
+                    onChatGPTAuthChanged={refreshBackendConfig}
+                  />
+                )}
 
-                  {activeCategory === 'roles' && (
-                    <ModelRolesTab
-                      roleModels={roleModels}
-                      suggestions={roleSuggestions}
-                      unregisteredModels={roleSuggestions._unregistered || []}
-                      onChange={setRoleModels}
-                    />
-                  )}
+                {activeCategory === 'roles' && (
+                  <ModelRolesTab
+                    roleModels={roleModels}
+                    suggestions={roleSuggestions}
+                    unregisteredModels={roleSuggestions._unregistered || []}
+                    onChange={setRoleModels}
+                  />
+                )}
 
-                  {activeCategory === 'memory' && (
-                    <MemoryTab
-                      globalNotebookHostPath={globalNotebookHostPath}
-                      onGlobalNotebookHostPathChange={setGlobalNotebookHostPath}
-                      memoryEnabled={memoryEnabled}
-                      onMemoryEnabledChange={handleMemoryEnabledChange}
-                      embeddingModel={roleModels.embedding?.[0]}
-                      cheapModel={roleModels.cheap?.[0]}
-                      onOpenModelRoles={() => setActiveCategory('roles')}
-                    />
-                  )}
+                {activeCategory === 'memory' && (
+                  <MemoryTab
+                    globalNotebookHostPath={globalNotebookHostPath}
+                    onGlobalNotebookHostPathChange={setGlobalNotebookHostPath}
+                    memoryEnabled={memoryEnabled}
+                    onMemoryEnabledChange={handleMemoryEnabledChange}
+                    embeddingModel={roleModels.embedding?.[0]}
+                    cheapModel={roleModels.cheap?.[0]}
+                    onOpenModelRoles={() => setActiveCategory('roles')}
+                  />
+                )}
 
-                  {activeCategory === 'security' && (
-                    <SecurityTab
-                      sandboxEnabled={sandboxEnabled}
-                      onSandboxEnabledChange={handleSandboxEnabledChange}
-                    />
-                  )}
+                {activeCategory === 'security' && (
+                  <SecurityTab
+                    sandboxEnabled={sandboxEnabled}
+                    onSandboxEnabledChange={handleSandboxEnabledChange}
+                  />
+                )}
 
-                  {activeCategory === 'social' && (
-                    <SocialTab
-                      socialConfig={socialConfig}
-                      tools={backendConfig?.tools || []}
-                      mcpServers={mcpServers}
-                      useCustomTools={useCustomTools}
-                      useCustomMcp={useCustomMcp}
-                      onConfigChange={setSocialConfig}
-                      onUseCustomToolsChange={setUseCustomTools}
-                      onUseCustomMcpChange={setUseCustomMcp}
-                    />
-                  )}
+                {activeCategory === 'social' && (
+                  <SocialTab
+                    socialConfig={socialConfig}
+                    tools={backendConfig?.tools || []}
+                    mcpServers={mcpServers}
+                    useCustomTools={useCustomTools}
+                    useCustomMcp={useCustomMcp}
+                    onConfigChange={setSocialConfig}
+                    onUseCustomToolsChange={setUseCustomTools}
+                    onUseCustomMcpChange={setUseCustomMcp}
+                  />
+                )}
 
-                  {activeCategory === 'devices' && (
-                    <DevicesTab />
-                  )}
+                {activeCategory === 'devices' && <DevicesTab />}
 
-                  {activeCategory === 'mesh' && (
-                    <MeshTab />
-                  )}
+                {activeCategory === 'mesh' && <MeshTab />}
 
-                  {activeCategory === 'mcp' && (
-                    <McpTab
-                      serverList={mcpServerList}
-                      onServerListChange={setMcpServerList}
-                      onMcpServersRefresh={setMcpServers}
-                    />
-                  )}
+                {activeCategory === 'mcp' && (
+                  <McpTab
+                    serverList={mcpServerList}
+                    onServerListChange={setMcpServerList}
+                    onMcpServersRefresh={setMcpServers}
+                  />
+                )}
 
-                  {activeCategory === 'acp-agents' && (
-                    <AcpAgentsTab />
-                  )}
+                {activeCategory === 'acp-agents' && <AcpAgentsTab />}
 
-                  {activeCategory === 'automation' && (
-                    <AutomationTab
-                      models={backendConfig?.models || []}
-                      tools={backendConfig?.tools || []}
-                    />
-                  )}
+                {activeCategory === 'automation' && (
+                  <AutomationTab
+                    models={backendConfig?.models || []}
+                    tools={backendConfig?.tools || []}
+                  />
+                )}
 
-                  {activeCategory === 'service' && (
-                    <BackgroundServiceTab />
-                  )}
+                {activeCategory === 'service' && <BackgroundServiceTab />}
 
-                  {activeCategory === 'data' && (
-                    <DataTab onSyncComplete={refreshProviders} />
-                  )}
+                {activeCategory === 'data' && <DataTab onSyncComplete={refreshProviders} />}
 
-                  {activeCategory === 'usage' && (
-                    <UsageTab />
-                  )}
+                {activeCategory === 'usage' && <UsageTab />}
 
-                  {activeCategory === 'appearance' && (
-                    <AppearanceTab />
-                  )}
+                {activeCategory === 'appearance' && <AppearanceTab />}
 
-                  {activeCategory === 'about' && (
-                    <AboutTab />
-                  )}
-                </>
-              )}
-            </div>
+                {activeCategory === 'about' && <AboutTab />}
+              </>
+            )}
           </div>
         </div>
+      </div>
     </FullscreenOverlay>
   );
 }

@@ -32,7 +32,10 @@ function SelectOptionList({
         <button
           key={opt}
           type="button"
-          onClick={() => { setOtherActive(false); onChange(opt); }}
+          onClick={() => {
+            setOtherActive(false);
+            onChange(opt);
+          }}
           className={[
             'flex items-center justify-between px-4 py-3 text-sm font-bold text-left transition-colors',
             'border-t-2 border-brutal-black first:border-t-0',
@@ -48,16 +51,27 @@ function SelectOptionList({
         </button>
       ))}
       {allowFreeText && (
-        <div className={[
-          'border-t-2 border-brutal-black transition-colors',
-          otherActive ? 'bg-brutal-yellow' : 'bg-white dark:bg-zinc-800 hover:bg-neutral-100 dark:hover:bg-zinc-700',
-        ].join(' ')}>
+        <div
+          className={[
+            'border-t-2 border-brutal-black transition-colors',
+            otherActive
+              ? 'bg-brutal-yellow'
+              : 'bg-white dark:bg-zinc-800 hover:bg-neutral-100 dark:hover:bg-zinc-700',
+          ].join(' ')}
+        >
           <button
             type="button"
-            onClick={() => { setOtherActive(true); onChange(otherText); }}
+            onClick={() => {
+              setOtherActive(true);
+              onChange(otherText);
+            }}
             className="flex items-center justify-between px-4 py-3 text-sm font-bold text-left w-full"
           >
-            <span className={otherActive ? 'text-brutal-black' : 'text-neutral-400 dark:text-neutral-500'}>
+            <span
+              className={
+                otherActive ? 'text-brutal-black' : 'text-neutral-400 dark:text-neutral-500'
+              }
+            >
               Type something else…
             </span>
             <span className="text-xs font-mono text-neutral-400 border-2 border-neutral-300 dark:border-neutral-600 w-6 h-6 flex items-center justify-center shrink-0">
@@ -72,7 +86,10 @@ function SelectOptionList({
                 className="w-full border-2 border-brutal-black px-3 py-2 text-sm bg-white dark:bg-zinc-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brutal-black"
                 placeholder="Type your answer…"
                 value={otherText}
-                onChange={e => { setOtherText(e.target.value); onChange(e.target.value); }}
+                onChange={(e) => {
+                  setOtherText(e.target.value);
+                  onChange(e.target.value);
+                }}
               />
             </div>
           )}
@@ -94,18 +111,18 @@ function MultiSelectList({
   onChange: (v: string[]) => void;
   allowFreeText?: boolean;
 }) {
-  const otherValue = value.find(v => !options.includes(v)) ?? '';
+  const otherValue = value.find((v) => !options.includes(v)) ?? '';
   const [otherText, setOtherText] = React.useState(otherValue);
   const otherChecked = otherValue !== '';
 
   const toggle = (opt: string) => {
-    onChange(value.includes(opt) ? value.filter(v => v !== opt) : [...value, opt]);
+    onChange(value.includes(opt) ? value.filter((v) => v !== opt) : [...value, opt]);
   };
 
   const handleOtherToggle = () => {
     if (otherChecked) {
       setOtherText('');
-      onChange(value.filter(v => options.includes(v)));
+      onChange(value.filter((v) => options.includes(v)));
     } else {
       // just activate the text input; value updated as user types
     }
@@ -113,7 +130,7 @@ function MultiSelectList({
 
   const handleOtherText = (text: string) => {
     setOtherText(text);
-    const base = value.filter(v => options.includes(v));
+    const base = value.filter((v) => options.includes(v));
     onChange(text ? [...base, text] : base);
   };
 
@@ -134,28 +151,63 @@ function MultiSelectList({
                 : 'bg-white dark:bg-zinc-800 text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-700',
             ].join(' ')}
           >
-            <div className={`w-4 h-4 border-2 border-brutal-black flex items-center justify-center shrink-0 ${active ? 'bg-brutal-black' : 'bg-white dark:bg-zinc-900'}`}>
-              {active && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={4}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
+            <div
+              className={`w-4 h-4 border-2 border-brutal-black flex items-center justify-center shrink-0 ${active ? 'bg-brutal-black' : 'bg-white dark:bg-zinc-900'}`}
+            >
+              {active && (
+                <svg
+                  className="w-3 h-3 text-white"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={4}
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              )}
             </div>
             <span className="flex-1">{opt}</span>
-            <span className="text-xs font-mono text-neutral-400 border-2 border-neutral-300 dark:border-neutral-600 w-6 h-6 flex items-center justify-center shrink-0">{i + 1}</span>
+            <span className="text-xs font-mono text-neutral-400 border-2 border-neutral-300 dark:border-neutral-600 w-6 h-6 flex items-center justify-center shrink-0">
+              {i + 1}
+            </span>
           </button>
         );
       })}
       {allowFreeText && (
-        <div className={['border-t-2 border-brutal-black', otherChecked ? 'bg-brutal-yellow' : 'bg-white dark:bg-zinc-800'].join(' ')}>
+        <div
+          className={[
+            'border-t-2 border-brutal-black',
+            otherChecked ? 'bg-brutal-yellow' : 'bg-white dark:bg-zinc-800',
+          ].join(' ')}
+        >
           <button
             type="button"
             onClick={handleOtherToggle}
             className="flex items-center gap-3 px-4 py-3 text-sm font-bold text-left w-full"
           >
-            <div className={`w-4 h-4 border-2 border-brutal-black flex items-center justify-center shrink-0 ${otherChecked ? 'bg-brutal-black' : 'bg-white dark:bg-zinc-900'}`}>
-              {otherChecked && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={4}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
+            <div
+              className={`w-4 h-4 border-2 border-brutal-black flex items-center justify-center shrink-0 ${otherChecked ? 'bg-brutal-black' : 'bg-white dark:bg-zinc-900'}`}
+            >
+              {otherChecked && (
+                <svg
+                  className="w-3 h-3 text-white"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={4}
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              )}
             </div>
-            <span className={`flex-1 ${otherChecked ? 'text-brutal-black' : 'text-neutral-400 dark:text-neutral-500'}`}>
+            <span
+              className={`flex-1 ${otherChecked ? 'text-brutal-black' : 'text-neutral-400 dark:text-neutral-500'}`}
+            >
               Type something else…
             </span>
-            <span className="text-xs font-mono text-neutral-400 border-2 border-neutral-300 dark:border-neutral-600 w-6 h-6 flex items-center justify-center shrink-0">{options.length + 1}</span>
+            <span className="text-xs font-mono text-neutral-400 border-2 border-neutral-300 dark:border-neutral-600 w-6 h-6 flex items-center justify-center shrink-0">
+              {options.length + 1}
+            </span>
           </button>
           {(otherChecked || otherText !== '') && (
             <div className="px-4 pb-3">
@@ -165,7 +217,7 @@ function MultiSelectList({
                 className="w-full border-2 border-brutal-black px-3 py-2 text-sm bg-white dark:bg-zinc-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brutal-black"
                 placeholder="Type your answer…"
                 value={otherText}
-                onChange={e => handleOtherText(e.target.value)}
+                onChange={(e) => handleOtherText(e.target.value)}
               />
             </div>
           )}
@@ -191,7 +243,7 @@ function FieldInput({ field, value, onChange }: FieldInputProps) {
         className={`${inputBase} min-h-[80px] resize-y`}
         placeholder={field.placeholder}
         value={String(value ?? '')}
-        onChange={e => onChange(e.target.value)}
+        onChange={(e) => onChange(e.target.value)}
         required={field.required}
       />
     );
@@ -203,7 +255,7 @@ function FieldInput({ field, value, onChange }: FieldInputProps) {
         options={field.options ?? []}
         value={String(value ?? '')}
         allowFreeText={field.allow_free_text}
-        onChange={v => onChange(v)}
+        onChange={(v) => onChange(v)}
       />
     );
   }
@@ -214,7 +266,7 @@ function FieldInput({ field, value, onChange }: FieldInputProps) {
       <MultiSelectList
         options={field.options ?? []}
         value={selected}
-        onChange={vals => onChange(vals)}
+        onChange={(vals) => onChange(vals)}
         allowFreeText={field.allow_free_text}
       />
     );
@@ -237,7 +289,13 @@ function FieldInput({ field, value, onChange }: FieldInputProps) {
           className={`w-4 h-4 border-2 border-brutal-black flex items-center justify-center shrink-0 ${checked ? 'bg-brutal-black' : 'bg-white dark:bg-zinc-900'}`}
         >
           {checked && (
-            <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={4}>
+            <svg
+              className="w-3 h-3 text-white"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={4}
+            >
               <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
             </svg>
           )}
@@ -254,7 +312,7 @@ function FieldInput({ field, value, onChange }: FieldInputProps) {
         className={inputBase}
         placeholder={field.placeholder}
         value={value == null ? '' : String(value)}
-        onChange={e => onChange(e.target.value === '' ? '' : Number(e.target.value))}
+        onChange={(e) => onChange(e.target.value === '' ? '' : Number(e.target.value))}
         required={field.required}
       />
     );
@@ -267,7 +325,7 @@ function FieldInput({ field, value, onChange }: FieldInputProps) {
       className={inputBase}
       placeholder={field.placeholder}
       value={String(value ?? '')}
-      onChange={e => onChange(e.target.value)}
+      onChange={(e) => onChange(e.target.value)}
       required={field.required}
     />
   );
@@ -294,7 +352,10 @@ function PagedForm({ component, values, setValues, onSubmit }: PagedFormProps) {
     return val !== '' && val != null;
   };
 
-  const advance = () => { if (isLast) onSubmit(); else setPage(p => p + 1); };
+  const advance = () => {
+    if (isLast) onSubmit();
+    else setPage((p) => p + 1);
+  };
   const skip = () => advance(); // skip this question, move to next (or submit)
 
   return (
@@ -305,19 +366,26 @@ function PagedForm({ component, values, setValues, onSubmit }: PagedFormProps) {
           {field.required && <span className="text-red-500 ml-1">*</span>}
         </p>
         {total > 1 && (
-          <span className="text-xs font-mono text-neutral-400 shrink-0">{page + 1}/{total}</span>
+          <span className="text-xs font-mono text-neutral-400 shrink-0">
+            {page + 1}/{total}
+          </span>
         )}
       </div>
 
       <FieldInput
         field={field}
         value={values[field.name]}
-        onChange={val => setValues(prev => ({ ...prev, [field.name]: val }))}
+        onChange={(val) => setValues((prev) => ({ ...prev, [field.name]: val }))}
       />
 
       <div className="flex items-center gap-2">
         {page > 0 && (
-          <BrutalButton type="button" variant="default" size="sm" onClick={() => setPage(p => p - 1)}>
+          <BrutalButton
+            type="button"
+            variant="default"
+            size="sm"
+            onClick={() => setPage((p) => p - 1)}
+          >
             ← Back
           </BrutalButton>
         )}
@@ -344,11 +412,9 @@ export const A2UIFormComponent: React.FC<Props> = ({ component, onAction }) => {
   const fields = component.fields ?? [];
 
   const initialValues = Object.fromEntries(
-    fields.map(f => [
+    fields.map((f) => [
       f.name,
-      f.type === 'multiselect'
-        ? (Array.isArray(f.default) ? f.default : [])
-        : (f.default ?? ''),
+      f.type === 'multiselect' ? (Array.isArray(f.default) ? f.default : []) : (f.default ?? ''),
     ])
   );
 
@@ -357,15 +423,20 @@ export const A2UIFormComponent: React.FC<Props> = ({ component, onAction }) => {
   const submit = () => onAction(component.action || 'submit', values);
 
   if (component.paged) {
-    return <PagedForm component={component} values={values} setValues={setValues} onSubmit={submit} />;
+    return (
+      <PagedForm component={component} values={values} setValues={setValues} onSubmit={submit} />
+    );
   }
 
   return (
     <form
-      onSubmit={e => { e.preventDefault(); submit(); }}
+      onSubmit={(e) => {
+        e.preventDefault();
+        submit();
+      }}
       className="flex flex-col gap-4"
     >
-      {fields.map(field => (
+      {fields.map((field) => (
         <div key={field.name} className="flex flex-col gap-1">
           {field.type !== 'checkbox' && (
             <label className="text-xs font-bold uppercase tracking-wide text-brutal-black dark:text-white">
@@ -376,11 +447,15 @@ export const A2UIFormComponent: React.FC<Props> = ({ component, onAction }) => {
           <FieldInput
             field={field}
             value={values[field.name]}
-            onChange={val => setValues(prev => ({ ...prev, [field.name]: val }))}
+            onChange={(val) => setValues((prev) => ({ ...prev, [field.name]: val }))}
           />
         </div>
       ))}
-      <BrutalButton type="submit" variant="warning" className="mt-2 w-full justify-center uppercase tracking-wide">
+      <BrutalButton
+        type="submit"
+        variant="warning"
+        className="mt-2 w-full justify-center uppercase tracking-wide"
+      >
         {component.submit_label ?? 'Submit'}
       </BrutalButton>
     </form>

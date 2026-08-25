@@ -13,8 +13,14 @@ function user(content: string): Message {
 describe('buildMessageRenderPlan', () => {
   it('groups consecutive tool-only assistant messages and marks non-representative indices as skipped', () => {
     const messages: Message[] = [
-      assistant('<details><summary>🔧 read_file</summary><pre><code class="language-text">{}</code></pre></details>', 'Input: 100 | Output: 10'),
-      assistant('<details><summary>🔧 grep_search</summary><pre><code class="language-text">{}</code></pre></details>', 'Input: 120 | Output: 20'),
+      assistant(
+        '<details><summary>🔧 read_file</summary><pre><code class="language-text">{}</code></pre></details>',
+        'Input: 100 | Output: 10'
+      ),
+      assistant(
+        '<details><summary>🔧 grep_search</summary><pre><code class="language-text">{}</code></pre></details>',
+        'Input: 120 | Output: 20'
+      ),
       assistant('Final answer content', 'Input: 40 | Output: 30'),
     ];
 
@@ -46,7 +52,9 @@ describe('buildMessageRenderPlan', () => {
     const messages: Message[] = [
       user('original question'),
       assistant('original answer'),
-      user('[CONTEXT SUMMARY — READ BEFORE RESPONDING]\nThe following is an authoritative summary.'),
+      user(
+        '[CONTEXT SUMMARY — READ BEFORE RESPONDING]\nThe following is an authoritative summary.'
+      ),
       assistant('--- ARCHIVED CONTEXT SUMMARY ---\nsummary body\n--- END ARCHIVED CONTEXT ---'),
       user('new question'),
       assistant('new answer'),
@@ -62,7 +70,9 @@ describe('buildMessageRenderPlan', () => {
 
   it('ignores final_answer tool calls when deciding intermediate step grouping', () => {
     const messages: Message[] = [
-      assistant('<details><summary>🔧 final_answer</summary><pre><code class="language-text">ignored</code></pre></details>'),
+      assistant(
+        '<details><summary>🔧 final_answer</summary><pre><code class="language-text">ignored</code></pre></details>'
+      ),
       assistant('Visible response'),
     ];
 
@@ -74,9 +84,15 @@ describe('buildMessageRenderPlan', () => {
 
   it('keeps consecutive tool steps in one group across empty assistant placeholders', () => {
     const messages: Message[] = [
-      assistant('<details><summary>🔧 run_command</summary><pre><code class="language-text">{"cmd":"a"}</code></pre></details>', 'Input: 10 | Output: 2'),
+      assistant(
+        '<details><summary>🔧 run_command</summary><pre><code class="language-text">{"cmd":"a"}</code></pre></details>',
+        'Input: 10 | Output: 2'
+      ),
       assistant(''),
-      assistant('<details><summary>🔧 run_command</summary><pre><code class="language-text">{"cmd":"b"}</code></pre></details>', 'Input: 20 | Output: 3'),
+      assistant(
+        '<details><summary>🔧 run_command</summary><pre><code class="language-text">{"cmd":"b"}</code></pre></details>',
+        'Input: 20 | Output: 3'
+      ),
       assistant('Final answer body', 'Input: 5 | Output: 4'),
     ];
 
@@ -96,9 +112,18 @@ describe('buildMessageRenderPlan', () => {
     // they contain prose, so the old logic fragmented the turn into 3 groups.
     const messages: Message[] = [
       user('go'),
-      assistant('<details><summary>🔧 run_command</summary><pre><code class="language-text">{}</code></pre></details>', 'Input: 10 | Output: 2'),
-      assistant('Let me try another approach.\n<details><summary>🔧 read_file</summary><pre><code class="language-text">{}</code></pre></details>', 'Input: 20 | Output: 4'),
-      assistant('Checking once more.\n<details><summary>🔧 grep_search</summary><pre><code class="language-text">{}</code></pre></details>', 'Input: 30 | Output: 5'),
+      assistant(
+        '<details><summary>🔧 run_command</summary><pre><code class="language-text">{}</code></pre></details>',
+        'Input: 10 | Output: 2'
+      ),
+      assistant(
+        'Let me try another approach.\n<details><summary>🔧 read_file</summary><pre><code class="language-text">{}</code></pre></details>',
+        'Input: 20 | Output: 4'
+      ),
+      assistant(
+        'Checking once more.\n<details><summary>🔧 grep_search</summary><pre><code class="language-text">{}</code></pre></details>',
+        'Input: 30 | Output: 5'
+      ),
       assistant('All done. Here is the answer.', 'Input: 5 | Output: 10'),
     ];
 
@@ -111,7 +136,8 @@ describe('buildMessageRenderPlan', () => {
   });
 
   it('treats system_triggered rows as turn boundaries so each cron/heartbeat fire has its own badge', () => {
-    const toolCall = '<details><summary>🔧 run_command</summary><pre><code class="language-text">{}</code></pre></details>';
+    const toolCall =
+      '<details><summary>🔧 run_command</summary><pre><code class="language-text">{}</code></pre></details>';
     const messages: Message[] = [
       { role: 'system_triggered', content: 'Scheduled Task: ingest' },
       assistant(toolCall, 'Input: 10 | Output: 2'),
@@ -130,10 +156,16 @@ describe('buildMessageRenderPlan', () => {
   it('resets turn grouping at each user message', () => {
     const messages: Message[] = [
       user('first'),
-      assistant('<details><summary>🔧 run_command</summary><pre><code class="language-text">{}</code></pre></details>', 'Input: 10 | Output: 2'),
+      assistant(
+        '<details><summary>🔧 run_command</summary><pre><code class="language-text">{}</code></pre></details>',
+        'Input: 10 | Output: 2'
+      ),
       assistant('Reply 1'),
       user('second'),
-      assistant('<details><summary>🔧 read_file</summary><pre><code class="language-text">{}</code></pre></details>', 'Input: 10 | Output: 3'),
+      assistant(
+        '<details><summary>🔧 read_file</summary><pre><code class="language-text">{}</code></pre></details>',
+        'Input: 10 | Output: 3'
+      ),
       assistant('Reply 2'),
     ];
 

@@ -27,23 +27,26 @@ export function AboutTab(): React.ReactElement {
   const [startingUpdate, setStartingUpdate] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
 
-  const refreshUpdateStatus = useCallback(async (force = false): Promise<void> => {
-    setCheckingUpdate(true);
-    setUpdateError(null);
-    try {
-      const status = await checkDesktopUpdate(force);
-      setUpdateStatus(status);
-      if (status.error) {
-        setUpdateError(t('updates.checkFailed', { error: status.error }));
+  const refreshUpdateStatus = useCallback(
+    async (force = false): Promise<void> => {
+      setCheckingUpdate(true);
+      setUpdateError(null);
+      try {
+        const status = await checkDesktopUpdate(force);
+        setUpdateStatus(status);
+        if (status.error) {
+          setUpdateError(t('updates.checkFailed', { error: status.error }));
+        }
+      } catch (error) {
+        setUpdateStatus(null);
+        const message = error instanceof Error ? error.message : String(error);
+        setUpdateError(t('updates.checkFailed', { error: message }));
+      } finally {
+        setCheckingUpdate(false);
       }
-    } catch (error) {
-      setUpdateStatus(null);
-      const message = error instanceof Error ? error.message : String(error);
-      setUpdateError(t('updates.checkFailed', { error: message }));
-    } finally {
-      setCheckingUpdate(false);
-    }
-  }, [t]);
+    },
+    [t]
+  );
 
   useEffect(() => {
     let active = true;
@@ -80,21 +83,20 @@ export function AboutTab(): React.ReactElement {
     }
   }
 
-  const backendVersion = backend.status === 'loading'
-    ? t('common.loading')
-    : backend.version && backend.version !== 'unknown'
-      ? `v${backend.version}`
-      : t('settings.about.unavailable');
-  const frontendVersion = __FRONTEND_VERSION__ === 'unknown'
-    ? t('settings.about.unavailable')
-    : `v${__FRONTEND_VERSION__}`;
+  const backendVersion =
+    backend.status === 'loading'
+      ? t('common.loading')
+      : backend.version && backend.version !== 'unknown'
+        ? `v${backend.version}`
+        : t('settings.about.unavailable');
+  const frontendVersion =
+    __FRONTEND_VERSION__ === 'unknown'
+      ? t('settings.about.unavailable')
+      : `v${__FRONTEND_VERSION__}`;
 
   return (
     <SettingsPage>
-      <SettingsHeader
-        title={t('settings.about.title')}
-        subtitle={t('settings.about.subtitle')}
-      />
+      <SettingsHeader title={t('settings.about.title')} subtitle={t('settings.about.subtitle')} />
 
       <SettingsCard className="overflow-hidden">
         <div className="flex flex-col items-center text-center py-4">
@@ -122,11 +124,11 @@ export function AboutTab(): React.ReactElement {
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h3 className="font-black uppercase">{t('updates.sectionTitle')}</h3>
-              <p className={`mt-1 text-sm ${
-                updateError
-                  ? 'text-brutal-red'
-                  : 'text-neutral-600 dark:text-neutral-400'
-              }`}>
+              <p
+                className={`mt-1 text-sm ${
+                  updateError ? 'text-brutal-red' : 'text-neutral-600 dark:text-neutral-400'
+                }`}
+              >
                 {checkingUpdate
                   ? t('updates.checking')
                   : updateError
@@ -184,12 +186,12 @@ function VersionCard({ label, value, tone }: VersionCardProps): React.ReactEleme
 
   return (
     <div className="border-2 border-brutal-black bg-neutral-50 shadow-brutal-sm dark:bg-zinc-900">
-      <div className={`border-b-2 border-brutal-black px-4 py-2 text-xs font-black uppercase ${toneClass}`}>
+      <div
+        className={`border-b-2 border-brutal-black px-4 py-2 text-xs font-black uppercase ${toneClass}`}
+      >
         {label}
       </div>
-      <div className="px-4 py-5 font-mono text-2xl font-bold">
-        {value}
-      </div>
+      <div className="px-4 py-5 font-mono text-2xl font-bold">{value}</div>
     </div>
   );
 }

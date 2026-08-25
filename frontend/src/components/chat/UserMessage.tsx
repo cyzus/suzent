@@ -2,7 +2,14 @@ import React, { useEffect, useRef, useState } from 'react';
 import type { Message } from '../../types/api';
 import { FileIcon } from '../FileIcon';
 import { ClickableContent } from '../ClickableContent';
-import { ArrowDownTrayIcon, EyeIcon, PencilSquareIcon, ArrowPathIcon, ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
+import {
+  ArrowDownTrayIcon,
+  EyeIcon,
+  PencilSquareIcon,
+  ArrowPathIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+} from '@heroicons/react/24/outline';
 import { getApiBase, getSandboxParams } from '../../lib/api';
 import { formatMessageTime } from '../../lib/chatUtils';
 import { useChatStore } from '../../hooks/useChatStore';
@@ -58,15 +65,20 @@ function LazyImage({
       }
       ctx.drawImage(img, 0, 0, w, h);
 
-      const outputMime = (mimeType === 'image/png' || mimeType === 'image/webp' || mimeType === 'image/jpeg')
-        ? mimeType
-        : 'image/jpeg';
-      canvas.toBlob(blob => {
-        if (cancelled || !blob) return;
-        const url = URL.createObjectURL(blob);
-        blobUrlRef.current = url;
-        setSrc(url);
-      }, outputMime, outputMime === 'image/jpeg' ? 0.88 : undefined);
+      const outputMime =
+        mimeType === 'image/png' || mimeType === 'image/webp' || mimeType === 'image/jpeg'
+          ? mimeType
+          : 'image/jpeg';
+      canvas.toBlob(
+        (blob) => {
+          if (cancelled || !blob) return;
+          const url = URL.createObjectURL(blob);
+          blobUrlRef.current = url;
+          setSrc(url);
+        },
+        outputMime,
+        outputMime === 'image/jpeg' ? 0.88 : undefined
+      );
     };
     img.onerror = () => {
       if (!cancelled) setSrc(`data:${mimeType};base64,${data}`);
@@ -83,7 +95,9 @@ function LazyImage({
   }, [data, mimeType]);
 
   if (!src) {
-    return <div className="w-24 h-16 bg-neutral-200 dark:bg-zinc-700 border-2 border-brutal-black animate-pulse" />;
+    return (
+      <div className="w-24 h-16 bg-neutral-200 dark:bg-zinc-700 border-2 border-brutal-black animate-pulse" />
+    );
   }
 
   return (
@@ -153,7 +167,7 @@ function UserImageGallery({
 
   const go = (delta: number) => (e: React.MouseEvent) => {
     e.stopPropagation();
-    setIndex(i => (i + delta + images.length) % images.length);
+    setIndex((i) => (i + delta + images.length) % images.length);
   };
 
   const renderThumb = (img: UserImage) =>
@@ -223,7 +237,9 @@ function UserImageGallery({
         {/* Counter + filename */}
         <div className="absolute bottom-0 left-0 right-0 bg-brutal-black text-brutal-white text-xs px-2 py-1 font-bold flex items-center justify-between gap-2">
           <span className="truncate">{current.filename}</span>
-          <span className="shrink-0">{safeIndex + 1} / {images.length}</span>
+          <span className="shrink-0">
+            {safeIndex + 1} / {images.length}
+          </span>
         </div>
 
         {/* Dot indicators */}
@@ -232,7 +248,10 @@ function UserImageGallery({
             <button
               key={img.key}
               type="button"
-              onClick={(e) => { e.stopPropagation(); setIndex(i); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                setIndex(i);
+              }}
               className={`w-2 h-2 border border-brutal-black ${i === safeIndex ? 'bg-brutal-yellow' : 'bg-brutal-white'}`}
               aria-label={`Go to image ${i + 1}`}
             />
@@ -256,7 +275,15 @@ interface UserMessageProps {
   onRerun?: () => void;
 }
 
-export const UserMessage: React.FC<UserMessageProps> = ({ message, chatId, onImageClick, onFileClick, isLatest, onEdit, onRerun }) => {
+export const UserMessage: React.FC<UserMessageProps> = ({
+  message,
+  chatId,
+  onImageClick,
+  onFileClick,
+  isLatest,
+  onEdit,
+  onRerun,
+}) => {
   const { config } = useChatStore();
   const { t } = useI18n();
   const [isEditing, setIsEditing] = useState(false);
@@ -296,31 +323,32 @@ export const UserMessage: React.FC<UserMessageProps> = ({ message, chatId, onIma
     ta.style.height = `${Math.min(Math.max(ta.scrollHeight, 40), 240)}px`;
   }, [isEditing]);
 
-  const imageFiles = message.files?.filter(f => f.mime_type.startsWith('image/')) ?? [];
-  const otherFiles = message.files?.filter(f => !f.mime_type.startsWith('image/')) ?? [];
+  const imageFiles = message.files?.filter((f) => f.mime_type.startsWith('image/')) ?? [];
+  const otherFiles = message.files?.filter((f) => !f.mime_type.startsWith('image/')) ?? [];
 
   // Normalize images into one list for the gallery. Image `files` are
   // authoritative (they carry a serve URL that survives reload, plus an optional
   // base64 preview for instant display); only fall back to the base64-only
   // `message.images` when there are no image files. This prevents the same image
   // rendering twice when a message happens to carry both.
-  const galleryImages: UserImage[] = imageFiles.length > 0
-    ? imageFiles.map((file, idx) => ({
-        key: file.id || file.path || String(idx),
-        fullSrc: file.preview_data
-          ? `data:${file.mime_type};base64,${file.preview_data}`
-          : `${getApiBase()}/sandbox/serve?${getSandboxParams(chatId || '', file.path, config.sandbox_volumes)}`,
-        data: file.preview_data,
-        mimeType: file.mime_type,
-        filename: file.filename,
-      }))
-    : (message.images ?? []).map((img, idx) => ({
-        key: img.id || String(idx),
-        fullSrc: `data:${img.mime_type};base64,${img.data}`,
-        data: img.data,
-        mimeType: img.mime_type,
-        filename: img.filename,
-      }));
+  const galleryImages: UserImage[] =
+    imageFiles.length > 0
+      ? imageFiles.map((file, idx) => ({
+          key: file.id || file.path || String(idx),
+          fullSrc: file.preview_data
+            ? `data:${file.mime_type};base64,${file.preview_data}`
+            : `${getApiBase()}/sandbox/serve?${getSandboxParams(chatId || '', file.path, config.sandbox_volumes)}`,
+          data: file.preview_data,
+          mimeType: file.mime_type,
+          filename: file.filename,
+        }))
+      : (message.images ?? []).map((img, idx) => ({
+          key: img.id || String(idx),
+          fullSrc: `data:${img.mime_type};base64,${img.data}`,
+          data: img.data,
+          mimeType: img.mime_type,
+          filename: img.filename,
+        }));
 
   if (!message.content?.trim() && !message.images?.length && !message.files?.length) {
     return null;
@@ -337,10 +365,15 @@ export const UserMessage: React.FC<UserMessageProps> = ({ message, chatId, onIma
           {otherFiles.map((file, fileIdx) => {
             const downloadUrl = `${getApiBase()}/sandbox/serve?${getSandboxParams(chatId || '', file.path, config.sandbox_volumes)}`;
             return (
-              <div key={fileIdx} className="bg-white dark:bg-zinc-800 border-3 border-brutal-black shadow-brutal px-4 py-3 flex items-center gap-3 max-w-md w-full animate-brutal-pop">
+              <div
+                key={fileIdx}
+                className="bg-white dark:bg-zinc-800 border-3 border-brutal-black shadow-brutal px-4 py-3 flex items-center gap-3 max-w-md w-full animate-brutal-pop"
+              >
                 <FileIcon mimeType={file.mime_type} className="w-6 h-6 shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-bold text-brutal-black dark:text-white truncate">{file.filename}</div>
+                  <div className="text-sm font-bold text-brutal-black dark:text-white truncate">
+                    {file.filename}
+                  </div>
                   <div className="text-xs text-neutral-500 dark:text-neutral-400">
                     {file.size > 0 ? `${(file.size / 1024).toFixed(1)} KB` : file.mime_type}
                   </div>
@@ -375,7 +408,11 @@ export const UserMessage: React.FC<UserMessageProps> = ({ message, chatId, onIma
         <div className="flex justify-end pr-1 pb-1">
           <div className="relative max-w-full border-2 border-brutal-black bg-brutal-yellow px-4 py-3 font-medium shadow-[2px_2px_0_0_#000] select-text dark:border-white dark:shadow-[2px_2px_0_0_#fff]">
             <div className="prose prose-sm max-w-none break-words text-brutal-black font-sans whitespace-pre-wrap">
-              <ClickableContent content={content} onFileClick={onFileClick} fileChipTone="neutral" />
+              <ClickableContent
+                content={content}
+                onFileClick={onFileClick}
+                fileChipTone="neutral"
+              />
             </div>
           </div>
         </div>
@@ -431,7 +468,10 @@ export const UserMessage: React.FC<UserMessageProps> = ({ message, chatId, onIma
         <div className="flex items-center justify-end gap-2 pr-1">
           {canEdit && (
             <div className="flex items-center gap-1 opacity-0 group-hover/message:opacity-100 focus-within:opacity-100 transition-opacity">
-              <CopyButton text={content} className="w-6 h-6 flex items-center justify-center bg-transparent text-neutral-400 hover:text-brutal-black dark:hover:text-white transition-colors" />
+              <CopyButton
+                text={content}
+                className="w-6 h-6 flex items-center justify-center bg-transparent text-neutral-400 hover:text-brutal-black dark:hover:text-white transition-colors"
+              />
               {onEdit && (
                 <button
                   onClick={startEditing}

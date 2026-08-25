@@ -19,9 +19,7 @@ interface Props {
 export const AcpPermissionPrompt: React.FC<Props> = ({ request, stale }) => {
   const { t } = useI18n();
   const [pending, setPending] = useState(false);
-  const [outcome, setOutcome] = useState<'approved' | 'denied' | null>(
-    request.resolved ?? null,
-  );
+  const [outcome, setOutcome] = useState<'approved' | 'denied' | null>(request.resolved ?? null);
   const [error, setError] = useState<string | null>(null);
 
   const decide = async (approved: boolean, optionId?: string) => {
@@ -37,8 +35,8 @@ export const AcpPermissionPrompt: React.FC<Props> = ({ request, stale }) => {
     }
   };
 
-  const allowOptions = request.options.filter(o => o.kind.startsWith('allow'));
-  const rejectOptions = request.options.filter(o => o.kind.startsWith('reject'));
+  const allowOptions = request.options.filter((o) => o.kind.startsWith('allow'));
+  const rejectOptions = request.options.filter((o) => o.kind.startsWith('reject'));
   const title = request.toolCall?.title || t('acp.permission.untitled');
 
   return (
@@ -56,9 +54,7 @@ export const AcpPermissionPrompt: React.FC<Props> = ({ request, stale }) => {
 
         {outcome ? (
           <div className="text-[11px] font-mono font-bold uppercase">
-            {outcome === 'approved'
-              ? t('acp.permission.approved')
-              : t('acp.permission.denied')}
+            {outcome === 'approved' ? t('acp.permission.approved') : t('acp.permission.denied')}
           </div>
         ) : stale ? (
           <div className="text-[11px] font-mono uppercase text-neutral-500">
@@ -66,7 +62,7 @@ export const AcpPermissionPrompt: React.FC<Props> = ({ request, stale }) => {
           </div>
         ) : (
           <div className="flex flex-wrap gap-2">
-            {allowOptions.map(option => (
+            {allowOptions.map((option) => (
               <button
                 key={option.optionId}
                 disabled={pending}
@@ -76,7 +72,7 @@ export const AcpPermissionPrompt: React.FC<Props> = ({ request, stale }) => {
                 {option.name}
               </button>
             ))}
-            {rejectOptions.map(option => (
+            {rejectOptions.map((option) => (
               <button
                 key={option.optionId}
                 disabled={pending}
@@ -89,9 +85,7 @@ export const AcpPermissionPrompt: React.FC<Props> = ({ request, stale }) => {
           </div>
         )}
 
-        {error && (
-          <div className="text-[11px] font-mono text-red-600 break-words">{error}</div>
-        )}
+        {error && <div className="text-[11px] font-mono text-red-600 break-words">{error}</div>}
       </div>
     </div>
   );

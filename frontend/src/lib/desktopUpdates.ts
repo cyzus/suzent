@@ -15,9 +15,9 @@ let pendingUpdateCheck: Promise<UpdateStatus> | null = null;
 export function checkDesktopUpdate(force = false): Promise<UpdateStatus> {
   if (pendingUpdateCheck) return pendingUpdateCheck;
   if (
-    !force
-    && cachedUpdateStatus
-    && Date.now() - cachedUpdateStatus.checkedAt < UPDATE_STATUS_CACHE_MS
+    !force &&
+    cachedUpdateStatus &&
+    Date.now() - cachedUpdateStatus.checkedAt < UPDATE_STATUS_CACHE_MS
   ) {
     return Promise.resolve(cachedUpdateStatus.value);
   }

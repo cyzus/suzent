@@ -2,15 +2,15 @@
 declare module 'prismjs';
 
 interface Window {
-    __TAURI__?: {
-        window: {
-            getCurrentWindow: () => {
-                minimize: () => Promise<void>;
-                toggleMaximize: () => Promise<void>;
-                close: () => Promise<void>;
-                startDragging: () => Promise<void>;
-            };
-        };
+  __TAURI__?: {
+    window: {
+      getCurrentWindow: () => {
+        minimize: () => Promise<void>;
+        toggleMaximize: () => Promise<void>;
+        close: () => Promise<void>;
+        startDragging: () => Promise<void>;
+      };
     };
-    __SUZENT_BACKEND_PORT__?: number;
+  };
+  __SUZENT_BACKEND_PORT__?: number;
 }

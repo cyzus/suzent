@@ -23,7 +23,16 @@ function ClaudeIcon({ api, className }: IconProps & { api?: boolean }) {
       {api && (
         <g>
           <circle cx="19" cy="19" r="4.5" fill="var(--color-brutal-amber, #f59e0b)" />
-          <text x="19" y="21" textAnchor="middle" fontSize="6" fontWeight="bold" fill="var(--color-brutal-black, #1a1a1a)">A</text>
+          <text
+            x="19"
+            y="21"
+            textAnchor="middle"
+            fontSize="6"
+            fontWeight="bold"
+            fill="var(--color-brutal-black, #1a1a1a)"
+          >
+            A
+          </text>
         </g>
       )}
     </svg>
@@ -47,7 +56,15 @@ function OpenAIIcon({ className }: IconProps) {
  */
 function HermesIcon({ className }: IconProps) {
   return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       {/* Staff */}
       <line x1="12" y1="2" x2="12" y2="22" />
       {/* Left snake */}
@@ -80,8 +97,20 @@ function OpenClawIcon({ className }: IconProps) {
       {/* Right claw */}
       <path d="M100 45C115 40 120 50 115 60C110 70 100 65 95 55C92 48 95 45 100 45Z" />
       {/* Antennae */}
-      <path d="M45 15Q35 5 30 8" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-      <path d="M75 15Q85 5 90 8" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+      <path
+        d="M45 15Q35 5 30 8"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="3"
+        strokeLinecap="round"
+      />
+      <path
+        d="M75 15Q85 5 90 8"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="3"
+        strokeLinecap="round"
+      />
       {/* Eyes — inverted (background color) for contrast */}
       <circle cx="45" cy="35" r="6" className="fill-white dark:fill-neutral-900" />
       <circle cx="75" cy="35" r="6" className="fill-white dark:fill-neutral-900" />
@@ -94,7 +123,15 @@ function OpenClawIcon({ className }: IconProps) {
 /** Fallback — generic agent icon for unknown custom agents. */
 function DefaultIcon({ className }: IconProps) {
   return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <rect x="4" y="2" width="16" height="13" rx="3" />
       <line x1="9" y1="15" x2="9" y2="21" />
       <line x1="15" y1="15" x2="15" y2="21" />
@@ -111,7 +148,13 @@ function DefaultIcon({ className }: IconProps) {
  * Shared by the settings tab and the chat transcript so a turn produced by an
  * external agent is marked with that agent rather than with Suzent's robot.
  */
-export function AcpAgentIcon({ id, className = 'w-5 h-5 shrink-0' }: { id?: string; className?: string }) {
+export function AcpAgentIcon({
+  id,
+  className = 'w-5 h-5 shrink-0',
+}: {
+  id?: string;
+  className?: string;
+}) {
   if (id === 'claude-code') return <ClaudeIcon className={className} />;
   if (id === 'claude-code-api') return <ClaudeIcon className={className} api />;
   if (id === 'codex') return <OpenAIIcon className={className} />;
@@ -119,4 +162,3 @@ export function AcpAgentIcon({ id, className = 'w-5 h-5 shrink-0' }: { id?: stri
   if (id === 'openclaw') return <OpenClawIcon className={className} />;
   return <DefaultIcon className={className} />;
 }
-
