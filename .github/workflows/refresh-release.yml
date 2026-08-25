@@ -136,10 +136,24 @@ jobs:
           fi
           if [[ "$PR_FOUND" == "true" ]]; then
             git push origin "HEAD:$branch"
+            echo "openable=true" >> "$GITHUB_OUTPUT"
+          elif [[ "$(git rev-list --count origin/main..HEAD)" == "0" ]]; then
+            # Nothing is pending: the reconcile changed nothing, so this branch
+            # is main. Pushing it would leave a branch with no PR behind - which
+            # `prepare-release` then refuses to run against - and opening a PR
+            # for it fails outright with "No commits between main and ...".
+            #
+            # This is the state right after a release merges. The tag is created
+            # by `release-on-merge`, which is still running when this workflow
+            # fires on the same push, so the range since the last tag still
+            # looks releasable here even though it has just shipped.
+            echo "::notice::Nothing pending; the release branch would be identical to main"
+            echo "openable=false" >> "$GITHUB_OUTPUT"
           else
             # No PR is open, so anything still sitting on the branch is a
             # leftover from a closed one and would only reject the push.
             git push --force origin "HEAD:$branch"
+            echo "openable=true" >> "$GITHUB_OUTPUT"
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
         env:
@@ -149,7 +163,8 @@ jobs:
       - name: Open the Release PR
         if: >-
           steps.pr.outputs.found != 'true' &&
-          steps.releasable.outputs.ok == 'true'
+          steps.releasable.outputs.ok == 'true' &&
+          steps.refresh.outputs.openable == 'true'
         shell: bash
         run: |
           # printf rather than a heredoc: a `run: |` block cannot carry a line at
