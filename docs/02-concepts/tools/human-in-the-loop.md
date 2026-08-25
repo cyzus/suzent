@@ -1,5 +1,10 @@
 # Tool Permissions and Human Approval
 
+**Sovereign authority.** This is the boundary where an agent's reasoning
+becomes action in the world. A sovereign agent does not cross it on its own
+terms: every gated call below is a point at which Suzent stops and asks, under
+rules you set. See [what makes an agent sovereign](https://suzent.com/sovereign).
+
 Suzent evaluates every deferred tool call through one backend permission engine. The engine decides whether to allow, deny, or ask, and it supplies the exact actions shown by the frontend. The client never constructs permission rules itself.
 
 ## Deferred Tools

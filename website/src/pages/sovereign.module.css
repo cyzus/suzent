@@ -294,3 +294,37 @@
     left: 1.5rem;
   }
 }
+
+.definitionTitle {
+  max-width: 900px;
+  margin-bottom: 1.75rem !important;
+  font-family: 'Arial Black', sans-serif;
+  font-weight: 900 !important;
+  font-size: clamp(1.75rem, 4vw, 3rem) !important;
+  line-height: 1.05 !important;
+  text-transform: uppercase;
+}
+
+.definitionBody {
+  max-width: 860px;
+  margin: 0;
+  font-size: clamp(1.1rem, 1.8vw, 1.35rem);
+  line-height: 1.7;
+}
+
+.disambiguation {
+  max-width: 860px;
+  margin: 2rem 0 0;
+  padding-left: 1rem;
+  border-left: 1px solid var(--sovereign-line);
+  color: var(--sovereign-muted);
+  font-size: 0.98rem;
+  line-height: 1.7;
+}
+
+.testAnswer {
+  margin: 0.55rem 0 0 !important;
+  color: var(--sovereign-muted);
+  font-size: 0.95rem;
+  line-height: 1.65;
+}

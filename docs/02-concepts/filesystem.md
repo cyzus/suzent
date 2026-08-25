@@ -1,5 +1,10 @@
 # Filesystem & Execution
 
+**Sovereign vessel.** A sovereign agent runs in a domain you control. The
+modes below decide exactly which folders it can reach and where its code
+executes — granted deliberately by you, not inherited from a platform. See
+[what makes an agent sovereign](https://suzent.com/sovereign).
+
 Suzent provides secure file access and code execution through two modes: **Sandbox Mode** (isolated Docker container) and **Host Mode** (direct execution with restrictions).
 
 ## Execution Modes

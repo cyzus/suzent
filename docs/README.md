@@ -1,5 +1,11 @@
 # Documentation
 
+Suzent is a sovereign AI agent: an open-source, local-first agent whose identity,
+memory, skills, workspace, and runtime stay under your control, independent of
+any model or platform. For the definition of agent sovereignty and the
+five-question ownership test, see
+[what makes an agent sovereign](https://suzent.com/sovereign).
+
 ## Getting Started
 - [What is Suzent?](01-getting-started/intro.md): Core concepts and architecture overview
 - [Quickstart](01-getting-started/quickstart.md): Set up Suzent from scratch in under 5 minutes

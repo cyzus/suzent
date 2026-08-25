@@ -350,27 +350,8 @@ export default function Home(): ReactNode {
     >
       <Head>
         <style>{`.navbar,.navbar--fixed-top,.footer{display:none!important}`}</style>
-        <script type="application/ld+json">
-          {JSON.stringify({
-            '@context': 'https://schema.org',
-            '@type': 'SoftwareApplication',
-            name: 'Suzent',
-            alternateName: 'The Sovereign AI Agent',
-            description: 'A sovereign AI agent whose identity, memory, skills, workspace, and runtime remain under your control.',
-            url: 'https://suzent.com/',
-            applicationCategory: 'DeveloperApplication',
-            operatingSystem: 'Windows, macOS, Linux',
-            codeRepository: 'https://github.com/cyzus/suzent',
-            downloadUrl: 'https://github.com/cyzus/suzent/releases',
-            license: 'https://www.apache.org/licenses/LICENSE-2.0',
-            featureList: [
-              'Model-independent identity',
-              'User-owned memory and skills',
-              'Permissioned and sandboxed actions',
-              'Portable agent state',
-            ],
-          })}
-        </script>
+        {/* The SoftwareApplication / WebSite entity graph is emitted site-wide
+            from docusaurus.config.ts headTags. */}
       </Head>
       <HomepageNav />
       <HomepageHeader />
