@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Extract the settings navigation into its own component
 
 ### 🐛 Fixed
+- Repair how a streaming turn renders
 - Self-host Monaco so file diffs stop hanging at "Loading viewer"
 - Squeeze the chat before evicting a sidebar
 - Stop a chat's own tasks from popping the sidebar open on switch
