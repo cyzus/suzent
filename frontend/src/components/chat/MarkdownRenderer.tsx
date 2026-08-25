@@ -77,6 +77,12 @@ interface MarkdownRendererProps {
   content: string;
   onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
   streamingLite?: boolean;
+  /**
+   * Draw a blinking caret after the last character. Only honoured on the
+   * lightweight streaming path, which is the only one that renders a partial
+   * message.
+   */
+  caret?: boolean;
 }
 
 function encodePathSegments(path: string): string {
@@ -237,7 +243,7 @@ const LiteCodeBlock: React.FC<{ lang?: string; content: string }> = ({ lang, con
   const lineCount = content ? content.split('\n').length : 1;
 
   return (
-    <div className="my-3 font-mono text-sm border-2 border-brutal-black dark:border-zinc-500 bg-white dark:bg-zinc-900 overflow-hidden">
+    <div className="lite-code my-3 font-mono text-sm border-2 border-brutal-black dark:border-zinc-500 bg-white dark:bg-zinc-900 overflow-hidden">
       <div className="flex items-center gap-2 px-3 py-1.5 bg-brutal-black dark:bg-zinc-800 border-b-2 border-brutal-black dark:border-zinc-500">
         <span className="text-white dark:text-brutal-yellow font-black uppercase text-[10px] truncate">
           {safeLang}
@@ -271,7 +277,7 @@ const LiteTable: React.FC<{ lines: string[]; sourcesMap?: CitationSourcesMap | n
   const rows = lines.slice(2).map(splitLiteTableRow);
 
   return (
-    <div className="overflow-x-auto">
+    <div className="lite-table overflow-x-auto">
       <table className="text-xs border-2 border-brutal-black dark:border-zinc-500 bg-white dark:bg-zinc-900">
         <thead>
           <tr>
@@ -304,7 +310,10 @@ const LiteTable: React.FC<{ lines: string[]; sourcesMap?: CitationSourcesMap | n
   );
 };
 
-const LiteMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
+const LiteMarkdownRenderer: React.FC<{ content: string; caret?: boolean }> = ({
+  content,
+  caret,
+}) => {
   const sourcesMap = useCitationSources();
   const parts: React.ReactNode[] = [];
   const fencePattern = /```([a-zA-Z0-9_-]*)[ \t]*\n?([\s\S]*?)(?:```|$)/g;
@@ -399,7 +408,7 @@ const LiteMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
         parts.push(
           <div
             key={`${keyPrefix}-li-${parts.length}-${lineIndex}`}
-            className="flex gap-2 leading-relaxed"
+            className="lite-list-row flex gap-2 leading-relaxed"
           >
             <span className="shrink-0 text-neutral-500">{ordered ? `${ordered[1]}.` : '•'}</span>
             <span className="min-w-0 break-words">{renderLiteInline(body, sourcesMap)}</span>
@@ -433,7 +442,9 @@ const LiteMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
   }
 
   return (
-    <div className="prose dark:prose-invert tight-lists prose-sm max-w-none break-words select-text space-y-3">
+    <div
+      className={`prose dark:prose-invert tight-lists prose-sm max-w-none break-words select-text space-y-3${caret ? ' streaming-caret' : ''}`}
+    >
       {parts}
     </div>
   );
@@ -477,7 +488,7 @@ function safeUrlTransform(url: string): string {
 }
 
 export const MarkdownRenderer = React.memo<MarkdownRendererProps>(
-  ({ content, onFileClick, streamingLite = false }) => {
+  ({ content, onFileClick, streamingLite = false, caret = false }) => {
     const RM: any = ReactMarkdown;
     const sourcesMap = useCitationSources();
     const openingLinksRef = React.useRef(new Map<string, number>());
@@ -827,7 +838,7 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(
     );
 
     if (streamingLite) {
-      return <LiteMarkdownRenderer content={sanitized} />;
+      return <LiteMarkdownRenderer content={sanitized} caret={caret} />;
     }
 
     return (

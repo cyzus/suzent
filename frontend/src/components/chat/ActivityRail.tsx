@@ -4,6 +4,7 @@ import type { ContentBlock } from '../../lib/chatUtils';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { getRepeatedToolLabel, getToolSummary, normalizeToolName } from './toolSummary';
 import type { ToolTense } from './toolSummary';
+import { useTypewriter } from '../../hooks/useTypewriter';
 import { tForLocale } from '../../i18n';
 
 export type ActivityRenderGroup<T> =
@@ -186,10 +187,13 @@ export function getAguiActivityLabel(
       const items = chunks
         .slice(0, i + 1)
         .flatMap((entry) => (entry.chunk.type === 'tool' ? (entry.chunk.items ?? []) : []));
-      const toolIndex = findLastIndex(
+      // Prefer the call still in flight; once the group has finished, describe
+      // what it ended on so a settled rail still says what it did.
+      const unfinishedIndex = findLastIndex(
         items,
         (part) => !part.output || part.state === 'approval-requested'
       );
+      const toolIndex = unfinishedIndex >= 0 ? unfinishedIndex : items.length - 1;
       if (toolIndex >= 0) {
         const tool = items[toolIndex];
         return formatActiveToolLabel(
@@ -234,10 +238,11 @@ export function getLegacyActivityLabel(
       const blocks = chunks
         .slice(0, i + 1)
         .flatMap((entry) => (entry.chunk.type === 'toolCall' ? (entry.chunk.blocks ?? []) : []));
-      const toolIndex = findLastIndex(
+      const unfinishedIndex = findLastIndex(
         blocks,
         (block) => !block.content || block.approvalState === 'pending'
       );
+      const toolIndex = unfinishedIndex >= 0 ? unfinishedIndex : blocks.length - 1;
       if (toolIndex >= 0) {
         const tool = blocks[toolIndex];
         return formatActiveToolLabel(
@@ -285,7 +290,14 @@ export const ActivityRail: React.FC<{
   startedAtMs?: number;
   showDuration?: boolean;
   defaultExpanded?: boolean;
+  /** The turn is still streaming — keeps the worked-for clock running. */
   isActive?: boolean;
+  /**
+   * This rail is the one the agent is working in right now. A turn that
+   * interleaves prose with tool calls renders several rails, and only the last
+   * of them is live: the earlier ones are finished work and must not animate.
+   */
+  isCurrent?: boolean;
   hasPending?: boolean;
   currentLabel?: string;
 }> = ({
@@ -296,10 +308,14 @@ export const ActivityRail: React.FC<{
   showDuration = true,
   defaultExpanded = false,
   isActive = false,
+  isCurrent = isActive,
   hasPending = false,
   currentLabel,
 }) => {
   const [expanded, setExpanded] = useState(defaultExpanded);
+  // Once the user has opened or closed a rail themselves, stop steering it —
+  // auto-collapsing a rail they deliberately opened is worse than leaving it.
+  const userToggledRef = React.useRef(false);
   // Use the caller-provided start time when available so the timer resumes from
   // the original start across remounts (e.g. reconnecting to a stream after a
   // chat switch); otherwise fall back to mount time.
@@ -314,10 +330,11 @@ export const ActivityRail: React.FC<{
     }
   }, [startedAtMs]);
 
+  // Follow the caller in both directions so a rail the agent has moved past
+  // folds itself away instead of leaving the whole turn expanded at once.
   useEffect(() => {
-    if (defaultExpanded) {
-      setExpanded(true);
-    }
+    if (userToggledRef.current) return;
+    setExpanded(defaultExpanded);
   }, [defaultExpanded]);
 
   useEffect(() => {
@@ -335,19 +352,20 @@ export const ActivityRail: React.FC<{
   // Only the turn's first rail reports the worked time. When assistant text
   // splits a turn into several rails they all belong to one stretch of work, so
   // the later ones show what is happening instead of starting a second clock.
-  const headerLabel = showDuration
-    ? durationLabel
-    : (currentLabel ?? (isActive ? durationLabel : 'Activity'));
+  const headerLabel = showDuration ? durationLabel : (currentLabel ?? 'Activity');
 
   return (
     <div className="activity-rail-shell min-w-0 w-full">
       <button
         type="button"
-        onClick={() => setExpanded((value) => !value)}
+        onClick={() => {
+          userToggledRef.current = true;
+          setExpanded((value) => !value);
+        }}
         className={`activity-rail-header ${
           hasPending && !expanded
             ? 'activity-rail-header-pending'
-            : isActive && !expanded
+            : isCurrent && !expanded
               ? 'activity-rail-header-active'
               : ''
         }`}
@@ -425,6 +443,9 @@ export const ReasoningRailItem: React.FC<{
   onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
 }> = ({ text, isStreaming, onFileClick }) => {
   const [expanded, setExpanded] = useState(false);
+  // Reasoning arrives in the same uneven bursts as the answer; reveal it at a
+  // steady rate so an expanded thought reads as flowing text.
+  const revealedText = useTypewriter(text, Boolean(isStreaming) && expanded);
   return (
     <ActivityRailItem state={isStreaming ? 'active' : 'done'}>
       <div className="min-w-0">
@@ -453,7 +474,7 @@ export const ReasoningRailItem: React.FC<{
             <div className="mt-2 pt-1">
               <div className="text-[13px] md:text-sm text-brutal-black/85 dark:text-neutral-300 leading-relaxed break-words opacity-90">
                 <MarkdownRenderer
-                  content={text}
+                  content={revealedText}
                   onFileClick={onFileClick}
                   streamingLite={isStreaming}
                 />

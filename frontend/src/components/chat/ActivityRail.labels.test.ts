@@ -85,6 +85,34 @@ describe('getAguiActivityLabel', () => {
     expect(getAguiActivityLabel(chunks, true)).toBe('Running npm test');
   });
 
+  it('still describes a group whose work is already finished', () => {
+    // A turn that interleaves prose with tool calls renders one rail per group.
+    // Without a label the settled rails fall back to the header's worked-for
+    // text, so every rail in the turn repeats the same duration.
+    const chunks = [
+      {
+        chunk: {
+          type: 'tool',
+          items: [
+            toolPart({ toolName: 'read_file', args: JSON.stringify({ file_path: 'src/main.py' }) }),
+          ],
+        },
+      },
+    ];
+
+    expect(getAguiActivityLabel(chunks, false)).toBe('Read main.py');
+  });
+
+  it('counts a finished streak in the past tense', () => {
+    const chunks = [
+      {
+        chunk: { type: 'tool', items: Array.from({ length: 4 }, () => toolPart()) },
+      },
+    ];
+
+    expect(getAguiActivityLabel(chunks, false)).toBe('Ran 4 commands');
+  });
+
   it('describes a lone call instead of counting it', () => {
     const items = [
       toolPart({ toolName: 'read_file' }),

@@ -1305,7 +1305,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const showTransientAssistant = streamingForCurrentChat || hasPendingTransientApprovals;
 
   // Safe values
-  const safeMessages = useMemo(
+  const reconciledMessages = useMemo(
     () =>
       reconcileToolCallMessages(
         hideStreamingDrafts(messages || [], showTransientAssistant),
@@ -1313,6 +1313,24 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       ),
     [messages, showTransientAssistant, streamingParts]
   );
+  // `reconcileToolCallMessages` rebuilds the array on every streaming chunk,
+  // and a token delta never touches a settled message. Handing a fresh identity
+  // downstream anyway re-renders the whole history -- render plan, minimap
+  // markers, every tool block -- per token, which is what makes scrolling crawl
+  // while the agent works. Keep the previous array whenever it is element-wise
+  // unchanged so the memoised consumers can bail out.
+  const stableMessagesRef = useRef<Message[]>(reconciledMessages);
+  const safeMessages = useMemo(() => {
+    const previous = stableMessagesRef.current;
+    if (
+      previous.length === reconciledMessages.length &&
+      previous.every((message, index) => message === reconciledMessages[index])
+    ) {
+      return previous;
+    }
+    stableMessagesRef.current = reconciledMessages;
+    return reconciledMessages;
+  }, [reconciledMessages]);
   const visibleMessageStartIndex = Math.max(0, safeMessages.length - visibleMessageCount);
   const visibleMessages = useMemo(
     () => safeMessages.slice(visibleMessageStartIndex),
@@ -1372,6 +1390,26 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       _base.agent || (_isPlatformChat ? _prefs?.agent || backendConfig?.agents?.[0] || '' : ''),
     tools: _base.tools?.length ? _base.tools : _isPlatformChat ? (_prefs?.tools ?? []) : [],
   });
+
+  // `safeConfig` is rebuilt on every render, so passing its policy object
+  // straight into the memoised message list would defeat the memo and re-render
+  // the whole history on each streaming chunk. Hold the previous object while
+  // its contents are unchanged.
+  const toolApprovalPolicy = safeConfig.tool_approval_policy;
+  const stableToolApprovalPolicyRef = useRef(toolApprovalPolicy);
+  const stableToolApprovalPolicy = useMemo(() => {
+    const previous = stableToolApprovalPolicyRef.current;
+    const previousKeys = Object.keys(previous ?? {});
+    const nextKeys = Object.keys(toolApprovalPolicy ?? {});
+    if (
+      previousKeys.length === nextKeys.length &&
+      nextKeys.every((key) => previous?.[key] === toolApprovalPolicy?.[key])
+    ) {
+      return previous;
+    }
+    stableToolApprovalPolicyRef.current = toolApprovalPolicy;
+    return toolApprovalPolicy;
+  }, [toolApprovalPolicy]);
 
   useEffect(() => {
     if (!_isCronChat || !Number.isFinite(cronJobId)) {
@@ -1504,6 +1542,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const fallbackModelSignature = safeConfig.acp_agent_id
     ? `acp/${safeConfig.acp_agent_id}`
     : safeConfig.model;
+
+  const handleOpenForkOrigin = useCallback(
+    (chatId: string) => {
+      void loadChat(chatId, { force: true });
+    },
+    [loadChat]
+  );
 
   const handleStopSubAgent = useCallback(async (taskId: string) => {
     try {
@@ -2496,7 +2541,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                     onImageClick={setViewingImage}
                     onFileClick={handleFileClick}
                     onToolApproval={handleToolApproval}
-                    toolApprovalPolicy={safeConfig.tool_approval_policy}
+                    toolApprovalPolicy={stableToolApprovalPolicy}
                     onRemoveApprovalPolicy={handleRemoveApprovalPolicy}
                     onInlineAction={handleInlineAction}
                     subAgentTasks={subAgentTasks}
@@ -2506,7 +2551,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                     onRetry={!isStreaming ? handleRetry : undefined}
                     onFork={!isStreaming ? requestFork : undefined}
                     forkOrigin={forkOrigin}
-                    onOpenForkOrigin={(chatId) => void loadChat(chatId, { force: true })}
+                    onOpenForkOrigin={handleOpenForkOrigin}
                     onEditUserMessage={!isStreaming ? handleEditUserMessage : undefined}
                     fallbackModel={fallbackModelSignature}
                   />
