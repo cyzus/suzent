@@ -169,8 +169,12 @@ def _parse_arguments(raw: str) -> dict:
         return {}
     try:
         parsed = json.loads(text)
-    except json.JSONDecodeError:
-        logger.debug(f"Unparseable tool call arguments: {text[:200]}")
+    except json.JSONDecodeError as exc:
+        # Never log the argument text itself: tool args carry secrets and PII.
+        logger.debug(
+            f"Unparseable tool call arguments ({len(text)} chars): {exc.msg} "
+            f"at position {exc.pos}"
+        )
         return {}
     return parsed if isinstance(parsed, dict) else {}
 
@@ -211,7 +215,9 @@ class StreamParser:
             # SSE events are separated by double newlines
             while "\n\n" in self.buffer:
                 event_block, self.buffer = self.buffer.split("\n\n", 1)
-                logger.debug(f"Parsing SSE block: {event_block[:100]}...")
+                # Log the shape, not the payload: blocks carry tool arguments
+                # and tool output, which can hold secrets and PII.
+                logger.debug(f"Parsing SSE block ({len(event_block)} chars)")
 
                 # An event block can have multiple lines (data:, event:, id:, retry:)
                 # We only care about the "data:" lines for now.

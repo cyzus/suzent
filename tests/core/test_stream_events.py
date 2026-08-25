@@ -480,3 +480,36 @@ def test_stream_parser_legacy_tool_output_event():
     assert events[0].tool_name == "calc"
     assert events[0].output == "42"
     assert events[0].tool_call_id == "t1"
+
+
+def test_stream_parser_does_not_log_raw_tool_arguments():
+    """Malformed args must not reach the logs: they can carry secrets/PII."""
+    from suzent.logger import logger
+
+    records: list[str] = []
+    sink_id = logger.add(records.append, level="DEBUG")
+    try:
+        parser = StreamParser()
+        list(
+            parser.parse(
+                [
+                    _sse(
+                        '{"type": "TOOL_CALL_START", "toolCallId": "c", '
+                        '"toolCallName": "bash_execute"}'
+                    ),
+                    _sse(
+                        '{"type": "TOOL_CALL_ARGS", "toolCallId": "c", '
+                        '"delta": "{\\"sk-secret-token\\": "}'
+                    ),
+                ]
+            )
+        )
+        call = list(parser.flush())[0]
+    finally:
+        logger.remove(sink_id)
+
+    assert call.arguments == {}
+    assert call.raw_arguments  # still available to the caller, just not logged
+    logged = "".join(records)
+    assert "sk-secret-token" not in logged
+    assert "Unparseable tool call arguments" in logged
