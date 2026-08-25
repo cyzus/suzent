@@ -1,5 +1,10 @@
 # Suzent Skills Guide
 
+**Sovereign mind.** Skills are knowledge you author and own. They are
+Markdown in your own directory, not a capability a platform grants you and can
+revoke — which is why they survive a change of model or provider intact. See
+[what makes an agent sovereign](https://suzent.com/sovereign).
+
 This guide covers the skills system in Suzent and how to use and create skills to extend agent capabilities.
 
 ## Overview

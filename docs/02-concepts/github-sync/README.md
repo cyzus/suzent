@@ -1,5 +1,10 @@
 # GitHub Sync
 
+**Sovereign continuity.** Portability is what lets an agent outlive the
+machine it started on. Sync moves the parts that make up the agent while
+credentials stay device-local, so moving to a new machine never means shipping
+your keys. See [what makes an agent sovereign](https://suzent.com/sovereign).
+
 GitHub Sync keeps a portable copy of Suzent configuration, user skills, and
 Markdown memory in a private Git repository. Credentials remain on each device.
 
