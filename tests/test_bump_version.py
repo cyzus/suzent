@@ -490,3 +490,22 @@ def test_an_unclosed_highlights_block_is_not_preserved() -> None:
     assert refreshed is not None
     assert "Someone forgot" not in refreshed
     assert "- Current draft" in refreshed
+
+
+def test_list_version_files_names_every_file_that_exists() -> None:
+    """`refresh-release` resolves a conflict in these files by taking main's
+    copy and rewriting the version. A path that has gone stale would drop out
+    of that set and turn a routine clash back into a failed workflow."""
+    root = Path(__file__).resolve().parent.parent
+
+    result = subprocess.run(
+        [sys.executable, str(root / "scripts/bump_version.py"), "--list-version-files"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    listed = result.stdout.splitlines()
+    assert listed == [target.path for target in VERSION_FILES]
+    assert [path for path in listed if not (root / path).exists()] == []
