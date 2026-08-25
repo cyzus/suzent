@@ -114,7 +114,38 @@ jobs:
               echo "updated=false" >> "$GITHUB_OUTPUT"
               exit 0
             fi
-            git merge --no-edit origin/main
+            # The only edit this branch makes to a version file is the version
+            # number itself, and the reconcile below re-derives that from the
+            # tags regardless. So a version file that conflicts is a textual
+            # clash - main edited a line next to `version = ` - rather than two
+            # branches disagreeing about anything. Take main's copy and write
+            # the pending version back into it. A conflict anywhere else is a
+            # real divergence, and a human has to settle it.
+            pending="$(python scripts/bump_version.py --print-version)"
+            if ! git merge --no-edit origin/main; then
+              conflicted=()
+              while IFS= read -r path; do
+                conflicted+=("$path")
+              done < <(git diff --name-only --diff-filter=U)
+              if [[ "${#conflicted[@]}" == "0" ]]; then
+                echo "::error::Merging main into $branch failed without conflicts"
+                exit 1
+              fi
+              version_files="$(python scripts/bump_version.py --list-version-files)"
+              unresolvable=()
+              for path in "${conflicted[@]}"; do
+                grep -qxF -- "$path" <<< "$version_files" || unresolvable+=("$path")
+              done
+              if [[ "${#unresolvable[@]}" != "0" ]]; then
+                echo "::error::$branch needs a hand-resolved merge with main in: ${unresolvable[*]}"
+                exit 1
+              fi
+              echo "::notice::Resolved a version-file clash with main in ${conflicted[*]}"
+              git checkout origin/main -- "${conflicted[@]}"
+              python scripts/bump_version.py "$pending" --no-changelog
+              git add -A
+              git commit --no-edit
+            fi
           else
             git switch -c "$branch" origin/main
           fi
