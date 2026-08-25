@@ -4,10 +4,420 @@
         <title>SUZENT Blog</title>
         <link>https://suzent.com/blog</link>
         <description>SUZENT Blog</description>
-        <lastBuildDate>Wed, 19 Aug 2026 10:00:00 GMT</lastBuildDate>
+        <lastBuildDate>Tue, 25 Aug 2026 13:00:00 GMT</lastBuildDate>
         <docs>https://validator.w3.org/feed/docs/rss2.html</docs>
         <generator>https://github.com/jpmonette/feed</generator>
         <language>en</language>
+        <item>
+            <title><![CDATA[Swap the Model, Keep the Agent]]></title>
+            <link>https://suzent.com/blog/swap-models-keep-the-agent</link>
+            <guid>https://suzent.com/blog/swap-models-keep-the-agent</guid>
+            <pubDate>Tue, 25 Aug 2026 13:00:00 GMT</pubDate>
+            <description><![CDATA[Why a sovereign AI agent's identity lives in its memory, skills, and workspace rather than in the model — and what has to be true architecturally for a model swap to be a config change.]]></description>
+            <content:encoded><![CDATA[<p>A useful way to tell whether you own an AI agent: change the model underneath it
+and see what happens.</p>
+<p>If the agent forgets who you are, loses its instructions, or has to be
+reconstructed from scratch, then its identity was never in the parts you
+controlled. It was in the vendor's product, and you were borrowing it.</p>
+<p>If the agent keeps working — same memory, same skills, same boundaries, same
+accumulated understanding of your projects — then the model was doing what a
+model should do: thinking, not <em>being</em>.</p>
+<!-- -->
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="the-model-is-an-engine-not-the-self">The model is an engine, not the self<a href="https://suzent.com/blog/swap-models-keep-the-agent#the-model-is-an-engine-not-the-self" class="hash-link" aria-label="Direct link to The model is an engine, not the self" title="Direct link to The model is an engine, not the self" translate="no">​</a></h2>
+<p>This is the first condition of agent sovereignty, and it is the one people find
+least intuitive, because the model is the impressive part. It writes the words.
+It does the reasoning. Surely that is the agent?</p>
+<p>But consider what actually distinguishes <em>your</em> agent from an identical
+installation belonging to someone else. Same code, same model, same version. The
+difference is entirely in:</p>
+<ul>
+<li class="">what it remembers about you and your work,</li>
+<li class="">the skills you gave it,</li>
+<li class="">the workspace and files it can reach,</li>
+<li class="">the permissions and rules you set,</li>
+<li class="">the conventions it has learned not to violate.</li>
+</ul>
+<p>None of that is in the model. All of it is in state that can live on your side
+of the line. The model supplies capability; the state supplies identity. Swap
+the first and the second is untouched — provided the architecture kept them
+separate in the first place.</p>
+<p>That is why Suzent supports <a href="https://suzent.com/docs/concepts/providers" target="_blank" rel="noopener noreferrer" class="">many providers</a>
+— OpenAI, Anthropic, Gemini, DeepSeek, Ollama and local models, and others — and
+lets you switch per session rather than per installation.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="what-has-to-be-true-for-the-swap-to-be-cheap">What has to be true for the swap to be cheap<a href="https://suzent.com/blog/swap-models-keep-the-agent#what-has-to-be-true-for-the-swap-to-be-cheap" class="hash-link" aria-label="Direct link to What has to be true for the swap to be cheap" title="Direct link to What has to be true for the swap to be cheap" translate="no">​</a></h2>
+<p>"Model-agnostic" is a claim a lot of tools make. Three things determine whether
+it survives contact with a real migration.</p>
+<p><strong>Memory has to be model-independent.</strong> If what the agent knows is stored as
+embeddings from one provider's model, switching means re-embedding everything,
+and any drift in retrieval quality is invisible until it bites. Suzent's source
+of truth is <a href="https://suzent.com/docs/concepts/memory" target="_blank" rel="noopener noreferrer" class="">Markdown</a>; the semantic
+index is derived from those files and can be rebuilt. Changing the embedding
+model is a reindex, not a data loss.</p>
+<p><strong>Skills have to be prose, not prompts tuned to one model.</strong> Suzent
+<a href="https://suzent.com/docs/concepts/skills" target="_blank" rel="noopener noreferrer" class="">skills</a> are Markdown knowledge modules
+describing how to work in a domain. Documentation transfers between models.
+Brittle prompt scaffolding tuned to one model's quirks does not.</p>
+<p><strong>Capability differences have to be handled, not ignored.</strong> This is the honest
+caveat. Models genuinely differ — context windows, tool-calling reliability,
+vision support, instruction-following under long autonomous runs. A swap is a
+config change, but it is not a <em>no-op</em>. A smaller local model will not carry a
+long agentic task the way a frontier model does. Sovereignty gives you the
+freedom to choose; it does not make the choices equivalent, and any project
+telling you otherwise is selling something.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="what-this-buys-you-day-to-day">What this buys you day to day<a href="https://suzent.com/blog/swap-models-keep-the-agent#what-this-buys-you-day-to-day" class="hash-link" aria-label="Direct link to What this buys you day to day" title="Direct link to What this buys you day to day" translate="no">​</a></h2>
+<p>Model independence sounds like insurance against a rare disaster. In practice it
+pays out constantly, in ordinary ways:</p>
+<ul>
+<li class="">Run a cheap fast model for routine work and a frontier model for hard
+problems, in the same agent, with the same memory.</li>
+<li class="">Move sensitive work to a local model without moving to a different tool or
+losing context.</li>
+<li class="">Adopt a new release the week it ships instead of waiting for a vendor to
+integrate it.</li>
+<li class="">Stop caring, structurally, about which lab is currently ahead.</li>
+</ul>
+<p>That last one is the real dividend. When identity is independent of the model,
+the frontier race becomes something you benefit from rather than something you
+are exposed to.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="the-check">The check<a href="https://suzent.com/blog/swap-models-keep-the-agent#the-check" class="hash-link" aria-label="Direct link to The check" title="Direct link to The check" translate="no">​</a></h2>
+<p>Question two of the <a href="https://suzent.com/sovereign" target="_blank" rel="noopener noreferrer" class="">sovereignty test</a>: <em>can I
+replace the model without resetting its identity?</em></p>
+<p>It is worth actually trying, rather than trusting the marketing copy. Point your
+agent at a different provider and ask it something only your agent would know.
+The answer tells you where its identity was living all along.</p>
+<hr>
+<p><a href="https://suzent.com/docs/concepts/providers" target="_blank" rel="noopener noreferrer" class="">Providers</a> ·
+<a href="https://suzent.com/sovereign" target="_blank" rel="noopener noreferrer" class="">What makes an agent sovereign</a> ·
+<a href="https://github.com/cyzus/suzent" target="_blank" rel="noopener noreferrer" class="">Source</a></p>]]></content:encoded>
+            <category>sovereignty</category>
+            <category>models</category>
+            <category>architecture</category>
+        </item>
+        <item>
+            <title><![CDATA[What Happens to Your AI Agent When the Provider Shuts Down]]></title>
+            <link>https://suzent.com/blog/when-your-ai-provider-disappears</link>
+            <guid>https://suzent.com/blog/when-your-ai-provider-disappears</guid>
+            <pubDate>Tue, 25 Aug 2026 12:00:00 GMT</pubDate>
+            <description><![CDATA[Model deprecations, price changes, and product sunsets are routine. What you actually lose depends entirely on which side of the boundary your agent's memory and configuration live.]]></description>
+            <content:encoded><![CDATA[<p>Shutdowns make the argument vividly, but they are the rare case. The common case
+is quieter and happens constantly: a model you depended on is deprecated, a
+price tier changes, a product is folded into another product, a rate limit
+arrives, terms are revised, a feature you built a workflow around is retired.</p>
+<p>The interesting question is not whether that happens. It is what it costs you
+when it does — and that is decided long before, by where your agent's durable
+parts live.</p>
+<!-- -->
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="two-versions-of-the-same-bad-tuesday">Two versions of the same bad Tuesday<a href="https://suzent.com/blog/when-your-ai-provider-disappears#two-versions-of-the-same-bad-tuesday" class="hash-link" aria-label="Direct link to Two versions of the same bad Tuesday" title="Direct link to Two versions of the same bad Tuesday" translate="no">​</a></h2>
+<p>Suppose the provider behind your agent announces a sunset in ninety days.</p>
+<p><strong>If your agent is an account</strong>, the ninety days are a migration project. The
+accumulated context — everything it learned about your work — is in a database
+you can query only through whatever export the vendor offers, in whatever shape
+they offer it. Custom instructions have to be rewritten for a different product
+with different conventions. Integrations have to be rebuilt against different
+APIs. And the new agent starts at zero: it does not know your projects, your
+preferences, or the eleven things you already told the old one not to do.</p>
+<p>The cost is not the subscription. It is the re-accumulation.</p>
+<p><strong>If your agent is a system you own</strong>, the ninety days are a config edit. The
+memory is Markdown in a directory you control, unchanged. The skills are your
+own Markdown modules, unchanged. The permission rules are yours, unchanged. You
+point at a different provider, and the agent that knows your work continues
+knowing it.</p>
+<p>What you lost was an API key.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="the-boundary-that-decides-which-tuesday-you-get">The boundary that decides which Tuesday you get<a href="https://suzent.com/blog/when-your-ai-provider-disappears#the-boundary-that-decides-which-tuesday-you-get" class="hash-link" aria-label="Direct link to The boundary that decides which Tuesday you get" title="Direct link to The boundary that decides which Tuesday you get" translate="no">​</a></h2>
+<p>The distinction is not paranoia about vendors and it is not a bet on which
+company survives. It is a structural question you can answer in advance:</p>
+<blockquote>
+<p>Which parts of this agent could the provider take away, and which parts are
+already mine?</p>
+</blockquote>
+<p>For a sovereign AI agent, the answer is drawn deliberately:</p>
+<ul>
+<li class=""><strong>Memory</strong> — <a href="https://suzent.com/docs/concepts/memory" target="_blank" rel="noopener noreferrer" class="">Markdown files on your disk</a>,
+readable and versionable.</li>
+<li class=""><strong>Skills</strong> — knowledge modules you author, in your own directory.</li>
+<li class=""><strong>Configuration and permissions</strong> — rules you wrote, stored locally.</li>
+<li class=""><strong>Workspace</strong> — <a href="https://suzent.com/docs/concepts/filesystem" target="_blank" rel="noopener noreferrer" class="">folders and sandboxes you granted</a>.</li>
+<li class=""><strong>The model</strong> — rented, deliberately, and replaceable.</li>
+</ul>
+<p>Everything above the last line is yours regardless of what happens to the
+company below it. That is what the fifth question of the
+<a href="https://suzent.com/sovereign" target="_blank" rel="noopener noreferrer" class="">sovereignty test</a> is checking: <em>can the agent
+survive the disappearance of its provider?</em></p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="continuity-is-a-design-decision-not-a-promise">Continuity is a design decision, not a promise<a href="https://suzent.com/blog/when-your-ai-provider-disappears#continuity-is-a-design-decision-not-a-promise" class="hash-link" aria-label="Direct link to Continuity is a design decision, not a promise" title="Direct link to Continuity is a design decision, not a promise" translate="no">​</a></h2>
+<p>It is worth being precise about what makes this work, because "we will never
+shut down" is not a plan and no vendor can honestly offer one.</p>
+<p>Continuity comes from two properties, both of which are architectural:</p>
+<p><strong>Identity is not in the model.</strong> If what makes the agent <em>yours</em> is its
+memory, skills, and workspace rather than a specific set of weights or a
+specific vendor's fine-tune, then models become interchangeable engines. Suzent
+supports <a href="https://suzent.com/docs/concepts/providers" target="_blank" rel="noopener noreferrer" class="">many providers</a> and lets
+you switch per session precisely so that no single one becomes load-bearing.</p>
+<p><strong>State is portable without secrets.</strong> Moving an agent should not mean moving
+your credentials. Suzent's
+<a href="https://suzent.com/docs/concepts/github-sync" target="_blank" rel="noopener noreferrer" class="">sync design</a> carries
+configuration, skills, and Markdown memory to a private repository while keeping
+API keys, device identity, and the local secret store off the wire entirely.</p>
+<p>Neither of these is exotic. Both have to be decided early, because retrofitting
+portability onto an agent whose memory is a proprietary blob is not a small
+change — it is a rewrite.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="the-unglamorous-version-of-the-advice">The unglamorous version of the advice<a href="https://suzent.com/blog/when-your-ai-provider-disappears#the-unglamorous-version-of-the-advice" class="hash-link" aria-label="Direct link to The unglamorous version of the advice" title="Direct link to The unglamorous version of the advice" translate="no">​</a></h2>
+<p>You do not need to predict which provider will falter. You need your agent's
+answer to one question to be yes:</p>
+<p>If this provider vanished tonight, would I still have the agent tomorrow?</p>
+<p>Keep the memory in files you can open. Keep the permissions in rules you wrote.
+Keep the credentials separable from both. Then a sunset notice is an
+inconvenience rather than an eviction.</p>
+<hr>
+<p><a href="https://suzent.com/sovereign" target="_blank" rel="noopener noreferrer" class="">Read the sovereignty protocol</a> ·
+<a href="https://suzent.com/docs/getting-started/quickstart" target="_blank" rel="noopener noreferrer" class="">Quickstart</a> ·
+<a href="https://github.com/cyzus/suzent" target="_blank" rel="noopener noreferrer" class="">Source</a></p>]]></content:encoded>
+            <category>sovereignty</category>
+            <category>continuity</category>
+            <category>sovereign-ai</category>
+        </item>
+        <item>
+            <title><![CDATA[How to Own Your AI Agent's Memory]]></title>
+            <link>https://suzent.com/blog/own-your-ai-agent-memory</link>
+            <guid>https://suzent.com/blog/own-your-ai-agent-memory</guid>
+            <pubDate>Tue, 25 Aug 2026 11:00:00 GMT</pubDate>
+            <description><![CDATA[Agent memory you cannot read, edit, or move is not yours. What ownable memory looks like in practice, and how Suzent keeps it as Markdown on your own disk.]]></description>
+            <content:encoded><![CDATA[<p>Memory is the part of an AI agent that is genuinely yours, in the sense that it
+could not have come from anywhere else. The model is a commodity — impressive,
+interchangeable, and someone else's. What your agent knows about your projects,
+your preferences, and the decisions you already made is not.</p>
+<p>Which makes it worth asking where that lives, and on whose terms.</p>
+<!-- -->
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="three-questions-that-decide-ownership">Three questions that decide ownership<a href="https://suzent.com/blog/own-your-ai-agent-memory#three-questions-that-decide-ownership" class="hash-link" aria-label="Direct link to Three questions that decide ownership" title="Direct link to Three questions that decide ownership" translate="no">​</a></h2>
+<p>Whatever agent you use, memory is ownable to the degree that you can answer yes
+to these:</p>
+<p><strong>Can you read all of it?</strong> Not a summary, not a settings screen showing the
+last twenty items. The whole thing, in a format you can open.</p>
+<p><strong>Can you change it?</strong> Agents form wrong impressions. If the only correction
+mechanism is telling the agent it was wrong and hoping the correction sticks,
+you do not have edit access — you have a suggestion box.</p>
+<p><strong>Can you take it with you?</strong> To another machine, another tool, another decade.
+If the answer requires the vendor to still exist and still offer an export
+endpoint, that is a conditional yes, which is a no.</p>
+<p>Most hosted agent memory fails at least two of these, usually the second and
+third. Not maliciously — opaque memory is just the path of least resistance when
+you are building a product and memory is an implementation detail.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="what-ownable-memory-looks-like">What ownable memory looks like<a href="https://suzent.com/blog/own-your-ai-agent-memory#what-ownable-memory-looks-like" class="hash-link" aria-label="Direct link to What ownable memory looks like" title="Direct link to What ownable memory looks like" translate="no">​</a></h2>
+<p>The design that satisfies all three is unglamorous: <strong>plain text files on a
+filesystem you control.</strong></p>
+<p>Suzent's memory is Markdown. After an exchange, it picks out what is worth
+keeping — a preference, a project detail, a fact — and appends it to that day's
+log. Overnight, a consolidation pass folds those logs into topic pages, merging
+duplicates and resolving contradictions.</p>
+<p>The consequences of that being files rather than rows are practical:</p>
+<ul>
+<li class=""><strong>You can read it.</strong> Open the directory. It is a folder of Markdown.</li>
+<li class=""><strong>You can edit it.</strong> Fix a wrong fact in your editor. Delete the page about
+the project you abandoned. The agent's next read sees your version.</li>
+<li class=""><strong>You can version it.</strong> Put the memory directory under Git and you have full
+history, diffs of what your agent learned this week, and the ability to revert
+a bad consolidation pass.</li>
+<li class=""><strong>You can move it.</strong> Copy the folder. That is the migration.</li>
+<li class=""><strong>You can grep it.</strong> Every tool you already own works on it.</li>
+</ul>
+<p>There is a semantic index for retrieval, because search over a year of Markdown
+needs one. The important architectural commitment is the direction of authority:
+<strong>the index serves the files, and can be rebuilt from them.</strong> Delete the index
+and nothing is lost. Delete the files and the index is meaningless. That
+ordering is what keeps the memory yours rather than the database's.</p>
+<p>The <a href="https://suzent.com/docs/concepts/memory" target="_blank" rel="noopener noreferrer" class="">memory documentation</a> covers the
+capture and consolidation mechanics in detail.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="the-parts-that-should-not-be-portable">The parts that should not be portable<a href="https://suzent.com/blog/own-your-ai-agent-memory#the-parts-that-should-not-be-portable" class="hash-link" aria-label="Direct link to The parts that should not be portable" title="Direct link to The parts that should not be portable" translate="no">​</a></h2>
+<p>One caveat worth stating, because "own your memory" invites an obvious mistake:
+not everything the agent holds should travel with it.</p>
+<p>API keys, provider credentials, device identity, and the local secret store are
+deliberately excluded from portable state. When Suzent
+<a href="https://suzent.com/docs/concepts/github-sync" target="_blank" rel="noopener noreferrer" class="">syncs to a private Git repository</a>,
+the payload builder rejects those paths before push. Memory and skills move;
+secrets stay on the device.</p>
+<p>This matters because the failure mode of naive portability is a memory folder
+that quietly accumulates credentials and then gets pushed somewhere. Ownership
+means being able to move the agent <em>without</em> moving your keys.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="why-this-is-the-first-sovereignty-question">Why this is the first sovereignty question<a href="https://suzent.com/blog/own-your-ai-agent-memory#why-this-is-the-first-sovereignty-question" class="hash-link" aria-label="Direct link to Why this is the first sovereignty question" title="Direct link to Why this is the first sovereignty question" translate="no">​</a></h2>
+<p>Of the five questions in the <a href="https://suzent.com/sovereign" target="_blank" rel="noopener noreferrer" class="">sovereignty test</a>,
+memory is first, because it is the one that decides whether the others can even
+be asked.</p>
+<p>If memory is portable and readable, swapping models is a configuration change —
+identity lives in the files, not the weights. If memory is portable and
+readable, a provider shutting down costs you an API key. If it is not, then
+every other form of independence is theoretical: you can leave any time you
+like, as long as you are willing to start over.</p>
+<p>Start with the memory. The rest follows from it.</p>
+<hr>
+<p><a href="https://suzent.com/docs/concepts/memory" target="_blank" rel="noopener noreferrer" class="">Memory docs</a> ·
+<a href="https://suzent.com/docs/getting-started/quickstart" target="_blank" rel="noopener noreferrer" class="">Quickstart</a> ·
+<a href="https://github.com/cyzus/suzent" target="_blank" rel="noopener noreferrer" class="">Source</a></p>]]></content:encoded>
+            <category>sovereignty</category>
+            <category>memory</category>
+            <category>continuity</category>
+        </item>
+        <item>
+            <title><![CDATA[Sovereign AI Agent vs Cloud AI Assistant]]></title>
+            <link>https://suzent.com/blog/sovereign-ai-agent-vs-cloud-assistant</link>
+            <guid>https://suzent.com/blog/sovereign-ai-agent-vs-cloud-assistant</guid>
+            <pubDate>Tue, 25 Aug 2026 10:00:00 GMT</pubDate>
+            <description><![CDATA[An honest comparison of a sovereign AI agent and a hosted cloud AI assistant: what each one owns, what each one costs you, and when the rented option is the right call.]]></description>
+            <content:encoded><![CDATA[<p>A cloud AI assistant is a product you log into. A <strong>sovereign AI agent</strong> is a
+system you own: its identity, memory, skills, workspace, and runtime are
+governed by you rather than by a model provider or platform.</p>
+<p>The difference is not local versus remote, and it is not open source versus
+closed. It is about which side of the boundary the durable parts live on. Here
+is the comparison without the marketing.</p>
+<!-- -->
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="where-each-one-keeps-the-things-that-matter">Where each one keeps the things that matter<a href="https://suzent.com/blog/sovereign-ai-agent-vs-cloud-assistant#where-each-one-keeps-the-things-that-matter" class="hash-link" aria-label="Direct link to Where each one keeps the things that matter" title="Direct link to Where each one keeps the things that matter" translate="no">​</a></h2>
+<table><thead><tr><th></th><th>Cloud AI assistant</th><th>Sovereign AI agent</th></tr></thead><tbody><tr><td><strong>Memory</strong></td><td>Vendor database; readable through a UI, exportable in part</td><td>Files on your disk; readable, editable, versionable in Git</td></tr><tr><td><strong>Identity</strong></td><td>Coupled to the vendor's model and product decisions</td><td>Held in memory, skills, and workspace, independent of the model</td></tr><tr><td><strong>Model choice</strong></td><td>Whatever the vendor ships, when they ship it</td><td>Any provider, or a local model; swappable per session</td></tr><tr><td><strong>Permissions</strong></td><td>Vendor-defined; you accept or decline the whole product</td><td>Rules you write, per tool and per scope, with approval gates</td></tr><tr><td><strong>Execution</strong></td><td>Vendor's sandbox, vendor's integrations</td><td>Your machine, your folders, your approved devices</td></tr><tr><td><strong>Continuity</strong></td><td>Ends when the account, product, or terms end</td><td>Survives providers, models, and machines</td></tr><tr><td><strong>Setup cost</strong></td><td>Sign up</td><td>Install, configure keys, choose your boundaries</td></tr><tr><td><strong>Maintenance</strong></td><td>None, by design</td><td>Yours</td></tr><tr><td><strong>Default quality</strong></td><td>Tuned end to end by a large team</td><td>Depends on the model and configuration you choose</td></tr></tbody></table>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="the-honest-case-for-the-rented-option">The honest case for the rented option<a href="https://suzent.com/blog/sovereign-ai-agent-vs-cloud-assistant#the-honest-case-for-the-rented-option" class="hash-link" aria-label="Direct link to The honest case for the rented option" title="Direct link to The honest case for the rented option" translate="no">​</a></h2>
+<p>The last three rows are not throwaways, and a comparison that pretends otherwise
+is not worth reading.</p>
+<p>Hosted assistants are genuinely easier. Someone else handles model upgrades,
+infrastructure, safety tuning, and the thousand small integration details that
+make a product feel finished. For a great many uses — drafting, summarizing,
+answering questions, the occasional bit of research — that convenience is worth
+far more than ownership of the transcript, and paying for it is a perfectly
+sensible decision.</p>
+<p>Sovereignty has real costs. You choose the model, which means you can choose
+badly. You set the permission boundaries, which means you can set them wrong.
+Nothing upgrades itself unless you decide it should. If the agent is a
+convenience rather than infrastructure, that overhead may simply not be worth
+carrying.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="when-ownership-starts-to-matter">When ownership starts to matter<a href="https://suzent.com/blog/sovereign-ai-agent-vs-cloud-assistant#when-ownership-starts-to-matter" class="hash-link" aria-label="Direct link to When ownership starts to matter" title="Direct link to When ownership starts to matter" translate="no">​</a></h2>
+<p>The calculus changes as the agent accumulates two things: <strong>context about you</strong>
+and <strong>authority to act</strong>.</p>
+<p>Context compounds. An agent that has watched you work for a year knows your
+projects, your conventions, the things you have already decided and do not want
+re-litigated. That is expensive to rebuild and impossible to rebuild exactly.
+When it lives somewhere you cannot read or move, you are one policy change away
+from starting over.</p>
+<p>Authority is sharper. An assistant that suggests text is a different proposition
+from an agent that runs commands, edits files, sends messages, and acts on a
+schedule while you sleep. Once an agent can do things, the question of who
+defines the limits stops being philosophical. Suzent's answer is
+<a href="https://suzent.com/docs/concepts/tools/human-in-the-loop" target="_blank" rel="noopener noreferrer" class="">explicit permission rules with human approval gates</a>;
+a hosted product's answer is its terms of service.</p>
+<p>If your agent has both — deep context and real authority — then "the vendor
+could change this" is a live operational risk rather than an abstract one.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="the-test-that-separates-them">The test that separates them<a href="https://suzent.com/blog/sovereign-ai-agent-vs-cloud-assistant#the-test-that-separates-them" class="hash-link" aria-label="Direct link to The test that separates them" title="Direct link to The test that separates them" translate="no">​</a></h2>
+<p>The useful question is not which category a product claims. It is what happens
+under pressure:</p>
+<ol>
+<li class="">Can you inspect, edit, version, and delete its memory?</li>
+<li class="">Can you replace the model without resetting its identity?</li>
+<li class="">Can you define, approve, and audit what it is allowed to do?</li>
+<li class="">Can you move its state without exporting your credentials?</li>
+<li class="">Can the agent survive the disappearance of its provider?</li>
+</ol>
+<p>A cloud assistant answers "partly" to the first and "no" to the rest. That is
+not a defect; it is what being a hosted product means. But it tells you exactly
+what you are choosing.</p>
+<p>The full version of the test, and what each answer implies, is on
+<a href="https://suzent.com/sovereign" target="_blank" rel="noopener noreferrer" class="">what makes an agent sovereign</a>.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="not-actually-eitheror">Not actually either/or<a href="https://suzent.com/blog/sovereign-ai-agent-vs-cloud-assistant#not-actually-eitheror" class="hash-link" aria-label="Direct link to Not actually either/or" title="Direct link to Not actually either/or" translate="no">​</a></h2>
+<p>Worth saying: these are not mutually exclusive. A sovereign agent that calls
+GPT, Claude, or Gemini through an API gets frontier model quality while keeping
+memory, skills, and permissions on your side of the boundary. You are renting
+the engine, deliberately, while owning the vehicle.</p>
+<p>That combination — <a href="https://suzent.com/docs/concepts/providers" target="_blank" rel="noopener noreferrer" class="">any provider you like</a>,
+<a href="https://suzent.com/docs/concepts/memory" target="_blank" rel="noopener noreferrer" class="">memory in your own files</a> — is the
+configuration most people actually want, and it is what Suzent is built to be.</p>
+<hr>
+<p><a href="https://suzent.com/docs/getting-started/quickstart" target="_blank" rel="noopener noreferrer" class="">Quickstart</a> ·
+<a href="https://github.com/cyzus/suzent" target="_blank" rel="noopener noreferrer" class="">Source</a> (Apache-2.0)</p>]]></content:encoded>
+            <category>sovereignty</category>
+            <category>comparison</category>
+            <category>sovereign-ai</category>
+        </item>
+        <item>
+            <title><![CDATA[Sovereign AI for Individuals, Not Nations]]></title>
+            <link>https://suzent.com/blog/sovereign-ai-for-individuals</link>
+            <guid>https://suzent.com/blog/sovereign-ai-for-individuals</guid>
+            <pubDate>Tue, 25 Aug 2026 09:00:00 GMT</pubDate>
+            <description><![CDATA[The phrase sovereign AI usually means state-controlled models and compute. The same idea applies at the scale of one person, and that is what a sovereign AI agent is.]]></description>
+            <content:encoded><![CDATA[<p>Search for "sovereign AI" and you will find nations. Countries building
+domestic model training capacity, governments procuring GPU clusters they
+control outright, regulators drawing borders around where citizen data may be
+processed. The word means something specific there: a state that does not need
+another state's permission to compute.</p>
+<p>That is a real and important use of the term. It is also not the only scale at
+which the idea makes sense.</p>
+<!-- -->
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="the-same-argument-one-person-wide">The same argument, one person wide<a href="https://suzent.com/blog/sovereign-ai-for-individuals#the-same-argument-one-person-wide" class="hash-link" aria-label="Direct link to The same argument, one person wide" title="Direct link to The same argument, one person wide" translate="no">​</a></h2>
+<p>Strip the national framing away and the argument underneath is simple. A
+capability you depend on, which someone else can revoke, price, or redefine
+without asking you, is not really yours. Nations noticed this about model
+infrastructure. The same thing is true of the AI agent that reads your notes,
+remembers your projects, and increasingly acts on your behalf.</p>
+<p>A <strong>sovereign AI agent</strong> is an AI agent whose identity, memory, skills,
+workspace, and runtime are owned and governed by its user rather than by a model
+provider or platform. Its durable state lives in files you can read, edit,
+version, and move. Its actions run inside permission boundaries you define. And
+replacing the underlying model does not reset the agent that knows your work.</p>
+<p>Nations want sovereign AI so a foreign vendor cannot switch off their compute.
+You want a sovereign agent so a vendor cannot switch off your memory. It is the
+same objection at a different scale.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="what-you-actually-rent-today">What you actually rent today<a href="https://suzent.com/blog/sovereign-ai-for-individuals#what-you-actually-rent-today" class="hash-link" aria-label="Direct link to What you actually rent today" title="Direct link to What you actually rent today" translate="no">​</a></h2>
+<p>Most people's "AI assistant" is an account. Consider what that means
+concretely:</p>
+<ul>
+<li class="">The memory of your past conversations lives in a database you cannot read,
+export in full, or correct.</li>
+<li class="">The assistant's personality and instructions are configured through a form
+whose behaviour changes when the vendor updates the model beneath it.</li>
+<li class="">Its ability to act on anything — files, email, calendars — exists only through
+integrations the vendor chose to build and can retire.</li>
+<li class="">If you stop paying, or the vendor changes terms, or the product is
+discontinued, the accumulated context is gone. Not degraded. Gone.</li>
+</ul>
+<p>None of that is scandalous. It is the normal shape of a hosted product, and
+hosted products are often the right trade. But it is worth naming plainly,
+because the thing being accumulated in that account — a model of how you work —
+is unusually expensive to rebuild.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="sovereignty-is-not-the-same-as-self-hosting">Sovereignty is not the same as self-hosting<a href="https://suzent.com/blog/sovereign-ai-for-individuals#sovereignty-is-not-the-same-as-self-hosting" class="hash-link" aria-label="Direct link to Sovereignty is not the same as self-hosting" title="Direct link to Sovereignty is not the same as self-hosting" translate="no">​</a></h2>
+<p>The most common misreading is that sovereignty means running something on your
+own hardware. Local execution is part of it, but it is neither sufficient nor
+the whole point.</p>
+<p>You can run a model locally and still have a non-sovereign agent: if its memory
+is an opaque binary blob, if its identity is welded to the specific model
+weights you happen to be running, if there is no way to inspect or constrain
+what it does with your filesystem, then "local" bought you privacy but not
+ownership.</p>
+<p>Conversely, an agent can call a hosted frontier model over an API and remain
+sovereign, provided the parts that constitute the agent — memory, skills,
+configuration, permissions, workspace — stay on your side of the line. The model
+is an engine. Engines are replaceable. That is the point.</p>
+<p>Agent sovereignty has four conditions:</p>
+<ol>
+<li class=""><strong>Sovereign mind</strong> — the model is an engine, not the self.</li>
+<li class=""><strong>Sovereign authority</strong> — autonomy operates under rules you write.</li>
+<li class=""><strong>Sovereign vessel</strong> — the runtime is a domain you control.</li>
+<li class=""><strong>Sovereign continuity</strong> — the agent outlives any platform it ran on.</li>
+</ol>
+<p>Each is spelled out, with a five-question test for checking whether any given
+agent actually meets them, on
+<a href="https://suzent.com/sovereign" target="_blank" rel="noopener noreferrer" class="">what makes an agent sovereign</a>.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="why-the-distinction-matters-now">Why the distinction matters now<a href="https://suzent.com/blog/sovereign-ai-for-individuals#why-the-distinction-matters-now" class="hash-link" aria-label="Direct link to Why the distinction matters now" title="Direct link to Why the distinction matters now" translate="no">​</a></h2>
+<p>Agents are crossing from answering to acting. An assistant that drafts a
+paragraph and an agent that files the expense report, pushes the commit, or
+sends the message are different kinds of thing to hand your life to. The second
+kind accumulates a great deal of context about you, and exercises a great deal
+of authority on your behalf.</p>
+<p>The moment to decide who holds that context and that authority is before it is
+substantial enough to be painful to lose.</p>
+<p>Nations arrived at this conclusion about compute. The version for individuals is
+smaller, cheaper, and considerably easier to act on: keep the agent's memory in
+files you can open, keep its permissions in rules you wrote, and make sure you
+could move both tomorrow.</p>
+<hr>
+<p>Suzent is an open-source, local-first implementation of that idea. The
+<a href="https://suzent.com/docs/getting-started/quickstart" target="_blank" rel="noopener noreferrer" class="">quickstart</a> takes about
+five minutes, and the <a href="https://github.com/cyzus/suzent" target="_blank" rel="noopener noreferrer" class="">source</a> is Apache-2.0.</p>]]></content:encoded>
+            <category>sovereignty</category>
+            <category>sovereign-ai</category>
+            <category>definitions</category>
+        </item>
         <item>
             <title><![CDATA[Suzent Mesh: A Nervous System for Your Sovereign AI]]></title>
             <link>https://suzent.com/blog/suzent-mesh-nodes</link>

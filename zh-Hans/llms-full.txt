@@ -77,12 +77,25 @@ Suzent is a **sovereign AI agent** whose identity, memory, skills, workspace,
 and runtime remain under your control. Models are replaceable, platforms are
 temporary, and the continuity of your agent belongs to you.
 
+## What is a sovereign AI agent?
+
+A sovereign AI agent is an AI agent whose identity, memory, skills, workspace,
+and runtime are owned and governed by its user rather than by a model provider
+or platform. Its durable state lives in files you can read, edit, version, and
+move; its actions run inside permission boundaries you define; and replacing the
+underlying model does not reset the agent that knows your work.
+
+The phrase "sovereign AI" is also used at the scale of nations, for
+state-controlled models, data, and compute. A sovereign agent applies the same
+idea at the scale of a person.
+
 ## Core ideas
 
-**Sovereign** means more than running locally. You own the agent's mind,
-authority, vessel, and continuity: its durable state lives in files you can
-inspect and move, its actions follow boundaries you define, and changing a
-model or provider does not reset the agent that knows your work.
+**Sovereign** means more than running locally. Agent sovereignty has four
+conditions — a sovereign mind, sovereign authority, a sovereign vessel, and
+sovereign continuity. The full definition, and a five-question test for deciding
+whether any agent meets it, is on
+[what makes an agent sovereign](https://suzent.com/sovereign).
 
 **Local agent** means it is built for more than one-off answers. It can keep long-term memory, schedule recurring work, and run the operations you explicitly allow.
 
@@ -270,6 +283,13 @@ Source: https://suzent.com/docs/concepts/memory/
 
 # Memory System
 
+**Sovereign continuity.** Memory is where a sovereign AI agent keeps its self.
+Because Suzent's memory is Markdown on your own disk rather than rows in a
+vendor's database, you can read it, edit it, track it in Git, and carry it to
+another machine. That is the first question in the
+[sovereignty test](https://suzent.com/sovereign) — and the reason a model swap does not reset the agent
+that knows your work.
+
 Suzent remembers things across conversations — facts you've shared, your preferences, and
 context from past sessions. Everything it remembers is stored as plain Markdown files you
 can open, edit, or delete yourself.
@@ -363,6 +383,11 @@ Building on the memory system itself? The implementation notes live under
 Source: https://suzent.com/docs/concepts/tools/human-in-the-loop
 
 # Tool Permissions and Human Approval
+
+**Sovereign authority.** This is the boundary where an agent's reasoning
+becomes action in the world. A sovereign agent does not cross it on its own
+terms: every gated call below is a point at which Suzent stops and asks, under
+rules you set. See [what makes an agent sovereign](https://suzent.com/sovereign).
 
 Suzent evaluates every deferred tool call through one backend permission engine. The engine decides whether to allow, deny, or ask, and it supplies the exact actions shown by the frontend. The client never constructs permission rules itself.
 
@@ -558,6 +583,11 @@ Cron, heartbeat, goals, dream jobs, and subagents use Auto mode with a non-inter
 Source: https://suzent.com/docs/concepts/filesystem
 
 # Filesystem & Execution
+
+**Sovereign vessel.** A sovereign agent runs in a domain you control. The
+modes below decide exactly which folders it can reach and where its code
+executes — granted deliberately by you, not inherited from a platform. See
+[what makes an agent sovereign](https://suzent.com/sovereign).
 
 Suzent provides secure file access and code execution through two modes: **Sandbox Mode** (isolated Docker container) and **Host Mode** (direct execution with restrictions).
 
@@ -799,6 +829,11 @@ Source: https://suzent.com/docs/concepts/github-sync/
 
 # GitHub Sync
 
+**Sovereign continuity.** Portability is what lets an agent outlive the
+machine it started on. Sync moves the parts that make up the agent while
+credentials stay device-local, so moving to a new machine never means shipping
+your keys. See [what makes an agent sovereign](https://suzent.com/sovereign).
+
 GitHub Sync keeps a portable copy of Suzent configuration, user skills, and
 Markdown memory in a private Git repository. Credentials remain on each device.
 
@@ -942,6 +977,11 @@ Source: https://suzent.com/docs/concepts/providers/
 
 # Providers
 
+**Sovereign mind.** The model is an engine, not the self. Being able to
+configure many providers and switch between them per session is what keeps
+identity in your memory, skills, and workspace rather than in any one vendor's
+account. See [what makes an agent sovereign](https://suzent.com/sovereign).
+
 Suzent is model-agnostic. Configure any number of providers in **Settings → Providers** and switch between them per session.
 
 API keys are stored in the local database — never in plain text config files.
@@ -1006,6 +1046,11 @@ API keys are stored in the local database — never in plain text config files.
 Source: https://suzent.com/docs/concepts/skills/
 
 # Suzent Skills Guide
+
+**Sovereign mind.** Skills are knowledge you author and own. They are
+Markdown in your own directory, not a capability a platform grants you and can
+revoke — which is why they survive a change of model or provider intact. See
+[what makes an agent sovereign](https://suzent.com/sovereign).
 
 This guide covers the skills system in Suzent and how to use and create skills to extend agent capabilities.
 
@@ -1375,6 +1420,15 @@ This skill requires:
 Source: https://suzent.com/docs/concepts/automation/
 
 # Suzent Automation Guide
+
+**Sovereign authority.** Proactive action is the sharpest edge of agent
+autonomy: work that happens when you are not watching. Both systems below run
+on schedules and instructions you write. Neither inherits the permission mode of
+the chat you scheduled it from: background turns always run in Auto mode under a
+headless profile, where an action that cannot be classified as safe is denied
+rather than queued for an approval nobody is present to give. See
+[Headless Runs](https://suzent.com/docs/concepts/tools/human-in-the-loop#headless-runs)
+for what that permits, and [what makes an agent sovereign](https://suzent.com/sovereign).
 
 This guide covers the automation systems in Suzent — scheduled cron jobs and periodic heartbeat check-ins.
 
@@ -1770,6 +1824,11 @@ Memory is **disabled** for both cron and heartbeat executions to avoid polluting
 Source: https://suzent.com/docs/concepts/nodes/
 
 # Suzent Nodes Guide
+
+**Sovereign vessel.** Extending an agent across devices is where most
+systems quietly hand control to a cloud relay. Nodes instead reach only the
+machines you pair, over links you approve, with capabilities each device
+declares. See [what makes an agent sovereign](https://suzent.com/sovereign).
 
 This guide covers the node system in Suzent — how to connect companion devices and control them remotely.
 
@@ -6426,6 +6485,12 @@ version once a release has been published.
 Source: https://suzent.com/docs/
 
 # Documentation
+
+Suzent is a sovereign AI agent: an open-source, local-first agent whose identity,
+memory, skills, workspace, and runtime stay under your control, independent of
+any model or platform. For the definition of agent sovereignty and the
+five-question ownership test, see
+[what makes an agent sovereign](https://suzent.com/sovereign).
 
 ## Getting Started
 - [What is Suzent?](https://suzent.com/docs/getting-started/intro): Core concepts and architecture overview
