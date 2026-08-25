@@ -565,6 +565,11 @@ def main() -> int:
         help="Print only the canonical version",
     )
     parser.add_argument(
+        "--list-version-files",
+        action="store_true",
+        help="Print the files this script owns the version line of, one per line",
+    )
+    parser.add_argument(
         "--audit-commits",
         metavar="RANGE",
         help="Warn about commits in RANGE whose prefix the bump cannot read",
@@ -581,6 +586,10 @@ def main() -> int:
 
     if args.print_version:
         print(current_version)
+        return 0
+    if args.list_version_files:
+        for target in VERSION_FILES:
+            print(target.path)
         return 0
     if args.audit_commits:
         log = _run_git(root, "log", args.audit_commits, "--format=%s", "--no-merges")
