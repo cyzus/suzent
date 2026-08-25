@@ -1,6 +1,12 @@
-import React, { useMemo } from 'react';
-import { Editor, DiffEditor, type BeforeMount } from '@monaco-editor/react';
+import React, { Suspense, lazy, useMemo } from 'react';
+import type { BeforeMount } from '@monaco-editor/react';
 import { SCHEME_COLORS, type Scheme, useTheme } from '../../hooks/useTheme';
+
+// Monaco is bundled, not fetched from a CDN — see ./monacoEditors. Loading it
+// lazily keeps it out of the initial bundle: the chunk is pulled the first time
+// a file preview renders.
+const Editor = lazy(() => import('./monacoEditors').then((m) => ({ default: m.Editor })));
+const DiffEditor = lazy(() => import('./monacoEditors').then((m) => ({ default: m.DiffEditor })));
 
 const EDITOR_OPTIONS = {
   readOnly: true,
@@ -275,30 +281,32 @@ export const FileContentDiffViewer: React.FC<FileContentDiffViewerProps> = ({
         <span className="opacity-60 uppercase shrink-0">{language}</span>
       </div>
       <div style={{ height: `${height}px` }} className="w-full">
-        {isDiff ? (
-          <DiffEditor
-            original={original}
-            modified={modified}
-            language={language}
-            theme={editorTheme}
-            options={EDITOR_OPTIONS}
-            beforeMount={beforeMount}
-            loading={LOADING_FALLBACK}
-            // Chat blocks mount and unmount quickly. Keeping models alive avoids
-            // a Monaco teardown race that can abort the surrounding React render.
-            keepCurrentOriginalModel
-            keepCurrentModifiedModel
-          />
-        ) : (
-          <Editor
-            value={modified}
-            language={language}
-            theme={editorTheme}
-            options={EDITOR_OPTIONS}
-            beforeMount={beforeMount}
-            loading={LOADING_FALLBACK}
-          />
-        )}
+        <Suspense fallback={LOADING_FALLBACK}>
+          {isDiff ? (
+            <DiffEditor
+              original={original}
+              modified={modified}
+              language={language}
+              theme={editorTheme}
+              options={EDITOR_OPTIONS}
+              beforeMount={beforeMount}
+              loading={LOADING_FALLBACK}
+              // Chat blocks mount and unmount quickly. Keeping models alive avoids
+              // a Monaco teardown race that can abort the surrounding React render.
+              keepCurrentOriginalModel
+              keepCurrentModifiedModel
+            />
+          ) : (
+            <Editor
+              value={modified}
+              language={language}
+              theme={editorTheme}
+              options={EDITOR_OPTIONS}
+              beforeMount={beforeMount}
+              loading={LOADING_FALLBACK}
+            />
+          )}
+        </Suspense>
       </div>
     </div>
   );
