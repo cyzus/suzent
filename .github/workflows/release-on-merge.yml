@@ -16,7 +16,7 @@ jobs:
     if: >-
       github.event.pull_request.merged == true &&
       github.event.pull_request.head.repo.full_name == github.repository &&
-      startsWith(github.event.pull_request.head.ref, 'release/v')
+      startsWith(github.event.pull_request.head.ref, 'release/')
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout merged commit
@@ -47,10 +47,19 @@ jobs:
           python scripts/bump_version.py --check
           version="$(python scripts/bump_version.py --print-version)"
           tag="v$version"
-          expected_tag="${RELEASE_BRANCH#release/}"
-          if [[ "$tag" != "$expected_tag" ]]; then
-            echo "::error::Release branch $RELEASE_BRANCH does not match project version $version"
-            exit 1
+          # The branch name used to have to spell the version. It cannot any
+          # more: `release/next` stays open across pushes and its version is
+          # re-derived whenever a commit changes the bump. The invariant that
+          # replaces it is stronger anyway - the version in the files must be
+          # one nobody has released, which is what the branch name was standing
+          # in for. --check above already proved all 16 files agree on it.
+          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            # A re-run of this workflow re-tags the same merge; that is fine.
+            # A different commit means the version was already spent.
+            if [[ "$(git rev-list -n 1 "$tag")" != "$MERGE_SHA" ]]; then
+              echo "::error::Version $version is already released as $tag. Reconcile the release branch before merging."
+              exit 1
+            fi
           fi
           if ! grep -Fq "## [$tag]" CHANGELOG.md; then
             echo "::error::CHANGELOG.md has no entry for $tag"
@@ -61,6 +70,7 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           GH_TOKEN: ${{ github.token }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
           RELEASE_BRANCH: ${{ github.event.pull_request.head.ref }}
 
       - name: Create release tag

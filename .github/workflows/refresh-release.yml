@@ -1,5 +1,14 @@
 name: Refresh Release PR
 
+# Keeps one release PR permanently open against main. Every push re-merges
+# main, re-derives the version from the commit range, and rewrites the notes -
+# so the pending release is always an accurate description of what has landed,
+# and shipping is a merge rather than a decision about numbers.
+#
+# The branch is `release/next` and deliberately does not name a version: the
+# version is re-derived whenever a commit changes the bump, and a branch that
+# spelled it would have to be recreated every time that happened.
+
 on:
   push:
     branches:
@@ -9,11 +18,14 @@ on:
 permissions:
   actions: write
   contents: write
-  pull-requests: read
+  pull-requests: write
 
 concurrency:
   group: refresh-release
   cancel-in-progress: false
+
+env:
+  RELEASE_BRANCH: release/next
 
 jobs:
   refresh:
@@ -31,13 +43,13 @@ jobs:
               --json number,headRefName,isCrossRepository \
               --jq '[.[] | select(
                 .isCrossRepository == false and
-                (.headRefName | startswith("release/v"))
+                (.headRefName | startswith("release/"))
               )]'
           )"
           count="$(jq length <<< "$release_prs")"
 
           if [[ "$count" == "0" ]]; then
-            echo "::notice::No open Release PR found; nothing to refresh"
+            echo "::notice::No open Release PR; one will be opened if anything is releasable"
             echo "found=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -56,53 +68,120 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
 
-      - name: Checkout release branch
-        if: steps.pr.outputs.found == 'true'
+      - name: Checkout main
         uses: actions/checkout@v4
         with:
-          ref: ${{ steps.pr.outputs.head }}
+          ref: main
           fetch-depth: 0
           token: ${{ secrets.RELEASE_BOT_TOKEN || github.token }}
 
       - name: Set up Python
-        if: steps.pr.outputs.found == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
-      - name: Merge main and refresh release notes
-        if: steps.pr.outputs.found == 'true'
-        id: refresh
+      - name: Decide whether anything is releasable
+        id: releasable
+        if: steps.pr.outputs.found != 'true'
         shell: bash
         run: |
-          git fetch origin main --tags
-          if git merge-base --is-ancestor origin/main HEAD; then
-            echo "::notice::Release PR is already up to date with main"
-            echo "updated=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
+          # A docs-only or chore-only range should not open a release PR by
+          # itself; it rides along with the next change a user can see.
+          suggestion="$(python scripts/bump_version.py --suggest-bump)"
+          echo "$suggestion"
+          echo "ok=$(sed -n 's/^releasable: //p' <<< "$suggestion")" >> "$GITHUB_OUTPUT"
 
+      - name: Reconcile the release branch
+        id: refresh
+        if: >-
+          steps.pr.outputs.found == 'true' ||
+          steps.releasable.outputs.ok == 'true'
+        shell: bash
+        run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git merge --no-edit origin/main
-          python scripts/bump_version.py --refresh-changelog
-          python scripts/bump_version.py --check
-          git add CHANGELOG.md
-          git diff --cached --check
-          if ! git diff --cached --quiet; then
-            git commit -m "chore: refresh release notes"
+
+          # An older release PR may still sit on a versioned branch; refresh
+          # whichever branch is actually open rather than insisting on the name.
+          branch="${PR_HEAD:-$RELEASE_BRANCH}"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+
+          if [[ "$PR_FOUND" == "true" ]]; then
+            git fetch origin "$branch"
+            git switch -c "$branch" "origin/$branch"
+            if git merge-base --is-ancestor origin/main HEAD; then
+              echo "::notice::Release PR is already up to date with main"
+              echo "updated=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            git merge --no-edit origin/main
+          else
+            git switch -c "$branch" origin/main
           fi
-          git push origin "HEAD:$RELEASE_BRANCH"
-          echo "updated=true" >> "$GITHUB_OUTPUT"
+
+          # Re-derives the version from the range since the last tag, moves the
+          # pending changelog heading if the bump changed, and rewrites the
+          # notes. Idempotent: the baseline is the tag, never the pending files.
+          python scripts/bump_version.py --reconcile-version | tee .reconcile
+          version="$(sed -n 's/^version=//p' .reconcile)"
+          rm -f .reconcile
+
+          git add -A
+          if git diff --cached --quiet; then
+            echo "::notice::Nothing changed on the release branch"
+            echo "updated=false" >> "$GITHUB_OUTPUT"
+          else
+            git commit -m "chore: reconcile release v$version"
+            echo "updated=true" >> "$GITHUB_OUTPUT"
+          fi
+          if [[ "$PR_FOUND" == "true" ]]; then
+            git push origin "HEAD:$branch"
+          else
+            # No PR is open, so anything still sitting on the branch is a
+            # leftover from a closed one and would only reject the push.
+            git push --force origin "HEAD:$branch"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
         env:
-          RELEASE_BRANCH: ${{ steps.pr.outputs.head }}
+          PR_FOUND: ${{ steps.pr.outputs.found }}
+          PR_HEAD: ${{ steps.pr.outputs.head }}
+
+      - name: Open the Release PR
+        if: >-
+          steps.pr.outputs.found != 'true' &&
+          steps.releasable.outputs.ok == 'true'
+        shell: bash
+        run: |
+          # printf rather than a heredoc: a `run: |` block cannot carry a line at
+          # column 0, and an indented body would render as a markdown code block.
+          body="$(printf '%s\n' \
+            'Rolling release PR, kept current by `refresh-release`.' \
+            '' \
+            'Every push to main re-merges main here, re-derives the version from' \
+            'the commit range, and rewrites the notes below. The version can' \
+            'change while this PR is open - a feature landing after a fix turns' \
+            'a patch into a minor.' \
+            '' \
+            'Merging tags the version the files carry at that moment and starts' \
+            'the desktop build. To release something other than the derived' \
+            'version, edit the version files on this branch before merging.' \
+            '' \
+            'Review the changelog, wait for required checks, then merge.')"
+
+          gh pr create \
+            --base main \
+            --head "$RELEASE_BRANCH" \
+            --title "chore: release v$RELEASE_VERSION" \
+            --body "$body"
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN || github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_VERSION: ${{ steps.refresh.outputs.version }}
 
       - name: Start CI for refreshed head
-        if: >-
-          steps.pr.outputs.found == 'true' &&
-          steps.refresh.outputs.updated == 'true'
-        run: gh workflow run ci.yml --ref "$RELEASE_BRANCH"
+        if: steps.refresh.outputs.updated == 'true'
+        run: gh workflow run ci.yml --ref "$BRANCH"
         env:
+          BRANCH: ${{ steps.refresh.outputs.branch }}
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_BRANCH: ${{ steps.pr.outputs.head }}

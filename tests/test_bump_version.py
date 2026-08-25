@@ -275,3 +275,111 @@ def test_auto_resolves_to_a_concrete_version(tmp_path: Path) -> None:
         )
     finally:
         bump_version._git_commits_since_last_release = monkey
+
+
+def _release_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """A repo shaped like an open release PR: tagged v0.9.1, files bumped to 0.9.2."""
+
+    def git(*args: str) -> str:
+        result = subprocess.run(
+            ["git", *args],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=True,
+        )
+        return result.stdout.strip()
+
+    conf = tmp_path / "src-tauri" / "tauri.conf.json"
+    conf.parent.mkdir(parents=True)
+    monkeypatch.setattr(
+        bump_version,
+        "VERSION_FILES",
+        (VersionFile("src-tauri/tauri.conf.json", "json"),),
+    )
+
+    git("init")
+    git("config", "user.name", "Suzent Test")
+    git("config", "user.email", "test@suzent.local")
+
+    conf.write_text(json.dumps({"version": "0.9.1"}) + "\n", encoding="utf-8")
+    (tmp_path / "CHANGELOG.md").write_text(
+        "# Changelog\n\n## [v0.9.1] - 2026-08-22\n",
+        encoding="utf-8",
+    )
+    git("add", ".")
+    git("commit", "-m", "chore: release v0.9.1")
+    git("tag", "v0.9.1")
+    return git, conf
+
+
+def test_reconcile_promotes_a_patch_once_a_feature_lands(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The always-open release PR bug: opened on a fix, then a feat merges in.
+
+    Shipping that as a patch is exactly what deriving the bump exists to stop,
+    so the pending version has to be re-derived rather than frozen at open time.
+    """
+    git, conf = _release_repo(tmp_path, monkeypatch)
+
+    # The release PR opens as a patch.
+    conf.write_text(json.dumps({"version": "0.9.2"}) + "\n", encoding="utf-8")
+    changelog = tmp_path / "CHANGELOG.md"
+    changelog.write_text(
+        changelog.read_text(encoding="utf-8").replace(
+            "## [v0.9.1]",
+            "## [v0.9.2] - 2026-08-24\n\n### 🐛 Fixed\n- A fix\n\n## [v0.9.1]",
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "a.txt").write_text("x\n", encoding="utf-8")
+    git("add", ".")
+    git("commit", "-m", "fix: a fix")
+
+    # Then a feature merges into main and gets pulled into the release branch.
+    (tmp_path / "b.txt").write_text("y\n", encoding="utf-8")
+    git("add", ".")
+    git("commit", "-m", "feat: a feature")
+
+    old, new, reason = bump_version.reconcile_version(tmp_path)
+
+    assert (old, new) == ("0.9.2", "0.10.0")
+    assert "feat: a feature" in reason
+    assert json.loads(conf.read_text(encoding="utf-8"))["version"] == "0.10.0"
+    assert "## [v0.10.0]" in changelog.read_text(encoding="utf-8")
+    assert "## [v0.9.2]" not in changelog.read_text(encoding="utf-8")
+
+
+def test_reconcile_does_not_compound_the_pending_bump(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Runs on every push to main, so it must be idempotent.
+
+    The baseline is the last tagged release, never the version already written
+    into the release branch — using the latter would climb a minor per push.
+    """
+    git, conf = _release_repo(tmp_path, monkeypatch)
+
+    conf.write_text(json.dumps({"version": "0.9.2"}) + "\n", encoding="utf-8")
+    (tmp_path / "a.txt").write_text("x\n", encoding="utf-8")
+    git("add", ".")
+    git("commit", "-m", "feat: a feature")
+
+    first = bump_version.reconcile_version(tmp_path)[1]
+    second = bump_version.reconcile_version(tmp_path)[1]
+    third = bump_version.reconcile_version(tmp_path)[1]
+
+    assert first == second == third == "0.10.0"
+
+
+def test_last_release_tag_ignores_an_untagged_pending_version(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    git, _ = _release_repo(tmp_path, monkeypatch)
+
+    assert bump_version.last_release_tag(tmp_path) == "v0.9.1"

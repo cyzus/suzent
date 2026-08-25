@@ -69,6 +69,8 @@ def bump_semver(current_version: str, bump_type: str) -> str:
 #: work did to the code — a refactor a user can see is a `feat` or a `fix`.
 BUMP_BY_TYPE = {"feat": "minor", "fix": "patch", "perf": "patch"}
 
+NOTHING_RELEASABLE = "no user-visible commits; releasing as maintenance"
+
 BREAKING_SUBJECT = re.compile(r"^[a-z]+(?:\([^)]*\))?!:", re.IGNORECASE)
 BREAKING_FOOTER = re.compile(r"(?m)^BREAKING[ -]CHANGE\s*:")
 COMMIT_TYPE = re.compile(r"^([a-z]+)(?:\([^)]*\))?!?:", re.IGNORECASE)
@@ -100,7 +102,7 @@ def infer_bump(
         return "major", f"breaking change ({breaking[0]})"
 
     ranked = {"patch": 0, "minor": 1, "major": 2}
-    best, reason = "patch", "no user-visible commits; releasing as maintenance"
+    best, reason = "patch", NOTHING_RELEASABLE
     for subject, _ in commits:
         match = COMMIT_TYPE.match(subject)
         bump = BUMP_BY_TYPE.get(match.group(1).lower()) if match else None
@@ -267,13 +269,8 @@ def _release_boundary(root: Path, next_version: str) -> str | None:
     return reachable_tag or None
 
 
-def _git_commits_since_last_release(
-    root: Path,
-    next_version: str,
-) -> list[tuple[str, str]]:
+def _commits_in_range(root: Path, range_spec: str) -> list[tuple[str, str]]:
     """(subject, body) per commit. The body carries `BREAKING CHANGE:` footers."""
-    boundary = _release_boundary(root, next_version)
-    range_spec = f"{boundary}..HEAD" if boundary else "HEAD"
     # Bodies are multi-line, so records and fields need separators that cannot
     # occur in a commit message: unit and record separators.
     result = subprocess.run(
@@ -290,6 +287,76 @@ def _git_commits_since_last_release(
         if subject.strip():
             commits.append((subject.strip(), body))
     return commits
+
+
+def _git_commits_since_last_release(
+    root: Path,
+    next_version: str,
+) -> list[tuple[str, str]]:
+    boundary = _release_boundary(root, next_version)
+    return _commits_in_range(root, f"{boundary}..HEAD" if boundary else "HEAD")
+
+
+def last_release_tag(root: Path) -> str | None:
+    """The newest released tag reachable from HEAD.
+
+    Not `git describe`: on a release branch the topmost changelog entry names a
+    version that has not been tagged yet, and the reconcile below needs the last
+    version that actually shipped as its baseline. Tags are the only record of
+    that which a release branch cannot contradict.
+    """
+    listed = _run_git(root, "tag", "--list", "v*", "--sort=-v:refname")
+    if listed.returncode != 0:
+        return None
+    for tag in (line.strip() for line in listed.stdout.splitlines()):
+        if not tag or not VERSION_PATTERN.fullmatch(tag.lstrip("v")):
+            continue
+        if _run_git(root, "merge-base", "--is-ancestor", tag, "HEAD").returncode == 0:
+            return tag
+    return None
+
+
+def _retitle_changelog_entry(root: Path, old_version: str, new_version: str) -> None:
+    """Move the pending entry's heading so the refresh can find it again."""
+    path = root / "CHANGELOG.md"
+    existing = path.read_text(encoding="utf-8")
+    updated, count = re.subn(
+        rf"(?m)^## \[v{re.escape(old_version)}\]",
+        f"## [v{new_version}]",
+        existing,
+        count=1,
+    )
+    if count:
+        path.write_text(updated, encoding="utf-8")
+
+
+def reconcile_version(root: Path) -> tuple[str, str, str]:
+    """Re-derive the pending release's version from history. (old, new, reason).
+
+    An always-open release PR accumulates commits after it is opened, so the
+    bump it was opened with goes stale: a PR opened on a `fix` is a patch until
+    a `feat` merges into it, and shipping that as a patch is the exact defect
+    the derived bump exists to prevent. Every push to main runs this.
+
+    The baseline is the last *tagged* release, never the version already written
+    into the release branch's files — bumping on top of that would compound.
+    """
+    old_version = get_current_version(root)
+    tag = last_release_tag(root)
+    baseline = tag.lstrip("v") if tag else old_version
+    commits = _commits_in_range(root, f"{tag}..HEAD" if tag else "HEAD")
+    bump, reason = infer_bump(commits, baseline)
+    new_version = bump_semver(baseline, bump)
+
+    if new_version != old_version:
+        # Only a pending entry may be retitled. On a branch freshly cut from
+        # main the files still hold the released version, and its changelog
+        # heading is history — renaming that would rewrite a shipped release.
+        if old_version != baseline:
+            _retitle_changelog_entry(root, old_version, new_version)
+        for target in VERSION_FILES:
+            write_version(root / target.path, target, new_version)
+    return old_version, new_version, reason
 
 
 def _git_subjects_since_last_release(
@@ -452,6 +519,11 @@ def main() -> int:
         help="Synchronize versions without adding a changelog entry",
     )
     parser.add_argument(
+        "--reconcile-version",
+        action="store_true",
+        help="Re-derive the pending release version from history, then refresh notes",
+    )
+    parser.add_argument(
         "--refresh-changelog",
         action="store_true",
         help="Replace the current version entry using the latest branch history",
@@ -493,6 +565,10 @@ def main() -> int:
         bump, reason = resolve_bump(root, current_version, "auto")
         print(f"{bump}  ({current_version} -> {bump_semver(current_version, bump)})")
         print(f"because: {reason}")
+        # Whether anything user-visible is waiting. A docs-only or chore-only
+        # range should not open a release PR on its own; it rides along with
+        # the next real change instead.
+        print(f"releasable: {str(reason != NOTHING_RELEASABLE).lower()}")
         return 0
     if args.check:
         print(f"Expected version: {current_version}")
@@ -505,6 +581,15 @@ def main() -> int:
         )
         print(generate_changelog_draft(preview_version, root), end="")
         return 0
+    if args.reconcile_version:
+        old_version, new_version, reason = reconcile_version(root)
+        if new_version != old_version:
+            print(f"Re-derived version: {old_version} -> {new_version} ({reason})")
+        else:
+            print(f"Version still correct at {new_version} ({reason})")
+        update_changelog(root, new_version, replace_existing=True)
+        print(f"version={new_version}")
+        return 0 if check_versions(root, new_version) else 1
     if args.refresh_changelog:
         update_changelog(root, current_version, replace_existing=True)
         return 0

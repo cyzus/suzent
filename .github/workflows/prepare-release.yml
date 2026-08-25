@@ -26,6 +26,11 @@ concurrency:
   group: prepare-release
   cancel-in-progress: false
 
+# The branch does not name a version: `refresh-release` keeps it open across
+# pushes and re-derives the version whenever a commit changes the bump.
+env:
+  RELEASE_BRANCH: release/next
+
 jobs:
   prepare:
     runs-on: ubuntu-22.04
@@ -66,9 +71,14 @@ jobs:
       - name: Create release branch
         shell: bash
         run: |
-          branch="release/$RELEASE_TAG"
+          # Same branch `refresh-release` keeps open, so the two paths cannot
+          # produce two competing release PRs. If it is already open this
+          # workflow has nothing to add: the rolling PR is the place to set a
+          # version by hand, and rewriting the branch here would throw away
+          # whatever was edited on it.
+          branch="$RELEASE_BRANCH"
           if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
-            echo "::error::Branch $branch already exists. Update or close its release PR before retrying."
+            echo "::error::$branch is already open. Edit the version files on its release PR, or close the PR and delete the branch before re-running."
             exit 1
           fi
 
@@ -106,18 +116,26 @@ jobs:
       - name: Open release pull request
         shell: bash
         run: |
+          # printf rather than an indented string: leading spaces would make
+          # markdown read the whole body as a code block.
+          body="$(printf '%s\n' \
+            "Automated release preparation for **$RELEASE_TAG**." \
+            '' \
+            "Bump requested as \`$RELEASE_INPUT\`; history pointed at: $BUMP_REASON" \
+            '' \
+            'Review and edit the generated changelog, wait for required checks,' \
+            'then merge. To change the version, edit the version files on this' \
+            'branch - `refresh-release` re-derives it on every push to main, so' \
+            'a hand-set version only survives if nothing lands after it.' \
+            '' \
+            "Merging tags the version the files carry at that moment and starts" \
+            "the draft build and publication workflow.")"
+
           gh pr create \
             --base main \
-            --head "release/$RELEASE_TAG" \
+            --head "$RELEASE_BRANCH" \
             --title "chore: release $RELEASE_TAG" \
-            --body "Automated release preparation for **$RELEASE_TAG**.
-
-          Bump requested as \`$RELEASE_INPUT\`; history pointed at: $BUMP_REASON
-
-          Review and edit the generated changelog, wait for required checks, then merge.
-          To override the version, close this PR and re-run with an explicit bump.
-
-          Merging this PR creates the \`$RELEASE_TAG\` tag and starts the draft build and publication workflow."
+            --body "$body"
         env:
           GH_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN || github.token }}
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
@@ -125,7 +143,6 @@ jobs:
           BUMP_REASON: ${{ steps.version.outputs.reason }}
 
       - name: Start Release PR CI
-        run: gh workflow run ci.yml --ref "release/$RELEASE_TAG"
+        run: gh workflow run ci.yml --ref "$RELEASE_BRANCH"
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ steps.version.outputs.tag }}
