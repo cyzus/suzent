@@ -73,7 +73,8 @@ The refresh workflow merges the latest `main` into the release branch,
 regenerates the current version's changelog section, validates every version
 source, pushes the result, and explicitly starts CI. Review the regenerated
 notes again before merging because refresh replaces any manual edits in that
-version's section.
+version's section — with the single exception of the highlights block described
+below.
 
 For recovery, **Actions → Refresh Release PR → Run workflow** performs the same
 lookup without inputs. If there is no open Release PR it exits successfully. If
@@ -82,6 +83,37 @@ there is more than one, it stops and lists the candidates instead of guessing.
 The post-merge workflow independently verifies that the Release PR head
 contained the latest pre-merge `main` commit. If it did not, tag creation and
 publication stop instead of releasing code that is missing from the notes.
+
+### Writing release highlights
+
+A generated changelog section is a flat list of commit subjects. For a large
+release that is thirty or more bullets with no indication of what the release is
+actually about, and the GitHub release body is this section copied verbatim.
+
+Anything wrapped in highlights markers, placed directly under the version
+heading, survives every refresh:
+
+```markdown
+## [v0.10.0] - 2026-08-25
+
+<!-- highlights -->
+Memory is the story of this release: claims now carry a confirmation count and
+an expiry, duplicate facts retire instead of accumulating, and the memory tab
+is finally readable.
+<!-- /highlights -->
+
+### 🚀 Added
+- ...
+```
+
+Both markers are required and each must sit alone on its own line. An unclosed
+block is discarded on the next refresh rather than swallowing the rest of the
+entry. The markers are HTML comments so they stay invisible on the release page.
+
+Write this on the Release PR, before merging, so it goes through review with
+everything else and the release is published with its summary already in place.
+Drafting it from `git log <last-tag>..HEAD` is a reasonable job to hand to an
+agent; deciding which of those commits a user actually cares about is not.
 
 ## What is automated
 
