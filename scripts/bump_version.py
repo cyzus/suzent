@@ -422,6 +422,34 @@ def generate_changelog_draft(
     return "\n".join(lines).rstrip() + "\n"
 
 
+HIGHLIGHTS_START = "<!-- highlights -->"
+HIGHLIGHTS_END = "<!-- /highlights -->"
+
+_HIGHLIGHTS = re.compile(
+    rf"(?ms)^{re.escape(HIGHLIGHTS_START)}$\n.*?\n^{re.escape(HIGHLIGHTS_END)}$"
+)
+
+
+def _extract_highlights(entry: str) -> str | None:
+    """Pull a hand-written highlights block out of one changelog entry.
+
+    The pending entry is rebuilt from commit subjects on every push to main, so
+    prose written on the release PR would not otherwise survive to the merge.
+    Anything between the delimiters is lifted out and put back verbatim.
+
+    HTML comments are the delimiters because the GitHub release body is this
+    entry, copied out of the file - the markers have to be invisible there.
+    """
+    match = _HIGHLIGHTS.search(entry)
+    return match.group(0) if match else None
+
+
+def _inject_highlights(draft: str, highlights: str) -> str:
+    """Put a preserved highlights block back, directly under the heading."""
+    heading, _, rest = draft.partition("\n")
+    return f"{heading}\n\n{highlights}\n{rest}"
+
+
 def _replace_changelog_entry(
     existing: str,
     version: str,
@@ -431,6 +459,9 @@ def _replace_changelog_entry(
     match = entry.search(existing)
     if not match:
         return None
+    highlights = _extract_highlights(match.group(0))
+    if highlights:
+        draft = _inject_highlights(draft, highlights)
     return existing[: match.start()] + draft.rstrip() + "\n\n" + existing[match.end() :]
 
 

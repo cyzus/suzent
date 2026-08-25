@@ -1,79 +1,143 @@
 # Release Guide
 
-Suzent uses a Release PR workflow. Preparing a release is a single manual
-action; version synchronization, tagging, cross-platform builds, and GitHub
-Release publication are automated.
+Suzent keeps a Release PR permanently open against `main`. There is no "start a
+release" step: every push to `main` re-merges into that PR, re-derives the
+version from the commit range, and rewrites the notes. Releasing is a merge.
+
+Version synchronization, tagging, cross-platform builds, and GitHub Release
+publication are automated from there.
 
 ## Before you start
 
-1. Make sure all changes intended for the release have been merged into
-   `main`, and that its required CI checks pass.
-2. Decide the next [semantic version](https://semver.org/):
-   - `patch` for backward-compatible fixes;
-   - `minor` for backward-compatible features;
-   - `major` for breaking changes;
-   - an exact `X.Y.Z` version only when the automatically calculated version
-     is not appropriate.
-3. Decide how desktop assets should be handled:
-   - use `build` for every normal release and for any frontend, desktop,
-     installer, or `API_VERSION` change;
-   - use `reuse` only for a backend-only hotfix that remains compatible with
-     the previous desktop application.
+1. Make sure everything intended for the release is merged into `main` and its
+   CI checks pass.
+2. Check that the derived version on the open Release PR is the one you want.
+   You do not choose it — it comes from the commit prefixes in the range since
+   the last tag:
+
+   | Prefix in the range | Bump |
+   | --- | --- |
+   | `feat:` | minor |
+   | `fix:`, `perf:` | patch |
+   | `feat!:`, or a `BREAKING CHANGE:` footer | major, but **minor while below 1.0** |
+   | only `chore:`, `ci:`, `docs:`, `test:`, `style:`, `build:`, `refactor:` | patch, as maintenance |
+
+   The highest-ranking prefix in the range wins, so one `feat:` among twenty
+   fixes makes the release a minor. Reaching 1.0.0 stays a deliberate human act:
+   a breaking change below 1.0 bumps the minor rather than declaring stability.
+3. Check `.release-assets-mode` on the release branch:
+   - `build` for every normal release and for any frontend, desktop, installer,
+     or `API_VERSION` change;
+   - `reuse` only for a backend-only hotfix that remains compatible with the
+     previously published desktop application.
+
+   It carries over from `main`, so it is `build` unless someone changed it.
 
 ## Normal release
 
-1. In GitHub, open **Actions → Prepare Release → Run workflow** and select the
-   `main` branch.
-2. Set **version** to `patch`, `minor`, `major`, or an exact version such as
-   `0.8.0`. Set **desktop_assets** to `build` unless the release meets all of
-   the `reuse` conditions above, then run the workflow.
-3. Wait for the workflow to open a `release/vX.Y.Z` pull request. Do not create
-   the release branch, tag, or GitHub Release manually.
-4. Review the pull request:
-   - confirm the version is correct in every changed manifest and lock file;
-   - edit the generated `CHANGELOG.md` section so it is accurate and useful to
-     users;
-   - confirm `.release-assets-mode` contains the intended `build` or `reuse`
-     value;
-   - wait for all required checks to pass.
-5. Merge the Release PR into `main`. The merge automatically creates the
-   `vX.Y.Z` tag and starts **Build and Publish Desktop Release**.
-6. Wait for that workflow to complete. The GitHub Release stays in draft state
-   until every required asset has been uploaded and checksums are generated.
-7. Open the [Releases page](https://github.com/cyzus/suzent/releases) and verify:
-   - the release is published rather than draft and is marked as the latest
-     release;
-   - its title, tag, and release notes match the merged changelog;
+1. Open the Release PR — it is the open pull request from `release/next`,
+   titled `chore: release vX.Y.Z`. If none is open, nothing user-visible has
+   landed since the last tag; see [Nothing is open](#nothing-is-open).
+2. Review it:
+   - confirm the derived version is what you intend, in the title and in every
+     changed manifest and lock file;
+   - read the generated `CHANGELOG.md` section, and add a
+     [highlights block](#writing-release-highlights) so the release page opens
+     with something better than a list of commit subjects;
+   - confirm `.release-assets-mode` holds the intended `build` or `reuse`;
+   - wait for all checks to pass.
+3. Merge it into `main` with **Create a merge commit**. The branch is `main`
+   plus a version bump, so squashing writes a redundant duplicate-content
+   commit. The merge automatically creates the `vX.Y.Z` tag and starts
+   **Build and Publish Desktop Release**.
+4. Wait for that workflow to complete. The GitHub Release stays a draft until
+   every asset is uploaded and checksums are generated.
+5. Open the [Releases page](https://github.com/cyzus/suzent/releases) and verify:
+   - the release is published rather than draft, and is marked as latest;
+   - its title, tag, and notes match the merged changelog;
    - all eight `suzent-*` application and installer assets are present (two
      each for Windows, Linux, macOS Intel, and macOS Apple Silicon);
    - `SHA256SUMS` is attached.
 
-The release is complete only after the publication and asset checks in step 7
-pass. If the workflow fails, follow [Recovery](#recovery) rather than manually
-publishing the draft.
+The release is complete only after the checks in step 5 pass. If the workflow
+fails, follow [Recovery](#recovery) rather than publishing the draft by hand.
 
-The release remains a draft while Windows, macOS Intel, macOS Apple Silicon,
-and Linux builds run. It is published only after every build succeeds. A failed
-build therefore cannot expose a partially populated release.
+The release remains a draft while the Windows, macOS Intel, macOS Apple
+Silicon, and Linux builds run, and is published only after every build
+succeeds — so a failed build cannot expose a partially populated release.
 
 Backend-only hotfixes still receive a normal version and Git tag for auditing,
 rollback, and dependency locking, but they do not rebuild four desktop targets.
-When `desktop_assets=reuse`, the workflow copies the previous published UI and
-installer assets into the new release. The frontend accepts a different backend
-build commit as long as `API_VERSION` matches. Incompatible route or payload
-changes must bump `API_VERSION` and use `desktop_assets=build`.
+With `.release-assets-mode` set to `reuse`, the workflow copies the previously
+published UI and installer assets into the new release. The frontend accepts a
+different backend build commit as long as `API_VERSION` matches. Incompatible
+route or payload changes must bump `API_VERSION` and use `build`.
+
+Do not create the release branch, tag, or GitHub Release by hand.
+
+### Nothing is open
+
+A range containing only `chore`, `ci`, `docs`, `test`, `style`, `build`, or
+`refactor` commits does not open a Release PR on its own. Nothing in it earns a
+bump, so there is nothing a user would notice; it waits and rides along with the
+next real change.
+
+To release anyway — to ship a dependency bump, say — use
+[Prepare Release](#manual-override-prepare-release).
+
+### Writing release highlights
+
+A generated changelog section is a flat list of commit subjects. For a large
+release that is thirty or more bullets with no indication of what the release is
+actually about, and the GitHub release body is this section copied verbatim.
+
+Anything wrapped in highlights markers, placed directly under the version
+heading, survives every refresh:
+
+```markdown
+## [v0.10.0] - 2026-08-25
+
+<!-- highlights -->
+Memory is the story of this release: claims now carry a confirmation count and
+an expiry, duplicate facts retire instead of accumulating, and the memory tab
+is finally readable.
+<!-- /highlights -->
+
+### 🚀 Added
+- ...
+```
+
+Both markers are required and each must sit alone on its own line. An unclosed
+block is discarded on the next refresh rather than swallowing the rest of the
+entry. The markers are HTML comments so they stay invisible on the release page.
+
+Write this on the Release PR, before merging, so it goes through review with
+everything else and the release is published with its summary already in place.
+Drafting it from `git log <last-tag>..HEAD` is a reasonable job to hand to an
+agent; deciding which of those commits a user actually cares about is not.
+
+### Releasing a version other than the derived one
+
+Edit the version files on `release/next` before merging. The tag follows the
+files at merge time, not the branch name — which is why the branch is called
+`release/next` and never names a version.
+
+Be aware that the next push to `main` re-derives the version and will overwrite
+a hand-edited one. Only the highlights block survives a refresh.
 
 ### If main changes before merge
 
-Do not merge a stale Release PR. Every push to `main` automatically runs
-**Refresh Release PR**. It finds the single open same-repository `release/v*`
-PR, refreshes it, and starts CI. No PR number or manual action is required.
+Do not merge a stale Release PR — though you rarely have to think about it,
+because every push to `main` runs **Refresh Release PR** automatically. It finds
+the single open same-repository PR whose head branch starts with `release/`,
+merges `main` into it, re-derives the version, rewrites the notes, validates
+every version source, pushes, and starts CI. No PR number or manual action is
+required.
 
-The refresh workflow merges the latest `main` into the release branch,
-regenerates the current version's changelog section, validates every version
-source, pushes the result, and explicitly starts CI. Review the regenerated
-notes again before merging because refresh replaces any manual edits in that
-version's section.
+The refresh replaces any manual edits in the pending version's changelog
+section, with the single exception of the highlights block above. If the branch
+is already up to date with `main`, or the reconcile produces no file changes, it
+makes no commit at all.
 
 For recovery, **Actions → Refresh Release PR → Run workflow** performs the same
 lookup without inputs. If there is no open Release PR it exits successfully. If
@@ -92,18 +156,38 @@ publication stop instead of releasing code that is missing from the notes.
 - the main Tauri configuration, Cargo manifest, and Cargo lock;
 - the standalone installer's Tauri, npm, and Cargo files.
 
-It also generates a changelog draft from commits since the last tag. Scoped
+It also generates the changelog section from commits since the last tag. Scoped
 conventional commits such as `feat(ui): ...` are categorized, while unprefixed
-commit subjects are retained under **Changed** so release notes are not silently
-lost.
+subjects are retained under **Changed** so release notes are not silently lost.
+The baseline for re-deriving the version is always the last *tagged* release,
+never the version already written into the release branch — otherwise each push
+would bump on top of the previous bump.
 
-CI runs `python scripts/bump_version.py --check` on every pull request. A tag
-whose version does not match the manifests or changelog is rejected before any
-desktop build starts.
+CI runs `python scripts/bump_version.py --check` on every pull request, and
+advisory-audits commit prefixes it cannot read. A prefix nobody recognizes earns
+no bump, so an unreadable one silently changes the version that ships; the audit
+warns without blocking a merge. A tag whose version does not match the manifests
+or changelog is rejected before any desktop build starts.
 
-Release PR workflows explicitly dispatch CI after bot-created or bot-refreshed
-branches. This avoids GitHub's suppression of ordinary workflow events created
-with the built-in token.
+Release workflows explicitly dispatch CI and the desktop build rather than
+relying on the push events they create. GitHub suppresses ordinary workflow
+events triggered by its built-in token, and this is what works around it.
+
+## Manual override: Prepare Release
+
+**Actions → Prepare Release → Run workflow** opens a release branch with a
+version you choose. Use it only when the automatic flow will not do:
+
+- to ship a range the automatic flow considers unreleasable;
+- to force an exact version, a major, or a bump the prefixes do not imply;
+- to set `.release-assets-mode` to `reuse` as the branch is created.
+
+Set **version** to `auto`, `patch`, `minor`, `major`, or an exact version such
+as `0.8.0`, and **desktop_assets** to `build` or `reuse`.
+
+It refuses to run while `release/next` already exists, rather than overwriting
+review edits on an open PR. Close that PR and delete the branch first, or just
+edit the version files on the branch that is already open.
 
 ## Local fallback
 
@@ -112,6 +196,9 @@ The same preparation can be run locally:
 ```bash
 # Preview release notes without changing files
 uv run python scripts/bump_version.py patch --changelog
+
+# Show the bump the commit history implies, without changing files
+uv run python scripts/bump_version.py --suggest-bump
 
 # Synchronize files and add the changelog entry
 uv run python scripts/bump_version.py patch
@@ -130,19 +217,18 @@ It refuses to overwrite an already published release.
 
 ## Repository setup
 
-The workflows use the built-in `GITHUB_TOKEN` for tagging and publication.
-No release credential is required.
+Tagging and publication use the built-in `GITHUB_TOKEN`.
 
-GitHub suppresses ordinary workflow events caused by its built-in token. The
-release pipeline accounts for this by explicitly dispatching the desktop build
-after creating the tag.
+Opening and refreshing the Release PR uses `RELEASE_BOT_TOKEN`, a fine-grained
+personal access token scoped to this repository, falling back to `GITHUB_TOKEN`
+when the secret is absent. Without it the Release PR is still created and
+refreshed, but GitHub will not run `pull_request` workflows on a branch the
+built-in token pushed, so the PR's checks never start.
 
-For repositories that require pull-request checks to be triggered by the
-release bot, add a fine-grained `RELEASE_BOT_TOKEN` secret with access to
-contents and pull requests. Without it, Release PR creation still works, but
-GitHub may not trigger other workflows from the bot-created branch and pull
-request. The **Prepare Release** workflow always performs its own version
-validation.
+The token needs **Contents: Read and write**, **Pull requests: Read and write**,
+and **Workflows: Read and write**. The last one is not optional: the refresh
+merges `main` into the release branch, and that merge carries any change under
+`.github/workflows/`, which GitHub refuses from a token without it.
 
 Optionally protect the `main` branch and require review of Release PRs. That
 keeps changelog approval manual while leaving all mechanical release work
@@ -152,17 +238,27 @@ automated.
 
 ### A platform build fails
 
-Fix the cause on `main`, prepare a new patch release, and merge it. The failed
-version remains a draft and is not advertised as the latest release.
+Fix the cause on `main`, let the refreshed Release PR pick up the fix, and merge
+it. The failed version remains a draft and is not advertised as the latest
+release.
 
 If the failure was transient and the tagged source is correct, rerun
 **Build and Publish Desktop Release** with the existing tag.
 
 ### A Release PR needs changes
 
-Edit the changelog directly on its `release/vX.Y.Z` branch. Do not rerun
+Edit the changelog or the version files directly on `release/next`. Do not rerun
 **Prepare Release** for the same version while that branch exists; the workflow
 stops instead of overwriting review edits.
+
+Remember that the next push to `main` regenerates the changelog section. Put
+anything you want to keep inside the highlights markers.
+
+### More than one Release PR is open
+
+**Refresh Release PR** stops and lists the candidates rather than guessing which
+one to update. Close the ones that are not wanted, delete their branches, and
+re-run the workflow.
 
 ### A wrong tag was created
 

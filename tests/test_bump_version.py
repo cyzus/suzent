@@ -29,6 +29,7 @@ read_version = bump_version.read_version
 write_version = bump_version.write_version
 git_subjects_since_last_release = bump_version._git_subjects_since_last_release
 replace_changelog_entry = bump_version._replace_changelog_entry
+retitle_changelog_entry = bump_version._retitle_changelog_entry
 update_changelog = bump_version.update_changelog
 infer_bump = bump_version.infer_bump
 
@@ -383,3 +384,109 @@ def test_last_release_tag_ignores_an_untagged_pending_version(
     git, _ = _release_repo(tmp_path, monkeypatch)
 
     assert bump_version.last_release_tag(tmp_path) == "v0.9.1"
+
+
+PENDING_WITH_HIGHLIGHTS = (
+    "# Changelog\n\n"
+    "## [v1.1.0] - 2026-07-02\n\n"
+    "<!-- highlights -->\n"
+    "Memory is the story of this release: claims now expire, and the\n"
+    "vault stops losing facts on restart.\n"
+    "<!-- /highlights -->\n\n"
+    "### ⚡ Changed\n"
+    "- Stale draft\n\n"
+    "## [v1.0.0] - 2026-07-01\n\n"
+    "### 🚀 Added\n"
+    "- Previous release\n"
+)
+
+
+def test_refresh_preserves_hand_written_highlights() -> None:
+    draft = "## [v1.1.0] - 2026-07-03\n\n### 🐛 Fixed\n- Current draft\n"
+
+    refreshed = replace_changelog_entry(PENDING_WITH_HIGHLIGHTS, "1.1.0", draft)
+
+    assert refreshed is not None
+    # The generated body is rebuilt from scratch...
+    assert "Stale draft" not in refreshed
+    assert "- Current draft" in refreshed
+    # ...but the prose written on the release PR survives it.
+    assert "Memory is the story of this release" in refreshed
+    assert "vault stops losing facts on restart." in refreshed
+    assert "- Previous release" in refreshed
+
+
+def test_highlights_sit_directly_under_the_heading() -> None:
+    draft = "## [v1.1.0] - 2026-07-03\n\n### 🐛 Fixed\n- Current draft\n"
+
+    refreshed = replace_changelog_entry(PENDING_WITH_HIGHLIGHTS, "1.1.0", draft)
+
+    assert refreshed is not None
+    lines = refreshed.split("\n")
+    heading = lines.index("## [v1.1.0] - 2026-07-03")
+    assert lines[heading + 1] == ""
+    assert lines[heading + 2] == "<!-- highlights -->"
+    # The generated sections come after the preserved block, not before it.
+    assert lines.index("### 🐛 Fixed") > lines.index("<!-- /highlights -->")
+
+
+def test_refreshing_twice_leaves_the_highlights_alone() -> None:
+    draft = "## [v1.1.0] - 2026-07-03\n\n### 🐛 Fixed\n- Current draft\n"
+
+    once = replace_changelog_entry(PENDING_WITH_HIGHLIGHTS, "1.1.0", draft)
+    assert once is not None
+    twice = replace_changelog_entry(once, "1.1.0", draft)
+
+    # Without this, every push to main would nest another copy of the block.
+    assert twice == once
+    assert once.count("<!-- highlights -->") == 1
+
+
+def test_highlights_survive_a_retitle_when_the_bump_grows(tmp_path: Path) -> None:
+    changelog = tmp_path / "CHANGELOG.md"
+    changelog.write_text(PENDING_WITH_HIGHLIGHTS, encoding="utf-8")
+
+    # A `feat` merging into a patch release PR promotes 1.0.1 -> 1.1.0; here the
+    # pending entry is renamed the same way the reconcile renames it.
+    retitle_changelog_entry(tmp_path, "1.1.0", "2.0.0")
+    renamed = changelog.read_text(encoding="utf-8")
+    assert "## [v2.0.0]" in renamed
+
+    draft = "## [v2.0.0] - 2026-07-03\n\n### 🚀 Added\n- Breaking change\n"
+    refreshed = replace_changelog_entry(renamed, "2.0.0", draft)
+
+    assert refreshed is not None
+    assert "Memory is the story of this release" in refreshed
+
+
+def test_entry_without_highlights_is_replaced_wholesale() -> None:
+    existing = (
+        "# Changelog\n\n## [v1.1.0] - 2026-07-02\n\n### ⚡ Changed\n- Stale draft\n"
+    )
+    draft = "## [v1.1.0] - 2026-07-03\n\n### 🐛 Fixed\n- Current draft\n"
+
+    refreshed = replace_changelog_entry(existing, "1.1.0", draft)
+
+    assert refreshed is not None
+    assert "highlights" not in refreshed
+    assert "Stale draft" not in refreshed
+
+
+def test_an_unclosed_highlights_block_is_not_preserved() -> None:
+    # Better to lose an unterminated block than to swallow the whole entry into
+    # it and stop regenerating the release notes.
+    existing = (
+        "# Changelog\n\n"
+        "## [v1.1.0] - 2026-07-02\n\n"
+        "<!-- highlights -->\n"
+        "Someone forgot the closing marker.\n\n"
+        "### ⚡ Changed\n"
+        "- Stale draft\n"
+    )
+    draft = "## [v1.1.0] - 2026-07-03\n\n### 🐛 Fixed\n- Current draft\n"
+
+    refreshed = replace_changelog_entry(existing, "1.1.0", draft)
+
+    assert refreshed is not None
+    assert "Someone forgot" not in refreshed
+    assert "- Current draft" in refreshed
