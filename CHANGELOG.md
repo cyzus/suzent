@@ -5,6 +5,65 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.10.0] - 2026-08-25
+
+<!-- highlights -->
+Memory is most of this release. Claims now carry a confirmation count and an
+expiry, duplicate facts retire instead of piling up, and a page is dated from
+when it was written rather than from the last time the indexer ran - so what
+Suzent remembers about you ages the way it should. The memory tab was rebuilt
+around actually reading it.
+
+Releasing changed shape too: a release PR now stays open against main and
+derives its own version from commit history, so shipping is a merge rather than
+a decision about numbers.
+
+Also worth knowing: file diffs no longer hang at "Loading viewer", streaming
+replies render correctly again, and selecting text in a chat survives the next
+token arriving.
+<!-- /highlights -->
+
+### 🚀 Added
+- Keep hand-written release highlights across changelog refreshes
+- Keep a release PR open instead of triggering one
+- Derive the version bump from commit history
+- Render memory content as markdown
+- Make the archival list readable by kind, not by source
+- Rank a claim the user verified above every other signal
+- Legacy-row retirement script, export before delete
+- Recognise a restatement on the write path, and queue stale claims
+- Dry-run harness for the dream, and read the status the vault writes
+- Rank claims on the lifecycle the dream records
+- Give personal claims a confirmation count and an expiry
+- Retire duplicate log facts instead of ignoring them
+- Show the extractor what memory already holds
+- Clarify role fallbacks and compact forms
+
+### ⚡ Changed
+- Diff daily logs into the index instead of re-embedding them
+- Make the memory tab worth reading
+- Clarify final response delivery and SocialMessageTool usage
+- Compact the skills library into a filterable list
+- Unify button interactions
+- Extract the settings navigation into its own component
+
+### 🐛 Fixed
+- Repair how a streaming turn renders
+- Self-host Monaco so file diffs stop hanging at "Loading viewer"
+- Squeeze the chat before evicting a sidebar
+- Stop a chat's own tasks from popping the sidebar open on switch
+- Date a page from its birth time, not the dream's last rewrite
+- Date indexed rows from their source, not from the index run
+- Close five ways a fact could still be lost
+- Resolve the vault the app actually uses, not the configured default
+- Queue personal pages that never got an expiry
+- Stop MEMORY.md from clobbering its own writers
+- Key indexer state portably instead of by absolute path
+- Persist the dream's retry counter across restarts
+- Stop message re-renders from wiping text selection
+- Order and filter archival memories server-side
+- Refresh the model lists after saving provider models
+
 ## [v0.9.1] - 2026-08-22
 
 ### 🚀 Added
