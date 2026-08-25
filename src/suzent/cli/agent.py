@@ -8,6 +8,7 @@ Usage:
 
 import typer
 import asyncio
+import itertools
 from suzent.client import get_client
 from suzent.client.base import ClientError
 from suzent.core.stream_parser import (
@@ -181,13 +182,17 @@ def agent_chat(
             chunks = [chunk async for chunk in client.chat.stream_message(payload)]
 
             pending_approvals = []
-            for event in parser.parse(iter(chunks)):
+            # flush() closes out any tool call the stream ended mid-way through.
+            for event in itertools.chain(parser.parse(iter(chunks)), parser.flush()):
                 if isinstance(event, TextChunk):
                     color = typer.colors.GREEN if event.is_code else None
                     typer.secho(event.content, nl=False, fg=color)
 
                 elif isinstance(event, ToolCall):
                     typer.echo(f"\n[Tool Call: {event.tool_name}]", err=True)
+                    args_preview = event.format_arguments()
+                    if args_preview:
+                        typer.echo(f"  {args_preview}", err=True)
 
                 elif isinstance(event, ToolOutput):
                     typer.secho(
