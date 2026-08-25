@@ -5,9 +5,30 @@ build-backend = "hatchling.build"
 [project]
 name = "suzent"
 version = "0.10.0"
-description = "Your personal Agent"
+description = "Suzent is a sovereign AI agent: own its memory, govern its actions, choose its intelligence, and keep its continuity."
 readme = "README.md"
 requires-python = ">=3.12"
+license = "Apache-2.0"
+keywords = [
+    "sovereign-ai-agent",
+    "sovereign-agent",
+    "agent-sovereignty",
+    "ai-agent",
+    "local-first",
+    "personal-ai-agent",
+    "self-hosted",
+    "llm",
+    "agent-memory",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+]
 dependencies = [
     "crawl4ai>=0.7.3",
     "pydantic-ai-slim[openai,anthropic,google,groq,mcp,ag-ui]>=2.18,<3",
@@ -39,6 +60,14 @@ dependencies = [
     "keyring>=25.0.0",
     "cryptography>=42.0.0",
 ]
+
+[project.urls]
+Homepage = "https://suzent.com"
+Documentation = "https://suzent.com/docs/getting-started/intro"
+"What is a sovereign AI agent?" = "https://suzent.com/sovereign"
+Repository = "https://github.com/cyzus/suzent"
+Issues = "https://github.com/cyzus/suzent/issues"
+Changelog = "https://github.com/cyzus/suzent/blob/main/CHANGELOG.md"
 
 [project.scripts]
 suzent = "suzent.cli:app"

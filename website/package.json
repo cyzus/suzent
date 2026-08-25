@@ -4,9 +4,9 @@
   "private": true,
   "scripts": {
     "docusaurus": "docusaurus",
-    "prestart": "node scripts/sync-shared-ui.js",
+    "prestart": "node scripts/sync-shared-ui.js && node scripts/generate-llms-full.js",
     "start": "docusaurus start",
-    "prebuild": "node scripts/sync-shared-ui.js",
+    "prebuild": "node scripts/sync-shared-ui.js && node scripts/generate-llms-full.js",
     "build": "docusaurus build",
     "swizzle": "docusaurus swizzle",
     "deploy": "docusaurus deploy",

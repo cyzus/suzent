@@ -14,12 +14,16 @@ type SovereignCopy = {
   title: string;
   intro: string;
   answer: string;
+  definitionLabel: string;
+  definitionTitle: string;
+  definition: string;
+  disambiguation: string;
   pillarsLabel: string;
   pillars: Array<{ index: string; title: string; description: string; formula: string }>;
   testLabel: string;
   testTitle: string;
   testIntro: string;
-  tests: string[];
+  tests: Array<{ question: string; answer: string }>;
   testResult: string;
   proofLabel: string;
   proofTitle: string;
@@ -32,12 +36,16 @@ type SovereignCopy = {
 
 const COPY: Record<'en' | 'zh-Hans', SovereignCopy> = {
   en: {
-    metaTitle: 'The Sovereignty Protocol',
-    metaDescription: 'A practical definition of sovereign AI agents—and how Suzent keeps identity, authority, runtime, and continuity under your control.',
+    metaTitle: 'What Is a Sovereign AI Agent?',
+    metaDescription: 'A sovereign AI agent is an agent whose identity, memory, skills, workspace, and runtime you own rather than rent. The four conditions, a five-question ownership test, and how Suzent implements them.',
     eyebrow: '{ ∅ } / THE SOVEREIGNTY PROTOCOL',
     title: 'WHAT MAKES AN AGENT SOVEREIGN?',
     intro: 'Sovereignty is not merely running an agent on your laptop. It is the power to own its memory, choose its intelligence, govern its actions, and preserve its identity beyond any model or platform.',
     answer: 'Suzent’s answer to who holds that power is always the same: you.',
+    definitionLabel: 'DEFINITION',
+    definitionTitle: 'What is a sovereign AI agent?',
+    definition: 'A sovereign AI agent is an AI agent whose identity, memory, skills, workspace, and runtime are owned and governed by its user rather than by a model provider or platform. Its durable state lives in files you can read, edit, version, and move; its actions run inside permission boundaries you define; and replacing the underlying model does not reset the agent that knows your work. Suzent is an open-source, local-first implementation of that definition.',
+    disambiguation: 'The phrase “sovereign AI” is also used at the scale of nations, for state-controlled models, data, and compute. A sovereign agent applies the same idea at the scale of a person: sovereignty over one agent, held by the individual who runs it.',
     pillarsLabel: 'THE FOUR CONDITIONS',
     pillars: [
       {
@@ -69,11 +77,26 @@ const COPY: Record<'en' | 'zh-Hans', SovereignCopy> = {
     testTitle: 'Ownership should be testable.',
     testIntro: 'Before calling any agent sovereign, ask five questions:',
     tests: [
-      'Can I inspect, edit, version, and delete its memory?',
-      'Can I replace the model without resetting its identity?',
-      'Can I define, approve, and audit what it is allowed to do?',
-      'Can I move its state without exporting my credentials?',
-      'Can the agent survive the disappearance of its provider?',
+      {
+        question: 'Can I inspect, edit, version, and delete its memory?',
+        answer: 'In Suzent, memory is append-only Markdown on your own disk. You can open it in any editor, track it in Git, and delete it without a vendor’s permission. The search index serves those files and can be rebuilt from them.',
+      },
+      {
+        question: 'Can I replace the model without resetting its identity?',
+        answer: 'Identity lives in memory, skills, context, and workspace — not in the model. Switching between GPT, Claude, Gemini, DeepSeek, or a local model leaves the agent that knows your work intact.',
+      },
+      {
+        question: 'Can I define, approve, and audit what it is allowed to do?',
+        answer: 'Tool calls pass through permission modes you set, with human approval gates and scoped rules governing which actions may cross from reasoning into execution.',
+      },
+      {
+        question: 'Can I move its state without exporting my credentials?',
+        answer: 'Portable agent state syncs separately from machine-local secrets, so moving to a new machine never requires shipping your API keys along with it.',
+      },
+      {
+        question: 'Can the agent survive the disappearance of its provider?',
+        answer: 'Everything that defines the agent is already files you hold. A provider shutting down costs you an API key, not an agent.',
+      },
     ],
     testResult: 'If the answer depends on a vendor’s permission, the agent is not fully yours.',
     proofLabel: 'PROOF, NOT PROMISES',
@@ -110,12 +133,16 @@ const COPY: Record<'en' | 'zh-Hans', SovereignCopy> = {
     github: 'Inspect the source',
   },
   'zh-Hans': {
-    metaTitle: '主权协议',
-    metaDescription: '主权 AI 智能体的可检验定义，以及 Suzent 如何让身份、权力、运行环境和连续性始终由你控制。',
+    metaTitle: '什么是主权 AI 智能体？',
+    metaDescription: '主权 AI 智能体，是指身份、记忆、技能、工作区和运行环境由你拥有而非租用的智能体。本文给出四个必要条件、五个所有权检验问题，以及 Suzent 的具体实现。',
     eyebrow: '{ ∅ } / 主权协议',
     title: '什么才是主权智能体？',
     intro: '主权不只是把智能体运行在自己的电脑上，而是你能够拥有它的记忆、选择它的智能、治理它的行动，并让它的身份跨越任何模型和平台继续存在。',
     answer: '谁应该拥有这些权力？Suzent 的答案始终是：你。',
+    definitionLabel: '定义',
+    definitionTitle: '什么是主权 AI 智能体？',
+    definition: '主权 AI 智能体（sovereign AI agent）是指身份、记忆、技能、工作区和运行环境由使用者本人拥有和治理，而不是由模型提供商或平台掌握的 AI 智能体。它的持久状态保存在你可以阅读、编辑、版本管理和迁移的文件中；它的行动运行在你定义的权限边界内；更换底层模型也不会重置这个了解你工作的智能体。Suzent 就是这一定义的开源、本地优先实现。',
+    disambiguation: '“主权 AI”这个说法也被用在国家层面，指国家掌控的模型、数据和算力。主权智能体把同样的理念放到个人尺度：一个智能体的主权，属于运行它的那个人。',
     pillarsLabel: '四个必要条件',
     pillars: [
       {
@@ -147,11 +174,26 @@ const COPY: Record<'en' | 'zh-Hans', SovereignCopy> = {
     testTitle: '所有权必须能够被检验。',
     testIntro: '在称一个智能体为“主权智能体”之前，先问五个问题：',
     tests: [
-      '我能否检查、编辑、版本管理和删除它的记忆？',
-      '我能否更换模型，而不重置它的身份？',
-      '我能否定义、审批并审计它被允许执行的行动？',
-      '我能否迁移它的状态，而不导出自己的凭证？',
-      '如果提供商消失，这个智能体还能继续存在吗？',
+      {
+        question: '我能否检查、编辑、版本管理和删除它的记忆？',
+        answer: '在 Suzent 中，记忆是保存在你自己磁盘上的追加式 Markdown 文件。你可以用任意编辑器打开、用 Git 管理版本，也可以随时删除，无需任何厂商许可。搜索索引服务于这些文件，并且可以从文件重建。',
+      },
+      {
+        question: '我能否更换模型，而不重置它的身份？',
+        answer: '身份存在于记忆、技能、上下文和工作区中，而不在模型里。在 GPT、Claude、Gemini、DeepSeek 或本地模型之间切换，都不会影响这个了解你工作的智能体。',
+      },
+      {
+        question: '我能否定义、审批并审计它被允许执行的行动？',
+        answer: '工具调用会经过你设定的权限模式，由人工审批和作用域规则决定哪些行动可以从推理跨越到真实执行。',
+      },
+      {
+        question: '我能否迁移它的状态，而不导出自己的凭证？',
+        answer: '可迁移的智能体状态与设备本地的密钥分开同步，因此换一台机器时不必把 API 密钥一起带走。',
+      },
+      {
+        question: '如果提供商消失，这个智能体还能继续存在吗？',
+        answer: '定义这个智能体的一切，本来就是你手中的文件。提供商关停让你失去的是一个 API 密钥，而不是一个智能体。',
+      },
     ],
     testResult: '如果答案取决于厂商是否许可，这个智能体就还不完全属于你。',
     proofLabel: '不是承诺，而是证据',
@@ -191,7 +233,11 @@ const COPY: Record<'en' | 'zh-Hans', SovereignCopy> = {
 
 export default function Sovereign(): ReactNode {
   const { i18n } = useDocusaurusContext();
-  const copy = COPY[i18n.currentLocale === 'zh-Hans' ? 'zh-Hans' : 'en'];
+  const isZh = i18n.currentLocale === 'zh-Hans';
+  const copy = COPY[isZh ? 'zh-Hans' : 'en'];
+  const pageUrl = isZh
+    ? 'https://suzent.com/zh-Hans/sovereign'
+    : 'https://suzent.com/sovereign';
 
   return (
     <Layout title={copy.metaTitle} description={copy.metaDescription}>
@@ -199,17 +245,58 @@ export default function Sovereign(): ReactNode {
         <script type="application/ld+json">
           {JSON.stringify({
             '@context': 'https://schema.org',
-            '@type': 'WebPage',
-            name: `${copy.metaTitle} | Suzent`,
-            description: copy.metaDescription,
-            url: i18n.currentLocale === 'zh-Hans'
-              ? 'https://suzent.com/zh-Hans/sovereign'
-              : 'https://suzent.com/sovereign',
-            isPartOf: {
-              '@type': 'WebSite',
-              name: 'Suzent',
-              url: 'https://suzent.com/',
-            },
+            '@graph': [
+              {
+                '@type': 'WebPage',
+                '@id': `${pageUrl}#webpage`,
+                name: `${copy.metaTitle} | Suzent`,
+                description: copy.metaDescription,
+                url: pageUrl,
+                inLanguage: isZh ? 'zh-Hans' : 'en',
+                isPartOf: { '@id': 'https://suzent.com/#website' },
+                mainEntity: { '@id': `${pageUrl}#definedterm` },
+              },
+              {
+                '@type': 'DefinedTerm',
+                '@id': `${pageUrl}#definedterm`,
+                name: isZh ? '主权 AI 智能体' : 'Sovereign AI Agent',
+                alternateName: isZh
+                  ? ['主权智能体', '智能体主权', 'Sovereign AI Agent']
+                  : ['Sovereign Agent', 'Agent Sovereignty'],
+                description: copy.definition,
+                url: pageUrl,
+                inDefinedTermSet: {
+                  '@type': 'DefinedTermSet',
+                  name: isZh ? '主权协议' : 'The Sovereignty Protocol',
+                  url: pageUrl,
+                },
+                subjectOf: { '@id': `${pageUrl}#webpage` },
+                exampleOfWork: {
+                  '@type': 'SoftwareApplication',
+                  '@id': 'https://suzent.com/#software',
+                  name: 'Suzent',
+                },
+                hasPart: copy.pillars.map((pillar) => ({
+                  '@type': 'DefinedTerm',
+                  name: pillar.title,
+                  description: pillar.description,
+                })),
+              },
+              {
+                '@type': 'FAQPage',
+                '@id': `${pageUrl}#faq`,
+                inLanguage: isZh ? 'zh-Hans' : 'en',
+                isPartOf: { '@id': `${pageUrl}#webpage` },
+                mainEntity: copy.tests.map((test) => ({
+                  '@type': 'Question',
+                  name: test.question,
+                  acceptedAnswer: {
+                    '@type': 'Answer',
+                    text: test.answer,
+                  },
+                })),
+              },
+            ],
           })}
         </script>
       </Head>
@@ -224,6 +311,15 @@ export default function Sovereign(): ReactNode {
             <p className={styles.answer}>{copy.answer}</p>
           </div>
         </header>
+
+        <section className={styles.section}>
+          <div className={styles.container}>
+            <p className={styles.sectionLabel}>{copy.definitionLabel}</p>
+            <Heading as="h2" className={styles.definitionTitle}>{copy.definitionTitle}</Heading>
+            <p className={styles.definitionBody}>{copy.definition}</p>
+            <p className={styles.disambiguation}>{copy.disambiguation}</p>
+          </div>
+        </section>
 
         <section className={styles.section}>
           <div className={styles.container}>
@@ -251,9 +347,12 @@ export default function Sovereign(): ReactNode {
               </div>
               <ol className={styles.testList}>
                 {copy.tests.map((test, index) => (
-                  <li key={test}>
+                  <li key={test.question}>
                     <span>{String(index + 1).padStart(2, '0')}</span>
-                    <p>{test}</p>
+                    <div>
+                      <p>{test.question}</p>
+                      <p className={styles.testAnswer}>{test.answer}</p>
+                    </div>
                   </li>
                 ))}
               </ol>
