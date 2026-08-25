@@ -1,87 +1,120 @@
-<!doctype html><html lang=zh-Hans dir=ltr class="docs-wrapper plugin-docs plugin-id-default docs-version-current docs-doc-page docs-doc-id-developing/releasing" data-has-hydrated=false><head><meta charset=UTF-8><meta name=generator content="Docusaurus v3.10.2"><title data-rh=true>SUZENT | Release Guide</title><meta data-rh=true name=viewport content="width=device-width, initial-scale=1.0"/><meta data-rh=true name=twitter:card content=summary_large_image /><meta data-rh=true property=og:image content=https://suzent.com/zh-Hans/img/suzent-social-card.png /><meta data-rh=true name=twitter:image content=https://suzent.com/zh-Hans/img/suzent-social-card.png /><meta data-rh=true property=og:url content=https://suzent.com/zh-Hans/docs/developing/releasing /><meta data-rh=true property=og:locale content=zh_Hans /><meta data-rh=true property=og:locale:alternate content=en /><meta data-rh=true name=docusaurus_locale content=zh-Hans /><meta data-rh=true name=docsearch:language content=zh-Hans /><meta data-rh=true name=docusaurus_version content=current /><meta data-rh=true name=docusaurus_tag content=docs-default-current /><meta data-rh=true name=docsearch:version content=current /><meta data-rh=true name=docsearch:docusaurus_tag content=docs-default-current /><meta data-rh=true property=og:title content="SUZENT | Release Guide"/><meta data-rh=true name=description content="Suzent uses a Release PR workflow. Preparing a release is a single manual"/><meta data-rh=true property=og:description content="Suzent uses a Release PR workflow. Preparing a release is a single manual"/><link data-rh=true rel=icon href=/zh-Hans/img/logo.svg /><link data-rh=true rel=canonical href=https://suzent.com/zh-Hans/docs/developing/releasing /><link data-rh=true rel=alternate href=https://suzent.com/docs/developing/releasing hreflang=en /><link data-rh=true rel=alternate href=https://suzent.com/zh-Hans/docs/developing/releasing hreflang=zh-Hans /><link data-rh=true rel=alternate href=https://suzent.com/docs/developing/releasing hreflang=x-default /><script data-rh=true type=application/ld+json>{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","item":"https://suzent.com/zh-Hans/docs/category/development","name":"开发指南","position":1},{"@type":"ListItem","item":"https://suzent.com/zh-Hans/docs/developing/releasing","name":"Release Guide","position":2}]}</script><link rel=alternate type=application/rss+xml href=/zh-Hans/blog/rss.xml title="SUZENT RSS Feed"><link rel=alternate type=application/atom+xml href=/zh-Hans/blog/atom.xml title="SUZENT Atom Feed"><script>!function(){var a=location.pathname;("/"===a||"/zh-Hans"===a||"/zh-Hans/"===a)&&document.documentElement.classList.add("homepage-mode")}()</script><link rel=stylesheet href=/zh-Hans/assets/css/styles.c7372d2b.css /><script src=/zh-Hans/assets/js/runtime~main.ac7d8912.js defer></script><script src=/zh-Hans/assets/js/main.61faad44.js defer></script></head><body><svg style="display: none;"><defs>
+<!doctype html><html lang=zh-Hans dir=ltr class="docs-wrapper plugin-docs plugin-id-default docs-version-current docs-doc-page docs-doc-id-developing/releasing" data-has-hydrated=false><head><meta charset=UTF-8><meta name=generator content="Docusaurus v3.10.2"><title data-rh=true>SUZENT | Release Guide</title><meta data-rh=true name=viewport content="width=device-width, initial-scale=1.0"/><meta data-rh=true name=twitter:card content=summary_large_image /><meta data-rh=true property=og:image content=https://suzent.com/zh-Hans/img/suzent-social-card.png /><meta data-rh=true name=twitter:image content=https://suzent.com/zh-Hans/img/suzent-social-card.png /><meta data-rh=true property=og:url content=https://suzent.com/zh-Hans/docs/developing/releasing /><meta data-rh=true property=og:locale content=zh_Hans /><meta data-rh=true property=og:locale:alternate content=en /><meta data-rh=true name=docusaurus_locale content=zh-Hans /><meta data-rh=true name=docsearch:language content=zh-Hans /><meta data-rh=true name=docusaurus_version content=current /><meta data-rh=true name=docusaurus_tag content=docs-default-current /><meta data-rh=true name=docsearch:version content=current /><meta data-rh=true name=docsearch:docusaurus_tag content=docs-default-current /><meta data-rh=true property=og:title content="SUZENT | Release Guide"/><meta data-rh=true name=description content='Suzent keeps a Release PR permanently open against main. There is no "start a'/><meta data-rh=true property=og:description content='Suzent keeps a Release PR permanently open against main. There is no "start a'/><link data-rh=true rel=icon href=/zh-Hans/img/logo.svg /><link data-rh=true rel=canonical href=https://suzent.com/zh-Hans/docs/developing/releasing /><link data-rh=true rel=alternate href=https://suzent.com/docs/developing/releasing hreflang=en /><link data-rh=true rel=alternate href=https://suzent.com/zh-Hans/docs/developing/releasing hreflang=zh-Hans /><link data-rh=true rel=alternate href=https://suzent.com/docs/developing/releasing hreflang=x-default /><script data-rh=true type=application/ld+json>{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","item":"https://suzent.com/zh-Hans/docs/category/development","name":"开发指南","position":1},{"@type":"ListItem","item":"https://suzent.com/zh-Hans/docs/developing/releasing","name":"Release Guide","position":2}]}</script><link rel=alternate type=application/rss+xml href=/zh-Hans/blog/rss.xml title="SUZENT RSS Feed"><link rel=alternate type=application/atom+xml href=/zh-Hans/blog/atom.xml title="SUZENT Atom Feed"><script>!function(){var a=location.pathname;("/"===a||"/zh-Hans"===a||"/zh-Hans/"===a)&&document.documentElement.classList.add("homepage-mode")}()</script><link rel=stylesheet href=/zh-Hans/assets/css/styles.c7372d2b.css /><script src=/zh-Hans/assets/js/runtime~main.11e5d318.js defer></script><script src=/zh-Hans/assets/js/main.61faad44.js defer></script></head><body><svg style="display: none;"><defs>
 <symbol id=theme-svg-external-link viewBox="0 0 24 24"><path fill=currentColor d="M21 13v10h-21v-19h12v2h-10v15h17v-8h2zm3-12h-10.988l4.035 4-6.977 7.07 2.828 2.828 6.977-7.07 4.125 4.172v-11z"/></symbol>
 </defs></svg>
 <script>!function(){var t=function(){try{return new URLSearchParams(window.location.search).get("docusaurus-theme")}catch(t){}}()||function(){try{return window.localStorage.getItem("theme-29d")}catch(t){}}();document.documentElement.setAttribute("data-theme",t||(window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light")),document.documentElement.setAttribute("data-theme-choice",t||"system")}(),function(){try{for(var[t,e]of new URLSearchParams(window.location.search).entries())if(t.startsWith("docusaurus-data-")){var a=t.replace("docusaurus-data-","data-");document.documentElement.setAttribute(a,e)}}catch(t){}}(),document.documentElement.setAttribute("data-announcement-bar-initially-dismissed",function(){try{return"true"===localStorage.getItem("docusaurus.announcement.dismiss-29d")}catch(t){}return!1}())</script><div id=__docusaurus><link rel=preload as=image href=/zh-Hans/img/logo.svg /><div role=region aria-label=跳到主要内容><a class=skipToContent_fXgn href=#__docusaurus_skipToContent_fallback>跳到主要内容</a></div><div class="theme-announcement-bar announcementBar_mb4j" style=background-color:#ffffff;color:#000000 role=banner><div class=announcementBarPlaceholder_vyr4></div><div class="content_knG7 announcementBarContent_xLdY">If you find Suzent useful, give it a star on <a href=https://github.com/cyzus/suzent target=_blank rel="noopener noreferrer">GitHub</a>!</div><button type=button aria-label=关闭 class="clean-btn close closeButton_CVFx announcementBarClose_gvF7"><svg viewBox="0 0 15 15" width=14 height=14><g stroke=currentColor stroke-width=3.1><path d="M.75.75l13.5 13.5M14.25.75L.75 14.25"/></g></svg></button></div><nav aria-label=主导航 class="theme-layout-navbar navbar navbar--fixed-top"><div class=navbar__inner><div class="theme-layout-navbar-left navbar__items"><button aria-label=切换导航栏 aria-expanded=false class="navbar__toggle clean-btn" type=button><svg width=30 height=30 viewBox="0 0 30 30" aria-hidden=true><path stroke=currentColor stroke-linecap=round stroke-miterlimit=10 stroke-width=2 d="M4 7h22M4 15h22M4 23h22"/></svg></button><a class=navbar__brand href=/zh-Hans/><div class=navbar__logo><img src=/zh-Hans/img/logo.svg alt="Suzent 标志" class="themedComponent_mlkZ themedComponent--light_NVdE"/><img src=/zh-Hans/img/logo.svg alt="Suzent 标志" class="themedComponent_mlkZ themedComponent--dark_xIcU"/></div><b class="navbar__title text--truncate">SUZENT</b></a><a class="navbar__item navbar__link" href=/zh-Hans/sovereign>主权协议</a><a aria-current=page class="navbar__item navbar__link navbar__link--active" href=/zh-Hans/docs/category/getting-started>Docs</a><a class="navbar__item navbar__link" href=/zh-Hans/blog>Blog</a></div><div class="theme-layout-navbar-right navbar__items navbar__items--right"><a href=https://github.com/cyzus/suzent target=_blank rel="noopener noreferrer" class="navbar__item navbar__link">GitHub<svg width=13.5 height=13.5 aria-label="(opens in new tab)" class=iconExternalLink_nPIU><use href=#theme-svg-external-link /></svg></a><div class="navbar__item dropdown dropdown--hoverable" style=position:relative><button class=navbar__link aria-haspopup=true style="background:none;border:none;cursor:pointer;padding:0 0.5rem">中文</button><ul class=dropdown__menu style=right:0;left:auto><li><a href=/docs/developing/releasing class=dropdown__link>EN</a></ul></div><div class="toggle_vylO colorModeToggle_DEke"><button class="clean-btn toggleButton_gllP toggleButtonDisabled_aARS" type=button disabled title="system mode" aria-label="切换浅色/暗黑模式（当前为system mode）"><svg viewBox="0 0 24 24" width=24 height=24 aria-hidden=true class="toggleIcon_g3eP lightToggleIcon_pyhR"><path fill=currentColor d="M12,9c1.65,0,3,1.35,3,3s-1.35,3-3,3s-3-1.35-3-3S10.35,9,12,9 M12,7c-2.76,0-5,2.24-5,5s2.24,5,5,5s5-2.24,5-5 S14.76,7,12,7L12,7z M2,13l2,0c0.55,0,1-0.45,1-1s-0.45-1-1-1l-2,0c-0.55,0-1,0.45-1,1S1.45,13,2,13z M20,13l2,0c0.55,0,1-0.45,1-1 s-0.45-1-1-1l-2,0c-0.55,0-1,0.45-1,1S19.45,13,20,13z M11,2v2c0,0.55,0.45,1,1,1s1-0.45,1-1V2c0-0.55-0.45-1-1-1S11,1.45,11,2z M11,20v2c0,0.55,0.45,1,1,1s1-0.45,1-1v-2c0-0.55-0.45-1-1-1C11.45,19,11,19.45,11,20z M5.99,4.58c-0.39-0.39-1.03-0.39-1.41,0 c-0.39,0.39-0.39,1.03,0,1.41l1.06,1.06c0.39,0.39,1.03,0.39,1.41,0s0.39-1.03,0-1.41L5.99,4.58z M18.36,16.95 c-0.39-0.39-1.03-0.39-1.41,0c-0.39,0.39-0.39,1.03,0,1.41l1.06,1.06c0.39,0.39,1.03,0.39,1.41,0c0.39-0.39,0.39-1.03,0-1.41 L18.36,16.95z M19.42,5.99c0.39-0.39,0.39-1.03,0-1.41c-0.39-0.39-1.03-0.39-1.41,0l-1.06,1.06c-0.39,0.39-0.39,1.03,0,1.41 s1.03,0.39,1.41,0L19.42,5.99z M7.05,18.36c0.39-0.39,0.39-1.03,0-1.41c-0.39-0.39-1.03-0.39-1.41,0l-1.06,1.06 c-0.39,0.39-0.39,1.03,0,1.41s1.03,0.39,1.41,0L7.05,18.36z"/></svg><svg viewBox="0 0 24 24" width=24 height=24 aria-hidden=true class="toggleIcon_g3eP darkToggleIcon_wfgR"><path fill=currentColor d="M9.37,5.51C9.19,6.15,9.1,6.82,9.1,7.5c0,4.08,3.32,7.4,7.4,7.4c0.68,0,1.35-0.09,1.99-0.27C17.45,17.19,14.93,19,12,19 c-3.86,0-7-3.14-7-7C5,9.07,6.81,6.55,9.37,5.51z M12,3c-4.97,0-9,4.03-9,9s4.03,9,9,9s9-4.03,9-9c0-0.46-0.04-0.92-0.1-1.36 c-0.98,1.37-2.58,2.26-4.4,2.26c-2.98,0-5.4-2.42-5.4-5.4c0-1.81,0.89-3.42,2.26-4.4C12.92,3.04,12.46,3,12,3L12,3z"/></svg><svg viewBox="0 0 24 24" width=24 height=24 aria-hidden=true class="toggleIcon_g3eP systemToggleIcon_QzmC"><path fill=currentColor d="m12 21c4.971 0 9-4.029 9-9s-4.029-9-9-9-9 4.029-9 9 4.029 9 9 9zm4.95-13.95c1.313 1.313 2.05 3.093 2.05 4.95s-0.738 3.637-2.05 4.95c-1.313 1.313-3.093 2.05-4.95 2.05v-14c1.857 0 3.637 0.737 4.95 2.05z"/></svg></button></div><div class=navbarSearchContainer_Bca1></div></div></div><div role=presentation class=navbar-sidebar__backdrop></div></nav><div id=__docusaurus_skipToContent_fallback class="theme-layout-main main-wrapper mainWrapper_z2l0"><div class=docsWrapper_hBAB><button aria-label=回到顶部 class="clean-btn theme-back-to-top-button backToTopButton_sjWU" type=button></button><div class=docRoot_UBD9><aside class="theme-doc-sidebar-container docSidebarContainer_YfHR"><div class=sidebarViewport_aRkj><div class=sidebar_njMd><nav aria-label=文档侧边栏 class="menu thin-scrollbar menu_SIkG menuWithAnnouncementBar_GW3s"><ul class="theme-doc-sidebar-menu menu__list"><li class="theme-doc-sidebar-item-category theme-doc-sidebar-item-category-level-1 menu__list-item menu__list-item--collapsed"><div class=menu__list-item-collapsible><a class="categoryLink_byQd menu__link menu__link--sublist" href=/zh-Hans/docs/category/getting-started><span class=categoryLinkLabel_W154>快速开始</span></a><button aria-label="展开侧边栏分类 '快速开始'" aria-expanded=false type=button class="clean-btn menu__caret"></button></div><li class="theme-doc-sidebar-item-category theme-doc-sidebar-item-category-level-1 menu__list-item menu__list-item--collapsed"><div class=menu__list-item-collapsible><a class="categoryLink_byQd menu__link menu__link--sublist" href=/zh-Hans/docs/category/concepts><span class=categoryLinkLabel_W154>核心概念</span></a><button aria-label="展开侧边栏分类 '核心概念'" aria-expanded=false type=button class="clean-btn menu__caret"></button></div><li class="theme-doc-sidebar-item-category theme-doc-sidebar-item-category-level-1 menu__list-item"><div class=menu__list-item-collapsible><a class="categoryLink_byQd menu__link menu__link--sublist menu__link--active" href=/zh-Hans/docs/category/development><span class=categoryLinkLabel_W154>开发指南</span></a><button aria-label="折叠侧边栏分类 '开发指南'" aria-expanded=true type=button class="clean-btn menu__caret"></button></div><ul class=menu__list><li class="theme-doc-sidebar-item-category theme-doc-sidebar-item-category-level-2 menu__list-item menu__list-item--collapsed"><div class=menu__list-item-collapsible><a class="categoryLink_byQd menu__link menu__link--sublist" tabindex=0 href=/zh-Hans/docs/category/memory-system><span class=categoryLinkLabel_W154>Memory System</span></a><button aria-label="展开侧边栏分类 'Memory System'" aria-expanded=false type=button class="clean-btn menu__caret"></button></div><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-2 menu__list-item"><a class=menu__link tabindex=0 href=/zh-Hans/docs/developing/development-guide><span class=linkLabel_WmDU>Development Guide</span></a><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-2 menu__list-item"><a class=menu__link tabindex=0 href=/zh-Hans/docs/developing/docker-services><span class=linkLabel_WmDU>Docker Services (Optional)</span></a><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-2 menu__list-item"><a class=menu__link tabindex=0 href=/zh-Hans/docs/developing/logo><span class=linkLabel_WmDU>Logo Standard</span></a><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-2 menu__list-item"><a class=menu__link tabindex=0 href=/zh-Hans/docs/developing/model-capability-updates><span class=linkLabel_WmDU>Updating Model Capabilities</span></a><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-2 menu__list-item"><a class="menu__link menu__link--active" aria-current=page tabindex=0 href=/zh-Hans/docs/developing/releasing><span class=linkLabel_WmDU>Release Guide</span></a></ul><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-1 menu__list-item"><a class=menu__link href=/zh-Hans/docs/><span class=linkLabel_WmDU>Documentation</span></a></ul></nav></div></div></aside><main class=docMainContainer_TBSr><div class="container padding-top--md padding-bottom--lg"><div class=row><div class="col docItemCol_VOVn"><div class=docItemContainer_Djhp><article><nav class="theme-doc-breadcrumbs breadcrumbsContainer_Z_bl" aria-label=页面路径><ul class=breadcrumbs><li class=breadcrumbs__item><a aria-label=主页面 class=breadcrumbs__link href=/zh-Hans/><svg viewBox="0 0 24 24" class=breadcrumbHomeIcon_YNFT><path d="M10 19v-5h4v5c0 .55.45 1 1 1h3c.55 0 1-.45 1-1v-7h1.7c.46 0 .68-.57.33-.87L12.67 3.6c-.38-.34-.96-.34-1.34 0l-8.36 7.53c-.34.3-.13.87.33.87H5v7c0 .55.45 1 1 1h3c.55 0 1-.45 1-1z" fill=currentColor /></svg></a><li class=breadcrumbs__item><a class=breadcrumbs__link href=/zh-Hans/docs/category/development><span>开发指南</span></a><li class="breadcrumbs__item breadcrumbs__item--active"><span class=breadcrumbs__link>Release Guide</span></ul></nav><div class="tocCollapsible_ETCw theme-doc-toc-mobile tocMobile_ITEo"><button type=button class="clean-btn tocCollapsibleButton_TO0P">本页总览</button></div><div class="theme-doc-markdown markdown"><header><h1>Release Guide</h1></header>
-<p>Suzent uses a Release PR workflow. Preparing a release is a single manual
-action; version synchronization, tagging, cross-platform builds, and GitHub
-Release publication are automated.</p>
+<p>Suzent keeps a Release PR permanently open against <code>main</code>. There is no "start a
+release" step: every push to <code>main</code> re-merges into that PR, re-derives the
+version from the commit range, and rewrites the notes. Releasing is a merge.</p>
+<p>Version synchronization, tagging, cross-platform builds, and GitHub Release
+publication are automated from there.</p>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id=before-you-start>Before you start<a href=#before-you-start class=hash-link aria-label="Before you start的直接链接" title="Before you start的直接链接" translate=no>​</a></h2>
 <ol>
-<li class="">Make sure all changes intended for the release have been merged into
-<code>main</code>, and that its required CI checks pass.</li>
-<li class="">Decide the next <a href=https://semver.org/ target=_blank rel="noopener noreferrer" class="">semantic version</a>:<!-- -->
-<ul>
-<li class=""><code>patch</code> for backward-compatible fixes;</li>
-<li class=""><code>minor</code> for backward-compatible features;</li>
-<li class=""><code>major</code> for breaking changes;</li>
-<li class="">an exact <code>X.Y.Z</code> version only when the automatically calculated version
-is not appropriate.</li>
-</ul>
+<li class="">
+<p>Make sure everything intended for the release is merged into <code>main</code> and its
+CI checks pass.</p>
 </li>
-<li class="">Decide how desktop assets should be handled:<!-- -->
+<li class="">
+<p>Check that the derived version on the open Release PR is the one you want.
+You do not choose it — it comes from the commit prefixes in the range since
+the last tag:</p>
+<table><thead><tr><th>Prefix in the range<th>Bump<tbody><tr><td><code>feat:</code><td>minor<tr><td><code>fix:</code>, <code>perf:</code><td>patch<tr><td><code>feat!:</code>, or a <code>BREAKING CHANGE:</code> footer<td>major, but <strong>minor while below 1.0</strong><tr><td>only <code>chore:</code>, <code>ci:</code>, <code>docs:</code>, <code>test:</code>, <code>style:</code>, <code>build:</code>, <code>refactor:</code><td>patch, as maintenance</table>
+<p>The highest-ranking prefix in the range wins, so one <code>feat:</code> among twenty
+fixes makes the release a minor. Reaching 1.0.0 stays a deliberate human act:
+a breaking change below 1.0 bumps the minor rather than declaring stability.</p>
+</li>
+<li class="">
+<p>Check <code>.release-assets-mode</code> on the release branch:</p>
 <ul>
-<li class="">use <code>build</code> for every normal release and for any frontend, desktop,
-installer, or <code>API_VERSION</code> change;</li>
-<li class="">use <code>reuse</code> only for a backend-only hotfix that remains compatible with
-the previous desktop application.</li>
+<li class=""><code>build</code> for every normal release and for any frontend, desktop, installer,
+or <code>API_VERSION</code> change;</li>
+<li class=""><code>reuse</code> only for a backend-only hotfix that remains compatible with the
+previously published desktop application.</li>
 </ul>
+<p>It carries over from <code>main</code>, so it is <code>build</code> unless someone changed it.</p>
 </li>
 </ol>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id=normal-release>Normal release<a href=#normal-release class=hash-link aria-label="Normal release的直接链接" title="Normal release的直接链接" translate=no>​</a></h2>
 <ol>
-<li class="">In GitHub, open <strong>Actions → Prepare Release → Run workflow</strong> and select the
-<code>main</code> branch.</li>
-<li class="">Set <strong>version</strong> to <code>patch</code>, <code>minor</code>, <code>major</code>, or an exact version such as
-<code>0.8.0</code>. Set <strong>desktop_assets</strong> to <code>build</code> unless the release meets all of
-the <code>reuse</code> conditions above, then run the workflow.</li>
-<li class="">Wait for the workflow to open a <code>release/vX.Y.Z</code> pull request. Do not create
-the release branch, tag, or GitHub Release manually.</li>
-<li class="">Review the pull request:<!-- -->
+<li class="">Open the Release PR — it is the open pull request from <code>release/next</code>,
+titled <code>chore: release vX.Y.Z</code>. If none is open, nothing user-visible has
+landed since the last tag; see <a href=#nothing-is-open class="">Nothing is open</a>.</li>
+<li class="">Review it:<!-- -->
 <ul>
-<li class="">confirm the version is correct in every changed manifest and lock file;</li>
-<li class="">edit the generated <code>CHANGELOG.md</code> section so it is accurate and useful to
-users;</li>
-<li class="">confirm <code>.release-assets-mode</code> contains the intended <code>build</code> or <code>reuse</code>
-value;</li>
-<li class="">wait for all required checks to pass.</li>
+<li class="">confirm the derived version is what you intend, in the title and in every
+changed manifest and lock file;</li>
+<li class="">read the generated <code>CHANGELOG.md</code> section, and add a
+<a href=#writing-release-highlights class="">highlights block</a> so the release page opens
+with something better than a list of commit subjects;</li>
+<li class="">confirm <code>.release-assets-mode</code> holds the intended <code>build</code> or <code>reuse</code>;</li>
+<li class="">wait for all checks to pass.</li>
 </ul>
 </li>
-<li class="">Merge the Release PR into <code>main</code>. The merge automatically creates the
-<code>vX.Y.Z</code> tag and starts <strong>Build and Publish Desktop Release</strong>.</li>
-<li class="">Wait for that workflow to complete. The GitHub Release stays in draft state
-until every required asset has been uploaded and checksums are generated.</li>
+<li class="">Merge it into <code>main</code> with <strong>Create a merge commit</strong>. The branch is <code>main</code>
+plus a version bump, so squashing writes a redundant duplicate-content
+commit. The merge automatically creates the <code>vX.Y.Z</code> tag and starts
+<strong>Build and Publish Desktop Release</strong>.</li>
+<li class="">Wait for that workflow to complete. The GitHub Release stays a draft until
+every asset is uploaded and checksums are generated.</li>
 <li class="">Open the <a href=https://github.com/cyzus/suzent/releases target=_blank rel="noopener noreferrer" class="">Releases page</a> and verify:<!-- -->
 <ul>
-<li class="">the release is published rather than draft and is marked as the latest
-release;</li>
-<li class="">its title, tag, and release notes match the merged changelog;</li>
+<li class="">the release is published rather than draft, and is marked as latest;</li>
+<li class="">its title, tag, and notes match the merged changelog;</li>
 <li class="">all eight <code>suzent-*</code> application and installer assets are present (two
 each for Windows, Linux, macOS Intel, and macOS Apple Silicon);</li>
 <li class=""><code>SHA256SUMS</code> is attached.</li>
 </ul>
 </li>
 </ol>
-<p>The release is complete only after the publication and asset checks in step 7
-pass. If the workflow fails, follow <a href=#recovery class="">Recovery</a> rather than manually
-publishing the draft.</p>
-<p>The release remains a draft while Windows, macOS Intel, macOS Apple Silicon,
-and Linux builds run. It is published only after every build succeeds. A failed
-build therefore cannot expose a partially populated release.</p>
+<p>The release is complete only after the checks in step 5 pass. If the workflow
+fails, follow <a href=#recovery class="">Recovery</a> rather than publishing the draft by hand.</p>
+<p>The release remains a draft while the Windows, macOS Intel, macOS Apple
+Silicon, and Linux builds run, and is published only after every build
+succeeds — so a failed build cannot expose a partially populated release.</p>
 <p>Backend-only hotfixes still receive a normal version and Git tag for auditing,
 rollback, and dependency locking, but they do not rebuild four desktop targets.
-When <code>desktop_assets=reuse</code>, the workflow copies the previous published UI and
-installer assets into the new release. The frontend accepts a different backend
-build commit as long as <code>API_VERSION</code> matches. Incompatible route or payload
-changes must bump <code>API_VERSION</code> and use <code>desktop_assets=build</code>.</p>
+With <code>.release-assets-mode</code> set to <code>reuse</code>, the workflow copies the previously
+published UI and installer assets into the new release. The frontend accepts a
+different backend build commit as long as <code>API_VERSION</code> matches. Incompatible
+route or payload changes must bump <code>API_VERSION</code> and use <code>build</code>.</p>
+<p>Do not create the release branch, tag, or GitHub Release by hand.</p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id=nothing-is-open>Nothing is open<a href=#nothing-is-open class=hash-link aria-label="Nothing is open的直接链接" title="Nothing is open的直接链接" translate=no>​</a></h3>
+<p>A range containing only <code>chore</code>, <code>ci</code>, <code>docs</code>, <code>test</code>, <code>style</code>, <code>build</code>, or
+<code>refactor</code> commits does not open a Release PR on its own. Nothing in it earns a
+bump, so there is nothing a user would notice; it waits and rides along with the
+next real change.</p>
+<p>To release anyway — to ship a dependency bump, say — use
+<a href=#manual-override-prepare-release class="">Prepare Release</a>.</p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id=writing-release-highlights>Writing release highlights<a href=#writing-release-highlights class=hash-link aria-label="Writing release highlights的直接链接" title="Writing release highlights的直接链接" translate=no>​</a></h3>
+<p>A generated changelog section is a flat list of commit subjects. For a large
+release that is thirty or more bullets with no indication of what the release is
+actually about, and the GitHub release body is this section copied verbatim.</p>
+<p>Anything wrapped in highlights markers, placed directly under the version
+heading, survives every refresh:</p>
+<div class="language-markdown codeBlockContainer_Ckt0 theme-code-block" style=--prism-color:#393A34;--prism-background-color:#f6f8fa><div class=codeBlockContent_QJqH><pre tabindex=0 class="prism-code language-markdown codeBlock_bY9V thin-scrollbar" style=color:#393A34;background-color:#f6f8fa><code class=codeBlockLines_e6Vv><div class=token-line style=color:#393A34><span class="token title important punctuation" style=color:#393A34>##</span><span class="token title important"> [v0.10.0] - 2026-08-25</span><span class="token plain"></span><br/></div><div class=token-line style=color:#393A34><span class="token plain" style=display:inline-block></span><br/></div><div class=token-line style=color:#393A34><span class="token plain"></span><span class="token comment" style=color:#999988;font-style:italic>&lt;!-- highlights --></span><span class="token plain"></span><br/></div><div class=token-line style=color:#393A34><span class="token plain">Memory is the story of this release: claims now carry a confirmation count and</span><br/></div><div class=token-line style=color:#393A34><span class="token plain">an expiry, duplicate facts retire instead of accumulating, and the memory tab</span><br/></div><div class=token-line style=color:#393A34><span class="token plain">is finally readable.</span><br/></div><div class=token-line style=color:#393A34><span class="token plain"></span><span class="token comment" style=color:#999988;font-style:italic>&lt;!-- /highlights --></span><span class="token plain"></span><br/></div><div class=token-line style=color:#393A34><span class="token plain" style=display:inline-block></span><br/></div><div class=token-line style=color:#393A34><span class="token plain"></span><span class="token title important punctuation" style=color:#393A34>###</span><span class="token title important"> 🚀 Added</span><span class="token plain"></span><br/></div><div class=token-line style=color:#393A34><span class="token plain"></span><span class="token list punctuation" style=color:#393A34>-</span><span class="token plain"> ...</span><br/></div></code></pre></div></div>
+<p>Both markers are required and each must sit alone on its own line. An unclosed
+block is discarded on the next refresh rather than swallowing the rest of the
+entry. The markers are HTML comments so they stay invisible on the release page.</p>
+<p>Write this on the Release PR, before merging, so it goes through review with
+everything else and the release is published with its summary already in place.
+Drafting it from <code>git log &lt;last-tag>..HEAD</code> is a reasonable job to hand to an
+agent; deciding which of those commits a user actually cares about is not.</p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id=releasing-a-version-other-than-the-derived-one>Releasing a version other than the derived one<a href=#releasing-a-version-other-than-the-derived-one class=hash-link aria-label="Releasing a version other than the derived one的直接链接" title="Releasing a version other than the derived one的直接链接" translate=no>​</a></h3>
+<p>Edit the version files on <code>release/next</code> before merging. The tag follows the
+files at merge time, not the branch name — which is why the branch is called
+<code>release/next</code> and never names a version.</p>
+<p>Be aware that the next push to <code>main</code> re-derives the version and will overwrite
+a hand-edited one. Only the highlights block survives a refresh.</p>
 <h3 class="anchor anchorTargetStickyNavbar_Vzrq" id=if-main-changes-before-merge>If main changes before merge<a href=#if-main-changes-before-merge class=hash-link aria-label="If main changes before merge的直接链接" title="If main changes before merge的直接链接" translate=no>​</a></h3>
-<p>Do not merge a stale Release PR. Every push to <code>main</code> automatically runs
-<strong>Refresh Release PR</strong>. It finds the single open same-repository <code>release/v*</code>
-PR, refreshes it, and starts CI. No PR number or manual action is required.</p>
-<p>The refresh workflow merges the latest <code>main</code> into the release branch,
-regenerates the current version's changelog section, validates every version
-source, pushes the result, and explicitly starts CI. Review the regenerated
-notes again before merging because refresh replaces any manual edits in that
-version's section.</p>
+<p>Do not merge a stale Release PR — though you rarely have to think about it,
+because every push to <code>main</code> runs <strong>Refresh Release PR</strong> automatically. It finds
+the single open same-repository PR whose head branch starts with <code>release/</code>,
+merges <code>main</code> into it, re-derives the version, rewrites the notes, validates
+every version source, pushes, and starts CI. No PR number or manual action is
+required.</p>
+<p>The refresh replaces any manual edits in the pending version's changelog
+section, with the single exception of the highlights block above. If the branch
+is already up to date with <code>main</code>, or the reconcile produces no file changes, it
+makes no commit at all.</p>
 <p>For recovery, <strong>Actions → Refresh Release PR → Run workflow</strong> performs the same
 lookup without inputs. If there is no open Release PR it exits successfully. If
 there is more than one, it stops and lists the candidates instead of guessing.</p>
@@ -96,19 +129,36 @@ publication stop instead of releasing code that is missing from the notes.</p>
 <li class="">the main Tauri configuration, Cargo manifest, and Cargo lock;</li>
 <li class="">the standalone installer's Tauri, npm, and Cargo files.</li>
 </ul>
-<p>It also generates a changelog draft from commits since the last tag. Scoped
+<p>It also generates the changelog section from commits since the last tag. Scoped
 conventional commits such as <code>feat(ui): ...</code> are categorized, while unprefixed
-commit subjects are retained under <strong>Changed</strong> so release notes are not silently
-lost.</p>
-<p>CI runs <code>python scripts/bump_version.py --check</code> on every pull request. A tag
-whose version does not match the manifests or changelog is rejected before any
-desktop build starts.</p>
-<p>Release PR workflows explicitly dispatch CI after bot-created or bot-refreshed
-branches. This avoids GitHub's suppression of ordinary workflow events created
-with the built-in token.</p>
+subjects are retained under <strong>Changed</strong> so release notes are not silently lost.
+The baseline for re-deriving the version is always the last <em>tagged</em> release,
+never the version already written into the release branch — otherwise each push
+would bump on top of the previous bump.</p>
+<p>CI runs <code>python scripts/bump_version.py --check</code> on every pull request, and
+advisory-audits commit prefixes it cannot read. A prefix nobody recognizes earns
+no bump, so an unreadable one silently changes the version that ships; the audit
+warns without blocking a merge. A tag whose version does not match the manifests
+or changelog is rejected before any desktop build starts.</p>
+<p>Release workflows explicitly dispatch CI and the desktop build rather than
+relying on the push events they create. GitHub suppresses ordinary workflow
+events triggered by its built-in token, and this is what works around it.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id=manual-override-prepare-release>Manual override: Prepare Release<a href=#manual-override-prepare-release class=hash-link aria-label="Manual override: Prepare Release的直接链接" title="Manual override: Prepare Release的直接链接" translate=no>​</a></h2>
+<p><strong>Actions → Prepare Release → Run workflow</strong> opens a release branch with a
+version you choose. Use it only when the automatic flow will not do:</p>
+<ul>
+<li class="">to ship a range the automatic flow considers unreleasable;</li>
+<li class="">to force an exact version, a major, or a bump the prefixes do not imply;</li>
+<li class="">to set <code>.release-assets-mode</code> to <code>reuse</code> as the branch is created.</li>
+</ul>
+<p>Set <strong>version</strong> to <code>auto</code>, <code>patch</code>, <code>minor</code>, <code>major</code>, or an exact version such
+as <code>0.8.0</code>, and <strong>desktop_assets</strong> to <code>build</code> or <code>reuse</code>.</p>
+<p>It refuses to run while <code>release/next</code> already exists, rather than overwriting
+review edits on an open PR. Close that PR and delete the branch first, or just
+edit the version files on the branch that is already open.</p>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id=local-fallback>Local fallback<a href=#local-fallback class=hash-link aria-label="Local fallback的直接链接" title="Local fallback的直接链接" translate=no>​</a></h2>
 <p>The same preparation can be run locally:</p>
-<div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style=--prism-color:#393A34;--prism-background-color:#f6f8fa><div class=codeBlockContent_QJqH><pre tabindex=0 class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style=color:#393A34;background-color:#f6f8fa><code class=codeBlockLines_e6Vv><div class=token-line style=color:#393A34><span class="token plain"># Preview release notes without changing files</span><br/></div><div class=token-line style=color:#393A34><span class="token plain">uv run python scripts/bump_version.py patch --changelog</span><br/></div><div class=token-line style=color:#393A34><span class="token plain" style=display:inline-block></span><br/></div><div class=token-line style=color:#393A34><span class="token plain"># Synchronize files and add the changelog entry</span><br/></div><div class=token-line style=color:#393A34><span class="token plain">uv run python scripts/bump_version.py patch</span><br/></div><div class=token-line style=color:#393A34><span class="token plain" style=display:inline-block></span><br/></div><div class=token-line style=color:#393A34><span class="token plain"># Verify all version sources</span><br/></div><div class=token-line style=color:#393A34><span class="token plain">uv run python scripts/bump_version.py --check</span><br/></div></code></pre></div></div>
+<div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style=--prism-color:#393A34;--prism-background-color:#f6f8fa><div class=codeBlockContent_QJqH><pre tabindex=0 class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style=color:#393A34;background-color:#f6f8fa><code class=codeBlockLines_e6Vv><div class=token-line style=color:#393A34><span class="token plain"># Preview release notes without changing files</span><br/></div><div class=token-line style=color:#393A34><span class="token plain">uv run python scripts/bump_version.py patch --changelog</span><br/></div><div class=token-line style=color:#393A34><span class="token plain" style=display:inline-block></span><br/></div><div class=token-line style=color:#393A34><span class="token plain"># Show the bump the commit history implies, without changing files</span><br/></div><div class=token-line style=color:#393A34><span class="token plain">uv run python scripts/bump_version.py --suggest-bump</span><br/></div><div class=token-line style=color:#393A34><span class="token plain" style=display:inline-block></span><br/></div><div class=token-line style=color:#393A34><span class="token plain"># Synchronize files and add the changelog entry</span><br/></div><div class=token-line style=color:#393A34><span class="token plain">uv run python scripts/bump_version.py patch</span><br/></div><div class=token-line style=color:#393A34><span class="token plain" style=display:inline-block></span><br/></div><div class=token-line style=color:#393A34><span class="token plain"># Verify all version sources</span><br/></div><div class=token-line style=color:#393A34><span class="token plain">uv run python scripts/bump_version.py --check</span><br/></div></code></pre></div></div>
 <p>Review the diff and commit only the version files and <code>CHANGELOG.md</code>. Do not use
 <code>git add .</code> in a working tree containing unrelated changes.</p>
 <p>To rebuild an existing unpublished tag, open
@@ -116,32 +166,38 @@ with the built-in token.</p>
 exact tag. The workflow refreshes an existing draft and replaces its assets.
 It refuses to overwrite an already published release.</p>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id=repository-setup>Repository setup<a href=#repository-setup class=hash-link aria-label="Repository setup的直接链接" title="Repository setup的直接链接" translate=no>​</a></h2>
-<p>The workflows use the built-in <code>GITHUB_TOKEN</code> for tagging and publication.
-No release credential is required.</p>
-<p>GitHub suppresses ordinary workflow events caused by its built-in token. The
-release pipeline accounts for this by explicitly dispatching the desktop build
-after creating the tag.</p>
-<p>For repositories that require pull-request checks to be triggered by the
-release bot, add a fine-grained <code>RELEASE_BOT_TOKEN</code> secret with access to
-contents and pull requests. Without it, Release PR creation still works, but
-GitHub may not trigger other workflows from the bot-created branch and pull
-request. The <strong>Prepare Release</strong> workflow always performs its own version
-validation.</p>
+<p>Tagging and publication use the built-in <code>GITHUB_TOKEN</code>.</p>
+<p>Opening and refreshing the Release PR uses <code>RELEASE_BOT_TOKEN</code>, a fine-grained
+personal access token scoped to this repository, falling back to <code>GITHUB_TOKEN</code>
+when the secret is absent. Without it the Release PR is still created and
+refreshed, but GitHub will not run <code>pull_request</code> workflows on a branch the
+built-in token pushed, so the PR's checks never start.</p>
+<p>The token needs <strong>Contents: Read and write</strong>, <strong>Pull requests: Read and write</strong>,
+and <strong>Workflows: Read and write</strong>. The last one is not optional: the refresh
+merges <code>main</code> into the release branch, and that merge carries any change under
+<code>.github/workflows/</code>, which GitHub refuses from a token without it.</p>
 <p>Optionally protect the <code>main</code> branch and require review of Release PRs. That
 keeps changelog approval manual while leaving all mechanical release work
 automated.</p>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id=recovery>Recovery<a href=#recovery class=hash-link aria-label=Recovery的直接链接 title=Recovery的直接链接 translate=no>​</a></h2>
 <h3 class="anchor anchorTargetStickyNavbar_Vzrq" id=a-platform-build-fails>A platform build fails<a href=#a-platform-build-fails class=hash-link aria-label="A platform build fails的直接链接" title="A platform build fails的直接链接" translate=no>​</a></h3>
-<p>Fix the cause on <code>main</code>, prepare a new patch release, and merge it. The failed
-version remains a draft and is not advertised as the latest release.</p>
+<p>Fix the cause on <code>main</code>, let the refreshed Release PR pick up the fix, and merge
+it. The failed version remains a draft and is not advertised as the latest
+release.</p>
 <p>If the failure was transient and the tagged source is correct, rerun
 <strong>Build and Publish Desktop Release</strong> with the existing tag.</p>
 <h3 class="anchor anchorTargetStickyNavbar_Vzrq" id=a-release-pr-needs-changes>A Release PR needs changes<a href=#a-release-pr-needs-changes class=hash-link aria-label="A Release PR needs changes的直接链接" title="A Release PR needs changes的直接链接" translate=no>​</a></h3>
-<p>Edit the changelog directly on its <code>release/vX.Y.Z</code> branch. Do not rerun
+<p>Edit the changelog or the version files directly on <code>release/next</code>. Do not rerun
 <strong>Prepare Release</strong> for the same version while that branch exists; the workflow
 stops instead of overwriting review edits.</p>
+<p>Remember that the next push to <code>main</code> regenerates the changelog section. Put
+anything you want to keep inside the highlights markers.</p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id=more-than-one-release-pr-is-open>More than one Release PR is open<a href=#more-than-one-release-pr-is-open class=hash-link aria-label="More than one Release PR is open的直接链接" title="More than one Release PR is open的直接链接" translate=no>​</a></h3>
+<p><strong>Refresh Release PR</strong> stops and lists the candidates rather than guessing which
+one to update. Close the ones that are not wanted, delete their branches, and
+re-run the workflow.</p>
 <h3 class="anchor anchorTargetStickyNavbar_Vzrq" id=a-wrong-tag-was-created>A wrong tag was created<a href=#a-wrong-tag-was-created class=hash-link aria-label="A wrong tag was created的直接链接" title="A wrong tag was created的直接链接" translate=no>​</a></h3>
 <p>Do not move a published version tag. If the release is still a draft, delete
 the draft and tag in GitHub, correct the source through a new pull request, and
 then run the desktop workflow for the corrected tag. Prefer issuing a new patch
-version once a release has been published.</div><footer class="theme-doc-footer docusaurus-mt-lg"><div class="row margin-top--sm theme-doc-footer-edit-meta-row"><div class="col noPrint_WFHX"><a href=https://github.com/cyzus/suzent/tree/main/website/../docs/03-developing/releasing.md target=_blank rel="noopener noreferrer" class=theme-edit-this-page><svg fill=currentColor height=20 width=20 viewBox="0 0 40 40" class=iconEdit_Z9Sw aria-hidden=true><g><path d="m34.5 11.7l-3 3.1-6.3-6.3 3.1-3q0.5-0.5 1.2-0.5t1.1 0.5l3.9 3.9q0.5 0.4 0.5 1.1t-0.5 1.2z m-29.5 17.1l18.4-18.5 6.3 6.3-18.4 18.4h-6.3v-6.2z"/></g></svg>编辑此页</a></div><div class="col lastUpdated_JAkA"></div></div></footer></article><nav class="docusaurus-mt-lg pagination-nav" aria-label=文件选项卡><a class="pagination-nav__link pagination-nav__link--prev" href=/zh-Hans/docs/developing/model-capability-updates><div class=pagination-nav__sublabel>上一页</div><div class=pagination-nav__label>Updating Model Capabilities</div></a><a class="pagination-nav__link pagination-nav__link--next" href=/zh-Hans/docs/><div class=pagination-nav__sublabel>下一页</div><div class=pagination-nav__label>Documentation</div></a></nav></div></div><div class="col col--3"><div class="tableOfContents_bqdL thin-scrollbar theme-doc-toc-desktop"><ul class="table-of-contents table-of-contents__left-border"><li><a href=#before-you-start class="table-of-contents__link toc-highlight">Before you start</a><li><a href=#normal-release class="table-of-contents__link toc-highlight">Normal release</a><ul><li><a href=#if-main-changes-before-merge class="table-of-contents__link toc-highlight">If main changes before merge</a></ul><li><a href=#what-is-automated class="table-of-contents__link toc-highlight">What is automated</a><li><a href=#local-fallback class="table-of-contents__link toc-highlight">Local fallback</a><li><a href=#repository-setup class="table-of-contents__link toc-highlight">Repository setup</a><li><a href=#recovery class="table-of-contents__link toc-highlight">Recovery</a><ul><li><a href=#a-platform-build-fails class="table-of-contents__link toc-highlight">A platform build fails</a><li><a href=#a-release-pr-needs-changes class="table-of-contents__link toc-highlight">A Release PR needs changes</a><li><a href=#a-wrong-tag-was-created class="table-of-contents__link toc-highlight">A wrong tag was created</a></ul></ul></div></div></div></div></main></div></div></div><footer class="theme-layout-footer footer"><div class="container container-fluid"><div class="row footer__links"><div class="theme-layout-footer-column col footer__col"><div class=footer__title>文档</div><ul class="footer__items clean-list"><li class=footer__item><a class=footer__link-item href=/zh-Hans/docs/getting-started/intro>项目介绍</a><li class=footer__item><a class=footer__link-item href=/zh-Hans/docs/getting-started/quickstart>快速开始</a><li class=footer__item><a class=footer__link-item href=/zh-Hans/docs/concepts/filesystem>文件系统</a></ul></div><div class="theme-layout-footer-column col footer__col"><div class=footer__title>系统</div><ul class="footer__items clean-list"><li class=footer__item><a class=footer__link-item href=/zh-Hans/docs/concepts/tools>工具</a><li class=footer__item><a class=footer__link-item href=/zh-Hans/docs/concepts/memory>记忆系统</a><li class=footer__item><a class=footer__link-item href=/zh-Hans/docs/concepts/automation>自动化</a></ul></div><div class="theme-layout-footer-column col footer__col"><div class=footer__title>社区</div><ul class="footer__items clean-list"><li class=footer__item><a href=https://github.com/cyzus/suzent target=_blank rel="noopener noreferrer" class=footer__link-item>GitHub<svg width=13.5 height=13.5 aria-label="(opens in new tab)" class=iconExternalLink_nPIU><use href=#theme-svg-external-link /></svg></a><li class=footer__item><a href=https://github.com/cyzus/suzent/issues target=_blank rel="noopener noreferrer" class=footer__link-item>问题反馈<svg width=13.5 height=13.5 aria-label="(opens in new tab)" class=iconExternalLink_nPIU><use href=#theme-svg-external-link /></svg></a></ul></div></div><div class="footer__bottom text--center"><div class=footer__copyright>© 2026 Suzent</div></div></div></footer></div></body>
+version once a release has been published.</div><footer class="theme-doc-footer docusaurus-mt-lg"><div class="row margin-top--sm theme-doc-footer-edit-meta-row"><div class="col noPrint_WFHX"><a href=https://github.com/cyzus/suzent/tree/main/website/../docs/03-developing/releasing.md target=_blank rel="noopener noreferrer" class=theme-edit-this-page><svg fill=currentColor height=20 width=20 viewBox="0 0 40 40" class=iconEdit_Z9Sw aria-hidden=true><g><path d="m34.5 11.7l-3 3.1-6.3-6.3 3.1-3q0.5-0.5 1.2-0.5t1.1 0.5l3.9 3.9q0.5 0.4 0.5 1.1t-0.5 1.2z m-29.5 17.1l18.4-18.5 6.3 6.3-18.4 18.4h-6.3v-6.2z"/></g></svg>编辑此页</a></div><div class="col lastUpdated_JAkA"></div></div></footer></article><nav class="docusaurus-mt-lg pagination-nav" aria-label=文件选项卡><a class="pagination-nav__link pagination-nav__link--prev" href=/zh-Hans/docs/developing/model-capability-updates><div class=pagination-nav__sublabel>上一页</div><div class=pagination-nav__label>Updating Model Capabilities</div></a><a class="pagination-nav__link pagination-nav__link--next" href=/zh-Hans/docs/><div class=pagination-nav__sublabel>下一页</div><div class=pagination-nav__label>Documentation</div></a></nav></div></div><div class="col col--3"><div class="tableOfContents_bqdL thin-scrollbar theme-doc-toc-desktop"><ul class="table-of-contents table-of-contents__left-border"><li><a href=#before-you-start class="table-of-contents__link toc-highlight">Before you start</a><li><a href=#normal-release class="table-of-contents__link toc-highlight">Normal release</a><ul><li><a href=#nothing-is-open class="table-of-contents__link toc-highlight">Nothing is open</a><li><a href=#writing-release-highlights class="table-of-contents__link toc-highlight">Writing release highlights</a><li><a href=#releasing-a-version-other-than-the-derived-one class="table-of-contents__link toc-highlight">Releasing a version other than the derived one</a><li><a href=#if-main-changes-before-merge class="table-of-contents__link toc-highlight">If main changes before merge</a></ul><li><a href=#what-is-automated class="table-of-contents__link toc-highlight">What is automated</a><li><a href=#manual-override-prepare-release class="table-of-contents__link toc-highlight">Manual override: Prepare Release</a><li><a href=#local-fallback class="table-of-contents__link toc-highlight">Local fallback</a><li><a href=#repository-setup class="table-of-contents__link toc-highlight">Repository setup</a><li><a href=#recovery class="table-of-contents__link toc-highlight">Recovery</a><ul><li><a href=#a-platform-build-fails class="table-of-contents__link toc-highlight">A platform build fails</a><li><a href=#a-release-pr-needs-changes class="table-of-contents__link toc-highlight">A Release PR needs changes</a><li><a href=#more-than-one-release-pr-is-open class="table-of-contents__link toc-highlight">More than one Release PR is open</a><li><a href=#a-wrong-tag-was-created class="table-of-contents__link toc-highlight">A wrong tag was created</a></ul></ul></div></div></div></div></main></div></div></div><footer class="theme-layout-footer footer"><div class="container container-fluid"><div class="row footer__links"><div class="theme-layout-footer-column col footer__col"><div class=footer__title>文档</div><ul class="footer__items clean-list"><li class=footer__item><a class=footer__link-item href=/zh-Hans/docs/getting-started/intro>项目介绍</a><li class=footer__item><a class=footer__link-item href=/zh-Hans/docs/getting-started/quickstart>快速开始</a><li class=footer__item><a class=footer__link-item href=/zh-Hans/docs/concepts/filesystem>文件系统</a></ul></div><div class="theme-layout-footer-column col footer__col"><div class=footer__title>系统</div><ul class="footer__items clean-list"><li class=footer__item><a class=footer__link-item href=/zh-Hans/docs/concepts/tools>工具</a><li class=footer__item><a class=footer__link-item href=/zh-Hans/docs/concepts/memory>记忆系统</a><li class=footer__item><a class=footer__link-item href=/zh-Hans/docs/concepts/automation>自动化</a></ul></div><div class="theme-layout-footer-column col footer__col"><div class=footer__title>社区</div><ul class="footer__items clean-list"><li class=footer__item><a href=https://github.com/cyzus/suzent target=_blank rel="noopener noreferrer" class=footer__link-item>GitHub<svg width=13.5 height=13.5 aria-label="(opens in new tab)" class=iconExternalLink_nPIU><use href=#theme-svg-external-link /></svg></a><li class=footer__item><a href=https://github.com/cyzus/suzent/issues target=_blank rel="noopener noreferrer" class=footer__link-item>问题反馈<svg width=13.5 height=13.5 aria-label="(opens in new tab)" class=iconExternalLink_nPIU><use href=#theme-svg-external-link /></svg></a></ul></div></div><div class="footer__bottom text--center"><div class=footer__copyright>© 2026 Suzent</div></div></div></footer></div></body>
