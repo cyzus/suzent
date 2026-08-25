@@ -129,6 +129,10 @@ class AsyncBaseClient:
                 detail = str(e)
             raise ClientError(f"Server error ({e.response.status_code}): {detail}")
 
+    async def aclose(self) -> None:
+        """Release the underlying connection pool."""
+        await self._client.aclose()
+
     async def stream_post(self, path: str, json: dict | None = None, **kwargs):
         """Yields chunks of the stream response."""
         timeout = kwargs.pop("timeout", 60.0)

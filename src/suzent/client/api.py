@@ -276,9 +276,18 @@ class ChatAPI:
     async def create_chat(self, payload: dict) -> dict:
         return await self.client.post("/chats", json=payload)
 
-    async def stream_message(self, payload: dict):
-        async for chunk in self.client.stream_post("/chat", json=payload):
+    async def stream_message(self, payload: dict, timeout: float | None = 60.0):
+        """Stream one turn. ``timeout=None`` waits as long as the model runs."""
+        async for chunk in self.client.stream_post(
+            "/chat", json=payload, timeout=timeout
+        ):
             yield chunk
+
+    async def stop(self, chat_id: str, reason: str = "") -> dict:
+        body: dict = {"chat_id": chat_id}
+        if reason:
+            body["reason"] = reason
+        return await self.client.post("/chat/stop", json=body)
 
 
 class SuzentAsyncClient(AsyncBaseClient):
