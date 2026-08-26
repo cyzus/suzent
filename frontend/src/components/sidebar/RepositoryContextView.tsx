@@ -18,6 +18,16 @@ interface RepositoryContextViewProps {
   chatId: string;
 }
 
+interface LoadedRepositoryContext {
+  chatId: string;
+  data: RepositoryContextResponse;
+}
+
+interface RepositoryContextError {
+  chatId: string;
+  message: string;
+}
+
 interface ContextFileCardProps {
   name: string;
   content: string;
@@ -40,10 +50,12 @@ function ContextFileCard({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(content);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     setDraft(content);
+    setSaveError(null);
   }, [content]);
 
   const copy = async () => {
@@ -58,9 +70,12 @@ function ContextFileCard({
       return;
     }
     setSaving(true);
+    setSaveError(null);
     try {
       await onSave(draft);
       setEditing(false);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : t('repositoryContext.saveFailed'));
     } finally {
       setSaving(false);
     }
@@ -68,6 +83,7 @@ function ContextFileCard({
 
   const cancel = () => {
     setDraft(content);
+    setSaveError(null);
     setEditing(false);
   };
 
@@ -112,7 +128,13 @@ function ContextFileCard({
               )}
             </BrutalIconButton>
             {editable && (
-              <BrutalIconButton label={t('common.edit')} onClick={() => setEditing(true)}>
+              <BrutalIconButton
+                label={t('common.edit')}
+                onClick={() => {
+                  setSaveError(null);
+                  setEditing(true);
+                }}
+              >
                 <PencilIcon className="h-4 w-4 stroke-2" />
               </BrutalIconButton>
             )}
@@ -124,6 +146,15 @@ function ContextFileCard({
         <div className="border-t-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900">
           {editing ? (
             <div className="space-y-2 p-2.5">
+              {saveError && (
+                <div
+                  role="alert"
+                  className="border-2 border-brutal-red bg-white px-2.5 py-2 font-mono text-xs text-brutal-red dark:bg-zinc-800"
+                >
+                  <span className="font-bold">{t('repositoryContext.saveFailed')}:</span>{' '}
+                  {saveError}
+                </div>
+              )}
               <textarea
                 value={draft}
                 onChange={(event) => setDraft(event.target.value)}
@@ -158,24 +189,39 @@ export function RepositoryContextView({ chatId }: RepositoryContextViewProps) {
   const { t } = useI18n();
   const { isStreaming } = useChatStreamingStore();
   const previousStreaming = useRef(isStreaming);
-  const [data, setData] = useState<RepositoryContextResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const requestSequence = useRef(0);
+  const [loadedContext, setLoadedContext] = useState<LoadedRepositoryContext | null>(null);
+  const [loadingChatId, setLoadingChatId] = useState<string | null>(chatId);
+  const [loadError, setLoadError] = useState<RepositoryContextError | null>(null);
+  const data = loadedContext?.chatId === chatId ? loadedContext.data : null;
+  const error = loadError?.chatId === chatId ? loadError.message : null;
+  const loading = loadingChatId === chatId || (!data && !error);
 
   const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+    const requestId = ++requestSequence.current;
+    const requestedChatId = chatId;
+    setLoadingChatId(requestedChatId);
+    setLoadError((current) => (current?.chatId === requestedChatId ? null : current));
     try {
-      setData(await memoryApi.getRepositoryContext(chatId));
+      const response = await memoryApi.getRepositoryContext(requestedChatId);
+      if (requestSequence.current !== requestId) return;
+      setLoadedContext({ chatId: requestedChatId, data: response });
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : t('repositoryContext.loadFailed'));
+      if (requestSequence.current !== requestId) return;
+      setLoadError({
+        chatId: requestedChatId,
+        message: loadError instanceof Error ? loadError.message : t('repositoryContext.loadFailed'),
+      });
     } finally {
-      setLoading(false);
+      if (requestSequence.current === requestId) setLoadingChatId(null);
     }
   }, [chatId, t]);
 
   useEffect(() => {
     void load();
+    return () => {
+      requestSequence.current += 1;
+    };
   }, [load]);
 
   useEffect(() => {
@@ -187,11 +233,14 @@ export function RepositoryContextView({ chatId }: RepositoryContextViewProps) {
     const projectId = data?.project.projectId;
     if (!projectId) return;
     await memoryApi.updateProjectContext(projectId, content);
-    setData((current) =>
-      current
+    setLoadedContext((current) =>
+      current?.chatId === chatId && current.data.project.projectId === projectId
         ? {
             ...current,
-            project: { ...current.project, content, exists: true },
+            data: {
+              ...current.data,
+              project: { ...current.data.project, content, exists: true },
+            },
           }
         : current
     );

@@ -93,6 +93,7 @@ export const en = {
       chats: 'Chats',
       config: 'Config',
       files: 'Files',
+      tools: 'Tools',
       context: 'Context',
       browser: 'Web',
       canvas: 'Canvas',
@@ -112,6 +113,7 @@ export const en = {
     repositoryInstructionsDesc: 'Loaded ancestor-first; the closest file has final precedence.',
     empty: 'No project context or repository instructions found.',
     loadFailed: 'Failed to load repository context',
+    saveFailed: 'Failed to save project context',
     sources: {
       repository: 'Repository',
       working: 'Working directory',
