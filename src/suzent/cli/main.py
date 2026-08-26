@@ -358,10 +358,18 @@ def format_version_line(root: Path) -> str:
     The UI binary ships on its own release cadence and can lag the backend, so
     report both when a managed UI is installed -- a mismatch is the first thing
     worth knowing in a bug report.
+
+    Developer and branch installs record the literal marker "latest" rather than
+    a resolved tag, which identifies nothing; those report the UI as unknown
+    instead of quoting the marker back as if it were a version.
     """
     backend = _normalize_version_tag(_current_version(root)) or "unknown"
-    ui = _normalize_version_tag(_local_ui_version(root))
-    return f"suzent {backend} (ui {ui})" if ui else f"suzent {backend}"
+    recorded = _local_ui_version(root)
+    if not recorded:
+        return f"suzent {backend}"
+
+    ui = _normalize_version_tag(recorded)
+    return f"suzent {backend} (ui {ui if _version_key(ui) else 'unknown'})"
 
 
 def _version_key(value: str) -> tuple[int, ...]:

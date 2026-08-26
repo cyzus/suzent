@@ -10,6 +10,9 @@ This package splits CLI commands into focused modules:
 
 import typer
 
+# Must precede every other suzent import: quiets logging that would otherwise
+# escape onto stderr while the modules below are imported.
+import suzent.cli._early_logging  # noqa: F401
 from suzent.cli.acp import register_acp_command
 from suzent.cli.agent import agent_app
 from suzent.cli.config import config_app

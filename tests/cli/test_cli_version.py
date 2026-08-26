@@ -1,7 +1,10 @@
 """Unit tests for `suzent --version`."""
 
 import importlib
+import subprocess
+import sys
 
+import pytest
 from typer.testing import CliRunner
 
 cli = importlib.import_module("suzent.cli")
@@ -69,3 +72,25 @@ def test_version_line_reports_unknown_when_version_is_undiscoverable(
     monkeypatch.setattr(cli_main, "version", _missing)
 
     assert cli_main.format_version_line(tmp_path) == "suzent unknown"
+
+
+@pytest.mark.parametrize("marker", ["latest", "v", "main"])
+def test_version_line_reports_unknown_for_an_unresolved_ui_marker(tmp_path, marker):
+    """`setup.sh` records the literal "latest" for dev and branch installs."""
+    _write_checkout(tmp_path, ui=marker)
+
+    assert cli_main.format_version_line(tmp_path) == "suzent 0.4.2 (ui unknown)"
+
+
+def test_version_writes_nothing_to_stderr():
+    """Regression: config logged its override file before logging was configured."""
+    result = subprocess.run(
+        [sys.executable, "-m", "suzent.cli", "--version"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    assert result.stderr == ""
+    assert len(result.stdout.strip().splitlines()) == 1
+    assert result.stdout.startswith("suzent ")
