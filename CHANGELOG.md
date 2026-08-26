@@ -14,11 +14,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Serve Suzent as an ACP agent (#126)
 
 ### ⚡ Changed
+- Stop blocking startup on the update check
+- Keep the HTTP route layer out of process-state imports
+- Resolve package re-exports on demand
+- Discover the tool catalog lazily
 - Seo: make llms-full.txt actually full, and fix its links
 - Seo: build the sovereignty content cluster
 - Seo: bind "sovereign AI agent" to the Suzent entity
 
 ### 🐛 Fixed
+- Address review on the startup-perf changes
 - Keep `--version` to the one line it advertises
 - Stop a version-file clash breaking the release refresh
 - Read the real AG-UI field names for tool call events (#127)
