@@ -73,7 +73,7 @@ suzent start
 ### **THE `suzent` CLI**
 
 ```bash
-suzent --version       # Print the installed backend (and UI) version
+suzent --version       # Print the backend version, commit, and UI version
 suzent start           # Start the backend and the desktop app
 suzent serve           # Start the backend only (headless / standalone)
 suzent ui              # Start the desktop app against a running backend
