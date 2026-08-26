@@ -4,7 +4,7 @@ import importlib
 
 import pytest
 
-config = importlib.import_module("suzent.config")
+config = importlib.import_module("suzent.config.model")
 
 
 @pytest.fixture

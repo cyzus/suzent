@@ -1,8 +1,9 @@
 """Guards on what the CLI and config layers are allowed to import at startup.
 
-Importing the tool registry pulls in pydantic-ai, MCP and the database stack --
-roughly half a second that every `suzent` invocation used to pay before it
-printed a single line. These tests fail loudly if that creeps back in.
+Importing the tool registry pulls in pydantic-ai, MCP and the database stack,
+and the configuration model pulls in pydantic and the permissions schema --
+together most of what every `suzent` invocation used to pay before it printed a
+single line. These tests fail loudly if any of it creeps back in.
 """
 
 import subprocess
@@ -10,7 +11,7 @@ import sys
 
 import pytest
 
-_HEAVY_MODULES = ("pydantic_ai", "sqlmodel", "sqlalchemy", "fastmcp")
+_HEAVY_MODULES = ("pydantic", "pydantic_ai", "sqlmodel", "sqlalchemy", "fastmcp")
 
 
 def _modules_loaded_after_importing(target: str) -> set[str]:
