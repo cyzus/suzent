@@ -388,14 +388,27 @@ def _write_update_check_cache(root: Path, data: dict) -> None:
     path = _update_check_cache_path(root)
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        # Written atomically because the refresh can run on a daemon thread that
-        # the interpreter may kill mid-write, and a truncated cache would be
-        # re-read on the next start.
-        tmp = path.with_name(f".{path.name}.tmp")
-        tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
-        os.replace(tmp, path)
     except OSError:
-        pass
+        return
+
+    # Written through a private temporary file because the refresh can run on a
+    # daemon thread the interpreter may kill mid-write. The name is unique per
+    # writer: overlapping `suzent` processes can refresh the same stale cache,
+    # and a shared temporary name lets one writer's replace pull the file out
+    # from under another's still-open handle.
+    try:
+        fd, tmp_name = tempfile.mkstemp(
+            prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+        )
+    except OSError:
+        return
+
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(data, handle, indent=2)
+        os.replace(tmp_name, path)
+    except OSError:
+        Path(tmp_name).unlink(missing_ok=True)
 
 
 def _check_for_update(root: Path, *, use_cache: bool = True) -> dict:

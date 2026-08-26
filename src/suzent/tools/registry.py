@@ -18,21 +18,15 @@ from pydantic_ai import Tool as PydanticTool
 
 from suzent.logger import get_logger
 from suzent.tools.base import ToolResult, truncate_tool_output
-from suzent.tools.names import (
-    AGENT_LIFECYCLE_TOOL_NAMES,
-    LEGACY_SHELL_TOOL_NAMES,
-    SHELL_TOOL_CLASS_NAMES,
-    expand_tool_dependencies,
-    migrate_shell_tool_names,
-)
 
-__all__ = [
-    "AGENT_LIFECYCLE_TOOL_NAMES",
-    "LEGACY_SHELL_TOOL_NAMES",
-    "SHELL_TOOL_CLASS_NAMES",
-    "expand_tool_dependencies",
-    "migrate_shell_tool_names",
-]
+# Re-exported under their original names so existing
+# `from suzent.tools.registry import ...` call sites keep working. Aliased
+# rather than listed in `__all__`, which would shrink what `import *` exports.
+from suzent.tools.names import AGENT_LIFECYCLE_TOOL_NAMES as AGENT_LIFECYCLE_TOOL_NAMES
+from suzent.tools.names import LEGACY_SHELL_TOOL_NAMES as LEGACY_SHELL_TOOL_NAMES
+from suzent.tools.names import SHELL_TOOL_CLASS_NAMES as SHELL_TOOL_CLASS_NAMES
+from suzent.tools.names import expand_tool_dependencies as expand_tool_dependencies
+from suzent.tools.names import migrate_shell_tool_names as migrate_shell_tool_names
 
 logger = get_logger(__name__)
 

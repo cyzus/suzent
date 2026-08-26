@@ -2,6 +2,7 @@
 
 import importlib
 import subprocess
+import threading
 from pathlib import Path
 
 import pytest
@@ -1018,3 +1019,28 @@ def test_update_check_cache_write_is_atomic(tmp_path):
     cache_dir = cli_main._update_check_cache_path(tmp_path).parent
     assert [p.name for p in cache_dir.iterdir()] == ["update-check.json"]
     assert cli_main._read_update_check_cache(tmp_path) is not None
+
+
+def test_concurrent_cache_writers_do_not_share_a_temporary_file(tmp_path):
+    """Overlapping `suzent` processes can refresh the same stale cache."""
+    barrier = threading.Barrier(4)
+    now = cli_main.time.time()
+
+    def _write(index: int) -> None:
+        barrier.wait()
+        cli_main._write_update_check_cache(
+            tmp_path, {"checked_at": now, "latest_version": f"v0.6.{index}"}
+        )
+
+    threads = [threading.Thread(target=_write, args=(i,)) for i in range(4)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    cache_dir = cli_main._update_check_cache_path(tmp_path).parent
+    assert [p.name for p in cache_dir.iterdir()] == ["update-check.json"]
+
+    cached = cli_main._read_update_check_cache(tmp_path)
+    assert cached is not None
+    assert cached["latest_version"] in {f"v0.6.{i}" for i in range(4)}
