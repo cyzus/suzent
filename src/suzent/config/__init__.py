@@ -1,550 +1,86 @@
-import json
-import os
-import shutil
-import hashlib
-import re
-from pathlib import Path
-from typing import Any, Dict, List, Optional
-
-from pydantic import BaseModel, ValidationError, field_validator
-
-from ..logger import get_logger
-from suzent.permissions.loader import load_permission_overrides
-
-DEFAULT_PORT: int = int(os.getenv("SUZENT_PORT", "25314"))
-MESH_PORT: int = 25314
-DEFAULT_HOST: str = os.getenv("SUZENT_HOST", "localhost")
-
-
-def get_project_root() -> Path:
-    """Get source/project root, handling dev, bundled, and installed CLI scenarios."""
-
-    current_file = Path(__file__).resolve()
-    dev_root = current_file.parents[3]
-    if (dev_root / "pyproject.toml").exists():
-        return dev_root
-
-    import platform
-
-    system = platform.system()
-    home = Path.home()
-
-    canonical_path = None
-    if system == "Windows":
-        local_app_data = os.getenv("LOCALAPPDATA")
-        if local_app_data:
-            canonical_path = Path(local_app_data) / "com.suzent.app"
-    elif system == "Darwin":
-        canonical_path = home / "Library/Application Support/com.suzent.app"
-    else:
-        xdg = os.getenv("XDG_DATA_HOME")
-        if xdg:
-            canonical_path = Path(xdg) / "com.suzent.app"
-        else:
-            canonical_path = home / ".local/share/com.suzent.app"
-
-    if canonical_path and canonical_path.exists():
-        return canonical_path
-
-    if canonical_path:
-        return canonical_path
-
-    return dev_root
-
-
-def get_data_dir() -> Path:
-    """Get SUZENT's user data directory."""
-    override = os.getenv("SUZENT_DATA_DIR")
-    if override:
-        return Path(override).expanduser().resolve()
-    return (Path.home() / ".suzent").resolve()
-
-
-def _is_effectively_empty(path: Path) -> bool:
-    if not path.exists():
-        return True
-    try:
-        return not any(path.iterdir())
-    except OSError:
-        return False
-
-
-def _migrate_legacy_data_dir(project_dir: Path, data_dir: Path) -> None:
-    """Copy legacy repo-local .suzent data into the user data directory once."""
-    legacy_dir = project_dir / ".suzent"
-    if legacy_dir.resolve() == data_dir.resolve() or not legacy_dir.exists():
-        return
-    if not _is_effectively_empty(data_dir):
-        return
-
-    logger = get_logger(__name__)
-    try:
-        data_dir.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(legacy_dir, data_dir, dirs_exist_ok=True)
-        migrated_marker = legacy_dir / "MIGRATED.md"
-        migrated_marker.write_text(
-            f"SUZENT data has been migrated to the user data directory:\n{data_dir}\n",
-            encoding="utf-8",
-        )
-        logger.info(
-            "Migrated legacy data directory from {} to {}", legacy_dir, data_dir
-        )
-    except Exception as exc:
-        logger.warning(
-            "Failed to migrate legacy data directory from {} to {}: {}",
-            legacy_dir,
-            data_dir,
-            exc,
-        )
-
-
-PROJECT_DIR = get_project_root()
-
-DATA_DIR = get_data_dir()
-DATA_DIR.mkdir(parents=True, exist_ok=True)
-_migrate_legacy_data_dir(PROJECT_DIR, DATA_DIR)
-
-RUNTIME_DIR = DATA_DIR / "runtime"
-CACHE_DIR = DATA_DIR / "cache"
-USER_CONFIG_DIR = DATA_DIR / "config"
-SKILLS_ROOT_DIR = DATA_DIR / "skills"
-OFFICIAL_SKILLS_DIR = SKILLS_ROOT_DIR / "official"
-USER_SKILLS_DIR = SKILLS_ROOT_DIR / "user"
-EXTERNAL_SKILLS_DIR = SKILLS_ROOT_DIR / "external"
-
-for _dir in (
-    RUNTIME_DIR,
-    CACHE_DIR,
-    USER_CONFIG_DIR,
-    SKILLS_ROOT_DIR,
-    OFFICIAL_SKILLS_DIR,
-    USER_SKILLS_DIR,
-    EXTERNAL_SKILLS_DIR,
-):
-    _dir.mkdir(parents=True, exist_ok=True)
-
-
-def _copy_skill_tree(source: Path, target: Path) -> None:
-    tmp_target = target.parent / f".{target.name}.tmp"
-    if tmp_target.exists():
-        shutil.rmtree(tmp_target)
-    shutil.copytree(source, tmp_target)
-    if target.exists():
-        shutil.rmtree(target)
-    tmp_target.replace(target)
-
-
-def _sync_skills_root(source_root: Path, target_root: Path) -> None:
-    """Mirror valid skill directories from one root into another root."""
-    target_root.mkdir(parents=True, exist_ok=True)
-    expected_skills: set[str] = set()
-
-    if source_root.exists():
-        for skill_dir in source_root.iterdir():
-            if not skill_dir.is_dir() or not (skill_dir / "SKILL.md").exists():
-                continue
-            expected_skills.add(skill_dir.name)
-            _copy_skill_tree(skill_dir, target_root / skill_dir.name)
-
-    for child in target_root.iterdir():
-        if child.name.startswith(".") or child.name in expected_skills:
-            continue
-        if child.is_dir():
-            shutil.rmtree(child)
-        else:
-            child.unlink()
-
-
-def _external_source_id(path: Path) -> str:
-    slug = re.sub(r"[^A-Za-z0-9_.-]+", "-", path.name.strip()).strip("-")
-    if not slug:
-        slug = "skills"
-    digest = hashlib.sha1(str(path.resolve()).encode("utf-8")).hexdigest()[:8]
-    return f"{slug}-{digest}"
-
-
-def get_external_skill_sources() -> list[tuple[Path, Path]]:
-    """Return configured external skill roots and their managed mirror roots."""
-    env_value = os.getenv("SKILLS_DIR", "").strip()
-    if not env_value:
-        return []
-
-    sources: list[tuple[Path, Path]] = []
-    seen: set[Path] = set()
-    for raw_path in env_value.split(os.pathsep):
-        if not raw_path.strip():
-            continue
-        source = Path(raw_path).expanduser().resolve()
-        if source in seen:
-            continue
-        seen.add(source)
-        sources.append((source, EXTERNAL_SKILLS_DIR / _external_source_id(source)))
-    return sources
-
-
-def migrate_legacy_user_skills_dir() -> None:
-    """Move legacy flat ~/.suzent/skills/<skill> entries into the user bucket."""
-    reserved = {"official", "user", "external"}
-    for child in SKILLS_ROOT_DIR.iterdir():
-        if (
-            not child.is_dir()
-            or child.name in reserved
-            or not (child / "SKILL.md").exists()
-        ):
-            continue
-
-        target = USER_SKILLS_DIR / child.name
-        if target.exists():
-            continue
-        child.replace(target)
-
-
-def sync_managed_skills_dirs() -> Path:
-    """Sync official and external skills into the unified skills mount root."""
-    migrate_legacy_user_skills_dir()
-    _sync_skills_root(PROJECT_DIR / "skills", OFFICIAL_SKILLS_DIR)
-
-    expected_external_roots: set[str] = set()
-    for source, target in get_external_skill_sources():
-        expected_external_roots.add(target.name)
-        _sync_skills_root(source, target)
-
-    for child in EXTERNAL_SKILLS_DIR.iterdir():
-        if child.name.startswith(".") or child.name in expected_external_roots:
-            continue
-        if child.is_dir():
-            shutil.rmtree(child)
-        else:
-            child.unlink()
-
-    return SKILLS_ROOT_DIR
-
-
-def rebuild_merged_skills_dir() -> Path:
-    """Backward-compatible alias for the unified skills sync."""
-    return sync_managed_skills_dirs()
-
-
-_skills_synced = False
-
-
-def ensure_skills_synced() -> None:
-    global _skills_synced
-    if not _skills_synced:
-        _skills_synced = True
-        sync_managed_skills_dirs()
-
-
-def _normalize_keys(d: Dict[str, Any]) -> Dict[str, Any]:
-    """Normalize incoming keys to lowercase snake style the model expects."""
-    out: Dict[str, Any] = {}
-    for k, v in d.items():
-        if not isinstance(k, str):
-            continue
-        nk = k.strip().lower().replace("-", "_").replace(" ", "_")
-        out[nk] = v
-    return out
-
-
-def get_tool_options() -> List[str]:
-    """Discover available tool class names from the centralized registry."""
-    from suzent.tools.registry import list_configurable_tools
-
-    return list_configurable_tools()
-
-
-def get_effective_volumes(custom_volumes: Optional[List[str]] = None) -> List[str]:
-    """Calculate effective sandbox volumes by merging global and per-chat volumes."""
-    global_volumes = CONFIG.sandbox_volumes or []
-    per_chat_volumes = custom_volumes or []
-
-    raw_volumes = list(set(global_volumes + per_chat_volumes))
-    volumes = []
-
-    from suzent.tools.filesystem.path_resolver import PathResolver
-
-    for vol in raw_volumes:
-        parsed = PathResolver.parse_volume_string(vol)
-        if parsed:
-            host, container = parsed
-            if not Path(host).is_absolute():
-                host = str((PROJECT_DIR / host).resolve())
-                vol = f"{host}:{container}"
-
-        volumes.append(vol)
-
-    if not any(v.endswith(":/mnt/skills") for v in volumes):
-        SKILLS_ROOT_DIR.mkdir(parents=True, exist_ok=True)
-        skills_resolved = str(SKILLS_ROOT_DIR.resolve())
-        volumes.append(f"{skills_resolved}:/mnt/skills")
-
-    # Always expose the notebook vault at /mnt/notebook so the agent can read/write
-    # durable knowledge (the dream consolidation agent + the "file a query result"
-    # flow). Defaults to CONFIG.notebook_dir unless the user mapped their own.
-    if not any(v.endswith(":/mnt/notebook") for v in volumes):
-        notebook_resolved = str(Path(CONFIG.notebook_dir).resolve())
-        Path(notebook_resolved).mkdir(parents=True, exist_ok=True)
-        volumes.append(f"{notebook_resolved}:/mnt/notebook")
-
-    return volumes
-
-
-class ConfigModel(BaseModel):
-    title: str = "SUZENT"
-    server_url: str = f"http://{DEFAULT_HOST}:{DEFAULT_PORT}/chat"
-    code_tag: str = "<code>"
-
-    model_options: List[str] = []
-    agent_options: List[str] = ["Agent"]
-
-    default_tools: List[str] = [
-        "WebSearchTool",
-        "GoalTool",
-        "TaskCreateTool",
-        "TaskUpdateTool",
-        "TaskListTool",
-        "ReadFileTool",
-        "WriteFileTool",
-        "EditFileTool",
-        "GlobTool",
-        "GrepTool",
-        "RunCommandTool",
-        "StartCommandTool",
-        "CheckCommandTool",
-        "StopCommandTool",
-        "ImageGenerationTool",
-        "AgentTool",
-        "MemorySearchTool",
-        "SessionSearchTool",
-    ]
-    tool_options: Optional[List[str]] = None
-
-    @field_validator("default_tools", "tool_options", mode="before")
-    @classmethod
-    def migrate_legacy_shell_tools(cls, value: Any) -> Any:
-        if not isinstance(value, list):
-            return value
-        from suzent.tools.names import migrate_shell_tool_names
-
-        return migrate_shell_tool_names(value)
-
-    instructions: str = ""
-    additional_authorized_imports: List[str] = []
-
-    # Unified role → model mapping (new)
-    role_models: Dict[str, Any] = {}
-
-    tts_model: str = ""
-    tts_voice: str = ""
-
-    embedding_model: Optional[str] = None
-    embedding_dimension: int = 0
-    # Hard cap on a single embedding API call. Without this, a slow/unreachable
-    # provider blocks memory search indefinitely (the tool appears to hang).
-    embedding_timeout: float = 30.0
-
-    image_generation_model: Optional[str] = None
-
-    memory_enabled: bool = False
-    markdown_memory_enabled: bool = True
-    extraction_model: Optional[str] = None
-
-    # --- Notebook vault + dream consolidation ---
-    notebook_dir: str = str(DATA_DIR / "notebook")
-    memory_consolidation_enabled: bool = True
-    memory_consolidation_min_hours: float = 24.0
-    memory_consolidation_min_facts: int = 20
-    memory_consolidation_interval_seconds: int = 1800
-    memory_consolidation_timeout_seconds: int = 600
-    memory_consolidation_max_days: int = 14
-    memory_consolidation_max_retries: int = 3
-    # Confirmations and expiring claims are queued by the write path, not by a daily
-    # log, so an install whose conversations only repeat known facts is "caught up"
-    # while the queues grow. This many pending confirmations makes a run worth doing
-    # on its own. Kept well above a single chatty afternoon so it never competes with
-    # ordinary ingest.
-    memory_consolidation_min_confirmations: int = 25
-    memory_consolidation_memory_max_lines: int = 200
-    memory_consolidation_model: Optional[str] = None
-    memory_dream_tools: List[str] = [
-        "ReadFileTool",
-        "WriteFileTool",
-        "EditFileTool",
-        "GlobTool",
-        "GrepTool",
-        "MemorySearchTool",
-    ]
-    # Lint phase: a periodic editorial audit of the vault (contradictions, broken
-    # links, orphans, decay) run by the same dream runner AFTER ingest catches up.
-    # Distinct prompt + its own (slower) gate; ingest always takes priority.
-    memory_lint_enabled: bool = True
-    memory_lint_min_days: float = 7.0
-
-    cron_presets: List[Dict[str, Any]] = []
-    user_id: str = "default-user"
-    lancedb_uri: str = str(DATA_DIR / "memory")
-
-    sandbox_enabled: bool = False
-    sandbox_image: str = "python:3.11-slim"
-    sandbox_network: str = "bridge"
-    sandbox_idle_timeout_minutes: int = 30
-    sandbox_setup_command: str = ""
-    sandbox_env: Dict[str, Any] = {}
-    sandbox_data_path: str = str(DATA_DIR / "sandbox")
-    sandbox_volumes: List[str] = []
-    shell_env: Optional[Dict[str, str]] = None
-    shell_denied_env_patterns: List[str] = []
-
-    workspace_root: str = str(DATA_DIR)
-
-    permission_policies: Dict[str, Dict[str, Any]] = {}
-    permission_rules: List[Dict[str, Any]] = []
-    # Permission mode new chats inherit when the client does not pin one.
-    default_permission_mode: str = "default"
-
-    nodes_enabled: bool = True
-    # Advertise this server over mDNS and allow LAN/Tailscale peer discovery.
-    node_discovery_enabled: bool = True
-    # Bind the server to all interfaces (0.0.0.0) so peer devices can reach it,
-    # overriding a loopback-only SUZENT_HOST. Required for cross-device nodes;
-    # exposes the HTTP API on the network, so keep on trusted/tailnet only.
-    node_lan_bind: bool = False
-
-    # Publish an A2A Agent Card at /.well-known/agent-card.json, making this
-    # device discoverable and callable by any A2A-speaking agent. Off by
-    # default: the card is unauthenticated by design, so serving it reveals the
-    # device name and skill list to anything that can reach the port.
-    a2a_enabled: bool = False
-    # Operator-facing name on the published card. Blank falls back to hostname.
-    a2a_agent_name: str = ""
-
-    session_daily_reset_hour: int = 0
-    session_idle_timeout_minutes: int = 0
-    jsonl_transcripts_enabled: bool = True
-    transcript_indexing_enabled: bool = False
-
-    max_context_tokens: int = 800_000
-    context_compaction_trigger: float = 0.80
-    context_soft_trim_threshold: float = 0.60
-    context_hard_trim_threshold: float = 0.80
-    compaction_keep_recent_turns: int = 3
-    compaction_chunk_size: int = 20
-    compaction_timeout_seconds: int = 60
-
-    plan_watcher_interval: float = 2.0
-
-    # Goal mode: max autonomous continuation turns before auto-pausing.
-    goals_max_turns: int = 20
-
-    @classmethod
-    def load_from_files(cls) -> "ConfigModel":
-        logger = get_logger(__name__)
-        cfg_dir = PROJECT_DIR / "config"
-        user_cfg_dir = USER_CONFIG_DIR
-
-        example_path = cfg_dir / "default.example.yaml"
-        default_path = cfg_dir / "default.yaml"
-        user_default_path = user_cfg_dir / "default.yaml"
-        # Machine-specific overrides — never synced across devices.
-        # Put sandbox_volumes, sandbox_data_path, workspace_root, lancedb_uri etc. here.
-        user_local_path = user_cfg_dir / "local.yaml"
-
-        example_data: Dict[str, Any] = {}
-        default_data: Dict[str, Any] = {}
-        user_data: Dict[str, Any] = {}
-        local_data: Dict[str, Any] = {}
-        loaded_files: List[Path] = []
-
-        def _read_file(p: Path) -> Dict[str, Any]:
-            try:
-                import yaml  # type: ignore
-
-                with p.open("r", encoding="utf-8") as fh:
-                    return yaml.safe_load(fh) or {}
-            except Exception:
-                pass
-
-            try:
-                with p.open("r", encoding="utf-8") as fh:
-                    return json.load(fh)
-            except Exception as exc:
-                logger.debug("Failed to parse config file {}: {}", p, exc)
-                return {}
-
-        if example_path.exists():
-            raw_example = _read_file(example_path)
-            if isinstance(raw_example, dict):
-                example_data = _normalize_keys(raw_example)
-                loaded_files.append(example_path)
-
-        if default_path.exists():
-            raw_default = _read_file(default_path)
-            if isinstance(raw_default, dict):
-                default_data = _normalize_keys(raw_default)
-                loaded_files.append(default_path)
-
-        if user_default_path.exists():
-            raw_user = _read_file(user_default_path)
-            if isinstance(raw_user, dict):
-                user_data = _normalize_keys(raw_user)
-                loaded_files.append(user_default_path)
-
-        if user_local_path.exists():
-            raw_local = _read_file(user_local_path)
-            if isinstance(raw_local, dict):
-                local_data = _normalize_keys(raw_local)
-                loaded_files.append(user_local_path)
-
-        data = {**example_data, **default_data, **user_data, **local_data}
-
-        try:
-            permission_overrides = load_permission_overrides(
-                PROJECT_DIR, logger, USER_CONFIG_DIR
-            )
-            if permission_overrides:
-                data.update(permission_overrides)
-        except Exception as exc:
-            logger.warning("Failed to load permissions config overlays: {}", exc)
-
-        loaded_path = loaded_files[-1] if loaded_files else None
-
-        try:
-            if data:
-                cfg = cls.model_validate(data)
-            else:
-                cfg = cls()
-        except ValidationError as ve:
-            logger.error("Config validation error: {}", ve)
-            raise
-
-        if loaded_path is not None:
-            logger.info("Loaded configuration overrides from {}", loaded_path)
-        return cfg
-
-    def ensure_tool_options(self) -> List[str]:
-        """Return the tool catalog, discovering it from the registry on first use.
-
-        Discovery imports every tool module, and with them pydantic-ai, MCP and
-        the LanceDB stack -- roughly half a second. Keeping it out of
-        ``load_from_files`` means the CLI no longer pays for the whole agent
-        runtime just to read a config file.
-        """
-        if not self.tool_options:
-            try:
-                discovered = get_tool_options()
-            except Exception:
-                discovered = []
-            self.tool_options = list(dict.fromkeys(discovered + self.default_tools))
-        return self.tool_options
-
-    def reload(self) -> None:
-        """Reload configuration from disk."""
-        new_config = self.load_from_files()
-        for field in self.model_fields:
-            setattr(self, field, getattr(new_config, field))
-
-        logger = get_logger(__name__)
-        logger.info("Configuration reloaded from disk.")
-
-
-CONFIG = ConfigModel.load_from_files()
+"""Configuration package.
+
+Re-exports resolve on first attribute access. Around half the module-level
+imports of this package want only a path or a port, and eager re-exports made
+them import pydantic, the permissions schema and the config loader to get one
+-- the cost every CLI invocation used to pay before printing a line.
+
+New code should import from :mod:`suzent.config.paths` or
+:mod:`suzent.config.model` directly; this shim keeps existing call sites working.
+"""
+
+import importlib
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from suzent.config.model import CONFIG as CONFIG
+    from suzent.config.model import ConfigModel as ConfigModel
+    from suzent.config.model import get_effective_volumes as get_effective_volumes
+    from suzent.config.model import get_tool_options as get_tool_options
+    from suzent.config.paths import CACHE_DIR as CACHE_DIR
+    from suzent.config.paths import DATA_DIR as DATA_DIR
+    from suzent.config.paths import DEFAULT_HOST as DEFAULT_HOST
+    from suzent.config.paths import DEFAULT_PORT as DEFAULT_PORT
+    from suzent.config.paths import EXTERNAL_SKILLS_DIR as EXTERNAL_SKILLS_DIR
+    from suzent.config.paths import MESH_PORT as MESH_PORT
+    from suzent.config.paths import OFFICIAL_SKILLS_DIR as OFFICIAL_SKILLS_DIR
+    from suzent.config.paths import PROJECT_DIR as PROJECT_DIR
+    from suzent.config.paths import RUNTIME_DIR as RUNTIME_DIR
+    from suzent.config.paths import SKILLS_ROOT_DIR as SKILLS_ROOT_DIR
+    from suzent.config.paths import USER_CONFIG_DIR as USER_CONFIG_DIR
+    from suzent.config.paths import USER_SKILLS_DIR as USER_SKILLS_DIR
+    from suzent.config.paths import ensure_skills_synced as ensure_skills_synced
+    from suzent.config.paths import get_data_dir as get_data_dir
+    from suzent.config.paths import (
+        get_external_skill_sources as get_external_skill_sources,
+    )
+    from suzent.config.paths import get_project_root as get_project_root
+    from suzent.config.paths import (
+        migrate_legacy_user_skills_dir as migrate_legacy_user_skills_dir,
+    )
+    from suzent.config.paths import (
+        rebuild_merged_skills_dir as rebuild_merged_skills_dir,
+    )
+    from suzent.config.paths import sync_managed_skills_dirs as sync_managed_skills_dirs
+
+_PATHS = (
+    "DEFAULT_PORT",
+    "MESH_PORT",
+    "DEFAULT_HOST",
+    "get_project_root",
+    "get_data_dir",
+    "PROJECT_DIR",
+    "DATA_DIR",
+    "RUNTIME_DIR",
+    "CACHE_DIR",
+    "USER_CONFIG_DIR",
+    "SKILLS_ROOT_DIR",
+    "OFFICIAL_SKILLS_DIR",
+    "USER_SKILLS_DIR",
+    "EXTERNAL_SKILLS_DIR",
+    "get_external_skill_sources",
+    "migrate_legacy_user_skills_dir",
+    "sync_managed_skills_dirs",
+    "rebuild_merged_skills_dir",
+    "ensure_skills_synced",
+)
+
+_MODEL = ("get_tool_options", "get_effective_volumes", "ConfigModel", "CONFIG")
+
+_EXPORTS = {name: "suzent.config.paths" for name in _PATHS}
+_EXPORTS.update({name: "suzent.config.model" for name in _MODEL})
+
+__all__ = list(_EXPORTS)
+
+
+def __getattr__(name: str) -> Any:
+    module = _EXPORTS.get(name)
+    if module is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    value = getattr(importlib.import_module(module), name)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    return sorted(__all__)
