@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -438,9 +439,27 @@ def _write_update_check_cache(root: Path, data: dict) -> None:
     path = _update_check_cache_path(root)
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
     except OSError:
-        pass
+        return
+
+    # Written through a private temporary file because the refresh can run on a
+    # daemon thread the interpreter may kill mid-write. The name is unique per
+    # writer: overlapping `suzent` processes can refresh the same stale cache,
+    # and a shared temporary name lets one writer's replace pull the file out
+    # from under another's still-open handle.
+    try:
+        fd, tmp_name = tempfile.mkstemp(
+            prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+        )
+    except OSError:
+        return
+
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(data, handle, indent=2)
+        os.replace(tmp_name, path)
+    except OSError:
+        Path(tmp_name).unlink(missing_ok=True)
 
 
 def _check_for_update(root: Path, *, use_cache: bool = True) -> dict:
@@ -479,17 +498,39 @@ def _check_for_update(root: Path, *, use_cache: bool = True) -> dict:
     return data
 
 
+def _refresh_update_check_cache_async(root: Path) -> None:
+    """Warm the update-check cache for the next run, off the startup path."""
+
+    def _refresh() -> None:
+        try:
+            _check_for_update(root, use_cache=False)
+        except Exception:
+            pass
+
+    threading.Thread(target=_refresh, name="suzent-update-check", daemon=True).start()
+
+
 def _notify_update_available(root: Path) -> None:
     if os.environ.get("SUZENT_SKIP_UPDATE_CHECK") == "1":
         return
 
-    result = _check_for_update(root, use_cache=True)
-    if not result.get("update_available"):
+    cached = _read_update_check_cache(root)
+    if cached is None:
+        # A cold or expired cache means a GitHub round-trip, and startup must not
+        # block on advisory information. Refresh for the next run instead; the
+        # explicit `suzent check-update` still answers synchronously.
+        _refresh_update_check_cache_async(root)
         return
 
-    latest = result.get("latest_version") or "latest"
-    current = result.get("current_version") or "unknown"
-    typer.echo(f"  • Update available: {current} -> {latest}. Run 'suzent update'.")
+    current = _current_version(root)
+    latest = str(cached.get("latest_version", ""))
+    if not _is_newer_version(latest, current):
+        return
+
+    typer.echo(
+        f"  • Update available: {current or 'unknown'} -> {latest}. "
+        "Run 'suzent update'."
+    )
 
 
 def _download_file_atomic(
