@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from suzent.config import _migrate_legacy_data_dir, get_data_dir
+from suzent.config.paths import _migrate_legacy_data_dir, get_data_dir
 
 
 def test_get_data_dir_defaults_to_home_suzent(monkeypatch, tmp_path: Path):
