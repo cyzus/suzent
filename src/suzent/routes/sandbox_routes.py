@@ -151,10 +151,38 @@ def _get_resolver_for_request(
     if override_volumes is not None and "sandbox_enabled" not in locals():
         sandbox_enabled = CONFIG.sandbox_enabled
 
+    custom_volumes = _with_discovered_skill_volumes(
+        chat_id, custom_volumes, sandbox_enabled=sandbox_enabled
+    )
+
     # Create resolver for virtual paths such as /workspace, /shared, and custom mounts.
     return PathResolver(
         chat_id=chat_id, sandbox_enabled=sandbox_enabled, custom_volumes=custom_volumes
     )
+
+
+def _with_discovered_skill_volumes(
+    chat_id: str | None,
+    volumes: list[str],
+    *,
+    sandbox_enabled: bool = True,
+) -> list[str]:
+    """Add canonical skill mounts needed by this chat's effective context."""
+    if not chat_id:
+        return list(volumes)
+
+    from suzent.skills.manager import get_skill_manager_for_chat
+
+    effective = list(volumes)
+    manager = get_skill_manager_for_chat(
+        chat_id,
+        custom_volumes=effective,
+        sandbox_enabled=sandbox_enabled,
+    )
+    for volume in manager.required_mounts:
+        if volume not in effective:
+            effective.append(volume)
+    return effective
 
 
 async def get_sandbox_volumes(request: Request) -> JSONResponse:
@@ -181,7 +209,9 @@ async def get_sandbox_volumes(request: Request) -> JSONResponse:
         except Exception as e:
             logger.warning(f"Failed to fetch chat config for volumes: {e}")
 
-    return JSONResponse({"volumes": get_effective_volumes(custom_volumes)})
+    effective_volumes = get_effective_volumes(custom_volumes)
+    effective_volumes = _with_discovered_skill_volumes(chat_id, effective_volumes)
+    return JSONResponse({"volumes": effective_volumes})
 
 
 async def list_sandbox_files(request: Request) -> JSONResponse:

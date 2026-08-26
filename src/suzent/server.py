@@ -135,6 +135,7 @@ from suzent.routes.memory_routes import (
     get_core_memory,
     update_core_memory_block,
     list_project_contexts,
+    get_repository_context,
     update_project_context,
     search_archival_memory,
     delete_archival_memory,
@@ -1159,6 +1160,7 @@ app = Starlette(
         Route("/memory/core", get_core_memory, methods=["GET"]),
         Route("/memory/core", update_core_memory_block, methods=["PUT"]),
         Route("/memory/project-contexts", list_project_contexts, methods=["GET"]),
+        Route("/memory/repository-context", get_repository_context, methods=["GET"]),
         Route(
             "/memory/project-contexts/{project_id}",
             update_project_context,

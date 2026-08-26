@@ -51,12 +51,13 @@ def get_effective_volumes(custom_volumes: Optional[List[str]] = None) -> List[st
     from suzent.tools.filesystem.path_resolver import PathResolver
 
     for vol in raw_volumes:
-        parsed = PathResolver.parse_volume_string(vol)
+        parsed = PathResolver.parse_volume_spec(vol)
         if parsed:
-            host, container = parsed
+            host, container, mode = parsed
             if not Path(host).is_absolute():
                 host = str((PROJECT_DIR / host).resolve())
-                vol = f"{host}:{container}"
+                mode_suffix = ":ro" if mode == "ro" else ""
+                vol = f"{host}:{container}{mode_suffix}"
 
         volumes.append(vol)
 

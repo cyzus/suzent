@@ -133,7 +133,7 @@ class SkillManager:
                     continue
                 preferred = preferred_virtual_roots.get(root)
                 if preferred:
-                    self.required_mounts.append(f"{root.resolve()}:{preferred}")
+                    self.required_mounts.append(f"{root.resolve()}:{preferred}:ro")
                     mount_mappings.append((root.resolve(), preferred))
 
         self.skills_dir = self.skills_dirs[-1]

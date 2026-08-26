@@ -93,6 +93,7 @@ export const en = {
       chats: 'Chats',
       config: 'Config',
       files: 'Files',
+      context: 'Context',
       browser: 'Web',
       canvas: 'Canvas',
       agents: 'Agents',
@@ -101,6 +102,19 @@ export const en = {
     },
     settings: 'Settings',
     settingsDesc: '',
+  },
+  repositoryContext: {
+    title: 'Context',
+    description: 'Project memory and effective repository instructions',
+    projectContext: 'Project context',
+    repositoryInstructions: 'Repository instructions',
+    repositoryInstructionsDesc: 'Loaded ancestor-first; the closest file has final precedence.',
+    empty: 'No project context or repository instructions found.',
+    loadFailed: 'Failed to load repository context',
+    sources: {
+      repository: 'Repository',
+      working: 'Working directory',
+    },
   },
   subAgents: {
     model: 'Model',
