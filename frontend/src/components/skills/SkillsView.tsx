@@ -69,8 +69,10 @@ export const SkillsView: React.FC<SkillsViewProps> = ({ chatId }) => {
       .sort(([left], [right]) => {
         const leftIndex = SOURCE_ORDER.indexOf(left);
         const rightIndex = SOURCE_ORDER.indexOf(right);
-        return (leftIndex < 0 ? SOURCE_ORDER.length : leftIndex) -
-          (rightIndex < 0 ? SOURCE_ORDER.length : rightIndex) || left.localeCompare(right);
+        return (
+          (leftIndex < 0 ? SOURCE_ORDER.length : leftIndex) -
+            (rightIndex < 0 ? SOURCE_ORDER.length : rightIndex) || left.localeCompare(right)
+        );
       })
       .map(([source, sourceSkills]) => ({
         source,

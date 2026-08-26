@@ -160,7 +160,9 @@ export const CoreMemoryBlock: React.FC<CoreMemoryBlockProps> = ({
               size="icon"
               aria-expanded={!isCollapsed}
               title={isCollapsed ? t('memoryView.expandSection') : t('memoryView.collapseSection')}
-              aria-label={isCollapsed ? t('memoryView.expandSection') : t('memoryView.collapseSection')}
+              aria-label={
+                isCollapsed ? t('memoryView.expandSection') : t('memoryView.collapseSection')
+              }
             >
               <ChevronDownIcon
                 className={`h-4 w-4 stroke-2 transition-transform ${isCollapsed ? '-rotate-90' : ''}`}
