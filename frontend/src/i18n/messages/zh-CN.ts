@@ -89,6 +89,7 @@ export const zhCN = {
       chats: '对话列表',
       config: '配置',
       files: '文件',
+      tools: '工具',
       context: '上下文',
       browser: '网页',
       canvas: '画布',
@@ -108,6 +109,7 @@ export const zhCN = {
     repositoryInstructionsDesc: '按祖先目录优先加载，最近的文件具有最终优先级。',
     empty: '未找到项目上下文或代码仓库指令。',
     loadFailed: '加载代码仓库上下文失败',
+    saveFailed: '保存项目上下文失败',
     sources: {
       repository: '代码仓库',
       working: '工作目录',

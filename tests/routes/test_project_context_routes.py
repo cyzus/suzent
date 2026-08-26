@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 from pathlib import Path
 
+import pytest
 from starlette.applications import Starlette
 from starlette.routing import Route
 from starlette.testclient import TestClient
@@ -177,3 +178,57 @@ def test_repository_context_returns_project_memory_and_walk_up_instructions(
         "# Root rules\n",
         "# API rules\n",
     ]
+
+
+@pytest.mark.parametrize("memory_enabled", [False, True])
+def test_repository_context_returns_instructions_when_memory_unavailable(
+    monkeypatch, tmp_path: Path, memory_enabled: bool
+):
+    repository = tmp_path / "repository"
+    working = repository / "packages" / "api"
+    project_dir = tmp_path / "projects" / "one"
+    working.mkdir(parents=True)
+    project_dir.mkdir(parents=True)
+    (repository / ".git").mkdir()
+    (repository / "AGENTS.md").write_text("# Root rules\n", encoding="utf-8")
+    project = SimpleNamespace(id="project-1", name="One", slug="one", archived=False)
+    chat = SimpleNamespace(
+        id="chat-1",
+        project_id=project.id,
+        working_directory=str(working),
+        config={"sandbox_enabled": False},
+    )
+    database = SimpleNamespace(
+        get_chat=lambda _chat_id: chat,
+        get_chat_project_id=lambda _chat_id: project.id,
+        get_chat_project_slug=lambda _chat_id: project.slug,
+        get_project=lambda _project_id: project,
+        get_project_dir=lambda _chat_id: project_dir,
+    )
+
+    async def get_manager():
+        raise AssertionError("memory initialization must be skipped when disabled")
+
+    monkeypatch.setattr(memory_routes.CONFIG, "memory_enabled", memory_enabled)
+    monkeypatch.setattr(memory_routes, "get_database", lambda: database)
+    monkeypatch.setattr("suzent.database.get_database", lambda: database)
+    monkeypatch.setattr(memory_routes, "_get_or_initialize_memory_manager", get_manager)
+    app = Starlette(
+        routes=[
+            Route(
+                "/memory/repository-context",
+                memory_routes.get_repository_context,
+                methods=["GET"],
+            )
+        ]
+    )
+
+    response = TestClient(app).get(
+        "/memory/repository-context", params={"chat_id": "chat-1"}
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["project"]["content"] == ""
+    assert payload["project"]["exists"] is False
+    assert [item["name"] for item in payload["instructions"]] == ["AGENTS.md"]
