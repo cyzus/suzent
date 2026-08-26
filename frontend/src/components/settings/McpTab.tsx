@@ -1,4 +1,11 @@
 import React, { useState } from 'react';
+import {
+  BeakerIcon,
+  CheckIcon,
+  PencilIcon,
+  TrashIcon,
+  XMarkIcon,
+} from '@heroicons/react/24/outline';
 
 import { useI18n } from '../../i18n';
 import {
@@ -17,12 +24,11 @@ import {
   SectionCardHeader,
   SettingsCard,
   SettingsListItem,
-  SettingsListAction,
   Badge,
   SettingsPage,
 } from './SettingsCard';
 import { BrutalOnOff } from '../BrutalOnOff';
-import { BrutalButton } from '../BrutalButton';
+import { BrutalButton, BrutalIconButton } from '../BrutalButton';
 
 type MCPUrlServer = {
   type: 'url';
@@ -477,27 +483,31 @@ export function McpTab({
                       )}
                   </div>
                   <div className="flex gap-2 shrink-0 relative z-10 w-full md:w-auto mt-3 md:mt-0 justify-end md:self-start md:ml-4">
-                    <SettingsListAction
+                    <BrutalIconButton
                       onClick={() => handleTestServer(server)}
                       disabled={loading || probes[server.name]?.testing}
+                      label={t('settings.mcp.test')}
                     >
-                      {t('settings.mcp.test')}
-                    </SettingsListAction>
-                    <SettingsListAction
-                      active={editDraft?.name === server.name}
+                      <BeakerIcon className="h-4 w-4 stroke-2" />
+                    </BrutalIconButton>
+                    <BrutalIconButton
+                      isActive={editDraft?.name === server.name}
                       onClick={() =>
                         editDraft?.name === server.name ? setEditDraft(null) : startEdit(server)
                       }
                       disabled={loading}
+                      label={t('common.edit')}
                     >
-                      {t('common.edit')}
-                    </SettingsListAction>
-                    <SettingsListAction
+                      <PencilIcon className="h-4 w-4 stroke-2" />
+                    </BrutalIconButton>
+                    <BrutalIconButton
+                      variant="danger"
                       onClick={() => handleRemoveServer(server)}
                       disabled={loading}
+                      label={t('common.remove')}
                     >
-                      {t('common.remove')}
-                    </SettingsListAction>
+                      <TrashIcon className="h-4 w-4 stroke-2" />
+                    </BrutalIconButton>
                   </div>
                 </div>
 
@@ -546,7 +556,8 @@ export function McpTab({
                       </div>
                     )}
                     <div className="flex gap-3 pt-2">
-                      <SettingsListAction
+                      <BrutalIconButton
+                        variant="primary"
                         onClick={handleSaveEdit}
                         disabled={
                           editLoading ||
@@ -554,12 +565,19 @@ export function McpTab({
                             ? !editDraft.url.trim()
                             : !editDraft.command.trim())
                         }
+                        label={
+                          editLoading ? t('settings.mcp.saving') : t('settings.mcp.saveServer')
+                        }
                       >
-                        {editLoading ? t('settings.mcp.saving') : t('settings.mcp.saveServer')}
-                      </SettingsListAction>
-                      <SettingsListAction onClick={() => setEditDraft(null)} disabled={editLoading}>
-                        {t('common.cancel')}
-                      </SettingsListAction>
+                        <CheckIcon className="h-4 w-4 stroke-[2.5]" />
+                      </BrutalIconButton>
+                      <BrutalIconButton
+                        onClick={() => setEditDraft(null)}
+                        disabled={editLoading}
+                        label={t('common.cancel')}
+                      >
+                        <XMarkIcon className="h-4 w-4 stroke-[2.5]" />
+                      </BrutalIconButton>
                     </div>
                   </div>
                 )}

@@ -14,7 +14,7 @@ import { DailyLogsPanel } from './DailyLogsPanel';
 import { TranscriptPanel } from './TranscriptPanel';
 import { DreamingPanel } from './DreamingPanel';
 import { BrutalSegmentedTabs } from '../BrutalSegmentedTabs';
-import { BrutalButton } from '../BrutalButton';
+import { BrutalIconButton } from '../BrutalButton';
 import { ChevronDownIcon } from '@heroicons/react/24/outline';
 import type { CoreMemoryLabel } from '../../types/memory';
 
@@ -134,21 +134,17 @@ export const MemoryView: React.FC<{ initialTab?: MemoryTab }> = ({ initialTab })
                     {t('memoryView.coreMemoryDesc')}
                   </p>
                 </div>
-                <BrutalButton
+                <BrutalIconButton
                   onClick={() => setShowCoreMemory(!showCoreMemory)}
-                  size="icon"
                   aria-expanded={showCoreMemory}
-                  title={
-                    showCoreMemory ? t('memoryView.collapseSection') : t('memoryView.expandSection')
-                  }
-                  aria-label={
+                  label={
                     showCoreMemory ? t('memoryView.collapseSection') : t('memoryView.expandSection')
                   }
                 >
                   <ChevronDownIcon
                     className={`h-4 w-4 stroke-2 transition-transform ${showCoreMemory ? '' : '-rotate-90'}`}
                   />
-                </BrutalButton>
+                </BrutalIconButton>
               </div>
 
               {showCoreMemory && (

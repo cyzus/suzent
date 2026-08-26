@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { CheckIcon, PencilIcon, PlayIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 import { useI18n } from '../../i18n';
 import {
@@ -23,11 +24,10 @@ import {
   SettingsCard,
   SectionCardHeader,
   SettingsListItem,
-  SettingsListAction,
   SettingsPage,
 } from './SettingsCard';
 import { BrutalOnOff } from '../BrutalOnOff';
-import { BrutalButton } from '../BrutalButton';
+import { BrutalButton, BrutalIconButton } from '../BrutalButton';
 
 interface AutomationTabProps {
   models: string[];
@@ -471,12 +471,21 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
                         />
                       </div>
                       <div className="flex gap-2">
-                        <SettingsListAction tone="blue" onClick={handleSaveEdit} disabled={loading}>
-                          {t('common.save')}
-                        </SettingsListAction>
-                        <SettingsListAction onClick={cancelEdit} disabled={loading}>
-                          {t('common.cancel')}
-                        </SettingsListAction>
+                        <BrutalIconButton
+                          variant="primary"
+                          onClick={handleSaveEdit}
+                          disabled={loading}
+                          label={t('common.save')}
+                        >
+                          <CheckIcon className="h-4 w-4 stroke-[2.5]" />
+                        </BrutalIconButton>
+                        <BrutalIconButton
+                          onClick={cancelEdit}
+                          disabled={loading}
+                          label={t('common.cancel')}
+                        >
+                          <XMarkIcon className="h-4 w-4 stroke-[2.5]" />
+                        </BrutalIconButton>
                       </div>
                     </div>
                   ) : (
@@ -509,23 +518,29 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
                           </div>
                         </div>
                         <div className="flex gap-2 shrink-0 md:self-start mt-3 md:mt-0 md:ml-4">
-                          <SettingsListAction
-                            tone="blue"
+                          <BrutalIconButton
+                            variant="primary"
                             onClick={() => handleTrigger(job)}
                             disabled={loading}
+                            label={t('settings.automation.run')}
                           >
-                            {t('settings.automation.run')}
-                          </SettingsListAction>
-                          <SettingsListAction onClick={() => startEdit(job)} disabled={loading}>
-                            {t('common.edit')}
-                          </SettingsListAction>
-                          <SettingsListAction
-                            tone="red"
+                            <PlayIcon className="h-4 w-4 stroke-2" />
+                          </BrutalIconButton>
+                          <BrutalIconButton
+                            onClick={() => startEdit(job)}
+                            disabled={loading}
+                            label={t('common.edit')}
+                          >
+                            <PencilIcon className="h-4 w-4 stroke-2" />
+                          </BrutalIconButton>
+                          <BrutalIconButton
+                            variant="danger"
                             onClick={() => handleDelete(job)}
                             disabled={loading}
+                            label={t('common.remove')}
                           >
-                            {t('common.remove')}
-                          </SettingsListAction>
+                            <TrashIcon className="h-4 w-4 stroke-2" />
+                          </BrutalIconButton>
                         </div>
                       </div>
 
