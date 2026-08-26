@@ -324,7 +324,7 @@ class ConfigModel(BaseModel):
     def migrate_legacy_shell_tools(cls, value: Any) -> Any:
         if not isinstance(value, list):
             return value
-        from suzent.tools.registry import migrate_shell_tool_names
+        from suzent.tools.names import migrate_shell_tool_names
 
         return migrate_shell_tool_names(value)
 
@@ -517,17 +517,25 @@ class ConfigModel(BaseModel):
             logger.error("Config validation error: {}", ve)
             raise
 
-        if not cfg.tool_options:
+        if loaded_path is not None:
+            logger.info("Loaded configuration overrides from {}", loaded_path)
+        return cfg
+
+    def ensure_tool_options(self) -> List[str]:
+        """Return the tool catalog, discovering it from the registry on first use.
+
+        Discovery imports every tool module, and with them pydantic-ai, MCP and
+        the LanceDB stack -- roughly half a second. Keeping it out of
+        ``load_from_files`` means the CLI no longer pays for the whole agent
+        runtime just to read a config file.
+        """
+        if not self.tool_options:
             try:
                 discovered = get_tool_options()
             except Exception:
                 discovered = []
-            combined = list(dict.fromkeys(discovered + cfg.default_tools))
-            cfg.tool_options = combined
-
-        if loaded_path is not None:
-            logger.info("Loaded configuration overrides from {}", loaded_path)
-        return cfg
+            self.tool_options = list(dict.fromkeys(discovered + self.default_tools))
+        return self.tool_options
 
     def reload(self) -> None:
         """Reload configuration from disk."""

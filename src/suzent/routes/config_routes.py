@@ -159,7 +159,7 @@ async def get_config(request: Request) -> JSONResponse:
         "models": available_models,
         "defaultModel": default_model,
         "agents": CONFIG.agent_options,
-        "tools": [t for t in CONFIG.tool_options if t != "SkillTool"],
+        "tools": [t for t in CONFIG.ensure_tool_options() if t != "SkillTool"],
         "toolCapabilities": get_tool_capabilities(),
         "defaultTools": [t for t in CONFIG.default_tools if t != "SkillTool"],
         "codeTag": CONFIG.code_tag,
