@@ -572,6 +572,7 @@ export const en = {
       frontendVersion: 'Desktop frontend',
       backendVersion: 'Python backend',
       unavailable: 'Unavailable',
+      developmentBuild: 'Development build',
     },
     usage: {
       title: 'Usage',
