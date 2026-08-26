@@ -182,8 +182,16 @@ export function processEvent(
       // No-op: text already accumulated
       break;
 
+    // AG-UI renamed the thinking family to REASONING_* in ag-ui-protocol
+    // 0.1.13. pydantic-ai emits whichever family the negotiated version calls
+    // for, so both have to map onto the same reasoning part -- when only the
+    // legacy names were handled, every reasoning event from the new family was
+    // dropped and the message sat in its "thinking" state, hiding the whole
+    // stream, until the first answer token arrived.
     case 'THINKING_START':
-    case 'THINKING_TEXT_MESSAGE_START': {
+    case 'THINKING_TEXT_MESSAGE_START':
+    case 'REASONING_START':
+    case 'REASONING_MESSAGE_START': {
       // Only push a new reasoning part if the last one isn't an empty reasoning part
       const lastPart = next[next.length - 1];
       if (
@@ -196,19 +204,31 @@ export function processEvent(
       break;
     }
 
-    case 'THINKING_TEXT_MESSAGE_CONTENT': {
+    // REASONING_MESSAGE_CHUNK is the new family's combined start+content
+    // event, so it has to open a part when none is streaming yet.
+    case 'THINKING_TEXT_MESSAGE_CONTENT':
+    case 'REASONING_MESSAGE_CONTENT':
+    case 'REASONING_MESSAGE_CHUNK': {
       const delta = (data.delta as string) || '';
+      let appended = false;
       for (let i = next.length - 1; i >= 0; i--) {
         if (next[i].type === 'reasoning') {
           next[i] = { ...next[i], text: (next[i].text || '') + delta };
+          appended = true;
           break;
         }
       }
+      if (!appended) next.push({ type: 'reasoning', text: delta });
       break;
     }
 
+    // REASONING_ENCRYPTED_VALUE carries the provider's opaque reasoning blob
+    // for history replay, so it has nothing displayable either.
     case 'THINKING_TEXT_MESSAGE_END':
     case 'THINKING_END':
+    case 'REASONING_MESSAGE_END':
+    case 'REASONING_END':
+    case 'REASONING_ENCRYPTED_VALUE':
       // No-op
       break;
 

@@ -223,14 +223,28 @@ class _DraftDisplayAccumulator:
             self.dirty = True
             return
 
-        if event_type in {"THINKING_START", "THINKING_TEXT_MESSAGE_START"}:
+        # ag-ui-protocol 0.1.13 renamed the thinking family to REASONING_*, and
+        # pydantic-ai emits whichever family the negotiated version calls for.
+        # Accumulating only the legacy names dropped reasoning from the draft,
+        # so a refresh mid-turn lost the thought the user was watching.
+        if event_type in {
+            "THINKING_START",
+            "THINKING_TEXT_MESSAGE_START",
+            "REASONING_START",
+            "REASONING_MESSAGE_START",
+        }:
             last = self.parts[-1] if self.parts else None
             if not last or last.get("type") != "reasoning" or last.get("text"):
                 self.parts.append({"type": "reasoning", "text": ""})
                 self.dirty = True
             return
 
-        if event_type == "THINKING_TEXT_MESSAGE_CONTENT":
+        if event_type in {
+            "THINKING_TEXT_MESSAGE_CONTENT",
+            "REASONING_MESSAGE_CONTENT",
+            # The new family's combined start+content event.
+            "REASONING_MESSAGE_CHUNK",
+        }:
             delta = getattr(event, "delta", "") or ""
             for index in range(len(self.parts) - 1, -1, -1):
                 part = self.parts[index]

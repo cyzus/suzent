@@ -239,7 +239,13 @@ class TurnTranslator:
                     }
                 )
 
-        elif kind == "THINKING_TEXT_MESSAGE_CONTENT":
+        # ag-ui-protocol 0.1.13 renamed the thinking family to REASONING_*, so
+        # an ACP client sees this agent's thoughts only if both are translated.
+        elif kind in {
+            "THINKING_TEXT_MESSAGE_CONTENT",
+            "REASONING_MESSAGE_CONTENT",
+            "REASONING_MESSAGE_CHUNK",
+        }:
             if delta := str(event.get("delta") or ""):
                 yield Update(
                     {
