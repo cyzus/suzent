@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Serve Suzent as an ACP agent (#126)
 
 ### ⚡ Changed
+- Import a port without importing pydantic
 - Stop blocking startup on the update check
 - Keep the HTTP route layer out of process-state imports
 - Resolve package re-exports on demand
