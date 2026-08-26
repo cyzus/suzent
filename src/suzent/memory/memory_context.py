@@ -19,6 +19,7 @@ def format_core_memory_section(
     shared_path: Optional[str] = None,
     mount_skills: Optional[str] = None,
     mount_notebook: Optional[str] = None,
+    project_context_path: Optional[str] = None,
 ) -> str:
     """
     Format core memory blocks for agent context injection.
@@ -26,10 +27,11 @@ def format_core_memory_section(
     Args:
         blocks: Dictionary of memory block labels to content
         sandbox_enabled: Whether sandbox mode is active
-        chat_id: Current chat session ID (used to show the real context.md path)
+        chat_id: Retained for backwards-compatible callers.
         shared_path: Host path for /shared (non-sandbox mode only)
-        mount_skills: Host path for /mnt/skills (non-sandbox mode only)
+        mount_skills: Deprecated; skill locations come from the active skill catalog.
         mount_notebook: Host path for /mnt/notebook (non-sandbox mode only)
+        project_context_path: Visible path to the project-scoped context.md file.
 
     Returns:
         Formatted string for prompt injection
@@ -42,48 +44,41 @@ def format_core_memory_section(
     else:
         core_blocks_text = "\nNo core memory blocks configured.\n"
 
-    # Build the real context.md path using the actual chat_id when available
-    _ctx_segment = chat_id[:32] if chat_id else "{chat_id}"
-
     if sandbox_enabled:
+        _context_path = project_context_path or "/workspace/context.md"
         memory_workspace_title = "## Memory Workspace (/shared/memory/)"
         memory_files = (
             "- `/shared/memory/persona.md` — your identity, role, and workflow principles\n"
             "- `/shared/memory/user.md` — user preferences, tech stack, communication habits\n"
             "- `/shared/memory/MEMORY.md` — condensed long-term context and key decisions\n"
-            f"- `/shared/memory/sessions/{_ctx_segment}/context.md` — **this session's** scratchpad and task state\n"
+            f"- `{_context_path}` — **this project's** shared scratchpad and task state\n"
             "- `/shared/memory/archive/YYYY-MM-DD.md` — daily knowledge logs (auto-written, append-only)"
         )
         notebook_title = "## Notebook (/mnt/notebook/)"
         notebook_runbook = (
-            "To run ingest: follow `/mnt/skills/official/notebook/ingest.md`\n"
-            "To run lint: follow `/mnt/skills/official/notebook/lint.md`"
+            "Load the `notebook` skill, then follow its advertised `ingest.md` "
+            "or `lint.md` runbook."
         )
         curated_memory_hint = "- Read `/shared/memory/MEMORY.md` for a curated summary of everything you know about the user"
     else:
         _shared = shared_path or "${SHARED_PATH}"
-        _skills = mount_skills or "${MOUNT_SKILLS}"
         _notebook = mount_notebook
+        _context_path = project_context_path or "${PROJECT_PATH}/context.md"
         memory_workspace_title = "## Memory Workspace (Host Paths)"
         memory_files = (
             f"- `{_shared}/memory/persona.md` — your identity, role, and workflow principles\n"
             f"- `{_shared}/memory/user.md` — user preferences, tech stack, communication habits\n"
             f"- `{_shared}/memory/MEMORY.md` — condensed long-term context and key decisions\n"
-            f"- `{_shared}/memory/sessions/{_ctx_segment}/context.md` — **this session's** scratchpad and task state\n"
+            f"- `{_context_path}` — **this project's** shared scratchpad and task state\n"
             f"- `{_shared}/memory/archive/YYYY-MM-DD.md` — daily knowledge logs (auto-written, append-only)"
         )
         notebook_title = "## Notebook (Host-Mounted Paths)"
-        if _notebook:
-            notebook_runbook = (
-                f"To run ingest: follow `{_skills}/official/notebook/ingest.md`\n"
-                f"To run lint: follow `{_skills}/official/notebook/lint.md`"
-            )
-        else:
-            notebook_runbook = (
-                f"To run ingest: follow `{_skills}/official/notebook/ingest.md`\n"
-                f"To run lint: follow `{_skills}/official/notebook/lint.md`\n"
-                "If notebook is not configured in this session, skip notebook operations."
-            )
+        notebook_runbook = (
+            "Load the `notebook` skill, then follow its advertised `ingest.md` "
+            "or `lint.md` runbook."
+        )
+        if not _notebook:
+            notebook_runbook += " If notebook is not configured in this session, skip notebook operations."
         curated_memory_hint = f"- Read `{_shared}/memory/MEMORY.md` for a curated summary of everything you know about the user"
 
     return f"""# Memory System
@@ -102,7 +97,7 @@ Your memory lives in plain markdown files you can read and write directly:
 
 **How to update your memory:**
 - To update persona, user profile, or long-term context: use `edit_file` or `write_file` on the corresponding `.md` file
-- To update session scratchpad / task state: write to `context.md` in the sessions directory
+- To update shared project context and task state: write to the project's `context.md`
 - `MEMORY.md` is part generated: consolidation rewrites everything above the
   `{MEMORY_GENERATED_END}` marker, so put anything you want to keep **below** it. Text
   above that line is not yours and will not survive the next pass

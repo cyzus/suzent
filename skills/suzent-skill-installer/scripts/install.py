@@ -144,7 +144,7 @@ def user_skills_dir() -> Path:
         return Path(env_dir)
     app_data = os.getenv("SUZENT_APP_DATA")
     base = Path(app_data) if app_data else (Path.home() / ".suzent")
-    return base / "skills" / "user"
+    return base / "skills"
 
 
 def main() -> int:

@@ -39,7 +39,7 @@ class SkillTool(Tool):
         the system prompt under 'Available Skills'.
 
         Args:
-            skill_name: The name of the skill to load.
+            skill_name: The stable skill ID or unambiguous skill name to load.
         """
         sm = ctx.deps.skill_manager
         if not sm:

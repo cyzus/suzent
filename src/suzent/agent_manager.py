@@ -311,7 +311,13 @@ def create_agent(
 
     # Auto-equip SkillTool if any skills are enabled
     skill_manager = get_skill_manager()
-    if skill_manager.enabled_skills:
+    has_enabled_skills = getattr(skill_manager, "has_enabled_skills", None)
+    global_skills_enabled = (
+        bool(has_enabled_skills())
+        if callable(has_enabled_skills)
+        else bool(getattr(skill_manager, "enabled_skills", set()))
+    )
+    if global_skills_enabled or config.get("_has_discovered_skills"):
         fn = get_tool_function("SkillTool")
         if fn and fn not in tool_functions:
             tool_functions.append(fn)
@@ -344,12 +350,28 @@ def create_agent(
     # threshold is compacted in-flight (not only at turn boundaries). It self-guards
     # on deps.stateless, so it's safe to register for every agent.
     from suzent.core.context_compressor import make_compaction_history_processor
+    from suzent.core.repository_context import (
+        RepositoryContextRoots,
+        build_repo_context_capabilities,
+    )
     from suzent.tools.capability import RegisteredToolCapability
 
     capabilities = [
         ProcessHistory(make_compaction_history_processor()),
         ToolSearch(),
     ]
+    project_context_dir = config.get("_project_context_dir")
+    working_context_dir = config.get("_working_context_dir")
+    if project_context_dir and working_context_dir:
+        from pathlib import Path
+
+        repository_root = config.get("_repository_root")
+        context_roots = RepositoryContextRoots(
+            project_dir=Path(project_context_dir),
+            working_dir=Path(working_context_dir),
+            repository_root=Path(repository_root) if repository_root else None,
+        )
+        capabilities.extend(build_repo_context_capabilities(context_roots))
     capabilities.extend(
         RegisteredToolCapability(capability_id, tuple(selected_tools))
         for capability_id, selected_tools in capability_groups.items()

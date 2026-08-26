@@ -10,6 +10,7 @@ import type {
   ArchivalQueryOptions,
   MemoryFacets,
   MemoryStats,
+  ProjectContext,
 } from '../types/memory';
 import { memoryApi } from '../lib/memoryApi';
 
@@ -18,6 +19,9 @@ interface MemoryState {
   coreMemory: CoreMemoryBlocks | null;
   coreMemoryLoading: boolean;
   coreMemoryError: string | null;
+  projectContexts: ProjectContext[];
+  projectContextsLoading: boolean;
+  projectContextsError: string | null;
 
   // Archival memory
   archivalMemories: ArchivalMemory[];
@@ -41,6 +45,8 @@ interface MemoryState {
   setUserId: (userId: string) => void;
   loadCoreMemory: (chatId?: string | null) => Promise<void>;
   updateCoreMemoryBlock: (label: CoreMemoryLabel, content: string) => Promise<void>;
+  loadProjectContexts: () => Promise<void>;
+  updateProjectContext: (projectId: string, content: string) => Promise<void>;
   loadArchivalMemories: (
     query?: string,
     append?: boolean,
@@ -55,6 +61,9 @@ const initialState = {
   coreMemory: null,
   coreMemoryLoading: false,
   coreMemoryError: null,
+  projectContexts: [],
+  projectContextsLoading: false,
+  projectContextsError: null,
   archivalMemories: [],
   archivalLoading: false,
   archivalError: null,
@@ -101,6 +110,37 @@ export const useMemory = create<MemoryState>((set, get) => ({
     } catch (error) {
       set({
         coreMemoryError: error instanceof Error ? error.message : 'Failed to update core memory',
+      });
+      throw error;
+    }
+  },
+
+  loadProjectContexts: async () => {
+    set({ projectContextsLoading: true, projectContextsError: null });
+    try {
+      const projectContexts = await memoryApi.getProjectContexts();
+      set({ projectContexts, projectContextsLoading: false });
+    } catch (error) {
+      set({
+        projectContextsError:
+          error instanceof Error ? error.message : 'Failed to load project contexts',
+        projectContextsLoading: false,
+      });
+    }
+  },
+
+  updateProjectContext: async (projectId: string, content: string) => {
+    try {
+      await memoryApi.updateProjectContext(projectId, content);
+      set((state) => ({
+        projectContexts: state.projectContexts.map((project) =>
+          project.projectId === projectId ? { ...project, content, exists: true } : project
+        ),
+      }));
+    } catch (error) {
+      set({
+        projectContextsError:
+          error instanceof Error ? error.message : 'Failed to update project context',
       });
       throw error;
     }

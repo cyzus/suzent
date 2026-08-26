@@ -134,6 +134,8 @@ from suzent.routes.mcp_routes import (
 from suzent.routes.memory_routes import (
     get_core_memory,
     update_core_memory_block,
+    list_project_contexts,
+    update_project_context,
     search_archival_memory,
     delete_archival_memory,
     get_memory_stats,
@@ -594,6 +596,7 @@ async def startup():
     from suzent.memory.lifecycle import init_memory_system, _memory_rag_hook
     from suzent.core.system_reminder import register_global_hook, register_per_turn_hook
     from suzent.skills.hooks import skills_reminder_hook
+    from suzent.core.repository_context import repository_agents_reminder_hook
     from suzent.tools.plan_hooks import plan_reminder_hook
     from suzent.database import get_database
 
@@ -613,6 +616,7 @@ async def startup():
         logger.warning(f"Failed to start genai-prices updater: {e}")
 
     register_global_hook(skills_reminder_hook)
+    register_global_hook(repository_agents_reminder_hook)
     register_global_hook(plan_reminder_hook)
     register_per_turn_hook(_memory_rag_hook)
 
@@ -831,12 +835,9 @@ def ensure_app_data():
     from suzent.config import (
         CACHE_DIR,
         DATA_DIR,
-        EXTERNAL_SKILLS_DIR,
-        OFFICIAL_SKILLS_DIR,
         RUNTIME_DIR,
         SKILLS_ROOT_DIR,
         USER_CONFIG_DIR,
-        USER_SKILLS_DIR,
     )
 
     # Redirect LiteLLM's ChatGPT token storage into Suzent's own config dir.
@@ -851,9 +852,6 @@ def ensure_app_data():
         CACHE_DIR,
         USER_CONFIG_DIR,
         SKILLS_ROOT_DIR,
-        OFFICIAL_SKILLS_DIR,
-        USER_SKILLS_DIR,
-        EXTERNAL_SKILLS_DIR,
     ]:
         if target.exists():
             logger.debug(f"Directory exists: {target}")
@@ -1160,6 +1158,12 @@ app = Starlette(
         Route("/system/open_explorer", open_in_explorer, methods=["POST"]),
         Route("/memory/core", get_core_memory, methods=["GET"]),
         Route("/memory/core", update_core_memory_block, methods=["PUT"]),
+        Route("/memory/project-contexts", list_project_contexts, methods=["GET"]),
+        Route(
+            "/memory/project-contexts/{project_id}",
+            update_project_context,
+            methods=["PUT"],
+        ),
         Route("/memory/archival", search_archival_memory, methods=["GET"]),
         Route(
             "/memory/archival/{memory_id}", delete_archival_memory, methods=["DELETE"]
@@ -1184,6 +1188,7 @@ app = Starlette(
         ),
         Route("/skills", get_skills, methods=["GET"]),
         Route("/skills/reload", reload_skills, methods=["POST"]),
+        Route("/skills/toggle", toggle_skill, methods=["POST"]),
         Route("/skills/{skill_name}/toggle", toggle_skill, methods=["POST"]),
         WebSocketRoute("/ws/browser", browser_websocket_endpoint),
         WebSocketRoute("/ws/node", node_websocket_endpoint),

@@ -161,7 +161,7 @@ async def get_sandbox_volumes(request: Request) -> JSONResponse:
     """Return the effective sandbox volumes for a chat.
 
     The frontend needs the *effective* mounts (server defaults like /mnt/notebook
-    and /mnt/skills merged with global + per-chat volumes) so it can map an
+    plus global, per-chat, and dynamically discovered skill volumes) so it can map an
     absolute host path from a file:// link to its virtual mount path before
     calling /sandbox/serve.
     """

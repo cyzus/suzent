@@ -20,7 +20,7 @@ produced for new checkpoints.
 
 Deliberately NOT snapshotted
 -----------------------------
-/mnt/skills   — read-only shared mount, never written by the agent.
+/mnt/skills/* — read-only skill-source mounts, never written by the agent.
 /shared       — shared across ALL chats; restoring it for one chat would
                 roll back state produced by other concurrent chats and
                 would corrupt the memory system (which lives in

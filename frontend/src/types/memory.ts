@@ -7,6 +7,20 @@ export type CoreMemoryBlocks = Record<string, string>;
 
 export type CoreMemoryLabel = string;
 
+export interface ProjectContext {
+  projectId: string;
+  projectName: string;
+  projectSlug: string;
+  archived: boolean;
+  chatCount: number;
+  content: string;
+  exists: boolean;
+}
+
+export interface ProjectContextsResponse {
+  projects: ProjectContext[];
+}
+
 export interface ArchivalMemory {
   id: string;
   content: string;

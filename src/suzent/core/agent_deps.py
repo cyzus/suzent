@@ -61,6 +61,7 @@ class AgentDeps:
 
     # --- Skills ---
     skill_manager: Any = None  # SkillManager instance
+    repository_agent_files: list[Any] = field(default_factory=list)
 
     # --- Human-in-the-loop (HITL) ---
 

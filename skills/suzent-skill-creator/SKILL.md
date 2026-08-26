@@ -10,8 +10,8 @@ scaffold the directory, write a focused `SKILL.md`, and reload it so it becomes
 available immediately.
 
 A Suzent skill is a directory containing a `SKILL.md` (required) plus optional
-`scripts/`, `references/`, and `assets/`. User-authored skills live under the
-**`user` bucket** at `~/.suzent/skills/user/<name>/`.
+`scripts/`, `references/`, and `assets/`. User-authored skills live at
+`~/.suzent/skills/<name>/`.
 
 > **Frontmatter constraint (important).** Suzent parses frontmatter with a
 > simple line-by-line `key: value` reader — it only understands flat
@@ -34,13 +34,13 @@ without asking the user to repeat them.
 
 ### 2. Scaffold the directory
 
-Run the bundled helper to create the skeleton in the user bucket:
+Run the bundled helper to create the skeleton in the user skills directory:
 
 ```bash
 python scripts/scaffold.py "<skill-name>" --description "<one-line trigger description>"
 ```
 
-This creates `~/.suzent/skills/user/<skill-name>/` with a starter `SKILL.md` and
+This creates `~/.suzent/skills/<skill-name>/` with a starter `SKILL.md` and
 empty `scripts/`, `references/`, `assets/` directories. It refuses to overwrite
 an existing skill unless `--force` is passed.
 

@@ -659,6 +659,16 @@ class MarkdownMemoryStore:
 
         return get_database().get_project_dir(chat_id) / "context.md"
 
+    def _project_context_path(self, project_id: str) -> Path:
+        """Get the context.md path for a project without requiring a chat."""
+        from suzent.config import CONFIG
+        from suzent.database import get_database
+
+        project = get_database().get_project(project_id)
+        if project is None:
+            raise ValueError(f"Unknown project: {project_id}")
+        return Path(CONFIG.sandbox_data_path) / "projects" / project.slug / "context.md"
+
     async def read_block(self, label: str) -> Optional[str]:
         """Read a named core memory block file (e.g., persona.md).
 
@@ -705,3 +715,18 @@ class MarkdownMemoryStore:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content, encoding="utf-8")
         logger.debug(f"Updated project context for chat {chat_id[:8]}")
+
+    async def read_project_context(self, project_id: str) -> Optional[str]:
+        """Read a project's context.md directly by project ID."""
+        path = self._project_context_path(project_id)
+        if not path.exists():
+            return None
+        return _read_text(path)
+
+    async def write_project_context(self, project_id: str, content: str) -> None:
+        """Write a project's context.md directly by project ID."""
+        async with self._write_lock:
+            path = self._project_context_path(project_id)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
+        logger.debug(f"Updated project context for project {project_id}")
