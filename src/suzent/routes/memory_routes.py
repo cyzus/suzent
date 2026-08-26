@@ -229,11 +229,6 @@ async def get_repository_context(request: Request) -> JSONResponse:
 
         project_id = database.get_chat_project_id(chat_id)
         project = database.get_project(project_id) if project_id else None
-        manager = await _get_or_initialize_memory_manager()
-        if not manager:
-            return JSONResponse(
-                {"error": "Memory system not initialized"}, status_code=503
-            )
 
         from suzent.config import get_effective_volumes
         from suzent.core.repository_context import (
@@ -281,9 +276,17 @@ async def get_repository_context(request: Request) -> JSONResponse:
                 }
             )
 
+        manager = None
+        if CONFIG.memory_enabled:
+            try:
+                manager = await _get_or_initialize_memory_manager()
+            except Exception as exc:
+                logger.warning(
+                    "Repository context is unavailable from the memory store: {}", exc
+                )
         context = (
             await manager.markdown_store.read_project_context(project_id)
-            if project_id
+            if manager and project_id
             else None
         )
         context_path = roots.project_dir / "context.md"
