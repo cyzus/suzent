@@ -21,6 +21,28 @@ export interface ProjectContextsResponse {
   projects: ProjectContext[];
 }
 
+export interface RepositoryContextProject {
+  projectId: string | null;
+  projectName: string;
+  content: string;
+  exists: boolean;
+  path: string;
+  virtualPath: string;
+}
+
+export interface RepositoryInstruction {
+  name: string;
+  content: string;
+  source: 'repository' | 'working';
+  path: string;
+  virtualPath: string | null;
+}
+
+export interface RepositoryContextResponse {
+  project: RepositoryContextProject;
+  instructions: RepositoryInstruction[];
+}
+
 export interface ArchivalMemory {
   id: string;
   content: string;

@@ -7,6 +7,7 @@ from suzent.core.repository_context import (
     RepositoryContextRoots,
     build_repo_context_capabilities,
     discover_agent_files,
+    discover_instruction_files,
     discover_skill_roots,
     find_repository_root,
     repository_agents_reminder_hook,
@@ -158,6 +159,32 @@ def test_existing_repository_mount_is_reused_for_skill_paths(tmp_path: Path):
     )
 
 
+def test_uncovered_canonical_skill_source_is_mounted_read_only(tmp_path: Path):
+    canonical = tmp_path / "skills"
+    project_dir = tmp_path / "project"
+    empty_global = tmp_path / "empty-global"
+    project_dir.mkdir()
+    _write_skill(canonical, "shared", "shared", "body")
+
+    manager = SkillManager(
+        skills_dir=empty_global,
+        discovered_roots=[
+            SimpleNamespace(
+                path=canonical,
+                source="repository",
+                source_id="repository:test:skills",
+                virtual_root=None,
+                default_enabled=True,
+            )
+        ],
+        project_dir=project_dir,
+    )
+
+    assert manager.required_mounts == [
+        f"{canonical.resolve()}:/mnt/skills/discovered/repository-test-skills:ro"
+    ]
+
+
 def test_chat_repository_context_comes_from_its_volume_not_process_cwd(
     tmp_path: Path, monkeypatch
 ):
@@ -224,6 +251,57 @@ def test_context_roots_deduplicate_project_that_is_also_repository(tmp_path: Pat
     assert capabilities[0].home_dir == tmp_path.resolve()
 
 
+def test_discovers_walk_up_instruction_files_ancestor_first(tmp_path: Path):
+    repository = tmp_path / "repository"
+    working = repository / "packages" / "api"
+    working.mkdir(parents=True)
+    (repository / ".git").mkdir()
+    root_agents = repository / "AGENTS.md"
+    package_claude = repository / "packages" / "CLAUDE.md"
+    working_agents = working / "AGENTS.md"
+    root_agents.write_text("root", encoding="utf-8")
+    package_claude.write_text("package", encoding="utf-8")
+    working_agents.write_text("working", encoding="utf-8")
+    roots = RepositoryContextRoots(
+        tmp_path / "project",
+        working,
+        repository,
+        home_dir=None,
+    )
+
+    discovered = discover_instruction_files(roots)
+
+    assert [item.path for item in discovered] == [
+        root_agents.resolve(),
+        package_claude.resolve(),
+        working_agents.resolve(),
+    ]
+    assert [item.source for item in discovered] == [
+        "repository",
+        "repository",
+        "working",
+    ]
+
+
+def test_instruction_discovery_deduplicates_identical_content(tmp_path: Path):
+    repository = tmp_path / "repository"
+    working = repository / "package"
+    working.mkdir(parents=True)
+    (repository / ".git").mkdir()
+    (repository / "AGENTS.md").write_text("same", encoding="utf-8")
+    (working / "CLAUDE.md").write_text("same", encoding="utf-8")
+    roots = RepositoryContextRoots(
+        tmp_path / "project",
+        working,
+        repository,
+        home_dir=None,
+    )
+
+    discovered = discover_instruction_files(roots)
+
+    assert [item.path for item in discovered] == [(repository / "AGENTS.md").resolve()]
+
+
 @pytest.mark.asyncio
 async def test_repository_agent_files_are_surfaced_with_workspace_paths(tmp_path: Path):
     agent_file = tmp_path / ".agents" / "agents" / "reviewer.md"
@@ -233,7 +311,11 @@ async def test_repository_agent_files_are_surfaced_with_workspace_paths(tmp_path
     deps = SimpleNamespace(
         repository_agent_files=discover_agent_files(roots),
         sandbox_enabled=True,
-        path_resolver=SimpleNamespace(get_working_dir=lambda: tmp_path),
+        path_resolver=SimpleNamespace(
+            to_virtual_path=lambda path: (
+                f"/workspace/{path.relative_to(tmp_path).as_posix()}"
+            )
+        ),
     )
 
     reminder = await repository_agents_reminder_hook("chat", deps)
@@ -241,3 +323,38 @@ async def test_repository_agent_files_are_surfaced_with_workspace_paths(tmp_path
     assert reminder is not None
     assert "reviewer (repository)" in reminder
     assert "/workspace/.agents/agents/reviewer.md" in reminder
+
+
+@pytest.mark.asyncio
+async def test_repository_agent_files_use_custom_mount_paths(tmp_path: Path):
+    project_dir = tmp_path / "project"
+    repository = tmp_path / "repository"
+    project_dir.mkdir()
+    agent_file = repository / ".agents" / "agents" / "reviewer.md"
+    agent_file.parent.mkdir(parents=True)
+    agent_file.write_text("# Reviewer\n", encoding="utf-8")
+    roots = RepositoryContextRoots(
+        project_dir,
+        repository,
+        repository,
+        home_dir=None,
+    )
+    from suzent.tools.filesystem.path_resolver import PathResolver
+
+    deps = SimpleNamespace(
+        repository_agent_files=discover_agent_files(roots),
+        sandbox_enabled=True,
+        path_resolver=PathResolver(
+            "chat",
+            True,
+            project_slug="project",
+            sandbox_data_path=tmp_path / "sandbox",
+            custom_volumes=[f"{repository}:/mnt/repository"],
+        ),
+    )
+
+    reminder = await repository_agents_reminder_hook("chat", deps)
+
+    assert reminder is not None
+    assert "/mnt/repository/.agents/agents/reviewer.md" in reminder
+    assert str(repository) not in reminder

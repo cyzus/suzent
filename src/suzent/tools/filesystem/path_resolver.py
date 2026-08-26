@@ -121,23 +121,35 @@ class PathResolver:
             return ChatDatabase.DEFAULT_PROJECT_SLUG
 
     @staticmethod
+    def parse_volume_spec(vol: str) -> Optional[Tuple[str, str, str]]:
+        """Parse ``host:container[:mode]`` while preserving Windows drives."""
+        mode = "rw"
+        volume = vol
+        suffix = vol.rsplit(":", 1)[-1].lower()
+        if suffix in {"ro", "rw"}:
+            volume, mode = vol.rsplit(":", 1)
+
+        if ":" not in volume:
+            return None
+
+        last_colon = volume.rfind(":")
+        host_part = volume[:last_colon]
+        container_part = volume[last_colon + 1 :]
+        if not host_part or not container_part:
+            return None
+        return host_part, container_part, mode
+
+    @staticmethod
     def parse_volume_string(vol: str) -> Optional[Tuple[str, str]]:
         """
         Parse a volume string 'host:container' into components.
         Handles Windows drive letters (e.g. D:/path:/container).
         Returns (host_path, container_path) or None if invalid.
         """
-        if ":" not in vol:
+        parsed = PathResolver.parse_volume_spec(vol)
+        if parsed is None:
             return None
-
-        # Handle Windows drive letters (e.g. D:/host:/container)
-        # Find the LAST colon which separates host and container
-        last_colon = vol.rfind(":")
-        if last_colon == -1:
-            return None
-
-        host_part = vol[:last_colon]
-        container_part = vol[last_colon + 1 :]
+        host_part, container_part, _mode = parsed
         return host_part, container_part
 
     @staticmethod

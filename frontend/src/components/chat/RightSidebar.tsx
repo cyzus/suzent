@@ -6,6 +6,7 @@ import { WebActivitiesView } from '../sidebar/WebActivitiesView';
 import { CanvasView } from '../sidebar/CanvasView';
 import { SubAgentView } from '../sidebar/SubAgentView';
 import { SubAgentList } from '../sidebar/SubAgentList';
+import { RepositoryContextView } from '../sidebar/RepositoryContextView';
 import type { Message, Goal, Task } from '../../types/api';
 import type { KanbanData } from '../../hooks/useGoalTasks';
 import type { CanvasState } from '../../hooks/useCanvas';
@@ -22,13 +23,14 @@ import {
   CpuChipIcon,
   ClipboardDocumentListIcon,
   WrenchScrewdriverIcon,
+  DocumentTextIcon,
 } from '@heroicons/react/24/outline';
 import { ToolsPanel } from './ToolsPanel';
 
 // Icon strip width in px — keep in sync with w-11 (2.75rem = 44px)
 const ICON_STRIP_WIDTH = 44;
 
-type TabId = 'files' | 'browser' | 'canvas' | 'agents' | 'plan' | 'project' | 'tools';
+type TabId = 'files' | 'context' | 'browser' | 'canvas' | 'agents' | 'plan' | 'project' | 'tools';
 
 interface RightSidebarProps {
   isOpen: boolean;
@@ -103,7 +105,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   onClearForcedWebContext,
   isNewChat = false,
 }) => {
-  useI18n();
+  const { t } = useI18n();
   const [activeTab, setActiveTab] = useState<TabId>('browser');
   const [isFileExpanded, setIsFileExpanded] = useState(false);
   const [isBrowserStreamActive, setIsBrowserStreamActive] = useState(false);
@@ -159,6 +161,14 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       fallbackLabel: 'Files',
       hasContent: !!fileToPreview,
       hasActivity: !!fileToPreview,
+    },
+    {
+      id: 'context',
+      icon: DocumentTextIcon,
+      labelKey: 'sidebar.tabs.context',
+      fallbackLabel: 'Context',
+      hasContent: Boolean(currentChatId),
+      hasActivity: false,
     },
     {
       id: 'browser',
@@ -476,6 +486,11 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                 />
               </div>
               <div
+                className={`flex-1 h-full flex-col min-h-0 ${activeTab === 'context' ? 'flex' : 'hidden'}`}
+              >
+                {currentChatId && <RepositoryContextView chatId={currentChatId} />}
+              </div>
+              <div
                 className={`flex-1 h-full flex flex-col ${activeTab === 'browser' ? 'flex' : 'hidden'}`}
               >
                 <WebActivitiesView
@@ -550,6 +565,11 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                 />
               </div>
               <div
+                className={`flex-1 h-full flex-col min-h-0 ${activeTab === 'context' ? 'flex' : 'hidden'}`}
+              >
+                {currentChatId && <RepositoryContextView chatId={currentChatId} />}
+              </div>
+              <div
                 className={`flex-1 h-full flex flex-col ${activeTab === 'browser' ? 'flex' : 'hidden'}`}
               >
                 <WebActivitiesView
@@ -617,7 +637,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
               key={tab.id}
               disabled={isDisabled}
               onClick={() => handleTabClick(tab.id)}
-              title={tab.fallbackLabel}
+              title={t(tab.labelKey) || tab.fallbackLabel}
               aria-disabled={isDisabled}
               className={`
                 relative flex items-center justify-center w-9 h-9 rounded transition-colors

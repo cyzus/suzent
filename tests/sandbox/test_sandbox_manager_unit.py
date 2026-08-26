@@ -104,3 +104,26 @@ def test_sandbox_manager_singleton_per_volume_key(monkeypatch):
 
     assert m1 is m2
     assert m1 is not m3
+
+
+def test_docker_session_honors_read_only_custom_volume(tmp_path):
+    source = tmp_path / "skills"
+    source.mkdir()
+    session = DockerSession(
+        session_id="chat-skills",
+        client=None,
+        data_path=str(tmp_path / "sandbox"),
+        image="python:3.11-slim",
+        memory_mb=512,
+        cpus=1,
+        network="bridge",
+        project_slug="default",
+        custom_volumes=[f"{source}:/mnt/skills/official:ro"],
+    )
+
+    volumes = session._build_volumes()
+
+    assert volumes[str(source.resolve())] == {
+        "bind": "/mnt/skills/official",
+        "mode": "ro",
+    }
