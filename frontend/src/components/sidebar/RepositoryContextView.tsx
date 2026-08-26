@@ -1,69 +1,180 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowPathIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
+import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
+import {
+  ArrowPathIcon,
+  CheckIcon,
+  ChevronDownIcon,
+  ClipboardDocumentIcon,
+  PencilIcon,
+  XMarkIcon,
+} from '@heroicons/react/24/outline';
 import { useI18n } from '../../i18n';
 import { useChatStreamingStore } from '../../hooks/useChatStore';
 import { memoryApi } from '../../lib/memoryApi';
 import type { RepositoryContextResponse, RepositoryInstruction } from '../../types/memory';
-import { BrutalButton } from '../BrutalButton';
 import { MarkdownRenderer } from '../chat/MarkdownRenderer';
-import { CoreMemoryBlock } from '../memory/CoreMemoryBlock';
 
 interface RepositoryContextViewProps {
   chatId: string;
 }
 
-function InstructionCard({ instruction }: { instruction: RepositoryInstruction }) {
+interface ContextFileCardProps {
+  name: string;
+  content: string;
+  sourceLabel: string;
+  path: string;
+  editable?: boolean;
+  onSave?: (content: string) => Promise<void>;
+}
+
+function IconButton({
+  label,
+  onClick,
+  children,
+  disabled = false,
+}: {
+  label: string;
+  onClick: () => void;
+  children: ReactNode;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={label}
+      aria-label={label}
+      className="flex h-8 w-8 shrink-0 items-center justify-center border-2 border-brutal-black bg-white text-brutal-black shadow-[2px_2px_0_0_#000] transition-transform hover:-translate-y-0.5 active:translate-x-0.5 active:translate-y-0.5 active:shadow-none disabled:cursor-not-allowed disabled:opacity-40 dark:bg-zinc-700 dark:text-white"
+    >
+      {children}
+    </button>
+  );
+}
+
+function ContextFileCard({
+  name,
+  content,
+  sourceLabel,
+  path,
+  editable = false,
+  onSave,
+}: ContextFileCardProps) {
   const { t } = useI18n();
-  const [collapsed, setCollapsed] = useState(true);
+  const [expanded, setExpanded] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(content);
+  const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  useEffect(() => {
+    setDraft(content);
+  }, [content]);
+
   const copy = async () => {
-    await navigator.clipboard.writeText(instruction.content);
+    await navigator.clipboard.writeText(content);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 2000);
   };
 
+  const save = async () => {
+    if (!onSave || draft === content) {
+      setEditing(false);
+      return;
+    }
+    setSaving(true);
+    try {
+      await onSave(draft);
+      setEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const cancel = () => {
+    setDraft(content);
+    setEditing(false);
+  };
+
   return (
-    <section className="border-2 border-brutal-black bg-white shadow-brutal-sm dark:bg-zinc-800">
-      <header className="flex items-start justify-between gap-2 border-b-2 border-brutal-black px-3 py-2">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className="font-brutal text-sm uppercase text-brutal-black dark:text-white">
-              {instruction.name}
-            </h3>
-            <span className="border border-brutal-black px-1 font-mono text-[9px] uppercase dark:border-white">
-              {t(`repositoryContext.sources.${instruction.source}`)}
+    <article className="border-2 border-brutal-black bg-white shadow-[3px_3px_0_0_#000] dark:bg-zinc-800">
+      <div className="flex items-start gap-2 px-3 py-2.5">
+        <button
+          type="button"
+          onClick={() => setExpanded((value) => !value)}
+          className="min-w-0 flex-1 text-left"
+          aria-expanded={expanded}
+        >
+          <div className="flex min-w-0 items-center gap-2">
+            <ChevronDownIcon
+              className={`h-4 w-4 shrink-0 stroke-[2.5] transition-transform ${expanded ? '' : '-rotate-90'}`}
+            />
+            <span className="truncate font-brutal text-sm uppercase leading-none text-brutal-black dark:text-white">
+              {name}
+            </span>
+            <span className="shrink-0 border border-brutal-black px-1.5 py-0.5 font-mono text-[8px] uppercase leading-none text-neutral-600 dark:border-white dark:text-neutral-300">
+              {sourceLabel}
             </span>
           </div>
           <p
-            className="mt-1 truncate font-mono text-[10px] text-neutral-500 dark:text-neutral-400"
-            title={instruction.path}
+            className="ml-6 mt-1.5 truncate font-mono text-[10px] leading-none text-neutral-500 dark:text-neutral-400"
+            title={path}
           >
-            {instruction.path}
+            {path}
           </p>
-        </div>
-        <div className="flex shrink-0 gap-1">
-          <BrutalButton size="xs" onClick={copy} disabled={!instruction.content}>
-            {copied ? t('coreMemory.copiedText') : t('common.copy')}
-          </BrutalButton>
-          <BrutalButton
-            size="icon"
-            onClick={() => setCollapsed((value) => !value)}
-            aria-expanded={!collapsed}
-            title={collapsed ? t('memoryView.expandSection') : t('memoryView.collapseSection')}
-          >
-            <ChevronDownIcon
-              className={`h-4 w-4 stroke-2 transition-transform ${collapsed ? '-rotate-90' : ''}`}
-            />
-          </BrutalButton>
-        </div>
-      </header>
-      {!collapsed && instruction.content && (
-        <div className="max-h-[420px] overflow-y-auto overflow-x-hidden break-words bg-neutral-50 px-3 py-2 text-sm leading-6 dark:bg-zinc-900 [&_h1]:mb-1 [&_h1]:mt-3 [&_h2]:mb-1 [&_h2]:mt-3 [&_li]:my-0 [&_ol]:my-1 [&_p]:my-1 [&_ul]:my-1">
-          <MarkdownRenderer content={instruction.content} streamingLite />
+        </button>
+
+        {expanded && !editing && (
+          <div className="flex shrink-0 gap-1.5">
+            <IconButton
+              label={copied ? t('coreMemory.copiedText') : t('common.copy')}
+              onClick={copy}
+            >
+              {copied ? (
+                <CheckIcon className="h-4 w-4 stroke-[2.5]" />
+              ) : (
+                <ClipboardDocumentIcon className="h-4 w-4 stroke-2" />
+              )}
+            </IconButton>
+            {editable && (
+              <IconButton label={t('common.edit')} onClick={() => setEditing(true)}>
+                <PencilIcon className="h-4 w-4 stroke-2" />
+              </IconButton>
+            )}
+          </div>
+        )}
+      </div>
+
+      {expanded && (
+        <div className="border-t-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900">
+          {editing ? (
+            <div className="space-y-2 p-2.5">
+              <textarea
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                className="min-h-56 w-full resize-y border-2 border-brutal-black bg-white p-2.5 font-mono text-xs leading-5 text-brutal-black focus:outline-none focus:ring-2 focus:ring-brutal-black dark:bg-zinc-800 dark:text-white"
+                autoFocus
+              />
+              <div className="flex justify-end gap-2">
+                <IconButton label={t('common.cancel')} onClick={cancel} disabled={saving}>
+                  <XMarkIcon className="h-4 w-4 stroke-[2.5]" />
+                </IconButton>
+                <IconButton
+                  label={saving ? t('common.saving') : t('common.save')}
+                  onClick={() => void save()}
+                  disabled={saving || draft === content}
+                >
+                  <CheckIcon className="h-4 w-4 stroke-[2.5]" />
+                </IconButton>
+              </div>
+            </div>
+          ) : (
+            <div className="break-words px-3 py-2.5 text-[13px] leading-5 text-slate-700 dark:text-zinc-200 [&_blockquote]:my-2 [&_li]:my-0 [&_ol]:my-1.5 [&_p]:my-1.5 [&_pre]:my-2 [&_ul]:my-1.5">
+              <MarkdownRenderer content={content} streamingLite compact />
+            </div>
+          )}
         </div>
       )}
-    </section>
+    </article>
   );
 }
 
@@ -96,7 +207,7 @@ export function RepositoryContextView({ chatId }: RepositoryContextViewProps) {
     previousStreaming.current = isStreaming;
   }, [isStreaming, load]);
 
-  const updateProjectContext = async (_label: string, content: string) => {
+  const updateProjectContext = async (content: string) => {
     const projectId = data?.project.projectId;
     if (!projectId) return;
     await memoryApi.updateProjectContext(projectId, content);
@@ -114,27 +225,22 @@ export function RepositoryContextView({ chatId }: RepositoryContextViewProps) {
   const hasInstructions = Boolean(data?.instructions.length);
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-neutral-50 dark:bg-zinc-900">
-      <header className="flex items-center justify-between border-b-3 border-brutal-black bg-white px-3 py-3 dark:bg-zinc-800">
-        <div className="min-w-0">
-          <h2 className="font-brutal text-base uppercase text-brutal-black dark:text-white">
+    <div className="flex h-full min-h-0 flex-col bg-neutral-100 dark:bg-zinc-900">
+      <header className="flex items-center gap-3 border-b-3 border-brutal-black bg-white px-3 py-2.5 dark:bg-zinc-800">
+        <div className="min-w-0 flex-1">
+          <h2 className="font-brutal text-base uppercase leading-none text-brutal-black dark:text-white">
             {t('repositoryContext.title')}
           </h2>
-          <p className="truncate font-mono text-[10px] text-neutral-500 dark:text-neutral-400">
-            {t('repositoryContext.description')}
+          <p className="mt-1 truncate font-mono text-[10px] leading-none text-neutral-500 dark:text-neutral-400">
+            {data?.project.projectName || t('repositoryContext.description')}
           </p>
         </div>
-        <BrutalButton
-          size="icon"
-          onClick={() => void load()}
-          disabled={loading}
-          title={t('common.refresh')}
-        >
-          <ArrowPathIcon className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-        </BrutalButton>
+        <IconButton label={t('common.refresh')} onClick={() => void load()} disabled={loading}>
+          <ArrowPathIcon className={`h-4 w-4 stroke-2 ${loading ? 'animate-spin' : ''}`} />
+        </IconButton>
       </header>
 
-      <div className="scrollbar-thin flex-1 space-y-4 overflow-y-auto p-3">
+      <div className="scrollbar-thin flex-1 space-y-5 overflow-y-auto overflow-x-hidden p-3">
         {error && (
           <div className="border-2 border-brutal-red bg-white p-3 font-mono text-xs text-brutal-red dark:bg-zinc-800">
             {error}
@@ -142,47 +248,51 @@ export function RepositoryContextView({ chatId }: RepositoryContextViewProps) {
         )}
 
         {loading && !data && (
-          <div className="border-2 border-brutal-black bg-white p-4 font-mono text-xs uppercase animate-brutal-blink dark:bg-zinc-800">
+          <div className="border-2 border-brutal-black bg-white p-3 font-mono text-[10px] uppercase animate-brutal-blink dark:bg-zinc-800">
             {t('common.loading')}
           </div>
         )}
 
         {data && hasProjectContext && (
           <section className="space-y-2">
-            <h3 className="border-b-2 border-brutal-black pb-1 font-brutal text-xs uppercase dark:border-white">
+            <h3 className="font-brutal text-[11px] uppercase tracking-wide text-neutral-600 dark:text-neutral-300">
               {t('repositoryContext.projectContext')}
             </h3>
-            <div title={data.project.path}>
-              <CoreMemoryBlock
-                label="context"
-                content={data.project.content}
-                titleOverride="context.md"
-                descriptionOverride={data.project.projectName}
-                collapsible
-                onUpdate={updateProjectContext}
-              />
-            </div>
+            <ContextFileCard
+              name="context.md"
+              content={data.project.content}
+              sourceLabel={t('repositoryContext.projectMemory')}
+              path={data.project.path}
+              editable
+              onSave={updateProjectContext}
+            />
           </section>
         )}
 
         {data && hasInstructions && (
           <section className="space-y-2">
-            <div className="border-b-2 border-brutal-black pb-1 dark:border-white">
-              <h3 className="font-brutal text-xs uppercase">
+            <div>
+              <h3 className="font-brutal text-[11px] uppercase tracking-wide text-neutral-600 dark:text-neutral-300">
                 {t('repositoryContext.repositoryInstructions')}
               </h3>
-              <p className="font-mono text-[10px] text-neutral-500 dark:text-neutral-400">
+              <p className="mt-1 font-mono text-[9px] leading-3 text-neutral-500 dark:text-neutral-400">
                 {t('repositoryContext.repositoryInstructionsDesc')}
               </p>
             </div>
-            {data.instructions.map((instruction) => (
-              <InstructionCard key={instruction.path} instruction={instruction} />
+            {data.instructions.map((instruction: RepositoryInstruction) => (
+              <ContextFileCard
+                key={instruction.path}
+                name={instruction.name}
+                content={instruction.content}
+                sourceLabel={t(`repositoryContext.sources.${instruction.source}`)}
+                path={instruction.path}
+              />
             ))}
           </section>
         )}
 
         {data && !hasProjectContext && !hasInstructions && (
-          <div className="border-2 border-dashed border-neutral-400 px-4 py-8 text-center font-mono text-xs text-neutral-500 dark:border-zinc-600 dark:text-neutral-400">
+          <div className="border-2 border-dashed border-neutral-400 bg-white px-4 py-8 text-center font-mono text-xs text-neutral-500 dark:border-zinc-600 dark:bg-zinc-800 dark:text-neutral-400">
             {t('repositoryContext.empty')}
           </div>
         )}
