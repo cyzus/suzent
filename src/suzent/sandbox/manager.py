@@ -396,11 +396,11 @@ class DockerSession:
         from suzent.tools.filesystem.path_resolver import PathResolver
 
         for vol in self.custom_volumes:
-            parsed = PathResolver.parse_volume_string(vol)
+            parsed = PathResolver.parse_volume_spec(vol)
             if not parsed:
                 logger.warning(f"Skipping invalid volume: {vol}")
                 continue
-            host, container = parsed
+            host, container, mode = parsed
             if not Path(host).is_absolute():
                 from suzent.config import PROJECT_DIR
 
@@ -410,7 +410,7 @@ class DockerSession:
             except ValueError as e:
                 logger.error(str(e))
                 continue
-            volumes[host] = {"bind": container, "mode": "rw"}
+            volumes[host] = {"bind": container, "mode": mode}
 
         return volumes
 

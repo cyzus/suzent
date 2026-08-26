@@ -19,6 +19,7 @@ import type {
   DreamStatus,
   ProjectContext,
   ProjectContextsResponse,
+  RepositoryContextResponse,
 } from '../types/memory';
 import { getApiBase } from './api';
 
@@ -92,6 +93,16 @@ export const memoryApi = {
       const error = await response.json().catch(() => ({ error: response.statusText }));
       throw new Error(error.error || 'Failed to update project context');
     }
+  },
+
+  async getRepositoryContext(chatId: string): Promise<RepositoryContextResponse> {
+    const response = await fetch(
+      `${memoryEndpoint()}/repository-context?chat_id=${encodeURIComponent(chatId)}`
+    );
+    if (!response.ok) {
+      throw new Error(`Failed to fetch repository context: ${response.statusText}`);
+    }
+    return await response.json();
   },
 
   /**

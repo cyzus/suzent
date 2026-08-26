@@ -89,6 +89,7 @@ export const zhCN = {
       chats: '对话列表',
       config: '配置',
       files: '文件',
+      context: '上下文',
       browser: '网页',
       canvas: '画布',
       agents: '子代理',
@@ -97,6 +98,19 @@ export const zhCN = {
     },
     settings: '设置',
     settingsDesc: '',
+  },
+  repositoryContext: {
+    title: '上下文',
+    description: '项目记忆与当前生效的代码仓库指令',
+    projectContext: '项目上下文',
+    repositoryInstructions: '代码仓库指令',
+    repositoryInstructionsDesc: '按祖先目录优先加载，最近的文件具有最终优先级。',
+    empty: '未找到项目上下文或代码仓库指令。',
+    loadFailed: '加载代码仓库上下文失败',
+    sources: {
+      repository: '代码仓库',
+      working: '工作目录',
+    },
   },
   subAgents: {
     model: '模型',

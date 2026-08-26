@@ -215,6 +215,96 @@ async def update_project_context(request: Request) -> JSONResponse:
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+async def get_repository_context(request: Request) -> JSONResponse:
+    """Return the current chat's project memory and effective repo instructions."""
+    try:
+        chat_id = str(request.query_params.get("chat_id") or "").strip()
+        if not chat_id:
+            return JSONResponse({"error": "Missing chat_id"}, status_code=400)
+
+        database = get_database()
+        chat = database.get_chat(chat_id)
+        if chat is None:
+            return JSONResponse({"error": "Chat not found"}, status_code=404)
+
+        project_id = database.get_chat_project_id(chat_id)
+        project = database.get_project(project_id) if project_id else None
+        manager = await _get_or_initialize_memory_manager()
+        if not manager:
+            return JSONResponse(
+                {"error": "Memory system not initialized"}, status_code=503
+            )
+
+        from suzent.config import get_effective_volumes
+        from suzent.core.repository_context import (
+            discover_instruction_files,
+            resolve_repository_context,
+        )
+        from suzent.tools.filesystem.path_resolver import PathResolver
+
+        chat_config = chat.config or {}
+        volumes = get_effective_volumes(chat_config.get("sandbox_volumes") or [])
+        roots = resolve_repository_context(
+            chat_id,
+            chat_config.get("cwd"),
+            custom_volumes=volumes,
+        )
+        sandbox_enabled = bool(
+            chat_config.get("sandbox_enabled", CONFIG.sandbox_enabled)
+        )
+        resolver = PathResolver(
+            chat_id,
+            sandbox_enabled,
+            sandbox_data_path=CONFIG.sandbox_data_path,
+            custom_volumes=volumes,
+            workspace_root=CONFIG.workspace_root,
+        )
+
+        instructions = []
+        for instruction in discover_instruction_files(roots):
+            try:
+                content = instruction.path.read_text(encoding="utf-8")
+            except OSError as exc:
+                logger.warning(
+                    "Failed to read repository instruction file {}: {}",
+                    instruction.path,
+                    exc,
+                )
+                continue
+            instructions.append(
+                {
+                    "name": instruction.path.name,
+                    "content": content,
+                    "source": instruction.source,
+                    "path": str(instruction.path),
+                    "virtualPath": resolver.to_virtual_path(instruction.path),
+                }
+            )
+
+        context = (
+            await manager.markdown_store.read_project_context(project_id)
+            if project_id
+            else None
+        )
+        context_path = roots.project_dir / "context.md"
+        return JSONResponse(
+            {
+                "project": {
+                    "projectId": project_id,
+                    "projectName": project.name if project else "",
+                    "content": context or "",
+                    "exists": context is not None,
+                    "path": str(context_path.resolve()),
+                    "virtualPath": "/workspace/context.md",
+                },
+                "instructions": instructions,
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error getting repository context: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 async def search_archival_memory(request: Request) -> JSONResponse:
     """
     Search archival memories with semantic search.

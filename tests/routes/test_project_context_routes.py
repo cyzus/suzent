@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from pathlib import Path
 
 from starlette.applications import Starlette
 from starlette.routing import Route
@@ -109,3 +110,70 @@ def test_rejects_unknown_project_context(monkeypatch):
     response = client.put("/memory/project-contexts/missing", json={"content": "nope"})
 
     assert response.status_code == 404
+
+
+def test_repository_context_returns_project_memory_and_walk_up_instructions(
+    monkeypatch, tmp_path: Path
+):
+    repository = tmp_path / "repository"
+    working = repository / "packages" / "api"
+    project_dir = tmp_path / "projects" / "one"
+    working.mkdir(parents=True)
+    project_dir.mkdir(parents=True)
+    (repository / ".git").mkdir()
+    (repository / "AGENTS.md").write_text("# Root rules\n", encoding="utf-8")
+    (working / "CLAUDE.md").write_text("# API rules\n", encoding="utf-8")
+    project = SimpleNamespace(id="project-1", name="One", slug="one", archived=False)
+    chat = SimpleNamespace(
+        id="chat-1",
+        project_id=project.id,
+        working_directory=str(working),
+        config={"sandbox_enabled": False},
+    )
+    database = SimpleNamespace(
+        get_chat=lambda _chat_id: chat,
+        get_chat_project_id=lambda _chat_id: project.id,
+        get_chat_project_slug=lambda _chat_id: project.slug,
+        get_project=lambda _project_id: project,
+        get_project_dir=lambda _chat_id: project_dir,
+    )
+    markdown_store = _FakeMarkdownStore()
+
+    async def get_manager():
+        return SimpleNamespace(markdown_store=markdown_store)
+
+    monkeypatch.setattr(memory_routes, "get_database", lambda: database)
+    monkeypatch.setattr("suzent.database.get_database", lambda: database)
+    monkeypatch.setattr(memory_routes, "_get_or_initialize_memory_manager", get_manager)
+    app = Starlette(
+        routes=[
+            Route(
+                "/memory/repository-context",
+                memory_routes.get_repository_context,
+                methods=["GET"],
+            )
+        ]
+    )
+
+    response = TestClient(app).get(
+        "/memory/repository-context", params={"chat_id": "chat-1"}
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["project"] == {
+        "projectId": "project-1",
+        "projectName": "One",
+        "content": "# One\n",
+        "exists": True,
+        "path": str((project_dir / "context.md").resolve()),
+        "virtualPath": "/workspace/context.md",
+    }
+    assert [item["name"] for item in payload["instructions"]] == [
+        "AGENTS.md",
+        "CLAUDE.md",
+    ]
+    assert [item["content"] for item in payload["instructions"]] == [
+        "# Root rules\n",
+        "# API rules\n",
+    ]

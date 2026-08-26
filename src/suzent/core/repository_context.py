@@ -80,6 +80,14 @@ class DiscoveredAgentFile:
     source_id: str
 
 
+@dataclass(frozen=True)
+class DiscoveredInstructionFile:
+    """One instruction file loaded by RepoContext's walk-up strategy."""
+
+    path: Path
+    source: str
+
+
 def find_repository_root(start: Path) -> Path | None:
     """Find the nearest Git repository containing *start*."""
     current = start.resolve()
@@ -254,6 +262,49 @@ def discover_agent_files(roots: RepositoryContextRoots) -> list[DiscoveredAgentF
     return discovered
 
 
+def discover_instruction_files(
+    roots: RepositoryContextRoots,
+) -> list[DiscoveredInstructionFile]:
+    """Mirror RepoContext's ancestor-first instruction-file discovery."""
+    workspace = roots.working_dir.resolve()
+    repository_root = roots.repository_root.resolve() if roots.repository_root else None
+    directories = [workspace]
+    if repository_root is not None and (
+        workspace == repository_root or repository_root in workspace.parents
+    ):
+        directories = []
+        current = workspace
+        while True:
+            directories.append(current)
+            if current == repository_root:
+                break
+            current = current.parent
+        directories.reverse()
+
+    discovered: list[DiscoveredInstructionFile] = []
+    seen_paths: set[Path] = set()
+    seen_content: set[str] = set()
+    for directory in directories:
+        source = "working" if directory == workspace else "repository"
+        for filename in INSTRUCTION_FILENAMES:
+            path = directory / filename
+            if not path.is_file():
+                continue
+            resolved = path.resolve()
+            if resolved in seen_paths:
+                continue
+            try:
+                content_hash = hashlib.sha256(path.read_bytes()).hexdigest()
+            except OSError:
+                continue
+            if content_hash in seen_content:
+                continue
+            seen_paths.add(resolved)
+            seen_content.add(content_hash)
+            discovered.append(DiscoveredInstructionFile(path=resolved, source=source))
+    return discovered
+
+
 def build_repo_context_capabilities(roots: RepositoryContextRoots) -> list[object]:
     """Create a RepoContext capability for working-tree instructions."""
     from pydantic_ai_harness import RepoContext
@@ -277,17 +328,13 @@ async def repository_agents_reminder_hook(chat_id: str, deps: object) -> str | N
     if not agent_files:
         return None
 
-    project_dir = Path(deps.path_resolver.get_working_dir()).resolve()
     sandbox_enabled = bool(getattr(deps, "sandbox_enabled", True))
     lines: list[str] = []
     for agent_file in agent_files:
         path = agent_file.path.resolve()
         location = str(path)
         if sandbox_enabled:
-            try:
-                location = f"/workspace/{path.relative_to(project_dir).as_posix()}"
-            except ValueError:
-                location = str(path)
+            location = deps.path_resolver.to_virtual_path(path) or str(path)
         lines.append(f"- {path.stem} ({agent_file.source}): {location}")
     return (
         "Repository agent definitions are available. Read the matching definition "
