@@ -14,12 +14,23 @@ export enum StreamEventType {
   TEXT_MESSAGE_CONTENT = 'TEXT_MESSAGE_CONTENT',
   TEXT_MESSAGE_END = 'TEXT_MESSAGE_END',
 
-  // Thinking/reasoning events
+  // Thinking/reasoning events (ag-ui-protocol <= 0.1.12)
   THINKING_START = 'THINKING_START',
   THINKING_TEXT_MESSAGE_START = 'THINKING_TEXT_MESSAGE_START',
   THINKING_TEXT_MESSAGE_CONTENT = 'THINKING_TEXT_MESSAGE_CONTENT',
   THINKING_TEXT_MESSAGE_END = 'THINKING_TEXT_MESSAGE_END',
   THINKING_END = 'THINKING_END',
+
+  // The same events under the names ag-ui-protocol 0.1.13 renamed them to.
+  // Which family arrives depends on the protocol version pydantic-ai
+  // negotiates, so both are live and both must be handled.
+  REASONING_START = 'REASONING_START',
+  REASONING_MESSAGE_START = 'REASONING_MESSAGE_START',
+  REASONING_MESSAGE_CONTENT = 'REASONING_MESSAGE_CONTENT',
+  REASONING_MESSAGE_CHUNK = 'REASONING_MESSAGE_CHUNK',
+  REASONING_MESSAGE_END = 'REASONING_MESSAGE_END',
+  REASONING_END = 'REASONING_END',
+  REASONING_ENCRYPTED_VALUE = 'REASONING_ENCRYPTED_VALUE',
 
   // Tool call events
   TOOL_CALL_START = 'TOOL_CALL_START',
@@ -119,6 +130,13 @@ export function isThinkingEvent(eventType: string): boolean {
     StreamEventType.THINKING_TEXT_MESSAGE_CONTENT,
     StreamEventType.THINKING_TEXT_MESSAGE_END,
     StreamEventType.THINKING_END,
+    StreamEventType.REASONING_START,
+    StreamEventType.REASONING_MESSAGE_START,
+    StreamEventType.REASONING_MESSAGE_CONTENT,
+    StreamEventType.REASONING_MESSAGE_CHUNK,
+    StreamEventType.REASONING_MESSAGE_END,
+    StreamEventType.REASONING_END,
+    StreamEventType.REASONING_ENCRYPTED_VALUE,
   ].includes(eventType as StreamEventType);
 }
 

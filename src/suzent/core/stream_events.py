@@ -29,6 +29,16 @@ class StreamEventType(str, Enum):
     THINKING_TEXT_MESSAGE_CONTENT = "THINKING_TEXT_MESSAGE_CONTENT"
     THINKING_TEXT_MESSAGE_END = "THINKING_TEXT_MESSAGE_END"
     THINKING_END = "THINKING_END"
+    # ag-ui-protocol 0.1.13 renamed the thinking family to REASONING_*.
+    # pydantic-ai emits whichever family the negotiated protocol version calls
+    # for, so both names are live and both must be recognised.
+    REASONING_START = "REASONING_START"
+    REASONING_MESSAGE_START = "REASONING_MESSAGE_START"
+    REASONING_MESSAGE_CONTENT = "REASONING_MESSAGE_CONTENT"
+    REASONING_MESSAGE_CHUNK = "REASONING_MESSAGE_CHUNK"
+    REASONING_MESSAGE_END = "REASONING_MESSAGE_END"
+    REASONING_END = "REASONING_END"
+    REASONING_ENCRYPTED_VALUE = "REASONING_ENCRYPTED_VALUE"
 
     # Tool call events
     TOOL_CALL_START = "TOOL_CALL_START"
@@ -111,6 +121,13 @@ def is_thinking_event(event_type: str) -> bool:
         StreamEventType.THINKING_TEXT_MESSAGE_CONTENT,
         StreamEventType.THINKING_TEXT_MESSAGE_END,
         StreamEventType.THINKING_END,
+        StreamEventType.REASONING_START,
+        StreamEventType.REASONING_MESSAGE_START,
+        StreamEventType.REASONING_MESSAGE_CONTENT,
+        StreamEventType.REASONING_MESSAGE_CHUNK,
+        StreamEventType.REASONING_MESSAGE_END,
+        StreamEventType.REASONING_END,
+        StreamEventType.REASONING_ENCRYPTED_VALUE,
     }
 
 
