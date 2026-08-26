@@ -352,6 +352,18 @@ def _normalize_version_tag(value: str) -> str:
     return value.strip().lstrip("vV")
 
 
+def format_version_line(root: Path) -> str:
+    """Render the one-line version banner shown by `suzent --version`.
+
+    The UI binary ships on its own release cadence and can lag the backend, so
+    report both when a managed UI is installed -- a mismatch is the first thing
+    worth knowing in a bug report.
+    """
+    backend = _normalize_version_tag(_current_version(root)) or "unknown"
+    ui = _normalize_version_tag(_local_ui_version(root))
+    return f"suzent {backend} (ui {ui})" if ui else f"suzent {backend}"
+
+
 def _version_key(value: str) -> tuple[int, ...]:
     """Build a simple comparable key for release tags like v0.6.2."""
     parts = re.findall(r"\d+", _normalize_version_tag(value))

@@ -14,6 +14,8 @@ from suzent.cli.acp import register_acp_command
 from suzent.cli.agent import agent_app
 from suzent.cli.config import config_app
 from suzent.cli.main import (
+    format_version_line,
+    get_project_root,
     register_commands,
     configure_logging,
     load_environment,
@@ -30,11 +32,27 @@ from suzent.cli.service import service_app
 app = typer.Typer(help="Suzent CLI - Your Digital Co-worker Manager")
 
 
+def _version_callback(value: bool) -> None:
+    """Print the version and exit before any subcommand is resolved."""
+    if not value:
+        return
+    typer.echo(format_version_line(get_project_root()))
+    raise typer.Exit()
+
+
 @app.callback()
 def main(
     ctx: typer.Context,
     verbose: bool = typer.Option(
         False, "--verbose", "-v", help="Enable verbose logging (DEBUG level)"
+    ),
+    version: bool = typer.Option(
+        False,
+        "--version",
+        "-V",
+        help="Show the Suzent version and exit",
+        callback=_version_callback,
+        is_eager=True,
     ),
 ):
     """

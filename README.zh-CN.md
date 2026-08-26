@@ -73,6 +73,7 @@ suzent start
 ### **`suzent` 命令行**
 
 ```bash
+suzent --version       # 打印当前后端（及桌面应用）版本号
 suzent start           # 启动后端与桌面应用
 suzent serve           # 仅启动后端（无界面 / 独立模式）
 suzent ui              # 连接已运行的后端，仅启动桌面应用
