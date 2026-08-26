@@ -4,10 +4,13 @@ import { describe, expect, it } from 'vitest';
 import { I18nProvider } from '../../i18n';
 import { MarkdownRenderer } from './MarkdownRenderer';
 
-function render(content: string): string {
+function render(
+  content: string,
+  props: Partial<React.ComponentProps<typeof MarkdownRenderer>> = {}
+): string {
   return renderToStaticMarkup(
     <I18nProvider>
-      <MarkdownRenderer content={content} onFileClick={() => undefined} />
+      <MarkdownRenderer content={content} onFileClick={() => undefined} {...props} />
     </I18nProvider>
   );
 }
@@ -20,5 +23,13 @@ describe('MarkdownRenderer', () => {
 
     expect(html).toContain('docs/paper/RELATED_WORK_RESEARCH.md');
     expect(html).not.toContain('[object Object]');
+  });
+
+  it('uses sidebar-sized headings in compact streaming mode', () => {
+    const html = render('# Project context', { streamingLite: true, compact: true });
+
+    expect(html).toContain('text-base');
+    expect(html).toContain('space-y-2');
+    expect(html).not.toContain('text-xl');
   });
 });

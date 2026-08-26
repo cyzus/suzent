@@ -77,6 +77,7 @@ interface MarkdownRendererProps {
   content: string;
   onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
   streamingLite?: boolean;
+  compact?: boolean;
   /**
    * Draw a blinking caret after the last character. Only honoured on the
    * lightweight streaming path, which is the only one that renders a partial
@@ -310,10 +311,11 @@ const LiteTable: React.FC<{ lines: string[]; sourcesMap?: CitationSourcesMap | n
   );
 };
 
-const LiteMarkdownRenderer: React.FC<{ content: string; caret?: boolean }> = ({
-  content,
-  caret,
-}) => {
+const LiteMarkdownRenderer: React.FC<{
+  content: string;
+  caret?: boolean;
+  compact?: boolean;
+}> = ({ content, caret, compact = false }) => {
   const sourcesMap = useCitationSources();
   const parts: React.ReactNode[] = [];
   const fencePattern = /```([a-zA-Z0-9_-]*)[ \t]*\n?([\s\S]*?)(?:```|$)/g;
@@ -345,8 +347,13 @@ const LiteMarkdownRenderer: React.FC<{ content: string; caret?: boolean }> = ({
       if (/^#{1,3}\s+/.test(text)) {
         const level = text.match(/^#+/)?.[0].length ?? 3;
         const body = text.replace(/^#{1,3}\s+/, '');
-        const className =
-          level === 1
+        const className = compact
+          ? level === 1
+            ? 'text-base leading-5 font-brutal font-bold mb-1.5 break-words uppercase'
+            : level === 2
+              ? 'text-sm leading-5 font-brutal font-bold mb-1.5 break-words uppercase'
+              : 'text-xs leading-4 font-bold mb-1 break-words uppercase'
+          : level === 1
             ? 'text-xl font-brutal font-bold mb-2 break-words uppercase'
             : level === 2
               ? 'text-lg font-brutal font-bold mb-2 break-words uppercase'
@@ -443,7 +450,7 @@ const LiteMarkdownRenderer: React.FC<{ content: string; caret?: boolean }> = ({
 
   return (
     <div
-      className={`prose dark:prose-invert tight-lists prose-sm max-w-none break-words select-text space-y-3${caret ? ' streaming-caret' : ''}`}
+      className={`prose dark:prose-invert tight-lists prose-sm max-w-none break-words select-text ${compact ? 'space-y-2' : 'space-y-3'}${caret ? ' streaming-caret' : ''}`}
     >
       {parts}
     </div>
@@ -488,7 +495,7 @@ function safeUrlTransform(url: string): string {
 }
 
 export const MarkdownRenderer = React.memo<MarkdownRendererProps>(
-  ({ content, onFileClick, streamingLite = false, caret = false }) => {
+  ({ content, onFileClick, streamingLite = false, compact = false, caret = false }) => {
     const RM: any = ReactMarkdown;
     const sourcesMap = useCitationSources();
     const openingLinksRef = React.useRef(new Map<string, number>());
@@ -838,7 +845,7 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(
     );
 
     if (streamingLite) {
-      return <LiteMarkdownRenderer content={sanitized} caret={caret} />;
+      return <LiteMarkdownRenderer content={sanitized} caret={caret} compact={compact} />;
     }
 
     return (

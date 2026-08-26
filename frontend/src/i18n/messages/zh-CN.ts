@@ -103,6 +103,7 @@ export const zhCN = {
     title: '上下文',
     description: '项目记忆与当前生效的代码仓库指令',
     projectContext: '项目上下文',
+    projectMemory: '项目记忆',
     repositoryInstructions: '代码仓库指令',
     repositoryInstructionsDesc: '按祖先目录优先加载，最近的文件具有最终优先级。',
     empty: '未找到项目上下文或代码仓库指令。',
