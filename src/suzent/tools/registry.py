@@ -19,6 +19,15 @@ from pydantic_ai import Tool as PydanticTool
 from suzent.logger import get_logger
 from suzent.tools.base import ToolResult, truncate_tool_output
 
+# Re-exported under their original names so existing
+# `from suzent.tools.registry import ...` call sites keep working. Aliased
+# rather than listed in `__all__`, which would shrink what `import *` exports.
+from suzent.tools.names import AGENT_LIFECYCLE_TOOL_NAMES as AGENT_LIFECYCLE_TOOL_NAMES
+from suzent.tools.names import LEGACY_SHELL_TOOL_NAMES as LEGACY_SHELL_TOOL_NAMES
+from suzent.tools.names import SHELL_TOOL_CLASS_NAMES as SHELL_TOOL_CLASS_NAMES
+from suzent.tools.names import expand_tool_dependencies as expand_tool_dependencies
+from suzent.tools.names import migrate_shell_tool_names as migrate_shell_tool_names
+
 logger = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -178,28 +187,6 @@ def _all_tool_classes() -> list:
     ]
 
 
-SHELL_TOOL_CLASS_NAMES = (
-    "RunCommandTool",
-    "StartCommandTool",
-    "CheckCommandTool",
-    "StopCommandTool",
-)
-
-AGENT_LIFECYCLE_TOOL_NAMES = (
-    "AgentListTool",
-    "AgentReadTool",
-    "AgentSendTool",
-    "AgentStopTool",
-)
-
-LEGACY_SHELL_TOOL_NAMES = {
-    "ShellTool",
-    "BashTool",
-    "ProcessTool",
-    "bash_execute",
-    "process_manage",
-}
-
 CAPABILITY_DESCRIPTIONS = {
     "Filesystem": "Read, search, create, and modify files in the configured workspace.",
     "Shell": "Run bounded commands and control long-running background processes.",
@@ -225,25 +212,6 @@ TOOL_DESCRIPTION_OVERRIDES = {
     "SpeakTool": "Convert a response to speech and return playable audio to the conversation.",
     "SocialMessageTool": "Send a message through a configured social channel after approval.",
 }
-
-
-def migrate_shell_tool_names(tool_names: List[str]) -> List[str]:
-    """Expand legacy aggregate shell selections into independently selectable tools."""
-    migrated: list[str] = []
-    for name in tool_names:
-        if name in LEGACY_SHELL_TOOL_NAMES:
-            migrated.extend(SHELL_TOOL_CLASS_NAMES)
-        else:
-            migrated.append(name)
-    return list(dict.fromkeys(migrated))
-
-
-def expand_tool_dependencies(tool_names: List[str]) -> List[str]:
-    """Normalize legacy aggregate selections while preserving modern choices."""
-    expanded = migrate_shell_tool_names(tool_names)
-    if "AgentTool" in expanded:
-        expanded.extend(AGENT_LIFECYCLE_TOOL_NAMES)
-    return list(dict.fromkeys(expanded))
 
 
 def _humanize_tool_name(name: str) -> str:

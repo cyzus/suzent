@@ -285,8 +285,9 @@ async def _initialize_memory_system() -> bool:
             await _migrate_blocks_to_files(memory_store, markdown_store, CONFIG.user_id)
 
         # Add memory tools to CONFIG.tool_options so they appear in frontend
-        if "MemorySearchTool" not in CONFIG.tool_options:
-            CONFIG.tool_options.append("MemorySearchTool")
+        tool_options = CONFIG.ensure_tool_options()
+        if "MemorySearchTool" not in tool_options:
+            tool_options.append("MemorySearchTool")
             logger.info("Added MemorySearchTool to config")
 
         # Start background core-file watcher only when embedding is configured.

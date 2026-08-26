@@ -739,8 +739,9 @@ class SocialBrain(BaseBrain):
             else:
                 # "All Tools" mode: pass the full registry list so build_agent_config
                 # doesn't fall back to the narrower default_tools subset.
-                if CONFIG.tool_options:
-                    base_config["tools"] = list(CONFIG.tool_options)
+                tool_options = CONFIG.ensure_tool_options()
+                if tool_options:
+                    base_config["tools"] = list(tool_options)
 
             config_override = build_agent_config(base_config, require_social_tool=False)
 

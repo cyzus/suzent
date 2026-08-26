@@ -13,7 +13,6 @@ from typing import Any
 import psutil
 
 from suzent.config import DEFAULT_PORT, RUNTIME_DIR
-from suzent.routes.system_routes import get_backend_version
 from suzent.service.models import ServiceProcessState
 
 SERVICE_STATE_PATH = RUNTIME_DIR / "service.json"
@@ -91,6 +90,11 @@ class ServiceInstanceLock:
                     SERVICE_STATE_PATH.unlink(missing_ok=True)
                     continue
                 raise RuntimeError("Could not replace a stale Suzent service lock.")
+
+            # Imported here so the `suzent service` CLI commands, which reach
+            # this module for process state, do not drag the HTTP route layer
+            # and the database stack in behind it.
+            from suzent.routes.system_routes import get_backend_version
 
             process = psutil.Process(os.getpid())
             state = ServiceProcessState(
