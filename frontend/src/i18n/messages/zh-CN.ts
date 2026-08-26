@@ -631,6 +631,7 @@ export const zhCN = {
       frontendVersion: '桌面前端',
       backendVersion: 'Python 后端',
       unavailable: '不可用',
+      developmentBuild: '开发版本',
     },
     usage: {
       title: '用量',

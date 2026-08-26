@@ -5,6 +5,7 @@ import {
   fetchServiceRuntimeStatus,
   fetchSystemVersion,
   getBackendCompatibilityIssue,
+  shortCommit,
 } from './api';
 
 const frontend = {
@@ -172,5 +173,25 @@ describe('backend compatibility', () => {
         frontend
       )
     ).toEqual({ kind: 'version', frontend: '1.2.3', backend: '1.2.2' });
+  });
+});
+
+describe('commit abbreviation', () => {
+  it('abbreviates a commit to the same width the CLI prints', () => {
+    expect(shortCommit('1234abcd5678ef901234abcd5678ef901234abcd')).toBe('1234abcd');
+  });
+
+  it('omits a commit the build could not identify', () => {
+    expect(shortCommit('unknown')).toBeNull();
+  });
+
+  it('omits a missing commit rather than rendering a placeholder', () => {
+    expect(shortCommit('')).toBeNull();
+    expect(shortCommit(null)).toBeNull();
+    expect(shortCommit(undefined)).toBeNull();
+  });
+
+  it('leaves an already-short commit alone', () => {
+    expect(shortCommit('abc123')).toBe('abc123');
   });
 });

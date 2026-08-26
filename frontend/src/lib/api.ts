@@ -81,6 +81,23 @@ export interface SystemVersionResponse {
   developmentMode: boolean;
 }
 
+export const UNKNOWN_COMMIT = 'unknown';
+
+// Eight characters stay unambiguous well past the point where git's default
+// seven starts colliding. Mirrors SHORT_COMMIT_LENGTH in suzent/version.py.
+const SHORT_COMMIT_LENGTH = 8;
+
+/**
+ * Abbreviate a commit for display, or null when there is nothing to show.
+ *
+ * Matches `suzent --version`, which omits the commit rather than printing the
+ * unknown marker when the build carries no git identity.
+ */
+export function shortCommit(commit: string | null | undefined): string | null {
+  if (!commit || commit === UNKNOWN_COMMIT) return null;
+  return commit.slice(0, SHORT_COMMIT_LENGTH);
+}
+
 export class BackendVersionTimeoutError extends Error {
   constructor() {
     super('Backend version verification timed out');

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 
 import { useI18n } from '../../i18n';
-import { fetchSystemVersion } from '../../lib/api';
+import { fetchSystemVersion, shortCommit } from '../../lib/api';
 import {
   checkDesktopUpdate,
   startDesktopUpdateAndRestart,
@@ -11,16 +11,21 @@ import { SuzentLogo } from '../SuzentLogo';
 import { SettingsCard, SettingsPage } from './SettingsCard';
 import { SettingsHeader } from './SettingsHeader';
 
-type BackendVersionState =
-  | { status: 'loading'; version: null }
-  | { status: 'ready'; version: string }
-  | { status: 'unavailable'; version: null };
+type BackendVersionState = {
+  status: 'loading' | 'ready' | 'unavailable';
+  version: string | null;
+  /** Short commit, or null when the build carries no git identity. */
+  commit: string | null;
+  developmentMode: boolean;
+};
 
 export function AboutTab(): React.ReactElement {
   const { t } = useI18n();
   const [backend, setBackend] = useState<BackendVersionState>({
     status: 'loading',
     version: null,
+    commit: null,
+    developmentMode: false,
   });
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
@@ -52,11 +57,24 @@ export function AboutTab(): React.ReactElement {
     let active = true;
 
     fetchSystemVersion()
-      .then(({ backendVersion }) => {
-        if (active) setBackend({ status: 'ready', version: backendVersion });
+      .then(({ backendVersion, buildCommit, developmentMode }) => {
+        if (!active) return;
+        setBackend({
+          status: 'ready',
+          version: backendVersion,
+          commit: shortCommit(buildCommit),
+          developmentMode,
+        });
       })
       .catch(() => {
-        if (active) setBackend({ status: 'unavailable', version: null });
+        if (active) {
+          setBackend({
+            status: 'unavailable',
+            version: null,
+            commit: null,
+            developmentMode: false,
+          });
+        }
       });
 
     return () => {
@@ -111,11 +129,14 @@ export function AboutTab(): React.ReactElement {
           <VersionCard
             label={t('settings.about.frontendVersion')}
             value={frontendVersion}
+            commit={shortCommit(__FRONTEND_BUILD_COMMIT__)}
             tone="yellow"
           />
           <VersionCard
             label={t('settings.about.backendVersion')}
             value={backendVersion}
+            commit={backend.commit}
+            badge={backend.developmentMode ? t('settings.about.developmentBuild') : null}
             tone={backend.status === 'unavailable' ? 'red' : 'blue'}
           />
         </div>
@@ -174,10 +195,18 @@ export function AboutTab(): React.ReactElement {
 interface VersionCardProps {
   label: string;
   value: string;
+  commit?: string | null;
+  badge?: string | null;
   tone: 'yellow' | 'blue' | 'red';
 }
 
-function VersionCard({ label, value, tone }: VersionCardProps): React.ReactElement {
+export function VersionCard({
+  label,
+  value,
+  commit,
+  badge,
+  tone,
+}: VersionCardProps): React.ReactElement {
   const toneClass = {
     yellow: 'bg-brutal-yellow text-brutal-black',
     blue: 'bg-brutal-blue text-white',
@@ -191,7 +220,19 @@ function VersionCard({ label, value, tone }: VersionCardProps): React.ReactEleme
       >
         {label}
       </div>
-      <div className="px-4 py-5 font-mono text-2xl font-bold">{value}</div>
+      <div className="px-4 py-5">
+        <div className="font-mono text-2xl font-bold">{value}</div>
+        {commit && (
+          <div className="mt-1 font-mono text-xs text-neutral-500 dark:text-neutral-400">
+            {commit}
+          </div>
+        )}
+        {badge && (
+          <span className="mt-3 inline-block border-2 border-brutal-black bg-brutal-yellow px-2 py-0.5 text-[10px] font-black uppercase text-brutal-black">
+            {badge}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
