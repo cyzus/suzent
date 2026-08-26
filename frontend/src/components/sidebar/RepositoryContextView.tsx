@@ -1,4 +1,4 @@
-import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ArrowPathIcon,
   CheckIcon,
@@ -11,6 +11,7 @@ import { useI18n } from '../../i18n';
 import { useChatStreamingStore } from '../../hooks/useChatStore';
 import { memoryApi } from '../../lib/memoryApi';
 import type { RepositoryContextResponse, RepositoryInstruction } from '../../types/memory';
+import { BrutalIconButton } from '../BrutalButton';
 import { MarkdownRenderer } from '../chat/MarkdownRenderer';
 
 interface RepositoryContextViewProps {
@@ -24,31 +25,6 @@ interface ContextFileCardProps {
   path: string;
   editable?: boolean;
   onSave?: (content: string) => Promise<void>;
-}
-
-function IconButton({
-  label,
-  onClick,
-  children,
-  disabled = false,
-}: {
-  label: string;
-  onClick: () => void;
-  children: ReactNode;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      title={label}
-      aria-label={label}
-      className="flex h-8 w-8 shrink-0 items-center justify-center border-2 border-brutal-black bg-white text-brutal-black shadow-[2px_2px_0_0_#000] transition-transform hover:-translate-y-0.5 active:translate-x-0.5 active:translate-y-0.5 active:shadow-none disabled:cursor-not-allowed disabled:opacity-40 dark:bg-zinc-700 dark:text-white"
-    >
-      {children}
-    </button>
-  );
 }
 
 function ContextFileCard({
@@ -125,7 +101,7 @@ function ContextFileCard({
 
         {expanded && !editing && (
           <div className="flex shrink-0 gap-1.5">
-            <IconButton
+            <BrutalIconButton
               label={copied ? t('coreMemory.copiedText') : t('common.copy')}
               onClick={copy}
             >
@@ -134,11 +110,11 @@ function ContextFileCard({
               ) : (
                 <ClipboardDocumentIcon className="h-4 w-4 stroke-2" />
               )}
-            </IconButton>
+            </BrutalIconButton>
             {editable && (
-              <IconButton label={t('common.edit')} onClick={() => setEditing(true)}>
+              <BrutalIconButton label={t('common.edit')} onClick={() => setEditing(true)}>
                 <PencilIcon className="h-4 w-4 stroke-2" />
-              </IconButton>
+              </BrutalIconButton>
             )}
           </div>
         )}
@@ -155,16 +131,16 @@ function ContextFileCard({
                 autoFocus
               />
               <div className="flex justify-end gap-2">
-                <IconButton label={t('common.cancel')} onClick={cancel} disabled={saving}>
+                <BrutalIconButton label={t('common.cancel')} onClick={cancel} disabled={saving}>
                   <XMarkIcon className="h-4 w-4 stroke-[2.5]" />
-                </IconButton>
-                <IconButton
+                </BrutalIconButton>
+                <BrutalIconButton
                   label={saving ? t('common.saving') : t('common.save')}
                   onClick={() => void save()}
                   disabled={saving || draft === content}
                 >
                   <CheckIcon className="h-4 w-4 stroke-[2.5]" />
-                </IconButton>
+                </BrutalIconButton>
               </div>
             </div>
           ) : (
@@ -235,9 +211,13 @@ export function RepositoryContextView({ chatId }: RepositoryContextViewProps) {
             {data?.project.projectName || t('repositoryContext.description')}
           </p>
         </div>
-        <IconButton label={t('common.refresh')} onClick={() => void load()} disabled={loading}>
+        <BrutalIconButton
+          label={t('common.refresh')}
+          onClick={() => void load()}
+          disabled={loading}
+        >
           <ArrowPathIcon className={`h-4 w-4 stroke-2 ${loading ? 'animate-spin' : ''}`} />
-        </IconButton>
+        </BrutalIconButton>
       </header>
 
       <div className="scrollbar-thin flex-1 space-y-5 overflow-y-auto overflow-x-hidden p-3">

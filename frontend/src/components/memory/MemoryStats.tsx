@@ -7,7 +7,7 @@
 import React from 'react';
 import { ArrowPathIcon } from '@heroicons/react/24/outline';
 import { useI18n } from '../../i18n';
-import { BrutalButton } from '../BrutalButton';
+import { BrutalIconButton } from '../BrutalButton';
 import type { MemoryStats } from '../../types/memory';
 
 interface MemoryStatsProps {
@@ -130,15 +130,13 @@ export const MemoryStatsComponent: React.FC<MemoryStatsProps> = ({
         />
 
         {onRefresh && (
-          <BrutalButton
+          <BrutalIconButton
             onClick={onRefresh}
-            size="icon"
-            title={t('memoryStats.refresh')}
-            aria-label={t('memoryStats.refresh')}
+            label={t('memoryStats.refresh')}
             className="ml-auto"
           >
             <ArrowPathIcon className={`h-4 w-4 stroke-2 ${isLoading ? 'animate-spin' : ''}`} />
-          </BrutalButton>
+          </BrutalIconButton>
         )}
       </div>
 

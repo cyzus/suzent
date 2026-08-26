@@ -5,9 +5,15 @@
 
 import React, { useState, useEffect } from 'react';
 import { useI18n } from '../../i18n';
-import { BrutalButton } from '../BrutalButton';
+import { BrutalButton, BrutalIconButton } from '../BrutalButton';
 import { MarkdownRenderer } from '../chat/MarkdownRenderer';
-import { ChevronDownIcon } from '@heroicons/react/24/outline';
+import {
+  CheckIcon,
+  ChevronDownIcon,
+  ClipboardDocumentIcon,
+  PencilIcon,
+  XMarkIcon,
+} from '@heroicons/react/24/outline';
 import type { CoreMemoryLabel } from '../../types/memory';
 
 interface CoreMemoryBlockProps {
@@ -155,42 +161,50 @@ export const CoreMemoryBlock: React.FC<CoreMemoryBlockProps> = ({
 
         <div className="flex shrink-0 gap-2">
           {collapsible && !isEditing && (
-            <BrutalButton
+            <BrutalIconButton
               onClick={() => setIsCollapsed((value) => !value)}
-              size="icon"
               aria-expanded={!isCollapsed}
-              title={isCollapsed ? t('memoryView.expandSection') : t('memoryView.collapseSection')}
-              aria-label={
-                isCollapsed ? t('memoryView.expandSection') : t('memoryView.collapseSection')
-              }
+              label={isCollapsed ? t('memoryView.expandSection') : t('memoryView.collapseSection')}
             >
               <ChevronDownIcon
                 className={`h-4 w-4 stroke-2 transition-transform ${isCollapsed ? '-rotate-90' : ''}`}
               />
-            </BrutalButton>
+            </BrutalIconButton>
           )}
           {!isEditing ? (
             <>
-              <BrutalButton onClick={handleCopy} size="xs" disabled={!content}>
-                {copied ? t('coreMemory.copiedText') : t('common.copy')}
-              </BrutalButton>
-              <BrutalButton onClick={() => setIsEditing(true)} size="xs">
-                {t('common.edit')}
-              </BrutalButton>
+              <BrutalIconButton
+                onClick={handleCopy}
+                disabled={!content}
+                label={copied ? t('coreMemory.copiedText') : t('common.copy')}
+              >
+                {copied ? (
+                  <CheckIcon className="h-4 w-4 stroke-[2.5]" />
+                ) : (
+                  <ClipboardDocumentIcon className="h-4 w-4 stroke-2" />
+                )}
+              </BrutalIconButton>
+              <BrutalIconButton onClick={() => setIsEditing(true)} label={t('common.edit')}>
+                <PencilIcon className="h-4 w-4 stroke-2" />
+              </BrutalIconButton>
             </>
           ) : (
             <>
-              <BrutalButton onClick={handleCancel} size="xs" disabled={isSaving}>
-                {t('common.cancel')}
-              </BrutalButton>
-              <BrutalButton
+              <BrutalIconButton
+                onClick={handleCancel}
+                disabled={isSaving}
+                label={t('common.cancel')}
+              >
+                <XMarkIcon className="h-4 w-4 stroke-[2.5]" />
+              </BrutalIconButton>
+              <BrutalIconButton
                 onClick={handleSave}
-                size="xs"
                 variant="dark"
                 disabled={isSaving || !hasUnsavedChanges}
+                label={isSaving ? t('common.saving') : t('common.save')}
               >
-                {isSaving ? t('common.saving') : t('common.save')}
-              </BrutalButton>
+                <CheckIcon className="h-4 w-4 stroke-[2.5]" />
+              </BrutalIconButton>
             </>
           )}
         </div>
