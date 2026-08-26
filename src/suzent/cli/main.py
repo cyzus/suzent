@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -387,7 +388,12 @@ def _write_update_check_cache(root: Path, data: dict) -> None:
     path = _update_check_cache_path(root)
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        # Written atomically because the refresh can run on a daemon thread that
+        # the interpreter may kill mid-write, and a truncated cache would be
+        # re-read on the next start.
+        tmp = path.with_name(f".{path.name}.tmp")
+        tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        os.replace(tmp, path)
     except OSError:
         pass
 
@@ -428,17 +434,39 @@ def _check_for_update(root: Path, *, use_cache: bool = True) -> dict:
     return data
 
 
+def _refresh_update_check_cache_async(root: Path) -> None:
+    """Warm the update-check cache for the next run, off the startup path."""
+
+    def _refresh() -> None:
+        try:
+            _check_for_update(root, use_cache=False)
+        except Exception:
+            pass
+
+    threading.Thread(target=_refresh, name="suzent-update-check", daemon=True).start()
+
+
 def _notify_update_available(root: Path) -> None:
     if os.environ.get("SUZENT_SKIP_UPDATE_CHECK") == "1":
         return
 
-    result = _check_for_update(root, use_cache=True)
-    if not result.get("update_available"):
+    cached = _read_update_check_cache(root)
+    if cached is None:
+        # A cold or expired cache means a GitHub round-trip, and startup must not
+        # block on advisory information. Refresh for the next run instead; the
+        # explicit `suzent check-update` still answers synchronously.
+        _refresh_update_check_cache_async(root)
         return
 
-    latest = result.get("latest_version") or "latest"
-    current = result.get("current_version") or "unknown"
-    typer.echo(f"  • Update available: {current} -> {latest}. Run 'suzent update'.")
+    current = _current_version(root)
+    latest = str(cached.get("latest_version", ""))
+    if not _is_newer_version(latest, current):
+        return
+
+    typer.echo(
+        f"  • Update available: {current or 'unknown'} -> {latest}. "
+        "Run 'suzent update'."
+    )
 
 
 def _download_file_atomic(

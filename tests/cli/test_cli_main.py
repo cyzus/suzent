@@ -908,3 +908,113 @@ def test_macos_launch_target_skips_non_macos_platforms(monkeypatch, tmp_path):
 
     assert cli_main._macos_launch_target(tmp_path, binary) == binary
     assert not (tmp_path / "bin" / "SUZENT.app").exists()
+
+
+def _seed_update_cache(root: Path, latest: str, *, age_seconds: float = 0.0) -> None:
+    path = cli_main._update_check_cache_path(root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        cli_main.json.dumps(
+            {
+                "checked_at": cli_main.time.time() - age_seconds,
+                "current_version": "0.6.2",
+                "latest_version": latest,
+                "html_url": "",
+                "update_available": bool(latest),
+                "error": "",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_notify_update_never_reaches_the_network(monkeypatch, tmp_path):
+    """Regression: `suzent start` used to block on GitHub whenever the cache expired."""
+    _seed_update_cache(
+        tmp_path, "v0.6.3", age_seconds=cli_main._UPDATE_CHECK_TTL_SECONDS * 2
+    )
+    monkeypatch.delenv("SUZENT_SKIP_UPDATE_CHECK", raising=False)
+    monkeypatch.setattr(cli_main, "_current_version", lambda root: "0.6.2")
+
+    def fail_fetch(timeout=None):
+        raise AssertionError("startup must not fetch the release feed synchronously")
+
+    monkeypatch.setattr(cli_main, "_fetch_latest_release", fail_fetch)
+    scheduled = []
+    monkeypatch.setattr(
+        cli_main,
+        "_refresh_update_check_cache_async",
+        lambda root: scheduled.append(root),
+    )
+
+    cli_main._notify_update_available(tmp_path)
+
+    assert scheduled == [tmp_path]
+
+
+def test_notify_update_reports_a_newer_cached_release(monkeypatch, tmp_path, capsys):
+    _seed_update_cache(tmp_path, "v0.6.3")
+    monkeypatch.delenv("SUZENT_SKIP_UPDATE_CHECK", raising=False)
+    monkeypatch.setattr(cli_main, "_current_version", lambda root: "0.6.2")
+    monkeypatch.setattr(
+        cli_main, "_refresh_update_check_cache_async", lambda root: None
+    )
+
+    cli_main._notify_update_available(tmp_path)
+
+    assert "0.6.2 -> v0.6.3" in capsys.readouterr().out
+
+
+def test_notify_update_stays_quiet_when_current(monkeypatch, tmp_path, capsys):
+    _seed_update_cache(tmp_path, "v0.6.2")
+    monkeypatch.delenv("SUZENT_SKIP_UPDATE_CHECK", raising=False)
+    monkeypatch.setattr(cli_main, "_current_version", lambda root: "0.6.2")
+
+    cli_main._notify_update_available(tmp_path)
+
+    assert capsys.readouterr().out == ""
+
+
+def test_notify_update_honors_the_skip_switch(monkeypatch, tmp_path):
+    monkeypatch.setenv("SUZENT_SKIP_UPDATE_CHECK", "1")
+
+    def fail_read(root):
+        raise AssertionError("skipped check must not touch the cache")
+
+    monkeypatch.setattr(cli_main, "_read_update_check_cache", fail_read)
+
+    cli_main._notify_update_available(tmp_path)
+
+
+def test_background_refresh_runs_detached_and_bypasses_the_cache(monkeypatch, tmp_path):
+    started = {}
+
+    class _ImmediateThread:
+        def __init__(self, target, name=None, daemon=False):
+            self._target = target
+            started["name"] = name
+            started["daemon"] = daemon
+
+        def start(self):
+            self._target()
+
+    monkeypatch.setattr(cli_main.threading, "Thread", _ImmediateThread)
+    calls = []
+    monkeypatch.setattr(
+        cli_main,
+        "_check_for_update",
+        lambda root, use_cache=True: calls.append(use_cache),
+    )
+
+    cli_main._refresh_update_check_cache_async(tmp_path)
+
+    assert calls == [False]
+    assert started["daemon"] is True
+
+
+def test_update_check_cache_write_is_atomic(tmp_path):
+    cli_main._write_update_check_cache(tmp_path, {"checked_at": cli_main.time.time()})
+
+    cache_dir = cli_main._update_check_cache_path(tmp_path).parent
+    assert [p.name for p in cache_dir.iterdir()] == ["update-check.json"]
+    assert cli_main._read_update_check_cache(tmp_path) is not None
