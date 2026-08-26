@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Seo: bind "sovereign AI agent" to the Suzent entity
 
 ### 🐛 Fixed
+- Handle the renamed REASONING_* events
 - Address review on the startup-perf changes
 - Keep `--version` to the one line it advertises
 - Stop a version-file clash breaking the release refresh
