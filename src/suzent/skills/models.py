@@ -19,14 +19,17 @@ class Skill(BaseModel):
         path: Absolute path to the SKILL.md file.
         dir: Absolute path to the skill directory containing SKILL.md and resources.
         source: Source bucket for the skill (official, user, external, or custom).
-        virtual_path: Path to SKILL.md under the /mnt/skills mount.
+        virtual_path: Effective sandbox path to SKILL.md.
     """
 
     metadata: SkillMetadata
+    id: str = ""
     body: str
     path: Path
     dir: Path
     source: str = "custom"
+    source_id: str = "custom"
+    default_enabled: bool = False
     virtual_path: str | None = None
 
     model_config = ConfigDict(arbitrary_types_allowed=True)

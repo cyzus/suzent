@@ -111,51 +111,20 @@ RUNTIME_DIR = DATA_DIR / "runtime"
 CACHE_DIR = DATA_DIR / "cache"
 USER_CONFIG_DIR = DATA_DIR / "config"
 SKILLS_ROOT_DIR = DATA_DIR / "skills"
-OFFICIAL_SKILLS_DIR = SKILLS_ROOT_DIR / "official"
-USER_SKILLS_DIR = SKILLS_ROOT_DIR / "user"
+# Bundled skills are read directly from the installation/repository. These
+# aliases remain public for compatibility, but no managed copy is created.
+OFFICIAL_SKILLS_DIR = PROJECT_DIR / "skills"
+USER_SKILLS_DIR = SKILLS_ROOT_DIR
 EXTERNAL_SKILLS_DIR = SKILLS_ROOT_DIR / "external"
+LEGACY_USER_SKILLS_DIR = SKILLS_ROOT_DIR / "user"
 
 for _dir in (
     RUNTIME_DIR,
     CACHE_DIR,
     USER_CONFIG_DIR,
     SKILLS_ROOT_DIR,
-    OFFICIAL_SKILLS_DIR,
-    USER_SKILLS_DIR,
-    EXTERNAL_SKILLS_DIR,
 ):
     _dir.mkdir(parents=True, exist_ok=True)
-
-
-def _copy_skill_tree(source: Path, target: Path) -> None:
-    tmp_target = target.parent / f".{target.name}.tmp"
-    if tmp_target.exists():
-        shutil.rmtree(tmp_target)
-    shutil.copytree(source, tmp_target)
-    if target.exists():
-        shutil.rmtree(target)
-    tmp_target.replace(target)
-
-
-def _sync_skills_root(source_root: Path, target_root: Path) -> None:
-    """Mirror valid skill directories from one root into another root."""
-    target_root.mkdir(parents=True, exist_ok=True)
-    expected_skills: set[str] = set()
-
-    if source_root.exists():
-        for skill_dir in source_root.iterdir():
-            if not skill_dir.is_dir() or not (skill_dir / "SKILL.md").exists():
-                continue
-            expected_skills.add(skill_dir.name)
-            _copy_skill_tree(skill_dir, target_root / skill_dir.name)
-
-    for child in target_root.iterdir():
-        if child.name.startswith(".") or child.name in expected_skills:
-            continue
-        if child.is_dir():
-            shutil.rmtree(child)
-        else:
-            child.unlink()
 
 
 def _external_source_id(path: Path) -> str:
@@ -167,7 +136,7 @@ def _external_source_id(path: Path) -> str:
 
 
 def get_external_skill_sources() -> list[tuple[Path, Path]]:
-    """Return configured external skill roots and their managed mirror roots."""
+    """Return configured external roots and stable legacy identity paths."""
     env_value = os.getenv("SKILLS_DIR", "").strip()
     if not env_value:
         return []
@@ -186,40 +155,20 @@ def get_external_skill_sources() -> list[tuple[Path, Path]]:
 
 
 def migrate_legacy_user_skills_dir() -> None:
-    """Move legacy flat ~/.suzent/skills/<skill> entries into the user bucket."""
-    reserved = {"official", "user", "external"}
-    for child in SKILLS_ROOT_DIR.iterdir():
-        if (
-            not child.is_dir()
-            or child.name in reserved
-            or not (child / "SKILL.md").exists()
-        ):
+    """Move skills from the former ``skills/user`` bucket into the flat root."""
+    if not LEGACY_USER_SKILLS_DIR.is_dir():
+        return
+    for child in LEGACY_USER_SKILLS_DIR.iterdir():
+        if not child.is_dir() or not (child / "SKILL.md").exists():
             continue
-
-        target = USER_SKILLS_DIR / child.name
-        if target.exists():
-            continue
-        child.replace(target)
+        target = SKILLS_ROOT_DIR / child.name
+        if not target.exists():
+            child.replace(target)
 
 
 def sync_managed_skills_dirs() -> Path:
-    """Sync official and external skills into the unified skills mount root."""
+    """Run the one-way user-skill migration without copying source libraries."""
     migrate_legacy_user_skills_dir()
-    _sync_skills_root(PROJECT_DIR / "skills", OFFICIAL_SKILLS_DIR)
-
-    expected_external_roots: set[str] = set()
-    for source, target in get_external_skill_sources():
-        expected_external_roots.add(target.name)
-        _sync_skills_root(source, target)
-
-    for child in EXTERNAL_SKILLS_DIR.iterdir():
-        if child.name.startswith(".") or child.name in expected_external_roots:
-            continue
-        if child.is_dir():
-            shutil.rmtree(child)
-        else:
-            child.unlink()
-
     return SKILLS_ROOT_DIR
 
 

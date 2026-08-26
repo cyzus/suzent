@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Scaffold a new Suzent AgentSkill in the user bucket.
 
-Creates ~/.suzent/skills/user/<name>/ with a starter SKILL.md and empty
+Creates ~/.suzent/skills/<name>/ with a starter SKILL.md and empty
 scripts/, references/, and assets/ directories.
 
 Usage:
@@ -40,14 +40,14 @@ NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 
 
 def user_skills_dir() -> Path:
-    """Resolve the user skills bucket, honoring SKILLS_DIR / app-data overrides."""
+    """Resolve the user skills directory, honoring app-data overrides."""
     # Explicit override used by the bundled app.
     env_dir = os.getenv("SUZENT_USER_SKILLS_DIR")
     if env_dir:
         return Path(env_dir)
     app_data = os.getenv("SUZENT_APP_DATA")
     base = Path(app_data) if app_data else (Path.home() / ".suzent")
-    return base / "skills" / "user"
+    return base / "skills"
 
 
 def main() -> int:

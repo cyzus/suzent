@@ -18,7 +18,6 @@ from suzent.config.paths import (
     DEFAULT_HOST,
     DEFAULT_PORT,
     PROJECT_DIR,
-    SKILLS_ROOT_DIR,
     USER_CONFIG_DIR,
 )
 
@@ -60,11 +59,6 @@ def get_effective_volumes(custom_volumes: Optional[List[str]] = None) -> List[st
                 vol = f"{host}:{container}"
 
         volumes.append(vol)
-
-    if not any(v.endswith(":/mnt/skills") for v in volumes):
-        SKILLS_ROOT_DIR.mkdir(parents=True, exist_ok=True)
-        skills_resolved = str(SKILLS_ROOT_DIR.resolve())
-        volumes.append(f"{skills_resolved}:/mnt/skills")
 
     # Always expose the notebook vault at /mnt/notebook so the agent can read/write
     # durable knowledge (the dream consolidation agent + the "file a query result"

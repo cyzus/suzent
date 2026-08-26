@@ -114,7 +114,7 @@ class MemoryManager:
           - persona.md  → 'persona' block
           - user.md     → 'user' block
           - MEMORY.md   → 'facts' block
-          - sessions/{chat_id}/context.md → 'context' block (only when chat_id given)
+          - projects/{slug}/context.md → 'context' block (only when chat_id given)
         """
         blocks: Dict[str, str] = {}
 
@@ -130,7 +130,7 @@ class MemoryManager:
             if memory_file is not None:
                 blocks["facts"] = memory_file
 
-            # Context ← session-scoped (only when chat_id available)
+            # Context ← project-scoped (only when chat_id available)
             if chat_id:
                 ctx = await self.markdown_store.read_session_context(chat_id)
                 if ctx is not None:
@@ -337,17 +337,11 @@ class MemoryManager:
             return ""
 
         shared_path = None
-        mount_skills = None
         mount_notebook = None
+        project_context_path = "/workspace/context.md" if sandbox_enabled else None
         if not sandbox_enabled and path_resolver is not None:
             shared_path = str(path_resolver.sandbox_data_path / "shared").replace(
                 "\\", "/"
-            )
-            mount_skills = (
-                str(path_resolver.custom_mounts.get("/mnt/skills", "")).replace(
-                    "\\", "/"
-                )
-                or None
             )
             mount_notebook = (
                 str(path_resolver.custom_mounts.get("/mnt/notebook", "")).replace(
@@ -355,14 +349,17 @@ class MemoryManager:
                 )
                 or None
             )
+            project_context_path = str(
+                path_resolver.get_working_dir() / "context.md"
+            ).replace("\\", "/")
 
         return memory_context.format_core_memory_section(
             blocks,
             sandbox_enabled=sandbox_enabled,
             chat_id=chat_id,
             shared_path=shared_path,
-            mount_skills=mount_skills,
             mount_notebook=mount_notebook,
+            project_context_path=project_context_path,
         )
 
     def _log_recalls(self, memories: List[Dict[str, Any]]) -> None:

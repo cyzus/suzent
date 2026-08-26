@@ -2,8 +2,8 @@
 Memory system for Suzent - file-centric eventual consistency architecture.
 
 Storage layers:
-- Markdown files (/shared/memory/): Single Source of Truth — persona.md, user.md,
-  MEMORY.md, sessions/{chat_id}/context.md, YYYY-MM-DD.md daily logs
+- Markdown files: shared persona/user/MEMORY.md, project-scoped context.md,
+  and append-only archive logs
 - LanceDB: Vector search index built asynchronously from markdown files
 - Context injection: static (core files) + dynamic RAG (relevant memories)
 """

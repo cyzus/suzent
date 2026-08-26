@@ -19,7 +19,7 @@ def _get_history_text(deps: Any) -> str:
 async def skills_reminder_hook(chat_id: str, deps: Any) -> Optional[str]:
     """Global system-reminder hook: injects enabled skills not yet seen in message history."""
     skill_mgr = getattr(deps, "skill_manager", None)
-    if not skill_mgr or not skill_mgr.enabled_skills:
+    if not skill_mgr or not skill_mgr.has_enabled_skills():
         return None
 
     sandbox_enabled = getattr(deps, "sandbox_enabled", True)
@@ -28,7 +28,7 @@ async def skills_reminder_hook(chat_id: str, deps: Any) -> Optional[str]:
     new_lines = []
     for skill in skill_mgr.loader.list_skills():
         name = skill.metadata.name
-        if not skill_mgr.is_skill_enabled(name):
+        if not skill_mgr.is_skill_enabled(skill.id):
             continue
         if sandbox_enabled:
             from suzent.tools.filesystem.path_resolver import PathResolver
@@ -36,7 +36,10 @@ async def skills_reminder_hook(chat_id: str, deps: Any) -> Optional[str]:
             location = skill.virtual_path or PathResolver.get_skill_virtual_path(name)
         else:
             location = str(skill.path.resolve())
-        line = f"- {name}: {skill.metadata.description} (Location: {location})"
+        line = (
+            f"- {skill.id}: {skill.metadata.description} "
+            f"(Name: {name}; Location: {location})"
+        )
         if line not in history_text:
             new_lines.append(line)
 

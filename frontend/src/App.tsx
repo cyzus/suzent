@@ -830,7 +830,7 @@ function AppInner(): React.ReactElement {
           )}
           {mainView === 'skills' && (
             <div key="skills" className="flex-1 flex flex-col min-h-0 animate-view-fade">
-              <SkillsView />
+              <SkillsView chatId={currentChatId} />
             </div>
           )}
           {mainView === 'emotes' && (

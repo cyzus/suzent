@@ -17,6 +17,8 @@ import type {
   ReindexResponse,
   DreamConsolidateResponse,
   DreamStatus,
+  ProjectContext,
+  ProjectContextsResponse,
 } from '../types/memory';
 import { getApiBase } from './api';
 
@@ -65,6 +67,30 @@ export const memoryApi = {
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: response.statusText }));
       throw new Error(error.error || 'Failed to update core memory block');
+    }
+  },
+
+  async getProjectContexts(): Promise<ProjectContext[]> {
+    const response = await fetch(`${memoryEndpoint()}/project-contexts`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch project contexts: ${response.statusText}`);
+    }
+    const data: ProjectContextsResponse = await response.json();
+    return data.projects;
+  },
+
+  async updateProjectContext(projectId: string, content: string): Promise<void> {
+    const response = await fetch(
+      `${memoryEndpoint()}/project-contexts/${encodeURIComponent(projectId)}`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content }),
+      }
+    );
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: response.statusText }));
+      throw new Error(error.error || 'Failed to update project context');
     }
   },
 

@@ -12,9 +12,9 @@ interface SkillsState {
   error: string | null;
 
   // Actions
-  loadSkills: () => Promise<void>;
-  reload: () => Promise<void>;
-  toggle: (name: string) => Promise<void>;
+  loadSkills: (chatId?: string | null) => Promise<void>;
+  reload: (chatId?: string | null) => Promise<void>;
+  toggle: (id: string, chatId?: string | null) => Promise<void>;
 }
 
 export const useSkills = create<SkillsState>((set, get) => ({
@@ -22,10 +22,10 @@ export const useSkills = create<SkillsState>((set, get) => ({
   loading: false,
   error: null,
 
-  loadSkills: async () => {
+  loadSkills: async (chatId) => {
     set({ loading: true, error: null });
     try {
-      const skills = await skillsApi.fetchSkills();
+      const skills = await skillsApi.fetchSkills(chatId);
       set({ skills, loading: false });
     } catch (error) {
       set({
@@ -35,11 +35,11 @@ export const useSkills = create<SkillsState>((set, get) => ({
     }
   },
 
-  reload: async () => {
+  reload: async (chatId) => {
     set({ loading: true, error: null });
     try {
-      await skillsApi.reloadSkills();
-      const skills = await skillsApi.fetchSkills();
+      await skillsApi.reloadSkills(chatId);
+      const skills = await skillsApi.fetchSkills(chatId);
       set({ skills, loading: false });
     } catch (error) {
       set({
@@ -49,24 +49,24 @@ export const useSkills = create<SkillsState>((set, get) => ({
     }
   },
 
-  toggle: async (name: string) => {
-    const skill = get().skills.find((s) => s.name === name);
+  toggle: async (id: string, chatId?: string | null) => {
+    const skill = get().skills.find((s) => s.id === id);
     if (!skill) return;
 
     const newEnabled = !skill.enabled;
 
     // Optimistic update
     set((state) => ({
-      skills: state.skills.map((s) => (s.name === name ? { ...s, enabled: newEnabled } : s)),
+      skills: state.skills.map((s) => (s.id === id ? { ...s, enabled: newEnabled } : s)),
     }));
 
     try {
-      await skillsApi.toggleSkill(name, newEnabled);
+      await skillsApi.toggleSkill(id, newEnabled, chatId);
       // Success - keep optimistic update
     } catch (error) {
       // Revert on error
       set((state) => ({
-        skills: state.skills.map((s) => (s.name === name ? { ...s, enabled: !s.enabled } : s)),
+        skills: state.skills.map((s) => (s.id === id ? { ...s, enabled: !s.enabled } : s)),
         error: error instanceof Error ? error.message : 'Failed to toggle skill',
       }));
     }
