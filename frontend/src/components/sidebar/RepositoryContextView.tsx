@@ -50,12 +50,12 @@ function ContextFileCard({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(content);
   const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveFailed, setSaveFailed] = useState(false);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     setDraft(content);
-    setSaveError(null);
+    setSaveFailed(false);
   }, [content]);
 
   const copy = async () => {
@@ -70,12 +70,12 @@ function ContextFileCard({
       return;
     }
     setSaving(true);
-    setSaveError(null);
+    setSaveFailed(false);
     try {
       await onSave(draft);
       setEditing(false);
-    } catch (error) {
-      setSaveError(error instanceof Error ? error.message : t('repositoryContext.saveFailed'));
+    } catch {
+      setSaveFailed(true);
     } finally {
       setSaving(false);
     }
@@ -83,7 +83,7 @@ function ContextFileCard({
 
   const cancel = () => {
     setDraft(content);
-    setSaveError(null);
+    setSaveFailed(false);
     setEditing(false);
   };
 
@@ -131,7 +131,7 @@ function ContextFileCard({
               <BrutalIconButton
                 label={t('common.edit')}
                 onClick={() => {
-                  setSaveError(null);
+                  setSaveFailed(false);
                   setEditing(true);
                 }}
               >
@@ -146,13 +146,12 @@ function ContextFileCard({
         <div className="border-t-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900">
           {editing ? (
             <div className="space-y-2 p-2.5">
-              {saveError && (
+              {saveFailed && (
                 <div
                   role="alert"
                   className="border-2 border-brutal-red bg-white px-2.5 py-2 font-mono text-xs text-brutal-red dark:bg-zinc-800"
                 >
-                  <span className="font-bold">{t('repositoryContext.saveFailed')}:</span>{' '}
-                  {saveError}
+                  {t('repositoryContext.saveFailed')}
                 </div>
               )}
               <textarea
