@@ -1097,15 +1097,16 @@ Each skill is a directory containing a `SKILL.md` file and optional resource fol
 
 ```
 ~/.suzent/skills/
-├── official/             # Synced from the repo's built-in skills
-├── external/             # Synced from SKILLS_DIR, grouped by source
-└── user/
-    └── my-skill/
-        ├── SKILL.md      # Required: Main skill definition
-        ├── scripts/      # Optional: Helper scripts
-        ├── references/   # Optional: Reference documents
-        └── assets/       # Optional: Images, data files
+└── my-skill/
+    ├── SKILL.md          # Required: Main skill definition
+    ├── scripts/          # Optional: Helper scripts
+    ├── references/       # Optional: Reference documents
+    └── assets/           # Optional: Images, data files
 ```
+
+Built-in, external, and repository skills remain in their canonical source
+directories. Suzent discovers those directories directly instead of copying
+them below `~/.suzent/skills/`.
 
 ### SKILL.md Format
 
@@ -1161,6 +1162,18 @@ When enabled, skills are available to agents through the `SkillTool`:
 2. When a task matches a skill's description, agent loads it
 3. Skill content is injected into agent's context
 4. Agent gains specialized knowledge for the task
+
+### Repository Instructions and Project Context
+
+For each chat, Suzent also loads `AGENTS.md` and `CLAUDE.md` from the effective
+working directory and every ancestor up to the repository root. Instructions
+are applied ancestor-first, so the file closest to the working directory has
+final precedence. Identical files are deduplicated.
+
+These repository instructions are separate from the project's durable
+`context.md` core memory. The chat right sidebar's **Context** tab shows both:
+non-empty project context remains editable, while effective repository
+instructions are shown as collapsible read-only previews with their host paths.
 
 ### Skill Paths in Sandbox
 
