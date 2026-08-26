@@ -3020,11 +3020,12 @@ anything can write, `-v` included.
 
 ## 6. Registering with a client
 
-**enoxian** — register the agent, then mention `@suzent` in the circle chat
-(mentions only launch anything when this device's reaction policy is `push`):
+**enoxian** — Suzent is a built-in agent there, so enabling it downloads
+nothing; it only points the `@suzent` handle at your installed CLI. Mentions
+launch it once this device's reaction policy is `push`:
 
 ```sh
-enox agent add suzent --driver acp -- suzent acp
+enox agent install suzent
 ```
 
 **Any other client** — register `suzent acp` wherever it configures external
