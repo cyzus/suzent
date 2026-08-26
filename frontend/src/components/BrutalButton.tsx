@@ -109,6 +109,31 @@ export const BrutalButton: React.FC<BrutalButtonProps> = ({
   );
 };
 
+interface BrutalIconButtonProps extends Omit<BrutalButtonProps, 'size' | 'aria-label'> {
+  label: string;
+  size?: Extract<ButtonSize, 'icon' | 'icon-lg'>;
+}
+
+/** Compact icon-only action that keeps its position fixed when pressed. */
+export const BrutalIconButton: React.FC<BrutalIconButtonProps> = ({
+  label,
+  size = 'icon',
+  title,
+  className = '',
+  children,
+  ...props
+}) => (
+  <BrutalButton
+    size={size}
+    title={title ?? label}
+    aria-label={label}
+    className={`active:!translate-x-0 active:!translate-y-0 ${className}`}
+    {...props}
+  >
+    {children}
+  </BrutalButton>
+);
+
 interface BrutalLinkProps extends React.AnchorHTMLAttributes<HTMLAnchorElement> {
   variant?: ButtonVariant;
   size?: ButtonSize;
