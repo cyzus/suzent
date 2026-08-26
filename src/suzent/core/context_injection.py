@@ -101,8 +101,31 @@ def build_agent_deps(
         tool_permission_policies = _merge_perm(tool_permission_policies, _chat_perm)
     if isinstance(_request_perm, dict):
         tool_permission_policies = _merge_perm(tool_permission_policies, _request_perm)
-    custom_volumes = get_effective_volumes(
-        _get_config_value(config, "sandbox_volumes", None)
+    requested_volumes = _get_config_value(config, "sandbox_volumes", None)
+    if requested_volumes is None and _chat_obj is not None:
+        requested_volumes = (_chat_obj.config or {}).get("sandbox_volumes")
+    custom_volumes = get_effective_volumes(requested_volumes)
+
+    # Skills are loaded from their canonical source directories. Reuse an
+    # existing workspace/custom mount when it covers the source and add a
+    # dedicated mount only for an otherwise inaccessible library.
+    from suzent.core.repository_context import (
+        discover_agent_files,
+        resolve_repository_context,
+    )
+    from suzent.skills.manager import get_skill_manager_for_chat
+
+    skill_manager = get_skill_manager_for_chat(
+        chat_id,
+        cwd,
+        custom_volumes=custom_volumes,
+        sandbox_enabled=sandbox_enabled,
+    )
+    for volume in skill_manager.required_mounts:
+        if volume not in custom_volumes:
+            custom_volumes.append(volume)
+    repository_agent_files = discover_agent_files(
+        resolve_repository_context(chat_id, cwd, custom_volumes=custom_volumes)
     )
     try:
         from suzent.database import get_database
@@ -149,11 +172,6 @@ def build_agent_deps(
                     event_loop = None
         except Exception:
             pass
-
-    # Skill manager
-    from suzent.skills import get_skill_manager
-
-    skill_manager = get_skill_manager()
 
     # Merge tool_approval_policy across layers so a remembered decision survives
     # turns even if the client doesn't re-send it in the request config:
@@ -213,6 +231,7 @@ def build_agent_deps(
         event_loop=event_loop,
         social_context=social_ctx,
         skill_manager=skill_manager,
+        repository_agent_files=repository_agent_files,
         auto_approve_tools=auto_approve_tools,
         tool_permission_policies=dict(tool_permission_policies or {}),
         tool_approval_policy=tool_approval_policy,

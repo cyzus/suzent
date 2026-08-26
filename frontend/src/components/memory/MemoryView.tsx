@@ -35,10 +35,14 @@ export const MemoryView: React.FC<{ initialTab?: MemoryTab }> = ({ initialTab })
     coreMemory,
     coreMemoryLoading,
     coreMemoryError,
+    projectContexts,
+    projectContextsError,
     stats,
     statsLoading,
     loadCoreMemory,
     updateCoreMemoryBlock,
+    loadProjectContexts,
+    updateProjectContext,
     loadStats,
   } = useMemory();
   const { isStreaming } = useChatStreamingStore();
@@ -46,9 +50,13 @@ export const MemoryView: React.FC<{ initialTab?: MemoryTab }> = ({ initialTab })
 
   const [activeTab, setActiveTab] = useState<MemoryTab>(initialTab ?? 'overview');
   const [showCoreMemory, setShowCoreMemory] = useState(true);
+  const visibleProjectContexts = projectContexts.filter(
+    (project) => project.content.trim().length > 0
+  );
 
   useEffect(() => {
     loadCoreMemory(); // No chatId - loads user-level blocks for Memory tab view
+    loadProjectContexts();
     loadStats();
   }, []);
 
@@ -56,6 +64,7 @@ export const MemoryView: React.FC<{ initialTab?: MemoryTab }> = ({ initialTab })
   useEffect(() => {
     if (prevStreamingRef.current && !isStreaming) {
       loadCoreMemory();
+      loadProjectContexts();
       loadStats();
     }
     prevStreamingRef.current = isStreaming;
@@ -155,8 +164,7 @@ export const MemoryView: React.FC<{ initialTab?: MemoryTab }> = ({ initialTab })
                         </div>
                       ))
                     : coreMemory &&
-                      // Filter out session-scoped 'context' from the global view —
-                      // it only makes sense inside an active chat session.
+                      // Project context is rendered from the project listing below.
                       (Object.keys(coreMemory) as CoreMemoryLabel[])
                         .filter((label) => label !== 'context')
                         .map((label) => (
@@ -168,6 +176,39 @@ export const MemoryView: React.FC<{ initialTab?: MemoryTab }> = ({ initialTab })
                             />
                           </div>
                         ))}
+
+                  {projectContextsError && (
+                    <div className="border-2 border-brutal-red bg-white dark:bg-zinc-800 p-3 font-mono text-xs text-brutal-red">
+                      {projectContextsError}
+                    </div>
+                  )}
+
+                  {visibleProjectContexts.length > 0 && (
+                    <section className="space-y-3">
+                      <div className="border-b-2 border-brutal-black pb-1">
+                        <h4 className="font-brutal text-sm uppercase tracking-tight">
+                          {t('memoryView.projectContextTitle')}
+                        </h4>
+                      </div>
+                      {visibleProjectContexts.map((project) => (
+                        <CoreMemoryBlock
+                          key={project.projectId}
+                          label="context"
+                          content={project.content}
+                          titleOverride={t('coreMemory.labels.context.title')}
+                          descriptionOverride={t('memoryView.projectContextMeta', {
+                            name: project.projectName,
+                            count: project.chatCount,
+                          })}
+                          collapsible
+                          defaultCollapsed
+                          onUpdate={(_label, content) =>
+                            updateProjectContext(project.projectId, content)
+                          }
+                        />
+                      ))}
+                    </section>
+                  )}
                 </div>
               )}
             </div>

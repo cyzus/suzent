@@ -461,6 +461,31 @@ class ChatProcessor:
         if config_override:
             config.update(config_override)
 
+        # RepoContext is constructed with static filesystem roots, so include the
+        # resolved project/working-tree identity in the stable agent config. This
+        # prevents a cached agent from carrying one project's instructions into
+        # another project that happens to use the same model and tools.
+        from suzent.core.repository_context import (
+            discover_skill_roots,
+            resolve_repository_context,
+        )
+
+        repository_context = resolve_repository_context(
+            chat_id,
+            config.get("cwd"),
+            custom_volumes=config.get("sandbox_volumes"),
+        )
+        config["_project_context_dir"] = str(repository_context.project_dir)
+        config["_working_context_dir"] = str(repository_context.working_dir)
+        config["_repository_root"] = (
+            str(repository_context.repository_root)
+            if repository_context.repository_root is not None
+            else None
+        )
+        config["_has_discovered_skills"] = bool(
+            discover_skill_roots(repository_context)
+        )
+
         if config.get("memory_enabled") and os.getenv("SUZENT_RUN_MODE") == "service":
             from suzent.memory.lifecycle import init_memory_system
 

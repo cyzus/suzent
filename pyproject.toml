@@ -59,6 +59,7 @@ dependencies = [
     "prompt_toolkit>=3.0.0",
     "keyring>=25.0.0",
     "cryptography>=42.0.0",
+    "pydantic-ai-harness>=0.24,<0.25",
 ]
 
 [project.urls]

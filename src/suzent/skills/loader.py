@@ -14,6 +14,8 @@ class SkillLoader:
         *,
         virtual_roots: dict[Path, str] | None = None,
         source_roots: dict[Path, str] | None = None,
+        source_ids: dict[Path, str] | None = None,
+        default_enabled_roots: set[Path] | None = None,
     ):
         self.skills_dirs = [skills_dir] if isinstance(skills_dir, Path) else skills_dir
         self.skills_dir = self.skills_dirs[-1] if self.skills_dirs else Path("skills")
@@ -24,7 +26,14 @@ class SkillLoader:
         self.source_roots = {
             root.resolve(): source for root, source in (source_roots or {}).items()
         }
+        self.source_ids = {
+            root.resolve(): source_id for root, source_id in (source_ids or {}).items()
+        }
+        self.default_enabled_roots = {
+            root.resolve() for root in (default_enabled_roots or set())
+        }
         self.skills: Dict[str, Skill] = {}
+        self.skills_by_name: Dict[str, list[Skill]] = {}
         # We load skills immediately upon initialization
         self.load_skills()
 
@@ -33,6 +42,8 @@ class SkillLoader:
         path: Path,
         *,
         source: str = "custom",
+        source_id: str = "custom",
+        default_enabled: bool = False,
         virtual_path: str | None = None,
     ) -> Optional[Skill]:
         """Parse a SKILL.md file into a Skill object."""
@@ -68,10 +79,13 @@ class SkillLoader:
 
             return Skill(
                 metadata=metadata,
+                id=f"{source_id}:{metadata.name}",
                 body=body.strip(),
                 path=path,
                 dir=path.parent,
                 source=source,
+                source_id=source_id,
+                default_enabled=default_enabled,
                 virtual_path=virtual_path,
             )
         except Exception as e:
@@ -88,9 +102,13 @@ class SkillLoader:
     def _get_source(self, skills_dir: Path) -> str:
         return self.source_roots.get(skills_dir.resolve(), "custom")
 
+    def _get_source_id(self, skills_dir: Path) -> str:
+        return self.source_ids.get(skills_dir.resolve(), self._get_source(skills_dir))
+
     def load_skills(self):
         """Scan skills directories and load all valid SKILL.md files."""
         self.skills.clear()
+        self.skills_by_name.clear()
         for skills_dir in self.skills_dirs:
             if not skills_dir.exists():
                 logger.debug(
@@ -109,14 +127,23 @@ class SkillLoader:
                 skill = self.parse_skill_md(
                     skill_md,
                     source=self._get_source(skills_dir),
+                    source_id=self._get_source_id(skills_dir),
+                    default_enabled=skills_dir.resolve() in self.default_enabled_roots,
                     virtual_path=self._get_virtual_path(skills_dir, skill_dir),
                 )
                 if skill:
-                    self.skills[skill.metadata.name] = skill
+                    self.skills[skill.id] = skill
+                    self.skills_by_name.setdefault(skill.metadata.name, []).append(
+                        skill
+                    )
                     logger.debug(f"Loaded skill: {skill.metadata.name}")
 
-    def get_skill(self, name: str) -> Optional[Skill]:
-        return self.skills.get(name)
+    def get_skill(self, identifier: str) -> Optional[Skill]:
+        exact = self.skills.get(identifier)
+        if exact is not None:
+            return exact
+        matches = self.skills_by_name.get(identifier, [])
+        return matches[-1] if matches else None
 
     def list_skills(self) -> List[Skill]:
         return list(self.skills.values())

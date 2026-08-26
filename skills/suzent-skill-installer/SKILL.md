@@ -5,8 +5,8 @@ description: Install a Suzent AgentSkill from a Git repo, ZIP URL, or owner/repo
 
 ## Overview
 
-This skill installs an AgentSkill into Suzent's **`user` bucket**
-(`~/.suzent/skills/user/<name>/`) from one of:
+This skill installs an AgentSkill into Suzent's user skills directory
+(`~/.suzent/skills/<name>/`) from one of:
 
 - a **Git repo** URL (ends in `.git` or is a recognizable repo URL),
 - a **ZIP** URL (ends in `.zip`), or
@@ -43,7 +43,7 @@ The script:
 3. Locates the `SKILL.md` (resolving into a subdirectory for monorepos) and
    validates that its frontmatter parses under Suzent's loader (flat
    `name:`/`description:` only — see the `suzent-skill-creator` skill).
-4. Copies the validated directory to `~/.suzent/skills/user/<name>/`, cleaning up
+4. Copies the validated directory to `~/.suzent/skills/<name>/`, cleaning up
    on any failure.
 
 ### 2. Activate and verify

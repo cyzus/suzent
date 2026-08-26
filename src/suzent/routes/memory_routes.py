@@ -14,6 +14,7 @@ from starlette.responses import JSONResponse
 
 from suzent.logger import get_logger
 from suzent.config import CONFIG
+from suzent.database import get_database
 from suzent.memory.lancedb_store import matches_metadata
 from suzent.memory.lifecycle import get_memory_manager, init_memory_system
 
@@ -145,6 +146,72 @@ async def update_core_memory_block(request: Request) -> JSONResponse:
         return JSONResponse({"error": "Invalid JSON in request body"}, status_code=400)
     except Exception as e:
         logger.error(f"Error updating core memory block: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def list_project_contexts(request: Request) -> JSONResponse:
+    """List context.md content for every visible Suzent project."""
+    try:
+        include_archived = (
+            request.query_params.get("include_archived", "").lower() == "true"
+        )
+        database = get_database()
+        projects = database.list_projects(include_archived=include_archived)
+        manager = await _get_or_initialize_memory_manager()
+        if not manager:
+            return JSONResponse(
+                {"error": "Memory system not initialized"}, status_code=503
+            )
+
+        payload = []
+        for project in projects:
+            context = await manager.markdown_store.read_project_context(project.id)
+            payload.append(
+                {
+                    "projectId": project.id,
+                    "projectName": project.name,
+                    "projectSlug": project.slug,
+                    "archived": project.archived,
+                    "chatCount": database.count_chats_in_project(project.id),
+                    "content": context or "",
+                    "exists": context is not None,
+                }
+            )
+        return JSONResponse({"projects": payload})
+    except Exception as e:
+        logger.error(f"Error listing project contexts: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def update_project_context(request: Request) -> JSONResponse:
+    """Update one project's context.md without requiring a chat."""
+    try:
+        project_id = str(request.path_params.get("project_id") or "").strip()
+        if not project_id:
+            return JSONResponse({"error": "Missing project_id"}, status_code=400)
+
+        database = get_database()
+        if database.get_project(project_id) is None:
+            return JSONResponse({"error": "Project not found"}, status_code=404)
+
+        data = await request.json()
+        content = data.get("content")
+        if not isinstance(content, str):
+            return JSONResponse(
+                {"error": "Missing required field: content"}, status_code=400
+            )
+
+        manager = await _get_or_initialize_memory_manager()
+        if not manager:
+            return JSONResponse(
+                {"error": "Memory system not initialized"}, status_code=503
+            )
+        await manager.markdown_store.write_project_context(project_id, content)
+        return JSONResponse({"success": True})
+    except json.JSONDecodeError:
+        return JSONResponse({"error": "Invalid JSON in request body"}, status_code=400)
+    except Exception as e:
+        logger.error(f"Error updating project context: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
 
 

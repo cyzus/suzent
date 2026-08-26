@@ -21,7 +21,8 @@ def test_memory_context_host_mode_avoids_virtual_paths():
     assert "/mnt/notebook" not in text
     assert "/shared/memory/" not in text
     assert "${SHARED_PATH}/memory/MEMORY.md" in text
-    assert "${MOUNT_SKILLS}/official/notebook/ingest.md" in text
+    assert "Load the `notebook` skill" in text
+    assert "MOUNT_SKILLS" not in text
 
 
 def test_memory_context_sandbox_mode_keeps_virtual_paths():
@@ -29,7 +30,22 @@ def test_memory_context_sandbox_mode_keeps_virtual_paths():
 
     assert "/mnt/notebook" in text
     assert "/shared/memory/MEMORY.md" in text
-    assert "/mnt/skills/official/notebook/ingest.md" in text
+    assert "Load the `notebook` skill" in text
+    assert "/mnt/skills" not in text
+    assert "/workspace/context.md" in text
+    assert "/shared/memory/sessions/" not in text
+
+
+def test_memory_context_host_mode_uses_project_context_path(tmp_path: Path):
+    context_path = str(tmp_path / "project" / "context.md").replace("\\", "/")
+    text = format_core_memory_section(
+        _sample_blocks(),
+        sandbox_enabled=False,
+        project_context_path=context_path,
+    )
+
+    assert context_path in text
+    assert "/memory/sessions/" not in text
 
 
 def test_skills_listing_host_mode_uses_host_locations():

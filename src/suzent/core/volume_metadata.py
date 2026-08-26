@@ -20,6 +20,8 @@ _NON_CODE_MOUNT_KINDS = {
 
 
 def _volume_kind(mount_point: str) -> str:
+    if mount_point.startswith("/mnt/skills/"):
+        return "skills"
     if mount_point in _NON_CODE_MOUNT_KINDS:
         return _NON_CODE_MOUNT_KINDS[mount_point]
     if mount_point in ("/workspace", "/mnt/workspace"):

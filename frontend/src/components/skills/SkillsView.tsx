@@ -15,7 +15,13 @@ function plainDescription(description?: string): string {
     .trim();
 }
 
-export const SkillsView: React.FC = () => {
+interface SkillsViewProps {
+  chatId?: string | null;
+}
+
+const SOURCE_ORDER = ['official', 'user', 'external', 'repository', 'working', 'home', 'custom'];
+
+export const SkillsView: React.FC<SkillsViewProps> = ({ chatId }) => {
   const { skills, loading, error, loadSkills, reload, toggle } = useSkills();
   const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null);
   const [query, setQuery] = useState('');
@@ -23,8 +29,8 @@ export const SkillsView: React.FC = () => {
   const { t } = useI18n();
 
   useEffect(() => {
-    loadSkills();
-  }, []);
+    loadSkills(chatId);
+  }, [chatId, loadSkills]);
 
   useEffect(() => {
     if (!selectedSkill) return;
@@ -53,6 +59,38 @@ export const SkillsView: React.FC = () => {
     });
   }, [skills, query, enabledOnly]);
 
+  const groupedSkills = useMemo(() => {
+    const groups = new Map<string, Skill[]>();
+    visibleSkills.forEach((skill) => {
+      const source = skill.source || 'custom';
+      groups.set(source, [...(groups.get(source) || []), skill]);
+    });
+    return [...groups.entries()]
+      .sort(([left], [right]) => {
+        const leftIndex = SOURCE_ORDER.indexOf(left);
+        const rightIndex = SOURCE_ORDER.indexOf(right);
+        return (leftIndex < 0 ? SOURCE_ORDER.length : leftIndex) -
+          (rightIndex < 0 ? SOURCE_ORDER.length : rightIndex) || left.localeCompare(right);
+      })
+      .map(([source, sourceSkills]) => ({
+        source,
+        skills: sourceSkills.sort((left, right) => left.name.localeCompare(right.name)),
+      }));
+  }, [visibleSkills]);
+
+  const sourceLabel = (source: string): string => {
+    const knownSources: Record<string, string> = {
+      official: t('skills.sources.official'),
+      user: t('skills.sources.user'),
+      external: t('skills.sources.external'),
+      repository: t('skills.sources.repository'),
+      working: t('skills.sources.working'),
+      home: t('skills.sources.home'),
+      custom: t('skills.sources.custom'),
+    };
+    return knownSources[source] || source;
+  };
+
   if (loading && skills.length === 0) {
     return (
       <div className="h-full w-full flex flex-col items-center justify-center p-8">
@@ -73,7 +111,7 @@ export const SkillsView: React.FC = () => {
             {t('skills.errorTitle')}
           </h3>
           <p className="font-mono text-sm">{error}</p>
-          <BrutalButton onClick={() => loadSkills()} size="sm" className="mt-4">
+          <BrutalButton onClick={() => loadSkills(chatId)} size="sm" className="mt-4">
             {t('skills.retry')}
           </BrutalButton>
         </div>
@@ -110,58 +148,70 @@ export const SkillsView: React.FC = () => {
         >
           {t('skills.enabledOnly')}
         </BrutalButton>
-        <BrutalButton onClick={() => reload()} size="icon" title={t('skills.reload')}>
+        <BrutalButton onClick={() => reload(chatId)} size="icon" title={t('skills.reload')}>
           <ArrowPathIcon className="h-4 w-4 stroke-2" />
         </BrutalButton>
       </div>
 
-      <div className="border-2 border-brutal-black divide-y-2 divide-brutal-black bg-white dark:bg-zinc-800 shadow-brutal-sm">
-        {visibleSkills.map((skill) => (
-          <div
-            key={skill.name}
-            role="button"
-            tabIndex={0}
-            title={skill.path}
-            onClick={() => setSelectedSkill(skill)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault();
-                setSelectedSkill(skill);
-              }
-            }}
-            className={`flex items-center gap-3 px-3 py-2 cursor-pointer transition-colors hover:bg-neutral-100 dark:hover:bg-zinc-700 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-brutal-yellow ${!skill.enabled ? 'opacity-60' : ''}`}
+      <div className="space-y-4">
+        {groupedSkills.map((group) => (
+          <section
+            key={group.source}
+            className="border-2 border-brutal-black bg-white dark:bg-zinc-800 shadow-brutal-sm"
           >
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                toggle(skill.name);
-              }}
-              className={`shrink-0 w-9 h-5 flex items-center border-2 border-brutal-black p-0.5 transition-colors ${skill.enabled ? 'bg-brutal-green justify-end' : 'bg-white dark:bg-zinc-700 justify-start'}`}
-              title={skill.enabled ? t('skills.disableSkill') : t('skills.enableSkill')}
-              aria-pressed={skill.enabled}
-            >
-              <div
-                className={`w-3 h-3 border-2 border-brutal-black ${skill.enabled ? 'bg-white' : 'bg-neutral-300 dark:bg-zinc-500'}`}
-              />
-            </button>
-            <div className="min-w-0 flex-1 flex flex-col sm:flex-row sm:items-baseline sm:gap-3">
-              <span className="font-mono text-xs font-black uppercase truncate sm:max-w-[16rem] sm:shrink-0">
-                {skill.name}
+            <header className="flex items-center justify-between gap-3 border-b-2 border-brutal-black bg-neutral-100 px-3 py-2 dark:bg-zinc-900">
+              <h3 className="font-brutal text-sm uppercase tracking-tight">
+                {sourceLabel(group.source)}
+              </h3>
+              <span className="border-2 border-brutal-black bg-white px-1.5 py-0.5 font-mono text-[10px] dark:bg-zinc-800">
+                {t('skills.sourceCount', { count: group.skills.length })}
               </span>
-              <span className="min-w-0 truncate text-[11px] text-neutral-600 dark:text-neutral-400">
-                {plainDescription(skill.description)}
-              </span>
+            </header>
+            <div className="divide-y-2 divide-brutal-black">
+              {group.skills.map((skill) => (
+                <div
+                  key={skill.id}
+                  role="button"
+                  tabIndex={0}
+                  title={skill.hostPath || skill.path}
+                  onClick={() => setSelectedSkill(skill)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      setSelectedSkill(skill);
+                    }
+                  }}
+                  className={`flex items-center gap-3 px-3 py-2 cursor-pointer transition-colors hover:bg-neutral-100 dark:hover:bg-zinc-700 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-brutal-yellow ${!skill.enabled ? 'opacity-60' : ''}`}
+                >
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      toggle(skill.id, chatId);
+                    }}
+                    className={`shrink-0 w-9 h-5 flex items-center border-2 border-brutal-black p-0.5 transition-colors ${skill.enabled ? 'bg-brutal-green justify-end' : 'bg-white dark:bg-zinc-700 justify-start'}`}
+                    title={skill.enabled ? t('skills.disableSkill') : t('skills.enableSkill')}
+                    aria-pressed={skill.enabled}
+                  >
+                    <div
+                      className={`w-3 h-3 border-2 border-brutal-black ${skill.enabled ? 'bg-white' : 'bg-neutral-300 dark:bg-zinc-500'}`}
+                    />
+                  </button>
+                  <div className="min-w-0 flex-1 flex flex-col sm:flex-row sm:items-baseline sm:gap-3">
+                    <span className="font-mono text-xs font-black uppercase truncate sm:max-w-[16rem] sm:shrink-0">
+                      {skill.name}
+                    </span>
+                    <span className="min-w-0 truncate text-[11px] text-neutral-600 dark:text-neutral-400">
+                      {plainDescription(skill.description)}
+                    </span>
+                  </div>
+                </div>
+              ))}
             </div>
-            {skill.source && (
-              <span className="shrink-0 hidden md:inline border-2 border-brutal-black px-1.5 py-0.5 font-mono text-[9px] uppercase text-neutral-600 dark:text-neutral-300">
-                {skill.source}
-              </span>
-            )}
-          </div>
+          </section>
         ))}
         {visibleSkills.length === 0 && (
-          <div className="text-center p-10">
+          <div className="border-2 border-brutal-black bg-white text-center p-10 shadow-brutal-sm dark:bg-zinc-800">
             <p className="font-mono text-neutral-400">
               {skills.length === 0 ? t('skills.emptyTitle') : t('skills.noMatches')}
             </p>
@@ -190,8 +240,13 @@ export const SkillsView: React.FC = () => {
                   {selectedSkill.name}
                 </h3>
                 <p className="mt-2 font-mono text-xs text-neutral-500 dark:text-neutral-400 break-all">
-                  {selectedSkill.path}
+                  {selectedSkill.hostPath || selectedSkill.path}
                 </p>
+                {selectedSkill.hostPath && selectedSkill.path !== selectedSkill.hostPath && (
+                  <p className="mt-1 font-mono text-[10px] text-neutral-400 dark:text-neutral-500 break-all">
+                    {t('skills.sandboxPath')}: {selectedSkill.path}
+                  </p>
+                )}
               </div>
               <BrutalButton
                 onClick={() => setSelectedSkill(null)}

@@ -115,39 +115,28 @@ When enabled, skills are available to agents through the `SkillTool`:
 3. Skill content is injected into agent's context
 4. Agent gains specialized knowledge for the task
 
-### Skill Mounting in Sandbox
+### Skill Paths in Sandbox
 
-Skills are automatically mounted in the sandbox under `/mnt/skills/`:
-
-```
-/mnt/skills/
-├── official/
-│   ├── suzent-devices/
-│   │   └── SKILL.md
-│   └── notebook/
-│       └── SKILL.md
-├── external/
-│   └── my-pack-abc12345/
-│       └── custom-skill/
-│           └── SKILL.md
-└── user/
-    └── my-custom-skill/
-        └── SKILL.md
-```
+Suzent reads skills directly from their source directories; it does not copy
+them into a merged library. If a skill source is already below the working
+directory or another configured volume, it reuses that mount. For example, a
+repository skill may be available as `/workspace/.codex/skills/my-skill/` or
+`/mnt/my-repo/skills/my-skill/`. Uncovered sources are mounted read-only below
+`/mnt/skills/`, and the Skills panel shows each skill's effective path.
 
 ## Creating Custom Skills
 
 ### Step 1: Create Skill Directory
 
-Create a new directory in `~/.suzent/skills/user/`:
+Create a new directory in `~/.suzent/skills/`:
 
 ```bash
-mkdir -p ~/.suzent/skills/user/my-custom-skill
+mkdir -p ~/.suzent/skills/my-custom-skill
 ```
 
 ### Step 2: Create SKILL.md
 
-Create `~/.suzent/skills/user/my-custom-skill/SKILL.md`:
+Create `~/.suzent/skills/my-custom-skill/SKILL.md`:
 
 ```markdown
 ---
@@ -191,12 +180,12 @@ Add helper scripts, references, or assets:
 
 ```bash
 # Add a helper script
-mkdir ~/.suzent/skills/user/my-custom-skill/scripts
-echo "#!/bin/bash\necho 'Helper script'" > ~/.suzent/skills/user/my-custom-skill/scripts/helper.sh
+mkdir ~/.suzent/skills/my-custom-skill/scripts
+echo "#!/bin/bash\necho 'Helper script'" > ~/.suzent/skills/my-custom-skill/scripts/helper.sh
 
 # Add reference documentation
-mkdir ~/.suzent/skills/user/my-custom-skill/references
-cp ~/docs/api-reference.md ~/.suzent/skills/user/my-custom-skill/references/
+mkdir ~/.suzent/skills/my-custom-skill/references
+cp ~/docs/api-reference.md ~/.suzent/skills/my-custom-skill/references/
 ```
 
 ### Step 4: Enable the Skill
@@ -247,16 +236,19 @@ Add your skill to `~/.suzent/config/skills.json`:
 
 ### Configuration Location
 
-- **Built-in Skills Directory**: `./skills/`, synced to `~/.suzent/skills/official/`
-- **User Skills Directory**: `~/.suzent/skills/user/`
-- **External Skills Directory**: `~/.suzent/skills/external/`
+- **Built-in Skills Directory**: `./skills/` in the Suzent installation
+- **User Skills Directory**: `~/.suzent/skills/`
+- **External Skills Directories**: paths configured through `SKILLS_DIR`
+- **Repository Skills**: `skills/` and `.claude/skills/`, `.agents/skills/`,
+  `.codex/skills/`, or `.grok/skills/` in the active repository/working directory
 - **Config File**: `~/.suzent/config/skills.json`
-- **Sandbox Mount**: `/mnt/skills/`
+- **Sandbox Paths**: existing project mounts when possible; otherwise a
+  read-only path below `/mnt/skills/`
 
 ### Environment Variables
 
 ```bash
-# Advanced extra skills directory, synced into ~/.suzent/skills/external/
+# Advanced extra skill source directories (separate multiple paths with the OS path separator)
 SKILLS_DIR=/path/to/custom/skills
 ```
 
@@ -269,11 +261,15 @@ Skills are loaded at startup. To reload:
 ### Skill Discovery
 
 The SkillManager automatically discovers skills by:
-1. Syncing built-in skills to `official/` and optional `SKILLS_DIR` roots to `external/`
-2. Scanning official, external, and user skills in that order
-3. Looking for `SKILL.md` files
-4. Parsing YAML frontmatter
-5. Validating required fields
+1. Reading built-in, user, and optional `SKILLS_DIR` sources directly
+2. Discovering supported skill directories in the active home, repository, and working directory
+3. Deduplicating identical physical source directories
+4. Looking for `SKILL.md` files and parsing their YAML frontmatter
+5. Reusing existing sandbox mounts or adding read-only mounts for uncovered sources
+
+Older installations that used `~/.suzent/skills/user/` are migrated into the
+flat user directory when there is no name collision. Existing
+`official/` and `external/` mirror directories are ignored and are not updated.
 
 ## Troubleshooting
 
@@ -315,7 +311,7 @@ The SkillManager automatically discovers skills by:
 1. Verify resource folders exist: `scripts/`, `references/`, `assets/`
 2. Check file permissions
 3. Ensure files are in the correct skill directory
-4. Resources are mounted under the skill's listed location, such as `/mnt/skills/user/{skill-name}/`
+4. Use the effective path listed for the skill; its resources remain beside `SKILL.md`
 
 ## Advanced Topics
 

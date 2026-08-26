@@ -5,16 +5,20 @@
 import { getApiBase } from './api';
 import { Skill } from '../types/skills';
 
-export async function fetchSkills(): Promise<Skill[]> {
-  const res = await fetch(`${getApiBase()}/skills`);
+function scopeQuery(chatId?: string | null): string {
+  return chatId ? `?chat_id=${encodeURIComponent(chatId)}` : '';
+}
+
+export async function fetchSkills(chatId?: string | null): Promise<Skill[]> {
+  const res = await fetch(`${getApiBase()}/skills${scopeQuery(chatId)}`);
   if (!res.ok) {
     throw new Error(`Failed to fetch skills: ${res.statusText}`);
   }
   return await res.json();
 }
 
-export async function reloadSkills(): Promise<{ loaded: string[]; failed: string[] }> {
-  const res = await fetch(`${getApiBase()}/skills/reload`, {
+export async function reloadSkills(chatId?: string | null): Promise<Skill[]> {
+  const res = await fetch(`${getApiBase()}/skills/reload${scopeQuery(chatId)}`, {
     method: 'POST',
   });
   if (!res.ok) {
@@ -23,13 +27,17 @@ export async function reloadSkills(): Promise<{ loaded: string[]; failed: string
   return await res.json();
 }
 
-export async function toggleSkill(skillName: string, enabled: boolean): Promise<void> {
-  const res = await fetch(`${getApiBase()}/skills/${skillName}/toggle`, {
+export async function toggleSkill(
+  skillId: string,
+  enabled: boolean,
+  chatId?: string | null
+): Promise<void> {
+  const res = await fetch(`${getApiBase()}/skills/toggle${scopeQuery(chatId)}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ enabled }),
+    body: JSON.stringify({ id: skillId, enabled }),
   });
   if (!res.ok) {
     throw new Error(`Failed to toggle skill: ${res.statusText}`);
