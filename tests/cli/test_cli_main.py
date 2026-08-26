@@ -855,7 +855,9 @@ def test_check_update_json_command(monkeypatch):
 
 
 def _macos_workspace(tmp_path: Path) -> Path:
-    (tmp_path / "pyproject.toml").write_text('version = "0.7.13"\n', encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "suzent"\nversion = "0.7.13"\n', encoding="utf-8"
+    )
     icons = tmp_path / "src-tauri" / "icons"
     icons.mkdir(parents=True)
     (icons / "icon.icns").write_bytes(b"icns-payload")

@@ -22,6 +22,12 @@ from pathlib import Path
 
 import typer
 from suzent.config import DEFAULT_PORT
+from suzent.version import (
+    UNKNOWN,
+    get_backend_commit,
+    read_project_version,
+    short_commit,
+)
 
 IS_WINDOWS = sys.platform == "win32"
 
@@ -335,12 +341,14 @@ def _local_ui_version(root: Path) -> str:
 
 
 def _current_version(root: Path) -> str:
-    """Return the source version first, then installed package metadata."""
-    pyproject = root / "pyproject.toml"
-    if pyproject.exists():
-        for line in pyproject.read_text(encoding="utf-8").splitlines():
-            if line.strip().startswith("version ="):
-                return line.split("=", 1)[1].strip().strip('"')
+    """Return the version declared by `root`, then installed package metadata.
+
+    Root-relative on purpose: `suzent update` asks about the workspace being
+    updated, which is not always the tree the running code was imported from.
+    """
+    declared = read_project_version(root / "pyproject.toml")
+    if declared:
+        return declared
 
     try:
         return version("suzent")
@@ -350,6 +358,49 @@ def _current_version(root: Path) -> str:
 
 def _normalize_version_tag(value: str) -> str:
     return value.strip().lstrip("vV")
+
+
+def _ui_version_detail(root: Path) -> str | None:
+    """Describe the installed UI binary, or None when there is nothing to say.
+
+    Developer and branch installs record the literal marker "latest" rather
+    than a resolved tag (`scripts/setup.sh`), which identifies nothing, so a
+    recorded value carrying no digits is reported as unknown rather than quoted
+    back as if it were a version.
+    """
+    recorded = _local_ui_version(root)
+    if not recorded:
+        return None
+    ui = _normalize_version_tag(recorded)
+    return f"ui {ui if _version_key(ui) else 'unknown'}"
+
+
+def format_version_line(root: Path) -> str:
+    """Render the one-line version banner shown by `suzent --version`.
+
+    The declared version alone does not identify a development install -- the
+    checked-out branch carries whatever version its pyproject happens to hold --
+    so the commit goes alongside it whenever it can be resolved.
+
+    On the dev channel `start` builds the UI from source and never launches the
+    downloaded binary, so reporting that binary's version there would describe
+    something that does not run; the channel is named instead.
+    """
+    backend = _normalize_version_tag(_current_version(root)) or "unknown"
+
+    details = []
+    commit = get_backend_commit()
+    if commit != UNKNOWN:
+        details.append(short_commit(commit))
+
+    if _read_update_channel(root) == _DEV_CHANNEL:
+        details.append(_DEV_CHANNEL)
+    elif ui_detail := _ui_version_detail(root):
+        details.append(ui_detail)
+
+    return (
+        f"suzent {backend} ({', '.join(details)})" if details else f"suzent {backend}"
+    )
 
 
 def _version_key(value: str) -> tuple[int, ...]:
