@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v0.11.0] - 2026-08-26
 
 ### 🚀 Added
+- Discover repository context and skills
 - Show commit and dev build in the About tab
 - Identify the commit in `suzent --version`
 - Add `suzent --version`
