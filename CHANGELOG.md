@@ -5,6 +5,66 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.11.0] - 2026-08-26
+
+<!-- highlights -->
+Your editor can now drive the agent that lives on your machine. `suzent acp`
+serves the local geist over ACP to Zed, enoxian, or anything else that speaks
+the protocol - and it is a translator, not a second agent. Every turn goes
+through your own running backend, so an ACP session is a real chat: it appears
+in the desktop UI, shares the same memory, skills, model config and permission
+rules, and one process stays the owner of the database. The client's working
+directory is bound to the session, so edits land on your real files and the
+editor's change tracking sees them. Approvals stay a gate you hold - a
+suspended call becomes a permission request built from the backend's own
+decision contract, so "always allow" persists exactly the rule its label
+promised.
+
+The other half of the release is Suzent knowing where it stands. It now
+discovers a repository's own context files and skills and shows you the
+effective set it is actually using - what is in play is something you can
+read, not something you infer.
+
+Startup stopped asking permission to be slow. The CLI went from ~660ms to
+~155ms: the update check no longer blocks on the network (up to 2s of it, and
+all of it on a captive portal) but warms its cache in the background, the tool
+catalog is discovered only when something needs it, and asking config for a
+port no longer drags in pydantic, the database stack and the whole agent
+runtime. An import guard now fails the build if that creeps back. `suzent
+--version` exists and names the commit, as does the About tab - so a dev build
+says so plainly.
+<!-- /highlights -->
+
+### 🚀 Added
+- Show effective repository context
+- Discover repository context and skills
+- Show commit and dev build in the About tab
+- Identify the commit in `suzent --version`
+- Add `suzent --version`
+- Serve Suzent as an ACP agent (#126)
+
+### ⚡ Changed
+- Share fixed icon buttons (#138)
+- Import a port without importing pydantic
+- Stop blocking startup on the update check
+- Keep the HTTP route layer out of process-state imports
+- Resolve package re-exports on demand
+- Discover the tool catalog lazily
+- Seo: make llms-full.txt actually full, and fix its links
+- Seo: build the sovereignty content cluster
+- Seo: bind "sovereign AI agent" to the Suzent entity
+
+### 🐛 Fixed
+- Update enoxian registration instructions for suzent agent
+- Address repository context review feedback (#139)
+- Compact repository context sidebar (#137)
+- Handle the renamed REASONING_* events
+- Address review on the startup-perf changes
+- Keep `--version` to the one line it advertises
+- Stop a version-file clash breaking the release refresh
+- Read the real AG-UI field names for tool call events (#127)
+- Stop refresh-release failing on the push that merges a release
+
 ## [v0.10.0] - 2026-08-25
 
 <!-- highlights -->
