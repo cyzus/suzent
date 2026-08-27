@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [v0.11.0] - 2026-08-26
 
+<!-- highlights -->
+Your editor can now drive the agent that lives on your machine. `suzent acp`
+serves the local geist over ACP to Zed, enoxian, or anything else that speaks
+the protocol - and it is a translator, not a second agent. Every turn goes
+through your own running backend, so an ACP session is a real chat: it appears
+in the desktop UI, shares the same memory, skills, model config and permission
+rules, and one process stays the owner of the database. The client's working
+directory is bound to the session, so edits land on your real files and the
+editor's change tracking sees them. Approvals stay a gate you hold - a
+suspended call becomes a permission request built from the backend's own
+decision contract, so "always allow" persists exactly the rule its label
+promised.
+
+The other half of the release is Suzent knowing where it stands. It now
+discovers a repository's own context files and skills and shows you the
+effective set it is actually using - what is in play is something you can
+read, not something you infer.
+
+Startup stopped asking permission to be slow. The CLI went from ~660ms to
+~155ms: the update check no longer blocks on the network (up to 2s of it, and
+all of it on a captive portal) but warms its cache in the background, the tool
+catalog is discovered only when something needs it, and asking config for a
+port no longer drags in pydantic, the database stack and the whole agent
+runtime. An import guard now fails the build if that creeps back. `suzent
+--version` exists and names the commit, as does the About tab - so a dev build
+says so plainly.
+<!-- /highlights -->
+
 ### 🚀 Added
 - Show effective repository context
 - Discover repository context and skills
