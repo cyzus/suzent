@@ -288,3 +288,44 @@ def test_browse_counts_visible_messages_not_stale_sidebar_count(tool_db):
     res = asyncio.run(SessionSearchTool().forward(_ctx(tool_db)))
     assert "0 messages" not in res.message
     assert "2 messages" in res.message
+
+
+# --------------------------------------------------------------------------
+# Draft writes must not pay for the index
+# --------------------------------------------------------------------------
+
+
+def test_update_chat_can_skip_reindex(db):
+    """`reindex=False` leaves the index untouched.
+
+    The streaming draft is rewritten every fraction of a second, and a reindex
+    rewrites every FTS row of the whole conversation — on a megabyte-sized chat
+    that took half a second per write, with the token stream waiting behind it.
+    """
+    cid = db.create_chat("Draft", {}, [{"role": "user", "content": "indexedword"}])
+    assert db.fts_match_chat_ids("indexedword")
+
+    db.update_chat(
+        cid,
+        messages=[
+            {"role": "user", "content": "indexedword"},
+            {"role": "assistant", "parts": [{"type": "text", "text": "draftword"}]},
+        ],
+        reindex=False,
+    )
+    # The new text is stored but deliberately not searchable yet...
+    assert not db.fts_match_chat_ids("draftword")
+    # ...and the skip must not have dropped what was already indexed.
+    assert db.fts_match_chat_ids("indexedword")
+
+
+def test_finalizing_write_indexes_what_the_draft_skipped(db):
+    """The turn's real write still indexes, so nothing stays unsearchable."""
+    cid = db.create_chat("Draft", {}, [{"role": "user", "content": "indexedword"}])
+    messages = [
+        {"role": "user", "content": "indexedword"},
+        {"role": "assistant", "parts": [{"type": "text", "text": "draftword"}]},
+    ]
+    db.update_chat(cid, messages=messages, reindex=False)
+    db.update_chat(cid, messages=messages)
+    assert db.fts_match_chat_ids("draftword")

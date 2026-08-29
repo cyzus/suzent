@@ -387,3 +387,41 @@ def test_permission_decision_payload_and_resolution_are_persisted():
     assert payload["confidence"] == "high"
     assert acc.parts[0]["permissionDecision"] == payload
     assert acc.parts[0]["permissionResolution"] == resolution
+
+
+# A finished turn must be on disk before the stream says so
+
+
+@pytest.mark.asyncio
+async def test_forced_persist_waits_for_a_write_already_in_flight(monkeypatch):
+    """The draft write runs in the background, and scheduling one clears
+    ``dirty``. The forced flush at the end of a turn must still wait for it:
+    reporting the stream finished while the write is in flight lets a reload
+    read stale content, and lets the late write race the turn finalizer."""
+    started = asyncio.Event()
+    release = asyncio.Event()
+    finished = []
+
+    async def slow_write(*args, **kwargs):
+        started.set()
+        await release.wait()
+        finished.append(args)
+
+    monkeypatch.setattr(streaming.asyncio, "to_thread", slow_write)
+    monkeypatch.setattr(streaming, "_DRAFT_PERSIST_INTERVAL_SECONDS", 0)
+
+    acc = streaming._DraftDisplayAccumulator(chat_id="chat-1", run_id="run-1")
+    acc.parts = [{"type": "text", "text": "hello"}]
+    acc.dirty = True
+
+    await acc.maybe_persist()
+    await asyncio.wait_for(started.wait(), timeout=1)
+    assert acc.dirty is False  # scheduling the write cleared it
+
+    forced = asyncio.create_task(acc.maybe_persist(force=True))
+    await asyncio.sleep(0)
+    assert not forced.done(), "forced flush returned while a write was in flight"
+
+    release.set()
+    await asyncio.wait_for(forced, timeout=1)
+    assert finished, "the in-flight write did not land"

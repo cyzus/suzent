@@ -195,6 +195,9 @@ class _DraftDisplayAccumulator:
         self._tool_index: dict[str, dict[str, Any]] = {}
         self.last_persisted_at = 0.0
         self.dirty = False
+        # The draft write runs off the token loop, one at a time. Kept here so
+        # the final forced persist can wait for it instead of racing it.
+        self._persist_task: Optional["asyncio.Task[None]"] = None
 
     def apply(self, event: Any) -> None:
         event_type = _event_type_value(event)
@@ -300,10 +303,37 @@ class _DraftDisplayAccumulator:
         self._merge_citation_sources(sources)
 
     async def maybe_persist(self, *, force: bool = False) -> None:
-        if not self.chat_id or not self.parts or not self.dirty:
+        if not self.chat_id or not self.parts:
             return
+
+        if force:
+            # A background write can still be in flight with the newest state
+            # already in it — scheduling one clears ``dirty``, so a clean draft
+            # is not the same as "nothing left to write". The turn is not
+            # finished until that write lands: returning here would let the
+            # encoder emit ``done`` while the draft is still going to disk,
+            # where a reload could read stale content and the late write could
+            # race the finalizer and restore a draft over the finished
+            # response.
+            await self._await_persist_task()
+            if not self.dirty:
+                return
+        elif not self.dirty:
+            return
+
         now = time.monotonic()
         if not force and now - self.last_persisted_at < _DRAFT_PERSIST_INTERVAL_SECONDS:
+            return
+
+        # A write already in flight is reason enough to skip this round: the
+        # draft stays dirty and a later event persists the newer state. Waiting
+        # would put the disk back in front of the token stream, which is the
+        # whole thing this avoids. (The forced path waited for it above.)
+        if (
+            not force
+            and self._persist_task is not None
+            and not self._persist_task.done()
+        ):
             return
 
         snapshot = [dict(part) for part in self.parts]
@@ -313,15 +343,36 @@ class _DraftDisplayAccumulator:
             if part.get("type") == "text"
             and (text := str(part.get("text") or "").strip())
         )
-        await asyncio.to_thread(
+        self.last_persisted_at = now
+        self.dirty = False
+        coro = asyncio.to_thread(
             _persist_draft_display_message,
             self.chat_id,
             self.run_id,
             snapshot,
             content,
         )
-        self.last_persisted_at = now
-        self.dirty = False
+        if force:
+            # The last write of a turn has to land before the stream reports
+            # itself finished, so this one is waited on.
+            await coro
+            return
+        self._persist_task = asyncio.create_task(self._persist_quietly(coro))
+
+    async def _await_persist_task(self) -> None:
+        """Wait for a background draft write to finish, if one is running."""
+        task = self._persist_task
+        if task is not None and not task.done():
+            await task
+
+    @staticmethod
+    async def _persist_quietly(coro: Any) -> None:
+        """Run a draft write, logging rather than raising: a draft that fails
+        to save must not take the stream down with it."""
+        try:
+            await coro
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.debug(f"[Streaming] Draft persist failed: {exc}")
 
     def _find_tool(self, tool_call_id: str) -> Optional[dict[str, Any]]:
         return self._tool_index.get(tool_call_id)
@@ -455,7 +506,11 @@ def _persist_draft_display_message(
     else:
         messages.append(draft)
 
-    db.update_chat(chat_id, messages=messages)
+    # The draft is transient: every 0.75s it is overwritten, and the turn's real
+    # write reindexes it when it lands. Reindexing here re-wrote every FTS row of
+    # the whole conversation on each draft — 0.5s per write on a 1MB chat, with
+    # the token stream waiting behind it.
+    db.update_chat(chat_id, messages=messages, reindex=False)
 
 
 def _encode_custom(name: str, value: Any) -> str:
