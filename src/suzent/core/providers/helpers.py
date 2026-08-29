@@ -98,7 +98,9 @@ def get_enabled_models_from_db() -> List[str]:
 
 
 def _provider_is_configured(spec) -> bool:
-    """Return True if the provider has usable credentials."""
+    """Return True if the provider has usable credentials or allows keyless access."""
+    if spec.api_key_optional:
+        return True
     if spec.env_keys:
         return resolve_api_key(spec.id) is not None
     if spec.api_type == "chatgpt_subscription":

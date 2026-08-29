@@ -103,6 +103,65 @@ class _ChatGPTHTTPClient(httpx.AsyncClient):
         return await super().send(request, **kwargs)
 
 
+def _merge_system_content(messages: list[dict[str, Any]]) -> str | list[Any]:
+    contents = [message.get("content") for message in messages]
+    if all(content is None or isinstance(content, str) for content in contents):
+        return "\n\n".join(content for content in contents if content)
+
+    parts: list[Any] = []
+    for content in contents:
+        if isinstance(content, list):
+            parts.extend(content)
+        elif isinstance(content, str) and content:
+            parts.append({"type": "text", "text": content})
+    return parts
+
+
+def _rewrite_local_openai_request(request: httpx.Request) -> httpx.Request:
+    """Normalize system-message ordering for strict local chat templates."""
+    if not request.url.path.endswith("/chat/completions"):
+        return request
+
+    try:
+        body = json.loads(request.content)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return request
+    if not isinstance(body, dict) or not isinstance(body.get("messages"), list):
+        return request
+
+    messages = [message for message in body["messages"] if isinstance(message, dict)]
+    system_messages = [
+        message for message in messages if message.get("role") == "system"
+    ]
+    if not system_messages:
+        return request
+
+    non_system_messages = [
+        message for message in messages if message.get("role") != "system"
+    ]
+    merged_system = dict(system_messages[0])
+    merged_system["content"] = _merge_system_content(system_messages)
+    body["messages"] = [merged_system, *non_system_messages]
+
+    content = json.dumps(body).encode()
+    headers = dict(request.headers)
+    headers["content-type"] = "application/json"
+    headers["content-length"] = str(len(content))
+    return httpx.Request(
+        request.method,
+        request.url,
+        headers=headers,
+        content=content,
+        extensions=request.extensions,
+    )
+
+
+class _LocalOpenAIHTTPClient(httpx.AsyncClient):
+    async def send(self, request: httpx.Request, **kwargs: Any) -> httpx.Response:
+        request = _rewrite_local_openai_request(request)
+        return await super().send(request, **kwargs)
+
+
 # ---------------------------------------------------------------------------
 # API-type handler registry
 # ---------------------------------------------------------------------------
@@ -130,8 +189,22 @@ def _create_openai_model(model_name: str, api_key: str, spec: ProviderSpec) -> o
             break
 
     base_url = resolved_base_url or spec.base_url or os.environ.get("OPENAI_BASE_URL")
+    if spec.id in {"vllm", "sglang"}:
+        from openai import AsyncOpenAI
+
+        client = AsyncOpenAI(
+            api_key=api_key or "local",
+            base_url=base_url,
+            http_client=_LocalOpenAIHTTPClient(),
+        )
+        return OpenAIChatModel(
+            model_name,
+            provider=OpenAIProvider(openai_client=client),
+        )
+
     return OpenAIChatModel(
-        model_name, provider=OpenAIProvider(api_key=api_key, base_url=base_url)
+        model_name,
+        provider=OpenAIProvider(api_key=api_key or "local", base_url=base_url),
     )
 
 
@@ -330,7 +403,10 @@ def create_pydantic_ai_model(model_id: str) -> object:
 
     # Resolve API key (ollama / litellm_proxy / chatgpt_subscription manage their own auth)
     api_key = resolve_api_key(prefix)
-    requires_key = spec.api_type not in ("ollama", "chatgpt_subscription")
+    requires_key = (
+        spec.api_type not in ("ollama", "chatgpt_subscription")
+        and not spec.api_key_optional
+    )
 
     if requires_key and not api_key:
         raise RuntimeError(

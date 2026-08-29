@@ -2159,7 +2159,14 @@ def _resolve_response_model(
     if not response_model_name:
         return run_model_id
     if "/" in response_model_name:
-        return response_model_name
+        response_prefix = response_model_name.split("/", 1)[0]
+        try:
+            from suzent.core.providers.catalog import PROVIDER_REGISTRY_BY_ID
+
+            if response_prefix in PROVIDER_REGISTRY_BY_ID:
+                return response_model_name
+        except Exception:
+            pass
     run_prefix = (
         run_model_id.split("/", 1)[0] if run_model_id and "/" in run_model_id else None
     )
