@@ -27,6 +27,9 @@ const BADGE_WEIGHTS: { variant: RobotVariant; weight: number }[] = [
   { variant: 'dj', weight: 2 }, // Very rare music
 ];
 
+// How long the robot stays startled after a tool call fails.
+const ERROR_FLASH_MS = 2600;
+
 const selectWeightedVariant = (
   weights: { variant: RobotVariant; weight: number }[]
 ): RobotVariant => {
@@ -124,7 +127,12 @@ interface AgentBadgeProps {
   isThinking: boolean;
   isStreaming: boolean;
   currentToolName?: string;
-  hasError?: boolean;
+  /**
+   * How many tool calls in this turn have failed. A count rather than a flag:
+   * the robot reacts to a *new* failure and then settles, so a turn that
+   * errored once must not freeze the badge on the startled face forever.
+   */
+  errorCount?: number;
   isPendingApproval?: boolean;
   eyeClass?: string;
   /**
@@ -140,7 +148,7 @@ const AgentBadgeComponent: React.FC<AgentBadgeProps> = ({
   isThinking,
   isStreaming,
   currentToolName,
-  hasError,
+  errorCount = 0,
   isPendingApproval,
   icon,
 }) => {
@@ -148,6 +156,23 @@ const AgentBadgeComponent: React.FC<AgentBadgeProps> = ({
   const [baseVariant, setBaseVariant] = useState<RobotVariant>(() =>
     selectWeightedVariant(BADGE_WEIGHTS)
   );
+
+  // The startled reaction is a beat, not a mode: it fires when the error count
+  // goes up and clears itself, so the badge returns to whatever the agent is
+  // doing now instead of staying frozen on the last failure.
+  const [errorFlash, setErrorFlash] = useState(false);
+  const seenErrorCountRef = React.useRef(errorCount);
+
+  useEffect(() => {
+    if (errorCount <= seenErrorCountRef.current) {
+      seenErrorCountRef.current = errorCount;
+      return;
+    }
+    seenErrorCountRef.current = errorCount;
+    setErrorFlash(true);
+    const timeout = setTimeout(() => setErrorFlash(false), ERROR_FLASH_MS);
+    return () => clearTimeout(timeout);
+  }, [errorCount]);
 
   // Effect to handle snoozing
   useEffect(() => {
@@ -170,7 +195,7 @@ const AgentBadgeComponent: React.FC<AgentBadgeProps> = ({
 
   let variant: RobotVariant = baseVariant;
 
-  if (hasError) {
+  if (errorFlash) {
     variant = 'shaker'; // shaking when there's an error
   } else if (isPendingApproval) {
     variant = 'skeptic'; // skeptical when waiting for user approval

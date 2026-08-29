@@ -24,20 +24,61 @@
   }
 
   .chat-minimap {
-    width: 2rem;
+    /* Wide enough for the longest tick at full hover extension (1.2rem base +
+       0.75rem wave), so clipping the track vertically never cuts a tick's
+       hover growth off horizontally. */
+    width: 2.5rem;
     height: min(18rem, calc(100% - 4rem));
   }
 
   /* Rail height is set inline from the marker count and the rail is
      centered in the container, so a sparse stack stays compact and
-     vertically centered rather than stretched edge to edge. */
+     vertically centered rather than stretched edge to edge. The rail is the
+     positioning frame; the viewport inside it is the window, and the
+     hover preview stays out of it so the viewport's clip does not cut the
+     card off. */
   .chat-minimap-rail {
     position: absolute;
     top: 50%;
     right: 0.25rem;
     transform: translateY(-50%);
-    width: 1.6rem;
+    width: 2rem;
+  }
+
+  .chat-minimap-viewport {
+    position: relative;
+    height: 100%;
+    width: 100%;
     cursor: pointer;
+  }
+
+  /* Once the ticks outgrow the rail the viewport becomes a window onto a
+     longer track: the track slides under it, with no scrollbar — a rail this
+     thin has nowhere to put one, and it would sit right where the ticks are.
+     The edges fade instead, which says "there is more" without any chrome. */
+  .chat-minimap-viewport-clipped {
+    overflow: hidden;
+    mask-image: linear-gradient(
+      to bottom,
+      transparent 0,
+      #000 0.75rem,
+      #000 calc(100% - 0.75rem),
+      transparent 100%
+    );
+  }
+
+  .chat-minimap-track {
+    position: relative;
+    width: 100%;
+    /* Slid, not scrolled. Same easing as the ticks' hover wave so the rail
+       reads as one animated object however long the conversation gets. */
+    transition: transform 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .chat-minimap-track {
+      transition: none;
+    }
   }
 
   /* Codex-style tick rail: each marker is a thin monochrome tick whose
@@ -678,6 +719,75 @@ code {
 .dark .activity-rail-card-active {
   background: transparent;
   box-shadow: none;
+}
+
+/* A thought still arriving gets the same restless treatment as a running
+   tool: the label is underlined by the rail's diagonal stripe, and three
+   square beats march beside it. Squares and stripes only — no glow, no
+   rounded spinner — so it stays inside the neo-brutalist vocabulary. */
+.reasoning-thinking-label {
+  position: relative;
+}
+
+.reasoning-thinking-label::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -0.15rem;
+  height: 2px;
+  opacity: 0.55;
+  background-image: repeating-linear-gradient(
+    -45deg,
+    currentColor,
+    currentColor 3px,
+    transparent 3px,
+    transparent 6px
+  );
+  animation: brutal-stripes-move 1s linear infinite;
+}
+
+.reasoning-thinking-pulse {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.reasoning-thinking-pulse i {
+  width: 3px;
+  height: 3px;
+  background: currentColor;
+  opacity: 0.25;
+  animation: reasoning-thinking-beat 1.05s steps(1, end) infinite;
+}
+
+.reasoning-thinking-pulse i:nth-child(2) {
+  animation-delay: 0.35s;
+}
+
+.reasoning-thinking-pulse i:nth-child(3) {
+  animation-delay: 0.7s;
+}
+
+@keyframes reasoning-thinking-beat {
+  0%,
+  33% {
+    opacity: 1;
+    transform: scale(1.6);
+  }
+
+  34%,
+  100% {
+    opacity: 0.25;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reasoning-thinking-label::after,
+  .reasoning-thinking-pulse i {
+    animation: none;
+  }
 }
 
 .activity-rail-card-error {

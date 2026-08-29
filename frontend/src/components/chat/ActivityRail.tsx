@@ -446,17 +446,35 @@ const ReasoningRailItemComponent: React.FC<{
   // Reasoning arrives in the same uneven bursts as the answer; reveal it at a
   // steady rate so an expanded thought reads as flowing text.
   const revealedText = useTypewriter(text, Boolean(isStreaming) && expanded);
+  const thinking = Boolean(isStreaming);
   return (
-    <ActivityRailItem state={isStreaming ? 'active' : 'done'}>
+    <ActivityRailItem state={thinking ? 'active' : 'done'}>
       <div className="min-w-0">
         <button
           type="button"
           onClick={() => setExpanded((value) => !value)}
           className="group/thought-header inline-flex items-center gap-1.5 px-2.5 cursor-pointer select-none min-w-0 max-w-full"
         >
-          <span className="text-[11px] font-mono font-bold uppercase tracking-wide text-neutral-500 dark:text-neutral-400 shrink-0">
-            Thought
+          {/* A thought carries the same two states as a tool call — in flight
+              and finished — and the rail header already says "Thinking" vs
+              "Thought". Saying only "Thought" here made a reasoning block that
+              is still arriving look like one that had already landed. */}
+          <span
+            className={`text-[11px] font-mono font-bold uppercase tracking-wide shrink-0 ${
+              thinking
+                ? 'reasoning-thinking-label text-brutal-black dark:text-neutral-100'
+                : 'text-neutral-500 dark:text-neutral-400'
+            }`}
+          >
+            {thinking ? 'Thinking' : 'Thought'}
           </span>
+          {thinking && (
+            <span className="reasoning-thinking-pulse shrink-0" aria-hidden="true">
+              <i />
+              <i />
+              <i />
+            </span>
+          )}
           <svg
             className={`w-3 h-3 text-neutral-400 opacity-0 transition-all duration-150 shrink-0 group-hover/thought-header:opacity-100 ${expanded ? 'rotate-90' : ''}`}
             fill="none"

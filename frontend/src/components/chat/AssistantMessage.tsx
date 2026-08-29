@@ -865,11 +865,11 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
 
   // 1. 抓取当前正在跑的 Tool 和 错误状态
   let currentToolName: string | undefined = undefined;
-  let hasError: boolean = false;
+  let errorCount: number = 0;
   let isPendingApproval: boolean = false;
 
   if (effectiveParts && effectiveParts.length > 0) {
-    hasError = effectiveParts.some((p) => p.type === 'tool' && p.state === 'error');
+    errorCount = effectiveParts.filter((p) => p.type === 'tool' && p.state === 'error').length;
     isPendingApproval = effectiveParts.some(
       (p) => p.type === 'tool' && p.state === 'approval-requested' && !p.output && !!p.approvalId
     );
@@ -939,7 +939,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
           isThinking={isThinking}
           isStreaming={isStreamingThis}
           currentToolName={currentToolName}
-          hasError={hasError}
+          errorCount={errorCount}
           isPendingApproval={isPendingApproval}
           icon={isAcp ? <AcpAgentIcon id={acpAgent} className="w-6 h-6 shrink-0" /> : undefined}
         />
