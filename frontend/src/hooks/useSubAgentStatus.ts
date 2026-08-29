@@ -61,15 +61,17 @@ function notify() {
   _listeners.forEach((fn) => fn());
 }
 
-function _recordState(task: SubAgentSummary) {
+/** @returns false when the update was rejected as stale. */
+function _recordState(task: SubAgentSummary): boolean {
   const previous = _taskStates[task.task_id];
   // A run does not un-finish. The stream and the poll below both write here,
   // and either can arrive late or replay an older frame; whichever source saw
   // the run end wins, so a settled task is never dragged back to 'running'.
   if (previous && isSubAgentTerminal(previous.status) && !isSubAgentTerminal(task.status)) {
-    return;
+    return false;
   }
   _taskStates = { ..._taskStates, [task.task_id]: { ...previous, ...task } };
+  return true;
 }
 
 function _upsertTask(task: SubAgentSummary) {
@@ -83,8 +85,13 @@ function _upsertTask(task: SubAgentSummary) {
 }
 
 function _applyTask(task: SubAgentSummary) {
-  _recordState(task);
-  if (isSubAgentTerminal(task.status)) {
+  const accepted = _recordState(task);
+  // Branch on what the store settled on, not on what arrived. A stale 'running'
+  // frame rejected above is still a finished run: adding it back to the active
+  // list would strand it there -- visible as live in the status bar and
+  // sidebar, yet skipped by the poll, which reads the (terminal) task state.
+  const settled = _taskStates[task.task_id]?.status ?? task.status;
+  if (!accepted || isSubAgentTerminal(settled)) {
     _activeTasks = _activeTasks.filter((a) => a.task_id !== task.task_id);
   } else {
     _upsertTask(task);

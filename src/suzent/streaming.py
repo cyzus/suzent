@@ -177,6 +177,28 @@ def _serialize_tool_output(output: Any) -> str:
     return str(output) if output else ""
 
 
+def _timed_out_agent_payload(task_id: str, timed_out_msg: str) -> str:
+    """Envelope for an `agent` call the tool timeout cancelled.
+
+    Carries a non-terminal status on purpose. Cancelling the call does not stop
+    the sub-agent, and the frontend infers 'completed' from the mere presence of
+    output when no status is given -- which would mark a run that may yet fail
+    as a success and, being terminal, exclude it from the poll that would have
+    found out. 'running' says "go and check", which is the truth here.
+    """
+    return json.dumps(
+        {
+            "success": False,
+            "message": (
+                f"{timed_out_msg} The sub-agent {task_id} it started "
+                "may still be running."
+            ),
+            "metadata": {"task_id": task_id, "status": "running"},
+        },
+        ensure_ascii=False,
+    )
+
+
 def _deferred_approval_status(result: Any) -> str:
     """Map deferred approval results without relying on object truthiness."""
     return "denied" if result is False or isinstance(result, ToolDenied) else "executed"
@@ -1200,17 +1222,8 @@ async def stream_agent_responses(
                             if _tname == "agent":
                                 _sub_task_id = _task_id_for_tool_call(_tcid)
                                 if _sub_task_id:
-                                    _msg = json.dumps(
-                                        {
-                                            "success": False,
-                                            "message": (
-                                                f"{timed_out_msg} The sub-agent "
-                                                f"{_sub_task_id} it started may "
-                                                "still be running."
-                                            ),
-                                            "metadata": {"task_id": _sub_task_id},
-                                        },
-                                        ensure_ascii=False,
+                                    _msg = _timed_out_agent_payload(
+                                        _sub_task_id, timed_out_msg
                                     )
                             # The model response must contain the ToolCallPart that
                             # each failed result answers, or the continuation is

@@ -11,7 +11,7 @@ import json
 import pytest
 
 from suzent.core import subagent_runner
-from suzent.streaming import _serialize_tool_output
+from suzent.streaming import _serialize_tool_output, _timed_out_agent_payload
 
 
 class _Unserializable:
@@ -61,3 +61,17 @@ def test_tool_call_lookup_is_bounded() -> None:
     assert len(subagent_runner._SPAWN_BY_TOOL_CALL) <= limit
     # The oldest entries are the ones dropped; the newest must still resolve.
     assert subagent_runner.task_id_for_tool_call(f"bounded-{limit + 24}") is not None
+
+
+def test_timeout_envelope_names_the_task_and_stays_non_terminal() -> None:
+    payload = json.loads(_timed_out_agent_payload("sub_abc123", "Tool timed out."))
+    assert payload["metadata"]["task_id"] == "sub_abc123"
+    # Without a status the frontend infers 'completed' from the presence of
+    # output, marking a run that may yet fail as a success -- and terminal, so
+    # nothing polls it to find out otherwise.
+    assert payload["metadata"]["status"] == "running"
+
+
+def test_timeout_envelope_is_parseable_json() -> None:
+    raw = _timed_out_agent_payload("sub_abc123", "Tool timed out.")
+    assert json.loads(raw)["success"] is False

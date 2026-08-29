@@ -70,3 +70,19 @@ describe('parseSubAgentResult', () => {
     expect(parseSubAgentResult(undefined)).toEqual({});
   });
 });
+
+describe('parseSubAgentResult — timed-out agent envelope', () => {
+  it('keeps a cancelled call non-terminal so the poll still resolves it', () => {
+    // What streaming.py synthesizes when the tool timeout cancels an `agent`
+    // call whose sub-agent is still running.
+    const output = JSON.stringify({
+      success: false,
+      message: 'Tool execution timed out … The sub-agent sub_abc123 may still be running.',
+      metadata: { task_id: 'sub_abc123', status: 'running' },
+    });
+    expect(parseSubAgentResult(output)).toMatchObject({
+      taskId: 'sub_abc123',
+      status: 'running',
+    });
+  });
+});
