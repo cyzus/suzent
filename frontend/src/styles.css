@@ -722,14 +722,22 @@ code {
 }
 
 /*
- * A thought still arriving: ink sweeping across the word itself.
+ * A thought still arriving: ink sweeping across the word, and every other
+ * cycle a hard bar redacting it outright.
  *
  * This used to be three separate tells at once — a moving striped underline,
  * three blinking squares, and the label — which read as clutter rather than as
  * one state. The word carries it alone now, so the rail gains no extra marks
  * while a thought streams.
+ *
+ * The sweep alone was too soft to register at 11px. The bar is the loud half:
+ * it wipes across in hard steps, holds over the word, and wipes off the far
+ * side, so the label is briefly *gone* rather than merely shaded. It runs at
+ * twice the sweep's period — phase-locked, so the two read as one rhythm, and
+ * rare enough that the pass punctuates the sweep instead of strobing.
  */
 .reasoning-thinking-label {
+  position: relative;
   background-image: linear-gradient(
     100deg,
     currentColor 0 40%,
@@ -747,9 +755,35 @@ code {
   animation: reasoning-thinking-sweep 1.3s linear infinite;
 }
 
+/* The redaction bar. `currentColor` is still the label's own ink: the
+   transparent fill above governs the glyphs, not the color property. */
+.reasoning-thinking-label::after {
+  content: '';
+  position: absolute;
+  inset: -0.15em -0.2em;
+  background: currentColor;
+  animation: reasoning-thinking-redact 2.6s steps(8, end) infinite;
+}
+
 @keyframes reasoning-thinking-sweep {
   to {
     background-position: -60% 0;
+  }
+}
+
+@keyframes reasoning-thinking-redact {
+  /* Off the word for most of the cycle, so the sweep is the resting state. */
+  0%,
+  42% {
+    clip-path: inset(0 100% 0 0);
+  }
+  /* Wipes on from the left, holds, then wipes off past the right edge. */
+  58%,
+  72% {
+    clip-path: inset(0 0 0 0);
+  }
+  100% {
+    clip-path: inset(0 0 0 100%);
   }
 }
 
@@ -758,6 +792,10 @@ code {
     background-image: none;
     -webkit-text-fill-color: currentColor;
     animation: none;
+  }
+
+  .reasoning-thinking-label::after {
+    content: none;
   }
 }
 
