@@ -17,12 +17,17 @@ interface ChatMinimapMarker {
 }
 
 const MIN_MARKERS_TO_SHOW = 4;
-// Ticks sit a fixed distance apart and the whole stack is centered in the
-// rail, so a short conversation stays compact instead of being flung across
-// the full height. Past MAX_RAIL_PX the interval shrinks to keep dense
-// conversations bounded.
+// Ticks always sit this far apart, whatever the conversation's length. A long
+// chat used to squeeze every tick into MAX_RAIL_PX until they merged into one
+// solid smear that could be neither read nor aimed at; past that height the
+// track slides under the rail instead of compressing, so a tick stays a tick.
 const TICK_INTERVAL_PX = 11;
 const MAX_RAIL_PX = 272;
+// Breathing room at both ends of the track: ticks are drawn centered on their
+// offset, so the first and last would otherwise be clipped by the viewport.
+const TRACK_PADDING_PX = 4;
+// How far the hover wave reaches, in track pixels.
+const HOVER_WAVE_PX = 30;
 
 interface ChatMinimapProps {
   messages: Message[];
@@ -188,10 +193,11 @@ const ChatMinimapComponent: React.FC<ChatMinimapProps> = ({
   onJumpToMessage,
 }) => {
   const { t } = useI18n();
-  const railRef = useRef<HTMLDivElement | null>(null);
-  const [scrollCenterTop, setScrollCenterTop] = useState(50);
+  const trackRef = useRef<HTMLDivElement | null>(null);
+  const [scrollCenterRatio, setScrollCenterRatio] = useState(0.5);
+  const [railOffsetPx, setRailOffsetPx] = useState(0);
   const [hoveredMarkerId, setHoveredMarkerId] = useState<string | null>(null);
-  const [hoverPercent, setHoverPercent] = useState<number | null>(null);
+  const [hoverPx, setHoverPx] = useState<number | null>(null);
 
   const labels = useMemo<MinimapLabels>(
     () => ({
@@ -207,50 +213,56 @@ const ChatMinimapComponent: React.FC<ChatMinimapProps> = ({
 
   const markers = useMemo(() => buildMarkers(messages, labels), [messages, labels]);
 
-  // The rail's pixel height grows with the marker count up to a cap, so
-  // ticks land a fixed distance apart and the centered stack stays compact
-  // when sparse. Within that height, ticks are spaced evenly by list order.
-  const railHeightPx =
-    markers.length < 2 ? 0 : Math.min(MAX_RAIL_PX, (markers.length - 1) * TICK_INTERVAL_PX);
+  // The track holds every tick at full spacing; the viewport shows as much of
+  // it as fits and scrolls for the rest.
+  const trackHeightPx =
+    markers.length < 2 ? 0 : (markers.length - 1) * TICK_INTERVAL_PX + TRACK_PADDING_PX * 2;
+  const viewportHeightPx = Math.min(MAX_RAIL_PX, trackHeightPx);
+  const isScrollable = trackHeightPx > viewportHeightPx;
 
-  const getMarkerTop = useCallback(
+  const getMarkerTopPx = useCallback(
     (marker: ChatMinimapMarker): number => {
       const order = markers.indexOf(marker);
-      if (order < 0 || markers.length === 1) return 50;
-      return (order / (markers.length - 1)) * 100;
+      if (order < 0) return TRACK_PADDING_PX;
+      return TRACK_PADDING_PX + order * TICK_INTERVAL_PX;
     },
     [markers]
   );
 
-  const getNearestMarkerAtPercent = useCallback(
-    (percent: number): ChatMinimapMarker | null => {
+  const getNearestMarkerAtPx = useCallback(
+    (px: number): ChatMinimapMarker | null => {
       if (markers.length === 0) return null;
       return markers.reduce((nearest, marker) => {
-        const nearestDistance = Math.abs(getMarkerTop(nearest) - percent);
-        const markerDistance = Math.abs(getMarkerTop(marker) - percent);
+        const nearestDistance = Math.abs(getMarkerTopPx(nearest) - px);
+        const markerDistance = Math.abs(getMarkerTopPx(marker) - px);
         return markerDistance < nearestDistance ? marker : nearest;
       }, markers[0]);
     },
-    [getMarkerTop, markers]
+    [getMarkerTopPx, markers]
   );
 
   const hoveredMarker =
     hoveredMarkerId == null
       ? null
       : (markers.find((marker) => marker.id === hoveredMarkerId) ?? null);
-  // Aligned to the hovered tick within the (short, centered) rail; the
-  // card is translateY(-50%) centered on it and the container doesn't clip.
-  const previewTop = hoveredMarker ? getMarkerTop(hoveredMarker) : 50;
+  // The preview sits outside the clipped viewport, so it is placed in viewport
+  // coordinates: the tick's offset in the track less how far the track has
+  // been slid up.
+  const previewTop = hoveredMarker
+    ? getMarkerTopPx(hoveredMarker) - railOffsetPx
+    : viewportHeightPx / 2;
+  const scrollCenterPx =
+    TRACK_PADDING_PX + scrollCenterRatio * Math.max(0, trackHeightPx - TRACK_PADDING_PX * 2);
 
   const updateMetrics = useCallback(() => {
     const el = scrollContainerRef.current;
     if (!el || el.scrollHeight <= el.clientHeight) {
-      setScrollCenterTop(50);
+      setScrollCenterRatio(0.5);
       return;
     }
 
-    setScrollCenterTop(
-      Math.max(0, Math.min(100, ((el.scrollTop + el.clientHeight / 2) / el.scrollHeight) * 100))
+    setScrollCenterRatio(
+      Math.max(0, Math.min(1, (el.scrollTop + el.clientHeight / 2) / el.scrollHeight))
     );
   }, [scrollContainerRef]);
 
@@ -283,13 +295,34 @@ const ChatMinimapComponent: React.FC<ChatMinimapProps> = ({
     };
   }, [markers.length, scrollContainerRef, updateMetrics]);
 
+  // Keep the stretch of conversation being read inside the rail's window. The
+  // track is *slid* rather than scrolled: no scrollbar to put next to a rail
+  // this thin, and the move is a transition, so a long chat's ticks glide into
+  // place with the same motion the rail has when it fits on screen.
+  // Suspended while the pointer is over the rail: pulling ticks out from under
+  // the cursor mid-aim would make the rail impossible to use.
+  useEffect(() => {
+    if (!isScrollable) {
+      setRailOffsetPx(0);
+      return;
+    }
+    if (hoverPx !== null) return;
+    const target = Math.max(
+      0,
+      Math.min(trackHeightPx - viewportHeightPx, scrollCenterPx - viewportHeightPx / 2)
+    );
+    setRailOffsetPx((previous) => (Math.abs(previous - target) < 1 ? previous : target));
+  }, [hoverPx, isScrollable, scrollCenterPx, trackHeightPx, viewportHeightPx]);
+
   const scrollFromRailPointer = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
-      const rail = railRef.current;
+      const track = trackRef.current;
       const el = scrollContainerRef.current;
-      if (!rail || !el || el.scrollHeight <= el.clientHeight) return;
+      if (!track || !el || el.scrollHeight <= el.clientHeight) return;
 
-      const rect = rail.getBoundingClientRect();
+      // Measured against the track rather than the viewport, so a click means
+      // the same place in the conversation however the rail is scrolled.
+      const rect = track.getBoundingClientRect();
       const ratio = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
       el.scrollTo({ top: ratio * (el.scrollHeight - el.clientHeight), behavior: 'smooth' });
     },
@@ -298,16 +331,21 @@ const ChatMinimapComponent: React.FC<ChatMinimapProps> = ({
 
   const updateHoverFromPointer = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
-      const rail = railRef.current;
-      if (!rail) return;
+      const track = trackRef.current;
+      if (!track) return;
 
-      const rect = rail.getBoundingClientRect();
-      const percent = Math.max(0, Math.min(100, ((event.clientY - rect.top) / rect.height) * 100));
-      setHoverPercent(percent);
-      setHoveredMarkerId(getNearestMarkerAtPercent(percent)?.id ?? null);
+      const rect = track.getBoundingClientRect();
+      const px = Math.max(0, Math.min(rect.height, event.clientY - rect.top));
+      setHoverPx(px);
+      setHoveredMarkerId(getNearestMarkerAtPx(px)?.id ?? null);
     },
-    [getNearestMarkerAtPercent]
+    [getNearestMarkerAtPx]
   );
+
+  const clearHover = useCallback(() => {
+    setHoveredMarkerId(null);
+    setHoverPx(null);
+  }, []);
 
   // Below this, the conversation fits on screen and a near-empty rail
   // just looks sparse — skip the minimap entirely until it earns its place.
@@ -319,25 +357,14 @@ const ChatMinimapComponent: React.FC<ChatMinimapProps> = ({
     <div
       className="chat-minimap absolute right-3 top-1/2 z-20 hidden -translate-y-1/2 md:block pointer-events-none"
       aria-label={t('chatWindow.minimapLabel')}
-      onMouseLeave={() => {
-        setHoveredMarkerId(null);
-        setHoverPercent(null);
-      }}
+      onMouseLeave={clearHover}
     >
-      <div
-        ref={railRef}
-        className="chat-minimap-rail pointer-events-auto"
-        style={{ height: `${railHeightPx}px` }}
-        onPointerDown={scrollFromRailPointer}
-        onPointerMove={updateHoverFromPointer}
-        onPointerEnter={updateHoverFromPointer}
-        title={t('chatWindow.minimapLabel')}
-      >
+      <div className="chat-minimap-rail" style={{ height: `${viewportHeightPx}px` }}>
         {hoveredMarker && (
           <InformationPopover
             className="chat-minimap-preview pointer-events-none"
             style={{
-              top: `${previewTop}%`,
+              top: `${previewTop}px`,
             }}
           >
             <div className="min-w-0">
@@ -362,43 +389,61 @@ const ChatMinimapComponent: React.FC<ChatMinimapProps> = ({
           </InformationPopover>
         )}
 
-        {markers.map((marker) => {
-          const top = getMarkerTop(marker);
-          const hoverDistance = hoverPercent == null ? null : Math.abs(top - hoverPercent);
-          const influence = hoverDistance == null ? 0 : Math.max(0, 1 - hoverDistance / 12);
-          const isHovered = hoveredMarker?.id === marker.id;
-          const isNearScrollCenter = hoverPercent == null && Math.abs(top - scrollCenterTop) < 3;
-          return (
-            <button
-              key={marker.id}
-              type="button"
-              className={`chat-minimap-marker ${markerToneClass[marker.tone]}${isHovered ? ' chat-minimap-marker-hovered' : ''}${isNearScrollCenter ? ' chat-minimap-marker-current' : ''}`}
-              style={{
-                top: `${top}%`,
-                ['--minimap-wave' as string]: influence.toFixed(3),
-              }}
-              onPointerDown={(event) => event.stopPropagation()}
-              onMouseEnter={() => {
-                setHoveredMarkerId(marker.id);
-                setHoverPercent(top);
-              }}
-              onFocus={() => {
-                setHoveredMarkerId(marker.id);
-                setHoverPercent(top);
-              }}
-              onBlur={() => {
-                setHoveredMarkerId(null);
-                setHoverPercent(null);
-              }}
-              onClick={(event) => {
-                event.stopPropagation();
-                onJumpToMessage(marker.targetIndex);
-              }}
-              title={t('chatWindow.jumpToMessage', { count: marker.targetIndex + 1 })}
-              aria-label={t('chatWindow.jumpToMessage', { count: marker.targetIndex + 1 })}
-            />
-          );
-        })}
+        <div
+          className={`chat-minimap-viewport pointer-events-auto${
+            isScrollable ? ' chat-minimap-viewport-clipped' : ''
+          }`}
+          onPointerDown={scrollFromRailPointer}
+          onPointerMove={updateHoverFromPointer}
+          onPointerEnter={updateHoverFromPointer}
+          title={t('chatWindow.minimapLabel')}
+        >
+          <div
+            ref={trackRef}
+            className="chat-minimap-track"
+            style={{
+              height: `${trackHeightPx}px`,
+              transform: `translateY(${-railOffsetPx}px)`,
+            }}
+          >
+            {markers.map((marker) => {
+              const top = getMarkerTopPx(marker);
+              const hoverDistance = hoverPx == null ? null : Math.abs(top - hoverPx);
+              const influence =
+                hoverDistance == null ? 0 : Math.max(0, 1 - hoverDistance / HOVER_WAVE_PX);
+              const isHovered = hoveredMarker?.id === marker.id;
+              const isNearScrollCenter =
+                hoverPx == null && Math.abs(top - scrollCenterPx) < TICK_INTERVAL_PX / 2;
+              return (
+                <button
+                  key={marker.id}
+                  type="button"
+                  className={`chat-minimap-marker ${markerToneClass[marker.tone]}${isHovered ? ' chat-minimap-marker-hovered' : ''}${isNearScrollCenter ? ' chat-minimap-marker-current' : ''}`}
+                  style={{
+                    top: `${top}px`,
+                    ['--minimap-wave' as string]: influence.toFixed(3),
+                  }}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onMouseEnter={() => {
+                    setHoveredMarkerId(marker.id);
+                    setHoverPx(top);
+                  }}
+                  onFocus={() => {
+                    setHoveredMarkerId(marker.id);
+                    setHoverPx(top);
+                  }}
+                  onBlur={clearHover}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onJumpToMessage(marker.targetIndex);
+                  }}
+                  title={t('chatWindow.jumpToMessage', { count: marker.targetIndex + 1 })}
+                  aria-label={t('chatWindow.jumpToMessage', { count: marker.targetIndex + 1 })}
+                />
+              );
+            })}
+          </div>
+        </div>
       </div>
     </div>
   );

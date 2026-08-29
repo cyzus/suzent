@@ -24,20 +24,61 @@
   }
 
   .chat-minimap {
-    width: 2rem;
+    /* Wide enough for the longest tick at full hover extension (1.2rem base +
+       0.75rem wave), so clipping the track vertically never cuts a tick's
+       hover growth off horizontally. */
+    width: 2.5rem;
     height: min(18rem, calc(100% - 4rem));
   }
 
   /* Rail height is set inline from the marker count and the rail is
      centered in the container, so a sparse stack stays compact and
-     vertically centered rather than stretched edge to edge. */
+     vertically centered rather than stretched edge to edge. The rail is the
+     positioning frame; the viewport inside it is the window, and the
+     hover preview stays out of it so the viewport's clip does not cut the
+     card off. */
   .chat-minimap-rail {
     position: absolute;
     top: 50%;
     right: 0.25rem;
     transform: translateY(-50%);
-    width: 1.6rem;
+    width: 2rem;
+  }
+
+  .chat-minimap-viewport {
+    position: relative;
+    height: 100%;
+    width: 100%;
     cursor: pointer;
+  }
+
+  /* Once the ticks outgrow the rail the viewport becomes a window onto a
+     longer track: the track slides under it, with no scrollbar — a rail this
+     thin has nowhere to put one, and it would sit right where the ticks are.
+     The edges fade instead, which says "there is more" without any chrome. */
+  .chat-minimap-viewport-clipped {
+    overflow: hidden;
+    mask-image: linear-gradient(
+      to bottom,
+      transparent 0,
+      #000 0.75rem,
+      #000 calc(100% - 0.75rem),
+      transparent 100%
+    );
+  }
+
+  .chat-minimap-track {
+    position: relative;
+    width: 100%;
+    /* Slid, not scrolled. Same easing as the ticks' hover wave so the rail
+       reads as one animated object however long the conversation gets. */
+    transition: transform 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .chat-minimap-track {
+      transition: none;
+    }
   }
 
   /* Codex-style tick rail: each marker is a thin monochrome tick whose
@@ -678,6 +719,129 @@ code {
 .dark .activity-rail-card-active {
   background: transparent;
   box-shadow: none;
+}
+
+/*
+ * A thought still arriving: ink sweeping across the word, with a hard bar
+ * riding the sweep.
+ *
+ * This used to be three separate tells at once — a moving striped underline,
+ * three blinking squares, and the label — which read as clutter rather than as
+ * one state. The word carries it alone now, so the rail gains no extra marks
+ * while a thought streams.
+ *
+ * The sweep alone was too soft to register at 11px, so a hard-edged bar of ink
+ * travels with it. The bar covers about a third of the word at a time and
+ * moves in visible steps, never blanketing the label: what the sweep says in
+ * shading, the bar says by blacking out the letters it is passing. Same
+ * direction and same period as the sweep, so the two are one gesture rather
+ * than two animations sharing a word.
+ */
+.reasoning-thinking-label {
+  position: relative;
+  /*
+   * The pale notch of the sweep. It only ever shows in the back half of the
+   * cycle; for the front half it is parked off the right edge, so the word is
+   * solid ink while the bar crosses it.
+   *
+   * With the image four times the box wide, the notch's centre sits at
+   * (2 - 3p) of the box for a background-position of p. The soft shoulders
+   * reach 0.4 of the box either side of that centre, so p = 20% holds the
+   * whole notch clear of the right edge and p = 80% holds it clear of the
+   * left — which is where the two parked positions come from.
+   */
+  background-image: linear-gradient(
+    90deg,
+    currentColor 0 40%,
+    color-mix(in srgb, currentColor 15%, transparent) 47% 53%,
+    currentColor 60% 100%
+  );
+  background-size: 400% 100%;
+  background-position: 20% 0;
+  background-clip: text;
+  -webkit-background-clip: text;
+  /* Not `color`, which the label's own utility class owns — and which the
+     gradient reads through currentColor. */
+  -webkit-text-fill-color: transparent;
+  animation: reasoning-thinking-sweep 1.8s linear infinite;
+}
+
+/*
+ * The redaction bar. `currentColor` is still the label's own ink: the
+ * transparent fill above governs the glyphs, not the color property. Bar and
+ * glyphs are therefore the same ink, so the word is not covered so much as
+ * swallowed for as long as the bar is over it.
+ *
+ * It wipes on across the whole word rather than travelling over it as a narrow
+ * window: a window leaves most of the label legible at all times, which is a
+ * decoration passing over a word. Blanketing it is a state — for that beat
+ * there is no label at all.
+ *
+ * Clipped to the label so it never hangs off either end, and inset
+ * horizontally by zero on purpose: any inset would widen it past the word it
+ * is meant to eat.
+ */
+.reasoning-thinking-label::after {
+  content: '';
+  position: absolute;
+  inset: -0.15em 0;
+  background: currentColor;
+  animation: reasoning-thinking-redact 1.8s infinite;
+}
+
+/*
+ * The two halves take turns rather than running at once. Together they read as
+ * clutter — a bar and a travelling gap competing for the same word — but in
+ * sequence each gets a clear beat: the bar eats the word, then the sweep runs
+ * back over what it gave back.
+ */
+@keyframes reasoning-thinking-sweep {
+  /* Parked off the right edge while the bar has the word. The step is what
+     returns it to the left edge: interpolating would drag the notch back
+     across the word, which is the sweep running backwards. */
+  0% {
+    background-position: 20% 0;
+    animation-timing-function: steps(1, end);
+  }
+  60% {
+    background-position: 80% 0;
+    animation-timing-function: linear;
+  }
+  100% {
+    background-position: 20% 0;
+  }
+}
+
+@keyframes reasoning-thinking-redact {
+  /* Wipes on from the left until the word is entirely gone, holds it gone,
+     then wipes off the same way, and stays away for the back half of the
+     cycle while the sweep runs. Both wipes are stepped; the hold is what
+     makes it land, so it is not stepped at all. */
+  0% {
+    clip-path: inset(0 100% 0 0);
+    animation-timing-function: steps(6, end);
+  }
+  24%,
+  36% {
+    clip-path: inset(0 0 0 0);
+    animation-timing-function: steps(6, end);
+  }
+  56%,
+  100% {
+    clip-path: inset(0 0 0 100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reasoning-thinking-label {
+    background-image: none;
+    -webkit-text-fill-color: currentColor;
+    animation: none;
+  }
+
+  .reasoning-thinking-label::after {
+    content: none;
+  }
 }
 
 .activity-rail-card-error {

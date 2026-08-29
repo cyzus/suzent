@@ -18,6 +18,11 @@ import { getApiBase } from '../lib/api';
 // ─── Module-level shared state ────────────────────────────────────────────────
 
 let _activeStreams: Set<string> = new Set();
+// True once the server's snapshot has landed. Until then `_activeStreams` is
+// empty because nothing has been reported yet, which is not the same as
+// "nothing is running" — callers that render live state need to tell those
+// apart so a running badge doesn't blink off while the SSE connects.
+let _snapshotReceived = false;
 const _listeners: Set<() => void> = new Set();
 let _es: EventSource | null = null;
 
@@ -47,6 +52,7 @@ function _handleMessage(evt: MessageEvent) {
     _busPayloadHandlers.forEach((fn) => fn(msg));
     if (msg.event === 'snapshot') {
       _activeStreams = new Set(msg.streams ?? []);
+      _snapshotReceived = true;
       notify();
       _activeStreams.forEach((chatId) => {
         _streamEventListeners.get(chatId)?.forEach((cb) => cb.onStart?.());
@@ -107,11 +113,17 @@ function subscribe(fn: () => void): () => void {
     if (!_hasSubscribers()) {
       _closeEventSource();
       _activeStreams = new Set();
+      _snapshotReceived = false;
     }
   };
 }
 
 // ─── Standalone helpers (usable outside React) ────────────────────────────────
+
+/** True once the bus has reported which streams are active. */
+export function isBusSnapshotReady(): boolean {
+  return _snapshotReceived;
+}
 
 /** Returns true if a background stream for this chat is currently active. */
 export function isBusStreaming(chatId: string): boolean {
@@ -188,5 +200,6 @@ export function useEventBus() {
   return {
     isStreaming: isBusStreaming,
     activeStreams: _activeStreams,
+    snapshotReady: _snapshotReceived,
   };
 }

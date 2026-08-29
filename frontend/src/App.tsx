@@ -11,6 +11,7 @@ import { ChatWindow } from './components/ChatWindow';
 import { BackendLoadingScreen } from './components/BackendLoadingScreen';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { RobotAvatar } from './components/chat/RobotAvatar';
+import { SidebarToggleIcon } from './components/SidebarToggleIcon';
 import { SuzentLogo } from './components/SuzentLogo';
 import { RobotShowcase } from './components/chat/RobotShowcase';
 import { MemoryView } from './components/memory/MemoryView';
@@ -634,17 +635,11 @@ function AppInner(): React.ReactElement {
                     <SuzentLogo className="h-7 w-7" interactive />
                   </div>
                   <div className="hidden h-full w-full items-center justify-center group-hover:flex">
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
+                    <SidebarToggleIcon
+                      side="left"
+                      open={false}
                       className="h-6 w-6 text-brutal-black dark:text-white"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth={2}
-                    >
-                      <rect x="4" y="4" width="16" height="16" rx="2" />
-                      <line x1="9" y1="4" x2="9" y2="20" />
-                    </svg>
+                    />
                   </div>
                 </div>
               )}
@@ -723,17 +718,7 @@ function AppInner(): React.ReactElement {
                   aria-label={isRightSidebarOpen ? t('sidebar.close') : t('sidebar.open')}
                   title={isRightSidebarOpen ? t('sidebar.close') : t('sidebar.open')}
                 >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="h-6 w-6"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={2}
-                  >
-                    <rect x="4" y="4" width="16" height="16" rx="2" />
-                    <line x1="15" y1="4" x2="15" y2="20" />
-                  </svg>
+                  <SidebarToggleIcon side="right" open={isRightSidebarOpen} />
                 </button>
               ) : (
                 <div className="h-10 w-10" aria-hidden="true" />

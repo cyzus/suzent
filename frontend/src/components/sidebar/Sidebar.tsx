@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { useI18n } from '../../i18n';
 import { detectDesktopPlatform } from '../../lib/titleBarPlatform';
 import { SuzentLogo } from '../SuzentLogo';
+import { SidebarToggleIcon } from '../SidebarToggleIcon';
 
 interface SidebarProps {
   chatsContent: React.ReactNode;
@@ -50,7 +51,7 @@ export function Sidebar({
         className={`
         fixed lg:relative z-50 h-full shrink-0
         w-80 border-r-3 border-brutal-black flex flex-col bg-neutral-50 dark:bg-zinc-900
-        transform-gpu will-change-transform transition-transform duration-300 ease-in-out
+        transform-gpu will-change-transform transition-[transform,margin-left] duration-300 ease-in-out
         ${isOpen ? 'translate-x-0 lg:ml-0' : '-translate-x-full lg:translate-x-0 lg:-ml-80'}
       `}
       >
@@ -67,17 +68,7 @@ export function Sidebar({
             aria-label={t('sidebar.close')}
             title={t('sidebar.close')}
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-6 w-6"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
-            >
-              <rect x="4" y="4" width="16" height="16" rx="2" />
-              <line x1="9" y1="4" x2="9" y2="20" />
-            </svg>
+            <SidebarToggleIcon side="left" open />
           </button>
 
           {/* Vertical Separator */}
