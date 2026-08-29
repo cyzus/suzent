@@ -5,7 +5,7 @@ import { MarkdownRenderer } from './MarkdownRenderer';
 import { getRepeatedToolLabel, getToolSummary, normalizeToolName } from './toolSummary';
 import type { ToolTense } from './toolSummary';
 import { useTypewriter } from '../../hooks/useTypewriter';
-import { tForLocale } from '../../i18n';
+import { tForLocale, useI18n } from '../../i18n';
 
 export type ActivityRenderGroup<T> =
   | { type: 'activity'; chunks: Array<{ chunk: T; index: number }> }
@@ -442,6 +442,7 @@ const ReasoningRailItemComponent: React.FC<{
   isStreaming?: boolean;
   onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
 }> = ({ text, isStreaming, onFileClick }) => {
+  const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
   // Reasoning arrives in the same uneven bursts as the answer; reveal it at a
   // steady rate so an expanded thought reads as flowing text.
@@ -466,7 +467,7 @@ const ReasoningRailItemComponent: React.FC<{
                 : 'text-neutral-500 dark:text-neutral-400'
             }`}
           >
-            {thinking ? 'Thinking' : 'Thought'}
+            {thinking ? t('activityRail.thinking') : t('activityRail.thought')}
           </span>
           {thinking && (
             <span className="reasoning-thinking-pulse shrink-0" aria-hidden="true">

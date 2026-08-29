@@ -1491,6 +1491,10 @@ export const en = {
     feedbackPlaceholder: 'No, and tell Suzent what to do differently',
     submit: 'Submit',
   },
+  activityRail: {
+    thinking: 'Thinking',
+    thought: 'Thought',
+  },
   codeStepBlock: {
     thought: 'Thought',
     code: 'Code',
