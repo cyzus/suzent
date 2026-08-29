@@ -35,6 +35,48 @@ interface SubAgentCallBlockProps {
   onStop?: (taskId: string) => void;
 }
 
+export interface SubAgentArgs {
+  description?: string;
+  toolsAllowed?: string[];
+}
+
+const EMPTY_SUB_AGENT_ARGS: SubAgentArgs = {};
+/**
+ * Parsed `agent` call arguments, cached by the raw JSON string.
+ *
+ * The transcript re-renders on every streamed token, so parsing the args inline
+ * meant re-parsing every delegated task's prompt for each character of the
+ * answer — and handing the card a new object and a new array each time, which
+ * defeated its memo. Keyed by the exact args string, so a call whose args are
+ * still arriving simply gets a fresh entry.
+ */
+const subAgentArgsCache = new Map<string, SubAgentArgs>();
+/** Bounded so a very long session cannot grow the cache without limit. */
+const SUB_AGENT_ARGS_CACHE_MAX = 512;
+
+export function parseSubAgentArgs(args: string | undefined): SubAgentArgs {
+  if (!args) return EMPTY_SUB_AGENT_ARGS;
+  const cached = subAgentArgsCache.get(args);
+  if (cached) return cached;
+  let parsed: SubAgentArgs = EMPTY_SUB_AGENT_ARGS;
+  try {
+    const candidate: unknown = JSON.parse(args);
+    if (candidate && typeof candidate === 'object' && !Array.isArray(candidate)) {
+      const record = candidate as Record<string, unknown>;
+      const toolsAllowed = record.tools_allowed;
+      parsed = {
+        description: typeof record.description === 'string' ? record.description : undefined,
+        toolsAllowed: Array.isArray(toolsAllowed) ? (toolsAllowed as string[]) : undefined,
+      };
+    }
+  } catch {
+    parsed = EMPTY_SUB_AGENT_ARGS;
+  }
+  if (subAgentArgsCache.size >= SUB_AGENT_ARGS_CACHE_MAX) subAgentArgsCache.clear();
+  subAgentArgsCache.set(args, parsed);
+  return parsed;
+}
+
 /** Long enough to carry a real task, short enough to stay a headline. */
 const HEADLINE_MAX = 72;
 
@@ -44,7 +86,7 @@ function headline(description: string | undefined, fallback: string): string {
   return compact.length <= HEADLINE_MAX ? compact : `${compact.slice(0, HEADLINE_MAX - 1)}…`;
 }
 
-export const SubAgentCallBlock: React.FC<SubAgentCallBlockProps> = ({
+const SubAgentCallBlockComponent: React.FC<SubAgentCallBlockProps> = ({
   taskId,
   description,
   toolsAllowed,
@@ -288,3 +330,11 @@ export const SubAgentCallBlock: React.FC<SubAgentCallBlockProps> = ({
     </div>
   );
 };
+
+/**
+ * Memoized: a delegated task's card is unchanged by the answer text arriving
+ * around it, and re-rendering every card on every token is what made a long
+ * turn's display crawl. Its own live state comes from the sub-agent status
+ * context and its poll, neither of which the memo blocks.
+ */
+export const SubAgentCallBlock = React.memo(SubAgentCallBlockComponent);

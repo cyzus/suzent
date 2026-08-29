@@ -7,7 +7,7 @@ import { A2UIRenderer } from '../a2ui/A2UIRenderer';
 import { CodeBlockComponent } from './CodeBlockComponent';
 import { LogBlock } from './LogBlock';
 import { MarkdownRenderer } from './MarkdownRenderer';
-import { SubAgentCallBlock, type SubAgentStatus } from './SubAgentCallBlock';
+import { parseSubAgentArgs, SubAgentCallBlock, type SubAgentStatus } from './SubAgentCallBlock';
 import { ToolCallBlock } from './ToolCallBlock';
 import { ToolGroupIcon } from './toolGroupIcon';
 import type {
@@ -75,11 +75,7 @@ export const ToolSequenceGroup: React.FC<{
               permissionDecision={t.permissionDecision}
               permissionResolution={t.permissionResolution}
               isAutoApproved={isAutoApproved}
-              onRemovePolicy={
-                isAutoApproved && onRemoveApprovalPolicy
-                  ? () => onRemoveApprovalPolicy(t.toolName)
-                  : undefined
-              }
+              onRemovePolicy={onRemoveApprovalPolicy}
               onForceWebContext={onForceWebContext}
               toolCallId={t.toolCallId}
             />
@@ -168,11 +164,7 @@ export const ToolSequenceGroup: React.FC<{
                 permissionDecision={t.permissionDecision}
                 permissionResolution={t.permissionResolution}
                 isAutoApproved={isAutoApproved}
-                onRemovePolicy={
-                  isAutoApproved && onRemoveApprovalPolicy
-                    ? () => onRemoveApprovalPolicy(t.toolName)
-                    : undefined
-                }
+                onRemovePolicy={onRemoveApprovalPolicy}
                 onForceWebContext={onForceWebContext}
                 toolCallId={t.toolCallId}
               />
@@ -395,22 +387,14 @@ export const StaticContent: React.FC<{
           if (b.toolName === 'agent') {
             const taskId = parseSubAgentTaskId(b.content || undefined);
             const taskState = taskId ? subAgentTasks?.[taskId] : undefined;
-            const args = b.toolArgs
-              ? (() => {
-                  try {
-                    return JSON.parse(b.toolArgs!);
-                  } catch {
-                    return {};
-                  }
-                })()
-              : {};
+            const args = parseSubAgentArgs(b.toolArgs);
             const defaultStatus = b.content ? 'completed' : 'running';
             return (
               <SubAgentCallBlock
                 key={blockKey}
                 taskId={taskId}
                 description={args.description}
-                toolsAllowed={args.tools_allowed}
+                toolsAllowed={args.toolsAllowed}
                 status={taskState?.status ?? defaultStatus}
                 resultSummary={taskState?.resultSummary}
                 error={taskState?.error}
@@ -443,11 +427,7 @@ export const StaticContent: React.FC<{
               }
               defaultCollapsed={!isPending}
               isAutoApproved={isAutoApproved}
-              onRemovePolicy={
-                isAutoApproved && onRemoveApprovalPolicy && b.toolName
-                  ? () => onRemoveApprovalPolicy(b.toolName!)
-                  : undefined
-              }
+              onRemovePolicy={onRemoveApprovalPolicy}
               onForceWebContext={onForceWebContext}
               toolCallId={b.toolCallId}
               inActivityRail={inActivityRail}

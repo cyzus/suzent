@@ -148,7 +148,14 @@ interface ToolCallBlockProps {
   permissionDecision?: ToolPermissionDecision;
   permissionResolution?: ToolPermissionResolution;
   isAutoApproved?: boolean;
-  onRemovePolicy?: () => void;
+  /**
+   * Takes the tool name rather than closing over it, so callers can hand it
+   * their own stable handler. A per-row arrow function here would give this
+   * memoized block a new prop on every parent render, and the parent renders
+   * on every streamed token — every auto-approved tool call in the turn would
+   * re-render for each character of the answer.
+   */
+  onRemovePolicy?: (toolName: string) => void;
   toolCallId?: string;
   onForceWebContext?: (contextId: string) => void;
   inActivityRail?: boolean;
@@ -601,7 +608,7 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
           <button
             onClick={(e) => {
               e.stopPropagation();
-              onRemovePolicy?.();
+              onRemovePolicy?.(toolName);
             }}
             className="flex items-center gap-1 px-1.5 py-0.5 bg-blue-50 border border-blue-600 rounded-sm hover:bg-blue-100 transition-colors shrink-0"
             title="This tool is auto-approved. Click to remove."
