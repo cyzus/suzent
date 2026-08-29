@@ -39,6 +39,7 @@ import {
   SystemTriggeredMessage,
   NoticeMessage,
 } from './chat';
+import { planSendFailureRecovery } from './chat/sendRecovery';
 import { useI18n } from '../i18n';
 import { useHeartbeatRunning } from '../hooks/useHeartbeatRunning';
 import { SubAgentView } from './sidebar/SubAgentView';
@@ -1262,6 +1263,57 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     [currentChatId, getStreamingParts, setStatusBar]
   );
 
+  // Recover from a rejected send/steer/retry/edit POST.
+  //
+  // A 409 means the previous turn is still producing output server-side. The
+  // caller has already torn down its optimistic state (parts cleared, streaming
+  // flag set, sometimes a user bubble appended or history truncated), so going
+  // idle here would leave the UI blank while the backend keeps streaming into a
+  // queue nobody reads — the response only reappeared after a manual refresh.
+  // Instead we re-seed the cleared parts, resync the history from the database,
+  // and re-attach to /chat/live so the turn finishes rendering in place.
+  const recoverFromSendFailure = useCallback(
+    (
+      chatId: string,
+      status: number,
+      label: string,
+      opts?: { seedParts?: AGUIPart[]; restoreInput?: string }
+    ): boolean => {
+      const plan = planSendFailureRecovery(status, label);
+      setStatusBar(plan.message, plan.tone, 4000);
+
+      if (!plan.reattach) {
+        setIsStreaming(false, chatId);
+        return false;
+      }
+
+      if (opts?.seedParts?.length) {
+        abandonedPartsRef.current.set(chatId, opts.seedParts);
+      }
+      setIsStreaming(true, chatId);
+      // The backend never accepted this turn, so anything the caller appended or
+      // truncated locally is fiction. Let the database overwrite it.
+      markChatRollbackExpected(chatId);
+
+      if (activeChatIdRef.current !== chatId) {
+        // The user moved on. loadChat() would drag them back and tryConnectRef
+        // now belongs to a different chat, so defer both to the reload-on-return
+        // path instead of attaching to the wrong stream.
+        abandonedStreamChatsRef.current.add(chatId);
+        return true;
+      }
+
+      const pendingInput = opts?.restoreInput;
+      if (plan.restoreInput && pendingInput) {
+        setInput((current) => (current.trim() ? current : pendingInput));
+      }
+      loadChat(chatId, { force: true }).catch(() => {});
+      tryConnectRef.current?.();
+      return true;
+    },
+    [loadChat, markChatRollbackExpected, setIsStreaming, setStatusBar]
+  );
+
   const { handleToolApproval } = useToolApproval({
     currentChatId,
     activeStreamingChatId,
@@ -2057,6 +2109,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       // Abort the current live connection silently, then start steer via the
       // background queue (/chat/steer-send → 202 → /chat/live) so it is
       // reconnectable after a page refresh.
+      const steerSeedParts = getStreamingParts();
       stopAGUIStreamSilently();
       clearParts();
       // Clear after abort so tryConnect isn't blocked when stream_started arrives.
@@ -2071,10 +2124,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       })
         .then((resp) => {
           if (!resp.ok) {
-            const msg =
-              resp.status === 409 ? 'Steer failed — chat is busy' : `Steer failed (${resp.status})`;
-            setStatusBar(msg, 'error', 4000);
-            setIsStreaming(false, steerChatId);
+            recoverFromSendFailure(steerChatId, resp.status, 'Steer', {
+              seedParts: steerSeedParts,
+              restoreInput: prompt,
+            });
             return;
           }
           tryConnectRef.current?.();
@@ -2157,7 +2210,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       chatIdForSend
     );
 
-    // Show loading indicator immediately before the network round-trip.
+    // Show loading indicator immediately before the network round-trip. Snapshot
+    // first: a 409 means a turn is still streaming and these parts have to go back.
+    const sendSeedParts = getStreamingParts();
     clearParts();
     streamStartByChatRef.current.set(chatIdForSend, Date.now());
     setIsStreaming(true, chatIdForSend);
@@ -2188,11 +2243,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     })
       .then((resp) => {
         if (!resp.ok) {
-          const msg =
-            resp.status === 409 ? 'Chat is already responding' : `Send failed (${resp.status})`;
-          setStatusBar(msg, 'error', 4000);
-          setIsStreaming(false, chatIdForSend);
-          clearPartsIfStillViewingSendChat();
+          const reattached = recoverFromSendFailure(chatIdForSend, resp.status, 'Send', {
+            seedParts: sendSeedParts,
+            // Only hand the text back when it travelled alone. Re-populating the
+            // composer without its attachments would offer a different message
+            // than the one that was rejected.
+            restoreInput: filesToSend.length === 0 ? prompt : undefined,
+          });
+          if (!reattached) clearPartsIfStillViewingSendChat();
           return;
         }
         // 202: stream registered — connect to /chat/live immediately.
@@ -2264,10 +2322,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     })
       .then((resp) => {
         if (!resp.ok) {
-          const msg =
-            resp.status === 409 ? 'Chat is already responding' : `Retry failed (${resp.status})`;
-          setStatusBar(msg, 'error', 4000);
-          setIsStreaming(false, chatIdForRetry);
+          recoverFromSendFailure(chatIdForRetry, resp.status, 'Retry');
           return;
         }
         tryConnectRef.current?.();
@@ -2288,7 +2343,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     setIsStreaming,
     clearParts,
     safeConfig,
-    setStatusBar,
+    recoverFromSendFailure,
   ]);
 
   // Edit handler — re-sends the last user message with new text, dropping that
@@ -2350,10 +2405,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       })
         .then((resp) => {
           if (!resp.ok) {
-            const msg =
-              resp.status === 409 ? 'Chat is already responding' : `Edit failed (${resp.status})`;
-            setStatusBar(msg, 'error', 4000);
-            setIsStreaming(false, chatIdForEdit);
+            recoverFromSendFailure(chatIdForEdit, resp.status, 'Edit', { restoreInput: prompt });
             return;
           }
           tryConnectRef.current?.();
@@ -2376,7 +2428,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       setIsStreaming,
       clearParts,
       safeConfig,
-      setStatusBar,
+      recoverFromSendFailure,
     ]
   );
 
