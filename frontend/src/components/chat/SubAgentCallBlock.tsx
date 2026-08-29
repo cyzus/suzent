@@ -6,12 +6,10 @@
  * right. Live state comes off the shared sub-agent EventSource, with a poll as
  * a fallback for when the parent stream ended before the child did.
  */
-import React, { useState, useEffect, useRef } from 'react';
-import { getApiBase } from '../../lib/api';
+import React, { useState, useEffect } from 'react';
 import { useI18n } from '../../i18n';
-import { useSubAgentStatus } from '../../hooks/useSubAgentStatus';
+import { useSubAgentStatus, watchSubAgentTask } from '../../hooks/useSubAgentStatus';
 import {
-  isStreamStateStale,
   isSubAgentActive,
   isSubAgentTerminal,
   subAgentOutcomeLabel,
@@ -98,71 +96,24 @@ const SubAgentCallBlockComponent: React.FC<SubAgentCallBlockProps> = ({
 }) => {
   const { t } = useI18n();
   const { taskStates } = useSubAgentStatus();
-  // Self-poll to get real status when the parent SSE stream may have ended before completion
-  const [polledStatus, setPolledStatus] = useState<SubAgentStatus | null>(null);
-  const [polledResultSummary, setPolledResultSummary] = useState<string | undefined>(undefined);
-  const [polledError, setPolledError] = useState<string | undefined>(undefined);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // Use a ref so the poll callback always sees the latest resolved status without
-  // being captured in a stale closure — avoids polling when already done.
-  const resolvedStatusRef = useRef<SubAgentStatus>(externalStatus);
 
+  // Presentation only: status comes from the shared store, which merges the
+  // sub-agent stream and the shared fallback poll and refuses to walk a
+  // finished run back to 'running'. This block used to run its own 3s poll and
+  // reconcile it against the stream itself, which meant N blocks made N
+  // requests and each stopped covering its task the moment it unmounted.
   const streamTask = taskId ? taskStates[taskId] : undefined;
-  // The poll exists precisely for when the stream is not there; if it has seen
-  // the run end, its answer outranks whatever the stream last managed to say.
-  const liveTask = isStreamStateStale(streamTask?.status, polledStatus ?? undefined)
-    ? undefined
-    : streamTask;
-  const status = liveTask?.status ?? polledStatus ?? externalStatus;
-  const resultSummary = liveTask?.result_summary ?? polledResultSummary ?? externalResultSummary;
-  const error = liveTask?.error ?? polledError ?? externalError;
+  const status = streamTask?.status ?? externalStatus;
+  const resultSummary = streamTask?.result_summary ?? externalResultSummary;
+  const error = streamTask?.error ?? externalError;
 
-  // Keep ref in sync on every render
-  resolvedStatusRef.current = status;
-
+  // Register with the shared poll only while this task is unfinished. The
+  // transcript is the only place a task from an earlier session is named, so
+  // without this a chat reopened mid-run would never learn how it ended.
   useEffect(() => {
-    if (!taskId) return;
-    // Already terminal — no need to poll
-    if (isSubAgentTerminal(resolvedStatusRef.current)) return;
-
-    const poll = async () => {
-      // Stop polling if status was resolved externally while waiting
-      if (isSubAgentTerminal(resolvedStatusRef.current)) {
-        if (timerRef.current) clearInterval(timerRef.current);
-        return;
-      }
-      try {
-        const res = await fetch(`${getApiBase()}/subagents/${taskId}`);
-        if (!res.ok) return;
-        const data = await res.json();
-        const task = data.task;
-        if (task) {
-          setPolledStatus(task.status);
-          if (task.result_summary) setPolledResultSummary(task.result_summary);
-          if (task.error) setPolledError(task.error);
-          if (isSubAgentTerminal(task.status)) {
-            if (timerRef.current) clearInterval(timerRef.current);
-          }
-        }
-      } catch {
-        /* ignore */
-      }
-    };
-
-    poll();
-    timerRef.current = setInterval(poll, 3000);
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [taskId]);
-
-  // Stop polling immediately when the status resolves elsewhere (stream arrived)
-  useEffect(() => {
-    if (isSubAgentTerminal(status) && timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
-  }, [status]);
+    if (!taskId || isSubAgentTerminal(status)) return;
+    return watchSubAgentTask(taskId);
+  }, [taskId, status]);
 
   const [expanded, setExpanded] = useState(true);
   // Auto-collapse when completed

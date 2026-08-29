@@ -154,13 +154,26 @@ _DRAFT_PERSIST_INTERVAL_SECONDS = 0.75
 
 
 def _serialize_tool_output(output: Any) -> str:
+    """Render a tool result for persistence.
+
+    The frontend reads structured fields back out of this (a sub-agent block
+    recovers its task id and status from `metadata`), so every escape hatch
+    here has to stay valid JSON. Falling back to `str()` produced a Python
+    repr -- single-quoted, `True` rather than `true` -- which parses as
+    nothing and silently cost the caller those fields.
+    """
     if isinstance(output, dict):
-        return json.dumps(output, ensure_ascii=False)
+        return json.dumps(output, ensure_ascii=False, default=str)
     if hasattr(output, "model_dump"):
         try:
             return json.dumps(output.model_dump(mode="json"), ensure_ascii=False)
         except Exception:
-            return str(output)
+            # A value that JSON mode refuses; keep the shape and stringify the
+            # offending leaves rather than dropping the whole envelope.
+            try:
+                return json.dumps(output.model_dump(), ensure_ascii=False, default=str)
+            except Exception:
+                return json.dumps({"message": str(output)}, ensure_ascii=False)
     return str(output) if output else ""
 
 
@@ -1171,9 +1184,34 @@ async def stream_agent_responses(
                         _resp_call_ids = {
                             getattr(p, "tool_call_id", None) for p in _resp_parts
                         }
+                        from suzent.core.subagent_runner import (
+                            task_id_for_tool_call as _task_id_for_tool_call,
+                        )
+
                         _failed_returns: list = []
                         for _tcid, _call_part in _chk_inflight_calls.items():
                             _tname = getattr(_call_part, "tool_name", "") or ""
+                            # Cancelling the call does not stop what it started:
+                            # a sub-agent spawned by this call is still running,
+                            # and this synthesized result is the only record the
+                            # transcript will keep. Name the task so the block
+                            # can still be opened in the sidebar.
+                            _msg = timed_out_msg
+                            if _tname == "agent":
+                                _sub_task_id = _task_id_for_tool_call(_tcid)
+                                if _sub_task_id:
+                                    _msg = json.dumps(
+                                        {
+                                            "success": False,
+                                            "message": (
+                                                f"{timed_out_msg} The sub-agent "
+                                                f"{_sub_task_id} it started may "
+                                                "still be running."
+                                            ),
+                                            "metadata": {"task_id": _sub_task_id},
+                                        },
+                                        ensure_ascii=False,
+                                    )
                             # The model response must contain the ToolCallPart that
                             # each failed result answers, or the continuation is
                             # invalid. Add it if the part_end never arrived.
@@ -1183,7 +1221,7 @@ async def stream_agent_responses(
                             _failed_returns.append(
                                 _TRP(
                                     tool_name=_tname,
-                                    content=timed_out_msg,
+                                    content=_msg,
                                     tool_call_id=_tcid,
                                 )
                             )
@@ -1196,7 +1234,7 @@ async def stream_agent_responses(
                                         "tool_call_id": _tcid,
                                         "tool_name": _tname,
                                         "status": "error",
-                                        "output": timed_out_msg,
+                                        "output": _msg,
                                     },
                                 )
                             )

@@ -12,6 +12,7 @@ import { MarkdownRenderer } from './MarkdownRenderer';
 import { ImageWithFallback } from './ImageWithFallback';
 import { ToolCallBlock } from './ToolCallBlock';
 import { parseSubAgentArgs, SubAgentCallBlock } from './SubAgentCallBlock';
+import { parseSubAgentResult } from './subAgentResult';
 import { AcpPermissionPrompt } from './AcpPermissionPrompt';
 import { AcpAgentIcon } from '../AcpAgentIcon';
 import { AcpSessionResetNotice } from './AcpSessionResetNotice';
@@ -20,13 +21,7 @@ import { CopyButton } from './CopyButton';
 import { FileChangeSummary } from './FileChangeSummary';
 import { A2UIRenderer } from '../a2ui/A2UIRenderer';
 import type { A2UISurface } from '../../types/a2ui';
-import {
-  StaticContent,
-  StepPills,
-  StreamingContent,
-  ToolSequenceGroup,
-  parseSubAgentTaskId,
-} from './AssistantContent';
+import { StaticContent, StepPills, StreamingContent, ToolSequenceGroup } from './AssistantContent';
 import {
   CitationProvider,
   SourcesPanel,
@@ -386,11 +381,18 @@ const AGUIPartsContent: React.FC<{
                             : ('neutral' as const);
 
                   if (t.toolName === 'agent') {
-                    const taskId = parseSubAgentTaskId(t.output);
+                    const persisted = parseSubAgentResult(t.output);
+                    const taskId = persisted.taskId;
                     const taskState = taskId ? subAgentTasks?.[taskId] : undefined;
                     const args = parseSubAgentArgs(t.toolArgs);
+                    // The tool returning is not the sub-agent finishing: a
+                    // background spawn returns 'queued' while the run continues.
+                    // Prefer the status the result recorded, so a live task stays
+                    // non-terminal and keeps being polled.
                     const defaultStatus =
-                      t.approvalState === 'pending' ? 'queued' : t.output ? 'completed' : 'running';
+                      t.approvalState === 'pending'
+                        ? 'queued'
+                        : (persisted.status ?? (t.output ? 'completed' : 'running'));
                     return (
                       <ActivityRailItem key={t.toolCallId || `sa-${ci}-${i}`} state={itemState}>
                         <SubAgentCallBlock
@@ -398,8 +400,8 @@ const AGUIPartsContent: React.FC<{
                           description={args.description}
                           toolsAllowed={args.toolsAllowed}
                           status={taskState?.status ?? defaultStatus}
-                          resultSummary={taskState?.resultSummary}
-                          error={taskState?.error}
+                          resultSummary={taskState?.resultSummary ?? persisted.resultSummary}
+                          error={taskState?.error ?? persisted.error}
                           onOpenSidebar={onOpenSubAgentSidebar}
                           onStop={onStopSubAgent}
                         />
@@ -494,15 +496,19 @@ const AGUIPartsContent: React.FC<{
           return (
             <div key={ci} className="pl-1 min-w-0 overflow-x-hidden">
               {subAgentTools.map((t, i) => {
-                const taskId = parseSubAgentTaskId(t.output);
+                const persisted = parseSubAgentResult(t.output);
+                const taskId = persisted.taskId;
                 const taskState = taskId ? subAgentTasks?.[taskId] : undefined;
                 const args = parseSubAgentArgs(t.toolArgs);
-                // If output exists, the tool call returned — default to 'completed'.
-                // This correctly handles linear (synchronous) subagents that run inline
-                // without emitting SSE events. Polling will correct if the backend
-                // reports a different status (e.g. background agent still in-flight).
+                // The status the result recorded beats guessing from the mere
+                // presence of output: a background spawn returns 'queued' while
+                // the run continues, and calling that 'completed' froze it as
+                // terminal so nothing ever corrected it. Falling back to the old
+                // guess still covers linear sub-agents that run inline.
                 const defaultStatus =
-                  t.approvalState === 'pending' ? 'queued' : t.output ? 'completed' : 'running';
+                  t.approvalState === 'pending'
+                    ? 'queued'
+                    : (persisted.status ?? (t.output ? 'completed' : 'running'));
                 return (
                   <SubAgentCallBlock
                     key={t.toolCallId || `sa-${i}`}
@@ -510,8 +516,8 @@ const AGUIPartsContent: React.FC<{
                     description={args.description}
                     toolsAllowed={args.toolsAllowed}
                     status={taskState?.status ?? defaultStatus}
-                    resultSummary={taskState?.resultSummary}
-                    error={taskState?.error}
+                    resultSummary={taskState?.resultSummary ?? persisted.resultSummary}
+                    error={taskState?.error ?? persisted.error}
                     onOpenSidebar={onOpenSubAgentSidebar}
                     onStop={onStopSubAgent}
                   />

@@ -8,6 +8,7 @@ import { CodeBlockComponent } from './CodeBlockComponent';
 import { LogBlock } from './LogBlock';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { parseSubAgentArgs, SubAgentCallBlock, type SubAgentStatus } from './SubAgentCallBlock';
+import { parseSubAgentResult } from './subAgentResult';
 import { ToolCallBlock } from './ToolCallBlock';
 import { ToolGroupIcon } from './toolGroupIcon';
 import type {
@@ -19,11 +20,6 @@ import type {
 const LARGE_MARKDOWN_RENDER_THRESHOLD = 12000;
 
 /** Extract sub-agent task_id from agent tool output text. */
-export function parseSubAgentTaskId(output: string | undefined): string | undefined {
-  if (!output) return undefined;
-  const m = output.match(/ID:\s*`?(sub_[a-z0-9]+)`?/);
-  return m ? m[1] : undefined;
-}
 
 export const ToolSequenceGroup: React.FC<{
   tools: Array<{
@@ -385,10 +381,16 @@ export const StaticContent: React.FC<{
           const isAutoApproved = toolApprovalPolicy?.[b.toolName || ''] === 'always_allow';
 
           if (b.toolName === 'agent') {
-            const taskId = parseSubAgentTaskId(b.content || undefined);
+            const persisted = parseSubAgentResult(b.content || undefined);
+            const taskId = persisted.taskId;
             const taskState = taskId ? subAgentTasks?.[taskId] : undefined;
             const args = parseSubAgentArgs(b.toolArgs);
-            const defaultStatus = b.content ? 'completed' : 'running';
+            // The tool returning is not the sub-agent finishing: a background
+            // spawn returns 'queued' while the run continues. Prefer the status
+            // the result actually recorded, so a still-running task stays
+            // non-terminal and keeps being polled instead of being frozen as
+            // 'completed' by the mere presence of output.
+            const defaultStatus = persisted.status ?? (b.content ? 'completed' : 'running');
             return (
               <SubAgentCallBlock
                 key={blockKey}
@@ -396,8 +398,8 @@ export const StaticContent: React.FC<{
                 description={args.description}
                 toolsAllowed={args.toolsAllowed}
                 status={taskState?.status ?? defaultStatus}
-                resultSummary={taskState?.resultSummary}
-                error={taskState?.error}
+                resultSummary={taskState?.resultSummary ?? persisted.resultSummary}
+                error={taskState?.error ?? persisted.error}
                 onOpenSidebar={onOpenSubAgentSidebar}
                 onStop={onStopSubAgent}
               />
