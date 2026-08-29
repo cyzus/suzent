@@ -17,10 +17,30 @@
     @apply shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-[1px] hover:shadow-[4px_4px_0_0_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all;
   }
 
-  /* Skips paint/composite for off-screen message rows, preventing GPU layer exhaustion on long histories. */
+  /* Skips layout/paint for off-screen message rows, keeping long histories
+     cheap to scroll. The placeholder size is per row type: `auto` remembers a
+     row's real height once it has been rendered, so these estimates only have
+     to carry the *first* reveal — but a flat estimate that is wrong by an
+     order of magnitude (a 120px guess for a 900px tool call) shoves the
+     content on every one of them. */
   .chat-msg-row {
     content-visibility: auto;
-    contain-intrinsic-block-size: auto 120px;
+    contain-intrinsic-block-size: auto 320px;
+  }
+
+  /* Single-line pills and cards: notices, canvas actions, system triggers. */
+  .chat-msg-row-compact {
+    contain-intrinsic-block-size: auto 72px;
+  }
+
+  /* A user bubble is a prompt — typically a few lines. */
+  .chat-msg-row-user {
+    contain-intrinsic-block-size: auto 96px;
+  }
+
+  /* An assistant turn carries prose plus tool blocks, and runs much taller. */
+  .chat-msg-row-assistant {
+    contain-intrinsic-block-size: auto 420px;
   }
 
   .chat-minimap {
@@ -348,8 +368,10 @@ code {
   /* Prevent text selection from being cleared during DOM updates */
   -webkit-user-select: text !important;
   user-select: text !important;
-  /* Hint to browser that content will change (helps with rendering optimization) */
-  will-change: contents;
+  /* No `will-change: contents` here: it does nothing for selection, and since
+     .select-text sits on every markdown block and user bubble it told the
+     engine not to cache any message's rendered contents — so every repaint
+     re-rasterized the whole visible history instead of reusing a tile. */
 }
 
 .select-none,
