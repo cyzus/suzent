@@ -457,9 +457,9 @@ const ReasoningRailItemComponent: React.FC<{
           className="group/thought-header inline-flex items-center gap-1.5 px-2.5 cursor-pointer select-none min-w-0 max-w-full"
         >
           {/* A thought carries the same two states as a tool call — in flight
-              and finished — and the rail header already says "Thinking" vs
-              "Thought". Saying only "Thought" here made a reasoning block that
-              is still arriving look like one that had already landed. */}
+              and finished. Saying only "Thought" made a reasoning block that
+              was still arriving look like one that had already landed; the
+              label animates while it streams and settles when it lands. */}
           <span
             className={`text-[11px] font-mono font-bold uppercase tracking-wide shrink-0 ${
               thinking
@@ -469,13 +469,6 @@ const ReasoningRailItemComponent: React.FC<{
           >
             {thinking ? t('activityRail.thinking') : t('activityRail.thought')}
           </span>
-          {thinking && (
-            <span className="reasoning-thinking-pulse shrink-0" aria-hidden="true">
-              <i />
-              <i />
-              <i />
-            </span>
-          )}
           <svg
             className={`w-3 h-3 text-neutral-400 opacity-0 transition-all duration-150 shrink-0 group-hover/thought-header:opacity-100 ${expanded ? 'rotate-90' : ''}`}
             fill="none"
