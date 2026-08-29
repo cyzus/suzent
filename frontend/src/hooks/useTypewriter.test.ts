@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getRevealStep } from './useTypewriter';
+import { createRevealClock, getRevealStep } from './useTypewriter';
 
 /** Frames needed to reveal a backlog of `size` with no further text arriving. */
 function framesToDrain(size: number): number {
@@ -71,5 +71,30 @@ describe('getRevealStep under load', () => {
 
   it('shows everything at once after a long gap, e.g. a backgrounded tab', () => {
     expect(getRevealStep(900, 5000)).toBe(900);
+  });
+});
+
+describe('createRevealClock', () => {
+  it('charges a nominal frame for the first reveal of a batch', () => {
+    const clock = createRevealClock();
+    expect(clock.elapsed(12_345)).toBeCloseTo(1000 / 60);
+  });
+
+  it('measures real time between reveals within a batch', () => {
+    const clock = createRevealClock();
+    clock.elapsed(1000);
+    expect(clock.elapsed(1200)).toBe(200);
+  });
+
+  it('does not charge the wait for the next chunk to the animation', () => {
+    // Gaps of several hundred ms between SSE chunks are ordinary. Counted as
+    // reveal time they exceed CATCH_UP_MS, so getRevealStep would dump each
+    // chunk whole the moment it arrived and nothing would ever be smoothed.
+    const clock = createRevealClock();
+    clock.elapsed(1000);
+    clock.reset(); // backlog drained
+    const backlog = 200;
+    const step = getRevealStep(backlog, clock.elapsed(1500));
+    expect(step).toBeLessThan(backlog);
   });
 });

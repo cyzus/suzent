@@ -39,6 +39,33 @@ export const getRevealStep = (remaining: number, elapsedMs: number = FRAME_MS): 
   Math.max(1, Math.ceil(remaining * Math.min(1, Math.max(0, elapsedMs) / CATCH_UP_MS)));
 
 /**
+ * The reveal's own clock, measuring time spent animating rather than time
+ * passed.
+ *
+ * Waiting for the next chunk is not animation time. Left running across a
+ * drained backlog, the clock would hand the first frame of the next chunk the
+ * whole idle gap — and gaps between SSE chunks routinely exceed CATCH_UP_MS,
+ * so every chunk would be dumped whole and nothing would ever be smoothed.
+ * Callers reset it whenever the reveal has caught up, so the next batch starts
+ * from a nominal frame.
+ */
+export function createRevealClock() {
+  let lastRevealAt = 0;
+  return {
+    /** Milliseconds to charge this reveal, and marks it as just happened. */
+    elapsed(now: number): number {
+      const ms = lastRevealAt === 0 ? FRAME_MS : now - lastRevealAt;
+      lastRevealAt = now;
+      return ms;
+    },
+    /** The reveal is idle; the pause that follows is not animation time. */
+    reset(): void {
+      lastRevealAt = 0;
+    },
+  };
+}
+
+/**
  * Reveal appended text at a steady rate instead of in the bursts it arrives in.
  *
  * SSE hands over whatever accumulated since the last read — a few characters,
@@ -54,9 +81,12 @@ export const useTypewriter = (text: string, isEnabled: boolean = true) => {
   const [displayedText, setDisplayedText] = useState(text);
   const indexRef = useRef(text.length);
   const prevTextRef = useRef(text);
-  // When the last reveal happened, so each step can be sized by real elapsed
-  // time instead of assuming every frame is the same length.
-  const lastRevealAtRef = useRef(0);
+  // Sizes each step by real elapsed time instead of assuming every frame is the
+  // same length. Reset whenever the reveal catches up, so the wait for the next
+  // chunk is not charged to the frame that starts revealing it.
+  const clockRef = useRef<ReturnType<typeof createRevealClock> | null>(null);
+  if (clockRef.current === null) clockRef.current = createRevealClock();
+  const clock = clockRef.current;
 
   // Content replaced rather than appended to (a different message reusing this
   // node): adopt it whole. Rewinding to replay text the user has already read
@@ -76,23 +106,27 @@ export const useTypewriter = (text: string, isEnabled: boolean = true) => {
     if (!isEnabled || text.length - indexRef.current > MAX_ANIMATED_BACKLOG) {
       indexRef.current = text.length;
       setDisplayedText(text);
+      clock.reset();
       return;
     }
 
-    if (indexRef.current >= text.length) return;
+    if (indexRef.current >= text.length) {
+      clock.reset();
+      return;
+    }
 
     let frameId = 0;
 
     const tick = () => {
       const remaining = text.length - indexRef.current;
       if (remaining <= 0) {
+        // Caught up. The pause until the next chunk belongs to the stream, not
+        // to the animation.
+        clock.reset();
         frameId = 0;
         return;
       }
-      const now = performance.now();
-      const elapsed = lastRevealAtRef.current === 0 ? FRAME_MS : now - lastRevealAtRef.current;
-      lastRevealAtRef.current = now;
-      indexRef.current += getRevealStep(remaining, elapsed);
+      indexRef.current += getRevealStep(remaining, clock.elapsed(performance.now()));
       setDisplayedText(text.slice(0, indexRef.current));
       frameId = window.requestAnimationFrame(tick);
     };
@@ -101,7 +135,7 @@ export const useTypewriter = (text: string, isEnabled: boolean = true) => {
     return () => {
       if (frameId) window.cancelAnimationFrame(frameId);
     };
-  }, [text, isEnabled]);
+  }, [text, isEnabled, clock]);
 
   return displayedText;
 };
