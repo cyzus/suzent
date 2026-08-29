@@ -17,6 +17,23 @@
     @apply shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-[1px] hover:shadow-[4px_4px_0_0_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all;
   }
 
+  /*
+   * Text whose backdrop only appears on hover.
+   *
+   * These rows sit on `bg-transparent` at rest and take an opaque tint on
+   * hover. WebKit rasterises text differently depending on what is behind it
+   * -- subpixel antialiasing over an opaque backdrop, grayscale over a
+   * transparent one -- so the glyphs are re-rendered at the moment the tint
+   * arrives and visibly shift by a fraction of a pixel. Nothing moves in
+   * layout terms, which is why it reads as the text itself squirming.
+   *
+   * Pinning the smoothing keeps the rasterisation identical in both states.
+   */
+  .hover-tint-text {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
   /* Skips layout/paint for off-screen message rows, keeping long histories
      cheap to scroll. The placeholder size is per row type: `auto` remembers a
      row's real height once it has been rendered, so these estimates only have
@@ -385,6 +402,8 @@ code {
 /* Tool Sequence Grouping */
 .tool-group-summary {
   @apply inline-flex items-center gap-2 px-3 py-1.5 bg-transparent rounded-sm hover:bg-neutral-100 dark:hover:bg-zinc-700 transition-all cursor-pointer select-none mb-1 border border-transparent;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 .tool-group-summary.active-approval {
@@ -420,6 +439,8 @@ code {
 }
 
 .activity-rail-header {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -513,6 +534,8 @@ code {
 }
 
 .tool-call-header-pending {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   color: #111;
   border: 2px solid transparent;
   background: transparent;
