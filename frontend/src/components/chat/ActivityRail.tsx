@@ -361,9 +361,14 @@ export const ActivityRail: React.FC<{
       setBodyMounted(true);
       return undefined;
     }
+    // A pending approval can be holding a half-typed rejection reason in the
+    // tool block's own state. Unmounting would discard it silently, and the
+    // user would only find out after reopening the rail -- so hold the body
+    // until the approval resolves, however the rail got collapsed.
+    if (hasPending) return undefined;
     const timer = window.setTimeout(() => setBodyMounted(false), COLLAPSE_MS);
     return () => window.clearTimeout(timer);
-  }, [expanded]);
+  }, [expanded, hasPending]);
 
   const displayedSeconds = durationSeconds ?? elapsedSeconds;
   const durationLabel = `Worked for ${formatActivityDuration(displayedSeconds)}`;
