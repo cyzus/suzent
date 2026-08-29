@@ -772,9 +772,14 @@ code {
  * glyphs are therefore the same ink, so the word is not covered so much as
  * swallowed for as long as the bar is over it.
  *
- * A full-cover box with a moving window cut out of it, so the bar is clipped
- * to the label and never hangs off either end. Inset horizontally by zero on
- * purpose: any inset would widen it past the word it is meant to eat.
+ * It wipes on across the whole word rather than travelling over it as a narrow
+ * window: a window leaves most of the label legible at all times, which is a
+ * decoration passing over a word. Blanketing it is a state — for that beat
+ * there is no label at all.
+ *
+ * Clipped to the label so it never hangs off either end, and inset
+ * horizontally by zero on purpose: any inset would widen it past the word it
+ * is meant to eat.
  */
 .reasoning-thinking-label::after {
   content: '';
@@ -808,22 +813,20 @@ code {
 }
 
 @keyframes reasoning-thinking-redact {
-  /* Grows in at the left edge, crosses in hard steps at a constant 30% of the
-     width (the two insets always sum to 70), shrinks out at the right, then
-     stays gone for the back half of the cycle while the sweep runs. */
+  /* Wipes on from the left until the word is entirely gone, holds it gone,
+     then wipes off the same way, and stays away for the back half of the
+     cycle while the sweep runs. Both wipes are stepped; the hold is what
+     makes it land, so it is not stepped at all. */
   0% {
     clip-path: inset(0 100% 0 0);
-    animation-timing-function: linear;
-  }
-  6% {
-    clip-path: inset(0 70% 0 0);
     animation-timing-function: steps(6, end);
   }
-  40% {
-    clip-path: inset(0 0 0 70%);
-    animation-timing-function: linear;
+  18%,
+  27% {
+    clip-path: inset(0 0 0 0);
+    animation-timing-function: steps(6, end);
   }
-  46%,
+  45%,
   100% {
     clip-path: inset(0 0 0 100%);
   }
