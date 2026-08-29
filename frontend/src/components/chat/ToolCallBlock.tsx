@@ -505,7 +505,7 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
   });
 
   const headerClassName = [
-    'group/tool-header inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono font-bold uppercase tracking-wide rounded-sm transition-colors select-none',
+    'group/tool-header hover-tint-text inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono font-bold uppercase tracking-wide rounded-sm transition-colors select-none',
     hasDetails ? 'cursor-pointer hover:bg-neutral-100 dark:hover:bg-zinc-700' : 'cursor-default',
     expanded
       ? 'bg-neutral-100 dark:bg-zinc-700 text-brutal-black dark:text-white'
