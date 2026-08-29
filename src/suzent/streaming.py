@@ -303,8 +303,24 @@ class _DraftDisplayAccumulator:
         self._merge_citation_sources(sources)
 
     async def maybe_persist(self, *, force: bool = False) -> None:
-        if not self.chat_id or not self.parts or not self.dirty:
+        if not self.chat_id or not self.parts:
             return
+
+        if force:
+            # A background write can still be in flight with the newest state
+            # already in it — scheduling one clears ``dirty``, so a clean draft
+            # is not the same as "nothing left to write". The turn is not
+            # finished until that write lands: returning here would let the
+            # encoder emit ``done`` while the draft is still going to disk,
+            # where a reload could read stale content and the late write could
+            # race the finalizer and restore a draft over the finished
+            # response.
+            await self._await_persist_task()
+            if not self.dirty:
+                return
+        elif not self.dirty:
+            return
+
         now = time.monotonic()
         if not force and now - self.last_persisted_at < _DRAFT_PERSIST_INTERVAL_SECONDS:
             return
@@ -312,11 +328,13 @@ class _DraftDisplayAccumulator:
         # A write already in flight is reason enough to skip this round: the
         # draft stays dirty and a later event persists the newer state. Waiting
         # would put the disk back in front of the token stream, which is the
-        # whole thing this avoids.
-        if self._persist_task is not None and not self._persist_task.done():
-            if not force:
-                return
-            await self._persist_task
+        # whole thing this avoids. (The forced path waited for it above.)
+        if (
+            not force
+            and self._persist_task is not None
+            and not self._persist_task.done()
+        ):
+            return
 
         snapshot = [dict(part) for part in self.parts]
         content = "\n\n".join(
@@ -340,6 +358,12 @@ class _DraftDisplayAccumulator:
             await coro
             return
         self._persist_task = asyncio.create_task(self._persist_quietly(coro))
+
+    async def _await_persist_task(self) -> None:
+        """Wait for a background draft write to finish, if one is running."""
+        task = self._persist_task
+        if task is not None and not task.done():
+            await task
 
     @staticmethod
     async def _persist_quietly(coro: Any) -> None:
