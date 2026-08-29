@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Activity, sidebar and minimap refinements
 
 ### ⚡ Changed
+- Stop building a code editor for every collapsed tool block
 - One disclosure chevron, pointing the same way everywhere
 - Cut chat scroll cost on macOS
 - Stop re-rendering settled turn content on every token
