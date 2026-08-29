@@ -10,7 +10,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { getApiBase } from '../../lib/api';
 import { useSubAgentStatus, SubAgentSummary } from '../../hooks/useSubAgentStatus';
 import { isSubAgentActive, SubAgentStatusBadge } from '../chat/subAgentStatus';
-import { getProviderInitials, getProviderVisualForModel } from '../../lib/providerVisuals';
+import { AgentAvatar } from './subAgentDisplay';
+import { toolLabel } from './subAgentLabels';
 import { useI18n } from '../../i18n';
 
 interface SubAgentListProps {
@@ -46,46 +47,6 @@ function sortRows(rows: SubAgentRow[]): SubAgentRow[] {
 async function stopSubAgent(taskId: string): Promise<void> {
   await fetch(`${getApiBase()}/subagents/${encodeURIComponent(taskId)}/stop`, { method: 'POST' });
 }
-
-/**
- * Tools are registered under class-style names (`RunCommandTool`); the suffix
- * is noise on a chip. Naming what an agent can actually do reads as capability,
- * where a bare "1 tools" only reads as a row in a ledger.
- */
-function toolLabel(name: string): string {
-  return name.replace(/Tool$/, '');
-}
-
-/**
- * Identity tile. The provider's own colour with its initials -- deliberately
- * not its logo: those are remote CDN URLs and the desktop app's CSP blocks
- * off-origin images, so a logo here would render as a silent blank.
- */
-const AgentAvatar: React.FC<{ model?: string | null; status?: string }> = ({ model, status }) => {
-  const visual = getProviderVisualForModel(model ?? undefined);
-  const background = visual ? `#${visual.color}` : '#525252';
-  const initials = visual ? getProviderInitials(visual.label) : 'AI';
-  const active = isSubAgentActive(status);
-
-  return (
-    <div className="relative shrink-0">
-      <div
-        className="w-7 h-7 flex items-center justify-center border-2 border-brutal-black dark:border-white rounded-sm text-[9px] font-bold tracking-tight text-white"
-        style={{ backgroundColor: background }}
-        aria-hidden="true"
-      >
-        {initials}
-      </div>
-      {/* Presence, the way a roster shows it -- additive to the status badge
-          below, which stays the shared vocabulary across every surface. */}
-      <span
-        className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white dark:border-zinc-800 ${
-          active ? 'bg-brutal-blue animate-pulse' : 'bg-neutral-300 dark:bg-zinc-600'
-        }`}
-      />
-    </div>
-  );
-};
 
 export const SubAgentList: React.FC<SubAgentListProps> = ({ chatId, onSelect }) => {
   const { t } = useI18n();
