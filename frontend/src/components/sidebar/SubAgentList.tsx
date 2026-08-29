@@ -7,10 +7,11 @@
  * stale "running" row until someone reopened the panel.
  */
 import React, { useEffect, useRef, useState } from 'react';
-import { CpuChipIcon } from '@heroicons/react/24/outline';
 import { getApiBase } from '../../lib/api';
 import { useSubAgentStatus, SubAgentSummary } from '../../hooks/useSubAgentStatus';
-import { isSubAgentActive, SubAgentStatusBadge, SubAgentStatusIcon } from '../chat/subAgentStatus';
+import { isSubAgentActive, SubAgentStatusBadge } from '../chat/subAgentStatus';
+import { AgentAvatar } from './subAgentDisplay';
+import { toolLabel } from '../chat/toolSummary';
 import { useI18n } from '../../i18n';
 
 interface SubAgentListProps {
@@ -107,12 +108,20 @@ export const SubAgentList: React.FC<SubAgentListProps> = ({ chatId, onSelect }) 
     );
   }
 
+  const activeCount = tasks.filter((task) => isSubAgentActive(task.status)).length;
+
   return (
     <div className="flex flex-col h-full min-h-0 font-mono">
       <div className="px-3 py-2 border-b-3 border-brutal-black bg-white dark:bg-zinc-800 shrink-0">
         <span className="text-[10px] font-bold uppercase tracking-widest font-mono text-neutral-500 dark:text-neutral-400">
           {t('subAgents.heading', { count: tasks.length })}
         </span>
+        {activeCount > 0 && (
+          <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest font-mono text-brutal-blue">
+            <span className="w-1.5 h-1.5 rounded-full bg-brutal-blue animate-pulse" />
+            {activeCount} {t('subAgents.live')}
+          </span>
+        )}
       </div>
       <div className="flex-1 overflow-y-auto scrollbar-thin p-2 space-y-1 min-h-0">
         {tasks.map((task) => {
@@ -132,17 +141,33 @@ export const SubAgentList: React.FC<SubAgentListProps> = ({ chatId, onSelect }) 
                   onSelect(task.task_id);
                 }
               }}
-              className="w-full text-left px-2 py-2 rounded-sm bg-neutral-50 dark:bg-zinc-800 border-2 border-neutral-200 dark:border-zinc-600 hover:border-brutal-black dark:hover:border-white transition-colors cursor-pointer group"
+              className={`w-full text-left px-2 py-2 rounded-sm border-2 transition-colors cursor-pointer group ${
+                isActive
+                  ? 'bg-white dark:bg-zinc-800 border-brutal-blue'
+                  : 'bg-neutral-50 dark:bg-zinc-800 border-neutral-200 dark:border-zinc-600 hover:border-brutal-black dark:hover:border-white'
+              }`}
             >
               <div className="flex items-start gap-2">
-                <SubAgentStatusIcon status={task.status} className="w-3.5 h-3.5 mt-0.5" />
+                <AgentAvatar model={task.model_override} status={task.status} />
                 <div className="flex-1 min-w-0">
-                  {/* Description */}
-                  <div className="text-[11px] text-neutral-700 dark:text-neutral-200 leading-snug line-clamp-2 group-hover:text-neutral-900 dark:group-hover:text-white">
+                  {/* What this agent was sent to do -- its name, in effect. */}
+                  <div className="text-[11px] font-bold text-neutral-800 dark:text-neutral-100 leading-snug line-clamp-2 group-hover:text-neutral-900 dark:group-hover:text-white">
                     {task.description}
                   </div>
 
-                  {/* Meta row: status + time + tool count + stop button */}
+                  {/* One quiet line of provenance: who ran it, and for how
+                      long. The model belongs up here beside the agent rather
+                      than trailing the card as an afterthought. */}
+                  {task.model_override && (
+                    <div
+                      className="mt-0.5 text-[9px] text-neutral-500 dark:text-neutral-400 truncate"
+                      title={`${t('subAgents.model')}: ${task.model_override}`}
+                    >
+                      {task.model_override}
+                    </div>
+                  )}
+
+                  {/* Meta row: status + time + stop button */}
                   <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                     <SubAgentStatusBadge status={task.status} t={t} />
                     {isActive && (
@@ -175,14 +200,29 @@ export const SubAgentList: React.FC<SubAgentListProps> = ({ chatId, onSelect }) 
                     {duration && !isActive && (
                       <span className="text-[9px] text-neutral-400">{duration}</span>
                     )}
-
-                    {task.tools_allowed.length > 0 && (
-                      <span className="inline-flex items-center gap-1 text-[9px] text-neutral-400">
-                        <CpuChipIcon className="w-2.5 h-2.5" />
-                        {t('subAgents.toolCount', { count: task.tools_allowed.length })}
-                      </span>
-                    )}
                   </div>
+
+                  {/* What it was allowed to do. Named, not counted: "1 tools"
+                      says nothing about the agent, "RunCommand" says what it
+                      is for. */}
+                  {task.tools_allowed.length > 0 && (
+                    <div className="flex items-center gap-1 mt-1 flex-wrap">
+                      {task.tools_allowed.slice(0, 3).map((tool) => (
+                        <span
+                          key={tool}
+                          className="text-[9px] px-1 py-px bg-neutral-100 dark:bg-zinc-900 border border-neutral-300 dark:border-zinc-600 text-neutral-600 dark:text-neutral-300 rounded-sm truncate max-w-[7.5rem]"
+                          title={tool}
+                        >
+                          {toolLabel(tool)}
+                        </span>
+                      ))}
+                      {task.tools_allowed.length > 3 && (
+                        <span className="text-[9px] text-neutral-400">
+                          +{task.tools_allowed.length - 3}
+                        </span>
+                      )}
+                    </div>
+                  )}
 
                   {/* Why a stopped or failed run ended, right on the row. */}
                   {!isActive && task.status !== 'completed' && task.error && (
@@ -194,17 +234,6 @@ export const SubAgentList: React.FC<SubAgentListProps> = ({ chatId, onSelect }) 
                       }`}
                     >
                       {task.error}
-                    </div>
-                  )}
-
-                  {task.model_override && (
-                    <div className="mt-1">
-                      <span
-                        className="inline-block text-[9px] text-neutral-400 dark:text-neutral-500 truncate max-w-full font-mono"
-                        title={`${t('subAgents.model')}: ${task.model_override}`}
-                      >
-                        {task.model_override}
-                      </span>
                     </div>
                   )}
 

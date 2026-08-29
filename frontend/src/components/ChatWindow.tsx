@@ -1397,6 +1397,21 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     citationSourcesRef.current = map;
     return map;
   }, [safeMessages, streamingParts, showTransientAssistant]);
+  // The Agents tab is disabled unless the chat "has" sub-agents, and that was
+  // read only from `subAgentTasks` -- live SSE state, cleared on every chat
+  // switch. So reopening a chat with a long sub-agent history left the tab
+  // greyed out and unclickable, even though the panel behind it fetches its
+  // own history from /subagents and would have shown all of them. The
+  // transcript is the durable record: if a turn called the agent tool, this
+  // chat has sub-agents whether or not the stream has said so this session.
+  const transcriptHasSubAgentCall = useMemo(
+    () =>
+      safeMessages.some((message) =>
+        (message.parts || []).some((part) => part.type === 'tool' && part.toolName === 'agent')
+      ),
+    [safeMessages]
+  );
+
   const hasHiddenOlderMessages = visibleMessageStartIndex > 0;
   const _prefs = backendConfig?.userPreferences;
   const _base = config || { model: '', agent: '', tools: [] as string[] };
@@ -2736,6 +2751,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           currentChatSummary?.platform === 'subagent' ||
           safeConfig?.platform === 'subagent'
         }
+        hasSubAgentHistory={transcriptHasSubAgentCall}
         messages={safeMessages}
         forcedWebContextId={forcedWebContextId}
         onClearForcedWebContext={() => setForcedWebContextId(null)}

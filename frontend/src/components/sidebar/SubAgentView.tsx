@@ -10,6 +10,9 @@ import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import { getApiBase } from '../../lib/api';
 import { useSubAgentStatus } from '../../hooks/useSubAgentStatus';
 import { useI18n } from '../../i18n';
+import { AgentAvatar } from './subAgentDisplay';
+import { toolLabel } from '../chat/toolSummary';
+import { MarkdownRenderer } from '../chat/MarkdownRenderer';
 import { getToolSummary, isFailedToolOutput } from '../chat/toolSummary';
 import type { ToolTense } from '../chat/toolSummary';
 import {
@@ -19,7 +22,6 @@ import {
   subAgentOutcomeLabel,
   SubAgentStatus,
   SubAgentStatusBadge,
-  SubAgentStatusIcon,
 } from '../chat/subAgentStatus';
 
 interface SubAgentTask {
@@ -28,6 +30,8 @@ interface SubAgentTask {
   chat_id: string;
   description: string;
   tools_allowed: string[];
+  /** Returned by /subagents all along; the panel just never declared it. */
+  model_override?: string | null;
   status: SubAgentStatus;
   result_summary: string | null;
   error: string | null;
@@ -202,7 +206,7 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
       {/* Header */}
       <div className="flex items-start justify-between px-3 py-2 border-b-3 border-brutal-black bg-white dark:bg-zinc-800 shrink-0 gap-2">
         <div className="flex items-start gap-2 min-w-0 pt-0.5">
-          <SubAgentStatusIcon status={task?.status} className="w-4 h-4 mt-0.5" />
+          <AgentAvatar model={task?.model_override} status={task?.status} />
           <div className="min-w-0">
             <div className="text-[10px] font-bold uppercase tracking-widest font-mono truncate flex items-center gap-1.5 text-neutral-500 dark:text-neutral-400">
               <span>{t('subAgents.title')}</span>
@@ -215,8 +219,14 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
                 </span>
               )}
             </div>
-            <div className="text-[12px] font-bold text-brutal-black dark:text-white leading-snug mt-0.5 max-h-[2.5rem] overflow-hidden line-clamp-2">
-              {task?.description || t('subAgents.loading')}
+            {/* Who ran it. The brief is the body's first block rather than a
+                clamped copy up here -- it was printed twice, and a long one
+                was cut off in the header while the copy below showed it whole. */}
+            <div
+              className="text-[11px] text-neutral-600 dark:text-neutral-300 truncate mt-0.5"
+              title={task?.model_override ?? undefined}
+            >
+              {task?.model_override || t('subAgents.loading')}
             </div>
           </div>
         </div>
@@ -278,12 +288,13 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
               )}
             </div>
 
-            {/* Task description */}
+            {/* The brief, in full -- no longer competing with a clamped copy
+                in the header. */}
             <div>
               <div className="text-[10px] font-bold uppercase tracking-wide text-neutral-400 dark:text-neutral-500 mb-0.5">
                 {t('subAgents.task')}
               </div>
-              <div className="text-[11px] text-neutral-700 dark:text-neutral-300 leading-relaxed">
+              <div className="text-[12px] font-bold text-brutal-black dark:text-white leading-snug">
                 {task.description}
               </div>
             </div>
@@ -299,8 +310,9 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
                     <span
                       key={toolName}
                       className="text-[10px] px-1.5 py-0.5 bg-neutral-100 dark:bg-zinc-700 rounded-sm border border-neutral-200 dark:border-zinc-600 text-neutral-600 dark:text-neutral-300"
+                      title={toolName}
                     >
-                      {toolName}
+                      {toolLabel(toolName)}
                     </span>
                   ))}
                 </div>
@@ -381,10 +393,12 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
                     return (
                       <details key={i} className="text-[10px] group">
                         <summary
-                          className="flex items-center gap-1.5 cursor-pointer list-none select-none py-0.5 px-1 rounded-sm bg-neutral-50 dark:bg-zinc-800 hover:bg-neutral-100 dark:hover:bg-zinc-700"
+                          className="flex items-center gap-1.5 cursor-pointer list-none select-none py-0.5 px-1 rounded-sm bg-neutral-50 dark:bg-zinc-800 hover:bg-neutral-100 dark:hover:bg-zinc-700 min-w-0"
                           title={summary.title ?? undefined}
                         >
-                          <span className="font-bold uppercase tracking-wide text-neutral-700 dark:text-neutral-200 shrink-0">
+                          {/* The panel is narrow and these verbs are long; let
+                              it truncate rather than run off the edge. */}
+                          <span className="font-bold uppercase tracking-wide text-neutral-700 dark:text-neutral-200 truncate max-w-[60%]">
                             {summary.verb}
                           </span>
                           {summary.detail && (
@@ -450,15 +464,21 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
                 >
                   {subAgentOutcomeLabel(task.status, t)}
                 </div>
-                <pre
-                  className={`text-[11px] leading-relaxed whitespace-pre-wrap p-2 rounded-sm border-2 max-h-[300px] overflow-y-auto scrollbar-thin ${
-                    task.status === 'failed'
-                      ? 'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950 border-red-600'
-                      : 'text-neutral-700 dark:text-neutral-300 bg-neutral-50 dark:bg-zinc-800 border-neutral-200 dark:border-zinc-600'
-                  }`}
-                >
-                  {outcomeText}
-                </pre>
+                {/* A sub-agent writes its result in markdown -- headings,
+                    fences, lists -- and a <pre> printed the syntax instead of
+                    rendering it: literal ### and ``` on screen. A failure is
+                    different: a traceback or a raw stderr line is not markdown,
+                    and reflowing it would destroy the alignment that makes it
+                    readable, so that one keeps its <pre>. */}
+                {task.status === 'failed' ? (
+                  <pre className="text-[11px] leading-relaxed whitespace-pre-wrap p-2 rounded-sm border-2 max-h-[300px] overflow-y-auto scrollbar-thin text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950 border-red-600">
+                    {outcomeText}
+                  </pre>
+                ) : (
+                  <div className="text-[11px] p-2 rounded-sm border-2 max-h-[300px] overflow-y-auto scrollbar-thin bg-neutral-50 dark:bg-zinc-800 border-neutral-200 dark:border-zinc-600 text-neutral-700 dark:text-neutral-300">
+                    <MarkdownRenderer content={outcomeText} compact />
+                  </div>
+                )}
               </div>
             )}
 

@@ -3,6 +3,7 @@ import { ImageWithFallback } from './ImageWithFallback';
 import { createPortal } from 'react-dom';
 import type { CitationSource } from '../../lib/streamEvents';
 import { InformationPopover } from '../InformationPopover';
+import { DisclosureChevron } from '../DisclosureChevron';
 
 /**
  * Inline-citation rendering.
@@ -694,15 +695,10 @@ export const SourcesPanel: React.FC<{ sources: CitationSource[] }> = ({ sources 
         <span>
           {sources.length} {sources.length === 1 ? 'Source' : 'Sources'}
         </span>
-        <svg
-          className={`w-3 h-3 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth={3}
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-        </svg>
+        <DisclosureChevron
+          expanded={expanded}
+          className="w-3 h-3 transition-transform duration-200"
+        />
       </button>
 
       {expanded &&

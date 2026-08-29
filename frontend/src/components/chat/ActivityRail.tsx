@@ -6,6 +6,7 @@ import { getRepeatedToolLabel, getToolSummary, normalizeToolName } from './toolS
 import type { ToolTense } from './toolSummary';
 import { useTypewriter } from '../../hooks/useTypewriter';
 import { tForLocale, useI18n } from '../../i18n';
+import { DisclosureChevron } from '../DisclosureChevron';
 
 export type ActivityRenderGroup<T> =
   | { type: 'activity'; chunks: Array<{ chunk: T; index: number }> }
@@ -403,15 +404,10 @@ export const ActivityRail: React.FC<{
         <span className="text-neutral-500 dark:text-neutral-400">
           {itemCount} {itemCount === 1 ? 'step' : 'steps'}
         </span>
-        <svg
-          className={`w-3 h-3 text-neutral-500 dark:text-neutral-400 transition-transform duration-200 ${expanded ? 'rotate-90' : ''}`}
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth={3}
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-        </svg>
+        <DisclosureChevron
+          expanded={expanded}
+          className="w-3 h-3 text-neutral-500 dark:text-neutral-400 transition-transform duration-200"
+        />
       </button>
       <div
         className={`grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] overflow-hidden ${expanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}
@@ -492,15 +488,10 @@ const ReasoningRailItemComponent: React.FC<{
           >
             {thinking ? t('activityRail.thinking') : t('activityRail.thought')}
           </span>
-          <svg
-            className={`w-3 h-3 text-neutral-400 opacity-0 transition-all duration-150 shrink-0 group-hover/thought-header:opacity-100 ${expanded ? 'rotate-90' : ''}`}
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={3}
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-          </svg>
+          <DisclosureChevron
+            expanded={expanded}
+            className="w-3 h-3 text-neutral-400 opacity-0 transition-all duration-150 group-hover/thought-header:opacity-100"
+          />
         </button>
         <div
           className={`grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] overflow-hidden ${expanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}

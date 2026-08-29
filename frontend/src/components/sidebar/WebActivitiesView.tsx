@@ -4,6 +4,7 @@ import { BrowserView } from './BrowserView';
 import { WebSearchSidebarView } from './WebSearchSidebarView';
 import { WebPageReaderView } from './WebPageReaderView';
 import type { WebHistoryLog } from '../../hooks/useWebHistory';
+import { DisclosureChevron } from '../DisclosureChevron';
 
 interface WebActivitiesViewProps {
   history: WebHistoryLog[];
@@ -152,15 +153,10 @@ export const WebActivitiesView: React.FC<WebActivitiesViewProps> = ({
           <div className="text-[10px] uppercase tracking-widest opacity-80 mb-0.5">History</div>
           <div className="text-sm flex items-center gap-1">
             <span>{history.length}</span>
-            <svg
-              className={`w-3.5 h-3.5 transition-transform duration-200 ${isTimelineOpen ? 'rotate-180' : ''}`}
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={3}
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-            </svg>
+            <DisclosureChevron
+              expanded={isTimelineOpen}
+              className="w-3.5 h-3.5 transition-transform duration-200"
+            />
           </div>
         </button>
       </div>

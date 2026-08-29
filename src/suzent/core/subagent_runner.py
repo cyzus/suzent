@@ -13,6 +13,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from collections import OrderedDict
 from typing import Dict, Optional
 
 from suzent.config import CONFIG
@@ -280,6 +281,35 @@ def _resolve_tool_names(tools_allowed: list[str]) -> tuple[list[str], list[str]]
 # ─── Public spawn API ─────────────────────────────────────────────────────────
 
 
+# ─── Tool-call → task lookup ─────────────────────────────────────────────────
+#
+# A blocking `agent` tool call can be cancelled by the streaming layer's tool
+# timeout while the sub-agent it started keeps running. The synthesized failure
+# is then the only trace the transcript will ever hold, so it has to carry the
+# task id -- otherwise the run is live but unreachable from the UI, with no way
+# to open it in the sidebar. Recorded when the task is created rather than when
+# the tool returns, because in blocking mode the tool may never return.
+
+_SPAWN_BY_TOOL_CALL: OrderedDict[str, str] = OrderedDict()
+_SPAWN_BY_TOOL_CALL_MAX = 256
+
+
+def _record_spawn_for_tool_call(tool_call_id: Optional[str], task_id: str) -> None:
+    if not tool_call_id:
+        return
+    _SPAWN_BY_TOOL_CALL[tool_call_id] = task_id
+    _SPAWN_BY_TOOL_CALL.move_to_end(tool_call_id)
+    while len(_SPAWN_BY_TOOL_CALL) > _SPAWN_BY_TOOL_CALL_MAX:
+        _SPAWN_BY_TOOL_CALL.popitem(last=False)
+
+
+def task_id_for_tool_call(tool_call_id: Optional[str]) -> Optional[str]:
+    """The sub-agent a given tool call spawned, if it is still remembered."""
+    if not tool_call_id:
+        return None
+    return _SPAWN_BY_TOOL_CALL.get(tool_call_id)
+
+
 async def spawn_subagent(
     parent_chat_id: str,
     description: str,
@@ -294,6 +324,7 @@ async def spawn_subagent(
     runtime: str = "native",
     acp_agent_id: Optional[str] = None,
     acp_session_id: Optional[str] = None,
+    tool_call_id: Optional[str] = None,
 ) -> SubAgentTask:
     """
     Create a SubAgentTask and launch it.
@@ -334,6 +365,8 @@ async def spawn_subagent(
         acp_agent_id=acp_agent_id,
         acp_session_id=acp_session_id,
     )
+
+    _record_spawn_for_tool_call(tool_call_id, task_id)
 
     async with _tasks_lock:
         _tasks[task_id] = task

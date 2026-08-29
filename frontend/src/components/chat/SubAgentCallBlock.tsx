@@ -6,19 +6,19 @@
  * right. Live state comes off the shared sub-agent EventSource, with a poll as
  * a fallback for when the parent stream ended before the child did.
  */
-import React, { useState, useEffect, useRef } from 'react';
-import { getApiBase } from '../../lib/api';
+import React, { useState, useEffect } from 'react';
 import { useI18n } from '../../i18n';
-import { useSubAgentStatus } from '../../hooks/useSubAgentStatus';
+import { toolLabel } from './toolSummary';
+import { AgentAvatar } from '../sidebar/subAgentDisplay';
+import { useSubAgentStatus, watchSubAgentTask } from '../../hooks/useSubAgentStatus';
 import {
-  isStreamStateStale,
   isSubAgentActive,
   isSubAgentTerminal,
   subAgentOutcomeLabel,
   SubAgentStatus,
   SubAgentStatusBadge,
-  SubAgentStatusIcon,
 } from './subAgentStatus';
+import { DisclosureChevron } from '../DisclosureChevron';
 
 export type { SubAgentStatus } from './subAgentStatus';
 
@@ -29,6 +29,10 @@ interface SubAgentCallBlockProps {
   status: SubAgentStatus;
   resultSummary?: string;
   error?: string;
+  /** Which model ran it, for the identity mark in the header. */
+  model?: string;
+  /** Profile it was spawned as ('verify', 'explore', …), if recorded. */
+  subagentType?: string;
   /** Called when user clicks "View log" */
   onOpenSidebar?: (taskId: string) => void;
   /** Called when user clicks "Stop" */
@@ -93,76 +97,32 @@ const SubAgentCallBlockComponent: React.FC<SubAgentCallBlockProps> = ({
   status: externalStatus,
   resultSummary: externalResultSummary,
   error: externalError,
+  model: externalModel,
+  subagentType,
   onOpenSidebar,
   onStop,
 }) => {
   const { t } = useI18n();
   const { taskStates } = useSubAgentStatus();
-  // Self-poll to get real status when the parent SSE stream may have ended before completion
-  const [polledStatus, setPolledStatus] = useState<SubAgentStatus | null>(null);
-  const [polledResultSummary, setPolledResultSummary] = useState<string | undefined>(undefined);
-  const [polledError, setPolledError] = useState<string | undefined>(undefined);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // Use a ref so the poll callback always sees the latest resolved status without
-  // being captured in a stale closure — avoids polling when already done.
-  const resolvedStatusRef = useRef<SubAgentStatus>(externalStatus);
 
+  // Presentation only: status comes from the shared store, which merges the
+  // sub-agent stream and the shared fallback poll and refuses to walk a
+  // finished run back to 'running'. This block used to run its own 3s poll and
+  // reconcile it against the stream itself, which meant N blocks made N
+  // requests and each stopped covering its task the moment it unmounted.
   const streamTask = taskId ? taskStates[taskId] : undefined;
-  // The poll exists precisely for when the stream is not there; if it has seen
-  // the run end, its answer outranks whatever the stream last managed to say.
-  const liveTask = isStreamStateStale(streamTask?.status, polledStatus ?? undefined)
-    ? undefined
-    : streamTask;
-  const status = liveTask?.status ?? polledStatus ?? externalStatus;
-  const resultSummary = liveTask?.result_summary ?? polledResultSummary ?? externalResultSummary;
-  const error = liveTask?.error ?? polledError ?? externalError;
+  const status = streamTask?.status ?? externalStatus;
+  const model = streamTask?.model_override ?? externalModel;
+  const resultSummary = streamTask?.result_summary ?? externalResultSummary;
+  const error = streamTask?.error ?? externalError;
 
-  // Keep ref in sync on every render
-  resolvedStatusRef.current = status;
-
+  // Register with the shared poll only while this task is unfinished. The
+  // transcript is the only place a task from an earlier session is named, so
+  // without this a chat reopened mid-run would never learn how it ended.
   useEffect(() => {
-    if (!taskId) return;
-    // Already terminal — no need to poll
-    if (isSubAgentTerminal(resolvedStatusRef.current)) return;
-
-    const poll = async () => {
-      // Stop polling if status was resolved externally while waiting
-      if (isSubAgentTerminal(resolvedStatusRef.current)) {
-        if (timerRef.current) clearInterval(timerRef.current);
-        return;
-      }
-      try {
-        const res = await fetch(`${getApiBase()}/subagents/${taskId}`);
-        if (!res.ok) return;
-        const data = await res.json();
-        const task = data.task;
-        if (task) {
-          setPolledStatus(task.status);
-          if (task.result_summary) setPolledResultSummary(task.result_summary);
-          if (task.error) setPolledError(task.error);
-          if (isSubAgentTerminal(task.status)) {
-            if (timerRef.current) clearInterval(timerRef.current);
-          }
-        }
-      } catch {
-        /* ignore */
-      }
-    };
-
-    poll();
-    timerRef.current = setInterval(poll, 3000);
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [taskId]);
-
-  // Stop polling immediately when the status resolves elsewhere (stream arrived)
-  useEffect(() => {
-    if (isSubAgentTerminal(status) && timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
-  }, [status]);
+    if (!taskId || isSubAgentTerminal(status)) return;
+    return watchSubAgentTask(taskId);
+  }, [taskId, status]);
 
   const [expanded, setExpanded] = useState(true);
   // Auto-collapse when completed
@@ -191,26 +151,30 @@ const SubAgentCallBlockComponent: React.FC<SubAgentCallBlockProps> = ({
         className={headerClassName}
         title={description || undefined}
       >
-        <SubAgentStatusIcon status={status} />
+        {/* Identity, not outcome. A green check here only repeated the DONE
+            badge two elements along, and said nothing about which agent ran.
+            The provider's own colour does, and the profile it was spawned as
+            ('verify', 'explore') says what kind of agent it was -- both are in
+            the tool result's metadata already. */}
+        <AgentAvatar model={model} status={status} className="w-4 h-4 text-[7px] leading-none" />
 
-        {/* The job the sub-agent was given reads better than "spawn subagent" */}
-        <span className="shrink-0">{t('subAgents.delegated')}</span>
+        <span className="shrink-0">
+          {subagentType ? subagentType.toUpperCase() : t('subAgents.delegated')}
+        </span>
         <span className="truncate min-w-0 max-w-[320px] font-normal normal-case tracking-normal opacity-80">
           {headline(description, t('subAgents.title'))}
         </span>
 
         <SubAgentStatusBadge status={status} t={t} />
 
-        {/* Chevron */}
-        <svg
-          className={`w-3 h-3 text-neutral-400 transition-transform duration-200 shrink-0 ${expanded ? 'rotate-180' : ''}`}
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth={3}
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-        </svg>
+        {/* Chevron: points right while collapsed and turns down to open, the
+            way the activity rail's own disclosures already behave. It used to
+            point down when shut and flip up when open, which reads as "there
+            is something below" in both states. */}
+        <DisclosureChevron
+          expanded={expanded}
+          className="w-3 h-3 text-neutral-400 transition-transform duration-200"
+        />
       </button>
 
       {/* Expandable body */}
@@ -243,8 +207,9 @@ const SubAgentCallBlockComponent: React.FC<SubAgentCallBlockProps> = ({
                     <span
                       key={toolName}
                       className="text-[10px] font-mono px-1.5 py-0.5 bg-neutral-100 dark:bg-zinc-700 text-neutral-600 dark:text-neutral-300 rounded-sm border border-neutral-200 dark:border-zinc-600"
+                      title={toolName}
                     >
-                      {toolName}
+                      {toolLabel(toolName)}
                     </span>
                   ))}
                 </div>
