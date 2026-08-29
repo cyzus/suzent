@@ -150,6 +150,7 @@
     {
       "id": "zhipuai",
       "label": "Zhipu AI (GLM)",
+      "logo_url": "https://github.com/zai-org.png",
       "api_type": "openai",
       "base_url": "https://open.bigmodel.cn/api/paas/v4",
       "aliases": ["zai"],
@@ -173,8 +174,37 @@
       "default_models": []
     },
     {
+      "id": "vllm",
+      "label": "vLLM",
+      "logo_url": "https://github.com/vllm-project.png",
+      "api_type": "openai",
+      "base_url": "http://127.0.0.1:8000/v1",
+      "api_key_optional": true,
+      "env_keys": ["VLLM_API_KEY"],
+      "fields": [
+        {"key": "VLLM_BASE_URL", "label": "Base URL", "placeholder": "http://127.0.0.1:8000/v1", "type": "text"},
+        {"key": "VLLM_API_KEY", "label": "API Key (Optional)", "placeholder": "local", "type": "secret"}
+      ],
+      "default_models": []
+    },
+    {
+      "id": "sglang",
+      "label": "SGLang",
+      "logo_url": "https://github.com/sgl-project.png",
+      "api_type": "openai",
+      "base_url": "http://127.0.0.1:30000/v1",
+      "api_key_optional": true,
+      "env_keys": ["SGLANG_API_KEY"],
+      "fields": [
+        {"key": "SGLANG_BASE_URL", "label": "Base URL", "placeholder": "http://127.0.0.1:30000/v1", "type": "text"},
+        {"key": "SGLANG_API_KEY", "label": "API Key (Optional)", "placeholder": "local", "type": "secret"}
+      ],
+      "default_models": []
+    },
+    {
       "id": "litellm_proxy",
       "label": "LiteLLM Proxy",
+      "logo_url": "https://github.com/BerriAI.png",
       "api_type": "litellm_proxy",
       "env_keys": ["LITELLM_MASTER_KEY", "LITELLM_PROXY_API_KEY"],
       "fields": [

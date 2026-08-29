@@ -79,6 +79,7 @@ class TestParseProvider:
             "native_provider": {"module": "test.mod", "class": "TestCls"},
             "fields": [{"key": "MY_KEY", "label": "Key", "type": "secret"}],
             "default_models": [{"id": "mycloud/m1", "name": "Model 1"}],
+            "api_key_optional": True,
         }
         spec = _parse_provider(raw, user_defined=True)
         assert spec.api_type == "anthropic"
@@ -87,6 +88,7 @@ class TestParseProvider:
         assert spec.user_defined is True
         assert spec.is_compat is True
         assert spec.has_native_provider is True
+        assert spec.api_key_optional is True
 
 
 class TestRegistryLoading:
@@ -96,7 +98,16 @@ class TestRegistryLoading:
         assert len(PROVIDER_REGISTRY) > 0
 
     def test_known_providers_exist(self):
-        known = ["openai", "anthropic", "gemini", "xai", "deepseek", "ollama"]
+        known = [
+            "openai",
+            "anthropic",
+            "gemini",
+            "xai",
+            "deepseek",
+            "ollama",
+            "vllm",
+            "sglang",
+        ]
         for pid in known:
             assert pid in PROVIDER_REGISTRY_BY_ID, f"Missing provider: {pid}"
 

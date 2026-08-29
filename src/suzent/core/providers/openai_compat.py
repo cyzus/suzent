@@ -34,12 +34,18 @@ class OpenAICompatProvider(BaseProvider):
             ]
         return []
 
+    def _api_key_is_optional(self) -> bool:
+        from suzent.core.providers.catalog import PROVIDER_REGISTRY_BY_ID
+
+        spec = PROVIDER_REGISTRY_BY_ID.get(self.provider_id)
+        return bool(spec and spec.api_key_optional)
+
     async def list_models(self) -> List[Model]:
         api_key = resolve_api_key(self.provider_id, self.config)
-        if not api_key:
+        if not api_key and not self._api_key_is_optional():
             return []
 
-        headers = {"Authorization": f"Bearer {api_key}"}
+        headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
         async with aiohttp.ClientSession() as session:
             try:
                 async with session.get(
@@ -74,7 +80,9 @@ class OpenAICompatProvider(BaseProvider):
         return self._catalog_defaults()
 
     async def validate_credentials(self) -> bool:
-        # Key must exist; model list (live or catalog) confirms the provider is reachable.
-        if not resolve_api_key(self.provider_id, self.config):
+        if (
+            not resolve_api_key(self.provider_id, self.config)
+            and not self._api_key_is_optional()
+        ):
             return False
         return await super().validate_credentials()

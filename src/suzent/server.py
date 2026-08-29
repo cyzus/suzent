@@ -528,10 +528,9 @@ async def _refresh_provider_models() -> None:
 
         refreshed = 0
         for spec in PROVIDER_REGISTRY:
-            if not spec.env_keys:
-                continue
-            if not resolve_api_key(spec.id):
-                continue
+            if not spec.api_key_optional:
+                if not spec.env_keys or not resolve_api_key(spec.id):
+                    continue
             try:
                 provider = ProviderFactory.get_provider(spec.id, {})
                 models = await provider.list_models()
