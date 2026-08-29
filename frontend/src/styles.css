@@ -739,55 +739,88 @@ code {
  */
 .reasoning-thinking-label {
   position: relative;
+  /*
+   * A slice of the word is simply not there. Hard stops, no falloff: the ink
+   * is gone across that span rather than faded, so the word reads as damaged
+   * for as long as the slice is over it.
+   *
+   * The geometry is set so the missing slice tracks the bar below. With the
+   * image four times the box wide, the gap's centre sits at (2 - 3p) of the
+   * box for a background-position of p, which is where the percentages in
+   * the keyframes come from — they put the gap exactly where the bar is.
+   */
   background-image: linear-gradient(
-    100deg,
-    currentColor 0 40%,
-    color-mix(in srgb, currentColor 15%, transparent) 47%,
-    color-mix(in srgb, currentColor 15%, transparent) 53%,
-    currentColor 60% 100%
+    90deg,
+    currentColor 0 45.25%,
+    transparent 45.25% 54.75%,
+    currentColor 54.75% 100%
   );
-  background-size: 320% 100%;
-  background-position: 100% 0;
+  background-size: 400% 100%;
+  background-position: 66.667% 0;
   background-clip: text;
   -webkit-background-clip: text;
   /* Not `color`, which the label's own utility class owns — and which the
      gradient reads through currentColor. */
   -webkit-text-fill-color: transparent;
-  animation: reasoning-thinking-sweep 1.3s linear infinite;
+  animation: reasoning-thinking-gap 1.15s steps(8, end) infinite;
 }
 
-/* The travelling bar. `currentColor` is still the label's own ink: the
-   transparent fill above governs the glyphs, not the color property. The bar
-   is a full-cover box with a moving window cut out of it, so it is clipped to
-   the label and never hangs off either end. */
+/*
+ * The bar riding in that slice. `currentColor` is still the label's own ink:
+ * the transparent fill above governs the glyphs, not the color property.
+ *
+ * A full-cover box with a moving window cut out of it, so the bar is clipped
+ * to the label and never hangs off either end. Its box is inset horizontally
+ * by zero on purpose — any horizontal inset would widen it relative to the
+ * background box and pull the bar out of register with the gap.
+ *
+ * It is narrower than the gap, which leaves a sliver of bare ground showing
+ * along each edge: the word is not merely covered, it has been scraped off
+ * ahead of the bar and laid back down behind it.
+ */
 .reasoning-thinking-label::after {
   content: '';
   position: absolute;
-  inset: -0.15em -0.2em;
+  inset: -0.15em 0;
   background: currentColor;
-  animation: reasoning-thinking-redact 1.3s steps(9, end) infinite;
+  animation: reasoning-thinking-redact 1.15s steps(8, end) infinite;
 }
 
-@keyframes reasoning-thinking-sweep {
-  to {
-    background-position: -60% 0;
+/*
+ * Both halves share these four stops so they step together. Between any pair
+ * of keyframes the steps() timing runs afresh, so a differing keyframe
+ * structure would put the bar and the gap on different beats — which is what
+ * made the earlier pairing read as two effects rather than one.
+ */
+@keyframes reasoning-thinking-gap {
+  0% {
+    background-position: 66.667% 0;
+  }
+  12% {
+    background-position: 61.667% 0;
+  }
+  88% {
+    background-position: 38.333% 0;
+  }
+  100% {
+    background-position: 33.333% 0;
   }
 }
 
 @keyframes reasoning-thinking-redact {
-  /* Grows in at the right edge, crosses at a constant third of the width
-     (the two insets always sum to 70), then shrinks out at the left edge. */
+  /* Grows in at the left edge, crosses at a constant 30% of the width (the
+     two insets always sum to 70), then shrinks out at the right edge. */
   0% {
-    clip-path: inset(0 0 0 100%);
+    clip-path: inset(0 100% 0 0);
   }
   12% {
-    clip-path: inset(0 0 0 70%);
-  }
-  88% {
     clip-path: inset(0 70% 0 0);
   }
+  88% {
+    clip-path: inset(0 0 0 70%);
+  }
   100% {
-    clip-path: inset(0 100% 0 0);
+    clip-path: inset(0 0 0 100%);
   }
 }
 
