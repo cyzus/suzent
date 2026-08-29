@@ -13,10 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Activity, sidebar and minimap refinements
 
 ### ⚡ Changed
+- Cut chat scroll cost on macOS
 - Stop re-rendering settled turn content on every token
 - Keep draft writes off the token loop and out of the index
 
 ### 🐛 Fixed
+- Keep the rail mounted while an approval is pending
 - Run the sweep at 0.72s
 - Let the redact blanket the word instead of passing over it
 - Give the redact and the sweep a beat each
