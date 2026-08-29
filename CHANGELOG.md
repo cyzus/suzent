@@ -5,13 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v0.11.1] - 2026-08-29
+## [v0.12.0] - 2026-08-29
+
+### 🚀 Added
+- Redact the thinking label on the sweep's off-beat
+- Activity, sidebar and minimap refinements
 
 ### ⚡ Changed
 - Stop re-rendering settled turn content on every token
 - Keep draft writes off the token loop and out of the index
 
 ### 🐛 Fixed
+- Run the sweep at 0.72s
+- Let the redact blanket the word instead of passing over it
+- Give the redact and the sweep a beat each
+- Make the thinking bar and the gap one movement
+- Let the thinking bar travel instead of blanketing the word
+- Let one element carry the thinking state
+- Localize the reasoning rail labels
 - Make the forced flush wait for a write already in flight
 - Don't charge the wait between chunks to the reveal clock
 
