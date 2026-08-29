@@ -5,7 +5,7 @@ import { MarkdownRenderer } from './MarkdownRenderer';
 import { getRepeatedToolLabel, getToolSummary, normalizeToolName } from './toolSummary';
 import type { ToolTense } from './toolSummary';
 import { useTypewriter } from '../../hooks/useTypewriter';
-import { tForLocale } from '../../i18n';
+import { tForLocale, useI18n } from '../../i18n';
 
 export type ActivityRenderGroup<T> =
   | { type: 'activity'; chunks: Array<{ chunk: T; index: number }> }
@@ -442,20 +442,32 @@ const ReasoningRailItemComponent: React.FC<{
   isStreaming?: boolean;
   onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
 }> = ({ text, isStreaming, onFileClick }) => {
+  const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
   // Reasoning arrives in the same uneven bursts as the answer; reveal it at a
   // steady rate so an expanded thought reads as flowing text.
   const revealedText = useTypewriter(text, Boolean(isStreaming) && expanded);
+  const thinking = Boolean(isStreaming);
   return (
-    <ActivityRailItem state={isStreaming ? 'active' : 'done'}>
+    <ActivityRailItem state={thinking ? 'active' : 'done'}>
       <div className="min-w-0">
         <button
           type="button"
           onClick={() => setExpanded((value) => !value)}
           className="group/thought-header inline-flex items-center gap-1.5 px-2.5 cursor-pointer select-none min-w-0 max-w-full"
         >
-          <span className="text-[11px] font-mono font-bold uppercase tracking-wide text-neutral-500 dark:text-neutral-400 shrink-0">
-            Thought
+          {/* A thought carries the same two states as a tool call — in flight
+              and finished. Saying only "Thought" made a reasoning block that
+              was still arriving look like one that had already landed; the
+              label animates while it streams and settles when it lands. */}
+          <span
+            className={`text-[11px] font-mono font-bold uppercase tracking-wide shrink-0 ${
+              thinking
+                ? 'reasoning-thinking-label text-brutal-black dark:text-neutral-100'
+                : 'text-neutral-500 dark:text-neutral-400'
+            }`}
+          >
+            {thinking ? t('activityRail.thinking') : t('activityRail.thought')}
           </span>
           <svg
             className={`w-3 h-3 text-neutral-400 opacity-0 transition-all duration-150 shrink-0 group-hover/thought-header:opacity-100 ${expanded ? 'rotate-90' : ''}`}

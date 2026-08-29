@@ -7,6 +7,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { useChatStore } from '../hooks/useChatStore';
 import { useProjects } from '../hooks/useProjects';
+import { useEventBus } from '../hooks/useEventBus';
 import type { ChatKindCounts, ChatSummary, Project } from '../types/api';
 import { RobotAvatar } from './chat/RobotAvatar';
 import { useI18n } from '../i18n';
@@ -109,6 +110,17 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
     refreshChatList,
     loadMoreChats,
   } = useChatStore();
+
+  // `isRunning` on a chat summary is a snapshot from whenever the list was
+  // last fetched, so a run that starts or ends afterwards leaves a stale badge
+  // in the sidebar. The event bus carries the same signal live, so prefer it
+  // once its snapshot has landed and fall back to the fetched flag until then.
+  const { activeStreams, snapshotReady } = useEventBus();
+  const isChatRunning = useCallback(
+    (chatId: string, fetched?: boolean): boolean =>
+      snapshotReady ? activeStreams.has(chatId) : !!fetched,
+    [activeStreams, snapshotReady]
+  );
 
   const {
     projects,
@@ -768,7 +780,10 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
             </h3>
           </div>
           <div className="flex items-center gap-1.5 overflow-hidden">
-            <SessionStatusBadges running={chat.isRunning} unreadCount={unread} />
+            <SessionStatusBadges
+              running={isChatRunning(chat.id, chat.isRunning)}
+              unreadCount={unread}
+            />
             {/* Project chip — always shown so the user knows which workspace */}
             {showProject && chat.projectName && (
               <span
@@ -1151,7 +1166,7 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
                                         </span>
                                         <span className="mt-1 flex min-w-0 items-center gap-1.5">
                                           <SessionStatusBadges
-                                            running={job.is_running}
+                                            running={isChatRunning(chatId, job.is_running)}
                                             unreadCount={
                                               currentChatId === chatId ? 0 : job.unread_count
                                             }
@@ -1230,7 +1245,7 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
                                 </span>
                                 <span className="mt-1 flex min-w-0 items-center gap-1.5">
                                   <SessionStatusBadges
-                                    running={session.is_running}
+                                    running={isChatRunning(session.chat_id, session.is_running)}
                                     unreadCount={
                                       currentChatId === session.chat_id ? 0 : session.unread_count
                                     }

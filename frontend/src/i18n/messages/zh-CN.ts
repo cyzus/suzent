@@ -1464,6 +1464,10 @@ export const zhCN = {
     feedbackPlaceholder: '否，并告诉 Suzent 应该如何调整',
     submit: '提交',
   },
+  activityRail: {
+    thinking: '思考中',
+    thought: '思考',
+  },
   codeStepBlock: {
     thought: '思考',
     code: '代码',

@@ -2480,7 +2480,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       <div className="flex flex-col flex-1 min-w-0 min-h-0 h-full relative">
         {/* Project board full-screen overlay */}
         {isBoardFullscreen && (
-          <div className="absolute inset-0 z-20 bg-neutral-50 dark:bg-zinc-900 overflow-hidden">
+          <div className="absolute inset-0 z-30 bg-neutral-50 dark:bg-zinc-900 overflow-hidden">
             <ProjectKanbanView
               projectName={chats.find((c) => c.id === currentChatId)?.projectName ?? null}
               projectId={chats.find((c) => c.id === currentChatId)?.projectId ?? null}
@@ -2606,7 +2606,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             <div ref={bottomRef} className="h-0" />
           </div>
 
-          {safeMessages.length > 0 && (
+          {/* The board overlay covers the chat, so the rail would otherwise
+              float on top of a view it cannot scroll. */}
+          {safeMessages.length > 0 && !isBoardFullscreen && (
             <ChatMinimap
               messages={safeMessages}
               scrollContainerRef={scrollContainerRef}
