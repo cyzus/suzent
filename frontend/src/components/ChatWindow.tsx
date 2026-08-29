@@ -62,8 +62,14 @@ import type {
 } from '../lib/streamEvents';
 
 const INITIAL_VISIBLE_MESSAGES = 30;
-const LOAD_MORE_MESSAGES = 60;
-const LOAD_MORE_SCROLL_THRESHOLD_PX = 96;
+// A page of older messages renders synchronously, so the batch size is a
+// direct main-thread stall. Small enough that one page stays inside a frame
+// or two, rather than one 60-message page freezing the window.
+const LOAD_MORE_MESSAGES = 20;
+// Start that work while there is still a screenful of runway above the reader
+// instead of at the moment they hit the top, so the page lands before they
+// arrive rather than as a visible stall once they have nowhere left to scroll.
+const LOAD_MORE_SCROLL_THRESHOLD_PX = 600;
 
 interface ForkOrigin {
   chatId: string;
@@ -450,6 +456,30 @@ const MessageList: React.FC<{
     [messages]
   );
 
+  // A fresh `() => onFork(index)` per row would hand every AssistantMessage a
+  // new prop identity on each render and defeat its memo -- which is the whole
+  // reason a prepend used to re-render the entire history. Hand each row a
+  // callback that stays identical for as long as its fork index does; the
+  // handler itself is read through a ref so a new `onFork` cannot stale it.
+  const onForkRef = useRef(onFork);
+  onForkRef.current = onFork;
+  const forkHandlersRef = useRef(new Map<number, () => void>());
+  const forkHandlersChatRef = useRef(chatId);
+  if (forkHandlersChatRef.current !== chatId) {
+    // Drop the cache when the conversation changes rather than letting entries
+    // accumulate across every chat visited this session.
+    forkHandlersChatRef.current = chatId;
+    forkHandlersRef.current = new Map();
+  }
+  const getForkHandler = useCallback((messageEndIndex: number) => {
+    let handler = forkHandlersRef.current.get(messageEndIndex);
+    if (!handler) {
+      handler = () => onForkRef.current?.(messageEndIndex);
+      forkHandlersRef.current.set(messageEndIndex, handler);
+    }
+    return handler;
+  }, []);
+
   // Index of the last non-skipped assistant message — only it shows the retry button.
   const lastAssistantIdx = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
@@ -499,7 +529,7 @@ const MessageList: React.FC<{
             <div
               key={globalIdx}
               data-message-index={globalIdx}
-              className="chat-msg-row w-full flex flex-col group/message"
+              className="chat-msg-row chat-msg-row-assistant w-full flex flex-col group/message"
             >
               <div className="flex justify-start w-full">
                 <AssistantMessage
@@ -535,7 +565,7 @@ const MessageList: React.FC<{
             <div
               key={globalIdx}
               data-message-index={globalIdx}
-              className="chat-msg-row w-full flex justify-start pl-2 pr-2 min-w-0"
+              className="chat-msg-row chat-msg-row-compact w-full flex justify-start pl-2 pr-2 min-w-0"
             >
               <div className="max-w-full min-w-0 border-2 border-dashed border-brutal-black px-4 py-2 text-sm font-mono text-neutral-500 dark:text-neutral-400 italic bg-white dark:bg-zinc-800 whitespace-pre-wrap break-words break-all">
                 {m.content}
@@ -551,7 +581,7 @@ const MessageList: React.FC<{
             <div
               key={globalIdx}
               data-message-index={globalIdx}
-              className="chat-msg-row w-full flex justify-start"
+              className="chat-msg-row chat-msg-row-compact w-full flex justify-start"
             >
               <SystemTriggeredMessage message={m} />
             </div>
@@ -563,7 +593,7 @@ const MessageList: React.FC<{
             <div
               key={globalIdx}
               data-message-index={globalIdx}
-              className="chat-msg-row w-full flex justify-start"
+              className="chat-msg-row chat-msg-row-compact w-full flex justify-start"
             >
               <NoticeMessage message={m} />
             </div>
@@ -577,7 +607,9 @@ const MessageList: React.FC<{
           <React.Fragment key={globalIdx}>
             <div
               data-message-index={globalIdx}
-              className="chat-msg-row w-full flex flex-col group/message"
+              className={`chat-msg-row ${
+                isUser ? 'chat-msg-row-user' : 'chat-msg-row-assistant'
+              } w-full flex flex-col group/message`}
             >
               <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} w-full`}>
                 {isUser ? (
@@ -617,7 +649,7 @@ const MessageList: React.FC<{
                       onFork &&
                       !streamingForCurrentChat &&
                       typeof m.raw_message_end_index === 'number'
-                        ? () => onFork(m.raw_message_end_index)
+                        ? getForkHandler(m.raw_message_end_index)
                         : undefined
                     }
                     fileChangeChatId={m.file_changes?.length ? chatId : undefined}
@@ -1583,6 +1615,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const loadOlderVisibleMessages = useCallback(() => {
     const el = scrollContainerRef.current;
     if (!el || !hasHiddenOlderMessages) return;
+    // Scroll fires many times per frame, and every event above the threshold
+    // would otherwise queue another page: several stacked into one render, each
+    // overwriting the snapshot the restore below depends on. One page at a
+    // time, released once it has been committed and the scroll restored.
+    if (prependScrollSnapshotRef.current) return;
 
     prependScrollSnapshotRef.current = {
       scrollHeight: el.scrollHeight,
@@ -1648,7 +1685,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   useLayoutEffect(() => {
     const snapshot = prependScrollSnapshotRef.current;
     const el = scrollContainerRef.current;
-    if (!el) return;
+    if (!el) {
+      // The snapshot doubles as the "a page is in flight" latch, so it has to
+      // be released on every path out of here or older messages stop loading
+      // for the rest of the chat.
+      prependScrollSnapshotRef.current = null;
+      return;
+    }
 
     const pendingJumpIndex = pendingMinimapJumpRef.current;
     if (pendingJumpIndex != null) {

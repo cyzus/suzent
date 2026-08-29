@@ -283,6 +283,9 @@ function formatActivityDuration(totalSeconds: number): string {
   return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
 }
 
+/** Matches the grid-rows transition below; they must stay in step. */
+const COLLAPSE_MS = 300;
+
 export const ActivityRail: React.FC<{
   children: React.ReactNode;
   itemCount: number;
@@ -347,6 +350,26 @@ export const ActivityRail: React.FC<{
     return () => window.clearInterval(timer);
   }, [isActive]);
 
+  // The collapsed body is invisible but was still mounted, laid out and
+  // painted: measured at 82% of all message DOM on a long chat, and it is the
+  // bulk of what makes a row expensive the first time it scrolls into view.
+  // Mount it only while open, held one transition longer so closing still
+  // animates rather than snapping shut on an empty box.
+  const [bodyMounted, setBodyMounted] = useState(expanded);
+  useEffect(() => {
+    if (expanded) {
+      setBodyMounted(true);
+      return undefined;
+    }
+    // A pending approval can be holding a half-typed rejection reason in the
+    // tool block's own state. Unmounting would discard it silently, and the
+    // user would only find out after reopening the rail -- so hold the body
+    // until the approval resolves, however the rail got collapsed.
+    if (hasPending) return undefined;
+    const timer = window.setTimeout(() => setBodyMounted(false), COLLAPSE_MS);
+    return () => window.clearTimeout(timer);
+  }, [expanded, hasPending]);
+
   const displayedSeconds = durationSeconds ?? elapsedSeconds;
   const durationLabel = `Worked for ${formatActivityDuration(displayedSeconds)}`;
   // Only the turn's first rail reports the worked time. When assistant text
@@ -395,7 +418,7 @@ export const ActivityRail: React.FC<{
       >
         <div className="min-h-0 overflow-hidden">
           <div className="activity-rail-scroll min-w-0 w-full">
-            <div className="activity-rail min-w-0 w-full">{children}</div>
+            <div className="activity-rail min-w-0 w-full">{bodyMounted ? children : null}</div>
           </div>
         </div>
       </div>
