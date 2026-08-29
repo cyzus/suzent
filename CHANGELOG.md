@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.11.1] - 2026-08-29
+
+### ⚡ Changed
+- Stop re-rendering settled turn content on every token
+- Keep draft writes off the token loop and out of the index
+
+### 🐛 Fixed
+- Make the forced flush wait for a write already in flight
+- Don't charge the wait between chunks to the reveal clock
+
 ## [v0.11.0] - 2026-08-27
 
 <!-- highlights -->
