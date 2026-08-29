@@ -3,6 +3,7 @@ import type { Message } from '../../types/api';
 import { useI18n } from '../../i18n';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { CompactionCube, CompactionSweep } from './CompactionCube';
+import { DisclosureChevron } from '../DisclosureChevron';
 
 /**
  * Small, self-contained presentational rows used by the chat view: the drag-drop
@@ -96,16 +97,10 @@ export const SystemTriggeredMessage: React.FC<{ message: Message }> = ({ message
             {title}
           </span>
           {body && (
-            <svg
-              className={`ml-auto h-3 w-3 shrink-0 text-brutal-black/50 dark:text-neutral-500 transition-transform duration-200 ${expanded ? 'rotate-90' : ''}`}
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={3}
-              aria-hidden="true"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-            </svg>
+            <DisclosureChevron
+              expanded={expanded}
+              className="ml-auto h-3 w-3 text-brutal-black/50 dark:text-neutral-500 transition-transform duration-200"
+            />
           )}
         </button>
 

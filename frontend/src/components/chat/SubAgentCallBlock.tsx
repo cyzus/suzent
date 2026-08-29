@@ -18,6 +18,7 @@ import {
   SubAgentStatus,
   SubAgentStatusBadge,
 } from './subAgentStatus';
+import { DisclosureChevron } from '../DisclosureChevron';
 
 export type { SubAgentStatus } from './subAgentStatus';
 
@@ -170,15 +171,10 @@ const SubAgentCallBlockComponent: React.FC<SubAgentCallBlockProps> = ({
             way the activity rail's own disclosures already behave. It used to
             point down when shut and flip up when open, which reads as "there
             is something below" in both states. */}
-        <svg
-          className={`w-3 h-3 text-neutral-400 transition-transform duration-200 shrink-0 ${expanded ? 'rotate-90' : ''}`}
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth={3}
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-        </svg>
+        <DisclosureChevron
+          expanded={expanded}
+          className="w-3 h-3 text-neutral-400 transition-transform duration-200"
+        />
       </button>
 
       {/* Expandable body */}

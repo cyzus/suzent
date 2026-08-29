@@ -15,6 +15,7 @@ import type {
   ToolPermissionDecision,
   ToolPermissionResolution,
 } from '../../types/agui';
+import { DisclosureChevron } from '../DisclosureChevron';
 
 export interface ToolRendererProps {
   toolName: string;
@@ -641,26 +642,16 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
 
         {/* Expand/collapse chevron */}
         {hasDetails && !inActivityRail && (
-          <svg
-            className={`w-3 h-3 text-neutral-400 transition-transform duration-200 shrink-0 ${expanded ? 'rotate-180' : ''}`}
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={3}
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-          </svg>
+          <DisclosureChevron
+            expanded={expanded}
+            className="w-3 h-3 text-neutral-400 transition-transform duration-200"
+          />
         )}
         {hasDetails && inActivityRail && (
-          <svg
-            className={`w-3 h-3 text-neutral-400 opacity-0 transition-all duration-150 shrink-0 group-hover/tool-header:opacity-100 ${expanded ? 'rotate-90' : ''}`}
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={3}
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-          </svg>
+          <DisclosureChevron
+            expanded={expanded}
+            className="w-3 h-3 text-neutral-400 opacity-0 transition-all duration-150 group-hover/tool-header:opacity-100"
+          />
         )}
       </div>
 
@@ -678,15 +669,7 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
             {visibleDecision && (
               <details className="group/permission rounded-sm border border-neutral-200 bg-neutral-50/60 text-[11px] text-neutral-700 dark:border-zinc-700 dark:bg-zinc-900/60 dark:text-neutral-300">
                 <summary className="flex cursor-pointer list-none items-center gap-2 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wide text-neutral-500 transition-colors hover:bg-neutral-100 dark:hover:bg-zinc-800 [&::-webkit-details-marker]:hidden">
-                  <svg
-                    className="h-2.5 w-2.5 shrink-0 transition-transform duration-150 group-open/permission:rotate-90"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={3}
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                  </svg>
+                  <DisclosureChevron className="h-2.5 w-2.5 transition-transform duration-150 group-open/permission:rotate-90" />
                   <span>{t('toolCallBlock.permissionDecisionTitle')}</span>
                   {decisionBadge && (
                     <span

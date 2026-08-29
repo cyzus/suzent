@@ -16,6 +16,7 @@ import type {
   ToolPermissionDecision,
   ToolPermissionResolution,
 } from '../../types/agui';
+import { DisclosureChevron } from '../DisclosureChevron';
 
 const LARGE_MARKDOWN_RENDER_THRESHOLD = 12000;
 
@@ -124,15 +125,10 @@ export const ToolSequenceGroup: React.FC<{
               {isAnyRunning ? 'Running' : 'Hide'} {tools.length} Steps
             </span>
           )}
-          <svg
-            className={`w-3 h-3 transition-transform duration-200 ml-auto ${expanded ? 'rotate-180' : ''}`}
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={3}
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-          </svg>
+          <DisclosureChevron
+            expanded={expanded}
+            className="w-3 h-3 transition-transform duration-200 ml-auto"
+          />
         </div>
       </button>
 
