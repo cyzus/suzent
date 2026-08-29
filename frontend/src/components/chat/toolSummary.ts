@@ -135,6 +135,15 @@ const NAME_ALIASES: Record<string, string> = {
  * `mcp__server__do_thing` → `do thing`, `ReadFile` → `read_file`.
  * Returns the canonical registry name when one is known.
  */
+/**
+ * Tools are registered under class-style names (`RunCommandTool`); the suffix
+ * is noise on a chip. Naming what an agent can actually do reads as capability,
+ * where a bare count only reads as a row in a ledger.
+ */
+export function toolLabel(name: string): string {
+  return name.replace(/Tool$/, '');
+}
+
 export function normalizeToolName(toolName: string): string {
   let name = toolName.trim();
   const mcp = /^mcp__[^_]+(?:_[^_]+)*?__(.+)$/.exec(name);

@@ -61,8 +61,17 @@ function notify() {
   _listeners.forEach((fn) => fn());
 }
 
-function _recordState(task: SubAgentSummary) {
-  _taskStates = { ..._taskStates, [task.task_id]: { ..._taskStates[task.task_id], ...task } };
+/** @returns false when the update was rejected as stale. */
+function _recordState(task: SubAgentSummary): boolean {
+  const previous = _taskStates[task.task_id];
+  // A run does not un-finish. The stream and the poll below both write here,
+  // and either can arrive late or replay an older frame; whichever source saw
+  // the run end wins, so a settled task is never dragged back to 'running'.
+  if (previous && isSubAgentTerminal(previous.status) && !isSubAgentTerminal(task.status)) {
+    return false;
+  }
+  _taskStates = { ..._taskStates, [task.task_id]: { ...previous, ...task } };
+  return true;
 }
 
 function _upsertTask(task: SubAgentSummary) {
@@ -76,12 +85,93 @@ function _upsertTask(task: SubAgentSummary) {
 }
 
 function _applyTask(task: SubAgentSummary) {
-  _recordState(task);
-  if (isSubAgentTerminal(task.status)) {
+  const accepted = _recordState(task);
+  // Branch on what the store settled on, not on what arrived. A stale 'running'
+  // frame rejected above is still a finished run: adding it back to the active
+  // list would strand it there -- visible as live in the status bar and
+  // sidebar, yet skipped by the poll, which reads the (terminal) task state.
+  const settled = _taskStates[task.task_id]?.status ?? task.status;
+  if (!accepted || isSubAgentTerminal(settled)) {
     _activeTasks = _activeTasks.filter((a) => a.task_id !== task.task_id);
   } else {
     _upsertTask(task);
   }
+}
+
+// ─── Shared fallback poll ────────────────────────────────────────────────────
+//
+// The stream is the fast path but not a complete one: it can end before a run
+// does, and it only carries tasks seen *this session* -- so a chat reopened on
+// a sub-agent that is still working learns nothing from it until something
+// changes. A poll covers that gap.
+//
+// One poll, not one per block. Each transcript block used to run its own 3s
+// timer, so a chat showing ten sub-agents made ten independent requests every
+// three seconds and stopped covering any of them the moment its block
+// unmounted. Blocks now register interest and this resolves them together.
+
+const SUBAGENT_POLL_INTERVAL_MS = 3000;
+const _watched = new Set<string>();
+let _pollTimer: ReturnType<typeof setInterval> | null = null;
+
+function _unresolvedIds(): string[] {
+  return [..._watched].filter((id) => !isSubAgentTerminal(_taskStates[id]?.status));
+}
+
+async function _pollUnresolved() {
+  const ids = _unresolvedIds();
+  if (ids.length === 0) {
+    _stopPolling();
+    return;
+  }
+
+  const results = await Promise.all(
+    ids.map(async (id) => {
+      try {
+        const res = await fetch(`${getApiBase()}/subagents/${id}`);
+        if (!res.ok) return null;
+        const task = (await res.json())?.task as SubAgentSummary | undefined;
+        return task?.task_id ? task : null;
+      } catch {
+        // Backend restarting or offline; the next tick retries.
+        return null;
+      }
+    })
+  );
+
+  const seen = results.filter((task): task is SubAgentSummary => task !== null);
+  if (seen.length === 0) return;
+  seen.forEach(_applyTask);
+  notify();
+}
+
+function _startPolling() {
+  if (_pollTimer || _unresolvedIds().length === 0) return;
+  _pollTimer = setInterval(() => {
+    void _pollUnresolved();
+  }, SUBAGENT_POLL_INTERVAL_MS);
+  void _pollUnresolved();
+}
+
+function _stopPolling() {
+  if (_pollTimer) {
+    clearInterval(_pollTimer);
+    _pollTimer = null;
+  }
+}
+
+/**
+ * Ask the shared poll to resolve `taskId` until it reaches a terminal state.
+ * Returns the unregister function. Safe to call for a task the stream already
+ * knows: it is dropped from the poll set as soon as its status settles.
+ */
+export function watchSubAgentTask(taskId: string): () => void {
+  _watched.add(taskId);
+  _startPolling();
+  return () => {
+    _watched.delete(taskId);
+    if (_watched.size === 0) _stopPolling();
+  };
 }
 
 function _openEventSource() {
@@ -121,6 +211,8 @@ function subscribe(fn: () => void) {
     _listeners.delete(fn);
     if (_listeners.size === 0) {
       _closeEventSource();
+      _stopPolling();
+      _watched.clear();
       _activeTasks = [];
       _taskStates = {};
     }

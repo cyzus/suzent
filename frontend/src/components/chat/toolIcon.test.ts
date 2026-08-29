@@ -10,7 +10,21 @@ describe('tool icon helpers', () => {
   it('maps tool names to the shared icon set', () => {
     expect(getToolIcon('web_search')).toBe('🔍');
     expect(getToolIcon('read_file')).toBe('📁');
-    expect(getToolIcon('agent')).toBe('🔧');
+  });
+
+  it('gives delegation its own mark instead of the generic wrench', () => {
+    expect(getToolIcon('agent')).toBe('🤖');
+    expect(getToolIcon('subagent')).toBe('🤖');
+  });
+
+  it('reads a delegation as delegation even when its name mentions the web', () => {
+    // Checked before the substring heuristics: a "web_agent" is an agent, not
+    // a search box.
+    expect(getToolIcon('web_agent')).toBe('🤖');
+  });
+
+  it('still falls back to the wrench for anything unrecognised', () => {
+    expect(getToolIcon('some_unknown_tool')).toBe('🔧');
   });
 
   it('keeps the icon layout class consistent between collapsed and expanded states', () => {

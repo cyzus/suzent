@@ -374,6 +374,11 @@ class AgentTool(Tool):
             runtime=runtime,
             acp_agent_id=(acp_agent_id or "").strip() or None,
             acp_session_id=(acp_session_id or "").strip() or None,
+            # Blocking runs can outlive this tool call: the streaming layer
+            # cancels the call at its tool timeout while the sub-agent keeps
+            # going. Handing over the call id lets the synthesized failure name
+            # the task it started, so the run stays reachable from the UI.
+            tool_call_id=getattr(ctx, "tool_call_id", None),
         )
 
         tool_list = ", ".join(resolved) if resolved else "(none)"

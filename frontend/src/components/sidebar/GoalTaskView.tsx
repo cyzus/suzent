@@ -3,6 +3,7 @@ import type { Goal, Task, GoalStatus, TaskStatus } from '../../types/api';
 import { useI18n } from '../../i18n';
 import { useGoalTasks } from '../../hooks/useGoalTasks';
 import { BrutalButton } from '../BrutalButton';
+import { DisclosureChevron } from '../DisclosureChevron';
 
 interface GoalTaskViewProps {
   goal: Goal | null;
@@ -161,15 +162,10 @@ export const GoalTaskView: React.FC<GoalTaskViewProps> = ({
                   onClick={() => setSubgoalsExpanded((v) => !v)}
                   className="flex items-center gap-1 text-[9px] font-black uppercase tracking-wider font-mono text-brutal-black dark:text-white"
                 >
-                  <svg
-                    className={`w-2.5 h-2.5 transition-transform ${subgoalsExpanded ? '' : '-rotate-90'}`}
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={3}
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                  </svg>
+                  <DisclosureChevron
+                    expanded={subgoalsExpanded}
+                    className="w-2.5 h-2.5 transition-transform"
+                  />
                   {t('goal.subgoals')} ({goal.subgoals.length})
                 </button>
                 {subgoalsExpanded && (

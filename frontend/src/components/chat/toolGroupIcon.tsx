@@ -2,7 +2,6 @@ import type { ApprovalState } from './ToolCallBlock';
 import {
   CircleStackIcon,
   CommandLineIcon,
-  ComputerDesktopIcon,
   DocumentTextIcon,
   FolderIcon,
   MagnifyingGlassIcon,
@@ -10,6 +9,7 @@ import {
   WrenchScrewdriverIcon,
   ClockIcon,
   ClipboardDocumentListIcon,
+  UserGroupIcon,
 } from '@heroicons/react/24/outline';
 
 type ToolGroupIconProps = {
@@ -22,6 +22,9 @@ type ToolGroupIconProps = {
 function pickIcon(toolName: string, approvalState?: ApprovalState) {
   if (approvalState === 'pending') return ClockIcon;
   if (approvalState === 'denied') return NoSymbolIcon;
+  // Delegation is checked first: a sub-agent is not a search tool because its
+  // name happens to contain "web", and a desktop monitor never said "agent".
+  if (toolName.includes('agent') || toolName.includes('subagent')) return UserGroupIcon;
   if (toolName.includes('search') || toolName.includes('web')) return MagnifyingGlassIcon;
   if (toolName.includes('file') || toolName.includes('dir')) return FolderIcon;
   if (toolName.includes('read') || toolName.includes('write')) return DocumentTextIcon;
@@ -34,7 +37,6 @@ function pickIcon(toolName: string, approvalState?: ApprovalState) {
     return CommandLineIcon;
   if (toolName.includes('database') || toolName.includes('sql')) return CircleStackIcon;
   if (toolName.includes('plan')) return ClipboardDocumentListIcon;
-  if (toolName.includes('agent') || toolName.includes('subagent')) return ComputerDesktopIcon;
   return WrenchScrewdriverIcon;
 }
 

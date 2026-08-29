@@ -58,6 +58,8 @@ interface RightSidebarProps {
   onSelectSubAgent?: (taskId: string) => void;
   currentChatId?: string | null;
   hasSubAgents?: boolean;
+  /** This chat has spawned sub-agents at some point, live stream or not. */
+  hasSubAgentHistory?: boolean;
   messages?: Message[];
   forcedWebContextId?: string | null;
   onClearForcedWebContext?: () => void;
@@ -100,6 +102,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   onSelectSubAgent,
   currentChatId,
   hasSubAgents = false,
+  hasSubAgentHistory = false,
   messages = [],
   forcedWebContextId,
   onClearForcedWebContext,
@@ -193,7 +196,10 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       icon: CpuChipIcon,
       labelKey: 'sidebar.tabs.agents',
       fallbackLabel: 'Agents',
-      hasContent: hasSubAgents || !!viewingSubAgentTaskId,
+      // Openable on history: the panel fetches its own list from /subagents,
+      // so a reopened chat can show every past run. The dot stays tied to live
+      // state -- a finished history is not activity.
+      hasContent: hasSubAgents || hasSubAgentHistory || !!viewingSubAgentTaskId,
       hasActivity: hasSubAgents || !!viewingSubAgentTaskId,
       activityClass: 'bg-brutal-blue animate-pulse',
     },
