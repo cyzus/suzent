@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Keep draft writes off the token loop and out of the index
 
 ### 🐛 Fixed
+- Stop hover-tinted rows re-rasterising their text
 - Point the collapsed chevron right
 - Render the result as markdown, give the panel an identity
 - Let the Agents tab open from transcript history
