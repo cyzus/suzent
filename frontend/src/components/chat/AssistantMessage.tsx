@@ -745,7 +745,7 @@ const ModelSignature: React.FC<{ model?: string }> = ({ model }) => {
   );
 };
 
-export const AssistantMessage: React.FC<AssistantMessageProps> = ({
+const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
   message,
   previousMessageTimestamp,
   messageIndex,
@@ -1353,3 +1353,8 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
     </CitationProvider>
   );
 };
+
+// Memoised so that loading a page of older messages renders only the new rows.
+// Without this, every prepend re-rendered the entire visible history -- the
+// whole markdown pipeline, per row -- and the stall grew with each page loaded.
+export const AssistantMessage = React.memo(AssistantMessageComponent);

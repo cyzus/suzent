@@ -275,7 +275,7 @@ interface UserMessageProps {
   onRerun?: () => void;
 }
 
-export const UserMessage: React.FC<UserMessageProps> = ({
+const UserMessageComponent: React.FC<UserMessageProps> = ({
   message,
   chatId,
   onImageClick,
@@ -507,3 +507,6 @@ export const UserMessage: React.FC<UserMessageProps> = ({
     </div>
   );
 };
+
+// Memoised alongside AssistantMessage -- see the note there.
+export const UserMessage = React.memo(UserMessageComponent);
