@@ -3,6 +3,8 @@ import type { ApprovalState } from './ToolCallBlock';
 export function getToolIcon(toolName: string, approvalState?: ApprovalState): string {
   if (approvalState === 'pending') return '⏳';
   if (approvalState === 'denied') return '🚫';
+  // The agent tool had no case at all and fell through to the generic wrench.
+  if (toolName.includes('agent') || toolName.includes('subagent')) return '🤖';
   if (toolName.includes('search') || toolName.includes('web')) return '🔍';
   if (
     toolName.includes('file') ||

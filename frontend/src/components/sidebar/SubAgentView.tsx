@@ -11,7 +11,7 @@ import { getApiBase } from '../../lib/api';
 import { useSubAgentStatus } from '../../hooks/useSubAgentStatus';
 import { useI18n } from '../../i18n';
 import { AgentAvatar } from './subAgentDisplay';
-import { toolLabel } from './subAgentLabels';
+import { toolLabel } from '../chat/toolSummary';
 import { MarkdownRenderer } from '../chat/MarkdownRenderer';
 import { getToolSummary, isFailedToolOutput } from '../chat/toolSummary';
 import type { ToolTense } from '../chat/toolSummary';

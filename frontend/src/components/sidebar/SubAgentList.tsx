@@ -11,7 +11,7 @@ import { getApiBase } from '../../lib/api';
 import { useSubAgentStatus, SubAgentSummary } from '../../hooks/useSubAgentStatus';
 import { isSubAgentActive, SubAgentStatusBadge } from '../chat/subAgentStatus';
 import { AgentAvatar } from './subAgentDisplay';
-import { toolLabel } from './subAgentLabels';
+import { toolLabel } from '../chat/toolSummary';
 import { useI18n } from '../../i18n';
 
 interface SubAgentListProps {

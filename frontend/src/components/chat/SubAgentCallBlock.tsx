@@ -8,6 +8,7 @@
  */
 import React, { useState, useEffect } from 'react';
 import { useI18n } from '../../i18n';
+import { toolLabel } from './toolSummary';
 import { useSubAgentStatus, watchSubAgentTask } from '../../hooks/useSubAgentStatus';
 import {
   isSubAgentActive,
@@ -194,8 +195,9 @@ const SubAgentCallBlockComponent: React.FC<SubAgentCallBlockProps> = ({
                     <span
                       key={toolName}
                       className="text-[10px] font-mono px-1.5 py-0.5 bg-neutral-100 dark:bg-zinc-700 text-neutral-600 dark:text-neutral-300 rounded-sm border border-neutral-200 dark:border-zinc-600"
+                      title={toolName}
                     >
-                      {toolName}
+                      {toolLabel(toolName)}
                     </span>
                   ))}
                 </div>
