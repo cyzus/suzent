@@ -398,6 +398,8 @@ export const StaticContent: React.FC<{
                 description={args.description}
                 toolsAllowed={args.toolsAllowed}
                 status={taskState?.status ?? defaultStatus}
+                model={persisted.model}
+                subagentType={persisted.subagentType}
                 resultSummary={taskState?.resultSummary ?? persisted.resultSummary}
                 error={taskState?.error ?? persisted.error}
                 onOpenSidebar={onOpenSubAgentSidebar}

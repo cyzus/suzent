@@ -6,6 +6,10 @@ export interface SubAgentResultInfo {
   status?: SubAgentStatus;
   resultSummary?: string;
   error?: string;
+  /** Which model ran it -- the agent's identity, not just its outcome. */
+  model?: string;
+  /** The profile it was spawned as: 'verify', 'explore', 'plan', … */
+  subagentType?: string;
 }
 
 const SUB_AGENT_STATUSES = new Set<SubAgentStatus>([
@@ -41,6 +45,9 @@ export function parseSubAgentResult(output: string | undefined): SubAgentResultI
           resultSummary:
             typeof metadata.result_summary === 'string' ? metadata.result_summary : undefined,
           error: typeof metadata.error === 'string' ? metadata.error : undefined,
+          model: typeof metadata.model_override === 'string' ? metadata.model_override : undefined,
+          subagentType:
+            typeof metadata.subagent_type === 'string' ? metadata.subagent_type : undefined,
         };
       }
     } catch {

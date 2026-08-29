@@ -86,3 +86,32 @@ describe('parseSubAgentResult — timed-out agent envelope', () => {
     });
   });
 });
+
+describe('parseSubAgentResult — agent identity', () => {
+  it('recovers which model ran and what kind of agent it was', () => {
+    // Both have been in the tool result's metadata all along; the transcript
+    // block showed a generic status glyph instead.
+    const output = JSON.stringify({
+      success: true,
+      message: 'Sub-agent sub_052ecd64 completed.',
+      metadata: {
+        task_id: 'sub_052ecd64',
+        status: 'completed',
+        model_override: 'chatgpt/gpt-5.6-sol',
+        subagent_type: 'verify',
+      },
+    });
+    expect(parseSubAgentResult(output)).toMatchObject({
+      model: 'chatgpt/gpt-5.6-sol',
+      subagentType: 'verify',
+    });
+  });
+
+  it('leaves identity undefined when the metadata does not carry it', () => {
+    const output = JSON.stringify({ metadata: { task_id: 'sub_abc123' } });
+    expect(parseSubAgentResult(output)).toMatchObject({
+      model: undefined,
+      subagentType: undefined,
+    });
+  });
+});

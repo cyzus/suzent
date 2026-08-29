@@ -9,6 +9,7 @@
 import React, { useState, useEffect } from 'react';
 import { useI18n } from '../../i18n';
 import { toolLabel } from './toolSummary';
+import { AgentAvatar } from '../sidebar/subAgentDisplay';
 import { useSubAgentStatus, watchSubAgentTask } from '../../hooks/useSubAgentStatus';
 import {
   isSubAgentActive,
@@ -16,7 +17,6 @@ import {
   subAgentOutcomeLabel,
   SubAgentStatus,
   SubAgentStatusBadge,
-  SubAgentStatusIcon,
 } from './subAgentStatus';
 
 export type { SubAgentStatus } from './subAgentStatus';
@@ -28,6 +28,10 @@ interface SubAgentCallBlockProps {
   status: SubAgentStatus;
   resultSummary?: string;
   error?: string;
+  /** Which model ran it, for the identity mark in the header. */
+  model?: string;
+  /** Profile it was spawned as ('verify', 'explore', …), if recorded. */
+  subagentType?: string;
   /** Called when user clicks "View log" */
   onOpenSidebar?: (taskId: string) => void;
   /** Called when user clicks "Stop" */
@@ -92,6 +96,8 @@ const SubAgentCallBlockComponent: React.FC<SubAgentCallBlockProps> = ({
   status: externalStatus,
   resultSummary: externalResultSummary,
   error: externalError,
+  model: externalModel,
+  subagentType,
   onOpenSidebar,
   onStop,
 }) => {
@@ -105,6 +111,7 @@ const SubAgentCallBlockComponent: React.FC<SubAgentCallBlockProps> = ({
   // requests and each stopped covering its task the moment it unmounted.
   const streamTask = taskId ? taskStates[taskId] : undefined;
   const status = streamTask?.status ?? externalStatus;
+  const model = streamTask?.model_override ?? externalModel;
   const resultSummary = streamTask?.result_summary ?? externalResultSummary;
   const error = streamTask?.error ?? externalError;
 
@@ -143,10 +150,16 @@ const SubAgentCallBlockComponent: React.FC<SubAgentCallBlockProps> = ({
         className={headerClassName}
         title={description || undefined}
       >
-        <SubAgentStatusIcon status={status} />
+        {/* Identity, not outcome. A green check here only repeated the DONE
+            badge two elements along, and said nothing about which agent ran.
+            The provider's own colour does, and the profile it was spawned as
+            ('verify', 'explore') says what kind of agent it was -- both are in
+            the tool result's metadata already. */}
+        <AgentAvatar model={model} status={status} className="w-4 h-4 text-[7px] leading-none" />
 
-        {/* The job the sub-agent was given reads better than "spawn subagent" */}
-        <span className="shrink-0">{t('subAgents.delegated')}</span>
+        <span className="shrink-0">
+          {subagentType ? subagentType.toUpperCase() : t('subAgents.delegated')}
+        </span>
         <span className="truncate min-w-0 max-w-[320px] font-normal normal-case tracking-normal opacity-80">
           {headline(description, t('subAgents.title'))}
         </span>
