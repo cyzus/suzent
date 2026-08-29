@@ -8,16 +8,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v0.12.0] - 2026-08-29
 
 ### 🚀 Added
+- Name the agent in the transcript instead of marking it done
+- Give the agent tool an icon of its own
+- Make the sidebar read as a roster of agents
 - Add vLLM and SGLang support
 - Redact the thinking label on the sweep's off-beat
 - Activity, sidebar and minimap refinements
 
 ### ⚡ Changed
+- One disclosure chevron, pointing the same way everywhere
 - Cut chat scroll cost on macOS
 - Stop re-rendering settled turn content on every token
 - Keep draft writes off the token loop and out of the index
 
 ### 🐛 Fixed
+- Point the collapsed chevron right
+- Render the result as markdown, give the panel an identity
+- Let the Agents tab open from transcript history
+- Settle the active list on stored state, keep timeouts pollable
+- Recover task ids from persisted results, share one status poll
 - Keep the rail mounted while an approval is pending
 - Run the sweep at 0.72s
 - Let the redact blanket the word instead of passing over it
