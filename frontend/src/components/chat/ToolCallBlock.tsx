@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useI18n } from '../../i18n';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { useDisclosureBody } from '../../hooks/useDisclosureBody';
 import { WebSearchRenderer } from './WebSearchRenderer';
 import { ToolArgsRenderer } from './ToolArgsRenderer';
 import { ToolGroupIcon } from './toolGroupIcon';
@@ -238,6 +239,12 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
   const hasOutput = !!output;
   const isPending = approvalState === 'pending';
   const isDenied = approvalState === 'denied';
+  // The body can mount a Monaco editor -- read_file, write_file and edit_file
+  // all render FileDiffViewer -- and grid-rows-[0fr] hides it without
+  // unmounting it, so expanding a rail built a full code editor for every file
+  // operation in it, each one collapsed and unseen. Pinned open while an
+  // approval is pending: the rejection reason lives in this block's own state.
+  const bodyMounted = useDisclosureBody(expanded, { keepMounted: isPending });
   const isWebTool = toolName === 'web_search' || toolName === 'webpage_fetch';
   const isShellCommand = toolName === 'run_command' || toolName === 'start_command';
   const ArgsRenderer = ARGS_RENDERERS[toolName];
@@ -663,226 +670,228 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
       `}
       >
         <div className="overflow-hidden min-h-0 min-w-0 w-full">
-          <div
-            className={`${inActivityRail ? 'ml-0 pl-0 pr-0 border-l-0' : 'ml-2 pl-3 pr-2 border-l-2 border-neutral-200 dark:border-zinc-700'} mt-1 mb-2 space-y-3 min-w-0 overflow-x-hidden`}
-          >
-            {visibleDecision && (
-              <details className="group/permission rounded-sm border border-neutral-200 bg-neutral-50/60 text-[11px] text-neutral-700 dark:border-zinc-700 dark:bg-zinc-900/60 dark:text-neutral-300">
-                <summary className="flex cursor-pointer list-none items-center gap-2 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wide text-neutral-500 transition-colors hover:bg-neutral-100 dark:hover:bg-zinc-800 [&::-webkit-details-marker]:hidden">
-                  <DisclosureChevron className="h-2.5 w-2.5 transition-transform duration-150 group-open/permission:rotate-90" />
-                  <span>{t('toolCallBlock.permissionDecisionTitle')}</span>
-                  {decisionBadge && (
-                    <span
-                      className={`ml-auto rounded-sm border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${decisionBadge.className}`}
-                    >
-                      {decisionBadge.label}
-                    </span>
-                  )}
-                </summary>
-                <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1 border-t border-neutral-200 px-2.5 py-2 dark:border-zinc-700">
-                  <dt className="text-neutral-500">{t('toolCallBlock.permissionOutcome')}</dt>
-                  <dd className="font-medium">{visibleDecision.behavior}</dd>
-                  <dt className="text-neutral-500">{t('toolCallBlock.permissionEvaluator')}</dt>
-                  <dd className="break-all">{visibleDecision.source}</dd>
-                  {visibleDecision.source === 'full_access' ? (
-                    <>
-                      <dt className="text-neutral-500">{t('toolCallBlock.permissionReview')}</dt>
-                      <dd className="font-medium text-violet-700 dark:text-violet-300">
-                        {t('toolCallBlock.permissionNotReviewed')}
-                      </dd>
-                    </>
-                  ) : (
-                    <>
-                      {visibleDecision.reviewerModel && (
-                        <>
-                          <dt className="text-neutral-500">
-                            {t('toolCallBlock.permissionReviewer')}
-                          </dt>
-                          <dd className="break-all">{visibleDecision.reviewerModel}</dd>
-                        </>
-                      )}
-                      {confidenceValueLabel && (
-                        <>
-                          <dt className="text-neutral-500">
-                            {t('toolCallBlock.permissionConfidence')}
-                          </dt>
-                          <dd>{confidenceValueLabel}</dd>
-                        </>
-                      )}
-                    </>
-                  )}
-                  <dt className="text-neutral-500">{t('toolCallBlock.permissionRisk')}</dt>
-                  <dd>{visibleDecision.risk}</dd>
-                  {visibleDecision.riskCategories.length > 0 && (
-                    <>
-                      <dt className="text-neutral-500">
-                        {t('toolCallBlock.permissionCategories')}
-                      </dt>
-                      <dd>{visibleDecision.riskCategories.join(', ')}</dd>
-                    </>
-                  )}
-                  <dt className="text-neutral-500">{t('toolCallBlock.permissionReason')}</dt>
-                  <dd className="break-words">{visibleDecision.reason}</dd>
-                  {permissionResolution && (
-                    <>
-                      <dt className="text-neutral-500">
-                        {t('toolCallBlock.permissionResolution')}
-                      </dt>
-                      <dd>
-                        {permissionResolution.behavior} · {permissionResolution.scope}
-                      </dd>
-                    </>
-                  )}
-                </dl>
-              </details>
-            )}
-            {/* Arguments or Running status */}
-            {(toolArgs || (isStreaming && !output)) &&
-              !(OutputRenderer && hasOutput && !ArgsRenderer) && (
-                <div className="min-w-0 w-full overflow-hidden">
-                  <div className="text-[10px] font-mono font-bold text-neutral-400 dark:text-neutral-500 uppercase mb-1.5 flex items-center gap-2 tracking-wide">
-                    {isStreaming && !output ? (
+          {bodyMounted && (
+            <div
+              className={`${inActivityRail ? 'ml-0 pl-0 pr-0 border-l-0' : 'ml-2 pl-3 pr-2 border-l-2 border-neutral-200 dark:border-zinc-700'} mt-1 mb-2 space-y-3 min-w-0 overflow-x-hidden`}
+            >
+              {visibleDecision && (
+                <details className="group/permission rounded-sm border border-neutral-200 bg-neutral-50/60 text-[11px] text-neutral-700 dark:border-zinc-700 dark:bg-zinc-900/60 dark:text-neutral-300">
+                  <summary className="flex cursor-pointer list-none items-center gap-2 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wide text-neutral-500 transition-colors hover:bg-neutral-100 dark:hover:bg-zinc-800 [&::-webkit-details-marker]:hidden">
+                    <DisclosureChevron className="h-2.5 w-2.5 transition-transform duration-150 group-open/permission:rotate-90" />
+                    <span>{t('toolCallBlock.permissionDecisionTitle')}</span>
+                    {decisionBadge && (
+                      <span
+                        className={`ml-auto rounded-sm border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${decisionBadge.className}`}
+                      >
+                        {decisionBadge.label}
+                      </span>
+                    )}
+                  </summary>
+                  <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1 border-t border-neutral-200 px-2.5 py-2 dark:border-zinc-700">
+                    <dt className="text-neutral-500">{t('toolCallBlock.permissionOutcome')}</dt>
+                    <dd className="font-medium">{visibleDecision.behavior}</dd>
+                    <dt className="text-neutral-500">{t('toolCallBlock.permissionEvaluator')}</dt>
+                    <dd className="break-all">{visibleDecision.source}</dd>
+                    {visibleDecision.source === 'full_access' ? (
                       <>
-                        <span className="text-brutal-black dark:text-neutral-300 animate-pulse">
-                          {isPending ? 'Approval needed' : `Running ${displayName}...`}
-                        </span>
-                        {!isPending && (
-                          <div className="h-[2px] flex-1 bg-neutral-100 dark:bg-zinc-700 overflow-hidden rounded-full">
-                            <div className="h-full bg-brutal-black dark:bg-neutral-400 w-1/3 animate-neo-scan" />
-                          </div>
-                        )}
+                        <dt className="text-neutral-500">{t('toolCallBlock.permissionReview')}</dt>
+                        <dd className="font-medium text-violet-700 dark:text-violet-300">
+                          {t('toolCallBlock.permissionNotReviewed')}
+                        </dd>
                       </>
                     ) : (
-                      t('toolCallBlock.arguments')
+                      <>
+                        {visibleDecision.reviewerModel && (
+                          <>
+                            <dt className="text-neutral-500">
+                              {t('toolCallBlock.permissionReviewer')}
+                            </dt>
+                            <dd className="break-all">{visibleDecision.reviewerModel}</dd>
+                          </>
+                        )}
+                        {confidenceValueLabel && (
+                          <>
+                            <dt className="text-neutral-500">
+                              {t('toolCallBlock.permissionConfidence')}
+                            </dt>
+                            <dd>{confidenceValueLabel}</dd>
+                          </>
+                        )}
+                      </>
                     )}
-                  </div>
-                  {toolArgs &&
-                    (ArgsRenderer ? (
-                      <ArgsRenderer
-                        toolName={toolName}
-                        parsedArgs={parsedToolArgs}
-                        metadata={rendererMetadata}
-                      />
-                    ) : OutputRenderer ? (
-                      <OutputRenderer
-                        toolName={toolName}
-                        parsedArgs={parsedToolArgs}
-                        metadata={rendererMetadata}
-                      />
-                    ) : (
-                      <div
-                        className="max-h-[260px] overflow-y-auto scrollbar-thin w-full"
-                        style={{ overflowX: 'hidden' }}
-                      >
-                        <ToolArgsRenderer
+                    <dt className="text-neutral-500">{t('toolCallBlock.permissionRisk')}</dt>
+                    <dd>{visibleDecision.risk}</dd>
+                    {visibleDecision.riskCategories.length > 0 && (
+                      <>
+                        <dt className="text-neutral-500">
+                          {t('toolCallBlock.permissionCategories')}
+                        </dt>
+                        <dd>{visibleDecision.riskCategories.join(', ')}</dd>
+                      </>
+                    )}
+                    <dt className="text-neutral-500">{t('toolCallBlock.permissionReason')}</dt>
+                    <dd className="break-words">{visibleDecision.reason}</dd>
+                    {permissionResolution && (
+                      <>
+                        <dt className="text-neutral-500">
+                          {t('toolCallBlock.permissionResolution')}
+                        </dt>
+                        <dd>
+                          {permissionResolution.behavior} · {permissionResolution.scope}
+                        </dd>
+                      </>
+                    )}
+                  </dl>
+                </details>
+              )}
+              {/* Arguments or Running status */}
+              {(toolArgs || (isStreaming && !output)) &&
+                !(OutputRenderer && hasOutput && !ArgsRenderer) && (
+                  <div className="min-w-0 w-full overflow-hidden">
+                    <div className="text-[10px] font-mono font-bold text-neutral-400 dark:text-neutral-500 uppercase mb-1.5 flex items-center gap-2 tracking-wide">
+                      {isStreaming && !output ? (
+                        <>
+                          <span className="text-brutal-black dark:text-neutral-300 animate-pulse">
+                            {isPending ? 'Approval needed' : `Running ${displayName}...`}
+                          </span>
+                          {!isPending && (
+                            <div className="h-[2px] flex-1 bg-neutral-100 dark:bg-zinc-700 overflow-hidden rounded-full">
+                              <div className="h-full bg-brutal-black dark:bg-neutral-400 w-1/3 animate-neo-scan" />
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        t('toolCallBlock.arguments')
+                      )}
+                    </div>
+                    {toolArgs &&
+                      (ArgsRenderer ? (
+                        <ArgsRenderer
                           toolName={toolName}
                           parsedArgs={parsedToolArgs}
-                          raw={displayToolArgs}
+                          metadata={rendererMetadata}
                         />
-                      </div>
-                    ))}
+                      ) : OutputRenderer ? (
+                        <OutputRenderer
+                          toolName={toolName}
+                          parsedArgs={parsedToolArgs}
+                          metadata={rendererMetadata}
+                        />
+                      ) : (
+                        <div
+                          className="max-h-[260px] overflow-y-auto scrollbar-thin w-full"
+                          style={{ overflowX: 'hidden' }}
+                        >
+                          <ToolArgsRenderer
+                            toolName={toolName}
+                            parsedArgs={parsedToolArgs}
+                            raw={displayToolArgs}
+                          />
+                        </div>
+                      ))}
+                  </div>
+                )}
+
+              {isPending && descriptionText && (
+                <div
+                  className={`${inActivityRail ? 'border-brutal-black bg-white dark:bg-zinc-900 text-brutal-black dark:text-neutral-100' : 'border-amber-500 bg-amber-50 text-amber-900'} w-full min-w-0 rounded-sm border-2 border-solid px-2.5 py-2 overflow-hidden`}
+                >
+                  <div
+                    className={`${inActivityRail ? 'text-brutal-black dark:text-neutral-300' : 'text-amber-700'} text-[10px] font-mono font-bold uppercase tracking-wide`}
+                  >
+                    Requested Action
+                  </div>
+                  <div className="mt-1 text-[12px] leading-relaxed break-words whitespace-pre-wrap">
+                    {descriptionText}
+                  </div>
                 </div>
               )}
 
-            {isPending && descriptionText && (
-              <div
-                className={`${inActivityRail ? 'border-brutal-black bg-white dark:bg-zinc-900 text-brutal-black dark:text-neutral-100' : 'border-amber-500 bg-amber-50 text-amber-900'} w-full min-w-0 rounded-sm border-2 border-solid px-2.5 py-2 overflow-hidden`}
-              >
-                <div
-                  className={`${inActivityRail ? 'text-brutal-black dark:text-neutral-300' : 'text-amber-700'} text-[10px] font-mono font-bold uppercase tracking-wide`}
-                >
-                  Requested Action
-                </div>
-                <div className="mt-1 text-[12px] leading-relaxed break-words whitespace-pre-wrap">
-                  {descriptionText}
-                </div>
-              </div>
-            )}
-
-            {/* Approval buttons — shown when tool is waiting for user decision */}
-            {isPending && onApprove && onDeny && (
-              <>
-                {permissionActions.some((action) => action.feedbackKind === 'reject') && (
-                  <textarea
-                    value={rejectFeedback}
-                    onChange={(event) => setRejectFeedback(event.target.value)}
-                    rows={2}
-                    placeholder={t('toolCallBlock.permissionRejectPlaceholder')}
-                    className="w-full resize-y rounded-sm border border-neutral-300 bg-white px-2 py-1.5 text-[11px] text-neutral-800 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-neutral-200"
-                  />
-                )}
-                {permissionActions.length === 0 && (
-                  <div className="text-[11px] text-red-600 dark:text-red-300">
-                    {t('toolCallBlock.permissionContractUnavailable')}
-                  </div>
-                )}
-                <div className="flex flex-wrap items-center gap-2 py-2">
-                  {permissionActions.map((action) => (
-                    <button
-                      key={action.id}
-                      onClick={() => selectPermissionAction(action)}
-                      className={
-                        action.behavior === 'deny'
-                          ? denyButtonClass
-                          : action.scope === 'session'
-                            ? rememberSessionButtonClass
-                            : action.scope === 'global'
-                              ? rememberGlobalButtonClass
-                              : approveButtonClass
-                      }
-                    >
-                      {permissionActionLabel(action)}
-                    </button>
-                  ))}
-                </div>
-                {persistentActionExplanations.length > 0 && (
-                  <div className="space-y-1 text-[10px] text-neutral-500 leading-tight min-w-0 w-full overflow-hidden">
-                    {persistentActionExplanations.map((explanation) => (
-                      <div key={explanation} className="break-words">
-                        {explanation}
-                      </div>
+              {/* Approval buttons — shown when tool is waiting for user decision */}
+              {isPending && onApprove && onDeny && (
+                <>
+                  {permissionActions.some((action) => action.feedbackKind === 'reject') && (
+                    <textarea
+                      value={rejectFeedback}
+                      onChange={(event) => setRejectFeedback(event.target.value)}
+                      rows={2}
+                      placeholder={t('toolCallBlock.permissionRejectPlaceholder')}
+                      className="w-full resize-y rounded-sm border border-neutral-300 bg-white px-2 py-1.5 text-[11px] text-neutral-800 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-neutral-200"
+                    />
+                  )}
+                  {permissionActions.length === 0 && (
+                    <div className="text-[11px] text-red-600 dark:text-red-300">
+                      {t('toolCallBlock.permissionContractUnavailable')}
+                    </div>
+                  )}
+                  <div className="flex flex-wrap items-center gap-2 py-2">
+                    {permissionActions.map((action) => (
+                      <button
+                        key={action.id}
+                        onClick={() => selectPermissionAction(action)}
+                        className={
+                          action.behavior === 'deny'
+                            ? denyButtonClass
+                            : action.scope === 'session'
+                              ? rememberSessionButtonClass
+                              : action.scope === 'global'
+                                ? rememberGlobalButtonClass
+                                : approveButtonClass
+                        }
+                      >
+                        {permissionActionLabel(action)}
+                      </button>
                     ))}
                   </div>
-                )}
-              </>
-            )}
+                  {persistentActionExplanations.length > 0 && (
+                    <div className="space-y-1 text-[10px] text-neutral-500 leading-tight min-w-0 w-full overflow-hidden">
+                      {persistentActionExplanations.map((explanation) => (
+                        <div key={explanation} className="break-words">
+                          {explanation}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
 
-            {/* Output section */}
-            {output && (
-              <div className="min-w-0 w-full overflow-hidden mt-2">
-                <div className="text-[10px] flex items-center justify-between font-mono font-bold text-neutral-400 dark:text-neutral-500 uppercase mb-1.5 tracking-wide">
-                  <span>{t('toolCallBlock.output')}</span>
-                </div>
-                {OutputRenderer ? (
-                  <OutputRenderer
-                    toolName={toolName}
-                    parsedArgs={parsedToolArgs}
-                    metadata={rendererMetadata}
-                    output={toolResultMessage ?? output}
-                  />
-                ) : (
-                  <div
-                    className="max-h-[320px] overflow-y-auto scrollbar-thin w-full rounded-sm bg-neutral-50/70 dark:bg-zinc-800/40 px-2.5 py-2"
-                    style={{ overflowX: 'hidden' }}
-                  >
-                    {isWebTool ? (
-                      <WebSearchRenderer output={output} />
-                    ) : toolResultMessage ? (
-                      <div className="tool-result-markdown text-[13px] leading-6 text-neutral-700 dark:text-neutral-300 break-words">
-                        <MarkdownRenderer content={toolResultMessage} />
-                      </div>
-                    ) : toolName.includes('search') || toolName.includes('web') ? (
-                      <WebSearchRenderer output={output} />
-                    ) : (
-                      <pre className="tool-call-pre font-mono text-[12px] leading-5 text-neutral-600 dark:text-neutral-300 w-full m-0">
-                        {output}
-                      </pre>
-                    )}
+              {/* Output section */}
+              {output && (
+                <div className="min-w-0 w-full overflow-hidden mt-2">
+                  <div className="text-[10px] flex items-center justify-between font-mono font-bold text-neutral-400 dark:text-neutral-500 uppercase mb-1.5 tracking-wide">
+                    <span>{t('toolCallBlock.output')}</span>
                   </div>
-                )}
-              </div>
-            )}
-          </div>
+                  {OutputRenderer ? (
+                    <OutputRenderer
+                      toolName={toolName}
+                      parsedArgs={parsedToolArgs}
+                      metadata={rendererMetadata}
+                      output={toolResultMessage ?? output}
+                    />
+                  ) : (
+                    <div
+                      className="max-h-[320px] overflow-y-auto scrollbar-thin w-full rounded-sm bg-neutral-50/70 dark:bg-zinc-800/40 px-2.5 py-2"
+                      style={{ overflowX: 'hidden' }}
+                    >
+                      {isWebTool ? (
+                        <WebSearchRenderer output={output} />
+                      ) : toolResultMessage ? (
+                        <div className="tool-result-markdown text-[13px] leading-6 text-neutral-700 dark:text-neutral-300 break-words">
+                          <MarkdownRenderer content={toolResultMessage} />
+                        </div>
+                      ) : toolName.includes('search') || toolName.includes('web') ? (
+                        <WebSearchRenderer output={output} />
+                      ) : (
+                        <pre className="tool-call-pre font-mono text-[12px] leading-5 text-neutral-600 dark:text-neutral-300 w-full m-0">
+                          {output}
+                        </pre>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
