@@ -278,8 +278,17 @@ class ChatOperationsMixin:
         agent_state: bytes = None,
         working_directory: str = None,
         context_usage: Dict[str, Any] = None,
+        reindex: bool = True,
     ) -> bool:
-        """Update an existing chat."""
+        """Update an existing chat.
+
+        ``reindex=False`` skips the full-text reindex. The reindex rewrites every
+        FTS row for the chat, so it costs time proportional to the whole
+        conversation — fine for a turn that has landed, ruinous for a write that
+        repeats every fraction of a second. Use it only for transient writes that
+        a later write will supersede (the streaming draft), never for content
+        that must be findable.
+        """
         with self._session() as session:
             chat = session.get(ChatModel, chat_id)
             if not chat:
@@ -319,7 +328,7 @@ class ChatOperationsMixin:
                 chat.updated_at = datetime.now()
 
             session.add(chat)
-            if messages is not None:
+            if messages is not None and reindex:
                 self._reindex_in_session(session, chat_id, messages)
             session.commit()
             return True

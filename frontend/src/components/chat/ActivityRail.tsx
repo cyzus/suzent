@@ -437,7 +437,7 @@ export const ActivityRailItem: React.FC<{
   </div>
 );
 
-export const ReasoningRailItem: React.FC<{
+const ReasoningRailItemComponent: React.FC<{
   text: string;
   isStreaming?: boolean;
   onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
@@ -486,3 +486,9 @@ export const ReasoningRailItem: React.FC<{
     </ActivityRailItem>
   );
 };
+
+/**
+ * Memoized: a turn's earlier thoughts are settled text, and the rail re-renders
+ * on every streamed token. Only the thought still arriving changes its props.
+ */
+export const ReasoningRailItem = React.memo(ReasoningRailItemComponent);
