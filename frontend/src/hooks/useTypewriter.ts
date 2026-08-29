@@ -10,18 +10,33 @@ import { useState, useEffect, useRef } from 'react';
 const MAX_ANIMATED_BACKLOG = 3000;
 
 /**
- * Frames the reveal aims to take to drain whatever is queued.
+ * Wall-clock time the reveal aims to take to drain whatever is queued.
  *
- * Draining a fixed share per frame rather than a fixed number of characters is
- * what keeps the lag bounded: the rate rises with the backlog, so the display
- * settles a constant few frames behind however fast the agent emits, and a
- * burst still eases out instead of snapping.
+ * Draining a fixed *share* of the backlog rather than a fixed number of
+ * characters is what keeps the lag bounded: the rate rises with the backlog,
+ * so the display settles a constant moment behind however fast the agent
+ * emits, and a burst still eases out instead of snapping.
+ *
+ * The share is taken per millisecond elapsed, not per frame. Frame-based
+ * pacing quietly couples the reveal to how busy the tab is: a frame that takes
+ * 200ms to render still advanced the text by one frame's worth, so under load
+ * — long message, heavy tool output, background tab — the display fell a
+ * second or more behind text that had already arrived, and stayed there.
+ * Metered against the clock, a slow frame simply reveals proportionally more.
  */
-const CATCH_UP_FRAMES = 6;
+const CATCH_UP_MS = 100;
 
-/** Characters to reveal this frame given how far the buffer has run ahead. */
-export const getRevealStep = (remaining: number): number =>
-  Math.max(1, Math.ceil(remaining / CATCH_UP_FRAMES));
+/** Nominal frame at 60fps; the assumed gap when no elapsed time is supplied. */
+const FRAME_MS = 1000 / 60;
+
+/**
+ * Characters to reveal given how far the buffer has run ahead and how long it
+ * has been since the last reveal. A gap at or past CATCH_UP_MS reveals the
+ * whole backlog: at that frame rate there is no smoothing left to do, and
+ * showing what the agent has actually said beats animating stale text.
+ */
+export const getRevealStep = (remaining: number, elapsedMs: number = FRAME_MS): number =>
+  Math.max(1, Math.ceil(remaining * Math.min(1, Math.max(0, elapsedMs) / CATCH_UP_MS)));
 
 /**
  * Reveal appended text at a steady rate instead of in the bursts it arrives in.
@@ -39,6 +54,9 @@ export const useTypewriter = (text: string, isEnabled: boolean = true) => {
   const [displayedText, setDisplayedText] = useState(text);
   const indexRef = useRef(text.length);
   const prevTextRef = useRef(text);
+  // When the last reveal happened, so each step can be sized by real elapsed
+  // time instead of assuming every frame is the same length.
+  const lastRevealAtRef = useRef(0);
 
   // Content replaced rather than appended to (a different message reusing this
   // node): adopt it whole. Rewinding to replay text the user has already read
@@ -71,7 +89,10 @@ export const useTypewriter = (text: string, isEnabled: boolean = true) => {
         frameId = 0;
         return;
       }
-      indexRef.current += getRevealStep(remaining);
+      const now = performance.now();
+      const elapsed = lastRevealAtRef.current === 0 ? FRAME_MS : now - lastRevealAtRef.current;
+      lastRevealAtRef.current = now;
+      indexRef.current += getRevealStep(remaining, elapsed);
       setDisplayedText(text.slice(0, indexRef.current));
       frameId = window.requestAnimationFrame(tick);
     };

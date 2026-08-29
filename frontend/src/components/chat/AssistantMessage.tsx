@@ -11,7 +11,7 @@ import { ThinkingAnimation, AgentBadge, RobotIcon } from './ThinkingAnimation';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { ImageWithFallback } from './ImageWithFallback';
 import { ToolCallBlock } from './ToolCallBlock';
-import { SubAgentCallBlock } from './SubAgentCallBlock';
+import { parseSubAgentArgs, SubAgentCallBlock } from './SubAgentCallBlock';
 import { AcpPermissionPrompt } from './AcpPermissionPrompt';
 import { AcpAgentIcon } from '../AcpAgentIcon';
 import { AcpSessionResetNotice } from './AcpSessionResetNotice';
@@ -388,15 +388,7 @@ const AGUIPartsContent: React.FC<{
                   if (t.toolName === 'agent') {
                     const taskId = parseSubAgentTaskId(t.output);
                     const taskState = taskId ? subAgentTasks?.[taskId] : undefined;
-                    const args = t.toolArgs
-                      ? (() => {
-                          try {
-                            return JSON.parse(t.toolArgs!);
-                          } catch {
-                            return {};
-                          }
-                        })()
-                      : {};
+                    const args = parseSubAgentArgs(t.toolArgs);
                     const defaultStatus =
                       t.approvalState === 'pending' ? 'queued' : t.output ? 'completed' : 'running';
                     return (
@@ -404,7 +396,7 @@ const AGUIPartsContent: React.FC<{
                         <SubAgentCallBlock
                           taskId={taskId}
                           description={args.description}
-                          toolsAllowed={args.tools_allowed}
+                          toolsAllowed={args.toolsAllowed}
                           status={taskState?.status ?? defaultStatus}
                           resultSummary={taskState?.resultSummary}
                           error={taskState?.error}
@@ -431,11 +423,7 @@ const AGUIPartsContent: React.FC<{
                         permissionDecision={t.permissionDecision}
                         permissionResolution={t.permissionResolution}
                         isAutoApproved={isAutoApproved}
-                        onRemovePolicy={
-                          isAutoApproved && onRemoveApprovalPolicy
-                            ? () => onRemoveApprovalPolicy(t.toolName)
-                            : undefined
-                        }
+                        onRemovePolicy={onRemoveApprovalPolicy}
                         onForceWebContext={onForceWebContext}
                         toolCallId={t.toolCallId}
                         inActivityRail
@@ -508,15 +496,7 @@ const AGUIPartsContent: React.FC<{
               {subAgentTools.map((t, i) => {
                 const taskId = parseSubAgentTaskId(t.output);
                 const taskState = taskId ? subAgentTasks?.[taskId] : undefined;
-                const args = t.toolArgs
-                  ? (() => {
-                      try {
-                        return JSON.parse(t.toolArgs!);
-                      } catch {
-                        return {};
-                      }
-                    })()
-                  : {};
+                const args = parseSubAgentArgs(t.toolArgs);
                 // If output exists, the tool call returned — default to 'completed'.
                 // This correctly handles linear (synchronous) subagents that run inline
                 // without emitting SSE events. Polling will correct if the backend
@@ -528,7 +508,7 @@ const AGUIPartsContent: React.FC<{
                     key={t.toolCallId || `sa-${i}`}
                     taskId={taskId}
                     description={args.description}
-                    toolsAllowed={args.tools_allowed}
+                    toolsAllowed={args.toolsAllowed}
                     status={taskState?.status ?? defaultStatus}
                     resultSummary={taskState?.resultSummary}
                     error={taskState?.error}

@@ -47,3 +47,29 @@ describe('getRevealStep', () => {
     expect(getRevealStep(3)).toBeGreaterThanOrEqual(1);
   });
 });
+
+describe('getRevealStep under load', () => {
+  /** Backlog the reveal settles at when frames take `frameMs` and text keeps arriving. */
+  function steadyStateBacklogAt(charsPerSecond: number, frameMs: number): number {
+    let remaining = 0;
+    for (let frame = 0; frame < 600; frame += 1) {
+      remaining += (charsPerSecond * frameMs) / 1000;
+      remaining = Math.max(0, remaining - getRevealStep(remaining, frameMs));
+    }
+    return remaining;
+  }
+
+  it('does not fall further behind when the tab renders slowly', () => {
+    // 400 chars/sec is a fast turn. The lag must stay a fixed slice of time,
+    // not grow with how long each frame takes — that coupling is what made a
+    // busy tab display text a second or more behind what had arrived.
+    const fast = steadyStateBacklogAt(400, 1000 / 60);
+    const slow = steadyStateBacklogAt(400, 200);
+    expect(fast).toBeLessThanOrEqual(60);
+    expect(slow).toBeLessThanOrEqual(fast + 1);
+  });
+
+  it('shows everything at once after a long gap, e.g. a backgrounded tab', () => {
+    expect(getRevealStep(900, 5000)).toBe(900);
+  });
+});
