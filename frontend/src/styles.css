@@ -763,7 +763,7 @@ code {
   /* Not `color`, which the label's own utility class owns — and which the
      gradient reads through currentColor. */
   -webkit-text-fill-color: transparent;
-  animation: reasoning-thinking-sweep 2.4s linear infinite;
+  animation: reasoning-thinking-sweep 1.8s linear infinite;
 }
 
 /*
@@ -786,7 +786,7 @@ code {
   position: absolute;
   inset: -0.15em 0;
   background: currentColor;
-  animation: reasoning-thinking-redact 2.4s infinite;
+  animation: reasoning-thinking-redact 1.8s infinite;
 }
 
 /*
@@ -803,7 +803,7 @@ code {
     background-position: 20% 0;
     animation-timing-function: steps(1, end);
   }
-  50% {
+  60% {
     background-position: 80% 0;
     animation-timing-function: linear;
   }
@@ -821,12 +821,12 @@ code {
     clip-path: inset(0 100% 0 0);
     animation-timing-function: steps(6, end);
   }
-  18%,
-  27% {
+  24%,
+  36% {
     clip-path: inset(0 0 0 0);
     animation-timing-function: steps(6, end);
   }
-  45%,
+  56%,
   100% {
     clip-path: inset(0 0 0 100%);
   }
