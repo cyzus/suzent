@@ -722,19 +722,20 @@ code {
 }
 
 /*
- * A thought still arriving: ink sweeping across the word, and every other
- * cycle a hard bar redacting it outright.
+ * A thought still arriving: ink sweeping across the word, with a hard bar
+ * riding the sweep.
  *
  * This used to be three separate tells at once — a moving striped underline,
  * three blinking squares, and the label — which read as clutter rather than as
  * one state. The word carries it alone now, so the rail gains no extra marks
  * while a thought streams.
  *
- * The sweep alone was too soft to register at 11px. The bar is the loud half:
- * it wipes across in hard steps, holds over the word, and wipes off the far
- * side, so the label is briefly *gone* rather than merely shaded. It runs at
- * twice the sweep's period — phase-locked, so the two read as one rhythm, and
- * rare enough that the pass punctuates the sweep instead of strobing.
+ * The sweep alone was too soft to register at 11px, so a hard-edged bar of ink
+ * travels with it. The bar covers about a third of the word at a time and
+ * moves in visible steps, never blanketing the label: what the sweep says in
+ * shading, the bar says by blacking out the letters it is passing. Same
+ * direction and same period as the sweep, so the two are one gesture rather
+ * than two animations sharing a word.
  */
 .reasoning-thinking-label {
   position: relative;
@@ -755,14 +756,16 @@ code {
   animation: reasoning-thinking-sweep 1.3s linear infinite;
 }
 
-/* The redaction bar. `currentColor` is still the label's own ink: the
-   transparent fill above governs the glyphs, not the color property. */
+/* The travelling bar. `currentColor` is still the label's own ink: the
+   transparent fill above governs the glyphs, not the color property. The bar
+   is a full-cover box with a moving window cut out of it, so it is clipped to
+   the label and never hangs off either end. */
 .reasoning-thinking-label::after {
   content: '';
   position: absolute;
   inset: -0.15em -0.2em;
   background: currentColor;
-  animation: reasoning-thinking-redact 2.6s steps(8, end) infinite;
+  animation: reasoning-thinking-redact 1.3s steps(9, end) infinite;
 }
 
 @keyframes reasoning-thinking-sweep {
@@ -772,18 +775,19 @@ code {
 }
 
 @keyframes reasoning-thinking-redact {
-  /* Off the word for most of the cycle, so the sweep is the resting state. */
-  0%,
-  42% {
-    clip-path: inset(0 100% 0 0);
+  /* Grows in at the right edge, crosses at a constant third of the width
+     (the two insets always sum to 70), then shrinks out at the left edge. */
+  0% {
+    clip-path: inset(0 0 0 100%);
   }
-  /* Wipes on from the left, holds, then wipes off past the right edge. */
-  58%,
-  72% {
-    clip-path: inset(0 0 0 0);
+  12% {
+    clip-path: inset(0 0 0 70%);
+  }
+  88% {
+    clip-path: inset(0 70% 0 0);
   }
   100% {
-    clip-path: inset(0 0 0 100%);
+    clip-path: inset(0 100% 0 0);
   }
 }
 
