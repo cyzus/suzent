@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Keep draft writes off the token loop and out of the index
 
 ### 🐛 Fixed
+- Implement activity chunking and normalization logic
 - Report the context window live and honestly
 - Propagate the parent's permission grants to sub-agents
 - Make the host path boundary advisory instead of a veto
