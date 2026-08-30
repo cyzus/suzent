@@ -435,6 +435,40 @@ def _cancellation_reason(task: SubAgentTask) -> str:
     return "Stopped before it finished (the run was cancelled)"
 
 
+def inherited_working_directory(parent_chat) -> Optional[str]:
+    """The working directory a sub-agent inherits when it isn't pinned elsewhere.
+
+    A sub-agent that isn't given its own cwd works where its parent works.
+    Without this the child fell back to the project directory and every file
+    tool rejected the folder the parent had just been authorized for.
+    """
+    if parent_chat is None:
+        return None
+    return parent_chat.working_directory or (parent_chat.config or {}).get("cwd")
+
+
+def grants_cover(parent_chat, path: str) -> bool:
+    """True when the parent chat is already authorized for ``path``.
+
+    A sub-agent's cwd comes from the model, and it authorizes that directory for
+    the child's file tools. Bounding it by the parent's own grants keeps a spawn
+    from widening access the user never approved.
+    """
+    from suzent.config import CONFIG, get_effective_volumes
+    from suzent.tools.filesystem.path_resolver import PathResolver
+
+    config = (parent_chat.config or {}) if parent_chat else {}
+    resolver = PathResolver(
+        parent_chat.id if parent_chat else "",
+        config.get("sandbox_enabled", CONFIG.sandbox_enabled),
+        sandbox_data_path=CONFIG.sandbox_data_path,
+        custom_volumes=get_effective_volumes(config.get("sandbox_volumes")),
+        workspace_root=config.get("workspace_root", CONFIG.workspace_root),
+        cwd=inherited_working_directory(parent_chat),
+    )
+    return resolver.allows(Path(path))
+
+
 async def _run_subagent(
     task: SubAgentTask,
     wakeup_parent: bool = True,
@@ -524,12 +558,10 @@ async def _run_subagent(
         # Inherit parent chat's custom sandbox volumes so the subagent sees the
         # same custom mounts that were configured for the parent session.
         parent_chat = db.get_chat(task.parent_chat_id)
-        parent_sandbox_volumes = (
-            (parent_chat.config or {}).get("sandbox_volumes") if parent_chat else None
-        )
-        parent_permission_mode = (
-            (parent_chat.config or {}).get("permission_mode") if parent_chat else None
-        )
+        parent_config = (parent_chat.config or {}) if parent_chat else {}
+        parent_sandbox_volumes = parent_config.get("sandbox_volumes")
+        parent_cwd = inherited_working_directory(parent_chat)
+        parent_permission_mode = parent_config.get("permission_mode")
         subagent_permission_mode = (
             parent_permission_mode
             if parent_permission_mode in {"plan", "strict_readonly"}
@@ -549,8 +581,15 @@ async def _run_subagent(
             base_config["model"] = task.model_override
         if task.tools_allowed:
             base_config["tools"] = list(task.tools_allowed)
-        if task.cwd:
-            base_config["cwd"] = task.cwd
+        if task.cwd and not grants_cover(parent_chat, task.cwd):
+            raise RuntimeError(
+                f"cwd '{task.cwd}' is outside every directory this chat may access. "
+                "A sub-agent cannot be given access its parent does not have — ask "
+                "the user to mount that folder or set it as the working directory."
+            )
+        subagent_cwd = task.cwd or parent_cwd
+        if subagent_cwd:
+            base_config["cwd"] = subagent_cwd
 
         child_citation_sources: list[dict] = []
         if task.runtime == "acp":
@@ -561,7 +600,7 @@ async def _run_subagent(
                     "runtime": "acp",
                     "acp_agent_id": task.acp_agent_id,
                     "acp_session_id": task.acp_session_id,
-                    "acp_cwd": task.cwd
+                    "acp_cwd": subagent_cwd
                     or str(
                         Path(CONFIG.sandbox_data_path).resolve()
                         / "projects"
@@ -580,6 +619,17 @@ async def _run_subagent(
                 (refreshed.config or {}).get("acp_session_id") if refreshed else None
             )
         else:
+            # Persist the grants (mounted volumes, working directory) on the child
+            # chat. process_turn_text carries them for this turn, but a resumed or
+            # follow-up turn rebuilds deps from the database — without this the
+            # sub-agent loses access to the folder it was spawned to work in.
+            grants = {
+                key: base_config[key]
+                for key in ("cwd", "sandbox_volumes")
+                if base_config.get(key)
+            }
+            if grants:
+                db.merge_chat_config(task.chat_id, grants)
             config_override = build_agent_config(base_config, require_social_tool=False)
             result_text = await processor.process_turn_text(
                 chat_id=task.chat_id,
