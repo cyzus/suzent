@@ -31,3 +31,13 @@ describe('parseChunk', () => {
     expect(parseChunk(undefined)).toEqual([]);
   });
 });
+
+describe('absorbed-message events', () => {
+  it('reads the enqueue id off the custom event a run emits', () => {
+    const raw =
+      'data: {"type":"CUSTOM","name":"agent_absorbed_message","value":{"enqueue_id":"enq-3"}}\n\n';
+    const [event] = parseChunk(raw);
+    expect(event.name).toBe('agent_absorbed_message');
+    expect((event.value as { enqueue_id: string }).enqueue_id).toBe('enq-3');
+  });
+});

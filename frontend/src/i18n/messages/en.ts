@@ -141,6 +141,8 @@ export const en = {
     steerPlaceholder: 'Redirect this sub-agent…',
     steer: 'Redirect',
     steerFailed: 'Could not reach this sub-agent — it may have just finished.',
+    steerQueued: 'Queued',
+    steerTaken: 'Picked up',
     working: 'Working...',
     contextForked: 'Context forked',
     worktreeIsolated: 'Worktree isolated',

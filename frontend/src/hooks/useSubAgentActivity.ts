@@ -15,7 +15,11 @@
  */
 import { useEffect, useState } from 'react';
 import { subscribeToBusChunks } from './useEventBus';
+import { markSteerAbsorbed } from './useSubAgentSteer';
 import { StreamEventType } from '../lib/streamEvents';
+
+/** Custom event a run emits once it has taken an injected message. */
+const ABSORBED_EVENT = 'agent_absorbed_message';
 
 export interface SubAgentActivityEntry {
   toolCallId: string;
@@ -76,6 +80,16 @@ export function useSubAgentActivity(
     return subscribeToBusChunks(chatId, (rawData) => {
       for (const event of parseChunk(rawData)) {
         const type = event.type;
+
+        if (type === StreamEventType.CUSTOM && event.name === ABSORBED_EVENT) {
+          const value = event.value as { enqueue_id?: unknown } | null;
+          const enqueueId = typeof value?.enqueue_id === 'string' ? value.enqueue_id : '';
+          // Recorded against the redirect that was sent, not against this
+          // component: whoever is showing that sub-agent should see it land.
+          if (enqueueId) markSteerAbsorbed(enqueueId);
+          continue;
+        }
+
         const toolCallId = typeof event.toolCallId === 'string' ? event.toolCallId : '';
         if (!toolCallId) continue;
 

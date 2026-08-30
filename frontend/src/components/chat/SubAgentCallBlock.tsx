@@ -12,7 +12,6 @@ import { toolLabel } from './toolSummary';
 import { AgentAvatar } from '../sidebar/subAgentDisplay';
 import { useSubAgentStatus, watchSubAgentTask } from '../../hooks/useSubAgentStatus';
 import { useSubAgentActivity } from '../../hooks/useSubAgentActivity';
-import { getApiBase } from '../../lib/api';
 import {
   isSubAgentActive,
   isSubAgentTerminal,
@@ -21,6 +20,7 @@ import {
   SubAgentStatusBadge,
 } from './subAgentStatus';
 import { DisclosureChevron } from '../DisclosureChevron';
+import { SubAgentSteerBox } from './SubAgentSteerBox';
 
 export type { SubAgentStatus } from './subAgentStatus';
 
@@ -153,30 +153,6 @@ const SubAgentCallBlockComponent: React.FC<SubAgentCallBlockProps> = ({
   const childChatId = streamTask?.chat_id;
   const activity = useSubAgentActivity(childChatId, isBlocking && isRunning);
 
-  const [steerText, setSteerText] = useState('');
-  const [steerBusy, setSteerBusy] = useState(false);
-  const [steerError, setSteerError] = useState<string | null>(null);
-
-  const sendSteer = useCallback(async () => {
-    const message = steerText.trim();
-    if (!taskId || !message || steerBusy) return;
-    setSteerBusy(true);
-    setSteerError(null);
-    try {
-      const res = await fetch(`${getApiBase()}/subagents/${taskId}/steer`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message }),
-      });
-      if (!res.ok) throw new Error(String(res.status));
-      setSteerText('');
-    } catch {
-      setSteerError(t('subAgents.steerFailed'));
-    } finally {
-      setSteerBusy(false);
-    }
-  }, [taskId, steerText, steerBusy, t]);
-
   const headerClassName = [
     'inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono font-bold uppercase tracking-wide rounded-sm cursor-pointer transition-colors select-none',
     expanded
@@ -298,38 +274,7 @@ const SubAgentCallBlockComponent: React.FC<SubAgentCallBlockProps> = ({
             {/* Redirect this child in place. Steering the composer still goes
                 to the parent (which cancels a blocking child), so the target
                 has to be the card to be unambiguous when several run at once. */}
-            {isBlocking && isRunning && taskId && (
-              <div className="min-w-0">
-                <div className="flex items-center gap-1.5">
-                  <input
-                    type="text"
-                    value={steerText}
-                    onChange={(e) => setSteerText(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        void sendSteer();
-                      }
-                    }}
-                    placeholder={t('subAgents.steerPlaceholder')}
-                    disabled={steerBusy}
-                    className="flex-1 min-w-0 px-2 py-1 text-[11px] bg-white dark:bg-zinc-900 text-brutal-black dark:text-white border-2 border-neutral-200 dark:border-zinc-600 rounded-sm focus:outline-none focus:border-brutal-black dark:focus:border-white disabled:opacity-50"
-                  />
-                  <button
-                    onClick={() => void sendSteer()}
-                    disabled={steerBusy || !steerText.trim()}
-                    className="shrink-0 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide bg-white dark:bg-zinc-900 text-brutal-black dark:text-white border-2 border-brutal-black dark:border-white rounded-sm hover:bg-neutral-100 dark:hover:bg-zinc-800 transition-colors disabled:opacity-40"
-                  >
-                    {t('subAgents.steer')}
-                  </button>
-                </div>
-                {steerError && (
-                  <div className="mt-1 text-[10px] text-red-600 dark:text-red-400">
-                    {steerError}
-                  </div>
-                )}
-              </div>
-            )}
+            {isBlocking && isRunning && taskId && <SubAgentSteerBox taskId={taskId} />}
 
             {/* Task ID */}
             {taskId && (
