@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v0.12.0] - 2026-08-30
 
 ### 🚀 Added
+- Show blocking children working, and redirect them in place
 - Show cache hit rate as a share of input
 - Name the agent in the transcript instead of marking it done
 - Give the agent tool an icon of its own
@@ -24,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Keep draft writes off the token loop and out of the index
 
 ### 🐛 Fixed
+- Scope tool windows per call, keep injections safe
+- Stop timing out agents that are working
 - Implement activity chunking and normalization logic
 - Report the context window live and honestly
 - Propagate the parent's permission grants to sub-agents
