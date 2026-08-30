@@ -15,6 +15,7 @@ using Server-Sent Events (SSE), including:
 import asyncio
 from datetime import datetime
 import json
+import math
 import time
 import traceback
 import uuid
@@ -554,10 +555,23 @@ def _encode_custom(name: str, value: Any) -> str:
 
 
 def _tool_timeout_from_event(event: Any) -> float:
-    """Return a stream wait timeout while pydantic-ai is executing a tool."""
+    """Return a stream wait timeout while pydantic-ai is executing a tool.
+
+    ``math.inf`` means "do not time this tool out"; the caller turns that into a
+    bare ``await`` with no deadline.
+    """
     timeout = _DEFAULT_TOOL_STREAM_EVENT_TIMEOUT_SECONDS
     part = getattr(event, "part", None)
     tool_name = getattr(part, "tool_name", "")
+    if tool_name == "agent":
+        # A blocking sub-agent call is not a tool that might hang -- it is another
+        # agent doing real work, for as long as the work takes. It runs the same
+        # stream loop with the same first-event/idle/tool windows, so a genuinely
+        # wedged child is already bounded from the inside; a deadline out here
+        # only ever fires on a child that is working fine, and cancelling the
+        # call does not stop it. That leaves the parent holding a synthesized
+        # failure for a run that is still going.
+        return math.inf
     if tool_name != "run_command":
         return timeout
 
@@ -605,52 +619,113 @@ def _run_result_usage(result: Any) -> Any:
     return usage() if callable(usage) else usage
 
 
+def _make_run_injector(stream: Any) -> Any:
+    """Return ``inject(content) -> enqueue_id | None`` for a live pydantic-ai run.
+
+    Injected content is delivered at the run's next model request (or as a
+    redirect if the agent would otherwise end), so nothing in flight is torn
+    down -- unlike a steer, which cancels the run and replays from the last
+    checkpoint. `run_stream_events` does not expose the run handle, hence the
+    private accessor; every failure mode degrades to "not injectable" so the
+    caller falls back to running a fresh turn.
+    """
+
+    def inject(content: str) -> Optional[str]:
+        try:
+            # Already finished: a queued message would never be drained.
+            if getattr(stream, "result", None) is not None:
+                return None
+            agent_run = stream._agent_run()
+        except Exception:
+            return None  # run not started yet, or a handle that binds no run
+        enqueue = getattr(agent_run, "enqueue", None)
+        if enqueue is None:
+            return None
+        try:
+            return enqueue(content, priority="asap")
+        except Exception as exc:
+            logger.warning("[Streaming] Could not inject into live run: {}", exc)
+            return None
+
+    return inject
+
+
 async def _iter_stream_events_with_timeout(
     agent: Any,
     prompt: Any,
     run_kwargs: Dict[str, Any],
+    control: Any = None,
 ) -> AsyncGenerator[Any, None]:
     """Yield stream events, failing fast if the provider never produces one."""
     async with agent.run_stream_events(prompt, **run_kwargs) as stream:
-        first_event = True
-        tool_calls_in_flight = 0
-        tool_wait_timeout = 0.0
-        while True:
-            if first_event:
-                timeout = _FIRST_STREAM_EVENT_TIMEOUT_SECONDS
-                phase = "first event"
-            elif tool_calls_in_flight > 0:
-                timeout = (
-                    tool_wait_timeout or _DEFAULT_TOOL_STREAM_EVENT_TIMEOUT_SECONDS
-                )
-                phase = "tool result"
-            else:
-                timeout = _STREAM_IDLE_TIMEOUT_SECONDS
-                phase = "next event"
-            try:
-                event = await asyncio.wait_for(anext(stream), timeout=timeout)
-            except StopAsyncIteration:
-                break
-            except asyncio.TimeoutError as exc:
-                if phase == "tool result":
-                    # A single tool hung; let the run loop recover by feeding a
-                    # failed tool result back to the agent rather than aborting.
-                    raise _ToolResultTimeout(timeout) from exc
-                raise TimeoutError(
-                    f"Timed out waiting for LLM stream {phase} after {timeout:.0f}s"
-                ) from exc
-            first_event = False
-            event_kind = getattr(event, "event_kind", "")
-            if event_kind == "function_tool_call":
-                tool_calls_in_flight += 1
-                tool_wait_timeout = max(
-                    tool_wait_timeout, _tool_timeout_from_event(event)
-                )
-            elif event_kind == "function_tool_result":
-                tool_calls_in_flight = max(0, tool_calls_in_flight - 1)
-                if tool_calls_in_flight == 0:
-                    tool_wait_timeout = 0.0
-            yield event
+        if control is not None:
+            control.inject = _make_run_injector(stream)
+        try:
+            first_event = True
+            # tool_call_id -> that call's own wait window. Kept per call rather
+            # than as a batch-wide maximum: a batch mixing an unbounded `agent`
+            # call with an ordinary tool would otherwise inherit the agent's
+            # window for the whole batch and keep it after the agent returned,
+            # so a peer that hung afterwards would wait forever instead of
+            # raising _ToolResultTimeout for the run loop to recover from.
+            in_flight: Dict[Any, float] = {}
+            anon_calls = 0
+            while True:
+                if first_event:
+                    timeout = _FIRST_STREAM_EVENT_TIMEOUT_SECONDS
+                    phase = "first event"
+                elif in_flight:
+                    timeout = max(in_flight.values())
+                    phase = "tool result"
+                else:
+                    timeout = _STREAM_IDLE_TIMEOUT_SECONDS
+                    phase = "next event"
+                try:
+                    if timeout == math.inf:
+                        event = await anext(stream)
+                    else:
+                        event = await asyncio.wait_for(anext(stream), timeout=timeout)
+                except StopAsyncIteration:
+                    break
+                except asyncio.TimeoutError as exc:
+                    if phase == "tool result":
+                        # A single tool hung; let the run loop recover by feeding a
+                        # failed tool result back to the agent rather than aborting.
+                        raise _ToolResultTimeout(timeout) from exc
+                    raise TimeoutError(
+                        f"Timed out waiting for LLM stream {phase} after {timeout:.0f}s"
+                    ) from exc
+                first_event = False
+                event_kind = getattr(event, "event_kind", "")
+                if event_kind == "function_tool_call":
+                    call_part = getattr(event, "part", None)
+                    call_id = getattr(call_part, "tool_call_id", None)
+                    if call_id is None:
+                        anon_calls += 1
+                        call_id = f"_unidentified-{anon_calls}"
+                    in_flight[call_id] = _tool_timeout_from_event(event)
+                elif event_kind == "function_tool_result":
+                    result_part = _function_tool_result_part(event)
+                    result_id = getattr(result_part, "tool_call_id", None)
+                    if result_id in in_flight:
+                        in_flight.pop(result_id)
+                    elif in_flight:
+                        # No id to match on; retire the oldest so the set drains.
+                        in_flight.pop(next(iter(in_flight)))
+                elif event_kind == "enqueued_messages" and control is not None:
+                    # The run drained an injected message into its history. Confirming
+                    # it is what lets the sender ack rather than redeliver.
+                    enqueue_id = getattr(event, "enqueue_id", None)
+                    if enqueue_id:
+                        control.mark_injected(enqueue_id)
+                yield event
+        finally:
+            # The hook is only meaningful while this run is live. A stale one is
+            # already inert (it refuses a finished run, and an undelivered
+            # injection falls back to a fresh turn), but clearing it keeps the
+            # "is a run accepting messages?" answer honest.
+            if control is not None:
+                control.inject = None
 
 
 def _safe_args_preview(args: Any, max_len: int = 500) -> dict:
@@ -827,6 +902,9 @@ async def stream_agent_responses(
     citation_mgr = CitationManager(turn=_turn_index)
     citation_mgr.import_sources(deps.incoming_citation_sources)
     deps.citation_manager = citation_mgr
+    # A message injected mid-run brings its own sources; without this they would
+    # never reach this run's manager and its markers would resolve to nothing.
+    control.import_citations = citation_mgr.import_sources
     citation_sources_last_sent = 0
 
     # Auto-title: kick off in parallel for the first turn using only the user message
@@ -918,6 +996,9 @@ async def stream_agent_responses(
                 get_database().update_chat(chat_id, agent_state=_st)
 
             await asyncio.to_thread(_sync_save)
+            # Anything already delivered into this history is now on disk, so a
+            # sender waiting to ack its inbox row can safely stop waiting.
+            control.mark_history_persisted()
             logger.debug(
                 f"[Streaming] Mid-run checkpoint saved ({len(messages)} messages)"
             )
@@ -984,7 +1065,7 @@ async def stream_agent_responses(
                     _retry_repaired_history = False
                     logger.debug("[Streaming] Calling agent.run_stream_events()...")
                     _events = _iter_stream_events_with_timeout(
-                        agent, prompt, run_kwargs
+                        agent, prompt, run_kwargs, control
                     )
                     while True:
                         try:
@@ -1252,10 +1333,15 @@ async def stream_agent_responses(
                                 )
                             )
                         # Reconstruct a valid run state: the model's (partial)
-                        # response plus a request carrying the failed results.
+                        # response plus a request answering *every* call it made.
+                        # A batch can be part done and part hung -- carrying only
+                        # the synthesized failures would both throw away tool work
+                        # that actually completed and leave the calls in
+                        # `_resp_parts` without a matching result, which providers
+                        # reject as malformed history.
                         continuation = _chk_base + [
                             _MResp(parts=_resp_parts),
-                            _MReq(parts=_failed_returns),
+                            _MReq(parts=[*_chk_tool_returns, *_failed_returns]),
                         ]
                         partial_history = continuation
                         deps.last_messages = continuation

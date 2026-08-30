@@ -1069,6 +1069,54 @@ async def clear_stuck_tasks() -> list[str]:
     return cleared
 
 
+async def steer_subagent(task_id: str, message: str) -> bool:
+    """Redirect a running sub-agent without tearing it down.
+
+    Deliberately *not* the steer the parent chat gets. `process_steer` cancels
+    the run and replays from the last checkpoint -- aimed at a blocking child
+    that would cancel the very coroutine its parent's tool call is awaiting,
+    killing the agent the user was trying to redirect. Injecting instead lands
+    the message at the child's next model request: the tool call in flight
+    finishes, the parent's await is undisturbed, and nothing is lost.
+
+    Returns False when there is no live run to inject into -- the caller should
+    say so rather than pretend the sub-agent heard it.
+    """
+    from suzent.core.stream_registry import stream_controls
+
+    task = _tasks.get(task_id)
+    if not task or task.status not in ("queued", "running"):
+        return False
+    control = stream_controls.get(task.chat_id)
+    inject = getattr(control, "inject", None) if control is not None else None
+    if inject is None:
+        return False
+    return bool(inject(f"[User interrupted to redirect]: {message}"))
+
+
+async def stop_subagents_for_parent(parent_chat_id: str) -> list[str]:
+    """Stop every sub-agent this chat spawned. Returns the task ids stopped.
+
+    Stopping a chat used to reach only its blocking children, and only as
+    collateral damage: cancelling the turn cancelled the tool call they were
+    awaited inside, leaving them labelled with the generic "the run was
+    cancelled" rather than saying the user did it. Background children -- the
+    default -- were left running entirely. Going through `stop_subagent` makes
+    "stop" mean the same thing for both and names the user as the cause.
+    """
+    if not parent_chat_id:
+        return []
+    stopped: list[str] = []
+    for task in list(_tasks.values()):
+        if task.parent_chat_id != parent_chat_id:
+            continue
+        if task.status not in ("queued", "running"):
+            continue
+        if await stop_subagent(task.task_id):
+            stopped.append(task.task_id)
+    return stopped
+
+
 async def stop_subagent(task_id: str) -> bool:
     """Request cancellation of a running sub-agent."""
     from suzent.core.stream_registry import stop_stream

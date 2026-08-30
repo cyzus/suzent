@@ -16,6 +16,12 @@ _LEASE_SECONDS = 180
 _DELIVERY_MARKER_PREFIX = "suzent-agent-inbox"
 
 
+# Fallback ceiling for waiting out a busy target when its run cannot take an
+# injected message (no live pydantic-ai run, or it ended before draining). The
+# injection path above handles the normal case, so reaching this is unusual.
+_BUSY_TARGET_WAIT_SECONDS = 120.0
+
+
 def _delivery_marker(message_id: str) -> str:
     return f"<!-- {_DELIVERY_MARKER_PREFIX}:{message_id} -->"
 
@@ -130,6 +136,78 @@ class AgentInboxDispatcher:
             return
         raise RuntimeError(f"Unsupported agent message transport '{transport}'")
 
+    @staticmethod
+    async def _race_with_run_end(control: Any, event: asyncio.Event) -> bool:
+        """Wait for `event`, giving up if the run ends first. True if it fired."""
+        if event.is_set():
+            return True
+        waiters = [
+            asyncio.ensure_future(event.wait()),
+            asyncio.ensure_future(control.completed_event.wait()),
+        ]
+        try:
+            await asyncio.wait(waiters, return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            for waiter in waiters:
+                waiter.cancel()
+        return event.is_set()
+
+    async def _inject_into_live_run(
+        self,
+        control: Any,
+        message: dict[str, Any],
+        content: str,
+        is_subagent_result: bool,
+        citation_sources: list[dict[str, Any]],
+    ) -> bool:
+        """Deliver `content` into the target's in-flight turn.
+
+        Unlike a steer, this tears nothing down: the run picks the message up at
+        its next model request (or as a redirect if it would otherwise end), so
+        the work already done in that turn is kept. Returns True only once the
+        message is durably stored -- an unconfirmed injection falls back to
+        running a fresh turn, which is slower but loses nothing.
+        """
+        inject = getattr(control, "inject", None)
+        if inject is None:
+            return False
+
+        from suzent.core.system_reminder import wrap_in_system_reminder
+
+        payload = (
+            wrap_in_system_reminder(content, display_trigger=content)
+            if is_subagent_result
+            else content
+        )
+
+        # Adopt the sender's sources before the text citing them lands: the run
+        # imported its own at setup and will not look again.
+        import_citations = getattr(control, "import_citations", None)
+        if import_citations is not None and citation_sources:
+            try:
+                import_citations(list(citation_sources))
+            except Exception as exc:
+                logger.warning("Could not import citation sources mid-run: {}", exc)
+
+        enqueue_id = inject(payload)
+        if not enqueue_id:
+            return False
+
+        if not await self._race_with_run_end(
+            control, control.injection_delivered(enqueue_id)
+        ):
+            return False
+
+        # Delivery is an in-memory fact. Acking the durable inbox row on it alone
+        # would lose the message for good if the process died before the run
+        # wrote that history out, so wait for the checkpoint that stores it --
+        # or, if the turn ended first, confirm against the database directly.
+        if await self._race_with_run_end(
+            control, control.injection_persisted(enqueue_id)
+        ):
+            return True
+        return self._was_already_persisted(message)
+
     def _was_already_persisted(self, message: dict[str, Any]) -> bool:
         chat = get_database().get_chat(str(message["target_chat_id"]))
         if chat is None:
@@ -188,7 +266,22 @@ class AgentInboxDispatcher:
         async with get_background_turn_lock(target_chat_id):
             control = stream_controls.get(target_chat_id)
             if control is not None and not control.completed_event.is_set():
-                await asyncio.wait_for(control.completed_event.wait(), timeout=120.0)
+                # The target is mid-turn. Hand the message to that turn rather than
+                # waiting it out: a parent busy for longer than the old 120s cap is
+                # working, not stuck, and letting the wait expire burned one of the
+                # five delivery attempts before dropping the message for good.
+                if await self._inject_into_live_run(
+                    control,
+                    message,
+                    delivered_content,
+                    is_subagent_result,
+                    list(payload.get("citation_sources") or []),
+                ):
+                    return
+                await asyncio.wait_for(
+                    control.completed_event.wait(),
+                    timeout=_BUSY_TARGET_WAIT_SECONDS,
+                )
 
             if runtime == "acp" or subagent_runtime == "acp":
                 from suzent.acp.runtime import run_acp_turn_text
