@@ -136,16 +136,37 @@ class AgentInboxDispatcher:
             return
         raise RuntimeError(f"Unsupported agent message transport '{transport}'")
 
+    @staticmethod
+    async def _race_with_run_end(control: Any, event: asyncio.Event) -> bool:
+        """Wait for `event`, giving up if the run ends first. True if it fired."""
+        if event.is_set():
+            return True
+        waiters = [
+            asyncio.ensure_future(event.wait()),
+            asyncio.ensure_future(control.completed_event.wait()),
+        ]
+        try:
+            await asyncio.wait(waiters, return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            for waiter in waiters:
+                waiter.cancel()
+        return event.is_set()
+
     async def _inject_into_live_run(
-        self, control: Any, chat_id: str, content: str, is_subagent_result: bool
+        self,
+        control: Any,
+        message: dict[str, Any],
+        content: str,
+        is_subagent_result: bool,
+        citation_sources: list[dict[str, Any]],
     ) -> bool:
         """Deliver `content` into the target's in-flight turn.
 
         Unlike a steer, this tears nothing down: the run picks the message up at
         its next model request (or as a redirect if it would otherwise end), so
-        the work already done in that turn is kept. Returns True only once the run
-        confirms the message reached its history -- an unconfirmed injection falls
-        back to running a fresh turn, which is correct but loses no message.
+        the work already done in that turn is kept. Returns True only once the
+        message is durably stored -- an unconfirmed injection falls back to
+        running a fresh turn, which is slower but loses nothing.
         """
         inject = getattr(control, "inject", None)
         if inject is None:
@@ -158,26 +179,34 @@ class AgentInboxDispatcher:
             if is_subagent_result
             else content
         )
+
+        # Adopt the sender's sources before the text citing them lands: the run
+        # imported its own at setup and will not look again.
+        import_citations = getattr(control, "import_citations", None)
+        if import_citations is not None and citation_sources:
+            try:
+                import_citations(list(citation_sources))
+            except Exception as exc:
+                logger.warning("Could not import citation sources mid-run: {}", exc)
+
         enqueue_id = inject(payload)
         if not enqueue_id:
             return False
 
-        delivered = control.injection_delivered(enqueue_id)
-        # The only way an 'asap' message never lands is the run dying first, so
-        # race delivery against the run finishing.
-        waiters = [
-            asyncio.ensure_future(delivered.wait()),
-            asyncio.ensure_future(control.completed_event.wait()),
-        ]
-        try:
-            await asyncio.wait(waiters, return_when=asyncio.FIRST_COMPLETED)
-        finally:
-            for waiter in waiters:
-                waiter.cancel()
-        if delivered.is_set():
-            logger.debug("Injected inbox message into live run for chat {}", chat_id)
+        if not await self._race_with_run_end(
+            control, control.injection_delivered(enqueue_id)
+        ):
+            return False
+
+        # Delivery is an in-memory fact. Acking the durable inbox row on it alone
+        # would lose the message for good if the process died before the run
+        # wrote that history out, so wait for the checkpoint that stores it --
+        # or, if the turn ended first, confirm against the database directly.
+        if await self._race_with_run_end(
+            control, control.injection_persisted(enqueue_id)
+        ):
             return True
-        return False
+        return self._was_already_persisted(message)
 
     def _was_already_persisted(self, message: dict[str, Any]) -> bool:
         chat = get_database().get_chat(str(message["target_chat_id"]))
@@ -242,7 +271,11 @@ class AgentInboxDispatcher:
                 # working, not stuck, and letting the wait expire burned one of the
                 # five delivery attempts before dropping the message for good.
                 if await self._inject_into_live_run(
-                    control, target_chat_id, delivered_content, is_subagent_result
+                    control,
+                    message,
+                    delivered_content,
+                    is_subagent_result,
+                    list(payload.get("citation_sources") or []),
                 ):
                     return
                 await asyncio.wait_for(

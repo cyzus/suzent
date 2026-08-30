@@ -662,16 +662,20 @@ async def _iter_stream_events_with_timeout(
             control.inject = _make_run_injector(stream)
         try:
             first_event = True
-            tool_calls_in_flight = 0
-            tool_wait_timeout = 0.0
+            # tool_call_id -> that call's own wait window. Kept per call rather
+            # than as a batch-wide maximum: a batch mixing an unbounded `agent`
+            # call with an ordinary tool would otherwise inherit the agent's
+            # window for the whole batch and keep it after the agent returned,
+            # so a peer that hung afterwards would wait forever instead of
+            # raising _ToolResultTimeout for the run loop to recover from.
+            in_flight: Dict[Any, float] = {}
+            anon_calls = 0
             while True:
                 if first_event:
                     timeout = _FIRST_STREAM_EVENT_TIMEOUT_SECONDS
                     phase = "first event"
-                elif tool_calls_in_flight > 0:
-                    timeout = (
-                        tool_wait_timeout or _DEFAULT_TOOL_STREAM_EVENT_TIMEOUT_SECONDS
-                    )
+                elif in_flight:
+                    timeout = max(in_flight.values())
                     phase = "tool result"
                 else:
                     timeout = _STREAM_IDLE_TIMEOUT_SECONDS
@@ -694,14 +698,20 @@ async def _iter_stream_events_with_timeout(
                 first_event = False
                 event_kind = getattr(event, "event_kind", "")
                 if event_kind == "function_tool_call":
-                    tool_calls_in_flight += 1
-                    tool_wait_timeout = max(
-                        tool_wait_timeout, _tool_timeout_from_event(event)
-                    )
+                    call_part = getattr(event, "part", None)
+                    call_id = getattr(call_part, "tool_call_id", None)
+                    if call_id is None:
+                        anon_calls += 1
+                        call_id = f"_unidentified-{anon_calls}"
+                    in_flight[call_id] = _tool_timeout_from_event(event)
                 elif event_kind == "function_tool_result":
-                    tool_calls_in_flight = max(0, tool_calls_in_flight - 1)
-                    if tool_calls_in_flight == 0:
-                        tool_wait_timeout = 0.0
+                    result_part = _function_tool_result_part(event)
+                    result_id = getattr(result_part, "tool_call_id", None)
+                    if result_id in in_flight:
+                        in_flight.pop(result_id)
+                    elif in_flight:
+                        # No id to match on; retire the oldest so the set drains.
+                        in_flight.pop(next(iter(in_flight)))
                 elif event_kind == "enqueued_messages" and control is not None:
                     # The run drained an injected message into its history. Confirming
                     # it is what lets the sender ack rather than redeliver.
@@ -892,6 +902,9 @@ async def stream_agent_responses(
     citation_mgr = CitationManager(turn=_turn_index)
     citation_mgr.import_sources(deps.incoming_citation_sources)
     deps.citation_manager = citation_mgr
+    # A message injected mid-run brings its own sources; without this they would
+    # never reach this run's manager and its markers would resolve to nothing.
+    control.import_citations = citation_mgr.import_sources
     citation_sources_last_sent = 0
 
     # Auto-title: kick off in parallel for the first turn using only the user message
@@ -983,6 +996,9 @@ async def stream_agent_responses(
                 get_database().update_chat(chat_id, agent_state=_st)
 
             await asyncio.to_thread(_sync_save)
+            # Anything already delivered into this history is now on disk, so a
+            # sender waiting to ack its inbox row can safely stop waiting.
+            control.mark_history_persisted()
             logger.debug(
                 f"[Streaming] Mid-run checkpoint saved ({len(messages)} messages)"
             )
