@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v0.12.0] - 2026-08-29
+## [v0.12.0] - 2026-08-30
 
 ### 🚀 Added
 - Name the agent in the transcript instead of marking it done
@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Keep draft writes off the token loop and out of the index
 
 ### 🐛 Fixed
+- Make the 409 recovery authoritative, foreground-safe and localized
+- Reattach to the live stream when a send is rejected as busy
 - Stop hover-tinted rows re-rasterising their text
 - Point the collapsed chevron right
 - Render the result as markdown, give the panel an identity
