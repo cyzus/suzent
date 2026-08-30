@@ -2481,12 +2481,18 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     clearParts();
     // Reload chat from DB so the partial response (saved by backend on cancel)
     // appears immediately — prevents the blank flash while waiting for DB commit.
+    // Anything appended locally after a stop has to wait for this: the reload
+    // replaces local messages with the database's copy, which cannot yet hold
+    // something the client only just decided to say.
+    let reloaded: Promise<void> = Promise.resolve();
     if (targetChatId) {
-      setTimeout(() => {
-        try {
-          loadChat(targetChatId, { force: true });
-        } catch {}
-      }, 500);
+      reloaded = new Promise<void>((resolve) => {
+        setTimeout(() => {
+          loadChat(targetChatId, { force: true })
+            .catch(() => {})
+            .finally(() => resolve());
+        }, 500);
+      });
     }
 
     stopInFlightRef.current = false;
@@ -2513,6 +2519,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         const named = stopped.map(
           (taskId) => subAgentTaskStatesRef.current[taskId]?.description?.trim() || taskId
         );
+        await reloaded;
         addMessage(
           {
             role: 'notice',
