@@ -26,12 +26,66 @@ from typing import Any, Dict, Optional, Set
 class StreamControl:
     """Holds cooperative cancellation state for an active stream."""
 
-    __slots__ = ("cancel_event", "completed_event", "reason")
+    __slots__ = (
+        "cancel_event",
+        "completed_event",
+        "reason",
+        "inject",
+        "import_citations",
+        "_injected",
+        "_durable",
+    )
 
     def __init__(self):
         self.cancel_event = asyncio.Event()
         self.completed_event = asyncio.Event()  # Set when post-processing finishes
         self.reason = "Stream stopped by user"
+        # Set by streaming.py for as long as a pydantic-ai run is in flight:
+        # ``inject(content) -> enqueue_id | None`` hands a message to the *running*
+        # turn instead of making the caller wait for it to end. A sub-agent result
+        # arriving mid-turn is the motivating case -- the parent is busy, not
+        # broken, so blocking on it (and eventually timing out) loses the result.
+        self.inject = None
+        # Set alongside `inject`: adopts citation sources into the live run's
+        # CitationManager. A run imports sources once at setup, so a message
+        # injected later would carry citation markers that resolve to nothing.
+        self.import_citations = None
+        # enqueue_id -> Event, set once the run has actually drained that message
+        # into its history. An enqueue only promises delivery while the run lives;
+        # confirmation is what lets a caller ack rather than hope.
+        self._injected: Dict[str, asyncio.Event] = {}
+        # enqueue_id -> Event, set once a delivered message has been written to
+        # the database. Delivery alone is an in-memory fact: acking a durable
+        # inbox row on it would lose the message outright if the process died
+        # before the run checkpointed.
+        self._durable: Dict[str, asyncio.Event] = {}
+
+    def injection_delivered(self, enqueue_id: str) -> asyncio.Event:
+        """Return the event that fires once `enqueue_id` lands in the run."""
+        event = self._injected.get(enqueue_id)
+        if event is None:
+            event = asyncio.Event()
+            self._injected[enqueue_id] = event
+        return event
+
+    def injection_persisted(self, enqueue_id: str) -> asyncio.Event:
+        """Return the event that fires once `enqueue_id` is safely on disk."""
+        event = self._durable.get(enqueue_id)
+        if event is None:
+            event = asyncio.Event()
+            self._durable[enqueue_id] = event
+        return event
+
+    def mark_injected(self, enqueue_id: str) -> None:
+        """Record that the live run absorbed a previously injected message."""
+        self.injection_delivered(enqueue_id).set()
+
+    def mark_history_persisted(self) -> None:
+        """Record that the run's history -- with everything delivered into it so
+        far -- has been written to the database."""
+        for enqueue_id, delivered in self._injected.items():
+            if delivered.is_set():
+                self.injection_persisted(enqueue_id).set()
 
 
 # Global registry of active streams: chat_id -> StreamControl

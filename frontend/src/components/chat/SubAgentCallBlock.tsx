@@ -6,11 +6,13 @@
  * right. Live state comes off the shared sub-agent EventSource, with a poll as
  * a fallback for when the parent stream ended before the child did.
  */
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { useI18n } from '../../i18n';
 import { toolLabel } from './toolSummary';
 import { AgentAvatar } from '../sidebar/subAgentDisplay';
 import { useSubAgentStatus, watchSubAgentTask } from '../../hooks/useSubAgentStatus';
+import { useSubAgentActivity } from '../../hooks/useSubAgentActivity';
+import { getApiBase } from '../../lib/api';
 import {
   isSubAgentActive,
   isSubAgentTerminal,
@@ -37,11 +39,15 @@ interface SubAgentCallBlockProps {
   onOpenSidebar?: (taskId: string) => void;
   /** Called when user clicks "Stop" */
   onStop?: (taskId: string) => void;
+  /** False for a blocking call, whose parent turn is suspended on this child. */
+  runInBackground?: boolean;
 }
 
 export interface SubAgentArgs {
   description?: string;
   toolsAllowed?: string[];
+  /** False means the parent's turn is suspended waiting on this child. */
+  runInBackground?: boolean;
 }
 
 const EMPTY_SUB_AGENT_ARGS: SubAgentArgs = {};
@@ -71,6 +77,9 @@ export function parseSubAgentArgs(args: string | undefined): SubAgentArgs {
       parsed = {
         description: typeof record.description === 'string' ? record.description : undefined,
         toolsAllowed: Array.isArray(toolsAllowed) ? (toolsAllowed as string[]) : undefined,
+        // Absent means the tool's own default, which is background.
+        runInBackground:
+          typeof record.run_in_background === 'boolean' ? record.run_in_background : true,
       };
     }
   } catch {
@@ -101,6 +110,7 @@ const SubAgentCallBlockComponent: React.FC<SubAgentCallBlockProps> = ({
   subagentType,
   onOpenSidebar,
   onStop,
+  runInBackground = true,
 }) => {
   const { t } = useI18n();
   const { taskStates } = useSubAgentStatus();
@@ -132,6 +142,40 @@ const SubAgentCallBlockComponent: React.FC<SubAgentCallBlockProps> = ({
 
   const isRunning = isSubAgentActive(status);
   const outcomeText = status === 'completed' ? resultSummary : error;
+
+  // Only a blocking call gets the inline feed. A background child runs while
+  // the parent keeps talking, and several can run at once, so inlining those
+  // would interleave into noise -- the sidebar is the right home for them.
+  // A blocking call is the opposite case: the transcript is frozen until it
+  // returns, so without this the card is the only thing on screen and it does
+  // not move.
+  const isBlocking = !runInBackground;
+  const childChatId = streamTask?.chat_id;
+  const activity = useSubAgentActivity(childChatId, isBlocking && isRunning);
+
+  const [steerText, setSteerText] = useState('');
+  const [steerBusy, setSteerBusy] = useState(false);
+  const [steerError, setSteerError] = useState<string | null>(null);
+
+  const sendSteer = useCallback(async () => {
+    const message = steerText.trim();
+    if (!taskId || !message || steerBusy) return;
+    setSteerBusy(true);
+    setSteerError(null);
+    try {
+      const res = await fetch(`${getApiBase()}/subagents/${taskId}/steer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      setSteerText('');
+    } catch {
+      setSteerError(t('subAgents.steerFailed'));
+    } finally {
+      setSteerBusy(false);
+    }
+  }, [taskId, steerText, steerBusy, t]);
 
   const headerClassName = [
     'inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono font-bold uppercase tracking-wide rounded-sm cursor-pointer transition-colors select-none',
@@ -213,6 +257,77 @@ const SubAgentCallBlockComponent: React.FC<SubAgentCallBlockProps> = ({
                     </span>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {/* What it is doing right now — blocking calls only, and only
+                while the run is live. The sidebar keeps the full log. */}
+            {isBlocking && isRunning && activity.length > 0 && (
+              <div className="min-w-0">
+                <div className="text-[10px] font-mono font-bold text-neutral-400 dark:text-neutral-500 uppercase tracking-wide mb-0.5">
+                  {t('subAgents.activity')}
+                </div>
+                <div className="space-y-0.5">
+                  {activity.map((entry) => (
+                    <div
+                      key={entry.toolCallId}
+                      className="flex items-center gap-1.5 text-[11px] font-mono min-w-0"
+                    >
+                      <span
+                        className={`shrink-0 w-1.5 h-1.5 rounded-full ${
+                          entry.done
+                            ? 'bg-neutral-300 dark:bg-zinc-600'
+                            : 'bg-brutal-black dark:bg-white animate-pulse'
+                        }`}
+                      />
+                      <span
+                        className={`truncate min-w-0 ${
+                          entry.done
+                            ? 'text-neutral-400 dark:text-neutral-500'
+                            : 'text-neutral-700 dark:text-neutral-200'
+                        }`}
+                      >
+                        {toolLabel(entry.toolName)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Redirect this child in place. Steering the composer still goes
+                to the parent (which cancels a blocking child), so the target
+                has to be the card to be unambiguous when several run at once. */}
+            {isBlocking && isRunning && taskId && (
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    value={steerText}
+                    onChange={(e) => setSteerText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        void sendSteer();
+                      }
+                    }}
+                    placeholder={t('subAgents.steerPlaceholder')}
+                    disabled={steerBusy}
+                    className="flex-1 min-w-0 px-2 py-1 text-[11px] bg-white dark:bg-zinc-900 text-brutal-black dark:text-white border-2 border-neutral-200 dark:border-zinc-600 rounded-sm focus:outline-none focus:border-brutal-black dark:focus:border-white disabled:opacity-50"
+                  />
+                  <button
+                    onClick={() => void sendSteer()}
+                    disabled={steerBusy || !steerText.trim()}
+                    className="shrink-0 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide bg-white dark:bg-zinc-900 text-brutal-black dark:text-white border-2 border-brutal-black dark:border-white rounded-sm hover:bg-neutral-100 dark:hover:bg-zinc-800 transition-colors disabled:opacity-40"
+                  >
+                    {t('subAgents.steer')}
+                  </button>
+                </div>
+                {steerError && (
+                  <div className="mt-1 text-[10px] text-red-600 dark:text-red-400">
+                    {steerError}
+                  </div>
+                )}
               </div>
             )}
 

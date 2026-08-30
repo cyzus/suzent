@@ -6,6 +6,7 @@ GET  /subagents/stream           — SSE stream of task state changes
 GET  /subagents                  — list bounded recent sub-agents (optionally by parent_chat_id)
 GET  /subagents/{task_id}        — get a single sub-agent task
 POST /subagents/{task_id}/stop   — stop a running sub-agent
+POST /subagents/{task_id}/steer  — redirect a running sub-agent in place
 """
 
 import asyncio
@@ -21,6 +22,7 @@ from suzent.core.subagent_runner import (
     list_all_tasks,
     register_sse_subscriber,
     stop_subagent,
+    steer_subagent,
     unregister_sse_subscriber,
     clear_stuck_tasks,
     _task_to_sse_dict,
@@ -146,6 +148,32 @@ async def stop_subagent_route(request: Request) -> JSONResponse:
     if not stopped:
         return JSONResponse(
             {"error": "Task not found or already finished"}, status_code=404
+        )
+    return JSONResponse({"ok": True, "task_id": task_id})
+
+
+async def steer_subagent_route(request: Request) -> JSONResponse:
+    """Redirect one running sub-agent, leaving its parent's turn untouched."""
+    task_id = request.path_params["task_id"]
+    try:
+        data = await request.json()
+    except json.JSONDecodeError:
+        return JSONResponse({"error": "Invalid JSON."}, status_code=400)
+
+    message = str(data.get("message") or "").strip()
+    if not message:
+        return JSONResponse({"error": "message is required"}, status_code=400)
+
+    delivered = await steer_subagent(task_id, message)
+    if not delivered:
+        return JSONResponse(
+            {
+                "error": (
+                    "Sub-agent is not running, or its turn is not currently "
+                    "accepting messages."
+                )
+            },
+            status_code=409,
         )
     return JSONResponse({"ok": True, "task_id": task_id})
 

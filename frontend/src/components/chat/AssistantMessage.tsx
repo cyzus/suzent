@@ -345,6 +345,7 @@ const AGUIPartsContent: React.FC<{
                           taskId={taskId}
                           description={args.description}
                           toolsAllowed={args.toolsAllowed}
+                          runInBackground={args.runInBackground}
                           status={taskState?.status ?? defaultStatus}
                           model={persisted.model}
                           subagentType={persisted.subagentType}
@@ -463,6 +464,7 @@ const AGUIPartsContent: React.FC<{
                     taskId={taskId}
                     description={args.description}
                     toolsAllowed={args.toolsAllowed}
+                    runInBackground={args.runInBackground}
                     status={taskState?.status ?? defaultStatus}
                     model={persisted.model}
                     subagentType={persisted.subagentType}
