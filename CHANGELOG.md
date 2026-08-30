@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Keep draft writes off the token loop and out of the index
 
 ### 🐛 Fixed
+- Propagate the parent's permission grants to sub-agents
+- Make the host path boundary advisory instead of a veto
 - Measure the reader's place across the turn, not the row
 - Stop the edge fade swallowing the first and last ticks
 - Reach the first and last ticks, and wheel the whole rail
