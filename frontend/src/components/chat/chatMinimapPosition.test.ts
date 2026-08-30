@@ -3,6 +3,7 @@ import {
   buildOrderByMessageIndex,
   isAtScrollEnd,
   orderForMessageIndex,
+  positionFromAnchors,
   probeOffsetPx,
 } from './chatMinimapPosition';
 
@@ -90,5 +91,66 @@ describe('probeOffsetPx', () => {
   it('clamps a rubber-banded scroll position', () => {
     expect(probeOffsetPx(-50, 600, 4600)).toBe(0);
     expect(probeOffsetPx(99999, 600, 4600)).toBe(600);
+  });
+});
+
+describe('positionFromAnchors', () => {
+  // A turn is several rows — prompt, reply, activity in between — but one tick.
+  const turns = [
+    { order: 0, top: 0 },
+    { order: 1, top: 300 },
+    { order: 2, top: 900 },
+  ];
+
+  it('advances monotonically across a turn instead of resetting per row', () => {
+    // The blink: crossing from a turn's prompt into its reply used to send the
+    // fraction from nearly 1 back to nearly 0, so the highlight jumped to the
+    // next tick and snapped straight back.
+    const samples = [0, 75, 150, 225, 299, 300, 500, 899, 900].map((y) =>
+      positionFromAnchors(turns, y)
+    );
+    for (let i = 1; i < samples.length; i += 1) {
+      expect(samples[i]).toBeGreaterThanOrEqual(samples[i - 1] as number);
+    }
+  });
+
+  it('reaches the next tick exactly at the next turn', () => {
+    expect(positionFromAnchors(turns, 300)).toBe(1);
+    expect(positionFromAnchors(turns, 900)).toBe(2);
+  });
+
+  it('interpolates by distance through the turn, not by row count', () => {
+    expect(positionFromAnchors(turns, 150)).toBeCloseTo(0.5);
+    expect(positionFromAnchors(turns, 600)).toBeCloseTo(1.5);
+  });
+
+  it('steps over a turn whose rows are not mounted', () => {
+    // Orders 1..4 unmounted: the gap is one span, not four.
+    const sparse = [
+      { order: 0, top: 0 },
+      { order: 5, top: 100 },
+    ];
+    expect(positionFromAnchors(sparse, 50)).toBeCloseTo(2.5);
+  });
+
+  it('clamps above the first and below the last anchor', () => {
+    expect(positionFromAnchors(turns, -500)).toBe(0);
+    expect(positionFromAnchors(turns, 99999)).toBe(2);
+  });
+
+  it('survives a zero-height turn without dividing by zero', () => {
+    const collapsed = [
+      { order: 0, top: 0 },
+      { order: 1, top: 100 },
+      { order: 2, top: 100 }, // collapsed to nothing
+      { order: 3, top: 200 },
+    ];
+    const at = positionFromAnchors(collapsed, 100);
+    expect(Number.isFinite(at)).toBe(true);
+    expect(at).toBe(2);
+  });
+
+  it('has no answer with no anchors', () => {
+    expect(positionFromAnchors([], 0)).toBeNull();
   });
 });

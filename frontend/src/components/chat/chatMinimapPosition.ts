@@ -83,3 +83,39 @@ export function probeOffsetPx(
   const progress = Math.max(0, Math.min(1, scrollTop / maxScroll));
   return clientHeight * progress;
 }
+
+export interface MarkerAnchor {
+  order: number;
+  /** Viewport-relative top of the first row belonging to that marker. */
+  top: number;
+}
+
+/**
+ * The reader's place on the rail, in fractional tick order.
+ *
+ * Interpolating within a *row* was wrong: a tick stands for a whole turn, and
+ * a turn is several rows -- the prompt, the reply, whatever the agent did in
+ * between. Crossing from one row of a turn into the next reset the fraction
+ * from nearly one back to nearly zero while the tick order stayed put, so the
+ * highlight ran ahead to the next tick and immediately snapped back. The
+ * fraction has to be measured across the turn, which is what the gap between
+ * consecutive anchors is.
+ *
+ * Anchors must be in document order. The order delta is carried through, so a
+ * turn whose rows are not mounted is stepped over rather than mistaken for one.
+ */
+export function positionFromAnchors(anchors: MarkerAnchor[], probeY: number): number | null {
+  if (anchors.length === 0) return null;
+  if (probeY <= anchors[0].top) return anchors[0].order;
+
+  for (let i = 0; i < anchors.length - 1; i += 1) {
+    const start = anchors[i];
+    const next = anchors[i + 1];
+    if (probeY >= next.top) continue;
+    const span = next.top - start.top;
+    const fraction = span > 0 ? (probeY - start.top) / span : 0;
+    return start.order + fraction * (next.order - start.order);
+  }
+
+  return anchors[anchors.length - 1].order;
+}

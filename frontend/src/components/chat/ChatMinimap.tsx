@@ -3,7 +3,9 @@ import type { Message } from '../../types/api';
 import {
   buildOrderByMessageIndex,
   isAtScrollEnd,
+  type MarkerAnchor,
   orderForMessageIndex,
+  positionFromAnchors,
   probeOffsetPx,
 } from './chatMinimapPosition';
 import { formatMessageTime } from '../../lib/chatUtils';
@@ -300,27 +302,20 @@ const ChatMinimapComponent: React.FC<ChatMinimapProps> = ({
       probeOffsetPx(el.scrollTop, el.clientHeight, el.scrollHeight);
     const rows = el.querySelectorAll<HTMLElement>('[data-message-index]');
 
-    let position: number | null = null;
+    // One anchor per turn, at the top of its first row -- not one per row.
+    const anchors: MarkerAnchor[] = [];
     for (const row of Array.from(rows)) {
-      const rect = row.getBoundingClientRect();
-      if (rect.bottom < centerY) continue;
       const order = orderForMessageIndex(orderByMessageIndex, Number(row.dataset.messageIndex));
-      if (order === null) {
-        // Ahead of every marker: the start of the rail, not the end.
-        position = 0;
-        break;
-      }
-      // Advance smoothly through a tall turn instead of sticking to its tick
-      // until the next one begins.
-      const within =
-        rect.height > 0 ? Math.min(1, Math.max(0, (centerY - rect.top) / rect.height)) : 0;
-      position = order + within;
-      break;
+      if (order === null) continue;
+      const previous = anchors[anchors.length - 1];
+      if (previous && previous.order === order) continue;
+      anchors.push({ order, top: row.getBoundingClientRect().top });
     }
 
+    const position = positionFromAnchors(anchors, centerY);
     if (position === null) {
-      // Past the last mounted row -- the reader is at the end.
-      position = markers.length - 1;
+      setScrollCenterRatio(0.5);
+      return;
     }
 
     setScrollCenterRatio(Math.max(0, Math.min(1, position / (markers.length - 1))));
