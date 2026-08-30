@@ -447,6 +447,32 @@ def inherited_working_directory(parent_chat) -> Optional[str]:
     return parent_chat.working_directory or (parent_chat.config or {}).get("cwd")
 
 
+# Permission state the user granted on the parent chat. A sub-agent works on the
+# parent's task, so a decision the user already made for that task should reach
+# it — otherwise the child re-litigates every approval through the classifier,
+# with no user to ask, and an "always allow" the user clicked minutes ago has no
+# effect. Grants only: the child's own mode still governs everything else, and
+# nothing here can exceed what the parent was given.
+_INHERITED_PERMISSION_KEYS = (
+    "permission_rules",
+    "permission_policies",
+    "tool_approval_policy",
+)
+
+
+def inherited_permission_grants(parent_config: dict) -> dict:
+    """Copy the parent chat's permission grants for a sub-agent's config."""
+    grants: dict = {}
+    for key in _INHERITED_PERMISSION_KEYS:
+        value = parent_config.get(key)
+        if not value:
+            continue
+        # Defensive copy: each agent's deps must own their policy structures so
+        # a decision recorded by one run cannot mutate another's.
+        grants[key] = list(value) if isinstance(value, list) else dict(value)
+    return grants
+
+
 def persistable_grants(base_config: dict, isolation: Optional[str]) -> dict:
     """The grants worth storing on a sub-agent's chat for later turns.
 
@@ -640,6 +666,7 @@ async def _run_subagent(
         }
         if parent_sandbox_volumes:
             base_config["sandbox_volumes"] = parent_sandbox_volumes
+        base_config.update(inherited_permission_grants(parent_config))
         if task.model_override:
             base_config["model"] = task.model_override
         if task.tools_allowed:
