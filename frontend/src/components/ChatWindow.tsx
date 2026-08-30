@@ -2476,6 +2476,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     clearParts();
     // Reload chat from DB so the partial response (saved by backend on cancel)
     // appears immediately — prevents the blank flash while waiting for DB commit.
+    // This also brings back the notice the stop wrote about any sub-agents it
+    // stopped along the way, which is why that notice is written server-side.
     if (targetChatId) {
       setTimeout(() => {
         try {

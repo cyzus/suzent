@@ -1069,7 +1069,7 @@ async def clear_stuck_tasks() -> list[str]:
     return cleared
 
 
-async def steer_subagent(task_id: str, message: str) -> bool:
+async def steer_subagent(task_id: str, message: str) -> Optional[str]:
     """Redirect a running sub-agent without tearing it down.
 
     Deliberately *not* the steer the parent chat gets. `process_steer` cancels
@@ -1079,19 +1079,21 @@ async def steer_subagent(task_id: str, message: str) -> bool:
     the message at the child's next model request: the tool call in flight
     finishes, the parent's await is undisturbed, and nothing is lost.
 
-    Returns False when there is no live run to inject into -- the caller should
-    say so rather than pretend the sub-agent heard it.
+    Returns the enqueue id, which the run echoes back on a `subagent_steered`
+    event once it actually takes the message -- so the UI can show "sent" and
+    "picked up" as the different things they are. None means there was no live
+    run to inject into; say so rather than pretend the sub-agent heard it.
     """
     from suzent.core.stream_registry import stream_controls
 
     task = _tasks.get(task_id)
     if not task or task.status not in ("queued", "running"):
-        return False
+        return None
     control = stream_controls.get(task.chat_id)
     inject = getattr(control, "inject", None) if control is not None else None
     if inject is None:
-        return False
-    return bool(inject(f"[User interrupted to redirect]: {message}"))
+        return None
+    return inject(f"[User interrupted to redirect]: {message}")
 
 
 async def stop_subagents_for_parent(parent_chat_id: str) -> list[str]:
