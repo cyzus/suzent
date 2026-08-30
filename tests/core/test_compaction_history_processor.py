@@ -233,3 +233,73 @@ async def test_compaction_keeps_tool_call_with_tail_result(monkeypatch):
         and any(isinstance(part, ToolReturnPart) for part in message.parts)
     )
     assert call_index < result_index
+
+
+@pytest.mark.asyncio
+async def test_reports_context_usage_on_every_request(monkeypatch):
+    """The panel is fed from here, so the report must not be gated on compacting."""
+    monkeypatch.setattr(CONFIG, "max_context_tokens", 100_000, raising=False)
+    monkeypatch.setattr(CONFIG, "context_compaction_trigger", 0.99, raising=False)
+
+    seen = []
+    monkeypatch.setattr(
+        "suzent.core.stream_registry.emit_bus_event", lambda p: seen.append(p)
+    )
+
+    proc = make_compaction_history_processor()
+    hist = _history(12)
+    out = await proc(_ctx(), hist)
+
+    assert out is hist  # nowhere near the trigger — nothing was compacted
+    usage_events = [e for e in seen if e["event"] == "context_usage"]
+    assert len(usage_events) == 1
+    assert usage_events[0]["chat_id"] == "c1"
+    assert usage_events[0]["usage"]["context_tokens"] > 0
+
+
+@pytest.mark.asyncio
+async def test_stateless_runs_report_no_context_usage(monkeypatch):
+    monkeypatch.setattr(CONFIG, "max_context_tokens", 100_000, raising=False)
+
+    seen = []
+    monkeypatch.setattr(
+        "suzent.core.stream_registry.emit_bus_event", lambda p: seen.append(p)
+    )
+
+    proc = make_compaction_history_processor()
+    await proc(_ctx(stateless=True), _history(12))
+
+    assert seen == []
+
+
+@pytest.mark.asyncio
+async def test_every_started_pass_reports_a_terminal_stage(monkeypatch):
+    """A surface that animates 'start' must always be told when the pass ends."""
+    monkeypatch.setattr(CONFIG, "max_context_tokens", 100, raising=False)
+    monkeypatch.setattr(CONFIG, "context_compaction_trigger", 0.01, raising=False)
+
+    # Already summary-framed and unable to shrink further: the pass starts and
+    # then finds nothing to drop.
+    async def no_reduction(self, messages, focus=None, background_flush=False):
+        return messages
+
+    monkeypatch.setattr(
+        cc.ContextCompressor, "_perform_compression", no_reduction, raising=True
+    )
+
+    seen = []
+    monkeypatch.setattr(
+        "suzent.core.stream_registry.emit_bus_event", lambda p: seen.append(p)
+    )
+
+    hist = _history(12)
+    hist[3] = ModelResponse(
+        parts=[TextPart(content=f"{COMPACTION_SUMMARY_RESPONSE_MARKER}\nsum")]
+    )
+    assert _message_has_compaction_marker(hist[3])
+
+    await make_compaction_history_processor()(_ctx(), hist)
+
+    stages = [e["stage"] for e in seen if e["event"] == "auto_compaction"]
+    assert stages[0] == "start"
+    assert stages[-1] in {"complete", "skipped", "error"}

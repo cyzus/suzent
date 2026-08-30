@@ -178,6 +178,62 @@ def build_post_compaction_usage(context_tokens: int) -> dict[str, Any]:
     }
 
 
+def build_live_context_usage(context_tokens: int, usage: Any = None) -> dict[str, Any]:
+    """Build a partial usage payload describing the context window right now.
+
+    Only ``context_tokens`` is always known mid-run; the cumulative counters come
+    from the run's usage so far and are omitted while they are still zero, so a
+    consumer can merge this over the previous turn's numbers without blanking
+    them at the start of a run.
+    """
+    payload: dict[str, Any] = {"context_tokens": context_tokens}
+    for field in (
+        "input_tokens",
+        "output_tokens",
+        "cache_write_tokens",
+        "cache_read_tokens",
+        "requests",
+    ):
+        value = getattr(usage, field, 0) or 0
+        if value:
+            payload[field] = int(value)
+    details = getattr(usage, "details", None)
+    if details:
+        payload["details"] = dict(details)
+    if "input_tokens" in payload or "output_tokens" in payload:
+        payload["total_tokens"] = payload.get("input_tokens", 0) + payload.get(
+            "output_tokens", 0
+        )
+    return payload
+
+
+def emit_context_usage_event(
+    *, chat_id: str, context_tokens: int, usage: Any = None
+) -> None:
+    """Broadcast the live context-window size to every connected client.
+
+    Provider-reported usage only lands when a run *finishes*, so on a long
+    tool-heavy turn the context panel would sit on the previous turn's number
+    until the whole turn completed. The history processor runs before every model
+    request and already knows the size of the history it is about to send, which
+    makes it the one place that can report growth as it happens.
+    """
+    if not chat_id:
+        return
+    try:
+        from suzent.core.stream_registry import emit_bus_event
+
+        emit_bus_event(
+            {
+                "event": "context_usage",
+                "chat_id": chat_id,
+                "usage": build_live_context_usage(context_tokens, usage),
+            }
+        )
+    except Exception as e:
+        logger.debug(f"Failed to emit context usage for {chat_id}: {e}")
+
+
 def format_compaction_notice(
     *,
     stage: str,
@@ -374,15 +430,72 @@ class TokenBudget:
         return self.estimated_tokens >= self.limit * self.trigger_threshold
 
 
-def estimate_tokens(messages: list, limit: int) -> TokenBudget:
-    """Estimate token count using ~4 chars/token heuristic."""
+# A system prompt plus every tool's JSON schema is a five-figure token count at
+# the very top end; anything beyond this is not overhead but a stale measurement.
+MAX_PLAUSIBLE_CONTEXT_OVERHEAD_TOKENS = 200_000
+
+
+def _part_chars(part: Any) -> int:
+    """Characters a single message part contributes to the prompt.
+
+    Tool *arguments* count as well as content: a tool call that writes a file
+    carries the whole file in ``args`` and nothing in ``content``, so counting
+    only content made the largest thing an agent ever sends invisible.
+    """
+    chars = len(str(getattr(part, "content", "") or ""))
+    args = getattr(part, "args", None)
+    if args:
+        chars += len(args if isinstance(args, str) else str(args))
+    return chars
+
+
+def estimate_history_tokens(messages: list) -> int:
+    """~4 chars/token over the message history alone."""
     total_chars = sum(
-        len(str(getattr(part, "content", "") or ""))
-        for msg in messages
-        for part in getattr(msg, "parts", [])
+        _part_chars(part) for msg in messages for part in getattr(msg, "parts", [])
     )
+    return total_chars // 4
+
+
+def context_overhead_tokens(messages: list) -> int:
+    """Tokens the real prompt carries beyond the message history itself.
+
+    The system prompt and every tool's JSON schema are sent on each request but
+    never appear in ``messages``, so estimating the history alone reads low by a
+    large and roughly constant amount — the gap behind a panel reading 2.7k for a
+    prompt the provider counted as five figures.
+
+    Recovering that offset from the provider's own count for the most recent
+    request keeps the total honest without anchoring on it: the offset is the
+    part that does *not* change as the conversation grows, so the estimate stays
+    proportional to the history and still falls when compaction shrinks it. That
+    matters — a metric that cannot drop after a compaction would re-trigger
+    compaction on every subsequent request of the run.
+    """
+    for index in range(len(messages) - 1, -1, -1):
+        usage = getattr(messages[index], "usage", None)
+        measured = int(getattr(usage, "input_tokens", 0) or 0)
+        if measured:
+            # `input_tokens` is pydantic-ai's normalized total prompt size for
+            # that request — cache reads and writes included — and the request
+            # that produced this response was everything before it.
+            overhead = measured - estimate_history_tokens(messages[:index])
+            if overhead > MAX_PLAUSIBLE_CONTEXT_OVERHEAD_TOKENS:
+                # The gap is far too large to be a system prompt and tool
+                # schemas: this response was produced *before* a compaction
+                # rewrote the history behind it, so its prompt covered messages
+                # that are no longer here. Report no offset rather than an
+                # offset that would hide the reduction compaction just made.
+                return 0
+            return max(0, overhead)
+    return 0
+
+
+def estimate_tokens(messages: list, limit: int) -> TokenBudget:
+    """Best available size of the context window these messages represent."""
     return TokenBudget(
-        estimated_tokens=total_chars // 4,
+        estimated_tokens=estimate_history_tokens(messages)
+        + context_overhead_tokens(messages),
         limit=limit,
         trigger_threshold=CONFIG.context_compaction_trigger,
         soft_trim_threshold=CONFIG.context_soft_trim_threshold,
@@ -921,9 +1034,20 @@ def make_compaction_history_processor(source: str = "auto_midrun"):
         if getattr(deps, "stateless", False):
             return messages
 
+        chat_id = getattr(deps, "chat_id", "") or ""
         limit = CONFIG.max_context_tokens
         trigger = limit * CONFIG.context_compaction_trigger
         current_tokens = context_input_tokens(ctx, messages)
+
+        # Report the context window on every model request, not just when we are
+        # about to compact — this is what keeps the frontend panel live during a
+        # long turn instead of frozen on the previous turn's total.
+        emit_context_usage_event(
+            chat_id=chat_id,
+            context_tokens=current_tokens,
+            usage=getattr(ctx, "usage", None),
+        )
+
         if current_tokens < trigger:
             return messages
 
@@ -934,7 +1058,6 @@ def make_compaction_history_processor(source: str = "auto_midrun"):
             return messages
         already_compacted = any(_message_has_compaction_marker(m) for m in messages)
 
-        chat_id = getattr(deps, "chat_id", "") or ""
         user_id = getattr(deps, "user_id", None)
 
         messages_before = len(messages)
@@ -990,15 +1113,20 @@ def make_compaction_history_processor(source: str = "auto_midrun"):
 
         if len(compressed) >= len(messages):
             # No reduction (e.g. already compacted and nothing else to drop).
-            if not already_compacted:
-                emit_compaction_event(
-                    chat_id=chat_id,
-                    stage="skipped",
-                    source=source,
-                    messages_before=messages_before,
-                    messages_after=len(compressed),
-                    tokens_before=tokens_before,
-                )
+            # This still has to report a terminal stage: a "start" was already
+            # broadcast, and a surface that animates the running pass would spin
+            # forever if this path stayed silent.
+            emit_compaction_event(
+                chat_id=chat_id,
+                stage="skipped",
+                source=source,
+                messages_before=messages_before,
+                messages_after=len(compressed),
+                tokens_before=tokens_before,
+                message="Context compaction skipped - nothing left to compact"
+                if already_compacted
+                else None,
+            )
             return compressed
 
         tokens_after = estimate_tokens(compressed, limit).estimated_tokens

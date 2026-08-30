@@ -753,6 +753,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const {
     setUsage: setLastKnownUsage,
     setUsageForChat,
+    mergeUsageForChat,
+    setCompaction,
     clearUsage: clearLastKnownUsage,
   } = useContextUsageStore();
   const { addActivatedTools, clearActivatedTools } = useActivatedToolsStore();
@@ -797,6 +799,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     setIsBoardFullscreen(false);
     prependScrollSnapshotRef.current = null;
     clearActivatedTools();
+    // A compaction pass belongs to the chat that started it.
+    useContextUsageStore.getState().clearCompaction();
     if (!currentChatId) {
       clearLastKnownUsage();
       return;
@@ -861,9 +865,27 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     if (!currentChatId) return;
 
     const unsub = subscribeToBusPayloads((payload) => {
-      if (!payload || payload.event !== 'auto_compaction') return;
-      if (payload.chat_id !== currentChatId) return;
+      if (!payload || payload.chat_id !== currentChatId) return;
+
+      // Live context size, emitted before every model request. Merged rather than
+      // replaced so the cumulative counters from the last completed run survive
+      // until this run reports its own.
+      if (payload.event === 'context_usage') {
+        if (payload.usage) mergeUsageForChat(currentChatId, payload.usage);
+        return;
+      }
+
+      if (payload.event !== 'auto_compaction') return;
       upsertCompactNotice(formatCompactLifecycleNotice(payload));
+      // Publish the pass to the store so the context-window panel animates for
+      // agent-triggered compaction too — the panel's own `useCompact` progress
+      // only ever covers a compaction started from its button.
+      setCompaction({
+        active: payload.stage === 'start',
+        stage: payload.stage,
+        source: String(payload.source || 'auto'),
+        label: formatCompactLifecycleNotice(payload) || 'Compaction',
+      });
       // Every compaction path (manual button, /compact slash, auto) emits fresh
       // context-window usage on completion. Apply it so the panel updates the same
       // way regardless of how compaction was triggered.
@@ -872,7 +894,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       }
     });
     return unsub;
-  }, [currentChatId, upsertCompactNotice, setUsageForChat]);
+  }, [currentChatId, upsertCompactNotice, setUsageForChat, mergeUsageForChat, setCompaction]);
 
   // Ref to lock the chat ID for the current stream so switching chats doesn't misroute messages
   const streamingChatIdRef = useRef<string | null>(null);
