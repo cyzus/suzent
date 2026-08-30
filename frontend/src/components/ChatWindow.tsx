@@ -778,12 +778,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     onSpawned: onSubAgentSpawned,
     onCompleted: onSubAgentCompleted,
     onFailed: onSubAgentFailed,
-    taskStates: subAgentTaskStates,
   } = useSubAgentStatus();
-  // The stop handler runs long after the render that read this, so keep a live
-  // view rather than closing over whatever snapshot it captured.
-  const subAgentTaskStatesRef = useRef(subAgentTaskStates);
-  subAgentTaskStatesRef.current = subAgentTaskStates;
   const { setStatus: setStatusBar } = useStatusStore();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const stopInFlightRef = useRef(false);
@@ -2481,18 +2476,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     clearParts();
     // Reload chat from DB so the partial response (saved by backend on cancel)
     // appears immediately — prevents the blank flash while waiting for DB commit.
-    // Anything appended locally after a stop has to wait for this: the reload
-    // replaces local messages with the database's copy, which cannot yet hold
-    // something the client only just decided to say.
-    let reloaded: Promise<void> = Promise.resolve();
+    // This also brings back the notice the stop wrote about any sub-agents it
+    // stopped along the way, which is why that notice is written server-side.
     if (targetChatId) {
-      reloaded = new Promise<void>((resolve) => {
-        setTimeout(() => {
-          loadChat(targetChatId, { force: true })
-            .catch(() => {})
-            .finally(() => resolve());
-        }, 500);
-      });
+      setTimeout(() => {
+        try {
+          loadChat(targetChatId, { force: true });
+        } catch {}
+      }, 500);
     }
 
     stopInFlightRef.current = false;
@@ -2507,28 +2498,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       });
       if (!res.ok) {
         console.error('Stop request failed:', res.status, res.statusText);
-        return;
-      }
-      // Stopping a chat also stops every sub-agent it spawned, background ones
-      // included. That can end long-running work the user never saw start, so
-      // say what went with it -- and as an in-chat notice rather than a
-      // status-bar toast, because a destructive side effect should still be
-      // there to read after it has scrolled by.
-      const stopped: string[] = (await res.json())?.stopped_subagents ?? [];
-      if (stopped.length > 0) {
-        const named = stopped.map(
-          (taskId) => subAgentTaskStatesRef.current[taskId]?.description?.trim() || taskId
-        );
-        await reloaded;
-        addMessage(
-          {
-            role: 'notice',
-            content: `⏹ ${t('subAgents.alsoStopped', { count: named.length })}\n${named
-              .map((name) => `- ${name}`)
-              .join('\n')}`,
-          },
-          targetChatId
-        );
       }
     } catch (error) {
       console.error('Error sending stop request:', error);

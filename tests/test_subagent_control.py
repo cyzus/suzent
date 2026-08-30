@@ -136,3 +136,56 @@ async def test_stop_skips_children_that_already_finished(isolated_tasks):
 async def test_stop_on_a_chat_with_no_children_is_quiet(isolated_tasks):
     assert await subagent_runner.stop_subagents_for_parent("parent-1") == []
     assert await subagent_runner.stop_subagents_for_parent("") == []
+
+
+# ─── the stop notice survives the display rebuild ────────────────────────────
+
+
+def _notice(text: str) -> dict:
+    return {"role": "notice", "content": text}
+
+
+def test_rebuild_keeps_a_trailing_notice():
+    """A notice has no counterpart in agent history, so the rebuild drops it."""
+    from suzent.core.chat_processor import _preserve_trailing_notices
+
+    existing = [
+        {"role": "user", "content": "go"},
+        {"role": "assistant", "content": "working"},
+        _notice("⏹ Also stopped 2 sub-agent(s)"),
+    ]
+    rebuilt = [
+        {"role": "user", "content": "go"},
+        {"role": "assistant", "content": "working"},
+    ]
+
+    assert _preserve_trailing_notices(rebuilt, existing) == [*rebuilt, existing[-1]]
+
+
+def test_rebuild_keeps_several_trailing_notices_in_order():
+    from suzent.core.chat_processor import _preserve_trailing_notices
+
+    existing = [{"role": "user", "content": "go"}, _notice("first"), _notice("second")]
+
+    kept = _preserve_trailing_notices([{"role": "user", "content": "go"}], existing)
+
+    assert [row["content"] for row in kept[1:]] == ["first", "second"]
+
+
+def test_rebuild_leaves_a_mid_log_notice_alone():
+    """Re-appending it would walk it further down the log on every turn."""
+    from suzent.core.chat_processor import _preserve_trailing_notices
+
+    existing = [_notice("old"), {"role": "user", "content": "go"}]
+    rebuilt = [{"role": "user", "content": "go"}]
+
+    assert _preserve_trailing_notices(rebuilt, existing) == rebuilt
+
+
+def test_rebuild_is_unchanged_when_there_is_nothing_to_keep():
+    from suzent.core.chat_processor import _preserve_trailing_notices
+
+    rebuilt = [{"role": "user", "content": "go"}]
+
+    assert _preserve_trailing_notices(rebuilt, []) == rebuilt
+    assert _preserve_trailing_notices(rebuilt, None) == rebuilt

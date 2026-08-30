@@ -143,7 +143,6 @@ export const en = {
     steerFailed: 'Could not reach this sub-agent — it may have just finished.',
     steerQueued: 'Queued',
     steerTaken: 'Picked up',
-    alsoStopped: 'Also stopped {count} sub-agent(s) this chat had running:',
     working: 'Working...',
     contextForked: 'Context forked',
     worktreeIsolated: 'Worktree isolated',

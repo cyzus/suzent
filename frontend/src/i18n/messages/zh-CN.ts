@@ -139,7 +139,6 @@ export const zhCN = {
     steerFailed: '无法送达该子智能体 —— 它可能刚刚结束。',
     steerQueued: '已排队',
     steerTaken: '已接收',
-    alsoStopped: '同时停止了该对话正在运行的 {count} 个子智能体：',
     working: '执行中...',
     contextForked: '已复制上下文',
     worktreeIsolated: '独立工作区',

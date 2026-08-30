@@ -649,9 +649,33 @@ async def stop_chat(request: Request) -> JSONResponse:
     # Stop reached a chat's blocking sub-agents only as collateral damage and
     # never its background ones. Make it mean the same thing for both, and name
     # what went with it rather than killing long-running work silently.
-    from suzent.core.subagent_runner import stop_subagents_for_parent
+    from suzent.core.subagent_runner import get_task, stop_subagents_for_parent
 
     stopped_subagents = await stop_subagents_for_parent(chat_id)
+    if stopped_subagents:
+        # Written server-side rather than by the client: the client cannot
+        # persist a message (its save sends config only), so a locally appended
+        # notice lasts until the next reload and no longer. The chat's own log
+        # is the durable place for it, and the reload the client runs after a
+        # stop picks it up on its own.
+        named = []
+        for task_id in stopped_subagents:
+            task = get_task(task_id)
+            description = (task.description or "").strip() if task else ""
+            named.append(f"- {description or task_id}")
+        try:
+            get_database().append_chat_message(
+                chat_id,
+                {
+                    "role": "notice",
+                    "content": (
+                        f"⏹ Also stopped {len(named)} sub-agent(s) this chat had "
+                        "running:\n" + "\n".join(named)
+                    ),
+                },
+            )
+        except Exception as exc:
+            logger.debug(f"Failed to persist stopped sub-agent notice: {exc}")
 
     if not success and not stopped_subagents:
         return JSONResponse({"status": "no_active_stream"}, status_code=404)

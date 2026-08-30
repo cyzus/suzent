@@ -1834,6 +1834,7 @@ class ChatProcessor:
                 rebuilt = _rebuild_display_messages(messages, model_id=model_id)
                 rebuilt = _preserve_permission_metadata(rebuilt, chat_messages)
                 rebuilt = _preserve_citation_sources(rebuilt, chat_messages)
+                rebuilt = _preserve_trailing_notices(rebuilt, chat_messages)
                 rebuilt = _append_inline_a2ui_surfaces(rebuilt, inline_a2ui_surfaces)
 
                 # Guard: if the agent produced no output and this is a social chat, the
@@ -2562,6 +2563,31 @@ def _source_turn(source_id: str) -> int | None:
     """Turn index encoded in a ``t{turn}_src_{n}`` id, or None if unparseable."""
     match = _SOURCE_TURN_RE.match(str(source_id))
     return int(match.group(1)) if match else None
+
+
+def _preserve_trailing_notices(rebuilt: list, existing: list | None) -> list:
+    """Carry notice rows at the tail of the display log onto the rebuilt one.
+
+    The rebuild reconstructs everything from pydantic-ai history, and a notice
+    has no counterpart there -- it is something the server said about the run
+    rather than something in it (images dropped for a blind model, sub-agents
+    stopped along with the chat). So every rebuild silently deleted them.
+
+    Only trailing notices are carried, and in their original order: those are
+    the ones the rebuild is about to drop off the end. Re-appending a notice
+    from the middle of an older turn would walk it to the bottom of the log a
+    little further with every turn.
+    """
+    rows = list(existing or [])
+    trailing: list = []
+    for row in reversed(rows):
+        if isinstance(row, dict) and row.get("role") == "notice":
+            trailing.append(row)
+            continue
+        break
+    if not trailing:
+        return rebuilt
+    return [*rebuilt, *reversed(trailing)]
 
 
 def _preserve_citation_sources(rebuilt: list, existing: list | None) -> list:
