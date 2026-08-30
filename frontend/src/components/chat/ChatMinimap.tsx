@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Message } from '../../types/api';
+import { buildOrderByMessageIndex, orderForMessageIndex } from './chatMinimapPosition';
 import { formatMessageTime } from '../../lib/chatUtils';
 import { useI18n } from '../../i18n';
 import { InformationPopover } from '../InformationPopover';
@@ -254,17 +255,53 @@ const ChatMinimapComponent: React.FC<ChatMinimapProps> = ({
   const scrollCenterPx =
     TRACK_PADDING_PX + scrollCenterRatio * Math.max(0, trackHeightPx - TRACK_PADDING_PX * 2);
 
+  const orderByMessageIndex = useMemo(() => buildOrderByMessageIndex(markers), [markers]);
+
   const updateMetrics = useCallback(() => {
     const el = scrollContainerRef.current;
-    if (!el || el.scrollHeight <= el.clientHeight) {
+    if (!el || markers.length < 2 || el.scrollHeight <= el.clientHeight) {
       setScrollCenterRatio(0.5);
       return;
     }
 
-    setScrollCenterRatio(
-      Math.max(0, Math.min(1, (el.scrollTop + el.clientHeight / 2) / el.scrollHeight))
-    );
-  }, [scrollContainerRef]);
+    // Read the position off the DOM rather than off scrollTop.
+    //
+    // The ticks are laid out one per marker at a fixed spacing -- an ordinal
+    // axis -- while scrollTop measures pixels. Those agree only if every
+    // message is the same height, and they are not: a turn can be one line or
+    // a thousand. Worse, the rail draws a tick for every message in the chat
+    // while the scroller only holds the ones currently loaded, so a pixel
+    // ratio over 30 mounted messages was being read against a track covering
+    // 76 -- at the top of the scroller the marker sat near the first tick
+    // while the reader was three quarters of the way through the history.
+    //
+    // Asking which message is actually at the middle of the viewport settles
+    // both: it is the same axis the ticks use, and a message that is not
+    // mounted cannot be the answer.
+    const centerY = el.getBoundingClientRect().top + el.clientHeight / 2;
+    const rows = el.querySelectorAll<HTMLElement>('[data-message-index]');
+
+    let position: number | null = null;
+    for (const row of Array.from(rows)) {
+      const rect = row.getBoundingClientRect();
+      if (rect.bottom < centerY) continue;
+      const order = orderForMessageIndex(orderByMessageIndex, Number(row.dataset.messageIndex));
+      if (order === null) break;
+      // Advance smoothly through a tall turn instead of sticking to its tick
+      // until the next one begins.
+      const within =
+        rect.height > 0 ? Math.min(1, Math.max(0, (centerY - rect.top) / rect.height)) : 0;
+      position = order + within;
+      break;
+    }
+
+    if (position === null) {
+      // Past the last mounted row -- the reader is at the end.
+      position = markers.length - 1;
+    }
+
+    setScrollCenterRatio(Math.max(0, Math.min(1, position / (markers.length - 1))));
+  }, [scrollContainerRef, markers.length, orderByMessageIndex]);
 
   useEffect(() => {
     updateMetrics();
