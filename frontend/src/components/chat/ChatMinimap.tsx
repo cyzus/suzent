@@ -1,5 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Message } from '../../types/api';
+import {
+  buildOrderByMessageIndex,
+  isAtScrollEnd,
+  type MarkerAnchor,
+  orderForMessageIndex,
+  positionFromAnchors,
+  probeOffsetPx,
+} from './chatMinimapPosition';
 import { formatMessageTime } from '../../lib/chatUtils';
 import { useI18n } from '../../i18n';
 import { InformationPopover } from '../InformationPopover';
@@ -194,6 +202,11 @@ const ChatMinimapComponent: React.FC<ChatMinimapProps> = ({
 }) => {
   const { t } = useI18n();
   const trackRef = useRef<HTMLDivElement | null>(null);
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  // Set while the wheel is driving the rail, so the follow-the-reader effect
+  // does not fight the hand and the glide transition does not lag it.
+  const [wheeling, setWheeling] = useState(false);
+  const wheelIdleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [scrollCenterRatio, setScrollCenterRatio] = useState(0.5);
   const [railOffsetPx, setRailOffsetPx] = useState(0);
   const [hoveredMarkerId, setHoveredMarkerId] = useState<string | null>(null);
@@ -254,17 +267,59 @@ const ChatMinimapComponent: React.FC<ChatMinimapProps> = ({
   const scrollCenterPx =
     TRACK_PADDING_PX + scrollCenterRatio * Math.max(0, trackHeightPx - TRACK_PADDING_PX * 2);
 
+  const orderByMessageIndex = useMemo(() => buildOrderByMessageIndex(markers), [markers]);
+
   const updateMetrics = useCallback(() => {
     const el = scrollContainerRef.current;
-    if (!el || el.scrollHeight <= el.clientHeight) {
+    if (!el || markers.length < 2 || el.scrollHeight <= el.clientHeight) {
       setScrollCenterRatio(0.5);
       return;
     }
 
-    setScrollCenterRatio(
-      Math.max(0, Math.min(1, (el.scrollTop + el.clientHeight / 2) / el.scrollHeight))
-    );
-  }, [scrollContainerRef]);
+    // Sitting at the end means the last turn is what is being read, even
+    // though a short final message never reaches the middle of the viewport.
+    if (isAtScrollEnd(el.scrollTop, el.clientHeight, el.scrollHeight)) {
+      setScrollCenterRatio(1);
+      return;
+    }
+
+    // Read the position off the DOM rather than off scrollTop.
+    //
+    // The ticks are laid out one per marker at a fixed spacing -- an ordinal
+    // axis -- while scrollTop measures pixels. Those agree only if every
+    // message is the same height, and they are not: a turn can be one line or
+    // a thousand. Worse, the rail draws a tick for every message in the chat
+    // while the scroller only holds the ones currently loaded, so a pixel
+    // ratio over 30 mounted messages was being read against a track covering
+    // 76 -- at the top of the scroller the marker sat near the first tick
+    // while the reader was three quarters of the way through the history.
+    //
+    // Asking which message is actually at the middle of the viewport settles
+    // both: it is the same axis the ticks use, and a message that is not
+    // mounted cannot be the answer.
+    const centerY =
+      el.getBoundingClientRect().top +
+      probeOffsetPx(el.scrollTop, el.clientHeight, el.scrollHeight);
+    const rows = el.querySelectorAll<HTMLElement>('[data-message-index]');
+
+    // One anchor per turn, at the top of its first row -- not one per row.
+    const anchors: MarkerAnchor[] = [];
+    for (const row of Array.from(rows)) {
+      const order = orderForMessageIndex(orderByMessageIndex, Number(row.dataset.messageIndex));
+      if (order === null) continue;
+      const previous = anchors[anchors.length - 1];
+      if (previous && previous.order === order) continue;
+      anchors.push({ order, top: row.getBoundingClientRect().top });
+    }
+
+    const position = positionFromAnchors(anchors, centerY);
+    if (position === null) {
+      setScrollCenterRatio(0.5);
+      return;
+    }
+
+    setScrollCenterRatio(Math.max(0, Math.min(1, position / (markers.length - 1))));
+  }, [scrollContainerRef, markers.length, orderByMessageIndex]);
 
   useEffect(() => {
     updateMetrics();
@@ -301,18 +356,46 @@ const ChatMinimapComponent: React.FC<ChatMinimapProps> = ({
   // place with the same motion the rail has when it fits on screen.
   // Suspended while the pointer is over the rail: pulling ticks out from under
   // the cursor mid-aim would make the rail impossible to use.
+  // The rail is slid, never scrolled, so there is no scrollbar to reach for --
+  // which also meant the ticks outside the window were unreachable while the
+  // pointer was over the rail, because following the reader is suspended there
+  // to stop ticks moving out from under the cursor. The wheel drives the slide
+  // directly instead, so the whole conversation can be walked without the rail
+  // ever growing a scrollbar.
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport || !isScrollable) return;
+
+    const maxOffset = Math.max(0, trackHeightPx - viewportHeightPx);
+    const onWheel = (event: WheelEvent) => {
+      // The chat behind must not scroll with it.
+      event.preventDefault();
+      setWheeling(true);
+      setRailOffsetPx((prev) => Math.max(0, Math.min(maxOffset, prev + event.deltaY)));
+      if (wheelIdleRef.current) clearTimeout(wheelIdleRef.current);
+      // Hand back to the follow-the-reader effect once the wheel settles.
+      wheelIdleRef.current = setTimeout(() => setWheeling(false), 1200);
+    };
+
+    viewport.addEventListener('wheel', onWheel, { passive: false });
+    return () => {
+      viewport.removeEventListener('wheel', onWheel);
+      if (wheelIdleRef.current) clearTimeout(wheelIdleRef.current);
+    };
+  }, [isScrollable, trackHeightPx, viewportHeightPx]);
+
   useEffect(() => {
     if (!isScrollable) {
       setRailOffsetPx(0);
       return;
     }
-    if (hoverPx !== null) return;
+    if (hoverPx !== null || wheeling) return;
     const target = Math.max(
       0,
       Math.min(trackHeightPx - viewportHeightPx, scrollCenterPx - viewportHeightPx / 2)
     );
     setRailOffsetPx((previous) => (Math.abs(previous - target) < 1 ? previous : target));
-  }, [hoverPx, isScrollable, scrollCenterPx, trackHeightPx, viewportHeightPx]);
+  }, [hoverPx, wheeling, isScrollable, scrollCenterPx, trackHeightPx, viewportHeightPx]);
 
   const scrollFromRailPointer = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
@@ -390,9 +473,20 @@ const ChatMinimapComponent: React.FC<ChatMinimapProps> = ({
         )}
 
         <div
-          className={`chat-minimap-viewport pointer-events-auto${
-            isScrollable ? ' chat-minimap-viewport-clipped' : ''
-          }`}
+          ref={viewportRef}
+          className={[
+            'chat-minimap-viewport pointer-events-auto',
+            isScrollable ? 'chat-minimap-viewport-clipped' : '',
+            // Fade only the edge that actually has track beyond it, so the
+            // first and last ticks are not dissolved by the very gradient
+            // meant to say "there is more".
+            isScrollable && railOffsetPx > 0.5 ? 'chat-minimap-viewport-fade-top' : '',
+            isScrollable && railOffsetPx < trackHeightPx - viewportHeightPx - 0.5
+              ? 'chat-minimap-viewport-fade-bottom'
+              : '',
+          ]
+            .filter(Boolean)
+            .join(' ')}
           onPointerDown={scrollFromRailPointer}
           onPointerMove={updateHoverFromPointer}
           onPointerEnter={updateHoverFromPointer}
@@ -400,7 +494,7 @@ const ChatMinimapComponent: React.FC<ChatMinimapProps> = ({
         >
           <div
             ref={trackRef}
-            className="chat-minimap-track"
+            className={`chat-minimap-track${wheeling ? ' chat-minimap-track-dragging' : ''}`}
             style={{
               height: `${trackHeightPx}px`,
               transform: `translateY(${-railOffsetPx}px)`,
