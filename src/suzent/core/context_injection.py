@@ -72,6 +72,14 @@ def build_agent_deps(
     except Exception:
         _chat_perm = None
 
+    # A working directory the user authorized is a property of the chat, not of a
+    # single request. Clients don't re-send it every turn, so fall back to the
+    # persisted value — the same chain resolve_repository_context() uses. Without
+    # this the grant silently expired at a turn boundary and identical paths
+    # started failing mid-task.
+    if not cwd and _chat_obj is not None:
+        cwd = _chat_obj.working_directory or (_chat_obj.config or {}).get("cwd")
+
     # Merge layers: later layers win on conflict; command_rules are unioned by pattern
     def _merge_perm(base: dict, overlay: dict) -> dict:
         result = dict(base)
@@ -144,6 +152,7 @@ def build_agent_deps(
         sandbox_data_path=CONFIG.sandbox_data_path,
         custom_volumes=custom_volumes,
         workspace_root=workspace_root,
+        cwd=cwd,
     )
 
     # Memory manager — skip if explicitly disabled in config

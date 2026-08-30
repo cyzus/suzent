@@ -65,6 +65,7 @@ class PathResolver:
         uploads_path: Optional[str] = None,
         custom_volumes: Optional[List[str]] = None,
         workspace_root: Optional[str] = None,
+        cwd: Optional[str] = None,
     ):
         """
         Initialize the path resolver.
@@ -78,6 +79,9 @@ class PathResolver:
             uploads_path: Deprecated; uploads live under the project workspace
             custom_volumes: List of "host:container" volume mapping strings
             workspace_root: Root directory for host mode execution (default: from CONFIG)
+            cwd: The chat's authorized working directory. When set it becomes the
+                agent's cwd and an allowed root, so every file tool reaches the
+                same directory the shell already runs in.
         """
         from suzent.config import CONFIG
 
@@ -90,6 +94,7 @@ class PathResolver:
             uploads_path or CONFIG.sandbox_data_path
         ).resolve()  # Use sandbox path for consistency
         self.workspace_root = Path(workspace_root or CONFIG.workspace_root).resolve()
+        self.cwd = Path(cwd).expanduser().resolve() if cwd else None
         self.custom_mounts: Dict[str, Path] = {}  # container_path -> host_path
 
         # Resolve project slug if not supplied
@@ -219,8 +224,12 @@ class PathResolver:
             logger.warning(f"Could not create directories: {e}")
 
     def get_working_dir(self) -> Path:
-        """Project directory — the agent's cwd, shared across all chats in the project."""
-        return self.project_dir
+        """The agent's cwd: the authorized working directory, else the project directory.
+
+        The project directory is shared across all chats in the project; a chat
+        that was pointed at a specific folder works there instead.
+        """
+        return self.cwd or self.project_dir
 
     def resolve(self, virtual_path: str) -> Path:
         """
@@ -277,23 +286,30 @@ class PathResolver:
                     f"Path traversal detected in custom volume: {resolved}"
                 )
 
-        # 2. Branch based on sandbox mode for absolute host paths
-        if not self.sandbox_enabled:
-            # HOST MODE: check for absolute host paths first
-            is_windows_absolute = len(virtual_path) > 1 and virtual_path[1] == ":"
-            is_unix_absolute = virtual_path.startswith("/") and not any(
-                virtual_path.startswith(prefix)
-                for prefix in [
-                    "/shared",
-                    "/uploads",
-                    "/mnt",
-                    "/workspace",
-                    "/persistence",
-                ]
-            )
-            if is_windows_absolute or is_unix_absolute:
-                resolved = Path(virtual_path).resolve()
+        # 2. Absolute host paths, i.e. everything that isn't a virtual root.
+        is_windows_absolute = len(virtual_path) > 1 and virtual_path[1] == ":"
+        is_unix_absolute = virtual_path.startswith("/") and not any(
+            virtual_path.startswith(prefix)
+            for prefix in [
+                "/shared",
+                "/uploads",
+                "/mnt",
+                "/workspace",
+                "/persistence",
+            ]
+        )
+        if is_windows_absolute or is_unix_absolute:
+            resolved = Path(virtual_path).resolve()
+            if not self.sandbox_enabled:
                 return self._validate_within_workspace(resolved)
+            # Sandbox mode maps virtual roots, but a directory that was explicitly
+            # granted is addressable by its host path too. Without this the same
+            # folder resolved correctly for a relative path and was silently
+            # rewritten to project_dir/<the whole absolute path> for an absolute
+            # one — a wrong file, with no error. Ungranted host paths still fall
+            # through to the virtual mapping below, so nothing new is reachable.
+            if self.allows(resolved):
+                return resolved
 
         # 3. Resolve virtual paths (same logic for both sandbox and host modes)
         resolved = self._resolve_virtual_path(virtual_path)
@@ -312,7 +328,7 @@ class PathResolver:
           /uploads/*    → project_dir/uploads/* (legacy alias)
           /persistence/* → project_dir/* (legacy alias)
           /mnt/*        → custom mount (must be registered)
-          other paths   → resolved relative to project_dir
+          other paths   → resolved relative to the agent's cwd (get_working_dir)
         """
         if (
             path.startswith("/workspace/")
@@ -352,12 +368,53 @@ class PathResolver:
             rel_path = path.lstrip("/")
             return (self.project_dir / rel_path).resolve()
 
-        # Relative paths are relative to project_dir (the agent's cwd)
-        return (self.project_dir / path).resolve()
+        # Relative paths are relative to the agent's cwd — the chat's working
+        # directory when one is authorized, otherwise the project dir. This is
+        # the same directory the shell tool runs commands in.
+        return (self.get_working_dir() / path).resolve()
+
+    def granted_roots(self, include_workspace: bool = False) -> List[Tuple[str, Path]]:
+        """Every directory this chat is allowed to touch, as (label, path) pairs.
+
+        One list backs both validators and the error messages, so a grant can
+        never apply to some file tools but not others.
+        """
+        roots: List[Tuple[str, Path]] = []
+        if include_workspace:
+            roots.append(("workspace", self.workspace_root))
+        roots.append(("project", self.project_dir))
+        roots.append(("shared", (self.sandbox_data_path / "shared").resolve()))
+        if self.cwd is not None:
+            roots.append(("working directory", self.cwd))
+        for mount_point, host_path in self.custom_mounts.items():
+            roots.append((f"volume {mount_point}", host_path.resolve()))
+        return roots
+
+    @staticmethod
+    def _is_within(resolved: Path, root: Path) -> bool:
+        try:
+            resolved.relative_to(root)
+            return True
+        except ValueError:
+            return False
+
+    def _access_denied_error(self, resolved: Path, summary: str) -> ValueError:
+        """Build a denial that names every grant the chat has and how to add one."""
+        grants = "\n".join(
+            f"  - {label}: {path}"
+            for label, path in self.granted_roots(include_workspace=True)
+        )
+        return ValueError(
+            f"{summary}: '{resolved}'.\n"
+            f"Directories this chat may access:\n{grants}\n"
+            "To work outside them, mount the folder as a custom volume "
+            "(host:/mnt/<name>) or set it as the chat's working directory. "
+            "Neither can be granted by the agent — ask the user to authorize it."
+        )
 
     def _validate_within_workspace(self, resolved: Path) -> Path:
         """
-        Ensure resolved path is within workspace, sandbox-data, or custom volumes.
+        Ensure resolved path is within workspace, sandbox-data, cwd, or custom volumes.
 
         Used for validating absolute host paths in host mode.
 
@@ -370,56 +427,30 @@ class PathResolver:
         Raises:
             ValueError: If path is outside all allowed directories
         """
-        # Check if within workspace
-        try:
-            resolved.relative_to(self.workspace_root)
-            return resolved
-        except ValueError:
-            pass
-
-        # Check if within sandbox data directories (same validation as sandbox mode)
-        allowed_sandbox_roots = [
-            self.project_dir,
-            self.sandbox_data_path / "shared",
-        ]
-        for root in allowed_sandbox_roots:
-            try:
-                resolved.relative_to(root.resolve())
+        for _label, root in self.granted_roots(include_workspace=True):
+            if self._is_within(resolved, root):
                 return resolved
-            except ValueError:
-                continue
 
-        # Check if within any custom volume host path
-        for host_path in self.custom_mounts.values():
-            try:
-                resolved.relative_to(host_path.resolve())
-                return resolved  # Within custom volume
-            except ValueError:
-                continue
-
-        raise ValueError(
-            f"Path '{resolved}' is outside workspace, sandbox-data, and custom volumes. "
-            f"Workspace: {self.workspace_root}, Sandbox: {self.sandbox_data_path}"
+        raise self._access_denied_error(
+            resolved, "Path is outside every directory this chat may access"
         )
 
     def _validate_path(self, resolved: Path) -> None:
-        """Validate that path is within allowed directories."""
-        # Allowed roots: project_dir (covers /workspace and legacy /uploads), shared, custom mounts
-        allowed_roots = [
-            self.project_dir,
-            self.sandbox_data_path / "shared",
-        ]
-        allowed_roots.extend(self.custom_mounts.values())
+        """Validate that a resolved virtual path stayed inside an allowed root."""
+        for _label, root in self.granted_roots():
+            if self._is_within(resolved, root):
+                return
 
-        for root in allowed_roots:
-            try:
-                resolved.relative_to(root.resolve())
-                return  # Path is valid
-            except ValueError:
-                continue
+        raise self._access_denied_error(
+            resolved, "Path traversal detected — resolved outside allowed directories"
+        )
 
-        raise ValueError(
-            f"Path traversal detected: {resolved} is outside allowed directories"
+    def allows(self, path: Path) -> bool:
+        """True when ``path`` falls inside any directory this chat may access."""
+        resolved = Path(path).expanduser().resolve()
+        return any(
+            self._is_within(resolved, root)
+            for _label, root in self.granted_roots(include_workspace=True)
         )
 
     def is_path_allowed(self, path: Path) -> bool:
@@ -586,7 +617,13 @@ class PathResolver:
         # Determine roots to search
         search_roots = []
 
-        if search_path == "/" or (search_path is None and pattern.startswith("/")):
+        if search_path is None and not pattern.startswith("/"):
+            # No root and a relative pattern means "search the working directory",
+            # which is what the glob/grep tools document. Resolving "/" here made
+            # every such search fail in host mode, because the filesystem root is
+            # outside every grant.
+            search_roots = [(None, self.get_working_dir())]
+        elif search_path == "/" or (search_path is None and pattern.startswith("/")):
             # Search all virtual roots
             search_roots = self.get_virtual_roots()
         else:

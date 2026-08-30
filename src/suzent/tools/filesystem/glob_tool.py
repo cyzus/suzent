@@ -11,6 +11,7 @@ from suzent.core.agent_deps import AgentDeps
 from suzent.tools.base import Tool, ToolErrorCode, ToolGroup, ToolResult
 
 from suzent.logger import get_logger
+from suzent.tools.filesystem.file_tool_utils import get_or_create_path_resolver
 from suzent.tools.filesystem.path_resolver import PathResolver
 
 logger = get_logger(__name__)
@@ -59,20 +60,7 @@ class GlobTool(Tool):
             List of matching file paths, or a message if no matches found.
         """
         deps = ctx.deps
-        if deps.path_resolver:
-            self._resolver = deps.path_resolver
-        else:
-            from suzent.tools.filesystem.path_resolver import PathResolver
-            from suzent.config import CONFIG
-
-            self._resolver = PathResolver(
-                deps.chat_id,
-                deps.sandbox_enabled,
-                sandbox_data_path=CONFIG.sandbox_data_path,
-                custom_volumes=deps.custom_volumes,
-                workspace_root=deps.workspace_root,
-            )
-            deps.path_resolver = self._resolver
+        self._resolver = get_or_create_path_resolver(deps)
 
         try:
             # Use unified finder from resolver

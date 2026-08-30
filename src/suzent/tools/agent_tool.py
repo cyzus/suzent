@@ -16,8 +16,10 @@ Tool selection supports three mutually exclusive modes:
 AgentTool is always stripped from the sub-agent's tool set to prevent
 recursive spawning, regardless of which selection mode is used.
 
-The cwd parameter lets you pin the sub-agent's bash working directory to a
-specific path (e.g. a build folder or git worktree).
+The cwd parameter pins the sub-agent's working directory to a specific path
+(e.g. a build folder or git worktree). It governs both shell commands and the
+file tools, and it authorizes that directory for the sub-agent. Omit it and the
+sub-agent inherits the parent chat's working directory.
 """
 
 from typing import Annotated, Literal, Optional
@@ -138,7 +140,11 @@ class AgentTool(Tool):
             Optional[str],
             Field(
                 default=None,
-                description="Optional absolute working directory for bash commands inside the sub-agent.",
+                description=(
+                    "Optional absolute working directory for the sub-agent, governing "
+                    "both shell commands and file tools. Defaults to the parent "
+                    "chat's working directory."
+                ),
             ),
         ] = None,
         model_override: Annotated[
@@ -236,7 +242,7 @@ class AgentTool(Tool):
             tools_denied: Denylist — start from all tools, remove these. Mutually exclusive with tools_allowed.
             run_in_background: True (default) = fire-and-forget, auto-wakeup on completion.
                 False = blocking, result returned inline.
-            cwd: Working directory for bash commands inside the sub-agent.
+            cwd: Working directory for the sub-agent's shell and file tools.
             model_override: Optional enabled model ID for the sub-agent.
             inherit_context: If True, sub-agent receives a snapshot of current conversation history.
             isolation: 'none' (default) or 'worktree' (git-isolated branch).
