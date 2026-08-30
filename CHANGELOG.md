@@ -28,7 +28,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Reach the first and last ticks, and wheel the whole rail
 - Light the last tick when the reader reaches the end
 - Place the reader by the message on screen, not by scrollTop
+- Resolve granted paths consistently in sandbox mode too
 - Make the 409 recovery authoritative, foreground-safe and localized
+- Honour the chat's working directory in every file tool
 - Reattach to the live stream when a send is rejected as busy
 - Stop hover-tinted rows re-rasterising their text
 - Point the collapsed chevron right
