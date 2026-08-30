@@ -23,6 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Keep draft writes off the token loop and out of the index
 
 ### 🐛 Fixed
+- Measure the reader's place across the turn, not the row
+- Stop the edge fade swallowing the first and last ticks
+- Reach the first and last ticks, and wheel the whole rail
+- Light the last tick when the reader reaches the end
+- Place the reader by the message on screen, not by scrollTop
 - Make the 409 recovery authoritative, foreground-safe and localized
 - Reattach to the live stream when a send is rejected as busy
 - Stop hover-tinted rows re-rasterising their text
