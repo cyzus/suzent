@@ -17,6 +17,9 @@ import { useEffect, useState } from 'react';
 import { subscribeToBusChunks } from './useEventBus';
 import { StreamEventType } from '../lib/streamEvents';
 
+/** Custom event a run emits once it has taken an injected message. */
+const ABSORBED_EVENT = 'agent_absorbed_message';
+
 export interface SubAgentActivityEntry {
   toolCallId: string;
   toolName: string;
@@ -62,20 +65,49 @@ export function parseChunk(raw: unknown): Record<string, unknown>[] {
   return [];
 }
 
+export interface SubAgentActivity {
+  /** Newest tool calls, oldest first. */
+  entries: SubAgentActivityEntry[];
+  /**
+   * Enqueue ids the run has actually taken into its history. A redirect is
+   * "sent" the moment the POST returns, but only picked up at the child's next
+   * model request — often a whole tool call later — and showing those as the
+   * same thing would be a lie the user cannot check.
+   */
+  absorbed: Set<string>;
+}
+
 export function useSubAgentActivity(
   chatId: string | undefined,
   enabled: boolean
-): SubAgentActivityEntry[] {
+): SubAgentActivity {
   const [entries, setEntries] = useState<SubAgentActivityEntry[]>([]);
+  const [absorbed, setAbsorbed] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     if (!chatId || !enabled) {
       setEntries((prev) => (prev.length ? [] : prev));
+      setAbsorbed((prev) => (prev.size ? new Set() : prev));
       return;
     }
     return subscribeToBusChunks(chatId, (rawData) => {
       for (const event of parseChunk(rawData)) {
         const type = event.type;
+
+        if (type === StreamEventType.CUSTOM && event.name === ABSORBED_EVENT) {
+          const value = event.value as { enqueue_id?: unknown } | null;
+          const enqueueId = typeof value?.enqueue_id === 'string' ? value.enqueue_id : '';
+          if (enqueueId) {
+            setAbsorbed((prev) => {
+              if (prev.has(enqueueId)) return prev;
+              const next = new Set(prev);
+              next.add(enqueueId);
+              return next;
+            });
+          }
+          continue;
+        }
+
         const toolCallId = typeof event.toolCallId === 'string' ? event.toolCallId : '';
         if (!toolCallId) continue;
 
@@ -102,5 +134,5 @@ export function useSubAgentActivity(
     });
   }, [chatId, enabled]);
 
-  return entries;
+  return { entries, absorbed };
 }

@@ -52,7 +52,7 @@ async def test_steer_injects_into_the_childs_live_run(isolated_tasks, live_contr
     seen: list[str] = []
     control.inject = lambda content: (seen.append(content), "enq-1")[1]
 
-    assert await subagent_runner.steer_subagent("t1", "use ripgrep instead") is True
+    assert await subagent_runner.steer_subagent("t1", "use ripgrep instead") == "enq-1"
     assert seen == ["[User interrupted to redirect]: use ripgrep instead"]
 
 
@@ -75,22 +75,22 @@ async def test_steer_reports_when_the_run_cannot_take_a_message(
     control = live_control("chat-t1")
     control.inject = lambda content: None  # between runs
 
-    assert await subagent_runner.steer_subagent("t1", "hi") is False
+    assert await subagent_runner.steer_subagent("t1", "hi") is None
 
 
 async def test_steer_refuses_a_child_with_no_live_run(isolated_tasks):
     isolated_tasks["t1"] = _task("t1", "parent-1")
-    assert await subagent_runner.steer_subagent("t1", "hi") is False
+    assert await subagent_runner.steer_subagent("t1", "hi") is None
 
 
 @pytest.mark.parametrize("status", ["completed", "failed", "cancelled"])
 async def test_steer_refuses_a_finished_child(isolated_tasks, status):
     isolated_tasks["t1"] = _task("t1", "parent-1", status=status)
-    assert await subagent_runner.steer_subagent("t1", "hi") is False
+    assert await subagent_runner.steer_subagent("t1", "hi") is None
 
 
 async def test_steer_refuses_an_unknown_child(isolated_tasks):
-    assert await subagent_runner.steer_subagent("nope", "hi") is False
+    assert await subagent_runner.steer_subagent("nope", "hi") is None
 
 
 # ─── stop cascade ────────────────────────────────────────────────────────────

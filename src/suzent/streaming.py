@@ -655,6 +655,7 @@ async def _iter_stream_events_with_timeout(
     prompt: Any,
     run_kwargs: Dict[str, Any],
     control: Any = None,
+    chat_id: Optional[str] = None,
 ) -> AsyncGenerator[Any, None]:
     """Yield stream events, failing fast if the provider never produces one."""
     async with agent.run_stream_events(prompt, **run_kwargs) as stream:
@@ -712,12 +713,22 @@ async def _iter_stream_events_with_timeout(
                     elif in_flight:
                         # No id to match on; retire the oldest so the set drains.
                         in_flight.pop(next(iter(in_flight)))
-                elif event_kind == "enqueued_messages" and control is not None:
-                    # The run drained an injected message into its history. Confirming
-                    # it is what lets the sender ack rather than redeliver.
+                elif event_kind == "enqueued_messages":
+                    # The run drained an injected message into its history.
+                    # Confirming it is what lets the sender ack rather than
+                    # redeliver, and what tells a watching UI that the message
+                    # was picked up rather than merely sent.
                     enqueue_id = getattr(event, "enqueue_id", None)
-                    if enqueue_id:
+                    if enqueue_id and control is not None:
                         control.mark_injected(enqueue_id)
+                    if enqueue_id and chat_id:
+                        from suzent.core.stream_registry import push_custom_event
+
+                        await push_custom_event(
+                            chat_id,
+                            "agent_absorbed_message",
+                            {"enqueue_id": enqueue_id},
+                        )
                 yield event
         finally:
             # The hook is only meaningful while this run is live. A stale one is
@@ -1065,7 +1076,7 @@ async def stream_agent_responses(
                     _retry_repaired_history = False
                     logger.debug("[Streaming] Calling agent.run_stream_events()...")
                     _events = _iter_stream_events_with_timeout(
-                        agent, prompt, run_kwargs, control
+                        agent, prompt, run_kwargs, control, chat_id
                     )
                     while True:
                         try:

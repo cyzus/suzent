@@ -151,11 +151,13 @@ const SubAgentCallBlockComponent: React.FC<SubAgentCallBlockProps> = ({
   // not move.
   const isBlocking = !runInBackground;
   const childChatId = streamTask?.chat_id;
-  const activity = useSubAgentActivity(childChatId, isBlocking && isRunning);
+  const { entries: activity, absorbed } = useSubAgentActivity(childChatId, isBlocking && isRunning);
 
   const [steerText, setSteerText] = useState('');
   const [steerBusy, setSteerBusy] = useState(false);
   const [steerError, setSteerError] = useState<string | null>(null);
+  // What has been sent to this child, and whether the run has taken it yet.
+  const [sentSteers, setSentSteers] = useState<{ enqueueId: string; text: string }[]>([]);
 
   const sendSteer = useCallback(async () => {
     const message = steerText.trim();
@@ -169,6 +171,8 @@ const SubAgentCallBlockComponent: React.FC<SubAgentCallBlockProps> = ({
         body: JSON.stringify({ message }),
       });
       if (!res.ok) throw new Error(String(res.status));
+      const enqueueId: string = (await res.json())?.enqueue_id ?? '';
+      if (enqueueId) setSentSteers((prev) => [...prev, { enqueueId, text: message }]);
       setSteerText('');
     } catch {
       setSteerError(t('subAgents.steerFailed'));
@@ -326,6 +330,35 @@ const SubAgentCallBlockComponent: React.FC<SubAgentCallBlockProps> = ({
                 {steerError && (
                   <div className="mt-1 text-[10px] text-red-600 dark:text-red-400">
                     {steerError}
+                  </div>
+                )}
+                {/* Sent is not the same as heard: an injected message waits for
+                    the child's next model request, often a whole tool call
+                    away. Show which state each one is actually in. */}
+                {sentSteers.length > 0 && (
+                  <div className="mt-1 space-y-0.5">
+                    {sentSteers.map((sent) => {
+                      const taken = absorbed.has(sent.enqueueId);
+                      return (
+                        <div
+                          key={sent.enqueueId}
+                          className="flex items-start gap-1.5 text-[10px] min-w-0"
+                        >
+                          <span
+                            className={`shrink-0 font-mono font-bold uppercase tracking-wide ${
+                              taken
+                                ? 'text-neutral-400 dark:text-neutral-500'
+                                : 'text-brutal-black dark:text-white'
+                            }`}
+                          >
+                            {taken ? t('subAgents.steerTaken') : t('subAgents.steerQueued')}
+                          </span>
+                          <span className="truncate min-w-0 text-neutral-500 dark:text-neutral-400">
+                            {sent.text}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>

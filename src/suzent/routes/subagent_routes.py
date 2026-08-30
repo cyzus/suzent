@@ -164,8 +164,8 @@ async def steer_subagent_route(request: Request) -> JSONResponse:
     if not message:
         return JSONResponse({"error": "message is required"}, status_code=400)
 
-    delivered = await steer_subagent(task_id, message)
-    if not delivered:
+    enqueue_id = await steer_subagent(task_id, message)
+    if not enqueue_id:
         return JSONResponse(
             {
                 "error": (
@@ -175,7 +175,7 @@ async def steer_subagent_route(request: Request) -> JSONResponse:
             },
             status_code=409,
         )
-    return JSONResponse({"ok": True, "task_id": task_id})
+    return JSONResponse({"ok": True, "task_id": task_id, "enqueue_id": enqueue_id})
 
 
 async def clear_stuck_subagents_route(request: Request) -> JSONResponse:
