@@ -11,6 +11,8 @@ import { getApiBase } from '../../lib/api';
 import { useSubAgentStatus } from '../../hooks/useSubAgentStatus';
 import { useI18n } from '../../i18n';
 import { AgentAvatar } from './subAgentDisplay';
+import { SubAgentSteerBox } from '../chat/SubAgentSteerBox';
+import { useSubAgentActivity } from '../../hooks/useSubAgentActivity';
 import { toolLabel } from '../chat/toolSummary';
 import { MarkdownRenderer } from '../chat/MarkdownRenderer';
 import { getToolSummary, isFailedToolOutput } from '../chat/toolSummary';
@@ -198,6 +200,10 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
   }, [task?.status]);
 
   const isRunning = isSubAgentActive(task?.status);
+  // Not rendered here — the panel has its own polled tool log. This keeps the
+  // child's bus subscription open so a redirect sent from this panel still
+  // learns when the run picked it up.
+  useSubAgentActivity(task?.chat_id, isRunning);
   const duration = task ? formatDuration(task.started_at, task.finished_at) : '';
   const outcomeText = task?.status === 'completed' ? task.result_summary : task?.error;
 
@@ -481,6 +487,11 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
                 )}
               </div>
             )}
+
+            {/* Redirect this sub-agent. The panel is the only home a
+                background child has, so without this the endpoint reached
+                exactly the children whose parent was blocked on them. */}
+            {isRunning && task?.task_id && <SubAgentSteerBox taskId={task.task_id} />}
 
             {/* Running indicator */}
             {isRunning && (

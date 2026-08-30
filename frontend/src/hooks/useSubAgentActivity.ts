@@ -15,6 +15,7 @@
  */
 import { useEffect, useState } from 'react';
 import { subscribeToBusChunks } from './useEventBus';
+import { markSteerAbsorbed } from './useSubAgentSteer';
 import { StreamEventType } from '../lib/streamEvents';
 
 /** Custom event a run emits once it has taken an injected message. */
@@ -65,29 +66,15 @@ export function parseChunk(raw: unknown): Record<string, unknown>[] {
   return [];
 }
 
-export interface SubAgentActivity {
-  /** Newest tool calls, oldest first. */
-  entries: SubAgentActivityEntry[];
-  /**
-   * Enqueue ids the run has actually taken into its history. A redirect is
-   * "sent" the moment the POST returns, but only picked up at the child's next
-   * model request — often a whole tool call later — and showing those as the
-   * same thing would be a lie the user cannot check.
-   */
-  absorbed: Set<string>;
-}
-
 export function useSubAgentActivity(
   chatId: string | undefined,
   enabled: boolean
-): SubAgentActivity {
+): SubAgentActivityEntry[] {
   const [entries, setEntries] = useState<SubAgentActivityEntry[]>([]);
-  const [absorbed, setAbsorbed] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     if (!chatId || !enabled) {
       setEntries((prev) => (prev.length ? [] : prev));
-      setAbsorbed((prev) => (prev.size ? new Set() : prev));
       return;
     }
     return subscribeToBusChunks(chatId, (rawData) => {
@@ -97,14 +84,9 @@ export function useSubAgentActivity(
         if (type === StreamEventType.CUSTOM && event.name === ABSORBED_EVENT) {
           const value = event.value as { enqueue_id?: unknown } | null;
           const enqueueId = typeof value?.enqueue_id === 'string' ? value.enqueue_id : '';
-          if (enqueueId) {
-            setAbsorbed((prev) => {
-              if (prev.has(enqueueId)) return prev;
-              const next = new Set(prev);
-              next.add(enqueueId);
-              return next;
-            });
-          }
+          // Recorded against the redirect that was sent, not against this
+          // component: whoever is showing that sub-agent should see it land.
+          if (enqueueId) markSteerAbsorbed(enqueueId);
           continue;
         }
 
@@ -134,5 +116,5 @@ export function useSubAgentActivity(
     });
   }, [chatId, enabled]);
 
-  return { entries, absorbed };
+  return entries;
 }
