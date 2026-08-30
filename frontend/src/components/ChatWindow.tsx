@@ -39,7 +39,7 @@ import {
   SystemTriggeredMessage,
   NoticeMessage,
 } from './chat';
-import { planSendFailureRecovery } from './chat/sendRecovery';
+import { planSendFailureRecovery, type SendAction } from './chat/sendRecovery';
 import { useI18n } from '../i18n';
 import { useHeartbeatRunning } from '../hooks/useHeartbeatRunning';
 import { SubAgentView } from './sidebar/SubAgentView';
@@ -1276,11 +1276,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     (
       chatId: string,
       status: number,
-      label: string,
+      action: SendAction,
       opts?: { seedParts?: AGUIPart[]; restoreInput?: string }
     ): boolean => {
-      const plan = planSendFailureRecovery(status, label);
-      setStatusBar(plan.message, plan.tone, 4000);
+      const plan = planSendFailureRecovery(status, action);
+      setStatusBar(t(plan.messageKey, plan.messageParams), plan.tone, 4000);
 
       if (!plan.reattach) {
         setIsStreaming(false, chatId);
@@ -1290,28 +1290,32 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       if (opts?.seedParts?.length) {
         abandonedPartsRef.current.set(chatId, opts.seedParts);
       }
-      setIsStreaming(true, chatId);
-      // The backend never accepted this turn, so anything the caller appended or
-      // truncated locally is fiction. Let the database overwrite it.
-      markChatRollbackExpected(chatId);
 
       if (activeChatIdRef.current !== chatId) {
-        // The user moved on. loadChat() would drag them back and tryConnectRef
-        // now belongs to a different chat, so defer both to the reload-on-return
-        // path instead of attaching to the wrong stream.
+        // The user moved on. isStreaming is a single foreground flag, so leaving
+        // it set for a chat nobody is watching would block sending in the chat
+        // they ARE watching, with nothing subscribed to clear it. Release it and
+        // let the reload-on-return path pick this chat up — loadChat() would drag
+        // them back, and tryConnectRef now belongs to a different chat.
+        setIsStreaming(false, chatId);
         abandonedStreamChatsRef.current.add(chatId);
         return true;
       }
 
+      setIsStreaming(true, chatId);
       const pendingInput = opts?.restoreInput;
       if (plan.restoreInput && pendingInput) {
         setInput((current) => (current.trim() ? current : pendingInput));
       }
-      loadChat(chatId, { force: true }).catch(() => {});
+      // The backend never accepted this turn, so the user bubble the caller
+      // appended and any history it truncated are fiction. This is not the
+      // optimistic-then-catch-up case the rollback flag models — the server is
+      // simply authoritative — so take its snapshot outright.
+      loadChat(chatId, { authoritative: true }).catch(() => {});
       tryConnectRef.current?.();
       return true;
     },
-    [loadChat, markChatRollbackExpected, setIsStreaming, setStatusBar]
+    [loadChat, setIsStreaming, setStatusBar, t]
   );
 
   const { handleToolApproval } = useToolApproval({
@@ -2124,7 +2128,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       })
         .then((resp) => {
           if (!resp.ok) {
-            recoverFromSendFailure(steerChatId, resp.status, 'Steer', {
+            recoverFromSendFailure(steerChatId, resp.status, 'steer', {
               seedParts: steerSeedParts,
               restoreInput: prompt,
             });
@@ -2243,7 +2247,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     })
       .then((resp) => {
         if (!resp.ok) {
-          const reattached = recoverFromSendFailure(chatIdForSend, resp.status, 'Send', {
+          const reattached = recoverFromSendFailure(chatIdForSend, resp.status, 'send', {
             seedParts: sendSeedParts,
             // Only hand the text back when it travelled alone. Re-populating the
             // composer without its attachments would offer a different message
@@ -2322,7 +2326,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     })
       .then((resp) => {
         if (!resp.ok) {
-          recoverFromSendFailure(chatIdForRetry, resp.status, 'Retry');
+          recoverFromSendFailure(chatIdForRetry, resp.status, 'retry');
           return;
         }
         tryConnectRef.current?.();
@@ -2405,7 +2409,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       })
         .then((resp) => {
           if (!resp.ok) {
-            recoverFromSendFailure(chatIdForEdit, resp.status, 'Edit', { restoreInput: prompt });
+            recoverFromSendFailure(chatIdForEdit, resp.status, 'edit', { restoreInput: prompt });
             return;
           }
           tryConnectRef.current?.();
