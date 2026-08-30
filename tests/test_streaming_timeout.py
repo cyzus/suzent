@@ -1,4 +1,5 @@
 import asyncio
+import math
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 
@@ -425,3 +426,62 @@ async def test_forced_persist_waits_for_a_write_already_in_flight(monkeypatch):
     release.set()
     await asyncio.wait_for(forced, timeout=1)
     assert finished, "the in-flight write did not land"
+
+
+# ---------------------------------------------------------------------------
+# Sub-agent calls are not tools that might hang
+# ---------------------------------------------------------------------------
+
+
+def test_agent_tool_stream_timeout_is_unbounded():
+    event = FunctionToolCallEvent(
+        ToolCallPart(
+            tool_name="agent",
+            args={"description": "research something slow"},
+            tool_call_id="call-1",
+        )
+    )
+
+    assert streaming._tool_timeout_from_event(event) == math.inf
+
+
+class _SlowAgentToolStreamAgent:
+    """Spawns a blocking sub-agent whose result takes longer than any tool window."""
+
+    def run_stream_events(self, _prompt, **_kwargs):
+        @asynccontextmanager
+        async def stream():
+            async def events():
+                yield FunctionToolCallEvent(
+                    ToolCallPart(
+                        tool_name="agent",
+                        args={"description": "long job"},
+                        tool_call_id="call-1",
+                    )
+                )
+                await asyncio.sleep(0.05)
+                yield FunctionToolResultEvent(
+                    ToolReturnPart(
+                        tool_name="agent",
+                        content="done",
+                        tool_call_id="call-1",
+                    )
+                )
+
+            yield events()
+
+        return stream()
+
+
+async def test_blocking_agent_call_is_not_timed_out(monkeypatch):
+    # Every bounded window is far shorter than the sub-agent takes.
+    monkeypatch.setattr(streaming, "_DEFAULT_TOOL_STREAM_EVENT_TIMEOUT_SECONDS", 0.01)
+    monkeypatch.setattr(streaming, "_STREAM_IDLE_TIMEOUT_SECONDS", 0.01)
+
+    events = []
+    async for event in streaming._iter_stream_events_with_timeout(
+        _SlowAgentToolStreamAgent(), "hi", {}
+    ):
+        events.append(event.event_kind)
+
+    assert events == ["function_tool_call", "function_tool_result"]

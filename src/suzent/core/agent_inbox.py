@@ -16,6 +16,12 @@ _LEASE_SECONDS = 180
 _DELIVERY_MARKER_PREFIX = "suzent-agent-inbox"
 
 
+# Fallback ceiling for waiting out a busy target when its run cannot take an
+# injected message (no live pydantic-ai run, or it ended before draining). The
+# injection path above handles the normal case, so reaching this is unusual.
+_BUSY_TARGET_WAIT_SECONDS = 120.0
+
+
 def _delivery_marker(message_id: str) -> str:
     return f"<!-- {_DELIVERY_MARKER_PREFIX}:{message_id} -->"
 
@@ -130,6 +136,49 @@ class AgentInboxDispatcher:
             return
         raise RuntimeError(f"Unsupported agent message transport '{transport}'")
 
+    async def _inject_into_live_run(
+        self, control: Any, chat_id: str, content: str, is_subagent_result: bool
+    ) -> bool:
+        """Deliver `content` into the target's in-flight turn.
+
+        Unlike a steer, this tears nothing down: the run picks the message up at
+        its next model request (or as a redirect if it would otherwise end), so
+        the work already done in that turn is kept. Returns True only once the run
+        confirms the message reached its history -- an unconfirmed injection falls
+        back to running a fresh turn, which is correct but loses no message.
+        """
+        inject = getattr(control, "inject", None)
+        if inject is None:
+            return False
+
+        from suzent.core.system_reminder import wrap_in_system_reminder
+
+        payload = (
+            wrap_in_system_reminder(content, display_trigger=content)
+            if is_subagent_result
+            else content
+        )
+        enqueue_id = inject(payload)
+        if not enqueue_id:
+            return False
+
+        delivered = control.injection_delivered(enqueue_id)
+        # The only way an 'asap' message never lands is the run dying first, so
+        # race delivery against the run finishing.
+        waiters = [
+            asyncio.ensure_future(delivered.wait()),
+            asyncio.ensure_future(control.completed_event.wait()),
+        ]
+        try:
+            await asyncio.wait(waiters, return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            for waiter in waiters:
+                waiter.cancel()
+        if delivered.is_set():
+            logger.debug("Injected inbox message into live run for chat {}", chat_id)
+            return True
+        return False
+
     def _was_already_persisted(self, message: dict[str, Any]) -> bool:
         chat = get_database().get_chat(str(message["target_chat_id"]))
         if chat is None:
@@ -188,7 +237,18 @@ class AgentInboxDispatcher:
         async with get_background_turn_lock(target_chat_id):
             control = stream_controls.get(target_chat_id)
             if control is not None and not control.completed_event.is_set():
-                await asyncio.wait_for(control.completed_event.wait(), timeout=120.0)
+                # The target is mid-turn. Hand the message to that turn rather than
+                # waiting it out: a parent busy for longer than the old 120s cap is
+                # working, not stuck, and letting the wait expire burned one of the
+                # five delivery attempts before dropping the message for good.
+                if await self._inject_into_live_run(
+                    control, target_chat_id, delivered_content, is_subagent_result
+                ):
+                    return
+                await asyncio.wait_for(
+                    control.completed_event.wait(),
+                    timeout=_BUSY_TARGET_WAIT_SECONDS,
+                )
 
             if runtime == "acp" or subagent_runtime == "acp":
                 from suzent.acp.runtime import run_acp_turn_text
