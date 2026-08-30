@@ -134,6 +134,8 @@ export const zhCN = {
     close: '关闭',
     viewLog: '查看日志',
     activity: '正在执行',
+    thinking: '思考中…',
+    responding: '正在作答…',
     steerPlaceholder: '调整这个子智能体的方向…',
     steer: '调整方向',
     steerFailed: '无法送达该子智能体 —— 它可能刚刚结束。',

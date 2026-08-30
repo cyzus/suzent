@@ -138,6 +138,8 @@ export const en = {
     close: 'Close',
     viewLog: 'View log',
     activity: 'Working on',
+    thinking: 'Thinking…',
+    responding: 'Writing its answer…',
     steerPlaceholder: 'Redirect this sub-agent…',
     steer: 'Redirect',
     steerFailed: 'Could not reach this sub-agent — it may have just finished.',

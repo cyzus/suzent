@@ -21,6 +21,7 @@ import {
 } from './subAgentStatus';
 import { DisclosureChevron } from '../DisclosureChevron';
 import { SubAgentSteerBox } from './SubAgentSteerBox';
+import { SubAgentActivityFeed } from './SubAgentActivityFeed';
 
 export type { SubAgentStatus } from './subAgentStatus';
 
@@ -238,38 +239,7 @@ const SubAgentCallBlockComponent: React.FC<SubAgentCallBlockProps> = ({
 
             {/* What it is doing right now — blocking calls only, and only
                 while the run is live. The sidebar keeps the full log. */}
-            {isBlocking && isRunning && activity.length > 0 && (
-              <div className="min-w-0">
-                <div className="text-[10px] font-mono font-bold text-neutral-400 dark:text-neutral-500 uppercase tracking-wide mb-0.5">
-                  {t('subAgents.activity')}
-                </div>
-                <div className="space-y-0.5">
-                  {activity.map((entry) => (
-                    <div
-                      key={entry.toolCallId}
-                      className="flex items-center gap-1.5 text-[11px] font-mono min-w-0"
-                    >
-                      <span
-                        className={`shrink-0 w-1.5 h-1.5 rounded-full ${
-                          entry.done
-                            ? 'bg-neutral-300 dark:bg-zinc-600'
-                            : 'bg-brutal-black dark:bg-white animate-pulse'
-                        }`}
-                      />
-                      <span
-                        className={`truncate min-w-0 ${
-                          entry.done
-                            ? 'text-neutral-400 dark:text-neutral-500'
-                            : 'text-neutral-700 dark:text-neutral-200'
-                        }`}
-                      >
-                        {toolLabel(entry.toolName)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            {isBlocking && isRunning && <SubAgentActivityFeed activity={activity} />}
 
             {/* Redirect this child in place. Steering the composer still goes
                 to the parent (which cancels a blocking child), so the target
