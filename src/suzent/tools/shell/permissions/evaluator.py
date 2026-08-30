@@ -4,7 +4,7 @@ from .command_classifier import classify_command
 from .command_parser import parse_command
 from .mode_policy import evaluate_mode
 from .path_extractor import extract_path_uses
-from .path_policy import validate_paths
+from .path_policy import validate_dangerous_paths, validate_paths
 from .policy_models import (
     CommandClass,
     CommandDecision,
@@ -59,8 +59,19 @@ def evaluate_command_policy(
             metadata={"base_command": ctx.base_command},
         )
 
-    path_eval = validate_paths(extract_path_uses(ctx), resolver)
-    if path_eval is not None:
+    path_uses = extract_path_uses(ctx)
+
+    # Catastrophic targets (rm -rf /, /etc, C:/Windows) are never approvable.
+    dangerous_paths = validate_dangerous_paths(path_uses)
+    if dangerous_paths is not None:
+        dangerous_paths.metadata["base_command"] = ctx.base_command
+        return dangerous_paths
+
+    path_eval = validate_paths(path_uses, resolver)
+
+    # Under the sandbox the resolver backs real containment, so a path it cannot
+    # reach is refused outright — no rule and no mode negotiates that.
+    if path_eval is not None and path_eval.decision == CommandDecision.DENY:
         path_eval.metadata["base_command"] = ctx.base_command
         return path_eval
 
@@ -77,6 +88,22 @@ def evaluate_command_policy(
         )
 
     mode_decision = evaluate_mode(mode, command_class)
+
+    # On the host the same check is advisory: it can upgrade a mode decision to
+    # ASK, and only that. It sits below the rules and the mode so an explicit
+    # rule can authorize the folder the user asked the agent to work in, and so
+    # Full Access still means what it says. As a gate above them it was
+    # unappealable, and it only ever saw the handful of commands the catalog
+    # extracts paths for — filtering command names, not access.
+    if (
+        path_eval is not None
+        and mode_decision == CommandDecision.ALLOW
+        and mode != PermissionMode.FULL_ACCESS
+    ):
+        path_eval.metadata["base_command"] = ctx.base_command
+        path_eval.metadata["mode"] = mode.value
+        return path_eval
+
     if mode == PermissionMode.FULL_APPROVAL and mode_decision == CommandDecision.ASK:
         fallback = default_action.strip().lower()
         if fallback == "deny":

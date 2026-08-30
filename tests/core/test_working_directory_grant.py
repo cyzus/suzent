@@ -121,11 +121,11 @@ def test_subagent_inherits_the_parent_working_directory(chat, expected):
     assert inherited_working_directory(chat) == expected
 
 
-def _parent_chat(temp_db, tmp_path, target_folder, volumes=None):
+def _parent_chat(temp_db, tmp_path, target_folder, volumes=None, sandbox_enabled=False):
     parent_id = temp_db.create_chat(
         "parent",
         config={
-            "sandbox_enabled": False,
+            "sandbox_enabled": sandbox_enabled,
             "workspace_root": str(tmp_path / "workspace"),
             "sandbox_volumes": volumes or [],
         },
@@ -134,12 +134,13 @@ def _parent_chat(temp_db, tmp_path, target_folder, volumes=None):
     return temp_db.get_chat(parent_id)
 
 
-def test_a_subagent_cannot_be_pointed_outside_the_parent_grants(
+def test_a_sandboxed_subagent_cannot_be_pointed_outside_the_parent_grants(
     monkeypatch, temp_db, tmp_path, target_folder
 ):
-    # cwd on the spawn tool is model-chosen, so it must not widen access.
+    # cwd on the spawn tool is model-chosen. Under the sandbox the parent's
+    # grants are a real boundary, so it must not widen access.
     monkeypatch.setattr("suzent.database.get_database", lambda: temp_db)
-    parent = _parent_chat(temp_db, tmp_path, target_folder)
+    parent = _parent_chat(temp_db, tmp_path, target_folder, sandbox_enabled=True)
 
     assert resolve_granted_cwd(parent, str(target_folder / "captions")) == str(
         (target_folder / "captions").resolve()
@@ -147,6 +148,19 @@ def test_a_subagent_cannot_be_pointed_outside_the_parent_grants(
     assert (
         resolve_granted_cwd(parent, str(tmp_path / "Documents" / "elsewhere")) is None
     )
+
+
+def test_a_host_subagent_may_be_pointed_at_any_directory(
+    monkeypatch, temp_db, tmp_path, target_folder
+):
+    # On the host the parent reaches other directories by asking the user, so
+    # refusing here would only block delegating work the parent may itself do.
+    # The child's own approval prompts stay the gate.
+    monkeypatch.setattr("suzent.database.get_database", lambda: temp_db)
+    parent = _parent_chat(temp_db, tmp_path, target_folder)
+    elsewhere = tmp_path / "Documents" / "elsewhere"
+
+    assert resolve_granted_cwd(parent, str(elsewhere)) == str(elsewhere.resolve())
 
 
 def test_a_subagent_may_be_pinned_by_the_virtual_path_it_can_see(
@@ -164,7 +178,6 @@ def test_a_subagent_may_be_pinned_by_the_virtual_path_it_can_see(
     assert resolve_granted_cwd(parent, "/mnt/library/pkg") == str(
         (volume_root / "pkg").resolve()
     )
-    assert resolve_granted_cwd(parent, "/mnt/nothing-mounted") is None
 
 
 def test_grants_are_persisted_so_a_later_turn_keeps_the_folder():
