@@ -435,6 +435,95 @@ def _cancellation_reason(task: SubAgentTask) -> str:
     return "Stopped before it finished (the run was cancelled)"
 
 
+def inherited_working_directory(parent_chat) -> Optional[str]:
+    """The working directory a sub-agent inherits when it isn't pinned elsewhere.
+
+    A sub-agent that isn't given its own cwd works where its parent works.
+    Without this the child fell back to the project directory and every file
+    tool rejected the folder the parent had just been authorized for.
+    """
+    if parent_chat is None:
+        return None
+    return parent_chat.working_directory or (parent_chat.config or {}).get("cwd")
+
+
+def persistable_grants(base_config: dict, isolation: Optional[str]) -> dict:
+    """The grants worth storing on a sub-agent's chat for later turns.
+
+    process_turn_text carries the config for this turn, but a resumed or
+    follow-up turn rebuilds deps from the database — without persisting these
+    the sub-agent loses access to the folder it was spawned to work in.
+
+    A worktree cwd is the exception: _run_subagent tears the worktree down in
+    its finally block, so persisting it would point a resumed turn at a deleted
+    directory that the shell would helpfully recreate, empty.
+    """
+    grants = {
+        key: base_config[key]
+        for key in ("cwd", "sandbox_volumes")
+        if base_config.get(key)
+    }
+    if isolation == "worktree":
+        grants.pop("cwd", None)
+    return grants
+
+
+# Roots the agent addresses virtually; everything else absolute is a host path.
+_VIRTUAL_PREFIXES = ("/mnt", "/workspace", "/shared", "/persistence", "/uploads")
+
+
+def _is_virtual_address(path: str) -> bool:
+    """True when ``path`` is one the resolver maps rather than a host path."""
+    normalized = path.replace("\\", "/").strip()
+    is_windows_absolute = len(normalized) > 1 and normalized[1] == ":"
+    if is_windows_absolute:
+        return False
+    if not normalized.startswith("/"):
+        return True  # relative to the agent's cwd
+    return any(
+        normalized == prefix or normalized.startswith(f"{prefix}/")
+        for prefix in _VIRTUAL_PREFIXES
+    )
+
+
+def resolve_granted_cwd(parent_chat, path: str) -> Optional[str]:
+    """Resolve a sub-agent's requested cwd against the parent chat's grants.
+
+    A sub-agent's cwd comes from the model, and it authorizes that directory for
+    the child's file tools, so it is bounded by what the parent may already
+    reach. The value is resolved through the parent's PathResolver first: the
+    model addresses directories the way it sees them (``/mnt/data/sub``,
+    ``/workspace/pkg``), and those have to become host paths before either the
+    containment check or the child's own resolver can use them.
+
+    Returns the resolved host path, or None when the parent has no such grant.
+    """
+    from suzent.config import CONFIG, get_effective_volumes
+    from suzent.tools.filesystem.path_resolver import PathResolver
+
+    config = (parent_chat.config or {}) if parent_chat else {}
+    resolver = PathResolver(
+        parent_chat.id if parent_chat else "",
+        config.get("sandbox_enabled", CONFIG.sandbox_enabled),
+        sandbox_data_path=CONFIG.sandbox_data_path,
+        custom_volumes=get_effective_volumes(config.get("sandbox_volumes")),
+        workspace_root=config.get("workspace_root", CONFIG.workspace_root),
+        cwd=inherited_working_directory(parent_chat),
+    )
+    if _is_virtual_address(path):
+        try:
+            resolved = resolver.resolve(path)
+        except ValueError:
+            return None
+    else:
+        # A host path is a grant only when it genuinely sits inside one. Running
+        # it through resolve() would let sandbox mode's virtual mapping turn an
+        # unrecognized path into project_dir/<the whole path> — inside a grant,
+        # but not the directory anyone asked for.
+        resolved = Path(path).expanduser().resolve()
+    return str(resolved) if resolver.allows(resolved) else None
+
+
 async def _run_subagent(
     task: SubAgentTask,
     wakeup_parent: bool = True,
@@ -524,12 +613,10 @@ async def _run_subagent(
         # Inherit parent chat's custom sandbox volumes so the subagent sees the
         # same custom mounts that were configured for the parent session.
         parent_chat = db.get_chat(task.parent_chat_id)
-        parent_sandbox_volumes = (
-            (parent_chat.config or {}).get("sandbox_volumes") if parent_chat else None
-        )
-        parent_permission_mode = (
-            (parent_chat.config or {}).get("permission_mode") if parent_chat else None
-        )
+        parent_config = (parent_chat.config or {}) if parent_chat else {}
+        parent_sandbox_volumes = parent_config.get("sandbox_volumes")
+        parent_cwd = inherited_working_directory(parent_chat)
+        parent_permission_mode = parent_config.get("permission_mode")
         subagent_permission_mode = (
             parent_permission_mode
             if parent_permission_mode in {"plan", "strict_readonly"}
@@ -550,7 +637,18 @@ async def _run_subagent(
         if task.tools_allowed:
             base_config["tools"] = list(task.tools_allowed)
         if task.cwd:
-            base_config["cwd"] = task.cwd
+            granted_cwd = resolve_granted_cwd(parent_chat, task.cwd)
+            if granted_cwd is None:
+                raise RuntimeError(
+                    f"cwd '{task.cwd}' is outside every directory this chat may "
+                    "access. A sub-agent cannot be given access its parent does "
+                    "not have — ask the user to mount that folder or set it as "
+                    "the working directory."
+                )
+            task.cwd = granted_cwd
+        subagent_cwd = task.cwd or parent_cwd
+        if subagent_cwd:
+            base_config["cwd"] = subagent_cwd
 
         child_citation_sources: list[dict] = []
         if task.runtime == "acp":
@@ -561,7 +659,7 @@ async def _run_subagent(
                     "runtime": "acp",
                     "acp_agent_id": task.acp_agent_id,
                     "acp_session_id": task.acp_session_id,
-                    "acp_cwd": task.cwd
+                    "acp_cwd": subagent_cwd
                     or str(
                         Path(CONFIG.sandbox_data_path).resolve()
                         / "projects"
@@ -580,6 +678,9 @@ async def _run_subagent(
                 (refreshed.config or {}).get("acp_session_id") if refreshed else None
             )
         else:
+            grants = persistable_grants(base_config, task.isolation)
+            if grants:
+                db.merge_chat_config(task.chat_id, grants)
             config_override = build_agent_config(base_config, require_social_tool=False)
             result_text = await processor.process_turn_text(
                 chat_id=task.chat_id,

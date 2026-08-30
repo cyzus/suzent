@@ -23,6 +23,7 @@ def get_or_create_path_resolver(deps: "AgentDeps"):
         sandbox_data_path=CONFIG.sandbox_data_path,
         custom_volumes=deps.custom_volumes,
         workspace_root=deps.workspace_root,
+        cwd=getattr(deps, "cwd", None),
     )
     deps.path_resolver = resolver
     return resolver
