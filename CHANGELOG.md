@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v0.12.0] - 2026-08-30
 
 ### 🚀 Added
+- Redirect from wherever a sub-agent is shown
+- Surface what stop killed, and whether a redirect landed
 - Show blocking children working, and redirect them in place
 - Show cache hit rate as a share of input
 - Name the agent in the transcript instead of marking it done
@@ -25,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Keep draft writes off the token loop and out of the index
 
 ### 🐛 Fixed
+- Write the stopped-agent notice where it survives
+- Keep the stop notice through the post-stop reload
 - Scope tool windows per call, keep injections safe
 - Stop timing out agents that are working
 - Implement activity chunking and normalization logic
