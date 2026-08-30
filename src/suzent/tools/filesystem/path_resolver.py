@@ -286,23 +286,30 @@ class PathResolver:
                     f"Path traversal detected in custom volume: {resolved}"
                 )
 
-        # 2. Branch based on sandbox mode for absolute host paths
-        if not self.sandbox_enabled:
-            # HOST MODE: check for absolute host paths first
-            is_windows_absolute = len(virtual_path) > 1 and virtual_path[1] == ":"
-            is_unix_absolute = virtual_path.startswith("/") and not any(
-                virtual_path.startswith(prefix)
-                for prefix in [
-                    "/shared",
-                    "/uploads",
-                    "/mnt",
-                    "/workspace",
-                    "/persistence",
-                ]
-            )
-            if is_windows_absolute or is_unix_absolute:
-                resolved = Path(virtual_path).resolve()
+        # 2. Absolute host paths, i.e. everything that isn't a virtual root.
+        is_windows_absolute = len(virtual_path) > 1 and virtual_path[1] == ":"
+        is_unix_absolute = virtual_path.startswith("/") and not any(
+            virtual_path.startswith(prefix)
+            for prefix in [
+                "/shared",
+                "/uploads",
+                "/mnt",
+                "/workspace",
+                "/persistence",
+            ]
+        )
+        if is_windows_absolute or is_unix_absolute:
+            resolved = Path(virtual_path).resolve()
+            if not self.sandbox_enabled:
                 return self._validate_within_workspace(resolved)
+            # Sandbox mode maps virtual roots, but a directory that was explicitly
+            # granted is addressable by its host path too. Without this the same
+            # folder resolved correctly for a relative path and was silently
+            # rewritten to project_dir/<the whole absolute path> for an absolute
+            # one — a wrong file, with no error. Ungranted host paths still fall
+            # through to the virtual mapping below, so nothing new is reachable.
+            if self.allows(resolved):
+                return resolved
 
         # 3. Resolve virtual paths (same logic for both sandbox and host modes)
         resolved = self._resolve_virtual_path(virtual_path)

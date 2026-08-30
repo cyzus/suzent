@@ -9,7 +9,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from suzent.core.subagent_runner import grants_cover, inherited_working_directory
+from suzent.core.subagent_runner import (
+    inherited_working_directory,
+    persistable_grants,
+    resolve_granted_cwd,
+)
 
 
 def _build_deps(
@@ -117,15 +121,82 @@ def test_subagent_inherits_the_parent_working_directory(chat, expected):
     assert inherited_working_directory(chat) == expected
 
 
+def _parent_chat(temp_db, tmp_path, target_folder, volumes=None):
+    parent_id = temp_db.create_chat(
+        "parent",
+        config={
+            "sandbox_enabled": False,
+            "workspace_root": str(tmp_path / "workspace"),
+            "sandbox_volumes": volumes or [],
+        },
+    )
+    temp_db.update_chat(parent_id, working_directory=str(target_folder))
+    return temp_db.get_chat(parent_id)
+
+
 def test_a_subagent_cannot_be_pointed_outside_the_parent_grants(
     monkeypatch, temp_db, tmp_path, target_folder
 ):
     # cwd on the spawn tool is model-chosen, so it must not widen access.
     monkeypatch.setattr("suzent.database.get_database", lambda: temp_db)
+    parent = _parent_chat(temp_db, tmp_path, target_folder)
+
+    assert resolve_granted_cwd(parent, str(target_folder / "captions")) == str(
+        (target_folder / "captions").resolve()
+    )
+    assert (
+        resolve_granted_cwd(parent, str(tmp_path / "Documents" / "elsewhere")) is None
+    )
+
+
+def test_a_subagent_may_be_pinned_by_the_virtual_path_it_can_see(
+    monkeypatch, temp_db, tmp_path, target_folder
+):
+    # The model addresses directories as it sees them, so a mounted volume's
+    # virtual path has to resolve to its host path rather than be rejected.
+    monkeypatch.setattr("suzent.database.get_database", lambda: temp_db)
+    volume_root = tmp_path / "Documents" / "library"
+    (volume_root / "pkg").mkdir(parents=True)
+    parent = _parent_chat(
+        temp_db, tmp_path, target_folder, volumes=[f"{volume_root}:/mnt/library"]
+    )
+
+    assert resolve_granted_cwd(parent, "/mnt/library/pkg") == str(
+        (volume_root / "pkg").resolve()
+    )
+    assert resolve_granted_cwd(parent, "/mnt/nothing-mounted") is None
+
+
+def test_grants_are_persisted_so_a_later_turn_keeps_the_folder():
+    config = {"cwd": "/authorized", "sandbox_volumes": ["/host:/mnt/data"]}
+
+    assert persistable_grants(config, None) == config
+
+
+def test_a_disposable_worktree_cwd_is_not_persisted():
+    # The worktree is removed in _run_subagent's finally block, so a resumed turn
+    # would otherwise point at a deleted directory.
+    config = {
+        "cwd": "/repo/.git/worktrees-tmp/subagent-1",
+        "sandbox_volumes": ["/host:/mnt/data"],
+    }
+
+    assert persistable_grants(config, "worktree") == {
+        "sandbox_volumes": ["/host:/mnt/data"]
+    }
+
+
+def test_an_unrecognized_host_path_is_not_laundered_by_virtual_mapping(
+    monkeypatch, temp_db, tmp_path, target_folder
+):
+    # In sandbox mode an unmatched absolute path falls through to
+    # project_dir/<the whole path>, which is inside a grant but is not the
+    # directory that was asked for. It must not count as an authorization.
+    monkeypatch.setattr("suzent.database.get_database", lambda: temp_db)
     parent_id = temp_db.create_chat(
         "parent",
         config={
-            "sandbox_enabled": False,
+            "sandbox_enabled": True,
             "workspace_root": str(tmp_path / "workspace"),
             "sandbox_volumes": [],
         },
@@ -133,5 +204,7 @@ def test_a_subagent_cannot_be_pointed_outside_the_parent_grants(
     temp_db.update_chat(parent_id, working_directory=str(target_folder))
     parent = temp_db.get_chat(parent_id)
 
-    assert grants_cover(parent, str(target_folder / "captions")) is True
-    assert grants_cover(parent, str(tmp_path / "Documents" / "elsewhere")) is False
+    assert resolve_granted_cwd(parent, "/etc") is None
+    assert resolve_granted_cwd(parent, str(target_folder)) == str(
+        target_folder.resolve()
+    )

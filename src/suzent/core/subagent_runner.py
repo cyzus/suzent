@@ -447,12 +447,56 @@ def inherited_working_directory(parent_chat) -> Optional[str]:
     return parent_chat.working_directory or (parent_chat.config or {}).get("cwd")
 
 
-def grants_cover(parent_chat, path: str) -> bool:
-    """True when the parent chat is already authorized for ``path``.
+def persistable_grants(base_config: dict, isolation: Optional[str]) -> dict:
+    """The grants worth storing on a sub-agent's chat for later turns.
+
+    process_turn_text carries the config for this turn, but a resumed or
+    follow-up turn rebuilds deps from the database — without persisting these
+    the sub-agent loses access to the folder it was spawned to work in.
+
+    A worktree cwd is the exception: _run_subagent tears the worktree down in
+    its finally block, so persisting it would point a resumed turn at a deleted
+    directory that the shell would helpfully recreate, empty.
+    """
+    grants = {
+        key: base_config[key]
+        for key in ("cwd", "sandbox_volumes")
+        if base_config.get(key)
+    }
+    if isolation == "worktree":
+        grants.pop("cwd", None)
+    return grants
+
+
+# Roots the agent addresses virtually; everything else absolute is a host path.
+_VIRTUAL_PREFIXES = ("/mnt", "/workspace", "/shared", "/persistence", "/uploads")
+
+
+def _is_virtual_address(path: str) -> bool:
+    """True when ``path`` is one the resolver maps rather than a host path."""
+    normalized = path.replace("\\", "/").strip()
+    is_windows_absolute = len(normalized) > 1 and normalized[1] == ":"
+    if is_windows_absolute:
+        return False
+    if not normalized.startswith("/"):
+        return True  # relative to the agent's cwd
+    return any(
+        normalized == prefix or normalized.startswith(f"{prefix}/")
+        for prefix in _VIRTUAL_PREFIXES
+    )
+
+
+def resolve_granted_cwd(parent_chat, path: str) -> Optional[str]:
+    """Resolve a sub-agent's requested cwd against the parent chat's grants.
 
     A sub-agent's cwd comes from the model, and it authorizes that directory for
-    the child's file tools. Bounding it by the parent's own grants keeps a spawn
-    from widening access the user never approved.
+    the child's file tools, so it is bounded by what the parent may already
+    reach. The value is resolved through the parent's PathResolver first: the
+    model addresses directories the way it sees them (``/mnt/data/sub``,
+    ``/workspace/pkg``), and those have to become host paths before either the
+    containment check or the child's own resolver can use them.
+
+    Returns the resolved host path, or None when the parent has no such grant.
     """
     from suzent.config import CONFIG, get_effective_volumes
     from suzent.tools.filesystem.path_resolver import PathResolver
@@ -466,7 +510,18 @@ def grants_cover(parent_chat, path: str) -> bool:
         workspace_root=config.get("workspace_root", CONFIG.workspace_root),
         cwd=inherited_working_directory(parent_chat),
     )
-    return resolver.allows(Path(path))
+    if _is_virtual_address(path):
+        try:
+            resolved = resolver.resolve(path)
+        except ValueError:
+            return None
+    else:
+        # A host path is a grant only when it genuinely sits inside one. Running
+        # it through resolve() would let sandbox mode's virtual mapping turn an
+        # unrecognized path into project_dir/<the whole path> — inside a grant,
+        # but not the directory anyone asked for.
+        resolved = Path(path).expanduser().resolve()
+    return str(resolved) if resolver.allows(resolved) else None
 
 
 async def _run_subagent(
@@ -581,12 +636,16 @@ async def _run_subagent(
             base_config["model"] = task.model_override
         if task.tools_allowed:
             base_config["tools"] = list(task.tools_allowed)
-        if task.cwd and not grants_cover(parent_chat, task.cwd):
-            raise RuntimeError(
-                f"cwd '{task.cwd}' is outside every directory this chat may access. "
-                "A sub-agent cannot be given access its parent does not have — ask "
-                "the user to mount that folder or set it as the working directory."
-            )
+        if task.cwd:
+            granted_cwd = resolve_granted_cwd(parent_chat, task.cwd)
+            if granted_cwd is None:
+                raise RuntimeError(
+                    f"cwd '{task.cwd}' is outside every directory this chat may "
+                    "access. A sub-agent cannot be given access its parent does "
+                    "not have — ask the user to mount that folder or set it as "
+                    "the working directory."
+                )
+            task.cwd = granted_cwd
         subagent_cwd = task.cwd or parent_cwd
         if subagent_cwd:
             base_config["cwd"] = subagent_cwd
@@ -619,15 +678,7 @@ async def _run_subagent(
                 (refreshed.config or {}).get("acp_session_id") if refreshed else None
             )
         else:
-            # Persist the grants (mounted volumes, working directory) on the child
-            # chat. process_turn_text carries them for this turn, but a resumed or
-            # follow-up turn rebuilds deps from the database — without this the
-            # sub-agent loses access to the folder it was spawned to work in.
-            grants = {
-                key: base_config[key]
-                for key in ("cwd", "sandbox_volumes")
-                if base_config.get(key)
-            }
+            grants = persistable_grants(base_config, task.isolation)
             if grants:
                 db.merge_chat_config(task.chat_id, grants)
             config_override = build_agent_config(base_config, require_social_tool=False)

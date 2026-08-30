@@ -130,3 +130,41 @@ def test_granted_roots_are_shared_by_both_validators(tmp_path, target_folder):
     assert "workspace" in {
         label for label, _path in resolver.granted_roots(include_workspace=True)
     }
+
+
+def test_sandbox_mode_reaches_granted_directories_by_host_path(tmp_path, target_folder):
+    # Sandbox mode maps virtual roots, but a granted directory must resolve the
+    # same way whichever address is used. Previously an absolute host path was
+    # silently rewritten to project_dir/<the whole path> — a different file, and
+    # no error, because the rewritten path passed validation.
+    resolver = PathResolver(
+        chat_id="test-chat",
+        sandbox_enabled=True,
+        project_slug="default",
+        sandbox_data_path=str(tmp_path / "sandbox"),
+        workspace_root=str(tmp_path / "workspace"),
+        custom_volumes=[f"{target_folder}:/mnt/assets"],
+        cwd=str(target_folder),
+    )
+
+    expected = (target_folder / "notes.txt").resolve()
+    assert resolver.resolve("notes.txt") == expected
+    assert resolver.resolve(str(target_folder / "notes.txt")) == expected
+    assert resolver.resolve("/mnt/assets/notes.txt") == expected
+
+
+def test_sandbox_mode_still_maps_ungranted_absolute_paths_virtually(tmp_path):
+    # Nothing new becomes reachable: an ungranted host path keeps falling
+    # through to the virtual mapping instead of escaping the sandbox roots.
+    resolver = PathResolver(
+        chat_id="test-chat",
+        sandbox_enabled=True,
+        project_slug="default",
+        sandbox_data_path=str(tmp_path / "sandbox"),
+        workspace_root=str(tmp_path / "workspace"),
+    )
+
+    resolved = resolver.resolve("/etc/passwd")
+
+    assert resolved == (resolver.project_dir / "etc" / "passwd").resolve()
+    assert resolver.allows(resolved)
