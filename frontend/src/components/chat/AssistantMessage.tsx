@@ -33,6 +33,7 @@ import {
   ActivityRail,
   ActivityRailItem,
   ReasoningRailItem,
+  buildAguiActivityChunks,
   countActivityItems,
   getActivityGroupOrdinal,
   getAguiActivityLabel,
@@ -214,65 +215,10 @@ const AGUIPartsContent: React.FC<{
   onStopSubAgent,
   onForceWebContext,
 }) => {
-  // Normalize tool parts: when resume/recovery emits another tool part with the
-  // same toolCallId later in the stream, merge it into the first occurrence so
-  // output stays under the initial tool call instead of rendering a split block.
-  const normalizedParts = useMemo<AGUIPart[]>(() => {
-    const result: AGUIPart[] = [];
-    const toolIndexById = new Map<string, number>();
-    for (const part of parts) {
-      if (part.type === 'tool' && part.toolCallId) {
-        const existingIndex = toolIndexById.get(part.toolCallId);
-        if (existingIndex !== undefined) {
-          const existing = result[existingIndex];
-          result[existingIndex] = {
-            ...existing,
-            ...part,
-            // Prefer freshest non-empty payload fields.
-            toolName: part.toolName || existing.toolName,
-            args: part.args ?? existing.args,
-            output: part.output ?? existing.output,
-            approvalId: part.approvalId ?? existing.approvalId,
-            permission: part.permission ?? existing.permission,
-            permissionDecision: part.permissionDecision ?? existing.permissionDecision,
-            permissionResolution: part.permissionResolution ?? existing.permissionResolution,
-            state: part.state ?? existing.state,
-          };
-          continue;
-        }
-        toolIndexById.set(part.toolCallId, result.length);
-      }
-      result.push(part);
-    }
-    return result;
-  }, [parts]);
-
-  // Group consecutive parts of the same type into chunks
-  type ChunkType = 'tool' | 'reasoning' | 'text' | 'a2ui' | 'acp-permission' | 'acp-notice';
-  const chunks: { type: ChunkType; items: AGUIPart[] }[] = [];
-  let current: AGUIPart[] = [];
-  let currentType: ChunkType | null = null;
-
-  for (const part of normalizedParts) {
-    // citation-sources parts carry metadata, not display content — skip them.
-    if (part.type === 'citation-sources') continue;
-    const type = part.type as ChunkType;
-    if (current.length === 0) {
-      currentType = type;
-      current.push(part);
-    } else if (currentType === type) {
-      current.push(part);
-    } else {
-      if (currentType) {
-        chunks.push({ type: currentType, items: current });
-      }
-      currentType = type;
-      current = [part];
-    }
-  }
-  if (current.length > 0 && currentType) {
-    chunks.push({ type: currentType, items: current });
-  }
+  // Merged, cleaned up and grouped for display. Parts that render nothing --
+  // the empty text shell the stream opens per assistant step above all -- are
+  // dropped there, so an invisible part cannot split the activity rail.
+  const chunks = useMemo(() => buildAguiActivityChunks(parts), [parts]);
 
   const renderGroups = groupActivityChunks(
     chunks,
