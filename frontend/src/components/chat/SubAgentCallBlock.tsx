@@ -6,7 +6,7 @@
  * right. Live state comes off the shared sub-agent EventSource, with a poll as
  * a fallback for when the parent stream ended before the child did.
  */
-import React, { useCallback, useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useI18n } from '../../i18n';
 import { toolLabel } from './toolSummary';
 import { AgentAvatar } from '../sidebar/subAgentDisplay';
@@ -27,6 +27,8 @@ export type { SubAgentStatus } from './subAgentStatus';
 
 interface SubAgentCallBlockProps {
   taskId?: string;
+  /** The tool call this card renders, used to find its child before it ends. */
+  toolCallId?: string;
   description?: string;
   toolsAllowed?: string[];
   status: SubAgentStatus;
@@ -101,7 +103,8 @@ function headline(description: string | undefined, fallback: string): string {
 }
 
 const SubAgentCallBlockComponent: React.FC<SubAgentCallBlockProps> = ({
-  taskId,
+  taskId: taskIdFromResult,
+  toolCallId,
   description,
   toolsAllowed,
   status: externalStatus,
@@ -121,6 +124,15 @@ const SubAgentCallBlockComponent: React.FC<SubAgentCallBlockProps> = ({
   // finished run back to 'running'. This block used to run its own 3s poll and
   // reconcile it against the stream itself, which meant N blocks made N
   // requests and each stopped covering its task the moment it unmounted.
+  // A blocking call reports its task id only in the result it returns, so for
+  // the whole run the user actually watches, the card would have no idea which
+  // child is its own. The spawn event carries the tool call id, so match on
+  // that until the result arrives with the id itself.
+  const spawnedTask = useMemo(() => {
+    if (taskIdFromResult || !toolCallId) return undefined;
+    return Object.values(taskStates).find((task) => task.tool_call_id === toolCallId);
+  }, [taskIdFromResult, toolCallId, taskStates]);
+  const taskId = taskIdFromResult ?? spawnedTask?.task_id;
   const streamTask = taskId ? taskStates[taskId] : undefined;
   const status = streamTask?.status ?? externalStatus;
   const model = streamTask?.model_override ?? externalModel;

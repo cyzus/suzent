@@ -24,6 +24,8 @@ export interface SubAgentSummary {
   task_id: string;
   parent_chat_id: string;
   chat_id: string;
+  /** The parent tool call that spawned this, when the backend reported it. */
+  tool_call_id?: string | null;
   description: string;
   tools_allowed: string[];
   model_override?: string | null;

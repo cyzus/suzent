@@ -625,6 +625,34 @@ async def retry_chat(request: Request) -> StreamingResponse:
     )
 
 
+async def _append_notice_after_turn(chat_id: str, notice: str) -> None:
+    """Append a notice once the stopped turn has finished persisting itself.
+
+    `completed_event` only means the stream's own cleanup is done -- it is set
+    before the post-processing it triggers has rewritten chat.messages. So wait
+    for both, or the rebuild lands on top of the notice and deletes it.
+    """
+    from suzent.core.stream_registry import stream_controls
+    from suzent.core.task_registry import wait_for_background_task_prefix
+
+    control = stream_controls.get(chat_id)
+    try:
+        if control is not None:
+            await asyncio.wait_for(control.completed_event.wait(), timeout=60.0)
+        await wait_for_background_task_prefix(f"post_process_{chat_id}_", timeout=60.0)
+    except Exception as exc:
+        # A turn that never settles should not cost the user the notice.
+        logger.debug(f"Proceeding with stop notice for {chat_id} after: {exc}")
+    try:
+        await asyncio.to_thread(
+            get_database().append_chat_message,
+            chat_id,
+            {"role": "notice", "content": notice},
+        )
+    except Exception as exc:
+        logger.debug(f"Failed to persist stopped sub-agent notice: {exc}")
+
+
 async def stop_chat(request: Request) -> JSONResponse:
     """Stop an active streaming session for the given chat."""
     try:
@@ -653,29 +681,20 @@ async def stop_chat(request: Request) -> JSONResponse:
 
     stopped_subagents = await stop_subagents_for_parent(chat_id)
     if stopped_subagents:
-        # Written server-side rather than by the client: the client cannot
-        # persist a message (its save sends config only), so a locally appended
-        # notice lasts until the next reload and no longer. The chat's own log
-        # is the durable place for it, and the reload the client runs after a
-        # stop picks it up on its own.
         named = []
         for task_id in stopped_subagents:
             task = get_task(task_id)
             description = (task.description or "").strip() if task else ""
             named.append(f"- {description or task_id}")
-        try:
-            get_database().append_chat_message(
-                chat_id,
-                {
-                    "role": "notice",
-                    "content": (
-                        f"⏹ Also stopped {len(named)} sub-agent(s) this chat had "
-                        "running:\n" + "\n".join(named)
-                    ),
-                },
-            )
-        except Exception as exc:
-            logger.debug(f"Failed to persist stopped sub-agent notice: {exc}")
+        notice = (
+            f"\u23f9 Also stopped {len(named)} sub-agent(s) this chat had running:\n"
+            + "\n".join(named)
+        )
+        # Deliberately not written here. The turn being stopped is still tearing
+        # down, and its post-processing rebuilds chat.messages wholesale from the
+        # agent history -- a notice written now is missing from that rebuild's
+        # snapshot and gets dropped, which is what happened in testing.
+        asyncio.create_task(_append_notice_after_turn(chat_id, notice))
 
     if not success and not stopped_subagents:
         return JSONResponse({"status": "no_active_stream"}, status_code=404)
