@@ -103,7 +103,10 @@ interface ChatCoreContextValue {
   setSearchQuery: (query: string) => void;
   beginNewChat: () => void;
   createNewChat: () => Promise<string | null>;
-  loadChat: (chatId: string, options?: { force?: boolean }) => Promise<void>;
+  loadChat: (
+    chatId: string,
+    options?: { force?: boolean; authoritative?: boolean }
+  ) => Promise<void>;
   saveCurrentChat: (skipRefresh?: boolean) => Promise<void>;
   finalSave: (chatId?: string | null) => Promise<void>;
   forceSaveNow: (chatId?: string | null) => Promise<void>;
@@ -1314,11 +1317,23 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
   ]);
 
   const loadChat = useCallback(
-    async (chatId: string, options?: { force?: boolean }) => {
-      const force = !!options?.force;
+    async (chatId: string, options?: { force?: boolean; authoritative?: boolean }) => {
+      const force = !!options?.force || !!options?.authoritative;
+      // authoritative: the backend rejected whatever the client did optimistically,
+      // so its snapshot replaces local state outright. The guards below all exist
+      // to protect optimistic content the backend is about to catch up with —
+      // here there is nothing to catch up with, and preserving it would strand a
+      // user bubble or a truncation that never happened.
+      const authoritative = !!options?.authoritative;
       // Clear any pending saves for the previous chat before switching
       if (currentChatId && currentChatId !== chatId) {
         clearScheduledSave(currentChatId);
+      }
+      // The optimistic append that is about to be discarded also scheduled a
+      // debounced save. Cancel it, or it would persist the rejected message
+      // between now and the server snapshot arriving.
+      if (authoritative) {
+        clearScheduledSave(chatId);
       }
 
       const key = keyForChat(chatId);
@@ -1520,6 +1535,11 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
             }
             if (currentAssistant) {
               mappedMessages.push(currentAssistant as Message);
+            }
+
+            if (authoritative) {
+              rollbackExpectedChatIdsRef.current.delete(chatId);
+              return { ...prev, [key]: mappedMessages };
             }
 
             // Prevent UI flicker: if local store has more messages (e.g. optimistic append right after stream),

@@ -1054,6 +1054,11 @@ export const en = {
     heartbeatInstructionsPlaceholder: 'What should the agent do on each heartbeat?',
     hideToolCalls: 'Collapse Tools',
     showToolCalls: 'Expand Tools',
+    sendConflict: 'Chat is still responding — reconnecting to the live response',
+    sendFailed: 'Send failed ({status})',
+    steerFailed: 'Steer failed ({status})',
+    retryFailed: 'Retry failed ({status})',
+    editFailed: 'Edit failed ({status})',
   },
   newChat: {
     creatingIn: 'Creating in',

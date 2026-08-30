@@ -1028,6 +1028,11 @@ export const zhCN = {
     heartbeatInstructionsPlaceholder: '每次心跳时智能体应该做什么？',
     hideToolCalls: '折叠工具',
     showToolCalls: '展开工具',
+    sendConflict: '对话仍在回复中 — 正在重新连接实时响应',
+    sendFailed: '发送失败（{status}）',
+    steerFailed: '重定向失败（{status}）',
+    retryFailed: '重试失败（{status}）',
+    editFailed: '编辑失败（{status}）',
   },
   newChat: {
     creatingIn: '将创建于',
