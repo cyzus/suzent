@@ -9,6 +9,82 @@ import { useTypewriter } from '../../hooks/useTypewriter';
 import { tForLocale, useI18n } from '../../i18n';
 import { DisclosureChevron } from '../DisclosureChevron';
 
+export type AguiChunkType =
+  'tool' | 'reasoning' | 'text' | 'a2ui' | 'acp-permission' | 'acp-notice';
+
+export type AguiChunk = { type: AguiChunkType; items: AGUIPart[] };
+
+/**
+ * A part the rail would render as nothing at all.
+ *
+ * The stream opens a text message before its first token, and one per
+ * assistant step -- so a step that only called tools leaves an empty text part
+ * behind. Reasoning opens the same way. Neither draws anything, but both used
+ * to reach the chunker, where an empty text part counted as prose and cut the
+ * activity rail in two: a long turn fragmented into one collapsed rail per
+ * step, with nothing visible between them. Citation sources carry metadata and
+ * never had display content to begin with.
+ */
+function isEmptyAguiPart(part: AGUIPart): boolean {
+  if (part.type === 'citation-sources') return true;
+  if (part.type === 'text' || part.type === 'reasoning') return !(part.text || '').trim();
+  return false;
+}
+
+/**
+ * Assistant parts, cleaned up and grouped into the chunks the rail renders.
+ *
+ * Tool parts repeated under one `toolCallId` -- resume and recovery replay the
+ * call later in the stream -- merge into the first occurrence so output stays
+ * under the initial tool call instead of rendering a split block. Parts that
+ * render nothing are dropped, so only something the user can actually see ends
+ * one chunk and starts the next. What survives is grouped into runs of the same
+ * type, preserving interleaved order.
+ */
+export function buildAguiActivityChunks(parts: AGUIPart[]): AguiChunk[] {
+  const normalized: AGUIPart[] = [];
+  const toolIndexById = new Map<string, number>();
+
+  for (const part of parts) {
+    if (part.type === 'tool' && part.toolCallId) {
+      const existingIndex = toolIndexById.get(part.toolCallId);
+      if (existingIndex !== undefined) {
+        const existing = normalized[existingIndex];
+        normalized[existingIndex] = {
+          ...existing,
+          ...part,
+          // Prefer freshest non-empty payload fields.
+          toolName: part.toolName || existing.toolName,
+          args: part.args ?? existing.args,
+          output: part.output ?? existing.output,
+          approvalId: part.approvalId ?? existing.approvalId,
+          permission: part.permission ?? existing.permission,
+          permissionDecision: part.permissionDecision ?? existing.permissionDecision,
+          permissionResolution: part.permissionResolution ?? existing.permissionResolution,
+          state: part.state ?? existing.state,
+        };
+        continue;
+      }
+      toolIndexById.set(part.toolCallId, normalized.length);
+    }
+    normalized.push(part);
+  }
+
+  const chunks: AguiChunk[] = [];
+  for (const part of normalized) {
+    if (isEmptyAguiPart(part)) continue;
+    const type = part.type as AguiChunkType;
+    const current = chunks[chunks.length - 1];
+    if (current && current.type === type) {
+      current.items.push(part);
+      continue;
+    }
+    chunks.push({ type, items: [part] });
+  }
+
+  return chunks;
+}
+
 export type ActivityRenderGroup<T> =
   | { type: 'activity'; chunks: Array<{ chunk: T; index: number }> }
   | { type: 'single'; chunk: T; index: number };
