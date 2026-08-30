@@ -502,7 +502,14 @@ function ContextWidgetBody({ usage, limit }: { usage: ContextUsage; limit: numbe
   const compacting = manualCompacting || compaction?.active === true;
 
   const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${n}`);
-  const pctLabel = pct >= 10 || pct === 0 ? `${Math.round(pct)}%` : `${pct.toFixed(1)}%`;
+  // Keep a sliver visible rather than rounding it away to a flat "0%".
+  const formatPct = (value: number) =>
+    value >= 10 || value === 0 ? `${Math.round(value)}%` : `${value.toFixed(1)}%`;
+  const pctLabel = formatPct(pct);
+  // Cache tokens are a share of input, not of the window: pydantic-ai normalizes
+  // input_tokens to include cache reads and writes on every provider.
+  const shareOfInput = (n: number) =>
+    inputTokens > 0 ? formatPct(Math.min(100, (n / inputTokens) * 100)) : null;
   const clearHintTimer = () => {
     if (hintTimerRef.current != null) {
       window.clearTimeout(hintTimerRef.current);
@@ -668,15 +675,35 @@ function ContextWidgetBody({ usage, limit }: { usage: ContextUsage; limit: numbe
                 Cache
               </div>
               {cacheRead > 0 && (
-                <div className="flex justify-between">
+                <div
+                  className="flex justify-between"
+                  title="Share of input tokens served from cache"
+                >
                   <span>Cache Read</span>
-                  <span className="text-green-600 dark:text-green-400">{fmt(cacheRead)}</span>
+                  <span>
+                    <span className="text-green-600 dark:text-green-400">{fmt(cacheRead)}</span>
+                    {shareOfInput(cacheRead) && (
+                      <span className="ml-1.5 text-neutral-400 dark:text-neutral-500">
+                        {shareOfInput(cacheRead)}
+                      </span>
+                    )}
+                  </span>
                 </div>
               )}
               {cacheWrite > 0 && (
-                <div className="flex justify-between">
+                <div
+                  className="flex justify-between"
+                  title="Share of input tokens written to cache"
+                >
                   <span>Cache Write</span>
-                  <span className="text-blue-500 dark:text-blue-400">{fmt(cacheWrite)}</span>
+                  <span>
+                    <span className="text-blue-500 dark:text-blue-400">{fmt(cacheWrite)}</span>
+                    {shareOfInput(cacheWrite) && (
+                      <span className="ml-1.5 text-neutral-400 dark:text-neutral-500">
+                        {shareOfInput(cacheWrite)}
+                      </span>
+                    )}
+                  </span>
                 </div>
               )}
             </div>
