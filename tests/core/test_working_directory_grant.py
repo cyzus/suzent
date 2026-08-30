@@ -10,6 +10,7 @@ from types import SimpleNamespace
 import pytest
 
 from suzent.core.subagent_runner import (
+    inherited_permission_grants,
     inherited_working_directory,
     persistable_grants,
     resolve_granted_cwd,
@@ -121,11 +122,11 @@ def test_subagent_inherits_the_parent_working_directory(chat, expected):
     assert inherited_working_directory(chat) == expected
 
 
-def _parent_chat(temp_db, tmp_path, target_folder, volumes=None):
+def _parent_chat(temp_db, tmp_path, target_folder, volumes=None, sandbox_enabled=False):
     parent_id = temp_db.create_chat(
         "parent",
         config={
-            "sandbox_enabled": False,
+            "sandbox_enabled": sandbox_enabled,
             "workspace_root": str(tmp_path / "workspace"),
             "sandbox_volumes": volumes or [],
         },
@@ -134,12 +135,13 @@ def _parent_chat(temp_db, tmp_path, target_folder, volumes=None):
     return temp_db.get_chat(parent_id)
 
 
-def test_a_subagent_cannot_be_pointed_outside_the_parent_grants(
+def test_a_sandboxed_subagent_cannot_be_pointed_outside_the_parent_grants(
     monkeypatch, temp_db, tmp_path, target_folder
 ):
-    # cwd on the spawn tool is model-chosen, so it must not widen access.
+    # cwd on the spawn tool is model-chosen. Under the sandbox the parent's
+    # grants are a real boundary, so it must not widen access.
     monkeypatch.setattr("suzent.database.get_database", lambda: temp_db)
-    parent = _parent_chat(temp_db, tmp_path, target_folder)
+    parent = _parent_chat(temp_db, tmp_path, target_folder, sandbox_enabled=True)
 
     assert resolve_granted_cwd(parent, str(target_folder / "captions")) == str(
         (target_folder / "captions").resolve()
@@ -147,6 +149,19 @@ def test_a_subagent_cannot_be_pointed_outside_the_parent_grants(
     assert (
         resolve_granted_cwd(parent, str(tmp_path / "Documents" / "elsewhere")) is None
     )
+
+
+def test_a_host_subagent_may_be_pointed_at_any_directory(
+    monkeypatch, temp_db, tmp_path, target_folder
+):
+    # On the host the parent reaches other directories by asking the user, so
+    # refusing here would only block delegating work the parent may itself do.
+    # The child's own approval prompts stay the gate.
+    monkeypatch.setattr("suzent.database.get_database", lambda: temp_db)
+    parent = _parent_chat(temp_db, tmp_path, target_folder)
+    elsewhere = tmp_path / "Documents" / "elsewhere"
+
+    assert resolve_granted_cwd(parent, str(elsewhere)) == str(elsewhere.resolve())
 
 
 def test_a_subagent_may_be_pinned_by_the_virtual_path_it_can_see(
@@ -164,7 +179,6 @@ def test_a_subagent_may_be_pinned_by_the_virtual_path_it_can_see(
     assert resolve_granted_cwd(parent, "/mnt/library/pkg") == str(
         (volume_root / "pkg").resolve()
     )
-    assert resolve_granted_cwd(parent, "/mnt/nothing-mounted") is None
 
 
 def test_grants_are_persisted_so_a_later_turn_keeps_the_folder():
@@ -208,3 +222,47 @@ def test_an_unrecognized_host_path_is_not_laundered_by_virtual_mapping(
     assert resolve_granted_cwd(parent, str(target_folder)) == str(
         target_folder.resolve()
     )
+
+
+def test_a_subagent_inherits_the_permission_grants_the_user_made():
+    # A sub-agent works on the parent's task and has no user to prompt: its
+    # interaction_profile routes every ASK to the classifier instead. Without
+    # the parent's grants, an "always allow" the user clicked minutes earlier
+    # had no effect on the agent they delegated the work to.
+    parent_config = {
+        "permission_rules": [
+            {"id": "r1", "toolName": "run_command", "behavior": "allow"}
+        ],
+        "permission_policies": {"run_command": {"default": "allow"}},
+        "tool_approval_policy": {"write_file": "always_allow"},
+        "model": "should-not-be-inherited",
+    }
+
+    grants = inherited_permission_grants(parent_config)
+
+    assert grants == {
+        "permission_rules": parent_config["permission_rules"],
+        "permission_policies": parent_config["permission_policies"],
+        "tool_approval_policy": parent_config["tool_approval_policy"],
+    }
+
+
+def test_inherited_grants_are_copied_not_shared():
+    # Each agent's deps must own their policy structures, or a decision recorded
+    # by one run mutates another's.
+    parent_config = {
+        "permission_rules": [{"id": "r1"}],
+        "tool_approval_policy": {"write_file": "always_allow"},
+    }
+
+    grants = inherited_permission_grants(parent_config)
+    grants["permission_rules"].append({"id": "r2"})
+    grants["tool_approval_policy"]["edit_file"] = "always_allow"
+
+    assert parent_config["permission_rules"] == [{"id": "r1"}]
+    assert parent_config["tool_approval_policy"] == {"write_file": "always_allow"}
+
+
+def test_a_parent_without_grants_adds_nothing():
+    assert inherited_permission_grants({}) == {}
+    assert inherited_permission_grants({"permission_rules": []}) == {}
