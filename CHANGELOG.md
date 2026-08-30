@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v0.12.0] - 2026-08-30
 
 ### 🚀 Added
+- Show cache hit rate as a share of input
 - Name the agent in the transcript instead of marking it done
 - Give the agent tool an icon of its own
 - Make the sidebar read as a roster of agents
@@ -23,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Keep draft writes off the token loop and out of the index
 
 ### 🐛 Fixed
+- Report the context window live and honestly
 - Propagate the parent's permission grants to sub-agents
 - Make the host path boundary advisory instead of a veto
 - Measure the reader's place across the turn, not the row
