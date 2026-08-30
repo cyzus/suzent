@@ -7,6 +7,7 @@ import { useSubAgentStatus } from '../hooks/useSubAgentStatus';
 import { useContextUsageStore, type ContextUsage } from '../hooks/useContextUsageStore';
 import { useCompact } from '../hooks/useCompact';
 import { useDreamStatus } from '../hooks/useDreamStatus';
+import { CompactionCube, CompactionSweep } from './chat/CompactionCube';
 import {
   disableHeartbeat,
   enableHeartbeat,
@@ -467,7 +468,7 @@ function ContextWidget() {
 }
 
 function ContextWidgetBody({ usage, limit }: { usage: ContextUsage; limit: number }) {
-  const { compactNotice, setCompactNotice, clearCompactNotice } = useContextUsageStore();
+  const { compaction, clearCompaction } = useContextUsageStore();
   const { currentChatId, isStreaming } = useChatStore();
   const { setStatus } = useStatusStore();
   const { compact, progress } = useCompact();
@@ -492,9 +493,16 @@ function ContextWidgetBody({ usage, limit }: { usage: ContextUsage; limit: numbe
     [string, number]
   >;
   const compactRecommended = pct >= 80;
-  const compacting = ['loading', 'analyzing', 'summarizing', 'saving'].includes(progress.stage);
+  // A pass started from this button reports through `useCompact`; one the agent
+  // starts mid-run arrives on the event bus and lands in the store. The panel has
+  // to watch both, or agent-triggered compaction looks like nothing is happening.
+  const manualCompacting = ['loading', 'analyzing', 'summarizing', 'saving'].includes(
+    progress.stage
+  );
+  const compacting = manualCompacting || compaction?.active === true;
 
   const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${n}`);
+  const pctLabel = pct >= 10 || pct === 0 ? `${Math.round(pct)}%` : `${pct.toFixed(1)}%`;
   const clearHintTimer = () => {
     if (hintTimerRef.current != null) {
       window.clearTimeout(hintTimerRef.current);
@@ -505,13 +513,15 @@ function ContextWidgetBody({ usage, limit }: { usage: ContextUsage; limit: numbe
     return () => clearHintTimer();
   }, []);
   useEffect(() => {
-    if (!compactNotice) return;
+    // Keep a finished/failed pass on screen briefly, then drop it. A running one
+    // stays until its own terminal event arrives.
+    if (!compaction || compaction.active) return;
     clearHintTimer();
     hintTimerRef.current = window.setTimeout(() => {
-      clearCompactNotice();
+      clearCompaction();
       hintTimerRef.current = null;
     }, 10_000);
-  }, [compactNotice, clearCompactNotice]);
+  }, [compaction, clearCompaction]);
   const compactStageLabel: Record<string, string> = {
     loading: 'Compacting...',
     analyzing: 'Compaction analyzing...',
@@ -541,9 +551,10 @@ function ContextWidgetBody({ usage, limit }: { usage: ContextUsage; limit: numbe
   };
 
   const canManualCompact = !!currentChatId && !isStreaming && !compacting;
-  const compactLabel = compacting
+  const compactLabel = manualCompacting
     ? compactStageLabel[progress.stage] || 'Compacting...'
-    : compactNotice;
+    : (compaction?.label ?? null);
+  const compactFailed = progress.stage === 'error' || compaction?.stage === 'error';
 
   return (
     <div
@@ -567,9 +578,20 @@ function ContextWidgetBody({ usage, limit }: { usage: ContextUsage; limit: numbe
             style={{ width: `${pct}%` }}
           />
         </div>
-        <span className="hidden flex-shrink-0 text-[10px] font-bold uppercase tracking-wider md:inline">
+        <span className="flex-shrink-0 text-[10px] font-bold uppercase tracking-wider">
+          {pctLabel}
+        </span>
+        <span className="hidden flex-shrink-0 text-[10px] font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400 md:inline">
           {fmt(contextTokens)}
         </span>
+        {compacting && (
+          <>
+            <CompactionCube size={12} />
+            <span className="hidden flex-shrink-0 text-[9px] font-bold uppercase tracking-wider md:inline">
+              Compacting
+            </span>
+          </>
+        )}
         {compactRecommended && !compacting && (
           <span className="hidden flex-shrink-0 text-[9px] font-bold uppercase tracking-wider text-brutal-red md:inline">
             Compact?
@@ -600,9 +622,13 @@ function ContextWidgetBody({ usage, limit }: { usage: ContextUsage; limit: numbe
           </div>
           {compactLabel && (
             <div
-              className={`px-1.5 py-1 border rounded text-[10px] font-bold ${progress.stage === 'error' ? 'border-brutal-red text-brutal-red' : 'border-neutral-300 dark:border-zinc-700 text-neutral-600 dark:text-neutral-300'}`}
+              className={`overflow-hidden rounded border text-[10px] font-bold ${compactFailed ? 'border-brutal-red text-brutal-red' : 'border-neutral-300 dark:border-zinc-700 text-neutral-600 dark:text-neutral-300'}`}
             >
-              {compactLabel}
+              <div className="flex items-center gap-1.5 px-1.5 py-1">
+                {compacting && <CompactionCube size={16} />}
+                <span className="min-w-0 flex-1">{compactLabel}</span>
+              </div>
+              {compacting && <CompactionSweep className="text-neutral-500 dark:text-neutral-400" />}
             </div>
           )}
 
@@ -612,6 +638,7 @@ function ContextWidgetBody({ usage, limit }: { usage: ContextUsage; limit: numbe
               <span className="text-neutral-500 dark:text-neutral-400">Total</span>
               <span>
                 {fmt(contextTokens)} / {fmt(limit)}
+                <span className="ml-1.5 font-bold">{pctLabel}</span>
               </span>
             </div>
             <div className="w-full h-1 rounded-full bg-neutral-100 dark:bg-zinc-800">
