@@ -305,7 +305,11 @@ const ChatMinimapComponent: React.FC<ChatMinimapProps> = ({
       const rect = row.getBoundingClientRect();
       if (rect.bottom < centerY) continue;
       const order = orderForMessageIndex(orderByMessageIndex, Number(row.dataset.messageIndex));
-      if (order === null) break;
+      if (order === null) {
+        // Ahead of every marker: the start of the rail, not the end.
+        position = 0;
+        break;
+      }
       // Advance smoothly through a tall turn instead of sticking to its tick
       // until the next one begins.
       const within =
@@ -475,9 +479,19 @@ const ChatMinimapComponent: React.FC<ChatMinimapProps> = ({
 
         <div
           ref={viewportRef}
-          className={`chat-minimap-viewport pointer-events-auto${
-            isScrollable ? ' chat-minimap-viewport-clipped' : ''
-          }`}
+          className={[
+            'chat-minimap-viewport pointer-events-auto',
+            isScrollable ? 'chat-minimap-viewport-clipped' : '',
+            // Fade only the edge that actually has track beyond it, so the
+            // first and last ticks are not dissolved by the very gradient
+            // meant to say "there is more".
+            isScrollable && railOffsetPx > 0.5 ? 'chat-minimap-viewport-fade-top' : '',
+            isScrollable && railOffsetPx < trackHeightPx - viewportHeightPx - 0.5
+              ? 'chat-minimap-viewport-fade-bottom'
+              : '',
+          ]
+            .filter(Boolean)
+            .join(' ')}
           onPointerDown={scrollFromRailPointer}
           onPointerMove={updateHoverFromPointer}
           onPointerEnter={updateHoverFromPointer}

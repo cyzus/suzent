@@ -95,6 +95,22 @@
      The edges fade instead, which says "there is more" without any chrome. */
   .chat-minimap-viewport-clipped {
     overflow: hidden;
+  }
+
+  /* The fade is an affordance, not decoration: it says the track continues out
+     of sight. Applied at an end it instead dissolved the first or last tick --
+     TRACK_PADDING_PX puts them 4px from the edge, well inside a 0.75rem
+     gradient -- so the reader could never see either one light up. Each edge
+     now fades only while there is track past it. */
+  .chat-minimap-viewport-fade-top {
+    mask-image: linear-gradient(to bottom, transparent 0, #000 0.75rem, #000 100%);
+  }
+
+  .chat-minimap-viewport-fade-bottom {
+    mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 0.75rem), transparent 100%);
+  }
+
+  .chat-minimap-viewport-fade-top.chat-minimap-viewport-fade-bottom {
     mask-image: linear-gradient(
       to bottom,
       transparent 0,
