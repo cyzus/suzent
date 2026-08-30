@@ -32,3 +32,17 @@ describe('parseSubAgentArgs', () => {
     expect(parsed.toolsAllowed).toBeUndefined();
   });
 });
+
+describe('run_in_background', () => {
+  it('defaults to background when the arg is absent', () => {
+    expect(parseSubAgentArgs('{"description":"x"}').runInBackground).toBe(true);
+  });
+
+  it('reads an explicit blocking call', () => {
+    expect(parseSubAgentArgs('{"run_in_background":false}').runInBackground).toBe(false);
+  });
+
+  it('ignores a non-boolean value', () => {
+    expect(parseSubAgentArgs('{"run_in_background":"no"}').runInBackground).toBe(true);
+  });
+});

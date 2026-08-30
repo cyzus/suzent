@@ -646,10 +646,23 @@ async def stop_chat(request: Request) -> JSONResponse:
         except Exception:
             success = False
 
-    if not success:
+    # Stop reached a chat's blocking sub-agents only as collateral damage and
+    # never its background ones. Make it mean the same thing for both, and name
+    # what went with it rather than killing long-running work silently.
+    from suzent.core.subagent_runner import stop_subagents_for_parent
+
+    stopped_subagents = await stop_subagents_for_parent(chat_id)
+
+    if not success and not stopped_subagents:
         return JSONResponse({"status": "no_active_stream"}, status_code=404)
 
-    return JSONResponse({"status": "stopping", "reason": reason})
+    return JSONResponse(
+        {
+            "status": "stopping",
+            "reason": reason,
+            "stopped_subagents": stopped_subagents,
+        }
+    )
 
 
 async def deactivate_tool(request: Request) -> JSONResponse:
