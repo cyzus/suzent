@@ -3,6 +3,7 @@ import {
   buildOrderByMessageIndex,
   isAtScrollEnd,
   orderForMessageIndex,
+  probeOffsetPx,
 } from './chatMinimapPosition';
 
 const markers = [
@@ -64,5 +65,30 @@ describe('isAtScrollEnd', () => {
 
   it('is true when the content does not fill the viewport', () => {
     expect(isAtScrollEnd(0, 600, 400)).toBe(true);
+  });
+});
+
+describe('probeOffsetPx', () => {
+  it('asks at the top edge when scrolled to the top', () => {
+    // The first message rests against the top edge and never reaches the
+    // middle, which is why the first tick could not be selected.
+    expect(probeOffsetPx(0, 600, 4600)).toBe(0);
+  });
+
+  it('asks at the bottom edge when scrolled to the end', () => {
+    expect(probeOffsetPx(4000, 600, 4600)).toBe(600);
+  });
+
+  it('asks at the middle halfway through', () => {
+    expect(probeOffsetPx(2000, 600, 4600)).toBe(300);
+  });
+
+  it('falls back to the middle when there is nothing to scroll', () => {
+    expect(probeOffsetPx(0, 600, 400)).toBe(300);
+  });
+
+  it('clamps a rubber-banded scroll position', () => {
+    expect(probeOffsetPx(-50, 600, 4600)).toBe(0);
+    expect(probeOffsetPx(99999, 600, 4600)).toBe(600);
   });
 });

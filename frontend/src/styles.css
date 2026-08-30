@@ -112,6 +112,13 @@
     transition: transform 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
   }
 
+  /* Wheeling the rail should track the hand exactly; the glide that suits an
+     automatic follow reads as lag when it is answering a scroll. Must sit
+     after .chat-minimap-track: same specificity, so source order decides. */
+  .chat-minimap-track-dragging {
+    transition: none;
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .chat-minimap-track {
       transition: none;

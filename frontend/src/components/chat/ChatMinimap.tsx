@@ -4,6 +4,7 @@ import {
   buildOrderByMessageIndex,
   isAtScrollEnd,
   orderForMessageIndex,
+  probeOffsetPx,
 } from './chatMinimapPosition';
 import { formatMessageTime } from '../../lib/chatUtils';
 import { useI18n } from '../../i18n';
@@ -199,6 +200,11 @@ const ChatMinimapComponent: React.FC<ChatMinimapProps> = ({
 }) => {
   const { t } = useI18n();
   const trackRef = useRef<HTMLDivElement | null>(null);
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  // Set while the wheel is driving the rail, so the follow-the-reader effect
+  // does not fight the hand and the glide transition does not lag it.
+  const [wheeling, setWheeling] = useState(false);
+  const wheelIdleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [scrollCenterRatio, setScrollCenterRatio] = useState(0.5);
   const [railOffsetPx, setRailOffsetPx] = useState(0);
   const [hoveredMarkerId, setHoveredMarkerId] = useState<string | null>(null);
@@ -289,7 +295,9 @@ const ChatMinimapComponent: React.FC<ChatMinimapProps> = ({
     // Asking which message is actually at the middle of the viewport settles
     // both: it is the same axis the ticks use, and a message that is not
     // mounted cannot be the answer.
-    const centerY = el.getBoundingClientRect().top + el.clientHeight / 2;
+    const centerY =
+      el.getBoundingClientRect().top +
+      probeOffsetPx(el.scrollTop, el.clientHeight, el.scrollHeight);
     const rows = el.querySelectorAll<HTMLElement>('[data-message-index]');
 
     let position: number | null = null;
@@ -349,18 +357,46 @@ const ChatMinimapComponent: React.FC<ChatMinimapProps> = ({
   // place with the same motion the rail has when it fits on screen.
   // Suspended while the pointer is over the rail: pulling ticks out from under
   // the cursor mid-aim would make the rail impossible to use.
+  // The rail is slid, never scrolled, so there is no scrollbar to reach for --
+  // which also meant the ticks outside the window were unreachable while the
+  // pointer was over the rail, because following the reader is suspended there
+  // to stop ticks moving out from under the cursor. The wheel drives the slide
+  // directly instead, so the whole conversation can be walked without the rail
+  // ever growing a scrollbar.
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport || !isScrollable) return;
+
+    const maxOffset = Math.max(0, trackHeightPx - viewportHeightPx);
+    const onWheel = (event: WheelEvent) => {
+      // The chat behind must not scroll with it.
+      event.preventDefault();
+      setWheeling(true);
+      setRailOffsetPx((prev) => Math.max(0, Math.min(maxOffset, prev + event.deltaY)));
+      if (wheelIdleRef.current) clearTimeout(wheelIdleRef.current);
+      // Hand back to the follow-the-reader effect once the wheel settles.
+      wheelIdleRef.current = setTimeout(() => setWheeling(false), 1200);
+    };
+
+    viewport.addEventListener('wheel', onWheel, { passive: false });
+    return () => {
+      viewport.removeEventListener('wheel', onWheel);
+      if (wheelIdleRef.current) clearTimeout(wheelIdleRef.current);
+    };
+  }, [isScrollable, trackHeightPx, viewportHeightPx]);
+
   useEffect(() => {
     if (!isScrollable) {
       setRailOffsetPx(0);
       return;
     }
-    if (hoverPx !== null) return;
+    if (hoverPx !== null || wheeling) return;
     const target = Math.max(
       0,
       Math.min(trackHeightPx - viewportHeightPx, scrollCenterPx - viewportHeightPx / 2)
     );
     setRailOffsetPx((previous) => (Math.abs(previous - target) < 1 ? previous : target));
-  }, [hoverPx, isScrollable, scrollCenterPx, trackHeightPx, viewportHeightPx]);
+  }, [hoverPx, wheeling, isScrollable, scrollCenterPx, trackHeightPx, viewportHeightPx]);
 
   const scrollFromRailPointer = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
@@ -438,6 +474,7 @@ const ChatMinimapComponent: React.FC<ChatMinimapProps> = ({
         )}
 
         <div
+          ref={viewportRef}
           className={`chat-minimap-viewport pointer-events-auto${
             isScrollable ? ' chat-minimap-viewport-clipped' : ''
           }`}
@@ -448,7 +485,7 @@ const ChatMinimapComponent: React.FC<ChatMinimapProps> = ({
         >
           <div
             ref={trackRef}
-            className="chat-minimap-track"
+            className={`chat-minimap-track${wheeling ? ' chat-minimap-track-dragging' : ''}`}
             style={{
               height: `${trackHeightPx}px`,
               transform: `translateY(${-railOffsetPx}px)`,

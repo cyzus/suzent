@@ -62,3 +62,24 @@ export function isAtScrollEnd(
 ): boolean {
   return scrollHeight - scrollTop - clientHeight <= tolerance;
 }
+
+/**
+ * Where in the viewport to ask "which message is here?".
+ *
+ * Taking the middle always is what left the first and last ticks unreachable:
+ * the first message sits against the top edge and the last against the bottom,
+ * so neither ever occupies the centre, however far you scroll. The probe slides
+ * with the scroll instead -- the top edge at the top, the bottom edge at the
+ * bottom, the middle in between -- so the ends are ordinary positions rather
+ * than special cases.
+ */
+export function probeOffsetPx(
+  scrollTop: number,
+  clientHeight: number,
+  scrollHeight: number
+): number {
+  const maxScroll = scrollHeight - clientHeight;
+  if (maxScroll <= 0) return clientHeight / 2;
+  const progress = Math.max(0, Math.min(1, scrollTop / maxScroll));
+  return clientHeight * progress;
+}
