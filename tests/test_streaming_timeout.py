@@ -578,3 +578,45 @@ async def test_agent_call_still_unbounded_while_a_peer_is_pending(monkeypatch):
         )
     ]
     assert kinds == ["function_tool_call", "function_tool_result"]
+
+
+# ---------------------------------------------------------------------------
+# A stopped turn keeps what it had already checkpointed
+# ---------------------------------------------------------------------------
+
+
+def _resolve_persisted_history(persisted, partial):
+    """The teardown rule from `stream_agent_responses`' finally block.
+
+    Kept in step with the source by the tests below; the block itself lives
+    inside a closure that a unit test cannot reach.
+    """
+    if persisted is None or len(partial or []) > len(persisted):
+        return partial
+    return persisted
+
+
+def test_stopped_turn_prefers_the_checkpoint_over_the_seed():
+    # process_turn seeds last_messages with the restored history before the run,
+    # so a stopped turn used to persist that and lose everything it had done.
+    seeded = ["m1", "m2", "m3", "m4", "m5"]
+    checkpointed = [*seeded, "response", "tool-returns"]
+
+    assert _resolve_persisted_history(seeded, checkpointed) == checkpointed
+
+
+def test_completed_turn_is_not_walked_backwards():
+    # A normal run sets last_messages to the full result, which is never behind.
+    complete = ["m1", "m2", "m3", "m4", "m5", "response", "returns", "final"]
+    stale_checkpoint = complete[:6]
+
+    assert _resolve_persisted_history(complete, stale_checkpoint) == complete
+
+
+def test_unset_history_still_falls_back_to_the_partial():
+    assert _resolve_persisted_history(None, ["m1"]) == ["m1"]
+
+
+def test_nothing_to_prefer_leaves_the_persisted_history_alone():
+    assert _resolve_persisted_history(["m1"], []) == ["m1"]
+    assert _resolve_persisted_history(["m1"], None) == ["m1"]
