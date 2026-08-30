@@ -44,3 +44,21 @@ export function orderForMessageIndex(byIndex: Map<number, number>, index: number
   }
   return best;
 }
+
+/**
+ * Whether the scroller has reached the end.
+ *
+ * The reader's position is otherwise taken from whatever sits at the middle of
+ * the viewport, and the last message usually never gets there: a short final
+ * turn rests against the bottom edge with earlier content still filling the
+ * middle. Reaching the end is its own answer -- the last turn is what is being
+ * read -- and without this the final tick could never light up.
+ */
+export function isAtScrollEnd(
+  scrollTop: number,
+  clientHeight: number,
+  scrollHeight: number,
+  tolerance = 8
+): boolean {
+  return scrollHeight - scrollTop - clientHeight <= tolerance;
+}

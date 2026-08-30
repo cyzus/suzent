@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { buildOrderByMessageIndex, orderForMessageIndex } from './chatMinimapPosition';
+import {
+  buildOrderByMessageIndex,
+  isAtScrollEnd,
+  orderForMessageIndex,
+} from './chatMinimapPosition';
 
 const markers = [
   { targetIndex: 0, relatedIndices: [1, 2] },
@@ -40,5 +44,25 @@ describe('minimap position mapping', () => {
 
   it('handles an empty rail', () => {
     expect(orderForMessageIndex(buildOrderByMessageIndex([]), 0)).toBeNull();
+  });
+});
+
+describe('isAtScrollEnd', () => {
+  it('is true at the bottom, so the final tick can light up', () => {
+    // A short last message rests against the bottom edge and never reaches the
+    // middle of the viewport, so nothing else would ever select it.
+    expect(isAtScrollEnd(4000, 600, 4600)).toBe(true);
+  });
+
+  it('tolerates the sub-pixel gap a fractional scroll leaves behind', () => {
+    expect(isAtScrollEnd(3999.4, 600, 4600)).toBe(true);
+  });
+
+  it('is false while there is still content below', () => {
+    expect(isAtScrollEnd(3000, 600, 4600)).toBe(false);
+  });
+
+  it('is true when the content does not fill the viewport', () => {
+    expect(isAtScrollEnd(0, 600, 400)).toBe(true);
   });
 });

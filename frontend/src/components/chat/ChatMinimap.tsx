@@ -1,6 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Message } from '../../types/api';
-import { buildOrderByMessageIndex, orderForMessageIndex } from './chatMinimapPosition';
+import {
+  buildOrderByMessageIndex,
+  isAtScrollEnd,
+  orderForMessageIndex,
+} from './chatMinimapPosition';
 import { formatMessageTime } from '../../lib/chatUtils';
 import { useI18n } from '../../i18n';
 import { InformationPopover } from '../InformationPopover';
@@ -261,6 +265,13 @@ const ChatMinimapComponent: React.FC<ChatMinimapProps> = ({
     const el = scrollContainerRef.current;
     if (!el || markers.length < 2 || el.scrollHeight <= el.clientHeight) {
       setScrollCenterRatio(0.5);
+      return;
+    }
+
+    // Sitting at the end means the last turn is what is being read, even
+    // though a short final message never reaches the middle of the viewport.
+    if (isAtScrollEnd(el.scrollTop, el.clientHeight, el.scrollHeight)) {
+      setScrollCenterRatio(1);
       return;
     }
 
