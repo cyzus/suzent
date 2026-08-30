@@ -427,13 +427,25 @@ class PathResolver:
         Raises:
             ValueError: If path is outside all allowed directories
         """
-        for _label, root in self.granted_roots(include_workspace=True):
-            if self._is_within(resolved, root):
-                return resolved
+        if self.allows(resolved):
+            return resolved
 
-        raise self._access_denied_error(
-            resolved, "Path is outside every directory this chat may access"
+        if self.sandbox_enabled:
+            raise self._access_denied_error(
+                resolved, "Path is outside every directory this chat may access"
+            )
+
+        # HOST MODE: the grant list is advisory here, not a boundary. It only
+        # ever covered the file tools and the handful of shell commands the path
+        # catalog knows, so raising blocked the reviewable, approval-gated tools
+        # while `python -c "open(...)"` went through untouched — and it did so
+        # below the consent layer, where the user could not authorize the folder
+        # they had just asked the agent to work in. Callers that care ask
+        # allows() and route the operation to approval instead.
+        logger.debug(
+            f"Path outside this chat's granted directories (host mode): {resolved}"
         )
+        return resolved
 
     def _validate_path(self, resolved: Path) -> None:
         """Validate that a resolved virtual path stayed inside an allowed root."""

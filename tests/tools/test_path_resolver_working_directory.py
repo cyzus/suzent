@@ -95,24 +95,51 @@ def test_rootless_glob_falls_back_to_the_project_dir_in_host_mode(tmp_path):
     assert found == [(resolver.project_dir / "module.py").resolve()]
 
 
-def test_paths_outside_every_grant_are_still_rejected(tmp_path, target_folder):
+def test_host_mode_reports_paths_outside_the_grants_without_refusing_them(
+    tmp_path, target_folder
+):
+    # On the host the grant list is advisory: it covers the file tools and a
+    # handful of shell commands, so refusing here only blocked the reviewable,
+    # approval-gated tools while every interpreter went through. Callers ask allows()
+    # and route the operation to approval instead.
     resolver = make_resolver(tmp_path, cwd=target_folder)
     sibling = target_folder.parent / "secrets.txt"
     sibling.write_text("nope")
 
+    resolved = resolver.resolve(str(sibling))
+
+    assert resolved == sibling.resolve()
+    assert resolver.allows(resolved) is False
+    assert resolver.allows(target_folder / "notes.txt") is True
+
+
+def test_sandbox_mode_still_refuses_paths_outside_every_grant(tmp_path, target_folder):
+    resolver = PathResolver(
+        chat_id="test-chat",
+        sandbox_enabled=True,
+        project_slug="default",
+        sandbox_data_path=str(tmp_path / "sandbox"),
+        workspace_root=str(tmp_path / "workspace"),
+        cwd=str(target_folder),
+    )
+
     with pytest.raises(ValueError):
-        resolver.resolve(str(sibling))
+        resolver.resolve("/mnt/not-registered/file.txt")
 
 
 def test_denial_names_every_grant_and_a_recovery_action(tmp_path, target_folder):
-    resolver = make_resolver(
-        tmp_path,
-        cwd=target_folder,
+    resolver = PathResolver(
+        chat_id="test-chat",
+        sandbox_enabled=True,
+        project_slug="default",
+        sandbox_data_path=str(tmp_path / "sandbox"),
+        workspace_root=str(tmp_path / "workspace"),
         custom_volumes=[f"{tmp_path / 'shared-notes'}:/mnt/notes"],
+        cwd=str(target_folder),
     )
 
     with pytest.raises(ValueError) as excinfo:
-        resolver.resolve(str(tmp_path / "elsewhere" / "file.txt"))
+        resolver._validate_within_workspace(tmp_path / "elsewhere" / "file.txt")
 
     message = str(excinfo.value)
     assert str(target_folder.resolve()) in message
