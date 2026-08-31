@@ -214,11 +214,7 @@ export const ThinkingSlider: React.FC<ThinkingSliderProps> = ({ value, onChange,
   const mode: ThinkingMode = value === 'auto' ? 'auto' : value === 'off' ? 'off' : 'manual';
   const manualIndex = Math.max(0, MANUAL_LEVELS.indexOf(value));
   const valueLabel = t(`chatInput.thinkingValues.${value}`);
-  const manualModeLabel =
-    mode === 'manual'
-      ? `${t('chatInput.thinkingModes.manual')} · ${valueLabel}`
-      : t('chatInput.thinkingModes.manual');
-  const summaryLabel = mode === 'manual' ? manualModeLabel : t(`chatInput.thinkingModes.${mode}`);
+  const summaryLabel = mode === 'manual' ? valueLabel : t(`chatInput.thinkingModes.${mode}`);
 
   React.useEffect(() => {
     if (!isOpen) return;
