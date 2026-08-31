@@ -505,7 +505,10 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
   });
 
   const headerClassName = [
-    'group/tool-header hover-tint-text inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono font-bold uppercase tracking-wide rounded-sm transition-colors select-none',
+    // max-w-full is load-bearing: an inline-flex sizes to its content, so
+    // without it the row simply grew past the rail and was cut off by the
+    // shell's hidden overflow, with nothing inside ever being asked to shrink.
+    'group/tool-header hover-tint-text inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono font-bold uppercase tracking-wide rounded-sm transition-colors select-none max-w-full min-w-0',
     hasDetails ? 'cursor-pointer hover:bg-neutral-100 dark:hover:bg-zinc-700' : 'cursor-default',
     expanded
       ? 'bg-neutral-100 dark:bg-zinc-700 text-brutal-black dark:text-white'
@@ -564,9 +567,15 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
         />
 
         {/* Action verb + argument detail (e.g. READ ToolCallBlock.tsx) */}
-        <span className="shrink-0">{summary.verb}</span>
+        {/* The verb can be a whole sentence for a described command, so it has
+            to be able to give ground — it used to be shrink-0 and by itself
+            overflowed the rail. The detail yields first (shrink-[3]) so the
+            action stays readable longest. */}
+        <span className="truncate min-w-0" title={summary.verb}>
+          {summary.verb}
+        </span>
         {summary.detail && (
-          <span className="truncate min-w-0 max-w-[320px] font-normal normal-case tracking-normal opacity-80">
+          <span className="truncate min-w-0 shrink-[3] max-w-[320px] font-normal normal-case tracking-normal opacity-80">
             {summary.detail}
           </span>
         )}
@@ -610,7 +619,7 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
             // pushing past the rail's hidden overflow and was cut off mid-word
             // with no way to read it. Let it give ground and ellipsise instead.
             title={decisionBadge.label}
-            className={`rounded-sm border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide min-w-0 max-w-[45%] truncate ${decisionBadge.className}`}
+            className={`rounded-sm border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide min-w-0 max-w-[40%] shrink-[2] truncate ${decisionBadge.className}`}
           >
             {decisionBadge.label}
           </span>

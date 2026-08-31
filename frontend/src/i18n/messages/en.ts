@@ -144,6 +144,7 @@ export const en = {
     steer: 'Redirect',
     steerFailed: 'Could not reach this sub-agent — it may have just finished.',
     steerQueued: 'Queued',
+    steerQueuedHint: 'applies after the current step',
     steerTaken: 'Picked up',
     working: 'Working...',
     contextForked: 'Context forked',

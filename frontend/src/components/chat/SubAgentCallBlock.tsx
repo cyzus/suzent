@@ -167,7 +167,7 @@ const SubAgentCallBlockComponent: React.FC<SubAgentCallBlockProps> = ({
   const activity = useSubAgentActivity(childChatId, isBlocking && isRunning);
 
   const headerClassName = [
-    'inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono font-bold uppercase tracking-wide rounded-sm cursor-pointer transition-colors select-none',
+    'inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono font-bold uppercase tracking-wide rounded-sm cursor-pointer transition-colors select-none max-w-full min-w-0',
     expanded
       ? 'bg-neutral-100 dark:bg-zinc-700 text-brutal-black dark:text-white'
       : 'bg-transparent text-neutral-500 dark:text-neutral-400 hover:text-brutal-black dark:hover:text-white',
@@ -229,23 +229,29 @@ const SubAgentCallBlockComponent: React.FC<SubAgentCallBlockProps> = ({
               </div>
             )}
 
-            {/* Tools whitelist */}
-            {toolsAllowed && toolsAllowed.length > 0 && (
-              <div className="min-w-0">
-                <div className="text-[10px] font-mono font-bold text-neutral-400 dark:text-neutral-500 uppercase tracking-wide mb-0.5">
-                  {t('subAgents.tools', { count: toolsAllowed.length })}
-                </div>
-                <div className="flex flex-wrap gap-1">
-                  {toolsAllowed.map((toolName) => (
-                    <span
-                      key={toolName}
-                      className="text-[10px] font-mono px-1.5 py-0.5 bg-neutral-100 dark:bg-zinc-700 text-neutral-600 dark:text-neutral-300 rounded-sm border border-neutral-200 dark:border-zinc-600"
-                      title={toolName}
-                    >
-                      {toolLabel(toolName)}
-                    </span>
-                  ))}
-                </div>
+            {/* Tools and id on one quiet line. They were two labelled
+                sections of their own, which gave setup detail the same weight
+                as the task and the result and pushed the outcome — the part
+                anyone actually opens this for — below the fold. */}
+            {((toolsAllowed && toolsAllowed.length > 0) || taskId) && (
+              <div className="flex flex-wrap items-center gap-1 min-w-0">
+                {toolsAllowed?.map((toolName) => (
+                  <span
+                    key={toolName}
+                    className="text-[10px] font-mono px-1.5 py-0.5 bg-neutral-100 dark:bg-zinc-700 text-neutral-500 dark:text-neutral-400 rounded-sm"
+                    title={toolName}
+                  >
+                    {toolLabel(toolName)}
+                  </span>
+                ))}
+                {taskId && (
+                  <span
+                    className="text-[10px] font-mono text-neutral-300 dark:text-neutral-600 ml-auto shrink-0"
+                    title={taskId}
+                  >
+                    {taskId}
+                  </span>
+                )}
               </div>
             )}
 
@@ -258,13 +264,6 @@ const SubAgentCallBlockComponent: React.FC<SubAgentCallBlockProps> = ({
                 has to be the card to be unambiguous when several run at once. */}
             {isBlocking && taskId && <SubAgentSteerBox taskId={taskId} canSend={isRunning} />}
 
-            {/* Task ID */}
-            {taskId && (
-              <div className="text-[10px] font-mono text-neutral-400 dark:text-neutral-500">
-                ID: <span className="text-neutral-600 dark:text-neutral-400">{taskId}</span>
-              </div>
-            )}
-
             {/* How the run ended: a result, or why it stopped. Only a genuine
                 failure is painted red — a stop is not an error. */}
             {!isRunning && outcomeText && (
@@ -276,7 +275,7 @@ const SubAgentCallBlockComponent: React.FC<SubAgentCallBlockProps> = ({
                 >
                   {subAgentOutcomeLabel(status, t)}
                 </div>
-                <div className="max-h-[120px] overflow-y-auto scrollbar-thin">
+                <div className="max-h-[320px] overflow-y-auto scrollbar-thin">
                   <pre
                     className={`subagent-result-pre text-[11px] leading-relaxed font-mono w-full ${
                       status === 'failed'

@@ -82,23 +82,40 @@ export const SubAgentSteerBox: React.FC<SubAgentSteerBoxProps> = ({ taskId, canS
       )}
       {error && <div className="mt-1 text-[10px] text-red-600 dark:text-red-400">{error}</div>}
       {/* Sent is not the same as heard: an injected message waits for the
-          child's next model request, often a whole tool call away. */}
+          child's next model request, which cannot happen until whatever tool
+          it is running returns. Showing only "queued" left people hunting for
+          a message that had in fact arrived, so say what each one is waiting
+          on, and keep the text readable rather than truncated to a stub. */}
       {sent.length > 0 && (
-        <div className="mt-1 space-y-0.5">
+        <div className="mt-1.5 space-y-1">
           {sent.map((steer) => (
-            <div key={steer.enqueueId} className="flex items-start gap-1.5 text-[10px] min-w-0">
+            <div key={steer.enqueueId} className="flex items-start gap-1.5 min-w-0">
               <span
-                className={`shrink-0 font-mono font-bold uppercase tracking-wide ${
+                className={`shrink-0 mt-[1px] font-mono text-[11px] leading-none ${
                   steer.absorbed
-                    ? 'text-neutral-400 dark:text-neutral-500'
+                    ? 'text-neutral-300 dark:text-neutral-600'
                     : 'text-brutal-black dark:text-white'
                 }`}
+                aria-hidden
               >
-                {steer.absorbed ? t('subAgents.steerTaken') : t('subAgents.steerQueued')}
+                &rarr;
               </span>
-              <span className="truncate min-w-0 text-neutral-500 dark:text-neutral-400">
-                {steer.text}
-              </span>
+              <div className="min-w-0 flex-1">
+                <div className="text-[11px] text-neutral-600 dark:text-neutral-300 break-words leading-snug">
+                  {steer.text}
+                </div>
+                <div
+                  className={`text-[9px] font-mono font-bold uppercase tracking-wide ${
+                    steer.absorbed
+                      ? 'text-neutral-400 dark:text-neutral-500'
+                      : 'text-neutral-500 dark:text-neutral-400'
+                  }`}
+                >
+                  {steer.absorbed
+                    ? t('subAgents.steerTaken')
+                    : `${t('subAgents.steerQueued')} \u00b7 ${t('subAgents.steerQueuedHint')}`}
+                </div>
+              </div>
             </div>
           ))}
         </div>
