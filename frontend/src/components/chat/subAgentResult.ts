@@ -36,15 +36,25 @@ export function parseSubAgentResult(output: string | undefined): SubAgentResultI
 
   if (trimmed.startsWith('{')) {
     try {
-      const metadata = JSON.parse(trimmed)?.metadata;
+      const envelope = JSON.parse(trimmed);
+      const metadata = envelope?.metadata;
       if (metadata && typeof metadata === 'object') {
         const status = metadata.status;
+        // A call that never spawned anything — an unknown subagent_type, an
+        // unrecognized tool list — comes back as a failure envelope with an
+        // empty metadata object. Reading metadata alone found no status, and
+        // the caller's fallback treats any output at all as success, so a
+        // rejected call rendered as DONE beside the ones that really ran.
+        // `metadata.status` still wins where it exists: a timed-out call
+        // deliberately reports 'running', because its sub-agent may well be.
+        const failed = envelope?.success === false;
+        const message = typeof envelope?.message === 'string' ? envelope.message : undefined;
         return {
           taskId: typeof metadata.task_id === 'string' ? metadata.task_id : undefined,
-          status: SUB_AGENT_STATUSES.has(status) ? status : undefined,
+          status: SUB_AGENT_STATUSES.has(status) ? status : failed ? 'failed' : undefined,
           resultSummary:
             typeof metadata.result_summary === 'string' ? metadata.result_summary : undefined,
-          error: typeof metadata.error === 'string' ? metadata.error : undefined,
+          error: typeof metadata.error === 'string' ? metadata.error : failed ? message : undefined,
           model: typeof metadata.model_override === 'string' ? metadata.model_override : undefined,
           subagentType:
             typeof metadata.subagent_type === 'string' ? metadata.subagent_type : undefined,

@@ -115,3 +115,61 @@ describe('parseSubAgentResult — agent identity', () => {
     });
   });
 });
+
+describe('a call that never spawned anything', () => {
+  it('reads a rejected spawn as failed, not done', () => {
+    // The caller treats any output as success, so without this an `agent` call
+    // rejected for a bad subagent_type rendered DONE beside the real ones.
+    const info = parseSubAgentResult(
+      JSON.stringify({
+        success: false,
+        message: "Unknown subagent_type 'general'. Available: explore, plan, verify, web, write",
+        error_code: 'invalid_argument',
+        metadata: {},
+      })
+    );
+
+    expect(info.status).toBe('failed');
+    expect(info.error).toContain("Unknown subagent_type 'general'");
+    expect(info.taskId).toBeUndefined();
+  });
+
+  it('carries the reason through for an unrecognized tool list', () => {
+    const info = parseSubAgentResult(
+      JSON.stringify({
+        success: false,
+        message: 'None of the provided tool names were recognized.',
+        metadata: { unrecognized_tools: ['NopeTool'] },
+      })
+    );
+
+    expect(info.status).toBe('failed');
+    expect(info.error).toBe('None of the provided tool names were recognized.');
+  });
+
+  it('leaves a timed-out call reporting running, since its child may still be', () => {
+    const info = parseSubAgentResult(
+      JSON.stringify({
+        success: false,
+        message: 'Tool execution timed out after 60s.',
+        metadata: { task_id: 'sub_abc123', status: 'running' },
+      })
+    );
+
+    expect(info.status).toBe('running');
+    expect(info.taskId).toBe('sub_abc123');
+  });
+
+  it('leaves a successful spawn alone', () => {
+    const info = parseSubAgentResult(
+      JSON.stringify({
+        success: true,
+        message: 'Sub-agent spawned (ID: sub_abc123).',
+        metadata: { task_id: 'sub_abc123', status: 'queued' },
+      })
+    );
+
+    expect(info.status).toBe('queued');
+    expect(info.error).toBeUndefined();
+  });
+});
