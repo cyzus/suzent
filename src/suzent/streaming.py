@@ -1854,7 +1854,18 @@ async def stream_agent_responses(
                     pass
 
         # Ensure memory is saved even on early termination (cancellation, tool error, etc.)
-        if getattr(deps, "last_messages", None) is None:
+        #
+        # `is None` was not enough: `process_turn` seeds `deps.last_messages`
+        # with the restored history before the run starts, so on this path it is
+        # never None and the branch never fired. A stopped turn then persisted
+        # the history it began with, throwing away everything the run had
+        # already checkpointed -- the user pressed stop and watched the whole
+        # turn disappear, tool calls included. `partial_history` tracks the last
+        # mid-run checkpoint, so prefer it whenever it is ahead. A run that
+        # finished normally has set `last_messages` to the full result, which is
+        # never shorter, so this cannot walk a completed turn backwards.
+        _persisted = getattr(deps, "last_messages", None)
+        if _persisted is None or len(partial_history or []) > len(_persisted):
             try:
                 agent._last_messages = partial_history
                 deps.last_messages = partial_history

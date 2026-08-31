@@ -82,6 +82,12 @@ class SubAgentTask:
     worktree_path: Optional[str] = None  # created worktree path (output)
     worktree_branch: Optional[str] = None  # created branch name (output)
     runner_task: Optional[asyncio.Task] = field(default=None, repr=False)
+    # The parent tool call that spawned this. A blocking call reports its task
+    # id only in the result it returns, so until it finishes the parent's card
+    # has no idea which child is its own -- which is exactly the run the user
+    # is sitting and watching. Carrying the call id on the spawn event lets the
+    # card match itself to the child from the first moment.
+    tool_call_id: Optional[str] = None
 
 
 # Global registry: task_id -> SubAgentTask
@@ -159,6 +165,7 @@ def _task_to_sse_dict(task: SubAgentTask) -> dict:
         "task_id": task.task_id,
         "parent_chat_id": task.parent_chat_id,
         "chat_id": task.chat_id,
+        "tool_call_id": task.tool_call_id,
         "description": task.description,
         "tools_allowed": task.tools_allowed,
         "status": task.status,
@@ -364,6 +371,7 @@ async def spawn_subagent(
         runtime=runtime,
         acp_agent_id=acp_agent_id,
         acp_session_id=acp_session_id,
+        tool_call_id=tool_call_id,
     )
 
     _record_spawn_for_tool_call(tool_call_id, task_id)
@@ -624,6 +632,7 @@ async def _run_subagent(
             "task_id": task.task_id,
             "parent_chat_id": task.parent_chat_id,
             "chat_id": task.chat_id,
+            "tool_call_id": task.tool_call_id,
             "description": task.description,
             "tools_allowed": task.tools_allowed,
             "model_override": task.model_override,

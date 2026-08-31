@@ -394,6 +394,7 @@ export const StaticContent: React.FC<{
                 description={args.description}
                 toolsAllowed={args.toolsAllowed}
                 runInBackground={args.runInBackground}
+                toolCallId={b.toolCallId}
                 status={taskState?.status ?? defaultStatus}
                 model={persisted.model}
                 subagentType={persisted.subagentType}

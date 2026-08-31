@@ -86,6 +86,8 @@ export interface CitationSourcesPayload {
 // ─── Sub-agent event payloads ──────────────────────────────────────────────
 
 export interface SubAgentSpawnedPayload {
+  /** Set for a blocking call, whose result cannot name the task until it ends. */
+  tool_call_id?: string | null;
   task_id: string;
   parent_chat_id: string;
   chat_id: string;

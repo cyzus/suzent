@@ -491,7 +491,7 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
             {/* Redirect this sub-agent. The panel is the only home a
                 background child has, so without this the endpoint reached
                 exactly the children whose parent was blocked on them. */}
-            {isRunning && task?.task_id && <SubAgentSteerBox taskId={task.task_id} />}
+            {task?.task_id && <SubAgentSteerBox taskId={task.task_id} canSend={isRunning} />}
 
             {/* Running indicator */}
             {isRunning && (

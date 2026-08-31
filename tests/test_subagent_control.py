@@ -189,3 +189,23 @@ def test_rebuild_is_unchanged_when_there_is_nothing_to_keep():
 
     assert _preserve_trailing_notices(rebuilt, []) == rebuilt
     assert _preserve_trailing_notices(rebuilt, None) == rebuilt
+
+
+# ─── a blocking call's card can find its child before the call returns ───────
+
+
+async def test_spawn_records_the_tool_call_that_made_it(isolated_tasks):
+    """A blocking call names its task only in the result it eventually returns,
+    so without this the parent's card cannot identify its own child for the
+    whole run the user is watching."""
+    task = _task("t1", "parent-1")
+    task.tool_call_id = "call-42"
+
+    assert subagent_runner._task_to_sse_dict(task)["tool_call_id"] == "call-42"
+
+
+async def test_sse_payload_tolerates_a_task_with_no_tool_call(isolated_tasks):
+    assert (
+        subagent_runner._task_to_sse_dict(_task("t1", "parent-1"))["tool_call_id"]
+        is None
+    )
