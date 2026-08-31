@@ -605,7 +605,12 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
         {isDenied && <span className="text-[10px] text-red-500 font-bold shrink-0">DENIED</span>}
         {!expanded && decisionBadge && (
           <span
-            className={`rounded-sm border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide shrink-0 ${decisionBadge.className}`}
+            // Not shrink-0 like the icon badges: this one carries a sentence
+            // ("Auto allowed · high confidence"), so on a narrow row it went on
+            // pushing past the rail's hidden overflow and was cut off mid-word
+            // with no way to read it. Let it give ground and ellipsise instead.
+            title={decisionBadge.label}
+            className={`rounded-sm border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide min-w-0 max-w-[45%] truncate ${decisionBadge.className}`}
           >
             {decisionBadge.label}
           </span>

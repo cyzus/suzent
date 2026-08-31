@@ -223,7 +223,7 @@ const SubAgentCallBlockComponent: React.FC<SubAgentCallBlockProps> = ({
                 <div className="text-[10px] font-mono font-bold text-neutral-400 dark:text-neutral-500 uppercase tracking-wide mb-0.5">
                   {t('subAgents.task')}
                 </div>
-                <div className="text-[11px] text-neutral-700 dark:text-neutral-300 leading-relaxed">
+                <div className="text-[11px] text-neutral-700 dark:text-neutral-300 leading-relaxed break-words">
                   {description}
                 </div>
               </div>
@@ -256,7 +256,7 @@ const SubAgentCallBlockComponent: React.FC<SubAgentCallBlockProps> = ({
             {/* Redirect this child in place. Steering the composer still goes
                 to the parent (which cancels a blocking child), so the target
                 has to be the card to be unambiguous when several run at once. */}
-            {isBlocking && isRunning && taskId && <SubAgentSteerBox taskId={taskId} />}
+            {isBlocking && taskId && <SubAgentSteerBox taskId={taskId} canSend={isRunning} />}
 
             {/* Task ID */}
             {taskId && (
@@ -278,7 +278,7 @@ const SubAgentCallBlockComponent: React.FC<SubAgentCallBlockProps> = ({
                 </div>
                 <div className="max-h-[120px] overflow-y-auto scrollbar-thin">
                   <pre
-                    className={`tool-call-pre text-[11px] leading-relaxed font-mono w-full whitespace-pre-wrap ${
+                    className={`subagent-result-pre text-[11px] leading-relaxed font-mono w-full ${
                       status === 'failed'
                         ? 'text-red-600 dark:text-red-400'
                         : 'text-neutral-600 dark:text-neutral-300'
