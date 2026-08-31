@@ -9,16 +9,17 @@ This module handles the lifecycle of AI agents including:
 
 import asyncio
 import os
-from typing import Optional, Dict, Any, List, Set
+from typing import Optional, Dict, Any, List, Set, cast
 
 from fastmcp.client.transports import StdioTransport
 from pydantic_ai import Agent
 from pydantic_ai.capabilities import ProcessHistory, ToolSearch
 from pydantic_ai.mcp import MCPToolset
+from pydantic_ai.settings import ModelSettings
 from pydantic_ai.tools import DeferredToolRequests
 
 from suzent.core.agent_deps import AgentDeps
-from suzent.core.model_factory import create_pydantic_ai_model
+from suzent.core.model_factory import build_thinking_settings, create_pydantic_ai_model
 from suzent.core.providers import get_enabled_models_from_db
 
 from suzent.config import CONFIG
@@ -265,6 +266,14 @@ def create_agent(
 
     model = create_pydantic_ai_model(model_id)
 
+    # --- Resolve thinking / reasoning effort ---
+    # Empty when the caller left it on "auto", which keeps each provider's own
+    # default (Gemini, for instance, already streams thought summaries). The
+    # provider prefix matters: self-hosted servers take a different switch.
+    thinking_settings = build_thinking_settings(
+        config.get("thinking"), model_id.partition("/")[0]
+    )
+
     # --- Build tool list ---
     tool_names = (config.get("tools") or CONFIG.default_tools).copy()
 
@@ -387,6 +396,9 @@ def create_agent(
         retries={"output": 3},
         end_strategy="early",
         capabilities=capabilities,
+        model_settings=cast(ModelSettings, thinking_settings)
+        if thinking_settings
+        else None,
     )
 
     register_dynamic_instructions(
@@ -432,6 +444,8 @@ def build_agent_config(
                 config["agent"] = prefs.agent
             if "tools" not in config and prefs.tools is not None:
                 config["tools"] = prefs.tools
+            if not config.get("thinking") and prefs.thinking:
+                config["thinking"] = prefs.thinking
     except Exception as e:
         logger.warning(f"Failed to load user preferences: {e}")
 

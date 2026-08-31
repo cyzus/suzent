@@ -111,3 +111,44 @@ def test_litellm_proxy_handler_uses_v2_chat_model(monkeypatch) -> None:
     )
 
     assert isinstance(model, OpenAIChatModel)
+
+
+def test_thinking_settings_default_to_the_model_default() -> None:
+    assert model_factory.build_thinking_settings(None) == {}
+    assert model_factory.build_thinking_settings("auto") == {}
+    assert model_factory.build_thinking_settings("  ") == {}
+
+
+def test_thinking_settings_apply_effort_and_shadow_gemini_native_config() -> None:
+    settings = model_factory.build_thinking_settings("high")
+
+    assert settings["thinking"] == "high"
+    # config/providers.json sets google_thinking_config for Gemini, and a native
+    # config outranks the unified setting unless it is blanked out.
+    assert settings["google_thinking_config"] == {}
+
+
+def test_thinking_settings_can_switch_thinking_off() -> None:
+    assert model_factory.build_thinking_settings("off")["thinking"] is False
+
+
+def test_unknown_thinking_value_falls_back_to_the_model_default() -> None:
+    assert model_factory.build_thinking_settings("turbo") == {}
+
+
+def test_local_server_thinking_uses_the_chat_template_switch() -> None:
+    # SGLang/vLLM models resolve to the plain OpenAI profile, so the unified
+    # setting alone is dropped and the served model keeps thinking.
+    off = model_factory.build_thinking_settings("off", "sglang")
+    assert off["extra_body"] == {"chat_template_kwargs": {"enable_thinking": False}}
+
+    on = model_factory.build_thinking_settings("high", "vllm")
+    assert on["extra_body"] == {"chat_template_kwargs": {"enable_thinking": True}}
+
+
+def test_hosted_providers_get_no_chat_template_switch() -> None:
+    assert "extra_body" not in model_factory.build_thinking_settings("off", "anthropic")
+
+
+def test_local_server_thinking_left_on_auto_sends_nothing() -> None:
+    assert model_factory.build_thinking_settings("auto", "sglang") == {}

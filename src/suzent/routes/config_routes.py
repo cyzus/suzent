@@ -183,6 +183,7 @@ async def get_config(request: Request) -> JSONResponse:
                 else user_prefs.tools
             ),
             "memory_enabled": user_prefs.memory_enabled,
+            "thinking": user_prefs.thinking,
             "sandbox_enabled": user_prefs.sandbox_enabled,
             "sandbox_volumes": user_prefs.sandbox_volumes,
             "embedding_model": embedding_model,
@@ -218,6 +219,7 @@ async def save_preferences(request: Request) -> JSONResponse:
         agent=data.get("agent"),
         tools=selected_tools,
         memory_enabled=data.get("memory_enabled"),
+        thinking=data.get("thinking"),
         sandbox_enabled=data.get("sandbox_enabled"),
         sandbox_volumes=data.get("sandbox_volumes"),
     )

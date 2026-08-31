@@ -25,6 +25,7 @@ class SettingsOperationsMixin:
             agent=prefs.get("agent"),
             tools=prefs.get("tools"),
             memory_enabled=bool(prefs.get("memory_enabled", False)),
+            thinking=prefs.get("thinking"),
             sandbox_enabled=bool(prefs.get("sandbox_enabled", True)),
             sandbox_volumes=prefs.get("sandbox_volumes"),
             updated_at=self._parse_config_datetime(prefs.get("updated_at")),
@@ -36,6 +37,7 @@ class SettingsOperationsMixin:
         agent: str = None,
         tools: List[str] = None,
         memory_enabled: bool = None,
+        thinking: str = None,
         sandbox_enabled: bool = None,
         sandbox_volumes: List[str] = None,
     ) -> bool:
@@ -48,6 +50,7 @@ class SettingsOperationsMixin:
                 "agent": agent,
                 "tools": tools,
                 "memory_enabled": memory_enabled,
+                "thinking": thinking,
                 "sandbox_enabled": sandbox_enabled,
                 "sandbox_volumes": sandbox_volumes,
             }

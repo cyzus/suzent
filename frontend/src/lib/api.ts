@@ -4,6 +4,7 @@ import {
   ChatGPTStatusResponse,
   ConfigOptions,
   PermissionMode,
+  ThinkingEffort,
 } from '../types/api';
 import type { PermissionPrompt } from '../types/agui';
 import socialExampleConfig from '../../../config/social.example.json';
@@ -923,6 +924,7 @@ export async function saveUserPreferences(preferences: {
   agent?: string;
   tools?: string[];
   memory_enabled?: boolean;
+  thinking?: ThinkingEffort;
   sandbox_enabled?: boolean;
   embedding_model?: string;
   extraction_model?: string;

@@ -458,3 +458,71 @@ def create_fallback_model(model_ids: list[str]) -> object:
     from pydantic_ai.models.fallback import FallbackModel
 
     return FallbackModel(*models)
+
+
+# ---------------------------------------------------------------------------
+# Thinking / reasoning effort
+# ---------------------------------------------------------------------------
+
+THINKING_EFFORTS: tuple[str, ...] = ("minimal", "low", "medium", "high", "xhigh")
+"""Effort levels accepted by pydantic-ai's unified ``thinking`` model setting."""
+
+
+def normalize_thinking(value: Any) -> str | bool | None:
+    """Normalize a stored thinking preference into a pydantic-ai thinking level.
+
+    Returns ``None`` when the model's own default should be left untouched,
+    ``False`` to switch thinking off, or one of :data:`THINKING_EFFORTS`.
+    """
+    if value is None or isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    if not text or text in {"auto", "default", "inherit"}:
+        return None
+    if text in {"off", "none", "false", "disabled", "0"}:
+        return False
+    if text in {"on", "true", "enabled", "1"}:
+        return True
+    if text in THINKING_EFFORTS:
+        return text
+    logger.warning(
+        "Unknown thinking preference {!r}; falling back to the model default", value
+    )
+    return None
+
+
+LOCAL_OPENAI_SERVER_PROVIDERS: frozenset[str] = frozenset({"vllm", "sglang"})
+"""Self-hosted OpenAI-compatible servers, which need the chat template switch."""
+
+
+def build_thinking_settings(
+    value: Any, provider_id: str | None = None
+) -> dict[str, Any]:
+    """Build ``ModelSettings`` kwargs that apply the requested thinking level.
+
+    pydantic-ai silently drops the unified ``thinking`` setting for models whose
+    profile does not support reasoning, so the result is safe to pass to any
+    provider.
+    """
+    level = normalize_thinking(value)
+    if level is None:
+        return {}
+    settings: dict[str, Any] = {
+        "thinking": level,
+        # A provider-native thinking config outranks the unified setting, and
+        # config/providers.json ships one for Gemini (``include_thoughts``).
+        # Blanking it lets the chosen effort reach the model; pydantic-ai
+        # re-enables thought summaries itself for every level above "off".
+        "google_thinking_config": {},
+    }
+    if provider_id in LOCAL_OPENAI_SERVER_PROVIDERS:
+        # A locally served model resolves to the plain OpenAI profile, which
+        # reports no thinking support, so the unified setting never leaves the
+        # process — the server keeps whatever its chat template defaults to
+        # (Qwen3 and friends: thinking on). vLLM and SGLang expose the real
+        # switch through the chat template instead. Templates that do not read
+        # `enable_thinking` simply ignore the extra kwarg.
+        settings["extra_body"] = {
+            "chat_template_kwargs": {"enable_thinking": level is not False}
+        }
+    return settings

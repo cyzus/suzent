@@ -216,6 +216,9 @@ class UserPreferencesModel(SQLModel):
     agent: Optional[str] = None
     tools: Optional[list] = Field(default=None, sa_column=Column(JSON))
     memory_enabled: bool = Field(default=False)
+    # "auto" (or None) leaves each model's own reasoning default alone; "off"
+    # disables thinking; otherwise one of model_factory.THINKING_EFFORTS.
+    thinking: Optional[str] = None
     sandbox_enabled: bool = Field(default=True)
     sandbox_volumes: Optional[list] = Field(default=None, sa_column=Column(JSON))
     updated_at: datetime = Field(serialization_alias="updatedAt")
