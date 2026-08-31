@@ -53,6 +53,7 @@ export interface ChatConfig {
   mcp_urls?: string[] | Record<string, string>;
   mcp_enabled?: Record<string, boolean>;
   memory_enabled?: boolean;
+  thinking?: ThinkingEffort;
   sandbox_enabled?: boolean;
   sandbox_volumes?: string[];
   tool_approval_policy?: Record<string, string>;
@@ -77,6 +78,20 @@ export type PermissionMode = 'default' | 'auto' | 'full_access';
 
 export function normalizePermissionMode(value: unknown): PermissionMode {
   return value === 'auto' || value === 'full_access' ? value : 'default';
+}
+
+/**
+ * How hard the model should think before answering. 'auto' keeps whatever the
+ * model does by default; the backend maps the rest onto pydantic-ai's unified
+ * `thinking` setting and silently ignores it on models without reasoning.
+ */
+export type ThinkingEffort = 'auto' | 'off' | 'low' | 'medium' | 'high' | 'xhigh';
+
+/** Ordered low-to-high; 'auto' leads as the "no opinion" end of the ramp. */
+export const THINKING_EFFORTS: ThinkingEffort[] = ['auto', 'off', 'low', 'medium', 'high', 'xhigh'];
+
+export function normalizeThinkingEffort(value: unknown): ThinkingEffort {
+  return THINKING_EFFORTS.includes(value as ThinkingEffort) ? (value as ThinkingEffort) : 'auto';
 }
 
 export interface Chat {
@@ -193,6 +208,7 @@ export interface ConfigOptions {
     agent: string;
     tools: string[];
     memory_enabled: boolean;
+    thinking?: ThinkingEffort;
     sandbox_enabled?: boolean;
     sandbox_volumes?: string[];
     embedding_model?: string;

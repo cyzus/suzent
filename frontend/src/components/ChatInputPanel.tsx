@@ -5,7 +5,9 @@ import {
   ConfigOptions,
   ChatConfig,
   normalizePermissionMode,
+  normalizeThinkingEffort,
   type PermissionMode,
+  type ThinkingEffort,
 } from '../types/api';
 import { open } from '@tauri-apps/plugin-dialog';
 import { FileIcon } from './FileIcon';
@@ -16,6 +18,7 @@ import { useSlashCommands } from '../hooks/useSlashCommands';
 import { getApiBase, setChatPermissionMode, setDefaultPermissionMode } from '../lib/api';
 import { buildMountedVolumes } from '../lib/volumeMounts';
 import { MentionTextArea, type MentionTextAreaHandle } from './chat/MentionTextArea';
+import { ThinkingSlider } from './chat/ThinkingSlider';
 import { useAcpAgents } from '../hooks/useAcpAgents';
 import { buildEngineOptions, engineValue, parseEngineValue } from '../lib/engineOptions';
 
@@ -62,6 +65,10 @@ interface FileMentionSuggestion extends FileMentionSelection {
 const INPUT_TEXT_METRIC_CLASS =
   'text-lg leading-7 tracking-normal font-sans font-medium [tab-size:4]';
 const PERMISSION_MODES: PermissionMode[] = ['default', 'auto', 'full_access'];
+
+/** Shared look for the muted selects under the composer. */
+const FOOTER_SELECT_BUTTON_CLASS =
+  '!h-6 !w-auto !gap-1.5 !border-0 !bg-transparent dark:!bg-transparent !px-0 !py-0 !font-sans !text-xs !font-medium !normal-case !tracking-normal !text-neutral-600 dark:!text-neutral-400 !shadow-none !translate-x-0 !translate-y-0 hover:!bg-transparent hover:!text-brutal-black dark:hover:!bg-transparent dark:hover:!text-white';
 
 function getFileExtensionLabel(filename: string): string {
   const ext = filename.split('.').pop()?.trim().toUpperCase();
@@ -147,6 +154,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
   const mentionActive = mentionQuery !== null;
   const suggestions = useSlashCommands(input);
   const permissionMode = normalizePermissionMode(config.permission_mode);
+  const thinkingEffort = normalizeThinkingEffort(config.thinking);
   const isAcpRuntime = config.runtime === 'acp' || Boolean(config.acp_agent_id);
   const acpAgents = useAcpAgents();
 
@@ -238,6 +246,16 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
       }
     },
     [currentChatId, isSavingPermissionMode, permissionMode, setConfig]
+  );
+
+  const changeThinkingEffort = React.useCallback(
+    (next: ThinkingEffort) => {
+      if (next === thinkingEffort) return;
+      // The chat store persists the chat config and mirrors it into the user
+      // preferences, so the choice also becomes the default for new chats.
+      setConfig((prev) => ({ ...prev, thinking: next }));
+    },
+    [setConfig, thinkingEffort]
   );
 
   const changePermissionMode = React.useCallback(
@@ -752,24 +770,36 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
         </div>
       </form>
 
-      <div
-        className="flex items-center px-1"
-        title={t(`chatWindow.permissionModeDescriptions.${permissionMode}`)}
-      >
-        <BrutalSelect
-          value={permissionMode}
-          onChange={(value) => changePermissionMode(value as PermissionMode)}
-          options={PERMISSION_MODES.map((option) => ({
-            value: option,
-            label: t(`chatWindow.permissionModeInputLabels.${option}`),
-          }))}
-          dropUp={true}
-          hideChevron={true}
-          disabled={!configReady || streamingForCurrentChat || isSavingPermissionMode}
-          className="inline-block w-auto"
-          buttonClassName="!h-6 !w-auto !gap-1.5 !border-0 !bg-transparent dark:!bg-transparent !px-0 !py-0 !font-sans !text-xs !font-medium !normal-case !tracking-normal !text-neutral-600 dark:!text-neutral-400 !shadow-none !translate-x-0 !translate-y-0 hover:!bg-transparent hover:!text-brutal-black dark:hover:!bg-transparent dark:hover:!text-white"
-          dropdownClassName="min-w-[220px] font-mono text-[10px]"
-        />
+      {/* Permission mode stays on the left; the thinking slider is pushed right so
+          it sits directly under the model picker it applies to. */}
+      <div className="flex items-center justify-between gap-4 px-1">
+        <div title={t(`chatWindow.permissionModeDescriptions.${permissionMode}`)}>
+          <BrutalSelect
+            value={permissionMode}
+            onChange={(value) => changePermissionMode(value as PermissionMode)}
+            options={PERMISSION_MODES.map((option) => ({
+              value: option,
+              label: t(`chatWindow.permissionModeInputLabels.${option}`),
+            }))}
+            dropUp={true}
+            hideChevron={true}
+            disabled={!configReady || streamingForCurrentChat || isSavingPermissionMode}
+            className="inline-block w-auto"
+            buttonClassName={FOOTER_SELECT_BUTTON_CLASS}
+            dropdownClassName="min-w-[220px] font-mono text-[10px]"
+          />
+        </div>
+
+        {/* Reasoning effort. Only the native runtime owns model settings — an
+            ACP agent picks its own. Models that cannot think ignore the setting,
+            so it stays selectable rather than guessing which model reasons. */}
+        {!isAcpRuntime && (
+          <ThinkingSlider
+            value={thinkingEffort}
+            onChange={changeThinkingEffort}
+            disabled={!configReady || streamingForCurrentChat}
+          />
+        )}
       </div>
 
       <BrutalDialog

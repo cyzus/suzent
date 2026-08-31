@@ -9,12 +9,14 @@ import React, {
 } from 'react';
 import {
   normalizePermissionMode,
+  normalizeThinkingEffort,
   type Message,
   type ChatConfig,
   type ConfigOptions,
   type Chat,
   type ChatSummary,
   type ChatKindCounts,
+  type ThinkingEffort,
 } from '../types/api';
 import { getApiBase } from '../lib/api';
 import { stripDenyApprovalPolicies } from '../lib/approvalPolicy';
@@ -183,6 +185,7 @@ const buildConfigFromPreferences = (
   agent: prefs?.agent || backendDefaults.agents[0] || '',
   tools: prefs?.tools || backendDefaults.defaultTools || [],
   memory_enabled: prefs?.memory_enabled,
+  thinking: normalizeThinkingEffort(prefs?.thinking),
   sandbox_enabled: prefs?.sandbox_enabled ?? backendDefaults.sandboxEnabled ?? true,
   sandbox_volumes: prefs?.sandbox_volumes || [],
   permission_mode: backendDefaults.defaultPermissionMode ?? 'default',
@@ -202,6 +205,7 @@ const hydrateChatConfig = (
     agent: savedConfig.agent || fallbackConfig.agent,
     tools: savedConfig.tools ?? fallbackConfig.tools,
     memory_enabled: savedConfig.memory_enabled ?? fallbackConfig.memory_enabled,
+    thinking: normalizeThinkingEffort(savedConfig.thinking ?? fallbackConfig.thinking),
     sandbox_enabled: savedConfig.sandbox_enabled ?? fallbackConfig.sandbox_enabled,
     sandbox_volumes: savedConfig.sandbox_volumes ?? fallbackConfig.sandbox_volumes,
     permission_mode: normalizePermissionMode(
@@ -218,6 +222,7 @@ const extractSavedPreferences = (prefs: ConfigOptions['userPreferences']) => ({
   agent: prefs?.agent ?? '',
   tools: prefs?.tools ?? [],
   memory_enabled: prefs?.memory_enabled,
+  thinking: normalizeThinkingEffort(prefs?.thinking),
   sandbox_enabled: prefs?.sandbox_enabled,
   sandbox_volumes: prefs?.sandbox_volumes ?? [],
 });
@@ -283,6 +288,7 @@ const configsEqual = (a?: ChatConfig | null, b?: ChatConfig | null): boolean => 
     a.sandbox_enabled === b.sandbox_enabled &&
     arrayEqual(a.sandbox_volumes, b.sandbox_volumes) &&
     a.memory_enabled === b.memory_enabled &&
+    a.thinking === b.thinking &&
     a.permission_mode === b.permission_mode &&
     recordEqual(a.mcp_enabled, b.mcp_enabled) &&
     recordEqual(a.tool_approval_policy, b.tool_approval_policy) &&
@@ -304,6 +310,7 @@ interface SavedPreferences {
   agent?: string;
   tools?: string[];
   memory_enabled?: boolean;
+  thinking?: ThinkingEffort;
   sandbox_enabled?: boolean;
   sandbox_volumes?: string[];
 }
@@ -316,6 +323,7 @@ const preferencesEqual = (a: SavedPreferences | null, b: SavedPreferences | null
     a.agent === b.agent &&
     arraysEqual(a.tools, b.tools) &&
     a.memory_enabled === b.memory_enabled &&
+    a.thinking === b.thinking &&
     a.sandbox_enabled === b.sandbox_enabled &&
     arraysEqual(a.sandbox_volumes, b.sandbox_volumes)
   );
@@ -937,6 +945,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
           agent: resolved.agent,
           tools: resolved.tools,
           memory_enabled: resolved.memory_enabled,
+          thinking: resolved.thinking,
           sandbox_enabled: resolved.sandbox_enabled,
           sandbox_volumes: resolved.sandbox_volumes,
         };
