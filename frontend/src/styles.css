@@ -369,6 +369,19 @@ code {
   overflow-x: hidden !important;
 }
 
+/*
+ * A sub-agent's result is prose it wrote for its parent, not a shell blob, so
+ * `tool-call-pre`'s break-all shredded ordinary words mid-syllable ("...su /
+ * ccessfully"). Break at word boundaries, and inside a token only when one is
+ * genuinely too long to fit -- a path, a URL, a hash.
+ */
+.subagent-result-pre {
+  white-space: pre-wrap;
+  word-break: normal;
+  overflow-wrap: anywhere;
+  overflow-x: hidden;
+}
+
 .tool-result-markdown .prose {
   font-size: inherit;
   line-height: inherit;

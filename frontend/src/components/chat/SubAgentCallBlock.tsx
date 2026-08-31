@@ -6,7 +6,7 @@
  * right. Live state comes off the shared sub-agent EventSource, with a poll as
  * a fallback for when the parent stream ended before the child did.
  */
-import React, { useCallback, useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useI18n } from '../../i18n';
 import { toolLabel } from './toolSummary';
 import { AgentAvatar } from '../sidebar/subAgentDisplay';
@@ -21,11 +21,14 @@ import {
 } from './subAgentStatus';
 import { DisclosureChevron } from '../DisclosureChevron';
 import { SubAgentSteerBox } from './SubAgentSteerBox';
+import { SubAgentActivityFeed } from './SubAgentActivityFeed';
 
 export type { SubAgentStatus } from './subAgentStatus';
 
 interface SubAgentCallBlockProps {
   taskId?: string;
+  /** The tool call this card renders, used to find its child before it ends. */
+  toolCallId?: string;
   description?: string;
   toolsAllowed?: string[];
   status: SubAgentStatus;
@@ -100,7 +103,8 @@ function headline(description: string | undefined, fallback: string): string {
 }
 
 const SubAgentCallBlockComponent: React.FC<SubAgentCallBlockProps> = ({
-  taskId,
+  taskId: taskIdFromResult,
+  toolCallId,
   description,
   toolsAllowed,
   status: externalStatus,
@@ -120,6 +124,15 @@ const SubAgentCallBlockComponent: React.FC<SubAgentCallBlockProps> = ({
   // finished run back to 'running'. This block used to run its own 3s poll and
   // reconcile it against the stream itself, which meant N blocks made N
   // requests and each stopped covering its task the moment it unmounted.
+  // A blocking call reports its task id only in the result it returns, so for
+  // the whole run the user actually watches, the card would have no idea which
+  // child is its own. The spawn event carries the tool call id, so match on
+  // that until the result arrives with the id itself.
+  const spawnedTask = useMemo(() => {
+    if (taskIdFromResult || !toolCallId) return undefined;
+    return Object.values(taskStates).find((task) => task.tool_call_id === toolCallId);
+  }, [taskIdFromResult, toolCallId, taskStates]);
+  const taskId = taskIdFromResult ?? spawnedTask?.task_id;
   const streamTask = taskId ? taskStates[taskId] : undefined;
   const status = streamTask?.status ?? externalStatus;
   const model = streamTask?.model_override ?? externalModel;
@@ -154,7 +167,7 @@ const SubAgentCallBlockComponent: React.FC<SubAgentCallBlockProps> = ({
   const activity = useSubAgentActivity(childChatId, isBlocking && isRunning);
 
   const headerClassName = [
-    'inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono font-bold uppercase tracking-wide rounded-sm cursor-pointer transition-colors select-none',
+    'inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono font-bold uppercase tracking-wide rounded-sm cursor-pointer transition-colors select-none max-w-full min-w-0',
     expanded
       ? 'bg-neutral-100 dark:bg-zinc-700 text-brutal-black dark:text-white'
       : 'bg-transparent text-neutral-500 dark:text-neutral-400 hover:text-brutal-black dark:hover:text-white',
@@ -210,78 +223,46 @@ const SubAgentCallBlockComponent: React.FC<SubAgentCallBlockProps> = ({
                 <div className="text-[10px] font-mono font-bold text-neutral-400 dark:text-neutral-500 uppercase tracking-wide mb-0.5">
                   {t('subAgents.task')}
                 </div>
-                <div className="text-[11px] text-neutral-700 dark:text-neutral-300 leading-relaxed">
+                <div className="text-[11px] text-neutral-700 dark:text-neutral-300 leading-relaxed break-words">
                   {description}
                 </div>
               </div>
             )}
 
-            {/* Tools whitelist */}
-            {toolsAllowed && toolsAllowed.length > 0 && (
-              <div className="min-w-0">
-                <div className="text-[10px] font-mono font-bold text-neutral-400 dark:text-neutral-500 uppercase tracking-wide mb-0.5">
-                  {t('subAgents.tools', { count: toolsAllowed.length })}
-                </div>
-                <div className="flex flex-wrap gap-1">
-                  {toolsAllowed.map((toolName) => (
-                    <span
-                      key={toolName}
-                      className="text-[10px] font-mono px-1.5 py-0.5 bg-neutral-100 dark:bg-zinc-700 text-neutral-600 dark:text-neutral-300 rounded-sm border border-neutral-200 dark:border-zinc-600"
-                      title={toolName}
-                    >
-                      {toolLabel(toolName)}
-                    </span>
-                  ))}
-                </div>
+            {/* Tools and id on one quiet line. They were two labelled
+                sections of their own, which gave setup detail the same weight
+                as the task and the result and pushed the outcome — the part
+                anyone actually opens this for — below the fold. */}
+            {((toolsAllowed && toolsAllowed.length > 0) || taskId) && (
+              <div className="flex flex-wrap items-center gap-1 min-w-0">
+                {toolsAllowed?.map((toolName) => (
+                  <span
+                    key={toolName}
+                    className="text-[10px] font-mono px-1.5 py-0.5 bg-neutral-100 dark:bg-zinc-700 text-neutral-500 dark:text-neutral-400 rounded-sm"
+                    title={toolName}
+                  >
+                    {toolLabel(toolName)}
+                  </span>
+                ))}
+                {taskId && (
+                  <span
+                    className="text-[10px] font-mono text-neutral-300 dark:text-neutral-600 ml-auto shrink-0"
+                    title={taskId}
+                  >
+                    {taskId}
+                  </span>
+                )}
               </div>
             )}
 
             {/* What it is doing right now — blocking calls only, and only
                 while the run is live. The sidebar keeps the full log. */}
-            {isBlocking && isRunning && activity.length > 0 && (
-              <div className="min-w-0">
-                <div className="text-[10px] font-mono font-bold text-neutral-400 dark:text-neutral-500 uppercase tracking-wide mb-0.5">
-                  {t('subAgents.activity')}
-                </div>
-                <div className="space-y-0.5">
-                  {activity.map((entry) => (
-                    <div
-                      key={entry.toolCallId}
-                      className="flex items-center gap-1.5 text-[11px] font-mono min-w-0"
-                    >
-                      <span
-                        className={`shrink-0 w-1.5 h-1.5 rounded-full ${
-                          entry.done
-                            ? 'bg-neutral-300 dark:bg-zinc-600'
-                            : 'bg-brutal-black dark:bg-white animate-pulse'
-                        }`}
-                      />
-                      <span
-                        className={`truncate min-w-0 ${
-                          entry.done
-                            ? 'text-neutral-400 dark:text-neutral-500'
-                            : 'text-neutral-700 dark:text-neutral-200'
-                        }`}
-                      >
-                        {toolLabel(entry.toolName)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            {isBlocking && isRunning && <SubAgentActivityFeed activity={activity} />}
 
             {/* Redirect this child in place. Steering the composer still goes
                 to the parent (which cancels a blocking child), so the target
                 has to be the card to be unambiguous when several run at once. */}
-            {isBlocking && isRunning && taskId && <SubAgentSteerBox taskId={taskId} />}
-
-            {/* Task ID */}
-            {taskId && (
-              <div className="text-[10px] font-mono text-neutral-400 dark:text-neutral-500">
-                ID: <span className="text-neutral-600 dark:text-neutral-400">{taskId}</span>
-              </div>
-            )}
+            {isBlocking && taskId && <SubAgentSteerBox taskId={taskId} canSend={isRunning} />}
 
             {/* How the run ended: a result, or why it stopped. Only a genuine
                 failure is painted red — a stop is not an error. */}
@@ -294,9 +275,9 @@ const SubAgentCallBlockComponent: React.FC<SubAgentCallBlockProps> = ({
                 >
                   {subAgentOutcomeLabel(status, t)}
                 </div>
-                <div className="max-h-[120px] overflow-y-auto scrollbar-thin">
+                <div className="max-h-[320px] overflow-y-auto scrollbar-thin">
                   <pre
-                    className={`tool-call-pre text-[11px] leading-relaxed font-mono w-full whitespace-pre-wrap ${
+                    className={`subagent-result-pre text-[11px] leading-relaxed font-mono w-full ${
                       status === 'failed'
                         ? 'text-red-600 dark:text-red-400'
                         : 'text-neutral-600 dark:text-neutral-300'
