@@ -19,7 +19,7 @@ const STYLE = `
   --ts-ink: #18181b;
   --ts-paper: #fff;
   --ts-muted: #a1a1aa;
-  --ts-sheen: #fff;
+  --ts-sheen: 255, 255, 255;
   --ts-glow: 24, 24, 27;
   display: inline-flex;
   height: 24px;
@@ -30,7 +30,7 @@ const STYLE = `
   --ts-ink: #f4f4f5;
   --ts-paper: #18181b;
   --ts-muted: #71717a;
-  --ts-sheen: #27272a;
+  --ts-sheen: 39, 39, 42;
   --ts-glow: 244, 244, 245;
   color: #a1a1aa;
 }
@@ -144,42 +144,65 @@ const STYLE = `
   flex: none;
   background: transparent;
   border: 1px solid var(--ts-muted);
+  position: relative;
   transition: background-color 100ms ease, border-color 100ms ease;
 }
 .suzent-ts__bar[data-on='true'] { background: var(--ts-ink); border-color: var(--ts-ink); }
 .suzent-ts__meter:hover .suzent-ts__bar:not([data-on='true']) { border-color: var(--ts-ink); }
 
-/* Four windows onto one shared 69px surface. The surface eases back and forth,
-   so X-High never snaps from the end of a scan to its starting frame. */
+/* X-High: one slow, heavy surge.
+   Speed is the wrong signal here — X-High makes answers *slower*, so a racing
+   streak tells the opposite story. This reads as mass instead: a crest wide
+   enough (72px of plateau over a 69px strip) to flood all four bars at once,
+   crossing on a 3.4s ease-in-out so it accelerates and settles like something
+   with weight, while the bloom swells with it. The bars stay lit ink
+   underneath, so the trough is the High look with a held glow, never empty.
+   The four bars share one coordinate space: each offsets the same background
+   by its own 18px pitch (15px bar + 3px gap), so the crest crosses all four
+   as a single body of light.
+   The crest tops out at 78% sheen rather than solid: a full inversion to paper
+   white flashes, and a flash reads as a glitch, not as power. */
 .suzent-ts[data-level='xhigh'] .suzent-ts__bar[data-on='true'] {
+  overflow: hidden;
+  animation: suzentTSPressure 3.4s ease-in-out infinite;
+}
+
+.suzent-ts[data-level='xhigh'] .suzent-ts__bar[data-on='true']::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: calc(var(--ts-i) * -18px);
+  width: 69px;
+  height: 100%;
   background-image: linear-gradient(
     90deg,
-    var(--ts-ink) 0 28%,
-    var(--ts-sheen) 41% 49%,
-    var(--ts-ink) 62% 100%
+    rgba(var(--ts-sheen), 0) 0%,
+    rgba(var(--ts-sheen), .78) 30%,
+    rgba(var(--ts-sheen), .78) 70%,
+    rgba(var(--ts-sheen), 0) 100%
   );
-  background-size: 138px 100%;
   background-repeat: no-repeat;
-  animation:
-    suzentTSCharge 1.15s ease-in-out infinite alternate,
-    suzentTSBloom 1.15s ease-in-out infinite alternate;
+  background-size: 240px 100%;
+  animation: suzentTSSurge 3.4s ease-in-out infinite;
 }
-@keyframes suzentTSCharge {
-  from { background-position-x: calc(69px - var(--ts-i) * 18px); }
-  to { background-position-x: calc(-69px - var(--ts-i) * 18px); }
+
+/* Both ends park the crest clear of the strip, where its alpha is already 0,
+   so the restart has nothing to snap. */
+@keyframes suzentTSSurge {
+  from { background-position-x: -240px; }
+  to { background-position-x: 69px; }
 }
-@keyframes suzentTSBloom {
-  from { box-shadow: 0 0 0 rgba(var(--ts-glow), 0); }
-  to { box-shadow: 0 0 4px rgba(var(--ts-glow), .42); }
+@keyframes suzentTSPressure {
+  0%, 100% { box-shadow: 0 0 3px rgba(var(--ts-glow), .26); }
+  50% { box-shadow: 0 0 8px rgba(var(--ts-glow), .62); }
 }
 @media (prefers-reduced-motion: reduce) {
   .suzent-ts__summary,
   .suzent-ts__reveal,
   .suzent-ts__manual { transition: none; }
-  .suzent-ts[data-level='xhigh'] .suzent-ts__bar[data-on='true'] {
-    animation: none;
-    box-shadow: none;
-  }
+  /* The ramp still reads without the river: the bars are lit ink underneath. */
+  .suzent-ts[data-level='xhigh'] .suzent-ts__bar[data-on='true'] { animation: none; }
+  .suzent-ts[data-level='xhigh'] .suzent-ts__bar[data-on='true']::after { content: none; }
 }
 `;
 

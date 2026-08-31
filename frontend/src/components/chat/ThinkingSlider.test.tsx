@@ -54,9 +54,9 @@ describe('ThinkingSlider', () => {
     const disabledMarkup = render('low', true);
 
     expect(disabledMarkup).toContain('data-disabled="true"');
-    expect(disabledMarkup).toContain(
-      'class="suzent-ts__trigger" aria-label="Thinking: Manual · Low"'
-    );
+    // The accessible name mirrors the visible summary, which drops the mode
+    // word once a rung is picked ("Thinking: Low", not "Thinking: Manual · Low").
+    expect(disabledMarkup).toContain('class="suzent-ts__trigger" aria-label="Thinking: Low"');
     expect(disabledMarkup).toContain('aria-expanded="false" disabled=""');
     expect(render('low')).toContain('class="suzent-ts__meter" role="slider" tabindex="-1"');
   });
