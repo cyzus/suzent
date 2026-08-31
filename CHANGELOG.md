@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v0.12.0] - 2026-08-31
 
 ### 🚀 Added
+- Add thinking effort feature with UI slider and backend support
 - Make the live feed say what the child is actually doing
 - Redirect from wherever a sub-agent is shown
 - Surface what stop killed, and whether a redirect landed
