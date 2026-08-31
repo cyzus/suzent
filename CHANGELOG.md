@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Keep draft writes off the token loop and out of the index
 
 ### 🐛 Fixed
+- Update aria-label for accessibility and adjust sheen colors
 - Simplify summary label logic for manual mode
 - Stop the permission badge from jumping on expand
 - Stop a rejected spawn from rendering as done
