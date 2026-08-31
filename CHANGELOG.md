@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Keep draft writes off the token loop and out of the index
 
 ### 🐛 Fixed
+- Stop a rejected spawn from rendering as done
 - Bound the tool row, rebalance the card, explain a queued redirect
 - Keep sent redirects, and stop clipping long rows
 - Handle replayed tool args and start-less reasoning
