@@ -288,6 +288,8 @@ interface Built {
   /** Resolved headline text, e.g. "Search the web". */
   verb: string;
   detail?: string | null;
+  /** Detail for the hover tooltip only, when it is too noisy for the row. */
+  titleDetail?: string | null;
 }
 
 type Builder = (args: Args, t: TranslateFn) => Built;
@@ -302,14 +304,22 @@ function verb(t: TranslateFn, key: string, params?: Record<string, unknown>): st
 /**
  * Shell tools carry a model-written description ("Build the app"). That reads
  * far better as the headline than the command line does, so it takes the verb
- * slot and the command itself becomes the supporting detail.
+ * slot -- and once it does, the command line beside it is pure noise: half a
+ * `ssh host 'a; b; c'` one-liner, ellipsised, crowding out the row's badges,
+ * while the whole thing sits verbatim in the arguments panel a click away. So
+ * it drops to the tooltip. Without a description the command is the only
+ * identity the row has, and stays.
  */
 function shellSummary(args: Args, t: TranslateFn, key: 'run' | 'start'): Built {
   const description = str(args.description);
   const command = firstOf(args, ['content', 'command', 'cmd']);
   const commandLine = command ? firstCommandLine(command) : null;
   if (description) {
-    return { verb: truncate(compact(description), VERB_MAX), detail: commandLine };
+    return {
+      verb: truncate(compact(description), VERB_MAX),
+      detail: null,
+      titleDetail: commandLine,
+    };
   }
   return { verb: verb(t, key), detail: commandLine };
 }
@@ -496,6 +506,7 @@ export function getToolSummary(
 
   let headline: string;
   let rawDetail: string | null;
+  let tooltipDetail: string | null = null;
 
   // A failure wraps the proposal form — "Run npm test" → "Failed to run npm
   // test" — rather than owning a fourth set of verbs. One frame says the same
@@ -506,6 +517,7 @@ export function getToolSummary(
     const summary = builder(args, withTense(t, built));
     headline = summary.verb;
     rawDetail = summary.detail ? compact(summary.detail) : null;
+    tooltipDetail = summary.titleDetail ? compact(summary.titleDetail) : null;
   } else {
     headline = frameToolName(humanizeToolName(toolName), built, t);
     const generic = firstOf(args, GENERIC_DETAIL_KEYS);
@@ -514,10 +526,11 @@ export function getToolSummary(
 
   if (tense === 'failed') headline = t('toolSummary.failed', { verb: lowerFirst(headline) });
 
+  const titleDetail = rawDetail ?? tooltipDetail;
   return {
     verb: headline,
     detail: rawDetail ? truncate(rawDetail) : null,
-    title: rawDetail ? `${headline} — ${rawDetail}` : headline,
+    title: titleDetail ? `${headline} — ${titleDetail}` : headline,
   };
 }
 

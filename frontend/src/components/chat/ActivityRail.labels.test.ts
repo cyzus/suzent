@@ -28,7 +28,7 @@ describe('formatActivityToolName', () => {
         'run_command',
         JSON.stringify({ content: 'npm test', description: 'Run the tests' })
       )
-    ).toBe('Run the tests npm test');
+    ).toBe('Run the tests');
   });
 
   it('falls back to the tool name while args are still streaming', () => {

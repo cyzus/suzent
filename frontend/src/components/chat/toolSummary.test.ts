@@ -50,10 +50,19 @@ describe('getToolSummary', () => {
 
   it('promotes the model-written description to the headline for shell calls', () => {
     expect(line('run_command', { content: 'npm run build', description: 'Build the app' })).toBe(
-      'Build the app npm run build'
+      'Build the app'
     );
     expect(line('run_command', { content: 'npm run build' })).toBe('Run npm run build');
     expect(line('start_command', { content: 'npm run dev' })).toBe('Start npm run dev');
+  });
+
+  it('keeps a described shell command in the tooltip, not the row', () => {
+    const summary = summarize('run_command', {
+      content: "ssh host 'echo one; echo two'",
+      description: 'Inspect the host',
+    });
+    expect(summary.detail).toBeNull();
+    expect(summary.title).toBe("Inspect the host — ssh host 'echo one; echo two'");
   });
 
   it('marks multi-line shell commands as truncated', () => {
@@ -90,7 +99,7 @@ describe('getToolSummary', () => {
   it('truncates an over-long description so it stays a headline', () => {
     const summary = summarize('run_command', { description: 'B'.repeat(120), content: 'ls' });
     expect(summary.verb).toHaveLength(44);
-    expect(summary.detail).toBe('ls');
+    expect(summary.detail).toBeNull();
   });
 
   it('collapses whitespace so a pill stays on one line', () => {
@@ -106,7 +115,7 @@ describe('getToolSummary', () => {
 
   it('handles ACP and MCP tool names', () => {
     expect(line('Read', { file_path: 'src/main.py' })).toBe('Read main.py');
-    expect(line('Bash', { command: 'ls', description: 'List files' })).toBe('List files ls');
+    expect(line('Bash', { command: 'ls', description: 'List files' })).toBe('List files');
     expect(line('mcp__github__create_issue', { title: 'Broken pill' })).toBe(
       'Call create issue Broken pill'
     );

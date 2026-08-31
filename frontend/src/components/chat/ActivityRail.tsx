@@ -187,7 +187,9 @@ export function formatActivityToolName(
   if (!parsed) return fallback;
   // The surrounding rail copy is English-only, so resolve verbs against `en`.
   const summary = getToolSummary(toolName, parsed, railT, tense);
-  return summary.detail ? `${summary.verb} ${summary.detail}` : fallback;
+  // A summary with no detail still has a real verb -- a described shell call is
+  // all headline ("Run the tests") -- so only unparsed args fall back.
+  return summary.detail ? `${summary.verb} ${summary.detail}` : summary.verb;
 }
 
 const REPEAT_LABEL_THRESHOLD = 3;
