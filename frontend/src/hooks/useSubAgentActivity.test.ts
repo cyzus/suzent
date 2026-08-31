@@ -127,3 +127,56 @@ describe('phase between tool calls', () => {
     expect(run([{ type: 'THINKING_START' }, { type: 'RUN_ERROR' }]).phase).toBeNull();
   });
 });
+
+describe('a tool call replayed after approval', () => {
+  it('replaces the stale arguments instead of appending to them', () => {
+    // The backend replays TOOL_CALL_START and its deltas for a call already
+    // seen. Appending would build `{"x":1}{"x":1}`, which stops parsing.
+    const state = run([
+      start('c1'),
+      args('c1', '{"content":"npm test"}'),
+      start('c1'), // replay
+      args('c1', '{"content":"npm test"}'),
+    ]);
+
+    expect(state.entries).toHaveLength(1);
+    expect(state.entries[0].args).toBe('{"content":"npm test"}');
+    expect(JSON.parse(state.entries[0].args)).toEqual({ content: 'npm test' });
+  });
+
+  it('marks the call running again while it waits', () => {
+    const state = run([start('c1'), args('c1', '{"a":1}'), result('c1'), start('c1')]);
+    expect(state.entries[0].done).toBe(false);
+  });
+
+  it('keeps appending normally when there were no args to replace', () => {
+    const state = run([start('c1'), start('c1'), args('c1', '{"a":'), args('c1', '1}')]);
+    expect(state.entries[0].args).toBe('{"a":1}');
+  });
+
+  it('clears the replay arming once the result lands', () => {
+    const state = run([start('c1'), args('c1', '{"a":1}'), start('c1'), result('c1')]);
+    expect(state.entries[0].argsReplayPending).toBe(false);
+  });
+});
+
+describe('reasoning that arrives without a start event', () => {
+  it('treats a combined chunk as thinking', () => {
+    // REASONING_MESSAGE_CHUNK carries start-and-content together, so no start
+    // ever arrives under that protocol family.
+    expect(run([{ type: 'REASONING_MESSAGE_CHUNK', delta: 'hmm' }]).phase).toBe('thinking');
+  });
+
+  it('treats bare reasoning content as thinking', () => {
+    expect(run([{ type: 'REASONING_MESSAGE_CONTENT', delta: 'hmm' }]).phase).toBe('thinking');
+    expect(run([{ type: 'THINKING_TEXT_MESSAGE_CONTENT', delta: 'hmm' }]).phase).toBe('thinking');
+  });
+
+  it('still clears on the matching end event', () => {
+    const state = run([
+      { type: 'REASONING_MESSAGE_CHUNK', delta: 'hmm' },
+      { type: 'REASONING_MESSAGE_END' },
+    ]);
+    expect(state.phase).toBeNull();
+  });
+});

@@ -33,6 +33,15 @@ export interface SubAgentActivityEntry {
   args: string;
   /** False while the call is still running, so the card can pulse it. */
   done: boolean;
+  /**
+   * Set when a replayed start has left stale args in place: the next delta
+   * replaces them instead of appending. Mirrors useAGUI's own handling of the
+   * approve-and-resume sequence, where the backend replays TOOL_CALL_START and
+   * its deltas for a call already seen. Appending there would build
+   * `{"x":1}{"x":1}`, which no longer parses, and the feed would silently lose
+   * the detail it exists to show.
+   */
+  argsReplayPending?: boolean;
 }
 
 /** What the child is doing when it is not inside a tool call. */
@@ -84,11 +93,19 @@ export function parseChunk(raw: unknown): Record<string, unknown>[] {
   return [];
 }
 
+// Content events count as starts, not just the explicit ones: under the
+// protocol family that emits REASONING_MESSAGE_CHUNK, that single event carries
+// combined start-and-content and no start ever arrives. Waiting for one would
+// leave the card blank for the whole of a child's reasoning — the gap this feed
+// exists to close.
 const THINKING_START: string[] = [
   StreamEventType.THINKING_START,
   StreamEventType.THINKING_TEXT_MESSAGE_START,
+  StreamEventType.THINKING_TEXT_MESSAGE_CONTENT,
   StreamEventType.REASONING_START,
   StreamEventType.REASONING_MESSAGE_START,
+  StreamEventType.REASONING_MESSAGE_CONTENT,
+  StreamEventType.REASONING_MESSAGE_CHUNK,
 ];
 const THINKING_END: string[] = [
   StreamEventType.THINKING_END,
@@ -120,10 +137,22 @@ export function applyActivityEvent(
   if (!toolCallId) return state;
 
   if (type === StreamEventType.TOOL_CALL_START) {
-    if (state.entries.some((entry) => entry.toolCallId === toolCallId)) return state;
     const toolName = typeof event.toolCallName === 'string' ? event.toolCallName : '';
+    const seen = state.entries.some((entry) => entry.toolCallId === toolCallId);
+    // A tool call ends whatever the child was doing to produce it.
+    if (seen) {
+      // A replay after approval. Keep the args on screen, but arm the next
+      // delta to replace rather than extend them.
+      return {
+        phase: null,
+        entries: state.entries.map((entry) =>
+          entry.toolCallId === toolCallId
+            ? { ...entry, done: false, argsReplayPending: Boolean(entry.args) }
+            : entry
+        ),
+      };
+    }
     return {
-      // A tool call ends whatever the child was doing to produce it.
       phase: null,
       entries: [...state.entries, { toolCallId, toolName, args: '', done: false }].slice(
         -MAX_ENTRIES
@@ -136,9 +165,12 @@ export function applyActivityEvent(
     if (!delta) return state;
     return {
       ...state,
-      entries: state.entries.map((entry) =>
-        entry.toolCallId === toolCallId ? { ...entry, args: entry.args + delta } : entry
-      ),
+      entries: state.entries.map((entry) => {
+        if (entry.toolCallId !== toolCallId) return entry;
+        return entry.argsReplayPending
+          ? { ...entry, args: delta, argsReplayPending: false }
+          : { ...entry, args: entry.args + delta };
+      }),
     };
   }
 
@@ -149,7 +181,7 @@ export function applyActivityEvent(
     const entries = state.entries.map((entry) => {
       if (entry.toolCallId !== toolCallId || entry.done) return entry;
       changed = true;
-      return { ...entry, done: true };
+      return { ...entry, done: true, argsReplayPending: false };
     });
     return changed ? { ...state, entries } : state;
   }
