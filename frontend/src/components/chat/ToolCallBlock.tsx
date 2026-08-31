@@ -581,7 +581,7 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
         )}
 
         {/* Diff lines if available */}
-        {!expanded && (addedLines > 0 || removedLines > 0) && (
+        {(addedLines > 0 || removedLines > 0) && (
           <span className="flex items-center gap-1.5 opacity-90 text-[10px] ml-1 shrink-0 font-bold">
             {addedLines > 0 && (
               <span className="text-green-600 dark:text-green-400">+{addedLines}</span>
@@ -612,7 +612,11 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
           </span>
         )}
         {isDenied && <span className="text-[10px] text-red-500 font-bold shrink-0">DENIED</span>}
-        {!expanded && decisionBadge && (
+        {/* Stays in the header in both states. It used to be collapsed-only and
+            re-rendered inside the permission panel below, so expanding read as
+            the badge teleporting diagonally down the block while the body was
+            still animating open. One home, no motion. */}
+        {decisionBadge && (
           <span
             // Not shrink-0 like the icon badges: this one carries a sentence
             // ("Auto allowed · high confidence"), so on a narrow row it went on
@@ -625,8 +629,8 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
           </span>
         )}
 
-        {/* Auto-approval badge (only shown when collapsed) */}
-        {!expanded && isAutoApproved && !isPending && !isDenied && (
+        {/* Auto-approval badge */}
+        {isAutoApproved && !isPending && !isDenied && (
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -692,14 +696,10 @@ const ToolCallBlockComponent: React.FC<ToolCallBlockProps> = ({
                 <details className="group/permission rounded-sm border border-neutral-200 bg-neutral-50/60 text-[11px] text-neutral-700 dark:border-zinc-700 dark:bg-zinc-900/60 dark:text-neutral-300">
                   <summary className="flex cursor-pointer list-none items-center gap-2 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wide text-neutral-500 transition-colors hover:bg-neutral-100 dark:hover:bg-zinc-800 [&::-webkit-details-marker]:hidden">
                     <DisclosureChevron className="h-2.5 w-2.5 transition-transform duration-150 group-open/permission:rotate-90" />
+                    {/* No decision badge here -- the header keeps it in both
+                        states, and the outcome and confidence are spelled out
+                        in the list below. */}
                     <span>{t('toolCallBlock.permissionDecisionTitle')}</span>
-                    {decisionBadge && (
-                      <span
-                        className={`ml-auto rounded-sm border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${decisionBadge.className}`}
-                      >
-                        {decisionBadge.label}
-                      </span>
-                    )}
                   </summary>
                   <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1 border-t border-neutral-200 px-2.5 py-2 dark:border-zinc-700">
                     <dt className="text-neutral-500">{t('toolCallBlock.permissionOutcome')}</dt>
