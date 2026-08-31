@@ -5,9 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v0.12.0] - 2026-08-30
+## [v0.12.0] - 2026-08-31
 
 ### 🚀 Added
+- Make the live feed say what the child is actually doing
 - Redirect from wherever a sub-agent is shown
 - Surface what stop killed, and whether a redirect landed
 - Show blocking children working, and redirect them in place
@@ -27,6 +28,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Keep draft writes off the token loop and out of the index
 
 ### 🐛 Fixed
+- Bound the tool row, rebalance the card, explain a queued redirect
+- Keep sent redirects, and stop clipping long rows
+- Handle replayed tool args and start-less reasoning
+- Stop discarding a stopped turn's work
+- Let a blocking card find its child, and land the stop notice
 - Write the stopped-agent notice where it survives
 - Keep the stop notice through the post-stop reload
 - Scope tool windows per call, keep injections safe
