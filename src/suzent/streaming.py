@@ -16,6 +16,7 @@ import asyncio
 from datetime import datetime
 import json
 import math
+import os
 import time
 import traceback
 import uuid
@@ -37,6 +38,7 @@ from ag_ui.encoder import EventEncoder
 from suzent.core.agent_serializer import serialize_state
 from suzent.core.agent_deps import AgentDeps
 from suzent.core.citation_manager import CitationManager
+from suzent.core.prefill_probe import make_prefill_probe
 from suzent.core.message_history import (
     is_tool_history_protocol_error,
     strip_tool_interactions,
@@ -94,6 +96,16 @@ class _ToolResultTimeout(TimeoutError):
         self.timeout = timeout
 
 
+class _FirstEventTimeout(TimeoutError):
+    """Raised when the provider never delivers the first event of a run.
+
+    Distinct from the idle timeout so the run loop can retry it once: nothing
+    has streamed yet, so the history is untouched and re-issuing the same
+    request is safe. On a self-hosted server this usually means "still
+    prefilling" or "queued behind another request", not "connection dead".
+    """
+
+
 # Per-chat lock serialising reads+writes to _pending_approvals in chat.config.
 _pending_approval_locks: dict[str, asyncio.Lock] = {}
 
@@ -148,10 +160,146 @@ async def remove_pending_approvals(
         await asyncio.to_thread(_remove)
 
 
+# Base wait for the provider's first stream event. This is a floor, not the
+# whole budget: `_first_event_timeout` adds prefill time on top, because
+# time-to-first-token grows with the prompt while a constant does not. A fixed
+# 45s silently encoded "the provider prefills faster than 3.6k tok/s" -- true of
+# hosted APIs, false of most self-hosted servers once a chat gets long.
 _FIRST_STREAM_EVENT_TIMEOUT_SECONDS = 45.0
+# Conservative prefill floor for a self-hosted server, as tokens/second at a
+# short prompt. Override per deployment with SUZENT_PREFILL_TOKENS_PER_SECOND.
+_DEFAULT_PREFILL_TOKENS_PER_SECOND = 1500.0
+# Prefill is not linear in prompt length: attention is quadratic, so the
+# effective tokens/second falls as the prompt grows. Measured on a 27B served by
+# SGLang, cold: 1765 tok/s at 17k tokens, 1330 at 67k, 996 at 135k, 790 at 202k.
+# Those four points fit `t = k * (n + 0.75 * n**2)`, n in units of 100k tokens,
+# within 1%. Treating the rate as a single constant is what makes a deadline
+# calibrated on short prompts fail on long ones -- exactly the case that hurts.
+_PREFILL_CURVATURE = 0.75
+_PREFILL_TOKEN_SCALE = 100_000.0
+# Past this, a slow prefill is indistinguishable from a dead connection, and
+# waiting longer only delays an error the user has to see anyway.
+_MAX_FIRST_STREAM_EVENT_TIMEOUT_SECONDS = 600.0
+# Below this, time-to-first-token is dominated by queueing and network latency
+# rather than prefill, so dividing it into a tokens/second rate measures noise.
+_MIN_PREFILL_SAMPLE_TOKENS = 2_000
+# How often to ask a local server whether it is still doing prefill work.
+_PREFILL_PROBE_INTERVAL_SECONDS = 5.0
+# Progress is bursty -- a server prefilling in 8k-token chunks shows no movement
+# across several consecutive polls -- so a stall has to be measured in tens of
+# seconds. Below that this reports healthy servers as dead.
+_PREFILL_STALL_LIMIT_SECONDS = 60.0
+# Backstop for a server that is demonstrably working but will not finish. Only
+# reachable while the counter keeps advancing; the deadline is otherwise the
+# stall limit above.
+_MAX_PREFILL_PROGRESS_WAIT_SECONDS = 1800.0
+# How fast a model is allowed to forget that it was once slow. A cold prefill is
+# rare -- most turns hit the server's prefix cache and look instant -- so the
+# rate has to be learned from the worst case, not the average, or the deadline
+# collapses to cache-hit speed and every genuine cold prefill fails.
+_PREFILL_RATE_RECOVERY = 0.05
+# model id -> slowest `k` (seconds per 100k tokens) observed for it this process.
+_observed_prefill_k: Dict[str, float] = {}
 _STREAM_IDLE_TIMEOUT_SECONDS = 120.0
 _DEFAULT_TOOL_STREAM_EVENT_TIMEOUT_SECONDS = 60.0
 _DRAFT_PERSIST_INTERVAL_SECONDS = 0.75
+
+
+def _env_float(name: str) -> Optional[float]:
+    """Read a positive float from the environment, ignoring unusable values."""
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return None
+    try:
+        value = float(raw)
+    except ValueError:
+        logger.warning("[Streaming] Ignoring non-numeric {}={!r}", name, raw)
+        return None
+    if value <= 0:
+        logger.warning("[Streaming] Ignoring non-positive {}={!r}", name, raw)
+        return None
+    return value
+
+
+def _prefill_shape(tokens: int) -> float:
+    """Return the prompt's prefill cost in `k`-units (see _PREFILL_CURVATURE).
+
+    Multiply by a model's learned `k` to predict its time-to-first-token.
+    """
+    n = tokens / _PREFILL_TOKEN_SCALE
+    return n + _PREFILL_CURVATURE * n * n
+
+
+def _record_prefill_rate(model_id: Optional[str], tokens: int, elapsed: float) -> None:
+    """Learn how fast this model prefills, from how long its first event took.
+
+    Deliberately asymmetric: a slower observation is believed at once, a faster
+    one only nudges the estimate back down. The deadline has to cover the *worst*
+    case, and with server-side prefix caching the common case is a cache hit that
+    says nothing about how long a cold prefill takes -- the same server measured
+    at 135s cold for a 134k-token prompt served it in 0.6s on the repeat.
+    Averaging those together would shrink the window until the next cold prefill
+    tripped it.
+    """
+    if not model_id or tokens < _MIN_PREFILL_SAMPLE_TOKENS or elapsed <= 0:
+        return
+    shape = _prefill_shape(tokens)
+    if shape <= 0:
+        return
+    # Charging the whole wait to prefill overstates k, which lengthens the
+    # deadline. That is the safe direction to be wrong in.
+    k = elapsed / shape
+    previous = _observed_prefill_k.get(model_id)
+    if previous is None or k > previous:
+        _observed_prefill_k[model_id] = k
+    else:
+        _observed_prefill_k[model_id] = previous + (
+            (k - previous) * _PREFILL_RATE_RECOVERY
+        )
+
+
+def _first_event_timeout(
+    run_kwargs: Dict[str, Any], model_id: Optional[str] = None
+) -> float:
+    """Return how long to wait for the first stream event of this run.
+
+    Time-to-first-token is dominated by prefill, which grows super-linearly with
+    the prompt, so the deadline follows the same curve. Only history is measured
+    -- the system prompt and tool schemas add a roughly constant amount that the
+    base term already covers.
+
+    The cost coefficient is per model and learned from what that model has
+    actually done (`_record_prefill_rate`), because a session mixing a hosted API
+    with a local server has no single right value. Learning can only ever make
+    the estimate *slower* than the configured floor, so a fast provider keeps the
+    default behaviour and a slow one earns a longer leash unconfigured.
+
+    SUZENT_FIRST_EVENT_TIMEOUT_S pins a fixed value and skips all of this;
+    SUZENT_PREFILL_TOKENS_PER_SECOND moves the floor.
+    """
+    override = _env_float("SUZENT_FIRST_EVENT_TIMEOUT_S")
+    if override is not None:
+        return override
+
+    from suzent.core.context_compressor import estimate_history_tokens
+
+    try:
+        tokens = estimate_history_tokens(run_kwargs.get("message_history") or [])
+    except Exception:
+        # An estimate is a nicety; never fail a run over one.
+        tokens = 0
+
+    rate = _env_float("SUZENT_PREFILL_TOKENS_PER_SECOND") or (
+        _DEFAULT_PREFILL_TOKENS_PER_SECOND
+    )
+    k = _PREFILL_TOKEN_SCALE / rate
+    learned = _observed_prefill_k.get(model_id or "")
+    if learned is not None:
+        k = max(k, learned)
+    return min(
+        _FIRST_STREAM_EVENT_TIMEOUT_SECONDS + k * _prefill_shape(tokens),
+        _MAX_FIRST_STREAM_EVENT_TIMEOUT_SECONDS,
+    )
 
 
 def _serialize_tool_output(output: Any) -> str:
@@ -650,6 +798,67 @@ def _make_run_injector(stream: Any) -> Any:
     return inject
 
 
+async def _await_model_event(stream: Any, deadline: float, probe: Any) -> Any:
+    """Await an event the model owes us, extending the wait while it works.
+
+    Used for both waits that sit behind a model request: the run's first event,
+    and the first event after a tool result -- which is also a prefill, because
+    the tool output has to be read back in. A flat idle window treats that
+    second one as if the model were merely slow.
+
+    With no probe this is exactly a `deadline`-second wait. With one, the
+    deadline stops mattering: the server is asked every few seconds whether its
+    prefill counter has moved, and the wait ends only when it has stopped moving
+    for `_PREFILL_STALL_LIMIT_SECONDS`. That fails a genuinely wedged server far
+    sooner than the time-based estimate would, and never fails a slow one that is
+    visibly still working -- the two cases a stopwatch cannot tell apart.
+
+    A probe returning None means "cannot tell", not "stalled": on an unreachable
+    or metrics-less server this degrades to the plain deadline rather than
+    failing the run early.
+    """
+    task = asyncio.ensure_future(anext(stream))
+    try:
+        waited = 0.0
+        stalled = 0.0
+        previous = await probe() if probe is not None else None
+        probing = previous is not None
+        while True:
+            slice_seconds = (
+                _PREFILL_PROBE_INTERVAL_SECONDS
+                if probing
+                else max(deadline - waited, 0.0)
+            )
+            done, _ = await asyncio.wait({task}, timeout=slice_seconds)
+            if done:
+                return task.result()
+            waited += slice_seconds
+
+            if not probing:
+                raise asyncio.TimeoutError
+            current = await probe()
+            if current is None:
+                # Metrics just became unavailable; finish under the deadline the
+                # curve predicted rather than waiting on a signal that is gone.
+                probing = False
+                if waited >= deadline:
+                    raise asyncio.TimeoutError
+                continue
+            if current > previous:
+                stalled = 0.0
+            else:
+                stalled += slice_seconds
+            previous = current
+            if (
+                stalled >= _PREFILL_STALL_LIMIT_SECONDS
+                or waited >= _MAX_PREFILL_PROGRESS_WAIT_SECONDS
+            ):
+                raise asyncio.TimeoutError
+    finally:
+        if not task.done():
+            task.cancel()
+
+
 async def _iter_stream_events_with_timeout(
     agent: Any,
     prompt: Any,
@@ -663,6 +872,9 @@ async def _iter_stream_events_with_timeout(
             control.inject = _make_run_injector(stream)
         try:
             first_event = True
+            _model_id = getattr(agent, "_model_id", None)
+            _started = time.monotonic()
+            _probe = make_prefill_probe(_model_id)
             # tool_call_id -> that call's own wait window. Kept per call rather
             # than as a batch-wide maximum: a batch mixing an unbounded `agent`
             # call with an ordinary tool would otherwise inherit the agent's
@@ -673,7 +885,7 @@ async def _iter_stream_events_with_timeout(
             anon_calls = 0
             while True:
                 if first_event:
-                    timeout = _FIRST_STREAM_EVENT_TIMEOUT_SECONDS
+                    timeout = _first_event_timeout(run_kwargs, _model_id)
                     phase = "first event"
                 elif in_flight:
                     timeout = max(in_flight.values())
@@ -682,7 +894,13 @@ async def _iter_stream_events_with_timeout(
                     timeout = _STREAM_IDLE_TIMEOUT_SECONDS
                     phase = "next event"
                 try:
-                    if timeout == math.inf:
+                    if phase != "tool result":
+                        # Both model-side waits are prefills, so both can be
+                        # answered by asking whether the server is still working.
+                        # A tool-result wait is not: the model is idle by
+                        # definition while our own tool runs.
+                        event = await _await_model_event(stream, timeout, _probe)
+                    elif timeout == math.inf:
                         event = await anext(stream)
                     else:
                         event = await asyncio.wait_for(anext(stream), timeout=timeout)
@@ -693,9 +911,28 @@ async def _iter_stream_events_with_timeout(
                         # A single tool hung; let the run loop recover by feeding a
                         # failed tool result back to the agent rather than aborting.
                         raise _ToolResultTimeout(timeout) from exc
+                    if first_event:
+                        # Nothing streamed yet, so the run loop can safely reissue
+                        # the identical request once before giving up.
+                        raise _FirstEventTimeout(
+                            f"Timed out waiting for LLM stream {phase} "
+                            f"after {timeout:.0f}s"
+                        ) from exc
                     raise TimeoutError(
                         f"Timed out waiting for LLM stream {phase} after {timeout:.0f}s"
                     ) from exc
+                if first_event:
+                    from suzent.core.context_compressor import estimate_history_tokens
+
+                    try:
+                        _prefill_tokens = estimate_history_tokens(
+                            run_kwargs.get("message_history") or []
+                        )
+                    except Exception:
+                        _prefill_tokens = 0
+                    _record_prefill_rate(
+                        _model_id, _prefill_tokens, time.monotonic() - _started
+                    )
                 first_event = False
                 event_kind = getattr(event, "event_kind", "")
                 if event_kind == "function_tool_call":
@@ -1037,6 +1274,7 @@ async def stream_agent_responses(
         # doesn't emit a second (duplicate) recovery for the same tool.
         _emitted_recovery_ids: set[str] = set()
         _history_repair_retries = 0
+        _first_event_retries = 0
         from pydantic_ai.messages import (
             ToolReturnPart as _TRP,
             ModelResponse as _MResp,
@@ -1074,6 +1312,7 @@ async def stream_agent_responses(
                     last_run_result = None
                     _tool_timeout: Optional[_ToolResultTimeout] = None
                     _retry_repaired_history = False
+                    _retry_first_event = False
                     logger.debug("[Streaming] Calling agent.run_stream_events()...")
                     _events = _iter_stream_events_with_timeout(
                         agent, prompt, run_kwargs, control, chat_id
@@ -1086,6 +1325,22 @@ async def stream_agent_responses(
                         except _ToolResultTimeout as exc:
                             _tool_timeout = exc
                             break
+                        except _FirstEventTimeout as exc:
+                            # A prefill that overran its budget, a queued request,
+                            # or a genuinely dead connection -- indistinguishable
+                            # from here. Nothing streamed, so the history is intact
+                            # and one identical retry costs only the wait; losing
+                            # the whole turn to a provider that was merely slow
+                            # costs the user their work.
+                            if _first_event_retries < 1:
+                                _first_event_retries += 1
+                                _retry_first_event = True
+                                logger.warning(
+                                    "[Streaming] {}; retrying the request once.",
+                                    exc,
+                                )
+                                break
+                            raise
                         except Exception as exc:
                             if (
                                 _history_repair_retries < 1
@@ -1278,7 +1533,7 @@ async def stream_agent_responses(
                             # Continue processing other events
                             continue
 
-                    if _retry_repaired_history:
+                    if _retry_repaired_history or _retry_first_event:
                         continue
 
                     # A tool ran long enough that its result never arrived on the
