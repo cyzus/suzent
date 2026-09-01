@@ -774,3 +774,23 @@ def test_fixed_override_still_wins_over_a_learned_coefficient(monkeypatch) -> No
     monkeypatch.setenv("SUZENT_FIRST_EVENT_TIMEOUT_S", "90")
 
     assert _timeout_for(162_000, "sglang/local") == 90.0
+
+
+@pytest.mark.parametrize("raw", ["nan", "NaN", "inf", "-inf", "Infinity"])
+def test_non_finite_env_values_are_rejected(monkeypatch, raw) -> None:
+    """`float()` accepts these and nan survives a `<= 0` check, which would make
+    every wait expire instantly (nan) or never (inf)."""
+    monkeypatch.setenv("SUZENT_FIRST_EVENT_TIMEOUT_S", raw)
+
+    assert (
+        streaming._first_event_timeout({})
+        == streaming._FIRST_STREAM_EVENT_TIMEOUT_SECONDS
+    )
+
+
+@pytest.mark.parametrize("raw", ["nan", "inf"])
+def test_non_finite_prefill_rate_is_rejected(monkeypatch, raw) -> None:
+    monkeypatch.setenv("SUZENT_PREFILL_TOKENS_PER_SECOND", raw)
+
+    assert _timeout_for(162_000) == pytest.approx(_timeout_for(162_000))
+    assert streaming._env_float("SUZENT_PREFILL_TOKENS_PER_SECOND") is None

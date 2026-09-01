@@ -215,8 +215,11 @@ def _env_float(name: str) -> Optional[float]:
     except ValueError:
         logger.warning("[Streaming] Ignoring non-numeric {}={!r}", name, raw)
         return None
-    if value <= 0:
-        logger.warning("[Streaming] Ignoring non-positive {}={!r}", name, raw)
+    # `float()` accepts "nan" and "inf", and both survive a `<= 0` check: nan
+    # compares false against everything, so it would sail through and then make
+    # every wait expire instantly, and inf would disable the timeout outright.
+    if not math.isfinite(value) or value <= 0:
+        logger.warning("[Streaming] Ignoring out-of-range {}={!r}", name, raw)
         return None
     return value
 
@@ -806,16 +809,21 @@ async def _await_model_event(stream: Any, deadline: float, probe: Any) -> Any:
     the tool output has to be read back in. A flat idle window treats that
     second one as if the model were merely slow.
 
-    With no probe this is exactly a `deadline`-second wait. With one, the
-    deadline stops mattering: the server is asked every few seconds whether its
-    prefill counter has moved, and the wait ends only when it has stopped moving
-    for `_PREFILL_STALL_LIMIT_SECONDS`. That fails a genuinely wedged server far
-    sooner than the time-based estimate would, and never fails a slow one that is
-    visibly still working -- the two cases a stopwatch cannot tell apart.
+    With no probe this is exactly a `deadline`-second wait. With one, the server
+    is asked every few seconds whether it is still working, and the wait is
+    extended for as long as it says yes -- which is how a slow prefill survives
+    a deadline that a stopwatch would have enforced against it.
+
+    The probe can only ever *extend* the wait, never shorten it. A stall is not
+    grounds to give up until the deadline has passed anyway, because the signals
+    are indirect: the prefill counter is server-wide and does not move while a
+    request waits its turn behind a long decode, and `busy` is a gauge that has
+    been observed reading zero mid-prefill. Either could say "idle" about a
+    perfectly healthy request, and paying for that mistake means losing the
+    user's turn.
 
     A probe returning None means "cannot tell", not "stalled": on an unreachable
-    or metrics-less server this degrades to the plain deadline rather than
-    failing the run early.
+    or metrics-less server this degrades to the plain deadline.
     """
     task = asyncio.ensure_future(anext(stream))
     try:
@@ -844,15 +852,14 @@ async def _await_model_event(stream: Any, deadline: float, probe: Any) -> Any:
                 if waited >= deadline:
                     raise asyncio.TimeoutError
                 continue
-            if current > previous:
+            if current.progress > previous.progress or current.busy:
                 stalled = 0.0
             else:
                 stalled += slice_seconds
             previous = current
             if (
-                stalled >= _PREFILL_STALL_LIMIT_SECONDS
-                or waited >= _MAX_PREFILL_PROGRESS_WAIT_SECONDS
-            ):
+                stalled >= _PREFILL_STALL_LIMIT_SECONDS and waited >= deadline
+            ) or waited >= _MAX_PREFILL_PROGRESS_WAIT_SECONDS:
                 raise asyncio.TimeoutError
     finally:
         if not task.done():

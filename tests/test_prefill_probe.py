@@ -16,27 +16,27 @@ def test_metrics_url_strips_the_v1_prefix() -> None:
     assert prefill_probe.metrics_url("http://host:8888/") == "http://host:8888/metrics"
 
 
-def test_parse_progress_reads_a_labelled_counter() -> None:
+def test_parse_metric_reads_a_labelled_counter() -> None:
     body = (
         "# HELP sglang:prefill_effective_tokens_total Prefill tokens.\n"
         "# TYPE sglang:prefill_effective_tokens_total counter\n"
         f'{_SGLANG_COUNTER}{{model_name="m",tp_rank="0"}} 2648538.0\n'
     )
 
-    assert prefill_probe.parse_progress(body, (_SGLANG_COUNTER,)) == 2648538.0
+    assert prefill_probe.parse_metric(body, (_SGLANG_COUNTER,)) == 2648538.0
 
 
-def test_parse_progress_sums_tensor_parallel_ranks() -> None:
+def test_parse_metric_sums_tensor_parallel_ranks() -> None:
     # One series per rank; reading a single rank would under-report progress.
     body = "".join(
         f'{_SGLANG_COUNTER}{{tp_rank="{rank}"}} 100.0\n' for rank in range(4)
     )
 
-    assert prefill_probe.parse_progress(body, (_SGLANG_COUNTER,)) == 400.0
+    assert prefill_probe.parse_metric(body, (_SGLANG_COUNTER,)) == 400.0
 
 
-def test_parse_progress_returns_none_for_an_unknown_exposition() -> None:
-    assert prefill_probe.parse_progress("# nothing here\n", (_SGLANG_COUNTER,)) is None
+def test_parse_metric_returns_none_for_an_unknown_exposition() -> None:
+    assert prefill_probe.parse_metric("# nothing here\n", (_SGLANG_COUNTER,)) is None
 
 
 def test_no_probe_for_a_hosted_provider() -> None:
@@ -64,16 +64,48 @@ async def test_without_a_probe_the_deadline_still_applies() -> None:
         await _first_event(_NeverArrives(), 0.05, None)
 
 
-async def test_a_stalled_server_fails_before_the_deadline(monkeypatch) -> None:
+def _idle(progress: float) -> prefill_probe.ServerActivity:
+    return prefill_probe.ServerActivity(progress=progress, busy=False)
+
+
+async def test_a_stalled_server_fails_once_the_deadline_has_passed(
+    monkeypatch,
+) -> None:
     monkeypatch.setattr(streaming, "_PREFILL_PROBE_INTERVAL_SECONDS", 0.01)
     monkeypatch.setattr(streaming, "_PREFILL_STALL_LIMIT_SECONDS", 0.05)
 
     async def frozen():
-        return 1000.0
+        return _idle(1000.0)
 
-    # Deadline is effectively infinite; the stall is what ends the wait.
     with pytest.raises(asyncio.TimeoutError):
-        await asyncio.wait_for(_first_event(_NeverArrives(), 1e6, frozen), timeout=5)
+        await asyncio.wait_for(_first_event(_NeverArrives(), 0.02, frozen), timeout=5)
+
+
+async def test_a_stall_never_fails_before_the_deadline(monkeypatch) -> None:
+    """The probe may only extend the wait -- its signals are too indirect to cut
+    it short, and a false stall costs the user the whole turn."""
+    monkeypatch.setattr(streaming, "_PREFILL_PROBE_INTERVAL_SECONDS", 0.01)
+    monkeypatch.setattr(streaming, "_PREFILL_STALL_LIMIT_SECONDS", 0.02)
+
+    async def frozen():
+        return _idle(1000.0)
+
+    with pytest.raises(asyncio.TimeoutError):
+        # Outer guard fires first: the 5s deadline holds despite the stall.
+        await asyncio.wait_for(_first_event(_NeverArrives(), 5.0, frozen), timeout=0.3)
+
+
+async def test_a_queued_request_is_not_a_stall(monkeypatch) -> None:
+    """Waiting behind another request's decode moves no prefill tokens."""
+    monkeypatch.setattr(streaming, "_PREFILL_PROBE_INTERVAL_SECONDS", 0.01)
+    monkeypatch.setattr(streaming, "_PREFILL_STALL_LIMIT_SECONDS", 0.02)
+
+    async def queued():
+        return prefill_probe.ServerActivity(progress=1000.0, busy=True)
+
+    with pytest.raises(asyncio.TimeoutError):
+        # Survives well past deadline + stall limit because the server says busy.
+        await asyncio.wait_for(_first_event(_NeverArrives(), 0.02, queued), timeout=0.4)
 
 
 async def test_a_working_server_outlives_its_deadline(monkeypatch) -> None:
@@ -82,7 +114,7 @@ async def test_a_working_server_outlives_its_deadline(monkeypatch) -> None:
     progress = iter(range(1, 10_000))
 
     async def advancing():
-        return float(next(progress))
+        return _idle(float(next(progress)))
 
     # A 1ms deadline the server blows straight past while visibly working.
     with pytest.raises(asyncio.TimeoutError):
@@ -99,10 +131,10 @@ async def test_progress_then_stall_ends_the_wait(monkeypatch) -> None:
     values = [1.0, 2.0, 3.0] + [3.0] * 500
 
     async def then_frozen():
-        return values.pop(0)
+        return _idle(values.pop(0))
 
     with pytest.raises(asyncio.TimeoutError):
-        await asyncio.wait_for(_first_event(_NeverArrives(), 1e6, then_frozen), 5)
+        await asyncio.wait_for(_first_event(_NeverArrives(), 0.02, then_frozen), 5)
 
 
 async def test_an_unavailable_probe_degrades_to_the_deadline(monkeypatch) -> None:
@@ -125,7 +157,7 @@ async def test_the_first_event_is_returned_when_it_arrives() -> None:
             return "event"
 
     async def probe():
-        return 1.0
+        return _idle(1.0)
 
     assert await _first_event(_Arrives(), 5.0, probe) == "event"
 
@@ -150,7 +182,7 @@ async def test_the_idle_wait_also_gets_the_probe(monkeypatch) -> None:
     progress = iter(range(1, 10_000))
 
     async def advancing():
-        return float(next(progress))
+        return _idle(float(next(progress)))
 
     with pytest.raises(asyncio.TimeoutError):
         await asyncio.wait_for(

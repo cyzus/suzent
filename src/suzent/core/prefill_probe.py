@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import os
 import re
-from typing import Awaitable, Callable, Optional
+from typing import Awaitable, Callable, NamedTuple, Optional
 
 from suzent.logger import get_logger
 
@@ -37,9 +37,31 @@ _PROGRESS_COUNTERS: dict[str, tuple[str, ...]] = {
     "vllm": ("vllm:prompt_tokens_total", "vllm:num_requests_running"),
 }
 
+# Gauges that say the server has work in hand even when no prefill token has
+# been produced recently -- a request queued behind a long decode, or a decode
+# in progress. Without these, "the prefill counter has not moved" reads as a
+# wedge when the server is merely busy with something else.
+_BUSY_GAUGES: dict[str, tuple[str, ...]] = {
+    "sglang": ("sglang:num_queue_reqs", "sglang:num_running_reqs"),
+    "vllm": ("vllm:num_requests_waiting", "vllm:num_requests_running"),
+}
+
 _METRICS_TIMEOUT_SECONDS = 5.0
 
-ProbeFn = Callable[[], Awaitable[Optional[float]]]
+
+class ServerActivity(NamedTuple):
+    """What a server reports about its own workload.
+
+    `progress` is a monotonic count of prefill tokens; only its increase is
+    meaningful. `busy` says the server holds queued or running work right now,
+    which keeps a request that is waiting its turn from being read as a stall.
+    """
+
+    progress: float
+    busy: bool
+
+
+ProbeFn = Callable[[], Awaitable[Optional[ServerActivity]]]
 
 
 def _resolve_base_url(provider: str) -> Optional[str]:
@@ -80,8 +102,8 @@ def metrics_url(base_url: str) -> str:
     return root + "/metrics"
 
 
-def parse_progress(body: str, counters: tuple[str, ...]) -> Optional[float]:
-    """Sum a Prometheus exposition's samples for the first counter present.
+def parse_metric(body: str, counters: tuple[str, ...]) -> Optional[float]:
+    """Sum a Prometheus exposition's samples for the first metric present.
 
     Summed rather than first-match because a tensor-parallel server reports one
     labelled series per rank; reading a single rank would miss work done on the
@@ -102,7 +124,8 @@ def parse_progress(body: str, counters: tuple[str, ...]) -> Optional[float]:
 def make_prefill_probe(model_id: Optional[str]) -> Optional[ProbeFn]:
     """Return a probe for this model's server, or None if it has no admin surface.
 
-    The probe answers "how much prefill work has this server done in total?".
+    The probe answers "is this server doing anything?" -- how much prefill work
+    it has done in total, and whether it currently holds queued or running work.
     It returns None whenever the answer is unavailable -- an unreachable server,
     metrics not enabled, an unrecognised exposition -- and the caller must treat
     None as "unknown", never as "stalled".
@@ -123,12 +146,13 @@ def make_prefill_probe(model_id: Optional[str]) -> Optional[ProbeFn]:
     api_key = resolve_api_key(provider)
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
     counters = _PROGRESS_COUNTERS.get(provider, ())
+    busy_gauges = _BUSY_GAUGES.get(provider, ())
     # One failure means metrics are off or the URL is wrong; both are permanent
     # for this run, and retrying every few seconds would just add latency to a
     # wait that is already too long.
     disabled = False
 
-    async def probe() -> Optional[float]:
+    async def probe() -> Optional[ServerActivity]:
         nonlocal disabled
         if disabled:
             return None
@@ -139,7 +163,8 @@ def make_prefill_probe(model_id: Optional[str]) -> Optional[ProbeFn]:
                 response = await client.get(url, headers=headers)
             if response.status_code != 200:
                 raise RuntimeError(f"HTTP {response.status_code}")
-            value = parse_progress(response.text, counters)
+            value = parse_metric(response.text, counters)
+            pending = parse_metric(response.text, busy_gauges)
         except Exception as exc:
             disabled = True
             logger.debug(
@@ -157,6 +182,7 @@ def make_prefill_probe(model_id: Optional[str]) -> Optional[ProbeFn]:
                 provider,
                 url,
             )
-        return value
+            return None
+        return ServerActivity(progress=value, busy=bool(pending and pending > 0))
 
     return probe
