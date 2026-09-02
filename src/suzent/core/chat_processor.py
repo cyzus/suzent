@@ -997,15 +997,26 @@ class ChatProcessor:
                 message_history, _budget
             )
 
-        # Debug-only: log complete system prompt (static + dynamic sections)
-        # as resolved by pydantic-ai instruction runners for this run context.
+        # Debug-only prompt trace. Metadata by default: section names and sizes
+        # say what the prompt was made of, which is what this is actually useful
+        # for, without writing persona, user.md, MEMORY.md, the project
+        # context.md and repository instructions to disk. File logging records
+        # DEBUG unconditionally, so the previous full-text line put all of that
+        # in the log on every single turn (AGENTS.md: never log secrets or PII).
+        #
+        # There is deliberately no flag to print the text. AGENTS.md states the
+        # prohibition without qualification, and the prompt carries core memory,
+        # permission feedback, sender names and project instructions — an opt-in
+        # does not make writing that to disk acceptable, it just moves who is
+        # responsible. The sha is enough to tell two turns apart, and the section
+        # sizes are what the log was actually useful for.
         try:
             if logger._core.min_level <= 10:  # DEBUG
                 import asyncio as _asyncio
-                from suzent.prompts import resolve_full_system_prompt
+                from suzent.prompts import resolve_system_prompt_sections
 
-                system_prompt = await _asyncio.wait_for(
-                    resolve_full_system_prompt(
+                _sections = await _asyncio.wait_for(
+                    resolve_system_prompt_sections(
                         agent,
                         deps,
                         user_prompt=full_prompt or None,
@@ -1013,11 +1024,17 @@ class ChatProcessor:
                     ),
                     timeout=5.0,
                 )
+                # Sizes only — no digest. A short unsalted hash of the prompt is
+                # a verifier for its contents: with the other sections known or
+                # predictable, someone holding the logs can hash candidate sender
+                # names or permission feedback until one matches, and it links
+                # identical private prompts across runs. chat_id already
+                # correlates lines within a conversation.
                 logger.debug(
-                    "[SystemPrompt] Resolved full prompt ({} chars) for chat {}:\n{}",
-                    len(system_prompt),
+                    "[SystemPrompt] chat={} chars={} sections={}",
                     chat_id,
-                    system_prompt,
+                    sum(len(text) for _, text in _sections),
+                    ", ".join(f"{name}:{len(text)}" for name, text in _sections),
                 )
         except Exception as e:
             logger.debug(f"[SystemPrompt] Failed to resolve debug prompt: {e}")
