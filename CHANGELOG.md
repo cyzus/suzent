@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Activity, sidebar and minimap refinements
 
 ### ⚡ Changed
+- Give each rule exactly one owning layer
 - Remove the private audit doc from the repository
 - Revert the eager trigger prewrite; document the residual instead
 - Stop building a code editor for every collapsed tool block
