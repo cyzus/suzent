@@ -7,7 +7,12 @@ import pytest
 from ag_ui.core import CustomEvent, RunAgentInput
 from pydantic_ai import Agent
 from pydantic_ai.messages import FunctionToolCallEvent, FunctionToolResultEvent
-from pydantic_ai.messages import ModelResponse, ToolCallPart, ToolReturnPart
+from pydantic_ai.messages import (
+    ModelResponse,
+    TextPart,
+    ToolCallPart,
+    ToolReturnPart,
+)
 from pydantic_ai.models.test import TestModel
 from pydantic_ai.tools import DeferredToolResults
 
@@ -620,3 +625,172 @@ def test_unset_history_still_falls_back_to_the_partial():
 def test_nothing_to_prefer_leaves_the_persisted_history_alone():
     assert _resolve_persisted_history(["m1"], []) == ["m1"]
     assert _resolve_persisted_history(["m1"], None) == ["m1"]
+
+
+def _history_of(chars: int) -> list:
+    return [ModelResponse(parts=[TextPart(content="x" * chars)])]
+
+
+def _timeout_for(tokens: int, model_id: str | None = None) -> float:
+    return streaming._first_event_timeout(
+        {"message_history": _history_of(tokens * 4)}, model_id
+    )
+
+
+@pytest.fixture(autouse=True)
+def _clear_learned_prefill_rates():
+    streaming._observed_prefill_k.clear()
+    yield
+    streaming._observed_prefill_k.clear()
+
+
+def test_first_event_timeout_grows_faster_than_linearly() -> None:
+    """Attention is quadratic, so doubling the prompt more than doubles prefill."""
+    base = streaming._FIRST_STREAM_EVENT_TIMEOUT_SECONDS
+    small = _timeout_for(50_000) - base
+    large = _timeout_for(100_000) - base
+
+    assert large > 2 * small
+
+
+def test_first_event_timeout_is_the_base_for_an_empty_history() -> None:
+    assert (
+        streaming._first_event_timeout({})
+        == streaming._FIRST_STREAM_EVENT_TIMEOUT_SECONDS
+    )
+
+
+def test_first_event_timeout_is_capped() -> None:
+    assert _timeout_for(50_000_000) == streaming._MAX_FIRST_STREAM_EVENT_TIMEOUT_SECONDS
+
+
+def test_prefill_rate_env_retunes_the_floor(monkeypatch) -> None:
+    default = _timeout_for(162_000)
+    monkeypatch.setenv("SUZENT_PREFILL_TOKENS_PER_SECOND", "700")
+
+    assert _timeout_for(162_000) > default
+
+
+def test_fixed_env_override_skips_the_scaling(monkeypatch) -> None:
+    monkeypatch.setenv("SUZENT_FIRST_EVENT_TIMEOUT_S", "300")
+
+    assert _timeout_for(162_000) == 300.0
+
+
+@pytest.mark.parametrize("raw", ["", "  ", "soon", "0", "-5"])
+def test_unusable_env_values_fall_back_to_the_default(monkeypatch, raw) -> None:
+    monkeypatch.setenv("SUZENT_FIRST_EVENT_TIMEOUT_S", raw)
+
+    assert (
+        streaming._first_event_timeout({})
+        == streaming._FIRST_STREAM_EVENT_TIMEOUT_SECONDS
+    )
+
+
+async def test_first_event_timeout_is_retryable(monkeypatch) -> None:
+    monkeypatch.setattr(streaming, "_FIRST_STREAM_EVENT_TIMEOUT_SECONDS", 0.01)
+
+    with pytest.raises(streaming._FirstEventTimeout):
+        async for _event in streaming._iter_stream_events_with_timeout(
+            _HangingStreamAgent(), "hi", {}
+        ):
+            pass
+
+
+# Cold prefill measured against a real 27B served by SGLang. The curve model has
+# to cover every one of these from a single learned coefficient, or a deadline
+# calibrated on a short prompt will fire on a long one.
+_MEASURED_COLD_PREFILL = [
+    (16_900, 9.6),
+    (67_414, 50.7),
+    (134_506, 135.0),
+    (202_323, 256.0),
+]
+
+
+@pytest.mark.parametrize("tokens,ttft", _MEASURED_COLD_PREFILL)
+def test_curve_fits_measured_prefill(tokens, ttft) -> None:
+    # Learn from the slowest sample alone, then check every point is covered.
+    streaming._record_prefill_rate("sglang/qwen3.8-27b", 202_323, 256.0)
+
+    assert _timeout_for(tokens, "sglang/qwen3.8-27b") > ttft
+
+
+def test_a_rate_learned_on_a_short_prompt_still_covers_a_long_one() -> None:
+    """The failure a purely linear model would produce."""
+    streaming._record_prefill_rate("sglang/qwen3.8-27b", 16_900, 9.6)
+
+    # Real cold TTFT at 202k was 256s; a linear fit from 17k predicts ~115s.
+    assert _timeout_for(202_323, "sglang/qwen3.8-27b") > 256.0
+
+
+def test_learned_coefficient_lengthens_the_deadline_for_a_slow_model() -> None:
+    # Slower than the default floor, so learning has to take over. (The 27B
+    # measured above is *faster* than the floor, and correctly keeps it.)
+    streaming._record_prefill_rate("sglang/slow", 134_506, 400.0)
+
+    assert _timeout_for(162_000, "sglang/slow") > _timeout_for(162_000, "hosted/fast")
+
+
+def test_a_model_faster_than_the_floor_keeps_the_floor() -> None:
+    streaming._record_prefill_rate("sglang/qwen3.8-27b", 134_506, 135.0)
+
+    assert _timeout_for(162_000, "sglang/qwen3.8-27b") == _timeout_for(162_000)
+
+
+def test_a_cache_hit_does_not_shrink_the_deadline() -> None:
+    # The same 134k prompt came back in 0.6s on the repeat; believing that would
+    # collapse the window before the next cold prefill.
+    streaming._record_prefill_rate("hosted/fast", 134_506, 135.0)
+    slow = _timeout_for(162_000, "hosted/fast")
+    streaming._record_prefill_rate("hosted/fast", 134_506, 0.6)
+
+    assert _timeout_for(162_000, "hosted/fast") == pytest.approx(slow, rel=0.05)
+
+
+def test_learned_coefficients_are_per_model() -> None:
+    streaming._record_prefill_rate("sglang/local", 134_506, 135.0)
+
+    assert "anthropic/claude-opus-5" not in streaming._observed_prefill_k
+
+
+def test_a_slow_sample_is_believed_immediately() -> None:
+    streaming._record_prefill_rate("sglang/local", 100_000, 50.0)
+    fast_k = streaming._observed_prefill_k["sglang/local"]
+    streaming._record_prefill_rate("sglang/local", 100_000, 200.0)
+
+    assert streaming._observed_prefill_k["sglang/local"] == pytest.approx(4 * fast_k)
+
+
+def test_small_prompts_do_not_teach_a_coefficient() -> None:
+    # A 100-token prompt taking 3s measures queueing, not prefill throughput.
+    streaming._record_prefill_rate("sglang/local", 100, 3.0)
+
+    assert streaming._observed_prefill_k == {}
+
+
+def test_fixed_override_still_wins_over_a_learned_coefficient(monkeypatch) -> None:
+    streaming._record_prefill_rate("sglang/local", 202_323, 256.0)
+    monkeypatch.setenv("SUZENT_FIRST_EVENT_TIMEOUT_S", "90")
+
+    assert _timeout_for(162_000, "sglang/local") == 90.0
+
+
+@pytest.mark.parametrize("raw", ["nan", "NaN", "inf", "-inf", "Infinity"])
+def test_non_finite_env_values_are_rejected(monkeypatch, raw) -> None:
+    """`float()` accepts these and nan survives a `<= 0` check, which would make
+    every wait expire instantly (nan) or never (inf)."""
+    monkeypatch.setenv("SUZENT_FIRST_EVENT_TIMEOUT_S", raw)
+
+    assert (
+        streaming._first_event_timeout({})
+        == streaming._FIRST_STREAM_EVENT_TIMEOUT_SECONDS
+    )
+
+
+@pytest.mark.parametrize("raw", ["nan", "inf"])
+def test_non_finite_prefill_rate_is_rejected(monkeypatch, raw) -> None:
+    monkeypatch.setenv("SUZENT_PREFILL_TOKENS_PER_SECOND", raw)
+
+    assert _timeout_for(162_000) == pytest.approx(_timeout_for(162_000))
+    assert streaming._env_float("SUZENT_PREFILL_TOKENS_PER_SECOND") is None
