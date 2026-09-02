@@ -236,6 +236,16 @@ async def stream_acp_turn(
     file_context = _build_acp_file_context(file_mentions, files)
     if file_context:
         message = f"{file_context}\n\n{message}" if message else file_context
+        # File annotations interpolate caller-supplied paths, so the assembled
+        # prompt is untrusted again even though `message` was already clean.
+        # Sanitizing the finished string rather than only its parts is the point:
+        # anything later prepended or appended here is covered without having to
+        # remember it. Idempotent, so the already-clean portion is unaffected.
+        message = (
+            sanitize_incoming_prompt(message)
+            if runtime_authored
+            else sanitize_untrusted_text(message)
+        )
 
     # Binary uploads can't be forwarded over the text-only ACP prompt channel.
     if files:

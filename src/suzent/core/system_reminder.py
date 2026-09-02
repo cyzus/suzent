@@ -237,12 +237,23 @@ def sanitize_untrusted_payload(
                 value, items, frozenset if isinstance(value, frozenset) else set
             )
         if isinstance(value, dict):
-            return {
+            rebuilt = {
                 sanitize_untrusted_payload(k, _depth + 1, _seen): (
                     sanitize_untrusted_payload(v, _depth + 1, _seen)
                 )
                 for k, v in value.items()
             }
+            if len(rebuilt) != len(value):
+                # Two keys collapsed onto one — a forged key and its already
+                # escaped twin, say — so an entry would be silently dropped.
+                # Corrupting a tool result is not an acceptable way to sanitize
+                # it; fall back to text that still contains every entry.
+                logger.warning(
+                    "Sanitizing collapsed distinct mapping keys; returning "
+                    "sanitized text so no entry is lost"
+                )
+                return sanitize_untrusted_text(_wire_repr(value))
+            return rebuilt
 
         if getattr(type(value), "model_fields", None):
             return _sanitize_fields(
@@ -515,7 +526,14 @@ def make_tool_output_sanitizer_history_processor():
                             else item
                             for item in content
                         ]
-                        cleaned = type(content)(items)
+                        # Same reconstruction the payload walker uses: a
+                        # NamedTuple takes one argument per field, so
+                        # type(content)(items) would raise and abort the request.
+                        cleaned = (
+                            items
+                            if isinstance(content, list)
+                            else _rebuild_sequence(content, items, tuple)
+                        )
                     else:
                         continue
                     if cleaned != content:
