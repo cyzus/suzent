@@ -29,11 +29,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Keep draft writes off the token loop and out of the index
 
 ### 🐛 Fixed
+- Sanitize model output in history, not just compressor summaries
+- Sanitize at the wrap point and after compaction
+- Guard set members against the same collision as mapping keys
+- Sanitize the assembled ACP prompt; keep every mapping entry
+- Take provenance from the call path, not the token in the text
+- Escape forged delimiters at ingress instead of deleting them
+- Sanitize ACP input before deriving its transcript
+- Verify the serialized form, not just the walked structure
+- Check the wire form, and keep the token out of the logs
+- Redact unfixable objects; keep NamedTuple returns working
+- Make the payload walker fail closed on unknown shapes
+- Stop re-authenticating recovered triggers; walk dataclasses
+- Rewrap recovered triggers so they rebuild as trigger rows
+- Carry display triggers across the stale-reminder drop
+- Drop stale tokenized XML reminders instead of escaping them
+- Authenticate reminder blocks properly; cover image turns
 - Render the project's context path, not the chat's cwd
+- Sanitize user prompts restored from history
 - Remove the core-memory snapshot rather than fall back to it
 - Bound the core-memory cache with an LRU
+- Close steer, mapping-key and deep-nesting bypasses
 - Key the core-memory cache on resolver paths, never cache failures
+- Sanitize structured tool results and all tag spellings
 - Resolve core memory per request instead of per agent build
+- Make system-reminder boundaries unforgeable
 - Never let the prefill probe shorten a wait
 - Stop killing long-context turns on a 45s first-event timeout
 - Update aria-label for accessibility and adjust sheen colors
