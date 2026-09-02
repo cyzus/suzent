@@ -98,6 +98,16 @@ def wrap_in_system_reminder(content: str, display_trigger: Optional[str] = None)
     XML sub-tag *inside* the block regardless of the outer delimiter, so the
     display-rebuild path can still extract it.
     """
+    # Wrapping is what confers trust: whatever ends up inside these delimiters
+    # is read by the model as authenticated runtime context. Fragments are built
+    # from user-influenced material — retrieved memories, goal and task text,
+    # background agent results, upload paths — so any delimiters they carry are
+    # neutralized here rather than at each of the callers that produce them.
+    # Doing it at the wrap point means a new reminder source cannot forget.
+    content = sanitize_untrusted_text(content)
+    if display_trigger:
+        display_trigger = sanitize_untrusted_text(display_trigger)
+
     body = content.strip()
     if display_trigger and display_trigger.strip():
         body = (
