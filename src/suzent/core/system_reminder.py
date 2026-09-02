@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
-from concurrent.futures import ThreadPoolExecutor
+import threading
 import os
 import re
 import secrets
@@ -847,25 +847,19 @@ def clear_per_turn_hooks() -> None:
 #: How long any one reminder provider may take before it is dropped for the turn.
 HOOK_TIMEOUT_SECONDS = 2.0
 
-#: Threads available to reminder providers doing blocking work.
+#: Concurrent blocking providers allowed at once.
 #:
-#: Deliberately separate from asyncio's default executor. Cancelling the await
-#: on a timed-out provider does not stop the thread — Python cannot kill one —
-#: so a wedged filesystem or database leaves workers occupied. On the shared
-#: executor those stragglers would eventually starve every other to_thread
-#: caller in the process; here the damage is bounded to this pool, and the turn
-#: itself is unaffected because the await still times out.
+#: Deliberately not a ThreadPoolExecutor. Its workers are non-daemon and joined
+#: at interpreter exit, so one genuinely wedged read — the case this exists to
+#: survive — would hang every server stop, reload and resource-guard recycle,
+#: long after the turn itself returned. Daemon threads let the process leave.
+#:
+#: The bound matters for the same reason the pool did: a stuck thread cannot be
+#: killed, so without a ceiling they accumulate. At saturation a provider is
+#: skipped rather than queued, because queueing behind wedged work is how a
+#: transient stall becomes a permanent one.
 _PROVIDER_THREADS = 4
-_provider_executor: Optional[ThreadPoolExecutor] = None
-
-
-def _get_provider_executor() -> ThreadPoolExecutor:
-    global _provider_executor
-    if _provider_executor is None:
-        _provider_executor = ThreadPoolExecutor(
-            max_workers=_PROVIDER_THREADS, thread_name_prefix="reminder-provider"
-        )
-    return _provider_executor
+_provider_slots = threading.Semaphore(_PROVIDER_THREADS)
 
 
 async def run_provider_blocking(fn: Callable[..., Any], *args: Any) -> Any:
@@ -873,14 +867,42 @@ async def run_provider_blocking(fn: Callable[..., Any], *args: Any) -> Any:
 
     Providers that do synchronous I/O must call this. A provider that blocks
     before its first await cannot be timed out at all, because cancelling needs
-    the loop to run — so an unreachable network mount or a wedged database stalls
-    every turn regardless of HOOK_TIMEOUT_SECONDS.
+    the loop to run — so an unreachable network mount or a wedged database
+    stalls every turn regardless of HOOK_TIMEOUT_SECONDS.
 
-    Only safe for read-only work: a thread that outlives its cancelled await
-    keeps going, so anything it writes lands after the provider was abandoned.
+    Only safe for read-only work. The thread is not cancellable: when the caller
+    times out, the work carries on to completion, so anything it writes lands
+    after the provider was abandoned.
     """
+    if not _provider_slots.acquire(blocking=False):
+        logger.warning("Reminder provider threads are saturated; skipping provider")
+        return None
+
     loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(_get_provider_executor(), fn, *args)
+    future: asyncio.Future = loop.create_future()
+
+    def _deliver(setter: Callable[..., None], value: Any) -> None:
+        if not future.done():
+            setter(value)
+
+    def _worker() -> None:
+        try:
+            result = fn(*args)
+        except BaseException as exc:  # noqa: BLE001 - relayed to the awaiter
+            try:
+                loop.call_soon_threadsafe(_deliver, future.set_exception, exc)
+            except RuntimeError:
+                pass  # loop already closed; nobody is waiting
+        else:
+            try:
+                loop.call_soon_threadsafe(_deliver, future.set_result, result)
+            except RuntimeError:
+                pass
+        finally:
+            _provider_slots.release()
+
+    threading.Thread(target=_worker, name="reminder-provider", daemon=True).start()
+    return await future
 
 
 #: Ceiling on the assembled reminder body, in characters.
@@ -1007,6 +1029,14 @@ async def build_combined_reminder(
     parts = [sanitize_untrusted_text(part) for part in parts]
     parts = _dedupe_fragments(parts)
 
+    # A reminder-only turn passes the same text as display_trigger and as an
+    # ad-hoc fragment, and the trigger is prepended inside the block — so the
+    # model saw it twice and it was charged twice. Dropping the fragment keeps
+    # the content (the trigger envelope carries it) and halves the cost.
+    if display_trigger:
+        _trigger = sanitize_untrusted_text(display_trigger).strip()
+        parts = [part for part in parts if part != _trigger]
+
     # The trigger is prepended inside the block, so it spends from the same
     # budget; without this the cap covered only part of what the model reads.
     trigger_cost = (
@@ -1014,9 +1044,14 @@ async def build_combined_reminder(
     )
     parts = _apply_budget(parts, chat_id, reserved=trigger_cost)
 
-    if not parts:
+    if not parts and not display_trigger:
         logger.debug(f"[system-reminder] chat={chat_id} — no content, skipping")
         return None
+    if not parts:
+        # Dropping the duplicate fragment can empty the body while a trigger is
+        # still owed: a reminder-only turn's whole visible record is that
+        # trigger, so returning None here would lose the row entirely.
+        logger.debug(f"[system-reminder] chat={chat_id} — trigger only")
 
     # The separator is in-band, so a fragment carrying it verbatim would split
     # into two and let its own content pose as a separate provider's. Goal and

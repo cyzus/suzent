@@ -1733,14 +1733,58 @@ def test_blocking_providers_use_the_bounded_pool(module: str, func: str):
     assert "asyncio.to_thread" not in source
 
 
-def test_the_provider_pool_is_separate_and_bounded():
-    from suzent.core.system_reminder import _get_provider_executor, _PROVIDER_THREADS
+def test_provider_threads_are_daemons_and_bounded():
+    """ThreadPoolExecutor joins its workers at interpreter exit, so one wedged
+    read — the case this exists to survive — would hang every server stop and
+    reload. Daemon threads let the process leave."""
+    import inspect
 
-    executor = _get_provider_executor()
+    from suzent.core import system_reminder as sr
 
-    assert executor._max_workers == _PROVIDER_THREADS
-    # Not asyncio's default executor, whose stragglers would affect everything.
-    assert "reminder-provider" in executor._thread_name_prefix
+    source = inspect.getsource(sr.run_provider_blocking)
+
+    assert "daemon=True" in source
+    assert "ThreadPoolExecutor(" not in inspect.getsource(sr), "must not construct one"
+    assert sr._provider_slots._value <= sr._PROVIDER_THREADS
+
+
+@pytest.mark.asyncio
+async def test_saturated_provider_threads_skip_rather_than_queue():
+    """Queueing behind wedged work is how a transient stall becomes permanent."""
+    import threading
+
+    from suzent.core import system_reminder as sr
+
+    exhausted = threading.Semaphore(0)
+    original = sr._provider_slots
+    sr._provider_slots = exhausted
+    try:
+        assert await sr.run_provider_blocking(lambda: "should not run") is None
+    finally:
+        sr._provider_slots = original
+
+
+@pytest.mark.asyncio
+async def test_a_provider_thread_slot_is_released_after_use():
+    from suzent.core import system_reminder as sr
+
+    before = sr._provider_slots._value
+    await sr.run_provider_blocking(lambda: "done")
+
+    assert sr._provider_slots._value == before
+
+
+@pytest.mark.asyncio
+async def test_a_failing_blocking_provider_relays_its_error():
+    from suzent.core import system_reminder as sr
+
+    def boom():
+        raise RuntimeError("disk on fire")
+
+    with pytest.raises(RuntimeError, match="disk on fire"):
+        await sr.run_provider_blocking(boom)
+
+    assert sr._provider_slots._value == sr._PROVIDER_THREADS
 
 
 @pytest.mark.asyncio
@@ -1781,3 +1825,42 @@ def test_the_goal_fragment_outranks_ambient_catalogues():
     skills = source.index("register_global_hook(skills_reminder_hook)")
 
     assert plan < skills
+
+
+@pytest.mark.asyncio
+async def test_the_trigger_text_is_not_charged_twice(clean_hooks, monkeypatch):
+    """A reminder-only turn passes the same text as display_trigger and as an
+    ad-hoc fragment, and the trigger is prepended inside the block — so a large
+    scheduled reminder produced a body twice its size and defeated the cap."""
+    from suzent.core import system_reminder as sr
+
+    monkeypatch.setattr(sr, "REMINDER_BUDGET_CHARS", 6000)
+    scheduled = "Cron: " + "x" * 3000
+
+    result = await sr.build_combined_reminder(
+        "c", None, adhoc_reminders=[scheduled], display_trigger=scheduled
+    )
+
+    # Once in the whole block: the trigger envelope carries it, so the duplicate
+    # fragment is redundant. The model still reads it; it is charged once.
+    assert result.count("x" * 3000) == 1, "the trigger text appeared twice"
+    assert len(result) < 6000
+    from suzent.core.system_reminder import extract_system_reminder_display_trigger
+
+    assert extract_system_reminder_display_trigger(result).startswith("Cron:")
+
+
+@pytest.mark.asyncio
+async def test_a_trigger_only_turn_still_produces_a_reminder(clean_hooks):
+    """Dropping the duplicate fragment can empty the body while a trigger is
+    still owed. A reminder-only turn's whole visible record is that trigger, so
+    returning nothing would lose the row."""
+    from suzent.core import system_reminder as sr
+
+    scheduled = "Cron: nightly digest"
+    result = await sr.build_combined_reminder(
+        "c", None, adhoc_reminders=[scheduled], display_trigger=scheduled
+    )
+
+    assert result is not None
+    assert sr.extract_system_reminder_display_trigger(result) == scheduled
