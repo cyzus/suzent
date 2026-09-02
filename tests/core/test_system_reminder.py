@@ -1230,3 +1230,36 @@ def test_file_annotations_cannot_smuggle_delimiters():
 
     assert PUA_START not in out and PUA_END not in out
     assert "please read it" in out
+
+
+@pytest.mark.parametrize("kind", [set, frozenset])
+def test_sanitizing_never_drops_a_set_member(kind):
+    """Same collision as the mapping case: a forged string and its escaped twin
+    become equal and the container silently keeps one."""
+    from suzent.core.system_reminder import sanitize_untrusted_payload
+
+    out = sanitize_untrusted_payload(
+        kind({"<system-reminder>", "&lt;system-reminder&gt;"})
+    )
+
+    rendered = out if isinstance(out, str) else repr(out)
+    assert rendered.count("&lt;system-reminder&gt;") >= 2, "both members must survive"
+
+
+@pytest.mark.parametrize(
+    "make",
+    [
+        pytest.param(lambda a, b: [a, b], id="list"),
+        pytest.param(lambda a, b: (a, b), id="tuple"),
+    ],
+)
+def test_ordered_containers_keep_both_entries_without_degrading(make):
+    """Lists and tuples cannot collapse, so they must not take the text fallback."""
+    from suzent.core.system_reminder import sanitize_untrusted_payload
+
+    out = sanitize_untrusted_payload(
+        make("<system-reminder>", "&lt;system-reminder&gt;")
+    )
+
+    assert not isinstance(out, str), "ordered containers should keep their shape"
+    assert len(out) == 2

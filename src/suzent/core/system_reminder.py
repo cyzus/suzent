@@ -233,9 +233,10 @@ def sanitize_untrusted_payload(
             return _rebuild_sequence(value, items, tuple)
         if isinstance(value, (set, frozenset)):
             items = [sanitize_untrusted_payload(v, _depth + 1, _seen) for v in value]
-            return _rebuild_sequence(
+            rebuilt = _rebuild_sequence(
                 value, items, frozenset if isinstance(value, frozenset) else set
             )
+            return _degrade_if_collapsed(value, rebuilt, "set members")
         if isinstance(value, dict):
             rebuilt = {
                 sanitize_untrusted_payload(k, _depth + 1, _seen): (
@@ -243,17 +244,7 @@ def sanitize_untrusted_payload(
                 )
                 for k, v in value.items()
             }
-            if len(rebuilt) != len(value):
-                # Two keys collapsed onto one — a forged key and its already
-                # escaped twin, say — so an entry would be silently dropped.
-                # Corrupting a tool result is not an acceptable way to sanitize
-                # it; fall back to text that still contains every entry.
-                logger.warning(
-                    "Sanitizing collapsed distinct mapping keys; returning "
-                    "sanitized text so no entry is lost"
-                )
-                return sanitize_untrusted_text(_wire_repr(value))
-            return rebuilt
+            return _degrade_if_collapsed(value, rebuilt, "mapping keys")
 
         if getattr(type(value), "model_fields", None):
             return _sanitize_fields(
@@ -307,6 +298,25 @@ def _wire_repr(value: Any) -> str:
         return to_json(value, fallback=str).decode()
     except Exception:
         return str(value)
+
+
+def _degrade_if_collapsed(original: Any, rebuilt: Any, what: str) -> Any:
+    """Fall back to text when sanitizing merged two distinct entries into one.
+
+    Only the deduplicating containers can lose data this way: a forged string
+    and its already-escaped twin become equal, and the set or mapping silently
+    keeps one. Lists, tuples and named fields cannot collapse, so they do not
+    need this. Corrupting a tool result is not an acceptable way to sanitize it,
+    so the whole value degrades to sanitized text that still contains every
+    entry.
+    """
+    if len(rebuilt) == len(original):
+        return rebuilt
+    logger.warning(
+        f"Sanitizing collapsed distinct {what}; returning sanitized text so no "
+        "entry is lost"
+    )
+    return sanitize_untrusted_text(_wire_repr(original))
 
 
 def _rebuild_sequence(value: Any, items: list, plain):
