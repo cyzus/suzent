@@ -469,6 +469,27 @@ def build_citation_section(deps: Any) -> str:
     return CITATION_RULES_SECTION
 
 
+def _notebook_skill_available(deps: Any) -> bool:
+    """Whether *this run* could load the notebook skill.
+
+    Reads the run's own skill manager off deps rather than the global
+    singleton. A repository-provided skill is discovered into a per-chat manager
+    whose skills are enabled by default, so the singleton can say "disabled"
+    while the run can load it perfectly well — and runtime toggles land on the
+    per-chat manager too.
+
+    Unknown resolves to False: pointing at the vault always works, pointing at
+    an absent tool does not.
+    """
+    manager = getattr(deps, "skill_manager", None)
+    if manager is None:
+        return False
+    try:
+        return bool(manager.is_skill_enabled("notebook"))
+    except Exception:
+        return False
+
+
 def register_dynamic_instructions(
     agent: Any,
     *,
@@ -592,6 +613,7 @@ def register_dynamic_instructions(
                 user_id=getattr(deps, "user_id", "") or None,
                 sandbox_enabled=getattr(deps, "sandbox_enabled", True),
                 path_resolver=getattr(deps, "path_resolver", None),
+                notebook_skill_available=_notebook_skill_available(deps),
             )
         except Exception as e:
             # Better a prompt with no core memory than one carrying someone

@@ -114,21 +114,66 @@ def test_the_fallback_stays_short(sandbox: bool) -> None:
     assert len(section) < 2600, len(section)
 
 
-def test_availability_defaults_to_false_when_it_cannot_be_determined() -> None:
-    """Pointing at the vault always works; pointing at an absent tool does not."""
-    from suzent.memory.manager import _notebook_skill_available
+def test_availability_reads_the_runs_own_skill_manager() -> None:
+    """A repository-provided skill is discovered into a per-chat manager whose
+    skills are enabled by default, so the global singleton can say 'disabled'
+    while this run can load it fine."""
+    from types import SimpleNamespace
 
-    assert _notebook_skill_available() in (True, False)
+    from suzent.prompts import _notebook_skill_available
 
-
-def test_unknown_skill_state_is_treated_as_unavailable(monkeypatch) -> None:
-    import suzent.memory.manager as manager_mod
-
-    def boom():
-        raise RuntimeError("no skill manager")
-
-    monkeypatch.setattr(
-        "suzent.skills.manager.SkillManager.get_instance", staticmethod(boom)
+    enabled = SimpleNamespace(
+        skill_manager=SimpleNamespace(is_skill_enabled=lambda n: True)
+    )
+    disabled = SimpleNamespace(
+        skill_manager=SimpleNamespace(is_skill_enabled=lambda n: False)
     )
 
-    assert manager_mod._notebook_skill_available() is False
+    assert _notebook_skill_available(enabled) is True
+    assert _notebook_skill_available(disabled) is False
+
+
+def test_no_skill_manager_is_treated_as_unavailable() -> None:
+    from types import SimpleNamespace
+
+    from suzent.prompts import _notebook_skill_available
+
+    assert _notebook_skill_available(SimpleNamespace()) is False
+    assert _notebook_skill_available(SimpleNamespace(skill_manager=None)) is False
+
+
+def test_a_broken_skill_manager_is_treated_as_unavailable() -> None:
+    """Pointing at the vault always works; pointing at an absent tool does not."""
+    from types import SimpleNamespace
+
+    from suzent.prompts import _notebook_skill_available
+
+    def boom(name: str) -> bool:
+        raise RuntimeError("skill state unreadable")
+
+    deps = SimpleNamespace(skill_manager=SimpleNamespace(is_skill_enabled=boom))
+
+    assert _notebook_skill_available(deps) is False
+
+
+@pytest.mark.asyncio
+async def test_toggling_the_skill_invalidates_the_cached_section(tmp_path) -> None:
+    """The section is cached on memory-file revisions, so without this in the
+    key an existing chat would keep the old wording forever after a toggle."""
+    from suzent.memory.manager import MemoryManager
+    from suzent.memory.markdown_store import MarkdownMemoryStore
+
+    store = MarkdownMemoryStore(
+        base_dir=tmp_path / "memory", notebook_dir=tmp_path / "notebook"
+    )
+    manager = MemoryManager(store=None, markdown_store=store)
+
+    without = await manager.get_core_memory_context(
+        chat_id="c1", user_id="u1", notebook_skill_available=False
+    )
+    with_skill = await manager.get_core_memory_context(
+        chat_id="c1", user_id="u1", notebook_skill_available=True
+    )
+
+    assert "schema.md" in without
+    assert "`notebook` skill" in with_skill
