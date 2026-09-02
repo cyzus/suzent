@@ -822,6 +822,10 @@ class ChatProcessor:
             )
             else None
         )
+        pending_trigger_rows: list[dict] = []
+        # Shared with the streaming layer so the draft row this run writes can
+        # be told apart from a previous turn's answer when placing the trigger.
+        stream_run_id = str(uuid.uuid4())
         display_trigger = None
         if system_reminders and not (message_content and message_content.strip()):
             display_trigger = "\n\n---\n\n".join(
@@ -867,6 +871,10 @@ class ChatProcessor:
             parts = [make_user_prompt_part(content, runtime_authored=True)]
             new_request = ModelRequest(parts=parts)
             message_history.append(new_request)
+
+            pending_trigger_rows.extend(
+                trigger_rows_for_snapshot(display_trigger, is_heartbeat, parts[0])
+            )
 
             # Pre-save the user message to the DB display log for social chats so the
             # frontend can show it as soon as the stream starts, without waiting for the
@@ -1055,6 +1063,7 @@ class ChatProcessor:
                 deferred_tool_results=deferred_tool_results,
                 permission_resolutions=permission_resolutions,
                 is_heartbeat=is_heartbeat,
+                run_id=stream_run_id,
             ):
                 try:
                     if chunk.startswith("data: "):
@@ -1166,6 +1175,8 @@ class ChatProcessor:
                         messages=snapshot_messages or [],
                         model_id=getattr(agent, "_model_id", None),
                         tool_names=getattr(agent, "_tool_names", []),
+                        append_display_messages=pending_trigger_rows,
+                        draft_run_id=stream_run_id,
                     )
             except Exception as e:
                 logger.warning(
@@ -1958,11 +1969,16 @@ class ChatProcessor:
         messages: list,
         model_id: Optional[str],
         tool_names: List[str],
+        append_display_messages: Optional[List[Dict[str, Any]]] = None,
+        draft_run_id: Optional[str] = None,
     ) -> Optional[int]:
         """Persist only agent_state for fast-follow turn recovery.
 
         This intentionally avoids display-log rebuilding, memory extraction,
-        compression, and lifecycle field updates.
+        compression, and lifecycle field updates. The one exception is
+        *append_display_messages*: rows whose provenance cannot be recovered
+        later, so they have to become durable alongside the history rather than
+        waiting for post-processing that may never run.
         """
 
         def _sync() -> Optional[int]:
@@ -1970,7 +1986,12 @@ class ChatProcessor:
             agent_state = serialize_state(
                 messages, model_id=model_id, tool_names=tool_names
             )
-            revision = db.commit_snapshot_state(chat_id, agent_state)
+            revision = db.commit_snapshot_state(
+                chat_id,
+                agent_state,
+                append_display_messages=append_display_messages,
+                draft_run_id=draft_run_id,
+            )
             if revision is None:
                 db.update_chat(chat_id, agent_state=agent_state)
                 return None
@@ -2649,6 +2670,44 @@ def _trigger_placeholder_prefix() -> str:
     return f"{TRIGGER_MARK}[system trigger: "
 
 
+def trigger_rows_for_snapshot(
+    display_trigger: str | None, is_heartbeat: bool, part: Any
+) -> list[dict]:
+    """Display rows that must become durable with the history they describe.
+
+    A reminder-only turn has no user text, so its row cannot be rebuilt once the
+    reminder block stops being authenticatable after a restart. The row is keyed
+    to the prompt part's own timestamp so restoration can match the occurrence.
+
+    Heartbeats return nothing, and that exclusion is the whole reason this is a
+    function rather than a condition inline. ``_persist_state`` sets
+    ``skip_messages=is_heartbeat`` deliberately, and ``_rollback_heartbeat_messages``
+    only runs after a successful ``HEARTBEAT_OK`` — so a heartbeat row persisted
+    here would survive every failure path and leave the internal prompt in
+    someone's visible transcript. An earlier attempt at this shipped exactly that
+    bug, so the rule is asserted by a test rather than trusted to a comment.
+    """
+    if not display_trigger or is_heartbeat:
+        return []
+
+    from suzent.core.system_reminder import sanitize_untrusted_text
+
+    # Same treatment wrap_in_system_reminder gives it. Scheduled prompts and
+    # subagent results are user-influenced, and _preserve_display_triggers
+    # prefers this stored content over the placeholder rebuilt from history — so
+    # storing the raw value would put delimiters back into the visible transcript
+    # permanently, undoing the sanitizing on the path that does it.
+    stamp = getattr(part, "timestamp", None)
+    row: dict = {
+        "role": "system_triggered",
+        "content": sanitize_untrusted_text(display_trigger),
+        "trigger_origin": "runtime",
+    }
+    if stamp:
+        row["timestamp"] = stamp.isoformat()
+    return [row]
+
+
 def _preserve_display_triggers(rebuilt: list, existing: list | None) -> list:
     """Restore ``system_triggered`` rows the rebuild can no longer reconstruct.
 
@@ -2679,15 +2738,12 @@ def _preserve_display_triggers(rebuilt: list, existing: list | None) -> list:
     is no evidence it was a trigger, and inventing some is how the previous four
     attempts at this went wrong.
 
-    Known limitation: the stamped row is written by the background persist, so a
-    process that takes its fast agent-state snapshot and then exits before that
-    persist leaves the trigger in history with no stored row, and the turn shows
-    as a user message from then on. Writing the row eagerly at turn start was
-    tried and withdrawn — it bypassed the deliberate ``skip_messages=is_heartbeat``
-    rule and leaked heartbeat prompts into the visible log on failure paths, and
-    an unrevisioned write there races the previous turn's finalizer. Closing this
-    properly means carrying the row inside the snapshot transaction, which is a
-    change to the persistence layer rather than to this function.
+    The stamped row is committed by ``commit_snapshot_state`` in the same
+    transaction as the history it describes, so a process that snapshots and then
+    exits still has both. Writing it separately was tried and withdrawn twice
+    over: as a post-processing-only write it could be lost to an early exit, and
+    as an eager write at turn start it bypassed ``skip_messages=is_heartbeat``
+    and raced the previous turn's finalizer. See ``trigger_rows_for_snapshot``.
     """
     if not existing or not rebuilt:
         return rebuilt
