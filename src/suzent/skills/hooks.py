@@ -1,5 +1,6 @@
 import hashlib
 import json
+import re
 from typing import Any, Iterable, Optional
 
 # Emitted with the catalog and matched on the next turn to decide whether the
@@ -8,6 +9,8 @@ from typing import Any, Iterable, Optional
 # sandbox and host paths — silently re-sent the whole catalog as if it were new,
 # while a cosmetic difference in one line re-sent that line forever.
 CATALOG_MARKER_PREFIX = "skills-catalog rev="
+
+_MARKER_RE = re.compile(rf"\[{re.escape(CATALOG_MARKER_PREFIX)}([0-9a-f]{{12}})\]")
 
 
 def _get_history_text(deps: Any) -> str:
@@ -25,19 +28,31 @@ def _get_history_text(deps: Any) -> str:
     return "\n".join(parts)
 
 
-def catalog_revision(entries: Iterable[tuple[str, str]], sandbox_enabled: bool) -> str:
-    """Fingerprint of what the catalog would say, not of how it is worded.
+def catalog_revision(lines: Iterable[str]) -> str:
+    """Fingerprint the catalog exactly as it would be emitted.
 
-    Covers skill ids and descriptions because those are what the model routes
-    on, and the sandbox flag because it decides whether locations are virtual or
-    host paths. Sorted, so catalog order cannot cause a spurious re-injection.
+    Hashes the rendered lines rather than a chosen subset of their inputs. An
+    earlier version covered ids, descriptions and the sandbox flag, and so
+    missed a skill whose path changed on its own: same id, same description, a
+    different ``Location`` the model was never told about. Fingerprinting the
+    output cannot fall behind the rendering that way.
+
+    Sorted, so loader ordering cannot cause a spurious re-injection.
     """
-    payload = json.dumps(
-        {"skills": sorted(entries), "sandbox": bool(sandbox_enabled)},
-        sort_keys=True,
-        ensure_ascii=False,
-    )
+    payload = json.dumps(sorted(lines), sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:12]
+
+
+def latest_advertised_revision(history_text: str) -> Optional[str]:
+    """The revision from the most recent marker, or None if never advertised.
+
+    Only the last marker counts. Matching *any* of them meant a catalog that
+    changed and then changed back stayed silent: history still held the old
+    marker, while what the model had most recently been told was the
+    intervening catalog.
+    """
+    found = _MARKER_RE.findall(history_text or "")
+    return found[-1] if found else None
 
 
 async def skills_reminder_hook(chat_id: str, deps: Any) -> Optional[str]:
@@ -45,8 +60,8 @@ async def skills_reminder_hook(chat_id: str, deps: Any) -> Optional[str]:
 
     Deduplication is by a revision marker carried in the reminder itself rather
     than by looking for the rendered lines in history. That matters in both
-    directions: the catalog is re-advertised when it actually changes, and it is
-    not re-advertised merely because a description was reworded.
+    directions: the catalog is re-advertised when what it would say changes, and
+    it is not re-advertised merely because the lines were re-rendered.
 
     History is the source of truth on purpose. A durable store of "already told"
     would drift from what the model can still see — context compaction drops old
@@ -61,23 +76,10 @@ async def skills_reminder_hook(chat_id: str, deps: Any) -> Optional[str]:
 
     sandbox_enabled = getattr(deps, "sandbox_enabled", True)
 
-    enabled = [
-        skill
-        for skill in skill_mgr.loader.list_skills()
-        if skill_mgr.is_skill_enabled(skill.id)
-    ]
-    if not enabled:
-        return None
-
-    revision = catalog_revision(
-        ((skill.id, skill.metadata.description) for skill in enabled), sandbox_enabled
-    )
-    marker = f"[{CATALOG_MARKER_PREFIX}{revision}]"
-    if marker in _get_history_text(deps):
-        return None
-
     lines = []
-    for skill in enabled:
+    for skill in skill_mgr.loader.list_skills():
+        if not skill_mgr.is_skill_enabled(skill.id):
+            continue
         name = skill.metadata.name
         if sandbox_enabled:
             from suzent.tools.filesystem.path_resolver import PathResolver
@@ -90,8 +92,15 @@ async def skills_reminder_hook(chat_id: str, deps: Any) -> Optional[str]:
             f"(Name: {name}; Location: {location})"
         )
 
+    if not lines:
+        return None
+
+    revision = catalog_revision(lines)
+    if latest_advertised_revision(_get_history_text(deps)) == revision:
+        return None
+
     return (
         "You have a SkillTool that loads specialized knowledge. "
         "Use it IMMEDIATELY when the user's task matches a skill.\n"
-        f"{marker}\n\n" + "\n".join(lines)
+        f"[{CATALOG_MARKER_PREFIX}{revision}]\n\n" + "\n".join(lines)
     )

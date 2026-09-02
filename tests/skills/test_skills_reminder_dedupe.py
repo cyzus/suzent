@@ -13,6 +13,7 @@ from pydantic_ai.messages import ModelRequest, UserPromptPart
 from suzent.skills.hooks import (
     CATALOG_MARKER_PREFIX,
     catalog_revision,
+    latest_advertised_revision,
     skills_reminder_hook,
 )
 
@@ -161,22 +162,69 @@ async def test_a_dropped_marker_re_advertises():
 # --- the revision itself ----------------------------------------------------
 
 
-def test_revision_is_stable_and_order_independent():
-    a = catalog_revision([("docx", "d"), ("pdf", "p")], True)
-    b = catalog_revision([("pdf", "p"), ("docx", "d")], True)
+def test_revision_is_order_independent():
+    """Loader ordering is an implementation detail, not a catalog change."""
+    a = catalog_revision(["- docx: d", "- pdf: p"])
+    b = catalog_revision(["- pdf: p", "- docx: d"])
 
     assert a == b
 
 
 @pytest.mark.parametrize(
-    "entries,sandbox",
+    "lines",
     [
-        ([("docx", "changed")], True),
-        ([("docx", "d"), ("pdf", "p")], True),
-        ([("docx", "d")], False),
+        pytest.param(["- docx: changed"], id="description"),
+        pytest.param(["- docx: d", "- pdf: p"], id="added-skill"),
+        pytest.param(["- docx: d (Location: /elsewhere)"], id="location"),
     ],
 )
-def test_revision_changes_with_content_or_mode(entries, sandbox):
-    baseline = catalog_revision([("docx", "d")], True)
+def test_revision_changes_with_anything_that_would_be_emitted(lines):
+    """Hashing the rendered lines means nothing emitted can slip past it."""
+    assert catalog_revision(lines) != catalog_revision(["- docx: d"])
 
-    assert catalog_revision(entries, sandbox) != baseline
+
+# --- which marker counts ----------------------------------------------------
+
+
+def test_the_latest_marker_is_the_one_that_counts():
+    history = (
+        f"[{CATALOG_MARKER_PREFIX}aaaaaaaaaaaa]\n"
+        "...later turn...\n"
+        f"[{CATALOG_MARKER_PREFIX}bbbbbbbbbbbb]"
+    )
+
+    assert latest_advertised_revision(history) == "bbbbbbbbbbbb"
+
+
+def test_no_marker_means_never_advertised():
+    assert latest_advertised_revision("") is None
+    assert latest_advertised_revision("nothing relevant here") is None
+
+
+@pytest.mark.asyncio
+async def test_a_catalog_that_changes_back_is_re_advertised():
+    """A→B→A must not stay silent: history still holds A's marker, but what the
+    model was most recently told is B."""
+    only_docx = _Manager([_skill("docx")])
+    both = _Manager([_skill("docx"), _skill("pdf")])
+
+    first = await _run(only_docx)
+    second = await _run(both, history_text=first)
+    assert second is not None
+
+    back = await _run(only_docx, history_text=f"{first}\n{second}")
+
+    assert back is not None, "the model's current view is B, so A is new again"
+
+
+@pytest.mark.asyncio
+async def test_a_changed_location_re_advertises():
+    """Same id and description, different path — the model was told the old one."""
+    first = await _run(_Manager([_skill("docx", virtual_path="/skills/docx")]))
+    out = await _run(
+        _Manager([_skill("docx", virtual_path="/skills/moved/docx")]),
+        history_text=first,
+    )
+
+    assert out is not None
+    assert "/skills/moved/docx" in out
