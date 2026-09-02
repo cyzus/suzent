@@ -21,8 +21,19 @@ def test_memory_context_host_mode_avoids_virtual_paths():
     assert "/mnt/notebook" not in text
     assert "/shared/memory/" not in text
     assert "${SHARED_PATH}/memory/MEMORY.md" in text
-    assert "Load the `notebook` skill" in text
+    # No notebook mount was supplied, so the section says so rather than
+    # pointing at a skill for a resource this session does not have.
+    assert "No notebook is configured" in text
     assert "MOUNT_SKILLS" not in text
+
+
+def test_memory_context_host_mode_points_at_the_skill_when_mounted():
+    text = format_core_memory_section(
+        _sample_blocks(), sandbox_enabled=False, mount_notebook="/host/vault"
+    )
+
+    assert "Load the `notebook` skill" in text
+    assert "/mnt/notebook" not in text
 
 
 def test_memory_context_sandbox_mode_keeps_virtual_paths():

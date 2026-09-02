@@ -36,6 +36,17 @@ Use the schema's link style. Prefer full vault-relative paths when links could b
 Read the selected procedure completely before acting. Treat referenced binary assets as
 immutable unless the user explicitly asks to replace them.
 
+## Answering from the notebook
+
+1. Read `index.md` first to identify candidate pages.
+2. Read those pages and synthesize with citations back to them.
+3. File the result only under the rules below — answering a question is not
+   itself a reason to write a page.
+
+Durable outputs are comparisons, analyses, syntheses, and decision breakdowns:
+material someone would want to find again. A direct answer to a direct question
+is not one.
+
 ## Filing conversation results
 
 File a result only when the user explicitly requests it or the vault/session has an
@@ -44,6 +55,9 @@ writes.
 
 When filing is authorized:
 
-1. Follow `schema.md` for the destination and page structure.
-2. Update `index.md` only when required by the schema.
-3. Append a `query-filed` entry to `log.md` when the log convention requires it.
+1. Check what already exists first — read `index.md`, and Glob the vault for the
+   topic. A page written without looking is a duplicate or an orphan. Update or
+   link the existing page instead of creating a second one.
+2. Follow `schema.md` for the destination and page structure.
+3. Update `index.md` only when required by the schema.
+4. Append a `query-filed` entry to `log.md` when the log convention requires it.
