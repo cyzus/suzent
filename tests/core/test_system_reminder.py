@@ -834,3 +834,85 @@ def test_unrenderable_object_is_redacted():
             raise RuntimeError("nope")
 
     assert sanitize_untrusted_payload(Hostile()) == _REDACTED
+
+
+def test_namedtuple_result_does_not_break_the_processor():
+    """A NamedTuple takes one argument per field, not an iterable. Calling
+    type(value)(items) on one aborts the whole model request over a shape
+    pydantic-ai serializes perfectly well."""
+    import typing
+
+    from suzent.core.system_reminder import sanitize_untrusted_payload
+
+    class Row(typing.NamedTuple):
+        name: str
+        count: int
+
+    out = sanitize_untrusted_payload(Row(name="clean", count=2))
+
+    assert tuple(out) == ("clean", 2)
+
+
+def test_namedtuple_fields_are_still_sanitized():
+    import typing
+
+    from suzent.core.system_reminder import sanitize_untrusted_payload
+
+    class Row(typing.NamedTuple):
+        name: str
+
+    out = sanitize_untrusted_payload(Row(name=f"{PUA_START}evil{PUA_END}"))
+
+    assert PUA_START not in out[0] and PUA_END not in out[0]
+
+
+def test_unreconstructable_sequence_degrades_to_a_plain_builtin():
+    from suzent.core.system_reminder import sanitize_untrusted_payload
+
+    class Picky(tuple):
+        def __new__(cls, *args):
+            raise TypeError("no rebuilding me")
+
+    payload = tuple.__new__(Picky, (f"{PUA_START}evil{PUA_END}",))
+    out = sanitize_untrusted_payload(payload)
+
+    assert PUA_START not in out[0]
+
+
+def test_unfixable_frozen_object_is_redacted_not_passed_through():
+    """The fail-open path the inversion missed: when rebuild AND setattr both
+    fail, returning the original ships the delimiters it still contains."""
+    from suzent.core.system_reminder import sanitize_untrusted_payload, _REDACTED
+
+    class Stubborn:
+        model_fields = {"body": None}
+
+        def __init__(self, body):
+            object.__setattr__(self, "body", body)
+
+        def model_copy(self, update=None):
+            raise RuntimeError("cannot copy")
+
+        def __setattr__(self, name, value):
+            raise AttributeError("frozen")
+
+    out = sanitize_untrusted_payload(Stubborn(f"{PUA_START}evil{PUA_END}"))
+
+    assert out == _REDACTED
+
+
+def test_mutable_fallback_still_works_when_setattr_succeeds():
+    from suzent.core.system_reminder import sanitize_untrusted_payload
+
+    class Mutable:
+        model_fields = {"body": None}
+
+        def __init__(self, body):
+            self.body = body
+
+        def model_copy(self, update=None):
+            raise RuntimeError("no copy")
+
+    out = sanitize_untrusted_payload(Mutable(f"{PUA_START}evil{PUA_END}"))
+
+    assert PUA_START not in out.body

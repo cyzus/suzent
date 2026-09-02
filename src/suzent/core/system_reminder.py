@@ -197,12 +197,12 @@ def sanitize_untrusted_payload(
         if isinstance(value, list):
             return [sanitize_untrusted_payload(v, _depth + 1, _seen) for v in value]
         if isinstance(value, tuple):
-            return type(value)(
-                sanitize_untrusted_payload(v, _depth + 1, _seen) for v in value
-            )
+            items = [sanitize_untrusted_payload(v, _depth + 1, _seen) for v in value]
+            return _rebuild_sequence(value, items, tuple)
         if isinstance(value, (set, frozenset)):
-            return type(value)(
-                sanitize_untrusted_payload(v, _depth + 1, _seen) for v in value
+            items = [sanitize_untrusted_payload(v, _depth + 1, _seen) for v in value]
+            return _rebuild_sequence(
+                value, items, frozenset if isinstance(value, frozenset) else set
             )
         if isinstance(value, dict):
             return {
@@ -250,8 +250,37 @@ def sanitize_untrusted_payload(
         _seen.discard(marker)
 
 
+def _rebuild_sequence(value: Any, items: list, plain):
+    """Rebuild a tuple/set, preserving the subclass only if it accepts the items.
+
+    A NamedTuple takes one argument per field rather than an iterable, so calling
+    ``type(value)(items)`` on one raises — which would abort the whole model
+    request over a shape pydantic-ai serializes perfectly well. Where the
+    subclass cannot be reconstructed, degrading to the plain builtin keeps the
+    data and the sanitizing; only the subclass identity is lost, and the
+    serializer renders both the same way.
+    """
+    if isinstance(value, tuple) and hasattr(value, "_fields"):
+        try:
+            return type(value)(*items)
+        except Exception:
+            return plain(items)
+    if type(value) is plain:
+        return plain(items)
+    try:
+        return type(value)(items)
+    except Exception:
+        return plain(items)
+
+
 def _sanitize_fields(value: Any, names: list, rebuild, _depth: int, _seen: set) -> Any:
-    """Sanitize named attributes, rebuilding the object when any of them change."""
+    """Sanitize named attributes, rebuilding the object when any of them change.
+
+    If an update cannot be applied — a frozen dataclass whose ``__post_init__``
+    rejects the sanitized value, say — the object is redacted rather than
+    returned as-is. Handing back the original would ship the forged delimiters
+    it still contains, which is the one outcome this function exists to prevent.
+    """
     updates = {}
     for name in names:
         current = getattr(value, name, None)
@@ -263,15 +292,17 @@ def _sanitize_fields(value: Any, names: list, rebuild, _depth: int, _seen: set) 
     try:
         return rebuild(value, updates)
     except Exception:
-        # Frozen or otherwise un-rebuildable: mutate what we can.
-        for name, cleaned in updates.items():
-            try:
-                setattr(value, name, cleaned)
-            except Exception:
-                logger.warning(
-                    f"Could not sanitize field {name!r} on {type(value).__name__}"
-                )
-        return value
+        pass
+    for name, cleaned in updates.items():
+        try:
+            setattr(value, name, cleaned)
+        except Exception:
+            logger.warning(
+                f"Could not sanitize {type(value).__name__}.{name}; redacting the "
+                "whole value rather than passing it through"
+            )
+            return _REDACTED
+    return value
 
 
 # Only this process's token authenticates a block. A token *shape* proves
