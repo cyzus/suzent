@@ -186,11 +186,22 @@ async def stream_acp_turn(
     # Only the agent sees that annotation; the transcript keeps what the user
     # typed. Comparing the annotated text against the stored row defeated the
     # duplicate check below and persisted the message twice.
-    user_message = message
     from suzent.core.system_reminder import (
         extract_system_reminder_display_trigger,
+        sanitize_stored_user_prompt,
         strip_system_reminders,
     )
+
+    # Sanitize before deriving the transcript *and* before running the turn, so
+    # the two cannot disagree. Without this, a message wrapping its payload in a
+    # nonce-shaped reminder block strips to nothing visible and persists only its
+    # own chosen display trigger, while the raw text still reaches
+    # _stream_prompt() below — a prompt that executes but is misrepresented in
+    # the audit transcript. Runtime-authored blocks carry our token and survive,
+    # so genuine cron and heartbeat triggers still render as trigger rows.
+    if message:
+        message = sanitize_stored_user_prompt(message)
+    user_message = message
 
     display_trigger = extract_system_reminder_display_trigger(user_message)
     visible_user_message = strip_system_reminders(user_message)
