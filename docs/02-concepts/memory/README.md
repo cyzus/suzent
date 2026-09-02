@@ -75,15 +75,11 @@ update, and the dream retires the old version.
 
 ## Settings
 
-Memory is on by default. The settings worth knowing:
+Memory is on by default. Turn it off, or change which models do the extraction and
+embedding, in **Settings → Memory** in the app.
 
-```yaml
-# config/default.yaml
-MEMORY_ENABLED: true
-```
-
-Everything else is tuning — how often the dream runs, how much it reads at a time, which
-model does the extraction. See [Configuration](./configuration.md) for the full list.
+Everything else is tuning — how often the dream runs, how much it reads at a time, where
+the notebook lives. See [Configuration](./configuration.md) for the full list.
 
 ## Read more
 

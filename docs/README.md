@@ -15,7 +15,7 @@ five-question ownership test, see
 ### Core
 - [Providers](02-concepts/providers/README.md): Configure model providers (OpenAI, Anthropic, Gemini, Ollama, and more)
 - [Memory](02-concepts/memory/README.md): Persistent memory across sessions — how it works and how to configure it
-- [LLM Wiki](02-concepts/memory/llm-wiki.md): Agent-maintained structured knowledge vault
+- [Notebook](02-concepts/memory/llm-wiki.md): Agent-maintained knowledge vault, Obsidian-compatible
 
 ### Tools & Capabilities
 - [Tools](02-concepts/tools/tools.md): Full reference for all built-in tools
@@ -40,5 +40,6 @@ five-question ownership test, see
 - [Docker Services](03-developing/docker-services.md): Redis, SearXNG, and sandbox configuration
 - [Release Guide](03-developing/releasing.md): Version bumping and release process
 - [Model Capability Updates](03-developing/model-capability-updates.md): Maintainer workflow for refreshing shipped model metadata
-- [Memory Internals](03-developing/memory/internals.md): Memory system architecture for contributors
+- [Memory Architecture](03-developing/memory/architecture.md): How memory is written, consolidated, indexed, and read
+- [Memory Internals](03-developing/memory/internals.md): Class-by-class reference for contributors
 - [Logo Standard](03-developing/logo.md): Canonical logo geometry, component usage, and sizing guidelines
