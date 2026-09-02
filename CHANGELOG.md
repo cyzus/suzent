@@ -29,6 +29,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Keep draft writes off the token loop and out of the index
 
 ### 🐛 Fixed
+- Drop the content-derived digest from the prompt trace
+- Drop the full-prompt escape hatch entirely
+- Trace prompt structure instead of dumping its contents
 - Sanitize model output in history, not just compressor summaries
 - Sanitize at the wrap point and after compaction
 - Guard set members against the same collision as mapping keys
