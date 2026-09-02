@@ -507,6 +507,36 @@ def _scrub_untrusted_span(span: str) -> str:
     )
 
 
+def make_user_prompt_part(content: Any, *, runtime_authored: bool = False) -> Any:
+    """Build a ``UserPromptPart`` with its text sanitized. Use this, not the class.
+
+    Every path that puts words in front of the model has to neutralize forged
+    reminder delimiters first, and the ones that forgot were found one at a time
+    by review rather than by enumeration — steering appended straight to history,
+    ACP derived its transcript from a different string than it executed, forking
+    replayed stored display text. There is no reason to expect that list was
+    complete, so construction goes through one function instead.
+
+    ``tests/core/test_user_prompt_choke_point.py`` fails if a new call site
+    constructs ``UserPromptPart`` directly, which is what actually keeps this
+    closed; the helper on its own would just be a convention.
+
+    Set *runtime_authored* only for text this process just wrapped itself — the
+    chat processor appending a reminder it built a line earlier. Blocks carrying
+    our token survive; everything else is escaped either way. It is not a claim
+    about the user's text being safe, only about who assembled the string.
+    """
+    from pydantic_ai.messages import UserPromptPart
+
+    clean = sanitize_incoming_prompt if runtime_authored else sanitize_untrusted_text
+    if isinstance(content, str):
+        content = clean(content)
+    elif isinstance(content, (list, tuple)):
+        items = [clean(item) if isinstance(item, str) else item for item in content]
+        content = items if isinstance(content, list) else tuple(items)
+    return UserPromptPart(content=content)
+
+
 def make_tool_output_sanitizer_history_processor():
     """Build a history processor that strips forged delimiters from tool results.
 
