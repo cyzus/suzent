@@ -22,6 +22,8 @@ import re
 import secrets
 from typing import Any, Callable, Awaitable, Optional, List
 
+from pydantic_ai.tools import RunContext
+
 from suzent.logger import get_logger
 
 logger = get_logger(__name__)
@@ -607,7 +609,11 @@ def make_tool_output_sanitizer_history_processor():
     in, so their stored prompts still need cleaning on the way back out.
     """
 
-    async def _processor(ctx: Any, messages: list) -> list:
+    # The RunContext annotation is load-bearing: pydantic-ai decides whether to
+    # pass a context by inspecting this parameter's *type*, so `ctx: Any` made it
+    # call the processor with the message list alone — every request raised
+    # TypeError and no sanitizing ran at all.
+    async def _processor(ctx: RunContext[Any], messages: list) -> list:
         from pydantic_ai.messages import (
             RetryPromptPart,
             ToolCallPart,
