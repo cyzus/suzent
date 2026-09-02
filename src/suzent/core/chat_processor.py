@@ -14,7 +14,7 @@ import shutil
 import time
 import uuid
 from pathlib import Path
-from typing import AsyncGenerator, List, Dict, Any, Optional, Sequence
+from typing import AsyncGenerator, List, Dict, Any, Optional
 
 from ag_ui.core import (
     CustomEvent,
@@ -900,7 +900,7 @@ class ChatProcessor:
             message_history.append(new_request)
 
             pending_trigger_rows.extend(
-                trigger_rows_for_snapshot(display_trigger, is_heartbeat, parts[0])
+                trigger_rows_for_snapshot(full_prompt, is_heartbeat, parts[0])
             )
 
             # Pre-save the user message to the DB display log for social chats so the
@@ -2722,9 +2722,13 @@ def _trigger_placeholder_prefix() -> str:
 
 
 def trigger_rows_for_snapshot(
-    display_trigger: str | Sequence[str] | None, is_heartbeat: bool, part: Any
+    rendered_prompt: str | None, is_heartbeat: bool, part: Any
 ) -> list[dict]:
     """Display rows that must become durable with the history they describe.
+
+    Takes the rendered prompt, not the reminders that went into it: the row has
+    to say what the model was shown, and the only thing that knows that is the
+    text that was sent.
 
     A reminder-only turn has no user text, so its row cannot be rebuilt once the
     reminder block stops being authenticatable after a restart. The row is keyed
@@ -2738,16 +2742,20 @@ def trigger_rows_for_snapshot(
     someone's visible transcript. An earlier attempt at this shipped exactly that
     bug, so the rule is asserted by a test rather than trusted to a comment.
     """
-    if not display_trigger or is_heartbeat:
+    if not rendered_prompt or is_heartbeat:
         return []
 
-    from suzent.core.system_reminder import canonical_display_trigger
+    from suzent.core.system_reminder import extract_system_reminder_display_trigger
 
-    # The same function the block uses, so the row says what the model was
-    # actually shown. Rendering it independently here is how the two came to
-    # disagree: the block deduplicated repeated reminders and the transcript
-    # kept showing them twice.
-    display_trigger = canonical_display_trigger(display_trigger)
+    # Read back out of the block that was just built, rather than derived from
+    # the same inputs a second time. Every rule the builder applies — joining,
+    # sanitizing, deduplicating, budgeting — is already baked into that text,
+    # and each time this path recomputed one of them it reproduced some and
+    # missed others: the transcript showed reminders twice after the model
+    # stopped seeing them twice, then recorded reminders dropped by the budget
+    # that the model never received at all. There is nothing here left to keep
+    # in step.
+    display_trigger = extract_system_reminder_display_trigger(rendered_prompt)
     if not display_trigger:
         return []
 

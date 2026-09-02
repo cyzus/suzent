@@ -2188,21 +2188,51 @@ def test_the_transcript_row_and_the_block_agree_on_the_trigger() -> None:
     assert system_reminder.canonical_display_trigger(repeated) == "Cron: digest"
 
 
-def test_the_persisted_row_shows_what_the_model_was_shown() -> None:
+@pytest.mark.asyncio
+async def test_the_persisted_row_shows_what_the_model_was_shown(clean_hooks) -> None:
+    """Read out of the block that was sent, not re-derived from its inputs. The
+    row reproduced some of the builder's rules and missed others: it showed
+    reminders twice after the model stopped seeing them twice, then recorded
+    reminders the budget had dropped before the model ever saw them."""
     from datetime import datetime
     from types import SimpleNamespace
 
+    from suzent.core import system_reminder as sr
     from suzent.core.chat_processor import trigger_rows_for_snapshot
-    from suzent.core.system_reminder import canonical_display_trigger
 
     part = SimpleNamespace(timestamp=datetime(2026, 1, 1))
-    repeated = ["Cron: nightly digest", "Cron: nightly digest"]
+    first, second = "a" * 4000, "b" * 4000
 
-    rows = trigger_rows_for_snapshot(repeated, False, part)
+    rendered = await sr.build_combined_reminder(
+        "c", None, display_trigger=[first, second]
+    )
+    rows = trigger_rows_for_snapshot(rendered, False, part)
 
     assert len(rows) == 1
-    assert rows[0]["content"] == canonical_display_trigger(repeated)
-    assert rows[0]["content"].count("Cron: nightly digest") == 1
+    stored = rows[0]["content"]
+    assert first in stored, "the delivered reminder must be recorded"
+    assert second not in stored, "the budget dropped it; the transcript must agree"
+    assert stored == sr.extract_system_reminder_display_trigger(rendered)
+
+
+@pytest.mark.asyncio
+async def test_a_repeated_reminder_is_recorded_once(clean_hooks) -> None:
+    from datetime import datetime
+    from types import SimpleNamespace
+
+    from suzent.core import system_reminder as sr
+    from suzent.core.chat_processor import trigger_rows_for_snapshot
+
+    repeated = "Cron: nightly digest"
+    rendered = await sr.build_combined_reminder(
+        "c", None, display_trigger=[repeated, repeated]
+    )
+
+    rows = trigger_rows_for_snapshot(
+        rendered, False, SimpleNamespace(timestamp=datetime(2026, 1, 1))
+    )
+
+    assert rows[0]["content"].count(repeated) == 1
 
 
 @pytest.mark.asyncio
