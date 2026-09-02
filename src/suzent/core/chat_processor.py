@@ -726,7 +726,7 @@ class ChatProcessor:
                     )
 
         # 6. Prepare Prompt or Resume
-        from pydantic_ai.messages import ModelRequest, UserPromptPart
+        from pydantic_ai.messages import ModelRequest
 
         if message_history is None:
             message_history = []
@@ -798,6 +798,7 @@ class ChatProcessor:
         # --- System Reminder Injection (includes per-turn RAG hook when memory enabled) ---
         from suzent.core.system_reminder import (
             build_combined_reminder,
+            make_user_prompt_part,
             sanitize_untrusted_text,
         )
 
@@ -863,7 +864,7 @@ class ChatProcessor:
                 content = [full_prompt, *agent_images]
             else:
                 content = full_prompt
-            parts = [UserPromptPart(content=content)]
+            parts = [make_user_prompt_part(content, runtime_authored=True)]
             new_request = ModelRequest(parts=parts)
             message_history.append(new_request)
 
@@ -1565,11 +1566,13 @@ class ChatProcessor:
             await remove_pending_approvals(chat_id, cancelled_tool_call_ids)
 
         # 4. Append steering message
-        from pydantic_ai.messages import ModelRequest, UserPromptPart
+        from pydantic_ai.messages import ModelRequest
+
+        from suzent.core.system_reminder import make_user_prompt_part
 
         steering_text = build_steering_text(steer_message)
         message_history.append(
-            ModelRequest(parts=[UserPromptPart(content=steering_text)])
+            ModelRequest(parts=[make_user_prompt_part(steering_text)])
         )
 
         # 5. Start new agent run via process_turn with pre-built history
