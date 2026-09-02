@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Activity, sidebar and minimap refinements
 
 ### ⚡ Changed
+- Revert the eager trigger prewrite; document the residual instead
 - Stop building a code editor for every collapsed tool block
 - One disclosure chevron, pointing the same way everywhere
 - Cut chat scroll cost on macOS
@@ -29,10 +30,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Keep draft writes off the token loop and out of the index
 
 ### 🐛 Fixed
+- Write the trigger row before the run, not only after it
+- Match trigger provenance by turn identity, not by label
+- Carry trigger provenance onto the restored row
+- Stamp trigger provenance at creation, not by parsing later
+- Require a runtime mark before promoting a trigger row
 - Sanitize TextContent items; make the guard parse, not grep
 - Drop the content-derived digest from the prompt trace
+- Match restored trigger rows by label, not by index
 - Drop the full-prompt escape hatch entirely
 - Route every user prompt through one sanitizing constructor
+- Restore cron trigger rows from the stored log after a restart
 - Trace prompt structure instead of dumping its contents
 - Sanitize model output in history, not just compressor summaries
 - Sanitize at the wrap point and after compaction
