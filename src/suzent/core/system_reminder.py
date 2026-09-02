@@ -155,6 +155,38 @@ _MAX_PAYLOAD_DEPTH = 60
 _REDACTED = "[unsanitized content omitted]"
 
 
+def sanitize_tool_payload(value: Any) -> Any:
+    """Sanitize a tool result, then verify what the model will actually receive.
+
+    The structural walk below cannot be complete on its own, and every attempt
+    to make it so has failed the same way: it inspects attributes, while the
+    model receives a *serialization*. A Pydantic model can add content through a
+    computed field, a serialization alias, or a custom ``model_serializer``; an
+    Enum serializes its value rather than its name. None of that is visible from
+    ``model_fields``.
+
+    So the walk is treated as best-effort structure preservation, and
+    correctness rests on a post-condition instead: render the result the way the
+    tool-return serializer will, and if delimiters survive, hand back sanitized
+    text. One check, every shape, including shapes nobody has thought of. This
+    is the invariant to protect — not any particular branch of the walk.
+    """
+    cleaned = sanitize_untrusted_payload(value)
+    try:
+        rendered = _wire_repr(cleaned)
+    except Exception:
+        logger.warning("Could not render sanitized tool result to verify; redacting")
+        return _REDACTED
+    verified = sanitize_untrusted_text(rendered)
+    if verified != rendered:
+        logger.warning(
+            f"Reminder delimiters survived structural sanitizing of a "
+            f"{type(value).__name__} tool result; replaced with sanitized text"
+        )
+        return verified
+    return cleaned
+
+
 def sanitize_untrusted_payload(
     value: Any, _depth: int = 0, _seen: Optional[set] = None
 ) -> Any:
@@ -486,7 +518,7 @@ def make_tool_output_sanitizer_history_processor():
 
                 if not isinstance(part, (ToolReturnPart, RetryPromptPart)):
                     continue
-                cleaned = sanitize_untrusted_payload(content)
+                cleaned = sanitize_tool_payload(content)
                 if cleaned != content:
                     part.content = cleaned
                     logger.warning(
