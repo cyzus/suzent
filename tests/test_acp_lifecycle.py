@@ -28,7 +28,7 @@ async def test_subagent_closes_its_acp_session_on_finish(turn_fails):
     db = MagicMock()
     db.get_chat.return_value = MagicMock(config={"acp_session_id": "s-9"})
 
-    async def fake_turn(chat_id, message, config, queue):
+    async def fake_turn(chat_id, message, config, queue, system_preamble=None):
         if turn_fails:
             raise RuntimeError("agent blew up")
         return "done"

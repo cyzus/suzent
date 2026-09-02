@@ -258,7 +258,7 @@ def test_every_prompt_path_shares_one_precedence_source() -> None:
 
     runner = inspect.getsource(subagent_runner)
     assert "SUBAGENT_PREAMBLE + SUBAGENT_INSTRUCTIONS" in runner, "in-process branch"
-    assert 'f"{SUBAGENT_PREAMBLE}\\n{task.description}"' in runner, "ACP branch"
+    assert "system_preamble=SUBAGENT_PREAMBLE" in runner, "ACP branch"
 
 
 def test_runtime_facts_are_ranked_above_project_files() -> None:
@@ -288,3 +288,23 @@ def test_precedence_is_not_stated_twice_in_one_prompt() -> None:
     assert "CONTEXT_PRECEDENCE in _custom_instructions" in source
     # And the preamble really does contain it, so the guard fires.
     assert CONTEXT_PRECEDENCE in SUBAGENT_PREAMBLE
+
+
+def test_the_acp_preamble_is_not_recorded_as_the_users_request() -> None:
+    """It reaches the model but not the transcript. stream_acp_turn derives the
+    persisted rows from `message`, so concatenating the preamble there showed
+    internal policy text as though the user had typed it."""
+    import inspect
+
+    from suzent.acp import runtime
+    from suzent.core import subagent_runner
+
+    runner = inspect.getsource(subagent_runner)
+    assert "system_preamble=SUBAGENT_PREAMBLE" in runner
+    assert "{SUBAGENT_PREAMBLE}" not in runner.replace(
+        "system_preamble=SUBAGENT_PREAMBLE", ""
+    )
+
+    acp = inspect.getsource(runtime.stream_acp_turn)
+    # The transcript is derived before the preamble is attached.
+    assert acp.index("persisted_content") < acp.index("system_preamble}")

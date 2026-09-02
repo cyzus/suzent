@@ -719,13 +719,16 @@ async def _run_subagent(
             from suzent.acp.runtime import run_acp_turn_text
 
             # An ACP sub-agent never sees subagent_prompt — its instructions
-            # arrive as the turn text — so the precedence rules have to travel
-            # with the description or this delegated agent gets none.
+            # arrive as the turn text — so the precedence rules travel alongside
+            # it. Passed separately, not concatenated: the transcript records
+            # task.description as the request, and internal policy text in a
+            # persisted user row would misrepresent what was asked.
             result_text = await run_acp_turn_text(
                 task.chat_id,
-                f"{SUBAGENT_PREAMBLE}\n{task.description}",
+                task.description,
                 base_config,
                 stream_queue,
+                system_preamble=SUBAGENT_PREAMBLE,
             )
             refreshed = db.get_chat(task.chat_id)
             task.acp_session_id = (

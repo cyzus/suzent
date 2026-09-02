@@ -171,6 +171,7 @@ async def stream_acp_turn(
     files: list[Any] | None = None,
     file_mentions: list[Any] | None = None,
     runtime_authored: bool = False,
+    system_preamble: str | None = None,
 ) -> AsyncGenerator[str, None]:
     db = get_database()
     chat = db.get_chat(chat_id)
@@ -339,7 +340,12 @@ async def stream_acp_turn(
         message_open = True
 
         state: dict[str, Any] = {"parts": [], "stop_reason": "", "error": ""}
-        async for event in _stream_prompt(managed, message, message_id, state):
+        # Model-only. The transcript rows were derived from `message` above, so
+        # anything added here reaches the agent without being recorded as
+        # something the user said — internal policy text in a persisted user row
+        # misrepresents the conversation to anyone auditing it later.
+        _prompt = f"{system_preamble}\n{message}" if system_preamble else message
+        async for event in _stream_prompt(managed, _prompt, message_id, state):
             yield event
 
         # A session restored with session/load that fails its very first turn is
@@ -430,10 +436,15 @@ async def run_acp_turn_text(
     stream_queue: Any | None = None,
     *,
     runtime_authored: bool = False,
+    system_preamble: str | None = None,
 ) -> str:
     text = ""
     async for chunk in stream_acp_turn(
-        chat_id, message, config_override, runtime_authored=runtime_authored
+        chat_id,
+        message,
+        config_override,
+        runtime_authored=runtime_authored,
+        system_preamble=system_preamble,
     ):
         if stream_queue is not None:
             await stream_queue.put(chunk)
