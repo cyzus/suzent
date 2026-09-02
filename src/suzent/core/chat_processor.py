@@ -1876,6 +1876,7 @@ class ChatProcessor:
                 # 100% Backend Authored: rebuild the complete display log from the full agent history
                 # so chat.messages is always a faithful log of all exchanges, including tools and reasoning.
                 rebuilt = _rebuild_display_messages(messages, model_id=model_id)
+                rebuilt = _preserve_display_triggers(rebuilt, chat_messages)
                 rebuilt = _preserve_permission_metadata(rebuilt, chat_messages)
                 rebuilt = _preserve_citation_sources(rebuilt, chat_messages)
                 rebuilt = _preserve_trailing_notices(rebuilt, chat_messages)
@@ -2293,6 +2294,7 @@ def _rebuild_display_messages(messages: list, model_id: str | None = None) -> li
     )
     import json
     from suzent.core.system_reminder import (
+        has_authenticated_block,
         strip_system_reminders,
         extract_system_reminder_content,
         extract_system_reminder_display_trigger,
@@ -2403,6 +2405,13 @@ def _rebuild_display_messages(messages: list, model_id: str | None = None) -> li
                                 "role": "system_triggered",
                                 "content": display_trigger,
                             }
+                            # Record, at the only moment we can still tell, that
+                            # this row came from a block the runtime authored.
+                            # After a restart the block is gone and no amount of
+                            # parsing recovers that fact; a forged block cannot
+                            # manufacture it, because it cannot produce the token.
+                            if has_authenticated_block(stripped_attachments):
+                                entry["trigger_origin"] = "runtime"
                             if ts:
                                 entry["timestamp"] = ts
                             result.append(entry)
@@ -2632,6 +2641,87 @@ def _preserve_trailing_notices(rebuilt: list, existing: list | None) -> list:
     if not trailing:
         return rebuilt
     return [*rebuilt, *reversed(trailing)]
+
+
+def _trigger_placeholder_prefix() -> str:
+    from suzent.core.system_reminder import TRIGGER_MARK
+
+    return f"{TRIGGER_MARK}[system trigger: "
+
+
+def _preserve_display_triggers(rebuilt: list, existing: list | None) -> list:
+    """Restore ``system_triggered`` rows the rebuild can no longer reconstruct.
+
+    A cron or heartbeat turn carries no user text: its whole visible record is
+    the ``display_trigger`` nested inside the reminder block. That block is
+    dropped on restart — text we cannot authenticate must not be trusted — so
+    the turn rebuilds as a plain ``[system trigger: ...]`` line.
+
+    Rows are matched on ``timestamp``, which pydantic-ai sets when the part is
+    created and which survives in serialized state. That is a per-turn identity,
+    and it is the whole point: matching on the *label* instead lets a forged
+    block borrow the provenance of a genuine trigger that happens to share a
+    label, because the label is exactly the part an attacker controls. Position
+    is no good either — ``_coalesce_unanswered_cron_triggers`` collapses
+    consecutive unanswered triggers, so rebuilt and stored rows do not line up.
+
+    Restoration requires all three, and none substitutes for another:
+
+    * the stored row carries ``trigger_origin="runtime"``, written when the turn
+      ran from a block bearing this process's token. A display log predating
+      ingress sanitizing can hold a forged trigger row, so an unstamped one
+      proves nothing;
+    * the two rows share a timestamp, which ties the proof to *this* occurrence
+      rather than to some other turn with the same label;
+    * the rebuilt row still looks like a placeholder this runtime emitted.
+
+    A turn whose stored row was coalesced away keeps the plain text line. There
+    is no evidence it was a trigger, and inventing some is how the previous four
+    attempts at this went wrong.
+
+    Known limitation: the stamped row is written by the background persist, so a
+    process that takes its fast agent-state snapshot and then exits before that
+    persist leaves the trigger in history with no stored row, and the turn shows
+    as a user message from then on. Writing the row eagerly at turn start was
+    tried and withdrawn — it bypassed the deliberate ``skip_messages=is_heartbeat``
+    rule and leaked heartbeat prompts into the visible log on failure paths, and
+    an unrevisioned write there races the previous turn's finalizer. Closing this
+    properly means carrying the row inside the snapshot transaction, which is a
+    change to the persistence layer rather than to this function.
+    """
+    if not existing or not rebuilt:
+        return rebuilt
+
+    stamped_by_timestamp = {
+        stored.get("timestamp"): stored
+        for stored in existing
+        if isinstance(stored, dict)
+        and stored.get("role") == "system_triggered"
+        and stored.get("trigger_origin") == "runtime"
+        and stored.get("timestamp")
+    }
+    if not stamped_by_timestamp:
+        return rebuilt
+
+    prefix = _trigger_placeholder_prefix()
+    for index, row in enumerate(rebuilt):
+        if not isinstance(row, dict) or row.get("role") != "user":
+            continue
+        content = str(row.get("content") or "").strip()
+        if not content.startswith(prefix) or not content.endswith("]"):
+            continue
+        stored = stamped_by_timestamp.get(row.get("timestamp"))
+        if stored is None:
+            continue
+        restored = dict(row)
+        restored["role"] = "system_triggered"
+        restored["content"] = stored.get("content") or content[len(prefix) : -1].strip()
+        # Carry the stamp: the restored row is what the next save persists, and
+        # without it the trigger degrades one turn later.
+        restored["trigger_origin"] = "runtime"
+        rebuilt[index] = restored
+
+    return rebuilt
 
 
 def _preserve_citation_sources(rebuilt: list, existing: list | None) -> list:
