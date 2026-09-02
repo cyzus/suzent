@@ -29,6 +29,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Keep draft writes off the token loop and out of the index
 
 ### 🐛 Fixed
+- Render the project's context path, not the chat's cwd
+- Remove the core-memory snapshot rather than fall back to it
+- Bound the core-memory cache with an LRU
+- Key the core-memory cache on resolver paths, never cache failures
+- Resolve core memory per request instead of per agent build
 - Never let the prefill probe shorten a wait
 - Stop killing long-context turns on a 45s first-event timeout
 - Update aria-label for accessibility and adjust sheen colors
