@@ -647,9 +647,13 @@ async def _run_subagent(
         processor = ChatProcessor()
 
         # Build config: only pass whitelisted tools
-        from suzent.prompts import SUBAGENT_INSTRUCTIONS
+        from suzent.prompts import SUBAGENT_INSTRUCTIONS, SUBAGENT_PREAMBLE
 
-        subagent_prompt = SUBAGENT_INSTRUCTIONS.get(
+        # Sub-agents replace STATIC_INSTRUCTIONS rather than composing with it,
+        # so the precedence rules have to be prepended explicitly. They read
+        # repository files and tool output like any other agent, which is where
+        # a conflicting instruction comes from.
+        subagent_prompt = SUBAGENT_PREAMBLE + SUBAGENT_INSTRUCTIONS.get(
             task.subagent_type or "", SUBAGENT_INSTRUCTIONS["_default"]
         )
 

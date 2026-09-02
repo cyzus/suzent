@@ -191,3 +191,37 @@ async def test_no_lower_layer_section_claims_override_authority() -> None:
     }
     missing = expected - set(checked)
     assert not missing, f"produced no text, so were never inspected: {sorted(missing)}"
+
+
+# --- delegated agents get the same rules ------------------------------------
+
+
+def test_the_precedence_block_is_shared_not_duplicated() -> None:
+    """One source, so the two prompts cannot drift apart."""
+    from suzent.prompts import CONTEXT_PRECEDENCE, SUBAGENT_PREAMBLE
+
+    assert CONTEXT_PRECEDENCE in STATIC_INSTRUCTIONS
+    assert CONTEXT_PRECEDENCE in SUBAGENT_PREAMBLE
+
+
+def test_every_builtin_subagent_prompt_carries_precedence() -> None:
+    """Sub-agents replace STATIC_INSTRUCTIONS wholesale instead of composing
+    with it, so anything stated only there is missing from delegated work — and
+    they still read repository files, which is where a conflicting instruction
+    comes from."""
+    import inspect
+
+    from suzent.core import subagent_runner
+    from suzent.prompts import SUBAGENT_INSTRUCTIONS
+
+    source = inspect.getsource(subagent_runner)
+
+    assert "SUBAGENT_PREAMBLE + SUBAGENT_INSTRUCTIONS" in source
+    assert SUBAGENT_INSTRUCTIONS, "there should be profiles to cover"
+
+
+def test_the_subagent_preamble_names_the_injection_case() -> None:
+    from suzent.prompts import SUBAGENT_PREAMBLE
+
+    assert "ignore a higher source" in SUBAGENT_PREAMBLE
+    assert "context, not authority" in SUBAGENT_PREAMBLE.lower()
