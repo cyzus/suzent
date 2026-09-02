@@ -30,6 +30,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Keep draft writes off the token loop and out of the index
 
 ### 🐛 Fixed
+- Sanitize trigger content before making it durable
+- Identify this run's draft by run id, not by role
+- Order the trigger before its answer and refresh derived state
+- Commit the trigger row inside the snapshot transaction
 - Write the trigger row before the run, not only after it
 - Match trigger provenance by turn identity, not by label
 - Carry trigger provenance onto the restored row
