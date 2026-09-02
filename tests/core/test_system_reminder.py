@@ -1957,3 +1957,61 @@ def test_every_filesystem_reading_provider_renders_off_loop() -> None:
         assert "run_provider_blocking" in source, (
             f"{hook.__name__} reads the filesystem on the event loop"
         )
+
+
+@pytest.mark.asyncio
+async def test_every_constituent_of_a_joined_trigger_is_charged_once(clean_hooks):
+    """A reminder-only turn passes the joined trigger and the same strings
+    individually. Matching only the join left each piece duplicated whenever
+    there was more than one, so the model read — and paid for — all of it twice."""
+    from suzent.core import system_reminder as sr
+
+    first, second = "Cron: nightly digest", "Cron: weekly rollup"
+    joined = sr.TRIGGER_SEPARATOR.join([first, second])
+
+    result = await sr.build_combined_reminder(
+        "c", None, adhoc_reminders=[first, second], display_trigger=joined
+    )
+
+    assert result is not None
+    assert result.count(first) == 1
+    assert result.count(second) == 1
+
+
+def test_the_join_separator_has_one_definition() -> None:
+    """The caller joins with it and the dedupe splits on it. Two copies of that
+    string is how the multi-reminder case shipped duplicated."""
+    import inspect
+
+    from suzent.core import chat_processor, system_reminder
+
+    source = inspect.getsource(chat_processor.ChatProcessor.process_turn)
+
+    assert "TRIGGER_SEPARATOR" in source
+    assert '"\\n\\n---\\n\\n".join' not in source
+    assert system_reminder.TRIGGER_SEPARATOR == "\n\n---\n\n"
+
+
+@pytest.mark.asyncio
+async def test_a_slot_survives_a_thread_that_never_starts() -> None:
+    """The worker's finally releases the slot, so a thread that fails to start
+    never gives it back. Four of those and the pool is gone for the life of the
+    process."""
+    import threading
+
+    from suzent.core import system_reminder as sr
+
+    before = sr._provider_slots._value
+
+    def _no_thread(*args, **kwargs):
+        raise RuntimeError("can't start new thread")
+
+    original = threading.Thread
+    threading.Thread = _no_thread
+    try:
+        with pytest.raises(RuntimeError, match="can't start new thread"):
+            await sr.run_provider_blocking(lambda: "never")
+    finally:
+        threading.Thread = original
+
+    assert sr._provider_slots._value == before, "slot leaked"

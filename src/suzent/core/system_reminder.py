@@ -847,6 +847,15 @@ def clear_per_turn_hooks() -> None:
 #: How long any one reminder provider may take before it is dropped for the turn.
 HOOK_TIMEOUT_SECONDS = 2.0
 
+#: How a reminder-only turn's individual reminders are joined into one display
+#: trigger.
+#:
+#: Defined here rather than at the join site because both sides need it: the
+#: caller joins with it, and the dedupe below has to split on it to recognise
+#: the constituents it is also handed as fragments. Two copies of that string
+#: is how the multi-reminder case shipped duplicated.
+TRIGGER_SEPARATOR = "\n\n---\n\n"
+
 #: Concurrent blocking providers allowed at once.
 #:
 #: Deliberately not a ThreadPoolExecutor. Its workers are non-daemon and joined
@@ -914,7 +923,15 @@ async def run_provider_blocking(fn: Callable[..., Any], *args: Any) -> Any:
         finally:
             _provider_slots.release()
 
-    threading.Thread(target=_worker, name="reminder-provider", daemon=True).start()
+    try:
+        threading.Thread(target=_worker, name="reminder-provider", daemon=True).start()
+    except BaseException:
+        # The slot is released by the worker's finally, so a thread that never
+        # starts never gives it back. Four of those and the pool is gone for the
+        # life of the process — every provider would then wait out its deadline
+        # and plan, skill and repository context would vanish from every turn.
+        _provider_slots.release()
+        raise
     return await future
 
 
@@ -1047,8 +1064,18 @@ async def build_combined_reminder(
     # model saw it twice and it was charged twice. Dropping the fragment keeps
     # the content (the trigger envelope carries it) and halves the cost.
     if display_trigger:
+        # Every constituent, not just the whole. A reminder-only turn passes the
+        # joined trigger here and the same strings individually as fragments, so
+        # matching only the join left each piece duplicated whenever there was
+        # more than one — and the model paid for all of it twice.
         _trigger = sanitize_untrusted_text(display_trigger).strip()
-        parts = [part for part in parts if part != _trigger]
+        charged = {_trigger}
+        charged.update(
+            piece.strip()
+            for piece in _trigger.split(TRIGGER_SEPARATOR)
+            if piece.strip()
+        )
+        parts = [part for part in parts if part not in charged]
 
     # The trigger is prepended inside the block, so it spends from the same
     # budget; without this the cap covered only part of what the model reads.

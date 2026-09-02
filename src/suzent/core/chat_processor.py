@@ -798,6 +798,7 @@ class ChatProcessor:
 
         # --- System Reminder Injection (includes per-turn RAG hook when memory enabled) ---
         from suzent.core.system_reminder import (
+            TRIGGER_SEPARATOR,
             build_combined_reminder,
             make_user_prompt_part,
             sanitize_untrusted_text,
@@ -854,7 +855,7 @@ class ChatProcessor:
         stream_run_id = str(uuid.uuid4())
         display_trigger = None
         if system_reminders and not (message_content and message_content.strip()):
-            display_trigger = "\n\n---\n\n".join(
+            display_trigger = TRIGGER_SEPARATOR.join(
                 r.strip() for r in system_reminders if r and r.strip()
             )
         # Stateless chats (dream, sub-agents) run a fixed, self-contained prompt and
