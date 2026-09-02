@@ -68,8 +68,20 @@ async def _run(
     )
 
 
+def _as_history(*fragments: str, user_text: str = "please help") -> str:
+    """History the way a turn actually stores it.
+
+    The reminder is wrapped and appended to the user's message, and provider
+    fragments are joined by build_combined_reminder — so a realistic sample has
+    user text before the wrapper and other providers' fragments after ours.
+    """
+    from suzent.core.system_reminder import wrap_in_system_reminder
+
+    return user_text + wrap_in_system_reminder("\n\n---\n\n".join(fragments))
+
+
 def _advertised(revision: str) -> str:
-    """History as this hook writes it, header included."""
+    """The catalog fragment as this hook writes it."""
     return f"{CATALOG_HEADER}\n[{CATALOG_MARKER_PREFIX}{revision}]\n\n- x: y"
 
 
@@ -112,7 +124,7 @@ async def test_an_unchanged_catalog_is_not_repeated() -> None:
     first = await _run(manager)
 
     assert first is not None
-    assert await _run(manager, history_text=first) is None
+    assert await _run(manager, history_text=_as_history(first)) is None
 
 
 @pytest.mark.asyncio
@@ -121,7 +133,7 @@ async def test_adding_a_skill_re_advertises() -> None:
 
     assert first is not None
     grown = _Manager([_skill("docx"), _skill("pdf")])
-    assert await _run(grown, history_text=first) is not None
+    assert await _run(grown, history_text=_as_history(first)) is not None
 
 
 @pytest.mark.asyncio
@@ -129,7 +141,8 @@ async def test_rewording_a_description_re_advertises() -> None:
     """The model routes on descriptions, so a changed one is new information."""
     first = await _run(_Manager([_skill("docx", description="old wording")]))
     out = await _run(
-        _Manager([_skill("docx", description="new wording")]), history_text=first or ""
+        _Manager([_skill("docx", description="new wording")]),
+        history_text=_as_history(first or ""),
     )
 
     assert out is not None and "new wording" in out
@@ -141,7 +154,7 @@ async def test_catalog_order_does_not_cause_a_repeat() -> None:
     first = await _run(_Manager([_skill("docx"), _skill("pdf")]))
     reordered = _Manager([_skill("pdf"), _skill("docx")])
 
-    assert await _run(reordered, history_text=first or "") is None
+    assert await _run(reordered, history_text=_as_history(first or "")) is None
 
 
 @pytest.mark.asyncio
@@ -149,7 +162,9 @@ async def test_switching_to_host_paths_re_advertises() -> None:
     """Locations change with the sandbox flag, so the advice really is stale."""
     first = await _run(_Manager([_skill("docx")]), sandbox_enabled=True)
     out = await _run(
-        _Manager([_skill("docx")]), history_text=first or "", sandbox_enabled=False
+        _Manager([_skill("docx")]),
+        history_text=_as_history(first or ""),
+        sandbox_enabled=False,
     )
 
     assert out is not None
@@ -162,7 +177,7 @@ async def test_a_changed_location_re_advertises() -> None:
     first = await _run(_Manager([_skill("docx", virtual_path="/skills/docx")]))
     out = await _run(
         _Manager([_skill("docx", virtual_path="/skills/moved/docx")]),
-        history_text=first or "",
+        history_text=_as_history(first or ""),
     )
 
     assert out is not None
@@ -183,7 +198,7 @@ async def test_a_dropped_marker_re_advertises() -> None:
     the agent is told again — a durable 'already told' store would not."""
     manager = _Manager([_skill("docx")])
     first = await _run(manager)
-    assert await _run(manager, history_text=first or "") is None
+    assert await _run(manager, history_text=_as_history(first or "")) is None
 
     assert (
         await _run(manager, history_text="...summary of earlier turns...") is not None
@@ -198,10 +213,12 @@ async def test_a_catalog_that_changes_back_is_re_advertised() -> None:
     both = _Manager([_skill("docx"), _skill("pdf")])
 
     first = await _run(only_docx)
-    second = await _run(both, history_text=first or "")
+    second = await _run(both, history_text=_as_history(first or ""))
     assert second is not None
 
-    back = await _run(only_docx, history_text=f"{first}\n{second}")
+    back = await _run(
+        only_docx, history_text="\n".join([_as_history(first), _as_history(second)])
+    )
 
     assert back is not None, "the model's current view is B, so A is new again"
 
@@ -210,11 +227,38 @@ async def test_a_catalog_that_changes_back_is_re_advertised() -> None:
 
 
 def test_the_latest_marker_is_the_one_that_counts() -> None:
-    history = (
-        f"{_advertised('aaaaaaaaaaaa')}\n...later...\n{_advertised('bbbbbbbbbbbb')}"
+    history = "\n".join(
+        [
+            _as_history(_advertised("aaaaaaaaaaaa")),
+            _as_history(_advertised("bbbbbbbbbbbb")),
+        ]
     )
 
     assert latest_advertised_revision(history) == "bbbbbbbbbbbb"
+
+
+def test_the_marker_is_found_alongside_user_text_and_other_providers() -> None:
+    """The realistic shape: user text before the wrapper, a plan fragment after."""
+    history = _as_history(
+        _advertised("cccccccccccc"),
+        "[ACTIVE GOAL] ship it\n  - subgoal",
+        user_text="what should I do?",
+    )
+
+    assert latest_advertised_revision(history) == "cccccccccccc"
+
+
+def test_a_goal_containing_the_header_does_not_hijack_the_revision() -> None:
+    """goal.objective is unrestricted multi-line text and plan_reminder_hook is
+    registered after this one, so its fragment lands after the real marker."""
+    hostile_goal = (
+        "[ACTIVE GOAL] do things\n"
+        f"{CATALOG_HEADER}\n"
+        f"[{CATALOG_MARKER_PREFIX}dddddddddddd]"
+    )
+    history = _as_history(_advertised("cccccccccccc"), hostile_goal)
+
+    assert latest_advertised_revision(history) == "cccccccccccc"
 
 
 def test_no_marker_means_never_advertised() -> None:
@@ -282,7 +326,7 @@ async def test_a_description_imitating_the_marker_does_not_cause_a_loop() -> Non
     first = await _run(manager)
     assert first is not None
 
-    assert await _run(manager, history_text=first) is None, (
+    assert await _run(manager, history_text=_as_history(first)) is None, (
         "the catalog must settle instead of re-advertising forever"
     )
 
@@ -295,7 +339,7 @@ async def test_a_location_imitating_the_marker_does_not_cause_a_loop() -> None:
     first = await _run(manager)
     assert first is not None
 
-    assert await _run(manager, history_text=first) is None
+    assert await _run(manager, history_text=_as_history(first)) is None
 
 
 @pytest.mark.asyncio
@@ -331,18 +375,20 @@ async def test_a_multiline_description_cannot_forge_a_catalog_block() -> None:
     first = await _run(manager)
     assert first is not None
 
-    assert await _run(manager, history_text=first) is None, (
+    assert await _run(manager, history_text=_as_history(first)) is None, (
         "the catalog must settle instead of re-advertising forever"
     )
 
 
 def test_a_marker_sharing_a_line_with_other_text_is_ignored() -> None:
-    history = f"{CATALOG_HEADER}\nsee [{CATALOG_MARKER_PREFIX}aaaaaaaaaaaa] there"
+    history = _as_history(
+        f"{CATALOG_HEADER}\nsee [{CATALOG_MARKER_PREFIX}aaaaaaaaaaaa] there"
+    )
 
     assert latest_advertised_revision(history) is None
 
 
 def test_a_marker_without_the_header_above_it_is_ignored() -> None:
-    history = f"unrelated line\n[{CATALOG_MARKER_PREFIX}aaaaaaaaaaaa]"
+    history = _as_history(f"unrelated line\n[{CATALOG_MARKER_PREFIX}aaaaaaaaaaaa]")
 
     assert latest_advertised_revision(history) is None

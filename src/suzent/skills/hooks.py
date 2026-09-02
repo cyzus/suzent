@@ -28,6 +28,33 @@ _MARKER_LINE_RE = re.compile(
 )
 _NEWLINES_RE = re.compile(r"[\r\n]+")
 
+# build_combined_reminder joins provider fragments with this.
+_FRAGMENT_SEPARATOR = "\n\n---\n\n"
+
+
+def _fragment_body_lines(fragment: str) -> list[str]:
+    """Runtime-authored lines of a chunk, from the last wrapper opening onward.
+
+    A chunk that holds the first fragment also holds whatever preceded the
+    reminder in that message — the user's own text. The wrapper opening is where
+    runtime content starts, so anything before it is dropped; without that, the
+    header is never the first line and the marker is never found at all.
+    """
+    from suzent.core.system_reminder import PUA_END, PUA_START, REMINDER_TAG
+
+    lines = []
+    for raw in fragment.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if PUA_START in line or line.startswith(f"<{REMINDER_TAG}"):
+            lines = []  # wrapper opens: runtime content starts after this
+            continue
+        if PUA_END in line or line.startswith(f"</{REMINDER_TAG}"):
+            continue
+        lines.append(line)
+    return lines
+
 
 def _get_history_text(deps: Any) -> str:
     from pydantic_ai.messages import ModelRequest, UserPromptPart
@@ -78,18 +105,27 @@ def latest_advertised_revision(history_text: str) -> Optional[str]:
     and then changed back stayed silent: history still held the old marker, while
     what the model had most recently been told was the intervening catalog.
 
-    A candidate has to be a marker on its own line directly beneath a line that
-    is exactly the header. Catalog entries are folded onto one line each, so
-    nothing this hook renders can produce either shape — and skill ids, names and
-    paths reach the model untouched, which matters because the model copies them
-    into SkillTool.
+    A block qualifies only when the header is the *first* line of a reminder
+    fragment and the marker is the line beneath it. Scanning loosely for that
+    pair anywhere in history is not enough: reminder fragments carry
+    unrestricted multi-line text — ``goal.objective`` among them, injected by a
+    hook registered after this one — and a later lookalike pair would be read as
+    the current revision, never match, and re-inject the catalog every turn. The
+    runaway repetition this whole change exists to stop.
+
+    Fragment position is what a lookalike cannot reach: the plan fragment begins
+    with its own ``[ACTIVE GOAL]`` line, so text inside it is never at a
+    boundary. A caller-supplied ad-hoc fragment that *began* with this exact
+    header still could; that direction fails toward re-advertising rather than
+    silence, so the model's catalog stays correct and the cost is a repeated
+    reminder.
     """
-    lines = (history_text or "").splitlines()
     found = None
-    for index, line in enumerate(lines[:-1]):
-        if line.strip() != CATALOG_HEADER:
+    for fragment in (history_text or "").split(_FRAGMENT_SEPARATOR):
+        lines = _fragment_body_lines(fragment)
+        if len(lines) < 2 or lines[0] != CATALOG_HEADER:
             continue
-        match = _MARKER_LINE_RE.match(lines[index + 1].strip())
+        match = _MARKER_LINE_RE.match(lines[1])
         if match:
             found = match.group(1)
     return found
