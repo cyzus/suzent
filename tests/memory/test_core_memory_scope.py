@@ -221,3 +221,8 @@ def test_skill_state_is_recorded_in_the_agent_config() -> None:
     source = inspect.getsource(chat_processor.ChatProcessor.process_turn)
 
     assert "_skills_enabled" in source
+    # Through the per-chat manager, not the singleton: toggle_skill persists via
+    # a per-chat manager and never reloads the singleton, so the singleton can
+    # answer with pre-toggle state for the life of the process.
+    assert "get_skill_manager_for_chat(" in source
+    assert "SkillManager.get_instance()" not in source

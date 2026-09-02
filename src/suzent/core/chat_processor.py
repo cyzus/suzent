@@ -500,13 +500,24 @@ class ChatProcessor:
         # the stable config, enabling a skill updates persistence but reuses a
         # cached agent that has no SkillTool — and the prompt would then point
         # at a tool the run does not actually have.
+        #
+        # Read through the same per-chat manager build_agent_deps uses, not the
+        # global singleton: toggle_skill persists through a per-chat manager and
+        # never reloads the singleton, so the singleton's answer can be stale
+        # for the life of the process.
         try:
-            from suzent.skills.manager import SkillManager
+            from suzent.skills.manager import get_skill_manager_for_chat
 
             config["_skills_enabled"] = bool(
-                SkillManager.get_instance().has_enabled_skills()
+                get_skill_manager_for_chat(
+                    chat_id,
+                    config.get("cwd"),
+                    custom_volumes=config.get("sandbox_volumes"),
+                    sandbox_enabled=config.get("sandbox_enabled", True),
+                ).has_enabled_skills()
             )
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Could not read skill enablement for {chat_id}: {e}")
             config["_skills_enabled"] = False
 
         config["_has_discovered_skills"] = bool(
