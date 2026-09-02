@@ -1605,19 +1605,25 @@ async def test_truncation_drops_whole_fragments_from_the_end(clean_hooks, monkey
 
 
 @pytest.mark.asyncio
-async def test_one_oversized_fragment_is_still_delivered(clean_hooks, monkeypatch):
-    """Truncating to nothing is indistinguishable from a provider that produced
-    nothing, and the caller cannot tell the difference."""
+async def test_one_oversized_fragment_is_cut_rather_than_dropped(
+    clean_hooks, monkeypatch
+):
+    """Dropping it is indistinguishable from a provider that produced nothing,
+    and sending it whole is the cap failing. Cut, and say so."""
     from suzent.core import system_reminder as sr
 
-    monkeypatch.setattr(sr, "REMINDER_BUDGET_CHARS", 50)
+    monkeypatch.setattr(sr, "REMINDER_BUDGET_CHARS", 200)
 
     async def huge(chat_id, deps):
         return "IMPORTANT" + "x" * 500
 
     sr.register_global_hook(huge)
 
-    assert "IMPORTANT" in await sr.build_combined_reminder("c", None)
+    body = _reminder_body(await sr.build_combined_reminder("c", None))
+
+    assert "IMPORTANT" in body
+    assert sr.TRUNCATION_MARKER.strip() in body
+    assert len(body) <= sr.REMINDER_BUDGET_CHARS
 
 
 @pytest.mark.asyncio
@@ -2064,16 +2070,20 @@ async def test_the_cap_holds_on_the_assembled_body(
 
 
 @pytest.mark.asyncio
-async def test_one_oversized_fragment_still_survives_without_a_trigger(clean_hooks):
-    """The exemption exists so an empty body cannot be mistaken for a provider
-    that produced nothing. With no trigger, nothing else is delivering."""
+async def test_an_oversized_fragment_is_cut_to_fit_without_a_trigger(clean_hooks):
+    """With no trigger nothing else is delivering, so this fragment is the whole
+    turn — it has to survive, and it has to fit."""
     from suzent.core import system_reminder as sr
 
     huge = "x" * (sr.REMINDER_BUDGET_CHARS + 1000)
 
     result = await sr.build_combined_reminder("c", None, adhoc_reminders=[huge])
 
-    assert result is not None and huge in result
+    assert result is not None
+    body = _reminder_body(result)
+    assert body.startswith("x")
+    assert body.endswith(sr.TRUNCATION_MARKER.strip())
+    assert len(body) <= sr.REMINDER_BUDGET_CHARS
 
 
 @pytest.mark.asyncio
@@ -2257,13 +2267,48 @@ async def test_the_trigger_is_budgeted_as_its_constituents(clean_hooks, count):
 
 
 @pytest.mark.asyncio
-async def test_one_oversized_constituent_still_survives(clean_hooks):
-    """The exemption is one item, and it still exists: an empty body cannot be
-    told apart from a turn that had nothing to say."""
+@pytest.mark.parametrize("size", [5940, 5999, 6000, 6001, 7000])
+async def test_an_oversized_trigger_is_cut_to_fit(clean_hooks, size):
+    """The envelope counts. A trigger just under the cap still renders over it
+    once its tags are added, which is the window the last finding landed in —
+    and the fix must not turn that into a dropped turn."""
     from suzent.core import system_reminder as sr
 
-    huge = "x" * (sr.REMINDER_BUDGET_CHARS + 1000)
+    huge = "x" * size
 
     result = await sr.build_combined_reminder("c", None, display_trigger=[huge])
 
-    assert result is not None and huge in result
+    assert result is not None, "the turn's only content must not vanish"
+    body = _reminder_body(result)
+    assert "x" in body
+    assert len(body) <= sr.REMINDER_BUDGET_CHARS, (
+        f"{len(body)} chars sent against a {sr.REMINDER_BUDGET_CHARS} cap"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_cut_reminder_says_it_was_cut(clean_hooks):
+    """Silently trimmed text is worse than either the cut or the overshoot: it
+    reads as complete and is not."""
+    from suzent.core import system_reminder as sr
+
+    result = await sr.build_combined_reminder(
+        "c", None, display_trigger=["x" * (sr.REMINDER_BUDGET_CHARS + 1000)]
+    )
+
+    assert sr.TRUNCATION_MARKER.strip() in _reminder_body(result)
+
+
+@pytest.mark.asyncio
+async def test_nothing_is_exempt_from_the_cap(clean_hooks):
+    """Five findings on this PR were an item claiming to be the one thing that
+    could not be helped. Now nothing claims it."""
+    import inspect
+
+    from suzent.core import system_reminder as sr
+
+    source = inspect.getsource(sr._apply_budget)
+
+    assert "exempt" not in source.lower().split('"""')[-1], (
+        "no code path may skip the cap check"
+    )

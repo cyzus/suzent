@@ -954,6 +954,11 @@ async def run_provider_blocking(fn: Callable[..., Any], *args: Any) -> Any:
 #: emit; the assembled string cannot.
 REMINDER_BUDGET_CHARS = 6000
 
+#: Appended to content the cap had to cut, so the model can tell a clipped
+#: reminder from a complete one. Silently trimmed text is worse than either the
+#: cut or the overshoot: it reads as authoritative and is not.
+TRUNCATION_MARKER = "\n\n[truncated: over the system-reminder budget]"
+
 
 def _dedupe_fragments(parts: list[str]) -> list[str]:
     """Drop fragments identical to one already present, keeping the first.
@@ -976,7 +981,7 @@ def _apply_budget(
     chat_id: str,
     reserved: int = 0,
     separator: str = FRAGMENT_SEPARATOR,
-    exempt_first: Optional[bool] = None,
+    truncate_first: Optional[bool] = None,
 ) -> list[str]:
     """Keep the assembled body under REMINDER_BUDGET_CHARS.
 
@@ -994,25 +999,42 @@ def _apply_budget(
     middle: half a plan snapshot is worse than none, because the model cannot
     tell it is reading a fragment.
 
-    One item may exceed the cap on its own, and only one: an empty body is
-    indistinguishable from a provider that produced nothing, so something has to
-    survive. *exempt_first* says whether this call is the one that may spend
-    that allowance; it defaults to "only if nothing has been delivered yet".
+    Nothing is exempt. An item too large to fit is truncated to what is left
+    and marked, rather than admitted whole or dropped: the cap is then a real
+    ceiling on what is sent, with no case in which it is quietly exceeded.
 
-    It is a parameter rather than an inference because the two are not the same
-    question. Reserving space for an envelope is not delivering content, and
-    inferring the exemption from ``reserved`` meant reserving 71 characters for
-    the trigger's tags silently withdrew the exemption and dropped a single
-    oversized reminder — the whole turn — on the floor.
+    The alternative to truncating is not "send it all" — that was five separate
+    ways of exceeding the cap, each one an item that had claimed to be the
+    single thing that could not be helped. Nor is it "drop it": on a
+    reminder-only turn the reminder is the entire turn, and an empty body cannot
+    be told apart from a provider that had nothing to say, so dropping loses the
+    delivery silently. Truncating loses the tail and says so, which is the only
+    one of the three the model can react to.
+
+    *truncate_first* says whether this call is the one that may spend the last
+    resort; it defaults to "only if nothing has been delivered yet". Whole
+    fragments are still dropped from the end rather than trimmed — half a plan
+    snapshot is worse than none — so only the first item, and only when nothing
+    else will survive, is ever cut.
     """
     separator_cost = len(separator)
     kept: list[str] = []
     used = reserved
+    may_truncate = truncate_first if truncate_first is not None else reserved == 0
     for index, part in enumerate(parts):
         cost = len(part) + (separator_cost if kept else 0)
-        may_exempt = exempt_first if exempt_first is not None else reserved == 0
-        protected = not kept and may_exempt
-        if not protected and used + cost > REMINDER_BUDGET_CHARS:
+        if used + cost > REMINDER_BUDGET_CHARS:
+            if not kept and may_truncate:
+                room = REMINDER_BUDGET_CHARS - used - len(TRUNCATION_MARKER)
+                if room > 0:
+                    logger.warning(
+                        f"[system-reminder] chat={chat_id} over budget: truncated "
+                        f"{len(part)} chars to {room} at "
+                        f"{used}/{REMINDER_BUDGET_CHARS}"
+                    )
+                    kept.append(part[:room] + TRUNCATION_MARKER)
+                    used = REMINDER_BUDGET_CHARS
+                    continue
             dropped = len(parts) - index
             logger.warning(
                 f"[system-reminder] chat={chat_id} over budget: dropped {dropped} "
@@ -1150,9 +1172,9 @@ async def build_combined_reminder(
         chat_id,
         reserved=len(render_trigger_block("")) if _constituents else 0,
         separator=TRIGGER_SEPARATOR,
-        # The trigger goes out first, so this is the pass that may keep one
-        # oversized item. The envelope it reserves for is not content.
-        exempt_first=True,
+        # The trigger goes out first, so this is the pass that may spend the
+        # last resort. The envelope it reserves for is not content.
+        truncate_first=True,
     )
     display_trigger = TRIGGER_SEPARATOR.join(_constituents) or None
 
