@@ -870,21 +870,28 @@ def _dedupe_fragments(parts: list[str]) -> list[str]:
     return unique
 
 
-def _apply_budget(parts: list[str], chat_id: str) -> list[str]:
+def _apply_budget(parts: list[str], chat_id: str, reserved: int = 0) -> list[str]:
     """Keep the assembled body under REMINDER_BUDGET_CHARS.
 
-    Whole fragments are dropped from the end rather than characters from the
-    middle: half a plan snapshot is worse than no plan snapshot, because the
-    model cannot tell it is reading a fragment. Registration order is priority
-    order, so the last-registered providers yield first.
+    Fragments arrive already sanitized, because that is what gets sent.
+    Measuring the raw text was wrong by a wide margin: sanitizing expands each
+    one-character PUA delimiter into ``[reminder-delimiter]``, and goal, task
+    and retrieved-memory text is user-influenced, so a body that measured under
+    the cap could arrive many times over it.
 
-    The first fragment is always kept, even alone over budget. A reminder that
-    truncates to nothing is indistinguishable from a provider that produced
-    nothing, and the caller has no way to notice.
+    *reserved* accounts for text prepended inside the block that is not a
+    fragment — the display trigger — so the cap covers everything the model
+    reads rather than only the part this function happens to hold.
+
+    Whole fragments are dropped from the end rather than characters from the
+    middle: half a plan snapshot is worse than none, because the model cannot
+    tell it is reading a fragment. The first fragment is always kept, even alone
+    over budget — truncating to nothing is indistinguishable from a provider
+    that produced nothing, and the caller cannot tell the difference.
     """
     separator_cost = len(FRAGMENT_SEPARATOR)
     kept: list[str] = []
-    used = 0
+    used = reserved
     for index, part in enumerate(parts):
         cost = len(part) + (separator_cost if kept else 0)
         if kept and used + cost > REMINDER_BUDGET_CHARS:
@@ -950,13 +957,25 @@ async def build_combined_reminder(
             if content and content.strip():
                 parts.append(content.strip())
 
-    if adhoc_reminders:
-        for r in adhoc_reminders:
-            if r and r.strip():
-                parts.append(r.strip())
+    # Caller-supplied directives go first, so they survive truncation. They are
+    # specific to this turn — a peer's attribution, the analyze_image directive
+    # for a non-vision model — while hook output is ambient and reproducible on
+    # the next turn. Appending them last meant ambient content could crowd out
+    # the one instruction the turn actually depended on.
+    direct = [r.strip() for r in (adhoc_reminders or []) if r and r.strip()]
+    parts = direct + parts
 
+    # Sanitize before measuring: this is the text that gets sent. wrap_in_system
+    # _reminder sanitizes again, which is a no-op on already-clean text.
+    parts = [sanitize_untrusted_text(part) for part in parts]
     parts = _dedupe_fragments(parts)
-    parts = _apply_budget(parts, chat_id)
+
+    # The trigger is prepended inside the block, so it spends from the same
+    # budget; without this the cap covered only part of what the model reads.
+    trigger_cost = (
+        len(sanitize_untrusted_text(display_trigger)) if display_trigger else 0
+    )
+    parts = _apply_budget(parts, chat_id, reserved=trigger_cost)
 
     if not parts:
         logger.debug(f"[system-reminder] chat={chat_id} — no content, skipping")

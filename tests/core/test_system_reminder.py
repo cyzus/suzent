@@ -92,7 +92,9 @@ async def test_combined_reminder_merges_global_and_adhoc():
     clear_global_hooks()
 
     assert result is not None
-    assert "global\n\n---\n\nadhoc" in result
+    # Caller directives come first: they are specific to this turn and must
+    # survive truncation, while hook output is ambient and returns next turn.
+    assert "adhoc\n\n---\n\nglobal" in result
 
 
 def test_rebuild_strips_reminder_from_display_messages():
@@ -1616,3 +1618,65 @@ async def test_one_oversized_fragment_is_still_delivered(clean_hooks, monkeypatc
     sr.register_global_hook(huge)
 
     assert "IMPORTANT" in await sr.build_combined_reminder("c", None)
+
+
+@pytest.mark.asyncio
+async def test_budget_measures_the_sanitized_text(clean_hooks, monkeypatch):
+    """Sanitizing expands each one-character PUA delimiter into
+    `[reminder-delimiter]`, so a raw body under the cap could arrive many times
+    over it. Goal, task and memory text is user-influenced, so this is reachable."""
+    from suzent.core import system_reminder as sr
+
+    monkeypatch.setattr(sr, "REMINDER_BUDGET_CHARS", 1000)
+
+    async def delimiters(chat_id, deps):
+        return PUA_START * 300  # 300 raw chars -> ~6000 after sanitizing
+
+    async def later(chat_id, deps):
+        return "SHOULD_BE_DROPPED"
+
+    sr.register_global_hook(delimiters)
+    sr.register_global_hook(later)
+
+    body = extract_system_reminder_content(await sr.build_combined_reminder("c", None))
+
+    assert "SHOULD_BE_DROPPED" not in body, "measured the raw text, not what is sent"
+
+
+@pytest.mark.asyncio
+async def test_the_display_trigger_spends_from_the_same_budget(
+    clean_hooks, monkeypatch
+):
+    """It is prepended inside the block, so a cap that ignores it covers only
+    part of what the model reads."""
+    from suzent.core import system_reminder as sr
+
+    monkeypatch.setattr(sr, "REMINDER_BUDGET_CHARS", 400)
+    sr.register_global_hook(_sized_hook("KEEP", 100))
+    sr.register_global_hook(_sized_hook("DROP", 100))
+
+    body = extract_system_reminder_content(
+        await sr.build_combined_reminder("c", None, display_trigger="T" * 350)
+    )
+
+    assert "KEEP" in body
+    assert "DROP" not in body
+
+
+@pytest.mark.asyncio
+async def test_caller_directives_outrank_ambient_hooks(clean_hooks, monkeypatch):
+    """A peer's attribution or the analyze_image directive is specific to this
+    turn; skill and plan content is ambient and returns next turn."""
+    from suzent.core import system_reminder as sr
+
+    monkeypatch.setattr(sr, "REMINDER_BUDGET_CHARS", 100)
+    sr.register_global_hook(_sized_hook("AMBIENT", 250))
+
+    body = extract_system_reminder_content(
+        await sr.build_combined_reminder(
+            "c", None, adhoc_reminders=["DIRECTIVE: inspect the image"]
+        )
+    )
+
+    assert "DIRECTIVE" in body
+    assert "AMBIENT" not in body
