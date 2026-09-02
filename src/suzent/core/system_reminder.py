@@ -526,13 +526,29 @@ def make_user_prompt_part(content: Any, *, runtime_authored: bool = False) -> An
     our token survive; everything else is escaped either way. It is not a claim
     about the user's text being safe, only about who assembled the string.
     """
-    from pydantic_ai.messages import UserPromptPart
+    import dataclasses as _dc
+
+    from pydantic_ai.messages import TextContent, UserPromptPart
 
     clean = sanitize_incoming_prompt if runtime_authored else sanitize_untrusted_text
+
+    def _clean_item(item: Any) -> Any:
+        if isinstance(item, str):
+            return clean(item)
+        # TextContent is a string tagged with metadata; its `content` is what
+        # goes to the LLM, so it needs the same treatment as a bare str. Treating
+        # every non-str item as opaque media let it through untouched.
+        if isinstance(item, TextContent):
+            cleaned = clean(item.content)
+            return (
+                item if cleaned == item.content else _dc.replace(item, content=cleaned)
+            )
+        return item
+
     if isinstance(content, str):
         content = clean(content)
     elif isinstance(content, (list, tuple)):
-        items = [clean(item) if isinstance(item, str) else item for item in content]
+        items = [_clean_item(item) for item in content]
         content = items if isinstance(content, list) else tuple(items)
     return UserPromptPart(content=content)
 
