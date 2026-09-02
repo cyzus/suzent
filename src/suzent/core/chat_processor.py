@@ -1004,8 +1004,12 @@ class ChatProcessor:
         # DEBUG unconditionally, so the previous full-text line put all of that
         # in the log on every single turn (AGENTS.md: never log secrets or PII).
         #
-        # Full text requires SUZENT_PROMPT_TRACE, a deliberate opt-in rather than
-        # a side effect of turning on debug logging.
+        # There is deliberately no flag to print the text. AGENTS.md states the
+        # prohibition without qualification, and the prompt carries core memory,
+        # permission feedback, sender names and project instructions — an opt-in
+        # does not make writing that to disk acceptable, it just moves who is
+        # responsible. The sha is enough to tell two turns apart, and the section
+        # sizes are what the log was actually useful for.
         try:
             if logger._core.min_level <= 10:  # DEBUG
                 import asyncio as _asyncio
@@ -1030,12 +1034,6 @@ class ChatProcessor:
                     _digest,
                     ", ".join(f"{name}:{len(text)}" for name, text in _sections),
                 )
-                if os.environ.get("SUZENT_PROMPT_TRACE"):
-                    logger.debug(
-                        "[SystemPrompt] full text for chat {} (SUZENT_PROMPT_TRACE):\n{}",
-                        chat_id,
-                        _prompt,
-                    )
         except Exception as e:
             logger.debug(f"[SystemPrompt] Failed to resolve debug prompt: {e}")
 

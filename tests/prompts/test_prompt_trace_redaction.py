@@ -80,3 +80,18 @@ async def test_a_trace_line_can_be_built_without_any_body_text(agent):
     assert "inject_memory_context:31" in line
     assert "SECRET-PERSONA" not in line
     assert "SECRET-FACTS" not in line
+
+
+def test_no_environment_flag_can_turn_the_full_prompt_back_on():
+    """AGENTS.md states the prohibition without qualification, so there is no
+    opt-in. A flag would also have to get truthiness right — SUZENT_PROMPT_TRACE
+    read as a bare env lookup treated "false" and "0" as enabled."""
+    import inspect
+
+    from suzent.core import chat_processor
+
+    source = inspect.getsource(chat_processor)
+    trace_block = source[source.index("[SystemPrompt]") - 2000 :]
+
+    assert "SUZENT_PROMPT_TRACE" not in source
+    assert "full text" not in trace_block.split("# 8. Stream Response")[0]
