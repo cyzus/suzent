@@ -1712,14 +1712,61 @@ async def test_a_blocking_provider_cannot_hold_the_turn_open(clean_hooks, monkey
     assert elapsed < 0.5, f"deadline could not fire: {elapsed:.2f}s"
 
 
-def test_the_plan_hook_does_its_database_work_off_the_loop():
+@pytest.mark.parametrize(
+    "module,func",
+    [
+        ("suzent.tools.plan_hooks", "plan_reminder_hook"),
+        ("suzent.core.repository_context", "repository_agents_reminder_hook"),
+    ],
+)
+def test_blocking_providers_use_the_bounded_pool(module: str, func: str):
+    """Both do synchronous I/O — SQLite reads and Path.resolve(). A provider
+    that blocks before its first await cannot be timed out at all, and using
+    asyncio's default executor would let stuck workers starve unrelated
+    to_thread callers."""
+    import importlib
     import inspect
 
-    from suzent.tools import plan_hooks
+    source = inspect.getsource(getattr(importlib.import_module(module), func))
 
-    source = inspect.getsource(plan_hooks.plan_reminder_hook)
+    assert "run_provider_blocking" in source
+    assert "asyncio.to_thread" not in source
 
-    assert "to_thread" in source
+
+def test_the_provider_pool_is_separate_and_bounded():
+    from suzent.core.system_reminder import _get_provider_executor, _PROVIDER_THREADS
+
+    executor = _get_provider_executor()
+
+    assert executor._max_workers == _PROVIDER_THREADS
+    # Not asyncio's default executor, whose stragglers would affect everything.
+    assert "reminder-provider" in executor._thread_name_prefix
+
+
+@pytest.mark.asyncio
+async def test_a_wedged_provider_does_not_delay_the_turn(clean_hooks, monkeypatch):
+    """The thread cannot be killed, but the turn must not wait for it."""
+    import time
+
+    from suzent.core import system_reminder as sr
+
+    monkeypatch.setattr(sr, "HOOK_TIMEOUT_SECONDS", 0.05)
+
+    async def wedged(chat_id, deps):
+        return await sr.run_provider_blocking(time.sleep, 1.0)
+
+    async def quick(chat_id, deps):
+        return "quick"
+
+    sr.register_global_hook(wedged)
+    sr.register_global_hook(quick)
+
+    started = time.monotonic()
+    result = await sr.build_combined_reminder("c", None)
+    elapsed = time.monotonic() - started
+
+    assert "quick" in result
+    assert elapsed < 0.5, f"turn waited for the wedged provider: {elapsed:.2f}s"
 
 
 def test_the_goal_fragment_outranks_ambient_catalogues():

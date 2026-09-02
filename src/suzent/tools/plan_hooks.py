@@ -1,4 +1,3 @@
-import asyncio
 from typing import Any, Optional
 
 from suzent.database import get_database
@@ -80,7 +79,9 @@ async def plan_reminder_hook(chat_id: str, deps: Any) -> Optional[str]:
     the turn open past the provider deadline. Being read-only is what makes that
     safe: a thread that outlives its cancelled await changes nothing.
     """
-    return await asyncio.to_thread(_build_plan_reminder, chat_id)
+    from suzent.core.system_reminder import run_provider_blocking
+
+    return await run_provider_blocking(_build_plan_reminder, chat_id)
 
 
 def _build_plan_reminder(chat_id: str) -> Optional[str]:

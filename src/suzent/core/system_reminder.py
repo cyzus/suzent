@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+from concurrent.futures import ThreadPoolExecutor
 import os
 import re
 import secrets
@@ -845,6 +846,42 @@ def clear_per_turn_hooks() -> None:
 
 #: How long any one reminder provider may take before it is dropped for the turn.
 HOOK_TIMEOUT_SECONDS = 2.0
+
+#: Threads available to reminder providers doing blocking work.
+#:
+#: Deliberately separate from asyncio's default executor. Cancelling the await
+#: on a timed-out provider does not stop the thread — Python cannot kill one —
+#: so a wedged filesystem or database leaves workers occupied. On the shared
+#: executor those stragglers would eventually starve every other to_thread
+#: caller in the process; here the damage is bounded to this pool, and the turn
+#: itself is unaffected because the await still times out.
+_PROVIDER_THREADS = 4
+_provider_executor: Optional[ThreadPoolExecutor] = None
+
+
+def _get_provider_executor() -> ThreadPoolExecutor:
+    global _provider_executor
+    if _provider_executor is None:
+        _provider_executor = ThreadPoolExecutor(
+            max_workers=_PROVIDER_THREADS, thread_name_prefix="reminder-provider"
+        )
+    return _provider_executor
+
+
+async def run_provider_blocking(fn: Callable[..., Any], *args: Any) -> Any:
+    """Run a reminder provider's blocking work off the event loop.
+
+    Providers that do synchronous I/O must call this. A provider that blocks
+    before its first await cannot be timed out at all, because cancelling needs
+    the loop to run — so an unreachable network mount or a wedged database stalls
+    every turn regardless of HOOK_TIMEOUT_SECONDS.
+
+    Only safe for read-only work: a thread that outlives its cancelled await
+    keeps going, so anything it writes lands after the provider was abandoned.
+    """
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(_get_provider_executor(), fn, *args)
+
 
 #: Ceiling on the assembled reminder body, in characters.
 #:
