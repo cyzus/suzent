@@ -635,3 +635,58 @@ def test_stale_block_without_a_trigger_leaves_nothing_behind():
 
     stale = f"{PUA_START}{'b' * 16}\nplan state\n{'b' * 16}{PUA_END}"
     assert sanitize_stored_user_prompt(f"hi{stale}") == "hi"
+
+
+def _stale_trigger_block(label="Cron: daily digest", body="internal plan state"):
+    return (
+        f"{PUA_START}{'b' * 16}\n"
+        f"<system-reminder-display-trigger>\n{label}\n"
+        f"</system-reminder-display-trigger>\n\n{body}\n"
+        f"{'b' * 16}{PUA_END}"
+    )
+
+
+def test_recovered_trigger_still_rebuilds_as_a_system_triggered_row():
+    """The end-to-end assertion the previous fix was missing.
+
+    _rebuild_display_messages only looks for a trigger once
+    strip_system_reminders() leaves nothing visible, so a bare tag would land as
+    an ordinary user row instead of the trigger row it replaced.
+    """
+    from pydantic_ai.messages import ModelRequest, UserPromptPart
+    from suzent.core.chat_processor import _rebuild_display_messages
+    from suzent.core.system_reminder import sanitize_stored_user_prompt
+
+    recovered = sanitize_stored_user_prompt(_stale_trigger_block())
+    rows = _rebuild_display_messages(
+        [ModelRequest(parts=[UserPromptPart(content=recovered)])]
+    )
+
+    assert [r["role"] for r in rows] == ["system_triggered"]
+    assert rows[0]["content"] == "Cron: daily digest"
+
+
+def test_recovering_a_trigger_is_idempotent():
+    """Repeated passes must not degrade it — the processor runs every request."""
+    from suzent.core.system_reminder import (
+        sanitize_stored_user_prompt,
+        extract_system_reminder_display_trigger,
+    )
+
+    once = sanitize_stored_user_prompt(_stale_trigger_block())
+    twice = sanitize_stored_user_prompt(once)
+
+    assert once == twice
+    assert extract_system_reminder_display_trigger(twice) == "Cron: daily digest"
+
+
+def test_recovered_trigger_drops_the_model_only_body():
+    from suzent.core.system_reminder import (
+        sanitize_stored_user_prompt,
+        extract_system_reminder_content,
+    )
+
+    out = sanitize_stored_user_prompt(_stale_trigger_block())
+
+    assert "internal plan state" not in out
+    assert "internal plan state" not in extract_system_reminder_content(out)

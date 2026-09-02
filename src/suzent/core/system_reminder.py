@@ -323,10 +323,14 @@ def _scrub_untrusted_span(span: str) -> str:
         pieces.append((False, span[last : match.start()]))
         trigger = _DISPLAY_TRIGGER_RE.search(match.group(0))
         if trigger:
+            # Rewrapped in a block of ours, not emitted as a bare tag. The
+            # rebuild only looks for a trigger once strip_system_reminders()
+            # leaves nothing visible, so a bare tag would persist as an ordinary
+            # user row — and the next sanitizing pass would escape it into
+            # something unextractable. Carrying our own token also makes this
+            # idempotent: subsequent passes authenticate it and leave it alone.
             inner = sanitize_untrusted_text(trigger.group(1).strip())
-            pieces.append(
-                (True, f"<{DISPLAY_TRIGGER_TAG}>\n{inner}\n</{DISPLAY_TRIGGER_TAG}>")
-            )
+            pieces.append((True, wrap_in_system_reminder("", display_trigger=inner)))
         last = match.end()
     pieces.append((False, span[last:]))
     return "".join(
