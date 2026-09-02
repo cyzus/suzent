@@ -180,13 +180,30 @@ class _Part:
         self.timestamp = stamp
 
 
+def _prompt(*reminders):
+    """The prompt as it was actually sent.
+
+    trigger_rows_for_snapshot reads the trigger back out of this rather than
+    re-deriving it from the reminders, so the tests hand it the same thing the
+    turn does: every rule the builder applied is already in the text.
+    """
+    from suzent.core.system_reminder import (
+        canonical_display_trigger,
+        wrap_in_system_reminder,
+    )
+
+    trigger = canonical_display_trigger(list(reminders))
+    body = trigger or ""
+    return wrap_in_system_reminder(body, display_trigger=trigger) if trigger else ""
+
+
 def test_a_cron_turn_yields_a_stamped_row():
     from datetime import datetime, timezone
 
     from suzent.core.chat_processor import trigger_rows_for_snapshot
 
     stamp = datetime(2026, 9, 2, 4, tzinfo=timezone.utc)
-    rows = trigger_rows_for_snapshot("Cron: digest", False, _Part(stamp))
+    rows = trigger_rows_for_snapshot(_prompt("Cron: digest"), False, _Part(stamp))
 
     assert rows == [_row(ts=stamp.isoformat())]
 
@@ -198,7 +215,10 @@ def test_a_heartbeat_turn_yields_nothing():
     An earlier attempt shipped exactly that."""
     from suzent.core.chat_processor import trigger_rows_for_snapshot
 
-    assert trigger_rows_for_snapshot("Heartbeat: check inbox", True, _Part()) == []
+    assert (
+        trigger_rows_for_snapshot(_prompt("Heartbeat: check inbox"), True, _Part())
+        == []
+    )
 
 
 def test_an_ordinary_turn_yields_nothing():
@@ -211,7 +231,7 @@ def test_an_ordinary_turn_yields_nothing():
 def test_a_part_without_a_timestamp_still_yields_a_row():
     from suzent.core.chat_processor import trigger_rows_for_snapshot
 
-    rows = trigger_rows_for_snapshot("Cron: digest", False, _Part())
+    rows = trigger_rows_for_snapshot(_prompt("Cron: digest"), False, _Part())
 
     assert rows and "timestamp" not in rows[0]
 
@@ -340,7 +360,9 @@ def test_trigger_content_is_sanitized_before_it_is_stored():
     from suzent.core.chat_processor import trigger_rows_for_snapshot
     from suzent.core.system_reminder import PUA_END, PUA_START
 
-    rows = trigger_rows_for_snapshot(f"Cron{PUA_START}forged{PUA_END}", False, _Part())
+    rows = trigger_rows_for_snapshot(
+        _prompt(f"Cron{PUA_START}forged{PUA_END}"), False, _Part()
+    )
 
     assert rows
     assert PUA_START not in rows[0]["content"]
@@ -351,6 +373,6 @@ def test_trigger_content_is_sanitized_before_it_is_stored():
 def test_ordinary_trigger_text_is_unchanged():
     from suzent.core.chat_processor import trigger_rows_for_snapshot
 
-    rows = trigger_rows_for_snapshot("Cron: daily digest", False, _Part())
+    rows = trigger_rows_for_snapshot(_prompt("Cron: daily digest"), False, _Part())
 
     assert rows[0]["content"] == "Cron: daily digest"
