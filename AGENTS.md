@@ -34,7 +34,7 @@ Full documentation lives in `docs/`:
   - `ERROR`: unrecoverable failures with `traceback.format_exc()`
 - Never log secrets, credentials, or PII
 - Use `pydantic` models for data validation at system boundaries
-- Use `from suzent.logger import logger` — do not create new loggers
+- Use `from suzent.logger import get_logger` then `logger = get_logger(__name__)` — never `from loguru import logger` directly. `get_logger` binds the module name that the configured log format renders; it returns the one centralized loguru logger rather than creating a new one
 
 ## Frontend (`frontend/src/`)
 
