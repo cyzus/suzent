@@ -12,6 +12,30 @@ from suzent.memory.markdown_store import MEMORY_GENERATED_END
 # ===== Core Memory Context Prompts =====
 
 
+def _notebook_hint(title: str, root: str, skill_available: bool) -> str:
+    """Point at wherever the vault conventions can actually be reached.
+
+    Skills are disabled by default, so `SkillTool` is often not equipped. Naming
+    a skill the model cannot load would be worse than saying nothing — it looks
+    like a route out of the problem and is not one. In that case point at the
+    vault's own `schema.md`, which the skill itself treats as the sole authority
+    anyway, so the fallback is the same source without the tool in between.
+    """
+    if skill_available:
+        return (
+            f"{title}\n"
+            "Load the `notebook` skill before any vault work. It owns the vault "
+            "conventions, the ingest and lint runbooks, and the rules for when a "
+            "result may be filed."
+        )
+    return (
+        f"{title}\n"
+        f"Read `{root}/schema.md` before any vault work — it is the authority on "
+        "structure, naming, indexes and cross-links. Check for an existing page "
+        "before creating one, and file a result only when asked to."
+    )
+
+
 def format_core_memory_section(
     blocks: Dict[str, str],
     sandbox_enabled: bool = True,
@@ -20,6 +44,7 @@ def format_core_memory_section(
     mount_skills: Optional[str] = None,
     mount_notebook: Optional[str] = None,
     project_context_path: Optional[str] = None,
+    notebook_skill_available: bool = True,
 ) -> str:
     """
     Format core memory blocks for agent context injection.
@@ -54,11 +79,8 @@ def format_core_memory_section(
             f"- `{_context_path}` — **this project's** shared scratchpad and task state\n"
             "- `/shared/memory/archive/YYYY-MM-DD.md` — daily knowledge logs (auto-written, append-only)"
         )
-        notebook_hint = (
-            "## Notebook (/mnt/notebook/)\n"
-            "Load the `notebook` skill before any vault work. It owns the vault "
-            "conventions, the ingest and lint runbooks, and the rules for when a "
-            "result may be filed."
+        notebook_hint = _notebook_hint(
+            "## Notebook (/mnt/notebook/)", "/mnt/notebook", notebook_skill_available
         )
         curated_memory_hint = "- Read `/shared/memory/MEMORY.md` for a curated summary of everything you know about the user"
     else:
@@ -73,11 +95,8 @@ def format_core_memory_section(
             f"- `{_context_path}` — **this project's** shared scratchpad and task state\n"
             f"- `{_shared}/memory/archive/YYYY-MM-DD.md` — daily knowledge logs (auto-written, append-only)"
         )
-        notebook_hint = (
-            "## Notebook (Host-Mounted Paths)\n"
-            "Load the `notebook` skill before any vault work. It owns the vault "
-            "conventions, the ingest and lint runbooks, and the rules for when a "
-            "result may be filed."
+        notebook_hint = _notebook_hint(
+            "## Notebook (Host-Mounted Paths)", _notebook, notebook_skill_available
         )
         if not _notebook:
             notebook_hint = (

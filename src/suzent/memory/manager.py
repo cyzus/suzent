@@ -54,6 +54,23 @@ DURABLE_SOURCE_TYPES = frozenset({"notebook", "archive_log"})
 CORE_MEMORY_CACHE_MAXSIZE = 256
 
 
+def _notebook_skill_available() -> bool:
+    """Whether the model could actually load the notebook skill this session.
+
+    Skills default to disabled, in which case SkillTool is not equipped at all,
+    so the core-memory section must not send the model after a tool it does not
+    have. Unknown states resolve to False: pointing at the vault directly always
+    works, whereas pointing at an absent tool does not.
+    """
+    try:
+        from suzent.skills.manager import SkillManager
+
+        manager = SkillManager.get_instance()
+        return bool(manager.is_skill_enabled("notebook"))
+    except Exception:
+        return False
+
+
 class MemoryManager:
     """Central memory management service.
 
@@ -386,6 +403,7 @@ class MemoryManager:
             shared_path=shared_path,
             mount_notebook=mount_notebook,
             project_context_path=project_context_path,
+            notebook_skill_available=_notebook_skill_available(),
         )
 
     async def get_core_memory_context(

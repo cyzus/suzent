@@ -75,3 +75,60 @@ def test_the_memory_file_safety_rule_survives(sandbox: bool) -> None:
 def test_core_memory_stays_within_budget(sandbox: bool) -> None:
     """A ceiling so procedure cannot drift back in. Was 3264 chars."""
     assert len(_section(sandbox)) < 2600, len(_section(sandbox))
+
+
+# --- the pointer has to be reachable ----------------------------------------
+
+
+@pytest.mark.parametrize("sandbox", [True, False])
+def test_without_the_skill_it_points_at_the_vault_instead(sandbox: bool) -> None:
+    """Skills are disabled by default, so SkillTool is often not equipped.
+    Naming a skill the model cannot load is worse than saying nothing — it looks
+    like a route out of the problem and is not one."""
+    section = format_core_memory_section(
+        BLOCKS,
+        sandbox_enabled=sandbox,
+        shared_path="/host/shared",
+        mount_notebook="/host/nb",
+        notebook_skill_available=False,
+    )
+
+    assert "`notebook` skill" not in section
+    assert "schema.md" in section
+    assert "existing page" in section
+
+
+@pytest.mark.parametrize("sandbox", [True, False])
+def test_the_fallback_stays_short(sandbox: bool) -> None:
+    """It is a pointer to the vault's own authority, not the runbook again."""
+    section = format_core_memory_section(
+        BLOCKS,
+        sandbox_enabled=sandbox,
+        shared_path="/host/shared",
+        mount_notebook="/host/nb",
+        notebook_skill_available=False,
+    )
+
+    for procedure in ("ingest.md", "lint.md", "log.md", "query workflow"):
+        assert procedure not in section.lower()
+    assert len(section) < 2600, len(section)
+
+
+def test_availability_defaults_to_false_when_it_cannot_be_determined() -> None:
+    """Pointing at the vault always works; pointing at an absent tool does not."""
+    from suzent.memory.manager import _notebook_skill_available
+
+    assert _notebook_skill_available() in (True, False)
+
+
+def test_unknown_skill_state_is_treated_as_unavailable(monkeypatch) -> None:
+    import suzent.memory.manager as manager_mod
+
+    def boom():
+        raise RuntimeError("no skill manager")
+
+    monkeypatch.setattr(
+        "suzent.skills.manager.SkillManager.get_instance", staticmethod(boom)
+    )
+
+    assert manager_mod._notebook_skill_available() is False

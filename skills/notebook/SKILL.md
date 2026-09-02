@@ -55,6 +55,9 @@ writes.
 
 When filing is authorized:
 
-1. Follow `schema.md` for the destination and page structure.
-2. Update `index.md` only when required by the schema.
-3. Append a `query-filed` entry to `log.md` when the log convention requires it.
+1. Check what already exists first — read `index.md`, and Glob the vault for the
+   topic. A page written without looking is a duplicate or an orphan. Update or
+   link the existing page instead of creating a second one.
+2. Follow `schema.md` for the destination and page structure.
+3. Update `index.md` only when required by the schema.
+4. Append a `query-filed` entry to `log.md` when the log convention requires it.
