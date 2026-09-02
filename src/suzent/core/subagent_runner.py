@@ -718,8 +718,14 @@ async def _run_subagent(
             db.merge_chat_config(task.chat_id, base_config)
             from suzent.acp.runtime import run_acp_turn_text
 
+            # An ACP sub-agent never sees subagent_prompt — its instructions
+            # arrive as the turn text — so the precedence rules have to travel
+            # with the description or this delegated agent gets none.
             result_text = await run_acp_turn_text(
-                task.chat_id, task.description, base_config, stream_queue
+                task.chat_id,
+                f"{SUBAGENT_PREAMBLE}\n{task.description}",
+                base_config,
+                stream_queue,
             )
             refreshed = db.get_chat(task.chat_id)
             task.acp_session_id = (

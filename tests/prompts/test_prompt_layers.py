@@ -241,8 +241,11 @@ def test_a_custom_system_prompt_still_gets_precedence() -> None:
     assert 'config.get("static_instructions")' in source
 
 
-def test_all_three_prompt_paths_share_one_precedence_source() -> None:
-    """Main agent, built-in sub-agent, and caller-supplied prompt."""
+def test_every_prompt_path_shares_one_precedence_source() -> None:
+    """Four paths, not three: main agent, built-in sub-agent, caller-supplied
+    prompt, and ACP sub-agents — whose instructions arrive as turn text and
+    never touch subagent_prompt at all. I asserted "all three" one round before
+    the fourth was found, so this counts the delegation branches explicitly."""
     import inspect
 
     from suzent import agent_manager
@@ -252,7 +255,21 @@ def test_all_three_prompt_paths_share_one_precedence_source() -> None:
     assert CONTEXT_PRECEDENCE in STATIC_INSTRUCTIONS
     assert CONTEXT_PRECEDENCE in SUBAGENT_PREAMBLE
     assert "CONTEXT_PRECEDENCE" in inspect.getsource(agent_manager.create_agent)
-    assert "SUBAGENT_PREAMBLE" in inspect.getsource(subagent_runner)
+
+    runner = inspect.getsource(subagent_runner)
+    assert "SUBAGENT_PREAMBLE + SUBAGENT_INSTRUCTIONS" in runner, "in-process branch"
+    assert 'f"{SUBAGENT_PREAMBLE}\\n{task.description}"' in runner, "ACP branch"
+
+
+def test_runtime_facts_are_ranked_above_project_files() -> None:
+    """A repository file saying to use /mnt cannot make /mnt exist. Without a
+    rank for observed facts, that conflict had no stated resolution."""
+    lowered = STATIC_INSTRUCTIONS.lower()
+    runtime = lowered.index("runtime facts")
+    project = lowered.index("project files")
+
+    assert runtime < project
+    assert "cannot make a path exist" in lowered
 
 
 def test_precedence_is_not_stated_twice_in_one_prompt() -> None:

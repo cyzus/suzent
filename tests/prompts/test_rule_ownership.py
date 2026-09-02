@@ -74,10 +74,13 @@ def test_diagnose_before_retry_is_stated_once():
 def test_static_instructions_stay_within_budget():
     """A ceiling, so trimmed rules cannot quietly creep back.
 
-    Raised from 3000 to 3450 when the Context Precedence block was added: that
-    is a deliberate 386-character addition stating which source wins when they
-    conflict, not drift. The point of the ceiling is that growth has to be
-    argued for in a diff — so raise it in the commit that needs it, with the
-    reason, rather than loosening it in advance.
+    Raised twice, both times in the commit that needed it and with the reason:
+    3000 -> 3450 for the Context Precedence block, and 3450 -> 3500 when that
+    block gained a rank for runtime facts (a repository file cannot make a path
+    exist, and without a rank that conflict had no stated resolution).
+
+    The point of a ceiling is that growth is argued for in a diff. That only
+    works while the raises stay small and reasoned; a jump to 5000 "for
+    headroom" would end it.
     """
-    assert len(STATIC_INSTRUCTIONS) < 3450, len(STATIC_INSTRUCTIONS)
+    assert len(STATIC_INSTRUCTIONS) < 3500, len(STATIC_INSTRUCTIONS)
