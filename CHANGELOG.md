@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Keep draft writes off the token loop and out of the index
 
 ### 🐛 Fixed
+- Annotate the sanitizer's RunContext so it is actually invoked
 - Only trust catalog markers this process wrote
 - Order blocks by position and keep the separator out of band
 - Read reminder structure from the module that owns the format
