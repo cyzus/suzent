@@ -647,9 +647,13 @@ async def _run_subagent(
         processor = ChatProcessor()
 
         # Build config: only pass whitelisted tools
-        from suzent.prompts import SUBAGENT_INSTRUCTIONS
+        from suzent.prompts import SUBAGENT_INSTRUCTIONS, SUBAGENT_PREAMBLE
 
-        subagent_prompt = SUBAGENT_INSTRUCTIONS.get(
+        # Sub-agents replace STATIC_INSTRUCTIONS rather than composing with it,
+        # so the precedence rules have to be prepended explicitly. They read
+        # repository files and tool output like any other agent, which is where
+        # a conflicting instruction comes from.
+        subagent_prompt = SUBAGENT_PREAMBLE + SUBAGENT_INSTRUCTIONS.get(
             task.subagent_type or "", SUBAGENT_INSTRUCTIONS["_default"]
         )
 
@@ -714,8 +718,17 @@ async def _run_subagent(
             db.merge_chat_config(task.chat_id, base_config)
             from suzent.acp.runtime import run_acp_turn_text
 
+            # An ACP sub-agent never sees subagent_prompt — its instructions
+            # arrive as the turn text — so the precedence rules travel alongside
+            # it. Passed separately, not concatenated: the transcript records
+            # task.description as the request, and internal policy text in a
+            # persisted user row would misrepresent what was asked.
             result_text = await run_acp_turn_text(
-                task.chat_id, task.description, base_config, stream_queue
+                task.chat_id,
+                task.description,
+                base_config,
+                stream_queue,
+                system_preamble=SUBAGENT_PREAMBLE,
             )
             refreshed = db.get_chat(task.chat_id)
             task.acp_session_id = (

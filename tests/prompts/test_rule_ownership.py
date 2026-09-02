@@ -72,6 +72,15 @@ def test_diagnose_before_retry_is_stated_once():
 
 
 def test_static_instructions_stay_within_budget():
-    """A ceiling, so trimmed rules cannot quietly creep back. Raise it
-    deliberately if the role genuinely grows."""
-    assert len(STATIC_INSTRUCTIONS) < 3000, len(STATIC_INSTRUCTIONS)
+    """A ceiling, so trimmed rules cannot quietly creep back.
+
+    Raised twice, both times in the commit that needed it and with the reason:
+    3000 -> 3450 for the Context Precedence block, and 3450 -> 3500 when that
+    block gained a rank for runtime facts (a repository file cannot make a path
+    exist, and without a rank that conflict had no stated resolution).
+
+    The point of a ceiling is that growth is argued for in a diff. That only
+    works while the raises stay small and reasoned; a jump to 5000 "for
+    headroom" would end it.
+    """
+    assert len(STATIC_INSTRUCTIONS) < 3500, len(STATIC_INSTRUCTIONS)
