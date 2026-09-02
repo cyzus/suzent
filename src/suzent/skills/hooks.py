@@ -17,15 +17,16 @@ CATALOG_HEADER = (
     "Use it IMMEDIATELY when the user's task matches a skill."
 )
 
-# Anchored on the header, not on the marker alone. A bare marker pattern matches
-# marker-shaped text anywhere in the prompt — a repository reminder, a goal, a
-# message someone pasted — and since the newest match wins, that text could
-# decide whether the catalog is advertised. Requiring our own header immediately
-# before it scopes the match to something this hook actually wrote.
-_MARKER_RE = re.compile(
-    rf"{re.escape(CATALOG_HEADER)}\s*\[{re.escape(CATALOG_MARKER_PREFIX)}"
-    rf"([0-9a-f]{{12}})\]"
+# Recognised by position, not by pattern-matching loose text: the marker is a
+# line of its own immediately after a line that is exactly the header. A bare
+# marker pattern matches marker-shaped text anywhere in the prompt, and since the
+# newest match wins, unrelated text could decide whether the catalog is
+# advertised. Entries are folded onto single lines (see _one_line) so catalog
+# content cannot contribute a line of either shape.
+_MARKER_LINE_RE = re.compile(
+    rf"^\[{re.escape(CATALOG_MARKER_PREFIX)}([0-9a-f]{{12}})\]$"
 )
+_NEWLINES_RE = re.compile(r"[\r\n]+")
 
 
 def _get_history_text(deps: Any) -> str:
@@ -43,24 +44,16 @@ def _get_history_text(deps: Any) -> str:
     return "\n".join(parts)
 
 
-def _neutralize_marker_shapes(text: str) -> str:
-    """Stop catalog content from imitating the catalog's own header or marker.
+def _one_line(text: str) -> str:
+    """Fold a rendered entry onto a single line.
 
-    Descriptions, names and locations come from skill metadata, and they are
-    rendered *after* the real marker. Text there that reproduced the header
-    followed by a marker would be picked up as the advertised revision, never
-    match the true one, and re-inject the catalog on every single turn — the
-    runaway repetition this whole change exists to stop.
-
-    A zero-width word joiner is enough: the rendered text reads identically and
-    no longer matches the pattern. Content is preserved rather than dropped,
-    since this is a rendering concern and not a security boundary.
+    Skill descriptions may span lines, and the marker is recognised by line
+    position — so a multi-line entry could otherwise contribute a line that
+    looks like the catalog header followed by a marker. Only newlines are
+    touched: ids, names and paths never contain them, and the model has to be
+    able to copy those verbatim into SkillTool.
     """
-    if not text:
-        return text
-    return text.replace(CATALOG_MARKER_PREFIX, "skills-catalog\u2060 rev=").replace(
-        CATALOG_HEADER, CATALOG_HEADER.replace(" ", "\u2060 ", 1)
-    )
+    return _NEWLINES_RE.sub(" ", text) if text else text
 
 
 def catalog_revision(lines: Iterable[str]) -> str:
@@ -79,22 +72,27 @@ def catalog_revision(lines: Iterable[str]) -> str:
 
 
 def latest_advertised_revision(history_text: str) -> Optional[str]:
-    """The revision from the most recent marker, or None if never advertised.
+    """The revision from the most recent catalog block, or None if never sent.
 
-    Only the last marker counts. Matching *any* of them meant a catalog that
-    changed and then changed back stayed silent: history still held the old
-    marker, while what the model had most recently been told was the
-    intervening catalog.
+    Only the last one counts. Matching *any* marker meant a catalog that changed
+    and then changed back stayed silent: history still held the old marker, while
+    what the model had most recently been told was the intervening catalog.
 
-    Catalog content cannot imitate the marker — see
-    ``_neutralize_marker_shapes`` — so the reachable case is closed. A foreign
-    reminder fragment reproducing this exact header verbatim would still be read
-    as the latest advertisement; that direction fails toward re-advertising
-    rather than toward silence, so the model's catalog stays correct and the
-    cost is a repeated reminder.
+    A candidate has to be a marker on its own line directly beneath a line that
+    is exactly the header. Catalog entries are folded onto one line each, so
+    nothing this hook renders can produce either shape — and skill ids, names and
+    paths reach the model untouched, which matters because the model copies them
+    into SkillTool.
     """
-    found = _MARKER_RE.findall(history_text or "")
-    return found[-1] if found else None
+    lines = (history_text or "").splitlines()
+    found = None
+    for index, line in enumerate(lines[:-1]):
+        if line.strip() != CATALOG_HEADER:
+            continue
+        match = _MARKER_LINE_RE.match(lines[index + 1].strip())
+        if match:
+            found = match.group(1)
+    return found
 
 
 async def skills_reminder_hook(chat_id: str, deps: Any) -> Optional[str]:
@@ -130,7 +128,7 @@ async def skills_reminder_hook(chat_id: str, deps: Any) -> Optional[str]:
         else:
             location = str(skill.path.resolve())
         lines.append(
-            _neutralize_marker_shapes(
+            _one_line(
                 f"- {skill.id}: {skill.metadata.description} "
                 f"(Name: {name}; Location: {location})"
             )
