@@ -17,10 +17,11 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import threading
 import os
 import re
 import secrets
-from typing import Any, Callable, Awaitable, Optional, List
+from typing import Any, Callable, Awaitable, Optional, List, Sequence, Union
 
 from pydantic_ai.tools import RunContext
 
@@ -95,6 +96,21 @@ _DISPLAY_TRIGGER_RE = re.compile(
 )
 
 
+def render_trigger_block(display_trigger: str) -> str:
+    """The trigger exactly as it appears inside the block.
+
+    One definition, because two things need it: the wrap that emits it and the
+    budget that has to charge for it. Sizing the trigger by its bare text left
+    the envelope uncounted, so a trigger and a fragment that each fit could
+    still clear the cap together.
+    """
+    return (
+        f"<{DISPLAY_TRIGGER_TAG}>\n"
+        f"{display_trigger.strip()}\n"
+        f"</{DISPLAY_TRIGGER_TAG}>\n\n"
+    )
+
+
 def wrap_in_system_reminder(content: str, display_trigger: Optional[str] = None) -> str:
     """Wrap content in a hidden reminder block.
 
@@ -118,12 +134,7 @@ def wrap_in_system_reminder(content: str, display_trigger: Optional[str] = None)
 
     body = content.strip()
     if display_trigger and display_trigger.strip():
-        body = (
-            f"<{DISPLAY_TRIGGER_TAG}>\n"
-            f"{display_trigger.strip()}\n"
-            f"</{DISPLAY_TRIGGER_TAG}>\n\n"
-            f"{body}"
-        )
+        body = render_trigger_block(display_trigger) + body
     if os.environ.get("SUZENT_XML_SYSTEM_REMINDER"):
         return (
             f'\n<{REMINDER_TAG} nonce="{RUNTIME_NONCE}">\n{body}\n</{REMINDER_TAG}>\n'
@@ -843,12 +854,242 @@ def clear_per_turn_hooks() -> None:
 # ---------------------------------------------------------------------------
 
 
+#: How long any one reminder provider may take before it is dropped for the turn.
+HOOK_TIMEOUT_SECONDS = 2.0
+
+#: How a reminder-only turn's individual reminders are joined into one display
+#: trigger.
+#:
+#: Defined here rather than at the join site because both sides need it: the
+#: caller joins with it, and the dedupe below has to split on it to recognise
+#: the constituents it is also handed as fragments. Two copies of that string
+#: is how the multi-reminder case shipped duplicated.
+TRIGGER_SEPARATOR = "\n\n---\n\n"
+
+#: Concurrent blocking providers allowed at once.
+#:
+#: Deliberately not a ThreadPoolExecutor. Its workers are non-daemon and joined
+#: at interpreter exit, so one genuinely wedged read — the case this exists to
+#: survive — would hang every server stop, reload and resource-guard recycle,
+#: long after the turn itself returned. Daemon threads let the process leave.
+#:
+#: The bound matters for the same reason the pool did: a stuck thread cannot be
+#: killed, so without a ceiling they accumulate. At saturation a caller waits
+#: for a slot rather than being dropped — the bound exists to contain wedged
+#: threads, and ordinary concurrency is not wedged: a handful of turns running
+#: at once routinely needs more than four reads, and skipping them would
+#: silently drop context from a perfectly healthy request.
+#:
+#: The wait is what keeps that safe. It is bounded by the caller's own deadline,
+#: so a genuinely wedged provider still stops at HOOK_TIMEOUT_SECONDS instead of
+#: queueing behind the block forever.
+_PROVIDER_THREADS = 4
+_provider_slots = threading.Semaphore(_PROVIDER_THREADS)
+
+#: How often a waiting provider retries the slot. Short enough to be invisible
+#: next to the deadline, long enough not to spin.
+_SLOT_POLL_SECONDS = 0.01
+
+
+async def run_provider_blocking(fn: Callable[..., Any], *args: Any) -> Any:
+    """Run a reminder provider's blocking work off the event loop.
+
+    Providers that do synchronous I/O must call this. A provider that blocks
+    before its first await cannot be timed out at all, because cancelling needs
+    the loop to run — so an unreachable network mount or a wedged database
+    stalls every turn regardless of HOOK_TIMEOUT_SECONDS.
+
+    Only safe for read-only work. The thread is not cancellable: when the caller
+    times out, the work carries on to completion, so anything it writes lands
+    after the provider was abandoned.
+    """
+    # Await a slot rather than taking it or giving up. Blocking the acquire
+    # would block the loop — the exact failure this function exists to prevent —
+    # so the wait yields, and the caller's timeout cancels it if the pool never
+    # frees up. Sleeping here is not a stall: nothing else can start the work.
+    while not _provider_slots.acquire(blocking=False):
+        await asyncio.sleep(_SLOT_POLL_SECONDS)
+
+    loop = asyncio.get_running_loop()
+    future: asyncio.Future = loop.create_future()
+
+    def _deliver(setter: Callable[..., None], value: Any) -> None:
+        if not future.done():
+            setter(value)
+
+    def _worker() -> None:
+        try:
+            setter, value = future.set_result, fn(*args)
+        except BaseException as exc:  # noqa: BLE001 - relayed to the awaiter
+            setter, value = future.set_exception, exc
+        finally:
+            # Before waking the awaiter, not after. Releasing afterwards let the
+            # caller resume while this thread still held the slot, so the pool
+            # read as short by one for however long the handoff took — briefly
+            # under-subscribed under load, and a genuine race in any check made
+            # the moment a provider returns.
+            _provider_slots.release()
+
+        try:
+            loop.call_soon_threadsafe(_deliver, setter, value)
+        except RuntimeError:
+            pass  # loop already closed; nobody is waiting
+
+    try:
+        threading.Thread(target=_worker, name="reminder-provider", daemon=True).start()
+    except BaseException:
+        # The slot is released by the worker's finally, so a thread that never
+        # starts never gives it back. Four of those and the pool is gone for the
+        # life of the process — every provider would then wait out its deadline
+        # and plan, skill and repository context would vanish from every turn.
+        _provider_slots.release()
+        raise
+    return await future
+
+
+#: Ceiling on the assembled reminder body, in characters.
+#:
+#: Measured on the text that actually gets sent, not on per-provider
+#: declarations. Providers that describe their own size drift from what they
+#: emit; the assembled string cannot.
+REMINDER_BUDGET_CHARS = 6000
+
+#: Appended to content the cap had to cut, so the model can tell a clipped
+#: reminder from a complete one. Silently trimmed text is worse than either the
+#: cut or the overshoot: it reads as authoritative and is not.
+TRUNCATION_MARKER = "\n\n[truncated: over the system-reminder budget]"
+
+
+def _dedupe_fragments(parts: list[str]) -> list[str]:
+    """Drop fragments identical to one already present, keeping the first.
+
+    Two providers can produce the same text — a task list surfaced by both the
+    plan hook and an ad-hoc caller, say — and paying for it twice buys nothing.
+    """
+    seen: set[str] = set()
+    unique = []
+    for part in parts:
+        if part in seen:
+            continue
+        seen.add(part)
+        unique.append(part)
+    return unique
+
+
+def _apply_budget(
+    parts: list[str],
+    chat_id: str,
+    reserved: int = 0,
+    separator: str = FRAGMENT_SEPARATOR,
+    truncate_first: Optional[bool] = None,
+) -> list[str]:
+    """Keep the assembled body under REMINDER_BUDGET_CHARS.
+
+    Fragments arrive already sanitized, because that is what gets sent.
+    Measuring the raw text was wrong by a wide margin: sanitizing expands each
+    one-character PUA delimiter into ``[reminder-delimiter]``, and goal, task
+    and retrieved-memory text is user-influenced, so a body that measured under
+    the cap could arrive many times over it.
+
+    *reserved* accounts for text prepended inside the block that is not a
+    fragment — the display trigger — so the cap covers everything the model
+    reads rather than only the part this function happens to hold.
+
+    Whole fragments are dropped from the end rather than characters from the
+    middle: half a plan snapshot is worse than none, because the model cannot
+    tell it is reading a fragment.
+
+    Nothing is exempt. An item too large to fit is truncated to what is left
+    and marked, rather than admitted whole or dropped: the cap is then a real
+    ceiling on what is sent, with no case in which it is quietly exceeded.
+
+    The alternative to truncating is not "send it all" — that was five separate
+    ways of exceeding the cap, each one an item that had claimed to be the
+    single thing that could not be helped. Nor is it "drop it": on a
+    reminder-only turn the reminder is the entire turn, and an empty body cannot
+    be told apart from a provider that had nothing to say, so dropping loses the
+    delivery silently. Truncating loses the tail and says so, which is the only
+    one of the three the model can react to.
+
+    *truncate_first* says whether this call is the one that may spend the last
+    resort; it defaults to "only if nothing has been delivered yet". Whole
+    fragments are still dropped from the end rather than trimmed — half a plan
+    snapshot is worse than none — so only the first item, and only when nothing
+    else will survive, is ever cut.
+    """
+    separator_cost = len(separator)
+    kept: list[str] = []
+    used = reserved
+    may_truncate = truncate_first if truncate_first is not None else reserved == 0
+    for index, part in enumerate(parts):
+        cost = len(part) + (separator_cost if kept else 0)
+        if used + cost > REMINDER_BUDGET_CHARS:
+            if not kept and may_truncate:
+                room = REMINDER_BUDGET_CHARS - used - len(TRUNCATION_MARKER)
+                if room > 0:
+                    logger.warning(
+                        f"[system-reminder] chat={chat_id} over budget: truncated "
+                        f"{len(part)} chars to {room} at "
+                        f"{used}/{REMINDER_BUDGET_CHARS}"
+                    )
+                    kept.append(part[:room] + TRUNCATION_MARKER)
+                    used = REMINDER_BUDGET_CHARS
+                    continue
+            dropped = len(parts) - index
+            logger.warning(
+                f"[system-reminder] chat={chat_id} over budget: dropped {dropped} "
+                f"of {len(parts)} fragment(s) at {used}/{REMINDER_BUDGET_CHARS} chars"
+            )
+            break
+        kept.append(part)
+        used += cost
+    return kept
+
+
+def canonical_trigger_constituents(
+    display_trigger: Union[str, Sequence[str], None],
+) -> list[str]:
+    """The trigger's reminders exactly as they will be delivered.
+
+    Sanitized first and deduplicated second, because sanitizing is what decides
+    whether two inputs are the same text: a delimiter and its literal
+    ``[reminder-delimiter]`` spelling differ on the way in and are identical on
+    the way out, so deduplicating first kept both and sent the reminder twice.
+
+    A string is one constituent, not a join to be taken apart — boundaries
+    cannot be recovered from a rendered join, since a reminder containing the
+    separator splits into pieces that were never reminders.
+
+    One definition because two things need the answer: the block the model reads
+    and the row the transcript keeps. Computing it twice is how they came to
+    disagree.
+    """
+    items = (
+        [display_trigger]
+        if isinstance(display_trigger, str)
+        else list(display_trigger or [])
+    )
+    cleaned = [
+        sanitize_untrusted_text(item).strip() for item in items if item and item.strip()
+    ]
+    return _dedupe_fragments([item for item in cleaned if item])
+
+
+def canonical_display_trigger(
+    display_trigger: Union[str, Sequence[str], None],
+) -> Optional[str]:
+    """The trigger as one string, for the block and for the transcript row."""
+    return (
+        TRIGGER_SEPARATOR.join(canonical_trigger_constituents(display_trigger)) or None
+    )
+
+
 async def build_combined_reminder(
     chat_id: str,
     deps: Any,
     adhoc_reminders: Optional[List[str]] = None,
     user_message: Optional[str] = None,
-    display_trigger: Optional[str] = None,
+    display_trigger: Union[str, Sequence[str], None] = None,
 ) -> Optional[str]:
     """Merge all reminder sources into a single wrapped ``<system-reminder>`` block.
 
@@ -858,6 +1099,13 @@ async def build_combined_reminder(
         adhoc_reminders: Caller-supplied one-off strings for this turn.
         user_message: Current user message text.  When non-empty, per-turn
             hooks are also invoked (e.g. dynamic RAG memory retrieval).
+        display_trigger: The reminder(s) this turn exists to deliver, shown in
+            the transcript. Pass the constituents, not a joined string: they are
+            also handed in as fragments, and recovering the boundaries by
+            splitting the join cannot work — a reminder whose own text contains
+            the separator, such as a Markdown rule, splits into pieces that
+            match nothing and is then sent twice. Joining is this module's job
+            because deduplicating is too.
 
     Returns:
         A fully wrapped ``<system-reminder>`` string, or ``None`` if nothing
@@ -865,46 +1113,99 @@ async def build_combined_reminder(
     """
     parts: list[str] = []
 
-    # 1. Global hooks (always-on)
-    for hook in _global_hooks:
+    async def _run(hook, *args) -> Optional[str]:
+        """Run one provider under a timeout, never letting it fail the turn."""
         try:
-            content = await hook(chat_id, deps)
-            if content:
-                parts.append(content.strip())
+            return await asyncio.wait_for(hook(*args), timeout=HOOK_TIMEOUT_SECONDS)
+        except asyncio.TimeoutError:
+            logger.warning(
+                f"Reminder hook {hook.__name__} timed out after "
+                f"{HOOK_TIMEOUT_SECONDS}s — skipped"
+            )
         except Exception as e:
-            logger.warning(f"System Reminder global hook {hook.__name__} failed: {e}")
+            logger.warning(f"Reminder hook {hook.__name__} failed: {e}")
+        return None
 
-    # 2. Per-turn hooks (only when there is a real user message)
-    # Each hook runs with a timeout so a slow embedding/search call never
-    # stalls the message pipeline. Timed-out hooks are skipped silently.
-    _PER_TURN_TIMEOUT = 2.0  # seconds
+    # Providers are independent, so they run together. Serially, a slow one
+    # delayed every one after it — and global hooks had no timeout at all, so a
+    # single hung provider stalled the whole message pipeline indefinitely.
+    scheduled = [(hook, _run(hook, chat_id, deps)) for hook in _global_hooks]
     if user_message and user_message.strip():
-        for hook in _per_turn_hooks:
-            try:
-                content = await asyncio.wait_for(
-                    hook(chat_id, deps, user_message),
-                    timeout=_PER_TURN_TIMEOUT,
-                )
-                if content:
-                    parts.append(content.strip())
-            except asyncio.TimeoutError:
-                logger.debug(
-                    f"Per-turn hook {hook.__name__} timed out after {_PER_TURN_TIMEOUT}s — skipped"
-                )
-            except Exception as e:
-                logger.warning(
-                    f"System Reminder per-turn hook {hook.__name__} failed: {e}"
-                )
+        scheduled += [
+            (hook, _run(hook, chat_id, deps, user_message)) for hook in _per_turn_hooks
+        ]
 
-    # 3. Caller-supplied adhoc reminders
-    if adhoc_reminders:
-        for r in adhoc_reminders:
-            if r and r.strip():
-                parts.append(r.strip())
+    if scheduled:
+        # Registration order is the priority order, and gather preserves it, so
+        # what a caller registered first is what survives truncation.
+        for content in await asyncio.gather(*(coro for _, coro in scheduled)):
+            if content and content.strip():
+                parts.append(content.strip())
 
-    if not parts:
+    # Caller-supplied directives go first, so they survive truncation. They are
+    # specific to this turn — a peer's attribution, the analyze_image directive
+    # for a non-vision model — while hook output is ambient and reproducible on
+    # the next turn. Appending them last meant ambient content could crowd out
+    # the one instruction the turn actually depended on.
+    direct = [r.strip() for r in (adhoc_reminders or []) if r and r.strip()]
+    parts = direct + parts
+
+    # Sanitize before measuring: this is the text that gets sent. wrap_in_system
+    # _reminder sanitizes again, which is a no-op on already-clean text.
+    parts = [sanitize_untrusted_text(part) for part in parts]
+    parts = _dedupe_fragments(parts)
+
+    # A reminder-only turn passes the same text as display_trigger and as an
+    # ad-hoc fragment, and the trigger is prepended inside the block — so the
+    # model saw it twice and it was charged twice. Dropping the fragment keeps
+    # the content (the trigger envelope carries it) and halves the cost.
+    _constituents = canonical_trigger_constituents(display_trigger)
+    # Before budgeting. These are the strings the caller also handed in as
+    # fragments, and whether the trigger kept them has no bearing on that: one
+    # dropped or cut by the trigger's budget would otherwise reappear as an
+    # ordinary fragment, so the model would read a reminder the transcript says
+    # was not delivered.
+    _offered = set(_constituents)
+
+    # The trigger is budgeted as its constituents, not as one indivisible
+    # string. Joining first made the whole thing a single item, and a single
+    # item is exactly what the oversized exemption waves through — so two
+    # unrelated 4,000-character reminders sailed past a 6,000-character cap
+    # together. Budgeting first means the exemption covers one reminder, which
+    # is the most that cannot be helped.
+    _constituents = _apply_budget(
+        _constituents,
+        chat_id,
+        reserved=len(render_trigger_block("")) if _constituents else 0,
+        separator=TRIGGER_SEPARATOR,
+        # The trigger goes out first, so this is the pass that may spend the
+        # last resort. The envelope it reserves for is not content.
+        truncate_first=True,
+    )
+    display_trigger = TRIGGER_SEPARATOR.join(_constituents) or None
+
+    if _offered:
+        # The same strings arrive as fragments, and the trigger is prepended
+        # inside the block, so without this the model reads and pays for each
+        # one twice.
+        charged = set(_offered)
+        if display_trigger:
+            charged.add(display_trigger)
+        parts = [part for part in parts if part not in charged]
+
+    # The trigger is prepended inside the block, so it spends from the same
+    # budget; without this the cap covered only part of what the model reads.
+    trigger_cost = len(render_trigger_block(display_trigger)) if display_trigger else 0
+    parts = _apply_budget(parts, chat_id, reserved=trigger_cost)
+
+    if not parts and not display_trigger:
         logger.debug(f"[system-reminder] chat={chat_id} — no content, skipping")
         return None
+    if not parts:
+        # Dropping the duplicate fragment can empty the body while a trigger is
+        # still owed: a reminder-only turn's whole visible record is that
+        # trigger, so returning None here would lose the row entirely.
+        logger.debug(f"[system-reminder] chat={chat_id} — trigger only")
 
     # The separator is in-band, so a fragment carrying it verbatim would split
     # into two and let its own content pose as a separate provider's. Goal and

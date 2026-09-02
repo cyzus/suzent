@@ -92,7 +92,9 @@ async def test_combined_reminder_merges_global_and_adhoc():
     clear_global_hooks()
 
     assert result is not None
-    assert "global\n\n---\n\nadhoc" in result
+    # Caller directives come first: they are specific to this turn and must
+    # survive truncation, while hook output is ambient and returns next turn.
+    assert "adhoc\n\n---\n\nglobal" in result
 
 
 def test_rebuild_strips_reminder_from_display_messages():
@@ -1447,3 +1449,896 @@ def test_every_registered_history_processor_takes_a_run_context():
         make_compaction_history_processor,
     ):
         assert takes_run_context(factory()), factory.__name__
+
+
+# ---------------------------------------------------------------------------
+# Provider budget, isolation and concurrency
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def clean_hooks():
+    from suzent.core.system_reminder import clear_global_hooks, clear_per_turn_hooks
+
+    clear_global_hooks()
+    clear_per_turn_hooks()
+    yield
+    clear_global_hooks()
+    clear_per_turn_hooks()
+
+
+@pytest.mark.asyncio
+async def test_a_hung_global_hook_cannot_stall_the_turn(clean_hooks, monkeypatch):
+    """Global hooks previously had no timeout at all, so one hung provider
+    blocked every message indefinitely."""
+    import asyncio as _asyncio
+
+    from suzent.core import system_reminder as sr
+
+    monkeypatch.setattr(sr, "HOOK_TIMEOUT_SECONDS", 0.05)
+
+    async def hangs(chat_id, deps):
+        await _asyncio.sleep(30)
+        return "never"
+
+    async def works(chat_id, deps):
+        return "delivered"
+
+    sr.register_global_hook(hangs)
+    sr.register_global_hook(works)
+
+    result = await _asyncio.wait_for(sr.build_combined_reminder("c", None), timeout=5)
+
+    assert "delivered" in result
+    assert "never" not in result
+
+
+@pytest.mark.asyncio
+async def test_a_failing_provider_does_not_lose_the_others(clean_hooks):
+    from suzent.core import system_reminder as sr
+
+    async def broken(chat_id, deps):
+        raise RuntimeError("provider exploded")
+
+    async def works(chat_id, deps):
+        return "delivered"
+
+    sr.register_global_hook(broken)
+    sr.register_global_hook(works)
+
+    assert "delivered" in await sr.build_combined_reminder("c", None)
+
+
+def _slow_hook(label: str, delay: float = 0.1):
+    """A distinct coroutine per call — registration de-duplicates by identity."""
+
+    async def hook(chat_id, deps):
+        import asyncio as _asyncio
+
+        await _asyncio.sleep(delay)
+        return label
+
+    hook.__name__ = f"slow_{label}"
+    return hook
+
+
+def _sized_hook(label: str, size: int):
+    async def hook(chat_id, deps):
+        return label + "x" * size
+
+    hook.__name__ = f"sized_{label}"
+    return hook
+
+
+@pytest.mark.asyncio
+async def test_providers_run_concurrently(clean_hooks):
+    """Serially these take 0.3s; together, about 0.1s."""
+    import time
+
+    from suzent.core import system_reminder as sr
+
+    for label in ("a", "b", "c"):
+        sr.register_global_hook(_slow_hook(label))
+
+    started = time.monotonic()
+    await sr.build_combined_reminder("c", None)
+    elapsed = time.monotonic() - started
+
+    assert elapsed < 0.25, f"looks serial: {elapsed:.2f}s"
+
+
+@pytest.mark.asyncio
+async def test_identical_fragments_are_not_paid_for_twice(clean_hooks):
+    from suzent.core import system_reminder as sr
+
+    async def one(chat_id, deps):
+        return "[ACTIVE TASKS] #1 ship it"
+
+    async def two(chat_id, deps):
+        return "[ACTIVE TASKS] #1 ship it"
+
+    sr.register_global_hook(one)
+    sr.register_global_hook(two)
+
+    result = await sr.build_combined_reminder("c", None)
+
+    assert result.count("[ACTIVE TASKS] #1 ship it") == 1
+
+
+@pytest.mark.asyncio
+async def test_the_body_stays_within_budget(clean_hooks, monkeypatch):
+    from suzent.core import system_reminder as sr
+
+    monkeypatch.setattr(sr, "REMINDER_BUDGET_CHARS", 500)
+
+    for i in range(6):
+        sr.register_global_hook(_sized_hook(f"F{i}", 200))
+
+    result = await sr.build_combined_reminder("c", None)
+    body = extract_system_reminder_content(result)
+
+    assert len(body) <= 500 + len(sr.FRAGMENT_SEPARATOR)
+
+
+@pytest.mark.asyncio
+async def test_truncation_drops_whole_fragments_from_the_end(clean_hooks, monkeypatch):
+    """Registration order is priority order, and half a fragment is worse than
+    none because the model cannot tell it is reading one."""
+    from suzent.core import system_reminder as sr
+
+    monkeypatch.setattr(sr, "REMINDER_BUDGET_CHARS", 300)
+
+    async def first(chat_id, deps):
+        return "FIRST" + "a" * 200
+
+    async def later(chat_id, deps):
+        return "LATER" + "b" * 200
+
+    sr.register_global_hook(first)
+    sr.register_global_hook(later)
+
+    body = extract_system_reminder_content(await sr.build_combined_reminder("c", None))
+
+    assert "FIRST" in body
+    assert "LATER" not in body
+    assert body.endswith("a" * 200), "the kept fragment must be intact"
+
+
+@pytest.mark.asyncio
+async def test_one_oversized_fragment_is_cut_rather_than_dropped(
+    clean_hooks, monkeypatch
+):
+    """Dropping it is indistinguishable from a provider that produced nothing,
+    and sending it whole is the cap failing. Cut, and say so."""
+    from suzent.core import system_reminder as sr
+
+    monkeypatch.setattr(sr, "REMINDER_BUDGET_CHARS", 200)
+
+    async def huge(chat_id, deps):
+        return "IMPORTANT" + "x" * 500
+
+    sr.register_global_hook(huge)
+
+    body = _reminder_body(await sr.build_combined_reminder("c", None))
+
+    assert "IMPORTANT" in body
+    assert sr.TRUNCATION_MARKER.strip() in body
+    assert len(body) <= sr.REMINDER_BUDGET_CHARS
+
+
+@pytest.mark.asyncio
+async def test_budget_measures_the_sanitized_text(clean_hooks, monkeypatch):
+    """Sanitizing expands each one-character PUA delimiter into
+    `[reminder-delimiter]`, so a raw body under the cap could arrive many times
+    over it. Goal, task and memory text is user-influenced, so this is reachable."""
+    from suzent.core import system_reminder as sr
+
+    monkeypatch.setattr(sr, "REMINDER_BUDGET_CHARS", 1000)
+
+    async def delimiters(chat_id, deps):
+        return PUA_START * 300  # 300 raw chars -> ~6000 after sanitizing
+
+    async def later(chat_id, deps):
+        return "SHOULD_BE_DROPPED"
+
+    sr.register_global_hook(delimiters)
+    sr.register_global_hook(later)
+
+    body = extract_system_reminder_content(await sr.build_combined_reminder("c", None))
+
+    assert "SHOULD_BE_DROPPED" not in body, "measured the raw text, not what is sent"
+
+
+@pytest.mark.asyncio
+async def test_the_display_trigger_spends_from_the_same_budget(
+    clean_hooks, monkeypatch
+):
+    """It is prepended inside the block, so a cap that ignores it covers only
+    part of what the model reads.
+
+    Sized so the first fragment fits behind the trigger and the second does not.
+    The original numbers only passed through the first-fragment exemption, which
+    no longer applies once a trigger has been delivered — the case where that
+    exemption let the cap be exceeded outright.
+    """
+    from suzent.core import system_reminder as sr
+
+    monkeypatch.setattr(sr, "REMINDER_BUDGET_CHARS", 400)
+    sr.register_global_hook(_sized_hook("KEEP", 100))
+    sr.register_global_hook(_sized_hook("DROP", 100))
+
+    body = extract_system_reminder_content(
+        await sr.build_combined_reminder("c", None, display_trigger="T" * 200)
+    )
+
+    assert "KEEP" in body
+    assert "DROP" not in body
+
+
+@pytest.mark.asyncio
+async def test_caller_directives_outrank_ambient_hooks(clean_hooks, monkeypatch):
+    """A peer's attribution or the analyze_image directive is specific to this
+    turn; skill and plan content is ambient and returns next turn."""
+    from suzent.core import system_reminder as sr
+
+    monkeypatch.setattr(sr, "REMINDER_BUDGET_CHARS", 100)
+    sr.register_global_hook(_sized_hook("AMBIENT", 250))
+
+    body = extract_system_reminder_content(
+        await sr.build_combined_reminder(
+            "c", None, adhoc_reminders=["DIRECTIVE: inspect the image"]
+        )
+    )
+
+    assert "DIRECTIVE" in body
+    assert "AMBIENT" not in body
+
+
+@pytest.mark.asyncio
+async def test_a_blocking_provider_cannot_hold_the_turn_open(clean_hooks, monkeypatch):
+    """asyncio.wait_for needs the loop running to cancel anything, so a provider
+    that blocks it cannot be timed out. Providers doing synchronous work must
+    hand it to a thread — plan_reminder_hook wraps its database access this way."""
+    import asyncio as _asyncio
+    import time
+
+    from suzent.core import system_reminder as sr
+
+    monkeypatch.setattr(sr, "HOOK_TIMEOUT_SECONDS", 0.05)
+
+    async def blocking_but_threaded(chat_id, deps):
+        await _asyncio.to_thread(time.sleep, 1.0)
+        return "slow"
+
+    async def quick(chat_id, deps):
+        return "quick"
+
+    sr.register_global_hook(blocking_but_threaded)
+    sr.register_global_hook(quick)
+
+    started = time.monotonic()
+    result = await sr.build_combined_reminder("c", None)
+    elapsed = time.monotonic() - started
+
+    assert "quick" in result
+    assert elapsed < 0.5, f"deadline could not fire: {elapsed:.2f}s"
+
+
+@pytest.mark.parametrize(
+    "module,func",
+    [
+        ("suzent.tools.plan_hooks", "plan_reminder_hook"),
+        ("suzent.core.repository_context", "repository_agents_reminder_hook"),
+    ],
+)
+def test_blocking_providers_use_the_bounded_pool(module: str, func: str):
+    """Both do synchronous I/O — SQLite reads and Path.resolve(). A provider
+    that blocks before its first await cannot be timed out at all, and using
+    asyncio's default executor would let stuck workers starve unrelated
+    to_thread callers."""
+    import importlib
+    import inspect
+
+    source = inspect.getsource(getattr(importlib.import_module(module), func))
+
+    assert "run_provider_blocking" in source
+    assert "asyncio.to_thread" not in source
+
+
+def test_provider_threads_are_daemons_and_bounded():
+    """ThreadPoolExecutor joins its workers at interpreter exit, so one wedged
+    read — the case this exists to survive — would hang every server stop and
+    reload. Daemon threads let the process leave."""
+    import inspect
+
+    from suzent.core import system_reminder as sr
+
+    source = inspect.getsource(sr.run_provider_blocking)
+
+    assert "daemon=True" in source
+    assert "ThreadPoolExecutor(" not in inspect.getsource(sr), "must not construct one"
+    assert sr._provider_slots._value <= sr._PROVIDER_THREADS
+
+
+@pytest.mark.asyncio
+async def test_a_busy_pool_waits_instead_of_dropping_the_provider():
+    """Ordinary concurrency is not a wedged provider. Three blocking hooks per
+    turn against four process-wide slots means two simultaneous turns already
+    exceed the pool — dropping there would silently lose context from healthy
+    requests."""
+    import asyncio
+    import threading
+
+    from suzent.core import system_reminder as sr
+
+    exhausted = threading.Semaphore(0)
+    original = sr._provider_slots
+    sr._provider_slots = exhausted
+    try:
+        waiting = asyncio.create_task(sr.run_provider_blocking(lambda: "ran"))
+        await asyncio.sleep(0.05)
+        assert not waiting.done(), "gave up instead of waiting for a slot"
+
+        exhausted.release()
+        assert await asyncio.wait_for(waiting, timeout=1.0) == "ran"
+    finally:
+        sr._provider_slots = original
+
+
+@pytest.mark.asyncio
+async def test_waiting_for_a_slot_is_bounded_by_the_callers_deadline():
+    """Waiting is only safe because it ends. A pool that never frees up must
+    fail the provider on its own deadline rather than queue behind the block."""
+    import asyncio
+    import threading
+    import time
+
+    from suzent.core import system_reminder as sr
+
+    original = sr._provider_slots
+    sr._provider_slots = threading.Semaphore(0)
+    try:
+        started = time.monotonic()
+        with pytest.raises(asyncio.TimeoutError):
+            await asyncio.wait_for(
+                sr.run_provider_blocking(lambda: "never"), timeout=0.1
+            )
+        assert time.monotonic() - started < 0.5
+    finally:
+        sr._provider_slots = original
+
+
+@pytest.mark.asyncio
+async def test_waiting_for_a_slot_does_not_block_the_loop():
+    """The wait must yield: blocking the acquire would block the loop, which is
+    the exact failure this function exists to prevent."""
+    import asyncio
+    import threading
+
+    from suzent.core import system_reminder as sr
+
+    original = sr._provider_slots
+    sr._provider_slots = threading.Semaphore(0)
+    ticks = 0
+
+    async def _tick():
+        nonlocal ticks
+        while True:
+            await asyncio.sleep(0.01)
+            ticks += 1
+
+    ticker = asyncio.create_task(_tick())
+    try:
+        with pytest.raises(asyncio.TimeoutError):
+            await asyncio.wait_for(
+                sr.run_provider_blocking(lambda: "never"), timeout=0.2
+            )
+    finally:
+        ticker.cancel()
+        sr._provider_slots = original
+
+    assert ticks > 5, f"event loop was blocked while waiting for a slot ({ticks})"
+
+
+@pytest.mark.asyncio
+async def test_a_provider_thread_slot_is_released_after_use():
+    from suzent.core import system_reminder as sr
+
+    before = sr._provider_slots._value
+    await sr.run_provider_blocking(lambda: "done")
+
+    assert sr._provider_slots._value == before
+
+
+@pytest.mark.asyncio
+async def test_a_failing_blocking_provider_relays_its_error():
+    from suzent.core import system_reminder as sr
+
+    def boom():
+        raise RuntimeError("disk on fire")
+
+    with pytest.raises(RuntimeError, match="disk on fire"):
+        await sr.run_provider_blocking(boom)
+
+    assert sr._provider_slots._value == sr._PROVIDER_THREADS
+
+
+@pytest.mark.asyncio
+async def test_a_wedged_provider_does_not_delay_the_turn(clean_hooks, monkeypatch):
+    """The thread cannot be killed, but the turn must not wait for it."""
+    import time
+
+    from suzent.core import system_reminder as sr
+
+    monkeypatch.setattr(sr, "HOOK_TIMEOUT_SECONDS", 0.05)
+
+    async def wedged(chat_id, deps):
+        return await sr.run_provider_blocking(time.sleep, 1.0)
+
+    async def quick(chat_id, deps):
+        return "quick"
+
+    sr.register_global_hook(wedged)
+    sr.register_global_hook(quick)
+
+    started = time.monotonic()
+    result = await sr.build_combined_reminder("c", None)
+    elapsed = time.monotonic() - started
+
+    assert "quick" in result
+    assert elapsed < 0.5, f"turn waited for the wedged provider: {elapsed:.2f}s"
+
+
+def test_the_goal_fragment_outranks_ambient_catalogues():
+    """Registration order is priority order under the budget, so a large skill
+    catalog must not be able to hide the objective the agent is working on."""
+    import inspect
+
+    from suzent import server
+
+    source = inspect.getsource(server)
+    plan = source.index("register_global_hook(plan_reminder_hook)")
+    skills = source.index("register_global_hook(skills_reminder_hook)")
+
+    assert plan < skills
+
+
+@pytest.mark.asyncio
+async def test_the_trigger_text_is_not_charged_twice(clean_hooks, monkeypatch):
+    """A reminder-only turn passes the same text as display_trigger and as an
+    ad-hoc fragment, and the trigger is prepended inside the block — so a large
+    scheduled reminder produced a body twice its size and defeated the cap."""
+    from suzent.core import system_reminder as sr
+
+    monkeypatch.setattr(sr, "REMINDER_BUDGET_CHARS", 6000)
+    scheduled = "Cron: " + "x" * 3000
+
+    result = await sr.build_combined_reminder(
+        "c", None, adhoc_reminders=[scheduled], display_trigger=scheduled
+    )
+
+    # Once in the whole block: the trigger envelope carries it, so the duplicate
+    # fragment is redundant. The model still reads it; it is charged once.
+    assert result.count("x" * 3000) == 1, "the trigger text appeared twice"
+    assert len(result) < 6000
+    from suzent.core.system_reminder import extract_system_reminder_display_trigger
+
+    assert extract_system_reminder_display_trigger(result).startswith("Cron:")
+
+
+@pytest.mark.asyncio
+async def test_a_trigger_only_turn_still_produces_a_reminder(clean_hooks):
+    """Dropping the duplicate fragment can empty the body while a trigger is
+    still owed. A reminder-only turn's whole visible record is that trigger, so
+    returning nothing would lose the row."""
+    from suzent.core import system_reminder as sr
+
+    scheduled = "Cron: nightly digest"
+    result = await sr.build_combined_reminder(
+        "c", None, adhoc_reminders=[scheduled], display_trigger=scheduled
+    )
+
+    assert result is not None
+    assert sr.extract_system_reminder_display_trigger(result) == scheduled
+
+
+def test_every_filesystem_reading_provider_renders_off_loop() -> None:
+    """A provider that blocks before its first await makes its own deadline
+    unenforceable — wait_for cannot interrupt work sitting on the loop it runs
+    on — and starves the providers scheduled beside it.
+
+    The framework cannot offload this for them: hooks are coroutines, and
+    driving an arbitrary one in a foreign loop would break anything loop-affine
+    inside it. So each hook that touches the filesystem has to route that work
+    through run_provider_blocking itself, and this is the check that it did.
+    Three hooks read paths and the first two rounds each moved one, so the
+    assertion is over the set rather than over the ones remembered.
+    """
+    import inspect
+
+    from suzent.core.repository_context import repository_agents_reminder_hook
+    from suzent.skills.hooks import skills_reminder_hook
+    from suzent.tools.plan_hooks import plan_reminder_hook
+
+    for hook in (
+        repository_agents_reminder_hook,
+        skills_reminder_hook,
+        plan_reminder_hook,
+    ):
+        source = inspect.getsource(hook)
+        assert "run_provider_blocking" in source, (
+            f"{hook.__name__} reads the filesystem on the event loop"
+        )
+
+
+@pytest.mark.asyncio
+async def test_every_constituent_of_a_joined_trigger_is_charged_once(clean_hooks):
+    """A reminder-only turn hands over its reminders and the same strings arrive
+    as fragments. Each one has to be recognised, not just the whole: matching
+    only the join left every piece duplicated once there was more than one."""
+    from suzent.core import system_reminder as sr
+
+    first, second = "Cron: nightly digest", "Cron: weekly rollup"
+
+    result = await sr.build_combined_reminder(
+        "c", None, adhoc_reminders=[first, second], display_trigger=[first, second]
+    )
+
+    assert result is not None
+    assert result.count(first) == 1
+    assert result.count(second) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_slot_survives_a_thread_that_never_starts() -> None:
+    """The worker's finally releases the slot, so a thread that fails to start
+    never gives it back. Four of those and the pool is gone for the life of the
+    process."""
+    import threading
+
+    from suzent.core import system_reminder as sr
+
+    before = sr._provider_slots._value
+
+    def _no_thread(*args, **kwargs):
+        raise RuntimeError("can't start new thread")
+
+    original = threading.Thread
+    threading.Thread = _no_thread
+    try:
+        with pytest.raises(RuntimeError, match="can't start new thread"):
+            await sr.run_provider_blocking(lambda: "never")
+    finally:
+        threading.Thread = original
+
+    assert sr._provider_slots._value == before, "slot leaked"
+
+
+# --- the cap holds on the text that is actually sent -------------------------
+
+
+def _reminder_body(rendered: str) -> str:
+    """What the model reads inside the block, trigger included.
+
+    Measured on the wrapped output rather than on the fragment list, because the
+    trigger is prepended during wrapping — a budget checked before that point
+    covers only part of what is sent.
+    """
+    from suzent.core.system_reminder import PUA_END, PUA_START, RUNTIME_NONCE
+
+    inner = rendered.split(PUA_START, 1)[1].rsplit(PUA_END, 1)[0]
+    return inner.replace(RUNTIME_NONCE, "").strip()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "trigger_len,fragment_lens",
+    [
+        (5900, [500]),  # the reported case: trigger nearly fills the cap
+        (5900, [500, 500, 500]),
+        (100, [5000, 5000]),
+        (0, [500, 500]),
+        (3000, [3000]),
+        (10, [10]),
+    ],
+)
+async def test_the_cap_holds_on_the_assembled_body(
+    clean_hooks, trigger_len, fragment_lens
+):
+    """Measured on what is sent, not on what this module happens to hold. The
+    trigger is prepended inside the block, so a budget that counted only
+    fragments capped part of what the model reads."""
+    from suzent.core import system_reminder as sr
+
+    trigger = ("T" * trigger_len) or None
+    fragments = [chr(97 + i) * n for i, n in enumerate(fragment_lens)]
+
+    result = await sr.build_combined_reminder(
+        "c", None, adhoc_reminders=fragments, display_trigger=trigger
+    )
+
+    assert result is not None
+    body = _reminder_body(result)
+    if trigger_len > sr.REMINDER_BUDGET_CHARS:
+        # A single item larger than the whole cap is the one thing that cannot
+        # be honoured; it must not also license a second one.
+        assert body.count("T") == trigger_len
+    else:
+        assert len(body) <= sr.REMINDER_BUDGET_CHARS, (
+            f"{len(body)} chars sent against a {sr.REMINDER_BUDGET_CHARS} cap"
+        )
+
+
+@pytest.mark.asyncio
+async def test_an_oversized_fragment_is_cut_to_fit_without_a_trigger(clean_hooks):
+    """With no trigger nothing else is delivering, so this fragment is the whole
+    turn — it has to survive, and it has to fit."""
+    from suzent.core import system_reminder as sr
+
+    huge = "x" * (sr.REMINDER_BUDGET_CHARS + 1000)
+
+    result = await sr.build_combined_reminder("c", None, adhoc_reminders=[huge])
+
+    assert result is not None
+    body = _reminder_body(result)
+    assert body.startswith("x")
+    assert body.endswith(sr.TRUNCATION_MARKER.strip())
+    assert len(body) <= sr.REMINDER_BUDGET_CHARS
+
+
+@pytest.mark.asyncio
+async def test_a_reminder_containing_the_separator_is_still_charged_once(clean_hooks):
+    """Boundaries cannot be recovered from a rendered join. A reminder whose own
+    text contains the separator — a Markdown rule is enough — split into pieces
+    that matched no fragment, so it was sent twice and spent the budget twice."""
+    from suzent.core import system_reminder as sr
+
+    tricky = f"Cron: digest{sr.TRIGGER_SEPARATOR}see attached"
+    plain = "Cron: weekly rollup"
+
+    result = await sr.build_combined_reminder(
+        "c", None, adhoc_reminders=[tricky, plain], display_trigger=[tricky, plain]
+    )
+
+    assert result is not None
+    assert result.count("see attached") == 1
+    assert result.count(plain) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_single_string_trigger_is_one_constituent(clean_hooks):
+    """Not a join to be taken apart — that reading is what made a reminder
+    containing the separator unrecoverable."""
+    from suzent.core import system_reminder as sr
+
+    trigger = f"Cron: digest{sr.TRIGGER_SEPARATOR}see attached"
+
+    result = await sr.build_combined_reminder(
+        "c", None, adhoc_reminders=[trigger], display_trigger=trigger
+    )
+
+    assert result is not None
+    assert result.count("see attached") == 1
+
+
+def test_the_caller_hands_over_constituents_not_a_join() -> None:
+    """Joining belongs to the module that deduplicates, because only there can
+    the two agree. Three rounds of this bug were the join and the split
+    disagreeing across a module boundary."""
+    import inspect
+
+    from suzent.core import chat_processor
+
+    source = inspect.getsource(chat_processor.ChatProcessor.process_turn)
+
+    assert "TRIGGER_SEPARATOR.join" not in source
+    assert '"\n\n---\n\n"' not in source
+
+
+@pytest.mark.asyncio
+async def test_a_repeated_trigger_constituent_is_sent_once(clean_hooks):
+    """Fragments are deduplicated, so leaving the trigger alone sent one
+    repeated reminder in full twice — and two 4,000-character copies clear the
+    cap on their own through the oversized-trigger exemption."""
+    from suzent.core import system_reminder as sr
+
+    reminder = "Cron: nightly digest"
+
+    result = await sr.build_combined_reminder(
+        "c", None, display_trigger=[reminder, reminder]
+    )
+
+    assert result is not None
+    assert result.count(reminder) == 1
+
+
+@pytest.mark.asyncio
+async def test_the_slot_is_free_the_moment_the_provider_returns():
+    """Released before the awaiter is woken, not after. The other order let the
+    caller resume while the worker still held the slot, so the pool read as
+    short by one for the length of the handoff."""
+    from suzent.core import system_reminder as sr
+
+    before = sr._provider_slots._value
+    for _ in range(20):
+        await sr.run_provider_blocking(lambda: "done")
+        assert sr._provider_slots._value == before, "slot still held on return"
+
+
+@pytest.mark.asyncio
+async def test_constituents_that_sanitize_alike_are_sent_once(clean_hooks):
+    """Sanitizing decides whether two inputs are the same text: a delimiter and
+    its literal [reminder-delimiter] spelling differ going in and are identical
+    coming out. Deduplicating first kept both and sent the reminder twice."""
+    from suzent.core import system_reminder as sr
+
+    raw = f"{sr.PUA_START}Cron: nightly digest"
+    spelled = sr.sanitize_untrusted_text(raw)
+    assert raw != spelled, "precondition: these differ before sanitizing"
+
+    result = await sr.build_combined_reminder("c", None, display_trigger=[raw, spelled])
+
+    assert result is not None
+    assert result.count("Cron: nightly digest") == 1
+
+
+def test_the_transcript_row_and_the_block_agree_on_the_trigger() -> None:
+    """Two renderings of the same thing is how the model came to see a reminder
+    once while the transcript kept showing it twice."""
+    import inspect
+
+    from suzent.core import chat_processor, system_reminder
+
+    source = inspect.getsource(chat_processor.trigger_rows_for_snapshot)
+
+    assert "canonical_display_trigger" in source
+    assert "TRIGGER_SEPARATOR" not in source
+
+    repeated = ["Cron: digest", "Cron: digest"]
+    assert system_reminder.canonical_display_trigger(repeated) == "Cron: digest"
+
+
+@pytest.mark.asyncio
+async def test_the_persisted_row_shows_what_the_model_was_shown(clean_hooks) -> None:
+    """Read out of the block that was sent, not re-derived from its inputs. The
+    row reproduced some of the builder's rules and missed others: it showed
+    reminders twice after the model stopped seeing them twice, then recorded
+    reminders the budget had dropped before the model ever saw them."""
+    from datetime import datetime
+    from types import SimpleNamespace
+
+    from suzent.core import system_reminder as sr
+    from suzent.core.chat_processor import trigger_rows_for_snapshot
+
+    part = SimpleNamespace(timestamp=datetime(2026, 1, 1))
+    first, second = "a" * 4000, "b" * 4000
+
+    rendered = await sr.build_combined_reminder(
+        "c", None, display_trigger=[first, second]
+    )
+    rows = trigger_rows_for_snapshot(rendered, False, part)
+
+    assert len(rows) == 1
+    stored = rows[0]["content"]
+    assert first in stored, "the delivered reminder must be recorded"
+    assert second not in stored, "the budget dropped it; the transcript must agree"
+    assert stored == sr.extract_system_reminder_display_trigger(rendered)
+
+
+@pytest.mark.asyncio
+async def test_a_repeated_reminder_is_recorded_once(clean_hooks) -> None:
+    from datetime import datetime
+    from types import SimpleNamespace
+
+    from suzent.core import system_reminder as sr
+    from suzent.core.chat_processor import trigger_rows_for_snapshot
+
+    repeated = "Cron: nightly digest"
+    rendered = await sr.build_combined_reminder(
+        "c", None, display_trigger=[repeated, repeated]
+    )
+
+    rows = trigger_rows_for_snapshot(
+        rendered, False, SimpleNamespace(timestamp=datetime(2026, 1, 1))
+    )
+
+    assert rows[0]["content"].count(repeated) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("count", [2, 3, 5])
+async def test_the_trigger_is_budgeted_as_its_constituents(clean_hooks, count):
+    """Joining first made the whole trigger one item, and one item is exactly
+    what the oversized exemption waves through — so several unrelated 4,000
+    character reminders cleared a 6,000 character cap together."""
+    from suzent.core import system_reminder as sr
+
+    reminders = [f"{chr(97 + i)}" * 4000 for i in range(count)]
+
+    result = await sr.build_combined_reminder("c", None, display_trigger=reminders)
+
+    assert result is not None
+    body = _reminder_body(result)
+    # One reminder may exceed the cap alone; a second one may not join it.
+    assert len(body) <= sr.REMINDER_BUDGET_CHARS, (
+        f"{len(body)} chars sent against a {sr.REMINDER_BUDGET_CHARS} cap"
+    )
+    assert reminders[0] in body, "the first reminder must still be delivered"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("size", [5940, 5999, 6000, 6001, 7000])
+async def test_an_oversized_trigger_is_cut_to_fit(clean_hooks, size):
+    """The envelope counts. A trigger just under the cap still renders over it
+    once its tags are added, which is the window the last finding landed in —
+    and the fix must not turn that into a dropped turn."""
+    from suzent.core import system_reminder as sr
+
+    huge = "x" * size
+
+    result = await sr.build_combined_reminder("c", None, display_trigger=[huge])
+
+    assert result is not None, "the turn's only content must not vanish"
+    body = _reminder_body(result)
+    assert "x" in body
+    assert len(body) <= sr.REMINDER_BUDGET_CHARS, (
+        f"{len(body)} chars sent against a {sr.REMINDER_BUDGET_CHARS} cap"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_cut_reminder_says_it_was_cut(clean_hooks):
+    """Silently trimmed text is worse than either the cut or the overshoot: it
+    reads as complete and is not."""
+    from suzent.core import system_reminder as sr
+
+    result = await sr.build_combined_reminder(
+        "c", None, display_trigger=["x" * (sr.REMINDER_BUDGET_CHARS + 1000)]
+    )
+
+    assert sr.TRUNCATION_MARKER.strip() in _reminder_body(result)
+
+
+@pytest.mark.asyncio
+async def test_nothing_is_exempt_from_the_cap(clean_hooks):
+    """Five findings on this PR were an item claiming to be the one thing that
+    could not be helped. Now nothing claims it."""
+    import inspect
+
+    from suzent.core import system_reminder as sr
+
+    source = inspect.getsource(sr._apply_budget)
+
+    assert "exempt" not in source.lower().split('"""')[-1], (
+        "no code path may skip the cap check"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_trigger_constituent_the_budget_dropped_is_not_resent(clean_hooks):
+    """The same strings arrive as fragments. Charging only the ones the trigger
+    kept let a dropped constituent reappear as an ordinary fragment — the model
+    reading a reminder the transcript says was never delivered."""
+    from suzent.core import system_reminder as sr
+
+    # The window the finding names: the first reminder leaves less room than the
+    # separator costs, so the second is dropped from the trigger — and then fits
+    # as a fragment, because a fragment pays no separator when it is first.
+    second = "b" * 7
+    first = "a" * (
+        sr.REMINDER_BUDGET_CHARS - len(sr.render_trigger_block("")) - len(second) - 1
+    )
+
+    rendered = await sr.build_combined_reminder(
+        "c", None, adhoc_reminders=[first, second], display_trigger=[first, second]
+    )
+
+    assert rendered is not None
+    body = _reminder_body(rendered)
+    shown = sr.extract_system_reminder_display_trigger(rendered)
+
+    # Whatever the budget decided, the block and the row have to agree on it.
+    assert (second in body) == (second in shown), (
+        "a constituent the trigger dropped came back as a fragment"
+    )
+    assert len(body) <= sr.REMINDER_BUDGET_CHARS

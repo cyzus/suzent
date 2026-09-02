@@ -878,9 +878,10 @@ class ChatProcessor:
         stream_run_id = str(uuid.uuid4())
         display_trigger = None
         if system_reminders and not (message_content and message_content.strip()):
-            display_trigger = "\n\n---\n\n".join(
-                r.strip() for r in system_reminders if r and r.strip()
-            )
+            # The constituents, not a join. build_combined_reminder has to match
+            # these against the same strings arriving as fragments, and a join
+            # cannot be taken back apart once a reminder contains the separator.
+            display_trigger = [r.strip() for r in system_reminders if r and r.strip()]
         # Stateless chats (dream, sub-agents) run a fixed, self-contained prompt and
         # must not receive skill-discovery / plan / RAG reminders — that ambient
         # chatter (e.g. the suzent-automation skill hint) is what made the dream agent
@@ -923,7 +924,7 @@ class ChatProcessor:
             message_history.append(new_request)
 
             pending_trigger_rows.extend(
-                trigger_rows_for_snapshot(display_trigger, is_heartbeat, parts[0])
+                trigger_rows_for_snapshot(full_prompt, is_heartbeat, parts[0])
             )
 
             # Pre-save the user message to the DB display log for social chats so the
@@ -2745,9 +2746,13 @@ def _trigger_placeholder_prefix() -> str:
 
 
 def trigger_rows_for_snapshot(
-    display_trigger: str | None, is_heartbeat: bool, part: Any
+    rendered_prompt: str | None, is_heartbeat: bool, part: Any
 ) -> list[dict]:
     """Display rows that must become durable with the history they describe.
+
+    Takes the rendered prompt, not the reminders that went into it: the row has
+    to say what the model was shown, and the only thing that knows that is the
+    text that was sent.
 
     A reminder-only turn has no user text, so its row cannot be rebuilt once the
     reminder block stops being authenticatable after a restart. The row is keyed
@@ -2761,20 +2766,33 @@ def trigger_rows_for_snapshot(
     someone's visible transcript. An earlier attempt at this shipped exactly that
     bug, so the rule is asserted by a test rather than trusted to a comment.
     """
-    if not display_trigger or is_heartbeat:
+    if not rendered_prompt or is_heartbeat:
         return []
 
-    from suzent.core.system_reminder import sanitize_untrusted_text
+    from suzent.core.system_reminder import extract_system_reminder_display_trigger
 
-    # Same treatment wrap_in_system_reminder gives it. Scheduled prompts and
-    # subagent results are user-influenced, and _preserve_display_triggers
-    # prefers this stored content over the placeholder rebuilt from history — so
-    # storing the raw value would put delimiters back into the visible transcript
-    # permanently, undoing the sanitizing on the path that does it.
+    # Read back out of the block that was just built, rather than derived from
+    # the same inputs a second time. Every rule the builder applies — joining,
+    # sanitizing, deduplicating, budgeting — is already baked into that text,
+    # and each time this path recomputed one of them it reproduced some and
+    # missed others: the transcript showed reminders twice after the model
+    # stopped seeing them twice, then recorded reminders dropped by the budget
+    # that the model never received at all. There is nothing here left to keep
+    # in step.
+    display_trigger = extract_system_reminder_display_trigger(rendered_prompt)
+    if not display_trigger:
+        return []
+
     stamp = getattr(part, "timestamp", None)
     row: dict = {
         "role": "system_triggered",
-        "content": sanitize_untrusted_text(display_trigger),
+        # Already sanitized by canonical_display_trigger, which is the same
+        # treatment wrap_in_system_reminder gives it. Scheduled prompts and
+        # subagent results are user-influenced, and _preserve_display_triggers
+        # prefers this stored content over the placeholder rebuilt from history
+        # — so an unsanitized value would put delimiters back into the visible
+        # transcript permanently.
+        "content": display_trigger,
         "trigger_origin": "runtime",
     }
     if stamp:

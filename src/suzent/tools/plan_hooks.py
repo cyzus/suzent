@@ -69,10 +69,22 @@ def advance_goal_turn(
 async def plan_reminder_hook(chat_id: str, deps: Any) -> Optional[str]:
     """Inject the active project Goal and open Tasks into the system reminder.
 
-    Pure read. Reminder providers run on every path that assembles a prompt, so
-    anything that mutates here is charged to turns the user never took — see
-    advance_goal_turn.
+    Pure read, and deliberately so: reminder providers run on every path that
+    assembles a prompt, so anything mutating here is charged to turns the user
+    never took — see advance_goal_turn.
+
+    The body is synchronous database access, which is why it runs on a worker
+    thread. A provider that blocks the event loop cannot be timed out, because
+    cancelling needs the loop to run, so a stalled database would otherwise hold
+    the turn open past the provider deadline. Being read-only is what makes that
+    safe: a thread that outlives its cancelled await changes nothing.
     """
+    from suzent.core.system_reminder import run_provider_blocking
+
+    return await run_provider_blocking(_build_plan_reminder, chat_id)
+
+
+def _build_plan_reminder(chat_id: str) -> Optional[str]:
     db = get_database()
     project_id = db.get_chat_project_id(chat_id)
     if not project_id:

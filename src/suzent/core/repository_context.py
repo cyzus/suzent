@@ -329,13 +329,24 @@ async def repository_agents_reminder_hook(chat_id: str, deps: object) -> str | N
         return None
 
     sandbox_enabled = bool(getattr(deps, "sandbox_enabled", True))
-    lines: list[str] = []
-    for agent_file in agent_files:
-        path = agent_file.path.resolve()
-        location = str(path)
-        if sandbox_enabled:
-            location = deps.path_resolver.to_virtual_path(path) or str(path)
-        lines.append(f"- {path.stem} ({agent_file.source}): {location}")
+    resolver = getattr(deps, "path_resolver", None)
+
+    def _render() -> list[str]:
+        # Path.resolve() touches the filesystem, so this runs off the event
+        # loop: blocking before the first await makes the provider deadline
+        # unenforceable, and an unreachable network mount would stall the turn.
+        rendered: list[str] = []
+        for agent_file in agent_files:
+            path = agent_file.path.resolve()
+            location = str(path)
+            if sandbox_enabled and resolver is not None:
+                location = resolver.to_virtual_path(path) or str(path)
+            rendered.append(f"- {path.stem} ({agent_file.source}): {location}")
+        return rendered
+
+    from suzent.core.system_reminder import run_provider_blocking
+
+    lines = await run_provider_blocking(_render)
     return (
         "Repository agent definitions are available. Read the matching definition "
         "before delegating work that fits it:\n" + "\n".join(lines)
