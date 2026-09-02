@@ -229,10 +229,10 @@ def sanitize_untrusted_payload(
                 _seen,
             )
 
-        # Unrecognized shape. Render it the way the serializer would and keep it
-        # only if that text is clean; otherwise hand back the sanitized text.
+        # Unrecognized shape. Render it the way the *serializer* would and keep
+        # it only if that text is clean; otherwise hand back the sanitized text.
         try:
-            rendered = str(value)
+            rendered = _wire_repr(value)
         except Exception:
             logger.warning(
                 f"Could not render {type(value).__name__} to check it; redacting"
@@ -248,6 +248,22 @@ def sanitize_untrusted_payload(
         return value
     finally:
         _seen.discard(marker)
+
+
+def _wire_repr(value: Any) -> str:
+    """Render a value the way the tool-return serializer will.
+
+    ``str()`` is not that. An ``Enum`` stringifies to ``Payload.BAD`` while
+    pydantic serializes its ``value`` — so a member whose value carries
+    delimiters looks clean under ``str()`` and arrives at the model intact.
+    Checking the wire form is the only way to know what the model will see.
+    """
+    try:
+        from pydantic_core import to_json
+
+        return to_json(value, fallback=str).decode()
+    except Exception:
+        return str(value)
 
 
 def _rebuild_sequence(value: Any, items: list, plain):
@@ -639,5 +655,11 @@ async def build_combined_reminder(
     result = wrap_in_system_reminder(
         "\n\n---\n\n".join(parts), display_trigger=display_trigger
     )
-    logger.debug(f"[system-reminder] chat={chat_id} ({len(parts)} part(s)):\n{result}")
+    # Metadata only. The wrapped text carries RUNTIME_NONCE, and file logging
+    # records DEBUG unconditionally — writing it to disk would hand the token to
+    # anyone who can read the logs, which is exactly the forgery this guards
+    # against. It also spills retrieved memories, goals and local paths.
+    logger.debug(
+        f"[system-reminder] chat={chat_id} parts={len(parts)} chars={len(result)}"
+    )
     return result
