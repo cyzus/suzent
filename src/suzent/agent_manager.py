@@ -464,6 +464,18 @@ def build_agent_config(
     return config
 
 
+# Config keys that must NOT take part in the agent cache key.
+#
+# Everything else does, which is what keeps one project's repository
+# instructions out of another's: `_project_context_dir` / `_working_context_dir`
+# are set per request in chat_processor and deliberately left in the stable
+# config. Adding either of them here would reintroduce cross-project bleed.
+#
+# `_chat_id` / `_user_id` are safe to exclude only because every scoped section
+# is now resolved per run from `ctx.deps` rather than captured at construction.
+_TRANSIENT_KEYS = {"_runtime", "_chat_id", "_user_id"}
+
+
 async def get_or_create_agent(config: Dict[str, Any], reset: bool = False) -> Agent:
     """
     Get the current agent instance or create a new one if needed.
@@ -476,8 +488,6 @@ async def get_or_create_agent(config: Dict[str, Any], reset: bool = False) -> Ag
         pydantic-ai Agent instance ready for use.
     """
     global agent_instance, agent_config
-
-    _TRANSIENT_KEYS = {"_runtime", "_chat_id", "_user_id"}
 
     def _stable_config(cfg: dict) -> dict:
         return {k: v for k, v in cfg.items() if k not in _TRANSIENT_KEYS}

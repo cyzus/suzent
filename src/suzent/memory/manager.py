@@ -78,6 +78,9 @@ class MemoryManager:
         """
         self.store = store
         self.markdown_store = markdown_store
+        # (chat_id, user_id, sandbox_enabled) -> (revision, rendered section).
+        # Bounded by the number of live chats; entries are tiny strings.
+        self._core_memory_cache: Dict[tuple, tuple] = {}
         self.embedding_gen = EmbeddingGenerator(
             model=embedding_model, dimension=embedding_dimension
         )
@@ -361,6 +364,55 @@ class MemoryManager:
             mount_notebook=mount_notebook,
             project_context_path=project_context_path,
         )
+
+    async def get_core_memory_context(
+        self,
+        chat_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        sandbox_enabled: bool = True,
+        path_resolver=None,
+    ) -> str:
+        """Core-memory prompt section for a chat, rebuilt when its files change.
+
+        ``format_core_memory_for_context`` reads four files and re-renders the
+        whole section, which is too much to repeat on every model request. This
+        wraps it in a cache keyed by the scope that actually varies, invalidated
+        by ``core_memory_revision()`` so an edit to persona.md or MEMORY.md shows
+        up on the very next turn.
+
+        Falls through to an uncached render whenever there is no markdown store
+        (the legacy LanceDB path), where no cheap revision exists.
+        """
+        store = self.markdown_store
+        if store is None:
+            return await self.format_core_memory_for_context(
+                chat_id=chat_id,
+                user_id=user_id,
+                sandbox_enabled=sandbox_enabled,
+                path_resolver=path_resolver,
+            )
+
+        key = (chat_id, user_id, sandbox_enabled)
+        try:
+            revision = store.core_memory_revision(chat_id)
+        except Exception as e:
+            logger.debug(f"Core memory revision unavailable, rebuilding: {e}")
+            revision = None
+
+        if revision is not None:
+            cached = self._core_memory_cache.get(key)
+            if cached is not None and cached[0] == revision:
+                return cached[1]
+
+        rendered = await self.format_core_memory_for_context(
+            chat_id=chat_id,
+            user_id=user_id,
+            sandbox_enabled=sandbox_enabled,
+            path_resolver=path_resolver,
+        )
+        if revision is not None:
+            self._core_memory_cache[key] = (revision, rendered)
+        return rendered
 
     def _log_recalls(self, memories: List[Dict[str, Any]]) -> None:
         """Record retrieved memories to the recall log (usage signal for MEMORY.md

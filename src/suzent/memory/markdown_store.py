@@ -540,6 +540,36 @@ class MarkdownMemoryStore:
         """Path to the curated long-term memory file."""
         return self.base_dir / "MEMORY.md"
 
+    def core_memory_revision(self, chat_id: Optional[str] = None) -> tuple:
+        """Cheap fingerprint of every file that feeds the core-memory prompt.
+
+        Four ``stat`` calls, so it is safe to consult on every model request.
+        Callers cache the rendered core-memory section against this value and
+        rebuild only when it changes, which is what keeps an edit to
+        ``persona.md`` from waiting on the next agent rebuild to take effect.
+        """
+        paths = [
+            self._block_path("persona"),
+            self._block_path("user"),
+            self.memory_file_path,
+        ]
+        if chat_id:
+            try:
+                paths.append(self._context_path(chat_id))
+            except Exception:
+                # Project lookup can fail for a chat with no project yet; the
+                # remaining files still give a usable revision.
+                pass
+
+        fingerprint = []
+        for path in paths:
+            try:
+                stat = path.stat()
+                fingerprint.append((str(path), stat.st_mtime_ns, stat.st_size))
+            except OSError:
+                fingerprint.append((str(path), None, None))
+        return tuple(fingerprint)
+
     def manual_tail(self, existing: str) -> str:
         """Whatever a generator must not touch, taken from the current MEMORY.md.
 

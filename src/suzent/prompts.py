@@ -552,8 +552,33 @@ def register_dynamic_instructions(
         )
 
     @agent.instructions
-    def inject_memory_context(_: Any) -> str:
-        return memory_context or ""
+    async def inject_memory_context(ctx: Any) -> str:
+        """Core memory for the chat being served, not the one that built the agent.
+
+        Agents are cached and reused across chats, so a snapshot captured at
+        construction goes stale the moment anyone edits persona.md, user.md,
+        MEMORY.md or a project's context.md — the edit would not surface until
+        the agent happened to be rebuilt. Reading through ``ctx.deps`` each run
+        keeps the section current; the manager caches on a file-mtime revision
+        so a hit costs four ``stat`` calls.
+
+        ``deps.memory_manager`` is None whenever memory is disabled, which is
+        also the signal to fall back to the construction-time snapshot.
+        """
+        deps = getattr(ctx, "deps", None)
+        manager = getattr(deps, "memory_manager", None)
+        if manager is None:
+            return memory_context or ""
+        try:
+            return await manager.get_core_memory_context(
+                chat_id=getattr(deps, "chat_id", "") or None,
+                user_id=getattr(deps, "user_id", "") or None,
+                sandbox_enabled=getattr(deps, "sandbox_enabled", True),
+                path_resolver=getattr(deps, "path_resolver", None),
+            )
+        except Exception as e:
+            logger.warning(f"Falling back to snapshot core memory: {e}")
+            return memory_context or ""
 
     # Skills injection is now handled via SkillsReminderProvider out-of-band.
 
