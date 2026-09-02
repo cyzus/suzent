@@ -1648,7 +1648,13 @@ async def test_the_display_trigger_spends_from_the_same_budget(
     clean_hooks, monkeypatch
 ):
     """It is prepended inside the block, so a cap that ignores it covers only
-    part of what the model reads."""
+    part of what the model reads.
+
+    Sized so the first fragment fits behind the trigger and the second does not.
+    The original numbers only passed through the first-fragment exemption, which
+    no longer applies once a trigger has been delivered — the case where that
+    exemption let the cap be exceeded outright.
+    """
     from suzent.core import system_reminder as sr
 
     monkeypatch.setattr(sr, "REMINDER_BUDGET_CHARS", 400)
@@ -1656,7 +1662,7 @@ async def test_the_display_trigger_spends_from_the_same_budget(
     sr.register_global_hook(_sized_hook("DROP", 100))
 
     body = extract_system_reminder_content(
-        await sr.build_combined_reminder("c", None, display_trigger="T" * 350)
+        await sr.build_combined_reminder("c", None, display_trigger="T" * 200)
     )
 
     assert "KEEP" in body
@@ -2015,3 +2021,71 @@ async def test_a_slot_survives_a_thread_that_never_starts() -> None:
         threading.Thread = original
 
     assert sr._provider_slots._value == before, "slot leaked"
+
+
+# --- the cap holds on the text that is actually sent -------------------------
+
+
+def _reminder_body(rendered: str) -> str:
+    """What the model reads inside the block, trigger included.
+
+    Measured on the wrapped output rather than on the fragment list, because the
+    trigger is prepended during wrapping — a budget checked before that point
+    covers only part of what is sent.
+    """
+    from suzent.core.system_reminder import PUA_END, PUA_START, RUNTIME_NONCE
+
+    inner = rendered.split(PUA_START, 1)[1].rsplit(PUA_END, 1)[0]
+    return inner.replace(RUNTIME_NONCE, "").strip()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "trigger_len,fragment_lens",
+    [
+        (5900, [500]),  # the reported case: trigger nearly fills the cap
+        (5900, [500, 500, 500]),
+        (100, [5000, 5000]),
+        (0, [500, 500]),
+        (3000, [3000]),
+        (10, [10]),
+    ],
+)
+async def test_the_cap_holds_on_the_assembled_body(
+    clean_hooks, trigger_len, fragment_lens
+):
+    """Measured on what is sent, not on what this module happens to hold. The
+    trigger is prepended inside the block, so a budget that counted only
+    fragments capped part of what the model reads."""
+    from suzent.core import system_reminder as sr
+
+    trigger = ("T" * trigger_len) or None
+    fragments = [chr(97 + i) * n for i, n in enumerate(fragment_lens)]
+
+    result = await sr.build_combined_reminder(
+        "c", None, adhoc_reminders=fragments, display_trigger=trigger
+    )
+
+    assert result is not None
+    body = _reminder_body(result)
+    if trigger_len > sr.REMINDER_BUDGET_CHARS:
+        # A single item larger than the whole cap is the one thing that cannot
+        # be honoured; it must not also license a second one.
+        assert body.count("T") == trigger_len
+    else:
+        assert len(body) <= sr.REMINDER_BUDGET_CHARS, (
+            f"{len(body)} chars sent against a {sr.REMINDER_BUDGET_CHARS} cap"
+        )
+
+
+@pytest.mark.asyncio
+async def test_one_oversized_fragment_still_survives_without_a_trigger(clean_hooks):
+    """The exemption exists so an empty body cannot be mistaken for a provider
+    that produced nothing. With no trigger, nothing else is delivering."""
+    from suzent.core import system_reminder as sr
+
+    huge = "x" * (sr.REMINDER_BUDGET_CHARS + 1000)
+
+    result = await sr.build_combined_reminder("c", None, adhoc_reminders=[huge])
+
+    assert result is not None and huge in result

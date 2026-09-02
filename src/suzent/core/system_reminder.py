@@ -96,6 +96,21 @@ _DISPLAY_TRIGGER_RE = re.compile(
 )
 
 
+def render_trigger_block(display_trigger: str) -> str:
+    """The trigger exactly as it appears inside the block.
+
+    One definition, because two things need it: the wrap that emits it and the
+    budget that has to charge for it. Sizing the trigger by its bare text left
+    the envelope uncounted, so a trigger and a fragment that each fit could
+    still clear the cap together.
+    """
+    return (
+        f"<{DISPLAY_TRIGGER_TAG}>\n"
+        f"{display_trigger.strip()}\n"
+        f"</{DISPLAY_TRIGGER_TAG}>\n\n"
+    )
+
+
 def wrap_in_system_reminder(content: str, display_trigger: Optional[str] = None) -> str:
     """Wrap content in a hidden reminder block.
 
@@ -119,12 +134,7 @@ def wrap_in_system_reminder(content: str, display_trigger: Optional[str] = None)
 
     body = content.strip()
     if display_trigger and display_trigger.strip():
-        body = (
-            f"<{DISPLAY_TRIGGER_TAG}>\n"
-            f"{display_trigger.strip()}\n"
-            f"</{DISPLAY_TRIGGER_TAG}>\n\n"
-            f"{body}"
-        )
+        body = render_trigger_block(display_trigger) + body
     if os.environ.get("SUZENT_XML_SYSTEM_REMINDER"):
         return (
             f'\n<{REMINDER_TAG} nonce="{RUNTIME_NONCE}">\n{body}\n</{REMINDER_TAG}>\n'
@@ -974,16 +984,23 @@ def _apply_budget(parts: list[str], chat_id: str, reserved: int = 0) -> list[str
 
     Whole fragments are dropped from the end rather than characters from the
     middle: half a plan snapshot is worse than none, because the model cannot
-    tell it is reading a fragment. The first fragment is always kept, even alone
-    over budget — truncating to nothing is indistinguishable from a provider
-    that produced nothing, and the caller cannot tell the difference.
+    tell it is reading a fragment.
+
+    One fragment may exceed the cap on its own, and only one: an empty body is
+    indistinguishable from a provider that produced nothing, so something has to
+    survive. That exemption is spent by the trigger when there is one. The
+    trigger is already going out, so nothing is lost by holding every fragment
+    to the cap behind it — whereas exempting the first fragment *as well* let a
+    5,900-character trigger and an ordinary plan reminder clear 6,400 together,
+    which is the cap failing in exactly the case it was added for.
     """
     separator_cost = len(FRAGMENT_SEPARATOR)
     kept: list[str] = []
     used = reserved
     for index, part in enumerate(parts):
         cost = len(part) + (separator_cost if kept else 0)
-        if kept and used + cost > REMINDER_BUDGET_CHARS:
+        delivered = bool(kept) or reserved > 0
+        if delivered and used + cost > REMINDER_BUDGET_CHARS:
             dropped = len(parts) - index
             logger.warning(
                 f"[system-reminder] chat={chat_id} over budget: dropped {dropped} "
@@ -1080,7 +1097,9 @@ async def build_combined_reminder(
     # The trigger is prepended inside the block, so it spends from the same
     # budget; without this the cap covered only part of what the model reads.
     trigger_cost = (
-        len(sanitize_untrusted_text(display_trigger)) if display_trigger else 0
+        len(render_trigger_block(sanitize_untrusted_text(display_trigger)))
+        if display_trigger and display_trigger.strip()
+        else 0
     )
     parts = _apply_budget(parts, chat_id, reserved=trigger_cost)
 
