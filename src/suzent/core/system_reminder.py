@@ -16,6 +16,7 @@ Two hook types:
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import os
 import re
 import secrets
@@ -203,6 +204,33 @@ def sanitize_untrusted_payload(
             }
 
         fields = getattr(type(value), "model_fields", None)
+        if (
+            not fields
+            and dataclasses.is_dataclass(value)
+            and not isinstance(value, type)
+        ):
+            # pydantic-ai accepts and JSON-serializes dataclass tool results, so
+            # a dataclass field holding fetched text reaches the model verbatim.
+            updates = {}
+            for f in dataclasses.fields(value):
+                current = getattr(value, f.name, None)
+                cleaned = sanitize_untrusted_payload(current, _depth + 1, _seen)
+                if cleaned != current:
+                    updates[f.name] = cleaned
+            if not updates:
+                return value
+            try:
+                return dataclasses.replace(value, **updates)
+            except Exception:
+                for name, cleaned in updates.items():
+                    try:
+                        setattr(value, name, cleaned)
+                    except Exception:
+                        logger.warning(
+                            f"Could not sanitize field {name!r} on "
+                            f"{type(value).__name__}"
+                        )
+                return value
         if not fields:
             return value
         updates = {}
@@ -323,14 +351,17 @@ def _scrub_untrusted_span(span: str) -> str:
         pieces.append((False, span[last : match.start()]))
         trigger = _DISPLAY_TRIGGER_RE.search(match.group(0))
         if trigger:
-            # Rewrapped in a block of ours, not emitted as a bare tag. The
-            # rebuild only looks for a trigger once strip_system_reminders()
-            # leaves nothing visible, so a bare tag would persist as an ordinary
-            # user row — and the next sanitizing pass would escape it into
-            # something unextractable. Carrying our own token also makes this
-            # idempotent: subsequent passes authenticate it and leave it alone.
+            # Plain visible text, never a reminder block. Rewrapping this in a
+            # block of ours would stamp our token onto content we just decided
+            # we cannot authenticate — laundering an attacker's trigger from a
+            # forged pre-change prompt into trusted hidden context. Whatever the
+            # cosmetic cost, unverifiable text does not get signed.
+            #
+            # Emitting it as a labelled line keeps the record of what fired
+            # (rather than leaving an empty prompt that rebuilds as a blank row)
+            # while making it ordinary visible content: not hidden, not trusted.
             inner = sanitize_untrusted_text(trigger.group(1).strip())
-            pieces.append((True, wrap_in_system_reminder("", display_trigger=inner)))
+            pieces.append((True, f"[system trigger: {inner}]"))
         last = match.end()
     pieces.append((False, span[last:]))
     return "".join(
