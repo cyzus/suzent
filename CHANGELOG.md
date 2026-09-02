@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v0.12.0] - 2026-09-02
 
 ### 🚀 Added
+- State which source wins, and make sections declare their kind (#176)
 - Dedupe the catalog by revision, not by rendered lines
 - Add thinking effort feature with UI slider and backend support
 - Make the live feed say what the child is actually doing
