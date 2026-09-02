@@ -855,11 +855,21 @@ HOOK_TIMEOUT_SECONDS = 2.0
 #: long after the turn itself returned. Daemon threads let the process leave.
 #:
 #: The bound matters for the same reason the pool did: a stuck thread cannot be
-#: killed, so without a ceiling they accumulate. At saturation a provider is
-#: skipped rather than queued, because queueing behind wedged work is how a
-#: transient stall becomes a permanent one.
+#: killed, so without a ceiling they accumulate. At saturation a caller waits
+#: for a slot rather than being dropped — the bound exists to contain wedged
+#: threads, and ordinary concurrency is not wedged: a handful of turns running
+#: at once routinely needs more than four reads, and skipping them would
+#: silently drop context from a perfectly healthy request.
+#:
+#: The wait is what keeps that safe. It is bounded by the caller's own deadline,
+#: so a genuinely wedged provider still stops at HOOK_TIMEOUT_SECONDS instead of
+#: queueing behind the block forever.
 _PROVIDER_THREADS = 4
 _provider_slots = threading.Semaphore(_PROVIDER_THREADS)
+
+#: How often a waiting provider retries the slot. Short enough to be invisible
+#: next to the deadline, long enough not to spin.
+_SLOT_POLL_SECONDS = 0.01
 
 
 async def run_provider_blocking(fn: Callable[..., Any], *args: Any) -> Any:
@@ -874,9 +884,12 @@ async def run_provider_blocking(fn: Callable[..., Any], *args: Any) -> Any:
     times out, the work carries on to completion, so anything it writes lands
     after the provider was abandoned.
     """
-    if not _provider_slots.acquire(blocking=False):
-        logger.warning("Reminder provider threads are saturated; skipping provider")
-        return None
+    # Await a slot rather than taking it or giving up. Blocking the acquire
+    # would block the loop — the exact failure this function exists to prevent —
+    # so the wait yields, and the caller's timeout cancels it if the pool never
+    # frees up. Sleeping here is not a stall: nothing else can start the work.
+    while not _provider_slots.acquire(blocking=False):
+        await asyncio.sleep(_SLOT_POLL_SECONDS)
 
     loop = asyncio.get_running_loop()
     future: asyncio.Future = loop.create_future()

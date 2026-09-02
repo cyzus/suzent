@@ -1749,8 +1749,12 @@ def test_provider_threads_are_daemons_and_bounded():
 
 
 @pytest.mark.asyncio
-async def test_saturated_provider_threads_skip_rather_than_queue():
-    """Queueing behind wedged work is how a transient stall becomes permanent."""
+async def test_a_busy_pool_waits_instead_of_dropping_the_provider():
+    """Ordinary concurrency is not a wedged provider. Three blocking hooks per
+    turn against four process-wide slots means two simultaneous turns already
+    exceed the pool — dropping there would silently lose context from healthy
+    requests."""
+    import asyncio
     import threading
 
     from suzent.core import system_reminder as sr
@@ -1759,9 +1763,69 @@ async def test_saturated_provider_threads_skip_rather_than_queue():
     original = sr._provider_slots
     sr._provider_slots = exhausted
     try:
-        assert await sr.run_provider_blocking(lambda: "should not run") is None
+        waiting = asyncio.create_task(sr.run_provider_blocking(lambda: "ran"))
+        await asyncio.sleep(0.05)
+        assert not waiting.done(), "gave up instead of waiting for a slot"
+
+        exhausted.release()
+        assert await asyncio.wait_for(waiting, timeout=1.0) == "ran"
     finally:
         sr._provider_slots = original
+
+
+@pytest.mark.asyncio
+async def test_waiting_for_a_slot_is_bounded_by_the_callers_deadline():
+    """Waiting is only safe because it ends. A pool that never frees up must
+    fail the provider on its own deadline rather than queue behind the block."""
+    import asyncio
+    import threading
+    import time
+
+    from suzent.core import system_reminder as sr
+
+    original = sr._provider_slots
+    sr._provider_slots = threading.Semaphore(0)
+    try:
+        started = time.monotonic()
+        with pytest.raises(asyncio.TimeoutError):
+            await asyncio.wait_for(
+                sr.run_provider_blocking(lambda: "never"), timeout=0.1
+            )
+        assert time.monotonic() - started < 0.5
+    finally:
+        sr._provider_slots = original
+
+
+@pytest.mark.asyncio
+async def test_waiting_for_a_slot_does_not_block_the_loop():
+    """The wait must yield: blocking the acquire would block the loop, which is
+    the exact failure this function exists to prevent."""
+    import asyncio
+    import threading
+
+    from suzent.core import system_reminder as sr
+
+    original = sr._provider_slots
+    sr._provider_slots = threading.Semaphore(0)
+    ticks = 0
+
+    async def _tick():
+        nonlocal ticks
+        while True:
+            await asyncio.sleep(0.01)
+            ticks += 1
+
+    ticker = asyncio.create_task(_tick())
+    try:
+        with pytest.raises(asyncio.TimeoutError):
+            await asyncio.wait_for(
+                sr.run_provider_blocking(lambda: "never"), timeout=0.2
+            )
+    finally:
+        ticker.cancel()
+        sr._provider_slots = original
+
+    assert ticks > 5, f"event loop was blocked while waiting for a slot ({ticks})"
 
 
 @pytest.mark.asyncio
