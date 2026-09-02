@@ -1204,6 +1204,7 @@ class ChatProcessor:
                     agent=agent,
                     postprocess_job_id=postprocess_job_id,
                     file_snapshot=file_snapshot_json,
+                    is_user_turn=bool(_turn_message),
                 )
 
             task_id = f"post_process_{chat_id}_{postprocess_job_id}"
@@ -1276,6 +1277,7 @@ class ChatProcessor:
         agent: Any,
         postprocess_job_id: str,
         file_snapshot: list[dict],
+        is_user_turn: bool = False,
     ) -> None:
         """Background post-processing for a completed turn.
 
@@ -1428,6 +1430,16 @@ class ChatProcessor:
                 db.update_job_step_status(
                     job_id, PostProcessStep.DISPLAY, StepStatus.SUCCESS
                 )
+
+                # Charge the goal budget once, here, for a turn that actually
+                # ran and persisted. It used to be charged inside the reminder
+                # hook, which every prompt-assembling path calls — heartbeats,
+                # approval resumes, tool continuations and retries all spent
+                # budget on turns the user never took.
+                if is_user_turn and not stream_failed:
+                    from suzent.tools.plan_hooks import advance_goal_turn
+
+                    advance_goal_turn(chat_id)
             except Exception as e:
                 logger.error(f"State persistence failed: {e}")
                 db.update_job_step_status(

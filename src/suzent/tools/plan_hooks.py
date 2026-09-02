@@ -6,8 +6,37 @@ from suzent.logger import get_logger
 logger = get_logger(__name__)
 
 
+def advance_goal_turn(chat_id: str) -> None:
+    """Charge one turn against the active goal's budget.
+
+    Called once per completed user turn from the chat lifecycle, not from the
+    reminder hook. Building a prompt is a read, and this used to run inside it —
+    so the budget was charged by every path that assembled a reminder, including
+    heartbeats, approval resumes and tool continuations, none of which are a turn
+    the user took. Retries charged again for work already paid for.
+
+    Best-effort: a goal that misses one increment is better than a turn that
+    fails because its bookkeeping did.
+    """
+    try:
+        db = get_database()
+        project_id = db.get_chat_project_id(chat_id)
+        if not project_id:
+            return
+        goal = db.get_goal(project_id, chat_id=chat_id)
+        if goal and goal.status == "active":
+            db.update_goal(goal.id, turns_elapsed=goal.turns_elapsed + 1)
+    except Exception as e:
+        logger.warning(f"Could not advance goal turn count for chat {chat_id}: {e}")
+
+
 async def plan_reminder_hook(chat_id: str, deps: Any) -> Optional[str]:
-    """Inject the active project Goal and open Tasks into the system reminder each turn."""
+    """Inject the active project Goal and open Tasks into the system reminder.
+
+    Pure read. Reminder providers run on every path that assembles a prompt, so
+    anything that mutates here is charged to turns the user never took — see
+    advance_goal_turn.
+    """
     db = get_database()
     project_id = db.get_chat_project_id(chat_id)
     if not project_id:
@@ -35,7 +64,6 @@ async def plan_reminder_hook(chat_id: str, deps: Any) -> Optional[str]:
             parts.append(
                 "Evaluate: if the goal is achieved call manage_goal(action='clear'). Otherwise keep working."
             )
-        db.update_goal(goal.id, turns_elapsed=goal.turns_elapsed + 1)
 
     active_tasks = db.list_tasks(
         project_id=project_id,
