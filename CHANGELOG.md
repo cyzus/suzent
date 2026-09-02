@@ -32,6 +32,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Keep draft writes off the token loop and out of the index
 
 ### 🐛 Fixed
+- Identify goals by generation, not by their text
+- Pin the goal by identity, not by row id
+- Charge steering, and only the goal that was already running
+- Charge before continuation is scheduled, and count file-only turns
+- Forward the goal flag through every entry point; charge retries
+- Charge autonomous goal steps, not replayed retries
+- Charge goal budget on completed turns, not on prompt assembly
 - Annotate the sanitizer's RunContext so it is actually invoked
 - Only trust catalog markers this process wrote
 - Order blocks by position and keep the separator out of band
