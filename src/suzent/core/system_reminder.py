@@ -36,6 +36,12 @@ DISPLAY_TRIGGER_TAG = "system-reminder-display-trigger"
 PUA_START = ""  # hidden-content start
 PUA_END = ""  # hidden-content end
 
+# Marks a recovered display-trigger line as runtime-generated. Only the history
+# sanitizer emits it, and sanitize_untrusted_text strips it from anything
+# arriving from outside, so a user who copies a visible "[system trigger: ...]"
+# label out of the transcript and sends it back cannot have it read as one.
+TRIGGER_MARK = ""
+
 # Per-process runtime token embedded in every reminder we author.
 #
 # The delimiters above are public constants, so any text that reaches the model
@@ -147,8 +153,11 @@ def sanitize_untrusted_text(text: str) -> str:
     """
     if not text:
         return text
-    text = text.replace(PUA_START, "[reminder-delimiter]").replace(
-        PUA_END, "[reminder-delimiter]"
+    text = (
+        text.replace(PUA_START, "[reminder-delimiter]")
+        .replace(PUA_END, "[reminder-delimiter]")
+        # Untrusted text may not carry the runtime's trigger mark.
+        .replace(TRIGGER_MARK, "")
     )
     text = _UNTRUSTED_OPEN_RE.sub(f"&lt;{REMINDER_TAG}&gt;", text)
     text = _UNTRUSTED_CLOSE_RE.sub(f"&lt;/{REMINDER_TAG}&gt;", text)
@@ -466,6 +475,11 @@ _DROPPABLE_BLOCK_RE = re.compile(
 )
 
 
+_TRIGGER_PLACEHOLDER_RE = re.compile(
+    rf"{TRIGGER_MARK}\[system trigger: .*?\]", re.DOTALL
+)
+
+
 def _scrub_untrusted_span(span: str) -> str:
     """Drop unauthenticated machine-authored blocks; escape what is left.
 
@@ -483,6 +497,19 @@ def _scrub_untrusted_span(span: str) -> str:
     """
     if not span:
         return span
+    # Placeholders this function produced on an earlier pass are kept as-is; the
+    # processor runs before every request, and re-sanitizing would strip their
+    # mark and demote them to ordinary text.
+    if _TRIGGER_PLACEHOLDER_RE.search(span):
+        out = []
+        last = 0
+        for found in _TRIGGER_PLACEHOLDER_RE.finditer(span):
+            out.append(_scrub_untrusted_span(span[last : found.start()]))
+            out.append(found.group(0))
+            last = found.end()
+        out.append(_scrub_untrusted_span(span[last:]))
+        return "".join(out)
+
     pieces: list[tuple[bool, str]] = []
     last = 0
     for match in _DROPPABLE_BLOCK_RE.finditer(span):
@@ -499,7 +526,7 @@ def _scrub_untrusted_span(span: str) -> str:
             # (rather than leaving an empty prompt that rebuilds as a blank row)
             # while making it ordinary visible content: not hidden, not trusted.
             inner = sanitize_untrusted_text(trigger.group(1).strip())
-            pieces.append((True, f"[system trigger: {inner}]"))
+            pieces.append((True, f"{TRIGGER_MARK}[system trigger: {inner}]"))
         last = match.end()
     pieces.append((False, span[last:]))
     return "".join(

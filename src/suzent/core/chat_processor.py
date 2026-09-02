@@ -2615,7 +2615,10 @@ def _preserve_trailing_notices(rebuilt: list, existing: list | None) -> list:
     return [*rebuilt, *reversed(trailing)]
 
 
-_TRIGGER_PLACEHOLDER = "[system trigger: "
+def _trigger_placeholder_prefix() -> str:
+    from suzent.core.system_reminder import TRIGGER_MARK
+
+    return f"{TRIGGER_MARK}[system trigger: "
 
 
 def _preserve_display_triggers(rebuilt: list, existing: list | None) -> list:
@@ -2635,11 +2638,19 @@ def _preserve_display_triggers(rebuilt: list, existing: list | None) -> list:
     a single stored row, and pairing raw indices restores the wrong one and
     strands the other as a user message.
 
-    The stored log is what supplies provenance. A placeholder is reinstated only
-    if that exact label was recorded as a trigger when the turn actually ran, so
-    a forged block cannot promote itself into a system row by imitating the
-    placeholder. Every matching placeholder is restored, including duplicates —
-    the coalescing pass runs afterwards and is what collapses them.
+    Two independent things have to hold before a row is rewritten, because a
+    label on its own establishes nothing about *this* occurrence:
+
+    * the row carries ``TRIGGER_MARK``, which only the history sanitizer emits
+      and which is stripped from anything arriving from outside — so a user who
+      copies a visible ``[system trigger: ...]`` label out of the transcript and
+      sends it back is not promoted, and the coalescing pass that runs next
+      cannot then swallow their turn;
+    * that exact label was recorded as a trigger when a turn actually ran, so a
+      forged reminder block dropped from history cannot style itself as one.
+
+    Every matching placeholder is restored, duplicates included — collapsing
+    them is the coalescing pass's job.
     """
     if not existing or not rebuilt:
         return rebuilt
@@ -2657,9 +2668,10 @@ def _preserve_display_triggers(rebuilt: list, existing: list | None) -> list:
         if not isinstance(row, dict) or row.get("role") != "user":
             continue
         content = str(row.get("content") or "").strip()
-        if not content.startswith(_TRIGGER_PLACEHOLDER) or not content.endswith("]"):
+        prefix = _trigger_placeholder_prefix()
+        if not content.startswith(prefix) or not content.endswith("]"):
             continue
-        label = content[len(_TRIGGER_PLACEHOLDER) : -1].strip()
+        label = content[len(prefix) : -1].strip()
         if label not in known_labels:
             continue
         restored = dict(row)
