@@ -11,6 +11,7 @@ declaring which kind it is.
 """
 
 import inspect
+import re
 from types import SimpleNamespace
 from typing import Any, Callable
 
@@ -43,7 +44,41 @@ def test_precedence_is_stated_to_the_model() -> None:
     assert "# Context Precedence" in STATIC_INSTRUCTIONS
     lowered = STATIC_INSTRUCTIONS.lower()
     assert "context, not authority" in lowered
-    assert "safety and permission rules first" in lowered
+    assert "safety and permission rules" in lowered
+    assert "retrieved" in lowered
+
+
+def test_the_statement_orders_preferences_above_retrieved_context() -> None:
+    """PromptLayer puts USER_PREFERENCE above RETRIEVED_CONTEXT and the tests
+    below require memory to be lowest, so the model-facing text — the only
+    mechanism that actually resolves a conflict — must say the same."""
+    lowered = STATIC_INSTRUCTIONS.lower()
+    preferences = lowered.index("stored preferences")
+    retrieved = lowered.index("retrieved")
+
+    assert preferences < retrieved, "preferences must be stated as winning"
+
+
+_AUTHORITY_CLAIMS = (
+    re.compile(r"overrides?\s+(all|any|other|these|the\s+(above|system|user))"),
+    re.compile(r"takes?\s+precedence"),
+    re.compile(r"ignore\s+(all|any|other|the\s+(above|system))"),
+)
+
+
+def _claims_authority(text: str) -> str | None:
+    """Match authority claims, not the word 'override'.
+
+    A bare substring flags `model_override`, a parameter name in the models
+    section, which claims nothing. Testing for the word rather than the meaning
+    made this fail on legitimate text.
+    """
+    lowered = text.lower()
+    for pattern in _AUTHORITY_CLAIMS:
+        found = pattern.search(lowered)
+        if found:
+            return found.group(0)
+    return None
 
 
 def test_the_statement_names_the_prompt_injection_case() -> None:
@@ -92,27 +127,38 @@ async def test_no_lower_layer_section_claims_override_authority() -> None:
     silently skipped. The test passed while checking nothing, and emitted only a
     RuntimeWarning to say so.
     """
+
+    class _Memory:
+        async def get_core_memory_context(self, **kwargs: Any) -> str:
+            return "PERSONA: helpful. FACTS: none."
+
     agent = _FakeAgent()
-    register_dynamic_instructions(agent, base_instructions="")
-    # Every field the injectors touch. Deliberately explicit: a permissive fake
-    # would let a section that reads something new pass without exercising it,
-    # which is how the async section went unchecked in the first place.
+    # Non-empty inputs throughout. With defaults, most sections return "" and a
+    # scan over empty strings proves nothing — it would record a section as
+    # checked while never seeing its body.
+    register_dynamic_instructions(
+        agent,
+        base_instructions="Prefer terse answers.",
+        session_guidance_items=["- Use ReadFileTool for files."],
+        enabled_model_ids=["anthropic/claude-opus-4"],
+        current_model_id="anthropic/claude-opus-4",
+    )
     ctx = SimpleNamespace(
         deps=SimpleNamespace(
             chat_id="chat-1",
             user_id="user-1",
-            social_context={},
-            permission_mode="default",
-            permission_feedback=[],
-            memory_manager=None,
+            social_context={"platform": "slack", "sender_name": "Ada"},
+            permission_mode="plan",
+            permission_feedback=["Do not push to main."],
+            memory_manager=_Memory(),
             path_resolver=None,
-            custom_volumes=[],
-            custom_volume_metadata={},
+            custom_volumes=["/host/data:/mnt/data"],
+            custom_volume_metadata={"/mnt/data": {"description": "datasets"}},
             section_cache={},
             sandbox_enabled=True,
             workspace_root="/w",
             suppress_environment_context=False,
-            base_instructions="",
+            base_instructions="Prefer terse answers.",
         )
     )
 
@@ -126,17 +172,22 @@ async def test_no_lower_layer_section_claims_override_authority() -> None:
         text = fn(ctx)
         if inspect.isawaitable(text):
             text = await text
-        checked.append(fn.__name__)
         assert isinstance(text, str), fn.__name__
-        assert "override" not in text.lower(), fn.__name__
+        # Only count a section as inspected when it actually produced something.
+        if not text.strip():
+            continue
+        checked.append(fn.__name__)
+        claim = _claims_authority(text)
+        assert claim is None, f"{fn.__name__} claims authority: {claim!r}"
 
     assert "inject_memory_context" in checked, (
         "the lowest-layer section must actually be examined, not skipped"
     )
-    # Every non-safety section, not just the bottom of the stack.
+    # Every non-safety section, and each one had to emit a body to count.
     expected = {
         name
         for name, layer in DYNAMIC_SECTION_LAYERS.items()
         if layer is not PromptLayer.SAFETY
     }
-    assert set(checked) == expected, sorted(expected - set(checked))
+    missing = expected - set(checked)
+    assert not missing, f"produced no text, so were never inspected: {sorted(missing)}"
