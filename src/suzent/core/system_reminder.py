@@ -453,6 +453,18 @@ def sanitize_incoming_prompt(text: str) -> str:
     return _split_preserving_own_blocks(text, sanitize_untrusted_text)
 
 
+def has_authenticated_block(text: str) -> bool:
+    """True when *text* contains a reminder block this process wrote.
+
+    Lets the display rebuild record, at the moment a trigger row is first
+    created, whether it came from a block the runtime authored — provenance that
+    a forged block cannot manufacture, because it cannot produce the token.
+    """
+    if not text:
+        return False
+    return bool(_OWN_BLOCK_RE.search(text))
+
+
 def sanitize_stored_user_prompt(text: str) -> str:
     """Make a user prompt restored from history safe to send again.
 

@@ -2274,6 +2274,7 @@ def _rebuild_display_messages(messages: list, model_id: str | None = None) -> li
     )
     import json
     from suzent.core.system_reminder import (
+        has_authenticated_block,
         strip_system_reminders,
         extract_system_reminder_content,
         extract_system_reminder_display_trigger,
@@ -2384,6 +2385,13 @@ def _rebuild_display_messages(messages: list, model_id: str | None = None) -> li
                                 "role": "system_triggered",
                                 "content": display_trigger,
                             }
+                            # Record, at the only moment we can still tell, that
+                            # this row came from a block the runtime authored.
+                            # After a restart the block is gone and no amount of
+                            # parsing recovers that fact; a forged block cannot
+                            # manufacture it, because it cannot produce the token.
+                            if has_authenticated_block(stripped_attachments):
+                                entry["trigger_origin"] = "runtime"
                             if ts:
                                 entry["timestamp"] = ts
                             result.append(entry)
@@ -2655,10 +2663,19 @@ def _preserve_display_triggers(rebuilt: list, existing: list | None) -> list:
     if not existing or not rebuilt:
         return rebuilt
 
+    # Only rows the runtime stamped when the turn actually ran. A legacy display
+    # log can already contain a forged trigger — the pre-sanitization rebuild
+    # parsed reminder blocks without authenticating them — so accepting any
+    # stored system_triggered row would take the forgery's own output as proof
+    # of the forgery's legitimacy. Legacy rows carry no stamp and are not
+    # restored; those chats keep the plain text line, which is the honest
+    # outcome for history whose provenance is unrecoverable.
     known_labels = {
         str(row.get("content") or "").strip()
         for row in existing
-        if isinstance(row, dict) and row.get("role") == "system_triggered"
+        if isinstance(row, dict)
+        and row.get("role") == "system_triggered"
+        and row.get("trigger_origin") == "runtime"
     }
     known_labels.discard("")
     if not known_labels:
