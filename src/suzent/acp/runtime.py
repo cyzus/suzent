@@ -377,7 +377,11 @@ async def stream_acp_turn(
                 }
             )
             state = {"parts": [], "stop_reason": "", "error": ""}
-            async for event in _stream_prompt(managed, message, message_id, state):
+            # _prompt, not message: the retry is the same request, so it needs
+            # the same preamble. Passing `message` here dropped the precedence
+            # rules for exactly the sub-agents that recovered from a stale
+            # session.
+            async for event in _stream_prompt(managed, _prompt, message_id, state):
                 yield event
 
         text = "".join(state["parts"])
