@@ -557,3 +557,39 @@ async def test_multimodal_prompt_keeps_the_current_turn_reminder():
     await processor(None, [ModelRequest(parts=[part])])
 
     assert extract_system_reminder_content(part.content[0]) == "active goal: ship it"
+
+
+def test_stale_tokenized_xml_block_is_dropped_not_escaped(monkeypatch):
+    """Under SUZENT_XML_SYSTEM_REMINDER a restart leaves stored reminders tagged
+    with the previous process's token. Escaping them would strand the body as
+    text the display path can no longer strip — internal reminder content shown
+    to the user as their own message."""
+    from suzent.core.system_reminder import sanitize_stored_user_prompt
+
+    stale = (
+        '<system-reminder nonce="ffffffffffffffff">\ninternal plan state\n'
+        "</system-reminder>"
+    )
+    out = sanitize_stored_user_prompt(f"hello{stale}")
+
+    assert out.strip() == "hello"
+    assert "internal plan state" not in out
+
+
+def test_bare_xml_tag_is_still_escaped_for_humans():
+    from suzent.core.system_reminder import sanitize_stored_user_prompt
+
+    out = sanitize_stored_user_prompt("does <system-reminder> get eaten?")
+
+    assert "does" in out and "get eaten?" in out
+    assert "&lt;system-reminder&gt;" in out
+
+
+def test_current_process_xml_reminder_survives(monkeypatch):
+    monkeypatch.setenv("SUZENT_XML_SYSTEM_REMINDER", "1")
+    from suzent.core.system_reminder import sanitize_stored_user_prompt
+
+    genuine = wrap_in_system_reminder("active goal")
+    out = sanitize_stored_user_prompt(f"hi{genuine}")
+
+    assert extract_system_reminder_content(out) == "active goal"

@@ -244,6 +244,14 @@ _ANY_PUA_BLOCK_RE = re.compile(
     rf"{PUA_START}(?:{_NONCE_PAT})?.*?(?:{_NONCE_PAT})?{PUA_END}", re.DOTALL
 )
 
+# A complete XML block carrying a nonce attribute. Nobody hand-writes
+# nonce="a1b2c3d4e5f6a7b8", so this is runtime output from some process even when
+# the token is not ours, and it gets dropped rather than escaped.
+_ANY_XML_TOKENED_BLOCK_RE = re.compile(
+    rf'<{REMINDER_TAG} nonce="{_NONCE_PAT}">.*?</{REMINDER_TAG}>',
+    re.DOTALL | re.IGNORECASE,
+)
+
 
 def sanitize_stored_user_prompt(text: str) -> str:
     """Make a user prompt restored from history safe to send again.
@@ -264,7 +272,13 @@ def sanitize_stored_user_prompt(text: str) -> str:
       also means the transcript does not change — those blocks were already
       hidden, and now they are simply gone.
 
-    * XML tags are escaped, not dropped. Someone can plausibly type
+    * XML blocks carrying a nonce attribute are dropped too. Under
+      ``SUZENT_XML_SYSTEM_REMINDER`` a restart leaves every stored reminder
+      tagged with the previous process's token; escaping those would leave the
+      body behind as text the display path can no longer strip, turning internal
+      reminder content into a visible user message.
+
+    * Bare XML tags are escaped rather than dropped. Someone can plausibly type
       ``<system-reminder>`` in a message — discussing this very feature, say —
       and deleting their words would be worse than showing them.
     """
@@ -281,10 +295,17 @@ def sanitize_stored_user_prompt(text: str) -> str:
 
 
 def _scrub_untrusted_span(span: str) -> str:
-    """Drop unauthenticated PUA blocks; neutralize everything else in place."""
+    """Drop unauthenticated machine-authored blocks; escape what is left.
+
+    Dropping is reserved for shapes no person produces by hand: PUA delimiters,
+    and complete XML blocks bearing a nonce attribute. Bare tags survive as
+    escaped text so a human's words are never deleted.
+    """
     if not span:
         return span
-    return sanitize_untrusted_text(_ANY_PUA_BLOCK_RE.sub("", span))
+    span = _ANY_PUA_BLOCK_RE.sub("", span)
+    span = _ANY_XML_TOKENED_BLOCK_RE.sub("", span)
+    return sanitize_untrusted_text(span)
 
 
 def make_tool_output_sanitizer_history_processor():
