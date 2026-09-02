@@ -21,7 +21,7 @@ import threading
 import os
 import re
 import secrets
-from typing import Any, Callable, Awaitable, Optional, List
+from typing import Any, Callable, Awaitable, Optional, List, Sequence, Union
 
 from pydantic_ai.tools import RunContext
 
@@ -1017,7 +1017,7 @@ async def build_combined_reminder(
     deps: Any,
     adhoc_reminders: Optional[List[str]] = None,
     user_message: Optional[str] = None,
-    display_trigger: Optional[str] = None,
+    display_trigger: Union[str, Sequence[str], None] = None,
 ) -> Optional[str]:
     """Merge all reminder sources into a single wrapped ``<system-reminder>`` block.
 
@@ -1027,6 +1027,13 @@ async def build_combined_reminder(
         adhoc_reminders: Caller-supplied one-off strings for this turn.
         user_message: Current user message text.  When non-empty, per-turn
             hooks are also invoked (e.g. dynamic RAG memory retrieval).
+        display_trigger: The reminder(s) this turn exists to deliver, shown in
+            the transcript. Pass the constituents, not a joined string: they are
+            also handed in as fragments, and recovering the boundaries by
+            splitting the join cannot work — a reminder whose own text contains
+            the separator, such as a Markdown rule, splits into pieces that
+            match nothing and is then sent twice. Joining is this module's job
+            because deduplicating is too.
 
     Returns:
         A fully wrapped ``<system-reminder>`` string, or ``None`` if nothing
@@ -1080,25 +1087,31 @@ async def build_combined_reminder(
     # ad-hoc fragment, and the trigger is prepended inside the block — so the
     # model saw it twice and it was charged twice. Dropping the fragment keeps
     # the content (the trigger envelope carries it) and halves the cost.
-    if display_trigger:
-        # Every constituent, not just the whole. A reminder-only turn passes the
-        # joined trigger here and the same strings individually as fragments, so
-        # matching only the join left each piece duplicated whenever there was
-        # more than one — and the model paid for all of it twice.
-        _trigger = sanitize_untrusted_text(display_trigger).strip()
-        charged = {_trigger}
-        charged.update(
-            piece.strip()
-            for piece in _trigger.split(TRIGGER_SEPARATOR)
-            if piece.strip()
-        )
+    # A string is one constituent, not a join to be taken apart. Every earlier
+    # version of this recovered the boundaries by splitting the rendered
+    # trigger, which is unrecoverable in general and wrong whenever a reminder
+    # contains the separator itself.
+    _constituents = (
+        [display_trigger]
+        if isinstance(display_trigger, str)
+        else list(display_trigger or [])
+    )
+    _constituents = [c.strip() for c in _constituents if c and c.strip()]
+    display_trigger = TRIGGER_SEPARATOR.join(_constituents) or None
+
+    if _constituents:
+        # The same strings arrive as fragments, and the trigger is prepended
+        # inside the block, so without this the model reads and pays for each
+        # one twice.
+        charged = {sanitize_untrusted_text(c).strip() for c in _constituents}
+        charged.add(sanitize_untrusted_text(display_trigger).strip())
         parts = [part for part in parts if part not in charged]
 
     # The trigger is prepended inside the block, so it spends from the same
     # budget; without this the cap covered only part of what the model reads.
     trigger_cost = (
         len(render_trigger_block(sanitize_untrusted_text(display_trigger)))
-        if display_trigger and display_trigger.strip()
+        if display_trigger
         else 0
     )
     parts = _apply_budget(parts, chat_id, reserved=trigger_cost)

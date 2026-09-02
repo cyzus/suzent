@@ -14,7 +14,7 @@ import shutil
 import time
 import uuid
 from pathlib import Path
-from typing import AsyncGenerator, List, Dict, Any, Optional
+from typing import AsyncGenerator, List, Dict, Any, Optional, Sequence
 
 from ag_ui.core import (
     CustomEvent,
@@ -798,7 +798,6 @@ class ChatProcessor:
 
         # --- System Reminder Injection (includes per-turn RAG hook when memory enabled) ---
         from suzent.core.system_reminder import (
-            TRIGGER_SEPARATOR,
             build_combined_reminder,
             make_user_prompt_part,
             sanitize_untrusted_text,
@@ -855,9 +854,10 @@ class ChatProcessor:
         stream_run_id = str(uuid.uuid4())
         display_trigger = None
         if system_reminders and not (message_content and message_content.strip()):
-            display_trigger = TRIGGER_SEPARATOR.join(
-                r.strip() for r in system_reminders if r and r.strip()
-            )
+            # The constituents, not a join. build_combined_reminder has to match
+            # these against the same strings arriving as fragments, and a join
+            # cannot be taken back apart once a reminder contains the separator.
+            display_trigger = [r.strip() for r in system_reminders if r and r.strip()]
         # Stateless chats (dream, sub-agents) run a fixed, self-contained prompt and
         # must not receive skill-discovery / plan / RAG reminders — that ambient
         # chatter (e.g. the suzent-automation skill hint) is what made the dream agent
@@ -2722,7 +2722,7 @@ def _trigger_placeholder_prefix() -> str:
 
 
 def trigger_rows_for_snapshot(
-    display_trigger: str | None, is_heartbeat: bool, part: Any
+    display_trigger: str | Sequence[str] | None, is_heartbeat: bool, part: Any
 ) -> list[dict]:
     """Display rows that must become durable with the history they describe.
 
@@ -2741,7 +2741,16 @@ def trigger_rows_for_snapshot(
     if not display_trigger or is_heartbeat:
         return []
 
-    from suzent.core.system_reminder import sanitize_untrusted_text
+    from suzent.core.system_reminder import TRIGGER_SEPARATOR, sanitize_untrusted_text
+
+    # Joined the one way the reminder joins it, so the visible row says what the
+    # model was actually shown.
+    if not isinstance(display_trigger, str):
+        display_trigger = TRIGGER_SEPARATOR.join(
+            r.strip() for r in display_trigger if r and r.strip()
+        )
+        if not display_trigger:
+            return []
 
     # Same treatment wrap_in_system_reminder gives it. Scheduled prompts and
     # subagent results are user-influenced, and _preserve_display_triggers

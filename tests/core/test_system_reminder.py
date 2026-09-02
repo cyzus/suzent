@@ -1967,35 +1967,20 @@ def test_every_filesystem_reading_provider_renders_off_loop() -> None:
 
 @pytest.mark.asyncio
 async def test_every_constituent_of_a_joined_trigger_is_charged_once(clean_hooks):
-    """A reminder-only turn passes the joined trigger and the same strings
-    individually. Matching only the join left each piece duplicated whenever
-    there was more than one, so the model read — and paid for — all of it twice."""
+    """A reminder-only turn hands over its reminders and the same strings arrive
+    as fragments. Each one has to be recognised, not just the whole: matching
+    only the join left every piece duplicated once there was more than one."""
     from suzent.core import system_reminder as sr
 
     first, second = "Cron: nightly digest", "Cron: weekly rollup"
-    joined = sr.TRIGGER_SEPARATOR.join([first, second])
 
     result = await sr.build_combined_reminder(
-        "c", None, adhoc_reminders=[first, second], display_trigger=joined
+        "c", None, adhoc_reminders=[first, second], display_trigger=[first, second]
     )
 
     assert result is not None
     assert result.count(first) == 1
     assert result.count(second) == 1
-
-
-def test_the_join_separator_has_one_definition() -> None:
-    """The caller joins with it and the dedupe splits on it. Two copies of that
-    string is how the multi-reminder case shipped duplicated."""
-    import inspect
-
-    from suzent.core import chat_processor, system_reminder
-
-    source = inspect.getsource(chat_processor.ChatProcessor.process_turn)
-
-    assert "TRIGGER_SEPARATOR" in source
-    assert '"\\n\\n---\\n\\n".join' not in source
-    assert system_reminder.TRIGGER_SEPARATOR == "\n\n---\n\n"
 
 
 @pytest.mark.asyncio
@@ -2089,3 +2074,52 @@ async def test_one_oversized_fragment_still_survives_without_a_trigger(clean_hoo
     result = await sr.build_combined_reminder("c", None, adhoc_reminders=[huge])
 
     assert result is not None and huge in result
+
+
+@pytest.mark.asyncio
+async def test_a_reminder_containing_the_separator_is_still_charged_once(clean_hooks):
+    """Boundaries cannot be recovered from a rendered join. A reminder whose own
+    text contains the separator — a Markdown rule is enough — split into pieces
+    that matched no fragment, so it was sent twice and spent the budget twice."""
+    from suzent.core import system_reminder as sr
+
+    tricky = f"Cron: digest{sr.TRIGGER_SEPARATOR}see attached"
+    plain = "Cron: weekly rollup"
+
+    result = await sr.build_combined_reminder(
+        "c", None, adhoc_reminders=[tricky, plain], display_trigger=[tricky, plain]
+    )
+
+    assert result is not None
+    assert result.count("see attached") == 1
+    assert result.count(plain) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_single_string_trigger_is_one_constituent(clean_hooks):
+    """Not a join to be taken apart — that reading is what made a reminder
+    containing the separator unrecoverable."""
+    from suzent.core import system_reminder as sr
+
+    trigger = f"Cron: digest{sr.TRIGGER_SEPARATOR}see attached"
+
+    result = await sr.build_combined_reminder(
+        "c", None, adhoc_reminders=[trigger], display_trigger=trigger
+    )
+
+    assert result is not None
+    assert result.count("see attached") == 1
+
+
+def test_the_caller_hands_over_constituents_not_a_join() -> None:
+    """Joining belongs to the module that deduplicates, because only there can
+    the two agree. Three rounds of this bug were the join and the split
+    disagreeing across a module boundary."""
+    import inspect
+
+    from suzent.core import chat_processor
+
+    source = inspect.getsource(chat_processor.ChatProcessor.process_turn)
+
+    assert "TRIGGER_SEPARATOR.join" not in source
+    assert '"\n\n---\n\n"' not in source
