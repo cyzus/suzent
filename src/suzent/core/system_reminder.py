@@ -971,7 +971,13 @@ def _dedupe_fragments(parts: list[str]) -> list[str]:
     return unique
 
 
-def _apply_budget(parts: list[str], chat_id: str, reserved: int = 0) -> list[str]:
+def _apply_budget(
+    parts: list[str],
+    chat_id: str,
+    reserved: int = 0,
+    separator: str = FRAGMENT_SEPARATOR,
+    exempt_first: Optional[bool] = None,
+) -> list[str]:
     """Keep the assembled body under REMINDER_BUDGET_CHARS.
 
     Fragments arrive already sanitized, because that is what gets sent.
@@ -988,21 +994,25 @@ def _apply_budget(parts: list[str], chat_id: str, reserved: int = 0) -> list[str
     middle: half a plan snapshot is worse than none, because the model cannot
     tell it is reading a fragment.
 
-    One fragment may exceed the cap on its own, and only one: an empty body is
+    One item may exceed the cap on its own, and only one: an empty body is
     indistinguishable from a provider that produced nothing, so something has to
-    survive. That exemption is spent by the trigger when there is one. The
-    trigger is already going out, so nothing is lost by holding every fragment
-    to the cap behind it — whereas exempting the first fragment *as well* let a
-    5,900-character trigger and an ordinary plan reminder clear 6,400 together,
-    which is the cap failing in exactly the case it was added for.
+    survive. *exempt_first* says whether this call is the one that may spend
+    that allowance; it defaults to "only if nothing has been delivered yet".
+
+    It is a parameter rather than an inference because the two are not the same
+    question. Reserving space for an envelope is not delivering content, and
+    inferring the exemption from ``reserved`` meant reserving 71 characters for
+    the trigger's tags silently withdrew the exemption and dropped a single
+    oversized reminder — the whole turn — on the floor.
     """
-    separator_cost = len(FRAGMENT_SEPARATOR)
+    separator_cost = len(separator)
     kept: list[str] = []
     used = reserved
     for index, part in enumerate(parts):
         cost = len(part) + (separator_cost if kept else 0)
-        delivered = bool(kept) or reserved > 0
-        if delivered and used + cost > REMINDER_BUDGET_CHARS:
+        may_exempt = exempt_first if exempt_first is not None else reserved == 0
+        protected = not kept and may_exempt
+        if not protected and used + cost > REMINDER_BUDGET_CHARS:
             dropped = len(parts) - index
             logger.warning(
                 f"[system-reminder] chat={chat_id} over budget: dropped {dropped} "
@@ -1128,6 +1138,22 @@ async def build_combined_reminder(
     # model saw it twice and it was charged twice. Dropping the fragment keeps
     # the content (the trigger envelope carries it) and halves the cost.
     _constituents = canonical_trigger_constituents(display_trigger)
+
+    # The trigger is budgeted as its constituents, not as one indivisible
+    # string. Joining first made the whole thing a single item, and a single
+    # item is exactly what the oversized exemption waves through — so two
+    # unrelated 4,000-character reminders sailed past a 6,000-character cap
+    # together. Budgeting first means the exemption covers one reminder, which
+    # is the most that cannot be helped.
+    _constituents = _apply_budget(
+        _constituents,
+        chat_id,
+        reserved=len(render_trigger_block("")) if _constituents else 0,
+        separator=TRIGGER_SEPARATOR,
+        # The trigger goes out first, so this is the pass that may keep one
+        # oversized item. The envelope it reserves for is not content.
+        exempt_first=True,
+    )
     display_trigger = TRIGGER_SEPARATOR.join(_constituents) or None
 
     if _constituents:

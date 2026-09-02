@@ -2203,3 +2203,37 @@ def test_the_persisted_row_shows_what_the_model_was_shown() -> None:
     assert len(rows) == 1
     assert rows[0]["content"] == canonical_display_trigger(repeated)
     assert rows[0]["content"].count("Cron: nightly digest") == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("count", [2, 3, 5])
+async def test_the_trigger_is_budgeted_as_its_constituents(clean_hooks, count):
+    """Joining first made the whole trigger one item, and one item is exactly
+    what the oversized exemption waves through — so several unrelated 4,000
+    character reminders cleared a 6,000 character cap together."""
+    from suzent.core import system_reminder as sr
+
+    reminders = [f"{chr(97 + i)}" * 4000 for i in range(count)]
+
+    result = await sr.build_combined_reminder("c", None, display_trigger=reminders)
+
+    assert result is not None
+    body = _reminder_body(result)
+    # One reminder may exceed the cap alone; a second one may not join it.
+    assert len(body) <= sr.REMINDER_BUDGET_CHARS, (
+        f"{len(body)} chars sent against a {sr.REMINDER_BUDGET_CHARS} cap"
+    )
+    assert reminders[0] in body, "the first reminder must still be delivered"
+
+
+@pytest.mark.asyncio
+async def test_one_oversized_constituent_still_survives(clean_hooks):
+    """The exemption is one item, and it still exists: an empty body cannot be
+    told apart from a turn that had nothing to say."""
+    from suzent.core import system_reminder as sr
+
+    huge = "x" * (sr.REMINDER_BUDGET_CHARS + 1000)
+
+    result = await sr.build_combined_reminder("c", None, display_trigger=[huge])
+
+    assert result is not None and huge in result
