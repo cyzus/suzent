@@ -39,9 +39,9 @@ class _FakeAgent:
         return fn
 
 
-def _memory_injector(snapshot):
+def _memory_injector():
     agent = _FakeAgent()
-    register_dynamic_instructions(agent, base_instructions="", memory_context=snapshot)
+    register_dynamic_instructions(agent, base_instructions="")
     fn = next(f for f in agent.functions if f.__name__ == "inject_memory_context")
     return fn
 
@@ -58,7 +58,7 @@ class _FakeManager:
 @pytest.mark.asyncio
 async def test_injector_reads_the_serving_chat_not_the_build_time_snapshot():
     manager = _FakeManager()
-    fn = _memory_injector("STALE-SNAPSHOT")
+    fn = _memory_injector()
     ctx = SimpleNamespace(
         deps=SimpleNamespace(
             memory_manager=manager,
@@ -76,19 +76,27 @@ async def test_injector_reads_the_serving_chat_not_the_build_time_snapshot():
 @pytest.mark.asyncio
 async def test_injector_returns_nothing_when_memory_is_disabled():
     """deps.memory_manager is None exactly when memory is off."""
-    fn = _memory_injector(None)
+    fn = _memory_injector()
     ctx = SimpleNamespace(deps=SimpleNamespace(memory_manager=None))
 
     assert await fn(ctx) == ""
 
 
 @pytest.mark.asyncio
-async def test_injector_falls_back_to_the_snapshot_when_the_lookup_fails():
+async def test_injector_omits_memory_when_the_lookup_fails():
+    """Never fall back to a construction-time snapshot.
+
+    The agent is cached across chats and users, so a captured string belongs to
+    whichever request built the agent. Serving it to the next one is the exact
+    cross-user bleed this section must not cause — a prompt with no core memory
+    beats one carrying someone else's.
+    """
+
     class Broken:
         async def get_core_memory_context(self, **kwargs):
             raise RuntimeError("store offline")
 
-    fn = _memory_injector("SNAPSHOT")
+    fn = _memory_injector()
     ctx = SimpleNamespace(
         deps=SimpleNamespace(
             memory_manager=Broken(),
@@ -99,4 +107,4 @@ async def test_injector_falls_back_to_the_snapshot_when_the_lookup_fails():
         )
     )
 
-    assert await fn(ctx) == "SNAPSHOT"
+    assert await fn(ctx) == ""

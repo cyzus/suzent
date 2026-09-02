@@ -454,7 +454,6 @@ def register_dynamic_instructions(
     agent: Any,
     *,
     base_instructions: str,
-    memory_context: str | None,
     session_guidance_items: list[str] | None = None,
     enabled_model_ids: list[str] | None = None,
     current_model_id: str | None = None,
@@ -553,22 +552,21 @@ def register_dynamic_instructions(
 
     @agent.instructions
     async def inject_memory_context(ctx: Any) -> str:
-        """Core memory for the chat being served, not the one that built the agent.
+        """Core memory for the chat being served, resolved per run.
 
-        Agents are cached and reused across chats, so a snapshot captured at
-        construction goes stale the moment anyone edits persona.md, user.md,
-        MEMORY.md or a project's context.md — the edit would not surface until
-        the agent happened to be rebuilt. Reading through ``ctx.deps`` each run
-        keeps the section current; the manager caches on a file-mtime revision
-        so a hit costs four ``stat`` calls.
+        There is deliberately no construction-time snapshot to fall back on.
+        The agent is cached and reused across chats and users — `_chat_id` and
+        `_user_id` are excluded from its cache key — so any captured string
+        belongs to whichever request happened to build the agent, and serving it
+        to the next one is exactly the cross-user bleed this section must not
+        cause. On failure, and when memory is off, the answer is nothing.
 
-        ``deps.memory_manager`` is None whenever memory is disabled, which is
-        also the signal to fall back to the construction-time snapshot.
+        `deps.memory_manager` is None precisely when memory is disabled.
         """
         deps = getattr(ctx, "deps", None)
         manager = getattr(deps, "memory_manager", None)
         if manager is None:
-            return memory_context or ""
+            return ""
         try:
             return await manager.get_core_memory_context(
                 chat_id=getattr(deps, "chat_id", "") or None,
@@ -577,8 +575,10 @@ def register_dynamic_instructions(
                 path_resolver=getattr(deps, "path_resolver", None),
             )
         except Exception as e:
-            logger.warning(f"Falling back to snapshot core memory: {e}")
-            return memory_context or ""
+            # Better a prompt with no core memory than one carrying someone
+            # else's.
+            logger.warning(f"Core memory unavailable this run, omitting: {e}")
+            return ""
 
     # Skills injection is now handled via SkillsReminderProvider out-of-band.
 

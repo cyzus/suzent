@@ -31,9 +31,6 @@ from suzent.prompts import (
 from suzent.skills import get_skill_manager
 
 # Import memory lifecycle functions (for backward compatibility re-exports)
-from suzent.memory.lifecycle import (
-    get_memory_manager,
-)
 
 # Suppress LiteLLM's verbose logging
 os.environ["LITELLM_LOG"] = "ERROR"
@@ -228,9 +225,7 @@ def _is_transient_stdio_error(message: str) -> bool:
     )
 
 
-def create_agent(
-    config: Dict[str, Any], memory_context: Optional[str] = None
-) -> Agent[AgentDeps, str]:
+def create_agent(config: Dict[str, Any]) -> Agent[AgentDeps, str]:
     """
     Creates a pydantic-ai Agent based on the provided configuration.
 
@@ -404,7 +399,6 @@ def create_agent(
     register_dynamic_instructions(
         agent,
         base_instructions=base_instructions,
-        memory_context=memory_context,
         session_guidance_items=session_guidance_items,
         enabled_model_ids=enabled_models,
         current_model_id=model_id,
@@ -500,38 +494,12 @@ async def get_or_create_agent(config: Dict[str, Any], reset: bool = False) -> Ag
             logger.info("Config changed - creating new agent")
 
         if agent_instance is None or config_changed or reset:
-            # Fetch memory context if memory system is enabled
-            memory_context = None
-            memory_enabled = config.get("memory_enabled", False)
-            mem_manager = get_memory_manager()
-            if mem_manager and memory_enabled:
-                chat_id = config.get("_chat_id")
-                user_id = config.get("_user_id", "default-user")
-                sandbox_enabled = config.get("sandbox_enabled", CONFIG.sandbox_enabled)
-                try:
-                    from suzent.tools.filesystem.path_resolver import PathResolver
-                    from suzent.config import get_effective_volumes
-
-                    _path_resolver = PathResolver(
-                        chat_id=chat_id or "default",
-                        sandbox_enabled=sandbox_enabled,
-                        custom_volumes=get_effective_volumes(
-                            config.get("sandbox_volumes")
-                        ),
-                    )
-                    memory_context = await mem_manager.format_core_memory_for_context(
-                        chat_id=chat_id,
-                        user_id=user_id,
-                        sandbox_enabled=sandbox_enabled,
-                        path_resolver=_path_resolver,
-                    )
-                    if memory_context:
-                        logger.debug(f"Fetched core memory context for user={user_id}")
-                except Exception as e:
-                    logger.error(f"Error fetching memory context: {e}")
-                    memory_context = None
-
-            agent_instance = create_agent(config, memory_context=memory_context)
+            # No core-memory prefetch here on purpose. The agent is cached and
+            # reused across chats and users, so anything captured now would be
+            # served to whoever the agent is reused for next. Core memory is
+            # resolved per run from ctx.deps instead — see
+            # prompts.inject_memory_context.
+            agent_instance = create_agent(config)
             agent_config = config
 
         return agent_instance
