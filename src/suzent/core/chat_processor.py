@@ -1534,10 +1534,14 @@ class ChatProcessor:
             chat_id=chat_id,
             user_id=user_id,
             message_content=replay_message,
-            # The original turn already charged the goal, and the retry
-            # checkpoint restores chat state, messages and files but not the
-            # counter — so replaying would bill the same work twice.
-            counts_toward_goal=False,
+            # Charged like any other turn. A retry is a second attempt that
+            # does real work, and the checkpoint is written at turn start —
+            # before the outcome is known — so there is no record of whether
+            # the first attempt was charged. Forcing False meant a retry of a
+            # *failed* turn went entirely uncounted, and a goal could then run
+            # past max_turns. For a budget whose job is to stop runaway work,
+            # over-charging pauses early and is recoverable with /goal resume;
+            # under-charging removes the stop condition and is not.
             files=replay_files if replay_files else None,
             config_override=merged_config,
             is_social=is_social,
@@ -1675,6 +1679,7 @@ class ChatProcessor:
         system_reminders: list[str] = None,
         incoming_citation_sources: list[dict] = None,
         citation_sources_out: list[dict] = None,
+        counts_toward_goal: Optional[bool] = None,
     ) -> str:
         """Run a conversation turn and return only the final response text.
 
@@ -1700,6 +1705,7 @@ class ChatProcessor:
                 is_heartbeat=is_heartbeat,
                 system_reminders=system_reminders,
                 incoming_citation_sources=incoming_citation_sources,
+                counts_toward_goal=counts_toward_goal,
             ):
                 if _stream_queue is not None:
                     await _stream_queue.put(chunk)

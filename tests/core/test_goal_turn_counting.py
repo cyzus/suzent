@@ -162,16 +162,32 @@ def test_an_autonomous_goal_step_is_chargeable() -> None:
     assert "counts_toward_goal=True" in source
 
 
-def test_a_replayed_retry_is_not_chargeable() -> None:
-    """The original turn already charged, and apply_retry_checkpoint restores
-    chat state, messages and files but not the counter."""
+def test_a_retry_is_charged_like_any_other_turn() -> None:
+    """A retry does real work, and the checkpoint is written at turn start —
+    before the outcome is known — so nothing records whether the first attempt
+    was charged. Forcing it uncharged let a retry of a *failed* turn go
+    uncounted and a goal run past max_turns. For a budget whose job is to stop
+    runaway work, pausing early is recoverable and failing to stop is not."""
     import inspect
 
     from suzent.core import chat_processor
 
     source = inspect.getsource(chat_processor.ChatProcessor._handle_retry_command)
 
-    assert "counts_toward_goal=False" in source
+    assert "counts_toward_goal=False" not in source
+
+
+def test_the_flag_reaches_process_turn_through_every_entry_point() -> None:
+    """run_goal_step goes through process_background_turn -> process_turn_text
+    -> process_turn. A gap anywhere raises TypeError, which run_goal_step
+    catches and only logs — so autonomous steps would stop silently."""
+    import inspect
+
+    from suzent.core.chat_processor import ChatProcessor
+
+    for method in ("process_turn", "process_turn_text", "process_background_turn"):
+        params = inspect.signature(getattr(ChatProcessor, method)).parameters
+        assert "counts_toward_goal" in params, method
 
 
 def test_an_explicit_answer_overrides_the_inference() -> None:
