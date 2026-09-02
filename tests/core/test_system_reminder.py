@@ -2312,3 +2312,33 @@ async def test_nothing_is_exempt_from_the_cap(clean_hooks):
     assert "exempt" not in source.lower().split('"""')[-1], (
         "no code path may skip the cap check"
     )
+
+
+@pytest.mark.asyncio
+async def test_a_trigger_constituent_the_budget_dropped_is_not_resent(clean_hooks):
+    """The same strings arrive as fragments. Charging only the ones the trigger
+    kept let a dropped constituent reappear as an ordinary fragment — the model
+    reading a reminder the transcript says was never delivered."""
+    from suzent.core import system_reminder as sr
+
+    # The window the finding names: the first reminder leaves less room than the
+    # separator costs, so the second is dropped from the trigger — and then fits
+    # as a fragment, because a fragment pays no separator when it is first.
+    second = "b" * 7
+    first = "a" * (
+        sr.REMINDER_BUDGET_CHARS - len(sr.render_trigger_block("")) - len(second) - 1
+    )
+
+    rendered = await sr.build_combined_reminder(
+        "c", None, adhoc_reminders=[first, second], display_trigger=[first, second]
+    )
+
+    assert rendered is not None
+    body = _reminder_body(rendered)
+    shown = sr.extract_system_reminder_display_trigger(rendered)
+
+    # Whatever the budget decided, the block and the row have to agree on it.
+    assert (second in body) == (second in shown), (
+        "a constituent the trigger dropped came back as a fragment"
+    )
+    assert len(body) <= sr.REMINDER_BUDGET_CHARS

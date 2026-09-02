@@ -1160,6 +1160,12 @@ async def build_combined_reminder(
     # model saw it twice and it was charged twice. Dropping the fragment keeps
     # the content (the trigger envelope carries it) and halves the cost.
     _constituents = canonical_trigger_constituents(display_trigger)
+    # Before budgeting. These are the strings the caller also handed in as
+    # fragments, and whether the trigger kept them has no bearing on that: one
+    # dropped or cut by the trigger's budget would otherwise reappear as an
+    # ordinary fragment, so the model would read a reminder the transcript says
+    # was not delivered.
+    _offered = set(_constituents)
 
     # The trigger is budgeted as its constituents, not as one indivisible
     # string. Joining first made the whole thing a single item, and a single
@@ -1178,13 +1184,13 @@ async def build_combined_reminder(
     )
     display_trigger = TRIGGER_SEPARATOR.join(_constituents) or None
 
-    if _constituents:
+    if _offered:
         # The same strings arrive as fragments, and the trigger is prepended
         # inside the block, so without this the model reads and pays for each
-        # one twice. Matched on the delivered text, which is what both sides
-        # now hold.
-        charged = set(_constituents)
-        charged.add(display_trigger)
+        # one twice.
+        charged = set(_offered)
+        if display_trigger:
+            charged.add(display_trigger)
         parts = [part for part in parts if part not in charged]
 
     # The trigger is prepended inside the block, so it spends from the same
