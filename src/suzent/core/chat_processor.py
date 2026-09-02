@@ -1013,7 +1013,6 @@ class ChatProcessor:
         try:
             if logger._core.min_level <= 10:  # DEBUG
                 import asyncio as _asyncio
-                import hashlib as _hashlib
                 from suzent.prompts import resolve_system_prompt_sections
 
                 _sections = await _asyncio.wait_for(
@@ -1025,13 +1024,16 @@ class ChatProcessor:
                     ),
                     timeout=5.0,
                 )
-                _prompt = "\n\n".join(text for _, text in _sections)
-                _digest = _hashlib.sha256(_prompt.encode("utf-8")).hexdigest()[:8]
+                # Sizes only — no digest. A short unsalted hash of the prompt is
+                # a verifier for its contents: with the other sections known or
+                # predictable, someone holding the logs can hash candidate sender
+                # names or permission feedback until one matches, and it links
+                # identical private prompts across runs. chat_id already
+                # correlates lines within a conversation.
                 logger.debug(
-                    "[SystemPrompt] chat={} chars={} sha={} sections={}",
+                    "[SystemPrompt] chat={} chars={} sections={}",
                     chat_id,
-                    len(_prompt),
-                    _digest,
+                    sum(len(text) for _, text in _sections),
                     ", ".join(f"{name}:{len(text)}" for name, text in _sections),
                 )
         except Exception as e:

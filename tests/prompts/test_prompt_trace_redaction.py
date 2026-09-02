@@ -95,3 +95,18 @@ def test_no_environment_flag_can_turn_the_full_prompt_back_on():
 
     assert "SUZENT_PROMPT_TRACE" not in source
     assert "full text" not in trace_block.split("# 8. Stream Response")[0]
+
+
+def test_the_trace_logs_no_content_derived_digest():
+    """A short unsalted hash of the prompt is a verifier for its contents:
+    with the other sections predictable, candidate sender names or permission
+    feedback can be hashed until one matches."""
+    import inspect
+
+    from suzent.core import chat_processor
+
+    source = inspect.getsource(chat_processor)
+    block = source[source.index("[SystemPrompt] chat=") - 1500 :][:2000]
+
+    assert "hashlib" not in block
+    assert "sha=" not in block
