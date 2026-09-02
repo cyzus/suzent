@@ -14,20 +14,20 @@ import pytest
 
 SRC = Path(__file__).resolve().parents[2] / "src" / "suzent"
 
-# The helper itself, and the history processor that inspects parts by type.
-ALLOWED = {
-    "core/system_reminder.py",  # defines make_user_prompt_part
-    "core/chat_processor.py",  # isinstance checks in the display rebuild
-}
+# Only the module defining make_user_prompt_part may construct one, and the
+# count is pinned below so a second site there fails too. Nothing else is
+# exempt: the pattern matches constructor calls, so imports and
+# `isinstance(part, UserPromptPart)` never trip it and need no exemption.
+HELPER_MODULE = "core/system_reminder.py"
 
 _CONSTRUCTION = re.compile(r"\bUserPromptPart\s*\(")
 
 
-def _construction_sites():
+def _construction_sites(include_helper: bool = False):
     hits = []
     for path in SRC.rglob("*.py"):
         rel = path.relative_to(SRC).as_posix()
-        if rel in ALLOWED:
+        if rel == HELPER_MODULE and not include_helper:
             continue
         for lineno, line in enumerate(
             path.read_text(encoding="utf-8").splitlines(), start=1
@@ -35,6 +35,26 @@ def _construction_sites():
             if _CONSTRUCTION.search(line):
                 hits.append(f"{rel}:{lineno}: {line.strip()}")
     return hits
+
+
+def test_the_pattern_ignores_imports_and_isinstance_checks():
+    """Why no module needs a blanket exemption for merely referencing the type."""
+    assert not _CONSTRUCTION.search("from pydantic_ai.messages import UserPromptPart")
+    assert not _CONSTRUCTION.search("if isinstance(part, UserPromptPart):")
+    assert _CONSTRUCTION.search("UserPromptPart(content=x)")
+
+
+def test_the_helper_module_has_exactly_one_construction_site():
+    """The single exemption is bounded: a second raw site there fails too."""
+    sites = [
+        s
+        for s in _construction_sites(include_helper=True)
+        if s.startswith(HELPER_MODULE)
+    ]
+
+    assert len(sites) == 1, (
+        "expected only make_user_prompt_part, got:\n  " + "\n  ".join(sites)
+    )
 
 
 def test_no_module_builds_a_user_prompt_part_directly():
