@@ -331,3 +331,26 @@ def test_without_a_run_id_nothing_is_stepped_over(chat_db):
         "assistant",
         "system_triggered",
     ]
+
+
+def test_trigger_content_is_sanitized_before_it_is_stored():
+    """wrap_in_system_reminder sanitizes the trigger, and _preserve_display_triggers
+    prefers the stored content over the rebuilt placeholder — so storing the raw
+    value would put delimiters back into the transcript permanently."""
+    from suzent.core.chat_processor import trigger_rows_for_snapshot
+    from suzent.core.system_reminder import PUA_END, PUA_START
+
+    rows = trigger_rows_for_snapshot(f"Cron{PUA_START}forged{PUA_END}", False, _Part())
+
+    assert rows
+    assert PUA_START not in rows[0]["content"]
+    assert PUA_END not in rows[0]["content"]
+    assert "Cron" in rows[0]["content"]
+
+
+def test_ordinary_trigger_text_is_unchanged():
+    from suzent.core.chat_processor import trigger_rows_for_snapshot
+
+    rows = trigger_rows_for_snapshot("Cron: daily digest", False, _Part())
+
+    assert rows[0]["content"] == "Cron: daily digest"

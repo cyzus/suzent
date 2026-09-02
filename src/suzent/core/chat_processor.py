@@ -2689,10 +2689,18 @@ def trigger_rows_for_snapshot(
     """
     if not display_trigger or is_heartbeat:
         return []
+
+    from suzent.core.system_reminder import sanitize_untrusted_text
+
+    # Same treatment wrap_in_system_reminder gives it. Scheduled prompts and
+    # subagent results are user-influenced, and _preserve_display_triggers
+    # prefers this stored content over the placeholder rebuilt from history — so
+    # storing the raw value would put delimiters back into the visible transcript
+    # permanently, undoing the sanitizing on the path that does it.
     stamp = getattr(part, "timestamp", None)
     row: dict = {
         "role": "system_triggered",
-        "content": display_trigger,
+        "content": sanitize_untrusted_text(display_trigger),
         "trigger_origin": "runtime",
     }
     if stamp:
