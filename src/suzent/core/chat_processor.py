@@ -413,6 +413,20 @@ def _stripped_image_reminder(virtual_paths: list[str]) -> str | None:
     )
 
 
+def build_steering_text(steer_message: str) -> str:
+    """Render an interruption into the prompt text appended to history.
+
+    Steering re-enters ``process_turn`` with an empty ``message_content``, so the
+    ingress sanitizer there never sees this string, and the tool-output processor
+    deliberately skips ``UserPromptPart``. This is the only place it can be
+    sanitized, which is why the wrapping lives in one testable function rather
+    than inline at the call site.
+    """
+    from suzent.core.system_reminder import sanitize_untrusted_text
+
+    return f"[User interrupted to redirect]: {sanitize_untrusted_text(steer_message)}"
+
+
 class ChatProcessor:
     """Encapsulates the lifecycle of a single conversation turn."""
 
@@ -1536,7 +1550,7 @@ class ChatProcessor:
         # 4. Append steering message
         from pydantic_ai.messages import ModelRequest, UserPromptPart
 
-        steering_text = f"[User interrupted to redirect]: {steer_message}"
+        steering_text = build_steering_text(steer_message)
         message_history.append(
             ModelRequest(parts=[UserPromptPart(content=steering_text)])
         )

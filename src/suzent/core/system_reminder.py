@@ -146,7 +146,17 @@ def sanitize_untrusted_text(text: str) -> str:
     return _UNTRUSTED_TRIGGER_RE.sub(f"&lt;{DISPLAY_TRIGGER_TAG}&gt;", text)
 
 
-def sanitize_untrusted_payload(value: Any, _depth: int = 0) -> Any:
+# Depth at which we stop descending. Legitimate tool results are nowhere near
+# this; the limit exists so a self-referential or pathologically nested payload
+# cannot exhaust the stack. Exceeding it redacts rather than passing the value
+# through, so the limit can never become a way to smuggle delimiters past us.
+_MAX_PAYLOAD_DEPTH = 60
+_REDACTED = "[unsanitized content omitted]"
+
+
+def sanitize_untrusted_payload(
+    value: Any, _depth: int = 0, _seen: Optional[set] = None
+) -> Any:
     """Sanitize every string reachable inside a tool result.
 
     Tools return structured objects, not strings: ``ToolResult`` is a Pydantic
@@ -154,42 +164,68 @@ def sanitize_untrusted_payload(value: Any, _depth: int = 0) -> Any:
     that payload is fetched markdown an attacker may control. Walking only
     ``str`` content would leave the highest-risk surface untouched.
 
+    Mapping keys are sanitized as well as values — a tool or MCP response can
+    choose its own property names, and those are serialized into the model
+    context just like values are.
+
+    Cycles are tracked by identity so a self-referential payload terminates.
     Returns a sanitized copy for models; containers are rebuilt. Anything that
     is not a string, container or model is returned unchanged.
     """
-    if _depth > 6:
-        return value
     if isinstance(value, str):
         return sanitize_untrusted_text(value)
-    if isinstance(value, list):
-        return [sanitize_untrusted_payload(v, _depth + 1) for v in value]
-    if isinstance(value, tuple):
-        return tuple(sanitize_untrusted_payload(v, _depth + 1) for v in value)
-    if isinstance(value, dict):
-        return {k: sanitize_untrusted_payload(v, _depth + 1) for k, v in value.items()}
+    if isinstance(value, (int, float, bool, bytes)) or value is None:
+        return value
 
-    fields = getattr(type(value), "model_fields", None)
-    if not fields:
+    if _depth > _MAX_PAYLOAD_DEPTH:
+        logger.warning("Payload nesting exceeded sanitizer depth; redacting branch")
+        return _REDACTED
+
+    if _seen is None:
+        _seen = set()
+    marker = id(value)
+    if marker in _seen:
         return value
-    updates = {}
-    for name in fields:
-        current = getattr(value, name, None)
-        cleaned = sanitize_untrusted_payload(current, _depth + 1)
-        if cleaned != current:
-            updates[name] = cleaned
-    if not updates:
-        return value
+    _seen.add(marker)
     try:
-        return value.model_copy(update=updates)
-    except Exception:
-        for name, cleaned in updates.items():
-            try:
-                setattr(value, name, cleaned)
-            except Exception:
-                logger.warning(
-                    f"Could not sanitize field {name!r} on {type(value).__name__}"
+        if isinstance(value, list):
+            return [sanitize_untrusted_payload(v, _depth + 1, _seen) for v in value]
+        if isinstance(value, tuple):
+            return tuple(
+                sanitize_untrusted_payload(v, _depth + 1, _seen) for v in value
+            )
+        if isinstance(value, dict):
+            return {
+                sanitize_untrusted_payload(k, _depth + 1, _seen): (
+                    sanitize_untrusted_payload(v, _depth + 1, _seen)
                 )
-        return value
+                for k, v in value.items()
+            }
+
+        fields = getattr(type(value), "model_fields", None)
+        if not fields:
+            return value
+        updates = {}
+        for name in fields:
+            current = getattr(value, name, None)
+            cleaned = sanitize_untrusted_payload(current, _depth + 1, _seen)
+            if cleaned != current:
+                updates[name] = cleaned
+        if not updates:
+            return value
+        try:
+            return value.model_copy(update=updates)
+        except Exception:
+            for name, cleaned in updates.items():
+                try:
+                    setattr(value, name, cleaned)
+                except Exception:
+                    logger.warning(
+                        f"Could not sanitize field {name!r} on {type(value).__name__}"
+                    )
+            return value
+    finally:
+        _seen.discard(marker)
 
 
 def make_tool_output_sanitizer_history_processor():
