@@ -253,3 +253,44 @@ def test_the_stamp_is_written_only_for_an_authenticated_block():
     assert rows[0].get("trigger_origin") is None, (
         "an unauthenticated block must not earn the runtime stamp"
     )
+
+
+def test_restoration_survives_repeated_saves():
+    """The restored row is what the next save persists, so it has to carry the
+    stamp forward or the trigger degrades one turn later — a fix that works
+    exactly once."""
+    stored = [
+        {
+            "role": "system_triggered",
+            "content": "Cron: digest",
+            "trigger_origin": "runtime",
+        }
+    ]
+    rebuilt = [{"role": "user", "content": _placeholder("Cron: digest")}]
+
+    first = _preserve_display_triggers(rebuilt, stored)
+    assert first[0]["trigger_origin"] == "runtime"
+
+    # Next turn: `first` is now the stored log, and history still yields a
+    # placeholder for that turn.
+    second = _preserve_display_triggers(
+        [{"role": "user", "content": _placeholder("Cron: digest")}], first
+    )
+
+    assert second[0]["role"] == "system_triggered"
+    assert second[0]["trigger_origin"] == "runtime"
+
+
+def test_repeated_saves_do_not_launder_a_legacy_row():
+    """The carried stamp must not become a way for an unstamped row to acquire
+    one over successive saves."""
+    legacy = [{"role": "system_triggered", "content": "Cron: digest"}]
+    rebuilt = [{"role": "user", "content": _placeholder("Cron: digest")}]
+
+    first = _preserve_display_triggers(rebuilt, legacy)
+    assert first[0]["role"] == "user"
+
+    second = _preserve_display_triggers(
+        [{"role": "user", "content": _placeholder("Cron: digest")}], first
+    )
+    assert second[0]["role"] == "user"

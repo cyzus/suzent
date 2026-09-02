@@ -2694,6 +2694,12 @@ def _preserve_display_triggers(rebuilt: list, existing: list | None) -> list:
         restored = dict(row)
         restored["role"] = "system_triggered"
         restored["content"] = label
+        # Carry the stamp onto the restored row. Without it the next save writes
+        # the row back unstamped, the save after that no longer recognizes the
+        # label, and the trigger degrades to a user message one turn later — a
+        # fix that works exactly once. The chain still roots in the authenticated
+        # stamp written when the turn ran; nothing new is being vouched for here.
+        restored["trigger_origin"] = "runtime"
         rebuilt[index] = restored
 
     return rebuilt
