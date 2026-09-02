@@ -741,9 +741,18 @@ def iter_reminder_fragments(text: str) -> list[list[str]]:
     """
     if not text:
         return []
-    bodies = _ANY_PUA_EXTRACT_RE.findall(text) + _ANY_XML_EXTRACT_RE.findall(text)
+    # Ordered by where each block occurs, not by which pattern found it.
+    # Concatenating the two result sets put every PUA block before every XML one,
+    # so a history spanning a format switch reported the older block as newest.
+    found = [
+        (match.start(), match.group(1))
+        for pattern in (_ANY_PUA_EXTRACT_RE, _ANY_XML_EXTRACT_RE)
+        for match in pattern.finditer(text)
+    ]
+    found.sort(key=lambda item: item[0])
+
     blocks = []
-    for body in bodies:
+    for _, body in found:
         body = _DISPLAY_TRIGGER_RE.sub("", body)
         blocks.append([f for f in body.split(FRAGMENT_SEPARATOR) if f.strip()])
     return blocks
@@ -873,8 +882,15 @@ async def build_combined_reminder(
         logger.debug(f"[system-reminder] chat={chat_id} — no content, skipping")
         return None
 
+    # The separator is in-band, so a fragment carrying it verbatim would split
+    # into two and let its own content pose as a separate provider's. Goal and
+    # task text is unrestricted, so collapse the blank lines that make it a
+    # boundary: the rule stays visible and no characters are lost.
     result = wrap_in_system_reminder(
-        "\n\n---\n\n".join(parts), display_trigger=display_trigger
+        FRAGMENT_SEPARATOR.join(
+            part.replace(FRAGMENT_SEPARATOR, "\n---\n") for part in parts
+        ),
+        display_trigger=display_trigger,
     )
     # Metadata only. The wrapped text carries RUNTIME_NONCE, and file logging
     # records DEBUG unconditionally — writing it to disk would hand the token to
