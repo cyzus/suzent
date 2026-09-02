@@ -718,6 +718,37 @@ def extract_system_reminder_content(text: str) -> str:
     return "\n\n".join(parts)
 
 
+# Fragments inside one reminder block, as build_combined_reminder joins them.
+FRAGMENT_SEPARATOR = "\n\n---\n\n"
+
+_ANY_XML_EXTRACT_RE = re.compile(
+    rf"<{REMINDER_TAG}(?: nonce=\"{_NONCE_PAT}\")?>(.*?)</{REMINDER_TAG}>",
+    re.DOTALL | re.IGNORECASE,
+)
+
+
+def iter_reminder_fragments(text: str) -> list[list[str]]:
+    """Provider fragments of each reminder block in *text*, block by block.
+
+    Callers that need to find their own fragment should use this rather than
+    scanning lines: the layout has more moving parts than it looks. A block may
+    be preceded by the user's message text in the same part, several blocks may
+    be concatenated from different turns, and a reminder-only turn prefixes a
+    display-trigger envelope inside the wrapper before the body. Re-deriving all
+    of that at each call site is how a fragment ends up unfindable.
+
+    Returns one list of fragments per block, in the order the blocks appear.
+    """
+    if not text:
+        return []
+    bodies = _ANY_PUA_EXTRACT_RE.findall(text) + _ANY_XML_EXTRACT_RE.findall(text)
+    blocks = []
+    for body in bodies:
+        body = _DISPLAY_TRIGGER_RE.sub("", body)
+        blocks.append([f for f in body.split(FRAGMENT_SEPARATOR) if f.strip()])
+    return blocks
+
+
 def extract_system_reminder_display_trigger(text: str) -> str:
     """Return user-visible trigger text explicitly marked inside reminders."""
     if not text:

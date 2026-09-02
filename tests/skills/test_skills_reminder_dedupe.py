@@ -278,10 +278,10 @@ async def test_pasted_marker_text_cannot_suppress_the_catalog() -> None:
     manager = _Manager([_skill("docx")])
     genuine = await _run(manager)
     assert genuine is not None
-    revision = latest_advertised_revision(genuine)
+    revision = latest_advertised_revision(_as_history(genuine))
     assert revision is not None
 
-    pasted = f"see [{CATALOG_MARKER_PREFIX}{revision}] in the logs"
+    pasted = _as_history(f"see [{CATALOG_MARKER_PREFIX}{revision}] in the logs")
 
     assert await _run(manager, history_text=pasted) is not None
 
@@ -392,3 +392,56 @@ def test_a_marker_without_the_header_above_it_is_ignored() -> None:
     history = _as_history(f"unrelated line\n[{CATALOG_MARKER_PREFIX}aaaaaaaaaaaa]")
 
     assert latest_advertised_revision(history) is None
+
+
+# --- the layout the parser has to survive -----------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_later_plan_only_turn_does_not_lose_the_catalog_marker() -> None:
+    """Reminder blocks from separate turns are concatenated with a newline. A
+    parser that kept only the last wrapper lost the catalog marker as soon as a
+    plan-only turn followed, and re-injected the catalog from then on."""
+    manager = _Manager([_skill("docx")])
+    catalog_turn = await _run(manager)
+    assert catalog_turn is not None
+
+    history = "\n".join(
+        [
+            _as_history(catalog_turn),
+            _as_history("[ACTIVE GOAL] ship it", user_text="next question"),
+        ]
+    )
+
+    assert await _run(manager, history_text=history) is None
+
+
+@pytest.mark.asyncio
+async def test_a_reminder_only_turn_recognises_its_own_catalog() -> None:
+    """Scheduled turns prefix a display-trigger envelope inside the wrapper, so
+    the catalog header is not the first line of the block."""
+    from suzent.core.system_reminder import wrap_in_system_reminder
+
+    manager = _Manager([_skill("docx")])
+    catalog_turn = await _run(manager)
+    assert catalog_turn is not None
+
+    history = wrap_in_system_reminder(
+        catalog_turn, display_trigger="Cron: nightly digest"
+    )
+
+    assert await _run(manager, history_text=history) is None
+
+
+def test_fragments_are_read_from_every_block_in_order() -> None:
+    from suzent.core.system_reminder import iter_reminder_fragments
+
+    history = "\n".join(
+        [
+            _as_history(_advertised("aaaaaaaaaaaa")),
+            _as_history(_advertised("bbbbbbbbbbbb")),
+        ]
+    )
+
+    assert len(iter_reminder_fragments(history)) == 2
+    assert latest_advertised_revision(history) == "bbbbbbbbbbbb"
