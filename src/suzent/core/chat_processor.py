@@ -868,19 +868,6 @@ class ChatProcessor:
             new_request = ModelRequest(parts=parts)
             message_history.append(new_request)
 
-            # A reminder-only turn (cron, heartbeat) has no user text, so its
-            # display row is produced by the background persist — which may never
-            # run. The fast agent-state snapshot can land first and the process
-            # exit before post-processing, leaving the trigger durable in history
-            # but unrecorded in the display log. After a restart the block is no
-            # longer authenticatable, so nothing can vouch for that turn and it
-            # stays a user message for good. Write the stamped row now, keyed to
-            # this part's timestamp so restoration can match the occurrence.
-            if display_trigger:
-                _prewrite_trigger_display_row(
-                    chat_id, display_trigger, _part_timestamp(parts[0])
-                )
-
             # Pre-save the user message to the DB display log for social chats so the
             # frontend can show it as soon as the stream starts, without waiting for the
             # background post-processing task that normally persists the full history.
@@ -2662,45 +2649,6 @@ def _trigger_placeholder_prefix() -> str:
     return f"{TRIGGER_MARK}[system trigger: "
 
 
-def _part_timestamp(part: Any) -> str | None:
-    """The part's own creation time, as the display rebuild renders it."""
-    stamp = getattr(part, "timestamp", None)
-    return stamp.isoformat() if stamp else None
-
-
-def _prewrite_trigger_display_row(
-    chat_id: str, display_trigger: str, timestamp: str | None
-) -> None:
-    """Record a trigger row immediately, so a crash cannot orphan the turn.
-
-    Mirrors the social pre-save above it, and matters for the same reason in
-    reverse: a cron turn's row cannot be reconstructed later, because the block
-    it derives from stops being authenticatable once the process restarts.
-    Best-effort — post-processing writes the same row, and this only has to win
-    the race against an early exit.
-    """
-    if not chat_id or not display_trigger:
-        return
-    try:
-        db = get_database()
-        chat = db.get_chat(chat_id)
-        if chat is None:
-            return
-        existing = list(chat.messages or [])
-        entry: dict = {
-            "role": "system_triggered",
-            "content": display_trigger,
-            "trigger_origin": "runtime",
-        }
-        if timestamp:
-            entry["timestamp"] = timestamp
-        if existing and existing[-1] == entry:
-            return
-        db.update_chat(chat_id, messages=existing + [entry])
-    except Exception:
-        pass  # Non-fatal; post-processing persists the same row.
-
-
 def _preserve_display_triggers(rebuilt: list, existing: list | None) -> list:
     """Restore ``system_triggered`` rows the rebuild can no longer reconstruct.
 
@@ -2730,6 +2678,16 @@ def _preserve_display_triggers(rebuilt: list, existing: list | None) -> list:
     A turn whose stored row was coalesced away keeps the plain text line. There
     is no evidence it was a trigger, and inventing some is how the previous four
     attempts at this went wrong.
+
+    Known limitation: the stamped row is written by the background persist, so a
+    process that takes its fast agent-state snapshot and then exits before that
+    persist leaves the trigger in history with no stored row, and the turn shows
+    as a user message from then on. Writing the row eagerly at turn start was
+    tried and withdrawn — it bypassed the deliberate ``skip_messages=is_heartbeat``
+    rule and leaked heartbeat prompts into the visible log on failure paths, and
+    an unrevisioned write there races the previous turn's finalizer. Closing this
+    properly means carrying the row inside the snapshot transaction, which is a
+    change to the persistence layer rather than to this function.
     """
     if not existing or not rebuilt:
         return rebuilt
