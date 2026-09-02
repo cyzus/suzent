@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v0.12.0] - 2026-09-02
 
 ### 🚀 Added
+- Dedupe the catalog by revision, not by rendered lines
 - Add thinking effort feature with UI slider and backend support
 - Make the live feed say what the child is actually doing
 - Redirect from wherever a sub-agent is shown
@@ -30,8 +31,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Keep draft writes off the token loop and out of the index
 
 ### 🐛 Fixed
+- Only trust catalog markers this process wrote
+- Order blocks by position and keep the separator out of band
+- Read reminder structure from the module that owns the format
+- Find the marker by fragment position, not by scanning history
+- Recognise the marker by position instead of altering catalog data
+- Stop catalog content from imitating the catalog marker
 - Sanitize trigger content before making it durable
+- Anchor revision matching on our own header; annotate the tests
 - Identify this run's draft by run id, not by role
+- Fingerprint the rendered lines and honour only the latest marker
 - Order the trigger before its answer and refresh derived state
 - Commit the trigger row inside the snapshot transaction
 - Write the trigger row before the run, not only after it
