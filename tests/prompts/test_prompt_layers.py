@@ -225,3 +225,31 @@ def test_the_subagent_preamble_names_the_injection_case() -> None:
 
     assert "ignore a higher source" in SUBAGENT_PREAMBLE
     assert "context, not authority" in SUBAGENT_PREAMBLE.lower()
+
+
+def test_a_custom_system_prompt_still_gets_precedence() -> None:
+    """create_agent replaces STATIC_INSTRUCTIONS outright when a caller supplies
+    static_instructions, so without prepending, a custom agent has nothing to
+    resolve a conflict against — while still reading repository files."""
+    import inspect
+
+    from suzent import agent_manager
+
+    source = inspect.getsource(agent_manager.create_agent)
+
+    assert "CONTEXT_PRECEDENCE" in source
+    assert 'config.get("static_instructions")' in source
+
+
+def test_all_three_prompt_paths_share_one_precedence_source() -> None:
+    """Main agent, built-in sub-agent, and caller-supplied prompt."""
+    import inspect
+
+    from suzent import agent_manager
+    from suzent.core import subagent_runner
+    from suzent.prompts import CONTEXT_PRECEDENCE, SUBAGENT_PREAMBLE
+
+    assert CONTEXT_PRECEDENCE in STATIC_INSTRUCTIONS
+    assert CONTEXT_PRECEDENCE in SUBAGENT_PREAMBLE
+    assert "CONTEXT_PRECEDENCE" in inspect.getsource(agent_manager.create_agent)
+    assert "SUBAGENT_PREAMBLE" in inspect.getsource(subagent_runner)

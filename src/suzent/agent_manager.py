@@ -25,6 +25,7 @@ from suzent.core.providers import get_enabled_models_from_db
 from suzent.config import CONFIG
 from suzent.logger import get_logger
 from suzent.prompts import (
+    CONTEXT_PRECEDENCE,
     STATIC_INSTRUCTIONS,
     register_dynamic_instructions,
 )
@@ -346,7 +347,16 @@ def create_agent(config: Dict[str, Any]) -> Agent[AgentDeps, str]:
     # --- Build instructions ---
     base_instructions = config.get("instructions", CONFIG.instructions)
     session_guidance_items = get_tool_session_guidance(sorted(enabled_tool_names))
-    static_instructions = config.get("static_instructions", STATIC_INSTRUCTIONS)
+    # A caller-supplied prompt replaces STATIC_INSTRUCTIONS outright, so the
+    # precedence rules have to be prepended or a custom agent has nothing to
+    # resolve a conflict against — and it still reads repository files and tool
+    # output, which is where the conflict comes from.
+    _custom_instructions = config.get("static_instructions")
+    static_instructions = (
+        CONTEXT_PRECEDENCE + "\n" + _custom_instructions
+        if _custom_instructions
+        else STATIC_INSTRUCTIONS
+    )
 
     # --- Create pydantic-ai Agent ---
     # Mid-run context compaction: the history processor runs before every model
