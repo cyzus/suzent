@@ -919,19 +919,21 @@ async def run_provider_blocking(fn: Callable[..., Any], *args: Any) -> Any:
 
     def _worker() -> None:
         try:
-            result = fn(*args)
+            setter, value = future.set_result, fn(*args)
         except BaseException as exc:  # noqa: BLE001 - relayed to the awaiter
-            try:
-                loop.call_soon_threadsafe(_deliver, future.set_exception, exc)
-            except RuntimeError:
-                pass  # loop already closed; nobody is waiting
-        else:
-            try:
-                loop.call_soon_threadsafe(_deliver, future.set_result, result)
-            except RuntimeError:
-                pass
+            setter, value = future.set_exception, exc
         finally:
+            # Before waking the awaiter, not after. Releasing afterwards let the
+            # caller resume while this thread still held the slot, so the pool
+            # read as short by one for however long the handoff took — briefly
+            # under-subscribed under load, and a genuine race in any check made
+            # the moment a provider returns.
             _provider_slots.release()
+
+        try:
+            loop.call_soon_threadsafe(_deliver, setter, value)
+        except RuntimeError:
+            pass  # loop already closed; nobody is waiting
 
     try:
         threading.Thread(target=_worker, name="reminder-provider", daemon=True).start()
@@ -1096,7 +1098,12 @@ async def build_combined_reminder(
         if isinstance(display_trigger, str)
         else list(display_trigger or [])
     )
-    _constituents = [c.strip() for c in _constituents if c and c.strip()]
+    _constituents = _dedupe_fragments(
+        [c.strip() for c in _constituents if c and c.strip()]
+    )
+    # Deduplicated like any other repeated content: the fragments already are,
+    # so leaving the trigger alone meant one repeated reminder went out in full
+    # twice and could clear the cap on its own through the oversized exemption.
     display_trigger = TRIGGER_SEPARATOR.join(_constituents) or None
 
     if _constituents:

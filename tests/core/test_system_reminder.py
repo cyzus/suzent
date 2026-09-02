@@ -2123,3 +2123,33 @@ def test_the_caller_hands_over_constituents_not_a_join() -> None:
 
     assert "TRIGGER_SEPARATOR.join" not in source
     assert '"\n\n---\n\n"' not in source
+
+
+@pytest.mark.asyncio
+async def test_a_repeated_trigger_constituent_is_sent_once(clean_hooks):
+    """Fragments are deduplicated, so leaving the trigger alone sent one
+    repeated reminder in full twice — and two 4,000-character copies clear the
+    cap on their own through the oversized-trigger exemption."""
+    from suzent.core import system_reminder as sr
+
+    reminder = "Cron: nightly digest"
+
+    result = await sr.build_combined_reminder(
+        "c", None, display_trigger=[reminder, reminder]
+    )
+
+    assert result is not None
+    assert result.count(reminder) == 1
+
+
+@pytest.mark.asyncio
+async def test_the_slot_is_free_the_moment_the_provider_returns():
+    """Released before the awaiter is woken, not after. The other order let the
+    caller resume while the worker still held the slot, so the pool read as
+    short by one for the length of the handoff."""
+    from suzent.core import system_reminder as sr
+
+    before = sr._provider_slots._value
+    for _ in range(20):
+        await sr.run_provider_blocking(lambda: "done")
+        assert sr._provider_slots._value == before, "slot still held on return"
