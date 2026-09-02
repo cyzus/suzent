@@ -159,6 +159,20 @@ def _display_file_metadata(files_list: list) -> list[dict]:
     return result
 
 
+def _sanitized_for_display_and_turn(message: str) -> str:
+    """Neutralize forged reminder delimiters before anything records the message.
+
+    The pre-written display row and the row the ACP turn later reconciles
+    against have to be the same string. Sanitizing only inside the turn left the
+    raw text in the pre-written row and appended a second, escaped copy beside
+    it. Doing it here means both see one value; the turn's own pass is then a
+    no-op, since escaping is idempotent.
+    """
+    from suzent.core.system_reminder import sanitize_untrusted_text
+
+    return sanitize_untrusted_text(message) if message else message
+
+
 def _prewrite_user_display_message(
     chat_id: str,
     message: str,
@@ -415,6 +429,7 @@ async def chat_send(request: Request) -> JSONResponse:
         return JSONResponse({"error": "Chat is already streaming"}, status_code=409)
 
     if not resume_approvals and not message.strip().startswith("/"):
+        message = _sanitized_for_display_and_turn(message)
         _prewrite_user_display_message(chat_id, message, files_list)
 
     stream_queue = register_background_stream(chat_id)
@@ -489,6 +504,7 @@ async def steer_chat_send(request: Request) -> JSONResponse:
     config_override = build_agent_config(config, require_social_tool=False)
     effective_runtime = _resolve_chat_runtime(chat_id, config)
     stop_stream(chat_id, reason="Steered by user")
+    message = _sanitized_for_display_and_turn(message)
     _prewrite_user_display_message(chat_id, message, [])
 
     stream_queue = register_background_stream(chat_id)

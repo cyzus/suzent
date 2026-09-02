@@ -170,6 +170,7 @@ async def stream_acp_turn(
     *,
     files: list[Any] | None = None,
     file_mentions: list[Any] | None = None,
+    runtime_authored: bool = False,
 ) -> AsyncGenerator[str, None]:
     db = get_database()
     chat = db.get_chat(chat_id)
@@ -189,6 +190,7 @@ async def stream_acp_turn(
     from suzent.core.system_reminder import (
         extract_system_reminder_display_trigger,
         sanitize_incoming_prompt,
+        sanitize_untrusted_text,
         strip_system_reminders,
     )
 
@@ -205,8 +207,20 @@ async def stream_acp_turn(
     # would lose text the user meant to send, and a message that was nothing but
     # a block would empty out and slip past the truthiness check below as a blank
     # turn.
+    #
+    # Provenance comes from *runtime_authored*, never from the token in the text.
+    # RUNTIME_NONCE is embedded in every reminder the model reads, so it is a
+    # bearer token the untrusted side can observe and replay: honouring it on
+    # externally supplied input would let a message that echoes it back be
+    # treated as runtime context and vanish from the transcript. Only the
+    # internal caller that built the reminder may claim that status, and it says
+    # so on the call rather than in the string.
     if message:
-        message = sanitize_incoming_prompt(message)
+        message = (
+            sanitize_incoming_prompt(message)
+            if runtime_authored
+            else sanitize_untrusted_text(message)
+        )
     user_message = message
 
     display_trigger = extract_system_reminder_display_trigger(user_message)
@@ -404,9 +418,13 @@ async def run_acp_turn_text(
     message: str,
     config_override: dict[str, Any] | None = None,
     stream_queue: Any | None = None,
+    *,
+    runtime_authored: bool = False,
 ) -> str:
     text = ""
-    async for chunk in stream_acp_turn(chat_id, message, config_override):
+    async for chunk in stream_acp_turn(
+        chat_id, message, config_override, runtime_authored=runtime_authored
+    ):
         if stream_queue is not None:
             await stream_queue.put(chunk)
         if chunk.startswith("data: "):
