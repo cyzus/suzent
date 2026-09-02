@@ -440,6 +440,7 @@ class ChatOperationsMixin:
                 _postprocess_metrics.snapshot_failed += 1
                 return None
 
+            appended_messages: Optional[List[Dict[str, Any]]] = None
             if append_display_messages:
                 existing = list(chat.messages or [])
                 added = [
@@ -448,8 +449,28 @@ class ChatOperationsMixin:
                     if row and row not in existing
                 ]
                 if added:
-                    chat.messages = existing + added
+                    # Before any trailing assistant rows, not at the end. By the
+                    # time this runs, streaming has already flushed the turn's
+                    # draft as the last stored message, so appending would order
+                    # the trigger after the answer it prompted — and in the exact
+                    # recovery case this exists for, that ordering is what the
+                    # reloaded transcript keeps.
+                    # Only the final row, never a run of them: skipping every
+                    # trailing assistant message would hoist the trigger above
+                    # answers belonging to earlier turns, which is a worse bug
+                    # than the ordering being fixed.
+                    cut = len(existing)
+                    if cut and (existing[cut - 1] or {}).get("role") == "assistant":
+                        cut -= 1
+                    appended_messages = existing[:cut] + added + existing[cut:]
+                    chat.messages = appended_messages
                     flag_modified(chat, "messages")
+                    # This is now a durable content write, so it owes the same
+                    # derived state as update_chat: without these, a search for
+                    # the trigger misses the chat and the sidebar preview stays
+                    # on the previous message whenever post-processing never runs.
+                    chat.config = _with_message_summary(chat.config, appended_messages)
+                    flag_modified(chat, "config")
 
             next_revision = (chat.state_revision or 0) + 1
             chat.agent_state = agent_state
@@ -459,6 +480,8 @@ class ChatOperationsMixin:
             chat.updated_at = now
 
             session.add(chat)
+            if appended_messages is not None:
+                self._reindex_in_session(session, chat_id, appended_messages)
             session.commit()
 
         _postprocess_metrics.snapshot_committed += 1
