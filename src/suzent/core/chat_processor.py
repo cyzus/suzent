@@ -444,6 +444,7 @@ class ChatProcessor:
         _message_history_override: list = None,
         system_reminders: list[str] = None,
         incoming_citation_sources: list[dict] = None,
+        counts_toward_goal: Optional[bool] = None,
     ) -> AsyncGenerator[str, None]:
         """
         Process a user message turn:
@@ -822,6 +823,31 @@ class ChatProcessor:
             )
             else None
         )
+        # Chargeable-turn test, kept separate from _turn_message. That value
+        # answers "should per-turn retrieval hooks run", which needs query text;
+        # this answers "did the user ask for work", which a file alone does. An
+        # attachment-only prompt runs the agent and can trigger continuation, so
+        # it has to spend a slot.
+        _is_user_turn = bool(
+            ((message_content and message_content.strip()) or files)
+            and not is_heartbeat
+            and not resume_approvals
+        )
+        _counts_toward_goal = (
+            _is_user_turn if counts_toward_goal is None else counts_toward_goal
+        )
+
+        from suzent.tools.plan_hooks import active_goal_identity, advance_goal_turn
+
+        # Pinned at turn start: a goal the agent creates mid-turn did not cost
+        # this turn anything, and charging it can pause a max_turns=1 goal
+        # before it runs a single step.
+        _goal_at_start = (
+            active_goal_identity(chat_id)
+            if _counts_toward_goal and not is_heartbeat
+            else None
+        )
+
         pending_trigger_rows: list[dict] = []
         # Shared with the streaming layer so the draft row this run writes can
         # be told apart from a previous turn's answer when placing the trigger.
@@ -1234,6 +1260,13 @@ class ChatProcessor:
                     # registration bypasses max_concurrent but still respects shutdown.
                     asyncio.create_task(_make_post_process_coro())
 
+            # Charge the goal before continuation is allowed to look at the
+            # budget. Doing it inside the background post-process raced this
+            # block: the judge could read the previous count, start one more
+            # autonomous run, and take the goal past max_turns.
+            if _counts_toward_goal and not stream_failed and _goal_at_start:
+                advance_goal_turn(chat_id, only_goal=_goal_at_start)
+
             # 10. Goal-mode continuation. After a normal turn, let the judge decide
             # whether to auto-continue toward a standing goal. Cheap no-op (one
             # indexed DB read) when no goal is active; never fires for heartbeats.
@@ -1428,6 +1461,7 @@ class ChatProcessor:
                 db.update_job_step_status(
                     job_id, PostProcessStep.DISPLAY, StepStatus.SUCCESS
                 )
+
             except Exception as e:
                 logger.error(f"State persistence failed: {e}")
                 db.update_job_step_status(
@@ -1517,6 +1551,14 @@ class ChatProcessor:
             chat_id=chat_id,
             user_id=user_id,
             message_content=replay_message,
+            # Charged like any other turn. A retry is a second attempt that
+            # does real work, and the checkpoint is written at turn start —
+            # before the outcome is known — so there is no record of whether
+            # the first attempt was charged. Forcing False meant a retry of a
+            # *failed* turn went entirely uncounted, and a goal could then run
+            # past max_turns. For a budget whose job is to stop runaway work,
+            # over-charging pauses early and is recoverable with /goal resume;
+            # under-charging removes the stop condition and is not.
             files=replay_files if replay_files else None,
             config_override=merged_config,
             is_social=is_social,
@@ -1593,6 +1635,10 @@ class ChatProcessor:
             message_content="",
             config_override=config_override,
             _message_history_override=message_history,
+            # The steering text goes straight into history, so message_content is
+            # empty — but this is user-initiated work that can trigger another
+            # continuation, so it spends a slot like any other turn.
+            counts_toward_goal=True,
         ):
             yield chunk
 
@@ -1654,6 +1700,7 @@ class ChatProcessor:
         system_reminders: list[str] = None,
         incoming_citation_sources: list[dict] = None,
         citation_sources_out: list[dict] = None,
+        counts_toward_goal: Optional[bool] = None,
     ) -> str:
         """Run a conversation turn and return only the final response text.
 
@@ -1679,6 +1726,7 @@ class ChatProcessor:
                 is_heartbeat=is_heartbeat,
                 system_reminders=system_reminders,
                 incoming_citation_sources=incoming_citation_sources,
+                counts_toward_goal=counts_toward_goal,
             ):
                 if _stream_queue is not None:
                     await _stream_queue.put(chunk)
@@ -1710,6 +1758,7 @@ class ChatProcessor:
         is_heartbeat: bool = False,
         system_reminders: list[str] = None,
         incoming_citation_sources: list[dict] = None,
+        counts_toward_goal: Optional[bool] = None,
     ) -> str:
         """Run a chat turn with an SSE background stream so the frontend can watch it.
 
@@ -1732,6 +1781,7 @@ class ChatProcessor:
             _stream_queue=stream_queue,
             system_reminders=system_reminders,
             incoming_citation_sources=incoming_citation_sources,
+            counts_toward_goal=counts_toward_goal,
         )
 
     async def _process_upload_file(

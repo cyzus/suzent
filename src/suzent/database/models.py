@@ -175,6 +175,10 @@ class GoalModel(SQLModel, table=True):
     subgoals: list = Field(default_factory=list, sa_column=Column(JSON))
     max_turns: Optional[int] = None
     turns_elapsed: int = Field(default=0)
+    # Bumped whenever `set` replaces this goal in place. The row id survives a
+    # replacement and the objective may be re-set unchanged, so neither
+    # identifies *which* goal a turn was working on; this does.
+    generation: int = Field(default=0)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     completed_at: Optional[datetime] = None
