@@ -378,6 +378,41 @@ _ANY_XML_TOKENED_BLOCK_RE = re.compile(
 )
 
 
+def _split_preserving_own_blocks(text: str, handle_span) -> str:
+    """Apply *handle_span* to everything except blocks bearing our own token.
+
+    Both callers need the same split — keep what this process authenticated,
+    treat the rest as untrusted — and differ only in what "treat" means.
+    """
+    if not text:
+        return text
+    out = []
+    last = 0
+    for match in _OWN_BLOCK_RE.finditer(text):
+        out.append(handle_span(text[last : match.start()]))
+        out.append(match.group(0))
+        last = match.end()
+    out.append(handle_span(text[last:]))
+    return "".join(out)
+
+
+def sanitize_incoming_prompt(text: str) -> str:
+    """Neutralize forged delimiters in a message arriving now, losing nothing.
+
+    The ingress counterpart to ``sanitize_stored_user_prompt``. The difference is
+    deliberate: stored history may contain machine-authored blocks from earlier
+    processes that are stale and safe to drop, but a message being sent right now
+    is the user's, and deleting part of it loses words they meant to send. Paste
+    a raw reminder block in to ask about it and you should see it echoed back
+    escaped, not silently swallowed — and if it was the whole message, not turned
+    into an empty turn.
+
+    Blocks carrying our token are preserved, so a runtime-authored cron or
+    heartbeat prompt still arrives intact.
+    """
+    return _split_preserving_own_blocks(text, sanitize_untrusted_text)
+
+
 def sanitize_stored_user_prompt(text: str) -> str:
     """Make a user prompt restored from history safe to send again.
 
@@ -385,38 +420,13 @@ def sanitize_stored_user_prompt(text: str) -> str:
     block saved back then is still trusted by the model on every request and
     still hidden from the transcript. Ingress only protects new messages.
 
-    Blocks bearing *this process's* token are kept — that is the reminder the
-    chat processor appended this turn. Everything else is handled by delimiter
-    kind, because the two carry very different odds of being human-authored:
-
-    * PUA blocks are dropped outright. The delimiters are invisible control
-      characters nobody types by hand, so an unauthenticated one is either a
-      forgery or a reminder from an earlier process. Both should go: the forgery
-      is hostile, and the old reminder is stale context whose goal counts and
-      task lists now contradict the current turn. Dropping rather than defusing
-      also means the transcript does not change — those blocks were already
-      hidden, and now they are simply gone.
-
-    * XML blocks carrying a nonce attribute are dropped too. Under
-      ``SUZENT_XML_SYSTEM_REMINDER`` a restart leaves every stored reminder
-      tagged with the previous process's token; escaping those would leave the
-      body behind as text the display path can no longer strip, turning internal
-      reminder content into a visible user message.
-
-    * Bare XML tags are escaped rather than dropped. Someone can plausibly type
-      ``<system-reminder>`` in a message — discussing this very feature, say —
-      and deleting their words would be worse than showing them.
+    Blocks bearing this process's token are kept. Everything else is handled by
+    delimiter kind — see ``_scrub_untrusted_span``. Unlike
+    ``sanitize_incoming_prompt`` this may delete content, which is appropriate
+    for history (a stale machine-authored block helps nobody) and wrong for a
+    message someone is sending now.
     """
-    if not text:
-        return text
-    out = []
-    last = 0
-    for match in _OWN_BLOCK_RE.finditer(text):
-        out.append(_scrub_untrusted_span(text[last : match.start()]))
-        out.append(match.group(0))
-        last = match.end()
-    out.append(_scrub_untrusted_span(text[last:]))
-    return "".join(out)
+    return _split_preserving_own_blocks(text, _scrub_untrusted_span)
 
 
 _DROPPABLE_BLOCK_RE = re.compile(

@@ -188,7 +188,7 @@ async def stream_acp_turn(
     # duplicate check below and persisted the message twice.
     from suzent.core.system_reminder import (
         extract_system_reminder_display_trigger,
-        sanitize_stored_user_prompt,
+        sanitize_incoming_prompt,
         strip_system_reminders,
     )
 
@@ -199,8 +199,14 @@ async def stream_acp_turn(
     # _stream_prompt() below — a prompt that executes but is misrepresented in
     # the audit transcript. Runtime-authored blocks carry our token and survive,
     # so genuine cron and heartbeat triggers still render as trigger rows.
+    #
+    # The ingress variant, not the history one: this message is being sent now,
+    # so forged delimiters are escaped in place rather than deleted. Dropping
+    # would lose text the user meant to send, and a message that was nothing but
+    # a block would empty out and slip past the truthiness check below as a blank
+    # turn.
     if message:
-        message = sanitize_stored_user_prompt(message)
+        message = sanitize_incoming_prompt(message)
     user_message = message
 
     display_trigger = extract_system_reminder_display_trigger(user_message)
