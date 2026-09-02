@@ -367,6 +367,7 @@ class MemoryManager:
         user_id: Optional[str] = None,
         sandbox_enabled: bool = True,
         path_resolver=None,
+        notebook_skill_available: bool = False,
     ) -> str:
         """Format core memory as text for prompt injection."""
         try:
@@ -386,6 +387,7 @@ class MemoryManager:
             shared_path=shared_path,
             mount_notebook=mount_notebook,
             project_context_path=project_context_path,
+            notebook_skill_available=notebook_skill_available,
         )
 
     async def get_core_memory_context(
@@ -394,6 +396,7 @@ class MemoryManager:
         user_id: Optional[str] = None,
         sandbox_enabled: bool = True,
         path_resolver=None,
+        notebook_skill_available: bool = False,
     ) -> str:
         """Core-memory prompt section for a chat, rebuilt when its files change.
 
@@ -413,14 +416,21 @@ class MemoryManager:
                 user_id=user_id,
                 sandbox_enabled=sandbox_enabled,
                 path_resolver=path_resolver,
+                notebook_skill_available=notebook_skill_available,
             )
 
         # Host mode renders the working directory and notebook mount into the
         # section, so a chat that changes its authorized cwd must not be served
         # the previous paths just because the memory files are untouched.
-        key = (chat_id, user_id, sandbox_enabled) + self._resolver_paths(
-            sandbox_enabled, path_resolver
-        )
+        # notebook_skill_available changes the rendered text, so it is part of
+        # the identity. Keying only on memory-file revisions meant toggling the
+        # skill left every existing chat on the previous wording indefinitely.
+        key = (
+            chat_id,
+            user_id,
+            sandbox_enabled,
+            notebook_skill_available,
+        ) + self._resolver_paths(sandbox_enabled, path_resolver)
         try:
             revision = store.core_memory_revision(chat_id)
         except Exception as e:
@@ -438,6 +448,7 @@ class MemoryManager:
             user_id=user_id,
             sandbox_enabled=sandbox_enabled,
             path_resolver=path_resolver,
+            notebook_skill_available=notebook_skill_available,
         )
         # format_core_memory_for_context() swallows read errors and returns "".
         # Caching that under an unchanged revision would turn one bad request into
