@@ -162,7 +162,7 @@ def test_the_budget_is_charged_before_continuation_is_scheduled() -> None:
     from suzent.core import chat_processor
 
     source = inspect.getsource(chat_processor.ChatProcessor.process_turn)
-    charge = source.index("advance_goal_turn(chat_id)")
+    charge = source.index("advance_goal_turn(chat_id, only_goal_id=")
     schedule = source.index("maybe_continue_goal")
 
     assert charge < schedule, "the increment must land before the judge looks"
@@ -228,3 +228,42 @@ def test_an_explicit_answer_overrides_the_inference() -> None:
     signature = inspect.signature(chat_processor.ChatProcessor.process_turn)
 
     assert signature.parameters["counts_toward_goal"].default is None
+
+
+def test_a_goal_created_during_the_turn_is_not_charged(db):
+    """The turn that sets a goal did not cost that goal anything. Charging it
+    pauses a max_turns=1 goal before it runs a single autonomous step."""
+    created_mid_turn = _Goal()
+    created_mid_turn.id = "goal-new"
+    db.goal = created_mid_turn
+
+    advance_goal_turn("chat-1", only_goal_id="goal-that-was-running")
+
+    assert db.updates == []
+
+
+def test_the_goal_running_at_turn_start_is_charged(db):
+    advance_goal_turn("chat-1", only_goal_id="goal-1")
+
+    assert db.updates == [("goal-1", 1)]
+
+
+def test_active_goal_id_reads_the_current_goal(db):
+    from suzent.tools.plan_hooks import active_goal_id
+
+    assert active_goal_id("chat-1") == "goal-1"
+
+    db.goal.status = "paused"
+    assert active_goal_id("chat-1") is None
+
+
+def test_steering_is_charged() -> None:
+    """process_steer puts its text straight into history, so message_content is
+    empty — but it is user-initiated work that can trigger continuation."""
+    import inspect
+
+    from suzent.core import chat_processor
+
+    source = inspect.getsource(chat_processor.ChatProcessor.process_steer)
+
+    assert "counts_toward_goal=True" in source

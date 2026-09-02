@@ -837,6 +837,17 @@ class ChatProcessor:
             _is_user_turn if counts_toward_goal is None else counts_toward_goal
         )
 
+        from suzent.tools.plan_hooks import active_goal_id, advance_goal_turn
+
+        # Pinned at turn start: a goal the agent creates mid-turn did not cost
+        # this turn anything, and charging it can pause a max_turns=1 goal
+        # before it runs a single step.
+        _goal_at_start = (
+            active_goal_id(chat_id)
+            if _counts_toward_goal and not is_heartbeat
+            else None
+        )
+
         pending_trigger_rows: list[dict] = []
         # Shared with the streaming layer so the draft row this run writes can
         # be told apart from a previous turn's answer when placing the trigger.
@@ -1253,10 +1264,8 @@ class ChatProcessor:
             # budget. Doing it inside the background post-process raced this
             # block: the judge could read the previous count, start one more
             # autonomous run, and take the goal past max_turns.
-            if _counts_toward_goal and not stream_failed:
-                from suzent.tools.plan_hooks import advance_goal_turn
-
-                advance_goal_turn(chat_id)
+            if _counts_toward_goal and not stream_failed and _goal_at_start:
+                advance_goal_turn(chat_id, only_goal_id=_goal_at_start)
 
             # 10. Goal-mode continuation. After a normal turn, let the judge decide
             # whether to auto-continue toward a standing goal. Cheap no-op (one
@@ -1626,6 +1635,10 @@ class ChatProcessor:
             message_content="",
             config_override=config_override,
             _message_history_override=message_history,
+            # The steering text goes straight into history, so message_content is
+            # empty — but this is user-initiated work that can trigger another
+            # continuation, so it spends a slot like any other turn.
+            counts_toward_goal=True,
         ):
             yield chunk
 

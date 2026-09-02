@@ -6,7 +6,27 @@ from suzent.logger import get_logger
 logger = get_logger(__name__)
 
 
-def advance_goal_turn(chat_id: str) -> None:
+def active_goal_id(chat_id: str) -> Optional[str]:
+    """Id of the goal active for *chat_id* right now, if any.
+
+    Read at turn start so the charge can be pinned to it. Without that, a goal
+    the agent creates during the turn is billed for its own setup — and with
+    max_turns=1 it pauses before running a single autonomous step.
+    """
+    try:
+        db = get_database()
+        project_id = db.get_chat_project_id(chat_id)
+        if not project_id:
+            return None
+        goal = db.get_goal(project_id, chat_id=chat_id)
+        if goal and goal.status == "active":
+            return goal.id
+    except Exception as e:
+        logger.debug(f"Could not read active goal for chat {chat_id}: {e}")
+    return None
+
+
+def advance_goal_turn(chat_id: str, only_goal_id: Optional[str] = None) -> None:
     """Charge one turn against the active goal's budget.
 
     Called once per completed user turn from the chat lifecycle, not from the
@@ -24,8 +44,17 @@ def advance_goal_turn(chat_id: str) -> None:
         if not project_id:
             return
         goal = db.get_goal(project_id, chat_id=chat_id)
-        if goal and goal.status == "active":
-            db.update_goal(goal.id, turns_elapsed=goal.turns_elapsed + 1)
+        if not goal or goal.status != "active":
+            return
+        # Only the goal that was already running when the turn began. A goal
+        # created during the turn did not cost it anything.
+        if only_goal_id is not None and goal.id != only_goal_id:
+            logger.debug(
+                f"Not charging chat {chat_id}: goal {goal.id} was not active at "
+                "turn start"
+            )
+            return
+        db.update_goal(goal.id, turns_elapsed=goal.turns_elapsed + 1)
     except Exception as e:
         logger.warning(f"Could not advance goal turn count for chat {chat_id}: {e}")
 
