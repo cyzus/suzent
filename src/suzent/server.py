@@ -616,9 +616,12 @@ async def startup():
     except Exception as e:
         logger.warning(f"Failed to start genai-prices updater: {e}")
 
+    # Registration order is priority order under the reminder budget, so the
+    # goal objective goes first: a large skill catalog crowding it out leaves
+    # the agent working on a goal it can no longer see.
+    register_global_hook(plan_reminder_hook)
     register_global_hook(skills_reminder_hook)
     register_global_hook(repository_agents_reminder_hook)
-    register_global_hook(plan_reminder_hook)
     register_per_turn_hook(_memory_rag_hook)
 
     from suzent.tools.browsing_tool import BrowserSessionManager
