@@ -10,9 +10,12 @@ class SkillTool(Tool):
     name = "SkillTool"
     tool_name = "skill_execute"
     deferrable = False
+    # Sole owner of *when* to reach for a skill. The catalog reminder only
+    # announces what is available, and only when that set changes, so a standing
+    # instruction cannot live there.
     session_guidance = (
-        "When the task matches a known skill, use SkillTool early instead of "
-        "reconstructing the workflow from scratch."
+        "When the task matches an available skill, load it with SkillTool before "
+        "starting, rather than reconstructing the workflow from scratch."
     )
     guidance_priority = 30
 

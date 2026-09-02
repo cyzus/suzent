@@ -12,10 +12,11 @@ CATALOG_MARKER_PREFIX = "skills-catalog rev="
 
 # Single-sourced so the emitted text and the pattern that recognises it cannot
 # drift apart.
-CATALOG_HEADER = (
-    "You have a SkillTool that loads specialized knowledge. "
-    "Use it IMMEDIATELY when the user's task matches a skill."
-)
+# Announces the catalog; it does not repeat when to use a skill. That policy is
+# standing advice and belongs in SkillTool.session_guidance, which is present on
+# every turn — this reminder appears only when the catalog changes, so an
+# instruction placed here would vanish after the first advertisement.
+CATALOG_HEADER = "Skills available to load with SkillTool:"
 
 # Recognised by position, not by pattern-matching loose text: the marker is a
 # line of its own immediately after a line that is exactly the header. A bare
