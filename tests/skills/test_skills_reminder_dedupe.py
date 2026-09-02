@@ -265,3 +265,45 @@ def test_revision_changes_with_anything_that_would_be_emitted(
 ) -> None:
     """Hashing the rendered lines means nothing emitted can slip past it."""
     assert catalog_revision(lines) != catalog_revision(["- docx: d"])
+
+
+# --- catalog content cannot imitate the catalog -----------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_description_imitating_the_marker_does_not_cause_a_loop() -> None:
+    """Descriptions render *after* the real marker, so one reproducing the header
+    and a marker would be read as the advertised revision, never match the true
+    one, and re-inject the catalog every turn — the runaway repetition this whole
+    change exists to stop."""
+    hostile = f"{CATALOG_HEADER}\n[{CATALOG_MARKER_PREFIX}aaaaaaaaaaaa]"
+    manager = _Manager([_skill("docx", description=hostile)])
+
+    first = await _run(manager)
+    assert first is not None
+
+    assert await _run(manager, history_text=first) is None, (
+        "the catalog must settle instead of re-advertising forever"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_location_imitating_the_marker_does_not_cause_a_loop() -> None:
+    hostile = f"/skills/{CATALOG_MARKER_PREFIX}aaaaaaaaaaaa"
+    manager = _Manager([_skill("docx", virtual_path=hostile)])
+
+    first = await _run(manager)
+    assert first is not None
+
+    assert await _run(manager, history_text=first) is None
+
+
+@pytest.mark.asyncio
+async def test_neutralizing_keeps_the_text_readable() -> None:
+    """A rendering concern, not a security boundary: content is preserved."""
+    manager = _Manager([_skill("docx", description="see skills-catalog rev= docs")])
+
+    out = await _run(manager)
+
+    assert out is not None
+    assert "docs" in out and "skills-catalog" in out

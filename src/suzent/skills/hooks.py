@@ -43,6 +43,26 @@ def _get_history_text(deps: Any) -> str:
     return "\n".join(parts)
 
 
+def _neutralize_marker_shapes(text: str) -> str:
+    """Stop catalog content from imitating the catalog's own header or marker.
+
+    Descriptions, names and locations come from skill metadata, and they are
+    rendered *after* the real marker. Text there that reproduced the header
+    followed by a marker would be picked up as the advertised revision, never
+    match the true one, and re-inject the catalog on every single turn — the
+    runaway repetition this whole change exists to stop.
+
+    A zero-width word joiner is enough: the rendered text reads identically and
+    no longer matches the pattern. Content is preserved rather than dropped,
+    since this is a rendering concern and not a security boundary.
+    """
+    if not text:
+        return text
+    return text.replace(CATALOG_MARKER_PREFIX, "skills-catalog\u2060 rev=").replace(
+        CATALOG_HEADER, CATALOG_HEADER.replace(" ", "\u2060 ", 1)
+    )
+
+
 def catalog_revision(lines: Iterable[str]) -> str:
     """Fingerprint the catalog exactly as it would be emitted.
 
@@ -65,6 +85,13 @@ def latest_advertised_revision(history_text: str) -> Optional[str]:
     changed and then changed back stayed silent: history still held the old
     marker, while what the model had most recently been told was the
     intervening catalog.
+
+    Catalog content cannot imitate the marker — see
+    ``_neutralize_marker_shapes`` — so the reachable case is closed. A foreign
+    reminder fragment reproducing this exact header verbatim would still be read
+    as the latest advertisement; that direction fails toward re-advertising
+    rather than toward silence, so the model's catalog stays correct and the
+    cost is a repeated reminder.
     """
     found = _MARKER_RE.findall(history_text or "")
     return found[-1] if found else None
@@ -103,8 +130,10 @@ async def skills_reminder_hook(chat_id: str, deps: Any) -> Optional[str]:
         else:
             location = str(skill.path.resolve())
         lines.append(
-            f"- {skill.id}: {skill.metadata.description} "
-            f"(Name: {name}; Location: {location})"
+            _neutralize_marker_shapes(
+                f"- {skill.id}: {skill.metadata.description} "
+                f"(Name: {name}; Location: {location})"
+            )
         )
 
     if not lines:
