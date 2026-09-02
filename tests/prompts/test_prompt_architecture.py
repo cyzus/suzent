@@ -33,7 +33,6 @@ def test_register_dynamic_instructions_registers_all_sections():
     register_dynamic_instructions(
         agent,
         base_instructions="",
-        memory_context="",
     )
 
     assert len(agent.functions) == 11
@@ -41,7 +40,7 @@ def test_register_dynamic_instructions_registers_all_sections():
 
 def test_citation_rules_available_before_sources_exist():
     agent = _FakeAgent()
-    register_dynamic_instructions(agent, base_instructions="", memory_context="")
+    register_dynamic_instructions(agent, base_instructions="")
     funcs = {fn.__name__: fn for fn in agent.functions}
 
     # The model needs the marker rules before it calls tools; labelled tool
@@ -56,7 +55,7 @@ def test_citation_rules_appear_once_sources_exist():
     from suzent.core.citation_manager import CitationManager, CitationSourceType
 
     agent = _FakeAgent()
-    register_dynamic_instructions(agent, base_instructions="", memory_context="")
+    register_dynamic_instructions(agent, base_instructions="")
     funcs = {fn.__name__: fn for fn in agent.functions}
 
     mgr = CitationManager()
@@ -77,7 +76,7 @@ def test_citation_rules_are_static_and_cacheable():
     from suzent.core.citation_manager import CitationManager, CitationSourceType
 
     agent = _FakeAgent()
-    register_dynamic_instructions(agent, base_instructions="", memory_context="")
+    register_dynamic_instructions(agent, base_instructions="")
     inject = {fn.__name__: fn for fn in agent.functions}["inject_citation_rules"]
 
     mgr_a = CitationManager()
@@ -95,7 +94,6 @@ def test_permission_feedback_instruction_includes_user_guidance():
     register_dynamic_instructions(
         agent,
         base_instructions="",
-        memory_context="",
     )
     funcs = {fn.__name__: fn for fn in agent.functions}
     ctx = SimpleNamespace(
@@ -115,7 +113,6 @@ def test_register_dynamic_instructions_environment_uses_host_paths():
     register_dynamic_instructions(
         agent,
         base_instructions="",
-        memory_context="",
     )
 
     funcs = {fn.__name__: fn for fn in agent.functions}
@@ -140,7 +137,6 @@ def test_register_dynamic_instructions_stateless_keeps_environment_context():
     register_dynamic_instructions(
         agent,
         base_instructions="",
-        memory_context="",
     )
 
     funcs = {fn.__name__: fn for fn in agent.functions}
@@ -167,7 +163,6 @@ def test_register_dynamic_instructions_can_suppress_environment_context():
     register_dynamic_instructions(
         agent,
         base_instructions="",
-        memory_context="",
     )
 
     funcs = {fn.__name__: fn for fn in agent.functions}
@@ -191,7 +186,6 @@ def test_register_dynamic_instructions_empty_social_returns_empty_string():
     register_dynamic_instructions(
         agent,
         base_instructions="",
-        memory_context="",
     )
 
     funcs = {fn.__name__: fn for fn in agent.functions}
