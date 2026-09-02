@@ -1856,6 +1856,7 @@ class ChatProcessor:
                 # 100% Backend Authored: rebuild the complete display log from the full agent history
                 # so chat.messages is always a faithful log of all exchanges, including tools and reasoning.
                 rebuilt = _rebuild_display_messages(messages, model_id=model_id)
+                rebuilt = _preserve_display_triggers(rebuilt, chat_messages)
                 rebuilt = _preserve_permission_metadata(rebuilt, chat_messages)
                 rebuilt = _preserve_citation_sources(rebuilt, chat_messages)
                 rebuilt = _preserve_trailing_notices(rebuilt, chat_messages)
@@ -2612,6 +2613,52 @@ def _preserve_trailing_notices(rebuilt: list, existing: list | None) -> list:
     if not trailing:
         return rebuilt
     return [*rebuilt, *reversed(trailing)]
+
+
+def _preserve_display_triggers(rebuilt: list, existing: list | None) -> list:
+    """Restore ``system_triggered`` rows the rebuild can no longer reconstruct.
+
+    A cron or heartbeat turn carries no user text: its whole visible record is
+    the ``display_trigger`` nested inside the reminder block. The rebuild
+    recovers that by parsing it back out of model-visible history, which only
+    works while the block is still there — and unauthenticated blocks are
+    dropped on restart, precisely because text we cannot authenticate must not
+    be trusted. So after a restart those turns rebuild as an ordinary user row
+    showing a plain ``[system trigger: ...]`` line.
+
+    The row was correct when it was first written, and it is already stored.
+    Rather than re-deriving trust for the text, take the answer from the log:
+    where the stored row at this position was ``system_triggered``, keep it.
+    This is the same reconciliation the citation and permission helpers do, and
+    it is why the trigger does not need to be authenticatable in history at all.
+
+    Positional matching is safe here because the rebuild emits exactly one row
+    per stored user turn; a mismatch in length means the histories have diverged
+    for some other reason, and the rebuilt row is left alone.
+    """
+    if not existing or not rebuilt:
+        return rebuilt
+
+    for index, stored in enumerate(existing):
+        if index >= len(rebuilt):
+            break
+        if not isinstance(stored, dict) or not isinstance(rebuilt[index], dict):
+            continue
+        if stored.get("role") != "system_triggered":
+            continue
+        if rebuilt[index].get("role") == "system_triggered":
+            continue
+        # Only reinstate over the placeholder the drop leaves behind, never over
+        # a genuine user message that happens to sit at this index.
+        content = str(rebuilt[index].get("content") or "")
+        if content and not content.lstrip().startswith("[system trigger:"):
+            continue
+        restored = dict(rebuilt[index])
+        restored["role"] = "system_triggered"
+        restored["content"] = stored.get("content") or content
+        rebuilt[index] = restored
+
+    return rebuilt
 
 
 def _preserve_citation_sources(rebuilt: list, existing: list | None) -> list:
