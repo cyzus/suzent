@@ -296,6 +296,9 @@ class AgentInboxDispatcher:
                     else delivered_content,
                     config_override,
                     None,
+                    # This text was wrapped by us a line ago; the flag is the
+                    # provenance, since the token inside it proves nothing.
+                    runtime_authored=is_subagent_result,
                 )
             else:
                 await ChatProcessor().process_background_turn(

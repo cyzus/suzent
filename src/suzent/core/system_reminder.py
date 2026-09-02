@@ -16,8 +16,10 @@ Two hook types:
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import os
 import re
+import secrets
 from typing import Any, Callable, Awaitable, Optional, List
 
 from suzent.logger import get_logger
@@ -34,16 +36,51 @@ DISPLAY_TRIGGER_TAG = "system-reminder-display-trigger"
 PUA_START = ""  # hidden-content start
 PUA_END = ""  # hidden-content end
 
+# Per-process runtime token embedded in every reminder we author.
+#
+# The delimiters above are public constants, so any text that reaches the model
+# — a user message, a fetched web page, a tool result — could otherwise carry a
+# byte-identical block and be read as trusted out-of-band context. The token
+# makes a genuine block unforgeable by anything that cannot read this process's
+# memory, and lets the display path tell runtime-authored blocks apart from
+# look-alike text a user legitimately typed.
+#
+# Scope note: the token is embedded in persisted history, so anyone able to read
+# a raw transcript can learn it. It is defence in depth behind
+# ``sanitize_untrusted_text()``, not a secret to rely on by itself.
+RUNTIME_NONCE = secrets.token_hex(8)
+
+_NONCE_PAT = "[0-9a-f]{16}"
+
+# --- Runtime-authored blocks from *this* process ---------------------------
+_PUA_STRIP_RE = re.compile(
+    rf"{PUA_START}{RUNTIME_NONCE}.*?{RUNTIME_NONCE}{PUA_END}", re.DOTALL
+)
+_PUA_EXTRACT_RE = re.compile(
+    rf"{PUA_START}{RUNTIME_NONCE}(.*?){RUNTIME_NONCE}{PUA_END}", re.DOTALL
+)
 _STRIP_RE = re.compile(
-    r"<system-reminder>.*?</system-reminder>",
+    rf'<{REMINDER_TAG} nonce="{RUNTIME_NONCE}">.*?</{REMINDER_TAG}>',
     re.DOTALL | re.IGNORECASE,
 )
 _EXTRACT_RE = re.compile(
-    r"<system-reminder>(.*?)</system-reminder>",
+    rf'<{REMINDER_TAG}(?: nonce="{RUNTIME_NONCE}")?>(.*?)</{REMINDER_TAG}>',
     re.DOTALL | re.IGNORECASE,
 )
-_PUA_STRIP_RE = re.compile(rf"{PUA_START}.*?{PUA_END}", re.DOTALL)
-_PUA_EXTRACT_RE = re.compile(rf"{PUA_START}(.*?){PUA_END}", re.DOTALL)
+
+# --- Blocks authored by any run of the runtime -----------------------------
+# The display path must keep hiding reminders persisted before the last restart,
+# whose token differs from ours (or is absent, for pre-nonce history).
+_ANY_PUA_STRIP_RE = re.compile(
+    rf"{PUA_START}(?:{_NONCE_PAT})?.*?(?:{_NONCE_PAT})?{PUA_END}", re.DOTALL
+)
+_ANY_XML_STRIP_RE = re.compile(
+    rf'<{REMINDER_TAG}(?: nonce="{_NONCE_PAT}")?>.*?</{REMINDER_TAG}>',
+    re.DOTALL | re.IGNORECASE,
+)
+_ANY_PUA_EXTRACT_RE = re.compile(
+    rf"{PUA_START}(?:{_NONCE_PAT})?(.*?)(?:{_NONCE_PAT})?{PUA_END}", re.DOTALL
+)
 _DISPLAY_TRIGGER_RE = re.compile(
     rf"<{DISPLAY_TRIGGER_TAG}>(.*?)</{DISPLAY_TRIGGER_TAG}>",
     re.DOTALL | re.IGNORECASE,
@@ -61,6 +98,16 @@ def wrap_in_system_reminder(content: str, display_trigger: Optional[str] = None)
     XML sub-tag *inside* the block regardless of the outer delimiter, so the
     display-rebuild path can still extract it.
     """
+    # Wrapping is what confers trust: whatever ends up inside these delimiters
+    # is read by the model as authenticated runtime context. Fragments are built
+    # from user-influenced material — retrieved memories, goal and task text,
+    # background agent results, upload paths — so any delimiters they carry are
+    # neutralized here rather than at each of the callers that produce them.
+    # Doing it at the wrap point means a new reminder source cannot forget.
+    content = sanitize_untrusted_text(content)
+    if display_trigger:
+        display_trigger = sanitize_untrusted_text(display_trigger)
+
     body = content.strip()
     if display_trigger and display_trigger.strip():
         body = (
@@ -70,16 +117,510 @@ def wrap_in_system_reminder(content: str, display_trigger: Optional[str] = None)
             f"{body}"
         )
     if os.environ.get("SUZENT_XML_SYSTEM_REMINDER"):
-        return f"\n<{REMINDER_TAG}>\n{body}\n</{REMINDER_TAG}>\n"
-    return f"\n{PUA_START}\n{body}\n{PUA_END}\n"
+        return (
+            f'\n<{REMINDER_TAG} nonce="{RUNTIME_NONCE}">\n{body}\n</{REMINDER_TAG}>\n'
+        )
+    return f"\n{PUA_START}{RUNTIME_NONCE}\n{body}\n{RUNTIME_NONCE}{PUA_END}\n"
+
+
+# Forged tags in untrusted text, in every spelling the display path would later
+# recognize: the strippers are case-insensitive, so anything narrower here lets a
+# block through to the model *and* hides it from the transcript.
+_UNTRUSTED_OPEN_RE = re.compile(rf"<\s*{REMINDER_TAG}(?:\s[^>]*)?>", re.IGNORECASE)
+_UNTRUSTED_CLOSE_RE = re.compile(rf"<\s*/\s*{REMINDER_TAG}\s*>", re.IGNORECASE)
+_UNTRUSTED_TRIGGER_RE = re.compile(
+    rf"<\s*/?\s*{DISPLAY_TRIGGER_TAG}(?:\s[^>]*)?>", re.IGNORECASE
+)
+
+
+def sanitize_untrusted_text(text: str) -> str:
+    """Neutralize reminder delimiters in text Suzent did not author.
+
+    Applied to every untrusted string on its way into the model context: user
+    messages, attachment text, and tool results. Without this a fetched web page
+    or a tool result could carry its own delimiters and be read as trusted
+    out-of-band context (prompt injection).
+
+    Delimiters are replaced with a visible marker rather than deleted, so the
+    text stays intelligible and the attempt is auditable. Content is otherwise
+    left alone.
+    """
+    if not text:
+        return text
+    text = text.replace(PUA_START, "[reminder-delimiter]").replace(
+        PUA_END, "[reminder-delimiter]"
+    )
+    text = _UNTRUSTED_OPEN_RE.sub(f"&lt;{REMINDER_TAG}&gt;", text)
+    text = _UNTRUSTED_CLOSE_RE.sub(f"&lt;/{REMINDER_TAG}&gt;", text)
+    # A forged display-trigger tag would surface attacker text in the UI as though
+    # the runtime had raised it.
+    return _UNTRUSTED_TRIGGER_RE.sub(f"&lt;{DISPLAY_TRIGGER_TAG}&gt;", text)
+
+
+# Depth at which we stop descending. Legitimate tool results are nowhere near
+# this; the limit exists so a self-referential or pathologically nested payload
+# cannot exhaust the stack. Exceeding it redacts rather than passing the value
+# through, so the limit can never become a way to smuggle delimiters past us.
+_MAX_PAYLOAD_DEPTH = 60
+_REDACTED = "[unsanitized content omitted]"
+
+
+def sanitize_tool_payload(value: Any) -> Any:
+    """Sanitize a tool result, then verify what the model will actually receive.
+
+    The structural walk below cannot be complete on its own, and every attempt
+    to make it so has failed the same way: it inspects attributes, while the
+    model receives a *serialization*. A Pydantic model can add content through a
+    computed field, a serialization alias, or a custom ``model_serializer``; an
+    Enum serializes its value rather than its name. None of that is visible from
+    ``model_fields``.
+
+    So the walk is treated as best-effort structure preservation, and
+    correctness rests on a post-condition instead: render the result the way the
+    tool-return serializer will, and if delimiters survive, hand back sanitized
+    text. One check, every shape, including shapes nobody has thought of. This
+    is the invariant to protect — not any particular branch of the walk.
+    """
+    cleaned = sanitize_untrusted_payload(value)
+    try:
+        rendered = _wire_repr(cleaned)
+    except Exception:
+        logger.warning("Could not render sanitized tool result to verify; redacting")
+        return _REDACTED
+    verified = sanitize_untrusted_text(rendered)
+    if verified != rendered:
+        logger.warning(
+            f"Reminder delimiters survived structural sanitizing of a "
+            f"{type(value).__name__} tool result; replaced with sanitized text"
+        )
+        return verified
+    return cleaned
+
+
+def sanitize_untrusted_payload(
+    value: Any, _depth: int = 0, _seen: Optional[set] = None
+) -> Any:
+    """Sanitize every string a tool result can put in front of the model.
+
+    Tools return structured objects, not strings, and pydantic-ai serializes a
+    wide range of shapes: Pydantic models, dataclasses, the usual containers,
+    sets, and anything whose ``str()`` it falls back on such as ``pathlib.Path``.
+
+    The traversal is deliberately **fail-closed**. An earlier version listed the
+    shapes it understood and returned everything else untouched, which meant each
+    unlisted type — a dataclass, then a set, then a Path — was a fresh way for
+    forged delimiters to reach the model, found one at a time. Now anything not
+    recognized as a container is rendered and checked: if its text carries
+    delimiters it is replaced by the sanitized text, so an unfamiliar shape
+    degrades to something safe instead of passing through.
+
+    Mapping keys are sanitized as well as values — a tool or MCP response picks
+    its own property names, and those are serialized too. Cycles are tracked by
+    identity so a self-referential payload terminates.
+    """
+    if isinstance(value, str):
+        return sanitize_untrusted_text(value)
+    if value is None or isinstance(
+        value, (bool, int, float, complex, bytes, bytearray)
+    ):
+        return value
+
+    if _depth > _MAX_PAYLOAD_DEPTH:
+        logger.warning("Payload nesting exceeded sanitizer depth; redacting branch")
+        return _REDACTED
+
+    if _seen is None:
+        _seen = set()
+    marker = id(value)
+    if marker in _seen:
+        return value
+    _seen.add(marker)
+    try:
+        if isinstance(value, list):
+            return [sanitize_untrusted_payload(v, _depth + 1, _seen) for v in value]
+        if isinstance(value, tuple):
+            items = [sanitize_untrusted_payload(v, _depth + 1, _seen) for v in value]
+            return _rebuild_sequence(value, items, tuple)
+        if isinstance(value, (set, frozenset)):
+            items = [sanitize_untrusted_payload(v, _depth + 1, _seen) for v in value]
+            rebuilt = _rebuild_sequence(
+                value, items, frozenset if isinstance(value, frozenset) else set
+            )
+            return _degrade_if_collapsed(value, rebuilt, "set members")
+        if isinstance(value, dict):
+            rebuilt = {
+                sanitize_untrusted_payload(k, _depth + 1, _seen): (
+                    sanitize_untrusted_payload(v, _depth + 1, _seen)
+                )
+                for k, v in value.items()
+            }
+            return _degrade_if_collapsed(value, rebuilt, "mapping keys")
+
+        if getattr(type(value), "model_fields", None):
+            return _sanitize_fields(
+                value,
+                [name for name in type(value).model_fields],
+                lambda obj, updates: obj.model_copy(update=updates),
+                _depth,
+                _seen,
+            )
+        if dataclasses.is_dataclass(value) and not isinstance(value, type):
+            return _sanitize_fields(
+                value,
+                [f.name for f in dataclasses.fields(value)],
+                lambda obj, updates: dataclasses.replace(obj, **updates),
+                _depth,
+                _seen,
+            )
+
+        # Unrecognized shape. Render it the way the *serializer* would and keep
+        # it only if that text is clean; otherwise hand back the sanitized text.
+        try:
+            rendered = _wire_repr(value)
+        except Exception:
+            logger.warning(
+                f"Could not render {type(value).__name__} to check it; redacting"
+            )
+            return _REDACTED
+        cleaned = sanitize_untrusted_text(rendered)
+        if cleaned != rendered:
+            logger.warning(
+                f"Forged delimiters in a {type(value).__name__} tool result; "
+                "replaced with sanitized text"
+            )
+            return cleaned
+        return value
+    finally:
+        _seen.discard(marker)
+
+
+def _wire_repr(value: Any) -> str:
+    """Render a value the way the tool-return serializer will.
+
+    ``str()`` is not that. An ``Enum`` stringifies to ``Payload.BAD`` while
+    pydantic serializes its ``value`` — so a member whose value carries
+    delimiters looks clean under ``str()`` and arrives at the model intact.
+    Checking the wire form is the only way to know what the model will see.
+    """
+    try:
+        from pydantic_core import to_json
+
+        return to_json(value, fallback=str).decode()
+    except Exception:
+        return str(value)
+
+
+def _degrade_if_collapsed(original: Any, rebuilt: Any, what: str) -> Any:
+    """Fall back to text when sanitizing merged two distinct entries into one.
+
+    Only the deduplicating containers can lose data this way: a forged string
+    and its already-escaped twin become equal, and the set or mapping silently
+    keeps one. Lists, tuples and named fields cannot collapse, so they do not
+    need this. Corrupting a tool result is not an acceptable way to sanitize it,
+    so the whole value degrades to sanitized text that still contains every
+    entry.
+    """
+    if len(rebuilt) == len(original):
+        return rebuilt
+    logger.warning(
+        f"Sanitizing collapsed distinct {what}; returning sanitized text so no "
+        "entry is lost"
+    )
+    return sanitize_untrusted_text(_wire_repr(original))
+
+
+def _rebuild_sequence(value: Any, items: list, plain):
+    """Rebuild a tuple/set, preserving the subclass only if it accepts the items.
+
+    A NamedTuple takes one argument per field rather than an iterable, so calling
+    ``type(value)(items)`` on one raises — which would abort the whole model
+    request over a shape pydantic-ai serializes perfectly well. Where the
+    subclass cannot be reconstructed, degrading to the plain builtin keeps the
+    data and the sanitizing; only the subclass identity is lost, and the
+    serializer renders both the same way.
+    """
+    if isinstance(value, tuple) and hasattr(value, "_fields"):
+        try:
+            return type(value)(*items)
+        except Exception:
+            return plain(items)
+    if type(value) is plain:
+        return plain(items)
+    try:
+        return type(value)(items)
+    except Exception:
+        return plain(items)
+
+
+def _sanitize_fields(value: Any, names: list, rebuild, _depth: int, _seen: set) -> Any:
+    """Sanitize named attributes, rebuilding the object when any of them change.
+
+    If an update cannot be applied — a frozen dataclass whose ``__post_init__``
+    rejects the sanitized value, say — the object is redacted rather than
+    returned as-is. Handing back the original would ship the forged delimiters
+    it still contains, which is the one outcome this function exists to prevent.
+    """
+    updates = {}
+    for name in names:
+        current = getattr(value, name, None)
+        cleaned = sanitize_untrusted_payload(current, _depth + 1, _seen)
+        if cleaned != current:
+            updates[name] = cleaned
+    if not updates:
+        return value
+    try:
+        return rebuild(value, updates)
+    except Exception:
+        pass
+    for name, cleaned in updates.items():
+        try:
+            setattr(value, name, cleaned)
+        except Exception:
+            logger.warning(
+                f"Could not sanitize {type(value).__name__}.{name}; redacting the "
+                "whole value rather than passing it through"
+            )
+            return _REDACTED
+    return value
+
+
+# Only this process's token authenticates a block. A token *shape* proves
+# nothing — an earlier design accepted any 16 hex characters, which meant a
+# stored prompt containing PUA_START + "0"*16 + payload + "0"*16 + PUA_END was
+# waved through as runtime-authored. Provenance cannot be verified across a
+# restart, so blocks we cannot authenticate are not trusted, full stop.
+_OWN_BLOCK_RE = re.compile(
+    rf"{PUA_START}{RUNTIME_NONCE}.*?{RUNTIME_NONCE}{PUA_END}"
+    rf'|<{REMINDER_TAG} nonce="{RUNTIME_NONCE}">.*?</{REMINDER_TAG}>',
+    re.DOTALL | re.IGNORECASE,
+)
+
+# Any PUA-delimited block, tokenized or not.
+_ANY_PUA_BLOCK_RE = re.compile(
+    rf"{PUA_START}(?:{_NONCE_PAT})?.*?(?:{_NONCE_PAT})?{PUA_END}", re.DOTALL
+)
+
+# A complete XML block carrying a nonce attribute. Nobody hand-writes
+# nonce="a1b2c3d4e5f6a7b8", so this is runtime output from some process even when
+# the token is not ours, and it gets dropped rather than escaped.
+_ANY_XML_TOKENED_BLOCK_RE = re.compile(
+    rf'<{REMINDER_TAG} nonce="{_NONCE_PAT}">.*?</{REMINDER_TAG}>',
+    re.DOTALL | re.IGNORECASE,
+)
+
+
+def _split_preserving_own_blocks(text: str, handle_span) -> str:
+    """Apply *handle_span* to everything except blocks bearing our own token.
+
+    Both callers need the same split — keep what this process authenticated,
+    treat the rest as untrusted — and differ only in what "treat" means.
+    """
+    if not text:
+        return text
+    out = []
+    last = 0
+    for match in _OWN_BLOCK_RE.finditer(text):
+        out.append(handle_span(text[last : match.start()]))
+        out.append(match.group(0))
+        last = match.end()
+    out.append(handle_span(text[last:]))
+    return "".join(out)
+
+
+def sanitize_incoming_prompt(text: str) -> str:
+    """Neutralize forged delimiters in a message arriving now, losing nothing.
+
+    The ingress counterpart to ``sanitize_stored_user_prompt``. The difference is
+    deliberate: stored history may contain machine-authored blocks from earlier
+    processes that are stale and safe to drop, but a message being sent right now
+    is the user's, and deleting part of it loses words they meant to send. Paste
+    a raw reminder block in to ask about it and you should see it echoed back
+    escaped, not silently swallowed — and if it was the whole message, not turned
+    into an empty turn.
+
+    Blocks carrying our token are preserved, so a runtime-authored cron or
+    heartbeat prompt still arrives intact.
+    """
+    return _split_preserving_own_blocks(text, sanitize_untrusted_text)
+
+
+def sanitize_stored_user_prompt(text: str) -> str:
+    """Make a user prompt restored from history safe to send again.
+
+    Chats predating this change were never sanitized on the way in, so a forged
+    block saved back then is still trusted by the model on every request and
+    still hidden from the transcript. Ingress only protects new messages.
+
+    Blocks bearing this process's token are kept. Everything else is handled by
+    delimiter kind — see ``_scrub_untrusted_span``. Unlike
+    ``sanitize_incoming_prompt`` this may delete content, which is appropriate
+    for history (a stale machine-authored block helps nobody) and wrong for a
+    message someone is sending now.
+    """
+    return _split_preserving_own_blocks(text, _scrub_untrusted_span)
+
+
+_DROPPABLE_BLOCK_RE = re.compile(
+    rf"{_ANY_PUA_BLOCK_RE.pattern}|{_ANY_XML_TOKENED_BLOCK_RE.pattern}",
+    re.DOTALL | re.IGNORECASE,
+)
+
+
+def _scrub_untrusted_span(span: str) -> str:
+    """Drop unauthenticated machine-authored blocks; escape what is left.
+
+    Dropping is reserved for shapes no person produces by hand: PUA delimiters,
+    and complete XML blocks bearing a nonce attribute. Bare tags survive as
+    escaped text so a human's words are never deleted.
+
+    A cron or heartbeat turn carries no user text at all — its whole visible
+    record is the ``display_trigger`` nested inside the reminder. Dropping the
+    block wholesale would leave an empty prompt, and the next rebuild would
+    persist the former ``system_triggered`` row as a blank user message. So the
+    trigger is carried across, with its inner text sanitized: the label is
+    preserved, the model-only body still goes, and a forged block cannot smuggle
+    delimiters back in through the part we keep.
+    """
+    if not span:
+        return span
+    pieces: list[tuple[bool, str]] = []
+    last = 0
+    for match in _DROPPABLE_BLOCK_RE.finditer(span):
+        pieces.append((False, span[last : match.start()]))
+        trigger = _DISPLAY_TRIGGER_RE.search(match.group(0))
+        if trigger:
+            # Plain visible text, never a reminder block. Rewrapping this in a
+            # block of ours would stamp our token onto content we just decided
+            # we cannot authenticate — laundering an attacker's trigger from a
+            # forged pre-change prompt into trusted hidden context. Whatever the
+            # cosmetic cost, unverifiable text does not get signed.
+            #
+            # Emitting it as a labelled line keeps the record of what fired
+            # (rather than leaving an empty prompt that rebuilds as a blank row)
+            # while making it ordinary visible content: not hidden, not trusted.
+            inner = sanitize_untrusted_text(trigger.group(1).strip())
+            pieces.append((True, f"[system trigger: {inner}]"))
+        last = match.end()
+    pieces.append((False, span[last:]))
+    return "".join(
+        text if verbatim else sanitize_untrusted_text(text) for verbatim, text in pieces
+    )
+
+
+def make_tool_output_sanitizer_history_processor():
+    """Build a history processor that strips forged delimiters from tool results.
+
+    Tool output is the highest-risk injection surface: a fetched web page, a file
+    read, or an MCP server's response can all carry attacker-controlled text, and
+    unlike user messages there is no single ingress point to sanitize — pydantic-ai
+    builds ``ToolReturnPart`` internally. A history processor is the one chokepoint
+    that sees every part before it reaches the model.
+
+    ``UserPromptPart`` is handled too, but through
+    ``sanitize_stored_user_prompt`` so the genuine reminder the chat processor
+    appends survives. Chats predating this change were never sanitized on the way
+    in, so their stored prompts still need cleaning on the way back out.
+    """
+
+    async def _processor(ctx: Any, messages: list) -> list:
+        from pydantic_ai.messages import (
+            RetryPromptPart,
+            ToolCallPart,
+            ToolReturnPart,
+            UserPromptPart,
+        )
+
+        for message in messages:
+            for part in getattr(message, "parts", ()) or ():
+                content = getattr(part, "content", None)
+
+                if isinstance(part, UserPromptPart):
+                    # Image turns are stored as [text, *media], so a string-only
+                    # check would skip every multimodal message.
+                    if isinstance(content, str):
+                        cleaned = sanitize_stored_user_prompt(content)
+                    elif isinstance(content, (list, tuple)):
+                        items = [
+                            sanitize_stored_user_prompt(item)
+                            if isinstance(item, str)
+                            else item
+                            for item in content
+                        ]
+                        cleaned = (
+                            items
+                            if isinstance(content, list)
+                            else _rebuild_sequence(content, items, tuple)
+                        )
+                    else:
+                        continue
+                    if cleaned != content:
+                        part.content = cleaned
+                        logger.warning(
+                            "Removed unauthenticated reminder blocks from a stored "
+                            "user prompt"
+                        )
+                    continue
+
+                if isinstance(part, (ToolReturnPart, RetryPromptPart)):
+                    cleaned = sanitize_tool_payload(content)
+                    if cleaned != content:
+                        part.content = cleaned
+                        logger.warning(
+                            "Neutralized forged system-reminder delimiters in output "
+                            f"of tool {getattr(part, 'tool_name', '<unknown>')!r}"
+                        )
+                    continue
+
+                # Everything else that carries text. Model output belongs here:
+                # adversarial content can induce the model to emit delimiters in
+                # an ordinary TextPart or ThinkingPart — or to reassemble them
+                # from escaped tool content — and that response is persisted and
+                # replayed as context, where the reminder rules would have the
+                # model treat it as trusted. Sanitizing only the compressor's
+                # summary covered one producer of model text, not the rest.
+                #
+                # This branch is deliberately a catch-all rather than a list of
+                # part types, so a part type added later is covered by default.
+                if isinstance(content, str):
+                    cleaned = sanitize_untrusted_text(content)
+                    if cleaned != content:
+                        part.content = cleaned
+                        logger.warning(
+                            f"Neutralized reminder delimiters in a "
+                            f"{type(part).__name__} of the conversation history"
+                        )
+                elif isinstance(part, ToolCallPart) and isinstance(
+                    getattr(part, "args", None), str
+                ):
+                    cleaned = sanitize_untrusted_text(part.args)
+                    if cleaned != part.args:
+                        part.args = cleaned
+                        logger.warning(
+                            "Neutralized reminder delimiters in tool call arguments"
+                        )
+        return messages
+
+    return _processor
 
 
 def strip_system_reminders(text: str) -> str:
-    """Remove all reminder blocks (PUA or XML) from text."""
+    """Remove runtime-authored reminder blocks from text, for display.
+
+    Matches blocks carrying a runtime token — ours or an older process's — plus
+    untokenized blocks, which is what history written before tokens existed
+    looks like.
+
+    Stripping untokenized blocks is only safe because
+    ``sanitize_untrusted_text()`` runs first on every untrusted string, so a
+    forged delimiter never survives as a delimiter: it reaches the transcript as
+    the literal text ``[reminder-delimiter]`` and stays visible to the user. If
+    that ingress step is ever removed, this function starts silently hiding text
+    users actually typed.
+    """
     if not text:
         return text
-    text = _PUA_STRIP_RE.sub("", text)
-    text = _STRIP_RE.sub("", text)
+    text = _ANY_PUA_STRIP_RE.sub("", text)
+    text = _ANY_XML_STRIP_RE.sub("", text)
     return text.strip()
 
 
@@ -87,7 +628,7 @@ def extract_system_reminder_content(text: str) -> str:
     """Return the concatenated inner text of all reminder blocks (PUA + XML)."""
     if not text:
         return ""
-    parts = [m.strip() for m in _PUA_EXTRACT_RE.findall(text) if m.strip()]
+    parts = [m.strip() for m in _ANY_PUA_EXTRACT_RE.findall(text) if m.strip()]
     parts += [m.strip() for m in _EXTRACT_RE.findall(text) if m.strip()]
     return "\n\n".join(parts)
 
@@ -219,5 +760,11 @@ async def build_combined_reminder(
     result = wrap_in_system_reminder(
         "\n\n---\n\n".join(parts), display_trigger=display_trigger
     )
-    logger.debug(f"[system-reminder] chat={chat_id} ({len(parts)} part(s)):\n{result}")
+    # Metadata only. The wrapped text carries RUNTIME_NONCE, and file logging
+    # records DEBUG unconditionally — writing it to disk would hand the token to
+    # anyone who can read the logs, which is exactly the forgery this guards
+    # against. It also spills retrieved memories, goals and local paths.
+    logger.debug(
+        f"[system-reminder] chat={chat_id} parts={len(parts)} chars={len(result)}"
+    )
     return result

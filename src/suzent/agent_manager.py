@@ -360,7 +360,14 @@ def create_agent(config: Dict[str, Any]) -> Agent[AgentDeps, str]:
     )
     from suzent.tools.capability import RegisteredToolCapability
 
+    from suzent.core.system_reminder import (
+        make_tool_output_sanitizer_history_processor,
+    )
+
     capabilities = [
+        # Sanitizer first: it must neutralize forged reminder delimiters before
+        # compaction folds tool output into a summary that we can no longer inspect.
+        ProcessHistory(make_tool_output_sanitizer_history_processor()),
         ProcessHistory(make_compaction_history_processor()),
         ToolSearch(),
     ]

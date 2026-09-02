@@ -170,6 +170,7 @@ async def stream_acp_turn(
     *,
     files: list[Any] | None = None,
     file_mentions: list[Any] | None = None,
+    runtime_authored: bool = False,
 ) -> AsyncGenerator[str, None]:
     db = get_database()
     chat = db.get_chat(chat_id)
@@ -186,11 +187,41 @@ async def stream_acp_turn(
     # Only the agent sees that annotation; the transcript keeps what the user
     # typed. Comparing the annotated text against the stored row defeated the
     # duplicate check below and persisted the message twice.
-    user_message = message
     from suzent.core.system_reminder import (
         extract_system_reminder_display_trigger,
+        sanitize_incoming_prompt,
+        sanitize_untrusted_text,
         strip_system_reminders,
     )
+
+    # Sanitize before deriving the transcript *and* before running the turn, so
+    # the two cannot disagree. Without this, a message wrapping its payload in a
+    # nonce-shaped reminder block strips to nothing visible and persists only its
+    # own chosen display trigger, while the raw text still reaches
+    # _stream_prompt() below — a prompt that executes but is misrepresented in
+    # the audit transcript. Runtime-authored blocks carry our token and survive,
+    # so genuine cron and heartbeat triggers still render as trigger rows.
+    #
+    # The ingress variant, not the history one: this message is being sent now,
+    # so forged delimiters are escaped in place rather than deleted. Dropping
+    # would lose text the user meant to send, and a message that was nothing but
+    # a block would empty out and slip past the truthiness check below as a blank
+    # turn.
+    #
+    # Provenance comes from *runtime_authored*, never from the token in the text.
+    # RUNTIME_NONCE is embedded in every reminder the model reads, so it is a
+    # bearer token the untrusted side can observe and replay: honouring it on
+    # externally supplied input would let a message that echoes it back be
+    # treated as runtime context and vanish from the transcript. Only the
+    # internal caller that built the reminder may claim that status, and it says
+    # so on the call rather than in the string.
+    if message:
+        message = (
+            sanitize_incoming_prompt(message)
+            if runtime_authored
+            else sanitize_untrusted_text(message)
+        )
+    user_message = message
 
     display_trigger = extract_system_reminder_display_trigger(user_message)
     visible_user_message = strip_system_reminders(user_message)
@@ -205,6 +236,16 @@ async def stream_acp_turn(
     file_context = _build_acp_file_context(file_mentions, files)
     if file_context:
         message = f"{file_context}\n\n{message}" if message else file_context
+        # File annotations interpolate caller-supplied paths, so the assembled
+        # prompt is untrusted again even though `message` was already clean.
+        # Sanitizing the finished string rather than only its parts is the point:
+        # anything later prepended or appended here is covered without having to
+        # remember it. Idempotent, so the already-clean portion is unaffected.
+        message = (
+            sanitize_incoming_prompt(message)
+            if runtime_authored
+            else sanitize_untrusted_text(message)
+        )
 
     # Binary uploads can't be forwarded over the text-only ACP prompt channel.
     if files:
@@ -387,9 +428,13 @@ async def run_acp_turn_text(
     message: str,
     config_override: dict[str, Any] | None = None,
     stream_queue: Any | None = None,
+    *,
+    runtime_authored: bool = False,
 ) -> str:
     text = ""
-    async for chunk in stream_acp_turn(chat_id, message, config_override):
+    async for chunk in stream_acp_turn(
+        chat_id, message, config_override, runtime_authored=runtime_authored
+    ):
         if stream_queue is not None:
             await stream_queue.put(chunk)
         if chunk.startswith("data: "):
