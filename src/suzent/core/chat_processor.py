@@ -823,6 +823,9 @@ class ChatProcessor:
             else None
         )
         pending_trigger_rows: list[dict] = []
+        # Shared with the streaming layer so the draft row this run writes can
+        # be told apart from a previous turn's answer when placing the trigger.
+        stream_run_id = str(uuid.uuid4())
         display_trigger = None
         if system_reminders and not (message_content and message_content.strip()):
             display_trigger = "\n\n---\n\n".join(
@@ -1060,6 +1063,7 @@ class ChatProcessor:
                 deferred_tool_results=deferred_tool_results,
                 permission_resolutions=permission_resolutions,
                 is_heartbeat=is_heartbeat,
+                run_id=stream_run_id,
             ):
                 try:
                     if chunk.startswith("data: "):
@@ -1172,6 +1176,7 @@ class ChatProcessor:
                         model_id=getattr(agent, "_model_id", None),
                         tool_names=getattr(agent, "_tool_names", []),
                         append_display_messages=pending_trigger_rows,
+                        draft_run_id=stream_run_id,
                     )
             except Exception as e:
                 logger.warning(
@@ -1965,6 +1970,7 @@ class ChatProcessor:
         model_id: Optional[str],
         tool_names: List[str],
         append_display_messages: Optional[List[Dict[str, Any]]] = None,
+        draft_run_id: Optional[str] = None,
     ) -> Optional[int]:
         """Persist only agent_state for fast-follow turn recovery.
 
@@ -1981,7 +1987,10 @@ class ChatProcessor:
                 messages, model_id=model_id, tool_names=tool_names
             )
             revision = db.commit_snapshot_state(
-                chat_id, agent_state, append_display_messages=append_display_messages
+                chat_id,
+                agent_state,
+                append_display_messages=append_display_messages,
+                draft_run_id=draft_run_id,
             )
             if revision is None:
                 db.update_chat(chat_id, agent_state=agent_state)

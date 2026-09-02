@@ -12,7 +12,11 @@ async def test_persist_agent_state_snapshot_updates_only_agent_state(monkeypatch
             self.calls = []
 
         def commit_snapshot_state(
-            self, chat_id, agent_state, append_display_messages=None
+            self,
+            chat_id,
+            agent_state,
+            append_display_messages=None,
+            draft_run_id=None,
         ):
             self.appended = list(append_display_messages or [])
             return None
@@ -70,7 +74,13 @@ async def test_process_turn_persists_snapshot_before_background_postprocess(
         yield 'data: {"type": "TEXT_MESSAGE_CONTENT", "delta": "ok"}\n\n'
 
     async def fake_persist_snapshot(
-        self, chat_id, messages, model_id, tool_names, append_display_messages=None
+        self,
+        chat_id,
+        messages,
+        model_id,
+        tool_names,
+        append_display_messages=None,
+        draft_run_id=None,
     ):
         called["snapshot"] += 1
 
@@ -86,7 +96,11 @@ async def test_process_turn_persists_snapshot_before_background_postprocess(
             return None
 
         def commit_snapshot_state(
-            self, chat_id, agent_state, append_display_messages=None
+            self,
+            chat_id,
+            agent_state,
+            append_display_messages=None,
+            draft_run_id=None,
         ):
             return 1
 

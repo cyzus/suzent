@@ -149,6 +149,17 @@ def _summarize_messages(
     return visible_count, last_message
 
 
+def _is_draft_of_run(row: Any, run_id: Optional[str]) -> bool:
+    """True when *row* is the live streaming draft written by *run_id*."""
+    if not run_id or not isinstance(row, dict):
+        return False
+    return (
+        row.get("role") == "assistant"
+        and bool(row.get("_streaming_draft"))
+        and row.get("_streaming_run_id") == run_id
+    )
+
+
 def _with_message_summary(
     config: Optional[Dict[str, Any]],
     messages: Optional[List[Dict[str, Any]]],
@@ -417,6 +428,7 @@ class ChatOperationsMixin:
         chat_id: str,
         agent_state: bytes,
         append_display_messages: Optional[List[Dict[str, Any]]] = None,
+        draft_run_id: Optional[str] = None,
     ) -> Optional[int]:
         """Commit fast snapshot state and increment revision atomically.
 
@@ -455,12 +467,15 @@ class ChatOperationsMixin:
                     # the trigger after the answer it prompted — and in the exact
                     # recovery case this exists for, that ordering is what the
                     # reloaded transcript keeps.
-                    # Only the final row, never a run of them: skipping every
-                    # trailing assistant message would hoist the trigger above
-                    # answers belonging to earlier turns, which is a worse bug
-                    # than the ordering being fixed.
+                    # Step over the trailing row only when it is *this* run's
+                    # streaming draft. A plain role check is not enough: a run
+                    # cancelled or failed before emitting any draft leaves the
+                    # previous turn's answer last, and inserting ahead of that
+                    # corrupts the chronology this placement exists to fix. The
+                    # draft records the run that wrote it, so ask rather than
+                    # infer from position.
                     cut = len(existing)
-                    if cut and (existing[cut - 1] or {}).get("role") == "assistant":
+                    if cut and _is_draft_of_run(existing[cut - 1], draft_run_id):
                         cut -= 1
                     appended_messages = existing[:cut] + added + existing[cut:]
                     chat.messages = appended_messages

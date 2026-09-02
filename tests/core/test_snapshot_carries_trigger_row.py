@@ -14,6 +14,16 @@ from suzent.core.chat_processor import ChatProcessor
 TS = "2026-09-02T04:00:00+00:00"
 
 
+def _draft(content, run_id):
+    """An assistant row as the streaming layer writes it mid-run."""
+    return {
+        "role": "assistant",
+        "content": content,
+        "_streaming_draft": True,
+        "_streaming_run_id": run_id,
+    }
+
+
 def _row(label="Cron: digest", ts=TS):
     return {
         "role": "system_triggered",
@@ -28,8 +38,12 @@ class _FakeDB:
         self.snapshot_calls = []
         self.update_calls = []
 
-    def commit_snapshot_state(self, chat_id, agent_state, append_display_messages=None):
-        self.snapshot_calls.append((chat_id, list(append_display_messages or [])))
+    def commit_snapshot_state(
+        self, chat_id, agent_state, append_display_messages=None, draft_run_id=None
+    ):
+        self.snapshot_calls.append(
+            (chat_id, list(append_display_messages or []), draft_run_id)
+        )
         return 7
 
     def update_chat(self, chat_id, **kwargs):
@@ -55,9 +69,10 @@ async def test_trigger_rows_ride_the_snapshot_transaction(db):
         model_id=None,
         tool_names=[],
         append_display_messages=[_row()],
+        draft_run_id="run-1",
     )
 
-    assert db.snapshot_calls == [("chat-1", [_row()])]
+    assert db.snapshot_calls == [("chat-1", [_row()], "run-1")]
     assert db.update_calls == [], "must not be a second, unrevisioned write"
 
 
@@ -67,7 +82,7 @@ async def test_ordinary_turns_append_nothing(db):
         chat_id="chat-1", messages=[], model_id=None, tool_names=[]
     )
 
-    assert db.snapshot_calls == [("chat-1", [])]
+    assert db.snapshot_calls == [("chat-1", [], None)]
 
 
 # --- the transaction itself -------------------------------------------------
@@ -210,9 +225,11 @@ def test_the_trigger_lands_before_the_streamed_answer(chat_db):
     the answer it prompted — and the reloaded transcript would keep that."""
     db = chat_db
     chat_id = _new_chat(db)
-    db.update_chat(chat_id, messages=[{"role": "assistant", "content": "done"}])
+    db.update_chat(chat_id, messages=[_draft("done", "run-1")])
 
-    db.commit_snapshot_state(chat_id, b"state", append_display_messages=[_row()])
+    db.commit_snapshot_state(
+        chat_id, b"state", append_display_messages=[_row()], draft_run_id="run-1"
+    )
 
     assert [r["role"] for r in db.get_chat(chat_id).messages] == [
         "system_triggered",
@@ -228,14 +245,16 @@ def test_earlier_turns_stay_before_the_trigger(chat_db):
         messages=[
             {"role": "user", "content": "earlier"},
             {"role": "assistant", "content": "earlier answer"},
-            {"role": "assistant", "content": "this turn's draft"},
+            _draft("this turn's draft", "run-1"),
         ],
     )
 
-    db.commit_snapshot_state(chat_id, b"state", append_display_messages=[_row()])
+    db.commit_snapshot_state(
+        chat_id, b"state", append_display_messages=[_row()], draft_run_id="run-1"
+    )
 
     roles = [r["role"] for r in db.get_chat(chat_id).messages]
-    # Only this turn's draft is stepped over; the earlier answer keeps its place.
+    # Only this run's draft is stepped over; the earlier answer keeps its place.
     assert roles == ["user", "assistant", "system_triggered", "assistant"]
 
 
@@ -264,3 +283,51 @@ def test_the_appended_row_updates_the_message_summary(chat_db):
 
     config = db.get_chat(chat_id).config or {}
     assert config, "message summary keys should have been refreshed"
+
+
+def test_a_previous_turns_answer_is_not_stepped_over(chat_db):
+    """A run cancelled or failed before emitting any draft leaves the previous
+    turn's answer last. Inserting ahead of that corrupts the chronology this
+    placement exists to fix, so a bare role check is not enough."""
+    db = chat_db
+    chat_id = _new_chat(db)
+    db.update_chat(chat_id, messages=[{"role": "assistant", "content": "old answer"}])
+
+    db.commit_snapshot_state(
+        chat_id, b"state", append_display_messages=[_row()], draft_run_id="run-1"
+    )
+
+    assert [r["role"] for r in db.get_chat(chat_id).messages] == [
+        "assistant",
+        "system_triggered",
+    ]
+
+
+def test_a_draft_from_another_run_is_not_stepped_over(chat_db):
+    """Two turns in a row losing post-processing leaves a stale draft last. It
+    still belongs to the earlier turn."""
+    db = chat_db
+    chat_id = _new_chat(db)
+    db.update_chat(chat_id, messages=[_draft("stale", "run-0")])
+
+    db.commit_snapshot_state(
+        chat_id, b"state", append_display_messages=[_row()], draft_run_id="run-1"
+    )
+
+    assert [r["role"] for r in db.get_chat(chat_id).messages] == [
+        "assistant",
+        "system_triggered",
+    ]
+
+
+def test_without_a_run_id_nothing_is_stepped_over(chat_db):
+    db = chat_db
+    chat_id = _new_chat(db)
+    db.update_chat(chat_id, messages=[_draft("done", "run-1")])
+
+    db.commit_snapshot_state(chat_id, b"state", append_display_messages=[_row()])
+
+    assert [r["role"] for r in db.get_chat(chat_id).messages] == [
+        "assistant",
+        "system_triggered",
+    ]
