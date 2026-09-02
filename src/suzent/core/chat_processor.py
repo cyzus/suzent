@@ -444,6 +444,7 @@ class ChatProcessor:
         _message_history_override: list = None,
         system_reminders: list[str] = None,
         incoming_citation_sources: list[dict] = None,
+        counts_toward_goal: Optional[bool] = None,
     ) -> AsyncGenerator[str, None]:
         """
         Process a user message turn:
@@ -1204,7 +1205,11 @@ class ChatProcessor:
                     agent=agent,
                     postprocess_job_id=postprocess_job_id,
                     file_snapshot=file_snapshot_json,
-                    is_user_turn=bool(_turn_message),
+                    counts_toward_goal=(
+                        bool(_turn_message)
+                        if counts_toward_goal is None
+                        else counts_toward_goal
+                    ),
                 )
 
             task_id = f"post_process_{chat_id}_{postprocess_job_id}"
@@ -1277,7 +1282,7 @@ class ChatProcessor:
         agent: Any,
         postprocess_job_id: str,
         file_snapshot: list[dict],
-        is_user_turn: bool = False,
+        counts_toward_goal: bool = False,
     ) -> None:
         """Background post-processing for a completed turn.
 
@@ -1436,7 +1441,7 @@ class ChatProcessor:
                 # hook, which every prompt-assembling path calls — heartbeats,
                 # approval resumes, tool continuations and retries all spent
                 # budget on turns the user never took.
-                if is_user_turn and not stream_failed:
+                if counts_toward_goal and not stream_failed:
                     from suzent.tools.plan_hooks import advance_goal_turn
 
                     advance_goal_turn(chat_id)
@@ -1529,6 +1534,10 @@ class ChatProcessor:
             chat_id=chat_id,
             user_id=user_id,
             message_content=replay_message,
+            # The original turn already charged the goal, and the retry
+            # checkpoint restores chat state, messages and files but not the
+            # counter — so replaying would bill the same work twice.
+            counts_toward_goal=False,
             files=replay_files if replay_files else None,
             config_override=merged_config,
             is_social=is_social,
@@ -1722,6 +1731,7 @@ class ChatProcessor:
         is_heartbeat: bool = False,
         system_reminders: list[str] = None,
         incoming_citation_sources: list[dict] = None,
+        counts_toward_goal: Optional[bool] = None,
     ) -> str:
         """Run a chat turn with an SSE background stream so the frontend can watch it.
 
@@ -1744,6 +1754,7 @@ class ChatProcessor:
             _stream_queue=stream_queue,
             system_reminders=system_reminders,
             incoming_citation_sources=incoming_citation_sources,
+            counts_toward_goal=counts_toward_goal,
         )
 
     async def _process_upload_file(

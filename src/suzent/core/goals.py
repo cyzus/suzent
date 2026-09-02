@@ -239,6 +239,10 @@ async def run_goal_step(chat_id: str, user_id: str) -> None:
             message_content="",
             config_override=_goal_config_override(),
             system_reminders=[CONTINUATION_PROMPT],
+            # No user message, but this is a turn of work on the goal and has to
+            # be charged — otherwise max_turns can never stop a goal whose judge
+            # keeps asking for more.
+            counts_toward_goal=True,
         )
     except Exception as e:
         logger.error(f"[goal] step execution failed for {chat_id}: {e}")

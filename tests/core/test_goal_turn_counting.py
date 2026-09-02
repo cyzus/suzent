@@ -136,14 +136,50 @@ def test_a_database_failure_does_not_break_the_turn(monkeypatch):
 # --- which turns qualify ----------------------------------------------------
 
 
-def test_only_real_user_turns_are_passed_through_as_chargeable():
+def test_a_plain_user_turn_is_chargeable_by_default() -> None:
     """process_turn computes `_turn_message` as non-empty only for a real user
-    message that is not a heartbeat and not an approval resume; that same value
-    decides whether the turn is charged."""
+    message that is not a heartbeat and not an approval resume; with no explicit
+    answer, that is what decides."""
     import inspect
 
     from suzent.core import chat_processor
 
     source = inspect.getsource(chat_processor.ChatProcessor.process_turn)
 
-    assert "is_user_turn=bool(_turn_message)" in source
+    assert "bool(_turn_message)" in source
+    assert "if counts_toward_goal is None" in source
+
+
+def test_an_autonomous_goal_step_is_chargeable() -> None:
+    """It has no user message, but it is a turn of work on the goal. Without
+    this, max_turns can never stop a goal whose judge keeps asking for more."""
+    import inspect
+
+    from suzent.core import goals
+
+    source = inspect.getsource(goals.run_goal_step)
+
+    assert "counts_toward_goal=True" in source
+
+
+def test_a_replayed_retry_is_not_chargeable() -> None:
+    """The original turn already charged, and apply_retry_checkpoint restores
+    chat state, messages and files but not the counter."""
+    import inspect
+
+    from suzent.core import chat_processor
+
+    source = inspect.getsource(chat_processor.ChatProcessor._handle_retry_command)
+
+    assert "counts_toward_goal=False" in source
+
+
+def test_an_explicit_answer_overrides_the_inference() -> None:
+    """The two callers that know better must be able to say so."""
+    import inspect
+
+    from suzent.core import chat_processor
+
+    signature = inspect.signature(chat_processor.ChatProcessor.process_turn)
+
+    assert signature.parameters["counts_toward_goal"].default is None
