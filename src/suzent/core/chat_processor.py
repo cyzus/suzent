@@ -2633,72 +2633,61 @@ def _preserve_display_triggers(rebuilt: list, existing: list | None) -> list:
     """Restore ``system_triggered`` rows the rebuild can no longer reconstruct.
 
     A cron or heartbeat turn carries no user text: its whole visible record is
-    the ``display_trigger`` nested inside the reminder block. The rebuild
-    recovers that by parsing it back out of model-visible history, which only
-    works while the block is still there — and unauthenticated blocks are
-    dropped on restart, precisely because text we cannot authenticate must not
-    be trusted. Those turns then rebuild as a plain ``[system trigger: ...]``
-    line in an ordinary user row.
+    the ``display_trigger`` nested inside the reminder block. That block is
+    dropped on restart — text we cannot authenticate must not be trusted — so
+    the turn rebuilds as a plain ``[system trigger: ...]`` line.
 
-    Matching is by label, never by position. Rebuilt rows and stored rows do not
-    correspond one-to-one: ``_coalesce_unanswered_cron_triggers`` keeps only the
-    newest of consecutive unanswered triggers, so two turns in history can have
-    a single stored row, and pairing raw indices restores the wrong one and
-    strands the other as a user message.
+    Rows are matched on ``timestamp``, which pydantic-ai sets when the part is
+    created and which survives in serialized state. That is a per-turn identity,
+    and it is the whole point: matching on the *label* instead lets a forged
+    block borrow the provenance of a genuine trigger that happens to share a
+    label, because the label is exactly the part an attacker controls. Position
+    is no good either — ``_coalesce_unanswered_cron_triggers`` collapses
+    consecutive unanswered triggers, so rebuilt and stored rows do not line up.
 
-    Two independent things have to hold before a row is rewritten, because a
-    label on its own establishes nothing about *this* occurrence:
+    Restoration requires all three, and none substitutes for another:
 
-    * the row carries ``TRIGGER_MARK``, which only the history sanitizer emits
-      and which is stripped from anything arriving from outside — so a user who
-      copies a visible ``[system trigger: ...]`` label out of the transcript and
-      sends it back is not promoted, and the coalescing pass that runs next
-      cannot then swallow their turn;
-    * that exact label was recorded as a trigger when a turn actually ran, so a
-      forged reminder block dropped from history cannot style itself as one.
+    * the stored row carries ``trigger_origin="runtime"``, written when the turn
+      ran from a block bearing this process's token. A display log predating
+      ingress sanitizing can hold a forged trigger row, so an unstamped one
+      proves nothing;
+    * the two rows share a timestamp, which ties the proof to *this* occurrence
+      rather than to some other turn with the same label;
+    * the rebuilt row still looks like a placeholder this runtime emitted.
 
-    Every matching placeholder is restored, duplicates included — collapsing
-    them is the coalescing pass's job.
+    A turn whose stored row was coalesced away keeps the plain text line. There
+    is no evidence it was a trigger, and inventing some is how the previous four
+    attempts at this went wrong.
     """
     if not existing or not rebuilt:
         return rebuilt
 
-    # Only rows the runtime stamped when the turn actually ran. A legacy display
-    # log can already contain a forged trigger — the pre-sanitization rebuild
-    # parsed reminder blocks without authenticating them — so accepting any
-    # stored system_triggered row would take the forgery's own output as proof
-    # of the forgery's legitimacy. Legacy rows carry no stamp and are not
-    # restored; those chats keep the plain text line, which is the honest
-    # outcome for history whose provenance is unrecoverable.
-    known_labels = {
-        str(row.get("content") or "").strip()
-        for row in existing
-        if isinstance(row, dict)
-        and row.get("role") == "system_triggered"
-        and row.get("trigger_origin") == "runtime"
+    stamped_by_timestamp = {
+        stored.get("timestamp"): stored
+        for stored in existing
+        if isinstance(stored, dict)
+        and stored.get("role") == "system_triggered"
+        and stored.get("trigger_origin") == "runtime"
+        and stored.get("timestamp")
     }
-    known_labels.discard("")
-    if not known_labels:
+    if not stamped_by_timestamp:
         return rebuilt
 
+    prefix = _trigger_placeholder_prefix()
     for index, row in enumerate(rebuilt):
         if not isinstance(row, dict) or row.get("role") != "user":
             continue
         content = str(row.get("content") or "").strip()
-        prefix = _trigger_placeholder_prefix()
         if not content.startswith(prefix) or not content.endswith("]"):
             continue
-        label = content[len(prefix) : -1].strip()
-        if label not in known_labels:
+        stored = stamped_by_timestamp.get(row.get("timestamp"))
+        if stored is None:
             continue
         restored = dict(row)
         restored["role"] = "system_triggered"
-        restored["content"] = label
-        # Carry the stamp onto the restored row. Without it the next save writes
-        # the row back unstamped, the save after that no longer recognizes the
-        # label, and the trigger degrades to a user message one turn later — a
-        # fix that works exactly once. The chain still roots in the authenticated
-        # stamp written when the turn ran; nothing new is being vouched for here.
+        restored["content"] = stored.get("content") or content[len(prefix) : -1].strip()
+        # Carry the stamp: the restored row is what the next save persists, and
+        # without it the trigger degrades one turn later.
         restored["trigger_origin"] = "runtime"
         rebuilt[index] = restored
 
