@@ -228,6 +228,42 @@ def sanitize_untrusted_payload(
         _seen.discard(marker)
 
 
+# A block bearing any well-formed token was authored by some run of this runtime
+# — this process or an earlier one. Anything else in a stored user prompt either
+# predates tokens or was forged.
+_TOKENED_BLOCK_RE = re.compile(
+    rf"{PUA_START}{_NONCE_PAT}.*?{_NONCE_PAT}{PUA_END}"
+    rf'|<{REMINDER_TAG} nonce="{_NONCE_PAT}">.*?</{REMINDER_TAG}>',
+    re.DOTALL | re.IGNORECASE,
+)
+
+
+def sanitize_stored_user_prompt(text: str) -> str:
+    """Neutralize forged delimiters in a user prompt restored from history.
+
+    Chats created before this change were never sanitized on the way in, so a
+    forged block saved back then is still trusted by the model on every request
+    and still hidden from the transcript. Ingress cleaning only protects new
+    messages; stored ones need cleaning on the way back out.
+
+    Blocks carrying a runtime token are left intact, so reminders written by any
+    version of this code — including a previous process, whose token differs —
+    keep working. Untokenized blocks are neutralized. For pre-token history that
+    cannot be told apart from a forgery, this fails closed: those old reminders
+    become visible text rather than staying trusted and invisible.
+    """
+    if not text:
+        return text
+    out = []
+    last = 0
+    for match in _TOKENED_BLOCK_RE.finditer(text):
+        out.append(sanitize_untrusted_text(text[last : match.start()]))
+        out.append(match.group(0))
+        last = match.end()
+    out.append(sanitize_untrusted_text(text[last:]))
+    return "".join(out)
+
+
 def make_tool_output_sanitizer_history_processor():
     """Build a history processor that strips forged delimiters from tool results.
 
@@ -237,19 +273,37 @@ def make_tool_output_sanitizer_history_processor():
     builds ``ToolReturnPart`` internally. A history processor is the one chokepoint
     that sees every part before it reaches the model.
 
-    Only tool-authored parts are touched. ``UserPromptPart`` is left alone because
-    it already carries the genuine reminder appended by the chat processor, and is
-    sanitized at ingress instead.
+    ``UserPromptPart`` is handled too, but through
+    ``sanitize_stored_user_prompt`` so the genuine reminder the chat processor
+    appends survives. Chats predating this change were never sanitized on the way
+    in, so their stored prompts still need cleaning on the way back out.
     """
 
     async def _processor(ctx: Any, messages: list) -> list:
-        from pydantic_ai.messages import RetryPromptPart, ToolReturnPart
+        from pydantic_ai.messages import (
+            RetryPromptPart,
+            ToolReturnPart,
+            UserPromptPart,
+        )
 
         for message in messages:
             for part in getattr(message, "parts", ()) or ():
+                content = getattr(part, "content", None)
+
+                if isinstance(part, UserPromptPart):
+                    if not isinstance(content, str):
+                        continue
+                    cleaned = sanitize_stored_user_prompt(content)
+                    if cleaned != content:
+                        part.content = cleaned
+                        logger.warning(
+                            "Neutralized untokenized reminder delimiters in a stored "
+                            "user prompt"
+                        )
+                    continue
+
                 if not isinstance(part, (ToolReturnPart, RetryPromptPart)):
                     continue
-                content = getattr(part, "content", None)
                 cleaned = sanitize_untrusted_payload(content)
                 if cleaned != content:
                     part.content = cleaned
