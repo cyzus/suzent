@@ -94,13 +94,21 @@ async def test_no_lower_layer_section_claims_override_authority() -> None:
     """
     agent = _FakeAgent()
     register_dynamic_instructions(agent, base_instructions="")
+    # Every field the injectors touch. Deliberately explicit: a permissive fake
+    # would let a section that reads something new pass without exercising it,
+    # which is how the async section went unchecked in the first place.
     ctx = SimpleNamespace(
         deps=SimpleNamespace(
+            chat_id="chat-1",
+            user_id="user-1",
             social_context={},
             permission_mode="default",
             permission_feedback=[],
             memory_manager=None,
+            path_resolver=None,
+            custom_volumes=[],
             custom_volume_metadata={},
+            section_cache={},
             sandbox_enabled=True,
             workspace_root="/w",
             suppress_environment_context=False,
@@ -110,7 +118,10 @@ async def test_no_lower_layer_section_claims_override_authority() -> None:
 
     checked = []
     for fn in agent.functions:
-        if DYNAMIC_SECTION_LAYERS[fn.__name__] <= PromptLayer.RUNTIME:
+        # Skip SAFETY only. An earlier `<= RUNTIME` excluded every runtime
+        # injector — environment, volumes, models, session guidance, social —
+        # from a scan whose stated purpose is everything below safety.
+        if DYNAMIC_SECTION_LAYERS[fn.__name__] is PromptLayer.SAFETY:
             continue
         text = fn(ctx)
         if inspect.isawaitable(text):
@@ -122,3 +133,10 @@ async def test_no_lower_layer_section_claims_override_authority() -> None:
     assert "inject_memory_context" in checked, (
         "the lowest-layer section must actually be examined, not skipped"
     )
+    # Every non-safety section, not just the bottom of the stack.
+    expected = {
+        name
+        for name, layer in DYNAMIC_SECTION_LAYERS.items()
+        if layer is not PromptLayer.SAFETY
+    }
+    assert set(checked) == expected, sorted(expected - set(checked))
