@@ -42,6 +42,19 @@ class DatabaseMigrationMixin:
                     conn.execute(text("ALTER TABLE cron_jobs DROP COLUMN is_heartbeat"))
                 conn.commit()
 
+        # Migration: goals gain a generation counter so a replacement can be
+        # told apart from the goal it replaced (same row id, possibly same text).
+        if "goals" in inspector.get_table_names():
+            columns = [col["name"] for col in inspector.get_columns("goals")]
+            if "generation" not in columns:
+                with self.engine.connect() as conn:
+                    conn.execute(
+                        text(
+                            "ALTER TABLE goals ADD COLUMN generation INTEGER DEFAULT 0"
+                        )
+                    )
+                    conn.commit()
+
         # Migration: Add session lifecycle columns to 'chats' table
         if "chats" in inspector.get_table_names():
             columns = [col["name"] for col in inspector.get_columns("chats")]

@@ -102,12 +102,16 @@ class GoalTool(Tool):
         goal = db.get_goal(project_id, chat_id=chat_id)
         effective_turns = max_turns or DEFAULT_MAX_TURNS
         if goal:
+            # A replacement reuses the row and resets the count, so bump the
+            # generation: anything holding the old identity must not treat this
+            # as the goal it was watching.
             db.update_goal(
                 goal.id,
                 objective=objective,
                 status="active",
                 turns_elapsed=0,
                 max_turns=effective_turns,
+                generation=(goal.generation or 0) + 1,
             )
         else:
             db.create_goal(

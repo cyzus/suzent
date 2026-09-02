@@ -17,7 +17,8 @@ class _Goal:
     def __init__(
         self, status: str = "active", turns: int = 0, max_turns: int | None = 10
     ):
-        self.id = "goal-1"
+        self.id = 1
+        self.generation = 0
         self.status = status
         self.turns_elapsed = turns
         self.max_turns = max_turns
@@ -86,7 +87,7 @@ async def test_the_reminder_still_reports_the_budget(db):
 def test_a_completed_turn_charges_one(db):
     advance_goal_turn("chat-1")
 
-    assert db.updates == [("goal-1", 1)]
+    assert db.updates == [(1, 1)]
 
 
 def test_charging_is_one_per_call(db):
@@ -234,36 +235,45 @@ def test_a_goal_created_during_the_turn_is_not_charged(db):
     """The turn that sets a goal did not cost that goal anything. Charging it
     pauses a max_turns=1 goal before it runs a single autonomous step."""
     created_mid_turn = _Goal()
-    created_mid_turn.id = "goal-new"
+    created_mid_turn.id = 2
     db.goal = created_mid_turn
 
-    advance_goal_turn("chat-1", only_goal=("goal-that-was-running", "Ship it"))
+    advance_goal_turn("chat-1", only_goal=(99, 0))
 
     assert db.updates == []
 
 
 def test_the_goal_running_at_turn_start_is_charged(db):
-    advance_goal_turn("chat-1", only_goal=("goal-1", "Ship it"))
+    advance_goal_turn("chat-1", only_goal=(1, 0))
 
-    assert db.updates == [("goal-1", 1)]
+    assert db.updates == [(1, 1)]
 
 
 def test_active_goal_identity_reads_the_current_goal(db):
     from suzent.tools.plan_hooks import active_goal_identity
 
-    assert active_goal_identity("chat-1") == ("goal-1", "Ship it")
+    assert active_goal_identity("chat-1") == (1, 0)
 
     db.goal.status = "paused"
     assert active_goal_identity("chat-1") is None
 
 
 def test_a_goal_replaced_during_the_turn_is_not_charged(db):
-    """manage_goal(action='set') updates the row in place and resets
-    turns_elapsed, so the id is unchanged — matching on it alone charged the
-    replacement for work done under the objective it replaced."""
-    db.goal.objective = "A completely different objective"
+    """manage_goal(action='set') reuses the row and resets turns_elapsed, so the
+    id is unchanged. It bumps generation, which is what distinguishes them."""
+    db.goal.generation = 1
 
-    advance_goal_turn("chat-1", only_goal=("goal-1", "Ship it"))
+    advance_goal_turn("chat-1", only_goal=(1, 0))
+
+    assert db.updates == []
+
+
+def test_a_replacement_with_identical_text_is_still_detected(db):
+    """Re-setting a goal to change only max_turns leaves the objective byte
+    identical, so text could never have distinguished them."""
+    db.goal.generation = 1  # objective deliberately unchanged
+
+    advance_goal_turn("chat-1", only_goal=(1, 0))
 
     assert db.updates == []
 
