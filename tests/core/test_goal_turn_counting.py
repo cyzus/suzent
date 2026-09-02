@@ -162,7 +162,7 @@ def test_the_budget_is_charged_before_continuation_is_scheduled() -> None:
     from suzent.core import chat_processor
 
     source = inspect.getsource(chat_processor.ChatProcessor.process_turn)
-    charge = source.index("advance_goal_turn(chat_id, only_goal_id=")
+    charge = source.index("advance_goal_turn(chat_id, only_goal=")
     schedule = source.index("maybe_continue_goal")
 
     assert charge < schedule, "the increment must land before the judge looks"
@@ -237,24 +237,35 @@ def test_a_goal_created_during_the_turn_is_not_charged(db):
     created_mid_turn.id = "goal-new"
     db.goal = created_mid_turn
 
-    advance_goal_turn("chat-1", only_goal_id="goal-that-was-running")
+    advance_goal_turn("chat-1", only_goal=("goal-that-was-running", "Ship it"))
 
     assert db.updates == []
 
 
 def test_the_goal_running_at_turn_start_is_charged(db):
-    advance_goal_turn("chat-1", only_goal_id="goal-1")
+    advance_goal_turn("chat-1", only_goal=("goal-1", "Ship it"))
 
     assert db.updates == [("goal-1", 1)]
 
 
-def test_active_goal_id_reads_the_current_goal(db):
-    from suzent.tools.plan_hooks import active_goal_id
+def test_active_goal_identity_reads_the_current_goal(db):
+    from suzent.tools.plan_hooks import active_goal_identity
 
-    assert active_goal_id("chat-1") == "goal-1"
+    assert active_goal_identity("chat-1") == ("goal-1", "Ship it")
 
     db.goal.status = "paused"
-    assert active_goal_id("chat-1") is None
+    assert active_goal_identity("chat-1") is None
+
+
+def test_a_goal_replaced_during_the_turn_is_not_charged(db):
+    """manage_goal(action='set') updates the row in place and resets
+    turns_elapsed, so the id is unchanged — matching on it alone charged the
+    replacement for work done under the objective it replaced."""
+    db.goal.objective = "A completely different objective"
+
+    advance_goal_turn("chat-1", only_goal=("goal-1", "Ship it"))
+
+    assert db.updates == []
 
 
 def test_steering_is_charged() -> None:

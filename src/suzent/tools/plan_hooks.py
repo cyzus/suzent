@@ -6,12 +6,17 @@ from suzent.logger import get_logger
 logger = get_logger(__name__)
 
 
-def active_goal_id(chat_id: str) -> Optional[str]:
-    """Id of the goal active for *chat_id* right now, if any.
+def active_goal_identity(chat_id: str) -> Optional[tuple[str, str]]:
+    """Identity of the goal active for *chat_id* right now, as (id, objective).
 
     Read at turn start so the charge can be pinned to it. Without that, a goal
-    the agent creates during the turn is billed for its own setup — and with
-    max_turns=1 it pauses before running a single autonomous step.
+    created during the turn is billed for its own setup, and at max_turns=1 it
+    pauses before running a single autonomous step.
+
+    The objective is part of the identity because replacing a goal reuses the
+    row: manage_goal(action='set') updates in place and resets turns_elapsed,
+    keeping the same id. Matching on id alone would charge the replacement for
+    work done under the objective it replaced.
     """
     try:
         db = get_database()
@@ -20,13 +25,15 @@ def active_goal_id(chat_id: str) -> Optional[str]:
             return None
         goal = db.get_goal(project_id, chat_id=chat_id)
         if goal and goal.status == "active":
-            return goal.id
+            return (goal.id, goal.objective)
     except Exception as e:
         logger.debug(f"Could not read active goal for chat {chat_id}: {e}")
     return None
 
 
-def advance_goal_turn(chat_id: str, only_goal_id: Optional[str] = None) -> None:
+def advance_goal_turn(
+    chat_id: str, only_goal: Optional[tuple[str, str]] = None
+) -> None:
     """Charge one turn against the active goal's budget.
 
     Called once per completed user turn from the chat lifecycle, not from the
@@ -46,12 +53,11 @@ def advance_goal_turn(chat_id: str, only_goal_id: Optional[str] = None) -> None:
         goal = db.get_goal(project_id, chat_id=chat_id)
         if not goal or goal.status != "active":
             return
-        # Only the goal that was already running when the turn began. A goal
-        # created during the turn did not cost it anything.
-        if only_goal_id is not None and goal.id != only_goal_id:
+        # Only the goal that was already running when the turn began. One
+        # created — or replaced — during the turn did not cost it anything.
+        if only_goal is not None and (goal.id, goal.objective) != only_goal:
             logger.debug(
-                f"Not charging chat {chat_id}: goal {goal.id} was not active at "
-                "turn start"
+                f"Not charging chat {chat_id}: the active goal changed during the turn"
             )
             return
         db.update_goal(goal.id, turns_elapsed=goal.turns_elapsed + 1)
