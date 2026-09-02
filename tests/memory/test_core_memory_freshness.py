@@ -200,3 +200,44 @@ async def test_a_transient_failure_is_not_cached(manager, store, monkeypatch):
     assert "RECOVERED" in await manager.get_core_memory_context(
         chat_id="c1", user_id="u1"
     )
+
+
+# --- Codex re-review follow-up (PR #163, commit e077dc0) --------------------
+
+
+@pytest.mark.asyncio
+async def test_the_cache_is_bounded(manager, store, monkeypatch):
+    """Keys outlive what they describe: deleted chats leave entries behind, and a
+    resolver change strands the previous key. Without a ceiling the footprint
+    tracks historical chat/path combinations, each holding a full prompt."""
+    from suzent.memory import manager as manager_mod
+
+    monkeypatch.setattr(manager_mod, "CORE_MEMORY_CACHE_MAXSIZE", 8)
+    persona = store._block_path("persona")
+    persona.parent.mkdir(parents=True, exist_ok=True)
+    persona.write_text("P", encoding="utf-8")
+
+    for i in range(40):
+        await manager.get_core_memory_context(chat_id=f"chat-{i}", user_id="u1")
+
+    assert len(manager._core_memory_cache) <= 8
+
+
+@pytest.mark.asyncio
+async def test_the_cache_evicts_least_recently_used(manager, store, monkeypatch):
+    from suzent.memory import manager as manager_mod
+
+    monkeypatch.setattr(manager_mod, "CORE_MEMORY_CACHE_MAXSIZE", 3)
+    persona = store._block_path("persona")
+    persona.parent.mkdir(parents=True, exist_ok=True)
+    persona.write_text("P", encoding="utf-8")
+
+    for name in ("a", "b", "c"):
+        await manager.get_core_memory_context(chat_id=name, user_id="u1")
+    # Touch "a" so "b" becomes the coldest entry, then overflow by one.
+    await manager.get_core_memory_context(chat_id="a", user_id="u1")
+    await manager.get_core_memory_context(chat_id="d", user_id="u1")
+
+    cached_chats = {key[0] for key in manager._core_memory_cache}
+    assert "a" in cached_chats, "recently used entry was evicted"
+    assert "b" not in cached_chats, "coldest entry should have been evicted first"

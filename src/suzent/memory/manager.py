@@ -2,6 +2,7 @@
 Memory Manager - orchestrates core and archival memory operations.
 """
 
+from collections import OrderedDict
 from typing import Dict, List, Any, Optional, Union, TYPE_CHECKING
 from datetime import datetime, timezone
 
@@ -48,6 +49,10 @@ KNOWN_FACTS_QUERY_CHARS = 2000
 # record the write path can defer to.
 DURABLE_SOURCE_TYPES = frozenset({"notebook", "archive_log"})
 
+# Rendered core-memory prompts retained at once. Comfortably above the number of
+# chats one service handles concurrently, while keeping the ceiling explicit.
+CORE_MEMORY_CACHE_MAXSIZE = 256
+
 
 class MemoryManager:
     """Central memory management service.
@@ -78,9 +83,13 @@ class MemoryManager:
         """
         self.store = store
         self.markdown_store = markdown_store
-        # (chat_id, user_id, sandbox_enabled) -> (revision, rendered section).
-        # Bounded by the number of live chats; entries are tiny strings.
-        self._core_memory_cache: Dict[tuple, tuple] = {}
+        # (chat_id, user_id, sandbox_enabled, *resolver paths) -> (revision, text).
+        # An LRU, not a plain dict: keys outlive the thing they describe. Deleted
+        # chats leave entries behind, and a chat that changes its cwd or notebook
+        # mount strands its previous key forever, so in a long-running service the
+        # footprint would track historical chat/path combinations rather than live
+        # ones. Each entry holds a full rendered prompt, so that adds up.
+        self._core_memory_cache: "OrderedDict[tuple, tuple]" = OrderedDict()
         self.embedding_gen = EmbeddingGenerator(
             model=embedding_model, dimension=embedding_dimension
         )
@@ -416,6 +425,7 @@ class MemoryManager:
         if revision is not None:
             cached = self._core_memory_cache.get(key)
             if cached is not None and cached[0] == revision:
+                self._core_memory_cache.move_to_end(key)
                 return cached[1]
 
         rendered = await self.format_core_memory_for_context(
@@ -429,6 +439,9 @@ class MemoryManager:
         # a chat with no core memory until some unrelated file happens to change.
         if revision is not None and rendered:
             self._core_memory_cache[key] = (revision, rendered)
+            self._core_memory_cache.move_to_end(key)
+            while len(self._core_memory_cache) > CORE_MEMORY_CACHE_MAXSIZE:
+                self._core_memory_cache.popitem(last=False)
         return rendered
 
     def _log_recalls(self, memories: List[Dict[str, Any]]) -> None:
