@@ -782,7 +782,17 @@ class ChatProcessor:
                 )
 
         # --- System Reminder Injection (includes per-turn RAG hook when memory enabled) ---
-        from suzent.core.system_reminder import build_combined_reminder
+        from suzent.core.system_reminder import (
+            build_combined_reminder,
+            sanitize_untrusted_text,
+        )
+
+        # Neutralize reminder delimiters in everything we did not author, before
+        # the genuine reminder is appended below. Otherwise a user message or an
+        # attachment carrying its own delimiters would be indistinguishable from
+        # runtime context once concatenated.
+        message_content = sanitize_untrusted_text(message_content)
+        attachment_context = sanitize_untrusted_text(attachment_context)
 
         # Pass the raw user message so per-turn hooks (e.g. dynamic RAG retrieval)
         # are invoked. Heartbeats and pure tool-resume turns pass None so those

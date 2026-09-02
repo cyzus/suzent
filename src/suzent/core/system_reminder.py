@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import os
 import re
+import secrets
 from typing import Any, Callable, Awaitable, Optional, List
 
 from suzent.logger import get_logger
@@ -34,16 +35,51 @@ DISPLAY_TRIGGER_TAG = "system-reminder-display-trigger"
 PUA_START = ""  # hidden-content start
 PUA_END = ""  # hidden-content end
 
+# Per-process runtime token embedded in every reminder we author.
+#
+# The delimiters above are public constants, so any text that reaches the model
+# — a user message, a fetched web page, a tool result — could otherwise carry a
+# byte-identical block and be read as trusted out-of-band context. The token
+# makes a genuine block unforgeable by anything that cannot read this process's
+# memory, and lets the display path tell runtime-authored blocks apart from
+# look-alike text a user legitimately typed.
+#
+# Scope note: the token is embedded in persisted history, so anyone able to read
+# a raw transcript can learn it. It is defence in depth behind
+# ``sanitize_untrusted_text()``, not a secret to rely on by itself.
+RUNTIME_NONCE = secrets.token_hex(8)
+
+_NONCE_PAT = "[0-9a-f]{16}"
+
+# --- Runtime-authored blocks from *this* process ---------------------------
+_PUA_STRIP_RE = re.compile(
+    rf"{PUA_START}{RUNTIME_NONCE}.*?{RUNTIME_NONCE}{PUA_END}", re.DOTALL
+)
+_PUA_EXTRACT_RE = re.compile(
+    rf"{PUA_START}{RUNTIME_NONCE}(.*?){RUNTIME_NONCE}{PUA_END}", re.DOTALL
+)
 _STRIP_RE = re.compile(
-    r"<system-reminder>.*?</system-reminder>",
+    rf'<{REMINDER_TAG} nonce="{RUNTIME_NONCE}">.*?</{REMINDER_TAG}>',
     re.DOTALL | re.IGNORECASE,
 )
 _EXTRACT_RE = re.compile(
-    r"<system-reminder>(.*?)</system-reminder>",
+    rf'<{REMINDER_TAG}(?: nonce="{RUNTIME_NONCE}")?>(.*?)</{REMINDER_TAG}>',
     re.DOTALL | re.IGNORECASE,
 )
-_PUA_STRIP_RE = re.compile(rf"{PUA_START}.*?{PUA_END}", re.DOTALL)
-_PUA_EXTRACT_RE = re.compile(rf"{PUA_START}(.*?){PUA_END}", re.DOTALL)
+
+# --- Blocks authored by any run of the runtime -----------------------------
+# The display path must keep hiding reminders persisted before the last restart,
+# whose token differs from ours (or is absent, for pre-nonce history).
+_ANY_PUA_STRIP_RE = re.compile(
+    rf"{PUA_START}(?:{_NONCE_PAT})?.*?(?:{_NONCE_PAT})?{PUA_END}", re.DOTALL
+)
+_ANY_XML_STRIP_RE = re.compile(
+    rf'<{REMINDER_TAG}(?: nonce="{_NONCE_PAT}")?>.*?</{REMINDER_TAG}>',
+    re.DOTALL | re.IGNORECASE,
+)
+_ANY_PUA_EXTRACT_RE = re.compile(
+    rf"{PUA_START}(?:{_NONCE_PAT})?(.*?)(?:{_NONCE_PAT})?{PUA_END}", re.DOTALL
+)
 _DISPLAY_TRIGGER_RE = re.compile(
     rf"<{DISPLAY_TRIGGER_TAG}>(.*?)</{DISPLAY_TRIGGER_TAG}>",
     re.DOTALL | re.IGNORECASE,
@@ -70,16 +106,88 @@ def wrap_in_system_reminder(content: str, display_trigger: Optional[str] = None)
             f"{body}"
         )
     if os.environ.get("SUZENT_XML_SYSTEM_REMINDER"):
-        return f"\n<{REMINDER_TAG}>\n{body}\n</{REMINDER_TAG}>\n"
-    return f"\n{PUA_START}\n{body}\n{PUA_END}\n"
+        return (
+            f'\n<{REMINDER_TAG} nonce="{RUNTIME_NONCE}">\n{body}\n</{REMINDER_TAG}>\n'
+        )
+    return f"\n{PUA_START}{RUNTIME_NONCE}\n{body}\n{RUNTIME_NONCE}{PUA_END}\n"
+
+
+def sanitize_untrusted_text(text: str) -> str:
+    """Neutralize reminder delimiters in text Suzent did not author.
+
+    Applied to every untrusted string on its way into the model context: user
+    messages, attachment text, and tool results. Without this a fetched web page
+    or a tool result could carry its own delimiters and be read as trusted
+    out-of-band context (prompt injection).
+
+    Delimiters are replaced with a visible marker rather than deleted, so the
+    text stays intelligible and the attempt is auditable. Content is otherwise
+    left alone.
+    """
+    if not text:
+        return text
+    return (
+        text.replace(PUA_START, "[reminder-delimiter]")
+        .replace(PUA_END, "[reminder-delimiter]")
+        .replace(f"<{REMINDER_TAG}>", f"&lt;{REMINDER_TAG}&gt;")
+        .replace(f"</{REMINDER_TAG}>", f"&lt;/{REMINDER_TAG}&gt;")
+    )
+
+
+def make_tool_output_sanitizer_history_processor():
+    """Build a history processor that strips forged delimiters from tool results.
+
+    Tool output is the highest-risk injection surface: a fetched web page, a file
+    read, or an MCP server's response can all carry attacker-controlled text, and
+    unlike user messages there is no single ingress point to sanitize — pydantic-ai
+    builds ``ToolReturnPart`` internally. A history processor is the one chokepoint
+    that sees every part before it reaches the model.
+
+    Only tool-authored parts are touched. ``UserPromptPart`` is left alone because
+    it already carries the genuine reminder appended by the chat processor, and is
+    sanitized at ingress instead.
+    """
+
+    async def _processor(ctx: Any, messages: list) -> list:
+        from pydantic_ai.messages import RetryPromptPart, ToolReturnPart
+
+        for message in messages:
+            for part in getattr(message, "parts", ()) or ():
+                if not isinstance(part, (ToolReturnPart, RetryPromptPart)):
+                    continue
+                content = getattr(part, "content", None)
+                if not isinstance(content, str):
+                    continue
+                cleaned = sanitize_untrusted_text(content)
+                if cleaned != content:
+                    part.content = cleaned
+                    logger.warning(
+                        "Neutralized forged system-reminder delimiters in output of "
+                        f"tool {getattr(part, 'tool_name', '<unknown>')!r}"
+                    )
+        return messages
+
+    return _processor
 
 
 def strip_system_reminders(text: str) -> str:
-    """Remove all reminder blocks (PUA or XML) from text."""
+    """Remove runtime-authored reminder blocks from text, for display.
+
+    Matches blocks carrying a runtime token — ours or an older process's — plus
+    untokenized blocks, which is what history written before tokens existed
+    looks like.
+
+    Stripping untokenized blocks is only safe because
+    ``sanitize_untrusted_text()`` runs first on every untrusted string, so a
+    forged delimiter never survives as a delimiter: it reaches the transcript as
+    the literal text ``[reminder-delimiter]`` and stays visible to the user. If
+    that ingress step is ever removed, this function starts silently hiding text
+    users actually typed.
+    """
     if not text:
         return text
-    text = _PUA_STRIP_RE.sub("", text)
-    text = _STRIP_RE.sub("", text)
+    text = _ANY_PUA_STRIP_RE.sub("", text)
+    text = _ANY_XML_STRIP_RE.sub("", text)
     return text.strip()
 
 
@@ -87,7 +195,7 @@ def extract_system_reminder_content(text: str) -> str:
     """Return the concatenated inner text of all reminder blocks (PUA + XML)."""
     if not text:
         return ""
-    parts = [m.strip() for m in _PUA_EXTRACT_RE.findall(text) if m.strip()]
+    parts = [m.strip() for m in _ANY_PUA_EXTRACT_RE.findall(text) if m.strip()]
     parts += [m.strip() for m in _EXTRACT_RE.findall(text) if m.strip()]
     return "\n\n".join(parts)
 
