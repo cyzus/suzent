@@ -10,7 +10,22 @@ from typing import Any, Iterable, Optional
 # while a cosmetic difference in one line re-sent that line forever.
 CATALOG_MARKER_PREFIX = "skills-catalog rev="
 
-_MARKER_RE = re.compile(rf"\[{re.escape(CATALOG_MARKER_PREFIX)}([0-9a-f]{{12}})\]")
+# Single-sourced so the emitted text and the pattern that recognises it cannot
+# drift apart.
+CATALOG_HEADER = (
+    "You have a SkillTool that loads specialized knowledge. "
+    "Use it IMMEDIATELY when the user's task matches a skill."
+)
+
+# Anchored on the header, not on the marker alone. A bare marker pattern matches
+# marker-shaped text anywhere in the prompt — a repository reminder, a goal, a
+# message someone pasted — and since the newest match wins, that text could
+# decide whether the catalog is advertised. Requiring our own header immediately
+# before it scopes the match to something this hook actually wrote.
+_MARKER_RE = re.compile(
+    rf"{re.escape(CATALOG_HEADER)}\s*\[{re.escape(CATALOG_MARKER_PREFIX)}"
+    rf"([0-9a-f]{{12}})\]"
+)
 
 
 def _get_history_text(deps: Any) -> str:
@@ -99,8 +114,6 @@ async def skills_reminder_hook(chat_id: str, deps: Any) -> Optional[str]:
     if latest_advertised_revision(_get_history_text(deps)) == revision:
         return None
 
-    return (
-        "You have a SkillTool that loads specialized knowledge. "
-        "Use it IMMEDIATELY when the user's task matches a skill.\n"
-        f"[{CATALOG_MARKER_PREFIX}{revision}]\n\n" + "\n".join(lines)
+    return f"{CATALOG_HEADER}\n[{CATALOG_MARKER_PREFIX}{revision}]\n\n" + "\n".join(
+        lines
     )

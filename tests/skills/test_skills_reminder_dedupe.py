@@ -6,11 +6,13 @@ new, and a line that differed cosmetically was re-sent every turn forever.
 """
 
 from types import SimpleNamespace
+from typing import Any, Optional
 
 import pytest
 from pydantic_ai.messages import ModelRequest, UserPromptPart
 
 from suzent.skills.hooks import (
+    CATALOG_HEADER,
     CATALOG_MARKER_PREFIX,
     catalog_revision,
     latest_advertised_revision,
@@ -18,7 +20,12 @@ from suzent.skills.hooks import (
 )
 
 
-def _skill(skill_id, description="does a thing", name=None, virtual_path=None):
+def _skill(
+    skill_id: str,
+    description: str = "does a thing",
+    name: Optional[str] = None,
+    virtual_path: Optional[str] = None,
+) -> SimpleNamespace:
     return SimpleNamespace(
         id=skill_id,
         metadata=SimpleNamespace(name=name or skill_id, description=description),
@@ -28,19 +35,21 @@ def _skill(skill_id, description="does a thing", name=None, virtual_path=None):
 
 
 class _Manager:
-    def __init__(self, skills, enabled=None):
+    def __init__(self, skills: list[Any], enabled: Optional[set[str]] = None) -> None:
         self._skills = skills
         self._enabled = enabled if enabled is not None else {s.id for s in skills}
         self.loader = SimpleNamespace(list_skills=lambda: list(self._skills))
 
-    def has_enabled_skills(self):
+    def has_enabled_skills(self) -> bool:
         return bool(self._enabled)
 
-    def is_skill_enabled(self, skill_id):
+    def is_skill_enabled(self, skill_id: str) -> bool:
         return skill_id in self._enabled
 
 
-def _deps(manager, history_text="", sandbox_enabled=True):
+def _deps(
+    manager: _Manager, history_text: str = "", sandbox_enabled: bool = True
+) -> SimpleNamespace:
     messages = (
         [ModelRequest(parts=[UserPromptPart(content=history_text)])]
         if history_text
@@ -51,25 +60,33 @@ def _deps(manager, history_text="", sandbox_enabled=True):
     )
 
 
-async def _run(manager, history_text="", sandbox_enabled=True):
+async def _run(
+    manager: _Manager, history_text: str = "", sandbox_enabled: bool = True
+) -> Optional[str]:
     return await skills_reminder_hook(
         "chat-1", _deps(manager, history_text, sandbox_enabled)
     )
+
+
+def _advertised(revision: str) -> str:
+    """History as this hook writes it, header included."""
+    return f"{CATALOG_HEADER}\n[{CATALOG_MARKER_PREFIX}{revision}]\n\n- x: y"
 
 
 # --- first advertisement ----------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_advertises_the_catalog_with_a_revision_marker():
+async def test_advertises_the_catalog_with_a_revision_marker() -> None:
     out = await _run(_Manager([_skill("docx"), _skill("pdf")]))
 
+    assert out is not None
     assert CATALOG_MARKER_PREFIX in out
     assert "docx" in out and "pdf" in out
 
 
 @pytest.mark.asyncio
-async def test_says_nothing_when_no_skills_are_enabled():
+async def test_says_nothing_when_no_skills_are_enabled() -> None:
     assert await _run(_Manager([_skill("docx")], enabled=set())) is None
     assert (
         await skills_reminder_hook("chat-1", SimpleNamespace(skill_manager=None))
@@ -78,9 +95,10 @@ async def test_says_nothing_when_no_skills_are_enabled():
 
 
 @pytest.mark.asyncio
-async def test_disabled_skills_are_not_advertised():
+async def test_disabled_skills_are_not_advertised() -> None:
     out = await _run(_Manager([_skill("docx"), _skill("pdf")], enabled={"docx"}))
 
+    assert out is not None
     assert "docx" in out
     assert "pdf" not in out
 
@@ -89,49 +107,49 @@ async def test_disabled_skills_are_not_advertised():
 
 
 @pytest.mark.asyncio
-async def test_an_unchanged_catalog_is_not_repeated():
+async def test_an_unchanged_catalog_is_not_repeated() -> None:
     manager = _Manager([_skill("docx")])
     first = await _run(manager)
 
+    assert first is not None
     assert await _run(manager, history_text=first) is None
 
 
 @pytest.mark.asyncio
-async def test_adding_a_skill_re_advertises():
-    manager = _Manager([_skill("docx")])
-    first = await _run(manager)
+async def test_adding_a_skill_re_advertises() -> None:
+    first = await _run(_Manager([_skill("docx")]))
 
+    assert first is not None
     grown = _Manager([_skill("docx"), _skill("pdf")])
-
     assert await _run(grown, history_text=first) is not None
 
 
 @pytest.mark.asyncio
-async def test_rewording_a_description_re_advertises():
+async def test_rewording_a_description_re_advertises() -> None:
     """The model routes on descriptions, so a changed one is new information."""
     first = await _run(_Manager([_skill("docx", description="old wording")]))
     out = await _run(
-        _Manager([_skill("docx", description="new wording")]), history_text=first
+        _Manager([_skill("docx", description="new wording")]), history_text=first or ""
     )
 
     assert out is not None and "new wording" in out
 
 
 @pytest.mark.asyncio
-async def test_catalog_order_does_not_cause_a_repeat():
+async def test_catalog_order_does_not_cause_a_repeat() -> None:
     """Ordering is an implementation detail of the loader, not a change."""
     first = await _run(_Manager([_skill("docx"), _skill("pdf")]))
     reordered = _Manager([_skill("pdf"), _skill("docx")])
 
-    assert await _run(reordered, history_text=first) is None
+    assert await _run(reordered, history_text=first or "") is None
 
 
 @pytest.mark.asyncio
-async def test_switching_to_host_paths_re_advertises():
+async def test_switching_to_host_paths_re_advertises() -> None:
     """Locations change with the sandbox flag, so the advice really is stale."""
     first = await _run(_Manager([_skill("docx")]), sandbox_enabled=True)
     out = await _run(
-        _Manager([_skill("docx")]), history_text=first, sandbox_enabled=False
+        _Manager([_skill("docx")]), history_text=first or "", sandbox_enabled=False
     )
 
     assert out is not None
@@ -139,35 +157,99 @@ async def test_switching_to_host_paths_re_advertises():
 
 
 @pytest.mark.asyncio
-async def test_an_unrelated_history_does_not_suppress_the_catalog():
-    out = await _run(_Manager([_skill("docx")]), history_text="please read the docx")
+async def test_a_changed_location_re_advertises() -> None:
+    """Same id and description, different path — the model was told the old one."""
+    first = await _run(_Manager([_skill("docx", virtual_path="/skills/docx")]))
+    out = await _run(
+        _Manager([_skill("docx", virtual_path="/skills/moved/docx")]),
+        history_text=first or "",
+    )
 
     assert out is not None
+    assert "/skills/moved/docx" in out
 
 
 @pytest.mark.asyncio
-async def test_a_dropped_marker_re_advertises():
+async def test_an_unrelated_history_does_not_suppress_the_catalog() -> None:
+    assert (
+        await _run(_Manager([_skill("docx")]), history_text="read the docx") is not None
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_dropped_marker_re_advertises() -> None:
     """Compaction removes old turns and restart drops reminder blocks. The marker
     travels with the message, so it disappears exactly when the catalog does and
     the agent is told again — a durable 'already told' store would not."""
     manager = _Manager([_skill("docx")])
     first = await _run(manager)
-    assert await _run(manager, history_text=first) is None
+    assert await _run(manager, history_text=first or "") is None
 
     assert (
         await _run(manager, history_text="...summary of earlier turns...") is not None
     )
 
 
+@pytest.mark.asyncio
+async def test_a_catalog_that_changes_back_is_re_advertised() -> None:
+    """A→B→A must not stay silent: history still holds A's marker, but what the
+    model was most recently told is B."""
+    only_docx = _Manager([_skill("docx")])
+    both = _Manager([_skill("docx"), _skill("pdf")])
+
+    first = await _run(only_docx)
+    second = await _run(both, history_text=first or "")
+    assert second is not None
+
+    back = await _run(only_docx, history_text=f"{first}\n{second}")
+
+    assert back is not None, "the model's current view is B, so A is new again"
+
+
+# --- which marker counts ----------------------------------------------------
+
+
+def test_the_latest_marker_is_the_one_that_counts() -> None:
+    history = (
+        f"{_advertised('aaaaaaaaaaaa')}\n...later...\n{_advertised('bbbbbbbbbbbb')}"
+    )
+
+    assert latest_advertised_revision(history) == "bbbbbbbbbbbb"
+
+
+def test_no_marker_means_never_advertised() -> None:
+    assert latest_advertised_revision("") is None
+    assert latest_advertised_revision("nothing relevant here") is None
+
+
+def test_marker_shaped_text_without_our_header_is_ignored() -> None:
+    """A bare marker matches text this hook never wrote — a repository reminder,
+    a goal, something a user pasted — and since the newest match wins, that text
+    would decide whether the catalog is advertised."""
+    assert latest_advertised_revision("[skills-catalog rev=aaaaaaaaaaaa]") is None
+
+
+@pytest.mark.asyncio
+async def test_pasted_marker_text_cannot_suppress_the_catalog() -> None:
+    manager = _Manager([_skill("docx")])
+    genuine = await _run(manager)
+    assert genuine is not None
+    revision = latest_advertised_revision(genuine)
+    assert revision is not None
+
+    pasted = f"see [{CATALOG_MARKER_PREFIX}{revision}] in the logs"
+
+    assert await _run(manager, history_text=pasted) is not None
+
+
 # --- the revision itself ----------------------------------------------------
 
 
-def test_revision_is_order_independent():
+def test_revision_is_order_independent() -> None:
     """Loader ordering is an implementation detail, not a catalog change."""
-    a = catalog_revision(["- docx: d", "- pdf: p"])
-    b = catalog_revision(["- pdf: p", "- docx: d"])
-
-    assert a == b
+    assert catalog_revision(["- docx: d", "- pdf: p"]) == catalog_revision(
+        ["- pdf: p", "- docx: d"]
+    )
 
 
 @pytest.mark.parametrize(
@@ -178,53 +260,8 @@ def test_revision_is_order_independent():
         pytest.param(["- docx: d (Location: /elsewhere)"], id="location"),
     ],
 )
-def test_revision_changes_with_anything_that_would_be_emitted(lines):
+def test_revision_changes_with_anything_that_would_be_emitted(
+    lines: list[str],
+) -> None:
     """Hashing the rendered lines means nothing emitted can slip past it."""
     assert catalog_revision(lines) != catalog_revision(["- docx: d"])
-
-
-# --- which marker counts ----------------------------------------------------
-
-
-def test_the_latest_marker_is_the_one_that_counts():
-    history = (
-        f"[{CATALOG_MARKER_PREFIX}aaaaaaaaaaaa]\n"
-        "...later turn...\n"
-        f"[{CATALOG_MARKER_PREFIX}bbbbbbbbbbbb]"
-    )
-
-    assert latest_advertised_revision(history) == "bbbbbbbbbbbb"
-
-
-def test_no_marker_means_never_advertised():
-    assert latest_advertised_revision("") is None
-    assert latest_advertised_revision("nothing relevant here") is None
-
-
-@pytest.mark.asyncio
-async def test_a_catalog_that_changes_back_is_re_advertised():
-    """A→B→A must not stay silent: history still holds A's marker, but what the
-    model was most recently told is B."""
-    only_docx = _Manager([_skill("docx")])
-    both = _Manager([_skill("docx"), _skill("pdf")])
-
-    first = await _run(only_docx)
-    second = await _run(both, history_text=first)
-    assert second is not None
-
-    back = await _run(only_docx, history_text=f"{first}\n{second}")
-
-    assert back is not None, "the model's current view is B, so A is new again"
-
-
-@pytest.mark.asyncio
-async def test_a_changed_location_re_advertises():
-    """Same id and description, different path — the model was told the old one."""
-    first = await _run(_Manager([_skill("docx", virtual_path="/skills/docx")]))
-    out = await _run(
-        _Manager([_skill("docx", virtual_path="/skills/moved/docx")]),
-        history_text=first,
-    )
-
-    assert out is not None
-    assert "/skills/moved/docx" in out
