@@ -725,9 +725,15 @@ _ANY_XML_EXTRACT_RE = re.compile(
     rf"<{REMINDER_TAG}(?: nonce=\"{_NONCE_PAT}\")?>(.*?)</{REMINDER_TAG}>",
     re.DOTALL | re.IGNORECASE,
 )
+_OWN_XML_EXTRACT_RE = re.compile(
+    rf"<{REMINDER_TAG} nonce=\"{RUNTIME_NONCE}\">(.*?)</{REMINDER_TAG}>",
+    re.DOTALL | re.IGNORECASE,
+)
 
 
-def iter_reminder_fragments(text: str) -> list[list[str]]:
+def iter_reminder_fragments(
+    text: str, *, authenticated_only: bool = False
+) -> list[list[str]]:
     """Provider fragments of each reminder block in *text*, block by block.
 
     Callers that need to find their own fragment should use this rather than
@@ -738,15 +744,27 @@ def iter_reminder_fragments(text: str) -> list[list[str]]:
     of that at each call site is how a fragment ends up unfindable.
 
     Returns one list of fragments per block, in the order the blocks appear.
+
+    With *authenticated_only*, blocks are limited to those this process wrote.
+    Callers deciding whether they have already said something need that: this
+    runs before the history processor strips unauthenticated blocks, so on the
+    first turn after a restart the previous process's reminders are still here,
+    and treating them as current means concluding you have spoken when the model
+    is about to lose that text.
     """
     if not text:
         return []
     # Ordered by where each block occurs, not by which pattern found it.
     # Concatenating the two result sets put every PUA block before every XML one,
     # so a history spanning a format switch reported the older block as newest.
+    patterns = (
+        (_PUA_EXTRACT_RE, _OWN_XML_EXTRACT_RE)
+        if authenticated_only
+        else (_ANY_PUA_EXTRACT_RE, _ANY_XML_EXTRACT_RE)
+    )
     found = [
         (match.start(), match.group(1))
-        for pattern in (_ANY_PUA_EXTRACT_RE, _ANY_XML_EXTRACT_RE)
+        for pattern in patterns
         for match in pattern.finditer(text)
     ]
     found.sort(key=lambda item: item[0])

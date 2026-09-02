@@ -495,7 +495,56 @@ def test_blocks_are_ordered_by_position_not_by_format() -> None:
     newer_pua = (
         f"{PUA_START}{'1' * 16}\n{_advertised('bbbbbbbbbbbb')}\n{'1' * 16}{PUA_END}"
     )
-    history = f"{older_xml}\nlater turn\n{newer_pua}"
+    blocks = iter_reminder_fragments(f"{older_xml}\nlater\n{newer_pua}")
 
-    assert len(iter_reminder_fragments(history)) == 2
+    assert len(blocks) == 2
+    assert "aaaaaaaaaaaa" in blocks[0][0]
+    assert "bbbbbbbbbbbb" in blocks[1][0]
+
+
+def test_the_latest_of_two_real_turns_wins() -> None:
+    history = "\n".join(
+        [
+            _as_history(_advertised("aaaaaaaaaaaa")),
+            _as_history(_advertised("bbbbbbbbbbbb")),
+        ]
+    )
+
     assert latest_advertised_revision(history) == "bbbbbbbbbbbb"
+
+
+# --- the first turn after a restart -----------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_previous_processs_catalog_does_not_suppress_the_new_one() -> None:
+    """This hook runs before the history processor strips unauthenticated blocks,
+    so after a restart the old process's catalog is still in history. Trusting it
+    would suppress the advertisement, and then the processor would remove the
+    block — leaving the model with neither."""
+    from suzent.core.system_reminder import PUA_END, PUA_START
+
+    manager = _Manager([_skill("docx")])
+    ours = await _run(manager)
+    assert ours is not None
+    revision = latest_advertised_revision(_as_history(ours))
+    assert revision is not None
+
+    # Same catalog, but signed by a process that is no longer running.
+    stale = f"{PUA_START}{'9' * 16}\n{ours}\n{'9' * 16}{PUA_END}"
+
+    assert await _run(manager, history_text=stale) is not None
+
+
+@pytest.mark.asyncio
+async def test_an_untokenized_legacy_block_does_not_suppress_the_catalog() -> None:
+    """Pre-token history is unauthenticatable for the same reason."""
+    from suzent.core.system_reminder import PUA_END, PUA_START
+
+    manager = _Manager([_skill("docx")])
+    ours = await _run(manager)
+    assert ours is not None
+
+    legacy = f"{PUA_START}\n{ours}\n{PUA_END}"
+
+    assert await _run(manager, history_text=legacy) is not None

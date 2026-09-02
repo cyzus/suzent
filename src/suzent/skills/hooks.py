@@ -91,11 +91,18 @@ def latest_advertised_revision(history_text: str) -> Optional[str]:
     catalog marker whenever a plan-only turn followed, and once by missing the
     display-trigger envelope that reminder-only turns prefix inside the wrapper,
     which made scheduled turns re-advertise every time.
+
+    Only blocks this process wrote count. This hook runs before the history
+    processor strips unauthenticated blocks, so on the first turn after a
+    restart the previous process's catalog is still in history — accepting it
+    would suppress the advertisement and then the processor would remove the
+    block, leaving the model with neither the old catalog nor a new one.
+    Re-advertising once per restart is the intended behaviour.
     """
     from suzent.core.system_reminder import iter_reminder_fragments
 
     found = None
-    for fragments in iter_reminder_fragments(history_text):
+    for fragments in iter_reminder_fragments(history_text, authenticated_only=True):
         for fragment in fragments:
             lines = [line.strip() for line in fragment.splitlines() if line.strip()]
             if len(lines) < 2 or lines[0] != CATALOG_HEADER:
