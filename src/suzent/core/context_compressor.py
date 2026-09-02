@@ -710,15 +710,13 @@ class ContextCompressor:
             return messages[:1] + messages[end_index:]
 
         # Phase 6 — improved synthetic summary framing
-        from pydantic_ai.messages import UserPromptPart
+        from suzent.core.system_reminder import make_user_prompt_part
 
         summary_request = ModelRequest(
             parts=[
-                UserPromptPart(
-                    content=(
-                        f"{COMPACTION_SUMMARY_REQUEST_MARKER}\n"
-                        "The following is an authoritative summary of prior conversation history."
-                    )
+                make_user_prompt_part(
+                    f"{COMPACTION_SUMMARY_REQUEST_MARKER}\n"
+                    "The following is an authoritative summary of prior conversation history."
                 )
             ]
         )

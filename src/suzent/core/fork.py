@@ -31,8 +31,11 @@ def _state_from_display_messages(messages: list[dict[str, Any]]) -> bytes | None
         ModelRequest,
         ModelResponse,
         TextPart,
-        UserPromptPart,
     )
+
+    # Display rows from a chat that predates delimiter sanitizing can still hold
+    # raw ones, and forking replays them into a fresh history.
+    from suzent.core.system_reminder import make_user_prompt_part
 
     from suzent.core.agent_serializer import serialize_state
 
@@ -43,7 +46,7 @@ def _state_from_display_messages(messages: list[dict[str, Any]]) -> bytes | None
         if not text:
             continue
         if role == "user":
-            history.append(ModelRequest(parts=[UserPromptPart(content=text)]))
+            history.append(ModelRequest(parts=[make_user_prompt_part(text)]))
         elif role == "assistant":
             history.append(ModelResponse(parts=[TextPart(content=text)]))
     return serialize_state(history) if history else None
