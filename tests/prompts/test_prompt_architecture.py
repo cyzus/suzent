@@ -255,7 +255,7 @@ def test_build_session_guidance_section_tool_aware_rules():
     assert "# Session Guidance" in guidance
     assert "Shell is for shell/system commands only" in guidance
     assert "Read files with ReadFileTool" in guidance or "read_file" in guidance.lower()
-    assert "use SkillTool early" in guidance
+    assert "load it with SkillTool before starting" in guidance
     assert "AskQuestionTool" in guidance
 
 
