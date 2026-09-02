@@ -10,7 +10,11 @@ authority it should not have, and that a newly added dynamic section cannot skip
 declaring which kind it is.
 """
 
+import inspect
 from types import SimpleNamespace
+from typing import Any, Callable
+
+import pytest
 
 from suzent.prompts import (
     DYNAMIC_SECTION_LAYERS,
@@ -22,9 +26,9 @@ from suzent.prompts import (
 
 class _FakeAgent:
     def __init__(self) -> None:
-        self.functions: list = []
+        self.functions: list[Callable[..., Any]] = []
 
-    def instructions(self, fn):
+    def instructions(self, fn: Callable[..., Any]) -> Callable[..., Any]:
         self.functions.append(fn)
         return fn
 
@@ -77,9 +81,17 @@ def test_memory_is_the_lowest_layer() -> None:
     )
 
 
-def test_no_lower_layer_section_claims_override_authority() -> None:
+@pytest.mark.asyncio
+async def test_no_lower_layer_section_claims_override_authority() -> None:
     """A section below SAFETY telling the model it overrides other instructions
-    would contradict the precedence block."""
+    would contradict the precedence block.
+
+    Async sections are awaited. An earlier version called them and type-checked
+    the result, so `inject_memory_context` — the lowest layer, and the one most
+    likely to carry someone else's instructions — returned a coroutine that was
+    silently skipped. The test passed while checking nothing, and emitted only a
+    RuntimeWarning to say so.
+    """
     agent = _FakeAgent()
     register_dynamic_instructions(agent, base_instructions="")
     ctx = SimpleNamespace(
@@ -95,14 +107,18 @@ def test_no_lower_layer_section_claims_override_authority() -> None:
             base_instructions="",
         )
     )
+
+    checked = []
     for fn in agent.functions:
-        layer = DYNAMIC_SECTION_LAYERS[fn.__name__]
-        if layer <= PromptLayer.RUNTIME:
+        if DYNAMIC_SECTION_LAYERS[fn.__name__] <= PromptLayer.RUNTIME:
             continue
-        try:
-            text = fn(ctx)
-        except Exception:
-            continue
-        if not isinstance(text, str):
-            continue
+        text = fn(ctx)
+        if inspect.isawaitable(text):
+            text = await text
+        checked.append(fn.__name__)
+        assert isinstance(text, str), fn.__name__
         assert "override" not in text.lower(), fn.__name__
+
+    assert "inject_memory_context" in checked, (
+        "the lowest-layer section must actually be examined, not skipped"
+    )
