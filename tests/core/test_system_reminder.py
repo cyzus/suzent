@@ -1680,3 +1680,57 @@ async def test_caller_directives_outrank_ambient_hooks(clean_hooks, monkeypatch)
 
     assert "DIRECTIVE" in body
     assert "AMBIENT" not in body
+
+
+@pytest.mark.asyncio
+async def test_a_blocking_provider_cannot_hold_the_turn_open(clean_hooks, monkeypatch):
+    """asyncio.wait_for needs the loop running to cancel anything, so a provider
+    that blocks it cannot be timed out. Providers doing synchronous work must
+    hand it to a thread — plan_reminder_hook wraps its database access this way."""
+    import asyncio as _asyncio
+    import time
+
+    from suzent.core import system_reminder as sr
+
+    monkeypatch.setattr(sr, "HOOK_TIMEOUT_SECONDS", 0.05)
+
+    async def blocking_but_threaded(chat_id, deps):
+        await _asyncio.to_thread(time.sleep, 1.0)
+        return "slow"
+
+    async def quick(chat_id, deps):
+        return "quick"
+
+    sr.register_global_hook(blocking_but_threaded)
+    sr.register_global_hook(quick)
+
+    started = time.monotonic()
+    result = await sr.build_combined_reminder("c", None)
+    elapsed = time.monotonic() - started
+
+    assert "quick" in result
+    assert elapsed < 0.5, f"deadline could not fire: {elapsed:.2f}s"
+
+
+def test_the_plan_hook_does_its_database_work_off_the_loop():
+    import inspect
+
+    from suzent.tools import plan_hooks
+
+    source = inspect.getsource(plan_hooks.plan_reminder_hook)
+
+    assert "to_thread" in source
+
+
+def test_the_goal_fragment_outranks_ambient_catalogues():
+    """Registration order is priority order under the budget, so a large skill
+    catalog must not be able to hide the objective the agent is working on."""
+    import inspect
+
+    from suzent import server
+
+    source = inspect.getsource(server)
+    plan = source.index("register_global_hook(plan_reminder_hook)")
+    skills = source.index("register_global_hook(skills_reminder_hook)")
+
+    assert plan < skills
