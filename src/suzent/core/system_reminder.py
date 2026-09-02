@@ -112,6 +112,16 @@ def wrap_in_system_reminder(content: str, display_trigger: Optional[str] = None)
     return f"\n{PUA_START}{RUNTIME_NONCE}\n{body}\n{RUNTIME_NONCE}{PUA_END}\n"
 
 
+# Forged tags in untrusted text, in every spelling the display path would later
+# recognize: the strippers are case-insensitive, so anything narrower here lets a
+# block through to the model *and* hides it from the transcript.
+_UNTRUSTED_OPEN_RE = re.compile(rf"<\s*{REMINDER_TAG}(?:\s[^>]*)?>", re.IGNORECASE)
+_UNTRUSTED_CLOSE_RE = re.compile(rf"<\s*/\s*{REMINDER_TAG}\s*>", re.IGNORECASE)
+_UNTRUSTED_TRIGGER_RE = re.compile(
+    rf"<\s*/?\s*{DISPLAY_TRIGGER_TAG}(?:\s[^>]*)?>", re.IGNORECASE
+)
+
+
 def sanitize_untrusted_text(text: str) -> str:
     """Neutralize reminder delimiters in text Suzent did not author.
 
@@ -126,12 +136,60 @@ def sanitize_untrusted_text(text: str) -> str:
     """
     if not text:
         return text
-    return (
-        text.replace(PUA_START, "[reminder-delimiter]")
-        .replace(PUA_END, "[reminder-delimiter]")
-        .replace(f"<{REMINDER_TAG}>", f"&lt;{REMINDER_TAG}&gt;")
-        .replace(f"</{REMINDER_TAG}>", f"&lt;/{REMINDER_TAG}&gt;")
+    text = text.replace(PUA_START, "[reminder-delimiter]").replace(
+        PUA_END, "[reminder-delimiter]"
     )
+    text = _UNTRUSTED_OPEN_RE.sub(f"&lt;{REMINDER_TAG}&gt;", text)
+    text = _UNTRUSTED_CLOSE_RE.sub(f"&lt;/{REMINDER_TAG}&gt;", text)
+    # A forged display-trigger tag would surface attacker text in the UI as though
+    # the runtime had raised it.
+    return _UNTRUSTED_TRIGGER_RE.sub(f"&lt;{DISPLAY_TRIGGER_TAG}&gt;", text)
+
+
+def sanitize_untrusted_payload(value: Any, _depth: int = 0) -> Any:
+    """Sanitize every string reachable inside a tool result.
+
+    Tools return structured objects, not strings: ``ToolResult`` is a Pydantic
+    model whose ``message`` field carries the payload, and for the webpage tool
+    that payload is fetched markdown an attacker may control. Walking only
+    ``str`` content would leave the highest-risk surface untouched.
+
+    Returns a sanitized copy for models; containers are rebuilt. Anything that
+    is not a string, container or model is returned unchanged.
+    """
+    if _depth > 6:
+        return value
+    if isinstance(value, str):
+        return sanitize_untrusted_text(value)
+    if isinstance(value, list):
+        return [sanitize_untrusted_payload(v, _depth + 1) for v in value]
+    if isinstance(value, tuple):
+        return tuple(sanitize_untrusted_payload(v, _depth + 1) for v in value)
+    if isinstance(value, dict):
+        return {k: sanitize_untrusted_payload(v, _depth + 1) for k, v in value.items()}
+
+    fields = getattr(type(value), "model_fields", None)
+    if not fields:
+        return value
+    updates = {}
+    for name in fields:
+        current = getattr(value, name, None)
+        cleaned = sanitize_untrusted_payload(current, _depth + 1)
+        if cleaned != current:
+            updates[name] = cleaned
+    if not updates:
+        return value
+    try:
+        return value.model_copy(update=updates)
+    except Exception:
+        for name, cleaned in updates.items():
+            try:
+                setattr(value, name, cleaned)
+            except Exception:
+                logger.warning(
+                    f"Could not sanitize field {name!r} on {type(value).__name__}"
+                )
+        return value
 
 
 def make_tool_output_sanitizer_history_processor():
@@ -156,9 +214,7 @@ def make_tool_output_sanitizer_history_processor():
                 if not isinstance(part, (ToolReturnPart, RetryPromptPart)):
                     continue
                 content = getattr(part, "content", None)
-                if not isinstance(content, str):
-                    continue
-                cleaned = sanitize_untrusted_text(content)
+                cleaned = sanitize_untrusted_payload(content)
                 if cleaned != content:
                     part.content = cleaned
                     logger.warning(
