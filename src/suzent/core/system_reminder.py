@@ -294,18 +294,44 @@ def sanitize_stored_user_prompt(text: str) -> str:
     return "".join(out)
 
 
+_DROPPABLE_BLOCK_RE = re.compile(
+    rf"{_ANY_PUA_BLOCK_RE.pattern}|{_ANY_XML_TOKENED_BLOCK_RE.pattern}",
+    re.DOTALL | re.IGNORECASE,
+)
+
+
 def _scrub_untrusted_span(span: str) -> str:
     """Drop unauthenticated machine-authored blocks; escape what is left.
 
     Dropping is reserved for shapes no person produces by hand: PUA delimiters,
     and complete XML blocks bearing a nonce attribute. Bare tags survive as
     escaped text so a human's words are never deleted.
+
+    A cron or heartbeat turn carries no user text at all — its whole visible
+    record is the ``display_trigger`` nested inside the reminder. Dropping the
+    block wholesale would leave an empty prompt, and the next rebuild would
+    persist the former ``system_triggered`` row as a blank user message. So the
+    trigger is carried across, with its inner text sanitized: the label is
+    preserved, the model-only body still goes, and a forged block cannot smuggle
+    delimiters back in through the part we keep.
     """
     if not span:
         return span
-    span = _ANY_PUA_BLOCK_RE.sub("", span)
-    span = _ANY_XML_TOKENED_BLOCK_RE.sub("", span)
-    return sanitize_untrusted_text(span)
+    pieces: list[tuple[bool, str]] = []
+    last = 0
+    for match in _DROPPABLE_BLOCK_RE.finditer(span):
+        pieces.append((False, span[last : match.start()]))
+        trigger = _DISPLAY_TRIGGER_RE.search(match.group(0))
+        if trigger:
+            inner = sanitize_untrusted_text(trigger.group(1).strip())
+            pieces.append(
+                (True, f"<{DISPLAY_TRIGGER_TAG}>\n{inner}\n</{DISPLAY_TRIGGER_TAG}>")
+            )
+        last = match.end()
+    pieces.append((False, span[last:]))
+    return "".join(
+        text if verbatim else sanitize_untrusted_text(text) for verbatim, text in pieces
+    )
 
 
 def make_tool_output_sanitizer_history_processor():

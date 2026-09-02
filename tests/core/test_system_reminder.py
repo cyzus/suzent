@@ -593,3 +593,45 @@ def test_current_process_xml_reminder_survives(monkeypatch):
     out = sanitize_stored_user_prompt(f"hi{genuine}")
 
     assert extract_system_reminder_content(out) == "active goal"
+
+
+def test_stale_trigger_row_survives_the_drop():
+    """A cron/heartbeat turn has no user text — the display trigger IS its whole
+    visible record. Dropping the stale block wholesale would leave an empty
+    prompt and rebuild the former system_triggered row as a blank user message."""
+    from suzent.core.system_reminder import (
+        sanitize_stored_user_prompt,
+        extract_system_reminder_display_trigger,
+    )
+
+    stale = (
+        f"{PUA_START}{'b' * 16}\n"
+        "<system-reminder-display-trigger>\nCron: daily digest\n"
+        "</system-reminder-display-trigger>\n\ninternal plan state\n"
+        f"{'b' * 16}{PUA_END}"
+    )
+    out = sanitize_stored_user_prompt(stale)
+
+    assert extract_system_reminder_display_trigger(out) == "Cron: daily digest"
+    assert "internal plan state" not in out, "model-only body must still be dropped"
+
+
+def test_preserved_trigger_cannot_smuggle_delimiters():
+    from suzent.core.system_reminder import sanitize_stored_user_prompt
+
+    stale = (
+        f"{PUA_START}{'b' * 16}\n"
+        f"<system-reminder-display-trigger>\n{PUA_START}nested{PUA_END}\n"
+        "</system-reminder-display-trigger>\nbody\n"
+        f"{'b' * 16}{PUA_END}"
+    )
+    out = sanitize_stored_user_prompt(stale)
+
+    assert PUA_START not in out and PUA_END not in out
+
+
+def test_stale_block_without_a_trigger_leaves_nothing_behind():
+    from suzent.core.system_reminder import sanitize_stored_user_prompt
+
+    stale = f"{PUA_START}{'b' * 16}\nplan state\n{'b' * 16}{PUA_END}"
+    assert sanitize_stored_user_prompt(f"hi{stale}") == "hi"
