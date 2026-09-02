@@ -177,17 +177,12 @@ The memory system is designed to avoid silent loss:
 
 ## HTTP API
 
+The memory routes are registered in `src/suzent/server.py` and documented for users in
+[Concepts > Memory > Configuration](../../02-concepts/memory/configuration.md#the-memory-api).
+Two adjacent session routes belong to the session layer rather than memory:
+
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/memory/core` | GET | Get core memory blocks |
-| `/memory/core` | PUT | Update a core memory block |
-| `/memory/archival` | GET | Search archival memories |
-| `/memory/archival/{id}` | DELETE | Delete a memory |
-| `/memory/stats` | GET | Memory statistics |
-| `/memory/daily` | GET | List daily log dates |
-| `/memory/daily/{date}` | GET | Get daily log content |
-| `/memory/file` | GET | Get MEMORY.md content |
-| `/memory/reindex` | POST | Rebuild LanceDB from markdown |
 | `/session/{id}/transcript` | GET | Get session transcript |
 | `/session/{id}/state` | GET | Get agent state snapshot |
 

@@ -1,8 +1,8 @@
 # Memory Architecture
 
 How memory is written, consolidated, indexed, and read — and what is still missing.
-Companions: [Consolidation](../../02-concepts/memory/consolidation.md) for the dream's design intent,
-[Deduplication](./deduplication.md) for the duplicate problem and its fixes.
+Companions: [Consolidation](../../02-concepts/memory/consolidation.md) for how the dream
+behaves from the outside, [Internals](./internals.md) for the class-by-class reference.
 
 ## Three tiers, one job each
 
@@ -136,11 +136,105 @@ so as the dream fills the vault it simply stops firing.
 Both write through the same marked zone, so an agent's or user's own notes below the
 marker survive either of them.
 
+## History: why duplicates accumulated
+
+This section records the problem this design was built to fix, because the reasoning is
+easier to check against the measurements than against the code.
+
+Near-duplicate rate in the archival index, cosine over the stored embeddings; a row counts
+as redundant when an earlier row exceeds the threshold.
+
+| write path | rows | ≥0.995 | ≥0.95 | ≥0.92 |
+| --- | ---: | ---: | ---: | ---: |
+| `legacy_direct` (pre-June, had write-time dedup) | 2833 | 0.0% | 0.0% | 0.0% |
+| `archive_log` (current path) | 615 | 0.3% | 10.1% | 25.4% |
+| `notebook` (dream output) | 1342 | 14.7% | 15.6% | 17.6% |
+
+On disk the backlog was larger than the index suggested: 13,102 fact lines across 129
+daily logs, 340 exact repeats, and 581 token-set near-duplicates in 279 clusters. The
+largest cluster was a single identity fact written 64 times across 26 distinct days.
+
+Most of it was paraphrase where one side is strictly less informative:
+
+```text
+0.982  A: [preference] The user wants to be reminded to drink water hourly from 9 AM to 9 PM daily.
+       B: [preference] User wants to be reminded to drink water daily.
+```
+
+Exact-match deduplication keeps both. Similarity deduplication alone keeps the wrong one
+half the time. Three causes, all now fixed:
+
+**Extraction was context-free.** The prompt carried only the current turn, so stable
+identity and preference facts were re-extracted every time they were mentioned. The write
+path now renders the nearest `KNOWN_FACTS_LIMIT` facts under an "already in memory"
+heading, with a rule that explicitly prefers emitting a fact that *changes* one of them.
+
+**Nothing deduplicated the derived index.** Write-time dedup was removed in `98a39a3b`
+(fixes #34) because a 0.85 cosine threshold silently dropped updates. The intended
+replacement was the dream — but `DREAM_INSTRUCTIONS` step 3b resolved a duplicate by doing
+nothing, and the lint pass audits only the vault. Step 3b now ends in the tombstone
+hand-off described above. Two guards there are worth knowing: lines shorter than
+`MIN_SUPERSEDED_CHARS` (24) are refused, because date lookup is a normalized substring
+match and a fragment like "dark mode" would match logs it never came from; and the match is
+deliberately loose in the other direction, since a false positive costs one idempotent
+reindex while a missed date strands a row with no mtime change to bring the watcher back.
+
+**The dream barely ran.** `DreamRunner._failures` was in-memory, so retry-then-skip only
+fired if the process stayed up for `memory_consolidation_max_retries` consecutive attempts
+on the same batch. The counters now live in the vault's `.state/dream_state.json`.
+
+### Correction to that last diagnosis
+
+The first reading of it said the watermark had sat at `2026-03-11` for five months. It was
+measured against `CONFIG.notebook_dir`, which on that machine is a stale bootstrap
+skeleton — the real vault was mounted at `/mnt/notebook` and held 91 consolidation
+entries, not 2. Read correctly: daily ingest through April, **no ingest at all between
+2026-05-01 and 2026-06-11** (lint kept running on its own pacing), then a catch-up burst
+on 06-12/13 walking the watermark from `2026-02-22` to `2026-05-26`, and daily ingest
+after. So the wedge was real and did strand the watermark from February, but it cleared
+itself in June, before any of this work — the healthy cadence since is not evidence the
+fix works. That is what `tests/memory/test_dream_failures_persist.py` is for.
+
+`resolve_notebook_dir()` exists so nothing repeats the measurement mistake.
+
+## Borrowed from the Open Knowledge Format
+
+[OKF v0.2](https://github.com/GoogleCloudPlatform/open-knowledge-format/blob/main/SPEC.md)
+frontmatter is per-document, so it maps onto vault pages — which previously carried no
+frontmatter at all — and not onto individual log fact lines. Daily logs stay dumb.
+Producer-defined keys are explicitly permitted, so partial adoption is within its rules.
+
+- `status: draft | stable | deprecated` — `deprecated` is a softer tombstone: the claim
+  stays readable and linkable but leaves retrieval ranking, and it is reversible.
+- `stale_after` — an absolute instant that gives the dream a revisit queue. Defaults are
+  derived from the fact `category` rather than guessed per fact by the extractor: identity
+  effectively never, `preference` a year, `technical` six months, `goal` three months,
+  `context` three weeks.
+- `verified: [{by, at}]` — with OKF's actor convention, so a user editing a core memory
+  block is a `human:` verification that outranks anything the extractor produced. This also
+  supplies the contradiction-resolution rule the system otherwise lacks.
+- `generated: {by, at}` — uniform provenance across logs, vault, and core files.
+- `sources[].usage_count` — the most useful borrowing. A fact extracted 64 times is not 64
+  facts; it is one claim confirmed 64 times, so collapsing repeats into a counter turns the
+  worst noise source into a ranking signal. It is recorded on the bullet rather than in
+  frontmatter (`(confirmed 12x, last 2026-08-20)`), because these claims share a page
+  rather than getting a document each; the marker's absence means confirmed once, so no
+  page needs migrating. A repeat that *contradicts* the bullet is explicitly not a
+  confirmation — it resets the count and takes the correction path.
+
+Not adopted: the Attested Computation family (`runtime`, `parameters`, `computation`,
+`executor`, `attester`), `resource` URIs (the vault already uses `[[wikilinks]]`), and
+formal `okf_version` conformance.
+
+These rules live in `DREAM_INSTRUCTIONS` as well as in `schema_example.md`, because
+`schema.md` is copied into a vault once at bootstrap and is user-editable afterwards —
+every vault predating them keeps its own copy.
+
 ## What landed in PR #118
 
 | commit | what it fixes |
 | --- | --- |
-| `70994416` | Retry counters were in-memory, so retry-then-skip never fired across restarts and a wedged batch stranded the watermark at `2026-02-22`. (The original "barely ran" reading was measured against the wrong vault — see the correction in `deduplication.md`.) |
+| `70994416` | Retry counters were in-memory, so retry-then-skip never fired across restarts and a wedged batch stranded the watermark at `2026-02-22`. (The original "barely ran" reading was measured against the wrong vault — see the correction below.) |
 | `50621860` | Indexer state was keyed by absolute path in a synced directory — 436 entries from two machines, and only 18 of 129 logs actually indexed. Now `label:filename`, versioned, pre-v2 discarded. |
 | `ca421b74` | Extraction was context-free. The prompt now carries the nearest known facts, with an explicit rule permitting updates. |
 | `5fc97850` | The dream resolved duplicates by doing nothing. It now retires folded-in log lines through the tombstone hand-off. |

@@ -1,4 +1,4 @@
-# Memory dedup: what changes for an existing install
+# Upgrade Notes: what changes for an existing install
 
 Notes for anyone upgrading a running install across the memory-deduplication work.
 Nothing here needs action on a fresh install — every item is about state that already
@@ -30,9 +30,9 @@ months after the vault had moved. None of them exist in the live vault. They rea
 leftover bootstrap skeleton, and deleting them on that assumption would have been the
 only irreversible mistake in this whole body of work.
 
-`resolve_notebook_dir()` stops code from reading the wrong vault from now on. It does not
-retroactively rescue anything already stranded there. **Before deleting that directory,
-diff it against your real vault.** It will look like a leftover. It may not be one.
+Suzent no longer reads the wrong vault, but that does not retroactively rescue anything
+already stranded in the default path. **Before deleting that directory, diff it against
+your real vault.** It will look like a leftover. It may not be one.
 
 ## 3. Legacy rows are not redundant copies — export before deleting
 

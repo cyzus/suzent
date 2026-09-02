@@ -1,33 +1,67 @@
-# LLM Wiki
+# Notebook
 
-> Pattern originally described by Andrej Karpathy: [LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)
+Your agent keeps a second kind of memory: a **notebook**, an Obsidian-compatible
+folder of Markdown pages it researches, writes, and tidies itself. Conversation
+memory records facts about *you*; the notebook holds knowledge about the *world* —
+papers it read, tools it compared, projects it is tracking.
 
-The LLM Wiki is a structured knowledge base that lives alongside — but is separate from — the conversation memory system. It uses Obsidian-compatible Markdown, frontmatter, and an optional OKF-inspired metadata profile, organized according to a `schema.md` the agent reads before every operation.
+> The pattern comes from Andrej Karpathy's
+> [LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f), which is
+> why you will occasionally see it called that.
 
-## How it works
+## Where it lives
 
-- The vault root is `/mnt/notebook` (sandbox) or `${MOUNT_NOTEBOOK}` (host).
-- Three agent-maintained navigation files live at the vault root:
-  - `schema.md` — vault conventions, folder layout, and page types. The agent reads this first on every operation.
-  - `index.md` — catalog of synthesized pages, updated on every ingest or query filing.
-  - `log.md` — append-only chronological record of all agent operations.
-- The agent reads and writes vault pages directly via `ReadFileTool`/`WriteFileTool`/`EditFileTool`.
-- `WikiManager` bootstraps these three files on first init (from `skills/notebook/schema_example.md`), then stays out of the way.
+By default the notebook is a folder in your data directory. Point it at an existing
+Obsidian vault instead by mounting it — see
+[Configuration](./configuration.md#where-the-notebook-lives).
 
-## Distinction from conversation memory
+Either way it is ordinary Markdown with `[[wikilinks]]`, so Obsidian, a text editor, or
+Git all work on it directly.
 
-| | Conversation Memory | LLM Wiki |
+## How it's organised
+
+```text
+notebook/
+  schema.md          # The rules of your vault — edit this to change how pages are filed
+  index.md           # Catalog of pages the agent has written
+  log.md             # What the agent did, and when
+  0_Inbox/           # Raw material you dropped in, waiting to be processed
+  1_Projects/        # Active work: roadmaps, meeting notes, TODOs
+  2_Wiki/            # The knowledge layer
+    Concepts/        #   evergreen ideas
+    Literature/      #   one page per paper or article
+    Syntheses/       #   comparisons and overviews
+    Entities/        #   specific models, datasets, tools, people
+  3_Personal/        # Long-term facts about you (written by consolidation)
+  4_Assets/          # PDFs and images — never modified
+  5_Archives/        # Finished or inactive work
+```
+
+**`schema.md` is yours to edit.** The agent reads it before every notebook operation, so
+renaming a folder or adding a filing rule there changes what it does next time. It is
+seeded once when the vault is created and never overwritten afterwards.
+
+Drop a PDF or a clipping into `0_Inbox/` and the agent will file it on its next pass.
+
+## Notebook vs. conversation memory
+
+| | Conversation memory | Notebook |
 |---|---|---|
-| **Content** | Episodic facts extracted from chats | Synthesized knowledge pages |
-| **Structure** | Daily logs + MEMORY.md + LanceDB | Obsidian vault (schema-defined folders) |
-| **Written by** | Automatic extraction | Agent directly via file tools |
-| **Searched via** | LanceDB hybrid search | GlobTool + GrepTool + Markdown links |
-| **Lifetime** | Accumulates across conversations | Persistent; updated by agent on ingest |
+| **Holds** | Facts about you, extracted from chats | Knowledge pages, written deliberately |
+| **Where** | `/shared/memory/` | your notebook folder |
+| **Written by** | Automatic extraction after each exchange | The agent, using file tools |
+| **Found by** | Semantic search | Links, file search, and semantic search |
 
-## Operational skills
+The two meet in one place: consolidated facts about you end up as pages under
+`3_Personal/`. See [How Consolidation Works](./consolidation.md).
 
-The notebook skill (under `skills/notebook/`) provides the agent with procedures for working with the vault:
+## Tidying
 
-- `ingest.md` — procedure for ingesting new content into the vault
-- `lint.md` — procedure for auditing and cleaning vault pages
-- `okf.md` — optional portable metadata and linking conventions enabled by the vault schema
+When there is nothing new to consolidate, the agent audits the notebook instead —
+contradictions between pages, broken links, orphaned pages, knowledge that has gone
+stale. Nothing is deleted; pages are corrected or marked deprecated.
+
+You can also just ask it to research something and write it up; that lands in `2_Wiki/`.
+
+Building on the notebook itself? See
+[Development > Memory Internals](../../03-developing/memory/internals.md).
