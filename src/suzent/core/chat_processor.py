@@ -997,15 +997,23 @@ class ChatProcessor:
                 message_history, _budget
             )
 
-        # Debug-only: log complete system prompt (static + dynamic sections)
-        # as resolved by pydantic-ai instruction runners for this run context.
+        # Debug-only prompt trace. Metadata by default: section names and sizes
+        # say what the prompt was made of, which is what this is actually useful
+        # for, without writing persona, user.md, MEMORY.md, the project
+        # context.md and repository instructions to disk. File logging records
+        # DEBUG unconditionally, so the previous full-text line put all of that
+        # in the log on every single turn (AGENTS.md: never log secrets or PII).
+        #
+        # Full text requires SUZENT_PROMPT_TRACE, a deliberate opt-in rather than
+        # a side effect of turning on debug logging.
         try:
             if logger._core.min_level <= 10:  # DEBUG
                 import asyncio as _asyncio
-                from suzent.prompts import resolve_full_system_prompt
+                import hashlib as _hashlib
+                from suzent.prompts import resolve_system_prompt_sections
 
-                system_prompt = await _asyncio.wait_for(
-                    resolve_full_system_prompt(
+                _sections = await _asyncio.wait_for(
+                    resolve_system_prompt_sections(
                         agent,
                         deps,
                         user_prompt=full_prompt or None,
@@ -1013,12 +1021,21 @@ class ChatProcessor:
                     ),
                     timeout=5.0,
                 )
+                _prompt = "\n\n".join(text for _, text in _sections)
+                _digest = _hashlib.sha256(_prompt.encode("utf-8")).hexdigest()[:8]
                 logger.debug(
-                    "[SystemPrompt] Resolved full prompt ({} chars) for chat {}:\n{}",
-                    len(system_prompt),
+                    "[SystemPrompt] chat={} chars={} sha={} sections={}",
                     chat_id,
-                    system_prompt,
+                    len(_prompt),
+                    _digest,
+                    ", ".join(f"{name}:{len(text)}" for name, text in _sections),
                 )
+                if os.environ.get("SUZENT_PROMPT_TRACE"):
+                    logger.debug(
+                        "[SystemPrompt] full text for chat {} (SUZENT_PROMPT_TRACE):\n{}",
+                        chat_id,
+                        _prompt,
+                    )
         except Exception as e:
             logger.debug(f"[SystemPrompt] Failed to resolve debug prompt: {e}")
 

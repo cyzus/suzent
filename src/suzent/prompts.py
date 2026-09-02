@@ -252,13 +252,19 @@ def resolve_prompt_section(
     return value
 
 
-async def resolve_full_system_prompt(
+async def resolve_system_prompt_sections(
     agent: Any,
     deps: Any,
     *,
     user_prompt: str | Sequence[UserContent] | None = None,
     message_history: Sequence[ModelMessage] | None = None,
-) -> str:
+) -> list[tuple[str, str]]:
+    """Resolve the system prompt as ``(section_name, text)`` pairs.
+
+    Debug-only, like ``resolve_full_system_prompt`` which builds on it. Keeping
+    the sections separate lets callers report *what* the prompt is made of and
+    how large each part is without putting any of the text in a log line.
+    """
     static_instructions, instruction_runners = agent._get_instructions(None)
 
     run_context = RunContext(
@@ -269,9 +275,9 @@ async def resolve_full_system_prompt(
         messages=list(message_history or []),
     )
 
-    parts: list[str] = []
+    sections: list[tuple[str, str]] = []
     if static_instructions:
-        parts.append(static_instructions)
+        sections.append(("static", static_instructions))
 
     for runner in instruction_runners:
         runner_func = getattr(runner, "function", None)
@@ -289,9 +295,22 @@ async def resolve_full_system_prompt(
             )
             continue
         if section:
-            parts.append(section)
+            sections.append((runner_name, section))
 
-    return "\n\n".join(parts)
+    return sections
+
+
+async def resolve_full_system_prompt(
+    agent: Any,
+    deps: Any,
+    *,
+    user_prompt: str | Sequence[UserContent] | None = None,
+    message_history: Sequence[ModelMessage] | None = None,
+) -> str:
+    sections = await resolve_system_prompt_sections(
+        agent, deps, user_prompt=user_prompt, message_history=message_history
+    )
+    return "\n\n".join(text for _, text in sections)
 
 
 def build_execution_mode_section(
