@@ -253,3 +253,21 @@ def test_all_three_prompt_paths_share_one_precedence_source() -> None:
     assert CONTEXT_PRECEDENCE in SUBAGENT_PREAMBLE
     assert "CONTEXT_PRECEDENCE" in inspect.getsource(agent_manager.create_agent)
     assert "SUBAGENT_PREAMBLE" in inspect.getsource(subagent_runner)
+
+
+def test_precedence_is_not_stated_twice_in_one_prompt() -> None:
+    """Sub-agent prompts already carry it via SUBAGENT_PREAMBLE, and they reach
+    create_agent as static_instructions. Prepending unconditionally stated the
+    rules twice — wasted tokens, and it reads as though the copies might differ."""
+    from suzent.agent_manager import create_agent  # noqa: F401
+    from suzent.prompts import CONTEXT_PRECEDENCE, SUBAGENT_PREAMBLE
+
+    import inspect
+
+    from suzent import agent_manager
+
+    source = inspect.getsource(agent_manager.create_agent)
+
+    assert "CONTEXT_PRECEDENCE in _custom_instructions" in source
+    # And the preamble really does contain it, so the guard fires.
+    assert CONTEXT_PRECEDENCE in SUBAGENT_PREAMBLE

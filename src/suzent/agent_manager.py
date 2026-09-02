@@ -352,11 +352,15 @@ def create_agent(config: Dict[str, Any]) -> Agent[AgentDeps, str]:
     # resolve a conflict against — and it still reads repository files and tool
     # output, which is where the conflict comes from.
     _custom_instructions = config.get("static_instructions")
-    static_instructions = (
-        CONTEXT_PRECEDENCE + "\n" + _custom_instructions
-        if _custom_instructions
-        else STATIC_INSTRUCTIONS
-    )
+    if not _custom_instructions:
+        static_instructions = STATIC_INSTRUCTIONS
+    elif CONTEXT_PRECEDENCE in _custom_instructions:
+        # Sub-agent prompts already carry it via SUBAGENT_PREAMBLE. Prepending
+        # again would state the precedence rules twice in the same prompt, which
+        # costs tokens and reads as though one copy might differ from the other.
+        static_instructions = _custom_instructions
+    else:
+        static_instructions = CONTEXT_PRECEDENCE + "\n" + _custom_instructions
 
     # --- Create pydantic-ai Agent ---
     # Mid-run context compaction: the history processor runs before every model
