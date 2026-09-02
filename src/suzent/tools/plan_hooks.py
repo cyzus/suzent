@@ -6,8 +6,73 @@ from suzent.logger import get_logger
 logger = get_logger(__name__)
 
 
+def active_goal_identity(chat_id: str) -> Optional[tuple[int, int]]:
+    """Identity of the goal active for *chat_id* right now, as (id, generation).
+
+    Read at turn start so the charge can be pinned to it. Without that, a goal
+    created during the turn is billed for its own setup, and at max_turns=1 it
+    pauses before running a single autonomous step.
+
+    Generation rather than objective text. Replacing a goal reuses the row and
+    resets turns_elapsed, so the id is unchanged — and the objective can be
+    re-set to the same string, for instance to change only max_turns, so that
+    does not distinguish them either. The counter is bumped on replacement and
+    nothing else, which is the property actually needed.
+    """
+    try:
+        db = get_database()
+        project_id = db.get_chat_project_id(chat_id)
+        if not project_id:
+            return None
+        goal = db.get_goal(project_id, chat_id=chat_id)
+        if goal and goal.status == "active":
+            return (goal.id, goal.generation or 0)
+    except Exception as e:
+        logger.debug(f"Could not read active goal for chat {chat_id}: {e}")
+    return None
+
+
+def advance_goal_turn(
+    chat_id: str, only_goal: Optional[tuple[int, int]] = None
+) -> None:
+    """Charge one turn against the active goal's budget.
+
+    Called once per completed user turn from the chat lifecycle, not from the
+    reminder hook. Building a prompt is a read, and this used to run inside it —
+    so the budget was charged by every path that assembled a reminder, including
+    heartbeats, approval resumes and tool continuations, none of which are a turn
+    the user took. Retries charged again for work already paid for.
+
+    Best-effort: a goal that misses one increment is better than a turn that
+    fails because its bookkeeping did.
+    """
+    try:
+        db = get_database()
+        project_id = db.get_chat_project_id(chat_id)
+        if not project_id:
+            return
+        goal = db.get_goal(project_id, chat_id=chat_id)
+        if not goal or goal.status != "active":
+            return
+        # Only the goal that was already running when the turn began. One
+        # created — or replaced — during the turn did not cost it anything.
+        if only_goal is not None and (goal.id, goal.generation or 0) != only_goal:
+            logger.debug(
+                f"Not charging chat {chat_id}: the active goal changed during the turn"
+            )
+            return
+        db.update_goal(goal.id, turns_elapsed=goal.turns_elapsed + 1)
+    except Exception as e:
+        logger.warning(f"Could not advance goal turn count for chat {chat_id}: {e}")
+
+
 async def plan_reminder_hook(chat_id: str, deps: Any) -> Optional[str]:
-    """Inject the active project Goal and open Tasks into the system reminder each turn."""
+    """Inject the active project Goal and open Tasks into the system reminder.
+
+    Pure read. Reminder providers run on every path that assembles a prompt, so
+    anything that mutates here is charged to turns the user never took — see
+    advance_goal_turn.
+    """
     db = get_database()
     project_id = db.get_chat_project_id(chat_id)
     if not project_id:
@@ -35,7 +100,6 @@ async def plan_reminder_hook(chat_id: str, deps: Any) -> Optional[str]:
             parts.append(
                 "Evaluate: if the goal is achieved call manage_goal(action='clear'). Otherwise keep working."
             )
-        db.update_goal(goal.id, turns_elapsed=goal.turns_elapsed + 1)
 
     active_tasks = db.list_tasks(
         project_id=project_id,
