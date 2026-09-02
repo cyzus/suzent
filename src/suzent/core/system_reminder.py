@@ -228,40 +228,63 @@ def sanitize_untrusted_payload(
         _seen.discard(marker)
 
 
-# A block bearing any well-formed token was authored by some run of this runtime
-# — this process or an earlier one. Anything else in a stored user prompt either
-# predates tokens or was forged.
-_TOKENED_BLOCK_RE = re.compile(
-    rf"{PUA_START}{_NONCE_PAT}.*?{_NONCE_PAT}{PUA_END}"
-    rf'|<{REMINDER_TAG} nonce="{_NONCE_PAT}">.*?</{REMINDER_TAG}>',
+# Only this process's token authenticates a block. A token *shape* proves
+# nothing — an earlier design accepted any 16 hex characters, which meant a
+# stored prompt containing PUA_START + "0"*16 + payload + "0"*16 + PUA_END was
+# waved through as runtime-authored. Provenance cannot be verified across a
+# restart, so blocks we cannot authenticate are not trusted, full stop.
+_OWN_BLOCK_RE = re.compile(
+    rf"{PUA_START}{RUNTIME_NONCE}.*?{RUNTIME_NONCE}{PUA_END}"
+    rf'|<{REMINDER_TAG} nonce="{RUNTIME_NONCE}">.*?</{REMINDER_TAG}>',
     re.DOTALL | re.IGNORECASE,
+)
+
+# Any PUA-delimited block, tokenized or not.
+_ANY_PUA_BLOCK_RE = re.compile(
+    rf"{PUA_START}(?:{_NONCE_PAT})?.*?(?:{_NONCE_PAT})?{PUA_END}", re.DOTALL
 )
 
 
 def sanitize_stored_user_prompt(text: str) -> str:
-    """Neutralize forged delimiters in a user prompt restored from history.
+    """Make a user prompt restored from history safe to send again.
 
-    Chats created before this change were never sanitized on the way in, so a
-    forged block saved back then is still trusted by the model on every request
-    and still hidden from the transcript. Ingress cleaning only protects new
-    messages; stored ones need cleaning on the way back out.
+    Chats predating this change were never sanitized on the way in, so a forged
+    block saved back then is still trusted by the model on every request and
+    still hidden from the transcript. Ingress only protects new messages.
 
-    Blocks carrying a runtime token are left intact, so reminders written by any
-    version of this code — including a previous process, whose token differs —
-    keep working. Untokenized blocks are neutralized. For pre-token history that
-    cannot be told apart from a forgery, this fails closed: those old reminders
-    become visible text rather than staying trusted and invisible.
+    Blocks bearing *this process's* token are kept — that is the reminder the
+    chat processor appended this turn. Everything else is handled by delimiter
+    kind, because the two carry very different odds of being human-authored:
+
+    * PUA blocks are dropped outright. The delimiters are invisible control
+      characters nobody types by hand, so an unauthenticated one is either a
+      forgery or a reminder from an earlier process. Both should go: the forgery
+      is hostile, and the old reminder is stale context whose goal counts and
+      task lists now contradict the current turn. Dropping rather than defusing
+      also means the transcript does not change — those blocks were already
+      hidden, and now they are simply gone.
+
+    * XML tags are escaped, not dropped. Someone can plausibly type
+      ``<system-reminder>`` in a message — discussing this very feature, say —
+      and deleting their words would be worse than showing them.
     """
     if not text:
         return text
     out = []
     last = 0
-    for match in _TOKENED_BLOCK_RE.finditer(text):
-        out.append(sanitize_untrusted_text(text[last : match.start()]))
+    for match in _OWN_BLOCK_RE.finditer(text):
+        out.append(_scrub_untrusted_span(text[last : match.start()]))
         out.append(match.group(0))
         last = match.end()
-    out.append(sanitize_untrusted_text(text[last:]))
+    out.append(_scrub_untrusted_span(text[last:]))
     return "".join(out)
+
+
+def _scrub_untrusted_span(span: str) -> str:
+    """Drop unauthenticated PUA blocks; neutralize everything else in place."""
+    if not span:
+        return span
+    return sanitize_untrusted_text(_ANY_PUA_BLOCK_RE.sub("", span))
 
 
 def make_tool_output_sanitizer_history_processor():
@@ -291,13 +314,25 @@ def make_tool_output_sanitizer_history_processor():
                 content = getattr(part, "content", None)
 
                 if isinstance(part, UserPromptPart):
-                    if not isinstance(content, str):
+                    # Image turns are stored as [text, *media], so a string-only
+                    # check would skip every multimodal message. Media items are
+                    # passed through untouched.
+                    if isinstance(content, str):
+                        cleaned = sanitize_stored_user_prompt(content)
+                    elif isinstance(content, (list, tuple)):
+                        items = [
+                            sanitize_stored_user_prompt(item)
+                            if isinstance(item, str)
+                            else item
+                            for item in content
+                        ]
+                        cleaned = type(content)(items)
+                    else:
                         continue
-                    cleaned = sanitize_stored_user_prompt(content)
                     if cleaned != content:
                         part.content = cleaned
                         logger.warning(
-                            "Neutralized untokenized reminder delimiters in a stored "
+                            "Removed unauthenticated reminder blocks from a stored "
                             "user prompt"
                         )
                     continue
