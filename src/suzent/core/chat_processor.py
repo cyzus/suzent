@@ -823,6 +823,20 @@ class ChatProcessor:
             )
             else None
         )
+        # Chargeable-turn test, kept separate from _turn_message. That value
+        # answers "should per-turn retrieval hooks run", which needs query text;
+        # this answers "did the user ask for work", which a file alone does. An
+        # attachment-only prompt runs the agent and can trigger continuation, so
+        # it has to spend a slot.
+        _is_user_turn = bool(
+            ((message_content and message_content.strip()) or files)
+            and not is_heartbeat
+            and not resume_approvals
+        )
+        _counts_toward_goal = (
+            _is_user_turn if counts_toward_goal is None else counts_toward_goal
+        )
+
         pending_trigger_rows: list[dict] = []
         # Shared with the streaming layer so the draft row this run writes can
         # be told apart from a previous turn's answer when placing the trigger.
@@ -1205,11 +1219,6 @@ class ChatProcessor:
                     agent=agent,
                     postprocess_job_id=postprocess_job_id,
                     file_snapshot=file_snapshot_json,
-                    counts_toward_goal=(
-                        bool(_turn_message)
-                        if counts_toward_goal is None
-                        else counts_toward_goal
-                    ),
                 )
 
             task_id = f"post_process_{chat_id}_{postprocess_job_id}"
@@ -1239,6 +1248,15 @@ class ChatProcessor:
                     # Last-resort fallback. This path should be rare because overflow
                     # registration bypasses max_concurrent but still respects shutdown.
                     asyncio.create_task(_make_post_process_coro())
+
+            # Charge the goal before continuation is allowed to look at the
+            # budget. Doing it inside the background post-process raced this
+            # block: the judge could read the previous count, start one more
+            # autonomous run, and take the goal past max_turns.
+            if _counts_toward_goal and not stream_failed:
+                from suzent.tools.plan_hooks import advance_goal_turn
+
+                advance_goal_turn(chat_id)
 
             # 10. Goal-mode continuation. After a normal turn, let the judge decide
             # whether to auto-continue toward a standing goal. Cheap no-op (one
@@ -1282,7 +1300,6 @@ class ChatProcessor:
         agent: Any,
         postprocess_job_id: str,
         file_snapshot: list[dict],
-        counts_toward_goal: bool = False,
     ) -> None:
         """Background post-processing for a completed turn.
 
@@ -1436,15 +1453,6 @@ class ChatProcessor:
                     job_id, PostProcessStep.DISPLAY, StepStatus.SUCCESS
                 )
 
-                # Charge the goal budget once, here, for a turn that actually
-                # ran and persisted. It used to be charged inside the reminder
-                # hook, which every prompt-assembling path calls — heartbeats,
-                # approval resumes, tool continuations and retries all spent
-                # budget on turns the user never took.
-                if counts_toward_goal and not stream_failed:
-                    from suzent.tools.plan_hooks import advance_goal_turn
-
-                    advance_goal_turn(chat_id)
             except Exception as e:
                 logger.error(f"State persistence failed: {e}")
                 db.update_job_step_status(

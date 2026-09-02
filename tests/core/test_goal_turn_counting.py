@@ -136,18 +136,47 @@ def test_a_database_failure_does_not_break_the_turn(monkeypatch):
 # --- which turns qualify ----------------------------------------------------
 
 
-def test_a_plain_user_turn_is_chargeable_by_default() -> None:
-    """process_turn computes `_turn_message` as non-empty only for a real user
-    message that is not a heartbeat and not an approval resume; with no explicit
-    answer, that is what decides."""
+def test_chargeability_is_its_own_predicate_not_the_hook_one() -> None:
+    """`_turn_message` answers 'should retrieval hooks run', which needs query
+    text. Chargeability answers 'did the user ask for work', which a file alone
+    does — an attachment-only prompt runs the agent and can trigger
+    continuation, so it must spend a slot. Reusing the first for the second let
+    those turns run free."""
     import inspect
 
     from suzent.core import chat_processor
 
     source = inspect.getsource(chat_processor.ChatProcessor.process_turn)
 
-    assert "bool(_turn_message)" in source
+    assert "_is_user_turn = bool(" in source
+    assert "or files" in source
     assert "if counts_toward_goal is None" in source
+
+
+def test_the_budget_is_charged_before_continuation_is_scheduled() -> None:
+    """Charging inside the background post-process raced the continuation
+    scheduler: the judge could read the previous count, start one more
+    autonomous run, and take the goal past max_turns."""
+    import inspect
+
+    from suzent.core import chat_processor
+
+    source = inspect.getsource(chat_processor.ChatProcessor.process_turn)
+    charge = source.index("advance_goal_turn(chat_id)")
+    schedule = source.index("maybe_continue_goal")
+
+    assert charge < schedule, "the increment must land before the judge looks"
+
+
+def test_post_processing_no_longer_charges() -> None:
+    """One place only, or the two can disagree."""
+    import inspect
+
+    from suzent.core import chat_processor
+
+    source = inspect.getsource(chat_processor.ChatProcessor._post_process_turn)
+
+    assert "advance_goal_turn" not in source
 
 
 def test_an_autonomous_goal_step_is_chargeable() -> None:
