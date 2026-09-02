@@ -149,6 +149,17 @@ def _summarize_messages(
     return visible_count, last_message
 
 
+def _is_draft_of_run(row: Any, run_id: Optional[str]) -> bool:
+    """True when *row* is the live streaming draft written by *run_id*."""
+    if not run_id or not isinstance(row, dict):
+        return False
+    return (
+        row.get("role") == "assistant"
+        and bool(row.get("_streaming_draft"))
+        and row.get("_streaming_run_id") == run_id
+    )
+
+
 def _with_message_summary(
     config: Optional[Dict[str, Any]],
     messages: Optional[List[Dict[str, Any]]],
@@ -412,8 +423,24 @@ class ChatOperationsMixin:
             session.commit()
             return True
 
-    def commit_snapshot_state(self, chat_id: str, agent_state: bytes) -> Optional[int]:
+    def commit_snapshot_state(
+        self,
+        chat_id: str,
+        agent_state: bytes,
+        append_display_messages: Optional[List[Dict[str, Any]]] = None,
+        draft_run_id: Optional[str] = None,
+    ) -> Optional[int]:
         """Commit fast snapshot state and increment revision atomically.
+
+        *append_display_messages* are display rows that must become durable at
+        the same instant as the history they describe. A reminder-only turn is
+        the case that needs it: its provenance cannot be reconstructed later,
+        because the reminder block stops being authenticatable once the process
+        restarts. Writing those rows separately loses the race — either the
+        process exits between the two writes, or a stale finalizer replaces
+        `messages` wholesale afterwards. Inside this transaction, the row and
+        the revision advance together, so a finalizer holding an older revision
+        can no longer overwrite them.
 
         Returns:
             The new state revision if the chat exists, otherwise None.
@@ -425,6 +452,41 @@ class ChatOperationsMixin:
                 _postprocess_metrics.snapshot_failed += 1
                 return None
 
+            appended_messages: Optional[List[Dict[str, Any]]] = None
+            if append_display_messages:
+                existing = list(chat.messages or [])
+                added = [
+                    row
+                    for row in append_display_messages
+                    if row and row not in existing
+                ]
+                if added:
+                    # Before any trailing assistant rows, not at the end. By the
+                    # time this runs, streaming has already flushed the turn's
+                    # draft as the last stored message, so appending would order
+                    # the trigger after the answer it prompted — and in the exact
+                    # recovery case this exists for, that ordering is what the
+                    # reloaded transcript keeps.
+                    # Step over the trailing row only when it is *this* run's
+                    # streaming draft. A plain role check is not enough: a run
+                    # cancelled or failed before emitting any draft leaves the
+                    # previous turn's answer last, and inserting ahead of that
+                    # corrupts the chronology this placement exists to fix. The
+                    # draft records the run that wrote it, so ask rather than
+                    # infer from position.
+                    cut = len(existing)
+                    if cut and _is_draft_of_run(existing[cut - 1], draft_run_id):
+                        cut -= 1
+                    appended_messages = existing[:cut] + added + existing[cut:]
+                    chat.messages = appended_messages
+                    flag_modified(chat, "messages")
+                    # This is now a durable content write, so it owes the same
+                    # derived state as update_chat: without these, a search for
+                    # the trigger misses the chat and the sidebar preview stays
+                    # on the previous message whenever post-processing never runs.
+                    chat.config = _with_message_summary(chat.config, appended_messages)
+                    flag_modified(chat, "config")
+
             next_revision = (chat.state_revision or 0) + 1
             chat.agent_state = agent_state
             chat.state_revision = next_revision
@@ -433,6 +495,8 @@ class ChatOperationsMixin:
             chat.updated_at = now
 
             session.add(chat)
+            if appended_messages is not None:
+                self._reindex_in_session(session, chat_id, appended_messages)
             session.commit()
 
         _postprocess_metrics.snapshot_committed += 1

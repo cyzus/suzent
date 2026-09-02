@@ -1117,6 +1117,7 @@ async def stream_agent_responses(
     deferred_tool_results: Optional[DeferredToolResults] = None,
     permission_resolutions: Optional[list[dict[str, Any]]] = None,
     is_heartbeat: bool = False,
+    run_id: Optional[str] = None,
 ) -> AsyncGenerator[str, None]:
     """
     Runs the pydantic-ai agent with streaming and yields AG-UI formatted events.
@@ -1127,7 +1128,9 @@ async def stream_agent_responses(
     the generator gracefully ends the stream, saving the agent state.
     """
     control = StreamControl()
-    run_id = str(uuid.uuid4())
+    # Callers may supply this so they can recognise the draft row this run
+    # wrote; see the trigger-row placement in chat_processor.
+    run_id = run_id or str(uuid.uuid4())
     if chat_id:
         stream_controls[chat_id] = control
     # Indicates whether the stream paused waiting for user approvals.
