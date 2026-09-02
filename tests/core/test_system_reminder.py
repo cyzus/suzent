@@ -1864,3 +1864,32 @@ async def test_a_trigger_only_turn_still_produces_a_reminder(clean_hooks):
 
     assert result is not None
     assert sr.extract_system_reminder_display_trigger(result) == scheduled
+
+
+def test_every_filesystem_reading_provider_renders_off_loop() -> None:
+    """A provider that blocks before its first await makes its own deadline
+    unenforceable — wait_for cannot interrupt work sitting on the loop it runs
+    on — and starves the providers scheduled beside it.
+
+    The framework cannot offload this for them: hooks are coroutines, and
+    driving an arbitrary one in a foreign loop would break anything loop-affine
+    inside it. So each hook that touches the filesystem has to route that work
+    through run_provider_blocking itself, and this is the check that it did.
+    Three hooks read paths and the first two rounds each moved one, so the
+    assertion is over the set rather than over the ones remembered.
+    """
+    import inspect
+
+    from suzent.core.repository_context import repository_agents_reminder_hook
+    from suzent.skills.hooks import skills_reminder_hook
+    from suzent.tools.plan_hooks import plan_reminder_hook
+
+    for hook in (
+        repository_agents_reminder_hook,
+        skills_reminder_hook,
+        plan_reminder_hook,
+    ):
+        source = inspect.getsource(hook)
+        assert "run_provider_blocking" in source, (
+            f"{hook.__name__} reads the filesystem on the event loop"
+        )

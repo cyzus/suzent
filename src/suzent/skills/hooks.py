@@ -134,23 +134,35 @@ async def skills_reminder_hook(chat_id: str, deps: Any) -> Optional[str]:
 
     sandbox_enabled = getattr(deps, "sandbox_enabled", True)
 
-    lines = []
-    for skill in skill_mgr.loader.list_skills():
-        if not skill_mgr.is_skill_enabled(skill.id):
-            continue
-        name = skill.metadata.name
-        if sandbox_enabled:
-            from suzent.tools.filesystem.path_resolver import PathResolver
+    def _render() -> list[str]:
+        # In host mode this calls Path.resolve() per skill, which touches the
+        # filesystem. Blocking before the first await makes the provider
+        # deadline unenforceable — an unreachable network mount would stall not
+        # just this hook but every provider sharing the loop.
+        rendered: list[str] = []
+        for skill in skill_mgr.loader.list_skills():
+            if not skill_mgr.is_skill_enabled(skill.id):
+                continue
+            name = skill.metadata.name
+            if sandbox_enabled:
+                from suzent.tools.filesystem.path_resolver import PathResolver
 
-            location = skill.virtual_path or PathResolver.get_skill_virtual_path(name)
-        else:
-            location = str(skill.path.resolve())
-        lines.append(
-            _one_line(
-                f"- {skill.id}: {skill.metadata.description} "
-                f"(Name: {name}; Location: {location})"
+                location = skill.virtual_path or PathResolver.get_skill_virtual_path(
+                    name
+                )
+            else:
+                location = str(skill.path.resolve())
+            rendered.append(
+                _one_line(
+                    f"- {skill.id}: {skill.metadata.description} "
+                    f"(Name: {name}; Location: {location})"
+                )
             )
-        )
+        return rendered
+
+    from suzent.core.system_reminder import run_provider_blocking
+
+    lines = await run_provider_blocking(_render)
 
     if not lines:
         return None

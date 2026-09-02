@@ -548,3 +548,36 @@ async def test_an_untokenized_legacy_block_does_not_suppress_the_catalog() -> No
     legacy = f"{PUA_START}\n{ours}\n{PUA_END}"
 
     assert await _run(manager, history_text=legacy) is not None
+
+
+# --- the catalog is rendered off the event loop ------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_wedged_skill_path_does_not_stall_the_loop() -> None:
+    """In host mode the catalog calls Path.resolve() per skill. Done on the
+    loop, an unreachable network mount stalls every other provider too — and the
+    provider deadline cannot fire, because the deadline is enforced by the same
+    loop the blocked call is sitting on."""
+    import asyncio
+    import time
+
+    blocked = _skill("slow")
+    blocked.path = SimpleNamespace(resolve=lambda: time.sleep(1.5) or "/host/slow")
+
+    ticks = 0
+
+    async def _tick() -> None:
+        nonlocal ticks
+        while True:
+            await asyncio.sleep(0.02)
+            ticks += 1
+
+    ticker = asyncio.create_task(_tick())
+    try:
+        await _run(_Manager([blocked]), sandbox_enabled=False)
+    finally:
+        ticker.cancel()
+
+    # Rendering took ~1.5s. On the loop the ticker would not have run at all.
+    assert ticks > 10, f"event loop was blocked during rendering ({ticks} ticks)"
