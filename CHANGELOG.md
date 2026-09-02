@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Activity, sidebar and minimap refinements
 
 ### ⚡ Changed
+- Move notebook procedure into the notebook skill
 - Give each rule exactly one owning layer
 - Remove the private audit doc from the repository
 - Revert the eager trigger prewrite; document the residual instead
@@ -33,12 +34,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Keep draft writes off the token loop and out of the index
 
 ### 🐛 Fixed
+- Read enablement from the per-chat manager, not the singleton
 - Identify goals by generation, not by their text
+- Rebuild the agent when skill enablement changes
 - Pin the goal by identity, not by row id
+- Keep the capture-policy exception in the no-skill fallback
 - Charge steering, and only the goal that was already running
+- Give the no-skill fallback the answering path too
 - Charge before continuation is scheduled, and count file-only turns
 - Forward the goal flag through every entry point; charge retries
+- Read notebook availability from the run, and key the cache on it
 - Charge autonomous goal steps, not replayed retries
+- Only point at the notebook skill when it can be loaded
 - Charge goal budget on completed turns, not on prompt assembly
 - Annotate the sanitizer's RunContext so it is actually invoked
 - Only trust catalog markers this process wrote
