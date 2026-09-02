@@ -201,3 +201,23 @@ async def test_toggling_the_skill_invalidates_the_cached_section(tmp_path) -> No
 
     assert "schema.md" in without
     assert "`notebook` skill" in with_skill
+
+
+def test_enabling_a_skill_rebuilds_the_agent() -> None:
+    """SkillTool equipment is fixed in create_agent, so skill state has to be
+    part of the agent cache key. Otherwise a toggle updates persistence, the
+    per-request manager reports the skill as enabled, and the prompt points at
+    a tool the cached agent never equipped."""
+    from suzent.agent_manager import _TRANSIENT_KEYS
+
+    assert "_skills_enabled" not in _TRANSIENT_KEYS
+
+
+def test_skill_state_is_recorded_in_the_agent_config() -> None:
+    import inspect
+
+    from suzent.core import chat_processor
+
+    source = inspect.getsource(chat_processor.ChatProcessor.process_turn)
+
+    assert "_skills_enabled" in source

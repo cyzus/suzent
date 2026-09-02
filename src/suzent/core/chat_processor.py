@@ -496,6 +496,19 @@ class ChatProcessor:
             if repository_context.repository_root is not None
             else None
         )
+        # SkillTool equipment is decided once, in create_agent. Without this in
+        # the stable config, enabling a skill updates persistence but reuses a
+        # cached agent that has no SkillTool — and the prompt would then point
+        # at a tool the run does not actually have.
+        try:
+            from suzent.skills.manager import SkillManager
+
+            config["_skills_enabled"] = bool(
+                SkillManager.get_instance().has_enabled_skills()
+            )
+        except Exception:
+            config["_skills_enabled"] = False
+
         config["_has_discovered_skills"] = bool(
             discover_skill_roots(repository_context)
         )
