@@ -2,6 +2,7 @@
 Memory Manager - orchestrates core and archival memory operations.
 """
 
+from collections import OrderedDict
 from typing import Dict, List, Any, Optional, Union, TYPE_CHECKING
 from datetime import datetime, timezone
 
@@ -48,6 +49,10 @@ KNOWN_FACTS_QUERY_CHARS = 2000
 # record the write path can defer to.
 DURABLE_SOURCE_TYPES = frozenset({"notebook", "archive_log"})
 
+# Rendered core-memory prompts retained at once. Comfortably above the number of
+# chats one service handles concurrently, while keeping the ceiling explicit.
+CORE_MEMORY_CACHE_MAXSIZE = 256
+
 
 class MemoryManager:
     """Central memory management service.
@@ -78,6 +83,13 @@ class MemoryManager:
         """
         self.store = store
         self.markdown_store = markdown_store
+        # (chat_id, user_id, sandbox_enabled, *resolver paths) -> (revision, text).
+        # An LRU, not a plain dict: keys outlive the thing they describe. Deleted
+        # chats leave entries behind, and a chat that changes its cwd or notebook
+        # mount strands its previous key forever, so in a long-running service the
+        # footprint would track historical chat/path combinations rather than live
+        # ones. Each entry holds a full rendered prompt, so that adds up.
+        self._core_memory_cache: "OrderedDict[tuple, tuple]" = OrderedDict()
         self.embedding_gen = EmbeddingGenerator(
             model=embedding_model, dimension=embedding_dimension
         )
@@ -322,6 +334,33 @@ class MemoryManager:
         except Exception as e:
             logger.error(f"promote_memory_md failed: {e}")
 
+    @staticmethod
+    def _resolver_paths(sandbox_enabled: bool, path_resolver) -> tuple:
+        """Paths the core-memory section renders, as the resolver sees them now.
+
+        Host mode bakes the working directory and notebook mount into the prompt,
+        so these are part of the section's identity, not incidental formatting: a
+        chat that changes its authorized cwd renders different text from the very
+        same memory files.
+        """
+        if sandbox_enabled or path_resolver is None:
+            return (None, None, "/workspace/context.md" if sandbox_enabled else None)
+
+        shared_path = str(path_resolver.sandbox_data_path / "shared").replace("\\", "/")
+        mount_notebook = (
+            str(path_resolver.custom_mounts.get("/mnt/notebook", "")).replace("\\", "/")
+            or None
+        )
+        # project_dir, not get_working_dir(): context.md is read back through
+        # MarkdownMemoryStore.read_session_context(), which always resolves to the
+        # chat's project directory. A chat pointed at an authorized cwd has a
+        # different get_working_dir(), so rendering that would tell the agent to
+        # write somewhere nothing ever reads.
+        project_context_path = str(path_resolver.project_dir / "context.md").replace(
+            "\\", "/"
+        )
+        return (shared_path, mount_notebook, project_context_path)
+
     async def format_core_memory_for_context(
         self,
         chat_id: Optional[str] = None,
@@ -336,22 +375,9 @@ class MemoryManager:
             logger.error(f"Error getting core memory blocks: {e}")
             return ""
 
-        shared_path = None
-        mount_notebook = None
-        project_context_path = "/workspace/context.md" if sandbox_enabled else None
-        if not sandbox_enabled and path_resolver is not None:
-            shared_path = str(path_resolver.sandbox_data_path / "shared").replace(
-                "\\", "/"
-            )
-            mount_notebook = (
-                str(path_resolver.custom_mounts.get("/mnt/notebook", "")).replace(
-                    "\\", "/"
-                )
-                or None
-            )
-            project_context_path = str(
-                path_resolver.get_working_dir() / "context.md"
-            ).replace("\\", "/")
+        shared_path, mount_notebook, project_context_path = self._resolver_paths(
+            sandbox_enabled, path_resolver
+        )
 
         return memory_context.format_core_memory_section(
             blocks,
@@ -361,6 +387,67 @@ class MemoryManager:
             mount_notebook=mount_notebook,
             project_context_path=project_context_path,
         )
+
+    async def get_core_memory_context(
+        self,
+        chat_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        sandbox_enabled: bool = True,
+        path_resolver=None,
+    ) -> str:
+        """Core-memory prompt section for a chat, rebuilt when its files change.
+
+        ``format_core_memory_for_context`` reads four files and re-renders the
+        whole section, which is too much to repeat on every model request. This
+        wraps it in a cache keyed by the scope that actually varies, invalidated
+        by ``core_memory_revision()`` so an edit to persona.md or MEMORY.md shows
+        up on the very next turn.
+
+        Falls through to an uncached render whenever there is no markdown store
+        (the legacy LanceDB path), where no cheap revision exists.
+        """
+        store = self.markdown_store
+        if store is None:
+            return await self.format_core_memory_for_context(
+                chat_id=chat_id,
+                user_id=user_id,
+                sandbox_enabled=sandbox_enabled,
+                path_resolver=path_resolver,
+            )
+
+        # Host mode renders the working directory and notebook mount into the
+        # section, so a chat that changes its authorized cwd must not be served
+        # the previous paths just because the memory files are untouched.
+        key = (chat_id, user_id, sandbox_enabled) + self._resolver_paths(
+            sandbox_enabled, path_resolver
+        )
+        try:
+            revision = store.core_memory_revision(chat_id)
+        except Exception as e:
+            logger.debug(f"Core memory revision unavailable, rebuilding: {e}")
+            revision = None
+
+        if revision is not None:
+            cached = self._core_memory_cache.get(key)
+            if cached is not None and cached[0] == revision:
+                self._core_memory_cache.move_to_end(key)
+                return cached[1]
+
+        rendered = await self.format_core_memory_for_context(
+            chat_id=chat_id,
+            user_id=user_id,
+            sandbox_enabled=sandbox_enabled,
+            path_resolver=path_resolver,
+        )
+        # format_core_memory_for_context() swallows read errors and returns "".
+        # Caching that under an unchanged revision would turn one bad request into
+        # a chat with no core memory until some unrelated file happens to change.
+        if revision is not None and rendered:
+            self._core_memory_cache[key] = (revision, rendered)
+            self._core_memory_cache.move_to_end(key)
+            while len(self._core_memory_cache) > CORE_MEMORY_CACHE_MAXSIZE:
+                self._core_memory_cache.popitem(last=False)
+        return rendered
 
     def _log_recalls(self, memories: List[Dict[str, Any]]) -> None:
         """Record retrieved memories to the recall log (usage signal for MEMORY.md

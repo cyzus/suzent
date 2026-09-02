@@ -454,7 +454,6 @@ def register_dynamic_instructions(
     agent: Any,
     *,
     base_instructions: str,
-    memory_context: str | None,
     session_guidance_items: list[str] | None = None,
     enabled_model_ids: list[str] | None = None,
     current_model_id: str | None = None,
@@ -552,8 +551,34 @@ def register_dynamic_instructions(
         )
 
     @agent.instructions
-    def inject_memory_context(_: Any) -> str:
-        return memory_context or ""
+    async def inject_memory_context(ctx: Any) -> str:
+        """Core memory for the chat being served, resolved per run.
+
+        There is deliberately no construction-time snapshot to fall back on.
+        The agent is cached and reused across chats and users — `_chat_id` and
+        `_user_id` are excluded from its cache key — so any captured string
+        belongs to whichever request happened to build the agent, and serving it
+        to the next one is exactly the cross-user bleed this section must not
+        cause. On failure, and when memory is off, the answer is nothing.
+
+        `deps.memory_manager` is None precisely when memory is disabled.
+        """
+        deps = getattr(ctx, "deps", None)
+        manager = getattr(deps, "memory_manager", None)
+        if manager is None:
+            return ""
+        try:
+            return await manager.get_core_memory_context(
+                chat_id=getattr(deps, "chat_id", "") or None,
+                user_id=getattr(deps, "user_id", "") or None,
+                sandbox_enabled=getattr(deps, "sandbox_enabled", True),
+                path_resolver=getattr(deps, "path_resolver", None),
+            )
+        except Exception as e:
+            # Better a prompt with no core memory than one carrying someone
+            # else's.
+            logger.warning(f"Core memory unavailable this run, omitting: {e}")
+            return ""
 
     # Skills injection is now handled via SkillsReminderProvider out-of-band.
 
