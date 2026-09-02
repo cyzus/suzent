@@ -525,6 +525,7 @@ def make_tool_output_sanitizer_history_processor():
     async def _processor(ctx: Any, messages: list) -> list:
         from pydantic_ai.messages import (
             RetryPromptPart,
+            ToolCallPart,
             ToolReturnPart,
             UserPromptPart,
         )
@@ -535,8 +536,7 @@ def make_tool_output_sanitizer_history_processor():
 
                 if isinstance(part, UserPromptPart):
                     # Image turns are stored as [text, *media], so a string-only
-                    # check would skip every multimodal message. Media items are
-                    # passed through untouched.
+                    # check would skip every multimodal message.
                     if isinstance(content, str):
                         cleaned = sanitize_stored_user_prompt(content)
                     elif isinstance(content, (list, tuple)):
@@ -546,9 +546,6 @@ def make_tool_output_sanitizer_history_processor():
                             else item
                             for item in content
                         ]
-                        # Same reconstruction the payload walker uses: a
-                        # NamedTuple takes one argument per field, so
-                        # type(content)(items) would raise and abort the request.
                         cleaned = (
                             items
                             if isinstance(content, list)
@@ -564,15 +561,43 @@ def make_tool_output_sanitizer_history_processor():
                         )
                     continue
 
-                if not isinstance(part, (ToolReturnPart, RetryPromptPart)):
+                if isinstance(part, (ToolReturnPart, RetryPromptPart)):
+                    cleaned = sanitize_tool_payload(content)
+                    if cleaned != content:
+                        part.content = cleaned
+                        logger.warning(
+                            "Neutralized forged system-reminder delimiters in output "
+                            f"of tool {getattr(part, 'tool_name', '<unknown>')!r}"
+                        )
                     continue
-                cleaned = sanitize_tool_payload(content)
-                if cleaned != content:
-                    part.content = cleaned
-                    logger.warning(
-                        "Neutralized forged system-reminder delimiters in output of "
-                        f"tool {getattr(part, 'tool_name', '<unknown>')!r}"
-                    )
+
+                # Everything else that carries text. Model output belongs here:
+                # adversarial content can induce the model to emit delimiters in
+                # an ordinary TextPart or ThinkingPart — or to reassemble them
+                # from escaped tool content — and that response is persisted and
+                # replayed as context, where the reminder rules would have the
+                # model treat it as trusted. Sanitizing only the compressor's
+                # summary covered one producer of model text, not the rest.
+                #
+                # This branch is deliberately a catch-all rather than a list of
+                # part types, so a part type added later is covered by default.
+                if isinstance(content, str):
+                    cleaned = sanitize_untrusted_text(content)
+                    if cleaned != content:
+                        part.content = cleaned
+                        logger.warning(
+                            f"Neutralized reminder delimiters in a "
+                            f"{type(part).__name__} of the conversation history"
+                        )
+                elif isinstance(part, ToolCallPart) and isinstance(
+                    getattr(part, "args", None), str
+                ):
+                    cleaned = sanitize_untrusted_text(part.args)
+                    if cleaned != part.args:
+                        part.args = cleaned
+                        logger.warning(
+                            "Neutralized reminder delimiters in tool call arguments"
+                        )
         return messages
 
     return _processor
