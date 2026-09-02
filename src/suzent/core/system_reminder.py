@@ -158,24 +158,29 @@ _REDACTED = "[unsanitized content omitted]"
 def sanitize_untrusted_payload(
     value: Any, _depth: int = 0, _seen: Optional[set] = None
 ) -> Any:
-    """Sanitize every string reachable inside a tool result.
+    """Sanitize every string a tool result can put in front of the model.
 
-    Tools return structured objects, not strings: ``ToolResult`` is a Pydantic
-    model whose ``message`` field carries the payload, and for the webpage tool
-    that payload is fetched markdown an attacker may control. Walking only
-    ``str`` content would leave the highest-risk surface untouched.
+    Tools return structured objects, not strings, and pydantic-ai serializes a
+    wide range of shapes: Pydantic models, dataclasses, the usual containers,
+    sets, and anything whose ``str()`` it falls back on such as ``pathlib.Path``.
 
-    Mapping keys are sanitized as well as values — a tool or MCP response can
-    choose its own property names, and those are serialized into the model
-    context just like values are.
+    The traversal is deliberately **fail-closed**. An earlier version listed the
+    shapes it understood and returned everything else untouched, which meant each
+    unlisted type — a dataclass, then a set, then a Path — was a fresh way for
+    forged delimiters to reach the model, found one at a time. Now anything not
+    recognized as a container is rendered and checked: if its text carries
+    delimiters it is replaced by the sanitized text, so an unfamiliar shape
+    degrades to something safe instead of passing through.
 
-    Cycles are tracked by identity so a self-referential payload terminates.
-    Returns a sanitized copy for models; containers are rebuilt. Anything that
-    is not a string, container or model is returned unchanged.
+    Mapping keys are sanitized as well as values — a tool or MCP response picks
+    its own property names, and those are serialized too. Cycles are tracked by
+    identity so a self-referential payload terminates.
     """
     if isinstance(value, str):
         return sanitize_untrusted_text(value)
-    if isinstance(value, (int, float, bool, bytes)) or value is None:
+    if value is None or isinstance(
+        value, (bool, int, float, complex, bytes, bytearray)
+    ):
         return value
 
     if _depth > _MAX_PAYLOAD_DEPTH:
@@ -192,7 +197,11 @@ def sanitize_untrusted_payload(
         if isinstance(value, list):
             return [sanitize_untrusted_payload(v, _depth + 1, _seen) for v in value]
         if isinstance(value, tuple):
-            return tuple(
+            return type(value)(
+                sanitize_untrusted_payload(v, _depth + 1, _seen) for v in value
+            )
+        if isinstance(value, (set, frozenset)):
+            return type(value)(
                 sanitize_untrusted_payload(v, _depth + 1, _seen) for v in value
             )
         if isinstance(value, dict):
@@ -203,57 +212,66 @@ def sanitize_untrusted_payload(
                 for k, v in value.items()
             }
 
-        fields = getattr(type(value), "model_fields", None)
-        if (
-            not fields
-            and dataclasses.is_dataclass(value)
-            and not isinstance(value, type)
-        ):
-            # pydantic-ai accepts and JSON-serializes dataclass tool results, so
-            # a dataclass field holding fetched text reaches the model verbatim.
-            updates = {}
-            for f in dataclasses.fields(value):
-                current = getattr(value, f.name, None)
-                cleaned = sanitize_untrusted_payload(current, _depth + 1, _seen)
-                if cleaned != current:
-                    updates[f.name] = cleaned
-            if not updates:
-                return value
-            try:
-                return dataclasses.replace(value, **updates)
-            except Exception:
-                for name, cleaned in updates.items():
-                    try:
-                        setattr(value, name, cleaned)
-                    except Exception:
-                        logger.warning(
-                            f"Could not sanitize field {name!r} on "
-                            f"{type(value).__name__}"
-                        )
-                return value
-        if not fields:
-            return value
-        updates = {}
-        for name in fields:
-            current = getattr(value, name, None)
-            cleaned = sanitize_untrusted_payload(current, _depth + 1, _seen)
-            if cleaned != current:
-                updates[name] = cleaned
-        if not updates:
-            return value
+        if getattr(type(value), "model_fields", None):
+            return _sanitize_fields(
+                value,
+                [name for name in type(value).model_fields],
+                lambda obj, updates: obj.model_copy(update=updates),
+                _depth,
+                _seen,
+            )
+        if dataclasses.is_dataclass(value) and not isinstance(value, type):
+            return _sanitize_fields(
+                value,
+                [f.name for f in dataclasses.fields(value)],
+                lambda obj, updates: dataclasses.replace(obj, **updates),
+                _depth,
+                _seen,
+            )
+
+        # Unrecognized shape. Render it the way the serializer would and keep it
+        # only if that text is clean; otherwise hand back the sanitized text.
         try:
-            return value.model_copy(update=updates)
+            rendered = str(value)
         except Exception:
-            for name, cleaned in updates.items():
-                try:
-                    setattr(value, name, cleaned)
-                except Exception:
-                    logger.warning(
-                        f"Could not sanitize field {name!r} on {type(value).__name__}"
-                    )
-            return value
+            logger.warning(
+                f"Could not render {type(value).__name__} to check it; redacting"
+            )
+            return _REDACTED
+        cleaned = sanitize_untrusted_text(rendered)
+        if cleaned != rendered:
+            logger.warning(
+                f"Forged delimiters in a {type(value).__name__} tool result; "
+                "replaced with sanitized text"
+            )
+            return cleaned
+        return value
     finally:
         _seen.discard(marker)
+
+
+def _sanitize_fields(value: Any, names: list, rebuild, _depth: int, _seen: set) -> Any:
+    """Sanitize named attributes, rebuilding the object when any of them change."""
+    updates = {}
+    for name in names:
+        current = getattr(value, name, None)
+        cleaned = sanitize_untrusted_payload(current, _depth + 1, _seen)
+        if cleaned != current:
+            updates[name] = cleaned
+    if not updates:
+        return value
+    try:
+        return rebuild(value, updates)
+    except Exception:
+        # Frozen or otherwise un-rebuildable: mutate what we can.
+        for name, cleaned in updates.items():
+            try:
+                setattr(value, name, cleaned)
+            except Exception:
+                logger.warning(
+                    f"Could not sanitize field {name!r} on {type(value).__name__}"
+                )
+        return value
 
 
 # Only this process's token authenticates a block. A token *shape* proves
