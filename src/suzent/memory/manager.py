@@ -325,6 +325,28 @@ class MemoryManager:
         except Exception as e:
             logger.error(f"promote_memory_md failed: {e}")
 
+    @staticmethod
+    def _resolver_paths(sandbox_enabled: bool, path_resolver) -> tuple:
+        """Paths the core-memory section renders, as the resolver sees them now.
+
+        Host mode bakes the working directory and notebook mount into the prompt,
+        so these are part of the section's identity, not incidental formatting: a
+        chat that changes its authorized cwd renders different text from the very
+        same memory files.
+        """
+        if sandbox_enabled or path_resolver is None:
+            return (None, None, "/workspace/context.md" if sandbox_enabled else None)
+
+        shared_path = str(path_resolver.sandbox_data_path / "shared").replace("\\", "/")
+        mount_notebook = (
+            str(path_resolver.custom_mounts.get("/mnt/notebook", "")).replace("\\", "/")
+            or None
+        )
+        project_context_path = str(
+            path_resolver.get_working_dir() / "context.md"
+        ).replace("\\", "/")
+        return (shared_path, mount_notebook, project_context_path)
+
     async def format_core_memory_for_context(
         self,
         chat_id: Optional[str] = None,
@@ -339,22 +361,9 @@ class MemoryManager:
             logger.error(f"Error getting core memory blocks: {e}")
             return ""
 
-        shared_path = None
-        mount_notebook = None
-        project_context_path = "/workspace/context.md" if sandbox_enabled else None
-        if not sandbox_enabled and path_resolver is not None:
-            shared_path = str(path_resolver.sandbox_data_path / "shared").replace(
-                "\\", "/"
-            )
-            mount_notebook = (
-                str(path_resolver.custom_mounts.get("/mnt/notebook", "")).replace(
-                    "\\", "/"
-                )
-                or None
-            )
-            project_context_path = str(
-                path_resolver.get_working_dir() / "context.md"
-            ).replace("\\", "/")
+        shared_path, mount_notebook, project_context_path = self._resolver_paths(
+            sandbox_enabled, path_resolver
+        )
 
         return memory_context.format_core_memory_section(
             blocks,
@@ -392,7 +401,12 @@ class MemoryManager:
                 path_resolver=path_resolver,
             )
 
-        key = (chat_id, user_id, sandbox_enabled)
+        # Host mode renders the working directory and notebook mount into the
+        # section, so a chat that changes its authorized cwd must not be served
+        # the previous paths just because the memory files are untouched.
+        key = (chat_id, user_id, sandbox_enabled) + self._resolver_paths(
+            sandbox_enabled, path_resolver
+        )
         try:
             revision = store.core_memory_revision(chat_id)
         except Exception as e:
@@ -410,7 +424,10 @@ class MemoryManager:
             sandbox_enabled=sandbox_enabled,
             path_resolver=path_resolver,
         )
-        if revision is not None:
+        # format_core_memory_for_context() swallows read errors and returns "".
+        # Caching that under an unchanged revision would turn one bad request into
+        # a chat with no core memory until some unrelated file happens to change.
+        if revision is not None and rendered:
             self._core_memory_cache[key] = (revision, rendered)
         return rendered
 

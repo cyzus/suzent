@@ -122,3 +122,81 @@ async def test_legacy_path_without_markdown_store_is_not_cached():
     assert "persona-for-alice" in first
     assert "persona-for-bob" in second
     assert lance.calls == ["alice", "bob"]
+
+
+# --- Codex review follow-ups (PR #163) --------------------------------------
+
+
+class _FakeResolver:
+    """Minimal stand-in for PathResolver in host (non-sandbox) mode."""
+
+    def __init__(self, tmp_path, working, notebook="/host/notebook"):
+        self.sandbox_data_path = tmp_path
+        self.custom_mounts = {"/mnt/notebook": notebook}
+        self._working = working
+
+    def get_working_dir(self):
+        return self._working
+
+
+@pytest.mark.asyncio
+async def test_changing_the_working_dir_bypasses_the_cache(manager, store, tmp_path):
+    """Host mode renders cwd into the prompt, so it is part of the cache identity."""
+    persona = store._block_path("persona")
+    persona.parent.mkdir(parents=True, exist_ok=True)
+    persona.write_text("P", encoding="utf-8")
+
+    first = await manager.get_core_memory_context(
+        chat_id="c1",
+        user_id="u1",
+        sandbox_enabled=False,
+        path_resolver=_FakeResolver(tmp_path, tmp_path / "project-a"),
+    )
+    second = await manager.get_core_memory_context(
+        chat_id="c1",
+        user_id="u1",
+        sandbox_enabled=False,
+        path_resolver=_FakeResolver(tmp_path, tmp_path / "project-b"),
+    )
+
+    assert "project-a" in first
+    assert "project-b" in second, "stale cwd served from cache after the mount changed"
+
+
+def test_resolver_paths_carry_the_notebook_mount(manager, tmp_path):
+    """The mount does not change the rendered text today, but it is resolver
+    state the section is built from, so it belongs in the cache identity rather
+    than being rediscovered as a bug the day the template starts printing it."""
+    a = manager._resolver_paths(
+        False, _FakeResolver(tmp_path, tmp_path / "p", notebook="/mnt/first")
+    )
+    b = manager._resolver_paths(
+        False, _FakeResolver(tmp_path, tmp_path / "p", notebook="/mnt/second")
+    )
+
+    assert a != b
+    assert "/mnt/first" in a and "/mnt/second" in b
+
+
+def test_resolver_paths_are_inert_in_sandbox_mode(manager, tmp_path):
+    assert manager._resolver_paths(True, None) == (None, None, "/workspace/context.md")
+
+
+@pytest.mark.asyncio
+async def test_a_transient_failure_is_not_cached(manager, store, monkeypatch):
+    """One bad read must not leave the chat without core memory indefinitely."""
+    persona = store._block_path("persona")
+    persona.parent.mkdir(parents=True, exist_ok=True)
+    persona.write_text("RECOVERED", encoding="utf-8")
+
+    async def boom(*args, **kwargs):
+        raise OSError("transient")
+
+    monkeypatch.setattr(manager, "get_core_memory", boom)
+    assert await manager.get_core_memory_context(chat_id="c1", user_id="u1") == ""
+
+    monkeypatch.undo()
+    # Same revision as the failed attempt — recovery must not wait on a file edit.
+    assert "RECOVERED" in await manager.get_core_memory_context(
+        chat_id="c1", user_id="u1"
+    )
