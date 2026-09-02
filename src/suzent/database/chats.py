@@ -412,8 +412,23 @@ class ChatOperationsMixin:
             session.commit()
             return True
 
-    def commit_snapshot_state(self, chat_id: str, agent_state: bytes) -> Optional[int]:
+    def commit_snapshot_state(
+        self,
+        chat_id: str,
+        agent_state: bytes,
+        append_display_messages: Optional[List[Dict[str, Any]]] = None,
+    ) -> Optional[int]:
         """Commit fast snapshot state and increment revision atomically.
+
+        *append_display_messages* are display rows that must become durable at
+        the same instant as the history they describe. A reminder-only turn is
+        the case that needs it: its provenance cannot be reconstructed later,
+        because the reminder block stops being authenticatable once the process
+        restarts. Writing those rows separately loses the race — either the
+        process exits between the two writes, or a stale finalizer replaces
+        `messages` wholesale afterwards. Inside this transaction, the row and
+        the revision advance together, so a finalizer holding an older revision
+        can no longer overwrite them.
 
         Returns:
             The new state revision if the chat exists, otherwise None.
@@ -424,6 +439,17 @@ class ChatOperationsMixin:
             if not chat:
                 _postprocess_metrics.snapshot_failed += 1
                 return None
+
+            if append_display_messages:
+                existing = list(chat.messages or [])
+                added = [
+                    row
+                    for row in append_display_messages
+                    if row and row not in existing
+                ]
+                if added:
+                    chat.messages = existing + added
+                    flag_modified(chat, "messages")
 
             next_revision = (chat.state_revision or 0) + 1
             chat.agent_state = agent_state

@@ -11,7 +11,10 @@ async def test_persist_agent_state_snapshot_updates_only_agent_state(monkeypatch
         def __init__(self):
             self.calls = []
 
-        def commit_snapshot_state(self, chat_id, agent_state):
+        def commit_snapshot_state(
+            self, chat_id, agent_state, append_display_messages=None
+        ):
+            self.appended = list(append_display_messages or [])
             return None
 
         def update_chat(self, chat_id, **kwargs):
@@ -66,7 +69,9 @@ async def test_process_turn_persists_snapshot_before_background_postprocess(
     async def fake_stream_agent_responses(*args, **kwargs):
         yield 'data: {"type": "TEXT_MESSAGE_CONTENT", "delta": "ok"}\n\n'
 
-    async def fake_persist_snapshot(self, chat_id, messages, model_id, tool_names):
+    async def fake_persist_snapshot(
+        self, chat_id, messages, model_id, tool_names, append_display_messages=None
+    ):
         called["snapshot"] += 1
 
     async def fake_register_background_task(
@@ -80,7 +85,9 @@ async def test_process_turn_persists_snapshot_before_background_postprocess(
         def get_chat(self, chat_id):
             return None
 
-        def commit_snapshot_state(self, chat_id, agent_state):
+        def commit_snapshot_state(
+            self, chat_id, agent_state, append_display_messages=None
+        ):
             return 1
 
     monkeypatch.setattr(
