@@ -2153,3 +2153,53 @@ async def test_the_slot_is_free_the_moment_the_provider_returns():
     for _ in range(20):
         await sr.run_provider_blocking(lambda: "done")
         assert sr._provider_slots._value == before, "slot still held on return"
+
+
+@pytest.mark.asyncio
+async def test_constituents_that_sanitize_alike_are_sent_once(clean_hooks):
+    """Sanitizing decides whether two inputs are the same text: a delimiter and
+    its literal [reminder-delimiter] spelling differ going in and are identical
+    coming out. Deduplicating first kept both and sent the reminder twice."""
+    from suzent.core import system_reminder as sr
+
+    raw = f"{sr.PUA_START}Cron: nightly digest"
+    spelled = sr.sanitize_untrusted_text(raw)
+    assert raw != spelled, "precondition: these differ before sanitizing"
+
+    result = await sr.build_combined_reminder("c", None, display_trigger=[raw, spelled])
+
+    assert result is not None
+    assert result.count("Cron: nightly digest") == 1
+
+
+def test_the_transcript_row_and_the_block_agree_on_the_trigger() -> None:
+    """Two renderings of the same thing is how the model came to see a reminder
+    once while the transcript kept showing it twice."""
+    import inspect
+
+    from suzent.core import chat_processor, system_reminder
+
+    source = inspect.getsource(chat_processor.trigger_rows_for_snapshot)
+
+    assert "canonical_display_trigger" in source
+    assert "TRIGGER_SEPARATOR" not in source
+
+    repeated = ["Cron: digest", "Cron: digest"]
+    assert system_reminder.canonical_display_trigger(repeated) == "Cron: digest"
+
+
+def test_the_persisted_row_shows_what_the_model_was_shown() -> None:
+    from datetime import datetime
+    from types import SimpleNamespace
+
+    from suzent.core.chat_processor import trigger_rows_for_snapshot
+    from suzent.core.system_reminder import canonical_display_trigger
+
+    part = SimpleNamespace(timestamp=datetime(2026, 1, 1))
+    repeated = ["Cron: nightly digest", "Cron: nightly digest"]
+
+    rows = trigger_rows_for_snapshot(repeated, False, part)
+
+    assert len(rows) == 1
+    assert rows[0]["content"] == canonical_display_trigger(repeated)
+    assert rows[0]["content"].count("Cron: nightly digest") == 1

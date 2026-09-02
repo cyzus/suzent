@@ -1014,6 +1014,44 @@ def _apply_budget(parts: list[str], chat_id: str, reserved: int = 0) -> list[str
     return kept
 
 
+def canonical_trigger_constituents(
+    display_trigger: Union[str, Sequence[str], None],
+) -> list[str]:
+    """The trigger's reminders exactly as they will be delivered.
+
+    Sanitized first and deduplicated second, because sanitizing is what decides
+    whether two inputs are the same text: a delimiter and its literal
+    ``[reminder-delimiter]`` spelling differ on the way in and are identical on
+    the way out, so deduplicating first kept both and sent the reminder twice.
+
+    A string is one constituent, not a join to be taken apart — boundaries
+    cannot be recovered from a rendered join, since a reminder containing the
+    separator splits into pieces that were never reminders.
+
+    One definition because two things need the answer: the block the model reads
+    and the row the transcript keeps. Computing it twice is how they came to
+    disagree.
+    """
+    items = (
+        [display_trigger]
+        if isinstance(display_trigger, str)
+        else list(display_trigger or [])
+    )
+    cleaned = [
+        sanitize_untrusted_text(item).strip() for item in items if item and item.strip()
+    ]
+    return _dedupe_fragments([item for item in cleaned if item])
+
+
+def canonical_display_trigger(
+    display_trigger: Union[str, Sequence[str], None],
+) -> Optional[str]:
+    """The trigger as one string, for the block and for the transcript row."""
+    return (
+        TRIGGER_SEPARATOR.join(canonical_trigger_constituents(display_trigger)) or None
+    )
+
+
 async def build_combined_reminder(
     chat_id: str,
     deps: Any,
@@ -1089,38 +1127,21 @@ async def build_combined_reminder(
     # ad-hoc fragment, and the trigger is prepended inside the block — so the
     # model saw it twice and it was charged twice. Dropping the fragment keeps
     # the content (the trigger envelope carries it) and halves the cost.
-    # A string is one constituent, not a join to be taken apart. Every earlier
-    # version of this recovered the boundaries by splitting the rendered
-    # trigger, which is unrecoverable in general and wrong whenever a reminder
-    # contains the separator itself.
-    _constituents = (
-        [display_trigger]
-        if isinstance(display_trigger, str)
-        else list(display_trigger or [])
-    )
-    _constituents = _dedupe_fragments(
-        [c.strip() for c in _constituents if c and c.strip()]
-    )
-    # Deduplicated like any other repeated content: the fragments already are,
-    # so leaving the trigger alone meant one repeated reminder went out in full
-    # twice and could clear the cap on its own through the oversized exemption.
+    _constituents = canonical_trigger_constituents(display_trigger)
     display_trigger = TRIGGER_SEPARATOR.join(_constituents) or None
 
     if _constituents:
         # The same strings arrive as fragments, and the trigger is prepended
         # inside the block, so without this the model reads and pays for each
-        # one twice.
-        charged = {sanitize_untrusted_text(c).strip() for c in _constituents}
-        charged.add(sanitize_untrusted_text(display_trigger).strip())
+        # one twice. Matched on the delivered text, which is what both sides
+        # now hold.
+        charged = set(_constituents)
+        charged.add(display_trigger)
         parts = [part for part in parts if part not in charged]
 
     # The trigger is prepended inside the block, so it spends from the same
     # budget; without this the cap covered only part of what the model reads.
-    trigger_cost = (
-        len(render_trigger_block(sanitize_untrusted_text(display_trigger)))
-        if display_trigger
-        else 0
-    )
+    trigger_cost = len(render_trigger_block(display_trigger)) if display_trigger else 0
     parts = _apply_budget(parts, chat_id, reserved=trigger_cost)
 
     if not parts and not display_trigger:

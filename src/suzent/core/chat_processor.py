@@ -2741,26 +2741,26 @@ def trigger_rows_for_snapshot(
     if not display_trigger or is_heartbeat:
         return []
 
-    from suzent.core.system_reminder import TRIGGER_SEPARATOR, sanitize_untrusted_text
+    from suzent.core.system_reminder import canonical_display_trigger
 
-    # Joined the one way the reminder joins it, so the visible row says what the
-    # model was actually shown.
-    if not isinstance(display_trigger, str):
-        display_trigger = TRIGGER_SEPARATOR.join(
-            r.strip() for r in display_trigger if r and r.strip()
-        )
-        if not display_trigger:
-            return []
+    # The same function the block uses, so the row says what the model was
+    # actually shown. Rendering it independently here is how the two came to
+    # disagree: the block deduplicated repeated reminders and the transcript
+    # kept showing them twice.
+    display_trigger = canonical_display_trigger(display_trigger)
+    if not display_trigger:
+        return []
 
-    # Same treatment wrap_in_system_reminder gives it. Scheduled prompts and
-    # subagent results are user-influenced, and _preserve_display_triggers
-    # prefers this stored content over the placeholder rebuilt from history — so
-    # storing the raw value would put delimiters back into the visible transcript
-    # permanently, undoing the sanitizing on the path that does it.
     stamp = getattr(part, "timestamp", None)
     row: dict = {
         "role": "system_triggered",
-        "content": sanitize_untrusted_text(display_trigger),
+        # Already sanitized by canonical_display_trigger, which is the same
+        # treatment wrap_in_system_reminder gives it. Scheduled prompts and
+        # subagent results are user-influenced, and _preserve_display_triggers
+        # prefers this stored content over the placeholder rebuilt from history
+        # — so an unsanitized value would put delimiters back into the visible
+        # transcript permanently.
+        "content": display_trigger,
         "trigger_origin": "runtime",
     }
     if stamp:
