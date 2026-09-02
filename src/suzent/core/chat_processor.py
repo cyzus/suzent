@@ -2615,6 +2615,9 @@ def _preserve_trailing_notices(rebuilt: list, existing: list | None) -> list:
     return [*rebuilt, *reversed(trailing)]
 
 
+_TRIGGER_PLACEHOLDER = "[system trigger: "
+
+
 def _preserve_display_triggers(rebuilt: list, existing: list | None) -> list:
     """Restore ``system_triggered`` rows the rebuild can no longer reconstruct.
 
@@ -2623,39 +2626,45 @@ def _preserve_display_triggers(rebuilt: list, existing: list | None) -> list:
     recovers that by parsing it back out of model-visible history, which only
     works while the block is still there — and unauthenticated blocks are
     dropped on restart, precisely because text we cannot authenticate must not
-    be trusted. So after a restart those turns rebuild as an ordinary user row
-    showing a plain ``[system trigger: ...]`` line.
+    be trusted. Those turns then rebuild as a plain ``[system trigger: ...]``
+    line in an ordinary user row.
 
-    The row was correct when it was first written, and it is already stored.
-    Rather than re-deriving trust for the text, take the answer from the log:
-    where the stored row at this position was ``system_triggered``, keep it.
-    This is the same reconciliation the citation and permission helpers do, and
-    it is why the trigger does not need to be authenticatable in history at all.
+    Matching is by label, never by position. Rebuilt rows and stored rows do not
+    correspond one-to-one: ``_coalesce_unanswered_cron_triggers`` keeps only the
+    newest of consecutive unanswered triggers, so two turns in history can have
+    a single stored row, and pairing raw indices restores the wrong one and
+    strands the other as a user message.
 
-    Positional matching is safe here because the rebuild emits exactly one row
-    per stored user turn; a mismatch in length means the histories have diverged
-    for some other reason, and the rebuilt row is left alone.
+    The stored log is what supplies provenance. A placeholder is reinstated only
+    if that exact label was recorded as a trigger when the turn actually ran, so
+    a forged block cannot promote itself into a system row by imitating the
+    placeholder. Every matching placeholder is restored, including duplicates —
+    the coalescing pass runs afterwards and is what collapses them.
     """
     if not existing or not rebuilt:
         return rebuilt
 
-    for index, stored in enumerate(existing):
-        if index >= len(rebuilt):
-            break
-        if not isinstance(stored, dict) or not isinstance(rebuilt[index], dict):
+    known_labels = {
+        str(row.get("content") or "").strip()
+        for row in existing
+        if isinstance(row, dict) and row.get("role") == "system_triggered"
+    }
+    known_labels.discard("")
+    if not known_labels:
+        return rebuilt
+
+    for index, row in enumerate(rebuilt):
+        if not isinstance(row, dict) or row.get("role") != "user":
             continue
-        if stored.get("role") != "system_triggered":
+        content = str(row.get("content") or "").strip()
+        if not content.startswith(_TRIGGER_PLACEHOLDER) or not content.endswith("]"):
             continue
-        if rebuilt[index].get("role") == "system_triggered":
+        label = content[len(_TRIGGER_PLACEHOLDER) : -1].strip()
+        if label not in known_labels:
             continue
-        # Only reinstate over the placeholder the drop leaves behind, never over
-        # a genuine user message that happens to sit at this index.
-        content = str(rebuilt[index].get("content") or "")
-        if content and not content.lstrip().startswith("[system trigger:"):
-            continue
-        restored = dict(rebuilt[index])
+        restored = dict(row)
         restored["role"] = "system_triggered"
-        restored["content"] = stored.get("content") or content
+        restored["content"] = label
         rebuilt[index] = restored
 
     return rebuilt
