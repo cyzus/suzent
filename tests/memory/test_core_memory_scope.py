@@ -62,6 +62,10 @@ def test_the_fallback_covers_answering_as_well_as_writing(sandbox: bool) -> None
 
     assert "index.md" in section and "cite" in section
     assert "schema.md" in section
+    # The capture-policy exception matters here specifically: with no skill,
+    # this text is the only thing authorising an automatic capture, and "only
+    # when asked" silently disabled them.
+    assert "capture policy" in section
 
 
 @pytest.mark.parametrize("sandbox", [True, False])

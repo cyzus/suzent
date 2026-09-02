@@ -33,7 +33,8 @@ def _notebook_hint(title: str, root: str, skill_available: bool) -> str:
         f"To answer from it, start at `{root}/index.md` and cite the pages you use. "
         f"Before changing it, read `{root}/schema.md` — it is the authority on "
         "structure, naming, indexes and cross-links. Check for an existing page "
-        "before creating one, and file a result only when asked to."
+        "before creating one. File a result only when you are asked to or an "
+        "enabled capture policy requires it."
     )
 
 
