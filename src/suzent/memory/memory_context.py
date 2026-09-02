@@ -54,10 +54,11 @@ def format_core_memory_section(
             f"- `{_context_path}` — **this project's** shared scratchpad and task state\n"
             "- `/shared/memory/archive/YYYY-MM-DD.md` — daily knowledge logs (auto-written, append-only)"
         )
-        notebook_title = "## Notebook (/mnt/notebook/)"
-        notebook_runbook = (
-            "Load the `notebook` skill, then follow its advertised `ingest.md` "
-            "or `lint.md` runbook."
+        notebook_hint = (
+            "## Notebook (/mnt/notebook/)\n"
+            "Load the `notebook` skill before any vault work. It owns the vault "
+            "conventions, the ingest and lint runbooks, and the rules for when a "
+            "result may be filed."
         )
         curated_memory_hint = "- Read `/shared/memory/MEMORY.md` for a curated summary of everything you know about the user"
     else:
@@ -72,13 +73,17 @@ def format_core_memory_section(
             f"- `{_context_path}` — **this project's** shared scratchpad and task state\n"
             f"- `{_shared}/memory/archive/YYYY-MM-DD.md` — daily knowledge logs (auto-written, append-only)"
         )
-        notebook_title = "## Notebook (Host-Mounted Paths)"
-        notebook_runbook = (
-            "Load the `notebook` skill, then follow its advertised `ingest.md` "
-            "or `lint.md` runbook."
+        notebook_hint = (
+            "## Notebook (Host-Mounted Paths)\n"
+            "Load the `notebook` skill before any vault work. It owns the vault "
+            "conventions, the ingest and lint runbooks, and the rules for when a "
+            "result may be filed."
         )
         if not _notebook:
-            notebook_runbook += " If notebook is not configured in this session, skip notebook operations."
+            notebook_hint = (
+                "## Notebook\n"
+                "No notebook is configured in this session; skip notebook operations."
+            )
         curated_memory_hint = f"- Read `{_shared}/memory/MEMORY.md` for a curated summary of everything you know about the user"
 
     return f"""# Memory System
@@ -103,29 +108,7 @@ Your memory lives in plain markdown files you can read and write directly:
   above that line is not yours and will not survive the next pass
 - Do **not** append duplicate or ephemeral information; keep files concise and scannable
 
-{notebook_title}
-Your notebook IS the wiki. Pages live directly in the vault alongside your other notes —
-no separate subfolder. You own this layer: create pages, update them, maintain cross-references,
-and respect the existing vault structure.
-
-Navigation:
-- `index.md` - catalog of synthesized pages by category (at notebook root)
-- `log.md` - append-only record of ingests, query filings, and lint passes (at notebook root)
-
-**Before creating any page:** explore the vault with GlobTool to check whether a folder or
-file already exists for that topic. If it does, link to it — do not duplicate it.
-
-Query workflow:
-1) Read `index.md` first to identify candidate pages
-2) Read relevant pages and synthesize with citations
-3) File the result only when the user explicitly requests it or an enabled capture policy requires it
-
-Durable outputs include comparisons, analyses, syntheses, and decision breakdowns.
-When filing an authorized durable output:
-- Write a page in the appropriate vault location (not necessarily the root)
-- Follow the vault's `schema.md` for index and log updates
-
-{notebook_runbook}
+{notebook_hint}
 
 **Memory Guidelines:**
 - Search archival memory before asking the user for information they may have already shared
