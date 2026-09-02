@@ -351,9 +351,14 @@ class MemoryManager:
             str(path_resolver.custom_mounts.get("/mnt/notebook", "")).replace("\\", "/")
             or None
         )
-        project_context_path = str(
-            path_resolver.get_working_dir() / "context.md"
-        ).replace("\\", "/")
+        # project_dir, not get_working_dir(): context.md is read back through
+        # MarkdownMemoryStore.read_session_context(), which always resolves to the
+        # chat's project directory. A chat pointed at an authorized cwd has a
+        # different get_working_dir(), so rendering that would tell the agent to
+        # write somewhere nothing ever reads.
+        project_context_path = str(path_resolver.project_dir / "context.md").replace(
+            "\\", "/"
+        )
         return (shared_path, mount_notebook, project_context_path)
 
     async def format_core_memory_for_context(

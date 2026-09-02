@@ -130,10 +130,11 @@ async def test_legacy_path_without_markdown_store_is_not_cached():
 class _FakeResolver:
     """Minimal stand-in for PathResolver in host (non-sandbox) mode."""
 
-    def __init__(self, tmp_path, working, notebook="/host/notebook"):
+    def __init__(self, tmp_path, working, notebook="/host/notebook", project_dir=None):
         self.sandbox_data_path = tmp_path
         self.custom_mounts = {"/mnt/notebook": notebook}
         self._working = working
+        self.project_dir = project_dir if project_dir is not None else working
 
     def get_working_dir(self):
         return self._working
@@ -241,3 +242,22 @@ async def test_the_cache_evicts_least_recently_used(manager, store, monkeypatch)
     cached_chats = {key[0] for key in manager._core_memory_cache}
     assert "a" in cached_chats, "recently used entry was evicted"
     assert "b" not in cached_chats, "coldest entry should have been evicted first"
+
+
+@pytest.mark.asyncio
+async def test_context_path_follows_the_project_not_the_cwd(manager, store, tmp_path):
+    """context.md is read back via read_session_context(), which always resolves
+    to the chat's project directory. A chat pointed at an authorized cwd must not
+    be told to write somewhere nothing reads."""
+    resolver = _FakeResolver(
+        tmp_path,
+        working=tmp_path / "some" / "external" / "checkout",
+        project_dir=tmp_path / "projects" / "the-project",
+    )
+
+    rendered = await manager.get_core_memory_context(
+        chat_id="c1", user_id="u1", sandbox_enabled=False, path_resolver=resolver
+    )
+
+    assert "projects/the-project/context.md" in rendered
+    assert "external/checkout/context.md" not in rendered
