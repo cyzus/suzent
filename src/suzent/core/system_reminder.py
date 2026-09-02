@@ -843,6 +843,62 @@ def clear_per_turn_hooks() -> None:
 # ---------------------------------------------------------------------------
 
 
+#: How long any one reminder provider may take before it is dropped for the turn.
+HOOK_TIMEOUT_SECONDS = 2.0
+
+#: Ceiling on the assembled reminder body, in characters.
+#:
+#: Measured on the text that actually gets sent, not on per-provider
+#: declarations. Providers that describe their own size drift from what they
+#: emit; the assembled string cannot.
+REMINDER_BUDGET_CHARS = 6000
+
+
+def _dedupe_fragments(parts: list[str]) -> list[str]:
+    """Drop fragments identical to one already present, keeping the first.
+
+    Two providers can produce the same text — a task list surfaced by both the
+    plan hook and an ad-hoc caller, say — and paying for it twice buys nothing.
+    """
+    seen: set[str] = set()
+    unique = []
+    for part in parts:
+        if part in seen:
+            continue
+        seen.add(part)
+        unique.append(part)
+    return unique
+
+
+def _apply_budget(parts: list[str], chat_id: str) -> list[str]:
+    """Keep the assembled body under REMINDER_BUDGET_CHARS.
+
+    Whole fragments are dropped from the end rather than characters from the
+    middle: half a plan snapshot is worse than no plan snapshot, because the
+    model cannot tell it is reading a fragment. Registration order is priority
+    order, so the last-registered providers yield first.
+
+    The first fragment is always kept, even alone over budget. A reminder that
+    truncates to nothing is indistinguishable from a provider that produced
+    nothing, and the caller has no way to notice.
+    """
+    separator_cost = len(FRAGMENT_SEPARATOR)
+    kept: list[str] = []
+    used = 0
+    for index, part in enumerate(parts):
+        cost = len(part) + (separator_cost if kept else 0)
+        if kept and used + cost > REMINDER_BUDGET_CHARS:
+            dropped = len(parts) - index
+            logger.warning(
+                f"[system-reminder] chat={chat_id} over budget: dropped {dropped} "
+                f"of {len(parts)} fragment(s) at {used}/{REMINDER_BUDGET_CHARS} chars"
+            )
+            break
+        kept.append(part)
+        used += cost
+    return kept
+
+
 async def build_combined_reminder(
     chat_id: str,
     deps: Any,
@@ -865,42 +921,42 @@ async def build_combined_reminder(
     """
     parts: list[str] = []
 
-    # 1. Global hooks (always-on)
-    for hook in _global_hooks:
+    async def _run(hook, *args) -> Optional[str]:
+        """Run one provider under a timeout, never letting it fail the turn."""
         try:
-            content = await hook(chat_id, deps)
-            if content:
-                parts.append(content.strip())
+            return await asyncio.wait_for(hook(*args), timeout=HOOK_TIMEOUT_SECONDS)
+        except asyncio.TimeoutError:
+            logger.warning(
+                f"Reminder hook {hook.__name__} timed out after "
+                f"{HOOK_TIMEOUT_SECONDS}s — skipped"
+            )
         except Exception as e:
-            logger.warning(f"System Reminder global hook {hook.__name__} failed: {e}")
+            logger.warning(f"Reminder hook {hook.__name__} failed: {e}")
+        return None
 
-    # 2. Per-turn hooks (only when there is a real user message)
-    # Each hook runs with a timeout so a slow embedding/search call never
-    # stalls the message pipeline. Timed-out hooks are skipped silently.
-    _PER_TURN_TIMEOUT = 2.0  # seconds
+    # Providers are independent, so they run together. Serially, a slow one
+    # delayed every one after it — and global hooks had no timeout at all, so a
+    # single hung provider stalled the whole message pipeline indefinitely.
+    scheduled = [(hook, _run(hook, chat_id, deps)) for hook in _global_hooks]
     if user_message and user_message.strip():
-        for hook in _per_turn_hooks:
-            try:
-                content = await asyncio.wait_for(
-                    hook(chat_id, deps, user_message),
-                    timeout=_PER_TURN_TIMEOUT,
-                )
-                if content:
-                    parts.append(content.strip())
-            except asyncio.TimeoutError:
-                logger.debug(
-                    f"Per-turn hook {hook.__name__} timed out after {_PER_TURN_TIMEOUT}s — skipped"
-                )
-            except Exception as e:
-                logger.warning(
-                    f"System Reminder per-turn hook {hook.__name__} failed: {e}"
-                )
+        scheduled += [
+            (hook, _run(hook, chat_id, deps, user_message)) for hook in _per_turn_hooks
+        ]
 
-    # 3. Caller-supplied adhoc reminders
+    if scheduled:
+        # Registration order is the priority order, and gather preserves it, so
+        # what a caller registered first is what survives truncation.
+        for content in await asyncio.gather(*(coro for _, coro in scheduled)):
+            if content and content.strip():
+                parts.append(content.strip())
+
     if adhoc_reminders:
         for r in adhoc_reminders:
             if r and r.strip():
                 parts.append(r.strip())
+
+    parts = _dedupe_fragments(parts)
+    parts = _apply_budget(parts, chat_id)
 
     if not parts:
         logger.debug(f"[system-reminder] chat={chat_id} — no content, skipping")

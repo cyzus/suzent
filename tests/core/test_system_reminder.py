@@ -1447,3 +1447,172 @@ def test_every_registered_history_processor_takes_a_run_context():
         make_compaction_history_processor,
     ):
         assert takes_run_context(factory()), factory.__name__
+
+
+# ---------------------------------------------------------------------------
+# Provider budget, isolation and concurrency
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def clean_hooks():
+    from suzent.core.system_reminder import clear_global_hooks, clear_per_turn_hooks
+
+    clear_global_hooks()
+    clear_per_turn_hooks()
+    yield
+    clear_global_hooks()
+    clear_per_turn_hooks()
+
+
+@pytest.mark.asyncio
+async def test_a_hung_global_hook_cannot_stall_the_turn(clean_hooks, monkeypatch):
+    """Global hooks previously had no timeout at all, so one hung provider
+    blocked every message indefinitely."""
+    import asyncio as _asyncio
+
+    from suzent.core import system_reminder as sr
+
+    monkeypatch.setattr(sr, "HOOK_TIMEOUT_SECONDS", 0.05)
+
+    async def hangs(chat_id, deps):
+        await _asyncio.sleep(30)
+        return "never"
+
+    async def works(chat_id, deps):
+        return "delivered"
+
+    sr.register_global_hook(hangs)
+    sr.register_global_hook(works)
+
+    result = await _asyncio.wait_for(sr.build_combined_reminder("c", None), timeout=5)
+
+    assert "delivered" in result
+    assert "never" not in result
+
+
+@pytest.mark.asyncio
+async def test_a_failing_provider_does_not_lose_the_others(clean_hooks):
+    from suzent.core import system_reminder as sr
+
+    async def broken(chat_id, deps):
+        raise RuntimeError("provider exploded")
+
+    async def works(chat_id, deps):
+        return "delivered"
+
+    sr.register_global_hook(broken)
+    sr.register_global_hook(works)
+
+    assert "delivered" in await sr.build_combined_reminder("c", None)
+
+
+def _slow_hook(label: str, delay: float = 0.1):
+    """A distinct coroutine per call — registration de-duplicates by identity."""
+
+    async def hook(chat_id, deps):
+        import asyncio as _asyncio
+
+        await _asyncio.sleep(delay)
+        return label
+
+    hook.__name__ = f"slow_{label}"
+    return hook
+
+
+def _sized_hook(label: str, size: int):
+    async def hook(chat_id, deps):
+        return label + "x" * size
+
+    hook.__name__ = f"sized_{label}"
+    return hook
+
+
+@pytest.mark.asyncio
+async def test_providers_run_concurrently(clean_hooks):
+    """Serially these take 0.3s; together, about 0.1s."""
+    import time
+
+    from suzent.core import system_reminder as sr
+
+    for label in ("a", "b", "c"):
+        sr.register_global_hook(_slow_hook(label))
+
+    started = time.monotonic()
+    await sr.build_combined_reminder("c", None)
+    elapsed = time.monotonic() - started
+
+    assert elapsed < 0.25, f"looks serial: {elapsed:.2f}s"
+
+
+@pytest.mark.asyncio
+async def test_identical_fragments_are_not_paid_for_twice(clean_hooks):
+    from suzent.core import system_reminder as sr
+
+    async def one(chat_id, deps):
+        return "[ACTIVE TASKS] #1 ship it"
+
+    async def two(chat_id, deps):
+        return "[ACTIVE TASKS] #1 ship it"
+
+    sr.register_global_hook(one)
+    sr.register_global_hook(two)
+
+    result = await sr.build_combined_reminder("c", None)
+
+    assert result.count("[ACTIVE TASKS] #1 ship it") == 1
+
+
+@pytest.mark.asyncio
+async def test_the_body_stays_within_budget(clean_hooks, monkeypatch):
+    from suzent.core import system_reminder as sr
+
+    monkeypatch.setattr(sr, "REMINDER_BUDGET_CHARS", 500)
+
+    for i in range(6):
+        sr.register_global_hook(_sized_hook(f"F{i}", 200))
+
+    result = await sr.build_combined_reminder("c", None)
+    body = extract_system_reminder_content(result)
+
+    assert len(body) <= 500 + len(sr.FRAGMENT_SEPARATOR)
+
+
+@pytest.mark.asyncio
+async def test_truncation_drops_whole_fragments_from_the_end(clean_hooks, monkeypatch):
+    """Registration order is priority order, and half a fragment is worse than
+    none because the model cannot tell it is reading one."""
+    from suzent.core import system_reminder as sr
+
+    monkeypatch.setattr(sr, "REMINDER_BUDGET_CHARS", 300)
+
+    async def first(chat_id, deps):
+        return "FIRST" + "a" * 200
+
+    async def later(chat_id, deps):
+        return "LATER" + "b" * 200
+
+    sr.register_global_hook(first)
+    sr.register_global_hook(later)
+
+    body = extract_system_reminder_content(await sr.build_combined_reminder("c", None))
+
+    assert "FIRST" in body
+    assert "LATER" not in body
+    assert body.endswith("a" * 200), "the kept fragment must be intact"
+
+
+@pytest.mark.asyncio
+async def test_one_oversized_fragment_is_still_delivered(clean_hooks, monkeypatch):
+    """Truncating to nothing is indistinguishable from a provider that produced
+    nothing, and the caller cannot tell the difference."""
+    from suzent.core import system_reminder as sr
+
+    monkeypatch.setattr(sr, "REMINDER_BUDGET_CHARS", 50)
+
+    async def huge(chat_id, deps):
+        return "IMPORTANT" + "x" * 500
+
+    sr.register_global_hook(huge)
+
+    assert "IMPORTANT" in await sr.build_combined_reminder("c", None)
