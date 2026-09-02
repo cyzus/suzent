@@ -722,6 +722,15 @@ class ContextCompressor:
                 )
             ]
         )
+        # The summary is model output derived from tool content an attacker may
+        # control, so it can be steered into emitting literal reminder
+        # delimiters — including by reassembling them from an escaped form. It is
+        # inserted after the sanitizing history processor has run and lands in
+        # persisted history, so it is neutralized here at the point of creation.
+        from suzent.core.system_reminder import sanitize_untrusted_text
+
+        summary = sanitize_untrusted_text(summary)
+
         summary_response = ModelResponse(
             parts=[
                 TextPart(

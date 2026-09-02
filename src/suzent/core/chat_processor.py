@@ -413,6 +413,20 @@ def _stripped_image_reminder(virtual_paths: list[str]) -> str | None:
     )
 
 
+def build_steering_text(steer_message: str) -> str:
+    """Render an interruption into the prompt text appended to history.
+
+    Steering re-enters ``process_turn`` with an empty ``message_content``, so the
+    ingress sanitizer there never sees this string, and the tool-output processor
+    deliberately skips ``UserPromptPart``. This is the only place it can be
+    sanitized, which is why the wrapping lives in one testable function rather
+    than inline at the call site.
+    """
+    from suzent.core.system_reminder import sanitize_untrusted_text
+
+    return f"[User interrupted to redirect]: {sanitize_untrusted_text(steer_message)}"
+
+
 class ChatProcessor:
     """Encapsulates the lifecycle of a single conversation turn."""
 
@@ -782,7 +796,17 @@ class ChatProcessor:
                 )
 
         # --- System Reminder Injection (includes per-turn RAG hook when memory enabled) ---
-        from suzent.core.system_reminder import build_combined_reminder
+        from suzent.core.system_reminder import (
+            build_combined_reminder,
+            sanitize_untrusted_text,
+        )
+
+        # Neutralize reminder delimiters in everything we did not author, before
+        # the genuine reminder is appended below. Otherwise a user message or an
+        # attachment carrying its own delimiters would be indistinguishable from
+        # runtime context once concatenated.
+        message_content = sanitize_untrusted_text(message_content)
+        attachment_context = sanitize_untrusted_text(attachment_context)
 
         # Pass the raw user message so per-turn hooks (e.g. dynamic RAG retrieval)
         # are invoked. Heartbeats and pure tool-resume turns pass None so those
@@ -1526,7 +1550,7 @@ class ChatProcessor:
         # 4. Append steering message
         from pydantic_ai.messages import ModelRequest, UserPromptPart
 
-        steering_text = f"[User interrupted to redirect]: {steer_message}"
+        steering_text = build_steering_text(steer_message)
         message_history.append(
             ModelRequest(parts=[UserPromptPart(content=steering_text)])
         )
