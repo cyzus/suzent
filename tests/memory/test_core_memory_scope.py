@@ -49,6 +49,22 @@ def test_notebook_procedure_is_not_in_the_always_on_prompt(sandbox: bool) -> Non
 
 
 @pytest.mark.parametrize("sandbox", [True, False])
+def test_the_fallback_covers_answering_as_well_as_writing(sandbox: bool) -> None:
+    """Two different things can go wrong in a vault: a bad answer and a bad
+    write. The fallback guarded only the second."""
+    section = format_core_memory_section(
+        BLOCKS,
+        sandbox_enabled=sandbox,
+        shared_path="/host/shared",
+        mount_notebook="/host/nb",
+        notebook_skill_available=False,
+    )
+
+    assert "index.md" in section and "cite" in section
+    assert "schema.md" in section
+
+
+@pytest.mark.parametrize("sandbox", [True, False])
 def test_it_still_points_at_the_skill(sandbox: bool) -> None:
     """Removing the procedure must not remove the pointer to where it lives."""
     assert "`notebook` skill" in _section(sandbox)
@@ -96,6 +112,10 @@ def test_without_the_skill_it_points_at_the_vault_instead(sandbox: bool) -> None
     assert "`notebook` skill" not in section
     assert "schema.md" in section
     assert "existing page" in section
+    # Answering, not just writing. On a fresh install this is the only notebook
+    # guidance the model gets, so omitting retrieval loses the query path
+    # entirely rather than merely degrading it.
+    assert "index.md" in section
 
 
 @pytest.mark.parametrize("sandbox", [True, False])

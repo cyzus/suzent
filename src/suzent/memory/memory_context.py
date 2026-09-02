@@ -30,7 +30,8 @@ def _notebook_hint(title: str, root: str, skill_available: bool) -> str:
         )
     return (
         f"{title}\n"
-        f"Read `{root}/schema.md` before any vault work — it is the authority on "
+        f"To answer from it, start at `{root}/index.md` and cite the pages you use. "
+        f"Before changing it, read `{root}/schema.md` — it is the authority on "
         "structure, naming, indexes and cross-links. Check for an existing page "
         "before creating one, and file a result only when asked to."
     )
