@@ -937,10 +937,12 @@ class DreamRunner(BaseBrain):
                 logger.warning(f"[dream] could not read confirmations: {e}")
                 confirmations = []
 
+        roots = self._dream_roots()
         return await self._run_forked_agent(
             DREAM_CHAT_ID,
-            memory_context.DREAM_SYSTEM_PROMPT,
-            memory_context.DREAM_INSTRUCTIONS.format(
+            memory_context.build_dream_system_prompt(roots),
+            memory_context.build_dream_instructions(
+                roots,
                 start=start,
                 end=end,
                 confirmations=memory_context.format_confirmations_block(confirmations),
@@ -950,11 +952,39 @@ class DreamRunner(BaseBrain):
 
     async def _run_lint_agent(self) -> str:
         """Lint phase: editorial audit/repair of the existing vault. Returns the summary."""
+        roots = self._dream_roots()
         return await self._run_forked_agent(
             DREAM_LINT_CHAT_ID,
-            memory_context.LINT_SYSTEM_PROMPT,
-            memory_context.LINT_INSTRUCTIONS,
+            memory_context.build_lint_system_prompt(roots),
+            memory_context.build_lint_instructions(roots),
         )
+
+    def _dream_roots(self) -> "memory_context.DreamRoots":
+        """The vault and log directories in the vocabulary this run's tools use.
+
+        Host mode resolves the mapped volume, which is the same directory the
+        runner itself works on — `lifecycle.resolve_notebook_dir()` points the
+        markdown store at that mapping too, so agent and runner describe one
+        directory one way.
+        """
+        from suzent.config import CONFIG
+        from suzent.config.model import get_effective_volumes
+        from suzent.tools.filesystem.path_resolver import PathResolver
+
+        sandbox_enabled = bool(CONFIG.sandbox_enabled)
+        resolver = None
+        if not sandbox_enabled:
+            try:
+                resolver = PathResolver(
+                    chat_id=DREAM_CHAT_ID,
+                    sandbox_enabled=False,
+                    custom_volumes=get_effective_volumes([]),
+                )
+            except Exception as e:
+                # Falls back to the sandbox spelling, which PathResolver maps in
+                # either mode — a worse prompt, not a broken one.
+                logger.warning(f"[dream] could not resolve host roots: {e}")
+        return memory_context.resolve_dream_roots(sandbox_enabled, resolver)
 
     async def _run_forked_agent(
         self,

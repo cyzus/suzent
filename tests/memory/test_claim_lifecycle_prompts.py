@@ -13,13 +13,29 @@ SCHEMA = "skills/notebook/schema_example.md"
 OKF = "skills/notebook/okf.md"
 
 
+def _dream_text() -> str:
+    return memory_context.build_dream_instructions(
+        memory_context.resolve_dream_roots(sandbox_enabled=True),
+        start="2026-01-01",
+        end="2026-01-02",
+        confirmations="   (none pending)",
+        revisits="   (none due)",
+    )
+
+
+def _lint_text() -> str:
+    return memory_context.build_lint_instructions(
+        memory_context.resolve_dream_roots(sandbox_enabled=True)
+    )
+
+
 def _read(path):
     with open(path, encoding="utf-8") as f:
         return f.read()
 
 
 def test_duplicates_are_confirmed_not_restated():
-    text = memory_context.DREAM_INSTRUCTIONS
+    text = _dream_text()
 
     assert "confirmed 12x, last YYYY-MM-DD" in text
     assert "Never add a second" in text
@@ -27,16 +43,18 @@ def test_duplicates_are_confirmed_not_restated():
 
 def test_a_contradicting_repeat_is_not_a_confirmation():
     """Otherwise a reversal would be counted as evidence for the thing it reverses."""
-    assert "CONTRADICTS" in memory_context.DREAM_INSTRUCTIONS
+    assert "CONTRADICTS" in _dream_text()
 
 
 def test_lifecycle_rules_do_not_depend_on_the_seeded_schema():
-    assert "whether or not this vault's" in memory_context.DREAM_INSTRUCTIONS
-    assert "stale_after" in memory_context.DREAM_INSTRUCTIONS
+    text = _dream_text()
+
+    assert "whether or not this vault's" in text
+    assert "stale_after" in text
 
 
 def test_lint_never_deletes_or_unconfirms_a_stale_personal_claim():
-    text = memory_context.LINT_INSTRUCTIONS
+    text = _lint_text()
 
     assert "never delete it" in text
     assert "never reset a claim's confirmation marker" in text

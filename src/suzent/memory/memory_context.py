@@ -4,6 +4,7 @@ Memory system prompt templates and context formatting.
 Centralizes all prompt engineering for the memory system.
 """
 
+from dataclasses import dataclass
 from typing import Dict, List, Any, Optional
 
 from suzent.memory.markdown_store import MEMORY_GENERATED_END
@@ -324,11 +325,10 @@ Max 2000 words. Respond with the summary only.
 
 # ===== Dream consolidation (autonomous wiki keeper) =====
 
-# Virtual roots used in the dream/lint prompts. PathResolver maps these in BOTH
-# sandbox and host mode, so the agent's file tools resolve them regardless of mode.
-# Centralized here so the paths live in one place rather than scattered across the
-# prompt strings below.
-DREAM_MEMORY_ROOT = "/shared/memory"  # daily logs: {DREAM_MEMORY_ROOT}/archive/*.md
+# Sandbox roots for the dream/lint prompts. Only used when the agent is actually
+# in a sandbox — see DreamRoots, which picks the vocabulary the agent's own
+# filesystem speaks.
+DREAM_MEMORY_ROOT = "/shared/memory"  # daily logs: {memory_root}/archive/*.md
 DREAM_NOTEBOOK_ROOT = "/mnt/notebook"  # the vault the agent maintains
 
 # Where the dream drops fact lines it has folded into the vault and wants dropped
@@ -336,30 +336,105 @@ DREAM_NOTEBOOK_ROOT = "/mnt/notebook"  # the vault the agent maintains
 # lines into tombstones and reindexes the affected logs, keeping index mutation out
 # of the agent's hands and the daily logs append-only.
 DREAM_SUPERSEDED_FILENAME = "superseded.txt"
-DREAM_SUPERSEDED_PATH = f"{DREAM_NOTEBOOK_ROOT}/.state/{DREAM_SUPERSEDED_FILENAME}"
 
-DREAM_SYSTEM_PROMPT = f"""You are Suzent's memory consolidation agent ("dream"). You run \
+
+@dataclass(frozen=True)
+class DreamRoots:
+    """Where the dream agent's two directories are, in its own vocabulary.
+
+    Host paths in host mode, sandbox paths in sandbox mode — the same rule the
+    rest of the prompt follows. These used to be fixed virtual constants for
+    both modes, which worked only because PathResolver translates them and the
+    dream agent happens to hold no shell tool. That made the vault the one place
+    where a host-mode agent was told a path its shell could not open, and made
+    the runner (which reads the same files by host path) and the agent describe
+    one directory two ways.
+    """
+
+    memory_root: str
+    notebook_root: str
+
+    @property
+    def superseded_path(self) -> str:
+        """Where the agent appends facts it has folded into the vault."""
+        return f"{self.notebook_root}/.state/{DREAM_SUPERSEDED_FILENAME}"
+
+
+def resolve_dream_roots(sandbox_enabled: bool, path_resolver: Any = None) -> DreamRoots:
+    """Pick the roots for this run.
+
+    Falls back to the sandbox spelling whenever the host location cannot be
+    determined: a virtual path that PathResolver can map is better than a
+    half-resolved host path that exists nowhere.
+    """
+    if sandbox_enabled or path_resolver is None:
+        return DreamRoots(DREAM_MEMORY_ROOT, DREAM_NOTEBOOK_ROOT)
+
+    def _host(virtual: str, fallback: str) -> str:
+        try:
+            host = str(path_resolver.resolve(virtual)).replace("\\", "/")
+        except Exception:
+            return fallback
+
+        # Only publish a host path the agent's own tools will read back as
+        # itself. A vault that genuinely lives under a reserved prefix —
+        # /mnt/data/vault:/mnt/notebook is an ordinary Linux mapping — would be
+        # taken for a virtual path on the way in: /mnt/... raises "no matching
+        # custom mount", and /shared/... or /workspace/... is worse, silently
+        # resolving to a different tree. The virtual spelling is correct in
+        # those cases, so keep it.
+        try:
+            if str(path_resolver.resolve(host)).replace("\\", "/") != host:
+                return fallback
+        except Exception:
+            return fallback
+        return host
+
+    return DreamRoots(
+        memory_root=_host(DREAM_MEMORY_ROOT, DREAM_MEMORY_ROOT),
+        notebook_root=_host(DREAM_NOTEBOOK_ROOT, DREAM_NOTEBOOK_ROOT),
+    )
+
+
+def build_dream_system_prompt(roots: DreamRoots) -> str:
+    """The dream agent's standing prompt, in paths its own tools accept."""
+    return f"""You are Suzent's memory consolidation agent ("dream"). You run \
 autonomously to turn the raw, append-only daily memory logs into a clean, durable, \
 cross-referenced knowledge vault.
 
 Tools: read_file, write_file, edit_file, glob_search, grep_search, memory_search.
 Filesystem:
-- Daily logs (READ-ONLY source): {DREAM_MEMORY_ROOT}/archive/YYYY-MM-DD.md  — NEVER edit or delete these.
-- The vault (your workspace):     {DREAM_NOTEBOOK_ROOT}/  — schema.md, index.md, log.md, zoned pages.
+- Daily logs (READ-ONLY source): {roots.memory_root}/archive/YYYY-MM-DD.md  — NEVER edit or delete these.
+- The vault (your workspace):     {roots.notebook_root}/  — schema.md, index.md, log.md, zoned pages.
 
 Rules:
-- ALWAYS read {DREAM_NOTEBOOK_ROOT}/schema.md first; follow its zones, naming, and frontmatter exactly.
+- ALWAYS read {roots.notebook_root}/schema.md first; follow its zones, naming, and frontmatter exactly.
 - Improve existing pages; never create near-duplicates. Search before you write.
 - Preserve history: when a fact changes over time, record "currently X; previously Y" — never silently overwrite.
 - Only remove a statement when it is a genuine correction or an exact duplicate.
 - Do NOT write to log.md — the runner records consolidation events there. Put conflicts on content pages.
-- {DREAM_SUPERSEDED_PATH} is append-only and write-only for you: read it if you must, never clear it.
+- {roots.superseded_path} is append-only and write-only for you: read it if you must, never clear it.
 """
 
-DREAM_INSTRUCTIONS = f"""Consolidate the daily memory logs dated after {{start}} through {{end}} into the vault.
 
-1. Orient: read schema.md and index.md; glob_search {DREAM_NOTEBOOK_ROOT} for existing pages.
-2. Read the logs: {DREAM_MEMORY_ROOT}/archive/*.md dated after {{start}} through {{end}}.
+def build_dream_instructions(
+    roots: DreamRoots,
+    *,
+    start: str,
+    end: str,
+    confirmations: str,
+    revisits: str,
+) -> str:
+    """The per-run consolidation brief.
+
+    Takes its values directly rather than returning a template for the caller
+    to ``.format()``: the old two-pass shape meant every literal brace in the
+    text had to be escaped for a pass that had not happened yet.
+    """
+    return f"""Consolidate the daily memory logs dated after {start} through {end} into the vault.
+
+1. Orient: read schema.md and index.md; glob_search {roots.notebook_root} for existing pages.
+2. Read the logs: {roots.memory_root}/archive/*.md dated after {start} through {end}.
 3. For each distinct fact/topic:
    a. Find the page it belongs to (index.md + glob_search/grep_search + memory_search).
       Personal facts about the user -> 3_Personal/ ; domain knowledge -> 2_Wiki/.
@@ -375,7 +450,7 @@ DREAM_INSTRUCTIONS = f"""Consolidate the daily memory logs dated after {{start}}
                                                        claim you already hold.
       - New, non-conflicting                        -> add under the right section.
       - Correction (new entry shows old was wrong)  -> replace the wrong statement.
-      - Change over time (both true at diff. times) -> rewrite as "Currently X (since {{end}});
+      - Change over time (both true at diff. times) -> rewrite as "Currently X (since {end});
                                                        previously Y." Apply the schema's lifecycle fields.
       - Genuine conflict you can't confidently resolve -> keep the more recent claim, add a
         `> [!warning] Conflicting claims: <A> vs <B> (<dates>)` callout on the relevant
@@ -384,11 +459,11 @@ DREAM_INSTRUCTIONS = f"""Consolidate the daily memory logs dated after {{start}}
    c. Convert relative dates ("yesterday") to absolute.
    d. Retire what you folded in: append the exact log fact text (the part after the
       `- [category] ` prefix, without the trailing backtick tags) to
-      {DREAM_SUPERSEDED_PATH}, one per line, for any line that is now fully represented
+      {roots.superseded_path}, one per line, for any line that is now fully represented
       on a page AND adds nothing the page does not say. The runner drops those from the
       search index; the daily logs themselves stay untouched. When in doubt, leave it
       out — a duplicate in the index is cheaper than a fact that vanishes.
-   e. Lifecycle on {DREAM_NOTEBOOK_ROOT}/3_Personal/ pages, whether or not this vault's
+   e. Lifecycle on {roots.notebook_root}/3_Personal/ pages, whether or not this vault's
       schema.md mentions it (older vaults were seeded before these rules existed):
       - A repeated claim gets a marker on its bullet: `(confirmed 12x, last YYYY-MM-DD)`.
         Absent marker means confirmed once. Increment it and set the date; a claim the user
@@ -402,13 +477,13 @@ DREAM_INSTRUCTIONS = f"""Consolidate the daily memory logs dated after {{start}}
    is the only record that they recurred. For each, find the claim on its page and bump
    its marker by the count shown (step 3e); do not add a bullet, and do not treat one
    as a correction — a contradicting restatement never reaches this list.
-{{confirmations}}
+{confirmations}
 5. Claims due for a revisit. Re-confirm each against the logs you just read: if it is
    supported, refresh the date; if it is contradicted, apply the correction case; if the
    logs say nothing either way, leave it and let lint decide. Never delete here.
    A page listed as `stale_after unset` predates the rule and has no expiry at all: give
    it one from step 3's category table while you are there, whatever the logs say.
-{{revisits}}
+{revisits}
 6. Add `## Related` links using the schema's link style.
 7. Update index.md. Do NOT write the watermark to log.md — the runner records it.
 
@@ -446,25 +521,31 @@ def format_revisits_block(rows: Optional[List[dict]]) -> str:
 
 # ---- Lint phase: periodic editorial audit of the vault (runs after ingest catches up) ----
 
-LINT_SYSTEM_PROMPT = f"""You are Suzent's memory consolidation agent ("dream"), running your \
+
+def build_lint_system_prompt(roots: DreamRoots) -> str:
+    """The lint pass's standing prompt."""
+    return f"""You are Suzent's memory consolidation agent ("dream"), running your \
 periodic LINT pass: an editorial health-check of the notebook vault. You do NOT ingest new daily \
 logs here — you audit and repair what already exists so the knowledge graph stays consistent and \
 does not silently decay.
 
 Tools: read_file, write_file, edit_file, glob_search, grep_search, memory_search.
 Filesystem:
-- The vault (your workspace): {DREAM_NOTEBOOK_ROOT}/  — schema.md, index.md, log.md, zoned pages.
+- The vault (your workspace): {roots.notebook_root}/  — schema.md, index.md, log.md, zoned pages.
 
 Rules:
-- ALWAYS read {DREAM_NOTEBOOK_ROOT}/schema.md first; follow its zones, naming, and frontmatter exactly.
+- ALWAYS read {roots.notebook_root}/schema.md first; follow its zones, naming, and frontmatter exactly.
 - Repair conservatively. Fix links/structure freely; only delete a page if it is truly obsolete.
 - Never fabricate facts. When a contradiction needs human judgement, FLAG it, do not guess.
 - Do NOT write the lint log entry to log.md — the runner records that. Put callouts on content pages.
 """
 
-LINT_INSTRUCTIONS = f"""Run an editorial lint pass over the notebook vault.
 
-1. Orient: read schema.md and index.md; glob_search {DREAM_NOTEBOOK_ROOT} for ALL pages (many live outside index.md).
+def build_lint_instructions(roots: DreamRoots) -> str:
+    """The lint pass brief."""
+    return f"""Run an editorial lint pass over the notebook vault.
+
+1. Orient: read schema.md and index.md; glob_search {roots.notebook_root} for ALL pages (many live outside index.md).
 2. Contradictions: read related pages; where claims conflict, resolve with the better-supported/more
    recent claim. If it needs human judgement, add a `> [!warning] Contradiction: <desc>` callout on the
    page AND prepend a `> [!alert] Contradiction found in <schema-compliant link>` line near the top of index.md.
@@ -483,6 +564,7 @@ LINT_INSTRUCTIONS = f"""Run an editorial lint pass over the notebook vault.
 Do NOT append the lint entry to log.md — the runner records it.
 Return a one-paragraph summary: contradictions found/resolved, links/orphans fixed, pages flagged, gaps.
 """
+
 
 # Deterministic post-step run by the runner (not the agent): regenerate the
 # always-visible MEMORY.md from the vault's personal facts + recall signal.
