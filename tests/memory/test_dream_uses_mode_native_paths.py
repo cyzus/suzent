@@ -112,8 +112,18 @@ def test_the_superseded_path_follows_the_roots():
 
 def test_the_agent_and_the_runner_mean_the_same_vault():
     """resolve_notebook_dir() is what points the markdown store at the mapped
-    volume. In host mode the agent's notebook_root has to be that same
-    directory, or the runner reads a vault the agent never wrote to."""
+    volume. The agent's root has to name that same directory, or the runner
+    reads a vault the agent never wrote to.
+
+    Compared after resolution, not as text. Which spelling the agent gets
+    depends on where the checkout lives: a repo under /workspace makes the
+    mapped host path collide with a reserved prefix, so the round-trip guard
+    correctly keeps /mnt/notebook. Both spellings are right; only the directory
+    they land on has to match, and asserting on the text made this pass on a
+    laptop and fail in a container.
+    """
+    from pathlib import Path
+
     from suzent.config import CONFIG
     from suzent.config.model import get_effective_volumes
     from suzent.memory.lifecycle import resolve_notebook_dir
@@ -127,7 +137,10 @@ def test_the_agent_and_the_runner_mean_the_same_vault():
     )
     roots = resolve_dream_roots(sandbox_enabled=False, path_resolver=resolver)
 
-    assert roots.notebook_root.rstrip("/") == resolve_notebook_dir().rstrip("/")
+    agent_vault = Path(resolver.resolve(roots.notebook_root)).resolve()
+    runner_vault = Path(resolve_notebook_dir()).resolve()
+
+    assert agent_vault == runner_vault
 
 
 def test_the_dream_agent_holds_no_shell_tool():
