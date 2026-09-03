@@ -148,9 +148,12 @@ You are in a sandbox environment. Your current working directory is the project 
 Env vars available: PROJECT_PATH=/workspace, SHARED_PATH=/shared, PROJECT_SLUG, and CHAT_ID.
 """
 
+# No prohibition on virtual paths here, deliberately: naming a path scheme is
+# how a model learns the scheme exists. Host mode simply never shows one, so
+# there is nothing to forbid — and the old wording forbade `/mnt/...` on the
+# same turn that Directory Mappings listed `/mnt/...` as available.
 EXECUTION_MODE_SECTION_HOST = """# Environment: Host
 You are on the host machine ({os_name}). Use host paths (e.g., `{workspace_root}`).
-Do NOT use virtual `/mnt/...` paths.
 Env vars available: PROJECT_PATH (your cwd, shared across chats in this project), SHARED_PATH, WORKSPACE_ROOT, and MOUNT_* for mapped volumes.
 Current Shell: {shell_type}
 """
@@ -342,9 +345,17 @@ def build_execution_mode_section(
 
 
 def build_custom_volumes_section(deps: Any) -> str:
-    """Build directory mapping section for configured custom volumes."""
+    """Build directory mapping section for configured custom volumes.
+
+    In host mode the mount point is not shown. It is not a path the agent can
+    use: the filesystem tools would translate it, but a shell command would not,
+    and listing it under "available for your use" invited exactly that. The
+    host path is the whole answer there, so the mapping is not a mapping.
+    """
     if not deps.custom_volumes:
         return ""
+
+    sandbox_enabled = bool(getattr(deps, "sandbox_enabled", True))
 
     volumes_info = []
     volume_metadata = getattr(deps, "custom_volume_metadata", {}) or {}
@@ -375,13 +386,18 @@ def build_custom_volumes_section(deps: Any) -> str:
             details = "Git repo: No"
         elif status:
             details = f"Git repo: Unknown, status={status}"
-        elif parsed:
-            details = "Host Path:Virtual Name"
         else:
-            details = "Host Path:Virtual Name"
+            details = (
+                "Host Path:Virtual Name" if sandbox_enabled else "Mapped directory"
+            )
 
         if parsed:
-            volumes_info.append(f"- {host_path}:{mount_point} ({details})")
+            # One path, the one this agent can open. The pair went to both modes,
+            # so each was reading half a line addressed to the other: the sandbox
+            # agent saw host paths the section above calls inaccessible, and the
+            # host agent saw mount points its shell cannot resolve.
+            usable = mount_point if sandbox_enabled else host_path
+            volumes_info.append(f"- {usable} ({details})")
         else:
             volumes_info.append(f"- {v} ({details})")
 
