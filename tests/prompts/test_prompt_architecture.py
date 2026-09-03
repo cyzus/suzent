@@ -129,7 +129,7 @@ def test_register_dynamic_instructions_environment_uses_host_paths():
     result = funcs["inject_environment_context"](ctx)
 
     assert "# Environment: Host" in result
-    assert "Do NOT use virtual `/mnt/...` paths." in result
+    assert "/mnt" not in result
 
 
 def test_register_dynamic_instructions_stateless_keeps_environment_context():

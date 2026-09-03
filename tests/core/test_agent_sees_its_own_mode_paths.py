@@ -51,26 +51,55 @@ def test_the_vision_reminder_repeats_whatever_it_is_given(tmp_path: Path):
     assert "/workspace" not in text
 
 
-def test_host_mode_is_told_not_to_use_virtual_paths():
-    """The instruction the old upload path contradicted. Kept as a test so the
-    two cannot drift back into disagreeing."""
+def test_host_mode_never_mentions_the_virtual_scheme():
+    """Not "told not to use /mnt" — never shown it. Naming a path scheme is how
+    a model learns the scheme exists, and the prohibition used to arrive in the
+    same prompt as a Directory Mappings block offering /mnt paths for use."""
     from suzent.prompts import build_execution_mode_section
 
     section = build_execution_mode_section(
         sandbox_enabled=False, workspace_root="/Users/x/proj", shell_type="zsh"
     )
 
-    assert "Do NOT use virtual" in section
+    assert "/mnt" not in section
+    assert "Do NOT use virtual" not in section
 
 
-def test_sandbox_mode_is_not_told_that():
+def test_sandbox_mode_does_describe_its_own_mounts():
+    """The mirror: /mnt is real there, so it is named."""
     from suzent.prompts import build_execution_mode_section
 
     section = build_execution_mode_section(
         sandbox_enabled=True, workspace_root="/workspace", shell_type="bash"
     )
 
-    assert "Do NOT use virtual" not in section
+    assert "/mnt/..." in section
+
+
+@pytest.mark.parametrize(
+    "sandbox,expected,forbidden",
+    [
+        (False, "/Users/suzy/Obsidian", "/mnt/notebook"),
+        (True, "/mnt/notebook", "/Users/suzy/Obsidian"),
+    ],
+)
+def test_directory_mappings_list_one_usable_path(sandbox, expected, forbidden):
+    """The host:mount pair went to both modes, so each read half a line meant
+    for the other."""
+    from types import SimpleNamespace
+
+    from suzent.prompts import build_custom_volumes_section
+
+    deps = SimpleNamespace(
+        custom_volumes=["/Users/suzy/Obsidian:/mnt/notebook"],
+        custom_volume_metadata={},
+        sandbox_enabled=sandbox,
+    )
+
+    section = build_custom_volumes_section(deps)
+
+    assert expected in section
+    assert forbidden not in section
 
 
 @pytest.mark.parametrize("sandbox", [True, False])
