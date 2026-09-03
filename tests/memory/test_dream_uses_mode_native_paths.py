@@ -20,11 +20,18 @@ from suzent.memory.memory_context import (
 
 
 class _Resolver:
+    """A resolver that maps the virtual roots and echoes host paths back.
+
+    The echo matters: resolve_dream_roots only publishes a host path that reads
+    back as itself, which is how it detects a vault sitting under a reserved
+    prefix.
+    """
+
     def __init__(self, mapping: dict[str, str]):
         self._mapping = mapping
 
-    def resolve(self, virtual: str) -> str:
-        return self._mapping[virtual]
+    def resolve(self, path: str) -> str:
+        return self._mapping.get(path, path)
 
 
 def test_sandbox_keeps_the_sandbox_spelling():
@@ -131,3 +138,58 @@ def test_the_dream_agent_holds_no_shell_tool():
     from suzent.tools.registry import SHELL_TOOL_CLASS_NAMES
 
     assert not (set(CONFIG.memory_dream_tools) & set(SHELL_TOOL_CLASS_NAMES))
+
+
+# --- host paths that collide with a reserved prefix --------------------------
+
+
+def test_a_vault_under_a_reserved_prefix_keeps_the_virtual_spelling():
+    """`/mnt/data/vault:/mnt/notebook` is an ordinary Linux mapping. Published
+    as a host path it would be read back as a *virtual* one: /mnt/... raises
+    "no matching custom mount", so every read, glob and write fails."""
+    from suzent.tools.filesystem.path_resolver import PathResolver
+
+    resolver = PathResolver(
+        chat_id="dream",
+        sandbox_enabled=False,
+        custom_volumes=["/mnt/data/vault:/mnt/notebook"],
+    )
+
+    roots = resolve_dream_roots(sandbox_enabled=False, path_resolver=resolver)
+
+    assert roots.notebook_root == DREAM_NOTEBOOK_ROOT
+    # The point of keeping it: the agent's own tools can still open it.
+    assert str(resolver.resolve(roots.notebook_root)) == "/mnt/data/vault"
+
+
+def test_a_silently_remapped_host_path_is_rejected_too():
+    """Worse than the raising case: a host root under /shared or /workspace
+    resolves without error, to a different tree."""
+
+    class _Remapper:
+        def resolve(self, path: str) -> str:
+            if path == DREAM_NOTEBOOK_ROOT:
+                return "/shared/vault"
+            if path == DREAM_MEMORY_ROOT:
+                return "/host/logs"
+            # what a resolver does with a /shared-prefixed path
+            return "/somewhere/else/vault"
+
+    roots = resolve_dream_roots(sandbox_enabled=False, path_resolver=_Remapper())
+
+    assert roots.notebook_root == DREAM_NOTEBOOK_ROOT
+
+
+def test_an_ordinary_host_vault_is_still_published():
+    """The guard must not swallow the normal case."""
+    from suzent.tools.filesystem.path_resolver import PathResolver
+
+    resolver = PathResolver(
+        chat_id="dream",
+        sandbox_enabled=False,
+        custom_volumes=["/Users/x/vault:/mnt/notebook"],
+    )
+
+    roots = resolve_dream_roots(sandbox_enabled=False, path_resolver=resolver)
+
+    assert roots.notebook_root == "/Users/x/vault"

@@ -372,9 +372,23 @@ def resolve_dream_roots(sandbox_enabled: bool, path_resolver: Any = None) -> Dre
 
     def _host(virtual: str, fallback: str) -> str:
         try:
-            return str(path_resolver.resolve(virtual)).replace("\\", "/")
+            host = str(path_resolver.resolve(virtual)).replace("\\", "/")
         except Exception:
             return fallback
+
+        # Only publish a host path the agent's own tools will read back as
+        # itself. A vault that genuinely lives under a reserved prefix —
+        # /mnt/data/vault:/mnt/notebook is an ordinary Linux mapping — would be
+        # taken for a virtual path on the way in: /mnt/... raises "no matching
+        # custom mount", and /shared/... or /workspace/... is worse, silently
+        # resolving to a different tree. The virtual spelling is correct in
+        # those cases, so keep it.
+        try:
+            if str(path_resolver.resolve(host)).replace("\\", "/") != host:
+                return fallback
+        except Exception:
+            return fallback
+        return host
 
     return DreamRoots(
         memory_root=_host(DREAM_MEMORY_ROOT, DREAM_MEMORY_ROOT),
