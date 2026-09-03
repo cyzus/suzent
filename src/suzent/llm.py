@@ -34,23 +34,45 @@ def _litellm():
 _LOCAL_OPENAI_SERVER_PROVIDERS: frozenset[str] = frozenset({"vllm", "sglang"})
 
 
-def _litellm_model_and_kwargs(
-    model: Optional[str],
-) -> tuple[Optional[str], Dict[str, Any]]:
-    """Return LiteLLM model/auth args matching the provider registry.
+def _chat_template_kwargs(model: Optional[str]) -> Dict[str, Any]:
+    """Chat-completion-only arguments for self-hosted OpenAI servers.
 
-    Utility calls here are one-shot extractions — a classification, a summary,
-    a rewrite — and they are billed a token budget, not a wall-clock one. A
-    self-hosted server keeps whatever its chat template defaults to, and for
-    Qwen3 and friends that is thinking on at xhigh effort, so the reasoning is
-    charged against ``max_tokens`` before a single character of the answer is
-    generated. Measured against a real classifier prompt on SGLang: 1,616
-    tokens with thinking, 130 without, for the same verdict.
+    A utility call is billed a token budget. A self-hosted server keeps
+    whatever its chat template defaults to, and for Qwen3 and friends that is
+    thinking on at xhigh effort, so the reasoning is charged against
+    ``max_tokens`` before a single character of the answer exists. Measured
+    against a real classifier prompt on SGLang: 1,616 tokens with thinking, 130
+    without, for the same verdict.
 
     That is not merely wasteful. When the reasoning outruns the budget the
     response is a 200 with an empty ``content``, which reaches the caller as
     ``Expecting value: line 1 column 1 (char 0)`` from json — a parse error for
     something that was never a parse problem.
+
+    Kept out of ``_litellm_model_and_kwargs`` because that helper also serves
+    ``/v1/embeddings`` and ``/v1/images/generations``. LiteLLM expands
+    ``extra_body`` into whichever body it is building, and a strict
+    OpenAI-compatible server rejects an unknown field — so putting a chat-only
+    argument in the shared path would have broken memory indexing to pay for a
+    classifier fix.
+    """
+    if not model:
+        return {}
+    provider, _, _ = model.partition("/")
+    if provider not in _LOCAL_OPENAI_SERVER_PROVIDERS:
+        return {}
+    # Templates that do not read enable_thinking ignore the extra kwarg.
+    return {"extra_body": {"chat_template_kwargs": {"enable_thinking": False}}}
+
+
+def _litellm_model_and_kwargs(
+    model: Optional[str],
+) -> tuple[Optional[str], Dict[str, Any]]:
+    """Return LiteLLM model/auth args matching the provider registry.
+
+    Shared by every endpoint — chat, embeddings, image generation — so only
+    arguments all of them accept belong here. Chat-only arguments go in
+    ``_chat_template_kwargs``.
     """
     if not model:
         return model, {}
@@ -88,10 +110,6 @@ def _litellm_model_and_kwargs(
 
         if spec.base_url and spec.api_type == "openai" and _model_name:
             litellm_model = f"openai/{_model_name}"
-
-    if provider in _LOCAL_OPENAI_SERVER_PROVIDERS:
-        # Templates that do not read enable_thinking ignore the extra kwarg.
-        kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
 
     return litellm_model, kwargs
 
@@ -380,6 +398,7 @@ class LLMClient:
                 "temperature": temperature,
                 "max_tokens": max_tokens,
                 **auth_kwargs,
+                **_chat_template_kwargs(self.model),
             }
             if response_format is not None:
                 completion_kwargs["response_format"] = response_format
@@ -472,6 +491,7 @@ class LLMClient:
                     temperature=temperature,
                     response_format=response_model,
                     **auth_kwargs,
+                    **_chat_template_kwargs(self.model),
                 )
 
                 content = response.choices[0].message.content

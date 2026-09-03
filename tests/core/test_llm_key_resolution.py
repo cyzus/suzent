@@ -349,30 +349,67 @@ def test_extract_with_schema_uses_prompt_json_for_unsupported_models(
 # --- self-hosted servers keep their chat-template defaults -------------------
 
 
-def test_a_self_hosted_server_is_told_not_to_think(monkeypatch):
+def test_a_self_hosted_server_is_told_not_to_think():
     """A utility call is billed a token budget, and a local server keeps
     whatever its chat template defaults to — thinking on, for Qwen3 and
     friends. The reasoning is then charged against max_tokens before a single
     character of the answer exists. Measured on SGLang with a real classifier
     prompt: 1,616 tokens with thinking, 130 without, same verdict."""
-    monkeypatch.setattr(llm, "resolve_api_key", lambda provider: None)
-
     for provider in ("sglang", "vllm"):
-        _model, kwargs = llm._litellm_model_and_kwargs(f"{provider}/qwen3-27b")
-
-        assert kwargs["extra_body"] == {
-            "chat_template_kwargs": {"enable_thinking": False}
+        assert llm._chat_template_kwargs(f"{provider}/qwen3-27b") == {
+            "extra_body": {"chat_template_kwargs": {"enable_thinking": False}}
         }, provider
 
 
-def test_hosted_providers_are_left_alone(monkeypatch):
+def test_hosted_providers_are_left_alone():
     """The switch is a local-server chat-template kwarg. Sending it to a hosted
     API is at best ignored and at worst a 400."""
+    assert llm._chat_template_kwargs("gemini/gemini-2.5-flash") == {}
+    assert llm._chat_template_kwargs(None) == {}
+
+
+def test_the_switch_stays_out_of_non_chat_endpoints(monkeypatch):
+    """The model/auth helper also serves /v1/embeddings and
+    /v1/images/generations. LiteLLM expands extra_body into whichever body it
+    is building, and a strict OpenAI-compatible server rejects an unknown
+    field — so a chat-only argument in the shared path would break memory
+    indexing to pay for a classifier fix."""
     monkeypatch.setattr(llm, "resolve_api_key", lambda provider: None)
 
-    _model, kwargs = llm._litellm_model_and_kwargs("gemini/gemini-2.5-flash")
+    _model, kwargs = llm._litellm_model_and_kwargs("sglang/qwen3-27b")
 
     assert "extra_body" not in kwargs
+
+
+def test_embeddings_do_not_carry_chat_arguments(monkeypatch):
+    """The end the previous test guards: an embedding request must not gain a
+    chat_template_kwargs field."""
+    monkeypatch.setattr(llm, "resolve_api_key", lambda provider: None)
+    fake_litellm = SimpleNamespace(aembedding=AsyncMock())
+    generator = EmbeddingGenerator(model="sglang/bge-m3")
+    fake_litellm.aembedding.return_value = SimpleNamespace(
+        data=[{"embedding": [0.1] * generator.dimension}]
+    )
+    monkeypatch.setattr(llm, "_litellm", lambda: fake_litellm)
+
+    asyncio.run(generator.generate("hello"))
+
+    assert "extra_body" not in fake_litellm.aembedding.await_args.kwargs
+
+
+def test_chat_completions_do_carry_it(monkeypatch):
+    monkeypatch.setattr(llm, "resolve_api_key", lambda provider: None)
+    fake_litellm = SimpleNamespace(acompletion=AsyncMock())
+    fake_litellm.acompletion.return_value = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content="ok"))]
+    )
+    monkeypatch.setattr(llm, "_litellm", lambda: fake_litellm)
+
+    asyncio.run(LLMClient(model="sglang/qwen3-27b").complete("hello"))
+
+    assert fake_litellm.acompletion.await_args.kwargs["extra_body"] == {
+        "chat_template_kwargs": {"enable_thinking": False}
+    }
 
 
 # --- an empty answer is not a malformed one ----------------------------------
