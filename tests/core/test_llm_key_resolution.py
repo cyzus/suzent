@@ -344,3 +344,112 @@ def test_extract_with_schema_uses_prompt_json_for_unsupported_models(
         "Return only valid JSON matching this JSON schema"
         in kwargs["messages"][0]["content"]
     )
+
+
+# --- self-hosted servers keep their chat-template defaults -------------------
+
+
+def test_a_self_hosted_server_is_told_not_to_think(monkeypatch):
+    """A utility call is billed a token budget, and a local server keeps
+    whatever its chat template defaults to — thinking on, for Qwen3 and
+    friends. The reasoning is then charged against max_tokens before a single
+    character of the answer exists. Measured on SGLang with a real classifier
+    prompt: 1,616 tokens with thinking, 130 without, same verdict."""
+    monkeypatch.setattr(llm, "resolve_api_key", lambda provider: None)
+
+    for provider in ("sglang", "vllm"):
+        _model, kwargs = llm._litellm_model_and_kwargs(f"{provider}/qwen3-27b")
+
+        assert kwargs["extra_body"] == {
+            "chat_template_kwargs": {"enable_thinking": False}
+        }, provider
+
+
+def test_hosted_providers_are_left_alone(monkeypatch):
+    """The switch is a local-server chat-template kwarg. Sending it to a hosted
+    API is at best ignored and at worst a 400."""
+    monkeypatch.setattr(llm, "resolve_api_key", lambda provider: None)
+
+    _model, kwargs = llm._litellm_model_and_kwargs("gemini/gemini-2.5-flash")
+
+    assert "extra_body" not in kwargs
+
+
+# --- an empty answer is not a malformed one ----------------------------------
+
+
+class _Verdict(BaseModel):
+    ok: bool
+
+
+def test_an_empty_completion_is_reported_as_one(monkeypatch):
+    """json.loads("") says 'Expecting value: line 1 column 1 (char 0)', which
+    reads as malformed output and sends the reader hunting for a formatting
+    bug. The model said nothing — usually a reasoning model that spent the
+    whole budget before answering — and the error should say so."""
+    monkeypatch.setattr(llm, "_model_supports_response_schema", lambda model: False)
+
+    async def empty(self, **kwargs):
+        return ""
+
+    monkeypatch.setattr(LLMClient, "complete", empty)
+
+    try:
+        asyncio.run(
+            LLMClient(model="sglang/qwen3-27b").extract_with_schema(
+                prompt="p", response_model=_Verdict
+            )
+        )
+    except ValueError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("expected the extraction to fail")
+
+    assert "empty completion" in message
+    assert "reasoning" in message
+    assert "Expecting value" not in message
+
+
+def test_the_fallback_path_gets_the_same_wrapping(monkeypatch):
+    """It used to return straight out of the branch, outside the handler below
+    it, so a failure there escaped as whatever the library raised — a bare json
+    error, with nothing naming the extraction that failed."""
+    monkeypatch.setattr(llm, "_model_supports_response_schema", lambda model: False)
+
+    async def garbage(self, **kwargs):
+        return "not json at all"
+
+    monkeypatch.setattr(LLMClient, "complete", garbage)
+
+    try:
+        asyncio.run(
+            LLMClient(model="sglang/qwen3-27b").extract_with_schema(
+                prompt="p", response_model=_Verdict
+            )
+        )
+    except ValueError as exc:
+        assert "Failed to extract structured data" in str(exc)
+    else:
+        raise AssertionError("expected the extraction to fail")
+
+
+def test_structured_extraction_has_budget_headroom(monkeypatch):
+    """The budget is shared with reasoning, and a request that runs out
+    mid-thought returns nothing at all rather than something short."""
+    monkeypatch.setattr(llm, "_model_supports_response_schema", lambda model: False)
+    seen = {}
+
+    async def capture(self, **kwargs):
+        seen.update(kwargs)
+        return '{"ok": true}'
+
+    monkeypatch.setattr(LLMClient, "complete", capture)
+
+    asyncio.run(
+        LLMClient(model="sglang/qwen3-27b").extract_with_schema(
+            prompt="p", response_model=_Verdict
+        )
+    )
+
+    assert seen["max_tokens"] == llm.STRUCTURED_OUTPUT_MAX_TOKENS
+    assert llm.STRUCTURED_OUTPUT_MAX_TOKENS >= 4000
