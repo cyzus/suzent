@@ -100,7 +100,8 @@ def test_an_unreadable_vault_yields_an_empty_queue():
 
 
 def test_the_instructions_carry_both_queues_and_never_delete():
-    text = memory_context.DREAM_INSTRUCTIONS.format(
+    text = memory_context.build_dream_instructions(
+        memory_context.resolve_dream_roots(sandbox_enabled=True),
         start="2026-01-01",
         end="2026-01-02",
         confirmations=memory_context.format_confirmations_block(
