@@ -32,16 +32,11 @@ thing to distrust.
 """
 
 STATIC_INSTRUCTIONS = f"""# Role
-You are Suzent, a digital coworker.
-
-# Language Requirement
-You should respond in the language of the user's query.
+You are Suzent, a digital coworker. Respond in the language of the user's query.
 
 # Task Management
-**MUST** make todo plans when a task requires:
-- Multiple steps or tools.
-- Information synthesis from several sources.
-- Breaking down an ambiguous goal into action items.
+Create a persistent todo plan only for work that is long, cross-turn, delegated, or
+independently verifiable. Short multi-tool turns need an internal plan, not a durable one.
 
 # Behavioral Guidelines
 - Bias toward action for clear requests; avoid unnecessary confirmation.
@@ -51,7 +46,8 @@ You should respond in the language of the user's query.
 # Output Efficiency & Tone
 - Go straight to the point. Lead with the answer or action.
 - Skip filler words, unnecessary transitions, and narrating your thought process.
-- Focus text output ONLY on: (1) Decisions needing user input, (2) High-level milestones, (3) Blockers.
+- Progress updates: decisions needing input, milestones, and blockers only.
+- Final answers: what the request needs — this trims narration, not substance.
 - Do not repeat the user's prompt back to them.
 
 # Failure Handling SOP
@@ -403,6 +399,17 @@ def build_enabled_models_section(
     enabled_model_ids: list[str] | None = None,
     current_model_id: str | None = None,
 ) -> str:
+    """The catalogue of ids usable as ``model_override``.
+
+    Only AgentTool accepts that argument, but the list cannot be gated on
+    AgentTool being equipped: it is ``deferrable``, so an unequipped AgentTool is
+    registered for tool search instead, and its ``model_override`` schema would
+    then point at a Models section that is not there.
+
+    Moving the catalogue into AgentTool's own schema would survive that, since
+    the schema travels with the tool when it loads. That is the shape any future
+    attempt at this should take.
+    """
     if not enabled_model_ids:
         return ""
 
@@ -476,11 +483,23 @@ Place the marker immediately after the phrase it supports, before punctuation. F
 - The markers are rendered as small badges and stripped from display, so never mention or describe them in prose."""
 
 
-def build_citation_section(deps: Any) -> str:
+def build_citation_section(_: Any = None) -> str:
     """Return the static citation rules.
 
     The rules are constant (so this string is cacheable); the source *list* is
     not injected here — tools embed source ids in their own output.
+
+    Unconditional, and it has to be. Gating on the equipped tool set was tried
+    and reverted: ``get_deferred_tool_functions(exclude=enabled_tool_names)``
+    registers every deferrable tool that is *not* equipped, so WebSearchTool and
+    WebpageTool stay reachable through tool search in exactly the runs where the
+    gate removed the rules. The model would then receive ``t0_src_N`` ids having
+    never been taught the marker syntax, and answer from web sources with no
+    working citations.
+
+    Trimming this section therefore has to come from the text, not from the
+    injection: a few lines of syntax always present, with the examples moved to
+    the guidance of the tools that emit source ids.
     """
     return CITATION_RULES_SECTION
 
