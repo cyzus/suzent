@@ -12,7 +12,9 @@ decides whether the rest is worth a read; nothing is silently lost either way.
 
 from __future__ import annotations
 
-import hashlib
+import errno
+import os
+import secrets
 import time
 from pathlib import Path
 from typing import Any, Optional
@@ -35,9 +37,28 @@ OVERFLOW_TTL_SECONDS = 24 * 60 * 60
 #: thousands; the TTL alone would not bound that until tomorrow.
 OVERFLOW_MAX_FILES = 200
 
+#: Ceiling on one spill. A foreground shell command reads its whole output into
+#: memory and this writes all of it, so without a per-file bound a single
+#: `cat` of something large lands on disk in full.
+OVERFLOW_MAX_FILE_BYTES = 5 * 1024 * 1024
+
+#: Ceiling on the directory. The count bound alone permits 200 files of any
+#: size, which is not a bound on disk at all.
+OVERFLOW_MAX_TOTAL_BYTES = 50 * 1024 * 1024
+
+#: Appended when the spill itself had to be cut. Rare, and better said than not:
+#: a file that silently holds part of the output is worse than the truncation it
+#: was meant to relieve.
+SPILL_CLIPPED_NOTE = "\n\n[spill clipped: output exceeded the per-file limit]"
+
 
 def _prune(directory: Path) -> None:
-    """Best-effort cleanup. A spill that cannot be pruned is still a spill."""
+    """Best-effort cleanup. A spill that cannot be pruned is still a spill.
+
+    Bounded three ways, because each alone leaves a hole: age lets a burst sit
+    until tomorrow, count permits 200 files of any size, and bytes alone would
+    keep one ancient file forever.
+    """
     try:
         files = sorted(
             (p for p in directory.glob("*.txt") if p.is_file()),
@@ -48,10 +69,17 @@ def _prune(directory: Path) -> None:
         return
 
     cutoff = time.time() - OVERFLOW_TTL_SECONDS
+    running_total = 0
     for index, path in enumerate(files):
         try:
-            if index >= OVERFLOW_MAX_FILES or path.stat().st_mtime < cutoff:
+            size = path.stat().st_size
+            too_many = index >= OVERFLOW_MAX_FILES
+            too_old = path.stat().st_mtime < cutoff
+            too_big = running_total + size > OVERFLOW_MAX_TOTAL_BYTES
+            if too_many or too_old or too_big:
                 path.unlink(missing_ok=True)
+                continue
+            running_total += size
         except OSError:
             continue
 
@@ -78,14 +106,42 @@ def spill_overflow(text: str, *, deps: Any, kind: str = "output") -> Optional[st
         logger.debug(f"[overflow] no spill directory: {e}")
         return None
 
-    digest = hashlib.sha1(text.encode("utf-8", "replace")).hexdigest()[:8]
-    name = f"{kind}-{int(time.time())}-{digest}.txt"
+    payload = text.encode("utf-8", "replace")
+    if len(payload) > OVERFLOW_MAX_FILE_BYTES:
+        keep = OVERFLOW_MAX_FILE_BYTES - len(SPILL_CLIPPED_NOTE)
+        payload = payload[:keep] + SPILL_CLIPPED_NOTE.encode("utf-8")
+
+    # Unpredictable, and created without following anything already at the path.
+    #
+    # The name used to be derived from the output's own hash and the current
+    # second, which a sandboxed agent can compute: pre-place a symlink there,
+    # emit output that overflows, and the host process follows the link and
+    # overwrites whatever it points at — no PathResolver check involved, since
+    # the write is ours, not the agent's. O_EXCL refuses an existing path
+    # (symlink included) and O_NOFOLLOW refuses to traverse one; the random name
+    # means there is nothing to aim at in the first place.
+    name = f"{kind}-{secrets.token_hex(16)}.txt"
     host_path = host_dir / name
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
 
     try:
-        host_path.write_text(text, encoding="utf-8", errors="replace")
+        fd = os.open(host_path, flags, 0o600)
+    except OSError as e:
+        if e.errno in (errno.EEXIST, errno.ELOOP):
+            logger.warning(f"[overflow] refusing to write over an existing path: {e}")
+        else:
+            logger.debug(f"[overflow] could not create spill: {e}")
+        return None
+
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(payload)
     except OSError as e:
         logger.debug(f"[overflow] could not write spill: {e}")
+        try:
+            host_path.unlink(missing_ok=True)
+        except OSError:
+            pass
         return None
 
     _prune(host_dir)

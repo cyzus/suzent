@@ -111,3 +111,82 @@ def test_an_expired_spill_is_removed(deps):
     spill_overflow("new", deps=deps, kind="t")
 
     assert not Path(stale).exists()
+
+
+# --- the spill must not become a write primitive ------------------------------
+
+
+def test_a_planted_symlink_is_not_followed(deps, tmp_path):
+    """The old name was the output's own hash plus the current second, both of
+    which a sandboxed agent can compute. Pre-place a symlink at that path, emit
+    matching output, and the host process follows it — overwriting a file the
+    agent could never reach through PathResolver, because the write is ours."""
+    import os
+
+    target = tmp_path / "precious.txt"
+    target.write_text("do not clobber", encoding="utf-8")
+
+    directory = Path(deps.path_resolver.resolve(OVERFLOW_VIRTUAL_DIR))
+    directory.mkdir(parents=True, exist_ok=True)
+
+    # Point every plausible spill name at the target.
+    planted = directory / "run_command-deadbeefdeadbeefdeadbeefdeadbeef.txt"
+    os.symlink(target, planted)
+
+    spill_overflow("payload" * 100, deps=deps, kind="run_command")
+
+    assert target.read_text(encoding="utf-8") == "do not clobber"
+
+
+def test_the_name_is_not_derivable_from_the_output(deps):
+    """Two identical outputs must not land on the same path — a predictable name
+    is what makes the symlink race worth attempting."""
+    text = "same output" * 50
+
+    first = spill_overflow(text, deps=deps, kind="t")
+    second = spill_overflow(text, deps=deps, kind="t")
+
+    assert first != second
+
+
+def test_an_existing_regular_file_is_never_overwritten(deps, monkeypatch):
+    """O_EXCL, not just an unlikely collision."""
+    import suzent.tools.overflow as overflow
+
+    directory = Path(deps.path_resolver.resolve(OVERFLOW_VIRTUAL_DIR))
+    directory.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(overflow.secrets, "token_hex", lambda n: "fixed")
+    (directory / "t-fixed.txt").write_text("existing", encoding="utf-8")
+
+    assert spill_overflow("new content", deps=deps, kind="t") is None
+    assert (directory / "t-fixed.txt").read_text(encoding="utf-8") == "existing"
+
+
+# --- disk bounds --------------------------------------------------------------
+
+
+def test_one_spill_cannot_be_arbitrarily_large(deps):
+    """A foreground shell command reads its whole output into memory, and this
+    writes all of it."""
+    from suzent.tools.overflow import OVERFLOW_MAX_FILE_BYTES, SPILL_CLIPPED_NOTE
+
+    path = spill_overflow("x" * (OVERFLOW_MAX_FILE_BYTES * 2), deps=deps, kind="t")
+    written = Path(path).read_bytes()
+
+    assert len(written) <= OVERFLOW_MAX_FILE_BYTES
+    assert written.endswith(SPILL_CLIPPED_NOTE.encode("utf-8"))
+
+
+def test_the_directory_is_bounded_in_bytes_not_only_in_count(deps, monkeypatch):
+    """200 files of any size is not a bound on disk."""
+    import suzent.tools.overflow as overflow
+
+    monkeypatch.setattr(overflow, "OVERFLOW_MAX_TOTAL_BYTES", 20_000)
+
+    for _ in range(30):
+        spill_overflow("y" * 2_000, deps=deps, kind="t")
+
+    directory = Path(deps.path_resolver.resolve(OVERFLOW_VIRTUAL_DIR))
+    total = sum(p.stat().st_size for p in directory.glob("*.txt"))
+
+    assert total <= 20_000 + 2_100, total
