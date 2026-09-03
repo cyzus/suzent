@@ -116,12 +116,19 @@ def test_an_expired_spill_is_removed(deps):
 # --- the spill must not become a write primitive ------------------------------
 
 
-def test_a_planted_symlink_is_not_followed(deps, tmp_path):
-    """The old name was the output's own hash plus the current second, both of
-    which a sandboxed agent can compute. Pre-place a symlink at that path, emit
-    matching output, and the host process follows it — overwriting a file the
-    agent could never reach through PathResolver, because the write is ours."""
+def test_a_planted_symlink_is_not_followed(deps, tmp_path, monkeypatch):
+    """The write must refuse a symlink sitting at its destination.
+
+    The old name was the output's own hash plus the current second, both of
+    which a sandboxed agent can compute — so it could place a symlink there,
+    emit matching output, and have the host process overwrite a file the agent
+    could never reach through PathResolver, because the write is ours. The name
+    is random now, so this pins the second half of the fix: even aimed exactly
+    at the destination, the open is refused rather than followed.
+    """
     import os
+
+    import suzent.tools.overflow as overflow
 
     target = tmp_path / "precious.txt"
     target.write_text("do not clobber", encoding="utf-8")
@@ -129,12 +136,12 @@ def test_a_planted_symlink_is_not_followed(deps, tmp_path):
     directory = Path(deps.path_resolver.resolve(OVERFLOW_VIRTUAL_DIR))
     directory.mkdir(parents=True, exist_ok=True)
 
-    # Point every plausible spill name at the target.
-    planted = directory / "run_command-deadbeefdeadbeefdeadbeefdeadbeef.txt"
-    os.symlink(target, planted)
+    monkeypatch.setattr(overflow.secrets, "token_hex", lambda n: "aimed")
+    os.symlink(target, directory / "run_command-aimed.txt")
 
-    spill_overflow("payload" * 100, deps=deps, kind="run_command")
+    result = spill_overflow("payload" * 100, deps=deps, kind="run_command")
 
+    assert result is None, "the write should be refused, not redirected"
     assert target.read_text(encoding="utf-8") == "do not clobber"
 
 
