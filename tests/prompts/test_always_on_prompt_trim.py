@@ -41,50 +41,41 @@ def test_the_terseness_rule_is_scoped_to_progress_updates():
     assert "Focus text output ONLY on" not in STATIC_INSTRUCTIONS
 
 
-# --- P2-3: citation rules ----------------------------------------------------
+# --- P2-3 / P2-4: why these two are still always-on --------------------------
 
 
-def test_citation_rules_are_dropped_when_nothing_can_be_cited():
-    """1,681 characters of marker syntax for a format the run cannot produce."""
-    assert build_citation_section({"ReadFileTool", "RunCommandTool"}) == ""
+def test_every_unequipped_deferrable_tool_stays_reachable():
+    """The constraint that killed the obvious version of P2-3 and P2-4.
+
+    get_deferred_tool_functions(exclude=enabled_tool_names) registers every
+    deferrable tool that is *not* equipped, unconditionally. So "not in the
+    equipped set" does not mean "cannot be used" — it means the opposite: the
+    tool is in the search pool. Gating a prompt section on equipment removes it
+    in exactly the runs where the tool can still appear.
+    """
+    from suzent.tools.registry import _all_tool_classes, get_deferred_tool_functions
+
+    for name in ("WebSearchTool", "WebpageTool", "AgentTool"):
+        cls = next(c for c in _all_tool_classes() if c.name == name)
+        assert getattr(cls, "deferrable", True), f"{name} is no longer deferrable"
+
+    reachable = {t.name for t in get_deferred_tool_functions(set())}
+    assert reachable, "nothing deferrable at all — the premise has changed"
 
 
-def test_citation_rules_survive_when_a_citing_tool_is_equipped():
-    for tool in ("WebSearchTool", "WebpageTool"):
-        assert build_citation_section({"ReadFileTool", tool}) == CITATION_RULES_SECTION
-
-
-def test_the_rules_arrive_before_the_first_source_not_after():
-    """Gated on equipment, never on whether a source exists yet: the model needs
-    the marker syntax before the first tool call, so waiting for a source would
-    teach it the format one turn too late."""
-    assert build_citation_section({"WebSearchTool"}) == CITATION_RULES_SECTION
-
-
-def test_an_unknown_equipment_set_keeps_the_rules():
-    """A caller that does not say what is equipped is not evidence that nothing
-    is. The safe direction here is to keep them."""
+def test_citation_rules_are_unconditional():
+    """A run that reaches WebSearchTool through tool search receives t0_src_N
+    ids. If the rules were gated away it would answer from web sources having
+    never been taught the marker syntax — web claims with no working
+    citations."""
     assert build_citation_section(None) == CITATION_RULES_SECTION
+    assert build_citation_section(object()) == CITATION_RULES_SECTION
 
 
-# --- P2-4: the model catalogue -----------------------------------------------
-
-
-def test_the_model_list_is_dropped_without_the_tool_that_uses_it():
-    """model_override is an AgentTool argument. Beyond the tokens, the list sits
-    in the cached prefix and changes whenever a model is toggled — so a chat
-    that cannot spawn a sub-agent had its cache invalidated by an unrelated
-    settings change."""
-    assert build_enabled_models_section(MODELS, "m", {"ReadFileTool"}) == ""
-
-
-def test_the_model_list_survives_with_agent_tool():
-    section = build_enabled_models_section(MODELS, "m", {"AgentTool"})
-
-    assert all(model in section for model in MODELS)
-
-
-def test_an_unknown_equipment_set_keeps_the_model_list():
-    section = build_enabled_models_section(MODELS, "m", None)
+def test_the_model_catalogue_is_unconditional():
+    """AgentTool's model_override schema points at this section. Gating it on
+    AgentTool being equipped would leave the schema referring to a section that
+    is not in the prompt."""
+    section = build_enabled_models_section(MODELS, "m")
 
     assert all(model in section for model in MODELS)

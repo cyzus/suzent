@@ -398,19 +398,19 @@ def build_base_instructions_section(base_instructions: str = "") -> str:
 def build_enabled_models_section(
     enabled_model_ids: list[str] | None = None,
     current_model_id: str | None = None,
-    equipped_tool_names: Any = None,
 ) -> str:
     """The catalogue of ids usable as ``model_override``.
 
-    Only AgentTool accepts that argument, so a run without it cannot act on
-    this list. Beyond the tokens, the list is part of the cached prefix and
-    changes whenever a model is enabled or disabled — so a chat that can never
-    spawn a sub-agent was having its prompt cache invalidated by an unrelated
-    settings toggle.
+    Only AgentTool accepts that argument, but the list cannot be gated on
+    AgentTool being equipped: it is ``deferrable``, so an unequipped AgentTool is
+    registered for tool search instead, and its ``model_override`` schema would
+    then point at a Models section that is not there.
+
+    Moving the catalogue into AgentTool's own schema would survive that, since
+    the schema travels with the tool when it loads. That is the shape any future
+    attempt at this should take.
     """
     if not enabled_model_ids:
-        return ""
-    if equipped_tool_names is not None and "AgentTool" not in set(equipped_tool_names):
         return ""
 
     models_list = "\n".join(f"- `{model_id}`" for model_id in enabled_model_ids)
@@ -483,32 +483,24 @@ Place the marker immediately after the phrase it supports, before punctuation. F
 - The markers are rendered as small badges and stripped from display, so never mention or describe them in prose."""
 
 
-#: Tools that label their output with source ids. Only these can produce
-#: something to cite, so only these make the citation rules worth their weight.
-CITING_TOOL_NAMES: frozenset[str] = frozenset({"WebSearchTool", "WebpageTool"})
+def build_citation_section(_: Any = None) -> str:
+    """Return the static citation rules.
 
-
-def build_citation_section(equipped_tool_names: Any = None) -> str:
-    """Return the static citation rules, when anything could produce a citation.
-
-    The rules are constant, so the string stays cacheable; the source *list* is
+    The rules are constant (so this string is cacheable); the source *list* is
     not injected here — tools embed source ids in their own output.
 
-    Gated on equipment rather than on whether sources exist yet. The model has
-    to know the marker syntax *before* the first tool call, so waiting for a
-    source would teach it the format one turn too late; but a run with no
-    citing tool equipped can never see a source id at all, and was carrying
-    1,681 characters of syntax and examples for a format it could not use.
+    Unconditional, and it has to be. Gating on the equipped tool set was tried
+    and reverted: ``get_deferred_tool_functions(exclude=enabled_tool_names)``
+    registers every deferrable tool that is *not* equipped, so WebSearchTool and
+    WebpageTool stay reachable through tool search in exactly the runs where the
+    gate removed the rules. The model would then receive ``t0_src_N`` ids having
+    never been taught the marker syntax, and answer from web sources with no
+    working citations.
 
-    Equipment is known when the agent is built, including for deferred tools —
-    deferring the schema does not defer the decision to equip.
+    Trimming this section therefore has to come from the text, not from the
+    injection: a few lines of syntax always present, with the examples moved to
+    the guidance of the tools that emit source ids.
     """
-    if equipped_tool_names is None:
-        # No opinion offered: keep the rules. A caller that does not know what
-        # is equipped is not evidence that nothing is.
-        return CITATION_RULES_SECTION
-    if not (CITING_TOOL_NAMES & set(equipped_tool_names)):
-        return ""
     return CITATION_RULES_SECTION
 
 
@@ -578,7 +570,6 @@ def register_dynamic_instructions(
     session_guidance_items: list[str] | None = None,
     enabled_model_ids: list[str] | None = None,
     current_model_id: str | None = None,
-    equipped_tool_names: Any = None,
 ) -> None:
     @agent.instructions
     def inject_date_context(_: Any) -> str:
@@ -620,7 +611,6 @@ def register_dynamic_instructions(
             lambda: build_enabled_models_section(
                 enabled_model_ids,
                 current_model_id=current_model_id,
-                equipped_tool_names=equipped_tool_names,
             ),
         )
 
@@ -633,11 +623,10 @@ def register_dynamic_instructions(
         )
 
     @agent.instructions
-    def inject_citation_rules(_: Any) -> str:
+    def inject_citation_rules(ctx: Any) -> str:
         # Static rules only; source ids travel in tool output and source metadata
-        # travels in citation_sources stream events. Equipment is fixed when the
-        # agent is built, so this reads the build-time set rather than deps.
-        return build_citation_section(equipped_tool_names)
+        # travels in citation_sources stream events.
+        return build_citation_section(ctx.deps)
 
     @agent.instructions
     def inject_permission_mode(ctx: Any) -> str:

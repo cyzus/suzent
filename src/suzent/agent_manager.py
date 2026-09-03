@@ -423,7 +423,6 @@ def create_agent(config: Dict[str, Any]) -> Agent[AgentDeps, str]:
         session_guidance_items=session_guidance_items,
         enabled_model_ids=enabled_models,
         current_model_id=model_id,
-        equipped_tool_names=enabled_tool_names,
     )
 
     # Store metadata for later introspection
