@@ -28,10 +28,52 @@ def _litellm():
     return _ll
 
 
+#: Self-hosted OpenAI-compatible servers. Mirrors model_factory's set of the
+#: same name; duplicated rather than imported because llm.py is a leaf and
+#: model_factory pulls in the whole provider stack.
+_LOCAL_OPENAI_SERVER_PROVIDERS: frozenset[str] = frozenset({"vllm", "sglang"})
+
+
+def _chat_template_kwargs(model: Optional[str]) -> Dict[str, Any]:
+    """Chat-completion-only arguments for self-hosted OpenAI servers.
+
+    A utility call is billed a token budget. A self-hosted server keeps
+    whatever its chat template defaults to, and for Qwen3 and friends that is
+    thinking on at xhigh effort, so the reasoning is charged against
+    ``max_tokens`` before a single character of the answer exists. Measured
+    against a real classifier prompt on SGLang: 1,616 tokens with thinking, 130
+    without, for the same verdict.
+
+    That is not merely wasteful. When the reasoning outruns the budget the
+    response is a 200 with an empty ``content``, which reaches the caller as
+    ``Expecting value: line 1 column 1 (char 0)`` from json — a parse error for
+    something that was never a parse problem.
+
+    Kept out of ``_litellm_model_and_kwargs`` because that helper also serves
+    ``/v1/embeddings`` and ``/v1/images/generations``. LiteLLM expands
+    ``extra_body`` into whichever body it is building, and a strict
+    OpenAI-compatible server rejects an unknown field — so putting a chat-only
+    argument in the shared path would have broken memory indexing to pay for a
+    classifier fix.
+    """
+    if not model:
+        return {}
+    provider, _, _ = model.partition("/")
+    if provider not in _LOCAL_OPENAI_SERVER_PROVIDERS:
+        return {}
+    # Templates that do not read enable_thinking ignore the extra kwarg.
+    return {"extra_body": {"chat_template_kwargs": {"enable_thinking": False}}}
+
+
 def _litellm_model_and_kwargs(
     model: Optional[str],
-) -> tuple[Optional[str], Dict[str, str]]:
-    """Return LiteLLM model/auth args matching the provider registry."""
+) -> tuple[Optional[str], Dict[str, Any]]:
+    """Return LiteLLM model/auth args matching the provider registry.
+
+    Shared by every endpoint — chat, embeddings, image generation — so only
+    arguments all of them accept belong here. Chat-only arguments go in
+    ``_chat_template_kwargs``.
+    """
     if not model:
         return model, {}
 
@@ -100,6 +142,32 @@ def _model_supports_reasoning(model: Optional[str]) -> bool:
         return False
 
     return caps.supports_reasoning if caps is not None else False
+
+
+#: Token budget for one structured extraction.
+#:
+#: Generous because it is shared with reasoning: on a server whose chat template
+#: leaves thinking on, the think block is charged here too, and a budget spent
+#: before the answer starts yields an empty response rather than a short one.
+STRUCTURED_OUTPUT_MAX_TOKENS = 4000
+
+
+class EmptyCompletionError(ValueError):
+    """The model returned a 200 with no content.
+
+    Distinct from a parse failure on purpose. ``json.loads("")`` reports
+    ``Expecting value: line 1 column 1 (char 0)``, which reads as malformed
+    output and sends the reader looking for a formatting bug; the actual event
+    is that the model said nothing, and the usual cause is a reasoning model
+    spending the whole token budget before it began to answer.
+    """
+
+    def __init__(self, model: Optional[str] = None) -> None:
+        super().__init__(
+            f"Model {model or '<unknown>'} returned an empty completion "
+            f"(no content). If it is a reasoning model, the token budget was "
+            f"likely spent on reasoning before any answer was produced."
+        )
 
 
 def _parse_json_response(content: str) -> Any:
@@ -330,6 +398,7 @@ class LLMClient:
                 "temperature": temperature,
                 "max_tokens": max_tokens,
                 **auth_kwargs,
+                **_chat_template_kwargs(self.model),
             }
             if response_format is not None:
                 completion_kwargs["response_format"] = response_format
@@ -406,55 +475,57 @@ class LLMClient:
         Raises:
             ValueError: If response cannot be validated against the model
         """
-        if not _model_supports_response_schema(self.model):
+        if _model_supports_response_schema(self.model):
+            messages = []
+            if system:
+                messages.append({"role": "system", "content": system})
+            messages.append({"role": "user", "content": prompt})
+
+            try:
+                model, auth_kwargs = _litellm_model_and_kwargs(self.model)
+                # Use Pydantic model directly as response_format
+                # LiteLLM converts this to json_schema format automatically
+                response = await _litellm().acompletion(
+                    model=model,
+                    messages=messages,
+                    temperature=temperature,
+                    response_format=response_model,
+                    **auth_kwargs,
+                    **_chat_template_kwargs(self.model),
+                )
+
+                content = response.choices[0].message.content
+                if not (content or "").strip():
+                    raise EmptyCompletionError(self.model)
+
+                # Validate and parse with Pydantic
+                return response_model.model_validate_json(content)
+            except Exception as e:
+                logger.warning(
+                    f"Structured extraction failed, retrying with JSON prompt fallback: {e}"
+                )
+        else:
             logger.debug(
                 f"Model {self.model} does not advertise response schema support; using JSON prompt fallback"
             )
+
+        # Reached by both routes, so both get the same wrapping. Returning the
+        # fallback directly from the branch above put it outside this handler:
+        # a model that answered with an empty body raised a bare json error out
+        # of the library, and the caller reported a parse failure for a call
+        # that never got as far as parsing.
+        try:
             return await self._extract_with_prompt_json(
                 prompt=prompt,
                 response_model=response_model,
                 system=system,
                 temperature=temperature,
             )
-
-        messages = []
-        if system:
-            messages.append({"role": "system", "content": system})
-        messages.append({"role": "user", "content": prompt})
-
-        try:
-            model, auth_kwargs = _litellm_model_and_kwargs(self.model)
-            # Use Pydantic model directly as response_format
-            # LiteLLM converts this to json_schema format automatically
-            response = await _litellm().acompletion(
-                model=model,
-                messages=messages,
-                temperature=temperature,
-                response_format=response_model,
-                **auth_kwargs,
-            )
-
-            content = response.choices[0].message.content
-
-            # Validate and parse with Pydantic
-            return response_model.model_validate_json(content)
-
-        except Exception as e:
-            logger.warning(
-                f"Structured extraction failed, retrying with JSON prompt fallback: {e}"
-            )
-            try:
-                return await self._extract_with_prompt_json(
-                    prompt=prompt,
-                    response_model=response_model,
-                    system=system,
-                    temperature=temperature,
-                )
-            except Exception as retry_error:
-                logger.error(f"Structured extraction failed: {retry_error}")
-                raise ValueError(
-                    f"Failed to extract structured data: {retry_error}"
-                ) from retry_error
+        except Exception as retry_error:
+            logger.error(f"Structured extraction failed: {retry_error}")
+            raise ValueError(
+                f"Failed to extract structured data: {retry_error}"
+            ) from retry_error
 
     async def _extract_with_prompt_json(
         self,
@@ -474,8 +545,13 @@ class LLMClient:
             prompt=json_prompt,
             system=system,
             temperature=temperature,
-            max_tokens=2000,
+            # Headroom. A thinking model spends this budget on reasoning before
+            # it writes any JSON, and a request that runs out mid-thought
+            # returns nothing at all rather than something short.
+            max_tokens=STRUCTURED_OUTPUT_MAX_TOKENS,
         )
+        if not (content or "").strip():
+            raise EmptyCompletionError(self.model)
         return response_model.model_validate(_parse_json_response(content))
 
     async def extract_structured(
