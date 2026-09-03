@@ -113,3 +113,23 @@ def test_the_skill_catalogue_already_follows_the_rule(sandbox: bool):
 
     assert "if sandbox_enabled:" in source
     assert "skill.path.resolve()" in source
+
+
+@pytest.mark.asyncio
+async def test_the_upload_log_line_carries_no_host_path(tmp_path: Path):
+    """In host mode the prefix is a real home directory, so logging the full
+    path would put the account name in the log for every attachment — and the
+    directory is fixed per install, so it tells a reader nothing the filename
+    does not."""
+    from loguru import logger
+
+    captured: list[str] = []
+    sink_id = logger.add(captured.append, level="INFO")
+    try:
+        await ChatProcessor()._process_upload_file(_Upload(), tmp_path, str(tmp_path))
+    finally:
+        logger.remove(sink_id)
+
+    logged = "".join(captured)
+    assert "photo.png" in logged, "the filename is the useful part"
+    assert str(tmp_path) not in logged, "the host directory reached the log"

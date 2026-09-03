@@ -1836,7 +1836,11 @@ class ChatProcessor:
             f.write(content)
 
         agent_path = f"{agent_path_prefix}/{target_path.name}"
-        logger.info(f"Saved uploaded file to {agent_path}")
+        # Filename only. In host mode the prefix is a real home directory, so
+        # logging the full path would put the account name in the log for every
+        # attachment — and the directory is fixed per install, so it tells a
+        # reader nothing the filename does not.
+        logger.info(f"Saved uploaded file {target_path.name}")
 
         return {
             "final_path": str(target_path),
