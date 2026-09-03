@@ -133,5 +133,8 @@ def test_prompt_assembly_host_mode_has_no_virtual_notebook_paths():
         ]
     )
 
-    assert "Do NOT use virtual `/mnt/...` paths." in prompt
-    assert "/mnt/notebook" not in prompt
+    # Not "told not to use /mnt" — never shown /mnt at all. Naming a scheme is
+    # how a model learns it exists, and the prohibition used to sit in the same
+    # prompt as a Directory Mappings block listing /mnt paths as available.
+    assert "/mnt" not in prompt
+    assert "Do NOT use virtual" not in prompt
