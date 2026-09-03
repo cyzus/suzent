@@ -598,6 +598,7 @@ async def startup():
     from suzent.core.system_reminder import register_global_hook, register_per_turn_hook
     from suzent.skills.hooks import skills_reminder_hook
     from suzent.core.repository_context import repository_agents_reminder_hook
+    from suzent.tools.overflow import sweep_overflow
     from suzent.tools.plan_hooks import plan_reminder_hook
     from suzent.database import get_database
 
@@ -832,6 +833,11 @@ async def startup():
 
     # Silently refresh model lists for all configured providers in the background.
     asyncio.create_task(_refresh_provider_models())
+
+    # Spilled tool output is pruned when the next spill is written, which means
+    # not at all once output stops overflowing. This is the pass that collects
+    # what the previous run left behind.
+    asyncio.create_task(asyncio.to_thread(sweep_overflow))
 
 
 def ensure_app_data():

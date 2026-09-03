@@ -84,6 +84,30 @@ def _prune(directory: Path) -> None:
             continue
 
 
+def sweep_overflow() -> None:
+    """Apply the retention bounds without needing a spill to trigger them.
+
+    Pruning otherwise happens only on write, so the bounds hold exactly while
+    output keeps overflowing and stop the moment it does not: the last spill of
+    a session sits there until the next one, which may be never. Nothing else
+    will collect it — this lives in the user's data directory, not in a temp
+    directory the OS sweeps.
+
+    Called at startup, which is also when yesterday's files are most likely to
+    be both stale and forgotten.
+    """
+    from suzent.config import CONFIG
+
+    directory = Path(CONFIG.sandbox_data_path) / "shared" / ".overflow"
+    if not directory.is_dir():
+        return
+    before = len(list(directory.glob("*.txt")))
+    _prune(directory)
+    after = len(list(directory.glob("*.txt")))
+    if before != after:
+        logger.info(f"[overflow] swept {before - after} stale spill(s)")
+
+
 def spill_overflow(text: str, *, deps: Any, kind: str = "output") -> Optional[str]:
     """Write *text* somewhere the agent can read it; return that path.
 

@@ -197,3 +197,44 @@ def test_the_directory_is_bounded_in_bytes_not_only_in_count(deps, monkeypatch):
     total = sum(p.stat().st_size for p in directory.glob("*.txt"))
 
     assert total <= 20_000 + 2_100, total
+
+
+# --- who collects the last spill of a session ---------------------------------
+
+
+def test_the_sweep_collects_what_no_later_spill_would(tmp_path, monkeypatch):
+    """Pruning otherwise runs only on write, so the bounds hold exactly while
+    output keeps overflowing and stop the moment it does not. Nothing else
+    collects these — they live in the user's data directory, not a temp
+    directory the OS sweeps."""
+    import os
+    import time
+
+    from suzent.tools.overflow import OVERFLOW_TTL_SECONDS, sweep_overflow
+
+    shared = tmp_path / "shared" / ".overflow"
+    shared.mkdir(parents=True)
+    stale = shared / "t-old.txt"
+    stale.write_text("yesterday", encoding="utf-8")
+    old = time.time() - OVERFLOW_TTL_SECONDS - 60
+    os.utime(stale, (old, old))
+    fresh = shared / "t-new.txt"
+    fresh.write_text("today", encoding="utf-8")
+
+    from suzent.config import CONFIG
+
+    monkeypatch.setattr(CONFIG, "sandbox_data_path", str(tmp_path), raising=False)
+
+    sweep_overflow()
+
+    assert not stale.exists(), "a spill older than the TTL survived a sweep"
+    assert fresh.exists(), "the sweep took a spill that was still current"
+
+
+def test_the_sweep_is_harmless_with_no_directory(tmp_path, monkeypatch):
+    from suzent.config import CONFIG
+    from suzent.tools.overflow import sweep_overflow
+
+    monkeypatch.setattr(CONFIG, "sandbox_data_path", str(tmp_path), raising=False)
+
+    sweep_overflow()  # must not raise
