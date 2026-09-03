@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Activity, sidebar and minimap refinements
 
 ### ⚡ Changed
+- Scope two rules that overfired (#182)
 - Move notebook procedure into the notebook skill
 - Give each rule exactly one owning layer
 - Remove the private audit doc from the repository
