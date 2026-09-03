@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v0.12.0] - 2026-09-02
+## [v0.12.0] - 2026-09-03
 
 ### 🚀 Added
 - Time out, parallelise, dedupe and cap reminder providers (#179)
@@ -36,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Keep draft writes off the token loop and out of the index
 
 ### 🐛 Fixed
+- Stop self-hosted servers thinking through the whole token budget (#181)
 - Read enablement from the per-chat manager, not the singleton
 - Identify goals by generation, not by their text
 - Rebuild the agent when skill enablement changes
