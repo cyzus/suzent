@@ -401,15 +401,15 @@ def _stripped_image_notice(model_id: str | None, count: int) -> str:
     return STRIPPED_IMAGE_NOTICE_TEMPLATE.format(model_id=model_id, count=count)
 
 
-def _stripped_image_reminder(virtual_paths: list[str]) -> str | None:
+def _stripped_image_reminder(agent_paths: list[str]) -> str | None:
     """Render the hidden model-only directive, or ``None`` if nothing stripped."""
-    if not virtual_paths:
+    if not agent_paths:
         return None
     from suzent.prompts import STRIPPED_IMAGE_REMINDER_TEMPLATE
 
     return STRIPPED_IMAGE_REMINDER_TEMPLATE.format(
-        count=len(virtual_paths),
-        paths=", ".join(virtual_paths),
+        count=len(agent_paths),
+        paths=", ".join(agent_paths),
     )
 
 
@@ -635,6 +635,15 @@ class ChatProcessor:
 
                 uploads_virtual_path = "/workspace/uploads"
                 uploads_host_path = resolver.resolve(uploads_virtual_path)
+                # What the agent is told, in the vocabulary of the filesystem it
+                # actually has. In host mode the environment section tells it not
+                # to use virtual paths, so handing it one here contradicts the
+                # instruction and only works because PathResolver quietly
+                # translates — shell tools have no such translation, so the same
+                # path fails the moment the agent reaches for one.
+                uploads_agent_path = (
+                    uploads_virtual_path if sandbox_enabled else str(uploads_host_path)
+                )
                 uploads_host_path.mkdir(parents=True, exist_ok=True)
 
                 for file_item in files:
@@ -642,11 +651,14 @@ class ChatProcessor:
                         if "mime_type" in file_item:
                             # It's an AG-UI pre-uploaded file
                             v_path = file_item.get("path")
+                            _host = str(resolver.resolve(v_path)) if v_path else None
                             result = {
-                                "final_path": str(resolver.resolve(v_path))
-                                if v_path
-                                else None,
-                                "virtual_path": v_path,
+                                "final_path": _host,
+                                # The client speaks virtual paths; the agent is
+                                # told the one its own tools accept.
+                                "agent_path": (
+                                    v_path if (sandbox_enabled or not _host) else _host
+                                ),
                                 "filename": file_item.get("filename"),
                                 "is_image": file_item.get("mime_type", "").startswith(
                                     "image/"
@@ -655,11 +667,11 @@ class ChatProcessor:
                         else:
                             # It's a social tool attachment
                             result = self._process_social_attachment(
-                                file_item, uploads_host_path, uploads_virtual_path
+                                file_item, uploads_host_path, uploads_agent_path
                             )
                     else:
                         result = await self._process_upload_file(
-                            file_item, uploads_host_path, uploads_virtual_path
+                            file_item, uploads_host_path, uploads_agent_path
                         )
 
                     if result["is_image"] and not _vision_ok:
@@ -668,9 +680,9 @@ class ChatProcessor:
                         # and record the virtual path so we can tell the model, via
                         # a hidden system reminder, to inspect it with analyze_image
                         # (the directive must not appear in the user's bubble).
-                        name = result.get("filename") or result["virtual_path"]
+                        name = result.get("filename") or result["agent_path"]
                         stripped_image_names.append(name)
-                        stripped_image_paths.append(result["virtual_path"])
+                        stripped_image_paths.append(result["agent_path"])
                     elif result["is_image"]:
                         try:
                             # pydantic-ai uses BinaryContent for images
@@ -684,14 +696,14 @@ class ChatProcessor:
                                 BinaryContent(data=image_data, media_type=media_type)
                             )
                             attachment_context += (
-                                f"\n[User attached an image: {result['virtual_path']}]"
+                                f"\n[User attached an image: {result['agent_path']}]"
                             )
                         except Exception as e:
                             logger.error(f"Failed to load image: {e}")
                             attachment_context += f"\n[Failed to load attached image: {result.get('filename')}]"
-                    elif result["virtual_path"]:
+                    elif result["agent_path"]:
                         attachment_context += (
-                            f"\n[User attached a file: {result['virtual_path']}]"
+                            f"\n[User attached a file: {result['agent_path']}]"
                         )
 
             except Exception as e:
@@ -1810,7 +1822,7 @@ class ChatProcessor:
         )
 
     async def _process_upload_file(
-        self, file_obj, host_path: Path, virtual_path_prefix: str
+        self, file_obj, host_path: Path, agent_path_prefix: str
     ) -> Dict:
         """Handle Starlette UploadFile."""
         filename = getattr(file_obj, "filename", "unnamed")
@@ -1823,18 +1835,18 @@ class ChatProcessor:
         with open(target_path, "wb") as f:
             f.write(content)
 
-        virtual_path = f"{virtual_path_prefix}/{target_path.name}"
-        logger.info(f"Saved uploaded file to {virtual_path}")
+        agent_path = f"{agent_path_prefix}/{target_path.name}"
+        logger.info(f"Saved uploaded file to {agent_path}")
 
         return {
             "final_path": str(target_path),
-            "virtual_path": virtual_path,
+            "agent_path": agent_path,
             "filename": filename,
             "is_image": content_type.startswith("image/"),
         }
 
     def _process_social_attachment(
-        self, att_dict: Dict, host_path: Path, virtual_path_prefix: str
+        self, att_dict: Dict, host_path: Path, agent_path_prefix: str
     ) -> Dict:
         """Handle social attachment dict."""
         src_path = att_dict.get("path")
@@ -1842,17 +1854,17 @@ class ChatProcessor:
         att_type = att_dict.get("type")
 
         if not src_path or not os.path.exists(src_path):
-            return {"final_path": None, "virtual_path": None, "is_image": False}
+            return {"final_path": None, "agent_path": None, "is_image": False}
 
         safe_name = sanitize_filename(filename)
         target_path = _resolve_target_path(host_path, safe_name)
 
         shutil.move(src_path, target_path)
 
-        virtual_path = f"{virtual_path_prefix}/{target_path.name}"
+        agent_path = f"{agent_path_prefix}/{target_path.name}"
         return {
             "final_path": str(target_path),
-            "virtual_path": virtual_path,
+            "agent_path": agent_path,
             "filename": filename,
             "is_image": att_type == "image",
         }
