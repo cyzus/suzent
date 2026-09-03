@@ -32,16 +32,11 @@ thing to distrust.
 """
 
 STATIC_INSTRUCTIONS = f"""# Role
-You are Suzent, a digital coworker.
-
-# Language Requirement
-You should respond in the language of the user's query.
+You are Suzent, a digital coworker. Respond in the language of the user's query.
 
 # Task Management
-**MUST** make todo plans when a task requires:
-- Multiple steps or tools.
-- Information synthesis from several sources.
-- Breaking down an ambiguous goal into action items.
+Create a persistent todo plan only for work that is long, cross-turn, delegated, or
+independently verifiable. Short multi-tool turns need an internal plan, not a durable one.
 
 # Behavioral Guidelines
 - Bias toward action for clear requests; avoid unnecessary confirmation.
@@ -51,7 +46,8 @@ You should respond in the language of the user's query.
 # Output Efficiency & Tone
 - Go straight to the point. Lead with the answer or action.
 - Skip filler words, unnecessary transitions, and narrating your thought process.
-- Focus text output ONLY on: (1) Decisions needing user input, (2) High-level milestones, (3) Blockers.
+- Progress updates: decisions needing input, milestones, and blockers only.
+- Final answers: what the request needs — this trims narration, not substance.
 - Do not repeat the user's prompt back to them.
 
 # Failure Handling SOP
@@ -402,8 +398,19 @@ def build_base_instructions_section(base_instructions: str = "") -> str:
 def build_enabled_models_section(
     enabled_model_ids: list[str] | None = None,
     current_model_id: str | None = None,
+    equipped_tool_names: Any = None,
 ) -> str:
+    """The catalogue of ids usable as ``model_override``.
+
+    Only AgentTool accepts that argument, so a run without it cannot act on
+    this list. Beyond the tokens, the list is part of the cached prefix and
+    changes whenever a model is enabled or disabled — so a chat that can never
+    spawn a sub-agent was having its prompt cache invalidated by an unrelated
+    settings toggle.
+    """
     if not enabled_model_ids:
+        return ""
+    if equipped_tool_names is not None and "AgentTool" not in set(equipped_tool_names):
         return ""
 
     models_list = "\n".join(f"- `{model_id}`" for model_id in enabled_model_ids)
@@ -476,12 +483,32 @@ Place the marker immediately after the phrase it supports, before punctuation. F
 - The markers are rendered as small badges and stripped from display, so never mention or describe them in prose."""
 
 
-def build_citation_section(deps: Any) -> str:
-    """Return the static citation rules.
+#: Tools that label their output with source ids. Only these can produce
+#: something to cite, so only these make the citation rules worth their weight.
+CITING_TOOL_NAMES: frozenset[str] = frozenset({"WebSearchTool", "WebpageTool"})
 
-    The rules are constant (so this string is cacheable); the source *list* is
+
+def build_citation_section(equipped_tool_names: Any = None) -> str:
+    """Return the static citation rules, when anything could produce a citation.
+
+    The rules are constant, so the string stays cacheable; the source *list* is
     not injected here — tools embed source ids in their own output.
+
+    Gated on equipment rather than on whether sources exist yet. The model has
+    to know the marker syntax *before* the first tool call, so waiting for a
+    source would teach it the format one turn too late; but a run with no
+    citing tool equipped can never see a source id at all, and was carrying
+    1,681 characters of syntax and examples for a format it could not use.
+
+    Equipment is known when the agent is built, including for deferred tools —
+    deferring the schema does not defer the decision to equip.
     """
+    if equipped_tool_names is None:
+        # No opinion offered: keep the rules. A caller that does not know what
+        # is equipped is not evidence that nothing is.
+        return CITATION_RULES_SECTION
+    if not (CITING_TOOL_NAMES & set(equipped_tool_names)):
+        return ""
     return CITATION_RULES_SECTION
 
 
@@ -551,6 +578,7 @@ def register_dynamic_instructions(
     session_guidance_items: list[str] | None = None,
     enabled_model_ids: list[str] | None = None,
     current_model_id: str | None = None,
+    equipped_tool_names: Any = None,
 ) -> None:
     @agent.instructions
     def inject_date_context(_: Any) -> str:
@@ -592,6 +620,7 @@ def register_dynamic_instructions(
             lambda: build_enabled_models_section(
                 enabled_model_ids,
                 current_model_id=current_model_id,
+                equipped_tool_names=equipped_tool_names,
             ),
         )
 
@@ -604,10 +633,11 @@ def register_dynamic_instructions(
         )
 
     @agent.instructions
-    def inject_citation_rules(ctx: Any) -> str:
+    def inject_citation_rules(_: Any) -> str:
         # Static rules only; source ids travel in tool output and source metadata
-        # travels in citation_sources stream events.
-        return build_citation_section(ctx.deps)
+        # travels in citation_sources stream events. Equipment is fixed when the
+        # agent is built, so this reads the build-time set rather than deps.
+        return build_citation_section(equipped_tool_names)
 
     @agent.instructions
     def inject_permission_mode(ctx: Any) -> str:
