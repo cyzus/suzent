@@ -50,8 +50,17 @@ def _log(store, date, *lines):
 
 
 def test_duplicate_rule_no_longer_says_do_nothing():
-    assert "-> do nothing" not in memory_context.DREAM_INSTRUCTIONS
-    assert memory_context.DREAM_SUPERSEDED_PATH in memory_context.DREAM_INSTRUCTIONS
+    roots = memory_context.resolve_dream_roots(sandbox_enabled=True)
+    text = memory_context.build_dream_instructions(
+        roots,
+        start="2026-01-01",
+        end="2026-01-02",
+        confirmations="   (none pending)",
+        revisits="   (none due)",
+    )
+
+    assert "-> do nothing" not in text
+    assert roots.superseded_path in text
 
 
 # --- store ---
