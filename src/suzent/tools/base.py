@@ -42,7 +42,12 @@ def truncate_tool_output(
     def _marker(omitted: str) -> str:
         lines = omitted.count(chr(10)) + 1
         if full_output_path:
-            return f"... [{lines} lines truncated — full output: {full_output_path}]"
+            from suzent.tools.overflow import retention_hint
+
+            return (
+                f"... [{lines} lines truncated — full output "
+                f"({retention_hint()}): {full_output_path}]"
+            )
         return f"... [{lines} lines truncated]"
 
     if keep_tail:

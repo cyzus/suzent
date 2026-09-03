@@ -84,6 +84,21 @@ def _prune(directory: Path) -> None:
             continue
 
 
+def retention_hint() -> str:
+    """How long a spill lasts, for the marker that points at one.
+
+    The marker outlives the file: the path goes into conversation history, the
+    file expires. A resumed or compacted session can therefore read a pointer to
+    something already collected. Saying the window up front turns a puzzling
+    missing file into an expected one, and costs a few characters on results
+    that were over budget anyway.
+
+    Derived from the TTL rather than written out, so the two cannot drift.
+    """
+    hours = OVERFLOW_TTL_SECONDS // 3600
+    return f"kept {hours}h"
+
+
 def sweep_overflow() -> None:
     """Apply the retention bounds without needing a spill to trigger them.
 

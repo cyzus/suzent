@@ -1032,13 +1032,15 @@ def _apply_budget(
                 # gone next turn — so the pointer matters more here than for a
                 # tool result it could simply run again.
                 spilled = None
+                hint = ""
                 if deps is not None:
-                    from suzent.tools.overflow import spill_overflow
+                    from suzent.tools.overflow import retention_hint, spill_overflow
 
                     spilled = spill_overflow(part, deps=deps, kind="reminder")
+                    hint = retention_hint()
                 marker = (
                     f"\n\n[truncated: over the system-reminder budget — "
-                    f"full text: {spilled}]"
+                    f"full text ({hint}): {spilled}]"
                     if spilled
                     else TRUNCATION_MARKER
                 )

@@ -238,3 +238,26 @@ def test_the_sweep_is_harmless_with_no_directory(tmp_path, monkeypatch):
     monkeypatch.setattr(CONFIG, "sandbox_data_path", str(tmp_path), raising=False)
 
     sweep_overflow()  # must not raise
+
+
+def test_the_marker_says_how_long_the_file_lasts(deps):
+    """The pointer outlives the file: the path goes into conversation history,
+    the file expires in a day. A resumed session would otherwise read a pointer
+    to something already collected and find a puzzling absence."""
+    from suzent.tools.overflow import retention_hint
+
+    path = spill_overflow("x" * 50_000, deps=deps, kind="t")
+    out = truncate_tool_output("x" * 50_000, 100, full_output_path=path)
+
+    assert retention_hint() in out
+    assert "kept 24h" in out
+
+
+def test_the_stated_window_tracks_the_actual_ttl(monkeypatch):
+    """Written out by hand, the two would drift the first time the TTL moved."""
+    import suzent.tools.overflow as overflow
+    from suzent.tools.overflow import retention_hint
+
+    monkeypatch.setattr(overflow, "OVERFLOW_TTL_SECONDS", 3 * 60 * 60)
+
+    assert retention_hint() == "kept 3h"

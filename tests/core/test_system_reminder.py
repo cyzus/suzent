@@ -2367,9 +2367,12 @@ async def test_an_over_budget_reminder_keeps_its_tail_on_disk(clean_hooks, tmp_p
     assert result is not None
     body = _reminder_body(result)
     assert len(body) <= sr.REMINDER_BUDGET_CHARS
-    assert "full text:" in body, "the tail was dropped with no way to reach it"
+    assert "full text" in body, "the tail was dropped with no way to reach it"
+    # The window is stated because the pointer outlives the file: this path goes
+    # into history, the file expires in a day.
+    assert "kept 24h" in body
 
-    spilled = body.split("full text: ", 1)[1].split("]", 1)[0]
+    spilled = body.split("): ", 1)[1].split("]", 1)[0]
     from pathlib import Path
 
     assert Path(spilled).read_text(encoding="utf-8") == huge
