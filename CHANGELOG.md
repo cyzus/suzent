@@ -5,7 +5,196 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v0.11.0] - 2026-08-26
+## [v0.12.0] - 2026-09-04
+
+<!-- highlights -->
+Suzent feels much more like a team you can steer in this release. Thinking
+effort is now an explicit control from the desktop UI through to the model, and
+sub-agents have grown into a real roster: you can see what each child is doing,
+redirect it wherever it appears, understand what a stop interrupted, and trust
+that status and results will survive a reload. Parent permissions now follow
+delegated work, while vLLM and SGLang make local and self-hosted models
+first-class choices.
+
+Long conversations are calmer, faster, and easier to navigate. Settled turns no
+longer re-render for every streamed token, collapsed tool calls no longer build
+editors they are not showing, and macOS chat rendering is dramatically lighter.
+The activity rail and minimap now describe the message actually on screen, reach
+both ends of the conversation, and keep the reader's place when older history is
+loaded. Streaming recovery also keeps working turns alive instead of mistaking a
+slow first event, a busy reconnect, or a stop for lost work.
+
+Context management now follows the model that is really running. The displayed
+window, cache-hit share, and automatic compaction threshold use that model's
+actual limits, so small models are protected and million-token models are no
+longer compacted prematurely. Oversized tool output keeps its useful tail in a
+bounded, expiring spill file instead of silently throwing it away, and reminder
+providers run in parallel with timeouts, deduplication, and caps so one slow
+source cannot hold up a turn.
+
+There is a deep trust-and-correctness pass underneath all of that. Prompt and
+system-reminder boundaries are authenticated and sanitized across ordinary
+chat, ACP, restored history, structured tool results, compaction, images, and
+steering; prompt traces describe structure without recording prompt contents.
+Skills now respect per-chat enablement and cannot forge their own catalog
+markers, source precedence is explicit, and memory resolves against the current
+request rather than a stale agent snapshot.
+
+Finally, the rough edges around real installations received a broad reliability
+sweep: goals charge the right generation and the turns that actually ran; file
+tools honor the chat's working directory and granted paths in both host and
+sandbox modes; image analysis uses the same endpoint and credentials as the
+selected model; and self-hosted servers no longer spend the whole response
+budget on hidden reasoning. The result is a release that is not just more
+capable, but much harder to confuse, stall, or knock off course.
+<!-- /highlights -->
+
+### 🚀 Added
+- Implement prepend scroll anchoring with snapshot capture and restore
+- Keep the truncated tail on disk instead of discarding it (#185)
+- Time out, parallelise, dedupe and cap reminder providers (#179)
+- State which source wins, and make sections declare their kind (#176)
+- Dedupe the catalog by revision, not by rendered lines
+- Add thinking effort feature with UI slider and backend support
+- Make the live feed say what the child is actually doing
+- Redirect from wherever a sub-agent is shown
+- Surface what stop killed, and whether a redirect landed
+- Show blocking children working, and redirect them in place
+- Show cache hit rate as a share of input
+- Name the agent in the transcript instead of marking it done
+- Give the agent tool an icon of its own
+- Make the sidebar read as a roster of agents
+- Add vLLM and SGLang support
+- Redact the thinking label on the sweep's off-beat
+- Activity, sidebar and minimap refinements
+
+### ⚡ Changed
+- Size auto-compaction and the context panel by the model in use (#187)
+- Give the dream agent paths its own filesystem uses (#184)
+- Scope two rules that overfired (#182)
+- Move notebook procedure into the notebook skill
+- Give each rule exactly one owning layer
+- Remove the private audit doc from the repository
+- Revert the eager trigger prewrite; document the residual instead
+- Stop building a code editor for every collapsed tool block
+- One disclosure chevron, pointing the same way everywhere
+- Cut chat scroll cost on macOS
+- Stop re-rendering settled turn content on every token
+- Keep draft writes off the token loop and out of the index
+
+### 🐛 Fixed
+- Route image analysis through the shared model resolution (#186)
+- Show each mode only the paths it can actually open (#183)
+- Stop self-hosted servers thinking through the whole token budget (#181)
+- Read enablement from the per-chat manager, not the singleton
+- Identify goals by generation, not by their text
+- Rebuild the agent when skill enablement changes
+- Pin the goal by identity, not by row id
+- Keep the capture-policy exception in the no-skill fallback
+- Charge steering, and only the goal that was already running
+- Give the no-skill fallback the answering path too
+- Charge before continuation is scheduled, and count file-only turns
+- Forward the goal flag through every entry point; charge retries
+- Read notebook availability from the run, and key the cache on it
+- Charge autonomous goal steps, not replayed retries
+- Only point at the notebook skill when it can be loaded
+- Charge goal budget on completed turns, not on prompt assembly
+- Annotate the sanitizer's RunContext so it is actually invoked
+- Only trust catalog markers this process wrote
+- Order blocks by position and keep the separator out of band
+- Read reminder structure from the module that owns the format
+- Find the marker by fragment position, not by scanning history
+- Recognise the marker by position instead of altering catalog data
+- Stop catalog content from imitating the catalog marker
+- Sanitize trigger content before making it durable
+- Anchor revision matching on our own header; annotate the tests
+- Identify this run's draft by run id, not by role
+- Fingerprint the rendered lines and honour only the latest marker
+- Order the trigger before its answer and refresh derived state
+- Commit the trigger row inside the snapshot transaction
+- Write the trigger row before the run, not only after it
+- Match trigger provenance by turn identity, not by label
+- Carry trigger provenance onto the restored row
+- Stamp trigger provenance at creation, not by parsing later
+- Require a runtime mark before promoting a trigger row
+- Sanitize TextContent items; make the guard parse, not grep
+- Drop the content-derived digest from the prompt trace
+- Match restored trigger rows by label, not by index
+- Drop the full-prompt escape hatch entirely
+- Route every user prompt through one sanitizing constructor
+- Restore cron trigger rows from the stored log after a restart
+- Trace prompt structure instead of dumping its contents
+- Sanitize model output in history, not just compressor summaries
+- Sanitize at the wrap point and after compaction
+- Guard set members against the same collision as mapping keys
+- Sanitize the assembled ACP prompt; keep every mapping entry
+- Take provenance from the call path, not the token in the text
+- Escape forged delimiters at ingress instead of deleting them
+- Sanitize ACP input before deriving its transcript
+- Verify the serialized form, not just the walked structure
+- Check the wire form, and keep the token out of the logs
+- Redact unfixable objects; keep NamedTuple returns working
+- Make the payload walker fail closed on unknown shapes
+- Stop re-authenticating recovered triggers; walk dataclasses
+- Rewrap recovered triggers so they rebuild as trigger rows
+- Carry display triggers across the stale-reminder drop
+- Drop stale tokenized XML reminders instead of escaping them
+- Authenticate reminder blocks properly; cover image turns
+- Render the project's context path, not the chat's cwd
+- Sanitize user prompts restored from history
+- Remove the core-memory snapshot rather than fall back to it
+- Bound the core-memory cache with an LRU
+- Close steer, mapping-key and deep-nesting bypasses
+- Key the core-memory cache on resolver paths, never cache failures
+- Sanitize structured tool results and all tag spellings
+- Resolve core memory per request instead of per agent build
+- Make system-reminder boundaries unforgeable
+- Never let the prefill probe shorten a wait
+- Stop killing long-context turns on a 45s first-event timeout
+- Update aria-label for accessibility and adjust sheen colors
+- Simplify summary label logic for manual mode
+- Stop the permission badge from jumping on expand
+- Stop a rejected spawn from rendering as done
+- Bound the tool row, rebalance the card, explain a queued redirect
+- Keep sent redirects, and stop clipping long rows
+- Handle replayed tool args and start-less reasoning
+- Stop discarding a stopped turn's work
+- Let a blocking card find its child, and land the stop notice
+- Write the stopped-agent notice where it survives
+- Keep the stop notice through the post-stop reload
+- Scope tool windows per call, keep injections safe
+- Stop timing out agents that are working
+- Implement activity chunking and normalization logic
+- Report the context window live and honestly
+- Propagate the parent's permission grants to sub-agents
+- Make the host path boundary advisory instead of a veto
+- Measure the reader's place across the turn, not the row
+- Stop the edge fade swallowing the first and last ticks
+- Reach the first and last ticks, and wheel the whole rail
+- Light the last tick when the reader reaches the end
+- Place the reader by the message on screen, not by scrollTop
+- Resolve granted paths consistently in sandbox mode too
+- Make the 409 recovery authoritative, foreground-safe and localized
+- Honour the chat's working directory in every file tool
+- Reattach to the live stream when a send is rejected as busy
+- Stop hover-tinted rows re-rasterising their text
+- Point the collapsed chevron right
+- Render the result as markdown, give the panel an identity
+- Let the Agents tab open from transcript history
+- Settle the active list on stored state, keep timeouts pollable
+- Recover task ids from persisted results, share one status poll
+- Keep the rail mounted while an approval is pending
+- Run the sweep at 0.72s
+- Let the redact blanket the word instead of passing over it
+- Give the redact and the sweep a beat each
+- Make the thinking bar and the gap one movement
+- Let the thinking bar travel instead of blanketing the word
+- Let one element carry the thinking state
+- Localize the reasoning rail labels
+- Make the forced flush wait for a write already in flight
+- Don't charge the wait between chunks to the reveal clock
+
+## [v0.11.0] - 2026-08-27
 
 <!-- highlights -->
 Your editor can now drive the agent that lives on your machine. `suzent acp`
