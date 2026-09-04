@@ -1823,16 +1823,20 @@ async def stream_agent_responses(
                         try:
                             usage = _run_result_usage(payload.result)
                             context_tokens = None
+                            context_limit = None
                             if result_messages is not None:
                                 try:
-                                    from suzent.config import CONFIG
                                     from suzent.core.context_compressor import (
                                         estimate_tokens,
+                                        resolve_context_limit,
                                     )
 
+                                    context_limit = resolve_context_limit(
+                                        getattr(agent, "_model_id", None)
+                                    )
                                     context_tokens = estimate_tokens(
                                         result_messages,
-                                        CONFIG.max_context_tokens,
+                                        context_limit,
                                     ).estimated_tokens
                                 except Exception as e:
                                     logger.debug(
@@ -1844,6 +1848,9 @@ async def stream_agent_responses(
                                 "output_tokens": usage.output_tokens,
                                 "total_tokens": usage.total_tokens,
                                 "context_tokens": context_tokens,
+                                # Model-resolved, so the panel keeps drawing the
+                                # right percentage when a chat changes model.
+                                "context_limit": context_limit,
                                 "cache_write_tokens": usage.cache_write_tokens,
                                 "cache_read_tokens": usage.cache_read_tokens,
                                 "requests": usage.requests,

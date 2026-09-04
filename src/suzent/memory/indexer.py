@@ -24,6 +24,59 @@ from suzent.logger import get_logger
 logger = get_logger(__name__)
 
 
+# A vault backed by a cloud file provider (OneDrive, iCloud Drive) can accept the
+# open() and then block the first read() indefinitely while it hydrates the file.
+# Done on the event loop, that starves every request in the process — one
+# unavailable page froze the whole server, /health included, until it was killed.
+VAULT_READ_TIMEOUT_SECONDS = 15
+
+
+# Paths whose read is still parked in the syscall. A timed-out read cannot be
+# cancelled, so its thread stays out of reach until the provider answers; the
+# watcher would otherwise abandon a fresh worker for the same file every pass
+# and eventually drain the shared executor, stalling unrelated threaded work.
+_reads_in_flight: set[str] = set()
+
+
+async def read_text_off_loop(path: Path) -> Optional[str]:
+    """File contents, or ``None`` if the read failed or outlived its deadline.
+
+    A timed-out read leaves its thread parked in the syscall until the provider
+    answers — an uninterruptible read cannot be cancelled — but the loop is free
+    again, which is what decides whether the rest of the process still responds.
+    Skipping the file also leaves its recorded mtime alone, so the next pass
+    retries it once the provider is healthy, and one blocked file costs one
+    thread however many passes go by.
+    """
+    key = str(path)
+    if key in _reads_in_flight:
+        logger.debug(f"Skipping {path}: an earlier read of it is still blocked")
+        return None
+
+    def _read() -> str:
+        try:
+            return path.read_text(encoding="utf-8", errors="replace")
+        finally:
+            # In the worker, so the path frees up when the read finally returns
+            # — whether or not anyone is still waiting for the result.
+            _reads_in_flight.discard(key)
+
+    _reads_in_flight.add(key)
+    try:
+        return await asyncio.wait_for(
+            asyncio.to_thread(_read), timeout=VAULT_READ_TIMEOUT_SECONDS
+        )
+    except asyncio.TimeoutError:
+        logger.warning(
+            f"Timed out after {VAULT_READ_TIMEOUT_SECONDS}s reading {path} — "
+            "skipping it this pass (cloud file provider may be unavailable)"
+        )
+        return None
+    except OSError as e:
+        logger.warning(f"Could not read {path}: {e}")
+        return None
+
+
 def _owned_by_file(row: dict) -> bool:
     """Whether a stored row is maintained by the markdown file it came from.
 
@@ -101,12 +154,15 @@ class TranscriptIndexer:
             logger.debug(f"Transcript not found: {transcript_path}")
             return stats
 
+        raw = await read_text_off_loop(transcript_path)
+        if raw is None:
+            stats["errors"] += 1
+            return stats
+
         try:
             # Read all turns
             turns = []
-            for line in transcript_path.read_text(
-                encoding="utf-8", errors="replace"
-            ).splitlines():
+            for line in raw.splitlines():
                 line = line.strip()
                 if not line:
                     continue
@@ -384,7 +440,8 @@ class CoreMemoryFileIndexer:
         """
         # Load persisted state on first call
         if self._state_path is None:
-            self._load_state(markdown_store)
+            # Same file provider, same hazard: the state file lives in the vault.
+            await asyncio.to_thread(self._load_state, markdown_store)
 
         stats = {
             "files_checked": 0,
@@ -447,7 +504,11 @@ class CoreMemoryFileIndexer:
                 continue  # File unchanged (or unreadable) — nothing to do
 
             try:
-                content = path.read_text(encoding="utf-8", errors="replace").strip()
+                raw = await read_text_off_loop(path)
+                if raw is None:
+                    stats["errors"] += 1
+                    continue
+                content = raw.strip()
                 if not content:
                     self._mtimes[path_key] = mtime
                     state_dirty = True
@@ -475,7 +536,7 @@ class CoreMemoryFileIndexer:
                 logger.error(f"Failed to re-index {filename}: {e}")
 
         if state_dirty:
-            self._save_state()
+            await asyncio.to_thread(self._save_state)
 
         return stats
 
@@ -495,7 +556,7 @@ class CoreMemoryFileIndexer:
         """
         async with self._lock:
             if self._state_path is None:
-                self._load_state(markdown_store)
+                await asyncio.to_thread(self._load_state, markdown_store)
 
             if label == "archive":
                 path = markdown_store.archive_dir / filename
@@ -508,10 +569,13 @@ class CoreMemoryFileIndexer:
                 return 0
 
             file_mtime, file_birthtime = self.file_times(path)
-            content = path.read_text(encoding="utf-8", errors="replace").strip()
+            raw = await read_text_off_loop(path)
+            if raw is None:
+                return 0
+            content = raw.strip()
             if not content:
                 self._mtimes[self._state_key(label, filename)] = path.stat().st_mtime
-                self._save_state()
+                await asyncio.to_thread(self._save_state)
                 return 0
 
             n = await self._reindex_file(
@@ -527,7 +591,7 @@ class CoreMemoryFileIndexer:
             )
             # Record post-write mtime so the watcher treats this file as handled.
             self._mtimes[self._state_key(label, filename)] = path.stat().st_mtime
-            self._save_state()
+            await asyncio.to_thread(self._save_state)
             return n
 
     async def clear_and_full_reindex(
@@ -546,7 +610,7 @@ class CoreMemoryFileIndexer:
             self._swept = set()
             if self._state_path is None:
                 self._state_path = markdown_store.base_dir / self.INDEX_STATE_FILENAME
-            self._save_state()
+            await asyncio.to_thread(self._save_state)
             return await self._check_and_update_impl(
                 markdown_store, lancedb_store, embedding_gen, user_id
             )

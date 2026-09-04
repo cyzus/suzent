@@ -107,6 +107,7 @@ export interface Chat {
     output_tokens?: number;
     total_tokens?: number;
     context_tokens?: number | null;
+    context_limit?: number | null;
     cache_write_tokens?: number;
     cache_read_tokens?: number;
     requests?: number;
@@ -201,7 +202,8 @@ export interface ConfigOptions {
   globalSandboxVolumes?: string[]; // global volumes from config file
   sandboxEnabled?: boolean; // global sandbox enable setting
   defaultPermissionMode?: PermissionMode; // default permission mode for new chats
-  maxContextTokens?: number; // max context window size in tokens
+  contextWindows?: Record<string, number>; // context budget per enabled model id
+  maxContextTokens?: number; // last-resort fallback when the selected model is unknown
   userPreferences?: {
     // saved user preferences from database
     model: string;

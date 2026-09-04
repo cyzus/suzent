@@ -348,6 +348,12 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
   });
   const [config, setConfigState] = useState<ChatConfig>(defaultConfig);
   const [backendConfig, setBackendConfig] = useState<ConfigOptions | null>(null);
+  // Read from callbacks that must not be rebuilt whenever the listing changes.
+  const backendConfigRef = useRef<ConfigOptions | null>(null);
+  backendConfigRef.current = backendConfig;
+  // Models we have already refetched the listing for, so an unlisted model
+  // (an ACP agent, a disabled provider) costs one request, not one per load.
+  const refetchedForModelsRef = useRef<Set<string>>(new Set());
   const [backendConfigError, setBackendConfigError] = useState<string | null>(null);
   const [shouldResetNext, setShouldResetNext] = useState(false);
   const [isStreaming, setIsStreamingState] = useState(false);
@@ -537,64 +543,76 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
     [getMessagesForChat, currentChatId]
   );
 
-  // Fetch backend config with retry logic
-  const fetchConfigWithRetry = useCallback(async (attempt = 1, maxAttempts = 5) => {
-    try {
-      const res = await fetch(`${getApiBase()}/config`);
-      if (res.ok) {
-        const data: ConfigOptions = await res.json();
+  // Fetch backend config with retry logic.
+  //
+  // `applyDefaults` decides whether the listing also (re)initializes the active
+  // chat config from user preferences. That is right on mount and after a
+  // settings change, and wrong for a refresh triggered mid-session: the fetch
+  // resolves after a chat's own config was installed, so applying defaults there
+  // would silently switch the open chat's model and tools — and the next message
+  // would run with them.
+  const fetchConfigWithRetry = useCallback(
+    async (attempt = 1, maxAttempts = 5, applyDefaults = true) => {
+      try {
+        const res = await fetch(`${getApiBase()}/config`);
+        if (res.ok) {
+          const data: ConfigOptions = await res.json();
 
-        setBackendConfig(data);
-        // Align memory user id with backend-provided userId if present
-        try {
-          if (data.userId) {
-            // Lazy import to avoid circulars; memory hook standalone
-            const { useMemory } = await import('./useMemory');
-            useMemory.getState().setUserId(data.userId);
+          setBackendConfig(data);
+          // Align memory user id with backend-provided userId if present
+          try {
+            if (data.userId) {
+              // Lazy import to avoid circulars; memory hook standalone
+              const { useMemory } = await import('./useMemory');
+              useMemory.getState().setUserId(data.userId);
+            }
+          } catch (e) {
+            console.warn('Failed to set memory userId from backend config:', e);
           }
-        } catch (e) {
-          console.warn('Failed to set memory userId from backend config:', e);
+
+          // Build initial config from user preferences or backend defaults
+          const firstConfig: ChatConfig = buildConfigFromPreferences(data.userPreferences, data);
+
+          // Track saved preferences to avoid re-saving on initial load
+          if (data.userPreferences) {
+            lastSavedPreferencesRef.current = extractSavedPreferences(data.userPreferences);
+          }
+
+          if (applyDefaults) {
+            setConfigState(firstConfig);
+            setConfigByChat((prev) => ({ ...prev, [UNSAVED_CHAT_KEY]: firstConfig }));
+          }
+        } else if (attempt < maxAttempts) {
+          // Backend not ready, retry with exponential backoff
+          const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+          console.log(
+            `Backend not ready (${res.status}), retrying in ${delay}ms... (attempt ${attempt}/${maxAttempts})`
+          );
+          setTimeout(() => fetchConfigWithRetry(attempt + 1, maxAttempts, applyDefaults), delay);
+        } else {
+          console.error(
+            'Failed to fetch config after',
+            maxAttempts,
+            'attempts:',
+            res.status,
+            res.statusText
+          );
         }
-
-        // Build initial config from user preferences or backend defaults
-        const firstConfig: ChatConfig = buildConfigFromPreferences(data.userPreferences, data);
-
-        // Track saved preferences to avoid re-saving on initial load
-        if (data.userPreferences) {
-          lastSavedPreferencesRef.current = extractSavedPreferences(data.userPreferences);
+      } catch (error) {
+        if (attempt < maxAttempts) {
+          // Network error, retry with exponential backoff
+          const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+          console.log(
+            `Error fetching config, retrying in ${delay}ms... (attempt ${attempt}/${maxAttempts})`
+          );
+          setTimeout(() => fetchConfigWithRetry(attempt + 1, maxAttempts, applyDefaults), delay);
+        } else {
+          console.error('Error fetching config after', maxAttempts, 'attempts:', error);
         }
-
-        setConfigState(firstConfig);
-        setConfigByChat((prev) => ({ ...prev, [UNSAVED_CHAT_KEY]: firstConfig }));
-      } else if (attempt < maxAttempts) {
-        // Backend not ready, retry with exponential backoff
-        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
-        console.log(
-          `Backend not ready (${res.status}), retrying in ${delay}ms... (attempt ${attempt}/${maxAttempts})`
-        );
-        setTimeout(() => fetchConfigWithRetry(attempt + 1, maxAttempts), delay);
-      } else {
-        console.error(
-          'Failed to fetch config after',
-          maxAttempts,
-          'attempts:',
-          res.status,
-          res.statusText
-        );
       }
-    } catch (error) {
-      if (attempt < maxAttempts) {
-        // Network error, retry with exponential backoff
-        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
-        console.log(
-          `Error fetching config, retrying in ${delay}ms... (attempt ${attempt}/${maxAttempts})`
-        );
-        setTimeout(() => fetchConfigWithRetry(attempt + 1, maxAttempts), delay);
-      } else {
-        console.error('Error fetching config after', maxAttempts, 'attempts:', error);
-      }
-    }
-  }, []);
+    },
+    []
+  );
 
   const refreshBackendConfig = useCallback(async () => {
     await fetchConfigWithRetry();
@@ -1392,6 +1410,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
               total_tokens:
                 serverUsage?.total_tokens ?? existingUsage?.total_tokens ?? contextTokens,
               context_tokens: contextTokens,
+              context_limit: serverUsage?.context_limit ?? existingUsage?.context_limit ?? null,
               cache_write_tokens:
                 serverUsage?.cache_write_tokens ?? existingUsage?.cache_write_tokens ?? 0,
               cache_read_tokens:
@@ -1406,6 +1425,22 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
           );
           setConfigByChat((prev) => ({ ...prev, [key]: loadedConfig }));
           setConfigState(loadedConfig);
+          // The backend config listing is fetched once on mount, so a backend that
+          // restarted (or gained a model) since then leaves this window holding a
+          // listing that can't size the chat's model — which is how the context
+          // panel kept showing a stale maximum. Not being able to resolve a budget
+          // for the model we just loaded is the signal to refetch the listing.
+          const model = loadedConfig.model;
+          if (
+            model &&
+            backendConfigRef.current &&
+            !backendConfigRef.current.contextWindows?.[model] &&
+            !refetchedForModelsRef.current.has(model)
+          ) {
+            refetchedForModelsRef.current.add(model);
+            // Listing only: this resolves after the chat's config is installed.
+            void fetchConfigWithRetry(1, 5, false);
+          }
           // Save reusable preferences for the next new chat without chat-scoped state.
           try {
             localStorage.setItem(

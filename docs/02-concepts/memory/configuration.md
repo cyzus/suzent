@@ -95,8 +95,19 @@ is off by default.
 ## Context window
 
 ```yaml
-max_context_tokens: 800000         # Budget before a conversation is compressed
+max_context_tokens: 0              # 0 = use whatever the active model supports
 ```
+
+The compaction budget is derived from the model actually running the conversation:
+its input window, read from the model capability registry. A 1M-token model gets a
+1M-token budget, a 128k model gets 128k, and compaction triggers at the same
+*fraction* of each (`context_compaction_trigger`, 80% by default) instead of at one
+fixed token count that was wrong for every model but one.
+
+Set `max_context_tokens` to a non-zero value to cap that budget — useful to keep
+prompts (and cost) below what the model would allow. It is a ceiling, never a
+raise: the smaller of the two always wins. When a model is missing from the
+registry, the budget falls back to 200k tokens.
 
 ## Rebuilding the search index
 

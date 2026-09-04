@@ -157,7 +157,46 @@ def extract_summary_body(raw: str) -> str:
     return re.sub(r"</?summary>", "", text).strip()
 
 
-def build_post_compaction_usage(context_tokens: int) -> dict[str, Any]:
+# Budget used when the active model is unknown or absent from the capability
+# registry. Deliberately conservative: overshooting a model's real window costs a
+# hard provider error mid-turn, while undershooting only compacts a little early.
+DEFAULT_CONTEXT_LIMIT_TOKENS = 200_000
+
+
+def resolve_context_limit(model_id: Optional[str] = None) -> int:
+    """Context budget for the model actually running this conversation.
+
+    The trigger used to be a single fixed number for every model, which is wrong
+    in both directions: a 1M-token model got compacted at a fraction of its
+    window, and a 128k model sailed past its real limit until the provider
+    rejected the request outright.
+
+    ``CONFIG.max_context_tokens`` keeps working as an explicit *ceiling* (a user
+    who wants to cap cost or latency below what the model allows), and 0 — the
+    default — means "whatever the model supports". Where the registry knows the
+    model, ``max_input_tokens`` is the number that matters: the output reservation
+    is not part of the prompt we are sizing.
+    """
+    ceiling = int(CONFIG.max_context_tokens or 0)
+    window = 0
+    if model_id:
+        try:
+            from suzent.core.model_registry import get_model_registry
+
+            caps = get_model_registry().get_capabilities(model_id)
+            if caps:
+                window = int(caps.max_input_tokens or caps.context_window or 0)
+        except Exception as e:
+            logger.debug(f"Context window lookup failed for {model_id}: {e}")
+
+    if window <= 0:
+        return ceiling or DEFAULT_CONTEXT_LIMIT_TOKENS
+    return min(window, ceiling) if ceiling > 0 else window
+
+
+def build_post_compaction_usage(
+    context_tokens: int, context_limit: Optional[int] = None
+) -> dict[str, Any]:
     """Build a context-window usage payload reflecting the post-compaction total.
 
     The frontend usage panel is normally fed by provider-reported usage from the
@@ -166,7 +205,7 @@ def build_post_compaction_usage(context_tokens: int) -> dict[str, Any]:
     (stage="complete") so all surfaces update the same way. Cumulative/cache fields
     are reset; the next real request repopulates them.
     """
-    return {
+    payload: dict[str, Any] = {
         "input_tokens": context_tokens,
         "output_tokens": 0,
         "total_tokens": context_tokens,
@@ -176,9 +215,14 @@ def build_post_compaction_usage(context_tokens: int) -> dict[str, Any]:
         "requests": 0,
         "details": {},
     }
+    if context_limit:
+        payload["context_limit"] = int(context_limit)
+    return payload
 
 
-def build_live_context_usage(context_tokens: int, usage: Any = None) -> dict[str, Any]:
+def build_live_context_usage(
+    context_tokens: int, usage: Any = None, context_limit: Optional[int] = None
+) -> dict[str, Any]:
     """Build a partial usage payload describing the context window right now.
 
     Only ``context_tokens`` is always known mid-run; the cumulative counters come
@@ -187,6 +231,11 @@ def build_live_context_usage(context_tokens: int, usage: Any = None) -> dict[str
     them at the start of a run.
     """
     payload: dict[str, Any] = {"context_tokens": context_tokens}
+    # The limit travels with the count: it depends on the model this turn is
+    # running on, so a panel that assumed one global number would draw the wrong
+    # percentage as soon as the chat switched models.
+    if context_limit:
+        payload["context_limit"] = int(context_limit)
     for field in (
         "input_tokens",
         "output_tokens",
@@ -208,7 +257,11 @@ def build_live_context_usage(context_tokens: int, usage: Any = None) -> dict[str
 
 
 def emit_context_usage_event(
-    *, chat_id: str, context_tokens: int, usage: Any = None
+    *,
+    chat_id: str,
+    context_tokens: int,
+    usage: Any = None,
+    context_limit: Optional[int] = None,
 ) -> None:
     """Broadcast the live context-window size to every connected client.
 
@@ -227,7 +280,9 @@ def emit_context_usage_event(
             {
                 "event": "context_usage",
                 "chat_id": chat_id,
-                "usage": build_live_context_usage(context_tokens, usage),
+                "usage": build_live_context_usage(
+                    context_tokens, usage, context_limit=context_limit
+                ),
             }
         )
     except Exception as e:
@@ -355,6 +410,7 @@ def emit_compaction_event(
     tokens_after: Optional[int] = None,
     message: Optional[str] = None,
     persist_result: bool = False,
+    context_limit: Optional[int] = None,
 ) -> dict[str, Any]:
     payload = build_compaction_event(
         chat_id=chat_id,
@@ -371,7 +427,7 @@ def emit_compaction_event(
     # (manual button, /compact slash, auto) refreshes the panel identically, and
     # persist it so a reload reflects the reduced context too.
     if stage == "complete" and tokens_after is not None:
-        usage_data = build_post_compaction_usage(tokens_after)
+        usage_data = build_post_compaction_usage(tokens_after, context_limit)
         payload["usage"] = usage_data
         if chat_id:
             try:
@@ -576,6 +632,7 @@ class ContextCompressor:
         llm_client: Optional[LLMClient] = None,
         chat_id: Optional[str] = None,
         user_id: Optional[str] = None,
+        model_id: Optional[str] = None,
     ):
         if llm_client:
             self.llm_client = llm_client
@@ -585,13 +642,25 @@ class ContextCompressor:
 
         self.chat_id = chat_id
         self.user_id = user_id
+        # Model the conversation runs on — decides how much context there is to
+        # spend before compaction has to step in.
+        self.model_id = model_id
+
+    @property
+    def context_limit(self) -> int:
+        """Token budget for this conversation's model, resolved per call.
+
+        Not cached: the registry can be reloaded (capability sync) and a chat can
+        be reopened on a different model within the process's lifetime.
+        """
+        return resolve_context_limit(self.model_id)
 
     async def compress_messages(self, messages: list) -> list:
         """Check if message history needs compression and perform it if necessary."""
         if not messages:
             return messages
 
-        budget = estimate_tokens(messages, CONFIG.max_context_tokens)
+        budget = estimate_tokens(messages, self.context_limit)
         if not budget.over_trigger:
             return messages
 
@@ -618,7 +687,7 @@ class ContextCompressor:
 
     def get_auto_compaction_plan(self, messages: list) -> dict[str, Any]:
         """Compute whether an automatic compaction attempt should be made."""
-        budget = estimate_tokens(messages, CONFIG.max_context_tokens)
+        budget = estimate_tokens(messages, self.context_limit)
         keep_recent = CONFIG.compaction_keep_recent_turns * 2
         can_attempt = budget.over_trigger and len(messages) > keep_recent + 1
         return {
@@ -690,7 +759,7 @@ class ContextCompressor:
             await self._pre_compaction_flush(messages_to_compress)
 
         # Adaptive chunk size
-        budget = estimate_tokens(messages, CONFIG.max_context_tokens)
+        budget = estimate_tokens(messages, self.context_limit)
         chunk_size = CONFIG.compaction_chunk_size
         if len(messages_to_compress) > 0:
             avg_tokens = budget.estimated_tokens / len(messages)
@@ -1000,7 +1069,9 @@ def _message_has_compaction_marker(msg: Any) -> bool:
     return False
 
 
-def context_input_tokens(ctx: Any, messages: list) -> int:
+def context_input_tokens(
+    ctx: Any, messages: list, model_id: Optional[str] = None
+) -> int:
     """Best-effort size of the history about to be sent to the model.
 
     This MUST reflect the current ``messages`` list, because it is the trigger
@@ -1015,10 +1086,12 @@ def context_input_tokens(ctx: Any, messages: list) -> int:
     char-based estimate over the incoming ``messages`` tracks the compacted list
     directly. ``ctx`` is retained for signature stability / future use.
     """
-    return estimate_tokens(messages, CONFIG.max_context_tokens).estimated_tokens
+    return estimate_tokens(messages, resolve_context_limit(model_id)).estimated_tokens
 
 
-def make_compaction_history_processor(source: str = "auto_midrun"):
+def make_compaction_history_processor(
+    source: str = "auto_midrun", model_id: Optional[str] = None
+):
     """Build a pydantic-ai history processor that compacts context mid-run.
 
     Registered via ``Agent(history_processors=[...])``, it runs before EVERY model
@@ -1042,9 +1115,9 @@ def make_compaction_history_processor(source: str = "auto_midrun"):
             return messages
 
         chat_id = getattr(deps, "chat_id", "") or ""
-        limit = CONFIG.max_context_tokens
+        limit = resolve_context_limit(model_id)
         trigger = limit * CONFIG.context_compaction_trigger
-        current_tokens = context_input_tokens(ctx, messages)
+        current_tokens = context_input_tokens(ctx, messages, model_id)
 
         # Report the context window on every model request, not just when we are
         # about to compact — this is what keeps the frontend panel live during a
@@ -1053,6 +1126,7 @@ def make_compaction_history_processor(source: str = "auto_midrun"):
             chat_id=chat_id,
             context_tokens=current_tokens,
             usage=getattr(ctx, "usage", None),
+            context_limit=limit,
         )
 
         if current_tokens < trigger:
@@ -1077,7 +1151,9 @@ def make_compaction_history_processor(source: str = "auto_midrun"):
             tokens_before=tokens_before,
         )
 
-        compressor = ContextCompressor(chat_id=chat_id, user_id=user_id)
+        compressor = ContextCompressor(
+            chat_id=chat_id, user_id=user_id, model_id=model_id
+        )
         try:
             compressed = await asyncio.wait_for(
                 compressor._perform_compression(messages, background_flush=True),
@@ -1145,6 +1221,7 @@ def make_compaction_history_processor(source: str = "auto_midrun"):
             messages_after=len(compressed),
             tokens_before=tokens_before,
             tokens_after=tokens_after,
+            context_limit=limit,
         )
         logger.info(
             f"Mid-run compaction: {messages_before} -> {len(compressed)} messages "
