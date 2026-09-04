@@ -1435,3 +1435,43 @@ def test_no_out_of_band_deletion_remains():
         source = inspect.getsource(fn)
         assert "unlink" not in source, f"{fn.__name__} deletes a spill directly"
         assert "_discard" not in source, f"{fn.__name__} deletes a spill directly"
+
+
+def test_a_relative_data_path_still_yields_an_absolute_pointer(tmp_path, monkeypatch):
+    """sandbox_data_path may be relative — the documented default is
+    `.suzent/sandbox`. A relative host path in a marker is worse than useless:
+    PathResolver resolves relative paths against the *chat's* cwd, so the agent
+    would look under its own directory for a file written next to the
+    server's."""
+    from suzent.config import CONFIG
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(CONFIG, "sandbox_data_path", "relative/sandbox", raising=False)
+
+    class _Resolver:
+        def resolve(self, virtual: str) -> str:
+            base = tmp_path / "relative" / "sandbox" / "shared"
+            return str(base / virtual[len("/shared") :].lstrip("/"))
+
+    deps = SimpleNamespace(
+        path_resolver=_Resolver(), sandbox_enabled=False, chat_id="c"
+    )
+
+    spill = spill_overflow("x" * 100, deps=deps, kind="t")
+
+    assert spill is not None
+    assert Path(spill.path).is_absolute(), f"relative pointer: {spill.path}"
+    assert Path(spill.path).read_text(encoding="utf-8") == "x" * 100
+
+
+def test_the_root_has_one_definition():
+    """Three copies of `Path(sandbox_data_path) / "shared"` is how the writer
+    and the sweep came to disagree before, and how one of them stayed
+    relative."""
+    import inspect
+
+    import suzent.tools.overflow as overflow
+
+    source = inspect.getsource(overflow)
+
+    assert source.count("CONFIG.sandbox_data_path") == 1

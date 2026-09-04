@@ -158,6 +158,25 @@ def retention_hint() -> str:
     return f"kept up to {longest // 3600}h"
 
 
+def _shared_root() -> Path:
+    """The canonical shared directory, absolute.
+
+    ``sandbox_data_path`` may be relative — the documented default is
+    ``.suzent/sandbox`` — and a relative host path is worse than useless in a
+    marker: PathResolver resolves relative paths against the *chat's* working
+    directory, so the pointer would send the agent looking under its own cwd
+    for a file written next to the server's. Absolute here, once, for the
+    writer and the sweep alike.
+    """
+    from suzent.config import CONFIG
+
+    return Path(CONFIG.sandbox_data_path).expanduser().resolve() / "shared"
+
+
+def _overflow_root() -> Path:
+    return _shared_root() / ".overflow"
+
+
 def _chat_segment(deps: Any) -> str:
     """A directory name for this chat, safe to place in a path.
 
@@ -541,9 +560,7 @@ def _prune_now(deps: Any) -> None:
     behalf is a legitimate retention decision rather than an eviction by
     something that is about to vanish.
     """
-    from suzent.config import CONFIG
-
-    root = Path(CONFIG.sandbox_data_path) / "shared" / ".overflow"
+    root = _overflow_root()
     chat = _chat_segment(deps)
     try:
         if _HAVE_DIR_FD:
@@ -623,9 +640,7 @@ def _spill_payload(
     # directory, force-chmod it 0755, and leave the files somewhere the sweep
     # (which knows only the canonical path) never looks. Deriving the root from
     # config keeps the writer and the collector talking about one directory.
-    from suzent.config import CONFIG
-
-    shared_host = Path(CONFIG.sandbox_data_path) / "shared"
+    shared_host = _shared_root()
 
     # In sandbox mode the agent reaches it as /shared — unless that mount has
     # been redirected, in which case there is no path to advertise and the plain
@@ -919,9 +934,7 @@ def sweep_overflow() -> None:
     Per-chat bounds mean the directory total scales with the number of chats,
     which is why this also drops chat directories once they are empty.
     """
-    from suzent.config import CONFIG
-
-    root = Path(CONFIG.sandbox_data_path) / "shared" / ".overflow"
+    root = _overflow_root()
     if not root.is_dir():
         return
 
