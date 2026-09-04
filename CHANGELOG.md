@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Activity, sidebar and minimap refinements
 
 ### ⚡ Changed
+- Size auto-compaction and the context panel by the model in use (#187)
 - Give the dream agent paths its own filesystem uses (#184)
 - Scope two rules that overfired (#182)
 - Move notebook procedure into the notebook skill
