@@ -46,7 +46,7 @@ import time
 from dataclasses import dataclass
 from types import SimpleNamespace
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from suzent.logger import get_logger
 
@@ -210,7 +210,12 @@ def _open_child_dir(name: str, parent_fd: int, dir_mode: int) -> int:
 
 
 def _spill_by_path(
-    payload: bytes, directory: Path, name: str, dir_mode: int, file_mode: int
+    payload: bytes,
+    directory: Path,
+    name: str,
+    dir_mode: int,
+    file_mode: int,
+    keep_check: Optional[Callable[[], bool]] = None,
 ) -> bool:
     """Write the spill without directory descriptors.
 
@@ -261,6 +266,13 @@ def _spill_by_path(
         # The descriptor-based path already does this. A half-written file that
         # was never advertised is pure litter, and this branch skips pruning, so
         # it sits there until the sweep.
+        try:
+            (directory / name).unlink(missing_ok=True)
+        except OSError:
+            pass
+        return False
+
+    if keep_check is not None and not keep_check():
         try:
             (directory / name).unlink(missing_ok=True)
         except OSError:
@@ -467,6 +479,7 @@ def _spill_pinned(
     name: str,
     dir_mode: int,
     file_mode: int,
+    keep_check: Optional[Callable[[], bool]] = None,
 ) -> bool:
     """Write the spill with every directory on the path pinned.
 
@@ -511,6 +524,17 @@ def _spill_pinned(
                 handle.write(payload)
         except OSError as e:
             logger.debug(f"[overflow] could not write spill: {e}")
+            try:
+                os.unlink(name, dir_fd=chat_fd)
+            except OSError:
+                pass
+            return False
+
+        # Before pruning, because pruning is irreversible: an abandoned spill
+        # that prunes first can evict files whose paths were already handed to a
+        # live conversation, and then delete itself, leaving the eviction as the
+        # only lasting effect.
+        if keep_check is not None and not keep_check():
             try:
                 os.unlink(name, dir_fd=chat_fd)
             except OSError:
@@ -568,7 +592,12 @@ def spill_overflow(text: str, *, deps: Any, kind: str = "output") -> Optional[Sp
 
 
 def _spill_payload(
-    payload: bytes, clipped: bool, *, deps: Any, kind: str = "output"
+    payload: bytes,
+    clipped: bool,
+    *,
+    deps: Any,
+    kind: str = "output",
+    keep_check: Optional[Callable[[], bool]] = None,
 ) -> Optional[Spill]:
     """Write an already-bounded *payload*; return where it went.
 
@@ -643,10 +672,17 @@ def _spill_payload(
 
     if not _HAVE_DIR_FD:
         if not _spill_by_path(
-            payload, shared_host / ".overflow" / chat, name, dir_mode, file_mode
+            payload,
+            shared_host / ".overflow" / chat,
+            name,
+            dir_mode,
+            file_mode,
+            keep_check,
         ):
             return None
-    elif not _spill_pinned(payload, shared_host, chat, name, dir_mode, file_mode):
+    elif not _spill_pinned(
+        payload, shared_host, chat, name, dir_mode, file_mode, keep_check
+    ):
         return None
 
     written = shared_host / ".overflow" / chat / name
@@ -756,15 +792,30 @@ def spill_overflow_bounded(
 
     snapshot = _deps_snapshot(deps)
     abandoned = threading.Event()
+    handover = threading.Lock()
     result: list[Optional[Spill]] = [None]
 
     def _worker() -> None:
         try:
-            spill = _spill_payload(payload, clipped, deps=snapshot, kind=kind)
-            if spill is not None and abandoned.is_set():
-                _discard(spill)
-            else:
-                result[0] = spill
+            spill = _spill_payload(
+                payload,
+                clipped,
+                deps=snapshot,
+                kind=kind,
+                keep_check=lambda: not abandoned.is_set(),
+            )
+            if spill is None:
+                return
+            # Under the lock, because the caller can give up between the check
+            # and the assignment — and then nobody owns the file.
+            with handover:
+                if abandoned.is_set():
+                    late = spill
+                else:
+                    result[0] = spill
+                    late = None
+            if late is not None:
+                _discard(late)
         finally:
             _spill_slots.release()
 
@@ -781,10 +832,11 @@ def spill_overflow_bounded(
         return None
     thread.join(timeout=SPILL_TIMEOUT_SECONDS)
     if thread.is_alive():
+        with handover:
+            abandoned.set()
         # The write may still land. Nobody was told about it, so it would sit
         # there consuming the per-chat and root quotas and evicting spills whose
         # paths *were* handed out — the worker removes it when it finishes.
-        abandoned.set()
         logger.warning(
             f"[overflow] spill exceeded {SPILL_TIMEOUT_SECONDS}s — truncating "
             f"without a pointer"
@@ -828,16 +880,26 @@ async def spill_overflow_async(
     future: asyncio.Future = loop.create_future()
 
     def _deliver(value: Optional[Spill]) -> None:
-        if not future.done():
-            future.set_result(value)
+        # Runs on the loop, so it sees the future's final state. A caller
+        # cancelled after the worker's own check but before this point leaves a
+        # completed future and an unowned file; here is the one place that can
+        # tell.
+        if future.done():
+            if value is not None:
+                _discard(value)
+            return
+        future.set_result(value)
 
     def _worker() -> None:
         try:
             payload, clipped = _encode_bounded(head, dropped)
-            spill = _spill_payload(payload, clipped, deps=snapshot, kind=kind)
-            if spill is not None and abandoned.is_set():
-                _discard(spill)
-                spill = None
+            spill = _spill_payload(
+                payload,
+                clipped,
+                deps=snapshot,
+                kind=kind,
+                keep_check=lambda: not abandoned.is_set(),
+            )
         except BaseException as e:  # noqa: BLE001 - a spill never fails its caller
             logger.debug(f"[overflow] spill failed: {e}")
             spill = None

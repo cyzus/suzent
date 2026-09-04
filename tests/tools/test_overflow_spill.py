@@ -1366,7 +1366,7 @@ def test_the_worker_does_not_retain_the_whole_request(deps, monkeypatch):
 
     seen: list[Any] = []
 
-    def _capture(payload, clipped, *, deps, kind):
+    def _capture(payload, clipped, *, deps, kind, keep_check=None):
         seen.append(deps)
         return None
 
@@ -1434,4 +1434,83 @@ async def test_cancellation_abandons_the_spill_like_a_timeout(
 
     assert list(_chat_dir(tmp_path).glob("*.txt")) == [], (
         "a cancelled spill left an unadvertised file behind"
+    )
+
+
+def test_an_abandoned_spill_does_not_prune_first(tmp_path, monkeypatch):
+    """Pruning is irreversible. An abandoned spill that prunes before checking
+    can evict files whose paths a live conversation already holds, then delete
+    itself — leaving the eviction as its only lasting effect."""
+    import threading
+
+    import suzent.tools.overflow as overflow
+
+    monkeypatch.setattr(
+        overflow, "_spill_slots", threading.Semaphore(overflow._SPILL_THREADS)
+    )
+    monkeypatch.setattr(overflow, "OVERFLOW_MAX_ROOT_BYTES", 4_000)
+    monkeypatch.setattr(overflow, "SPILL_TIMEOUT_SECONDS", 0.05)
+
+    advertised = spill_overflow(
+        "y" * 3_000, deps=_deps(tmp_path, chat_id="live"), kind="t"
+    )
+    kept = Path(advertised.host_path)
+
+    real_write = overflow._spill_pinned
+
+    def _slow(*args, **kwargs):
+        time.sleep(0.3)
+        return real_write(*args, **kwargs)
+
+    monkeypatch.setattr(overflow, "_spill_pinned", _slow)
+
+    assert (
+        overflow.spill_overflow_bounded(
+            "z" * 3_000, deps=_deps(tmp_path, chat_id="slow"), kind="t"
+        )
+        is None
+    )
+    time.sleep(0.6)
+
+    assert kept.exists(), "an abandoned spill evicted an advertised one"
+
+
+@pytest.mark.asyncio
+async def test_a_cancel_racing_delivery_still_discards(deps, tmp_path, monkeypatch):
+    """The worker's own check can pass a moment before the caller gives up.
+    Delivery runs on the loop, so it is the one place that can see the future's
+    final state."""
+    import asyncio
+    import threading
+
+    import suzent.tools.overflow as overflow
+
+    monkeypatch.setattr(
+        overflow, "_spill_slots", threading.Semaphore(overflow._SPILL_THREADS)
+    )
+
+    real = overflow._spill_payload
+
+    def _slow(payload, clipped, **kw):
+        kw.pop("keep_check", None)
+        time.sleep(0.2)
+        return real(payload, clipped, **kw)
+
+    monkeypatch.setattr(overflow, "_spill_payload", _slow)
+
+    task = asyncio.create_task(
+        overflow.spill_overflow_async("x" * 100, deps=deps, kind="t")
+    )
+    await asyncio.sleep(0.1)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    for _ in range(60):
+        await asyncio.sleep(0.02)
+        if not list(_chat_dir(tmp_path).glob("*.txt")):
+            break
+
+    assert list(_chat_dir(tmp_path).glob("*.txt")) == [], (
+        "a spill delivered after cancellation was left behind"
     )
