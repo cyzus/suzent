@@ -39,6 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Keep draft writes off the token loop and out of the index
 
 ### 🐛 Fixed
+- Route image analysis through the shared model resolution (#186)
 - Show each mode only the paths it can actually open (#183)
 - Stop self-hosted servers thinking through the whole token budget (#181)
 - Read enablement from the per-chat manager, not the singleton
