@@ -76,7 +76,13 @@ SPILL_CLIPPED_NOTE = "\n\n[spill clipped: output exceeded the per-file limit]"
 
 _SAFE_SEGMENT = re.compile(r"[^A-Za-z0-9_-]")
 
-#: Readable beyond the creating user, deliberately.
+#: Readable beyond the creating user, deliberately, and applied after creation.
+#:
+#: Creation modes are masked by the process umask, so a service started with
+#: umask 0077 turns these into 0700/0600 — exactly the permissions that make the
+#: marker point at a file the sandbox cannot open. The modes below are therefore
+#: set with fchmod on the descriptor already opened, which umask does not touch
+#: and which cannot be redirected by a path swapped underneath.
 #:
 #: Bind mounts preserve numeric ownership, and the sandbox image runs as a fixed
 #: uid 1000 that need not match the host service's. Files written 0600 by the
@@ -123,6 +129,19 @@ def _chat_segment(deps: Any) -> str:
     return _SAFE_SEGMENT.sub("-", raw)[:64] or "shared"
 
 
+def _force_mode(fd: int, mode: int) -> None:
+    """Set the mode the creation flags only requested.
+
+    umask subtracts from a creation mode and never from fchmod, so this is the
+    difference between the intended permissions and whatever the service happens
+    to have been started with.
+    """
+    try:
+        os.fchmod(fd, mode)
+    except OSError as e:
+        logger.debug(f"[overflow] could not set mode {oct(mode)}: {e}")
+
+
 def _open_child_dir(name: str, parent_fd: int) -> int:
     """Open (creating if needed) a subdirectory, refusing to follow a symlink.
 
@@ -134,7 +153,9 @@ def _open_child_dir(name: str, parent_fd: int) -> int:
         os.mkdir(name, _DIR_MODE, dir_fd=parent_fd)
     except FileExistsError:
         pass
-    return os.open(name, flags, dir_fd=parent_fd)
+    fd = os.open(name, flags, dir_fd=parent_fd)
+    _force_mode(fd, _DIR_MODE)
+    return fd
 
 
 def _spill_by_path(payload: bytes, directory: Path, name: str) -> bool:
@@ -149,8 +170,13 @@ def _spill_by_path(payload: bytes, directory: Path, name: str) -> bool:
     """
     try:
         directory.mkdir(mode=_DIR_MODE, parents=True, exist_ok=True)
+        try:
+            directory.chmod(_DIR_MODE)
+        except OSError:
+            pass
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
         fd = os.open(directory / name, flags, _FILE_MODE)
+        _force_mode(fd, _FILE_MODE)
         with os.fdopen(fd, "wb") as handle:
             handle.write(payload)
     except (OSError, NotImplementedError, ValueError) as e:
@@ -278,6 +304,7 @@ def _spill_pinned(payload: bytes, shared_host: Path, chat: str, name: str) -> bo
             return False
 
         try:
+            _force_mode(fd, _FILE_MODE)
             with os.fdopen(fd, "wb") as handle:
                 handle.write(payload)
         except OSError as e:

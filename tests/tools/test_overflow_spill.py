@@ -601,3 +601,39 @@ def test_every_registered_tool_can_reach_its_deps():
             missing.append(cls.name)
 
     assert missing == [], f"these tools cannot spill their output: {missing}"
+
+
+@pytest.mark.parametrize("umask_value", [0o077, 0o022, 0o000])
+def test_the_modes_survive_a_restrictive_umask(tmp_path, umask_value):
+    """Creation modes are masked by the process umask, so a service started with
+    umask 0077 turns 0755/0644 into 0700/0600 — exactly the permissions that
+    make the marker point at a file the sandbox cannot open."""
+    previous = os.umask(umask_value)
+    try:
+        spill = spill_overflow(
+            "x" * 100, deps=_deps(tmp_path, chat_id=f"u{umask_value:o}"), kind="t"
+        )
+    finally:
+        os.umask(previous)
+
+    file_mode = os.stat(spill.path).st_mode & 0o777
+    dir_mode = os.stat(Path(spill.path).parent).st_mode & 0o777
+
+    assert file_mode & 0o044, f"umask {umask_value:o} left the file at {file_mode:o}"
+    assert dir_mode & 0o011, f"umask {umask_value:o} left the dir at {dir_mode:o}"
+
+
+def test_the_path_fallback_also_survives_the_umask(tmp_path, monkeypatch):
+    import suzent.tools.overflow as overflow
+
+    monkeypatch.setattr(overflow, "_HAVE_DIR_FD", False)
+    previous = os.umask(0o077)
+    try:
+        spill = overflow.spill_overflow(
+            "x" * 100, deps=_deps(tmp_path, chat_id="fallback"), kind="t"
+        )
+    finally:
+        os.umask(previous)
+
+    assert os.stat(spill.path).st_mode & 0o044
+    assert os.stat(Path(spill.path).parent).st_mode & 0o011
