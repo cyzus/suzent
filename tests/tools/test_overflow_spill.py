@@ -81,15 +81,36 @@ def test_host_mode_gets_a_host_path(tmp_path):
     assert host.path.startswith(str(tmp_path))
 
 
-def test_sandbox_mode_does_not_spill_at_all(tmp_path):
-    """Directory naming is not a boundary here: every container bind-mounts the
-    same host `shared` directory read-write and every one runs as uid 1000, so
-    chat B reads chat A's spills whatever the mode bits say. Until there is a
-    per-chat mount, the sandbox gets the plain marker."""
-    assert (
-        spill_overflow("y" * 100, deps=_deps(tmp_path, sandbox=True), kind="t") is None
-    )
-    assert not (tmp_path / "shared" / ".overflow").exists()
+def test_sandbox_mode_gets_the_virtual_path(tmp_path):
+    from suzent.tools.overflow import OVERFLOW_VIRTUAL_DIR
+
+    spill = spill_overflow("y" * 100, deps=_deps(tmp_path, sandbox=True), kind="t")
+
+    assert spill.path.startswith(f"{OVERFLOW_VIRTUAL_DIR}/chat-1/")
+
+
+def test_the_spill_is_readable_by_a_different_uid(deps, tmp_path):
+    """Bind mounts preserve numeric ownership and the sandbox image runs as a
+    fixed uid 1000, which need not match the host service's. A 0600 file would
+    be unreadable by the very agent the marker points at — a path that exists
+    and cannot be opened, which is the failure the spill exists to avoid."""
+    spill = spill_overflow("x" * 100, deps=deps, kind="t")
+
+    file_mode = os.stat(spill.path).st_mode & 0o777
+    dir_mode = os.stat(_chat_dir(tmp_path)).st_mode & 0o777
+
+    assert file_mode & 0o044, f"others cannot read the spill ({oct(file_mode)})"
+    assert dir_mode & 0o011, f"others cannot traverse the directory ({oct(dir_mode)})"
+
+
+def test_chat_directories_are_organisation_not_access_control(tmp_path):
+    """Recorded so the naming is not mistaken for a boundary: on one shared
+    mount with one uid, these directories separate pruning scope and nothing
+    else. The owner has accepted that their chats can read each other."""
+    a = spill_overflow("alpha", deps=_deps(tmp_path, chat_id="a"), kind="t")
+
+    # Any other chat, running as the same uid, can read it.
+    assert Path(a.path).read_text(encoding="utf-8") == "alpha"
 
 
 def test_no_resolver_means_no_spill_rather_than_a_crash():

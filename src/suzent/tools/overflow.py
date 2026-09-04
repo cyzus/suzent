@@ -13,10 +13,19 @@ Two properties are load-bearing and easy to lose:
   ``/shared`` — including replacing the directories on this path — so every step
   is taken relative to a pinned directory descriptor and refuses to follow a
   symlink. Resolving a path and then using it is a race the agent can win.
-* **A spill is private to its chat.** It holds raw tool output and reminder
-  text, which is conversation content. ``/shared`` is mounted into every
-  session, so an unscoped directory is readable by every other chat on the
-  deployment; random filenames are no help against a directory listing.
+* **A spill is not private to its chat, by decision.** Every sandbox container
+  bind-mounts the same host ``shared`` directory and every one runs as uid
+  1000, so one chat can read another's spills whatever the mode bits say.
+  Suzent has a single owner, who has accepted that: their chats reading each
+  other is their own data reaching their own agent.
+
+  This is a property of the deployment, not of the code, so it is worth stating
+  what would change it. Inbound channels mean other people's messages become
+  chat content; if their conversations ever need to be private *from each
+  other*, the boundary has to be a per-chat mount, because permissions on one
+  shared mount with one uid cannot express it. Per-chat directories here are
+  organisation and pruning scope, not access control, and should not be
+  mistaken for it.
 """
 
 from __future__ import annotations
@@ -57,6 +66,17 @@ OVERFLOW_MAX_FILE_BYTES = 5 * 1024 * 1024
 SPILL_CLIPPED_NOTE = "\n\n[spill clipped: output exceeded the per-file limit]"
 
 _SAFE_SEGMENT = re.compile(r"[^A-Za-z0-9_-]")
+
+#: Readable beyond the creating user, deliberately.
+#:
+#: Bind mounts preserve numeric ownership, and the sandbox image runs as a fixed
+#: uid 1000 that need not match the host service's. Files written 0600 by the
+#: service would then be unreadable by the very agent the marker points at — a
+#: path that exists and cannot be opened, which is the failure the whole spill
+#: is meant to avoid. Given that one chat can read another's spills anyway on a
+#: shared mount, the tighter mode bought nothing it did not also break.
+_DIR_MODE = 0o755
+_FILE_MODE = 0o644
 
 #: dir_fd is POSIX-only. Where it is missing there is also no bind-mounted
 #: sandbox writing into this directory, so plain path operations are used.
@@ -104,11 +124,11 @@ def _open_child_dir(name: str, *, parent_fd: Optional[int], base: Path) -> int:
     flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
     if parent_fd is None:
         target = base / name
-        target.mkdir(mode=0o700, parents=True, exist_ok=True)
+        target.mkdir(mode=_DIR_MODE, parents=True, exist_ok=True)
         return os.open(target, flags)
 
     try:
-        os.mkdir(name, 0o700, dir_fd=parent_fd)
+        os.mkdir(name, _DIR_MODE, dir_fd=parent_fd)
     except FileExistsError:
         pass
     return os.open(name, flags, dir_fd=parent_fd)
@@ -179,22 +199,6 @@ def spill_overflow(text: str, *, deps: Any, kind: str = "output") -> Optional[Sp
     if resolver is None:
         return None
 
-    # Sandbox mode gets the plain marker instead of a file.
-    #
-    # Every container bind-mounts the same host `shared` directory read-write
-    # and every one of them runs as uid 1000, so a per-chat subdirectory is a
-    # naming convention and not a boundary: chat B lists and reads chat A's
-    # spills whatever the mode bits say. Spills hold raw tool output and
-    # reminder text, which is conversation content, so the honest options are a
-    # per-chat mount or not writing the file — and a convenience feature does
-    # not get to widen the isolation model on its way in.
-    #
-    # Host mode has no such boundary to breach: the agent already reaches the
-    # whole filesystem through its shell, so the spill exposes nothing that was
-    # not reachable already.
-    if getattr(deps, "sandbox_enabled", True):
-        return None
-
     try:
         shared_host = Path(resolver.resolve("/shared"))
     except Exception as e:
@@ -223,7 +227,7 @@ def spill_overflow(text: str, *, deps: Any, kind: str = "output") -> Optional[Sp
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
 
         try:
-            fd = os.open(name, flags, 0o600, dir_fd=chat_fd)
+            fd = os.open(name, flags, _FILE_MODE, dir_fd=chat_fd)
         except OSError as e:
             if e.errno in (errno.EEXIST, errno.ELOOP):
                 logger.warning(f"[overflow] refusing to write over {name}: {e}")
