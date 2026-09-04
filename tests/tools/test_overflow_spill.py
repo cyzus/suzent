@@ -1733,3 +1733,42 @@ def test_the_shared_root_is_opened_without_following(tmp_path):
 
     assert spill_overflow("x" * 100, deps=_deps(tmp_path), kind="t") is None
     assert list(elsewhere.iterdir()) == [], "the write followed a symlinked root"
+
+
+def test_fresh_spills_still_count_toward_the_quota(tmp_path, monkeypatch):
+    """Undeletable is not the same as uncounted. Omitting fresh files from the
+    running totals let a burst exceed both ceilings outright: eleven maximum
+    spills pass the per-chat limit while none is old enough to consider."""
+    import suzent.tools.overflow as overflow
+
+    monkeypatch.setattr(overflow, "OVERFLOW_MAX_TOTAL_BYTES", 5_000)
+
+    aged = spill_overflow("a" * 3_000, deps=_deps(tmp_path), kind="t")
+    old_time = time.time() - 3_600
+    os.utime(aged.host_path, (old_time, old_time))
+
+    # Two fresh spills; together with the aged one they exceed the ceiling, and
+    # the aged one is the only thing that may be evicted.
+    spill_overflow("b" * 3_000, deps=_deps(tmp_path), kind="t")
+    spill_overflow("c" * 3_000, deps=_deps(tmp_path), kind="t")
+
+    assert not Path(aged.host_path).exists(), (
+        "fresh spills did not consume budget, so nothing was evicted"
+    )
+
+
+def test_fresh_spills_count_toward_the_root_quota(tmp_path, monkeypatch):
+    import suzent.tools.overflow as overflow
+
+    monkeypatch.setattr(overflow, "OVERFLOW_MAX_ROOT_BYTES", 5_000)
+
+    aged = spill_overflow("a" * 3_000, deps=_deps(tmp_path, chat_id="old"), kind="t")
+    old_time = time.time() - 3_600
+    os.utime(aged.host_path, (old_time, old_time))
+
+    spill_overflow("b" * 3_000, deps=_deps(tmp_path, chat_id="new1"), kind="t")
+    spill_overflow("c" * 3_000, deps=_deps(tmp_path, chat_id="new2"), kind="t")
+
+    assert not Path(aged.host_path).exists(), (
+        "fresh spills did not consume the deployment budget"
+    )

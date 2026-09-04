@@ -373,8 +373,6 @@ def _prune_path(directory: Path, protect: Optional[str] = None) -> None:
     except OSError:
         return
 
-    fresh = time.time() - OVERFLOW_GRACE_SECONDS
-    entries = [e for e in entries if e[2].name != protect and e[0] < fresh]
     entries.sort(reverse=True)
     # A crash or a failed rename can leave a staged file behind. It is
     # invisible to every scan by design, so the sweep is the only thing that
@@ -387,20 +385,22 @@ def _prune_path(directory: Path, protect: Optional[str] = None) -> None:
             continue
 
     cutoff = time.time() - OVERFLOW_TTL_SECONDS
+    fresh = time.time() - OVERFLOW_GRACE_SECONDS
     running = 0
     for index, (mtime, size, path) in enumerate(entries):
-        drop = (
+        over = (
             index >= OVERFLOW_MAX_FILES
             or mtime < cutoff
             or running + size > OVERFLOW_MAX_TOTAL_BYTES
         )
+        protected = path.name == protect or mtime >= fresh
         try:
-            if drop:
+            if over and not protected:
                 path.unlink(missing_ok=True)
-            else:
-                running += size
+                continue
         except OSError:
             continue
+        running += size
 
 
 def _enforce_root_quota_fd(
@@ -438,10 +438,6 @@ def _enforce_root_quota_fd(
                         stat = kept.stat(follow_symlinks=False)
                     except OSError:
                         continue
-                    if protect == (entry.name, kept.name):
-                        continue
-                    if stat.st_mtime >= time.time() - OVERFLOW_GRACE_SECONDS:
-                        continue
                     survivors.append(
                         (stat.st_mtime, stat.st_size, entry.name, kept.name)
                     )
@@ -453,10 +449,15 @@ def _enforce_root_quota_fd(
     # Newest first, so what goes is least likely to be referenced by a live
     # conversation.
     survivors.sort(reverse=True)
+    fresh = time.time() - OVERFLOW_GRACE_SECONDS
     removed = 0
     running = 0
-    for _mtime, size, chat_name, file_name in survivors:
-        if running + size <= OVERFLOW_MAX_ROOT_BYTES:
+    for mtime, size, chat_name, file_name in survivors:
+        # Counted whether or not it can be deleted: omitting fresh files from
+        # the running total let a burst across chats exceed the deployment
+        # ceiling entirely, which is the ceiling's whole purpose.
+        protected = protect == (chat_name, file_name) or mtime >= fresh
+        if running + size <= OVERFLOW_MAX_ROOT_BYTES or protected:
             running += size
             continue
         try:
@@ -487,19 +488,17 @@ def _enforce_root_quota_path(
                     stat = path.stat()
                 except OSError:
                     continue
-                if protect == (chat_dir.name, path.name):
-                    continue
-                if stat.st_mtime >= time.time() - OVERFLOW_GRACE_SECONDS:
-                    continue
                 survivors.append((stat.st_mtime, stat.st_size, path))
     except OSError:
         return 0
 
     survivors.sort(reverse=True)
+    fresh = time.time() - OVERFLOW_GRACE_SECONDS
     removed = 0
     running = 0
-    for _mtime, size, path in survivors:
-        if running + size <= OVERFLOW_MAX_ROOT_BYTES:
+    for mtime, size, path in survivors:
+        protected = protect == (path.parent.name, path.name) or mtime >= fresh
+        if running + size <= OVERFLOW_MAX_ROOT_BYTES or protected:
             running += size
             continue
         try:
@@ -520,10 +519,6 @@ def _prune_fd(dir_fd: int, protect: Optional[str] = None) -> None:
             try:
                 stat = entry.stat(follow_symlinks=False)
             except OSError:
-                continue
-            if entry.name == protect:
-                continue
-            if stat.st_mtime >= time.time() - OVERFLOW_GRACE_SECONDS:
                 continue
             entries.append((stat.st_mtime, stat.st_size, entry.name))
     except OSError:
@@ -547,20 +542,27 @@ def _prune_fd(dir_fd: int, protect: Optional[str] = None) -> None:
 
     entries.sort(reverse=True)
     cutoff = time.time() - OVERFLOW_TTL_SECONDS
+    fresh = time.time() - OVERFLOW_GRACE_SECONDS
     running = 0
     for index, (mtime, size, name) in enumerate(entries):
-        drop = (
+        over = (
             index >= OVERFLOW_MAX_FILES
             or mtime < cutoff
             or running + size > OVERFLOW_MAX_TOTAL_BYTES
         )
+        # Undeletable is not the same as uncounted. Skipping fresh files
+        # entirely let a burst sail past both ceilings — eleven maximum spills
+        # exceed the per-chat limit while none is old enough to consider. They
+        # consume budget like anything else; they are simply the ones that
+        # displace older files rather than being displaced.
+        protected = name == protect or mtime >= fresh
         try:
-            if drop:
+            if over and not protected:
                 os.unlink(name, dir_fd=dir_fd)
-            else:
-                running += size
+                continue
         except OSError:
             continue
+        running += size
 
 
 def _spill_pinned(
