@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v0.12.0] - 2026-09-04
 
 ### 🚀 Added
+- Implement prepend scroll anchoring with snapshot capture and restore
 - Keep the truncated tail on disk instead of discarding it (#185)
 - Time out, parallelise, dedupe and cap reminder providers (#179)
 - State which source wins, and make sections declare their kind (#176)
