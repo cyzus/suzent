@@ -122,13 +122,6 @@ const ForkOriginMarker: React.FC<{
   );
 };
 
-function getLastMessageTimestamp(messages: Message[]): string | undefined {
-  for (let i = messages.length - 1; i >= 0; i -= 1) {
-    if (messages[i].timestamp) return messages[i].timestamp;
-  }
-  return undefined;
-}
-
 function formatCompactLifecycleNotice(payload: any): string | null {
   if (!payload || payload.event !== 'auto_compaction') return null;
   const source = String(payload.source || 'auto');
@@ -457,10 +450,8 @@ const MessageList: React.FC<{
   chatCitationSources,
   fallbackModel,
 }) => {
-  const { skipIndices, groupRenders, stepSummaryByMessageIndex } = useMemo(
-    () => buildMessageRenderPlan(messages),
-    [messages]
-  );
+  const { skipIndices, groupRenders, stepSummaryByMessageIndex, turnWorkedSecondsByMessageIndex } =
+    useMemo(() => buildMessageRenderPlan(messages), [messages]);
 
   // A fresh `() => onFork(index)` per row would hand every AssistantMessage a
   // new prop identity on each render and defeat its memo -- which is the whole
@@ -502,13 +493,6 @@ const MessageList: React.FC<{
     return -1;
   }, [messages, skipIndices]);
 
-  const getPreviousMessageTimestamp = (index: number): string | undefined => {
-    for (let i = index - 1; i >= 0; i -= 1) {
-      if (messages[i].timestamp) return messages[i].timestamp;
-    }
-    return undefined;
-  };
-
   return (
     <div className="space-y-6">
       {messages.map((m, idx) => {
@@ -540,7 +524,7 @@ const MessageList: React.FC<{
               <div className="flex justify-start w-full">
                 <AssistantMessage
                   message={groupedMessage}
-                  previousMessageTimestamp={getPreviousMessageTimestamp(idx)}
+                  workedDurationSeconds={turnWorkedSecondsByMessageIndex.get(idx)}
                   messageIndex={globalIdx}
                   isStreaming={false}
                   isLastMessage={false}
@@ -635,7 +619,7 @@ const MessageList: React.FC<{
                 ) : (
                   <AssistantMessage
                     message={m}
-                    previousMessageTimestamp={getPreviousMessageTimestamp(idx)}
+                    workedDurationSeconds={turnWorkedSecondsByMessageIndex.get(idx)}
                     messageIndex={globalIdx}
                     isStreaming={streamingForCurrentChat}
                     isLastMessage={isLastMessage}
@@ -2712,7 +2696,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                         ) : (
                           <AssistantMessage
                             message={{ role: 'assistant', content: '' }}
-                            previousMessageTimestamp={getLastMessageTimestamp(safeMessages)}
                             messageIndex={safeMessages.length}
                             isStreaming={streamingForCurrentChat}
                             isLastMessage={true}

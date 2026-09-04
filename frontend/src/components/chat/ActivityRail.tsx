@@ -239,18 +239,6 @@ export function isActionableAguiApproval(part: AGUIPart): boolean {
   return part.state === 'approval-requested' && !part.output && Boolean(part.approvalId);
 }
 
-export function getTimestampDeltaSeconds(
-  previousTimestamp?: string,
-  currentTimestamp?: string
-): number | undefined {
-  if (!previousTimestamp || !currentTimestamp) return undefined;
-  const previousTime = new Date(previousTimestamp).getTime();
-  const currentTime = new Date(currentTimestamp).getTime();
-  if (!Number.isFinite(previousTime) || !Number.isFinite(currentTime)) return undefined;
-  const deltaSeconds = Math.floor((currentTime - previousTime) / 1000);
-  return deltaSeconds >= 0 ? deltaSeconds : undefined;
-}
-
 export function getAguiActivityLabel(
   chunks: Array<{ chunk: { type: string; items?: AGUIPart[] } }>,
   isStreaming: boolean
@@ -407,6 +395,9 @@ export const ActivityRail: React.FC<{
   useEffect(() => {
     if (startedAtMs && startedAtMs !== startedAtRef.current) {
       startedAtRef.current = startedAtMs;
+      // Re-read now rather than waiting up to a second for the next tick, or
+      // the rail shows a count measured from the wrong origin in between.
+      setElapsedSeconds(Math.max(0, Math.floor((Date.now() - startedAtMs) / 1000)));
     }
   }, [startedAtMs]);
 

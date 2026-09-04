@@ -15,6 +15,13 @@ export interface MessageRenderPlan {
   skipIndices: Set<number>;
   groupRenders: Map<number, StepGroupRender>;
   stepSummaryByMessageIndex: Map<number, string>;
+  /**
+   * Wall-clock seconds the agent worked on the turn each assistant message
+   * belongs to, keyed by that message's index. Every assistant row in a turn
+   * maps to the same number: they are one stretch of work, and a rail must not
+   * report only the slice between two adjacent rows.
+   */
+  turnWorkedSecondsByMessageIndex: Map<number, number>;
 }
 
 const IGNORED_TOOL_NAMES = ['final_answer', 'final answer'];
@@ -51,6 +58,49 @@ function isTurnBoundary(message: Message): boolean {
   return false;
 }
 
+function parseTimestamp(value?: string): number | undefined {
+  if (!value) return undefined;
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+/**
+ * Wall-clock span of a turn: from the user message that opened it to the last
+ * thing it produced.
+ *
+ * Both ends need care. The start is the turn boundary, not the previous row --
+ * inside a turn the previous row is a tool result or a tool-resume stub. The
+ * end is the *latest* timestamp anywhere in the turn rather than the last
+ * message's: an assistant row is stamped when its model response *began*, so
+ * the tool results it triggered are later than the response that asked for
+ * them. Rows can also arrive slightly out of order (tool results from
+ * concurrent calls), which a max ignores and a last-row read would not.
+ */
+function computeTurnWorkedSeconds(
+  messages: Message[],
+  boundaryIndex: number,
+  turnStart: number,
+  turnEnd: number
+): number | undefined {
+  const startedAt = parseTimestamp(
+    boundaryIndex >= 0 ? messages[boundaryIndex].timestamp : messages[turnStart]?.timestamp
+  );
+  if (startedAt === undefined) return undefined;
+
+  let endedAt: number | undefined;
+  for (let idx = turnStart; idx < turnEnd; idx += 1) {
+    const stamp = parseTimestamp(messages[idx].timestamp);
+    if (stamp !== undefined && (endedAt === undefined || stamp > endedAt)) {
+      endedAt = stamp;
+    }
+  }
+  if (endedAt === undefined) return undefined;
+
+  // Clock skew between rows can make a span read negative; show nothing rather
+  // than a bogus count.
+  return Math.max(0, Math.floor((endedAt - startedAt) / 1000));
+}
+
 function filterIgnoredToolCalls(blocks: ContentBlock[]): ContentBlock[] {
   return blocks.filter((block) => {
     if (block.type !== 'toolCall') return true;
@@ -77,6 +127,7 @@ export function buildMessageRenderPlan(messages: Message[]): MessageRenderPlan {
   const skipIndices = new Set<number>();
   const groupRenders = new Map<number, StepGroupRender>();
   const stepSummaryByMessageIndex = new Map<number, string>();
+  const turnWorkedSecondsByMessageIndex = new Map<number, number>();
 
   // Hide any synthetic compaction summary rows that leaked into the display log.
   for (let k = 0; k < messages.length; k++) {
@@ -134,6 +185,22 @@ export function buildMessageRenderPlan(messages: Message[]): MessageRenderPlan {
     }
     const stepSummary = summarizeStepInfos(allStepInfos);
 
+    // The row that opened this turn -- scanned back from the first assistant
+    // message, since the turn loop itself starts at that assistant row.
+    let boundaryIndex = -1;
+    for (let j = i - 1; j >= 0; j -= 1) {
+      if (isTurnBoundary(messages[j])) {
+        boundaryIndex = j;
+        break;
+      }
+    }
+    const turnWorkedSeconds = computeTurnWorkedSeconds(messages, boundaryIndex, i, turnEnd);
+    if (turnWorkedSeconds !== undefined) {
+      for (const idx of assistantIndicesInTurn) {
+        turnWorkedSecondsByMessageIndex.set(idx, turnWorkedSeconds);
+      }
+    }
+
     if (intermediateIndices.length > 0) {
       const groupStart = intermediateIndices[0];
       const allBlocks: ContentBlock[] = [];
@@ -168,5 +235,10 @@ export function buildMessageRenderPlan(messages: Message[]): MessageRenderPlan {
     i = turnEnd;
   }
 
-  return { skipIndices, groupRenders, stepSummaryByMessageIndex };
+  return {
+    skipIndices,
+    groupRenders,
+    stepSummaryByMessageIndex,
+    turnWorkedSecondsByMessageIndex,
+  };
 }

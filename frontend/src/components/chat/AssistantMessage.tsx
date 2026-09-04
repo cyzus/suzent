@@ -39,7 +39,6 @@ import {
   getAguiActivityLabel,
   getLegacyActivityLabel,
   getReasoningHeader,
-  getTimestampDeltaSeconds,
   groupActivityChunks,
   hasAguiPendingApproval,
   hasLegacyPendingApproval,
@@ -92,7 +91,8 @@ function findLastActivityGroupIndex(groups: Array<{ type: string }>): number {
 
 interface AssistantMessageProps {
   message: Message;
-  previousMessageTimestamp?: string;
+  /** Wall-clock seconds the agent worked on this message's whole turn. */
+  workedDurationSeconds?: number;
   messageIndex: number;
   isStreaming: boolean;
   isLastMessage: boolean;
@@ -707,7 +707,7 @@ const ModelSignature: React.FC<{ model?: string }> = ({ model }) => {
 
 const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
   message,
-  previousMessageTimestamp,
+  workedDurationSeconds,
   messageIndex,
   isStreaming,
   isLastMessage,
@@ -740,10 +740,6 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
   const isAcp = !!acpAgent;
 
   const isThinking = isStreamingThis && !message.content && !hasStreamedOutput(effectiveParts);
-  const workedDurationSeconds = useMemo(
-    () => getTimestampDeltaSeconds(previousMessageTimestamp, message.timestamp),
-    [previousMessageTimestamp, message.timestamp]
-  );
   const legacyBlocks = useMemo(
     () =>
       effectiveParts === undefined
