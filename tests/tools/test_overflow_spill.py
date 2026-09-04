@@ -11,6 +11,7 @@ chats sharing the same mount.
 """
 
 import os
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -26,9 +27,15 @@ from suzent.tools.overflow import (
 
 def _deps(tmp_path: Path, *, chat_id: str = "chat-1", sandbox: bool = False):
     class _Resolver:
+        """Maps /shared and anything under it, as PathResolver does.
+
+        The spill verifies the *final* virtual path resolves back to the file it
+        wrote, so a resolver that only knows the root is not a stand-in for one.
+        """
+
         def resolve(self, virtual: str) -> str:
-            assert virtual == "/shared"
-            return str(tmp_path / "shared")
+            assert virtual.startswith("/shared")
+            return str(tmp_path / "shared" / virtual[len("/shared") :].lstrip("/"))
 
     return SimpleNamespace(
         path_resolver=_Resolver(), sandbox_enabled=sandbox, chat_id=chat_id
@@ -1061,23 +1068,78 @@ def test_an_abandoned_worker_does_not_hold_the_whole_output(deps, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_a_saturated_executor_does_not_strand_the_caller(deps, monkeypatch):
-    """The bounded pool's join only starts once the coroutine reaches a worker.
-    On a shared default executor saturated by unrelated work it can sit queued
-    instead — routing through the pool is what made the outer deadline
-    necessary, and is exactly when I removed it."""
+async def test_the_async_path_does_not_use_the_shared_executor():
+    """to_thread was wrong twice over: cancelling its future does not remove the
+    work item from the executor queue, so a timed-out submission keeps holding
+    what it captured until some worker dequeues it — and those threads are
+    shared with everything else that offloads."""
+    import inspect
+
+    import suzent.tools.overflow as overflow
+
+    source = inspect.getsource(overflow.spill_overflow_async)
+
+    assert "asyncio.to_thread(" not in source, (
+        "the spill is back on the shared executor"
+    )
+    assert "daemon=True" in source
+
+
+@pytest.mark.asyncio
+async def test_a_wedged_async_spill_still_returns(deps, monkeypatch):
+    import threading
     import time
 
     import suzent.tools.overflow as overflow
 
+    monkeypatch.setattr(
+        overflow, "_spill_slots", threading.Semaphore(overflow._SPILL_THREADS)
+    )
     monkeypatch.setattr(overflow, "SPILL_TIMEOUT_SECONDS", 0.05)
     monkeypatch.setattr(
-        overflow, "spill_overflow_bounded", lambda text, **kw: time.sleep(1)
+        overflow, "_spill_payload", lambda payload, clipped, **kw: time.sleep(1)
     )
 
     started = time.monotonic()
     result = await overflow.spill_overflow_async("payload", deps=deps, kind="t")
-    elapsed = time.monotonic() - started
 
     assert result is None
-    assert elapsed < 2.0, f"the caller waited {elapsed:.2f}s on a stuck executor"
+    assert time.monotonic() - started < 1.0
+
+
+def test_the_sweep_runs_on_a_thread_the_process_can_leave():
+    """Cancelling the coroutine does not stop the function, and default-executor
+    threads are joined at interpreter exit — so a sweep on a wedged filesystem
+    would hold up the shutdown the cancellation exists to allow."""
+    import inspect
+
+    import suzent.tools.overflow as overflow
+    from suzent import server
+
+    background = inspect.getsource(overflow.sweep_overflow_in_background)
+
+    assert "asyncio.to_thread(" not in background
+    assert "daemon=True" in background
+    assert "asyncio.to_thread(sweep_overflow" not in inspect.getsource(server.startup)
+
+
+def test_a_failing_sweep_thread_is_not_an_unhandled_exception(monkeypatch, recwarn):
+    """Moving the sweep onto a thread moved its failures out of reach of the
+    loop's handler — they surfaced as unhandled thread errors instead."""
+    import threading
+
+    import suzent.tools.overflow as overflow
+
+    def _boom():
+        raise OSError("disk went away")
+
+    monkeypatch.setattr(overflow, "sweep_overflow", _boom)
+
+    before = threading.active_count()
+    overflow.sweep_overflow_in_background()
+    for _ in range(100):
+        if threading.active_count() <= before:
+            break
+        time.sleep(0.01)
+
+    assert threading.active_count() <= before, "the sweep thread never finished"

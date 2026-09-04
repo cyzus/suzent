@@ -208,15 +208,19 @@ def _spill_by_path(
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
         target = directory / name
         fd = os.open(target, flags, file_mode)
+        # Ownership transfers at fdopen and not before. Closing the raw number
+        # after the `with` has already closed it would be a double close, and in
+        # a threaded server another thread can be handed that same descriptor
+        # number in between — so a failed spill write could close an unrelated
+        # socket.
+        handle = None
         try:
-            with os.fdopen(fd, "wb") as handle:
-                handle.write(payload)
-        except BaseException:
-            # fdopen owns the descriptor only once it returns; before that the
-            # raw fd is ours to close, and a leaked handle per oversized result
-            # exhausts the process.
-            os.close(fd)
-            raise
+            handle = os.fdopen(fd, "wb")
+        finally:
+            if handle is None:
+                os.close(fd)
+        with handle:
+            handle.write(payload)
         # By path here rather than by descriptor: this branch exists for
         # platforms without dir_fd, which are also the ones that may lack
         # fchmod.
@@ -553,7 +557,25 @@ def _spill_payload(
         return None
 
     if getattr(deps, "sandbox_enabled", True):
-        return Spill(f"{OVERFLOW_VIRTUAL_DIR}/{chat}/{name}", clipped)
+        virtual = f"{OVERFLOW_VIRTUAL_DIR}/{chat}/{name}"
+        # Checking /shared alone is not enough: a custom volume can target
+        # /shared/.overflow or a directory under it, which the sandbox accepts
+        # and which then masks the canonical tree inside the container. The
+        # marker would name a path that resolves somewhere the file is not.
+        # Verifying the final path is the only check that cannot be outflanked
+        # by a more deeply nested mount.
+        written = shared_host / ".overflow" / chat / name
+        try:
+            if Path(resolver.resolve(virtual)).resolve() != written.resolve():
+                logger.debug(
+                    "[overflow] a custom mount masks the spill path; "
+                    "truncating without a pointer"
+                )
+                return None
+        except Exception as e:
+            logger.debug(f"[overflow] cannot verify the spill path: {e}")
+            return None
+        return Spill(virtual, clipped)
     return Spill(str(shared_host / ".overflow" / chat / name), clipped)
 
 
@@ -567,12 +589,36 @@ def _spill_payload(
 OVERFLOW_SWEEP_INTERVAL_SECONDS = 60 * 60
 
 
+def sweep_overflow_in_background() -> None:
+    """Run one sweep on a thread the process can leave behind.
+
+    Not to_thread: cancelling the coroutine does not stop the function, and the
+    default executor's threads are joined at interpreter exit — so a sweep on a
+    wedged filesystem would hold up shutdown itself, which is precisely what the
+    cancellation added earlier was meant to prevent.
+    """
+
+    def _guarded() -> None:
+        # The caller's try/except cannot see a thread's exception, so moving the
+        # sweep off the loop moved its failures out of reach of the handler that
+        # was catching them — they surfaced as unhandled thread errors instead.
+        try:
+            sweep_overflow()
+        except Exception as e:  # noqa: BLE001 - a sweep failure is not fatal
+            logger.warning(f"[overflow] sweep failed: {e}")
+
+    try:
+        threading.Thread(target=_guarded, name="overflow-sweep", daemon=True).start()
+    except BaseException as e:
+        logger.warning(f"[overflow] could not start the sweep: {e}")
+
+
 async def sweep_overflow_periodically() -> None:
     """Keep the bounds enforced for as long as the service runs."""
     while True:
         try:
             await asyncio.sleep(OVERFLOW_SWEEP_INTERVAL_SECONDS)
-            await asyncio.to_thread(sweep_overflow)
+            sweep_overflow_in_background()
         except asyncio.CancelledError:
             raise
         except Exception as e:  # noqa: BLE001 - a sweep failure must not end the loop
@@ -672,22 +718,56 @@ async def spill_overflow_async(
     background; it lands in the spill directory and is collected by the sweep
     like any other file.
     """
-    # Through the same bounded worker as the sync path, not a bare to_thread: an
-    # abandoned write on the default executor occupies one of its threads
-    # forever, and that executor is shared with everything else that offloads.
+    # Clipped before anything can queue it, and run on a thread of our own
+    # rather than the shared default executor.
     #
-    # Still wrapped in a deadline, because that shared executor can be saturated
-    # by unrelated work — the coroutine would then sit queued, never reaching
-    # the join that was supposed to bound it. Routing through the bounded pool
-    # is what made this necessary and is exactly when I removed it.
-    try:
-        return await asyncio.wait_for(
-            asyncio.to_thread(spill_overflow_bounded, text, deps=deps, kind=kind),
-            timeout=SPILL_TIMEOUT_SECONDS * 2,
+    # to_thread was wrong twice over here. Cancelling the future does not remove
+    # the work item from the executor's queue, so a timed-out submission keeps
+    # holding whatever it captured until some worker eventually dequeues it —
+    # the deadline bounded the caller's latency and not the retained bytes. And
+    # the executor's threads are shared with everything else that offloads, so
+    # an abandoned write there is one fewer thread for unrelated work.
+    payload, clipped = _clip(text)
+
+    loop = asyncio.get_running_loop()
+    future: asyncio.Future = loop.create_future()
+
+    def _deliver(value: Optional[Spill]) -> None:
+        if not future.done():
+            future.set_result(value)
+
+    def _worker() -> None:
+        try:
+            spill = _spill_payload(payload, clipped, deps=deps, kind=kind)
+        except BaseException as e:  # noqa: BLE001 - a spill never fails its caller
+            logger.debug(f"[overflow] spill failed: {e}")
+            spill = None
+        finally:
+            _spill_slots.release()
+        try:
+            loop.call_soon_threadsafe(_deliver, spill)
+        except RuntimeError:
+            pass  # loop already closed; nobody is waiting
+
+    if not _spill_slots.acquire(blocking=False):
+        logger.warning(
+            "[overflow] spill workers saturated; truncating without a pointer"
         )
+        return None
+
+    try:
+        threading.Thread(target=_worker, name="overflow-spill", daemon=True).start()
+    except BaseException as e:
+        _spill_slots.release()
+        logger.warning(f"[overflow] could not start a spill worker: {e}")
+        return None
+
+    try:
+        return await asyncio.wait_for(future, timeout=SPILL_TIMEOUT_SECONDS)
     except asyncio.TimeoutError:
         logger.warning(
-            "[overflow] spill did not start in time — truncating without a pointer"
+            f"[overflow] spill exceeded {SPILL_TIMEOUT_SECONDS}s — truncating "
+            f"without a pointer"
         )
         return None
 

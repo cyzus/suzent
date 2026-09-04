@@ -599,7 +599,7 @@ async def startup():
     from suzent.skills.hooks import skills_reminder_hook
     from suzent.core.repository_context import repository_agents_reminder_hook
     from suzent.tools.overflow import (
-        sweep_overflow,
+        sweep_overflow_in_background,
         sweep_overflow_periodically,
     )
     from suzent.tools.plan_hooks import plan_reminder_hook
@@ -809,7 +809,7 @@ async def startup():
     #
     # Spilled output is otherwise pruned only when the next spill is written,
     # which is to say not at all once output stops overflowing.
-    asyncio.create_task(asyncio.to_thread(sweep_overflow))
+    sweep_overflow_in_background()
     existing_sweeper = getattr(app.state, "overflow_sweeper", None)
     if existing_sweeper is None or existing_sweeper.done():
         app.state.overflow_sweeper = asyncio.create_task(
