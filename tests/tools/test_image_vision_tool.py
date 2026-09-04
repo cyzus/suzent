@@ -140,3 +140,156 @@ async def test_image_vision_too_large(mock_ctx):
 
         assert not result.success
         assert result.error_code == ToolErrorCode.FILE_TOO_LARGE
+
+
+def _staged_image(mock_open):
+    """The mocks every call-path test needs: a readable 1KB png."""
+    mock_stat = MagicMock()
+    mock_stat.st_size = 1024
+
+    mock_path = MagicMock()
+    mock_path.exists.return_value = True
+    mock_path.is_file.return_value = True
+    mock_path.stat.return_value = mock_stat
+    mock_path.suffix = ".png"
+    mock_path.name = "test.png"
+
+    mock_file = MagicMock()
+    mock_file.read.return_value = b"fake_image_data"
+    mock_open.return_value.__enter__.return_value = mock_file
+
+    mock_resolver = MagicMock()
+    mock_resolver.resolve.return_value = mock_path
+    return mock_resolver
+
+
+@pytest.mark.asyncio
+@patch("suzent.tools.image_vision_tool.litellm.acompletion", new_callable=AsyncMock)
+@patch("builtins.open", new_callable=MagicMock)
+async def test_a_self_hosted_vision_model_is_reachable_and_not_thinking(
+    mock_open, mock_acompletion, mock_ctx
+):
+    """This call used to go straight to LiteLLM with nothing but the model id,
+    so a self-hosted endpoint had no api_base to reach and no instruction to
+    stop thinking — the budget went to reasoning and the answer came back
+    empty."""
+    mock_resolver = _staged_image(mock_open)
+
+    mock_response = MagicMock()
+    mock_response.choices = [MagicMock()]
+    mock_response.choices[0].message.content = "A photo of a server rack."
+    mock_acompletion.return_value = mock_response
+
+    mock_router = MagicMock()
+    mock_router.get_model_id.return_value = "sglang/qwen3-vl"
+
+    with patch(
+        "suzent.tools.image_vision_tool.get_or_create_path_resolver",
+        return_value=mock_resolver,
+    ):
+        with patch("suzent.core.role_router.get_role_router", return_value=mock_router):
+            with patch(
+                "suzent.tools.image_vision_tool.chat_completion_args",
+                return_value=(
+                    "openai/qwen3-vl",
+                    {
+                        "api_base": "http://localhost:30000/v1",
+                        "extra_body": {
+                            "chat_template_kwargs": {"enable_thinking": False}
+                        },
+                    },
+                ),
+            ):
+                result = await ImageVisionTool().forward(mock_ctx, "test.png", "What?")
+
+    assert result.success
+    sent = mock_acompletion.call_args.kwargs
+    assert sent["model"] == "openai/qwen3-vl"
+    assert sent["api_base"] == "http://localhost:30000/v1"
+    assert sent["extra_body"]["chat_template_kwargs"]["enable_thinking"] is False
+
+
+@pytest.mark.asyncio
+@patch("suzent.tools.image_vision_tool.litellm.acompletion", new_callable=AsyncMock)
+@patch("builtins.open", new_callable=MagicMock)
+async def test_an_empty_completion_is_an_error_not_an_empty_description(
+    mock_open, mock_acompletion, mock_ctx
+):
+    """A reasoning model that spends the budget before answering returns a 200
+    with no content. Reported as a success it becomes an empty description the
+    agent has no reason to doubt."""
+    mock_resolver = _staged_image(mock_open)
+
+    mock_response = MagicMock()
+    mock_response.choices = [MagicMock()]
+    mock_response.choices[0].message.content = ""
+    mock_acompletion.return_value = mock_response
+
+    mock_router = MagicMock()
+    mock_router.get_model_id.return_value = "sglang/qwen3-vl"
+
+    with patch(
+        "suzent.tools.image_vision_tool.get_or_create_path_resolver",
+        return_value=mock_resolver,
+    ):
+        with patch("suzent.core.role_router.get_role_router", return_value=mock_router):
+            result = await ImageVisionTool().forward(mock_ctx, "test.png", "What?")
+
+    assert not result.success
+    assert result.error_code == ToolErrorCode.EXECUTION_FAILED
+    assert "empty completion" in result.message.lower()
+
+
+def test_a_keyless_local_server_still_gets_a_credential():
+    """The request is rewritten to `openai/`, and that adapter refuses to send
+    anything without a key — it fails on the missing credential before it looks
+    at api_base, so a keyless self-hosted server would be unreachable."""
+    from suzent.llm import chat_completion_args
+
+    with patch("suzent.llm.resolve_api_key", return_value=None):
+        for model in ("vllm/qwen3-vl", "sglang/qwen3-vl"):
+            _, kwargs = chat_completion_args(model)
+            assert kwargs.get("api_key"), f"{model} would be sent without a credential"
+
+
+@pytest.mark.asyncio
+@patch("suzent.tools.image_vision_tool.litellm.acompletion", new_callable=AsyncMock)
+@patch("builtins.open", new_callable=MagicMock)
+async def test_an_empty_completion_is_still_billed(
+    mock_open, mock_acompletion, mock_ctx
+):
+    """The answerless response is the expensive one — the tokens went to
+    reasoning that never produced a description. Rejecting it before the ledger
+    saw it understated the cost of exactly the calls that waste the most."""
+    mock_resolver = _staged_image(mock_open)
+
+    usage = MagicMock()
+    usage.prompt_tokens = 1200
+    usage.completion_tokens = 2000
+    mock_response = MagicMock()
+    mock_response.choices = [MagicMock()]
+    mock_response.choices[0].message.content = ""
+    mock_response.usage = usage
+    mock_acompletion.return_value = mock_response
+
+    mock_router = MagicMock()
+    mock_router.get_model_id.return_value = "sglang/qwen3-vl"
+
+    tracker = MagicMock()
+    tracker.log_cost = AsyncMock()
+
+    with patch(
+        "suzent.tools.image_vision_tool.get_or_create_path_resolver",
+        return_value=mock_resolver,
+    ):
+        with patch("suzent.core.role_router.get_role_router", return_value=mock_router):
+            with patch(
+                "suzent.core.cost_tracker.get_cost_tracker", return_value=tracker
+            ):
+                result = await ImageVisionTool().forward(mock_ctx, "test.png", "What?")
+
+    assert not result.success
+    tracker.log_cost.assert_awaited_once()
+    billed = tracker.log_cost.await_args.kwargs
+    assert billed["input_tokens"] == 1200
+    assert billed["output_tokens"] == 2000
