@@ -1251,3 +1251,72 @@ def test_a_masked_mount_cannot_evict_another_chats_spill(tmp_path, monkeypatch):
         assert spill_overflow("z" * 3_000, deps=bad, kind="t") is None
 
     assert written.exists(), "a rejected spill evicted a valid one"
+
+
+@pytest.mark.asyncio
+async def test_the_async_caller_slices_but_does_not_encode(deps, monkeypatch):
+    """The slice bounds what an abandoned worker retains; the encode allocates
+    up to four bytes per character and belongs off the loop."""
+    import threading
+
+    import suzent.tools.overflow as overflow
+
+    encoded_on: list[str] = []
+    real = overflow._encode_bounded
+
+    def _watch(head, dropped):
+        encoded_on.append(threading.current_thread().name)
+        return real(head, dropped)
+
+    monkeypatch.setattr(overflow, "_encode_bounded", _watch)
+
+    await overflow.spill_overflow_async("é" * 10_000, deps=deps, kind="t")
+
+    assert encoded_on, "the encode never ran"
+    assert all(n.startswith("overflow-spill") for n in encoded_on), (
+        f"encoding ran on {encoded_on}"
+    )
+
+
+def test_the_bounded_prefix_is_a_slice_not_an_encode():
+    """_bound_chars must stay cheap: it is what the event loop runs."""
+    import suzent.tools.overflow as overflow
+
+    head, dropped = overflow._bound_chars("é" * (overflow.OVERFLOW_MAX_FILE_BYTES + 10))
+
+    assert isinstance(head, str)
+    assert len(head) == overflow.OVERFLOW_MAX_FILE_BYTES
+    assert dropped is True
+
+
+def test_a_failed_fallback_write_leaves_no_file(tmp_path, monkeypatch):
+    """A half-written file that was never advertised is pure litter, and this
+    branch skips pruning, so it sits there until the sweep."""
+    import suzent.tools.overflow as overflow
+
+    monkeypatch.setattr(overflow, "_HAVE_DIR_FD", False)
+
+    real_fdopen = os.fdopen
+
+    def _explode(fd, *args, **kwargs):
+        handle = real_fdopen(fd, *args, **kwargs)
+
+        class _Broken:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                handle.close()
+                return False
+
+            def write(self, data):
+                raise OSError("volume disconnected")
+
+        return _Broken()
+
+    monkeypatch.setattr(os, "fdopen", _explode)
+
+    assert overflow.spill_overflow("x" * 100, deps=_deps(tmp_path), kind="t") is None
+
+    chat_dir = _chat_dir(tmp_path)
+    assert not chat_dir.exists() or list(chat_dir.glob("*.txt")) == []

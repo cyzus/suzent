@@ -245,6 +245,13 @@ def _spill_by_path(
             pass
     except (OSError, NotImplementedError, ValueError) as e:
         logger.debug(f"[overflow] could not write spill: {e}")
+        # The descriptor-based path already does this. A half-written file that
+        # was never advertised is pure litter, and this branch skips pruning, so
+        # it sits there until the sweep.
+        try:
+            (directory / name).unlink(missing_ok=True)
+        except OSError:
+            pass
         return False
 
     _prune_path(directory)
@@ -252,23 +259,26 @@ def _spill_by_path(
     return True
 
 
-def _clip(text: str) -> tuple[bytes, bool]:
-    """Encode *text*, cut to the per-file ceiling on a character boundary.
+def _bound_chars(text: str) -> tuple[str, bool]:
+    """The prefix worth keeping, and whether anything was left behind.
 
-    Slicing the encoded bytes can land inside a multi-byte code point, and the
-    resulting file is not valid UTF-8 — so the reader that was supposed to
-    rescue the output fails to open it.
+    A slice, deliberately: cheap, and it is all the caller needs to do. Holding
+    only this bounds what an abandoned worker can retain, while the encoding —
+    which allocates up to four bytes per character — happens on the worker
+    where it cannot block the loop.
+
+    A UTF-8 character is at least one byte, so the first OVERFLOW_MAX_FILE_BYTES
+    characters always contain at least that many bytes, which is enough to fill
+    the file.
     """
-    # Slice the string first. Encoding the whole thing to find out it is too
-    # long allocates a second full-size copy while the original result is still
-    # live, so a command that prints hundreds of MiB costs that twice over to
-    # write five. A UTF-8 character is at least one byte, so the first
-    # OVERFLOW_MAX_FILE_BYTES characters always contain at least that many
-    # bytes — enough to fill the file — and at most four times as many, which
-    # is the bound this buys.
     head = text[:OVERFLOW_MAX_FILE_BYTES]
+    return head, len(head) != len(text)
+
+
+def _encode_bounded(head: str, dropped: bool) -> tuple[bytes, bool]:
+    """Encode a bounded prefix and cut it to the byte ceiling."""
     payload = head.encode("utf-8", "replace")
-    if len(payload) <= OVERFLOW_MAX_FILE_BYTES and len(head) == len(text):
+    if len(payload) <= OVERFLOW_MAX_FILE_BYTES and not dropped:
         return payload, False
 
     note = SPILL_CLIPPED_NOTE.encode("utf-8")
@@ -277,6 +287,12 @@ def _clip(text: str) -> tuple[bytes, bool]:
     # encoded bytes can split a code point, and the file the reader was meant
     # to open would not be valid UTF-8.
     return payload[:keep].decode("utf-8", "ignore").encode("utf-8") + note, True
+
+
+def _clip(text: str) -> tuple[bytes, bool]:
+    """Bound and encode in one step, for callers already off the event loop."""
+    head, dropped = _bound_chars(text)
+    return _encode_bounded(head, dropped)
 
 
 def _prune_path(directory: Path) -> None:
@@ -751,7 +767,10 @@ async def spill_overflow_async(
     # the deadline bounded the caller's latency and not the retained bytes. And
     # the executor's threads are shared with everything else that offloads, so
     # an abandoned write there is one fewer thread for unrelated work.
-    payload, clipped = _clip(text)
+    # Sliced here, encoded in the worker. The slice is what bounds retention;
+    # the encode is what costs — up to four bytes per character, on the loop,
+    # while every other chat waits.
+    head, dropped = _bound_chars(text)
 
     loop = asyncio.get_running_loop()
     future: asyncio.Future = loop.create_future()
@@ -762,6 +781,7 @@ async def spill_overflow_async(
 
     def _worker() -> None:
         try:
+            payload, clipped = _encode_bounded(head, dropped)
             spill = _spill_payload(payload, clipped, deps=deps, kind=kind)
         except BaseException as e:  # noqa: BLE001 - a spill never fails its caller
             logger.debug(f"[overflow] spill failed: {e}")
