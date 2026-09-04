@@ -76,22 +76,28 @@ SPILL_CLIPPED_NOTE = "\n\n[spill clipped: output exceeded the per-file limit]"
 
 _SAFE_SEGMENT = re.compile(r"[^A-Za-z0-9_-]")
 
-#: Readable beyond the creating user, deliberately, and applied after creation.
+#: Permissions, which differ by execution mode because the reader does.
 #:
-#: Creation modes are masked by the process umask, so a service started with
-#: umask 0077 turns these into 0700/0600 — exactly the permissions that make the
-#: marker point at a file the sandbox cannot open. The modes below are therefore
-#: set with fchmod on the descriptor already opened, which umask does not touch
-#: and which cannot be redirected by a path swapped underneath.
+#: In host mode the agent *is* this process: same uid, so the tightest bits work
+#: and the spill stays private to the account that owns the data. That is the
+#: default configuration and the one that should not be weakened.
 #:
-#: Bind mounts preserve numeric ownership, and the sandbox image runs as a fixed
-#: uid 1000 that need not match the host service's. Files written 0600 by the
-#: service would then be unreadable by the very agent the marker points at — a
-#: path that exists and cannot be opened, which is the failure the whole spill
-#: is meant to avoid. Given that one chat can read another's spills anyway on a
-#: shared mount, the tighter mode bought nothing it did not also break.
-_DIR_MODE = 0o755
-_FILE_MODE = 0o644
+#: In sandbox mode the reader is a container running as a fixed uid 1000 that
+#: need not match the service's, and bind mounts preserve numeric ownership — so
+#: the file has to be world-readable or the marker points at something the agent
+#: cannot open. That is a real cost: on a multi-user host any local account can
+#: then read raw tool output. It buys the feature in sandbox mode and nothing
+#: else, and the way out is ownership or a dedicated mount, not more permission
+#: bits — three rounds of tightening and loosening these constants is what
+#: showed that the bits are the wrong instrument.
+#:
+#: Applied with fchmod rather than as creation flags: umask subtracts from a
+#: creation mode and never from fchmod, and the descriptor is already pinned so
+#: nothing can be swapped underneath it.
+_PRIVATE_DIR_MODE = 0o700
+_PRIVATE_FILE_MODE = 0o600
+_SHARED_DIR_MODE = 0o755
+_SHARED_FILE_MODE = 0o644
 
 #: dir_fd is POSIX-only. Where it is missing there is also no bind-mounted
 #: sandbox writing into this directory, so plain path operations are used.
@@ -142,7 +148,7 @@ def _force_mode(fd: int, mode: int) -> None:
         logger.debug(f"[overflow] could not set mode {oct(mode)}: {e}")
 
 
-def _open_child_dir(name: str, parent_fd: int) -> int:
+def _open_child_dir(name: str, parent_fd: int, dir_mode: int) -> int:
     """Open (creating if needed) a subdirectory, refusing to follow a symlink.
 
     Taken relative to *parent_fd* so a directory swapped for a symlink after the
@@ -150,15 +156,17 @@ def _open_child_dir(name: str, parent_fd: int) -> int:
     """
     flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
     try:
-        os.mkdir(name, _DIR_MODE, dir_fd=parent_fd)
+        os.mkdir(name, dir_mode, dir_fd=parent_fd)
     except FileExistsError:
         pass
     fd = os.open(name, flags, dir_fd=parent_fd)
-    _force_mode(fd, _DIR_MODE)
+    _force_mode(fd, dir_mode)
     return fd
 
 
-def _spill_by_path(payload: bytes, directory: Path, name: str) -> bool:
+def _spill_by_path(
+    payload: bytes, directory: Path, name: str, dir_mode: int, file_mode: int
+) -> bool:
     """Write the spill without directory descriptors.
 
     For platforms where ``dir_fd`` is unsupported — Windows — which are also the
@@ -169,14 +177,14 @@ def _spill_by_path(payload: bytes, directory: Path, name: str) -> bool:
     oversized tool result into a failed tool call.
     """
     try:
-        directory.mkdir(mode=_DIR_MODE, parents=True, exist_ok=True)
+        directory.mkdir(mode=dir_mode, parents=True, exist_ok=True)
         try:
-            directory.chmod(_DIR_MODE)
+            directory.chmod(dir_mode)
         except OSError:
             pass
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
-        fd = os.open(directory / name, flags, _FILE_MODE)
-        _force_mode(fd, _FILE_MODE)
+        fd = os.open(directory / name, flags, file_mode)
+        _force_mode(fd, file_mode)
         with os.fdopen(fd, "wb") as handle:
             handle.write(payload)
     except (OSError, NotImplementedError, ValueError) as e:
@@ -278,7 +286,14 @@ def _prune_fd(dir_fd: int) -> None:
             continue
 
 
-def _spill_pinned(payload: bytes, shared_host: Path, chat: str, name: str) -> bool:
+def _spill_pinned(
+    payload: bytes,
+    shared_host: Path,
+    chat: str,
+    name: str,
+    dir_mode: int,
+    file_mode: int,
+) -> bool:
     """Write the spill with every directory on the path pinned.
 
     Resolving a path and then using it is a race the agent can win: it may
@@ -296,13 +311,13 @@ def _spill_pinned(payload: bytes, shared_host: Path, chat: str, name: str) -> bo
         # none of them reachable. /shared is the sandbox's own mount and has to
         # be traversable by it regardless; a 0700 root breaks memory too, not
         # only spills.
-        _force_mode(root_fd, _DIR_MODE)
-        overflow_fd = _open_child_dir(".overflow", root_fd)
-        chat_fd = _open_child_dir(chat, overflow_fd)
+        _force_mode(root_fd, dir_mode)
+        overflow_fd = _open_child_dir(".overflow", root_fd, dir_mode)
+        chat_fd = _open_child_dir(chat, overflow_fd, dir_mode)
 
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
         try:
-            fd = os.open(name, flags, _FILE_MODE, dir_fd=chat_fd)
+            fd = os.open(name, flags, file_mode, dir_fd=chat_fd)
         except OSError as e:
             if e.errno in (errno.EEXIST, errno.ELOOP):
                 logger.warning(f"[overflow] refusing to write over {name}: {e}")
@@ -311,7 +326,7 @@ def _spill_pinned(payload: bytes, shared_host: Path, chat: str, name: str) -> bo
             return False
 
         try:
-            _force_mode(fd, _FILE_MODE)
+            _force_mode(fd, file_mode)
             with os.fdopen(fd, "wb") as handle:
                 handle.write(payload)
         except OSError as e:
@@ -361,10 +376,16 @@ def spill_overflow(text: str, *, deps: Any, kind: str = "output") -> Optional[Sp
     payload, clipped = _clip(text)
     name = f"{kind}-{secrets.token_hex(16)}.txt"
 
+    sandboxed = bool(getattr(deps, "sandbox_enabled", True))
+    dir_mode = _SHARED_DIR_MODE if sandboxed else _PRIVATE_DIR_MODE
+    file_mode = _SHARED_FILE_MODE if sandboxed else _PRIVATE_FILE_MODE
+
     if not _HAVE_DIR_FD:
-        if not _spill_by_path(payload, shared_host / ".overflow" / chat, name):
+        if not _spill_by_path(
+            payload, shared_host / ".overflow" / chat, name, dir_mode, file_mode
+        ):
             return None
-    elif not _spill_pinned(payload, shared_host, chat, name):
+    elif not _spill_pinned(payload, shared_host, chat, name, dir_mode, file_mode):
         return None
 
     if getattr(deps, "sandbox_enabled", True):

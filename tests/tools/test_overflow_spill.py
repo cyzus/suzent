@@ -89,18 +89,21 @@ def test_sandbox_mode_gets_the_virtual_path(tmp_path):
     assert spill.path.startswith(f"{OVERFLOW_VIRTUAL_DIR}/chat-1/")
 
 
-def test_the_spill_is_readable_by_a_different_uid(deps, tmp_path):
+def test_a_sandbox_spill_is_readable_by_a_different_uid(tmp_path):
     """Bind mounts preserve numeric ownership and the sandbox image runs as a
     fixed uid 1000, which need not match the host service's. A 0600 file would
-    be unreadable by the very agent the marker points at — a path that exists
-    and cannot be opened, which is the failure the spill exists to avoid."""
-    spill = spill_overflow("x" * 100, deps=deps, kind="t")
+    be unreadable by the very agent the marker points at.
 
-    file_mode = os.stat(spill.path).st_mode & 0o777
-    dir_mode = os.stat(_chat_dir(tmp_path)).st_mode & 0o777
+    Sandbox only: host mode reads the file as the same uid that wrote it, so it
+    gains nothing from the looser bits and pays for them on a multi-user host.
+    """
+    spill_overflow("x" * 100, deps=_deps(tmp_path, sandbox=True), kind="t")
 
-    assert file_mode & 0o044, f"others cannot read the spill ({oct(file_mode)})"
-    assert dir_mode & 0o011, f"others cannot traverse the directory ({oct(dir_mode)})"
+    chat_dir = _chat_dir(tmp_path)
+    written = next(chat_dir.glob("*.txt"))
+
+    assert os.stat(written).st_mode & 0o044, "the sandbox cannot read the spill"
+    assert os.stat(chat_dir).st_mode & 0o011, "the sandbox cannot traverse to it"
 
 
 def test_chat_directories_are_organisation_not_access_control(tmp_path):
@@ -604,28 +607,62 @@ def test_every_registered_tool_can_reach_its_deps():
 
 
 @pytest.mark.parametrize("umask_value", [0o077, 0o022, 0o000])
-def test_the_modes_survive_a_restrictive_umask(tmp_path, umask_value):
-    """Creation modes are masked by the process umask, so a service started with
-    umask 0077 turns 0755/0644 into 0700/0600 — exactly the permissions that
-    make the marker point at a file the sandbox cannot open."""
+def test_sandbox_spills_stay_reachable_under_any_umask(tmp_path, umask_value):
+    """Creation modes are masked by the umask, so a service started with 0077
+    turns 0755/0644 into 0700/0600 — the permissions that make the marker point
+    at a file the sandbox cannot open.
+
+    Checked all the way up to the mount root: correct descendants under an
+    unreachable root are still unreachable, which is how the previous version of
+    this test passed while /shared sat at 0700.
+    """
     previous = os.umask(umask_value)
     try:
         spill = spill_overflow(
-            "x" * 100, deps=_deps(tmp_path, chat_id=f"u{umask_value:o}"), kind="t"
+            "x" * 100,
+            deps=_deps(tmp_path, chat_id=f"u{umask_value:o}", sandbox=True),
+            kind="t",
         )
     finally:
         os.umask(previous)
 
-    # Every directory between the mount root and the file, not just the leaf:
-    # correct descendants under an unreachable root are still unreachable.
-    assert os.stat(spill.path).st_mode & 0o044, "the file is not readable"
-    walked = Path(spill.path).parent
+    host_file = (
+        tmp_path / "shared" / ".overflow" / f"u{umask_value:o}" / Path(spill.path).name
+    )
+    assert os.stat(host_file).st_mode & 0o044, "the file is not readable"
+    walked = host_file.parent
     while True:
         mode = os.stat(walked).st_mode & 0o777
         assert mode & 0o011, f"umask {umask_value:o} left {walked} at {mode:o}"
         if walked == tmp_path / "shared":
             break
         walked = walked.parent
+
+
+@pytest.mark.parametrize("umask_value", [0o077, 0o000])
+def test_host_spills_are_private(tmp_path, umask_value):
+    """In host mode the agent is this process — same uid — so the tightest bits
+    work and nothing is gained by letting every local account read raw tool
+    output. Forced past the umask in the other direction too: 0000 must not
+    leave them world-readable."""
+    previous = os.umask(umask_value)
+    try:
+        spill = spill_overflow(
+            "x" * 100, deps=_deps(tmp_path, chat_id=f"h{umask_value:o}"), kind="t"
+        )
+    finally:
+        os.umask(previous)
+
+    file_mode = os.stat(spill.path).st_mode & 0o777
+    dir_mode = os.stat(Path(spill.path).parent).st_mode & 0o777
+
+    assert file_mode & 0o077 == 0, (
+        f"host spill is group/world accessible ({file_mode:o})"
+    )
+    assert dir_mode & 0o077 == 0, (
+        f"host spill dir is group/world accessible ({dir_mode:o})"
+    )
+    assert file_mode & 0o600, "the owner cannot read its own spill"
 
 
 def test_the_path_fallback_also_survives_the_umask(tmp_path, monkeypatch):
@@ -635,13 +672,16 @@ def test_the_path_fallback_also_survives_the_umask(tmp_path, monkeypatch):
     previous = os.umask(0o077)
     try:
         spill = overflow.spill_overflow(
-            "x" * 100, deps=_deps(tmp_path, chat_id="fallback"), kind="t"
+            "x" * 100,
+            deps=_deps(tmp_path, chat_id="fallback", sandbox=True),
+            kind="t",
         )
     finally:
         os.umask(previous)
 
-    assert os.stat(spill.path).st_mode & 0o044
-    assert os.stat(Path(spill.path).parent).st_mode & 0o011
+    host_file = tmp_path / "shared" / ".overflow" / "fallback" / Path(spill.path).name
+    assert os.stat(host_file).st_mode & 0o044
+    assert os.stat(host_file.parent).st_mode & 0o011
 
 
 def test_the_voice_verification_script_still_calls_correctly():
@@ -665,3 +705,18 @@ def test_the_voice_verification_script_still_calls_correctly():
     assert calls, "the script no longer calls forward(); update this test"
     for call in calls:
         assert len(call.args) >= 2, "forward() takes ctx first, then the text"
+
+
+@pytest.mark.asyncio
+async def test_the_sweeper_is_cancelled_at_shutdown():
+    """An infinite task the lifespan never cancels keeps running after
+    shutdown, and each restart adds another — so an embedded server or an
+    in-process restart accumulates hourly sweepers."""
+    import inspect
+
+    from suzent import server
+
+    source = inspect.getsource(server.shutdown)
+
+    assert "overflow_sweeper" in source, "the sweeper outlives the application"
+    assert "cancel()" in source

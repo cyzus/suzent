@@ -915,13 +915,14 @@ async def shutdown():
     # Cancel any pending ask_question futures so their tasks can exit cleanly
     pending_questions.cancel_all()
 
-    resource_guard = getattr(app.state, "service_resource_guard", None)
-    if resource_guard is not None and not resource_guard.done():
-        resource_guard.cancel()
-        try:
-            await resource_guard
-        except asyncio.CancelledError:
-            pass
+    for task_name in ("service_resource_guard", "overflow_sweeper"):
+        task = getattr(app.state, task_name, None)
+        if task is not None and not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
 
     if agent_inbox_dispatcher:
         await _stop(agent_inbox_dispatcher.stop(), "AgentInboxDispatcher")
