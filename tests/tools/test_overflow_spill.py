@@ -1836,3 +1836,32 @@ def test_a_future_dated_staging_file_survives_the_sweep(tmp_path):
     overflow.sweep_overflow()
 
     assert staged.exists(), "the sweep deleted a staging file out from under a writer"
+
+
+def test_the_root_quota_evicts_undatable_spills_before_current_ones(
+    tmp_path, monkeypatch
+):
+    """A file stamped before a backward clock step sorts ahead of everything
+    real, so under root pressure it kept its budget while genuinely current
+    spills — the ones with live pointers in a conversation — were evicted in
+    its place. It sorts oldest now."""
+    import suzent.tools.overflow as overflow
+
+    monkeypatch.setattr(overflow, "OVERFLOW_MAX_ROOT_BYTES", 4_000)
+
+    rolled_back = spill_overflow(
+        "a" * 3_000, deps=_deps(tmp_path, chat_id="old"), kind="t"
+    )
+    ahead = time.time() + 3_600
+    os.utime(rolled_back.host_path, (ahead, ahead))
+
+    aged = spill_overflow("b" * 3_000, deps=_deps(tmp_path, chat_id="mid"), kind="t")
+    long_ago = time.time() - 3_600
+    os.utime(aged.host_path, (long_ago, long_ago))
+
+    overflow._enforce_root_quota_path(overflow._overflow_root())
+
+    assert not Path(rolled_back.host_path).exists(), (
+        "an undatable spill outranked a datable one under root pressure"
+    )
+    assert Path(aged.host_path).exists()

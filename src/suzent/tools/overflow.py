@@ -39,6 +39,7 @@ from __future__ import annotations
 import asyncio
 import errno
 import hashlib
+import math
 import os
 import re
 import secrets
@@ -213,6 +214,20 @@ def _in_grace(mtime: float, now: float) -> bool:
 def _past_ttl(mtime: float, now: float) -> bool:
     """True once a spill has outlived its retention, or lost its datability."""
     return mtime < now - OVERFLOW_TTL_SECONDS or _implausibly_dated(mtime, now)
+
+
+def _age_key(mtime: float, now: float) -> float:
+    """The timestamp to sort a spill by, with undatable ones sorted oldest.
+
+    The root scan orders newest-first and evicts from the tail, on the theory
+    that the newest file is the one a live conversation is most likely to be
+    holding a pointer to. A future-dated stamp defeats that theory exactly: a
+    file left over from before a clock step sorts ahead of everything real, so
+    it keeps its budget while genuinely current spills are evicted and their
+    advertised pointers break. Sorting it as oldest puts it first in line
+    instead, which is where a timestamp nobody can believe belongs.
+    """
+    return -math.inf if _implausibly_dated(mtime, now) else mtime
 
 
 def _abandoned(mtime: float, now: float) -> bool:
@@ -486,7 +501,12 @@ def _enforce_root_quota_fd(
                     except OSError:
                         continue
                     survivors.append(
-                        (stat.st_mtime, stat.st_size, entry.name, kept.name)
+                        (
+                            _age_key(stat.st_mtime, time.time()),
+                            stat.st_size,
+                            entry.name,
+                            kept.name,
+                        )
                     )
             finally:
                 os.close(chat_fd)
@@ -535,7 +555,9 @@ def _enforce_root_quota_path(
                     stat = path.stat()
                 except OSError:
                     continue
-                survivors.append((stat.st_mtime, stat.st_size, path))
+                survivors.append(
+                    (_age_key(stat.st_mtime, time.time()), stat.st_size, path)
+                )
     except OSError:
         return 0
 
