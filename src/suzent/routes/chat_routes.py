@@ -895,18 +895,34 @@ async def get_chat(request: Request) -> JSONResponse:
         if chat.agent_state and context_usage.get("context_tokens") is None:
             try:
                 from suzent.core.agent_serializer import deserialize_state
-                from suzent.core.context_compressor import estimate_tokens
-                from suzent.config import CONFIG as _CFG
+                from suzent.core.context_compressor import (
+                    estimate_tokens,
+                    resolve_context_limit,
+                )
 
                 state = deserialize_state(chat.agent_state)
                 if state and state.get("message_history"):
                     budget = estimate_tokens(
-                        state["message_history"], _CFG.max_context_tokens
+                        state["message_history"],
+                        resolve_context_limit(state.get("model_id")),
                     )
                     response_chat["contextTokens"] = budget.estimated_tokens
                     context_usage["context_tokens"] = budget.estimated_tokens
             except Exception:
                 pass
+
+        # Every load reports the budget of the model this chat runs on, even when
+        # the usage counters are older than the model it now uses: a stored limit
+        # from a previous model (or none at all, on a chat that predates them)
+        # would otherwise be what the panel drew its percentage against.
+        try:
+            from suzent.core.context_compressor import resolve_context_limit
+            from suzent.core.providers import get_default_chat_model
+
+            chat_model = (chat.config or {}).get("model") or get_default_chat_model()
+            context_usage["context_limit"] = resolve_context_limit(chat_model)
+        except Exception:
+            pass
 
         response_chat.pop("context_usage", None)
         if context_usage:

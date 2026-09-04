@@ -348,6 +348,12 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
   });
   const [config, setConfigState] = useState<ChatConfig>(defaultConfig);
   const [backendConfig, setBackendConfig] = useState<ConfigOptions | null>(null);
+  // Read from callbacks that must not be rebuilt whenever the listing changes.
+  const backendConfigRef = useRef<ConfigOptions | null>(null);
+  backendConfigRef.current = backendConfig;
+  // Models we have already refetched the listing for, so an unlisted model
+  // (an ACP agent, a disabled provider) costs one request, not one per load.
+  const refetchedForModelsRef = useRef<Set<string>>(new Set());
   const [backendConfigError, setBackendConfigError] = useState<string | null>(null);
   const [shouldResetNext, setShouldResetNext] = useState(false);
   const [isStreaming, setIsStreamingState] = useState(false);
@@ -1392,6 +1398,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
               total_tokens:
                 serverUsage?.total_tokens ?? existingUsage?.total_tokens ?? contextTokens,
               context_tokens: contextTokens,
+              context_limit: serverUsage?.context_limit ?? existingUsage?.context_limit ?? null,
               cache_write_tokens:
                 serverUsage?.cache_write_tokens ?? existingUsage?.cache_write_tokens ?? 0,
               cache_read_tokens:
@@ -1406,6 +1413,21 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
           );
           setConfigByChat((prev) => ({ ...prev, [key]: loadedConfig }));
           setConfigState(loadedConfig);
+          // The backend config listing is fetched once on mount, so a backend that
+          // restarted (or gained a model) since then leaves this window holding a
+          // listing that can't size the chat's model — which is how the context
+          // panel kept showing a stale maximum. Not being able to resolve a budget
+          // for the model we just loaded is the signal to refetch the listing.
+          const model = loadedConfig.model;
+          if (
+            model &&
+            backendConfigRef.current &&
+            !backendConfigRef.current.contextWindows?.[model] &&
+            !refetchedForModelsRef.current.has(model)
+          ) {
+            refetchedForModelsRef.current.add(model);
+            void fetchConfigWithRetry();
+          }
           // Save reusable preferences for the next new chat without chat-scoped state.
           try {
             localStorage.setItem(

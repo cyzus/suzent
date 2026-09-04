@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useStatusStore, StatusType } from '../hooks/useStatusStore';
 import { useChatCoreStore, useChatStore } from '../hooks/useChatStore';
+import { selectContextLimit } from '../lib/contextLimit';
 import { useI18n } from '../i18n';
 import { useHeartbeatRunning } from '../hooks/useHeartbeatRunning';
 import { useSubAgentStatus } from '../hooks/useSubAgentStatus';
@@ -460,11 +461,24 @@ function HeartbeatWidget() {
 
 function ContextWidget() {
   const { usage } = useContextUsageStore();
-  const { backendConfig } = useChatCoreStore();
+  const { backendConfig, config } = useChatCoreStore();
 
-  if (!usage || !backendConfig?.maxContextTokens) return null;
+  // Mirror what actually runs when a chat carries no model of its own: the
+  // backend falls back to the user's preferred model, then to the first enabled
+  // one. Reading only `config.model` sized those chats against nothing.
+  const selectedModel =
+    config?.model || backendConfig?.userPreferences?.model || backendConfig?.models?.[0];
 
-  return <ContextWidgetBody usage={usage} limit={backendConfig.maxContextTokens} />;
+  const limit = selectContextLimit({
+    selectedModel,
+    contextWindows: backendConfig?.contextWindows,
+    turnLimit: usage?.context_limit,
+    fallback: backendConfig?.maxContextTokens,
+  });
+
+  if (!usage || !limit) return null;
+
+  return <ContextWidgetBody usage={usage} limit={limit} />;
 }
 
 function ContextWidgetBody({ usage, limit }: { usage: ContextUsage; limit: number }) {

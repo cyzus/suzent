@@ -142,6 +142,8 @@ def _first_newly_enabled_provider_models(
 
 async def get_config(request: Request) -> JSONResponse:
     """Return frontend-consumable configuration merged with user preferences."""
+    from suzent.core.context_compressor import resolve_context_limit
+
     db = get_database()
     user_prefs = db.get_user_preferences()
 
@@ -149,7 +151,6 @@ async def get_config(request: Request) -> JSONResponse:
     sandbox_volumes = CONFIG.sandbox_volumes or []
     available_models = get_enabled_models_from_db()
     default_model = get_default_chat_model()
-
     mem_config = get_effective_memory_config()
     embedding_model = mem_config["embedding_model"]
     extraction_model = mem_config["extraction_model"]
@@ -167,7 +168,13 @@ async def get_config(request: Request) -> JSONResponse:
         "globalSandboxVolumes": sandbox_volumes,
         "sandboxEnabled": sandbox_enabled,
         "defaultPermissionMode": CONFIG.default_permission_mode,
-        "maxContextTokens": CONFIG.max_context_tokens,
+        # The context budget per model, so the panel can follow the model selector
+        # immediately instead of waiting for a turn to report one. `default_model`
+        # is only the last-resort fallback — it is not the chat's chosen model.
+        "contextWindows": {
+            model_id: resolve_context_limit(model_id) for model_id in available_models
+        },
+        "maxContextTokens": resolve_context_limit(default_model),
         "embeddingModel": CONFIG.embedding_model,
         "extractionModel": CONFIG.extraction_model,
         "volumeMetadata": db.get_volume_metadata(sandbox_volumes),

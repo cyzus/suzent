@@ -86,6 +86,25 @@ class ModelCapabilities:
     def context_window(self) -> int:
         return self.max_input_tokens + self.max_output_tokens
 
+    @property
+    def is_stub(self) -> bool:
+        """Whether this entry is a name with no capabilities behind it.
+
+        Runtime discovery registers every model a provider lists, but a provider
+        listing carries slugs, not windows — so those entries answer "0 tokens,
+        supports nothing", which is absence of data, not a description.
+        """
+        return not (
+            self.max_input_tokens
+            or self.max_output_tokens
+            or self.output_vector_size
+            or self.supports_vision
+            or self.supports_function_calling
+            or self.supports_reasoning
+            or self.supports_prompt_caching
+            or self.supports_response_schema
+        )
+
     def estimate_cost(self, input_tokens: int, output_tokens: int) -> float:
         return (
             input_tokens * self.input_cost_per_token
@@ -417,6 +436,19 @@ def save_discovered_models(provider_id: str, model_ids: list[str]) -> None:
         logger.info("Added {} new model(s) to {}.json", added, provider_id)
 
 
+# The two ways to reach the same OpenAI models: an API key (`openai/`) or a
+# ChatGPT subscription (`chatgpt/`). Capability data gets curated under whichever
+# prefix someone happened to be using.
+_PROVIDER_TWINS = {"chatgpt": "openai", "openai": "chatgpt"}
+
+
+def _aliased_model_id(model_id: str) -> Optional[str]:
+    """The same model spelled with its twin provider prefix, if it has one."""
+    provider, sep, slug = model_id.partition("/")
+    twin = _PROVIDER_TWINS.get(provider) if sep else None
+    return f"{twin}/{slug}" if twin else None
+
+
 class ModelRegistry:
     """
     Singleton registry for model capabilities.
@@ -433,8 +465,25 @@ class ModelRegistry:
         self._capabilities = _load_capabilities()
 
     def get_capabilities(self, model_id: str) -> Optional[ModelCapabilities]:
-        """Look up capabilities for a model ID. Returns None if not registered."""
-        return self._capabilities.get(model_id)
+        """Look up capabilities for a model ID. Returns None if not registered.
+
+        A ChatGPT-subscription id and an OpenAI API id with the same slug name the
+        same model, and either side may be the curated one — `chatgpt/gpt-5.5`
+        carries real numbers while `openai/gpt-5.5` is a bare stub, and elsewhere
+        it is the other way round. So a stub defers to its twin, and only to a twin
+        that actually has data: borrowing one stub to explain another would just
+        move the blank around.
+        """
+        caps = self._capabilities.get(model_id)
+        if caps is not None and not caps.is_stub:
+            return caps
+
+        twin_id = _aliased_model_id(model_id)
+        if twin_id:
+            twin = self._capabilities.get(twin_id)
+            if twin is not None and not twin.is_stub:
+                return twin
+        return caps
 
     def get_context_window(self, model_id: str) -> int:
         """Return total context window size, or 0 if unknown."""
