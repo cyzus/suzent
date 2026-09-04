@@ -910,6 +910,12 @@
       "supports_response_schema": true,
       "supports_reasoning": true,
       "supports_prompt_caching": true
+    },
+    "dashscope/qwen-image-3.0": {
+      "mode": "image_generation"
+    },
+    "dashscope/qwen-image-3.0-pro": {
+      "mode": "image_generation"
     }
   }
 }

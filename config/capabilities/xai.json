@@ -370,7 +370,7 @@
       "max_input_tokens": 1000000,
       "max_output_tokens": 1000000,
       "supports_vision": true,
-      "supports_function_calling": true,
+      "supports_function_calling": false,
       "supports_response_schema": true,
       "supports_reasoning": true,
       "supports_prompt_caching": true
@@ -391,6 +391,105 @@
       "max_output_tokens": 500000,
       "supports_vision": true,
       "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "xai/grok-build-latest": {
+      "mode": "chat",
+      "max_input_tokens": 500000,
+      "max_output_tokens": 500000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "xai/grok-4.20": {
+      "mode": "chat",
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 1000000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "xai/grok-4.20-reasoning": {
+      "mode": "chat",
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 1000000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "xai/grok-4.20-reasoning-latest": {
+      "mode": "chat",
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 1000000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "xai/grok-imagine-image": {
+      "mode": "image_generation"
+    },
+    "xai/grok-imagine-image-2026-03-02": {
+      "mode": "image_generation"
+    },
+    "xai/grok-imagine-image-quality": {
+      "mode": "image_generation"
+    },
+    "xai/grok-imagine-image-quality-20260403": {
+      "mode": "image_generation"
+    },
+    "xai/grok-imagine-image-quality-latest": {
+      "mode": "image_generation"
+    },
+    "xai/grok-imagine-image-pro": {
+      "mode": "image_generation"
+    },
+    "xai/grok-imagine-image-2.0": {
+      "mode": "image_generation"
+    },
+    "xai/grok-4.20-non-reasoning": {
+      "mode": "chat",
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 1000000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_prompt_caching": true
+    },
+    "xai/grok-4.20-non-reasoning-latest": {
+      "mode": "chat",
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 1000000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_prompt_caching": true
+    },
+    "xai/grok-4.20-multi-agent": {
+      "mode": "chat",
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 1000000,
+      "supports_vision": true,
+      "supports_function_calling": false,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "xai/grok-4.20-multi-agent-latest": {
+      "mode": "chat",
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 1000000,
+      "supports_vision": true,
+      "supports_function_calling": false,
       "supports_response_schema": true,
       "supports_reasoning": true,
       "supports_prompt_caching": true
