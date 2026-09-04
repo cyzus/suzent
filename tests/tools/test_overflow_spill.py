@@ -1865,3 +1865,32 @@ def test_the_root_quota_evicts_undatable_spills_before_current_ones(
         "an undatable spill outranked a datable one under root pressure"
     )
     assert Path(aged.host_path).exists()
+
+
+def test_deleted_entries_do_not_consume_the_file_ceiling(tmp_path, monkeypatch):
+    """The count ceiling is a budget for retained files. Charging an entry for
+    the positions above it meant a single expired spill at the head evicted a
+    valid one at the tail, leaving the directory under its own limit and
+    breaking a live pointer for nothing."""
+    import suzent.tools.overflow as overflow
+
+    monkeypatch.setattr(overflow, "OVERFLOW_MAX_FILES", 2)
+
+    expired = spill_overflow("a" * 100, deps=_deps(tmp_path), kind="t")
+    ahead = time.time() + 3_600
+    os.utime(expired.host_path, (ahead, ahead))
+
+    keepers = []
+    for payload in ("b", "c"):
+        kept = spill_overflow(payload * 100, deps=_deps(tmp_path), kind="t")
+        long_ago = time.time() - 3_600 - len(keepers)
+        os.utime(kept.host_path, (long_ago, long_ago))
+        keepers.append(kept)
+
+    overflow.sweep_overflow()
+
+    assert not Path(expired.host_path).exists()
+    for kept in keepers:
+        assert Path(kept.host_path).exists(), (
+            "an entry deleted ahead of this one still consumed the ceiling"
+        )

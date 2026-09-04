@@ -449,9 +449,10 @@ def _prune_path(directory: Path, protect: Optional[str] = None) -> None:
 
     now = time.time()
     running = 0
-    for index, (mtime, size, path) in enumerate(entries):
+    kept = 0
+    for mtime, size, path in entries:
         over = (
-            index >= OVERFLOW_MAX_FILES
+            kept >= OVERFLOW_MAX_FILES
             or _past_ttl(mtime, now)
             or running + size > OVERFLOW_MAX_TOTAL_BYTES
         )
@@ -463,6 +464,7 @@ def _prune_path(directory: Path, protect: Optional[str] = None) -> None:
         except OSError:
             continue
         running += size
+        kept += 1
 
 
 def _enforce_root_quota_fd(
@@ -610,9 +612,14 @@ def _prune_fd(dir_fd: int, protect: Optional[str] = None) -> None:
     entries.sort(reverse=True)
     now = time.time()
     running = 0
-    for index, (mtime, size, name) in enumerate(entries):
+    kept = 0
+    for mtime, size, name in entries:
+        # The ceiling counts what is being kept, not how far down the list an
+        # entry sits. Counting positions charged a file for the entries above
+        # it that were themselves deleted — one expired spill at the head was
+        # enough to evict a valid one at the tail and break its pointer.
         over = (
-            index >= OVERFLOW_MAX_FILES
+            kept >= OVERFLOW_MAX_FILES
             or _past_ttl(mtime, now)
             or running + size > OVERFLOW_MAX_TOTAL_BYTES
         )
@@ -629,6 +636,7 @@ def _prune_fd(dir_fd: int, protect: Optional[str] = None) -> None:
         except OSError:
             continue
         running += size
+        kept += 1
 
 
 def _spill_pinned(
