@@ -51,6 +51,111 @@ function isTurnBoundary(message: Message): boolean {
   return false;
 }
 
+function parseTimestamp(value?: string): number | undefined {
+  if (!value) return undefined;
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+/**
+ * Wall-clock span of a turn: from the user message that opened it to the last
+ * thing it produced.
+ *
+ * Both ends need care. The start is the turn boundary, not the previous row --
+ * inside a turn the previous row is a tool result or a tool-resume stub. The
+ * end is the *latest* timestamp anywhere in the turn rather than the last
+ * message's: an assistant row is stamped when its model response *began*, so
+ * the tool results it triggered are later than the response that asked for
+ * them. Rows can also arrive slightly out of order (tool results from
+ * concurrent calls), which a max ignores and a last-row read would not.
+ */
+function computeTurnWorkedSeconds(
+  messages: Message[],
+  boundaryIndex: number,
+  turnStart: number,
+  turnEnd: number
+): number | undefined {
+  // Without a boundary the turn's start is unknown -- which happens when the
+  // opening user row sits outside the slice being rendered. Falling back to the
+  // first assistant row would report a near-zero span that silently changes as
+  // older messages load, so report nothing instead.
+  if (boundaryIndex < 0) return undefined;
+  const startedAt = parseTimestamp(messages[boundaryIndex].timestamp);
+  if (startedAt === undefined) return undefined;
+
+  let endedAt: number | undefined;
+  for (let idx = turnStart; idx < turnEnd; idx += 1) {
+    // `turn_last_activity_at` carries the rows the store folded into a
+    // coalesced assistant bubble; `timestamp` alone is when that bubble's first
+    // model response began.
+    for (const stamp of [
+      parseTimestamp(messages[idx].timestamp),
+      parseTimestamp(messages[idx].turn_last_activity_at),
+    ]) {
+      if (stamp !== undefined && (endedAt === undefined || stamp > endedAt)) {
+        endedAt = stamp;
+      }
+    }
+  }
+  if (endedAt === undefined) return undefined;
+
+  // Clock skew -- an optimistic user row stamped by a client clock running
+  // ahead of the backend -- can make a span read negative. Show nothing rather
+  // than a bogus "Worked for 0s".
+  if (endedAt < startedAt) return undefined;
+  return Math.floor((endedAt - startedAt) / 1000);
+}
+
+/**
+ * Wall-clock seconds the agent worked on the turn each assistant message
+ * belongs to, keyed by that message's index. Every assistant row in a turn maps
+ * to the same number: they are one stretch of work, and a rail must not report
+ * only the slice between two adjacent rows.
+ *
+ * Build this from the *full* message list, not a rendered window: a slice can
+ * start after the user row that opened a turn, and a turn's duration must not
+ * depend on how much history happens to be loaded.
+ */
+export function buildTurnWorkedSeconds(messages: Message[]): Map<number, number> {
+  const workedSecondsByMessageIndex = new Map<number, number>();
+
+  let i = 0;
+  while (i < messages.length) {
+    if (messages[i].role !== 'assistant') {
+      i += 1;
+      continue;
+    }
+
+    let turnEnd = i;
+    while (turnEnd < messages.length && !isTurnBoundary(messages[turnEnd])) {
+      turnEnd += 1;
+    }
+
+    // The row that opened this turn -- scanned back from the first assistant
+    // message, since the scan itself starts at that assistant row.
+    let boundaryIndex = -1;
+    for (let j = i - 1; j >= 0; j -= 1) {
+      if (isTurnBoundary(messages[j])) {
+        boundaryIndex = j;
+        break;
+      }
+    }
+
+    const workedSeconds = computeTurnWorkedSeconds(messages, boundaryIndex, i, turnEnd);
+    if (workedSeconds !== undefined) {
+      for (let idx = i; idx < turnEnd; idx += 1) {
+        if (messages[idx].role === 'assistant') {
+          workedSecondsByMessageIndex.set(idx, workedSeconds);
+        }
+      }
+    }
+
+    i = turnEnd;
+  }
+
+  return workedSecondsByMessageIndex;
+}
+
 function filterIgnoredToolCalls(blocks: ContentBlock[]): ContentBlock[] {
   return blocks.filter((block) => {
     if (block.type !== 'toolCall') return true;

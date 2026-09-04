@@ -14,7 +14,7 @@ import { hideStreamingDrafts } from '../lib/streamingDrafts';
 import { reconcileToolCallMessages } from '../lib/toolCallReconciliation';
 import type { Message, FileAttachment } from '../types/api';
 import type { ContentBlock } from '../lib/chatUtils';
-import { buildMessageRenderPlan } from '../lib/messageRenderPlan';
+import { buildMessageRenderPlan, buildTurnWorkedSeconds } from '../lib/messageRenderPlan';
 import {
   capturePrependScrollSnapshot,
   restorePrependScrollSnapshot,
@@ -121,13 +121,6 @@ const ForkOriginMarker: React.FC<{
     </div>
   );
 };
-
-function getLastMessageTimestamp(messages: Message[]): string | undefined {
-  for (let i = messages.length - 1; i >= 0; i -= 1) {
-    if (messages[i].timestamp) return messages[i].timestamp;
-  }
-  return undefined;
-}
 
 function formatCompactLifecycleNotice(payload: any): string | null {
   if (!payload || payload.event !== 'auto_compaction') return null;
@@ -434,6 +427,8 @@ const MessageList: React.FC<{
   onEditUserMessage?: (newContent: string) => void;
   chatCitationSources?: CitationSourcesMap;
   fallbackModel?: string;
+  /** Turn durations keyed by *absolute* message index; built from the full history. */
+  turnWorkedSeconds?: Map<number, number>;
 }> = ({
   messages,
   streamingForCurrentChat,
@@ -456,6 +451,7 @@ const MessageList: React.FC<{
   onEditUserMessage,
   chatCitationSources,
   fallbackModel,
+  turnWorkedSeconds,
 }) => {
   const { skipIndices, groupRenders, stepSummaryByMessageIndex } = useMemo(
     () => buildMessageRenderPlan(messages),
@@ -502,13 +498,6 @@ const MessageList: React.FC<{
     return -1;
   }, [messages, skipIndices]);
 
-  const getPreviousMessageTimestamp = (index: number): string | undefined => {
-    for (let i = index - 1; i >= 0; i -= 1) {
-      if (messages[i].timestamp) return messages[i].timestamp;
-    }
-    return undefined;
-  };
-
   return (
     <div className="space-y-6">
       {messages.map((m, idx) => {
@@ -540,7 +529,7 @@ const MessageList: React.FC<{
               <div className="flex justify-start w-full">
                 <AssistantMessage
                   message={groupedMessage}
-                  previousMessageTimestamp={getPreviousMessageTimestamp(idx)}
+                  workedDurationSeconds={turnWorkedSeconds?.get(globalIdx)}
                   messageIndex={globalIdx}
                   isStreaming={false}
                   isLastMessage={false}
@@ -635,7 +624,7 @@ const MessageList: React.FC<{
                 ) : (
                   <AssistantMessage
                     message={m}
-                    previousMessageTimestamp={getPreviousMessageTimestamp(idx)}
+                    workedDurationSeconds={turnWorkedSeconds?.get(globalIdx)}
                     messageIndex={globalIdx}
                     isStreaming={streamingForCurrentChat}
                     isLastMessage={isLastMessage}
@@ -1450,6 +1439,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const visibleMessages = useMemo(
     () => safeMessages.slice(visibleMessageStartIndex),
     [safeMessages, visibleMessageStartIndex]
+  );
+  // Built from the whole history rather than the rendered window: a turn's
+  // duration must not change as older messages load in.
+  const turnWorkedSecondsByMessageIndex = useMemo(
+    () => buildTurnWorkedSeconds(safeMessages),
+    [safeMessages]
   );
 
   // Chat-wide citation sources: aggregate every message's citation-sources parts
@@ -2674,6 +2669,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 {safeMessages.length > 0 && (
                   <MessageListMemo
                     messages={visibleMessages}
+                    turnWorkedSeconds={turnWorkedSecondsByMessageIndex}
                     streamingForCurrentChat={false}
                     chatCitationSources={chatCitationSources}
                     messageIndexOffset={visibleMessageStartIndex}
@@ -2712,7 +2708,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                         ) : (
                           <AssistantMessage
                             message={{ role: 'assistant', content: '' }}
-                            previousMessageTimestamp={getLastMessageTimestamp(safeMessages)}
                             messageIndex={safeMessages.length}
                             isStreaming={streamingForCurrentChat}
                             isLastMessage={true}

@@ -32,6 +32,22 @@ function escapeHtml(s: string): string {
     .replace(/"/g, '&quot;');
 }
 
+/**
+ * Track the newest server row folded into a coalesced assistant bubble.
+ *
+ * A turn's rows collapse into one bubble that keeps the *first* model
+ * response's timestamp, and that timestamp marks when the response began --
+ * every tool result and follow-up response it led to is later. Without this,
+ * nothing downstream can tell how long the turn actually worked.
+ */
+function noteTurnActivity(bubble: Partial<Message>, timestamp?: string): void {
+  if (!timestamp) return;
+  const current = bubble.turn_last_activity_at;
+  if (!current || new Date(timestamp).getTime() > new Date(current).getTime()) {
+    bubble.turn_last_activity_at = timestamp;
+  }
+}
+
 function userMessageFingerprint(message: Message): string {
   const files = (message.files ?? [])
     .map((file) => `${file.filename}:${file.path}:${file.mime_type}:${file.size}`)
@@ -1540,6 +1556,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
                   };
                   awaitingToolContinuation = false;
                 }
+                noteTurnActivity(currentAssistant!, msg.timestamp);
                 if (msg.tool_calls && Array.isArray(msg.tool_calls)) {
                   msg.tool_calls.forEach((tc: any) => {
                     const args = escapeHtml(
@@ -1564,6 +1581,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
                 }
                 currentAssistant.content += `\n<details data-tool-call-id="${escapeHtml(msg.tool_call_id ?? '')}"><summary>📦 ${escapeHtml(msg.name ?? '')}</summary>\n<pre><code class="language-text">${escapeHtml(msg.content ?? '')}</code></pre>\n</details>\n`;
                 currentAssistant.raw_message_end_index = serverMessageIndex + 1;
+                noteTurnActivity(currentAssistant!, msg.timestamp);
                 awaitingToolContinuation = true;
               } else {
                 if (currentAssistant) {
