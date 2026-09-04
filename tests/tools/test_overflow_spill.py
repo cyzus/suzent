@@ -412,3 +412,78 @@ def test_the_retention_hint_is_an_upper_bound(deps):
     from suzent.tools.overflow import retention_hint
 
     assert retention_hint().startswith("kept up to")
+
+
+def test_the_whole_output_is_never_encoded(monkeypatch):
+    """Encoding the full string to discover it is too long allocates a second
+    copy while the original result is still live — a command printing hundreds
+    of MiB costs that twice over to write five.
+
+    A slice of a str subclass is a plain str, so if the recorder never fires the
+    full string was never encoded — which is exactly the property.
+    """
+    import suzent.tools.overflow as overflow
+
+    encoded_from: list[int] = []
+
+    class _Watched(str):
+        def encode(self, *args, **kwargs):
+            encoded_from.append(len(self))
+            return str.encode(self, *args, **kwargs)
+
+    monkeypatch.setattr(overflow, "OVERFLOW_MAX_FILE_BYTES", 1_000)
+
+    payload, clipped = overflow._clip(_Watched("x" * 500_000))
+
+    assert clipped is True
+    assert len(payload) <= 1_000
+    assert encoded_from == [], f"the full {500_000}-char string was encoded"
+
+
+def test_a_short_output_is_not_reported_as_clipped(monkeypatch):
+    """The bounded slice must not make an ordinary result look truncated."""
+    import suzent.tools.overflow as overflow
+
+    monkeypatch.setattr(overflow, "OVERFLOW_MAX_FILE_BYTES", 1_000)
+
+    payload, clipped = overflow._clip("short")
+
+    assert clipped is False
+    assert payload == b"short"
+
+
+def test_the_root_total_is_bounded_across_chats(tmp_path, monkeypatch):
+    """Pruning on write only ever sees one chat's directory, so the per-chat
+    allowance multiplies by the number of chats — a hundred of them retain
+    5 GiB while every directory is individually within bounds."""
+    from suzent.config import CONFIG
+    import suzent.tools.overflow as overflow
+    from suzent.tools.overflow import sweep_overflow
+
+    monkeypatch.setattr(overflow, "OVERFLOW_MAX_ROOT_BYTES", 5_000)
+
+    for chat in ("a", "b", "c", "d"):
+        spill_overflow("y" * 3_000, deps=_deps(tmp_path, chat_id=chat), kind="t")
+
+    monkeypatch.setattr(CONFIG, "sandbox_data_path", str(tmp_path), raising=False)
+    sweep_overflow()
+
+    root = tmp_path / "shared" / ".overflow"
+    total = sum(p.stat().st_size for p in root.rglob("*.txt"))
+
+    assert total <= 5_000 + 3_100, total
+
+
+def test_the_path_fallback_writes_without_dir_fd(tmp_path, monkeypatch):
+    """Windows has no dir_fd, and keeping the fd-based code while passing
+    dir_fd=None was not a fallback: os.open raises NotImplementedError there,
+    which no `except OSError` catches, turning an oversized tool result into a
+    failed tool call."""
+    import suzent.tools.overflow as overflow
+
+    monkeypatch.setattr(overflow, "_HAVE_DIR_FD", False)
+
+    spill = overflow.spill_overflow("x" * 500, deps=_deps(tmp_path), kind="t")
+
+    assert spill is not None
+    assert Path(spill.path).read_text(encoding="utf-8") == "x" * 500
