@@ -1598,3 +1598,46 @@ def test_the_sweep_collects_a_stranded_staged_file(tmp_path, monkeypatch):
     sweep_overflow()
 
     assert not stranded.exists(), "a stranded staged file was never collected"
+
+
+def test_no_scan_can_select_a_staged_file(tmp_path, monkeypatch):
+    """Every scan has to filter to completed spills, not just the ones I
+    remembered: unlinking a staged file succeeds on POSIX while its writer holds
+    it open, and the rename then fails, so the result loses its pointer for a
+    file that was never counted against a quota anyway."""
+    import suzent.tools.overflow as overflow
+    from suzent.tools.overflow import PARTIAL_SUFFIX
+
+    monkeypatch.setattr(overflow, "OVERFLOW_MAX_ROOT_BYTES", 10)
+    monkeypatch.setattr(overflow, "OVERFLOW_MAX_TOTAL_BYTES", 10)
+    monkeypatch.setattr(overflow, "OVERFLOW_MAX_FILES", 1)
+
+    chat_dir = _chat_dir(tmp_path, "victim")
+    chat_dir.mkdir(parents=True)
+    staged = chat_dir / f"t-inflight.txt{PARTIAL_SUFFIX}"
+    staged.write_text("z" * 5_000, encoding="utf-8")
+
+    # Any spill now runs both quota passes against a directory well over its
+    # ceilings, with a staged file sitting in it.
+    spill_overflow("y" * 100, deps=_deps(tmp_path, chat_id="other"), kind="t")
+
+    assert staged.exists(), "a quota scan deleted a file that was still being written"
+
+
+def test_every_scan_filters_to_completed_spills():
+    """Stated over the set, because three of the four filtered and the fourth
+    was the one that mattered."""
+    import inspect
+
+    import suzent.tools.overflow as overflow
+
+    for fn in (
+        overflow._prune_fd,
+        overflow._prune_path,
+        overflow._enforce_root_quota_fd,
+        overflow._enforce_root_quota_path,
+    ):
+        source = inspect.getsource(fn)
+        assert '".txt"' in source or '"*.txt"' in source, (
+            f"{fn.__name__} scans without filtering to completed spills"
+        )

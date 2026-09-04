@@ -413,6 +413,13 @@ def _enforce_root_quota_fd(
                 continue
             try:
                 for kept in os.scandir(chat_fd):
+                    # Completed spills only. A staged file belongs to a writer
+                    # that still has it open; unlinking it succeeds on POSIX and
+                    # the rename then fails, so the result loses its pointer for
+                    # a file that was never counted against anyone's quota
+                    # anyway. The other three scans filter; this one did not.
+                    if not kept.name.endswith(".txt"):
+                        continue
                     try:
                         stat = kept.stat(follow_symlinks=False)
                     except OSError:
