@@ -532,22 +532,19 @@ def _spill_pinned(
                     pass
 
 
-def _prune_after_accept(deps: Any) -> None:
-    """Apply the quotas, once a spill has actually been handed to its caller.
+def _prune_now(deps: Any) -> None:
+    """Apply the quotas after a write.
 
-    Pruning is the irreversible half of a spill, so it waits for the reversible
-    half to be accepted. Doing it during the write meant an abandoned spill
-    could evict files whose paths a live conversation held and then delete
-    itself, leaving the eviction as its only effect — and every attempt to guard
-    that with a flag left a window between the check and the scan.
-
-    Ordering removes the window instead of narrowing it: nothing that is not
-    owned by a caller ever prunes.
+    Unconditional again, and that is the point of dropping the handshake: with
+    nothing deleted out of band, a spill whose caller timed out is not a mistake
+    to be undone — it is a retained file like any other, so pruning on its
+    behalf is a legitimate retention decision rather than an eviction by
+    something that is about to vanish.
     """
     from suzent.config import CONFIG
 
     root = Path(CONFIG.sandbox_data_path) / "shared" / ".overflow"
-    chat_dir = root / _chat_segment(deps)
+    chat = _chat_segment(deps)
     try:
         if _HAVE_DIR_FD:
             flags = (
@@ -557,7 +554,7 @@ def _prune_after_accept(deps: Any) -> None:
             )
             root_fd = os.open(root, flags)
             try:
-                chat_fd = os.open(_chat_segment(deps), flags, dir_fd=root_fd)
+                chat_fd = os.open(chat, flags, dir_fd=root_fd)
                 try:
                     _prune_fd(chat_fd)
                 finally:
@@ -566,21 +563,10 @@ def _prune_after_accept(deps: Any) -> None:
             finally:
                 os.close(root_fd)
         else:
-            _prune_path(chat_dir)
+            _prune_path(root / chat)
             _enforce_root_quota_path(root)
     except OSError as e:
         logger.debug(f"[overflow] could not prune after a spill: {e}")
-
-
-def _discard(spill: Spill) -> None:
-    """Remove a spill nobody was told about."""
-    if not spill.host_path:
-        return
-    try:
-        Path(spill.host_path).unlink(missing_ok=True)
-        logger.debug("[overflow] removed a spill that finished after its deadline")
-    except OSError as e:
-        logger.debug(f"[overflow] could not remove an abandoned spill: {e}")
 
 
 def _deps_snapshot(deps: Any) -> Any:
@@ -606,10 +592,7 @@ def spill_overflow(text: str, *, deps: Any, kind: str = "output") -> Optional[Sp
     that decision themselves and prune only once it goes their way.
     """
     payload, clipped = _clip(text)
-    spill = _spill_payload(payload, clipped, deps=deps, kind=kind)
-    if spill is not None:
-        _prune_after_accept(deps)
-    return spill
+    return _spill_payload(payload, clipped, deps=deps, kind=kind)
 
 
 def _spill_payload(
@@ -701,6 +684,8 @@ def _spill_payload(
             return None
     elif not _spill_pinned(payload, shared_host, chat, name, dir_mode, file_mode):
         return None
+
+    _prune_now(deps)
 
     written = shared_host / ".overflow" / chat / name
     if virtual is not None:
@@ -808,28 +793,13 @@ def spill_overflow_bounded(
         return None
 
     snapshot = _deps_snapshot(deps)
-    abandoned = threading.Event()
-    handover = threading.Lock()
     result: list[Optional[Spill]] = [None]
 
     def _worker() -> None:
         try:
-            spill = _spill_payload(payload, clipped, deps=snapshot, kind=kind)
-            if spill is None:
-                return
-            # One atomic decision: either the caller takes it, or nobody does.
-            with handover:
-                if abandoned.is_set():
-                    accepted = False
-                else:
-                    result[0] = spill
-                    accepted = True
-            # Both of these are filesystem work and both happen here, on the
-            # worker — never on the caller's thread and never on the loop.
-            if accepted:
-                _prune_after_accept(snapshot)
-            else:
-                _discard(spill)
+            result[0] = _spill_payload(payload, clipped, deps=snapshot, kind=kind)
+        except BaseException as e:  # noqa: BLE001 - never fails its caller
+            logger.debug(f"[overflow] spill failed: {e}")
         finally:
             _spill_slots.release()
 
@@ -837,25 +807,12 @@ def spill_overflow_bounded(
     try:
         thread.start()
     except BaseException as e:
-        # The worker's finally is what returns the slot, so a thread that never
-        # starts never gives it back — four of those and spilling is off for the
-        # life of the process. And a spill failure must never fail the tool call
-        # that produced the output.
         _spill_slots.release()
         logger.warning(f"[overflow] could not start a spill worker: {e}")
         return None
+
     thread.join(timeout=SPILL_TIMEOUT_SECONDS)
     if thread.is_alive():
-        with handover:
-            # The worker may have stored a result and still be inside its
-            # finally when the join expired. Abandoning it then would throw away
-            # a spill that is already written and already ours.
-            if result[0] is not None:
-                return result[0]
-            abandoned.set()
-        # The write may still land. Nobody was told about it, so it would sit
-        # there consuming the per-chat and root quotas and evicting spills whose
-        # paths *were* handed out — the worker removes it when it finishes.
         logger.warning(
             f"[overflow] spill exceeded {SPILL_TIMEOUT_SECONDS}s — truncating "
             f"without a pointer"
@@ -869,75 +826,42 @@ async def spill_overflow_async(
 ) -> Optional[Spill]:
     """Spill without holding the event loop, and without waiting forever.
 
-    Up to 5 MiB of write plus a directory scan; inline, that stalls every other
-    chat the loop is serving. Off-loop but unbounded, a slow volume costs the
-    caller instead — and the caller is either a reminder being built or a tool
-    call that has already done its work. Losing the pointer beats losing
-    either.
+    Sliced here, encoded and written on a thread of our own — not the shared
+    default executor, whose queue keeps a cancelled submission's references
+    until some worker dequeues it, and whose threads are joined at interpreter
+    exit.
 
-    The thread is not cancellable, so a timed-out write finishes in the
-    background; it lands in the spill directory and is collected by the sweep
-    like any other file.
+    A spill that misses the deadline is not chased. The caller gets the plain
+    marker, the write finishes in the background, and the file it leaves is an
+    ordinary spill: retained under the same TTL and quotas as any other, and
+    collected by the sweep. Trying to hand the file back or delete it after the
+    fact is what produced a run of races — every version of the handshake had a
+    window between deciding and acting, because the caller, the loop and the
+    worker cannot observe each other atomically.
     """
-    # Clipped before anything can queue it, and run on a thread of our own
-    # rather than the shared default executor.
-    #
-    # to_thread was wrong twice over here. Cancelling the future does not remove
-    # the work item from the executor's queue, so a timed-out submission keeps
-    # holding whatever it captured until some worker eventually dequeues it —
-    # the deadline bounded the caller's latency and not the retained bytes. And
-    # the executor's threads are shared with everything else that offloads, so
-    # an abandoned write there is one fewer thread for unrelated work.
-    # Sliced here, encoded in the worker. The slice is what bounds retention;
-    # the encode is what costs — up to four bytes per character, on the loop,
-    # while every other chat waits.
     head, dropped = _bound_chars(text)
     snapshot = _deps_snapshot(deps)
 
     loop = asyncio.get_running_loop()
     future: asyncio.Future = loop.create_future()
 
-    settled = threading.Event()
-    accepted: list[bool] = [False]
-
     def _deliver(value: Optional[Spill]) -> None:
-        # Runs on the loop and does no filesystem work: an unlink on the same
-        # wedged volume would stall every chat, after the caller's deadline has
-        # already expired. It hands the value over; the coroutine decides
-        # whether it was really received, and the worker acts on that.
         if not future.done():
             future.set_result(value)
 
     def _worker() -> None:
         spill = None
         try:
-            try:
-                payload, clipped = _encode_bounded(head, dropped)
-                spill = _spill_payload(payload, clipped, deps=snapshot, kind=kind)
-            except BaseException as e:  # noqa: BLE001 - never fails its caller
-                logger.debug(f"[overflow] spill failed: {e}")
-
-            try:
-                loop.call_soon_threadsafe(_deliver, spill)
-            except RuntimeError:
-                # Loop already closed; nobody is waiting, so nobody owns this.
-                if spill is not None:
-                    _discard(spill)
-                return
-
-            if spill is None:
-                return
-            settled.wait(timeout=SPILL_TIMEOUT_SECONDS)
-            if accepted[0]:
-                _prune_after_accept(snapshot)
-            else:
-                _discard(spill)
+            payload, clipped = _encode_bounded(head, dropped)
+            spill = _spill_payload(payload, clipped, deps=snapshot, kind=kind)
+        except BaseException as e:  # noqa: BLE001 - a spill never fails its caller
+            logger.debug(f"[overflow] spill failed: {e}")
         finally:
-            # After the pruning and the cleanup, not before them. Releasing at
-            # the end of the write let the next oversized result take the slot
-            # and park another thread in the filesystem work below it, which is
-            # the accumulation the bound exists to prevent.
             _spill_slots.release()
+        try:
+            loop.call_soon_threadsafe(_deliver, spill)
+        except RuntimeError:
+            pass  # loop already closed; the sweep collects the file
 
     if not _spill_slots.acquire(blocking=False):
         logger.warning(
@@ -953,28 +877,13 @@ async def spill_overflow_async(
         return None
 
     try:
-        spill = await asyncio.wait_for(future, timeout=SPILL_TIMEOUT_SECONDS)
+        return await asyncio.wait_for(future, timeout=SPILL_TIMEOUT_SECONDS)
     except asyncio.TimeoutError:
-        settled.set()
         logger.warning(
             f"[overflow] spill exceeded {SPILL_TIMEOUT_SECONDS}s — truncating "
             f"without a pointer"
         )
         return None
-    except BaseException:
-        # Cancellation reaches here too — a client disconnecting, a social turn
-        # superseded. Nobody receives the pointer, so the worker discards.
-        settled.set()
-        raise
-
-    # Only now, with the value in hand and no await between here and the
-    # return, is it true that the caller received it. Setting the future is not
-    # the same event: a cancellation queued after _deliver ran would still stop
-    # the coroutine, and the worker would have kept and pruned a file whose
-    # path reached nobody.
-    accepted[0] = spill is not None
-    settled.set()
-    return spill
 
 
 def _sweep_by_path(root: Path) -> None:
