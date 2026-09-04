@@ -92,6 +92,19 @@ OVERFLOW_MAX_FILE_BYTES = 5 * 1024 * 1024
 #: for whoever opens the file directly.
 SPILL_CLIPPED_NOTE = "\n\n[spill clipped: output exceeded the per-file limit]"
 
+#: How long a spill is immune from pruning after it is written.
+#:
+#: Publication and advertisement are not one step: the file is renamed into
+#: place, and only then does the pointer reach the caller. Another chat's prune
+#: or the sweep can run in between, and on a coarse-mtime filesystem — or after
+#: the clock steps back — the new file need not sort as newest, so quota
+#: pressure could delete the very path about to be returned.
+#:
+#: A grace period closes that without coordination between the writer, the other
+#: writers and the sweep, which is what every attempt to synchronise them cost
+#: in this file. It buys a bounded overshoot: whatever is written in a minute.
+OVERFLOW_GRACE_SECONDS = 60
+
 #: Suffix a spill wears while it is being written.
 #:
 #: Scans match ``*.txt``, so a partial file is invisible to them: the sweep or
@@ -360,7 +373,8 @@ def _prune_path(directory: Path, protect: Optional[str] = None) -> None:
     except OSError:
         return
 
-    entries = [e for e in entries if e[2].name != protect]
+    fresh = time.time() - OVERFLOW_GRACE_SECONDS
+    entries = [e for e in entries if e[2].name != protect and e[0] < fresh]
     entries.sort(reverse=True)
     # A crash or a failed rename can leave a staged file behind. It is
     # invisible to every scan by design, so the sweep is the only thing that
@@ -426,6 +440,8 @@ def _enforce_root_quota_fd(
                         continue
                     if protect == (entry.name, kept.name):
                         continue
+                    if stat.st_mtime >= time.time() - OVERFLOW_GRACE_SECONDS:
+                        continue
                     survivors.append(
                         (stat.st_mtime, stat.st_size, entry.name, kept.name)
                     )
@@ -473,6 +489,8 @@ def _enforce_root_quota_path(
                     continue
                 if protect == (chat_dir.name, path.name):
                     continue
+                if stat.st_mtime >= time.time() - OVERFLOW_GRACE_SECONDS:
+                    continue
                 survivors.append((stat.st_mtime, stat.st_size, path))
     except OSError:
         return 0
@@ -504,6 +522,8 @@ def _prune_fd(dir_fd: int, protect: Optional[str] = None) -> None:
             except OSError:
                 continue
             if entry.name == protect:
+                continue
+            if stat.st_mtime >= time.time() - OVERFLOW_GRACE_SECONDS:
                 continue
             entries.append((stat.st_mtime, stat.st_size, entry.name))
     except OSError:
@@ -561,7 +581,20 @@ def _spill_pinned(
     root_fd = overflow_fd = chat_fd = None
     try:
         shared_host.mkdir(parents=True, exist_ok=True)
-        root_fd = os.open(shared_host, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+        # Opened relative to its parent with no-follow, like every directory
+        # below it. mkdir(exist_ok=True) accepts a symlink as an existing
+        # directory, so a `shared` replaced by one would have been followed here
+        # and every pinned step below would have been pinned to the wrong tree.
+        flags = (
+            os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+        )
+        parent_fd = os.open(
+            shared_host.parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+        )
+        try:
+            root_fd = os.open(shared_host.name, flags, dir_fd=parent_fd)
+        finally:
+            os.close(parent_fd)
         # The mount root as well. Forcing the mode on .overflow, the chat
         # directory and the file, but not on the directory they all sit inside,
         # leaves a 0700 root under umask 0077 — every descendant correct and

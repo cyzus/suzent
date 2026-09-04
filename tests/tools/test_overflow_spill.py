@@ -309,7 +309,13 @@ def test_a_clipped_spill_is_not_advertised_as_the_full_output(deps):
     assert "full output" not in out
 
 
-def test_spills_do_not_accumulate_without_limit(deps, tmp_path):
+def test_spills_do_not_accumulate_without_limit(deps, tmp_path, monkeypatch):
+    # The grace period is not what this test is about: it protects a freshly
+    # written file from any prune, so a ceiling test has to waive it.
+    import suzent.tools.overflow as _overflow
+
+    monkeypatch.setattr(_overflow, "OVERFLOW_GRACE_SECONDS", 0)
+
     for i in range(OVERFLOW_MAX_FILES + 25):
         spill_overflow(f"body {i}", deps=deps, kind="t")
 
@@ -324,6 +330,12 @@ def test_spills_do_not_accumulate_without_limit(deps, tmp_path):
 def test_the_directory_is_bounded_in_bytes_not_only_in_count(
     deps, tmp_path, monkeypatch
 ):
+    # The grace period is not what this test is about: it protects a freshly
+    # written file from any prune, so a ceiling test has to waive it.
+    import suzent.tools.overflow as _overflow
+
+    monkeypatch.setattr(_overflow, "OVERFLOW_GRACE_SECONDS", 0)
+
     import suzent.tools.overflow as overflow
 
     monkeypatch.setattr(overflow, "OVERFLOW_MAX_TOTAL_BYTES", 20_000)
@@ -545,6 +557,12 @@ def test_the_root_total_is_bounded_across_chats(tmp_path, monkeypatch):
     """Pruning on write only ever sees one chat's directory, so the per-chat
     allowance multiplies by the number of chats — a hundred of them retain
     5 GiB while every directory is individually within bounds."""
+    # The grace period is not what this test is about: it protects a freshly
+    # written file from any prune, so a ceiling test has to waive it.
+    import suzent.tools.overflow as _overflow
+
+    monkeypatch.setattr(_overflow, "OVERFLOW_GRACE_SECONDS", 0)
+
     from suzent.config import CONFIG
     import suzent.tools.overflow as overflow
     from suzent.tools.overflow import sweep_overflow
@@ -604,6 +622,12 @@ def test_the_sweep_has_a_path_based_twin(tmp_path, monkeypatch):
 
 
 def test_the_path_sweep_also_applies_the_root_quota(tmp_path, monkeypatch):
+    # The grace period is not what this test is about: it protects a freshly
+    # written file from any prune, so a ceiling test has to waive it.
+    import suzent.tools.overflow as _overflow
+
+    monkeypatch.setattr(_overflow, "OVERFLOW_GRACE_SECONDS", 0)
+
     from suzent.config import CONFIG
     import suzent.tools.overflow as overflow
     from suzent.tools.overflow import sweep_overflow
@@ -930,6 +954,12 @@ def test_the_root_quota_holds_between_sweeps(tmp_path, monkeypatch):
     """Leaving it to the hourly sweep let a burst of chats sit above the
     deployment ceiling for an hour — long enough to fill a volume that every
     directory was individually respecting."""
+    # The grace period is not what this test is about: it protects a freshly
+    # written file from any prune, so a ceiling test has to waive it.
+    import suzent.tools.overflow as _overflow
+
+    monkeypatch.setattr(_overflow, "OVERFLOW_GRACE_SECONDS", 0)
+
     import suzent.tools.overflow as overflow
 
     monkeypatch.setattr(overflow, "OVERFLOW_MAX_ROOT_BYTES", 5_000)
@@ -944,6 +974,12 @@ def test_the_root_quota_holds_between_sweeps(tmp_path, monkeypatch):
 
 
 def test_the_path_fallback_also_holds_the_root_quota(tmp_path, monkeypatch):
+    # The grace period is not what this test is about: it protects a freshly
+    # written file from any prune, so a ceiling test has to waive it.
+    import suzent.tools.overflow as _overflow
+
+    monkeypatch.setattr(_overflow, "OVERFLOW_GRACE_SECONDS", 0)
+
     import suzent.tools.overflow as overflow
 
     monkeypatch.setattr(overflow, "OVERFLOW_MAX_ROOT_BYTES", 5_000)
@@ -1641,3 +1677,59 @@ def test_every_scan_filters_to_completed_spills():
         assert '".txt"' in source or '"*.txt"' in source, (
             f"{fn.__name__} scans without filtering to completed spills"
         )
+
+
+def test_a_freshly_published_spill_cannot_be_pruned(tmp_path, monkeypatch):
+    """Publication and advertisement are not one step: the file is renamed into
+    place, then the pointer reaches the caller. Another chat's prune or the
+    sweep runs in between, and on coarse mtime the new file need not sort as
+    newest — so quota pressure could delete the path about to be returned."""
+    import suzent.tools.overflow as overflow
+
+    monkeypatch.setattr(overflow, "OVERFLOW_MAX_FILES", 1)
+    monkeypatch.setattr(overflow, "OVERFLOW_MAX_TOTAL_BYTES", 10)
+    monkeypatch.setattr(overflow, "OVERFLOW_MAX_ROOT_BYTES", 10)
+
+    first = spill_overflow("a" * 100, deps=_deps(tmp_path, chat_id="one"), kind="t")
+
+    # A second chat spills, running both quota passes over a directory far past
+    # its ceilings. The first file is seconds old, so nothing may take it.
+    spill_overflow("b" * 100, deps=_deps(tmp_path, chat_id="two"), kind="t")
+
+    assert Path(first.host_path).exists(), "a just-published spill was pruned"
+
+
+def test_the_grace_period_expires(tmp_path, monkeypatch):
+    """It is a short window, not an exemption: an aged file prunes normally."""
+    import suzent.tools.overflow as overflow
+
+    # By bytes, not by count: with the new file protected there is only one
+    # unprotected entry, so a count ceiling of 1 would evict nothing and the
+    # test would pass for the wrong reason.
+    monkeypatch.setattr(overflow, "OVERFLOW_MAX_TOTAL_BYTES", 10)
+    monkeypatch.setattr(overflow, "OVERFLOW_GRACE_SECONDS", 1)
+
+    old_spill = spill_overflow("a" * 100, deps=_deps(tmp_path), kind="t")
+    aged = time.time() - 120
+    os.utime(old_spill.host_path, (aged, aged))
+
+    spill_overflow("b" * 100, deps=_deps(tmp_path), kind="t")
+
+    assert not Path(old_spill.host_path).exists(), "the grace period never ends"
+
+
+def test_the_shared_root_is_opened_without_following(tmp_path):
+    """mkdir(exist_ok=True) accepts a symlink as an existing directory, so a
+    `shared` replaced by one would be followed and every pinned step below it
+    would be pinned to the wrong tree."""
+    import suzent.tools.overflow as overflow
+
+    if not overflow._HAVE_DIR_FD:
+        pytest.skip("dir_fd unsupported")
+
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    os.symlink(elsewhere, tmp_path / "shared")
+
+    assert spill_overflow("x" * 100, deps=_deps(tmp_path), kind="t") is None
+    assert list(elsewhere.iterdir()) == [], "the write followed a symlinked root"
