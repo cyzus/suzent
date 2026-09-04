@@ -72,13 +72,20 @@ class Spill:
 
 
 def retention_hint() -> str:
-    """How long a spill lasts, for the marker that points at one.
+    """How long a spill may last, for the marker that points at one.
 
     The marker outlives the file: the path goes into conversation history, the
     file expires. Saying the window turns a puzzling missing file into an
-    expected one. Derived from the TTL so the two cannot drift.
+    expected one.
+
+    "up to", because the count and byte ceilings evict early — eleven
+    maximum-sized results inside an hour will drop the first of them long before
+    the day is out. Promising a duration the storage bounds can overrule is the
+    same defect as promising a full output that was clipped.
+
+    Derived from the TTL so the two cannot drift.
     """
-    return f"kept {OVERFLOW_TTL_SECONDS // 3600}h"
+    return f"kept up to {OVERFLOW_TTL_SECONDS // 3600}h"
 
 
 def _chat_segment(deps: Any) -> str:
@@ -170,6 +177,22 @@ def spill_overflow(text: str, *, deps: Any, kind: str = "output") -> Optional[Sp
     """
     resolver = getattr(deps, "path_resolver", None)
     if resolver is None:
+        return None
+
+    # Sandbox mode gets the plain marker instead of a file.
+    #
+    # Every container bind-mounts the same host `shared` directory read-write
+    # and every one of them runs as uid 1000, so a per-chat subdirectory is a
+    # naming convention and not a boundary: chat B lists and reads chat A's
+    # spills whatever the mode bits say. Spills hold raw tool output and
+    # reminder text, which is conversation content, so the honest options are a
+    # per-chat mount or not writing the file — and a convenience feature does
+    # not get to widen the isolation model on its way in.
+    #
+    # Host mode has no such boundary to breach: the agent already reaches the
+    # whole filesystem through its shell, so the spill exposes nothing that was
+    # not reachable already.
+    if getattr(deps, "sandbox_enabled", True):
         return None
 
     try:
@@ -266,22 +289,44 @@ def sweep_overflow() -> None:
     if not root.is_dir():
         return
 
+    # Descended with the same no-follow discipline as the write path. A symlink
+    # left as a child of .overflow would otherwise be followed twice — once by
+    # is_dir(), once by the open — and _prune_fd unlinks, so the sweep would
+    # delete *.txt files in a directory of the sandbox's choosing on the next
+    # restart. The write path was pinned and this was not; the attacker picks
+    # the weaker one.
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        root_fd = os.open(root, flags)
+    except OSError as e:
+        logger.debug(f"[overflow] cannot open the spill root: {e}")
+        return
+
     swept = 0
-    for chat_dir in root.iterdir():
-        if not chat_dir.is_dir():
-            continue
-        try:
-            before = len(list(chat_dir.glob("*.txt")))
-            fd = os.open(chat_dir, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    try:
+        for entry in os.scandir(root_fd):
+            if not entry.is_dir(follow_symlinks=False):
+                continue
             try:
-                _prune_fd(fd)
+                chat_fd = os.open(entry.name, flags, dir_fd=root_fd)
+            except OSError:
+                continue
+            try:
+                before = sum(1 for _ in os.scandir(chat_fd))
+                _prune_fd(chat_fd)
+                after = sum(1 for _ in os.scandir(chat_fd))
+                swept += before - after
             finally:
-                os.close(fd)
-            swept += before - len(list(chat_dir.glob("*.txt")))
-            if not any(chat_dir.iterdir()):
-                chat_dir.rmdir()
-        except OSError:
-            continue
+                os.close(chat_fd)
+            if after == 0:
+                try:
+                    os.rmdir(entry.name, dir_fd=root_fd)
+                except OSError:
+                    pass
+    except OSError:
+        pass
+    finally:
+        os.close(root_fd)
 
     if swept:
         logger.info(f"[overflow] swept {swept} stale spill(s)")

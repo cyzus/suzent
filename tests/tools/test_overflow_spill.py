@@ -19,7 +19,6 @@ import pytest
 from suzent.tools.base import truncate_tool_output
 from suzent.tools.overflow import (
     OVERFLOW_MAX_FILES,
-    OVERFLOW_VIRTUAL_DIR,
     Spill,
     spill_overflow,
 )
@@ -62,7 +61,7 @@ def test_the_marker_names_the_file(deps):
 
     assert spill.path in out
     assert "full output" in out
-    assert "kept 24h" in out
+    assert "kept up to 24h" in out
 
 
 def test_a_marker_without_a_spill_still_reports_the_loss():
@@ -74,14 +73,23 @@ def test_a_marker_without_a_spill_still_reports_the_loss():
     assert "full output" not in out
 
 
-def test_the_path_is_the_one_this_agent_can_open(tmp_path):
-    """Host mode gets a host path, sandbox mode the virtual one. A path the
-    agent cannot open is worse than none: it invites a read that fails."""
+def test_host_mode_gets_a_host_path(tmp_path):
+    """A path the agent cannot open is worse than none: it invites a read that
+    fails."""
     host = spill_overflow("y" * 100, deps=_deps(tmp_path), kind="t")
-    sandboxed = spill_overflow("y" * 100, deps=_deps(tmp_path, sandbox=True), kind="t")
 
     assert host.path.startswith(str(tmp_path))
-    assert sandboxed.path.startswith(f"{OVERFLOW_VIRTUAL_DIR}/chat-1/")
+
+
+def test_sandbox_mode_does_not_spill_at_all(tmp_path):
+    """Directory naming is not a boundary here: every container bind-mounts the
+    same host `shared` directory read-write and every one runs as uid 1000, so
+    chat B reads chat A's spills whatever the mode bits say. Until there is a
+    per-chat mount, the sandbox gets the plain marker."""
+    assert (
+        spill_overflow("y" * 100, deps=_deps(tmp_path, sandbox=True), kind="t") is None
+    )
+    assert not (tmp_path / "shared" / ".overflow").exists()
 
 
 def test_no_resolver_means_no_spill_rather_than_a_crash():
@@ -311,7 +319,7 @@ def test_the_stated_window_tracks_the_actual_ttl(monkeypatch):
 
     monkeypatch.setattr(overflow, "OVERFLOW_TTL_SECONDS", 3 * 60 * 60)
 
-    assert retention_hint() == "kept 3h"
+    assert retention_hint() == "kept up to 3h"
 
 
 @pytest.mark.asyncio
@@ -351,3 +359,35 @@ async def test_the_async_spill_does_not_hold_the_loop(deps, monkeypatch):
 
     assert spill.path == "/tmp/x.txt"
     assert ticks > 5, f"the loop was blocked during the write ({ticks} ticks)"
+
+
+def test_the_sweep_refuses_a_symlinked_chat_directory(tmp_path, monkeypatch):
+    """The write path was pinned and the sweep was not; the attacker picks the
+    weaker one. _prune_fd unlinks, so a symlink left under .overflow would let
+    the next restart delete *.txt files in a directory of its choosing."""
+    from suzent.config import CONFIG
+    from suzent.tools.overflow import sweep_overflow
+
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    bystander = elsewhere / "keepme.txt"
+    bystander.write_text("unrelated", encoding="utf-8")
+    old = 1.0
+    os.utime(bystander, (old, old))  # stale enough that a prune would take it
+
+    root = tmp_path / "shared" / ".overflow"
+    root.mkdir(parents=True)
+    os.symlink(elsewhere, root / "pretend-chat")
+
+    monkeypatch.setattr(CONFIG, "sandbox_data_path", str(tmp_path), raising=False)
+    sweep_overflow()
+
+    assert bystander.exists(), "the sweep followed a symlinked chat directory"
+
+
+def test_the_retention_hint_is_an_upper_bound(deps):
+    """The count and byte ceilings evict early — eleven maximum-sized results
+    inside an hour drop the first long before the day is out."""
+    from suzent.tools.overflow import retention_hint
+
+    assert retention_hint().startswith("kept up to")
