@@ -45,6 +45,10 @@ export interface Message {
   file_changes_undone?: boolean; // Whether this message-scoped snapshot was restored
   file_change_message_index?: number; // Raw backend index used for message-scoped undo
   raw_message_end_index?: number; // End-exclusive backend boundary for this rendered message
+  // Latest timestamp of any server row folded into this bubble (tool results and
+  // merged follow-up responses). `timestamp` marks when the turn's first model
+  // response *began*, so it alone cannot measure how long the turn worked.
+  turn_last_activity_at?: string;
 }
 export interface ChatConfig {
   model: string;

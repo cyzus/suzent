@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Message } from '../types/api';
-import { buildMessageRenderPlan } from './messageRenderPlan';
+import { buildMessageRenderPlan, buildTurnWorkedSeconds } from './messageRenderPlan';
 
 function assistant(content: string, stepInfo?: string): Message {
   return { role: 'assistant', content, stepInfo };
@@ -173,66 +173,104 @@ describe('buildMessageRenderPlan', () => {
 
     expect(Array.from(plan.groupRenders.keys()).sort((a, b) => a - b)).toEqual([1, 4]);
   });
+});
 
-  describe('turnWorkedSecondsByMessageIndex', () => {
-    function at(message: Message, timestamp: string): Message {
-      return { ...message, timestamp };
-    }
+describe('buildTurnWorkedSeconds', () => {
+  function at(message: Message, timestamp: string): Message {
+    return { ...message, timestamp };
+  }
 
-    // Tool results are persisted as their own rows; the display `Message` union
-    // only names the roles that render on their own.
-    function toolResult(content: string, timestamp: string): Message {
-      return { role: 'tool', content, timestamp } as unknown as Message;
-    }
+  // Tool results are persisted as their own rows; the display `Message` union
+  // only names the roles that render on their own.
+  function toolResult(content: string, timestamp: string): Message {
+    return { role: 'tool', content, timestamp } as unknown as Message;
+  }
 
-    it('spans the whole turn, not the gap to the first model response', () => {
-      const messages: Message[] = [
-        at(user('do the thing'), '2026-08-31T22:12:43.000Z'),
-        at(assistant('<details><summary>🔧 bash</summary></details>'), '2026-08-31T22:12:52.000Z'),
-        toolResult('ok', '2026-08-31T22:13:54.000Z'),
-        at(assistant('all done'), '2026-08-31T22:14:00.000Z'),
-      ];
+  it('spans the whole turn, not the gap to the first model response', () => {
+    const messages: Message[] = [
+      at(user('do the thing'), '2026-08-31T22:12:43.000Z'),
+      at(assistant('<details><summary>🔧 bash</summary></details>'), '2026-08-31T22:12:52.000Z'),
+      toolResult('ok', '2026-08-31T22:13:54.000Z'),
+      at(assistant('all done'), '2026-08-31T22:14:00.000Z'),
+    ];
 
-      const plan = buildMessageRenderPlan(messages);
+    const worked = buildTurnWorkedSeconds(messages);
 
-      // 22:12:43 -> 22:14:00, not the 9s to the first response.
-      expect(plan.turnWorkedSecondsByMessageIndex.get(1)).toBe(77);
-      expect(plan.turnWorkedSecondsByMessageIndex.get(3)).toBe(77);
-    });
+    // 22:12:43 -> 22:14:00, not the 9s to the first response.
+    expect(worked.get(1)).toBe(77);
+    expect(worked.get(3)).toBe(77);
+  });
 
-    it('measures each turn from its own user message', () => {
-      const messages: Message[] = [
-        at(user('first'), '2026-08-31T22:00:00.000Z'),
-        at(assistant('one'), '2026-08-31T22:00:10.000Z'),
-        at(user('second'), '2026-08-31T22:05:00.000Z'),
-        at(assistant('two'), '2026-08-31T22:05:30.000Z'),
-      ];
+  it('measures each turn from its own user message', () => {
+    const messages: Message[] = [
+      at(user('first'), '2026-08-31T22:00:00.000Z'),
+      at(assistant('one'), '2026-08-31T22:00:10.000Z'),
+      at(user('second'), '2026-08-31T22:05:00.000Z'),
+      at(assistant('two'), '2026-08-31T22:05:30.000Z'),
+    ];
 
-      const plan = buildMessageRenderPlan(messages);
+    const worked = buildTurnWorkedSeconds(messages);
 
-      expect(plan.turnWorkedSecondsByMessageIndex.get(1)).toBe(10);
-      expect(plan.turnWorkedSecondsByMessageIndex.get(3)).toBe(30);
-    });
+    expect(worked.get(1)).toBe(10);
+    expect(worked.get(3)).toBe(30);
+  });
 
-    it('ignores out-of-order rows and clock skew instead of reporting a negative span', () => {
-      const messages: Message[] = [
-        at(user('go'), '2026-08-31T22:14:00.000Z'),
-        at(assistant('<details><summary>🔧 bash</summary></details>'), '2026-08-31T22:14:05.000Z'),
-        // Concurrent tool results can land out of order.
-        toolResult('b', '2026-08-31T22:14:31.000Z'),
-        toolResult('a', '2026-08-31T22:14:30.000Z'),
-        at(assistant('done'), '2026-08-31T22:14:20.000Z'),
-      ];
+  it('ignores out-of-order rows and clock skew instead of reporting a negative span', () => {
+    const messages: Message[] = [
+      at(user('go'), '2026-08-31T22:14:00.000Z'),
+      at(assistant('<details><summary>🔧 bash</summary></details>'), '2026-08-31T22:14:05.000Z'),
+      // Concurrent tool results can land out of order.
+      toolResult('b', '2026-08-31T22:14:31.000Z'),
+      toolResult('a', '2026-08-31T22:14:30.000Z'),
+      at(assistant('done'), '2026-08-31T22:14:20.000Z'),
+    ];
 
-      const plan = buildMessageRenderPlan(messages);
+    const worked = buildTurnWorkedSeconds(messages);
 
-      expect(plan.turnWorkedSecondsByMessageIndex.get(1)).toBe(31);
-    });
+    expect(worked.get(1)).toBe(31);
+  });
 
-    it('omits a duration when the turn has no timestamps', () => {
-      const plan = buildMessageRenderPlan([user('go'), assistant('done')]);
+  it('omits a duration when the turn has no timestamps', () => {
+    const worked = buildTurnWorkedSeconds([user('go'), assistant('done')]);
 
-      expect(plan.turnWorkedSecondsByMessageIndex.size).toBe(0);
-    });
+    expect(worked.size).toBe(0);
+  });
+
+  it('measures a turn the store coalesced into a single assistant bubble', () => {
+    // The store folds a turn's tool rows and follow-up responses into one
+    // bubble that keeps the first response's timestamp; the rows it absorbed
+    // survive only as turn_last_activity_at.
+    const messages: Message[] = [
+      at(user('do the thing'), '2026-08-31T22:12:43.000Z'),
+      {
+        ...at(assistant('all done'), '2026-08-31T22:12:52.000Z'),
+        turn_last_activity_at: '2026-08-31T22:14:00.000Z',
+      },
+    ];
+
+    const worked = buildTurnWorkedSeconds(messages);
+
+    expect(worked.get(1)).toBe(77);
+  });
+
+  it('omits a duration when the turn boundary is outside the list', () => {
+    // A rendered window can start mid-turn; a duration measured from the first
+    // visible assistant row would change as older messages load.
+    const worked = buildTurnWorkedSeconds([
+      at(assistant('continued'), '2026-08-31T22:12:52.000Z'),
+      at(assistant('all done'), '2026-08-31T22:14:00.000Z'),
+    ]);
+
+    expect(worked.size).toBe(0);
+  });
+
+  it('omits a duration when the boundary clock runs ahead of the turn', () => {
+    // An optimistic user row is stamped by the client; the rest by the backend.
+    const worked = buildTurnWorkedSeconds([
+      at(user('go'), '2026-08-31T22:14:10.000Z'),
+      at(assistant('done'), '2026-08-31T22:14:00.000Z'),
+    ]);
+
+    expect(worked.has(1)).toBe(false);
   });
 });

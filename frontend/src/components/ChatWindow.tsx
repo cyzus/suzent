@@ -14,7 +14,7 @@ import { hideStreamingDrafts } from '../lib/streamingDrafts';
 import { reconcileToolCallMessages } from '../lib/toolCallReconciliation';
 import type { Message, FileAttachment } from '../types/api';
 import type { ContentBlock } from '../lib/chatUtils';
-import { buildMessageRenderPlan } from '../lib/messageRenderPlan';
+import { buildMessageRenderPlan, buildTurnWorkedSeconds } from '../lib/messageRenderPlan';
 import {
   capturePrependScrollSnapshot,
   restorePrependScrollSnapshot,
@@ -427,6 +427,8 @@ const MessageList: React.FC<{
   onEditUserMessage?: (newContent: string) => void;
   chatCitationSources?: CitationSourcesMap;
   fallbackModel?: string;
+  /** Turn durations keyed by *absolute* message index; built from the full history. */
+  turnWorkedSeconds?: Map<number, number>;
 }> = ({
   messages,
   streamingForCurrentChat,
@@ -449,9 +451,12 @@ const MessageList: React.FC<{
   onEditUserMessage,
   chatCitationSources,
   fallbackModel,
+  turnWorkedSeconds,
 }) => {
-  const { skipIndices, groupRenders, stepSummaryByMessageIndex, turnWorkedSecondsByMessageIndex } =
-    useMemo(() => buildMessageRenderPlan(messages), [messages]);
+  const { skipIndices, groupRenders, stepSummaryByMessageIndex } = useMemo(
+    () => buildMessageRenderPlan(messages),
+    [messages]
+  );
 
   // A fresh `() => onFork(index)` per row would hand every AssistantMessage a
   // new prop identity on each render and defeat its memo -- which is the whole
@@ -524,7 +529,7 @@ const MessageList: React.FC<{
               <div className="flex justify-start w-full">
                 <AssistantMessage
                   message={groupedMessage}
-                  workedDurationSeconds={turnWorkedSecondsByMessageIndex.get(idx)}
+                  workedDurationSeconds={turnWorkedSeconds?.get(globalIdx)}
                   messageIndex={globalIdx}
                   isStreaming={false}
                   isLastMessage={false}
@@ -619,7 +624,7 @@ const MessageList: React.FC<{
                 ) : (
                   <AssistantMessage
                     message={m}
-                    workedDurationSeconds={turnWorkedSecondsByMessageIndex.get(idx)}
+                    workedDurationSeconds={turnWorkedSeconds?.get(globalIdx)}
                     messageIndex={globalIdx}
                     isStreaming={streamingForCurrentChat}
                     isLastMessage={isLastMessage}
@@ -1434,6 +1439,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const visibleMessages = useMemo(
     () => safeMessages.slice(visibleMessageStartIndex),
     [safeMessages, visibleMessageStartIndex]
+  );
+  // Built from the whole history rather than the rendered window: a turn's
+  // duration must not change as older messages load in.
+  const turnWorkedSecondsByMessageIndex = useMemo(
+    () => buildTurnWorkedSeconds(safeMessages),
+    [safeMessages]
   );
 
   // Chat-wide citation sources: aggregate every message's citation-sources parts
@@ -2658,6 +2669,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 {safeMessages.length > 0 && (
                   <MessageListMemo
                     messages={visibleMessages}
+                    turnWorkedSeconds={turnWorkedSecondsByMessageIndex}
                     streamingForCurrentChat={false}
                     chatCitationSources={chatCitationSources}
                     messageIndexOffset={visibleMessageStartIndex}
