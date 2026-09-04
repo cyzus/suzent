@@ -26,8 +26,8 @@ def handle_compact(
             ContextCompressor,
             emit_compaction_event,
             estimate_tokens,
+            resolve_context_limit,
         )
-        from suzent.config import CONFIG
 
         cmd_ctx: CommandContext = ctx.obj
         focus_text = " ".join(focus).strip() if focus else None
@@ -78,12 +78,13 @@ def handle_compact(
         model_id = state.get("model_id")
         tool_names = state.get("tool_names", [])
 
-        tokens_before = estimate_tokens(
-            messages, CONFIG.max_context_tokens
-        ).estimated_tokens
+        context_limit = resolve_context_limit(model_id)
+        tokens_before = estimate_tokens(messages, context_limit).estimated_tokens
         messages_before = len(messages)
 
-        compressor = ContextCompressor(chat_id=cmd_ctx.chat_id, user_id=cmd_ctx.user_id)
+        compressor = ContextCompressor(
+            chat_id=cmd_ctx.chat_id, user_id=cmd_ctx.user_id, model_id=model_id
+        )
         emit_compaction_event(
             chat_id=cmd_ctx.chat_id,
             stage="start",
@@ -118,9 +119,7 @@ def handle_compact(
         if revision is None:
             db.update_chat(cmd_ctx.chat_id, agent_state=agent_state_bytes)
 
-        tokens_after = estimate_tokens(
-            compressed, CONFIG.max_context_tokens
-        ).estimated_tokens
+        tokens_after = estimate_tokens(compressed, context_limit).estimated_tokens
         emit_compaction_event(
             chat_id=cmd_ctx.chat_id,
             stage="complete",
@@ -130,6 +129,7 @@ def handle_compact(
             tokens_before=tokens_before,
             tokens_after=tokens_after,
             persist_result=True,
+            context_limit=context_limit,
         )
         before_k = round(tokens_before / 1000)
         after_k = round(tokens_after / 1000)

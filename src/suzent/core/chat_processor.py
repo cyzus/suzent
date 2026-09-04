@@ -1056,10 +1056,15 @@ class ChatProcessor:
         )
 
         # 7. Pre-send tool result trimming (in-memory only, never persisted)
-        from suzent.core.context_compressor import ToolResultTrimmer, estimate_tokens
-        from suzent.config import CONFIG as _cfg
+        from suzent.core.context_compressor import (
+            ToolResultTrimmer,
+            estimate_tokens,
+            resolve_context_limit,
+        )
 
-        _budget = estimate_tokens(message_history or [], _cfg.max_context_tokens)
+        _budget = estimate_tokens(
+            message_history or [], resolve_context_limit(_model_id)
+        )
         if _budget.over_hard:
             message_history = ToolResultTrimmer.apply_hard_clear(
                 message_history, _budget
