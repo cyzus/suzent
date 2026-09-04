@@ -12,12 +12,14 @@ import asyncio
 import functools
 import inspect
 import re
-from typing import Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from pydantic_ai import Tool as PydanticTool
 
 from suzent.logger import get_logger
 from suzent.tools.base import ToolResult, truncate_tool_output
+from suzent.tools.overflow import spill_overflow_async, spill_overflow_bounded
+
 
 # Re-exported under their original names so existing
 # `from suzent.tools.registry import ...` call sites keep working. Aliased
@@ -29,6 +31,23 @@ from suzent.tools.names import expand_tool_dependencies as expand_tool_dependenc
 from suzent.tools.names import migrate_shell_tool_names as migrate_shell_tool_names
 
 logger = get_logger(__name__)
+
+
+def _deps_from_call(args: tuple, kwargs: dict) -> Any:
+    """The AgentDeps behind this tool call, if the tool takes a RunContext.
+
+    Every tool that can produce a large result takes ``ctx`` as its first
+    parameter, but a few take none, and the wrapper is generic — so this reads
+    the deps when they are there and reports nothing when they are not, rather
+    than assuming a shape.
+    """
+    candidates = list(args) + list(kwargs.values())
+    for candidate in candidates:
+        deps = getattr(candidate, "deps", None)
+        if deps is not None:
+            return deps
+    return None
+
 
 # ---------------------------------------------------------------------------
 # Factory: Tool class → pydantic-ai function / PydanticTool
@@ -55,27 +74,60 @@ def _make_tool(
     limit = tool_cls.output_char_limit
     keep_tail = tool_cls.keep_output_tail
 
+    def _needs_cap(result: Any) -> bool:
+        """The spill runs only when the cap would bite, so an ordinary result
+        costs nothing."""
+        return (
+            isinstance(result, ToolResult)
+            and bool(result.message)
+            and len(result.message) > limit
+        )
+
+    def _apply(result: Any, spill: Any) -> Any:
+        """A failure to spill is not a failure of the tool call — the output is
+        still truncated, just without a pointer."""
+        result.message = truncate_tool_output(
+            result.message, limit, keep_tail=keep_tail, spill=spill
+        )
+        return result
+
     if asyncio.iscoroutinefunction(original):
 
         @functools.wraps(original)
         async def wrapper(*args, **kwargs):
             result = await tool_cls().forward(*args, **kwargs)
-            if isinstance(result, ToolResult):
-                result.message = truncate_tool_output(
-                    result.message, limit, keep_tail=keep_tail
+            if not _needs_cap(result):
+                return result
+            deps = _deps_from_call(args, kwargs)
+            # Off the loop: up to 5 MiB of write plus a directory scan would
+            # otherwise stall every other chat this loop is serving.
+            spill = (
+                await spill_overflow_async(
+                    result.message, deps=deps, kind=tool_cls.tool_name
                 )
-            return result
+                if deps
+                else None
+            )
+            return _apply(result, spill)
 
     else:
 
         @functools.wraps(original)
         def wrapper(*args, **kwargs):
             result = tool_cls().forward(*args, **kwargs)
-            if isinstance(result, ToolResult):
-                result.message = truncate_tool_output(
-                    result.message, limit, keep_tail=keep_tail
+            if not _needs_cap(result):
+                return result
+            deps = _deps_from_call(args, kwargs)
+            # Bounded like the async path: a wedged volume must not hold a
+            # tool call that has already done its work.
+            spill = (
+                spill_overflow_bounded(
+                    result.message, deps=deps, kind=tool_cls.tool_name
                 )
-            return result
+                if deps
+                else None
+            )
+            return _apply(result, spill)
 
     wrapper.__name__ = tool_cls.tool_name
 

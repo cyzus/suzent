@@ -598,6 +598,10 @@ async def startup():
     from suzent.core.system_reminder import register_global_hook, register_per_turn_hook
     from suzent.skills.hooks import skills_reminder_hook
     from suzent.core.repository_context import repository_agents_reminder_hook
+    from suzent.tools.overflow import (
+        sweep_overflow_in_background,
+        sweep_overflow_periodically,
+    )
     from suzent.tools.plan_hooks import plan_reminder_hook
     from suzent.database import get_database
 
@@ -797,6 +801,21 @@ async def startup():
 
     logger.info("Node system initialized")
 
+    # Before the duplicate-social guard below, which returns early. shutdown()
+    # cancels the sweeper but leaves social_brain set, so on an in-process
+    # restart that return would skip both the startup sweep and the periodic
+    # one — leaving retention and the root quota unenforced until the process
+    # itself restarts.
+    #
+    # Spilled output is otherwise pruned only when the next spill is written,
+    # which is to say not at all once output stops overflowing.
+    sweep_overflow_in_background()
+    existing_sweeper = getattr(app.state, "overflow_sweeper", None)
+    if existing_sweeper is None or existing_sweeper.done():
+        app.state.overflow_sweeper = asyncio.create_task(
+            sweep_overflow_periodically(), name="overflow_sweeper"
+        )
+
     global social_brain, channel_manager
     if social_brain is not None:
         logger.warning("Social brain already initialized, skipping duplicate startup.")
@@ -901,13 +920,14 @@ async def shutdown():
     # Cancel any pending ask_question futures so their tasks can exit cleanly
     pending_questions.cancel_all()
 
-    resource_guard = getattr(app.state, "service_resource_guard", None)
-    if resource_guard is not None and not resource_guard.done():
-        resource_guard.cancel()
-        try:
-            await resource_guard
-        except asyncio.CancelledError:
-            pass
+    for task_name in ("service_resource_guard", "overflow_sweeper"):
+        task = getattr(app.state, task_name, None)
+        if task is not None and not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
 
     if agent_inbox_dispatcher:
         await _stop(agent_inbox_dispatcher.stop(), "AgentInboxDispatcher")

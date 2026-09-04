@@ -2342,3 +2342,52 @@ async def test_a_trigger_constituent_the_budget_dropped_is_not_resent(clean_hook
         "a constituent the trigger dropped came back as a fragment"
     )
     assert len(body) <= sr.REMINDER_BUDGET_CHARS
+
+
+@pytest.mark.asyncio
+async def test_an_over_budget_reminder_keeps_its_tail_on_disk(clean_hooks, tmp_path):
+    """A reminder is the one place the model cannot ask for the missing part
+    later — the block is gone next turn — so the pointer matters more here than
+    for a tool result it could simply run again."""
+    from types import SimpleNamespace
+
+    from suzent.core import system_reminder as sr
+
+    class _Resolver:
+        def resolve(self, virtual: str) -> str:
+            return str(tmp_path / "overflow")
+
+    deps = SimpleNamespace(path_resolver=_Resolver(), sandbox_enabled=False)
+    huge = "z" * (sr.REMINDER_BUDGET_CHARS + 5000)
+
+    result = await sr.build_combined_reminder(
+        "c", deps, adhoc_reminders=[huge], user_message=""
+    )
+
+    assert result is not None
+    body = _reminder_body(result)
+    assert len(body) <= sr.REMINDER_BUDGET_CHARS
+    assert "full text" in body, "the tail was dropped with no way to reach it"
+    # The window is stated because the pointer outlives the file: this path goes
+    # into history, the file expires in a day.
+    assert "kept up to 25h" in body
+
+    spilled = body.split("): ", 1)[1].split("]", 1)[0]
+    from pathlib import Path
+
+    assert Path(spilled).read_text(encoding="utf-8") == huge
+
+
+@pytest.mark.asyncio
+async def test_a_reminder_without_deps_still_truncates(clean_hooks):
+    """Spilling is an improvement on the marker, not a precondition for it."""
+    from suzent.core import system_reminder as sr
+
+    huge = "z" * (sr.REMINDER_BUDGET_CHARS + 5000)
+
+    result = await sr.build_combined_reminder("c", None, adhoc_reminders=[huge])
+
+    assert result is not None
+    body = _reminder_body(result)
+    assert len(body) <= sr.REMINDER_BUDGET_CHARS
+    assert "truncated" in body

@@ -15,7 +15,7 @@ async def test_forward_awaits_speech():
     tool._sink = mock_sink
     tool._speech = mock_speech
 
-    result = await tool.forward("hello", prompt="cheerful")
+    result = await tool.forward(None, "hello", prompt="cheerful")
 
     mock_speech.speak.assert_awaited_once_with("hello", prompt="cheerful")
     assert result.success
@@ -26,7 +26,7 @@ async def test_forward_awaits_speech():
 async def test_forward_returns_error_for_empty_text():
     tool = SpeakTool()
 
-    result = await tool.forward("")
+    result = await tool.forward(None, "")
 
     assert not result.success
     assert result.message == "No text to speak."
