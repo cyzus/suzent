@@ -52,8 +52,11 @@ def deps(tmp_path):
     return _deps(tmp_path)
 
 
-def _chat_dir(tmp_path: Path, chat_id: str = "chat-1") -> Path:
-    return tmp_path / "shared" / ".overflow" / chat_id
+def _chat_dir(
+    tmp_path: Path, chat_id: str = "chat-1", *, sandbox: bool = False
+) -> Path:
+    prefix = "sandbox" if sandbox else "host"
+    return tmp_path / "shared" / ".overflow" / f"{prefix}-{chat_id}"
 
 
 def test_the_whole_output_is_written_not_the_kept_part(deps):
@@ -98,7 +101,7 @@ def test_sandbox_mode_gets_the_virtual_path(tmp_path):
 
     spill = spill_overflow("y" * 100, deps=_deps(tmp_path, sandbox=True), kind="t")
 
-    assert spill.path.startswith(f"{OVERFLOW_VIRTUAL_DIR}/chat-1/")
+    assert spill.path.startswith(f"{OVERFLOW_VIRTUAL_DIR}/sandbox-chat-1/")
 
 
 def test_a_sandbox_spill_is_readable_by_a_different_uid(tmp_path):
@@ -111,7 +114,7 @@ def test_a_sandbox_spill_is_readable_by_a_different_uid(tmp_path):
     """
     spill_overflow("x" * 100, deps=_deps(tmp_path, sandbox=True), kind="t")
 
-    chat_dir = _chat_dir(tmp_path)
+    chat_dir = _chat_dir(tmp_path, sandbox=True)
     written = next(chat_dir.glob("*.txt"))
 
     assert os.stat(written).st_mode & 0o044, "the sandbox cannot read the spill"
@@ -191,9 +194,8 @@ def test_spills_are_scoped_to_their_chat(tmp_path):
     first = spill_overflow("secret alpha", deps=_deps(tmp_path, chat_id="a"), kind="t")
     second = spill_overflow("secret beta", deps=_deps(tmp_path, chat_id="b"), kind="t")
 
-    assert "/a/" in first.path.replace(str(tmp_path), "")
-    assert "/b/" in second.path.replace(str(tmp_path), "")
-    assert list(_chat_dir(tmp_path, "a").glob("*.txt")) != []
+    assert "-a/" in first.path.replace(str(tmp_path), "")
+    assert "-b/" in second.path.replace(str(tmp_path), "")
     assert len(list(_chat_dir(tmp_path, "a").glob("*.txt"))) == 1
 
 
@@ -677,7 +679,7 @@ def test_sandbox_spills_stay_reachable_under_any_umask(tmp_path, umask_value):
         os.umask(previous)
 
     host_file = (
-        tmp_path / "shared" / ".overflow" / f"u{umask_value:o}" / Path(spill.path).name
+        _chat_dir(tmp_path, f"u{umask_value:o}", sandbox=True) / Path(spill.path).name
     )
     assert os.stat(host_file).st_mode & 0o044, "the file is not readable"
     walked = host_file.parent
@@ -729,7 +731,7 @@ def test_the_path_fallback_also_survives_the_umask(tmp_path, monkeypatch):
     finally:
         os.umask(previous)
 
-    host_file = tmp_path / "shared" / ".overflow" / "fallback" / Path(spill.path).name
+    host_file = _chat_dir(tmp_path, "fallback", sandbox=True) / Path(spill.path).name
     assert os.stat(host_file).st_mode & 0o044
     assert os.stat(host_file.parent).st_mode & 0o011
 
@@ -780,9 +782,7 @@ def test_a_host_spill_does_not_lock_out_the_sandbox(tmp_path):
     sandbox_spill = spill_overflow(
         "s", deps=_deps(tmp_path, chat_id="sbx", sandbox=True), kind="t"
     )
-    host_path = (
-        tmp_path / "shared" / ".overflow" / "sbx" / Path(sandbox_spill.path).name
-    )
+    host_path = _chat_dir(tmp_path, "sbx", sandbox=True) / Path(sandbox_spill.path).name
 
     # A host-mode chat spills afterwards, touching the shared ancestors.
     spill_overflow("h", deps=_deps(tmp_path, chat_id="host"), kind="t")
@@ -944,3 +944,66 @@ def test_a_slot_is_returned_when_the_spill_completes(deps):
         overflow.spill_overflow_bounded("x" * 100, deps=deps, kind="t")
 
     assert overflow._spill_slots._value == before
+
+
+def test_switching_execution_mode_does_not_lock_out_earlier_spills(tmp_path):
+    """A chat can move between modes, and the mode decides the directory's
+    permissions. Sharing one directory let a host spill chmod it 0700 and made
+    every sandbox path already advertised from it unreadable — the most recent
+    spill retroactively deciding whether older ones could be opened."""
+    sandbox_spill = spill_overflow(
+        "s", deps=_deps(tmp_path, chat_id="c9", sandbox=True), kind="t"
+    )
+    written = _chat_dir(tmp_path, "c9", sandbox=True) / Path(sandbox_spill.path).name
+
+    # The same chat, now in host mode.
+    spill_overflow("h", deps=_deps(tmp_path, chat_id="c9"), kind="t")
+
+    assert os.stat(written).st_mode & 0o044, "the earlier sandbox spill is unreadable"
+    assert os.stat(written.parent).st_mode & 0o011, "its directory is untraversable"
+
+
+def test_the_two_modes_use_separate_leaves(tmp_path):
+    spill_overflow("s", deps=_deps(tmp_path, chat_id="c9", sandbox=True), kind="t")
+    spill_overflow("h", deps=_deps(tmp_path, chat_id="c9"), kind="t")
+
+    names = sorted(p.name for p in (tmp_path / "shared" / ".overflow").iterdir())
+
+    assert names == ["host-c9", "sandbox-c9"]
+
+
+def test_a_slot_is_returned_when_the_worker_cannot_start(deps, monkeypatch):
+    """The worker's finally is what returns the slot, so a thread that never
+    starts never gives it back — four of those and spilling is off for the life
+    of the process."""
+    import threading
+
+    import suzent.tools.overflow as overflow
+
+    before = overflow._spill_slots._value
+
+    def _no_thread(*args, **kwargs):
+        class _Dead:
+            def start(self):
+                raise RuntimeError("can't start new thread")
+
+        return _Dead()
+
+    monkeypatch.setattr(threading, "Thread", _no_thread)
+
+    assert overflow.spill_overflow_bounded("x", deps=deps, kind="t") is None
+    assert overflow._spill_slots._value == before, "slot leaked"
+
+
+def test_a_platform_without_fchmod_still_writes(tmp_path, monkeypatch):
+    """os.fchmod does not exist on Windows before 3.13, and AttributeError is
+    not an OSError — uncaught, it escaped before fdopen took ownership, so every
+    oversized result leaked a handle and wrote nothing."""
+    import suzent.tools.overflow as overflow
+
+    monkeypatch.delattr(os, "fchmod", raising=False)
+
+    spill = overflow.spill_overflow("x" * 100, deps=_deps(tmp_path), kind="t")
+
+    assert spill is not None
+    assert Path(spill.path).read_text(encoding="utf-8") == "x" * 100

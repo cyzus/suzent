@@ -131,9 +131,19 @@ def retention_hint() -> str:
 
 
 def _chat_segment(deps: Any) -> str:
-    """A directory name for this chat, safe to place in a path."""
+    """A directory name for this chat, safe to place in a path.
+
+    Prefixed by execution mode, because the mode decides the directory's
+    permissions and a chat can switch between them. Sharing one directory meant
+    a host spill chmodded it 0700 and every sandbox path already advertised
+    from it stopped being readable — the mode of the most recent spill
+    retroactively deciding whether older ones could be opened. Separate leaves
+    cannot contradict each other.
+    """
     raw = str(getattr(deps, "chat_id", "") or "shared")
-    return _SAFE_SEGMENT.sub("-", raw)[:64] or "shared"
+    safe = _SAFE_SEGMENT.sub("-", raw)[:64] or "shared"
+    prefix = "sandbox" if getattr(deps, "sandbox_enabled", True) else "host"
+    return f"{prefix}-{safe}"
 
 
 def _force_mode(fd: int, mode: int) -> None:
@@ -143,9 +153,15 @@ def _force_mode(fd: int, mode: int) -> None:
     difference between the intended permissions and whatever the service happens
     to have been started with.
     """
+    # os.fchmod does not exist on Windows before 3.13, and AttributeError is not
+    # an OSError — uncaught, it escaped before fdopen took ownership of the
+    # descriptor, so every oversized result leaked a handle and wrote nothing.
+    setter = getattr(os, "fchmod", None)
+    if setter is None:
+        return
     try:
-        os.fchmod(fd, mode)
-    except OSError as e:
+        setter(fd, mode)
+    except (OSError, NotImplementedError) as e:
         logger.debug(f"[overflow] could not set mode {oct(mode)}: {e}")
 
 
@@ -190,10 +206,24 @@ def _spill_by_path(
         except OSError:
             pass
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
-        fd = os.open(directory / name, flags, file_mode)
-        _force_mode(fd, file_mode)
-        with os.fdopen(fd, "wb") as handle:
-            handle.write(payload)
+        target = directory / name
+        fd = os.open(target, flags, file_mode)
+        try:
+            with os.fdopen(fd, "wb") as handle:
+                handle.write(payload)
+        except BaseException:
+            # fdopen owns the descriptor only once it returns; before that the
+            # raw fd is ours to close, and a leaked handle per oversized result
+            # exhausts the process.
+            os.close(fd)
+            raise
+        # By path here rather than by descriptor: this branch exists for
+        # platforms without dir_fd, which are also the ones that may lack
+        # fchmod.
+        try:
+            target.chmod(file_mode)
+        except OSError:
+            pass
     except (OSError, NotImplementedError, ValueError) as e:
         logger.debug(f"[overflow] could not write spill: {e}")
         return False
@@ -592,7 +622,16 @@ def spill_overflow_bounded(
             _spill_slots.release()
 
     thread = threading.Thread(target=_worker, name="overflow-spill", daemon=True)
-    thread.start()
+    try:
+        thread.start()
+    except BaseException as e:
+        # The worker's finally is what returns the slot, so a thread that never
+        # starts never gives it back — four of those and spilling is off for the
+        # life of the process. And a spill failure must never fail the tool call
+        # that produced the output.
+        _spill_slots.release()
+        logger.warning(f"[overflow] could not start a spill worker: {e}")
+        return None
     thread.join(timeout=SPILL_TIMEOUT_SECONDS)
     if thread.is_alive():
         logger.warning(
