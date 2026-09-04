@@ -487,3 +487,117 @@ def test_the_path_fallback_writes_without_dir_fd(tmp_path, monkeypatch):
 
     assert spill is not None
     assert Path(spill.path).read_text(encoding="utf-8") == "x" * 500
+
+
+def test_the_sweep_has_a_path_based_twin(tmp_path, monkeypatch):
+    """Only spill_overflow() chose an implementation, so on a platform without
+    dir_fd the sweep called descriptor operations that do not exist there and
+    retention simply did not run — the third time in this file that hardening
+    one path and not its twin left the twin broken."""
+    import time
+
+    from suzent.config import CONFIG
+    import suzent.tools.overflow as overflow
+    from suzent.tools.overflow import OVERFLOW_TTL_SECONDS, sweep_overflow
+
+    chat_dir = _chat_dir(tmp_path)
+    chat_dir.mkdir(parents=True)
+    stale = chat_dir / "t-old.txt"
+    stale.write_text("yesterday", encoding="utf-8")
+    old = time.time() - OVERFLOW_TTL_SECONDS - 60
+    os.utime(stale, (old, old))
+
+    monkeypatch.setattr(overflow, "_HAVE_DIR_FD", False)
+    monkeypatch.setattr(CONFIG, "sandbox_data_path", str(tmp_path), raising=False)
+    sweep_overflow()
+
+    assert not stale.exists()
+
+
+def test_the_path_sweep_also_applies_the_root_quota(tmp_path, monkeypatch):
+    from suzent.config import CONFIG
+    import suzent.tools.overflow as overflow
+    from suzent.tools.overflow import sweep_overflow
+
+    monkeypatch.setattr(overflow, "OVERFLOW_MAX_ROOT_BYTES", 5_000)
+    for chat in ("a", "b", "c", "d"):
+        spill_overflow("y" * 3_000, deps=_deps(tmp_path, chat_id=chat), kind="t")
+
+    monkeypatch.setattr(overflow, "_HAVE_DIR_FD", False)
+    monkeypatch.setattr(CONFIG, "sandbox_data_path", str(tmp_path), raising=False)
+    sweep_overflow()
+
+    root = tmp_path / "shared" / ".overflow"
+    total = sum(p.stat().st_size for p in root.rglob("*.txt"))
+
+    assert total <= 5_000 + 3_100, total
+
+
+@pytest.mark.asyncio
+async def test_the_sweep_keeps_running_after_startup(monkeypatch):
+    """Running it once left the root quota and the retention window unenforced
+    for the lifetime of a long-lived process — a write only ever prunes its own
+    chat's directory."""
+    import asyncio
+
+    import suzent.tools.overflow as overflow
+
+    calls = 0
+
+    def _count():
+        nonlocal calls
+        calls += 1
+
+    monkeypatch.setattr(overflow, "sweep_overflow", _count)
+    monkeypatch.setattr(overflow, "OVERFLOW_SWEEP_INTERVAL_SECONDS", 0.01)
+
+    task = asyncio.create_task(overflow.sweep_overflow_periodically())
+    await asyncio.sleep(0.08)
+    task.cancel()
+
+    assert calls > 1, f"the sweep ran {calls} time(s); it must keep running"
+
+
+@pytest.mark.asyncio
+async def test_a_failing_sweep_does_not_end_the_loop(monkeypatch):
+    """One bad sweep must not silently disable retention until the next
+    restart."""
+    import asyncio
+
+    import suzent.tools.overflow as overflow
+
+    calls = 0
+
+    def _boom():
+        nonlocal calls
+        calls += 1
+        raise OSError("disk went away")
+
+    monkeypatch.setattr(overflow, "sweep_overflow", _boom)
+    monkeypatch.setattr(overflow, "OVERFLOW_SWEEP_INTERVAL_SECONDS", 0.01)
+
+    task = asyncio.create_task(overflow.sweep_overflow_periodically())
+    await asyncio.sleep(0.08)
+    task.cancel()
+
+    assert calls > 1
+
+
+def test_every_registered_tool_can_reach_its_deps():
+    """A tool whose forward() takes no RunContext cannot spill: the wrapper has
+    nowhere to read deps from, so its oversized output is truncated with no
+    path. BrowsingTool's snapshot regularly clears 30,000 characters."""
+    import inspect
+
+    from suzent.tools.registry import _all_tool_classes
+
+    missing = []
+    for cls in _all_tool_classes():
+        try:
+            params = list(inspect.signature(cls.forward).parameters)
+        except (TypeError, ValueError):
+            continue
+        if getattr(cls, "output_char_limit", None) and "ctx" not in params:
+            missing.append(cls.name)
+
+    assert missing == [], f"these tools cannot spill their output: {missing}"

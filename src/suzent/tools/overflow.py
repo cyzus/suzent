@@ -338,6 +338,28 @@ def spill_overflow(text: str, *, deps: Any, kind: str = "output") -> Optional[Sp
     return Spill(str(shared_host / ".overflow" / chat / name), clipped)
 
 
+#: How often the sweep runs while the service is up.
+#:
+#: The root quota and the retention window are only enforced where the sweep
+#: reaches. Running it once at startup left both unenforced for the lifetime of
+#: a long-lived process: a chat's last spill outlives its advertised window, and
+#: the deployment-wide total is never checked at all, because a write only ever
+#: prunes its own chat's directory.
+OVERFLOW_SWEEP_INTERVAL_SECONDS = 60 * 60
+
+
+async def sweep_overflow_periodically() -> None:
+    """Keep the bounds enforced for as long as the service runs."""
+    while True:
+        try:
+            await asyncio.sleep(OVERFLOW_SWEEP_INTERVAL_SECONDS)
+            await asyncio.to_thread(sweep_overflow)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:  # noqa: BLE001 - a sweep failure must not end the loop
+            logger.warning(f"[overflow] periodic sweep failed: {e}")
+
+
 async def spill_overflow_async(
     text: str, *, deps: Any, kind: str = "output"
 ) -> Optional[Spill]:
@@ -348,6 +370,45 @@ async def spill_overflow_async(
     loop is serving.
     """
     return await asyncio.to_thread(spill_overflow, text, deps=deps, kind=kind)
+
+
+def _sweep_by_path(root: Path) -> None:
+    """Retention and the root quota without directory descriptors."""
+    swept = 0
+    survivors: list[tuple[float, int, Path]] = []
+    for chat_dir in root.iterdir():
+        if not chat_dir.is_dir() or chat_dir.is_symlink():
+            continue
+        try:
+            before = len(list(chat_dir.glob("*.txt")))
+            _prune_path(chat_dir)
+            kept = list(chat_dir.glob("*.txt"))
+            swept += before - len(kept)
+            for path in kept:
+                try:
+                    stat = path.stat()
+                except OSError:
+                    continue
+                survivors.append((stat.st_mtime, stat.st_size, path))
+            if not any(chat_dir.iterdir()):
+                chat_dir.rmdir()
+        except OSError:
+            continue
+
+    survivors.sort(reverse=True)
+    running = 0
+    for _mtime, size, path in survivors:
+        if running + size <= OVERFLOW_MAX_ROOT_BYTES:
+            running += size
+            continue
+        try:
+            path.unlink(missing_ok=True)
+            swept += 1
+        except OSError:
+            continue
+
+    if swept:
+        logger.info(f"[overflow] swept {swept} stale spill(s)")
 
 
 def sweep_overflow() -> None:
@@ -366,6 +427,15 @@ def sweep_overflow() -> None:
 
     root = Path(CONFIG.sandbox_data_path) / "shared" / ".overflow"
     if not root.is_dir():
+        return
+
+    if not _HAVE_DIR_FD:
+        # The same split the write path makes. Having only spill_overflow()
+        # choose an implementation left the sweep calling dir_fd operations on a
+        # platform without them, so retention and the root quota simply did not
+        # run there — the third time in this file that hardening one path and
+        # not its twin left the twin broken.
+        _sweep_by_path(root)
         return
 
     # Descended with the same no-follow discipline as the write path. A symlink

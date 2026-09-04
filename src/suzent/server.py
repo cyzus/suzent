@@ -598,7 +598,10 @@ async def startup():
     from suzent.core.system_reminder import register_global_hook, register_per_turn_hook
     from suzent.skills.hooks import skills_reminder_hook
     from suzent.core.repository_context import repository_agents_reminder_hook
-    from suzent.tools.overflow import sweep_overflow
+    from suzent.tools.overflow import (
+        sweep_overflow,
+        sweep_overflow_periodically,
+    )
     from suzent.tools.plan_hooks import plan_reminder_hook
     from suzent.database import get_database
 
@@ -838,6 +841,11 @@ async def startup():
     # not at all once output stops overflowing. This is the pass that collects
     # what the previous run left behind.
     asyncio.create_task(asyncio.to_thread(sweep_overflow))
+    # And keep sweeping: a write only prunes its own chat's directory, so the
+    # deployment-wide quota and the retention window are enforced nowhere else.
+    app.state.overflow_sweeper = asyncio.create_task(
+        sweep_overflow_periodically(), name="overflow_sweeper"
+    )
 
 
 def ensure_app_data():

@@ -12,6 +12,9 @@ from starlette.websockets import WebSocket
 from pydantic import Field
 from suzent.tools.base import Tool, ToolGroup, ToolErrorCode, ToolResult
 from suzent.logger import get_logger
+from pydantic_ai import RunContext
+
+from suzent.core.agent_deps import AgentDeps
 
 logger = get_logger(__name__)
 
@@ -654,6 +657,7 @@ class BrowsingTool(Tool):
 
     async def forward(
         self,
+        ctx: RunContext[AgentDeps],
         command: Annotated[
             Literal[
                 "open",
