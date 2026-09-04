@@ -1202,3 +1202,52 @@ def test_the_sweep_lock_is_released_for_the_next_tick(monkeypatch):
                 break
             time.sleep(0.01)
         assert not overflow._sweep_lock.locked(), "the lock outlived its sweep"
+
+
+def test_a_masked_mount_writes_nothing_at_all(tmp_path):
+    """Validating after the write meant the file was created and both quota
+    passes had run before the answer was thrown away — so a chat with a masked
+    mount produced unreachable orphans on every oversized result, and its
+    pruning could evict spills other chats still pointed at."""
+
+    class _Masked:
+        """Resolves /shared canonically but sends anything below .overflow
+        somewhere else, as a nested custom volume does."""
+
+        def resolve(self, virtual: str) -> str:
+            if virtual.startswith("/shared/.overflow"):
+                return str(tmp_path / "masked" / virtual.split("/")[-1])
+            return str(tmp_path / "shared" / virtual[len("/shared") :].lstrip("/"))
+
+    deps = SimpleNamespace(
+        path_resolver=_Masked(), sandbox_enabled=True, chat_id="masked-chat"
+    )
+
+    assert spill_overflow("x" * 100, deps=deps, kind="t") is None
+    assert not (tmp_path / "shared" / ".overflow").exists(), "an orphan was written"
+
+
+def test_a_masked_mount_cannot_evict_another_chats_spill(tmp_path, monkeypatch):
+    """The eviction half: the rejected chat's pruning ran against the shared
+    root before the rejection."""
+    import suzent.tools.overflow as overflow
+
+    monkeypatch.setattr(overflow, "OVERFLOW_MAX_ROOT_BYTES", 4_000)
+    good = spill_overflow(
+        "y" * 3_000, deps=_deps(tmp_path, chat_id="good", sandbox=True), kind="t"
+    )
+    written = _chat_dir(tmp_path, "good", sandbox=True) / Path(good.path).name
+
+    class _Masked:
+        def resolve(self, virtual: str) -> str:
+            if virtual.startswith("/shared/.overflow"):
+                return str(tmp_path / "masked" / virtual.split("/")[-1])
+            return str(tmp_path / "shared" / virtual[len("/shared") :].lstrip("/"))
+
+    bad = SimpleNamespace(
+        path_resolver=_Masked(), sandbox_enabled=True, chat_id="masked-chat"
+    )
+    for _ in range(5):
+        assert spill_overflow("z" * 3_000, deps=bad, kind="t") is None
+
+    assert written.exists(), "a rejected spill evicted a valid one"

@@ -560,25 +560,18 @@ def _spill_payload(
     name = f"{kind}-{secrets.token_hex(16)}.txt"
 
     sandboxed = bool(getattr(deps, "sandbox_enabled", True))
-    dir_mode = _SHARED_DIR_MODE if sandboxed else _PRIVATE_DIR_MODE
-    file_mode = _SHARED_FILE_MODE if sandboxed else _PRIVATE_FILE_MODE
 
-    if not _HAVE_DIR_FD:
-        if not _spill_by_path(
-            payload, shared_host / ".overflow" / chat, name, dir_mode, file_mode
-        ):
-            return None
-    elif not _spill_pinned(payload, shared_host, chat, name, dir_mode, file_mode):
-        return None
-
-    if getattr(deps, "sandbox_enabled", True):
+    # Checked before anything is written.
+    #
+    # A custom volume can mask /shared/.overflow or a directory under it, and
+    # validating only afterwards meant the file was created and both quota
+    # passes had run before the answer was discarded — so a chat with a masked
+    # mount produced unreachable orphans on every oversized result, and its
+    # pruning could evict spills other chats were still pointing at. Work not
+    # worth doing is worth not doing before the side effects, not after.
+    virtual: Optional[str] = None
+    if sandboxed:
         virtual = f"{OVERFLOW_VIRTUAL_DIR}/{chat}/{name}"
-        # Checking /shared alone is not enough: a custom volume can target
-        # /shared/.overflow or a directory under it, which the sandbox accepts
-        # and which then masks the canonical tree inside the container. The
-        # marker would name a path that resolves somewhere the file is not.
-        # Verifying the final path is the only check that cannot be outflanked
-        # by a more deeply nested mount.
         written = shared_host / ".overflow" / chat / name
         try:
             if Path(resolver.resolve(virtual)).resolve() != written.resolve():
@@ -590,6 +583,18 @@ def _spill_payload(
         except Exception as e:
             logger.debug(f"[overflow] cannot verify the spill path: {e}")
             return None
+    dir_mode = _SHARED_DIR_MODE if sandboxed else _PRIVATE_DIR_MODE
+    file_mode = _SHARED_FILE_MODE if sandboxed else _PRIVATE_FILE_MODE
+
+    if not _HAVE_DIR_FD:
+        if not _spill_by_path(
+            payload, shared_host / ".overflow" / chat, name, dir_mode, file_mode
+        ):
+            return None
+    elif not _spill_pinned(payload, shared_host, chat, name, dir_mode, file_mode):
+        return None
+
+    if virtual is not None:
         return Spill(virtual, clipped)
     return Spill(str(shared_host / ".overflow" / chat / name), clipped)
 
