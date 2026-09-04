@@ -215,6 +215,20 @@ def _past_ttl(mtime: float, now: float) -> bool:
     return mtime < now - OVERFLOW_TTL_SECONDS or _implausibly_dated(mtime, now)
 
 
+def _abandoned(mtime: float, now: float) -> bool:
+    """True for a staged file old enough that no writer can still hold it.
+
+    Deliberately blind to the rollback rule that governs published spills. A
+    ``.part`` is not subject to the retention promise — nothing advertises it —
+    and a clock step backwards mid-write would otherwise make an active
+    writer's file look expired. Deleting it succeeds silently against the open
+    inode on POSIX: the write finishes into nothing, the rename fails, and the
+    caller gets no pointer at all. A future-dated staged file waits for the
+    clock instead, which costs one stale file and no lost output.
+    """
+    return mtime < now - OVERFLOW_TTL_SECONDS
+
+
 def _shared_root() -> Path:
     """The canonical shared directory, absolute.
 
@@ -413,7 +427,7 @@ def _prune_path(directory: Path, protect: Optional[str] = None) -> None:
     # will ever collect it.
     for stale in directory.glob(f"*{PARTIAL_SUFFIX}"):
         try:
-            if _past_ttl(stale.stat().st_mtime, time.time()):
+            if _abandoned(stale.stat().st_mtime, time.time()):
                 stale.unlink(missing_ok=True)
         except OSError:
             continue
@@ -564,7 +578,7 @@ def _prune_fd(dir_fd: int, protect: Optional[str] = None) -> None:
             if not entry.name.endswith(PARTIAL_SUFFIX):
                 continue
             try:
-                if _past_ttl(entry.stat(follow_symlinks=False).st_mtime, time.time()):
+                if _abandoned(entry.stat(follow_symlinks=False).st_mtime, time.time()):
                     os.unlink(entry.name, dir_fd=dir_fd)
             except OSError:
                 continue

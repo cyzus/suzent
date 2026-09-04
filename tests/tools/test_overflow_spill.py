@@ -1816,3 +1816,23 @@ def test_future_dated_spills_expire_within_the_advertised_retention(tmp_path):
         "an undatable spill outlived the advertised retention window"
     )
     assert Path(ordinary.host_path).exists()
+
+
+def test_a_future_dated_staging_file_survives_the_sweep(tmp_path):
+    """Rollback expiry belongs to published spills only. A `.part` with a
+    future-dated mtime is far more likely to be a live writer caught by a clock
+    step than an abandoned file, and unlinking it costs the caller its output:
+    the write lands in the open inode, the rename fails, no pointer comes
+    back."""
+    import suzent.tools.overflow as overflow
+    from suzent.tools.overflow import PARTIAL_SUFFIX
+
+    published = spill_overflow("a" * 100, deps=_deps(tmp_path), kind="t")
+    staged = Path(published.host_path).parent / f"t-live.txt{PARTIAL_SUFFIX}"
+    staged.write_bytes(b"half a payload")
+    ahead = time.time() + 3_600
+    os.utime(staged, (ahead, ahead))
+
+    overflow.sweep_overflow()
+
+    assert staged.exists(), "the sweep deleted a staging file out from under a writer"
