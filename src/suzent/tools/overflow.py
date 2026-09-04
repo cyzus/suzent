@@ -35,6 +35,7 @@ import errno
 import os
 import re
 import secrets
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -198,6 +199,7 @@ def _spill_by_path(
         return False
 
     _prune_path(directory)
+    _enforce_root_quota_path(directory.parent)
     return True
 
 
@@ -257,6 +259,94 @@ def _prune_path(directory: Path) -> None:
                 running += size
         except OSError:
             continue
+
+
+def _enforce_root_quota_fd(root_fd: int) -> int:
+    """Hold the deployment-wide ceiling across every chat directory.
+
+    Separate from the per-chat prune because the two answer different
+    questions, and leaving this one to the hourly sweep meant a burst of chats
+    could sit above the root ceiling for an hour — long enough to fill a volume
+    that every directory was individually respecting.
+
+    Returns the number of files removed.
+    """
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    survivors: list[tuple[float, int, str, str]] = []
+    try:
+        for entry in os.scandir(root_fd):
+            if not entry.is_dir(follow_symlinks=False):
+                continue
+            try:
+                chat_fd = os.open(entry.name, flags, dir_fd=root_fd)
+            except OSError:
+                continue
+            try:
+                for kept in os.scandir(chat_fd):
+                    try:
+                        stat = kept.stat(follow_symlinks=False)
+                    except OSError:
+                        continue
+                    survivors.append(
+                        (stat.st_mtime, stat.st_size, entry.name, kept.name)
+                    )
+            finally:
+                os.close(chat_fd)
+    except OSError:
+        return 0
+
+    # Newest first, so what goes is least likely to be referenced by a live
+    # conversation.
+    survivors.sort(reverse=True)
+    removed = 0
+    running = 0
+    for _mtime, size, chat_name, file_name in survivors:
+        if running + size <= OVERFLOW_MAX_ROOT_BYTES:
+            running += size
+            continue
+        try:
+            chat_fd = os.open(chat_name, flags, dir_fd=root_fd)
+        except OSError:
+            continue
+        try:
+            os.unlink(file_name, dir_fd=chat_fd)
+            removed += 1
+        except OSError:
+            pass
+        finally:
+            os.close(chat_fd)
+    return removed
+
+
+def _enforce_root_quota_path(root: Path) -> int:
+    """The path-based twin of _enforce_root_quota_fd."""
+    survivors: list[tuple[float, int, Path]] = []
+    try:
+        for chat_dir in root.iterdir():
+            if not chat_dir.is_dir() or chat_dir.is_symlink():
+                continue
+            for path in chat_dir.glob("*.txt"):
+                try:
+                    stat = path.stat()
+                except OSError:
+                    continue
+                survivors.append((stat.st_mtime, stat.st_size, path))
+    except OSError:
+        return 0
+
+    survivors.sort(reverse=True)
+    removed = 0
+    running = 0
+    for _mtime, size, path in survivors:
+        if running + size <= OVERFLOW_MAX_ROOT_BYTES:
+            running += size
+            continue
+        try:
+            path.unlink(missing_ok=True)
+            removed += 1
+        except OSError:
+            continue
+    return removed
 
 
 def _prune_fd(dir_fd: int) -> None:
@@ -350,6 +440,10 @@ def _spill_pinned(
             return False
 
         _prune_fd(chat_fd)
+        # And the root ceiling, here rather than only on the hourly timer: a
+        # burst across many chats stays within every per-chat allowance while
+        # the deployment total runs away.
+        _enforce_root_quota_fd(overflow_fd)
         return True
     except OSError as e:
         logger.debug(f"[overflow] no spill directory: {e}")
@@ -436,6 +530,38 @@ async def sweep_overflow_periodically() -> None:
 SPILL_TIMEOUT_SECONDS = 2.0
 
 
+def spill_overflow_bounded(
+    text: str, *, deps: Any, kind: str = "output"
+) -> Optional[Spill]:
+    """The synchronous caller's version of the same deadline.
+
+    A sync tool runs on a worker rather than the loop, so a wedged volume does
+    not stall other chats — but it does hold a tool call that has *already
+    succeeded*, which is the part worth bounding. Bounding only the async path
+    left the two halves of one rule disagreeing, which is how most of this
+    file's defects have looked.
+
+    The thread is a daemon and is never joined past the deadline: it cannot be
+    cancelled, so a late write simply lands in the spill directory and is
+    collected by the sweep like any other file.
+    """
+    result: list[Optional[Spill]] = [None]
+
+    def _worker() -> None:
+        result[0] = spill_overflow(text, deps=deps, kind=kind)
+
+    thread = threading.Thread(target=_worker, name="overflow-spill", daemon=True)
+    thread.start()
+    thread.join(timeout=SPILL_TIMEOUT_SECONDS)
+    if thread.is_alive():
+        logger.warning(
+            f"[overflow] spill exceeded {SPILL_TIMEOUT_SECONDS}s — truncating "
+            f"without a pointer"
+        )
+        return None
+    return result[0]
+
+
 async def spill_overflow_async(
     text: str, *, deps: Any, kind: str = "output"
 ) -> Optional[Spill]:
@@ -467,37 +593,19 @@ async def spill_overflow_async(
 def _sweep_by_path(root: Path) -> None:
     """Retention and the root quota without directory descriptors."""
     swept = 0
-    survivors: list[tuple[float, int, Path]] = []
     for chat_dir in root.iterdir():
         if not chat_dir.is_dir() or chat_dir.is_symlink():
             continue
         try:
             before = len(list(chat_dir.glob("*.txt")))
             _prune_path(chat_dir)
-            kept = list(chat_dir.glob("*.txt"))
-            swept += before - len(kept)
-            for path in kept:
-                try:
-                    stat = path.stat()
-                except OSError:
-                    continue
-                survivors.append((stat.st_mtime, stat.st_size, path))
+            swept += before - len(list(chat_dir.glob("*.txt")))
             if not any(chat_dir.iterdir()):
                 chat_dir.rmdir()
         except OSError:
             continue
 
-    survivors.sort(reverse=True)
-    running = 0
-    for _mtime, size, path in survivors:
-        if running + size <= OVERFLOW_MAX_ROOT_BYTES:
-            running += size
-            continue
-        try:
-            path.unlink(missing_ok=True)
-            swept += 1
-        except OSError:
-            continue
+    swept += _enforce_root_quota_path(root)
 
     if swept:
         logger.info(f"[overflow] swept {swept} stale spill(s)")
@@ -544,7 +652,6 @@ def sweep_overflow() -> None:
         return
 
     swept = 0
-    survivors: list[tuple[float, int, str, str]] = []
     try:
         for entry in os.scandir(root_fd):
             if not entry.is_dir(follow_symlinks=False):
@@ -556,16 +663,7 @@ def sweep_overflow() -> None:
             try:
                 before = sum(1 for _ in os.scandir(chat_fd))
                 _prune_fd(chat_fd)
-                after = 0
-                for kept in os.scandir(chat_fd):
-                    after += 1
-                    try:
-                        stat = kept.stat(follow_symlinks=False)
-                    except OSError:
-                        continue
-                    survivors.append(
-                        (stat.st_mtime, stat.st_size, entry.name, kept.name)
-                    )
+                after = sum(1 for _ in os.scandir(chat_fd))
                 swept += before - after
             finally:
                 os.close(chat_fd)
@@ -575,25 +673,7 @@ def sweep_overflow() -> None:
                 except OSError:
                     pass
 
-        # The root ceiling, across every chat. Newest first, so what goes is the
-        # least likely to still be referenced by a live conversation.
-        survivors.sort(reverse=True)
-        running = 0
-        for _mtime, size, chat_name, file_name in survivors:
-            if running + size <= OVERFLOW_MAX_ROOT_BYTES:
-                running += size
-                continue
-            try:
-                chat_fd = os.open(chat_name, flags, dir_fd=root_fd)
-            except OSError:
-                continue
-            try:
-                os.unlink(file_name, dir_fd=chat_fd)
-                swept += 1
-            except OSError:
-                pass
-            finally:
-                os.close(chat_fd)
+        swept += _enforce_root_quota_fd(root_fd)
     except OSError:
         pass
     finally:

@@ -789,3 +789,76 @@ def test_the_sweeper_survives_an_in_process_restart():
     guard_at = source.index("Social brain already initialized")
 
     assert sweeper_at < guard_at, "the sweeper starts after an early return"
+
+
+def test_the_synchronous_spill_is_bounded_too(deps, monkeypatch):
+    """A sync tool runs on a worker rather than the loop, so a wedged volume
+    does not stall other chats — but it holds a tool call that has *already
+    succeeded*. Bounding only the async path left two halves of one rule
+    disagreeing."""
+    import time
+
+    import suzent.tools.overflow as overflow
+
+    monkeypatch.setattr(overflow, "SPILL_TIMEOUT_SECONDS", 0.05)
+    monkeypatch.setattr(
+        overflow,
+        "spill_overflow",
+        lambda text, **kw: time.sleep(2) or Spill("/x", False),
+    )
+
+    started = time.monotonic()
+    result = overflow.spill_overflow_bounded("payload", deps=deps, kind="t")
+    elapsed = time.monotonic() - started
+
+    assert result is None
+    assert elapsed < 1.0, f"the worker waited {elapsed:.2f}s for a wedged volume"
+
+
+def test_both_wrappers_bound_the_spill():
+    """The rule is 'a spill never holds its caller', so it has to hold on both
+    branches of the wrapper, not the one that happened to be reviewed."""
+    import inspect
+
+    from suzent.tools import registry
+
+    source = inspect.getsource(registry)
+
+    assert "spill_overflow_async(" in source
+    assert "spill_overflow_bounded(" in source
+    # The unbounded call must not survive anywhere in the wrapper.
+    assert "= spill_overflow(" not in source
+
+
+def test_the_root_quota_holds_between_sweeps(tmp_path, monkeypatch):
+    """Leaving it to the hourly sweep let a burst of chats sit above the
+    deployment ceiling for an hour — long enough to fill a volume that every
+    directory was individually respecting."""
+    import suzent.tools.overflow as overflow
+
+    monkeypatch.setattr(overflow, "OVERFLOW_MAX_ROOT_BYTES", 5_000)
+
+    for chat in ("a", "b", "c", "d", "e"):
+        spill_overflow("y" * 3_000, deps=_deps(tmp_path, chat_id=chat), kind="t")
+
+    root = tmp_path / "shared" / ".overflow"
+    total = sum(p.stat().st_size for p in root.rglob("*.txt"))
+
+    assert total <= 5_000 + 3_100, f"{total} bytes retained with no sweep run"
+
+
+def test_the_path_fallback_also_holds_the_root_quota(tmp_path, monkeypatch):
+    import suzent.tools.overflow as overflow
+
+    monkeypatch.setattr(overflow, "OVERFLOW_MAX_ROOT_BYTES", 5_000)
+    monkeypatch.setattr(overflow, "_HAVE_DIR_FD", False)
+
+    for chat in ("a", "b", "c", "d", "e"):
+        overflow.spill_overflow(
+            "y" * 3_000, deps=_deps(tmp_path, chat_id=chat), kind="t"
+        )
+
+    root = tmp_path / "shared" / ".overflow"
+    total = sum(p.stat().st_size for p in root.rglob("*.txt"))
+
+    assert total <= 5_000 + 3_100, total

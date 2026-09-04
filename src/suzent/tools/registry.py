@@ -18,7 +18,7 @@ from pydantic_ai import Tool as PydanticTool
 
 from suzent.logger import get_logger
 from suzent.tools.base import ToolResult, truncate_tool_output
-from suzent.tools.overflow import spill_overflow, spill_overflow_async
+from suzent.tools.overflow import spill_overflow_async, spill_overflow_bounded
 
 
 # Re-exported under their original names so existing
@@ -118,8 +118,12 @@ def _make_tool(
             if not _needs_cap(result):
                 return result
             deps = _deps_from_call(args, kwargs)
+            # Bounded like the async path: a wedged volume must not hold a
+            # tool call that has already done its work.
             spill = (
-                spill_overflow(result.message, deps=deps, kind=tool_cls.tool_name)
+                spill_overflow_bounded(
+                    result.message, deps=deps, kind=tool_cls.tool_name
+                )
                 if deps
                 else None
             )
