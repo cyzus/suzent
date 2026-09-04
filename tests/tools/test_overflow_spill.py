@@ -63,8 +63,12 @@ def deps(tmp_path):
 def _chat_dir(
     tmp_path: Path, chat_id: str = "chat-1", *, sandbox: bool = False
 ) -> Path:
-    prefix = "sandbox" if sandbox else "host"
-    return tmp_path / "shared" / ".overflow" / f"{prefix}-{chat_id}"
+    """Built through the real segment function — the name carries a digest, and
+    a hand-rolled copy here would drift from it."""
+    from suzent.tools.overflow import _chat_segment
+
+    segment = _chat_segment(SimpleNamespace(chat_id=chat_id, sandbox_enabled=sandbox))
+    return tmp_path / "shared" / ".overflow" / segment
 
 
 def test_the_whole_output_is_written_not_the_kept_part(deps):
@@ -109,7 +113,7 @@ def test_sandbox_mode_gets_the_virtual_path(tmp_path):
 
     spill = spill_overflow("y" * 100, deps=_deps(tmp_path, sandbox=True), kind="t")
 
-    assert spill.path.startswith(f"{OVERFLOW_VIRTUAL_DIR}/sandbox-chat-1/")
+    assert spill.path.startswith(f"{OVERFLOW_VIRTUAL_DIR}/sandbox-chat-1-")
 
 
 def test_a_sandbox_spill_is_readable_by_a_different_uid(tmp_path):
@@ -202,8 +206,9 @@ def test_spills_are_scoped_to_their_chat(tmp_path):
     first = spill_overflow("secret alpha", deps=_deps(tmp_path, chat_id="a"), kind="t")
     second = spill_overflow("secret beta", deps=_deps(tmp_path, chat_id="b"), kind="t")
 
-    assert "-a/" in first.path.replace(str(tmp_path), "")
-    assert "-b/" in second.path.replace(str(tmp_path), "")
+    assert Path(first.path).parent != Path(second.path).parent
+    assert Path(first.path).parent.name.startswith("host-a-")
+    assert Path(second.path).parent.name.startswith("host-b-")
     assert len(list(_chat_dir(tmp_path, "a").glob("*.txt"))) == 1
 
 
@@ -230,7 +235,9 @@ def test_a_symlink_at_the_destination_is_not_followed(deps, tmp_path, monkeypatc
     chat_dir.mkdir(parents=True, exist_ok=True)
 
     monkeypatch.setattr(overflow.secrets, "token_hex", lambda n: "aimed")
-    os.symlink(target, chat_dir / "run_command-aimed.txt")
+    # The staged name is what the open creates, so that is where an attacker
+    # would have to aim.
+    os.symlink(target, chat_dir / ("run_command-aimed.txt" + overflow.PARTIAL_SUFFIX))
 
     assert spill_overflow("payload" * 100, deps=deps, kind="run_command") is None
     assert target.read_text(encoding="utf-8") == "do not clobber"
@@ -1015,7 +1022,8 @@ def test_the_two_modes_use_separate_leaves(tmp_path):
 
     names = sorted(p.name for p in (tmp_path / "shared" / ".overflow").iterdir())
 
-    assert names == ["host-c9", "sandbox-c9"]
+    assert len(names) == 2
+    assert names[0].startswith("host-c9-") and names[1].startswith("sandbox-c9-")
 
 
 def test_a_slot_is_returned_when_the_worker_cannot_start(deps, monkeypatch):
@@ -1515,3 +1523,78 @@ def test_the_new_spill_survives_its_own_prune(tmp_path, monkeypatch):
         assert Path(spill.host_path).exists(), "the advertised file was pruned away"
 
     _ = real_stat
+
+
+def test_sanitising_two_different_ids_keeps_them_apart(tmp_path):
+    """The sanitiser is many-to-one even without truncation: `a2a:local:a/b` and
+    `a2a:local:a?b` both become `a2a-local-a-b`."""
+    first = spill_overflow(
+        "one", deps=_deps(tmp_path, chat_id="a2a:local:a/b"), kind="t"
+    )
+    second = spill_overflow(
+        "two", deps=_deps(tmp_path, chat_id="a2a:local:a?b"), kind="t"
+    )
+
+    assert Path(first.host_path).parent != Path(second.host_path).parent
+    assert Path(first.host_path).read_text(encoding="utf-8") == "one"
+    assert Path(second.host_path).read_text(encoding="utf-8") == "two"
+
+
+def test_a_half_written_spill_is_invisible_to_scans(tmp_path, monkeypatch):
+    """The sweep or another chat's prune must not be able to select a file that
+    is still being written — on POSIX that deletion succeeds against the open
+    inode and leaves an advertised path with nothing behind it."""
+    import suzent.tools.overflow as overflow
+
+    observed: list[str] = []
+    real_write = (
+        overflow._spill_pinned if overflow._HAVE_DIR_FD else overflow._spill_by_path
+    )
+    name = "_spill_pinned" if overflow._HAVE_DIR_FD else "_spill_by_path"
+
+    def _watch(*args, **kwargs):
+        result = real_write(*args, **kwargs)
+        return result
+
+    # Look at the directory from inside the write, before the rename lands.
+    real_force = overflow._force_mode
+
+    def _peek(fd, mode):
+        chat = _chat_dir(tmp_path)
+        if chat.exists():
+            observed.extend(p.name for p in chat.iterdir())
+        return real_force(fd, mode)
+
+    monkeypatch.setattr(overflow, "_force_mode", _peek)
+    monkeypatch.setattr(overflow, name, _watch)
+
+    spill_overflow("x" * 100, deps=_deps(tmp_path), kind="t")
+
+    staged = [n for n in observed if n.endswith(overflow.PARTIAL_SUFFIX)]
+    finished = [n for n in observed if n.endswith(".txt")]
+
+    assert staged, "the write never staged the file"
+    assert not finished, f"a .txt file existed mid-write: {finished}"
+
+
+def test_the_sweep_collects_a_stranded_staged_file(tmp_path, monkeypatch):
+    """Staged files are invisible to every scan by design, so nothing else will
+    ever collect one left by a crash or a failed rename."""
+    from suzent.config import CONFIG
+    from suzent.tools.overflow import (
+        OVERFLOW_TTL_SECONDS,
+        PARTIAL_SUFFIX,
+        sweep_overflow,
+    )
+
+    chat_dir = _chat_dir(tmp_path)
+    chat_dir.mkdir(parents=True)
+    stranded = chat_dir / f"t-abandoned.txt{PARTIAL_SUFFIX}"
+    stranded.write_text("half", encoding="utf-8")
+    old = time.time() - OVERFLOW_TTL_SECONDS - 60
+    os.utime(stranded, (old, old))
+
+    monkeypatch.setattr(CONFIG, "sandbox_data_path", str(tmp_path), raising=False)
+    sweep_overflow()
+
+    assert not stranded.exists(), "a stranded staged file was never collected"

@@ -92,6 +92,15 @@ OVERFLOW_MAX_FILE_BYTES = 5 * 1024 * 1024
 #: for whoever opens the file directly.
 SPILL_CLIPPED_NOTE = "\n\n[spill clipped: output exceeded the per-file limit]"
 
+#: Suffix a spill wears while it is being written.
+#:
+#: Scans match ``*.txt``, so a partial file is invisible to them: the sweep or
+#: another chat's prune cannot select a half-written spill for deletion — and on
+#: POSIX that deletion succeeds silently against the open inode, leaving an
+#: advertised path with no file behind it. The rename is atomic, so the name
+#: appears only once the content is complete.
+PARTIAL_SUFFIX = ".part"
+
 _SAFE_SEGMENT = re.compile(r"[^A-Za-z0-9_-]")
 
 #: Permissions, which differ by execution mode because the reader does.
@@ -191,12 +200,12 @@ def _chat_segment(deps: Any) -> str:
     raw = str(getattr(deps, "chat_id", "") or "shared")
     safe = _SAFE_SEGMENT.sub("-", raw) or "shared"
     prefix = "sandbox" if getattr(deps, "sandbox_enabled", True) else "host"
-    if len(safe) <= 48:
-        return f"{prefix}-{safe}"
-    # A plain truncation merges two chats whose ids share a prefix — and A2A
-    # context ids are built by prefixing an accepted 64-character value, so they
-    # differ exactly where a 64-character cut discards. Merged chats then share
-    # one quota and evict each other's advertised spills.
+    # The digest is unconditional, because both ways of deriving a name are
+    # many-to-one and a conditional only covers the one you thought of. A
+    # truncation merges ids sharing a prefix; the sanitiser merges ids differing
+    # only in characters it replaces — `a2a:local:a/b` and `a2a:local:a?b` both
+    # become `a2a-local-a-b`. Merged chats share a quota and evict each other's
+    # advertised spills.
     digest = hashlib.sha1(raw.encode("utf-8", "replace")).hexdigest()[:12]
     return f"{prefix}-{safe[:48]}-{digest}"
 
@@ -265,8 +274,8 @@ def _spill_by_path(
         except OSError:
             pass
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
-        target = directory / name
-        fd = os.open(target, flags, file_mode)
+        staged = directory / (name + PARTIAL_SUFFIX)
+        fd = os.open(staged, flags, file_mode)
         # Ownership transfers at fdopen and not before. Closing the raw number
         # after the `with` has already closed it would be a double close, and in
         # a threaded server another thread can be handed that same descriptor
@@ -284,16 +293,17 @@ def _spill_by_path(
         # platforms without dir_fd, which are also the ones that may lack
         # fchmod.
         try:
-            target.chmod(file_mode)
+            staged.chmod(file_mode)
         except OSError:
             pass
+        staged.replace(directory / name)
     except (OSError, NotImplementedError, ValueError) as e:
         logger.debug(f"[overflow] could not write spill: {e}")
         # The descriptor-based path already does this. A half-written file that
         # was never advertised is pure litter, and this branch skips pruning, so
         # it sits there until the sweep.
         try:
-            (directory / name).unlink(missing_ok=True)
+            (directory / (name + PARTIAL_SUFFIX)).unlink(missing_ok=True)
         except OSError:
             pass
         return False
@@ -352,6 +362,16 @@ def _prune_path(directory: Path, protect: Optional[str] = None) -> None:
 
     entries = [e for e in entries if e[2].name != protect]
     entries.sort(reverse=True)
+    # A crash or a failed rename can leave a staged file behind. It is
+    # invisible to every scan by design, so the sweep is the only thing that
+    # will ever collect it.
+    for stale in directory.glob(f"*{PARTIAL_SUFFIX}"):
+        try:
+            if stale.stat().st_mtime < time.time() - OVERFLOW_TTL_SECONDS:
+                stale.unlink(missing_ok=True)
+        except OSError:
+            continue
+
     cutoff = time.time() - OVERFLOW_TTL_SECONDS
     running = 0
     for index, (mtime, size, path) in enumerate(entries):
@@ -482,6 +502,22 @@ def _prune_fd(dir_fd: int, protect: Optional[str] = None) -> None:
     except OSError:
         return
 
+    # Staged files are invisible to the scan above, so the sweep collects the
+    # ones a crash or a failed rename left behind.
+    try:
+        for entry in os.scandir(dir_fd):
+            if not entry.name.endswith(PARTIAL_SUFFIX):
+                continue
+            try:
+                if entry.stat(follow_symlinks=False).st_mtime < (
+                    time.time() - OVERFLOW_TTL_SECONDS
+                ):
+                    os.unlink(entry.name, dir_fd=dir_fd)
+            except OSError:
+                continue
+    except OSError:
+        pass
+
     entries.sort(reverse=True)
     cutoff = time.time() - OVERFLOW_TTL_SECONDS
     running = 0
@@ -536,8 +572,9 @@ def _spill_pinned(
         chat_fd = _open_child_dir(chat, overflow_fd, dir_mode)
 
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+        staged = name + PARTIAL_SUFFIX
         try:
-            fd = os.open(name, flags, file_mode, dir_fd=chat_fd)
+            fd = os.open(staged, flags, file_mode, dir_fd=chat_fd)
         except OSError as e:
             if e.errno in (errno.EEXIST, errno.ELOOP):
                 logger.warning(f"[overflow] refusing to write over {name}: {e}")
@@ -552,7 +589,17 @@ def _spill_pinned(
         except OSError as e:
             logger.debug(f"[overflow] could not write spill: {e}")
             try:
-                os.unlink(name, dir_fd=chat_fd)
+                os.unlink(staged, dir_fd=chat_fd)
+            except OSError:
+                pass
+            return False
+
+        try:
+            os.rename(staged, name, src_dir_fd=chat_fd, dst_dir_fd=chat_fd)
+        except OSError as e:
+            logger.debug(f"[overflow] could not publish spill: {e}")
+            try:
+                os.unlink(staged, dir_fd=chat_fd)
             except OSError:
                 pass
             return False
