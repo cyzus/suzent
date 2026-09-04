@@ -359,3 +359,81 @@ class TestPruneStaleModels:
             "suzent.core.model_registry._local_capabilities_dir", return_value=cap_dir
         ):
             assert prune_stale_models("nope", ["nope/x"]) == []
+
+
+class TestProviderTwinFallback:
+    """`chatgpt/x` and `openai/x` are the same model reached two ways.
+
+    Runtime discovery registers every slug a provider lists, so a model can be
+    present as a name with nothing behind it while its twin carries the curated
+    numbers — in both directions: `chatgpt/gpt-5.5` ships real values where
+    `openai/gpt-5.5` is a bare stub.
+    """
+
+    def _registry(self, models):
+        registry = ModelRegistry.__new__(ModelRegistry)
+        registry._capabilities = models
+        return registry
+
+    def test_stub_borrows_its_twin_s_data(self):
+        registry = self._registry(
+            {
+                "openai/gpt-5.5": ModelCapabilities(mode="chat"),
+                "chatgpt/gpt-5.5": ModelCapabilities(
+                    max_input_tokens=1_050_000, max_output_tokens=128_000
+                ),
+            }
+        )
+
+        assert registry.get_context_window("openai/gpt-5.5") == 1_178_000
+
+    def test_fallback_runs_the_other_way_too(self):
+        registry = self._registry(
+            {
+                "chatgpt/gpt-4.1": ModelCapabilities(mode="chat"),
+                "openai/gpt-4.1": ModelCapabilities(
+                    max_input_tokens=1_047_576, supports_vision=True
+                ),
+            }
+        )
+
+        assert registry.get_context_window("chatgpt/gpt-4.1") == 1_047_576
+        assert registry.supports_vision("chatgpt/gpt-4.1") is True
+
+    def test_real_data_is_never_replaced_by_a_twin(self):
+        registry = self._registry(
+            {
+                "openai/gpt-4.1": ModelCapabilities(max_input_tokens=1_047_576),
+                "chatgpt/gpt-4.1": ModelCapabilities(max_input_tokens=128_000),
+            }
+        )
+
+        assert registry.get_context_window("openai/gpt-4.1") == 1_047_576
+
+    def test_two_stubs_stay_a_stub(self):
+        # Borrowing one blank to explain another would only move the blank.
+        registry = self._registry(
+            {
+                "chatgpt/gpt-5.6-sol": ModelCapabilities(mode="chat"),
+                "openai/gpt-5.6-sol": ModelCapabilities(mode="chat"),
+            }
+        )
+
+        assert registry.get_context_window("chatgpt/gpt-5.6-sol") == 0
+
+    def test_other_providers_are_not_twinned(self):
+        registry = self._registry(
+            {
+                "gemini/gemini-3.1-pro-preview": ModelCapabilities(mode="chat"),
+                "openai/gemini-3.1-pro-preview": ModelCapabilities(
+                    max_input_tokens=999
+                ),
+            }
+        )
+
+        assert registry.get_context_window("gemini/gemini-3.1-pro-preview") == 0
+
+    def test_unprefixed_id_has_no_twin(self):
+        registry = self._registry({"gpt-4.1": ModelCapabilities(mode="chat")})
+
+        assert registry.get_capabilities("gpt-4.1").is_stub is True

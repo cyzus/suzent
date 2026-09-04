@@ -30,8 +30,10 @@ def handle_status(ctx: typer.Context):
         if cmd_ctx and cmd_ctx.chat_id:
             from suzent.database import get_database
             from suzent.core.agent_serializer import deserialize_state
-            from suzent.core.context_compressor import estimate_tokens
-            from suzent.config import CONFIG
+            from suzent.core.context_compressor import (
+                estimate_tokens,
+                resolve_context_limit,
+            )
             from suzent.core.cost_tracker import get_cost_tracker
 
             db = get_database()
@@ -48,7 +50,9 @@ def handle_status(ctx: typer.Context):
                         msg_history = state.get("message_history") or []
                         status.append(f"  Model: {model_id}")
 
-                        budget = estimate_tokens(msg_history, CONFIG.max_context_tokens)
+                        budget = estimate_tokens(
+                            msg_history, resolve_context_limit(state.get("model_id"))
+                        )
                         pct = budget.estimated_tokens / budget.limit * 100
                         bar_filled = int(pct / 5)
                         bar = "█" * bar_filled + "░" * (20 - bar_filled)

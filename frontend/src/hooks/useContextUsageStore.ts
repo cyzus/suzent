@@ -5,6 +5,12 @@ export interface ContextUsage {
   output_tokens: number;
   total_tokens: number;
   context_tokens?: number | null;
+  /**
+   * Context window of the model this chat runs on, as resolved by the backend.
+   * Absent until the first turn reports it — fall back to the backend config's
+   * `maxContextTokens` then, never to a hardcoded number.
+   */
+  context_limit?: number | null;
   cache_write_tokens: number;
   cache_read_tokens: number;
   requests: number;

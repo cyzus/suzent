@@ -206,7 +206,11 @@ class ConfigModel(BaseModel):
     jsonl_transcripts_enabled: bool = True
     transcript_indexing_enabled: bool = False
 
-    max_context_tokens: int = 800_000
+    # Ceiling on the context budget before compaction kicks in. 0 (the default)
+    # means "whatever the active model supports" — the budget is resolved per
+    # model from the capability registry. A non-zero value caps that, for a
+    # deliberately smaller window than the model allows.
+    max_context_tokens: int = 0
     context_compaction_trigger: float = 0.80
     context_soft_trim_threshold: float = 0.60
     context_hard_trim_threshold: float = 0.80
