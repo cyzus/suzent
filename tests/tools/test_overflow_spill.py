@@ -1874,23 +1874,25 @@ def test_deleted_entries_do_not_consume_the_file_ceiling(tmp_path, monkeypatch):
     breaking a live pointer for nothing."""
     import suzent.tools.overflow as overflow
 
-    monkeypatch.setattr(overflow, "OVERFLOW_MAX_FILES", 2)
-
-    expired = spill_overflow("a" * 100, deps=_deps(tmp_path), kind="t")
-    ahead = time.time() + 3_600
-    os.utime(expired.host_path, (ahead, ahead))
-
     keepers = []
-    for payload in ("b", "c"):
+    for offset, payload in enumerate(("b", "c")):
         kept = spill_overflow(payload * 100, deps=_deps(tmp_path), kind="t")
-        long_ago = time.time() - 3_600 - len(keepers)
+        long_ago = time.time() - 3_600 - offset
         os.utime(kept.host_path, (long_ago, long_ago))
-        keepers.append(kept)
+        keepers.append(Path(kept.host_path))
 
+    # Planted rather than spilled: a spill of its own would prune the directory
+    # on the way out, and the point here is what the sweep sees.
+    expired = keepers[0].parent / "t-rolled-back.txt"
+    expired.write_bytes(b"x" * 100)
+    ahead = time.time() + 3_600
+    os.utime(expired, (ahead, ahead))
+
+    monkeypatch.setattr(overflow, "OVERFLOW_MAX_FILES", 2)
     overflow.sweep_overflow()
 
-    assert not Path(expired.host_path).exists()
+    assert not expired.exists()
     for kept in keepers:
-        assert Path(kept.host_path).exists(), (
+        assert kept.exists(), (
             "an entry deleted ahead of this one still consumed the ceiling"
         )
