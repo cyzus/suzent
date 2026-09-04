@@ -415,8 +415,8 @@ async def test_the_async_spill_does_not_hold_the_loop(deps, monkeypatch):
 
     monkeypatch.setattr(
         overflow,
-        "spill_overflow",
-        lambda text, **kw: time.sleep(0.2) or Spill("/tmp/x.txt", False),
+        "_spill_payload",
+        lambda payload, clipped, **kw: time.sleep(0.2) or Spill("/tmp/x.txt", False),
     )
 
     ticks = 0
@@ -807,15 +807,21 @@ async def test_a_wedged_volume_does_not_hold_the_caller(deps, monkeypatch):
     """to_thread frees the loop and bounds nothing. The caller is either a
     reminder being built or a tool call that has already done its work — losing
     the pointer beats losing either."""
+    import threading
     import time
 
     import suzent.tools.overflow as overflow
 
     monkeypatch.setattr(overflow, "SPILL_TIMEOUT_SECONDS", 0.05)
+    # The worker calls _spill_payload; patching spill_overflow would leave the
+    # thread doing the real thing.
     monkeypatch.setattr(
         overflow,
-        "spill_overflow",
-        lambda text, **kw: time.sleep(2) or Spill("/x", False),
+        "_spill_payload",
+        lambda payload, clipped, **kw: time.sleep(1) or Spill("/x", False),
+    )
+    monkeypatch.setattr(
+        overflow, "_spill_slots", threading.Semaphore(overflow._SPILL_THREADS)
     )
 
     started = time.monotonic()
@@ -846,15 +852,21 @@ def test_the_synchronous_spill_is_bounded_too(deps, monkeypatch):
     does not stall other chats — but it holds a tool call that has *already
     succeeded*. Bounding only the async path left two halves of one rule
     disagreeing."""
+    import threading
     import time
 
     import suzent.tools.overflow as overflow
 
     monkeypatch.setattr(overflow, "SPILL_TIMEOUT_SECONDS", 0.05)
+    # The worker calls _spill_payload; patching spill_overflow would leave the
+    # thread doing the real thing.
     monkeypatch.setattr(
         overflow,
-        "spill_overflow",
-        lambda text, **kw: time.sleep(2) or Spill("/x", False),
+        "_spill_payload",
+        lambda payload, clipped, **kw: time.sleep(1) or Spill("/x", False),
+    )
+    monkeypatch.setattr(
+        overflow, "_spill_slots", threading.Semaphore(overflow._SPILL_THREADS)
     )
 
     started = time.monotonic()
@@ -923,8 +935,15 @@ def test_abandoned_spill_workers_are_bounded(deps, monkeypatch):
 
     import suzent.tools.overflow as overflow
 
+    # A private semaphore: parked workers never release, so draining the
+    # module-level one would silently disable spilling for every later test.
+    monkeypatch.setattr(
+        overflow, "_spill_slots", threading.Semaphore(overflow._SPILL_THREADS)
+    )
     monkeypatch.setattr(overflow, "SPILL_TIMEOUT_SECONDS", 0.02)
-    monkeypatch.setattr(overflow, "spill_overflow", lambda text, **kw: time.sleep(30))
+    monkeypatch.setattr(
+        overflow, "_spill_payload", lambda payload, clipped, **kw: time.sleep(1)
+    )
 
     before = threading.active_count()
     for _ in range(20):
@@ -1007,3 +1026,58 @@ def test_a_platform_without_fchmod_still_writes(tmp_path, monkeypatch):
 
     assert spill is not None
     assert Path(spill.path).read_text(encoding="utf-8") == "x" * 100
+
+
+def test_an_abandoned_worker_does_not_hold_the_whole_output(deps, monkeypatch):
+    """The semaphore bounds threads, not bytes. Handing the worker the original
+    string means an abandoned one holds the whole of a hundreds-of-megabyte
+    result for as long as the storage stays wedged — four of those being four
+    copies of the largest output the process has seen."""
+    import time
+
+    import suzent.tools.overflow as overflow
+
+    captured: list[int] = []
+
+    def _wedged(payload, clipped, **kw):
+        captured.append(len(payload))
+        time.sleep(1)
+
+    import threading
+
+    monkeypatch.setattr(
+        overflow, "_spill_slots", threading.Semaphore(overflow._SPILL_THREADS)
+    )
+    monkeypatch.setattr(overflow, "SPILL_TIMEOUT_SECONDS", 0.05)
+    monkeypatch.setattr(overflow, "OVERFLOW_MAX_FILE_BYTES", 1_000)
+    monkeypatch.setattr(overflow, "_spill_payload", _wedged)
+
+    assert overflow.spill_overflow_bounded("x" * 5_000_000, deps=deps, kind="t") is None
+
+    assert captured, "the worker never ran"
+    assert captured[0] <= 1_000, (
+        f"the worker captured {captured[0]} bytes of a 5,000,000-char result"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_saturated_executor_does_not_strand_the_caller(deps, monkeypatch):
+    """The bounded pool's join only starts once the coroutine reaches a worker.
+    On a shared default executor saturated by unrelated work it can sit queued
+    instead — routing through the pool is what made the outer deadline
+    necessary, and is exactly when I removed it."""
+    import time
+
+    import suzent.tools.overflow as overflow
+
+    monkeypatch.setattr(overflow, "SPILL_TIMEOUT_SECONDS", 0.05)
+    monkeypatch.setattr(
+        overflow, "spill_overflow_bounded", lambda text, **kw: time.sleep(1)
+    )
+
+    started = time.monotonic()
+    result = await overflow.spill_overflow_async("payload", deps=deps, kind="t")
+    elapsed = time.monotonic() - started
+
+    assert result is None
+    assert elapsed < 2.0, f"the caller waited {elapsed:.2f}s on a stuck executor"

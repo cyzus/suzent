@@ -488,7 +488,15 @@ def _spill_pinned(
 
 
 def spill_overflow(text: str, *, deps: Any, kind: str = "output") -> Optional[Spill]:
-    """Write *text* somewhere this chat can read it; return where it went.
+    """Clip *text* and write it somewhere this chat can read it."""
+    payload, clipped = _clip(text)
+    return _spill_payload(payload, clipped, deps=deps, kind=kind)
+
+
+def _spill_payload(
+    payload: bytes, clipped: bool, *, deps: Any, kind: str = "output"
+) -> Optional[Spill]:
+    """Write an already-bounded *payload*; return where it went.
 
     Returns None when there is nowhere to write, which is not an error: the
     caller still truncates, it just cannot offer the rest. Losing the tail is
@@ -530,7 +538,6 @@ def spill_overflow(text: str, *, deps: Any, kind: str = "output") -> Optional[Sp
             return None
 
     chat = _chat_segment(deps)
-    payload, clipped = _clip(text)
     name = f"{kind}-{secrets.token_hex(16)}.txt"
 
     sandboxed = bool(getattr(deps, "sandbox_enabled", True))
@@ -607,6 +614,14 @@ def spill_overflow_bounded(
     cancelled, so a late write simply lands in the spill directory and is
     collected by the sweep like any other file.
     """
+    # Clipped here, in the caller, before any worker can capture it.
+    #
+    # An abandoned worker lives as long as the wedged storage does, so handing
+    # it the original string means holding the whole of a hundreds-of-megabyte
+    # result for that entire time. The semaphore bounds threads, not bytes; four
+    # such workers are four copies of the largest output the process has seen.
+    payload, clipped = _clip(text)
+
     if not _spill_slots.acquire(blocking=False):
         logger.warning(
             "[overflow] spill workers saturated; truncating without a pointer"
@@ -617,7 +632,7 @@ def spill_overflow_bounded(
 
     def _worker() -> None:
         try:
-            result[0] = spill_overflow(text, deps=deps, kind=kind)
+            result[0] = _spill_payload(payload, clipped, deps=deps, kind=kind)
         finally:
             _spill_slots.release()
 
@@ -657,10 +672,24 @@ async def spill_overflow_async(
     background; it lands in the spill directory and is collected by the sweep
     like any other file.
     """
-    # Through the same bounded worker as the sync path, not to_thread: an
+    # Through the same bounded worker as the sync path, not a bare to_thread: an
     # abandoned write on the default executor occupies one of its threads
     # forever, and that executor is shared with everything else that offloads.
-    return await asyncio.to_thread(spill_overflow_bounded, text, deps=deps, kind=kind)
+    #
+    # Still wrapped in a deadline, because that shared executor can be saturated
+    # by unrelated work — the coroutine would then sit queued, never reaching
+    # the join that was supposed to bound it. Routing through the bounded pool
+    # is what made this necessary and is exactly when I removed it.
+    try:
+        return await asyncio.wait_for(
+            asyncio.to_thread(spill_overflow_bounded, text, deps=deps, kind=kind),
+            timeout=SPILL_TIMEOUT_SECONDS * 2,
+        )
+    except asyncio.TimeoutError:
+        logger.warning(
+            "[overflow] spill did not start in time — truncating without a pointer"
+        )
+        return None
 
 
 def _sweep_by_path(root: Path) -> None:
