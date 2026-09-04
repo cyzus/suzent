@@ -290,6 +290,13 @@ def _spill_pinned(payload: bytes, shared_host: Path, chat: str, name: str) -> bo
     try:
         shared_host.mkdir(parents=True, exist_ok=True)
         root_fd = os.open(shared_host, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+        # The mount root as well. Forcing the mode on .overflow, the chat
+        # directory and the file, but not on the directory they all sit inside,
+        # leaves a 0700 root under umask 0077 — every descendant correct and
+        # none of them reachable. /shared is the sandbox's own mount and has to
+        # be traversable by it regardless; a 0700 root breaks memory too, not
+        # only spills.
+        _force_mode(root_fd, _DIR_MODE)
         overflow_fd = _open_child_dir(".overflow", root_fd)
         chat_fd = _open_child_dir(chat, overflow_fd)
 

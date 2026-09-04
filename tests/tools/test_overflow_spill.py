@@ -616,11 +616,16 @@ def test_the_modes_survive_a_restrictive_umask(tmp_path, umask_value):
     finally:
         os.umask(previous)
 
-    file_mode = os.stat(spill.path).st_mode & 0o777
-    dir_mode = os.stat(Path(spill.path).parent).st_mode & 0o777
-
-    assert file_mode & 0o044, f"umask {umask_value:o} left the file at {file_mode:o}"
-    assert dir_mode & 0o011, f"umask {umask_value:o} left the dir at {dir_mode:o}"
+    # Every directory between the mount root and the file, not just the leaf:
+    # correct descendants under an unreachable root are still unreachable.
+    assert os.stat(spill.path).st_mode & 0o044, "the file is not readable"
+    walked = Path(spill.path).parent
+    while True:
+        mode = os.stat(walked).st_mode & 0o777
+        assert mode & 0o011, f"umask {umask_value:o} left {walked} at {mode:o}"
+        if walked == tmp_path / "shared":
+            break
+        walked = walked.parent
 
 
 def test_the_path_fallback_also_survives_the_umask(tmp_path, monkeypatch):
@@ -637,3 +642,26 @@ def test_the_path_fallback_also_survives_the_umask(tmp_path, monkeypatch):
 
     assert os.stat(spill.path).st_mode & 0o044
     assert os.stat(Path(spill.path).parent).st_mode & 0o011
+
+
+def test_the_voice_verification_script_still_calls_correctly():
+    """A standalone script is not covered by the suite, so a signature change
+    breaks it silently. Adding ctx to SpeakTool.forward() bound the utterance to
+    ctx and left `text` missing."""
+    import ast
+    from pathlib import Path as _Path
+
+    source = _Path("tests/verify_voice.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+
+    calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "forward"
+    ]
+
+    assert calls, "the script no longer calls forward(); update this test"
+    for call in calls:
+        assert len(call.args) >= 2, "forward() takes ctx first, then the text"

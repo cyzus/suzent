@@ -8,7 +8,9 @@ def test_speak():
     tool = SpeakTool()
 
     print("Speaking...")
-    result = asyncio.run(tool.forward("Hello, I am Suzent. I can speak now."))
+    # ctx first, as the registry passes it. SpeakTool does not read it, but the
+    # signature has to match the one the wrapper calls.
+    result = asyncio.run(tool.forward(None, "Hello, I am Suzent. I can speak now."))
     print(f"Result: {result}")
 
 
