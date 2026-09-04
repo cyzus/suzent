@@ -83,7 +83,7 @@ def test_the_marker_names_the_file(deps):
 
     assert spill.path in out
     assert "full output" in out
-    assert "kept up to 24h" in out
+    assert "kept up to 25h" in out
 
 
 def test_a_marker_without_a_spill_still_reports_the_loss():
@@ -397,12 +397,28 @@ def test_the_sweep_is_harmless_with_no_directory(tmp_path, monkeypatch):
 
 
 def test_the_stated_window_tracks_the_actual_ttl(monkeypatch):
+    """Derived, not written out: the two would drift the first time either
+    number moved — and the sweep interval is part of the bound because deletion
+    happens on a tick, not on an alarm."""
     import suzent.tools.overflow as overflow
     from suzent.tools.overflow import retention_hint
 
     monkeypatch.setattr(overflow, "OVERFLOW_TTL_SECONDS", 3 * 60 * 60)
+    monkeypatch.setattr(overflow, "OVERFLOW_SWEEP_INTERVAL_SECONDS", 60 * 60)
 
-    assert retention_hint() == "kept up to 3h"
+    assert retention_hint() == "kept up to 4h"
+
+
+def test_the_promise_covers_the_polling_interval(monkeypatch):
+    """A spill created just after a sweep is still inside the window at the tick
+    following its expiry, and goes on the one after that."""
+    import suzent.tools.overflow as overflow
+    from suzent.tools.overflow import retention_hint
+
+    monkeypatch.setattr(overflow, "OVERFLOW_TTL_SECONDS", 10 * 60 * 60)
+    monkeypatch.setattr(overflow, "OVERFLOW_SWEEP_INTERVAL_SECONDS", 2 * 60 * 60)
+
+    assert retention_hint() == "kept up to 12h"
 
 
 @pytest.mark.asyncio
@@ -1143,3 +1159,46 @@ def test_a_failing_sweep_thread_is_not_an_unhandled_exception(monkeypatch, recwa
         time.sleep(0.01)
 
     assert threading.active_count() <= before, "the sweep thread never finished"
+
+
+def test_only_one_sweep_runs_at_a_time(monkeypatch):
+    """On storage wedged for longer than the interval, every tick would
+    otherwise start another uncancellable thread — and when storage recovers,
+    an hour of queued sweeps all start at once."""
+    import threading
+
+    import suzent.tools.overflow as overflow
+
+    release = threading.Event()
+    started = threading.Semaphore(0)
+
+    def _blocked():
+        started.release()
+        release.wait(timeout=5)
+
+    monkeypatch.setattr(overflow, "sweep_overflow", _blocked)
+
+    before = threading.active_count()
+    overflow.sweep_overflow_in_background()
+    assert started.acquire(timeout=2), "the first sweep never started"
+    for _ in range(10):
+        overflow.sweep_overflow_in_background()
+
+    running = threading.active_count() - before
+    release.set()
+
+    assert running == 1, f"{running} sweeps running at once"
+
+
+def test_the_sweep_lock_is_released_for_the_next_tick(monkeypatch):
+    import suzent.tools.overflow as overflow
+
+    monkeypatch.setattr(overflow, "sweep_overflow", lambda: None)
+
+    for _ in range(3):
+        overflow.sweep_overflow_in_background()
+        for _ in range(100):
+            if not overflow._sweep_lock.locked():
+                break
+            time.sleep(0.01)
+        assert not overflow._sweep_lock.locked(), "the lock outlived its sweep"

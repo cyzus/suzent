@@ -53,6 +53,15 @@ OVERFLOW_VIRTUAL_DIR = "/shared/.overflow"
 #: session, short enough that a week of build logs does not accumulate.
 OVERFLOW_TTL_SECONDS = 24 * 60 * 60
 
+#: How often the sweep runs while the service is up.
+#:
+#: The root quota and the retention window are only enforced where the sweep
+#: reaches. Running it once at startup left both unenforced for the lifetime of
+#: a long-lived process: a chat's last spill outlives its advertised window, and
+#: the deployment-wide total is never checked at all, because a write only ever
+#: prunes its own chat's directory.
+OVERFLOW_SWEEP_INTERVAL_SECONDS = 60 * 60
+
 #: Per-chat ceilings. A single runaway session can write thousands of files, and
 #: 200 files of any size is not a bound on disk, so both apply.
 OVERFLOW_MAX_FILES = 200
@@ -127,7 +136,13 @@ def retention_hint() -> str:
 
     Derived from the TTL so the two cannot drift.
     """
-    return f"kept up to {OVERFLOW_TTL_SECONDS // 3600}h"
+    # TTL plus the sweep interval, because deletion happens on a tick and not on
+    # an alarm: a spill created just after one sweep is still inside the window
+    # at the tick that follows its expiry, and goes on the one after that. An
+    # advertised bound the ordinary schedule does not meet is the same defect as
+    # the "full output" claim this marker already had to walk back.
+    longest = OVERFLOW_TTL_SECONDS + OVERFLOW_SWEEP_INTERVAL_SECONDS
+    return f"kept up to {longest // 3600}h"
 
 
 def _chat_segment(deps: Any) -> str:
@@ -579,14 +594,11 @@ def _spill_payload(
     return Spill(str(shared_host / ".overflow" / chat / name), clipped)
 
 
-#: How often the sweep runs while the service is up.
-#:
-#: The root quota and the retention window are only enforced where the sweep
-#: reaches. Running it once at startup left both unenforced for the lifetime of
-#: a long-lived process: a chat's last spill outlives its advertised window, and
-#: the deployment-wide total is never checked at all, because a write only ever
-#: prunes its own chat's directory.
-OVERFLOW_SWEEP_INTERVAL_SECONDS = 60 * 60
+#: Held for the duration of a sweep, so a wedged one cannot be joined by the
+#: next tick. There is nothing useful for a second concurrent sweep to do — it
+#: would walk the same directories — and on storage that recovers after an
+#: outage, an hour's worth of queued sweeps would all start at once.
+_sweep_lock = threading.Lock()
 
 
 def sweep_overflow_in_background() -> None:
@@ -598,6 +610,10 @@ def sweep_overflow_in_background() -> None:
     cancellation added earlier was meant to prevent.
     """
 
+    if not _sweep_lock.acquire(blocking=False):
+        logger.debug("[overflow] a sweep is still running; skipping this tick")
+        return
+
     def _guarded() -> None:
         # The caller's try/except cannot see a thread's exception, so moving the
         # sweep off the loop moved its failures out of reach of the handler that
@@ -606,10 +622,13 @@ def sweep_overflow_in_background() -> None:
             sweep_overflow()
         except Exception as e:  # noqa: BLE001 - a sweep failure is not fatal
             logger.warning(f"[overflow] sweep failed: {e}")
+        finally:
+            _sweep_lock.release()
 
     try:
         threading.Thread(target=_guarded, name="overflow-sweep", daemon=True).start()
     except BaseException as e:
+        _sweep_lock.release()
         logger.warning(f"[overflow] could not start the sweep: {e}")
 
 
