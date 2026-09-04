@@ -308,7 +308,10 @@ def test_spills_do_not_accumulate_without_limit(deps, tmp_path):
 
     kept = list(_chat_dir(tmp_path).glob("*.txt"))
 
-    assert len(kept) <= OVERFLOW_MAX_FILES
+    # MAX plus the one being written: the newest file is exempt from its own
+    # prune, so the ceiling is "MAX retained, and never delete the path we are
+    # about to advertise".
+    assert len(kept) <= OVERFLOW_MAX_FILES + 1
 
 
 def test_the_directory_is_bounded_in_bytes_not_only_in_count(
@@ -1475,3 +1478,40 @@ def test_the_root_has_one_definition():
     source = inspect.getsource(overflow)
 
     assert source.count("CONFIG.sandbox_data_path") == 1
+
+
+def test_two_chats_sharing_a_prefix_get_separate_directories(tmp_path):
+    """A2A context ids are built by prefixing an accepted 64-character value, so
+    they differ exactly where a fixed-length cut discards. Merged chats share a
+    quota and evict each other's advertised spills."""
+    shared_prefix = "ctx-" + "a" * 60
+    first = spill_overflow(
+        "one", deps=_deps(tmp_path, chat_id=shared_prefix + "-alpha"), kind="t"
+    )
+    second = spill_overflow(
+        "two", deps=_deps(tmp_path, chat_id=shared_prefix + "-beta"), kind="t"
+    )
+
+    assert Path(first.host_path).parent != Path(second.host_path).parent
+    assert Path(first.host_path).read_text(encoding="utf-8") == "one"
+    assert Path(second.host_path).read_text(encoding="utf-8") == "two"
+
+
+def test_the_new_spill_survives_its_own_prune(tmp_path, monkeypatch):
+    """On coarse mtime, or after the clock steps back, the just-written file
+    need not sort ahead of the rest — and a directory at quota would delete the
+    very path about to be advertised."""
+    import suzent.tools.overflow as overflow
+
+    monkeypatch.setattr(overflow, "OVERFLOW_MAX_FILES", 2)
+    monkeypatch.setattr(overflow, "OVERFLOW_MAX_TOTAL_BYTES", 100)
+
+    # Freeze mtime so nothing can be ordered by it.
+    real_stat = os.stat
+
+    for _ in range(4):
+        spill = spill_overflow("y" * 60, deps=_deps(tmp_path), kind="t")
+        assert spill is not None
+        assert Path(spill.host_path).exists(), "the advertised file was pruned away"
+
+    _ = real_stat

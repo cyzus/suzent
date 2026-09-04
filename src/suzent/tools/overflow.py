@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import asyncio
 import errno
+import hashlib
 import os
 import re
 import secrets
@@ -188,9 +189,16 @@ def _chat_segment(deps: Any) -> str:
     cannot contradict each other.
     """
     raw = str(getattr(deps, "chat_id", "") or "shared")
-    safe = _SAFE_SEGMENT.sub("-", raw)[:64] or "shared"
+    safe = _SAFE_SEGMENT.sub("-", raw) or "shared"
     prefix = "sandbox" if getattr(deps, "sandbox_enabled", True) else "host"
-    return f"{prefix}-{safe}"
+    if len(safe) <= 48:
+        return f"{prefix}-{safe}"
+    # A plain truncation merges two chats whose ids share a prefix — and A2A
+    # context ids are built by prefixing an accepted 64-character value, so they
+    # differ exactly where a 64-character cut discards. Merged chats then share
+    # one quota and evict each other's advertised spills.
+    digest = hashlib.sha1(raw.encode("utf-8", "replace")).hexdigest()[:12]
+    return f"{prefix}-{safe[:48]}-{digest}"
 
 
 def _force_mode(fd: int, mode: int) -> None:
@@ -329,7 +337,7 @@ def _clip(text: str) -> tuple[bytes, bool]:
     return _encode_bounded(head, dropped)
 
 
-def _prune_path(directory: Path) -> None:
+def _prune_path(directory: Path, protect: Optional[str] = None) -> None:
     """The path-based twin of _prune_fd, for platforms without dir_fd."""
     try:
         entries = []
@@ -342,6 +350,7 @@ def _prune_path(directory: Path) -> None:
     except OSError:
         return
 
+    entries = [e for e in entries if e[2].name != protect]
     entries.sort(reverse=True)
     cutoff = time.time() - OVERFLOW_TTL_SECONDS
     running = 0
@@ -360,7 +369,9 @@ def _prune_path(directory: Path) -> None:
             continue
 
 
-def _enforce_root_quota_fd(root_fd: int) -> int:
+def _enforce_root_quota_fd(
+    root_fd: int, protect: Optional[tuple[str, str]] = None
+) -> int:
     """Hold the deployment-wide ceiling across every chat directory.
 
     Separate from the per-chat prune because the two answer different
@@ -385,6 +396,8 @@ def _enforce_root_quota_fd(root_fd: int) -> int:
                     try:
                         stat = kept.stat(follow_symlinks=False)
                     except OSError:
+                        continue
+                    if protect == (entry.name, kept.name):
                         continue
                     survivors.append(
                         (stat.st_mtime, stat.st_size, entry.name, kept.name)
@@ -417,7 +430,9 @@ def _enforce_root_quota_fd(root_fd: int) -> int:
     return removed
 
 
-def _enforce_root_quota_path(root: Path) -> int:
+def _enforce_root_quota_path(
+    root: Path, protect: Optional[tuple[str, str]] = None
+) -> int:
     """The path-based twin of _enforce_root_quota_fd."""
     survivors: list[tuple[float, int, Path]] = []
     try:
@@ -428,6 +443,8 @@ def _enforce_root_quota_path(root: Path) -> int:
                 try:
                     stat = path.stat()
                 except OSError:
+                    continue
+                if protect == (chat_dir.name, path.name):
                     continue
                 survivors.append((stat.st_mtime, stat.st_size, path))
     except OSError:
@@ -448,7 +465,7 @@ def _enforce_root_quota_path(root: Path) -> int:
     return removed
 
 
-def _prune_fd(dir_fd: int) -> None:
+def _prune_fd(dir_fd: int, protect: Optional[str] = None) -> None:
     """Apply the retention bounds inside one pinned directory."""
     try:
         entries = []
@@ -458,6 +475,8 @@ def _prune_fd(dir_fd: int) -> None:
             try:
                 stat = entry.stat(follow_symlinks=False)
             except OSError:
+                continue
+            if entry.name == protect:
                 continue
             entries.append((stat.st_mtime, stat.st_size, entry.name))
     except OSError:
@@ -551,7 +570,7 @@ def _spill_pinned(
                     pass
 
 
-def _prune_now(deps: Any) -> None:
+def _prune_now(deps: Any, protect: Optional[str] = None) -> None:
     """Apply the quotas after a write.
 
     Unconditional again, and that is the point of dropping the handshake: with
@@ -573,15 +592,15 @@ def _prune_now(deps: Any) -> None:
             try:
                 chat_fd = os.open(chat, flags, dir_fd=root_fd)
                 try:
-                    _prune_fd(chat_fd)
+                    _prune_fd(chat_fd, protect)
                 finally:
                     os.close(chat_fd)
-                _enforce_root_quota_fd(root_fd)
+                _enforce_root_quota_fd(root_fd, (chat, protect) if protect else None)
             finally:
                 os.close(root_fd)
         else:
-            _prune_path(root / chat)
-            _enforce_root_quota_path(root)
+            _prune_path(root / chat, protect)
+            _enforce_root_quota_path(root, (chat, protect) if protect else None)
     except OSError as e:
         logger.debug(f"[overflow] could not prune after a spill: {e}")
 
@@ -700,7 +719,11 @@ def _spill_payload(
     elif not _spill_pinned(payload, shared_host, chat, name, dir_mode, file_mode):
         return None
 
-    _prune_now(deps)
+    # The file just written is exempt: on a filesystem with coarse mtime, or
+    # after the clock steps back, it need not sort ahead of the others, and a
+    # directory already at quota would delete the very path about to be
+    # advertised.
+    _prune_now(deps, protect=name)
 
     written = shared_host / ".overflow" / chat / name
     if virtual is not None:
