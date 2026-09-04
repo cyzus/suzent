@@ -105,6 +105,18 @@ SPILL_CLIPPED_NOTE = "\n\n[spill clipped: output exceeded the per-file limit]"
 #: in this file. It buys a bounded overshoot: whatever is written in a minute.
 OVERFLOW_GRACE_SECONDS = 60
 
+#: How far ahead of the clock an mtime may sit and still be believed.
+#:
+#: Grace is a window, not a lower bound. If the host's clock steps backwards —
+#: an NTP correction, a VM resuming from a snapshot — every file published
+#: before the step is stamped in the future, and a one-sided ``mtime >= now -
+#: 60`` treats all of them as newborn for the whole rollback interval, which
+#: can be hours. A burst caught by that window sits above both ceilings until
+#: the clock catches up. Bounding the window on both sides costs one
+#: comparison and keeps the overshoot at a minute's worth of writes; the slack
+#: absorbs coarse filesystem timestamps and small NFS skew.
+OVERFLOW_CLOCK_SKEW_SECONDS = 5
+
 #: Suffix a spill wears while it is being written.
 #:
 #: Scans match ``*.txt``, so a partial file is invisible to them: the sweep or
@@ -179,6 +191,14 @@ def retention_hint() -> str:
     # the "full output" claim this marker already had to walk back.
     longest = OVERFLOW_TTL_SECONDS + OVERFLOW_SWEEP_INTERVAL_SECONDS
     return f"kept up to {longest // 3600}h"
+
+
+def _in_grace(mtime: float, now: float) -> bool:
+    """True while a spill is too young to evict.
+
+    Two-sided on purpose: see OVERFLOW_CLOCK_SKEW_SECONDS.
+    """
+    return now - OVERFLOW_GRACE_SECONDS <= mtime <= now + OVERFLOW_CLOCK_SKEW_SECONDS
 
 
 def _shared_root() -> Path:
@@ -385,7 +405,7 @@ def _prune_path(directory: Path, protect: Optional[str] = None) -> None:
             continue
 
     cutoff = time.time() - OVERFLOW_TTL_SECONDS
-    fresh = time.time() - OVERFLOW_GRACE_SECONDS
+    now = time.time()
     running = 0
     for index, (mtime, size, path) in enumerate(entries):
         over = (
@@ -393,7 +413,7 @@ def _prune_path(directory: Path, protect: Optional[str] = None) -> None:
             or mtime < cutoff
             or running + size > OVERFLOW_MAX_TOTAL_BYTES
         )
-        protected = path.name == protect or mtime >= fresh
+        protected = path.name == protect or _in_grace(mtime, now)
         try:
             if over and not protected:
                 path.unlink(missing_ok=True)
@@ -449,14 +469,14 @@ def _enforce_root_quota_fd(
     # Newest first, so what goes is least likely to be referenced by a live
     # conversation.
     survivors.sort(reverse=True)
-    fresh = time.time() - OVERFLOW_GRACE_SECONDS
+    now = time.time()
     removed = 0
     running = 0
     for mtime, size, chat_name, file_name in survivors:
         # Counted whether or not it can be deleted: omitting fresh files from
         # the running total let a burst across chats exceed the deployment
         # ceiling entirely, which is the ceiling's whole purpose.
-        protected = protect == (chat_name, file_name) or mtime >= fresh
+        protected = protect == (chat_name, file_name) or _in_grace(mtime, now)
         if running + size <= OVERFLOW_MAX_ROOT_BYTES or protected:
             running += size
             continue
@@ -493,11 +513,11 @@ def _enforce_root_quota_path(
         return 0
 
     survivors.sort(reverse=True)
-    fresh = time.time() - OVERFLOW_GRACE_SECONDS
+    now = time.time()
     removed = 0
     running = 0
     for mtime, size, path in survivors:
-        protected = protect == (path.parent.name, path.name) or mtime >= fresh
+        protected = protect == (path.parent.name, path.name) or _in_grace(mtime, now)
         if running + size <= OVERFLOW_MAX_ROOT_BYTES or protected:
             running += size
             continue
@@ -542,7 +562,7 @@ def _prune_fd(dir_fd: int, protect: Optional[str] = None) -> None:
 
     entries.sort(reverse=True)
     cutoff = time.time() - OVERFLOW_TTL_SECONDS
-    fresh = time.time() - OVERFLOW_GRACE_SECONDS
+    now = time.time()
     running = 0
     for index, (mtime, size, name) in enumerate(entries):
         over = (
@@ -555,7 +575,7 @@ def _prune_fd(dir_fd: int, protect: Optional[str] = None) -> None:
         # exceed the per-chat limit while none is old enough to consider. They
         # consume budget like anything else; they are simply the ones that
         # displace older files rather than being displaced.
-        protected = name == protect or mtime >= fresh
+        protected = name == protect or _in_grace(mtime, now)
         try:
             if over and not protected:
                 os.unlink(name, dir_fd=dir_fd)

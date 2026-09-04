@@ -1772,3 +1772,27 @@ def test_fresh_spills_count_toward_the_root_quota(tmp_path, monkeypatch):
     assert not Path(aged.host_path).exists(), (
         "fresh spills did not consume the deployment budget"
     )
+
+
+def test_future_dated_spills_do_not_hold_grace_open(tmp_path, monkeypatch):
+    """A backward clock step stamps already-published spills in the future. Read
+    as a one-sided ``mtime >= now - 60`` that made them undeletable for the whole
+    rollback interval — hours, not a minute — so a burst caught by it stayed
+    above the ceiling. Grace is a window, and its future side is closed."""
+    import suzent.tools.overflow as overflow
+
+    monkeypatch.setattr(overflow, "OVERFLOW_MAX_TOTAL_BYTES", 1_000)
+
+    rolled_back = spill_overflow("a" * 3_000, deps=_deps(tmp_path), kind="t")
+    ahead = time.time() + 3_600
+    os.utime(rolled_back.host_path, (ahead, ahead))
+    genuinely_fresh = spill_overflow("b" * 3_000, deps=_deps(tmp_path), kind="t")
+
+    overflow.sweep_overflow()
+
+    assert not Path(rolled_back.host_path).exists(), (
+        "a future-dated spill kept its grace and could not be evicted"
+    )
+    assert Path(genuinely_fresh.host_path).exists(), (
+        "grace no longer protects a spill that really is newborn"
+    )
