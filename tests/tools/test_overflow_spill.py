@@ -1896,3 +1896,45 @@ def test_deleted_entries_do_not_consume_the_file_ceiling(tmp_path, monkeypatch):
         assert kept.exists(), (
             "an entry deleted ahead of this one still consumed the ceiling"
         )
+
+
+def test_an_undeletable_spill_still_consumes_its_budget(tmp_path, monkeypatch):
+    """A failed unlink — a file held open on Windows, a permission fault — left
+    the entry out of both totals, so the scan went on to retain older files as
+    though the bytes it could not reclaim were free. It is still on disk, so it
+    still counts."""
+    import suzent.tools.overflow as overflow
+
+    monkeypatch.setattr(overflow, "OVERFLOW_MAX_TOTAL_BYTES", 5_000)
+
+    # Newest first: the keeper fits, the stuck file is the first entry over the
+    # ceiling, and the tail only survives if its bytes were written off.
+    keeper = spill_overflow("a" * 3_000, deps=_deps(tmp_path), kind="t")
+    stuck = spill_overflow("b" * 3_000, deps=_deps(tmp_path), kind="t")
+    tail = spill_overflow("c" * 100, deps=_deps(tmp_path), kind="t")
+    for offset, spill in enumerate((keeper, stuck, tail)):
+        when = time.time() - 3_600 - offset
+        os.utime(spill.host_path, (when, when))
+
+    stuck_name = Path(stuck.host_path).name
+    real_unlink = os.unlink
+
+    def refuse_the_stuck_one(target, *args, **kwargs):
+        if str(target).endswith(stuck_name):
+            raise PermissionError(stuck_name)
+        return real_unlink(target, *args, **kwargs)
+
+    monkeypatch.setattr(os, "unlink", refuse_the_stuck_one)
+    monkeypatch.setattr(
+        Path,
+        "unlink",
+        lambda self, missing_ok=False: refuse_the_stuck_one(str(self)),
+    )
+
+    overflow.sweep_overflow()
+
+    assert Path(stuck.host_path).exists()
+    assert Path(keeper.host_path).exists()
+    assert not Path(tail.host_path).exists(), (
+        "bytes that could not be reclaimed were treated as free"
+    )

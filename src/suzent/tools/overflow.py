@@ -462,7 +462,8 @@ def _prune_path(directory: Path, protect: Optional[str] = None) -> None:
                 path.unlink(missing_ok=True)
                 continue
         except OSError:
-            continue
+            # It is still on disk, so it still occupies a slot and its bytes.
+            pass
         running += size
         kept += 1
 
@@ -532,12 +533,13 @@ def _enforce_root_quota_fd(
         try:
             chat_fd = os.open(chat_name, flags, dir_fd=root_fd)
         except OSError:
+            running += size
             continue
         try:
             os.unlink(file_name, dir_fd=chat_fd)
             removed += 1
         except OSError:
-            pass
+            running += size
         finally:
             os.close(chat_fd)
     return removed
@@ -576,7 +578,7 @@ def _enforce_root_quota_path(
             path.unlink(missing_ok=True)
             removed += 1
         except OSError:
-            continue
+            running += size
     return removed
 
 
@@ -634,7 +636,8 @@ def _prune_fd(dir_fd: int, protect: Optional[str] = None) -> None:
                 os.unlink(name, dir_fd=dir_fd)
                 continue
         except OSError:
-            continue
+            # It is still on disk, so it still occupies a slot and its bytes.
+            pass
         running += size
         kept += 1
 
