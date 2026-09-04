@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [v0.12.0] - 2026-09-04
 
+<!-- highlights -->
+Suzent feels much more like a team you can steer in this release. Thinking
+effort is now an explicit control from the desktop UI through to the model, and
+sub-agents have grown into a real roster: you can see what each child is doing,
+redirect it wherever it appears, understand what a stop interrupted, and trust
+that status and results will survive a reload. Parent permissions now follow
+delegated work, while vLLM and SGLang make local and self-hosted models
+first-class choices.
+
+Long conversations are calmer, faster, and easier to navigate. Settled turns no
+longer re-render for every streamed token, collapsed tool calls no longer build
+editors they are not showing, and macOS chat rendering is dramatically lighter.
+The activity rail and minimap now describe the message actually on screen, reach
+both ends of the conversation, and keep the reader's place when older history is
+loaded. Streaming recovery also keeps working turns alive instead of mistaking a
+slow first event, a busy reconnect, or a stop for lost work.
+
+Context management now follows the model that is really running. The displayed
+window, cache-hit share, and automatic compaction threshold use that model's
+actual limits, so small models are protected and million-token models are no
+longer compacted prematurely. Oversized tool output keeps its useful tail in a
+bounded, expiring spill file instead of silently throwing it away, and reminder
+providers run in parallel with timeouts, deduplication, and caps so one slow
+source cannot hold up a turn.
+
+There is a deep trust-and-correctness pass underneath all of that. Prompt and
+system-reminder boundaries are authenticated and sanitized across ordinary
+chat, ACP, restored history, structured tool results, compaction, images, and
+steering; prompt traces describe structure without recording prompt contents.
+Skills now respect per-chat enablement and cannot forge their own catalog
+markers, source precedence is explicit, and memory resolves against the current
+request rather than a stale agent snapshot.
+
+Finally, the rough edges around real installations received a broad reliability
+sweep: goals charge the right generation and the turns that actually ran; file
+tools honor the chat's working directory and granted paths in both host and
+sandbox modes; image analysis uses the same endpoint and credentials as the
+selected model; and self-hosted servers no longer spend the whole response
+budget on hidden reasoning. The result is a release that is not just more
+capable, but much harder to confuse, stall, or knock off course.
+<!-- /highlights -->
+
 ### 🚀 Added
 - Implement prepend scroll anchoring with snapshot capture and restore
 - Keep the truncated tail on disk instead of discarding it (#185)
