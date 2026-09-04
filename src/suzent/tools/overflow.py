@@ -177,7 +177,13 @@ def _spill_by_path(
     oversized tool result into a failed tool call.
     """
     try:
-        directory.mkdir(mode=dir_mode, parents=True, exist_ok=True)
+        # Ancestors shared between modes, leaf private — see _spill_pinned.
+        directory.parent.mkdir(mode=_SHARED_DIR_MODE, parents=True, exist_ok=True)
+        try:
+            directory.parent.chmod(_SHARED_DIR_MODE)
+        except OSError:
+            pass
+        directory.mkdir(mode=dir_mode, exist_ok=True)
         try:
             directory.chmod(dir_mode)
         except OSError:
@@ -311,8 +317,14 @@ def _spill_pinned(
         # none of them reachable. /shared is the sandbox's own mount and has to
         # be traversable by it regardless; a 0700 root breaks memory too, not
         # only spills.
-        _force_mode(root_fd, dir_mode)
-        overflow_fd = _open_child_dir(".overflow", root_fd, dir_mode)
+        # The mount root and .overflow are shared between execution modes, so
+        # their mode cannot depend on which one is spilling right now: a host
+        # spill setting them 0700 would make every path already advertised to a
+        # sandbox container unreadable until some later sandbox spill happened
+        # to set them back. Traversal is not readability — the chat directory
+        # below still carries the private mode.
+        _force_mode(root_fd, _SHARED_DIR_MODE)
+        overflow_fd = _open_child_dir(".overflow", root_fd, _SHARED_DIR_MODE)
         chat_fd = _open_child_dir(chat, overflow_fd, dir_mode)
 
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
@@ -415,16 +427,41 @@ async def sweep_overflow_periodically() -> None:
             logger.warning(f"[overflow] periodic sweep failed: {e}")
 
 
+#: How long the caller waits for a spill before giving up on it.
+#:
+#: to_thread frees the loop and bounds nothing: a wedged volume would otherwise
+#: hold reminder construction, or a tool result that has already succeeded, for
+#: as long as the storage takes. Spilling is best-effort, so it gets a deadline
+#: and the plain marker on expiry.
+SPILL_TIMEOUT_SECONDS = 2.0
+
+
 async def spill_overflow_async(
     text: str, *, deps: Any, kind: str = "output"
 ) -> Optional[Spill]:
-    """Spill without holding the event loop.
+    """Spill without holding the event loop, and without waiting forever.
 
-    Up to 5 MiB of write plus a directory scan; on a slow volume, or with
-    several overflows at once, doing that inline stalls every other chat the
-    loop is serving.
+    Up to 5 MiB of write plus a directory scan; inline, that stalls every other
+    chat the loop is serving. Off-loop but unbounded, a slow volume costs the
+    caller instead — and the caller is either a reminder being built or a tool
+    call that has already done its work. Losing the pointer beats losing
+    either.
+
+    The thread is not cancellable, so a timed-out write finishes in the
+    background; it lands in the spill directory and is collected by the sweep
+    like any other file.
     """
-    return await asyncio.to_thread(spill_overflow, text, deps=deps, kind=kind)
+    try:
+        return await asyncio.wait_for(
+            asyncio.to_thread(spill_overflow, text, deps=deps, kind=kind),
+            timeout=SPILL_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError:
+        logger.warning(
+            f"[overflow] spill exceeded {SPILL_TIMEOUT_SECONDS}s — truncating "
+            f"without a pointer"
+        )
+        return None
 
 
 def _sweep_by_path(root: Path) -> None:

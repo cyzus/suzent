@@ -720,3 +720,72 @@ async def test_the_sweeper_is_cancelled_at_shutdown():
 
     assert "overflow_sweeper" in source, "the sweeper outlives the application"
     assert "cancel()" in source
+
+
+def test_a_host_spill_does_not_lock_out_the_sandbox(tmp_path):
+    """The mount root and .overflow are shared between execution modes, so
+    their mode cannot depend on which one is spilling now: a host spill setting
+    them 0700 makes every path already advertised to a sandbox container
+    unreadable until some later sandbox spill happens to set them back."""
+    sandbox_spill = spill_overflow(
+        "s", deps=_deps(tmp_path, chat_id="sbx", sandbox=True), kind="t"
+    )
+    host_path = (
+        tmp_path / "shared" / ".overflow" / "sbx" / Path(sandbox_spill.path).name
+    )
+
+    # A host-mode chat spills afterwards, touching the shared ancestors.
+    spill_overflow("h", deps=_deps(tmp_path, chat_id="host"), kind="t")
+
+    for ancestor in (tmp_path / "shared", tmp_path / "shared" / ".overflow"):
+        mode = os.stat(ancestor).st_mode & 0o777
+        assert mode & 0o011, f"{ancestor} became untraversable ({mode:o})"
+    assert os.stat(host_path).st_mode & 0o044, "the sandbox spill became unreadable"
+
+
+def test_the_host_chat_directory_is_still_private(tmp_path):
+    """Traversable ancestors are not readable contents: the leaf keeps the
+    private mode."""
+    spill = spill_overflow("h", deps=_deps(tmp_path, chat_id="host"), kind="t")
+
+    assert os.stat(Path(spill.path).parent).st_mode & 0o077 == 0
+    assert os.stat(spill.path).st_mode & 0o077 == 0
+
+
+@pytest.mark.asyncio
+async def test_a_wedged_volume_does_not_hold_the_caller(deps, monkeypatch):
+    """to_thread frees the loop and bounds nothing. The caller is either a
+    reminder being built or a tool call that has already done its work — losing
+    the pointer beats losing either."""
+    import time
+
+    import suzent.tools.overflow as overflow
+
+    monkeypatch.setattr(overflow, "SPILL_TIMEOUT_SECONDS", 0.05)
+    monkeypatch.setattr(
+        overflow,
+        "spill_overflow",
+        lambda text, **kw: time.sleep(2) or Spill("/x", False),
+    )
+
+    started = time.monotonic()
+    result = await overflow.spill_overflow_async("payload", deps=deps, kind="t")
+    elapsed = time.monotonic() - started
+
+    assert result is None, "a wedged write must fall back to the plain marker"
+    assert elapsed < 1.0, f"the caller waited {elapsed:.2f}s for a wedged volume"
+
+
+def test_the_sweeper_survives_an_in_process_restart():
+    """shutdown() cancels the sweeper but leaves social_brain set, so the next
+    startup() returns at the duplicate-social guard. Starting the sweeper after
+    that guard left a restarted application with no retention at all."""
+    import inspect
+
+    from suzent import server
+
+    source = inspect.getsource(server.startup)
+    sweeper_at = source.index("overflow_sweeper")
+    guard_at = source.index("Social brain already initialized")
+
+    assert sweeper_at < guard_at, "the sweeper starts after an early return"

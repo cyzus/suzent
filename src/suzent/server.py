@@ -801,6 +801,21 @@ async def startup():
 
     logger.info("Node system initialized")
 
+    # Before the duplicate-social guard below, which returns early. shutdown()
+    # cancels the sweeper but leaves social_brain set, so on an in-process
+    # restart that return would skip both the startup sweep and the periodic
+    # one — leaving retention and the root quota unenforced until the process
+    # itself restarts.
+    #
+    # Spilled output is otherwise pruned only when the next spill is written,
+    # which is to say not at all once output stops overflowing.
+    asyncio.create_task(asyncio.to_thread(sweep_overflow))
+    existing_sweeper = getattr(app.state, "overflow_sweeper", None)
+    if existing_sweeper is None or existing_sweeper.done():
+        app.state.overflow_sweeper = asyncio.create_task(
+            sweep_overflow_periodically(), name="overflow_sweeper"
+        )
+
     global social_brain, channel_manager
     if social_brain is not None:
         logger.warning("Social brain already initialized, skipping duplicate startup.")
@@ -836,16 +851,6 @@ async def startup():
 
     # Silently refresh model lists for all configured providers in the background.
     asyncio.create_task(_refresh_provider_models())
-
-    # Spilled tool output is pruned when the next spill is written, which means
-    # not at all once output stops overflowing. This is the pass that collects
-    # what the previous run left behind.
-    asyncio.create_task(asyncio.to_thread(sweep_overflow))
-    # And keep sweeping: a write only prunes its own chat's directory, so the
-    # deployment-wide quota and the retention window are enforced nowhere else.
-    app.state.overflow_sweeper = asyncio.create_task(
-        sweep_overflow_periodically(), name="overflow_sweeper"
-    )
 
 
 def ensure_app_data():
