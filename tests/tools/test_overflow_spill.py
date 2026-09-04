@@ -1796,3 +1796,23 @@ def test_future_dated_spills_do_not_hold_grace_open(tmp_path, monkeypatch):
     assert Path(genuinely_fresh.host_path).exists(), (
         "grace no longer protects a spill that really is newborn"
     )
+
+
+def test_future_dated_spills_expire_within_the_advertised_retention(tmp_path):
+    """With no quota pressure at all, a future-dated spill still has to go: read
+    literally, its mtime never falls below the TTL cutoff, so it would outlive
+    the marker's "kept up to 25h" promise by however long the clock rolled
+    back — every scheduled sweep notwithstanding."""
+    import suzent.tools.overflow as overflow
+
+    rolled_back = spill_overflow("a" * 100, deps=_deps(tmp_path), kind="t")
+    ahead = time.time() + 3_600
+    os.utime(rolled_back.host_path, (ahead, ahead))
+    ordinary = spill_overflow("b" * 100, deps=_deps(tmp_path), kind="t")
+
+    overflow.sweep_overflow()
+
+    assert not Path(rolled_back.host_path).exists(), (
+        "an undatable spill outlived the advertised retention window"
+    )
+    assert Path(ordinary.host_path).exists()

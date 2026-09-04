@@ -193,12 +193,26 @@ def retention_hint() -> str:
     return f"kept up to {longest // 3600}h"
 
 
-def _in_grace(mtime: float, now: float) -> bool:
-    """True while a spill is too young to evict.
+def _implausibly_dated(mtime: float, now: float) -> bool:
+    """True for a timestamp far enough ahead of the clock to be untrustworthy.
 
-    Two-sided on purpose: see OVERFLOW_CLOCK_SKEW_SECONDS.
+    A backward clock step leaves every already-published spill stamped in the
+    future. Read literally, such a stamp is both forever young and forever
+    short of the TTL cutoff, so the file outlives the retention the marker
+    advertises by however long the rollback was. Treating it as undatable and
+    expiring it keeps the promise; the alternative — believing it — cannot.
     """
-    return now - OVERFLOW_GRACE_SECONDS <= mtime <= now + OVERFLOW_CLOCK_SKEW_SECONDS
+    return mtime > now + OVERFLOW_CLOCK_SKEW_SECONDS
+
+
+def _in_grace(mtime: float, now: float) -> bool:
+    """True while a spill is too young to evict."""
+    return not _implausibly_dated(mtime, now) and mtime >= now - OVERFLOW_GRACE_SECONDS
+
+
+def _past_ttl(mtime: float, now: float) -> bool:
+    """True once a spill has outlived its retention, or lost its datability."""
+    return mtime < now - OVERFLOW_TTL_SECONDS or _implausibly_dated(mtime, now)
 
 
 def _shared_root() -> Path:
@@ -399,18 +413,17 @@ def _prune_path(directory: Path, protect: Optional[str] = None) -> None:
     # will ever collect it.
     for stale in directory.glob(f"*{PARTIAL_SUFFIX}"):
         try:
-            if stale.stat().st_mtime < time.time() - OVERFLOW_TTL_SECONDS:
+            if _past_ttl(stale.stat().st_mtime, time.time()):
                 stale.unlink(missing_ok=True)
         except OSError:
             continue
 
-    cutoff = time.time() - OVERFLOW_TTL_SECONDS
     now = time.time()
     running = 0
     for index, (mtime, size, path) in enumerate(entries):
         over = (
             index >= OVERFLOW_MAX_FILES
-            or mtime < cutoff
+            or _past_ttl(mtime, now)
             or running + size > OVERFLOW_MAX_TOTAL_BYTES
         )
         protected = path.name == protect or _in_grace(mtime, now)
@@ -551,9 +564,7 @@ def _prune_fd(dir_fd: int, protect: Optional[str] = None) -> None:
             if not entry.name.endswith(PARTIAL_SUFFIX):
                 continue
             try:
-                if entry.stat(follow_symlinks=False).st_mtime < (
-                    time.time() - OVERFLOW_TTL_SECONDS
-                ):
+                if _past_ttl(entry.stat(follow_symlinks=False).st_mtime, time.time()):
                     os.unlink(entry.name, dir_fd=dir_fd)
             except OSError:
                 continue
@@ -561,13 +572,12 @@ def _prune_fd(dir_fd: int, protect: Optional[str] = None) -> None:
         pass
 
     entries.sort(reverse=True)
-    cutoff = time.time() - OVERFLOW_TTL_SECONDS
     now = time.time()
     running = 0
     for index, (mtime, size, name) in enumerate(entries):
         over = (
             index >= OVERFLOW_MAX_FILES
-            or mtime < cutoff
+            or _past_ttl(mtime, now)
             or running + size > OVERFLOW_MAX_TOTAL_BYTES
         )
         # Undeletable is not the same as uncounted. Skipping fresh files
