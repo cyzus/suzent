@@ -6,6 +6,7 @@ from pydantic_ai import RunContext
 import litellm
 
 from suzent.core.agent_deps import AgentDeps
+from suzent.llm import EmptyCompletionError, chat_completion_args
 from suzent.tools.base import Tool, ToolErrorCode, ToolGroup, ToolResult
 from suzent.tools.filesystem.file_tool_utils import get_or_create_path_resolver
 from suzent.logger import get_logger
@@ -13,6 +14,10 @@ from suzent.logger import get_logger
 logger = get_logger(__name__)
 
 MAX_IMAGE_SIZE = 20 * 1024 * 1024  # 20MB limit
+
+#: Room for a description, and for the reasoning a self-hosted server may
+#: insist on emitting first despite being asked not to.
+VISION_MAX_TOKENS = 2000
 
 
 class ImageVisionTool(Tool):
@@ -104,15 +109,21 @@ class ImageVisionTool(Tool):
             ]
 
             logger.info(f"Analyzing image {path.name} with model {model}")
+            # Through the shared resolution rather than straight to LiteLLM: a
+            # self-hosted vision endpoint needs its api_base and its thinking
+            # switched off, and neither is visible from here.
+            litellm_model, call_kwargs = chat_completion_args(model)
             response = await litellm.acompletion(
-                model=model,
+                model=litellm_model,
                 messages=messages,
-                max_tokens=1000,
+                max_tokens=VISION_MAX_TOKENS,
+                **call_kwargs,
             )
 
-            result_text = response.choices[0].message.content
-
-            # Log cost
+            # Billed before it is read: an answerless response is the
+            # expensive case, not the free one — the tokens went to reasoning
+            # that never reached a description. Logging after the content check
+            # would drop exactly those from the ledger.
             try:
                 usage = response.usage
                 if usage:
@@ -127,6 +138,13 @@ class ImageVisionTool(Tool):
                     )
             except Exception:
                 pass
+
+            result_text = response.choices[0].message.content
+            if not result_text or not result_text.strip():
+                # A 200 with nothing in it. Reported as itself, because the
+                # alternative is a success result holding an empty string and a
+                # reader with no idea the model never answered.
+                raise EmptyCompletionError(model)
 
             return ToolResult.success_result(result_text)
 

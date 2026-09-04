@@ -65,6 +65,23 @@ def _chat_template_kwargs(model: Optional[str]) -> Dict[str, Any]:
     return {"extra_body": {"chat_template_kwargs": {"enable_thinking": False}}}
 
 
+def chat_completion_args(model: Optional[str]) -> tuple[Optional[str], Dict[str, Any]]:
+    """Model id and kwargs for a chat completion issued outside this module.
+
+    One-off ``litellm.acompletion`` calls elsewhere in the codebase were reaching
+    the provider with none of this: no ``api_base`` (so a self-hosted endpoint was
+    simply unreachable), no ``api_key``, and no ``enable_thinking: false`` (so the
+    token budget went to reasoning and the caller got an empty string back). The
+    fix is to route them through the same resolution the rest of the module uses,
+    not to restate it at each call site.
+    """
+    litellm_model, kwargs = _litellm_model_and_kwargs(model)
+    # Keyed off the original id: _litellm_model_and_kwargs may have rewritten the
+    # provider prefix to ``openai/`` for a self-hosted server.
+    kwargs.update(_chat_template_kwargs(model))
+    return litellm_model, kwargs
+
+
 def _litellm_model_and_kwargs(
     model: Optional[str],
 ) -> tuple[Optional[str], Dict[str, Any]]:
@@ -83,6 +100,13 @@ def _litellm_model_and_kwargs(
 
     kwargs: Dict[str, str] = {}
     api_key = resolve_api_key(provider)
+    if not api_key and provider in _LOCAL_OPENAI_SERVER_PROVIDERS:
+        # A self-hosted server usually wants no credential at all, but the
+        # request is about to be rewritten to ``openai/`` and that adapter
+        # refuses to send anything without one — it fails on the missing key
+        # before it ever looks at api_base. model_factory settles this the same
+        # way (``api_key or "local"``); the server ignores the value.
+        api_key = "local"
     if api_key:
         kwargs["api_key"] = api_key
 
