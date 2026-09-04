@@ -120,14 +120,10 @@ class ImageVisionTool(Tool):
                 **call_kwargs,
             )
 
-            result_text = response.choices[0].message.content
-            if not result_text or not result_text.strip():
-                # A 200 with nothing in it. Reported as itself, because the
-                # alternative is a success result holding an empty string and a
-                # reader with no idea the model never answered.
-                raise EmptyCompletionError(model)
-
-            # Log cost
+            # Billed before it is read: an answerless response is the
+            # expensive case, not the free one — the tokens went to reasoning
+            # that never reached a description. Logging after the content check
+            # would drop exactly those from the ledger.
             try:
                 usage = response.usage
                 if usage:
@@ -142,6 +138,13 @@ class ImageVisionTool(Tool):
                     )
             except Exception:
                 pass
+
+            result_text = response.choices[0].message.content
+            if not result_text or not result_text.strip():
+                # A 200 with nothing in it. Reported as itself, because the
+                # alternative is a success result holding an empty string and a
+                # reader with no idea the model never answered.
+                raise EmptyCompletionError(model)
 
             return ToolResult.success_result(result_text)
 

@@ -100,6 +100,13 @@ def _litellm_model_and_kwargs(
 
     kwargs: Dict[str, str] = {}
     api_key = resolve_api_key(provider)
+    if not api_key and provider in _LOCAL_OPENAI_SERVER_PROVIDERS:
+        # A self-hosted server usually wants no credential at all, but the
+        # request is about to be rewritten to ``openai/`` and that adapter
+        # refuses to send anything without one — it fails on the missing key
+        # before it ever looks at api_base. model_factory settles this the same
+        # way (``api_key or "local"``); the server ignores the value.
+        api_key = "local"
     if api_key:
         kwargs["api_key"] = api_key
 
