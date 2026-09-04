@@ -976,12 +976,13 @@ def _dedupe_fragments(parts: list[str]) -> list[str]:
     return unique
 
 
-def _apply_budget(
+async def _apply_budget(
     parts: list[str],
     chat_id: str,
     reserved: int = 0,
     separator: str = FRAGMENT_SEPARATOR,
     truncate_first: Optional[bool] = None,
+    deps: Any = None,
 ) -> list[str]:
     """Keep the assembled body under REMINDER_BUDGET_CHARS.
 
@@ -1025,14 +1026,36 @@ def _apply_budget(
         cost = len(part) + (separator_cost if kept else 0)
         if used + cost > REMINDER_BUDGET_CHARS:
             if not kept and may_truncate:
-                room = REMINDER_BUDGET_CHARS - used - len(TRUNCATION_MARKER)
+                # The whole fragment goes to disk before the cut, so the marker
+                # can say where the rest is. A reminder is the one place the
+                # model cannot ask for the missing part later — the block is
+                # gone next turn — so the pointer matters more here than for a
+                # tool result it could simply run again.
+                # Awaited here rather than pre-computed: only the one item that
+                # actually gets cut is worth writing to disk, and which item
+                # that is falls out of the budget arithmetic.
+                marker = TRUNCATION_MARKER
+                if deps is not None:
+                    from suzent.tools.overflow import (
+                        retention_hint,
+                        spill_overflow_async,
+                    )
+
+                    spill = await spill_overflow_async(part, deps=deps, kind="reminder")
+                    if spill is not None:
+                        label = "partial text" if spill.clipped else "full text"
+                        marker = (
+                            f"\n\n[truncated: over the system-reminder budget — "
+                            f"{label} ({retention_hint()}): {spill.path}]"
+                        )
+                room = REMINDER_BUDGET_CHARS - used - len(marker)
                 if room > 0:
                     logger.warning(
                         f"[system-reminder] chat={chat_id} over budget: truncated "
                         f"{len(part)} chars to {room} at "
                         f"{used}/{REMINDER_BUDGET_CHARS}"
                     )
-                    kept.append(part[:room] + TRUNCATION_MARKER)
+                    kept.append(part[:room] + marker)
                     used = REMINDER_BUDGET_CHARS
                     continue
             dropped = len(parts) - index
@@ -1173,11 +1196,12 @@ async def build_combined_reminder(
     # unrelated 4,000-character reminders sailed past a 6,000-character cap
     # together. Budgeting first means the exemption covers one reminder, which
     # is the most that cannot be helped.
-    _constituents = _apply_budget(
+    _constituents = await _apply_budget(
         _constituents,
         chat_id,
         reserved=len(render_trigger_block("")) if _constituents else 0,
         separator=TRIGGER_SEPARATOR,
+        deps=deps,
         # The trigger goes out first, so this is the pass that may spend the
         # last resort. The envelope it reserves for is not content.
         truncate_first=True,
@@ -1196,7 +1220,7 @@ async def build_combined_reminder(
     # The trigger is prepended inside the block, so it spends from the same
     # budget; without this the cap covered only part of what the model reads.
     trigger_cost = len(render_trigger_block(display_trigger)) if display_trigger else 0
-    parts = _apply_budget(parts, chat_id, reserved=trigger_cost)
+    parts = await _apply_budget(parts, chat_id, reserved=trigger_cost, deps=deps)
 
     if not parts and not display_trigger:
         logger.debug(f"[system-reminder] chat={chat_id} — no content, skipping")

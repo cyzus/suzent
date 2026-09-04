@@ -27,16 +27,42 @@ def truncate_tool_output(
     limit: int = OUTPUT_CHAR_LIMIT,
     *,
     keep_tail: bool = False,
+    spill: Any = None,
 ) -> str:
-    """Truncate output to *limit* chars while reporting the omitted section."""
+    """Truncate output to *limit* chars while reporting the omitted section.
+
+    *spill* is where the output was written, if anywhere. The part a cap removes
+    is often the part that was wanted — the failing assertion at the end of a
+    test run, the last of a build log — so the marker says where the rest is
+    rather than only that it is gone.
+
+    A spill that hit its own ceiling is described as partial. Calling it the
+    full output would send a reader to a file that does not contain what the
+    marker promised, which is worse than admitting the cut twice.
+    """
     if not text or len(text) <= limit:
         return text
+
+    def _marker(omitted: str) -> str:
+        lines = omitted.count(chr(10)) + 1
+        if spill is not None and getattr(spill, "path", None):
+            from suzent.tools.overflow import retention_hint
+
+            label = (
+                "partial output" if getattr(spill, "clipped", False) else "full output"
+            )
+            return (
+                f"... [{lines} lines truncated — {label} "
+                f"({retention_hint()}): {spill.path}]"
+            )
+        return f"... [{lines} lines truncated]"
+
     if keep_tail:
         omitted = text[:-limit]
-        return f"... [{omitted.count(chr(10)) + 1} lines truncated]\n" + text[-limit:]
+        return _marker(omitted) + "\n" + text[-limit:]
 
     omitted = text[limit:]
-    return text[:limit] + f"\n... [{omitted.count(chr(10)) + 1} lines truncated]"
+    return text[:limit] + "\n" + _marker(omitted)
 
 
 class ToolCapability(str, Enum):

@@ -9,6 +9,9 @@ from suzent.tools.base import Tool, ToolGroup, ToolErrorCode, ToolResult
 from suzent.logger import get_logger
 from suzent.voice.speech import SpeechOutput
 from suzent.voice.audio_io import SoundDeviceSink
+from pydantic_ai import RunContext
+
+from suzent.core.agent_deps import AgentDeps
 
 logger = get_logger(__name__)
 
@@ -24,6 +27,7 @@ class SpeakTool(Tool):
 
     async def forward(
         self,
+        ctx: RunContext[AgentDeps],
         text: Annotated[str, Field(description="Text to speak aloud.")],
         prompt: Annotated[
             Optional[str],

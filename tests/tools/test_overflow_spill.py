@@ -1,0 +1,1940 @@
+"""Truncation keeps the tail on disk instead of discarding it.
+
+A cap stops one output swallowing the context window, but the part it removes
+is usually the part someone wanted — the failing assertion at the end of a test
+run, the last of a build log. Truncating to a bare marker tells the model that
+content is missing and gives it no way to read it.
+
+Two properties are load-bearing: the write must not become a way to reach files
+the agent could not otherwise touch, and a spill must not be readable by other
+chats sharing the same mount.
+"""
+
+import os
+import time
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
+
+import pytest
+
+from suzent.tools.base import truncate_tool_output
+from suzent.tools.overflow import (
+    OVERFLOW_MAX_FILES,
+    Spill,
+    spill_overflow,
+)
+
+
+def _deps(tmp_path: Path, *, chat_id: str = "chat-1", sandbox: bool = False):
+    class _Resolver:
+        """Maps /shared and anything under it, as PathResolver does.
+
+        The spill verifies the *final* virtual path resolves back to the file it
+        wrote, so a resolver that only knows the root is not a stand-in for one.
+        """
+
+        def resolve(self, virtual: str) -> str:
+            assert virtual.startswith("/shared")
+            return str(tmp_path / "shared" / virtual[len("/shared") :].lstrip("/"))
+
+    return SimpleNamespace(
+        path_resolver=_Resolver(), sandbox_enabled=sandbox, chat_id=chat_id
+    )
+
+
+@pytest.fixture(autouse=True)
+def _canonical_root(tmp_path, monkeypatch):
+    """The spill root comes from config, not from whatever /shared maps to.
+
+    A custom volume can retarget /shared, so the writer derives the canonical
+    directory itself; the tests have to point that same config at tmp_path.
+    """
+    from suzent.config import CONFIG
+
+    monkeypatch.setattr(CONFIG, "sandbox_data_path", str(tmp_path), raising=False)
+
+
+@pytest.fixture
+def deps(tmp_path):
+    return _deps(tmp_path)
+
+
+def _chat_dir(
+    tmp_path: Path, chat_id: str = "chat-1", *, sandbox: bool = False
+) -> Path:
+    """Built through the real segment function — the name carries a digest, and
+    a hand-rolled copy here would drift from it."""
+    from suzent.tools.overflow import _chat_segment
+
+    segment = _chat_segment(SimpleNamespace(chat_id=chat_id, sandbox_enabled=sandbox))
+    return tmp_path / "shared" / ".overflow" / segment
+
+
+def test_the_whole_output_is_written_not_the_kept_part(deps):
+    text = "\n".join(f"line {i}" for i in range(5000))
+
+    spill = spill_overflow(text, deps=deps, kind="run_command")
+
+    assert Path(spill.path).read_text(encoding="utf-8") == text
+    assert spill.clipped is False
+
+
+def test_the_marker_names_the_file(deps):
+    text = "x" * 50_000
+
+    spill = spill_overflow(text, deps=deps, kind="run_command")
+    out = truncate_tool_output(text, 100, spill=spill)
+
+    assert spill.path in out
+    assert "full output" in out
+    assert "kept up to 25h" in out
+
+
+def test_a_marker_without_a_spill_still_reports_the_loss():
+    """Spilling is best-effort. Losing the tail beats failing the tool call that
+    produced it, but the model still has to know it happened."""
+    out = truncate_tool_output("x" * 50_000, 100, spill=None)
+
+    assert "truncated" in out
+    assert "full output" not in out
+
+
+def test_host_mode_gets_a_host_path(tmp_path):
+    """A path the agent cannot open is worse than none: it invites a read that
+    fails."""
+    host = spill_overflow("y" * 100, deps=_deps(tmp_path), kind="t")
+
+    assert host.path.startswith(str(tmp_path))
+
+
+def test_sandbox_mode_gets_the_virtual_path(tmp_path):
+    from suzent.tools.overflow import OVERFLOW_VIRTUAL_DIR
+
+    spill = spill_overflow("y" * 100, deps=_deps(tmp_path, sandbox=True), kind="t")
+
+    assert spill.path.startswith(f"{OVERFLOW_VIRTUAL_DIR}/sandbox-chat-1-")
+
+
+def test_a_sandbox_spill_is_readable_by_a_different_uid(tmp_path):
+    """Bind mounts preserve numeric ownership and the sandbox image runs as a
+    fixed uid 1000, which need not match the host service's. A 0600 file would
+    be unreadable by the very agent the marker points at.
+
+    Sandbox only: host mode reads the file as the same uid that wrote it, so it
+    gains nothing from the looser bits and pays for them on a multi-user host.
+    """
+    spill_overflow("x" * 100, deps=_deps(tmp_path, sandbox=True), kind="t")
+
+    chat_dir = _chat_dir(tmp_path, sandbox=True)
+    written = next(chat_dir.glob("*.txt"))
+
+    assert os.stat(written).st_mode & 0o044, "the sandbox cannot read the spill"
+    assert os.stat(chat_dir).st_mode & 0o011, "the sandbox cannot traverse to it"
+
+
+def test_chat_directories_are_organisation_not_access_control(tmp_path):
+    """Recorded so the naming is not mistaken for a boundary: on one shared
+    mount with one uid, these directories separate pruning scope and nothing
+    else. The owner has accepted that their chats can read each other."""
+    a = spill_overflow("alpha", deps=_deps(tmp_path, chat_id="a"), kind="t")
+
+    # Any other chat, running as the same uid, can read it.
+    assert Path(a.path).read_text(encoding="utf-8") == "alpha"
+
+
+def test_no_resolver_means_no_spill_rather_than_a_crash():
+    assert spill_overflow("x" * 100, deps=SimpleNamespace(), kind="t") is None
+
+
+def test_an_unreachable_shared_root_degrades_quietly(tmp_path):
+    """Sandbox mode needs /shared to resolve so it can advertise a path; host
+    mode writes the canonical directory and never asks."""
+
+    class _Broken:
+        def resolve(self, virtual: str) -> str:
+            raise ValueError("no matching custom mount is registered")
+
+    deps = SimpleNamespace(path_resolver=_Broken(), sandbox_enabled=True, chat_id="c")
+
+    assert spill_overflow("x" * 100, deps=deps, kind="t") is None
+
+
+def test_a_remapped_shared_mount_is_not_written_to(tmp_path):
+    """A custom volume can target /shared and PathResolver gives it priority.
+    Writing there would put .overflow in the user's own directory, force-chmod
+    it 0755, and leave the files where the sweep never looks."""
+    elsewhere = tmp_path / "someone-elses-folder"
+    elsewhere.mkdir()
+
+    class _Remapped:
+        def resolve(self, virtual: str) -> str:
+            return str(elsewhere)
+
+    deps = SimpleNamespace(path_resolver=_Remapped(), sandbox_enabled=True, chat_id="c")
+
+    assert spill_overflow("x" * 100, deps=deps, kind="t") is None
+    assert list(elsewhere.iterdir()) == [], "wrote into the remapped mount"
+
+
+def test_host_mode_writes_the_canonical_root_regardless(tmp_path):
+    """Host mode advertises a host path, so a remapped /shared is irrelevant to
+    it — but the file still has to land where the sweep looks."""
+
+    class _Remapped:
+        def resolve(self, virtual: str) -> str:
+            return str(tmp_path / "somewhere-else")
+
+    deps = SimpleNamespace(
+        path_resolver=_Remapped(), sandbox_enabled=False, chat_id="c"
+    )
+
+    spill = spill_overflow("x" * 100, deps=deps, kind="t")
+
+    assert spill is not None
+    assert str(tmp_path / "shared" / ".overflow") in spill.path
+
+
+# --- one chat's output is not another chat's to read --------------------------
+
+
+def test_spills_are_scoped_to_their_chat(tmp_path):
+    """/shared is mounted into every session, so an unscoped directory is
+    readable by every other chat on the deployment. These files hold raw tool
+    output and reminder text — conversation content — and a random filename is
+    no defence against listing the directory."""
+    first = spill_overflow("secret alpha", deps=_deps(tmp_path, chat_id="a"), kind="t")
+    second = spill_overflow("secret beta", deps=_deps(tmp_path, chat_id="b"), kind="t")
+
+    assert Path(first.path).parent != Path(second.path).parent
+    assert Path(first.path).parent.name.startswith("host-a-")
+    assert Path(second.path).parent.name.startswith("host-b-")
+    assert len(list(_chat_dir(tmp_path, "a").glob("*.txt"))) == 1
+
+
+def test_a_hostile_chat_id_cannot_escape_the_directory(tmp_path):
+    spill = spill_overflow(
+        "x" * 100, deps=_deps(tmp_path, chat_id="../../etc"), kind="t"
+    )
+
+    assert ".." not in spill.path
+    assert str(tmp_path / "shared" / ".overflow") in spill.path
+
+
+# --- the write must not become a capability -----------------------------------
+
+
+def test_a_symlink_at_the_destination_is_not_followed(deps, tmp_path, monkeypatch):
+    """The name was once derived from the output's own hash and the current
+    second, both of which the agent can compute."""
+    import suzent.tools.overflow as overflow
+
+    target = tmp_path / "precious.txt"
+    target.write_text("do not clobber", encoding="utf-8")
+    chat_dir = _chat_dir(tmp_path)
+    chat_dir.mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setattr(overflow.secrets, "token_hex", lambda n: "aimed")
+    # The staged name is what the open creates, so that is where an attacker
+    # would have to aim.
+    os.symlink(target, chat_dir / ("run_command-aimed.txt" + overflow.PARTIAL_SUFFIX))
+
+    assert spill_overflow("payload" * 100, deps=deps, kind="run_command") is None
+    assert target.read_text(encoding="utf-8") == "do not clobber"
+
+
+def test_a_symlinked_parent_directory_is_not_followed(deps, tmp_path):
+    """O_NOFOLLOW on the final component says nothing about the directories
+    above it. Swap .overflow for a symlink after the path is resolved and an
+    unpinned write lands in the attacker's tree — and the prune that follows
+    unlinks *.txt there."""
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    bystander = elsewhere / "keepme.txt"
+    bystander.write_text("unrelated", encoding="utf-8")
+
+    shared = tmp_path / "shared"
+    shared.mkdir(parents=True, exist_ok=True)
+    os.symlink(elsewhere, shared / ".overflow")
+
+    result = spill_overflow("payload" * 100, deps=deps, kind="t")
+
+    assert result is None, "the write followed a swapped parent directory"
+    assert bystander.read_text(encoding="utf-8") == "unrelated"
+
+
+def test_the_name_is_not_derivable_from_the_output(deps):
+    text = "same output" * 50
+
+    first = spill_overflow(text, deps=deps, kind="t")
+    second = spill_overflow(text, deps=deps, kind="t")
+
+    assert first.path != second.path
+
+
+# --- disk bounds --------------------------------------------------------------
+
+
+def test_one_spill_cannot_be_arbitrarily_large(deps):
+    from suzent.tools.overflow import OVERFLOW_MAX_FILE_BYTES, SPILL_CLIPPED_NOTE
+
+    spill = spill_overflow("x" * (OVERFLOW_MAX_FILE_BYTES * 2), deps=deps, kind="t")
+    written = Path(spill.path).read_bytes()
+
+    assert len(written) <= OVERFLOW_MAX_FILE_BYTES
+    assert written.endswith(SPILL_CLIPPED_NOTE.encode("utf-8"))
+    assert spill.clipped is True
+
+
+def test_a_clipped_spill_is_still_valid_utf8(deps):
+    """Slicing encoded bytes can land inside a multi-byte code point, and then
+    the reader meant to rescue the output cannot open the file at all."""
+    from suzent.tools.overflow import OVERFLOW_MAX_FILE_BYTES
+
+    spill = spill_overflow("é" * OVERFLOW_MAX_FILE_BYTES, deps=deps, kind="t")
+
+    Path(spill.path).read_text(encoding="utf-8")  # must not raise
+
+
+def test_a_clipped_spill_is_not_advertised_as_the_full_output(deps):
+    """Sending a reader to a file that does not hold what the marker promised is
+    worse than admitting the cut twice."""
+    from suzent.tools.overflow import OVERFLOW_MAX_FILE_BYTES
+
+    text = "x" * (OVERFLOW_MAX_FILE_BYTES * 2)
+    spill = spill_overflow(text, deps=deps, kind="t")
+    out = truncate_tool_output(text, 100, spill=spill)
+
+    assert "partial output" in out
+    assert "full output" not in out
+
+
+def test_spills_do_not_accumulate_without_limit(deps, tmp_path, monkeypatch):
+    # The grace period is not what this test is about: it protects a freshly
+    # written file from any prune, so a ceiling test has to waive it.
+    import suzent.tools.overflow as _overflow
+
+    monkeypatch.setattr(_overflow, "OVERFLOW_GRACE_SECONDS", 0)
+
+    for i in range(OVERFLOW_MAX_FILES + 25):
+        spill_overflow(f"body {i}", deps=deps, kind="t")
+
+    kept = list(_chat_dir(tmp_path).glob("*.txt"))
+
+    # MAX plus the one being written: the newest file is exempt from its own
+    # prune, so the ceiling is "MAX retained, and never delete the path we are
+    # about to advertise".
+    assert len(kept) <= OVERFLOW_MAX_FILES + 1
+
+
+def test_the_directory_is_bounded_in_bytes_not_only_in_count(
+    deps, tmp_path, monkeypatch
+):
+    # The grace period is not what this test is about: it protects a freshly
+    # written file from any prune, so a ceiling test has to waive it.
+    import suzent.tools.overflow as _overflow
+
+    monkeypatch.setattr(_overflow, "OVERFLOW_GRACE_SECONDS", 0)
+
+    import suzent.tools.overflow as overflow
+
+    monkeypatch.setattr(overflow, "OVERFLOW_MAX_TOTAL_BYTES", 20_000)
+
+    for _ in range(30):
+        spill_overflow("y" * 2_000, deps=deps, kind="t")
+
+    total = sum(p.stat().st_size for p in _chat_dir(tmp_path).glob("*.txt"))
+
+    assert total <= 20_000 + 2_100, total
+
+
+def test_an_expired_spill_is_removed(deps, tmp_path):
+    import time
+
+    from suzent.tools.overflow import OVERFLOW_TTL_SECONDS
+
+    stale = spill_overflow("old", deps=deps, kind="t")
+    old_time = time.time() - OVERFLOW_TTL_SECONDS - 60
+    os.utime(stale.path, (old_time, old_time))
+
+    spill_overflow("new", deps=deps, kind="t")
+
+    assert not Path(stale.path).exists()
+
+
+# --- lifecycle ----------------------------------------------------------------
+
+
+def test_the_sweep_collects_what_no_later_spill_would(tmp_path, monkeypatch):
+    """Pruning otherwise runs only on write, so the bounds hold exactly while
+    output keeps overflowing and stop the moment it does not."""
+    import time
+
+    from suzent.config import CONFIG
+    from suzent.tools.overflow import OVERFLOW_TTL_SECONDS, sweep_overflow
+
+    chat_dir = _chat_dir(tmp_path)
+    chat_dir.mkdir(parents=True)
+    stale = chat_dir / "t-old.txt"
+    stale.write_text("yesterday", encoding="utf-8")
+    old = time.time() - OVERFLOW_TTL_SECONDS - 60
+    os.utime(stale, (old, old))
+    fresh = chat_dir / "t-new.txt"
+    fresh.write_text("today", encoding="utf-8")
+
+    monkeypatch.setattr(CONFIG, "sandbox_data_path", str(tmp_path), raising=False)
+    sweep_overflow()
+
+    assert not stale.exists()
+    assert fresh.exists()
+
+
+def test_the_sweep_drops_a_chat_directory_once_it_is_empty(tmp_path, monkeypatch):
+    """Per-chat bounds mean the directory total scales with the number of
+    chats, so the empty shells have to go too."""
+    import time
+
+    from suzent.config import CONFIG
+    from suzent.tools.overflow import OVERFLOW_TTL_SECONDS, sweep_overflow
+
+    chat_dir = _chat_dir(tmp_path, "gone")
+    chat_dir.mkdir(parents=True)
+    stale = chat_dir / "t-old.txt"
+    stale.write_text("x", encoding="utf-8")
+    old = time.time() - OVERFLOW_TTL_SECONDS - 60
+    os.utime(stale, (old, old))
+
+    monkeypatch.setattr(CONFIG, "sandbox_data_path", str(tmp_path), raising=False)
+    sweep_overflow()
+
+    assert not chat_dir.exists()
+
+
+def test_the_sweep_is_harmless_with_no_directory(tmp_path, monkeypatch):
+    from suzent.config import CONFIG
+    from suzent.tools.overflow import sweep_overflow
+
+    monkeypatch.setattr(CONFIG, "sandbox_data_path", str(tmp_path), raising=False)
+
+    sweep_overflow()  # must not raise
+
+
+def test_the_stated_window_tracks_the_actual_ttl(monkeypatch):
+    """Derived, not written out: the two would drift the first time either
+    number moved — and the sweep interval is part of the bound because deletion
+    happens on a tick, not on an alarm."""
+    import suzent.tools.overflow as overflow
+    from suzent.tools.overflow import retention_hint
+
+    monkeypatch.setattr(overflow, "OVERFLOW_TTL_SECONDS", 3 * 60 * 60)
+    monkeypatch.setattr(overflow, "OVERFLOW_SWEEP_INTERVAL_SECONDS", 60 * 60)
+
+    assert retention_hint() == "kept up to 4h"
+
+
+def test_the_promise_covers_the_polling_interval(monkeypatch):
+    """A spill created just after a sweep is still inside the window at the tick
+    following its expiry, and goes on the one after that."""
+    import suzent.tools.overflow as overflow
+    from suzent.tools.overflow import retention_hint
+
+    monkeypatch.setattr(overflow, "OVERFLOW_TTL_SECONDS", 10 * 60 * 60)
+    monkeypatch.setattr(overflow, "OVERFLOW_SWEEP_INTERVAL_SECONDS", 2 * 60 * 60)
+
+    assert retention_hint() == "kept up to 12h"
+
+
+@pytest.mark.asyncio
+async def test_the_async_spill_does_not_hold_the_loop(deps, monkeypatch):
+    """Up to 5 MiB of write plus a directory scan; inline, that stalls every
+    other chat the loop is serving.
+
+    A real spill is too quick to observe reliably, so the blocking part is
+    replaced by a sleep — what is being tested is that the call is offloaded,
+    not how fast the disk is.
+    """
+    import asyncio
+    import time
+
+    import suzent.tools.overflow as overflow
+    from suzent.tools.overflow import spill_overflow_async
+
+    monkeypatch.setattr(
+        overflow,
+        "_spill_payload",
+        lambda payload, clipped, **kw: time.sleep(0.2) or Spill("/tmp/x.txt", False),
+    )
+
+    ticks = 0
+
+    async def _tick():
+        nonlocal ticks
+        while True:
+            await asyncio.sleep(0.01)
+            ticks += 1
+
+    ticker = asyncio.create_task(_tick())
+    try:
+        spill = await spill_overflow_async("payload", deps=deps, kind="t")
+    finally:
+        ticker.cancel()
+
+    assert spill.path == "/tmp/x.txt"
+    assert ticks > 5, f"the loop was blocked during the write ({ticks} ticks)"
+
+
+def test_the_sweep_refuses_a_symlinked_chat_directory(tmp_path, monkeypatch):
+    """The write path was pinned and the sweep was not; the attacker picks the
+    weaker one. _prune_fd unlinks, so a symlink left under .overflow would let
+    the next restart delete *.txt files in a directory of its choosing."""
+    from suzent.config import CONFIG
+    from suzent.tools.overflow import sweep_overflow
+
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    bystander = elsewhere / "keepme.txt"
+    bystander.write_text("unrelated", encoding="utf-8")
+    old = 1.0
+    os.utime(bystander, (old, old))  # stale enough that a prune would take it
+
+    root = tmp_path / "shared" / ".overflow"
+    root.mkdir(parents=True)
+    os.symlink(elsewhere, root / "pretend-chat")
+
+    monkeypatch.setattr(CONFIG, "sandbox_data_path", str(tmp_path), raising=False)
+    sweep_overflow()
+
+    assert bystander.exists(), "the sweep followed a symlinked chat directory"
+
+
+def test_the_retention_hint_is_an_upper_bound(deps):
+    """The count and byte ceilings evict early — eleven maximum-sized results
+    inside an hour drop the first long before the day is out."""
+    from suzent.tools.overflow import retention_hint
+
+    assert retention_hint().startswith("kept up to")
+
+
+def test_the_whole_output_is_never_encoded(monkeypatch):
+    """Encoding the full string to discover it is too long allocates a second
+    copy while the original result is still live — a command printing hundreds
+    of MiB costs that twice over to write five.
+
+    A slice of a str subclass is a plain str, so if the recorder never fires the
+    full string was never encoded — which is exactly the property.
+    """
+    import suzent.tools.overflow as overflow
+
+    encoded_from: list[int] = []
+
+    class _Watched(str):
+        def encode(self, *args, **kwargs):
+            encoded_from.append(len(self))
+            return str.encode(self, *args, **kwargs)
+
+    monkeypatch.setattr(overflow, "OVERFLOW_MAX_FILE_BYTES", 1_000)
+
+    payload, clipped = overflow._clip(_Watched("x" * 500_000))
+
+    assert clipped is True
+    assert len(payload) <= 1_000
+    assert encoded_from == [], f"the full {500_000}-char string was encoded"
+
+
+def test_a_short_output_is_not_reported_as_clipped(monkeypatch):
+    """The bounded slice must not make an ordinary result look truncated."""
+    import suzent.tools.overflow as overflow
+
+    monkeypatch.setattr(overflow, "OVERFLOW_MAX_FILE_BYTES", 1_000)
+
+    payload, clipped = overflow._clip("short")
+
+    assert clipped is False
+    assert payload == b"short"
+
+
+def test_the_root_total_is_bounded_across_chats(tmp_path, monkeypatch):
+    """Pruning on write only ever sees one chat's directory, so the per-chat
+    allowance multiplies by the number of chats — a hundred of them retain
+    5 GiB while every directory is individually within bounds."""
+    # The grace period is not what this test is about: it protects a freshly
+    # written file from any prune, so a ceiling test has to waive it.
+    import suzent.tools.overflow as _overflow
+
+    monkeypatch.setattr(_overflow, "OVERFLOW_GRACE_SECONDS", 0)
+
+    from suzent.config import CONFIG
+    import suzent.tools.overflow as overflow
+    from suzent.tools.overflow import sweep_overflow
+
+    monkeypatch.setattr(overflow, "OVERFLOW_MAX_ROOT_BYTES", 5_000)
+
+    for chat in ("a", "b", "c", "d"):
+        spill_overflow("y" * 3_000, deps=_deps(tmp_path, chat_id=chat), kind="t")
+
+    monkeypatch.setattr(CONFIG, "sandbox_data_path", str(tmp_path), raising=False)
+    sweep_overflow()
+
+    root = tmp_path / "shared" / ".overflow"
+    total = sum(p.stat().st_size for p in root.rglob("*.txt"))
+
+    assert total <= 5_000 + 3_100, total
+
+
+def test_the_path_fallback_writes_without_dir_fd(tmp_path, monkeypatch):
+    """Windows has no dir_fd, and keeping the fd-based code while passing
+    dir_fd=None was not a fallback: os.open raises NotImplementedError there,
+    which no `except OSError` catches, turning an oversized tool result into a
+    failed tool call."""
+    import suzent.tools.overflow as overflow
+
+    monkeypatch.setattr(overflow, "_HAVE_DIR_FD", False)
+
+    spill = overflow.spill_overflow("x" * 500, deps=_deps(tmp_path), kind="t")
+
+    assert spill is not None
+    assert Path(spill.path).read_text(encoding="utf-8") == "x" * 500
+
+
+def test_the_sweep_has_a_path_based_twin(tmp_path, monkeypatch):
+    """Only spill_overflow() chose an implementation, so on a platform without
+    dir_fd the sweep called descriptor operations that do not exist there and
+    retention simply did not run — the third time in this file that hardening
+    one path and not its twin left the twin broken."""
+    import time
+
+    from suzent.config import CONFIG
+    import suzent.tools.overflow as overflow
+    from suzent.tools.overflow import OVERFLOW_TTL_SECONDS, sweep_overflow
+
+    chat_dir = _chat_dir(tmp_path)
+    chat_dir.mkdir(parents=True)
+    stale = chat_dir / "t-old.txt"
+    stale.write_text("yesterday", encoding="utf-8")
+    old = time.time() - OVERFLOW_TTL_SECONDS - 60
+    os.utime(stale, (old, old))
+
+    monkeypatch.setattr(overflow, "_HAVE_DIR_FD", False)
+    monkeypatch.setattr(CONFIG, "sandbox_data_path", str(tmp_path), raising=False)
+    sweep_overflow()
+
+    assert not stale.exists()
+
+
+def test_the_path_sweep_also_applies_the_root_quota(tmp_path, monkeypatch):
+    # The grace period is not what this test is about: it protects a freshly
+    # written file from any prune, so a ceiling test has to waive it.
+    import suzent.tools.overflow as _overflow
+
+    monkeypatch.setattr(_overflow, "OVERFLOW_GRACE_SECONDS", 0)
+
+    from suzent.config import CONFIG
+    import suzent.tools.overflow as overflow
+    from suzent.tools.overflow import sweep_overflow
+
+    monkeypatch.setattr(overflow, "OVERFLOW_MAX_ROOT_BYTES", 5_000)
+    for chat in ("a", "b", "c", "d"):
+        spill_overflow("y" * 3_000, deps=_deps(tmp_path, chat_id=chat), kind="t")
+
+    monkeypatch.setattr(overflow, "_HAVE_DIR_FD", False)
+    monkeypatch.setattr(CONFIG, "sandbox_data_path", str(tmp_path), raising=False)
+    sweep_overflow()
+
+    root = tmp_path / "shared" / ".overflow"
+    total = sum(p.stat().st_size for p in root.rglob("*.txt"))
+
+    assert total <= 5_000 + 3_100, total
+
+
+@pytest.mark.asyncio
+async def test_the_sweep_keeps_running_after_startup(monkeypatch):
+    """Running it once left the root quota and the retention window unenforced
+    for the lifetime of a long-lived process — a write only ever prunes its own
+    chat's directory."""
+    import asyncio
+
+    import suzent.tools.overflow as overflow
+
+    calls = 0
+
+    def _count():
+        nonlocal calls
+        calls += 1
+
+    monkeypatch.setattr(overflow, "sweep_overflow", _count)
+    monkeypatch.setattr(overflow, "OVERFLOW_SWEEP_INTERVAL_SECONDS", 0.01)
+
+    task = asyncio.create_task(overflow.sweep_overflow_periodically())
+    await asyncio.sleep(0.08)
+    task.cancel()
+
+    assert calls > 1, f"the sweep ran {calls} time(s); it must keep running"
+
+
+@pytest.mark.asyncio
+async def test_a_failing_sweep_does_not_end_the_loop(monkeypatch):
+    """One bad sweep must not silently disable retention until the next
+    restart."""
+    import asyncio
+
+    import suzent.tools.overflow as overflow
+
+    calls = 0
+
+    def _boom():
+        nonlocal calls
+        calls += 1
+        raise OSError("disk went away")
+
+    monkeypatch.setattr(overflow, "sweep_overflow", _boom)
+    monkeypatch.setattr(overflow, "OVERFLOW_SWEEP_INTERVAL_SECONDS", 0.01)
+
+    task = asyncio.create_task(overflow.sweep_overflow_periodically())
+    await asyncio.sleep(0.08)
+    task.cancel()
+
+    assert calls > 1
+
+
+def test_every_registered_tool_can_reach_its_deps():
+    """A tool whose forward() takes no RunContext cannot spill: the wrapper has
+    nowhere to read deps from, so its oversized output is truncated with no
+    path. BrowsingTool's snapshot regularly clears 30,000 characters."""
+    import inspect
+
+    from suzent.tools.registry import _all_tool_classes
+
+    missing = []
+    for cls in _all_tool_classes():
+        try:
+            params = list(inspect.signature(cls.forward).parameters)
+        except (TypeError, ValueError):
+            continue
+        if getattr(cls, "output_char_limit", None) and "ctx" not in params:
+            missing.append(cls.name)
+
+    assert missing == [], f"these tools cannot spill their output: {missing}"
+
+
+@pytest.mark.parametrize("umask_value", [0o077, 0o022, 0o000])
+def test_sandbox_spills_stay_reachable_under_any_umask(tmp_path, umask_value):
+    """Creation modes are masked by the umask, so a service started with 0077
+    turns 0755/0644 into 0700/0600 — the permissions that make the marker point
+    at a file the sandbox cannot open.
+
+    Checked all the way up to the mount root: correct descendants under an
+    unreachable root are still unreachable, which is how the previous version of
+    this test passed while /shared sat at 0700.
+    """
+    previous = os.umask(umask_value)
+    try:
+        spill = spill_overflow(
+            "x" * 100,
+            deps=_deps(tmp_path, chat_id=f"u{umask_value:o}", sandbox=True),
+            kind="t",
+        )
+    finally:
+        os.umask(previous)
+
+    host_file = (
+        _chat_dir(tmp_path, f"u{umask_value:o}", sandbox=True) / Path(spill.path).name
+    )
+    assert os.stat(host_file).st_mode & 0o044, "the file is not readable"
+    walked = host_file.parent
+    while True:
+        mode = os.stat(walked).st_mode & 0o777
+        assert mode & 0o011, f"umask {umask_value:o} left {walked} at {mode:o}"
+        if walked == tmp_path / "shared":
+            break
+        walked = walked.parent
+
+
+@pytest.mark.parametrize("umask_value", [0o077, 0o000])
+def test_host_spills_are_private(tmp_path, umask_value):
+    """In host mode the agent is this process — same uid — so the tightest bits
+    work and nothing is gained by letting every local account read raw tool
+    output. Forced past the umask in the other direction too: 0000 must not
+    leave them world-readable."""
+    previous = os.umask(umask_value)
+    try:
+        spill = spill_overflow(
+            "x" * 100, deps=_deps(tmp_path, chat_id=f"h{umask_value:o}"), kind="t"
+        )
+    finally:
+        os.umask(previous)
+
+    file_mode = os.stat(spill.path).st_mode & 0o777
+    dir_mode = os.stat(Path(spill.path).parent).st_mode & 0o777
+
+    assert file_mode & 0o077 == 0, (
+        f"host spill is group/world accessible ({file_mode:o})"
+    )
+    assert dir_mode & 0o077 == 0, (
+        f"host spill dir is group/world accessible ({dir_mode:o})"
+    )
+    assert file_mode & 0o600, "the owner cannot read its own spill"
+
+
+def test_the_path_fallback_also_survives_the_umask(tmp_path, monkeypatch):
+    import suzent.tools.overflow as overflow
+
+    monkeypatch.setattr(overflow, "_HAVE_DIR_FD", False)
+    previous = os.umask(0o077)
+    try:
+        spill = overflow.spill_overflow(
+            "x" * 100,
+            deps=_deps(tmp_path, chat_id="fallback", sandbox=True),
+            kind="t",
+        )
+    finally:
+        os.umask(previous)
+
+    host_file = _chat_dir(tmp_path, "fallback", sandbox=True) / Path(spill.path).name
+    assert os.stat(host_file).st_mode & 0o044
+    assert os.stat(host_file.parent).st_mode & 0o011
+
+
+def test_the_voice_verification_script_still_calls_correctly():
+    """A standalone script is not covered by the suite, so a signature change
+    breaks it silently. Adding ctx to SpeakTool.forward() bound the utterance to
+    ctx and left `text` missing."""
+    import ast
+    from pathlib import Path as _Path
+
+    source = _Path("tests/verify_voice.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+
+    calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "forward"
+    ]
+
+    assert calls, "the script no longer calls forward(); update this test"
+    for call in calls:
+        assert len(call.args) >= 2, "forward() takes ctx first, then the text"
+
+
+@pytest.mark.asyncio
+async def test_the_sweeper_is_cancelled_at_shutdown():
+    """An infinite task the lifespan never cancels keeps running after
+    shutdown, and each restart adds another — so an embedded server or an
+    in-process restart accumulates hourly sweepers."""
+    import inspect
+
+    from suzent import server
+
+    source = inspect.getsource(server.shutdown)
+
+    assert "overflow_sweeper" in source, "the sweeper outlives the application"
+    assert "cancel()" in source
+
+
+def test_a_host_spill_does_not_lock_out_the_sandbox(tmp_path):
+    """The mount root and .overflow are shared between execution modes, so
+    their mode cannot depend on which one is spilling now: a host spill setting
+    them 0700 makes every path already advertised to a sandbox container
+    unreadable until some later sandbox spill happens to set them back."""
+    sandbox_spill = spill_overflow(
+        "s", deps=_deps(tmp_path, chat_id="sbx", sandbox=True), kind="t"
+    )
+    host_path = _chat_dir(tmp_path, "sbx", sandbox=True) / Path(sandbox_spill.path).name
+
+    # A host-mode chat spills afterwards, touching the shared ancestors.
+    spill_overflow("h", deps=_deps(tmp_path, chat_id="host"), kind="t")
+
+    for ancestor in (tmp_path / "shared", tmp_path / "shared" / ".overflow"):
+        mode = os.stat(ancestor).st_mode & 0o777
+        assert mode & 0o011, f"{ancestor} became untraversable ({mode:o})"
+    assert os.stat(host_path).st_mode & 0o044, "the sandbox spill became unreadable"
+
+
+def test_the_host_chat_directory_is_still_private(tmp_path):
+    """Traversable ancestors are not readable contents: the leaf keeps the
+    private mode."""
+    spill = spill_overflow("h", deps=_deps(tmp_path, chat_id="host"), kind="t")
+
+    assert os.stat(Path(spill.path).parent).st_mode & 0o077 == 0
+    assert os.stat(spill.path).st_mode & 0o077 == 0
+
+
+@pytest.mark.asyncio
+async def test_a_wedged_volume_does_not_hold_the_caller(deps, monkeypatch):
+    """to_thread frees the loop and bounds nothing. The caller is either a
+    reminder being built or a tool call that has already done its work — losing
+    the pointer beats losing either."""
+    import threading
+    import time
+
+    import suzent.tools.overflow as overflow
+
+    monkeypatch.setattr(overflow, "SPILL_TIMEOUT_SECONDS", 0.05)
+    # The worker calls _spill_payload; patching spill_overflow would leave the
+    # thread doing the real thing.
+    monkeypatch.setattr(
+        overflow,
+        "_spill_payload",
+        lambda payload, clipped, **kw: time.sleep(1) or Spill("/x", False),
+    )
+    monkeypatch.setattr(
+        overflow, "_spill_slots", threading.Semaphore(overflow._SPILL_THREADS)
+    )
+
+    started = time.monotonic()
+    result = await overflow.spill_overflow_async("payload", deps=deps, kind="t")
+    elapsed = time.monotonic() - started
+
+    assert result is None, "a wedged write must fall back to the plain marker"
+    assert elapsed < 1.0, f"the caller waited {elapsed:.2f}s for a wedged volume"
+
+
+def test_the_sweeper_survives_an_in_process_restart():
+    """shutdown() cancels the sweeper but leaves social_brain set, so the next
+    startup() returns at the duplicate-social guard. Starting the sweeper after
+    that guard left a restarted application with no retention at all."""
+    import inspect
+
+    from suzent import server
+
+    source = inspect.getsource(server.startup)
+    sweeper_at = source.index("overflow_sweeper")
+    guard_at = source.index("Social brain already initialized")
+
+    assert sweeper_at < guard_at, "the sweeper starts after an early return"
+
+
+def test_the_synchronous_spill_is_bounded_too(deps, monkeypatch):
+    """A sync tool runs on a worker rather than the loop, so a wedged volume
+    does not stall other chats — but it holds a tool call that has *already
+    succeeded*. Bounding only the async path left two halves of one rule
+    disagreeing."""
+    import threading
+    import time
+
+    import suzent.tools.overflow as overflow
+
+    monkeypatch.setattr(overflow, "SPILL_TIMEOUT_SECONDS", 0.05)
+    # The worker calls _spill_payload; patching spill_overflow would leave the
+    # thread doing the real thing.
+    monkeypatch.setattr(
+        overflow,
+        "_spill_payload",
+        lambda payload, clipped, **kw: time.sleep(1) or Spill("/x", False),
+    )
+    monkeypatch.setattr(
+        overflow, "_spill_slots", threading.Semaphore(overflow._SPILL_THREADS)
+    )
+
+    started = time.monotonic()
+    result = overflow.spill_overflow_bounded("payload", deps=deps, kind="t")
+    elapsed = time.monotonic() - started
+
+    assert result is None
+    assert elapsed < 1.0, f"the worker waited {elapsed:.2f}s for a wedged volume"
+
+
+def test_both_wrappers_bound_the_spill():
+    """The rule is 'a spill never holds its caller', so it has to hold on both
+    branches of the wrapper, not the one that happened to be reviewed."""
+    import inspect
+
+    from suzent.tools import registry
+
+    source = inspect.getsource(registry)
+
+    assert "spill_overflow_async(" in source
+    assert "spill_overflow_bounded(" in source
+    # The unbounded call must not survive anywhere in the wrapper.
+    assert "= spill_overflow(" not in source
+
+
+def test_the_root_quota_holds_between_sweeps(tmp_path, monkeypatch):
+    """Leaving it to the hourly sweep let a burst of chats sit above the
+    deployment ceiling for an hour — long enough to fill a volume that every
+    directory was individually respecting."""
+    # The grace period is not what this test is about: it protects a freshly
+    # written file from any prune, so a ceiling test has to waive it.
+    import suzent.tools.overflow as _overflow
+
+    monkeypatch.setattr(_overflow, "OVERFLOW_GRACE_SECONDS", 0)
+
+    import suzent.tools.overflow as overflow
+
+    monkeypatch.setattr(overflow, "OVERFLOW_MAX_ROOT_BYTES", 5_000)
+
+    for chat in ("a", "b", "c", "d", "e"):
+        spill_overflow("y" * 3_000, deps=_deps(tmp_path, chat_id=chat), kind="t")
+
+    root = tmp_path / "shared" / ".overflow"
+    total = sum(p.stat().st_size for p in root.rglob("*.txt"))
+
+    assert total <= 5_000 + 3_100, f"{total} bytes retained with no sweep run"
+
+
+def test_the_path_fallback_also_holds_the_root_quota(tmp_path, monkeypatch):
+    # The grace period is not what this test is about: it protects a freshly
+    # written file from any prune, so a ceiling test has to waive it.
+    import suzent.tools.overflow as _overflow
+
+    monkeypatch.setattr(_overflow, "OVERFLOW_GRACE_SECONDS", 0)
+
+    import suzent.tools.overflow as overflow
+
+    monkeypatch.setattr(overflow, "OVERFLOW_MAX_ROOT_BYTES", 5_000)
+    monkeypatch.setattr(overflow, "_HAVE_DIR_FD", False)
+
+    for chat in ("a", "b", "c", "d", "e"):
+        overflow.spill_overflow(
+            "y" * 3_000, deps=_deps(tmp_path, chat_id=chat), kind="t"
+        )
+
+    root = tmp_path / "shared" / ".overflow"
+    total = sum(p.stat().st_size for p in root.rglob("*.txt"))
+
+    assert total <= 5_000 + 3_100, total
+
+
+def test_abandoned_spill_workers_are_bounded(deps, monkeypatch):
+    """A timed-out spill is abandoned, not cancelled. With permanently wedged
+    storage every oversized result would otherwise park another thread forever,
+    until the process runs out and healthy tool calls start failing."""
+    import threading
+    import time
+
+    import suzent.tools.overflow as overflow
+
+    # A private semaphore: parked workers never release, so draining the
+    # module-level one would silently disable spilling for every later test.
+    monkeypatch.setattr(
+        overflow, "_spill_slots", threading.Semaphore(overflow._SPILL_THREADS)
+    )
+    monkeypatch.setattr(overflow, "SPILL_TIMEOUT_SECONDS", 0.02)
+    monkeypatch.setattr(
+        overflow, "_spill_payload", lambda payload, clipped, **kw: time.sleep(1)
+    )
+
+    before = threading.active_count()
+    for _ in range(20):
+        assert overflow.spill_overflow_bounded("x", deps=deps, kind="t") is None
+    parked = threading.active_count() - before
+
+    assert parked <= overflow._SPILL_THREADS, (
+        f"{parked} threads parked on wedged storage"
+    )
+
+
+def test_a_slot_is_returned_when_the_spill_completes(deps):
+    import suzent.tools.overflow as overflow
+
+    before = overflow._spill_slots._value
+    for _ in range(5):
+        overflow.spill_overflow_bounded("x" * 100, deps=deps, kind="t")
+
+    assert overflow._spill_slots._value == before
+
+
+def test_switching_execution_mode_does_not_lock_out_earlier_spills(tmp_path):
+    """A chat can move between modes, and the mode decides the directory's
+    permissions. Sharing one directory let a host spill chmod it 0700 and made
+    every sandbox path already advertised from it unreadable — the most recent
+    spill retroactively deciding whether older ones could be opened."""
+    sandbox_spill = spill_overflow(
+        "s", deps=_deps(tmp_path, chat_id="c9", sandbox=True), kind="t"
+    )
+    written = _chat_dir(tmp_path, "c9", sandbox=True) / Path(sandbox_spill.path).name
+
+    # The same chat, now in host mode.
+    spill_overflow("h", deps=_deps(tmp_path, chat_id="c9"), kind="t")
+
+    assert os.stat(written).st_mode & 0o044, "the earlier sandbox spill is unreadable"
+    assert os.stat(written.parent).st_mode & 0o011, "its directory is untraversable"
+
+
+def test_the_two_modes_use_separate_leaves(tmp_path):
+    spill_overflow("s", deps=_deps(tmp_path, chat_id="c9", sandbox=True), kind="t")
+    spill_overflow("h", deps=_deps(tmp_path, chat_id="c9"), kind="t")
+
+    names = sorted(p.name for p in (tmp_path / "shared" / ".overflow").iterdir())
+
+    assert len(names) == 2
+    assert names[0].startswith("host-c9-") and names[1].startswith("sandbox-c9-")
+
+
+def test_a_slot_is_returned_when_the_worker_cannot_start(deps, monkeypatch):
+    """The worker's finally is what returns the slot, so a thread that never
+    starts never gives it back — four of those and spilling is off for the life
+    of the process."""
+    import threading
+
+    import suzent.tools.overflow as overflow
+
+    before = overflow._spill_slots._value
+
+    def _no_thread(*args, **kwargs):
+        class _Dead:
+            def start(self):
+                raise RuntimeError("can't start new thread")
+
+        return _Dead()
+
+    monkeypatch.setattr(threading, "Thread", _no_thread)
+
+    assert overflow.spill_overflow_bounded("x", deps=deps, kind="t") is None
+    assert overflow._spill_slots._value == before, "slot leaked"
+
+
+def test_a_platform_without_fchmod_still_writes(tmp_path, monkeypatch):
+    """os.fchmod does not exist on Windows before 3.13, and AttributeError is
+    not an OSError — uncaught, it escaped before fdopen took ownership, so every
+    oversized result leaked a handle and wrote nothing."""
+    import suzent.tools.overflow as overflow
+
+    monkeypatch.delattr(os, "fchmod", raising=False)
+
+    spill = overflow.spill_overflow("x" * 100, deps=_deps(tmp_path), kind="t")
+
+    assert spill is not None
+    assert Path(spill.path).read_text(encoding="utf-8") == "x" * 100
+
+
+def test_an_abandoned_worker_does_not_hold_the_whole_output(deps, monkeypatch):
+    """The semaphore bounds threads, not bytes. Handing the worker the original
+    string means an abandoned one holds the whole of a hundreds-of-megabyte
+    result for as long as the storage stays wedged — four of those being four
+    copies of the largest output the process has seen."""
+    import time
+
+    import suzent.tools.overflow as overflow
+
+    captured: list[int] = []
+
+    def _wedged(payload, clipped, **kw):
+        captured.append(len(payload))
+        time.sleep(1)
+
+    import threading
+
+    monkeypatch.setattr(
+        overflow, "_spill_slots", threading.Semaphore(overflow._SPILL_THREADS)
+    )
+    monkeypatch.setattr(overflow, "SPILL_TIMEOUT_SECONDS", 0.05)
+    monkeypatch.setattr(overflow, "OVERFLOW_MAX_FILE_BYTES", 1_000)
+    monkeypatch.setattr(overflow, "_spill_payload", _wedged)
+
+    assert overflow.spill_overflow_bounded("x" * 5_000_000, deps=deps, kind="t") is None
+
+    assert captured, "the worker never ran"
+    assert captured[0] <= 1_000, (
+        f"the worker captured {captured[0]} bytes of a 5,000,000-char result"
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_async_path_does_not_use_the_shared_executor():
+    """to_thread was wrong twice over: cancelling its future does not remove the
+    work item from the executor queue, so a timed-out submission keeps holding
+    what it captured until some worker dequeues it — and those threads are
+    shared with everything else that offloads."""
+    import inspect
+
+    import suzent.tools.overflow as overflow
+
+    source = inspect.getsource(overflow.spill_overflow_async)
+
+    assert "asyncio.to_thread(" not in source, (
+        "the spill is back on the shared executor"
+    )
+    assert "daemon=True" in source
+
+
+@pytest.mark.asyncio
+async def test_a_wedged_async_spill_still_returns(deps, monkeypatch):
+    import threading
+    import time
+
+    import suzent.tools.overflow as overflow
+
+    monkeypatch.setattr(
+        overflow, "_spill_slots", threading.Semaphore(overflow._SPILL_THREADS)
+    )
+    monkeypatch.setattr(overflow, "SPILL_TIMEOUT_SECONDS", 0.05)
+    monkeypatch.setattr(
+        overflow, "_spill_payload", lambda payload, clipped, **kw: time.sleep(1)
+    )
+
+    started = time.monotonic()
+    result = await overflow.spill_overflow_async("payload", deps=deps, kind="t")
+
+    assert result is None
+    assert time.monotonic() - started < 1.0
+
+
+def test_the_sweep_runs_on_a_thread_the_process_can_leave():
+    """Cancelling the coroutine does not stop the function, and default-executor
+    threads are joined at interpreter exit — so a sweep on a wedged filesystem
+    would hold up the shutdown the cancellation exists to allow."""
+    import inspect
+
+    import suzent.tools.overflow as overflow
+    from suzent import server
+
+    background = inspect.getsource(overflow.sweep_overflow_in_background)
+
+    assert "asyncio.to_thread(" not in background
+    assert "daemon=True" in background
+    assert "asyncio.to_thread(sweep_overflow" not in inspect.getsource(server.startup)
+
+
+def test_a_failing_sweep_thread_is_not_an_unhandled_exception(monkeypatch, recwarn):
+    """Moving the sweep onto a thread moved its failures out of reach of the
+    loop's handler — they surfaced as unhandled thread errors instead."""
+    import threading
+
+    import suzent.tools.overflow as overflow
+
+    def _boom():
+        raise OSError("disk went away")
+
+    monkeypatch.setattr(overflow, "sweep_overflow", _boom)
+
+    before = threading.active_count()
+    overflow.sweep_overflow_in_background()
+    for _ in range(100):
+        if threading.active_count() <= before:
+            break
+        time.sleep(0.01)
+
+    assert threading.active_count() <= before, "the sweep thread never finished"
+
+
+def test_only_one_sweep_runs_at_a_time(monkeypatch):
+    """On storage wedged for longer than the interval, every tick would
+    otherwise start another uncancellable thread — and when storage recovers,
+    an hour of queued sweeps all start at once."""
+    import threading
+
+    import suzent.tools.overflow as overflow
+
+    release = threading.Event()
+    started = threading.Semaphore(0)
+
+    def _blocked():
+        started.release()
+        release.wait(timeout=5)
+
+    monkeypatch.setattr(overflow, "sweep_overflow", _blocked)
+
+    before = threading.active_count()
+    overflow.sweep_overflow_in_background()
+    assert started.acquire(timeout=2), "the first sweep never started"
+    for _ in range(10):
+        overflow.sweep_overflow_in_background()
+
+    running = threading.active_count() - before
+    release.set()
+
+    assert running == 1, f"{running} sweeps running at once"
+
+
+def test_the_sweep_lock_is_released_for_the_next_tick(monkeypatch):
+    import suzent.tools.overflow as overflow
+
+    monkeypatch.setattr(overflow, "sweep_overflow", lambda: None)
+
+    for _ in range(3):
+        overflow.sweep_overflow_in_background()
+        for _ in range(100):
+            if not overflow._sweep_lock.locked():
+                break
+            time.sleep(0.01)
+        assert not overflow._sweep_lock.locked(), "the lock outlived its sweep"
+
+
+def test_a_masked_mount_writes_nothing_at_all(tmp_path):
+    """Validating after the write meant the file was created and both quota
+    passes had run before the answer was thrown away — so a chat with a masked
+    mount produced unreachable orphans on every oversized result, and its
+    pruning could evict spills other chats still pointed at."""
+
+    class _Masked:
+        """Resolves /shared canonically but sends anything below .overflow
+        somewhere else, as a nested custom volume does."""
+
+        def resolve(self, virtual: str) -> str:
+            if virtual.startswith("/shared/.overflow"):
+                return str(tmp_path / "masked" / virtual.split("/")[-1])
+            return str(tmp_path / "shared" / virtual[len("/shared") :].lstrip("/"))
+
+    deps = SimpleNamespace(
+        path_resolver=_Masked(), sandbox_enabled=True, chat_id="masked-chat"
+    )
+
+    assert spill_overflow("x" * 100, deps=deps, kind="t") is None
+    assert not (tmp_path / "shared" / ".overflow").exists(), "an orphan was written"
+
+
+def test_a_masked_mount_cannot_evict_another_chats_spill(tmp_path, monkeypatch):
+    """The eviction half: the rejected chat's pruning ran against the shared
+    root before the rejection."""
+    import suzent.tools.overflow as overflow
+
+    monkeypatch.setattr(overflow, "OVERFLOW_MAX_ROOT_BYTES", 4_000)
+    good = spill_overflow(
+        "y" * 3_000, deps=_deps(tmp_path, chat_id="good", sandbox=True), kind="t"
+    )
+    written = _chat_dir(tmp_path, "good", sandbox=True) / Path(good.path).name
+
+    class _Masked:
+        def resolve(self, virtual: str) -> str:
+            if virtual.startswith("/shared/.overflow"):
+                return str(tmp_path / "masked" / virtual.split("/")[-1])
+            return str(tmp_path / "shared" / virtual[len("/shared") :].lstrip("/"))
+
+    bad = SimpleNamespace(
+        path_resolver=_Masked(), sandbox_enabled=True, chat_id="masked-chat"
+    )
+    for _ in range(5):
+        assert spill_overflow("z" * 3_000, deps=bad, kind="t") is None
+
+    assert written.exists(), "a rejected spill evicted a valid one"
+
+
+@pytest.mark.asyncio
+async def test_the_async_caller_slices_but_does_not_encode(deps, monkeypatch):
+    """The slice bounds what an abandoned worker retains; the encode allocates
+    up to four bytes per character and belongs off the loop."""
+    import threading
+
+    import suzent.tools.overflow as overflow
+
+    encoded_on: list[str] = []
+    real = overflow._encode_bounded
+
+    def _watch(head, dropped):
+        encoded_on.append(threading.current_thread().name)
+        return real(head, dropped)
+
+    monkeypatch.setattr(overflow, "_encode_bounded", _watch)
+
+    await overflow.spill_overflow_async("é" * 10_000, deps=deps, kind="t")
+
+    assert encoded_on, "the encode never ran"
+    assert all(n.startswith("overflow-spill") for n in encoded_on), (
+        f"encoding ran on {encoded_on}"
+    )
+
+
+def test_the_bounded_prefix_is_a_slice_not_an_encode():
+    """_bound_chars must stay cheap: it is what the event loop runs."""
+    import suzent.tools.overflow as overflow
+
+    head, dropped = overflow._bound_chars("é" * (overflow.OVERFLOW_MAX_FILE_BYTES + 10))
+
+    assert isinstance(head, str)
+    assert len(head) == overflow.OVERFLOW_MAX_FILE_BYTES
+    assert dropped is True
+
+
+def test_a_failed_fallback_write_leaves_no_file(tmp_path, monkeypatch):
+    """A half-written file that was never advertised is pure litter, and this
+    branch skips pruning, so it sits there until the sweep."""
+    import suzent.tools.overflow as overflow
+
+    monkeypatch.setattr(overflow, "_HAVE_DIR_FD", False)
+
+    real_fdopen = os.fdopen
+
+    def _explode(fd, *args, **kwargs):
+        handle = real_fdopen(fd, *args, **kwargs)
+
+        class _Broken:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                handle.close()
+                return False
+
+            def write(self, data):
+                raise OSError("volume disconnected")
+
+        return _Broken()
+
+    monkeypatch.setattr(os, "fdopen", _explode)
+
+    assert overflow.spill_overflow("x" * 100, deps=_deps(tmp_path), kind="t") is None
+
+    chat_dir = _chat_dir(tmp_path)
+    assert not chat_dir.exists() or list(chat_dir.glob("*.txt")) == []
+
+
+def test_the_worker_does_not_retain_the_whole_request(deps, monkeypatch):
+    """AgentDeps carries the request's message history, repository context and
+    caches. Four abandoned workers holding those is far more than the bounded
+    payload the slot limit was reasoning about."""
+    import suzent.tools.overflow as overflow
+
+    seen: list[Any] = []
+
+    def _capture(payload, clipped, *, deps, kind, keep_check=None):
+        seen.append(deps)
+        return None
+
+    monkeypatch.setattr(overflow, "_spill_payload", _capture)
+
+    bulky = SimpleNamespace(
+        path_resolver=deps.path_resolver,
+        sandbox_enabled=False,
+        chat_id="chat-1",
+        last_messages=["a very long history"] * 1000,
+        repository_context="...",
+    )
+    overflow.spill_overflow_bounded("x" * 100, deps=bulky, kind="t")
+
+    assert seen, "the worker never ran"
+    assert not hasattr(seen[0], "last_messages"), "the worker kept the whole deps"
+    assert seen[0].chat_id == "chat-1"
+
+
+def test_the_snapshot_carries_what_a_spill_needs():
+    import suzent.tools.overflow as overflow
+
+    snap = overflow._deps_snapshot(
+        SimpleNamespace(
+            path_resolver="R", sandbox_enabled=True, chat_id="c", extra="dropped"
+        )
+    )
+
+    assert (snap.path_resolver, snap.sandbox_enabled, snap.chat_id) == ("R", True, "c")
+    assert not hasattr(snap, "extra")
+
+
+# --- what happens to a spill nobody waited for --------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_late_spill_becomes_an_ordinary_retained_file(
+    deps, tmp_path, monkeypatch
+):
+    """Not chased, not deleted out of band. Every version of the handshake that
+    tried to hand the file back or remove it after the fact had a window between
+    deciding and acting — the caller, the loop and the worker cannot observe
+    each other atomically. A missed deadline now leaves a file under the same
+    TTL and quotas as any other, which the sweep collects."""
+    import asyncio
+    import threading
+
+    import suzent.tools.overflow as overflow
+
+    monkeypatch.setattr(
+        overflow, "_spill_slots", threading.Semaphore(overflow._SPILL_THREADS)
+    )
+    monkeypatch.setattr(overflow, "SPILL_TIMEOUT_SECONDS", 0.05)
+
+    real = overflow._spill_payload
+
+    def _slow(payload, clipped, **kw):
+        time.sleep(0.3)
+        return real(payload, clipped, **kw)
+
+    monkeypatch.setattr(overflow, "_spill_payload", _slow)
+
+    assert await overflow.spill_overflow_async("x" * 100, deps=deps, kind="t") is None
+
+    for _ in range(60):
+        await asyncio.sleep(0.02)
+        if list(_chat_dir(tmp_path).glob("*.txt")):
+            break
+
+    written = list(_chat_dir(tmp_path).glob("*.txt"))
+    assert written, "the late write never landed"
+    assert written[0].read_text(encoding="utf-8") == "x" * 100
+
+
+def test_the_sweep_collects_a_late_spill(deps, tmp_path, monkeypatch):
+    """The retention path is what cleans these up, so it has to actually reach
+    them."""
+    from suzent.config import CONFIG
+    import suzent.tools.overflow as overflow
+    from suzent.tools.overflow import OVERFLOW_TTL_SECONDS, sweep_overflow
+
+    spill = spill_overflow("x" * 100, deps=deps, kind="t")
+    old = time.time() - OVERFLOW_TTL_SECONDS - 60
+    os.utime(spill.host_path, (old, old))
+
+    monkeypatch.setattr(CONFIG, "sandbox_data_path", str(tmp_path), raising=False)
+    sweep_overflow()
+
+    assert not Path(spill.host_path).exists()
+    _ = overflow
+
+
+def test_no_out_of_band_deletion_remains():
+    """The handshake is gone on purpose; a future 'cleanup' that deletes a
+    written spill outside the sweep brings the races back with it."""
+    import inspect
+
+    import suzent.tools.overflow as overflow
+
+    for fn in (overflow.spill_overflow_bounded, overflow.spill_overflow_async):
+        source = inspect.getsource(fn)
+        assert "unlink" not in source, f"{fn.__name__} deletes a spill directly"
+        assert "_discard" not in source, f"{fn.__name__} deletes a spill directly"
+
+
+def test_a_relative_data_path_still_yields_an_absolute_pointer(tmp_path, monkeypatch):
+    """sandbox_data_path may be relative — the documented default is
+    `.suzent/sandbox`. A relative host path in a marker is worse than useless:
+    PathResolver resolves relative paths against the *chat's* cwd, so the agent
+    would look under its own directory for a file written next to the
+    server's."""
+    from suzent.config import CONFIG
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(CONFIG, "sandbox_data_path", "relative/sandbox", raising=False)
+
+    class _Resolver:
+        def resolve(self, virtual: str) -> str:
+            base = tmp_path / "relative" / "sandbox" / "shared"
+            return str(base / virtual[len("/shared") :].lstrip("/"))
+
+    deps = SimpleNamespace(
+        path_resolver=_Resolver(), sandbox_enabled=False, chat_id="c"
+    )
+
+    spill = spill_overflow("x" * 100, deps=deps, kind="t")
+
+    assert spill is not None
+    assert Path(spill.path).is_absolute(), f"relative pointer: {spill.path}"
+    assert Path(spill.path).read_text(encoding="utf-8") == "x" * 100
+
+
+def test_the_root_has_one_definition():
+    """Three copies of `Path(sandbox_data_path) / "shared"` is how the writer
+    and the sweep came to disagree before, and how one of them stayed
+    relative."""
+    import inspect
+
+    import suzent.tools.overflow as overflow
+
+    source = inspect.getsource(overflow)
+
+    assert source.count("CONFIG.sandbox_data_path") == 1
+
+
+def test_two_chats_sharing_a_prefix_get_separate_directories(tmp_path):
+    """A2A context ids are built by prefixing an accepted 64-character value, so
+    they differ exactly where a fixed-length cut discards. Merged chats share a
+    quota and evict each other's advertised spills."""
+    shared_prefix = "ctx-" + "a" * 60
+    first = spill_overflow(
+        "one", deps=_deps(tmp_path, chat_id=shared_prefix + "-alpha"), kind="t"
+    )
+    second = spill_overflow(
+        "two", deps=_deps(tmp_path, chat_id=shared_prefix + "-beta"), kind="t"
+    )
+
+    assert Path(first.host_path).parent != Path(second.host_path).parent
+    assert Path(first.host_path).read_text(encoding="utf-8") == "one"
+    assert Path(second.host_path).read_text(encoding="utf-8") == "two"
+
+
+def test_the_new_spill_survives_its_own_prune(tmp_path, monkeypatch):
+    """On coarse mtime, or after the clock steps back, the just-written file
+    need not sort ahead of the rest — and a directory at quota would delete the
+    very path about to be advertised."""
+    import suzent.tools.overflow as overflow
+
+    monkeypatch.setattr(overflow, "OVERFLOW_MAX_FILES", 2)
+    monkeypatch.setattr(overflow, "OVERFLOW_MAX_TOTAL_BYTES", 100)
+
+    # Freeze mtime so nothing can be ordered by it.
+    real_stat = os.stat
+
+    for _ in range(4):
+        spill = spill_overflow("y" * 60, deps=_deps(tmp_path), kind="t")
+        assert spill is not None
+        assert Path(spill.host_path).exists(), "the advertised file was pruned away"
+
+    _ = real_stat
+
+
+def test_sanitising_two_different_ids_keeps_them_apart(tmp_path):
+    """The sanitiser is many-to-one even without truncation: `a2a:local:a/b` and
+    `a2a:local:a?b` both become `a2a-local-a-b`."""
+    first = spill_overflow(
+        "one", deps=_deps(tmp_path, chat_id="a2a:local:a/b"), kind="t"
+    )
+    second = spill_overflow(
+        "two", deps=_deps(tmp_path, chat_id="a2a:local:a?b"), kind="t"
+    )
+
+    assert Path(first.host_path).parent != Path(second.host_path).parent
+    assert Path(first.host_path).read_text(encoding="utf-8") == "one"
+    assert Path(second.host_path).read_text(encoding="utf-8") == "two"
+
+
+def test_a_half_written_spill_is_invisible_to_scans(tmp_path, monkeypatch):
+    """The sweep or another chat's prune must not be able to select a file that
+    is still being written — on POSIX that deletion succeeds against the open
+    inode and leaves an advertised path with nothing behind it."""
+    import suzent.tools.overflow as overflow
+
+    observed: list[str] = []
+    real_write = (
+        overflow._spill_pinned if overflow._HAVE_DIR_FD else overflow._spill_by_path
+    )
+    name = "_spill_pinned" if overflow._HAVE_DIR_FD else "_spill_by_path"
+
+    def _watch(*args, **kwargs):
+        result = real_write(*args, **kwargs)
+        return result
+
+    # Look at the directory from inside the write, before the rename lands.
+    real_force = overflow._force_mode
+
+    def _peek(fd, mode):
+        chat = _chat_dir(tmp_path)
+        if chat.exists():
+            observed.extend(p.name for p in chat.iterdir())
+        return real_force(fd, mode)
+
+    monkeypatch.setattr(overflow, "_force_mode", _peek)
+    monkeypatch.setattr(overflow, name, _watch)
+
+    spill_overflow("x" * 100, deps=_deps(tmp_path), kind="t")
+
+    staged = [n for n in observed if n.endswith(overflow.PARTIAL_SUFFIX)]
+    finished = [n for n in observed if n.endswith(".txt")]
+
+    assert staged, "the write never staged the file"
+    assert not finished, f"a .txt file existed mid-write: {finished}"
+
+
+def test_the_sweep_collects_a_stranded_staged_file(tmp_path, monkeypatch):
+    """Staged files are invisible to every scan by design, so nothing else will
+    ever collect one left by a crash or a failed rename."""
+    from suzent.config import CONFIG
+    from suzent.tools.overflow import (
+        OVERFLOW_TTL_SECONDS,
+        PARTIAL_SUFFIX,
+        sweep_overflow,
+    )
+
+    chat_dir = _chat_dir(tmp_path)
+    chat_dir.mkdir(parents=True)
+    stranded = chat_dir / f"t-abandoned.txt{PARTIAL_SUFFIX}"
+    stranded.write_text("half", encoding="utf-8")
+    old = time.time() - OVERFLOW_TTL_SECONDS - 60
+    os.utime(stranded, (old, old))
+
+    monkeypatch.setattr(CONFIG, "sandbox_data_path", str(tmp_path), raising=False)
+    sweep_overflow()
+
+    assert not stranded.exists(), "a stranded staged file was never collected"
+
+
+def test_no_scan_can_select_a_staged_file(tmp_path, monkeypatch):
+    """Every scan has to filter to completed spills, not just the ones I
+    remembered: unlinking a staged file succeeds on POSIX while its writer holds
+    it open, and the rename then fails, so the result loses its pointer for a
+    file that was never counted against a quota anyway."""
+    import suzent.tools.overflow as overflow
+    from suzent.tools.overflow import PARTIAL_SUFFIX
+
+    monkeypatch.setattr(overflow, "OVERFLOW_MAX_ROOT_BYTES", 10)
+    monkeypatch.setattr(overflow, "OVERFLOW_MAX_TOTAL_BYTES", 10)
+    monkeypatch.setattr(overflow, "OVERFLOW_MAX_FILES", 1)
+
+    chat_dir = _chat_dir(tmp_path, "victim")
+    chat_dir.mkdir(parents=True)
+    staged = chat_dir / f"t-inflight.txt{PARTIAL_SUFFIX}"
+    staged.write_text("z" * 5_000, encoding="utf-8")
+
+    # Any spill now runs both quota passes against a directory well over its
+    # ceilings, with a staged file sitting in it.
+    spill_overflow("y" * 100, deps=_deps(tmp_path, chat_id="other"), kind="t")
+
+    assert staged.exists(), "a quota scan deleted a file that was still being written"
+
+
+def test_every_scan_filters_to_completed_spills():
+    """Stated over the set, because three of the four filtered and the fourth
+    was the one that mattered."""
+    import inspect
+
+    import suzent.tools.overflow as overflow
+
+    for fn in (
+        overflow._prune_fd,
+        overflow._prune_path,
+        overflow._enforce_root_quota_fd,
+        overflow._enforce_root_quota_path,
+    ):
+        source = inspect.getsource(fn)
+        assert '".txt"' in source or '"*.txt"' in source, (
+            f"{fn.__name__} scans without filtering to completed spills"
+        )
+
+
+def test_a_freshly_published_spill_cannot_be_pruned(tmp_path, monkeypatch):
+    """Publication and advertisement are not one step: the file is renamed into
+    place, then the pointer reaches the caller. Another chat's prune or the
+    sweep runs in between, and on coarse mtime the new file need not sort as
+    newest — so quota pressure could delete the path about to be returned."""
+    import suzent.tools.overflow as overflow
+
+    monkeypatch.setattr(overflow, "OVERFLOW_MAX_FILES", 1)
+    monkeypatch.setattr(overflow, "OVERFLOW_MAX_TOTAL_BYTES", 10)
+    monkeypatch.setattr(overflow, "OVERFLOW_MAX_ROOT_BYTES", 10)
+
+    first = spill_overflow("a" * 100, deps=_deps(tmp_path, chat_id="one"), kind="t")
+
+    # A second chat spills, running both quota passes over a directory far past
+    # its ceilings. The first file is seconds old, so nothing may take it.
+    spill_overflow("b" * 100, deps=_deps(tmp_path, chat_id="two"), kind="t")
+
+    assert Path(first.host_path).exists(), "a just-published spill was pruned"
+
+
+def test_the_grace_period_expires(tmp_path, monkeypatch):
+    """It is a short window, not an exemption: an aged file prunes normally."""
+    import suzent.tools.overflow as overflow
+
+    # By bytes, not by count: with the new file protected there is only one
+    # unprotected entry, so a count ceiling of 1 would evict nothing and the
+    # test would pass for the wrong reason.
+    monkeypatch.setattr(overflow, "OVERFLOW_MAX_TOTAL_BYTES", 10)
+    monkeypatch.setattr(overflow, "OVERFLOW_GRACE_SECONDS", 1)
+
+    old_spill = spill_overflow("a" * 100, deps=_deps(tmp_path), kind="t")
+    aged = time.time() - 120
+    os.utime(old_spill.host_path, (aged, aged))
+
+    spill_overflow("b" * 100, deps=_deps(tmp_path), kind="t")
+
+    assert not Path(old_spill.host_path).exists(), "the grace period never ends"
+
+
+def test_the_shared_root_is_opened_without_following(tmp_path):
+    """mkdir(exist_ok=True) accepts a symlink as an existing directory, so a
+    `shared` replaced by one would be followed and every pinned step below it
+    would be pinned to the wrong tree."""
+    import suzent.tools.overflow as overflow
+
+    if not overflow._HAVE_DIR_FD:
+        pytest.skip("dir_fd unsupported")
+
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    os.symlink(elsewhere, tmp_path / "shared")
+
+    assert spill_overflow("x" * 100, deps=_deps(tmp_path), kind="t") is None
+    assert list(elsewhere.iterdir()) == [], "the write followed a symlinked root"
+
+
+def test_fresh_spills_still_count_toward_the_quota(tmp_path, monkeypatch):
+    """Undeletable is not the same as uncounted. Omitting fresh files from the
+    running totals let a burst exceed both ceilings outright: eleven maximum
+    spills pass the per-chat limit while none is old enough to consider."""
+    import suzent.tools.overflow as overflow
+
+    monkeypatch.setattr(overflow, "OVERFLOW_MAX_TOTAL_BYTES", 5_000)
+
+    aged = spill_overflow("a" * 3_000, deps=_deps(tmp_path), kind="t")
+    old_time = time.time() - 3_600
+    os.utime(aged.host_path, (old_time, old_time))
+
+    # Two fresh spills; together with the aged one they exceed the ceiling, and
+    # the aged one is the only thing that may be evicted.
+    spill_overflow("b" * 3_000, deps=_deps(tmp_path), kind="t")
+    spill_overflow("c" * 3_000, deps=_deps(tmp_path), kind="t")
+
+    assert not Path(aged.host_path).exists(), (
+        "fresh spills did not consume budget, so nothing was evicted"
+    )
+
+
+def test_fresh_spills_count_toward_the_root_quota(tmp_path, monkeypatch):
+    import suzent.tools.overflow as overflow
+
+    monkeypatch.setattr(overflow, "OVERFLOW_MAX_ROOT_BYTES", 5_000)
+
+    aged = spill_overflow("a" * 3_000, deps=_deps(tmp_path, chat_id="old"), kind="t")
+    old_time = time.time() - 3_600
+    os.utime(aged.host_path, (old_time, old_time))
+
+    spill_overflow("b" * 3_000, deps=_deps(tmp_path, chat_id="new1"), kind="t")
+    spill_overflow("c" * 3_000, deps=_deps(tmp_path, chat_id="new2"), kind="t")
+
+    assert not Path(aged.host_path).exists(), (
+        "fresh spills did not consume the deployment budget"
+    )
+
+
+def test_future_dated_spills_do_not_hold_grace_open(tmp_path, monkeypatch):
+    """A backward clock step stamps already-published spills in the future. Read
+    as a one-sided ``mtime >= now - 60`` that made them undeletable for the whole
+    rollback interval — hours, not a minute — so a burst caught by it stayed
+    above the ceiling. Grace is a window, and its future side is closed."""
+    import suzent.tools.overflow as overflow
+
+    monkeypatch.setattr(overflow, "OVERFLOW_MAX_TOTAL_BYTES", 1_000)
+
+    rolled_back = spill_overflow("a" * 3_000, deps=_deps(tmp_path), kind="t")
+    ahead = time.time() + 3_600
+    os.utime(rolled_back.host_path, (ahead, ahead))
+    genuinely_fresh = spill_overflow("b" * 3_000, deps=_deps(tmp_path), kind="t")
+
+    overflow.sweep_overflow()
+
+    assert not Path(rolled_back.host_path).exists(), (
+        "a future-dated spill kept its grace and could not be evicted"
+    )
+    assert Path(genuinely_fresh.host_path).exists(), (
+        "grace no longer protects a spill that really is newborn"
+    )
+
+
+def test_future_dated_spills_expire_within_the_advertised_retention(tmp_path):
+    """With no quota pressure at all, a future-dated spill still has to go: read
+    literally, its mtime never falls below the TTL cutoff, so it would outlive
+    the marker's "kept up to 25h" promise by however long the clock rolled
+    back — every scheduled sweep notwithstanding."""
+    import suzent.tools.overflow as overflow
+
+    rolled_back = spill_overflow("a" * 100, deps=_deps(tmp_path), kind="t")
+    ahead = time.time() + 3_600
+    os.utime(rolled_back.host_path, (ahead, ahead))
+    ordinary = spill_overflow("b" * 100, deps=_deps(tmp_path), kind="t")
+
+    overflow.sweep_overflow()
+
+    assert not Path(rolled_back.host_path).exists(), (
+        "an undatable spill outlived the advertised retention window"
+    )
+    assert Path(ordinary.host_path).exists()
+
+
+def test_a_future_dated_staging_file_survives_the_sweep(tmp_path):
+    """Rollback expiry belongs to published spills only. A `.part` with a
+    future-dated mtime is far more likely to be a live writer caught by a clock
+    step than an abandoned file, and unlinking it costs the caller its output:
+    the write lands in the open inode, the rename fails, no pointer comes
+    back."""
+    import suzent.tools.overflow as overflow
+    from suzent.tools.overflow import PARTIAL_SUFFIX
+
+    published = spill_overflow("a" * 100, deps=_deps(tmp_path), kind="t")
+    staged = Path(published.host_path).parent / f"t-live.txt{PARTIAL_SUFFIX}"
+    staged.write_bytes(b"half a payload")
+    ahead = time.time() + 3_600
+    os.utime(staged, (ahead, ahead))
+
+    overflow.sweep_overflow()
+
+    assert staged.exists(), "the sweep deleted a staging file out from under a writer"
+
+
+def test_the_root_quota_evicts_undatable_spills_before_current_ones(
+    tmp_path, monkeypatch
+):
+    """A file stamped before a backward clock step sorts ahead of everything
+    real, so under root pressure it kept its budget while genuinely current
+    spills — the ones with live pointers in a conversation — were evicted in
+    its place. It sorts oldest now."""
+    import suzent.tools.overflow as overflow
+
+    monkeypatch.setattr(overflow, "OVERFLOW_MAX_ROOT_BYTES", 4_000)
+
+    rolled_back = spill_overflow(
+        "a" * 3_000, deps=_deps(tmp_path, chat_id="old"), kind="t"
+    )
+    ahead = time.time() + 3_600
+    os.utime(rolled_back.host_path, (ahead, ahead))
+
+    aged = spill_overflow("b" * 3_000, deps=_deps(tmp_path, chat_id="mid"), kind="t")
+    long_ago = time.time() - 3_600
+    os.utime(aged.host_path, (long_ago, long_ago))
+
+    overflow._enforce_root_quota_path(overflow._overflow_root())
+
+    assert not Path(rolled_back.host_path).exists(), (
+        "an undatable spill outranked a datable one under root pressure"
+    )
+    assert Path(aged.host_path).exists()
+
+
+def test_deleted_entries_do_not_consume_the_file_ceiling(tmp_path, monkeypatch):
+    """The count ceiling is a budget for retained files. Charging an entry for
+    the positions above it meant a single expired spill at the head evicted a
+    valid one at the tail, leaving the directory under its own limit and
+    breaking a live pointer for nothing."""
+    import suzent.tools.overflow as overflow
+
+    keepers = []
+    for offset, payload in enumerate(("b", "c")):
+        kept = spill_overflow(payload * 100, deps=_deps(tmp_path), kind="t")
+        long_ago = time.time() - 3_600 - offset
+        os.utime(kept.host_path, (long_ago, long_ago))
+        keepers.append(Path(kept.host_path))
+
+    # Planted rather than spilled: a spill of its own would prune the directory
+    # on the way out, and the point here is what the sweep sees.
+    expired = keepers[0].parent / "t-rolled-back.txt"
+    expired.write_bytes(b"x" * 100)
+    ahead = time.time() + 3_600
+    os.utime(expired, (ahead, ahead))
+
+    monkeypatch.setattr(overflow, "OVERFLOW_MAX_FILES", 2)
+    overflow.sweep_overflow()
+
+    assert not expired.exists()
+    for kept in keepers:
+        assert kept.exists(), (
+            "an entry deleted ahead of this one still consumed the ceiling"
+        )
+
+
+def test_an_undeletable_spill_still_consumes_its_budget(tmp_path, monkeypatch):
+    """A failed unlink — a file held open on Windows, a permission fault — left
+    the entry out of both totals, so the scan went on to retain older files as
+    though the bytes it could not reclaim were free. It is still on disk, so it
+    still counts."""
+    import suzent.tools.overflow as overflow
+
+    monkeypatch.setattr(overflow, "OVERFLOW_MAX_TOTAL_BYTES", 5_000)
+
+    # Newest first: the keeper fits, the stuck file is the first entry over the
+    # ceiling, and the tail only survives if its bytes were written off.
+    keeper = spill_overflow("a" * 3_000, deps=_deps(tmp_path), kind="t")
+    stuck = spill_overflow("b" * 3_000, deps=_deps(tmp_path), kind="t")
+    tail = spill_overflow("c" * 100, deps=_deps(tmp_path), kind="t")
+    for offset, spill in enumerate((keeper, stuck, tail)):
+        when = time.time() - 3_600 - offset
+        os.utime(spill.host_path, (when, when))
+
+    stuck_name = Path(stuck.host_path).name
+    real_unlink = os.unlink
+
+    def refuse_the_stuck_one(target, *args, **kwargs):
+        if str(target).endswith(stuck_name):
+            raise PermissionError(stuck_name)
+        return real_unlink(target, *args, **kwargs)
+
+    monkeypatch.setattr(os, "unlink", refuse_the_stuck_one)
+    monkeypatch.setattr(
+        Path,
+        "unlink",
+        lambda self, missing_ok=False: refuse_the_stuck_one(str(self)),
+    )
+
+    overflow.sweep_overflow()
+
+    assert Path(stuck.host_path).exists()
+    assert Path(keeper.host_path).exists()
+    assert not Path(tail.host_path).exists(), (
+        "bytes that could not be reclaimed were treated as free"
+    )
