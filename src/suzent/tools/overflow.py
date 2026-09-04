@@ -46,7 +46,7 @@ import time
 from dataclasses import dataclass
 from types import SimpleNamespace
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Optional
 
 from suzent.logger import get_logger
 
@@ -215,7 +215,6 @@ def _spill_by_path(
     name: str,
     dir_mode: int,
     file_mode: int,
-    keep_check: Optional[Callable[[], bool]] = None,
 ) -> bool:
     """Write the spill without directory descriptors.
 
@@ -272,15 +271,6 @@ def _spill_by_path(
             pass
         return False
 
-    if keep_check is not None and not keep_check():
-        try:
-            (directory / name).unlink(missing_ok=True)
-        except OSError:
-            pass
-        return False
-
-    _prune_path(directory)
-    _enforce_root_quota_path(directory.parent)
     return True
 
 
@@ -479,7 +469,6 @@ def _spill_pinned(
     name: str,
     dir_mode: int,
     file_mode: int,
-    keep_check: Optional[Callable[[], bool]] = None,
 ) -> bool:
     """Write the spill with every directory on the path pinned.
 
@@ -530,22 +519,6 @@ def _spill_pinned(
                 pass
             return False
 
-        # Before pruning, because pruning is irreversible: an abandoned spill
-        # that prunes first can evict files whose paths were already handed to a
-        # live conversation, and then delete itself, leaving the eviction as the
-        # only lasting effect.
-        if keep_check is not None and not keep_check():
-            try:
-                os.unlink(name, dir_fd=chat_fd)
-            except OSError:
-                pass
-            return False
-
-        _prune_fd(chat_fd)
-        # And the root ceiling, here rather than only on the hourly timer: a
-        # burst across many chats stays within every per-chat allowance while
-        # the deployment total runs away.
-        _enforce_root_quota_fd(overflow_fd)
         return True
     except OSError as e:
         logger.debug(f"[overflow] no spill directory: {e}")
@@ -557,6 +530,46 @@ def _spill_pinned(
                     os.close(handle_fd)
                 except OSError:
                     pass
+
+
+def _prune_after_accept(deps: Any) -> None:
+    """Apply the quotas, once a spill has actually been handed to its caller.
+
+    Pruning is the irreversible half of a spill, so it waits for the reversible
+    half to be accepted. Doing it during the write meant an abandoned spill
+    could evict files whose paths a live conversation held and then delete
+    itself, leaving the eviction as its only effect — and every attempt to guard
+    that with a flag left a window between the check and the scan.
+
+    Ordering removes the window instead of narrowing it: nothing that is not
+    owned by a caller ever prunes.
+    """
+    from suzent.config import CONFIG
+
+    root = Path(CONFIG.sandbox_data_path) / "shared" / ".overflow"
+    chat_dir = root / _chat_segment(deps)
+    try:
+        if _HAVE_DIR_FD:
+            flags = (
+                os.O_RDONLY
+                | getattr(os, "O_DIRECTORY", 0)
+                | getattr(os, "O_NOFOLLOW", 0)
+            )
+            root_fd = os.open(root, flags)
+            try:
+                chat_fd = os.open(_chat_segment(deps), flags, dir_fd=root_fd)
+                try:
+                    _prune_fd(chat_fd)
+                finally:
+                    os.close(chat_fd)
+                _enforce_root_quota_fd(root_fd)
+            finally:
+                os.close(root_fd)
+        else:
+            _prune_path(chat_dir)
+            _enforce_root_quota_path(root)
+    except OSError as e:
+        logger.debug(f"[overflow] could not prune after a spill: {e}")
 
 
 def _discard(spill: Spill) -> None:
@@ -586,9 +599,17 @@ def _deps_snapshot(deps: Any) -> Any:
 
 
 def spill_overflow(text: str, *, deps: Any, kind: str = "output") -> Optional[Spill]:
-    """Clip *text* and write it somewhere this chat can read it."""
+    """Clip *text* and write it somewhere this chat can read it.
+
+    Prunes straight away: this entry point has no caller that can walk away
+    mid-write, so acceptance is immediate. The bounded and async wrappers make
+    that decision themselves and prune only once it goes their way.
+    """
     payload, clipped = _clip(text)
-    return _spill_payload(payload, clipped, deps=deps, kind=kind)
+    spill = _spill_payload(payload, clipped, deps=deps, kind=kind)
+    if spill is not None:
+        _prune_after_accept(deps)
+    return spill
 
 
 def _spill_payload(
@@ -597,7 +618,6 @@ def _spill_payload(
     *,
     deps: Any,
     kind: str = "output",
-    keep_check: Optional[Callable[[], bool]] = None,
 ) -> Optional[Spill]:
     """Write an already-bounded *payload*; return where it went.
 
@@ -677,12 +697,9 @@ def _spill_payload(
             name,
             dir_mode,
             file_mode,
-            keep_check,
         ):
             return None
-    elif not _spill_pinned(
-        payload, shared_host, chat, name, dir_mode, file_mode, keep_check
-    ):
+    elif not _spill_pinned(payload, shared_host, chat, name, dir_mode, file_mode):
         return None
 
     written = shared_host / ".overflow" / chat / name
@@ -797,25 +814,22 @@ def spill_overflow_bounded(
 
     def _worker() -> None:
         try:
-            spill = _spill_payload(
-                payload,
-                clipped,
-                deps=snapshot,
-                kind=kind,
-                keep_check=lambda: not abandoned.is_set(),
-            )
+            spill = _spill_payload(payload, clipped, deps=snapshot, kind=kind)
             if spill is None:
                 return
-            # Under the lock, because the caller can give up between the check
-            # and the assignment — and then nobody owns the file.
+            # One atomic decision: either the caller takes it, or nobody does.
             with handover:
                 if abandoned.is_set():
-                    late = spill
+                    accepted = False
                 else:
                     result[0] = spill
-                    late = None
-            if late is not None:
-                _discard(late)
+                    accepted = True
+            # Both of these are filesystem work and both happen here, on the
+            # worker — never on the caller's thread and never on the loop.
+            if accepted:
+                _prune_after_accept(snapshot)
+            else:
+                _discard(spill)
         finally:
             _spill_slots.release()
 
@@ -833,6 +847,11 @@ def spill_overflow_bounded(
     thread.join(timeout=SPILL_TIMEOUT_SECONDS)
     if thread.is_alive():
         with handover:
+            # The worker may have stored a result and still be inside its
+            # finally when the join expired. Abandoning it then would throw away
+            # a spill that is already written and already ours.
+            if result[0] is not None:
+                return result[0]
             abandoned.set()
         # The write may still land. Nobody was told about it, so it would sit
         # there consuming the per-chat and root quotas and evicting spills whose
@@ -874,41 +893,53 @@ async def spill_overflow_async(
     # while every other chat waits.
     head, dropped = _bound_chars(text)
     snapshot = _deps_snapshot(deps)
-    abandoned = threading.Event()
 
     loop = asyncio.get_running_loop()
     future: asyncio.Future = loop.create_future()
 
+    settled = threading.Event()
+    accepted: list[bool] = [False]
+
     def _deliver(value: Optional[Spill]) -> None:
-        # Runs on the loop, so it sees the future's final state. A caller
-        # cancelled after the worker's own check but before this point leaves a
-        # completed future and an unowned file; here is the one place that can
-        # tell.
-        if future.done():
-            if value is not None:
-                _discard(value)
-            return
-        future.set_result(value)
+        # Runs on the loop, which is the only place that can see whether the
+        # future was already cancelled — but it does no filesystem work: an
+        # unlink on the same wedged volume would stall every chat, after the
+        # caller's deadline has already expired. It answers, and the worker acts.
+        try:
+            if future.done():
+                accepted[0] = False
+                return
+            future.set_result(value)
+            accepted[0] = value is not None
+        finally:
+            settled.set()
 
     def _worker() -> None:
+        spill = None
         try:
             payload, clipped = _encode_bounded(head, dropped)
-            spill = _spill_payload(
-                payload,
-                clipped,
-                deps=snapshot,
-                kind=kind,
-                keep_check=lambda: not abandoned.is_set(),
-            )
+            spill = _spill_payload(payload, clipped, deps=snapshot, kind=kind)
         except BaseException as e:  # noqa: BLE001 - a spill never fails its caller
             logger.debug(f"[overflow] spill failed: {e}")
-            spill = None
         finally:
             _spill_slots.release()
+
         try:
             loop.call_soon_threadsafe(_deliver, spill)
         except RuntimeError:
-            pass  # loop already closed; nobody is waiting
+            # Loop already closed; nobody is waiting, so nobody owns the file.
+            if spill is not None:
+                _discard(spill)
+            return
+
+        if spill is None:
+            return
+        # Wait for the loop's answer, then do the filesystem work here.
+        settled.wait(timeout=SPILL_TIMEOUT_SECONDS)
+        if accepted[0]:
+            _prune_after_accept(snapshot)
+        else:
+            _discard(spill)
 
     if not _spill_slots.acquire(blocking=False):
         logger.warning(
@@ -926,7 +957,6 @@ async def spill_overflow_async(
     try:
         return await asyncio.wait_for(future, timeout=SPILL_TIMEOUT_SECONDS)
     except asyncio.TimeoutError:
-        abandoned.set()
         logger.warning(
             f"[overflow] spill exceeded {SPILL_TIMEOUT_SECONDS}s — truncating "
             f"without a pointer"
@@ -934,11 +964,8 @@ async def spill_overflow_async(
         return None
     except BaseException:
         # Cancellation reaches here too — a client disconnecting, a social turn
-        # superseded — and it means what the timeout means: nobody will receive
-        # this pointer, so the file the worker may still write must not be left
-        # counting against the quotas. Catching only TimeoutError covered the
-        # deadline and not the commoner way a caller goes away.
-        abandoned.set()
+        # superseded. Both leave the future done-but-unreadable, which _deliver
+        # reads as "nobody took it", so the worker discards rather than prunes.
         raise
 
 

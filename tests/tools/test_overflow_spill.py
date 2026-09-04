@@ -1430,7 +1430,12 @@ async def test_cancellation_abandons_the_spill_like_a_timeout(
     with pytest.raises(asyncio.CancelledError):
         await task
 
-    time.sleep(0.6)
+    # Awaited, not slept: the worker asks the loop whether its result was taken,
+    # so a blocking sleep here would stop the very callback under test.
+    for _ in range(60):
+        await asyncio.sleep(0.02)
+        if not list(_chat_dir(tmp_path).glob("*.txt")):
+            break
 
     assert list(_chat_dir(tmp_path).glob("*.txt")) == [], (
         "a cancelled spill left an unadvertised file behind"
@@ -1514,3 +1519,76 @@ async def test_a_cancel_racing_delivery_still_discards(deps, tmp_path, monkeypat
     assert list(_chat_dir(tmp_path).glob("*.txt")) == [], (
         "a spill delivered after cancellation was left behind"
     )
+
+
+@pytest.mark.asyncio
+async def test_the_loop_does_no_filesystem_work_for_a_spill(deps, monkeypatch):
+    """_deliver runs on the loop and only answers yes or no. An unlink there
+    would stall every chat on the same wedged volume the caller already gave up
+    waiting for."""
+    import asyncio
+    import inspect
+    import threading
+
+    import suzent.tools.overflow as overflow
+
+    source = inspect.getsource(overflow.spill_overflow_async)
+    deliver = source[source.index("def _deliver") : source.index("def _worker")]
+
+    assert "_discard" not in deliver, "the loop callback deletes files"
+    assert "_prune" not in deliver, "the loop callback prunes"
+
+    ran_on: list[str] = []
+    monkeypatch.setattr(
+        overflow,
+        "_discard",
+        lambda spill: ran_on.append(threading.current_thread().name),
+    )
+    monkeypatch.setattr(
+        overflow, "_spill_slots", threading.Semaphore(overflow._SPILL_THREADS)
+    )
+
+    task = asyncio.create_task(
+        overflow.spill_overflow_async("x" * 100, deps=deps, kind="t")
+    )
+    await asyncio.sleep(0)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    for _ in range(60):
+        await asyncio.sleep(0.02)
+        if ran_on:
+            break
+
+    assert ran_on, "the abandoned spill was never discarded"
+    assert all(n.startswith("overflow-spill") for n in ran_on), (
+        f"cleanup ran on {ran_on}"
+    )
+
+
+def test_a_stored_result_is_accepted_rather_than_abandoned(deps, monkeypatch):
+    """The worker can store its result and still be inside its finally when the
+    join expires. Abandoning then throws away a spill that is already written
+    and already ours."""
+    import threading
+
+    import suzent.tools.overflow as overflow
+
+    monkeypatch.setattr(
+        overflow, "_spill_slots", threading.Semaphore(overflow._SPILL_THREADS)
+    )
+    monkeypatch.setattr(overflow, "SPILL_TIMEOUT_SECONDS", 0.05)
+
+    real = overflow._prune_after_accept
+
+    def _slow_prune(snapshot):
+        # Stands in for a worker that has stored its result but not yet exited.
+        time.sleep(0.3)
+        return real(snapshot)
+
+    monkeypatch.setattr(overflow, "_prune_after_accept", _slow_prune)
+
+    spill = overflow.spill_overflow_bounded("x" * 100, deps=deps, kind="t")
+
+    assert spill is not None, "a written, stored spill was thrown away"
+    assert Path(spill.host_path).exists()
