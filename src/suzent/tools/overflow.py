@@ -901,45 +901,43 @@ async def spill_overflow_async(
     accepted: list[bool] = [False]
 
     def _deliver(value: Optional[Spill]) -> None:
-        # Runs on the loop, which is the only place that can see whether the
-        # future was already cancelled — but it does no filesystem work: an
-        # unlink on the same wedged volume would stall every chat, after the
-        # caller's deadline has already expired. It answers, and the worker acts.
-        try:
-            if future.done():
-                accepted[0] = False
-                return
+        # Runs on the loop and does no filesystem work: an unlink on the same
+        # wedged volume would stall every chat, after the caller's deadline has
+        # already expired. It hands the value over; the coroutine decides
+        # whether it was really received, and the worker acts on that.
+        if not future.done():
             future.set_result(value)
-            accepted[0] = value is not None
-        finally:
-            settled.set()
 
     def _worker() -> None:
         spill = None
         try:
-            payload, clipped = _encode_bounded(head, dropped)
-            spill = _spill_payload(payload, clipped, deps=snapshot, kind=kind)
-        except BaseException as e:  # noqa: BLE001 - a spill never fails its caller
-            logger.debug(f"[overflow] spill failed: {e}")
-        finally:
-            _spill_slots.release()
+            try:
+                payload, clipped = _encode_bounded(head, dropped)
+                spill = _spill_payload(payload, clipped, deps=snapshot, kind=kind)
+            except BaseException as e:  # noqa: BLE001 - never fails its caller
+                logger.debug(f"[overflow] spill failed: {e}")
 
-        try:
-            loop.call_soon_threadsafe(_deliver, spill)
-        except RuntimeError:
-            # Loop already closed; nobody is waiting, so nobody owns the file.
-            if spill is not None:
+            try:
+                loop.call_soon_threadsafe(_deliver, spill)
+            except RuntimeError:
+                # Loop already closed; nobody is waiting, so nobody owns this.
+                if spill is not None:
+                    _discard(spill)
+                return
+
+            if spill is None:
+                return
+            settled.wait(timeout=SPILL_TIMEOUT_SECONDS)
+            if accepted[0]:
+                _prune_after_accept(snapshot)
+            else:
                 _discard(spill)
-            return
-
-        if spill is None:
-            return
-        # Wait for the loop's answer, then do the filesystem work here.
-        settled.wait(timeout=SPILL_TIMEOUT_SECONDS)
-        if accepted[0]:
-            _prune_after_accept(snapshot)
-        else:
-            _discard(spill)
+        finally:
+            # After the pruning and the cleanup, not before them. Releasing at
+            # the end of the write let the next oversized result take the slot
+            # and park another thread in the filesystem work below it, which is
+            # the accumulation the bound exists to prevent.
+            _spill_slots.release()
 
     if not _spill_slots.acquire(blocking=False):
         logger.warning(
@@ -955,8 +953,9 @@ async def spill_overflow_async(
         return None
 
     try:
-        return await asyncio.wait_for(future, timeout=SPILL_TIMEOUT_SECONDS)
+        spill = await asyncio.wait_for(future, timeout=SPILL_TIMEOUT_SECONDS)
     except asyncio.TimeoutError:
+        settled.set()
         logger.warning(
             f"[overflow] spill exceeded {SPILL_TIMEOUT_SECONDS}s — truncating "
             f"without a pointer"
@@ -964,9 +963,18 @@ async def spill_overflow_async(
         return None
     except BaseException:
         # Cancellation reaches here too — a client disconnecting, a social turn
-        # superseded. Both leave the future done-but-unreadable, which _deliver
-        # reads as "nobody took it", so the worker discards rather than prunes.
+        # superseded. Nobody receives the pointer, so the worker discards.
+        settled.set()
         raise
+
+    # Only now, with the value in hand and no await between here and the
+    # return, is it true that the caller received it. Setting the future is not
+    # the same event: a cancellation queued after _deliver ran would still stop
+    # the coroutine, and the worker would have kept and pruned a file whose
+    # path reached nobody.
+    accepted[0] = spill is not None
+    settled.set()
+    return spill
 
 
 def _sweep_by_path(root: Path) -> None:

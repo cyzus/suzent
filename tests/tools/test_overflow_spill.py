@@ -1592,3 +1592,69 @@ def test_a_stored_result_is_accepted_rather_than_abandoned(deps, monkeypatch):
 
     assert spill is not None, "a written, stored spill was thrown away"
     assert Path(spill.host_path).exists()
+
+
+@pytest.mark.asyncio
+async def test_the_slot_covers_the_cleanup_too(deps, monkeypatch):
+    """Releasing at the end of the write let the next oversized result take the
+    slot and park another thread in the pruning below it — the accumulation the
+    bound exists to prevent."""
+    import asyncio
+    import threading
+
+    import suzent.tools.overflow as overflow
+
+    monkeypatch.setattr(overflow, "_spill_slots", threading.Semaphore(1))
+
+    in_cleanup = threading.Event()
+    finish = threading.Event()
+
+    def _slow_prune(snapshot):
+        in_cleanup.set()
+        finish.wait(timeout=5)
+
+    monkeypatch.setattr(overflow, "_prune_after_accept", _slow_prune)
+
+    first = asyncio.create_task(
+        overflow.spill_overflow_async("x" * 100, deps=deps, kind="t")
+    )
+    assert await asyncio.to_thread(in_cleanup.wait, 2), "cleanup never started"
+
+    # The one slot is still held by the worker doing filesystem work.
+    assert overflow._spill_slots._value == 0, "the slot was freed before cleanup"
+
+    finish.set()
+    await first
+
+
+@pytest.mark.asyncio
+async def test_acceptance_means_the_caller_received_it(deps, tmp_path, monkeypatch):
+    """Setting the future is not the same event as the caller returning: a
+    cancellation queued after _deliver ran still stops the coroutine, and the
+    worker would keep and prune a file whose path reached nobody."""
+    import asyncio
+    import threading
+
+    import suzent.tools.overflow as overflow
+
+    monkeypatch.setattr(
+        overflow, "_spill_slots", threading.Semaphore(overflow._SPILL_THREADS)
+    )
+
+    task = asyncio.create_task(
+        overflow.spill_overflow_async("x" * 100, deps=deps, kind="t")
+    )
+    # Cancel while the worker is between delivering and the coroutine resuming.
+    await asyncio.sleep(0)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    for _ in range(80):
+        await asyncio.sleep(0.02)
+        if not list(_chat_dir(tmp_path).glob("*.txt")):
+            break
+
+    assert list(_chat_dir(tmp_path).glob("*.txt")) == [], (
+        "a spill the caller never received was kept"
+    )
