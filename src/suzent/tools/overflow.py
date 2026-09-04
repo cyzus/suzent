@@ -472,11 +472,32 @@ def spill_overflow(text: str, *, deps: Any, kind: str = "output") -> Optional[Sp
     if resolver is None:
         return None
 
-    try:
-        shared_host = Path(resolver.resolve("/shared"))
-    except Exception as e:
-        logger.debug(f"[overflow] no shared root: {e}")
-        return None
+    # The canonical shared directory, not whatever /shared currently maps to.
+    #
+    # A custom volume can target /shared, and PathResolver gives that mapping
+    # priority — so resolving it would write .overflow into the user's own
+    # directory, force-chmod it 0755, and leave the files somewhere the sweep
+    # (which knows only the canonical path) never looks. Deriving the root from
+    # config keeps the writer and the collector talking about one directory.
+    from suzent.config import CONFIG
+
+    shared_host = Path(CONFIG.sandbox_data_path) / "shared"
+
+    # In sandbox mode the agent reaches it as /shared — unless that mount has
+    # been redirected, in which case there is no path to advertise and the plain
+    # marker is the honest answer.
+    if getattr(deps, "sandbox_enabled", True):
+        try:
+            mapped = Path(resolver.resolve("/shared")).resolve()
+        except Exception as e:
+            logger.debug(f"[overflow] no shared root: {e}")
+            return None
+        if mapped != shared_host.resolve():
+            logger.debug(
+                "[overflow] /shared is remapped by a custom volume; "
+                "truncating without a pointer"
+            )
+            return None
 
     chat = _chat_segment(deps)
     payload, clipped = _clip(text)
@@ -529,6 +550,17 @@ async def sweep_overflow_periodically() -> None:
 #: and the plain marker on expiry.
 SPILL_TIMEOUT_SECONDS = 2.0
 
+#: Concurrent spill workers allowed at once.
+#:
+#: A timed-out spill is abandoned, not cancelled — Python cannot kill a thread —
+#: so permanently wedged storage means every oversized result leaves another
+#: worker parked forever. Without a ceiling those accumulate until the process
+#: runs out of threads and takes otherwise healthy tool calls down with it. At
+#: saturation a spill is skipped rather than queued, because queueing behind
+#: wedged work is how a transient stall becomes a permanent one.
+_SPILL_THREADS = 4
+_spill_slots = threading.Semaphore(_SPILL_THREADS)
+
 
 def spill_overflow_bounded(
     text: str, *, deps: Any, kind: str = "output"
@@ -545,10 +577,19 @@ def spill_overflow_bounded(
     cancelled, so a late write simply lands in the spill directory and is
     collected by the sweep like any other file.
     """
+    if not _spill_slots.acquire(blocking=False):
+        logger.warning(
+            "[overflow] spill workers saturated; truncating without a pointer"
+        )
+        return None
+
     result: list[Optional[Spill]] = [None]
 
     def _worker() -> None:
-        result[0] = spill_overflow(text, deps=deps, kind=kind)
+        try:
+            result[0] = spill_overflow(text, deps=deps, kind=kind)
+        finally:
+            _spill_slots.release()
 
     thread = threading.Thread(target=_worker, name="overflow-spill", daemon=True)
     thread.start()
@@ -577,17 +618,10 @@ async def spill_overflow_async(
     background; it lands in the spill directory and is collected by the sweep
     like any other file.
     """
-    try:
-        return await asyncio.wait_for(
-            asyncio.to_thread(spill_overflow, text, deps=deps, kind=kind),
-            timeout=SPILL_TIMEOUT_SECONDS,
-        )
-    except asyncio.TimeoutError:
-        logger.warning(
-            f"[overflow] spill exceeded {SPILL_TIMEOUT_SECONDS}s — truncating "
-            f"without a pointer"
-        )
-        return None
+    # Through the same bounded worker as the sync path, not to_thread: an
+    # abandoned write on the default executor occupies one of its threads
+    # forever, and that executor is shared with everything else that offloads.
+    return await asyncio.to_thread(spill_overflow_bounded, text, deps=deps, kind=kind)
 
 
 def _sweep_by_path(root: Path) -> None:

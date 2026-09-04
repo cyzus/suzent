@@ -35,6 +35,18 @@ def _deps(tmp_path: Path, *, chat_id: str = "chat-1", sandbox: bool = False):
     )
 
 
+@pytest.fixture(autouse=True)
+def _canonical_root(tmp_path, monkeypatch):
+    """The spill root comes from config, not from whatever /shared maps to.
+
+    A custom volume can retarget /shared, so the writer derives the canonical
+    directory itself; the tests have to point that same config at tmp_path.
+    """
+    from suzent.config import CONFIG
+
+    monkeypatch.setattr(CONFIG, "sandbox_data_path", str(tmp_path), raising=False)
+
+
 @pytest.fixture
 def deps(tmp_path):
     return _deps(tmp_path)
@@ -121,13 +133,51 @@ def test_no_resolver_means_no_spill_rather_than_a_crash():
 
 
 def test_an_unreachable_shared_root_degrades_quietly(tmp_path):
+    """Sandbox mode needs /shared to resolve so it can advertise a path; host
+    mode writes the canonical directory and never asks."""
+
     class _Broken:
         def resolve(self, virtual: str) -> str:
             raise ValueError("no matching custom mount is registered")
 
-    deps = SimpleNamespace(path_resolver=_Broken(), sandbox_enabled=False, chat_id="c")
+    deps = SimpleNamespace(path_resolver=_Broken(), sandbox_enabled=True, chat_id="c")
 
     assert spill_overflow("x" * 100, deps=deps, kind="t") is None
+
+
+def test_a_remapped_shared_mount_is_not_written_to(tmp_path):
+    """A custom volume can target /shared and PathResolver gives it priority.
+    Writing there would put .overflow in the user's own directory, force-chmod
+    it 0755, and leave the files where the sweep never looks."""
+    elsewhere = tmp_path / "someone-elses-folder"
+    elsewhere.mkdir()
+
+    class _Remapped:
+        def resolve(self, virtual: str) -> str:
+            return str(elsewhere)
+
+    deps = SimpleNamespace(path_resolver=_Remapped(), sandbox_enabled=True, chat_id="c")
+
+    assert spill_overflow("x" * 100, deps=deps, kind="t") is None
+    assert list(elsewhere.iterdir()) == [], "wrote into the remapped mount"
+
+
+def test_host_mode_writes_the_canonical_root_regardless(tmp_path):
+    """Host mode advertises a host path, so a remapped /shared is irrelevant to
+    it — but the file still has to land where the sweep looks."""
+
+    class _Remapped:
+        def resolve(self, virtual: str) -> str:
+            return str(tmp_path / "somewhere-else")
+
+    deps = SimpleNamespace(
+        path_resolver=_Remapped(), sandbox_enabled=False, chat_id="c"
+    )
+
+    spill = spill_overflow("x" * 100, deps=deps, kind="t")
+
+    assert spill is not None
+    assert str(tmp_path / "shared" / ".overflow") in spill.path
 
 
 # --- one chat's output is not another chat's to read --------------------------
@@ -862,3 +912,35 @@ def test_the_path_fallback_also_holds_the_root_quota(tmp_path, monkeypatch):
     total = sum(p.stat().st_size for p in root.rglob("*.txt"))
 
     assert total <= 5_000 + 3_100, total
+
+
+def test_abandoned_spill_workers_are_bounded(deps, monkeypatch):
+    """A timed-out spill is abandoned, not cancelled. With permanently wedged
+    storage every oversized result would otherwise park another thread forever,
+    until the process runs out and healthy tool calls start failing."""
+    import threading
+    import time
+
+    import suzent.tools.overflow as overflow
+
+    monkeypatch.setattr(overflow, "SPILL_TIMEOUT_SECONDS", 0.02)
+    monkeypatch.setattr(overflow, "spill_overflow", lambda text, **kw: time.sleep(30))
+
+    before = threading.active_count()
+    for _ in range(20):
+        assert overflow.spill_overflow_bounded("x", deps=deps, kind="t") is None
+    parked = threading.active_count() - before
+
+    assert parked <= overflow._SPILL_THREADS, (
+        f"{parked} threads parked on wedged storage"
+    )
+
+
+def test_a_slot_is_returned_when_the_spill_completes(deps):
+    import suzent.tools.overflow as overflow
+
+    before = overflow._spill_slots._value
+    for _ in range(5):
+        overflow.spill_overflow_bounded("x" * 100, deps=deps, kind="t")
+
+    assert overflow._spill_slots._value == before
