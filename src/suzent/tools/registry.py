@@ -18,7 +18,7 @@ from pydantic_ai import Tool as PydanticTool
 
 from suzent.logger import get_logger
 from suzent.tools.base import ToolResult, truncate_tool_output
-from suzent.tools.overflow import spill_overflow
+from suzent.tools.overflow import spill_overflow, spill_overflow_async
 
 
 # Re-exported under their original names so existing
@@ -74,27 +74,20 @@ def _make_tool(
     limit = tool_cls.output_char_limit
     keep_tail = tool_cls.keep_output_tail
 
-    def _cap(result: Any, args: tuple, kwargs: dict) -> Any:
-        """Truncate an over-long message, keeping the whole of it on disk.
-
-        The spill runs only when the cap would actually bite, so an ordinary
-        result costs nothing. A failure to spill is not a failure of the tool
-        call — the output is still truncated, just without a pointer.
-        """
-        if not isinstance(result, ToolResult):
-            return result
-        message = result.message
-        if not message or len(message) <= limit:
-            return result
-
-        deps = _deps_from_call(args, kwargs)
-        path = (
-            spill_overflow(message, deps=deps, kind=tool_cls.tool_name)
-            if deps
-            else None
+    def _needs_cap(result: Any) -> bool:
+        """The spill runs only when the cap would bite, so an ordinary result
+        costs nothing."""
+        return (
+            isinstance(result, ToolResult)
+            and bool(result.message)
+            and len(result.message) > limit
         )
+
+    def _apply(result: Any, spill: Any) -> Any:
+        """A failure to spill is not a failure of the tool call — the output is
+        still truncated, just without a pointer."""
         result.message = truncate_tool_output(
-            message, limit, keep_tail=keep_tail, full_output_path=path
+            result.message, limit, keep_tail=keep_tail, spill=spill
         )
         return result
 
@@ -102,13 +95,35 @@ def _make_tool(
 
         @functools.wraps(original)
         async def wrapper(*args, **kwargs):
-            return _cap(await tool_cls().forward(*args, **kwargs), args, kwargs)
+            result = await tool_cls().forward(*args, **kwargs)
+            if not _needs_cap(result):
+                return result
+            deps = _deps_from_call(args, kwargs)
+            # Off the loop: up to 5 MiB of write plus a directory scan would
+            # otherwise stall every other chat this loop is serving.
+            spill = (
+                await spill_overflow_async(
+                    result.message, deps=deps, kind=tool_cls.tool_name
+                )
+                if deps
+                else None
+            )
+            return _apply(result, spill)
 
     else:
 
         @functools.wraps(original)
         def wrapper(*args, **kwargs):
-            return _cap(tool_cls().forward(*args, **kwargs), args, kwargs)
+            result = tool_cls().forward(*args, **kwargs)
+            if not _needs_cap(result):
+                return result
+            deps = _deps_from_call(args, kwargs)
+            spill = (
+                spill_overflow(result.message, deps=deps, kind=tool_cls.tool_name)
+                if deps
+                else None
+            )
+            return _apply(result, spill)
 
     wrapper.__name__ = tool_cls.tool_name
 

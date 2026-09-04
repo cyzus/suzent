@@ -3,19 +3,31 @@
 A cap keeps a single tool result from swallowing the context window, but the
 tail it removes is usually the part someone wanted: the failing assertion at the
 end of a test run, the last hundred lines of a build log. Truncating to a marker
-tells the model that content is missing without giving it any way to go and
-read it.
+tells the model that content is missing without giving it any way to read it.
 
-So the full text is written to a file and the marker carries the path. The model
-decides whether the rest is worth a read; nothing is silently lost either way.
+So the full text is written to a file and the marker carries the path.
+
+Two properties are load-bearing and easy to lose:
+
+* **The write must not become a capability.** The agent can write inside
+  ``/shared`` — including replacing the directories on this path — so every step
+  is taken relative to a pinned directory descriptor and refuses to follow a
+  symlink. Resolving a path and then using it is a race the agent can win.
+* **A spill is private to its chat.** It holds raw tool output and reminder
+  text, which is conversation content. ``/shared`` is mounted into every
+  session, so an unscoped directory is readable by every other chat on the
+  deployment; random filenames are no help against a directory listing.
 """
 
 from __future__ import annotations
 
+import asyncio
 import errno
 import os
+import re
 import secrets
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
 
@@ -23,80 +35,217 @@ from suzent.logger import get_logger
 
 logger = get_logger(__name__)
 
-#: Virtual home for spilled output. Under /shared rather than the project
-#: workspace so it is not mistaken for the user's files, and so a spill from one
-#: chat is readable by a sub-agent working on the same task.
+#: Virtual home for spilled output, under /shared so a spill survives the
+#: container and so the sweep can find every chat's files in one place.
 OVERFLOW_VIRTUAL_DIR = "/shared/.overflow"
 
-#: How long a spill file is worth keeping. Long enough that the model can read
-#: it later in the same session, short enough that a week of build logs does not
-#: accumulate on disk.
+#: How long a spill is worth keeping. Long enough to read it later in the same
+#: session, short enough that a week of build logs does not accumulate.
 OVERFLOW_TTL_SECONDS = 24 * 60 * 60
 
-#: Ceiling on files kept, whatever their age. A single runaway session can write
-#: thousands; the TTL alone would not bound that until tomorrow.
+#: Per-chat ceilings. A single runaway session can write thousands of files, and
+#: 200 files of any size is not a bound on disk, so both apply.
 OVERFLOW_MAX_FILES = 200
-
-#: Ceiling on one spill. A foreground shell command reads its whole output into
-#: memory and this writes all of it, so without a per-file bound a single
-#: `cat` of something large lands on disk in full.
-OVERFLOW_MAX_FILE_BYTES = 5 * 1024 * 1024
-
-#: Ceiling on the directory. The count bound alone permits 200 files of any
-#: size, which is not a bound on disk at all.
 OVERFLOW_MAX_TOTAL_BYTES = 50 * 1024 * 1024
 
-#: Appended when the spill itself had to be cut. Rare, and better said than not:
-#: a file that silently holds part of the output is worse than the truncation it
-#: was meant to relieve.
+#: Ceiling on one spill. A foreground shell command reads its whole output into
+#: memory and this writes all of it.
+OVERFLOW_MAX_FILE_BYTES = 5 * 1024 * 1024
+
+#: Written into a spill that had to be cut. The marker says so as well; this is
+#: for whoever opens the file directly.
 SPILL_CLIPPED_NOTE = "\n\n[spill clipped: output exceeded the per-file limit]"
 
+_SAFE_SEGMENT = re.compile(r"[^A-Za-z0-9_-]")
 
-def _prune(directory: Path) -> None:
-    """Best-effort cleanup. A spill that cannot be pruned is still a spill.
+#: dir_fd is POSIX-only. Where it is missing there is also no bind-mounted
+#: sandbox writing into this directory, so plain path operations are used.
+_HAVE_DIR_FD = os.open in os.supports_dir_fd and os.unlink in os.supports_dir_fd
 
-    Bounded three ways, because each alone leaves a hole: age lets a burst sit
-    until tomorrow, count permits 200 files of any size, and bytes alone would
-    keep one ancient file forever.
-    """
-    try:
-        files = sorted(
-            (p for p in directory.glob("*.txt") if p.is_file()),
-            key=lambda p: p.stat().st_mtime,
-            reverse=True,
-        )
-    except OSError:
-        return
 
-    cutoff = time.time() - OVERFLOW_TTL_SECONDS
-    running_total = 0
-    for index, path in enumerate(files):
-        try:
-            size = path.stat().st_size
-            too_many = index >= OVERFLOW_MAX_FILES
-            too_old = path.stat().st_mtime < cutoff
-            too_big = running_total + size > OVERFLOW_MAX_TOTAL_BYTES
-            if too_many or too_old or too_big:
-                path.unlink(missing_ok=True)
-                continue
-            running_total += size
-        except OSError:
-            continue
+@dataclass(frozen=True)
+class Spill:
+    """Where the overflow went, and whether all of it got there."""
+
+    path: str
+    clipped: bool
 
 
 def retention_hint() -> str:
     """How long a spill lasts, for the marker that points at one.
 
     The marker outlives the file: the path goes into conversation history, the
-    file expires. A resumed or compacted session can therefore read a pointer to
-    something already collected. Saying the window up front turns a puzzling
-    missing file into an expected one, and costs a few characters on results
-    that were over budget anyway.
-
-    Derived from the TTL rather than written out, so the two cannot drift.
+    file expires. Saying the window turns a puzzling missing file into an
+    expected one. Derived from the TTL so the two cannot drift.
     """
-    hours = OVERFLOW_TTL_SECONDS // 3600
-    return f"kept {hours}h"
+    return f"kept {OVERFLOW_TTL_SECONDS // 3600}h"
+
+
+def _chat_segment(deps: Any) -> str:
+    """A directory name for this chat, safe to place in a path."""
+    raw = str(getattr(deps, "chat_id", "") or "shared")
+    return _SAFE_SEGMENT.sub("-", raw)[:64] or "shared"
+
+
+def _open_child_dir(name: str, *, parent_fd: Optional[int], base: Path) -> int:
+    """Open (creating if needed) a subdirectory, refusing to follow a symlink.
+
+    Taken relative to *parent_fd* so a directory swapped for a symlink after the
+    parent was opened cannot redirect the write. Without dir_fd support the same
+    steps run against a path.
+    """
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    if parent_fd is None:
+        target = base / name
+        target.mkdir(mode=0o700, parents=True, exist_ok=True)
+        return os.open(target, flags)
+
+    try:
+        os.mkdir(name, 0o700, dir_fd=parent_fd)
+    except FileExistsError:
+        pass
+    return os.open(name, flags, dir_fd=parent_fd)
+
+
+def _clip(text: str) -> tuple[bytes, bool]:
+    """Encode *text*, cut to the per-file ceiling on a character boundary.
+
+    Slicing the encoded bytes can land inside a multi-byte code point, and the
+    resulting file is not valid UTF-8 — so the reader that was supposed to
+    rescue the output fails to open it.
+    """
+    payload = text.encode("utf-8", "replace")
+    if len(payload) <= OVERFLOW_MAX_FILE_BYTES:
+        return payload, False
+
+    note = SPILL_CLIPPED_NOTE.encode("utf-8")
+    keep = OVERFLOW_MAX_FILE_BYTES - len(note)
+    head = payload[:keep].decode("utf-8", "ignore").encode("utf-8")
+    return head + note, True
+
+
+def _prune_fd(dir_fd: int) -> None:
+    """Apply the retention bounds inside one pinned directory."""
+    try:
+        entries = []
+        for entry in os.scandir(dir_fd):
+            if not entry.name.endswith(".txt"):
+                continue
+            try:
+                stat = entry.stat(follow_symlinks=False)
+            except OSError:
+                continue
+            entries.append((stat.st_mtime, stat.st_size, entry.name))
+    except OSError:
+        return
+
+    entries.sort(reverse=True)
+    cutoff = time.time() - OVERFLOW_TTL_SECONDS
+    running = 0
+    for index, (mtime, size, name) in enumerate(entries):
+        drop = (
+            index >= OVERFLOW_MAX_FILES
+            or mtime < cutoff
+            or running + size > OVERFLOW_MAX_TOTAL_BYTES
+        )
+        try:
+            if drop:
+                os.unlink(name, dir_fd=dir_fd)
+            else:
+                running += size
+        except OSError:
+            continue
+
+
+def spill_overflow(text: str, *, deps: Any, kind: str = "output") -> Optional[Spill]:
+    """Write *text* somewhere this chat can read it; return where it went.
+
+    Returns None when there is nowhere to write, which is not an error: the
+    caller still truncates, it just cannot offer the rest. Losing the tail is
+    better than failing the tool call that produced it.
+
+    The path handed back is in the vocabulary of the agent's own filesystem —
+    host paths in host mode, virtual in sandbox — because a path it cannot open
+    invites a read that fails.
+    """
+    resolver = getattr(deps, "path_resolver", None)
+    if resolver is None:
+        return None
+
+    try:
+        shared_host = Path(resolver.resolve("/shared"))
+    except Exception as e:
+        logger.debug(f"[overflow] no shared root: {e}")
+        return None
+
+    chat = _chat_segment(deps)
+    root_fd = None
+    overflow_fd = None
+    chat_fd = None
+    try:
+        if _HAVE_DIR_FD:
+            shared_host.mkdir(parents=True, exist_ok=True)
+            root_fd = os.open(shared_host, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+            overflow_fd = _open_child_dir(
+                ".overflow", parent_fd=root_fd, base=shared_host
+            )
+            chat_fd = _open_child_dir(chat, parent_fd=overflow_fd, base=shared_host)
+        else:
+            chat_fd = _open_child_dir(
+                chat, parent_fd=None, base=shared_host / ".overflow"
+            )
+
+        payload, clipped = _clip(text)
+        name = f"{kind}-{secrets.token_hex(16)}.txt"
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+
+        try:
+            fd = os.open(name, flags, 0o600, dir_fd=chat_fd)
+        except OSError as e:
+            if e.errno in (errno.EEXIST, errno.ELOOP):
+                logger.warning(f"[overflow] refusing to write over {name}: {e}")
+            else:
+                logger.debug(f"[overflow] could not create spill: {e}")
+            return None
+
+        try:
+            with os.fdopen(fd, "wb") as handle:
+                handle.write(payload)
+        except OSError as e:
+            logger.debug(f"[overflow] could not write spill: {e}")
+            try:
+                os.unlink(name, dir_fd=chat_fd)
+            except OSError:
+                pass
+            return None
+
+        _prune_fd(chat_fd)
+    except OSError as e:
+        logger.debug(f"[overflow] no spill directory: {e}")
+        return None
+    finally:
+        for handle_fd in (chat_fd, overflow_fd, root_fd):
+            if handle_fd is not None:
+                try:
+                    os.close(handle_fd)
+                except OSError:
+                    pass
+
+    if getattr(deps, "sandbox_enabled", True):
+        return Spill(f"{OVERFLOW_VIRTUAL_DIR}/{chat}/{name}", clipped)
+    return Spill(str(shared_host / ".overflow" / chat / name), clipped)
+
+
+async def spill_overflow_async(
+    text: str, *, deps: Any, kind: str = "output"
+) -> Optional[Spill]:
+    """Spill without holding the event loop.
+
+    Up to 5 MiB of write plus a directory scan; on a slow volume, or with
+    several overflows at once, doing that inline stalls every other chat the
+    loop is serving.
+    """
+    return await asyncio.to_thread(spill_overflow, text, deps=deps, kind=kind)
 
 
 def sweep_overflow() -> None:
@@ -105,86 +254,34 @@ def sweep_overflow() -> None:
     Pruning otherwise happens only on write, so the bounds hold exactly while
     output keeps overflowing and stop the moment it does not: the last spill of
     a session sits there until the next one, which may be never. Nothing else
-    will collect it — this lives in the user's data directory, not in a temp
+    collects these — they live in the user's data directory, not a temp
     directory the OS sweeps.
 
-    Called at startup, which is also when yesterday's files are most likely to
-    be both stale and forgotten.
+    Per-chat bounds mean the directory total scales with the number of chats,
+    which is why this also drops chat directories once they are empty.
     """
     from suzent.config import CONFIG
 
-    directory = Path(CONFIG.sandbox_data_path) / "shared" / ".overflow"
-    if not directory.is_dir():
+    root = Path(CONFIG.sandbox_data_path) / "shared" / ".overflow"
+    if not root.is_dir():
         return
-    before = len(list(directory.glob("*.txt")))
-    _prune(directory)
-    after = len(list(directory.glob("*.txt")))
-    if before != after:
-        logger.info(f"[overflow] swept {before - after} stale spill(s)")
 
-
-def spill_overflow(text: str, *, deps: Any, kind: str = "output") -> Optional[str]:
-    """Write *text* somewhere the agent can read it; return that path.
-
-    Returns None when there is nowhere to write, which is not an error: the
-    caller still truncates, it just cannot offer the rest. Losing the tail is
-    better than failing the tool call that produced it.
-
-    The path handed back is in the vocabulary of the agent's own filesystem —
-    host paths in host mode, virtual in sandbox — because a path it cannot open
-    is worse than no path at all: it invites a read that fails.
-    """
-    resolver = getattr(deps, "path_resolver", None)
-    if resolver is None:
-        return None
-
-    try:
-        host_dir = Path(resolver.resolve(OVERFLOW_VIRTUAL_DIR))
-        host_dir.mkdir(parents=True, exist_ok=True)
-    except Exception as e:
-        logger.debug(f"[overflow] no spill directory: {e}")
-        return None
-
-    payload = text.encode("utf-8", "replace")
-    if len(payload) > OVERFLOW_MAX_FILE_BYTES:
-        keep = OVERFLOW_MAX_FILE_BYTES - len(SPILL_CLIPPED_NOTE)
-        payload = payload[:keep] + SPILL_CLIPPED_NOTE.encode("utf-8")
-
-    # Unpredictable, and created without following anything already at the path.
-    #
-    # The name used to be derived from the output's own hash and the current
-    # second, which a sandboxed agent can compute: pre-place a symlink there,
-    # emit output that overflows, and the host process follows the link and
-    # overwrites whatever it points at — no PathResolver check involved, since
-    # the write is ours, not the agent's. O_EXCL refuses an existing path
-    # (symlink included) and O_NOFOLLOW refuses to traverse one; the random name
-    # means there is nothing to aim at in the first place.
-    name = f"{kind}-{secrets.token_hex(16)}.txt"
-    host_path = host_dir / name
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
-
-    try:
-        fd = os.open(host_path, flags, 0o600)
-    except OSError as e:
-        if e.errno in (errno.EEXIST, errno.ELOOP):
-            logger.warning(f"[overflow] refusing to write over an existing path: {e}")
-        else:
-            logger.debug(f"[overflow] could not create spill: {e}")
-        return None
-
-    try:
-        with os.fdopen(fd, "wb") as handle:
-            handle.write(payload)
-    except OSError as e:
-        logger.debug(f"[overflow] could not write spill: {e}")
+    swept = 0
+    for chat_dir in root.iterdir():
+        if not chat_dir.is_dir():
+            continue
         try:
-            host_path.unlink(missing_ok=True)
+            before = len(list(chat_dir.glob("*.txt")))
+            fd = os.open(chat_dir, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+            try:
+                _prune_fd(fd)
+            finally:
+                os.close(fd)
+            swept += before - len(list(chat_dir.glob("*.txt")))
+            if not any(chat_dir.iterdir()):
+                chat_dir.rmdir()
         except OSError:
-            pass
-        return None
+            continue
 
-    _prune(host_dir)
-
-    if getattr(deps, "sandbox_enabled", True):
-        return f"{OVERFLOW_VIRTUAL_DIR}/{name}"
-    return str(host_path)
+    if swept:
+        logger.info(f"[overflow] swept {swept} stale spill(s)")

@@ -976,7 +976,7 @@ def _dedupe_fragments(parts: list[str]) -> list[str]:
     return unique
 
 
-def _apply_budget(
+async def _apply_budget(
     parts: list[str],
     chat_id: str,
     reserved: int = 0,
@@ -1031,19 +1031,23 @@ def _apply_budget(
                 # model cannot ask for the missing part later — the block is
                 # gone next turn — so the pointer matters more here than for a
                 # tool result it could simply run again.
-                spilled = None
-                hint = ""
+                # Awaited here rather than pre-computed: only the one item that
+                # actually gets cut is worth writing to disk, and which item
+                # that is falls out of the budget arithmetic.
+                marker = TRUNCATION_MARKER
                 if deps is not None:
-                    from suzent.tools.overflow import retention_hint, spill_overflow
+                    from suzent.tools.overflow import (
+                        retention_hint,
+                        spill_overflow_async,
+                    )
 
-                    spilled = spill_overflow(part, deps=deps, kind="reminder")
-                    hint = retention_hint()
-                marker = (
-                    f"\n\n[truncated: over the system-reminder budget — "
-                    f"full text ({hint}): {spilled}]"
-                    if spilled
-                    else TRUNCATION_MARKER
-                )
+                    spill = await spill_overflow_async(part, deps=deps, kind="reminder")
+                    if spill is not None:
+                        label = "partial text" if spill.clipped else "full text"
+                        marker = (
+                            f"\n\n[truncated: over the system-reminder budget — "
+                            f"{label} ({retention_hint()}): {spill.path}]"
+                        )
                 room = REMINDER_BUDGET_CHARS - used - len(marker)
                 if room > 0:
                     logger.warning(
@@ -1192,7 +1196,7 @@ async def build_combined_reminder(
     # unrelated 4,000-character reminders sailed past a 6,000-character cap
     # together. Budgeting first means the exemption covers one reminder, which
     # is the most that cannot be helped.
-    _constituents = _apply_budget(
+    _constituents = await _apply_budget(
         _constituents,
         chat_id,
         reserved=len(render_trigger_block("")) if _constituents else 0,
@@ -1216,7 +1220,7 @@ async def build_combined_reminder(
     # The trigger is prepended inside the block, so it spends from the same
     # budget; without this the cap covered only part of what the model reads.
     trigger_cost = len(render_trigger_block(display_trigger)) if display_trigger else 0
-    parts = _apply_budget(parts, chat_id, reserved=trigger_cost, deps=deps)
+    parts = await _apply_budget(parts, chat_id, reserved=trigger_cost, deps=deps)
 
     if not parts and not display_trigger:
         logger.debug(f"[system-reminder] chat={chat_id} — no content, skipping")
