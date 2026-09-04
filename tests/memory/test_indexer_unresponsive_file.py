@@ -83,3 +83,51 @@ async def test_readable_file_is_returned_verbatim(tmp_path):
 @pytest.mark.asyncio
 async def test_missing_file_is_reported_as_unreadable(tmp_path):
     assert await read_text_off_loop(tmp_path / "gone.md") is None
+
+
+@pytest.mark.asyncio
+async def test_a_still_blocked_path_does_not_take_a_second_thread(
+    monkeypatch, wedged_path
+):
+    """One wedged file costs one worker, however many passes retry it.
+
+    The watcher re-checks unchanged files every few minutes. Starting a fresh
+    read each time would abandon another thread for the same path until the
+    shared executor is drained and unrelated threaded work stalls too.
+    """
+    monkeypatch.setattr(indexer_module, "VAULT_READ_TIMEOUT_SECONDS", 0.05)
+    starts = 0
+    original = type(wedged_path).read_text
+
+    def _counted(self, *args, **kwargs):
+        nonlocal starts
+        starts += 1
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(type(wedged_path), "read_text", _counted)
+
+    for _ in range(4):
+        assert await read_text_off_loop(wedged_path) is None
+
+    assert starts == 1
+
+
+@pytest.mark.asyncio
+async def test_the_path_is_retried_once_the_read_completes(monkeypatch, tmp_path):
+    """A finished read must free its path, or one slow file is skipped forever."""
+    monkeypatch.setattr(indexer_module, "VAULT_READ_TIMEOUT_SECONDS", 5)
+    page = tmp_path / "page.md"
+    page.write_text("first\n", encoding="utf-8")
+
+    assert await read_text_off_loop(page) == "first\n"
+    assert await read_text_off_loop(page) == "first\n"
+
+
+@pytest.mark.asyncio
+async def test_a_failed_read_frees_its_path_too(monkeypatch, tmp_path):
+    monkeypatch.setattr(indexer_module, "VAULT_READ_TIMEOUT_SECONDS", 5)
+    missing = tmp_path / "gone.md"
+
+    assert await read_text_off_loop(missing) is None
+    missing.write_text("here now\n", encoding="utf-8")
+    assert await read_text_off_loop(missing) == "here now\n"

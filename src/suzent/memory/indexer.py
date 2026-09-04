@@ -31,6 +31,13 @@ logger = get_logger(__name__)
 VAULT_READ_TIMEOUT_SECONDS = 15
 
 
+# Paths whose read is still parked in the syscall. A timed-out read cannot be
+# cancelled, so its thread stays out of reach until the provider answers; the
+# watcher would otherwise abandon a fresh worker for the same file every pass
+# and eventually drain the shared executor, stalling unrelated threaded work.
+_reads_in_flight: set[str] = set()
+
+
 async def read_text_off_loop(path: Path) -> Optional[str]:
     """File contents, or ``None`` if the read failed or outlived its deadline.
 
@@ -38,12 +45,26 @@ async def read_text_off_loop(path: Path) -> Optional[str]:
     answers — an uninterruptible read cannot be cancelled — but the loop is free
     again, which is what decides whether the rest of the process still responds.
     Skipping the file also leaves its recorded mtime alone, so the next pass
-    retries it once the provider is healthy.
+    retries it once the provider is healthy, and one blocked file costs one
+    thread however many passes go by.
     """
+    key = str(path)
+    if key in _reads_in_flight:
+        logger.debug(f"Skipping {path}: an earlier read of it is still blocked")
+        return None
+
+    def _read() -> str:
+        try:
+            return path.read_text(encoding="utf-8", errors="replace")
+        finally:
+            # In the worker, so the path frees up when the read finally returns
+            # — whether or not anyone is still waiting for the result.
+            _reads_in_flight.discard(key)
+
+    _reads_in_flight.add(key)
     try:
         return await asyncio.wait_for(
-            asyncio.to_thread(path.read_text, encoding="utf-8", errors="replace"),
-            timeout=VAULT_READ_TIMEOUT_SECONDS,
+            asyncio.to_thread(_read), timeout=VAULT_READ_TIMEOUT_SECONDS
         )
     except asyncio.TimeoutError:
         logger.warning(
