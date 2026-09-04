@@ -7,6 +7,12 @@ tells the model that content is missing without giving it any way to read it.
 
 So the full text is written to a file and the marker carries the path.
 
+One known limitation: a spill with no newlines — minified JSON, one enormous
+value — cannot be read past the first chunk, because the read tool pages by
+whole lines and that single line is itself over the cap. The pointer is honest
+but unusable for that shape of output; fixing it means byte-range reads in
+ReadFileTool, which is that tool's change to make.
+
 Two properties are load-bearing and easy to lose:
 
 * **The write must not become a capability.** The agent can write inside
@@ -864,6 +870,14 @@ async def spill_overflow_async(
             f"without a pointer"
         )
         return None
+    except BaseException:
+        # Cancellation reaches here too — a client disconnecting, a social turn
+        # superseded — and it means what the timeout means: nobody will receive
+        # this pointer, so the file the worker may still write must not be left
+        # counting against the quotas. Catching only TimeoutError covered the
+        # deadline and not the commoner way a caller goes away.
+        abandoned.set()
+        raise
 
 
 def _sweep_by_path(root: Path) -> None:

@@ -1397,3 +1397,41 @@ def test_the_snapshot_carries_what_a_spill_needs():
 
     assert (snap.path_resolver, snap.sandbox_enabled, snap.chat_id) == ("R", True, "c")
     assert not hasattr(snap, "extra")
+
+
+@pytest.mark.asyncio
+async def test_cancellation_abandons_the_spill_like_a_timeout(
+    deps, tmp_path, monkeypatch
+):
+    """A client disconnecting or a superseded social turn cancels the caller,
+    which means the same thing as the deadline: nobody receives this pointer, so
+    the file the worker may still write must not count against the quotas."""
+    import asyncio
+    import threading
+
+    import suzent.tools.overflow as overflow
+
+    monkeypatch.setattr(
+        overflow, "_spill_slots", threading.Semaphore(overflow._SPILL_THREADS)
+    )
+    real = overflow._spill_payload
+
+    def _slow(payload, clipped, **kw):
+        time.sleep(0.3)
+        return real(payload, clipped, **kw)
+
+    monkeypatch.setattr(overflow, "_spill_payload", _slow)
+
+    task = asyncio.create_task(
+        overflow.spill_overflow_async("x" * 100, deps=deps, kind="t")
+    )
+    await asyncio.sleep(0.05)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    time.sleep(0.6)
+
+    assert list(_chat_dir(tmp_path).glob("*.txt")) == [], (
+        "a cancelled spill left an unadvertised file behind"
+    )
