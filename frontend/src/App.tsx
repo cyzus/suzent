@@ -595,7 +595,11 @@ function AppInner(): React.ReactElement {
   }, []);
 
   return (
-    <div className="h-full w-full bg-neutral-50 dark:bg-zinc-900 text-brutal-black dark:text-white font-sans">
+    <div
+      className={`h-full w-full bg-neutral-50 dark:bg-zinc-900 text-brutal-black dark:text-white font-sans ${
+        showMacWindowControls ? 'macos-tauri-webview' : ''
+      }`}
+    >
       <TitleBar />
       <div className={`flex h-full relative ${showStandaloneTitleBar ? 'pt-8' : ''}`}>
         <Sidebar

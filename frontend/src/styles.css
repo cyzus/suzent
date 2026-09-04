@@ -60,6 +60,15 @@
     contain-intrinsic-block-size: auto 420px;
   }
 
+  /* WKWebView can replace the intrinsic placeholder with the real row height
+     in the middle of a momentum scroll. That changes the scroll geometry and
+     makes the conversation visibly jump. The macOS desktop build already
+     limits mounted history and collapses activity DOM, so prefer stable layout
+     over this browser-level virtualization there. */
+  .macos-tauri-webview .chat-msg-row {
+    content-visibility: visible;
+  }
+
   .chat-minimap {
     /* Wide enough for the longest tick at full hover extension (1.2rem base +
        0.75rem wave), so clipping the track vertically never cuts a tick's

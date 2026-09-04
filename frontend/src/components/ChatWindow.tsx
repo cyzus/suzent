@@ -15,6 +15,11 @@ import { reconcileToolCallMessages } from '../lib/toolCallReconciliation';
 import type { Message, FileAttachment } from '../types/api';
 import type { ContentBlock } from '../lib/chatUtils';
 import { buildMessageRenderPlan } from '../lib/messageRenderPlan';
+import {
+  capturePrependScrollSnapshot,
+  restorePrependScrollSnapshot,
+  type PrependScrollSnapshot,
+} from '../lib/chatScrollAnchor';
 import { useGoalTasks } from '../hooks/useGoalTasks';
 import { useMemory } from '../hooks/useMemory';
 import { useCanvas } from '../hooks/useCanvas';
@@ -770,7 +775,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     model: string | null;
   } | null>(null);
   const [visibleMessageCount, setVisibleMessageCount] = useState(INITIAL_VISIBLE_MESSAGES);
-  const prependScrollSnapshotRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null);
+  const prependScrollSnapshotRef = useRef<PrependScrollSnapshot | null>(null);
   const pendingMinimapJumpRef = useRef<number | null>(null);
   const messagesRef = useRef<Message[]>(messages || []);
   const compactNoticeMessageRef = useRef<{ chatId: string; index: number } | null>(null);
@@ -1714,10 +1719,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     // time, released once it has been committed and the scroll restored.
     if (prependScrollSnapshotRef.current) return;
 
-    prependScrollSnapshotRef.current = {
-      scrollHeight: el.scrollHeight,
-      scrollTop: el.scrollTop,
-    };
+    prependScrollSnapshotRef.current = capturePrependScrollSnapshot(el);
     setVisibleMessageCount((prev) => Math.min(safeMessages.length, prev + LOAD_MORE_MESSAGES));
   }, [hasHiddenOlderMessages, safeMessages.length, scrollContainerRef]);
 
@@ -1796,7 +1798,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
     if (!snapshot) return;
 
-    el.scrollTop = el.scrollHeight - snapshot.scrollHeight + snapshot.scrollTop;
+    restorePrependScrollSnapshot(el, snapshot);
     prependScrollSnapshotRef.current = null;
   }, [visibleMessages.length, scrollContainerRef, scrollToMessageIndex]);
 
