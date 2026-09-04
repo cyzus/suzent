@@ -14,6 +14,7 @@ import os
 import time
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -1320,3 +1321,79 @@ def test_a_failed_fallback_write_leaves_no_file(tmp_path, monkeypatch):
 
     chat_dir = _chat_dir(tmp_path)
     assert not chat_dir.exists() or list(chat_dir.glob("*.txt")) == []
+
+
+def test_a_spill_that_lands_after_the_deadline_is_removed(deps, tmp_path, monkeypatch):
+    """Storage that is slow but recovers writes a file nobody was told about —
+    it consumes the per-chat and root quotas and can evict spills whose paths
+    *were* handed out."""
+    import threading
+
+    import suzent.tools.overflow as overflow
+
+    monkeypatch.setattr(
+        overflow, "_spill_slots", threading.Semaphore(overflow._SPILL_THREADS)
+    )
+    monkeypatch.setattr(overflow, "SPILL_TIMEOUT_SECONDS", 0.05)
+
+    real = overflow._spill_payload
+
+    def _slow(payload, clipped, **kw):
+        time.sleep(0.3)
+        return real(payload, clipped, **kw)
+
+    monkeypatch.setattr(overflow, "_spill_payload", _slow)
+
+    assert overflow.spill_overflow_bounded("x" * 100, deps=deps, kind="t") is None
+
+    for _ in range(100):
+        if list(_chat_dir(tmp_path).glob("*.txt")):
+            time.sleep(0.01)
+        else:
+            break
+    time.sleep(0.3)
+
+    assert list(_chat_dir(tmp_path).glob("*.txt")) == [], (
+        "a late spill was left behind, unadvertised"
+    )
+
+
+def test_the_worker_does_not_retain_the_whole_request(deps, monkeypatch):
+    """AgentDeps carries the request's message history, repository context and
+    caches. Four abandoned workers holding those is far more than the bounded
+    payload the slot limit was reasoning about."""
+    import suzent.tools.overflow as overflow
+
+    seen: list[Any] = []
+
+    def _capture(payload, clipped, *, deps, kind):
+        seen.append(deps)
+        return None
+
+    monkeypatch.setattr(overflow, "_spill_payload", _capture)
+
+    bulky = SimpleNamespace(
+        path_resolver=deps.path_resolver,
+        sandbox_enabled=False,
+        chat_id="chat-1",
+        last_messages=["a very long history"] * 1000,
+        repository_context="...",
+    )
+    overflow.spill_overflow_bounded("x" * 100, deps=bulky, kind="t")
+
+    assert seen, "the worker never ran"
+    assert not hasattr(seen[0], "last_messages"), "the worker kept the whole deps"
+    assert seen[0].chat_id == "chat-1"
+
+
+def test_the_snapshot_carries_what_a_spill_needs():
+    import suzent.tools.overflow as overflow
+
+    snap = overflow._deps_snapshot(
+        SimpleNamespace(
+            path_resolver="R", sandbox_enabled=True, chat_id="c", extra="dropped"
+        )
+    )
+
+    assert (snap.path_resolver, snap.sandbox_enabled, snap.chat_id) == ("R", True, "c")
+    assert not hasattr(snap, "extra")

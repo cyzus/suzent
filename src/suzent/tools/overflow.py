@@ -38,6 +38,7 @@ import secrets
 import threading
 import time
 from dataclasses import dataclass
+from types import SimpleNamespace
 from pathlib import Path
 from typing import Any, Optional
 
@@ -116,10 +117,16 @@ _HAVE_DIR_FD = os.open in os.supports_dir_fd and os.unlink in os.supports_dir_fd
 
 @dataclass(frozen=True)
 class Spill:
-    """Where the overflow went, and whether all of it got there."""
+    """Where the overflow went, and whether all of it got there.
+
+    ``host_path`` is the file on disk; ``path`` is what the agent is told, which
+    differs in sandbox mode. Both are needed because a spill that finishes after
+    its caller gave up has to be removed, and only the host path can do that.
+    """
 
     path: str
     clipped: bool
+    host_path: Optional[str] = None
 
 
 def retention_hint() -> str:
@@ -522,6 +529,32 @@ def _spill_pinned(
                     pass
 
 
+def _discard(spill: Spill) -> None:
+    """Remove a spill nobody was told about."""
+    if not spill.host_path:
+        return
+    try:
+        Path(spill.host_path).unlink(missing_ok=True)
+        logger.debug("[overflow] removed a spill that finished after its deadline")
+    except OSError as e:
+        logger.debug(f"[overflow] could not remove an abandoned spill: {e}")
+
+
+def _deps_snapshot(deps: Any) -> Any:
+    """The three values a spill actually needs.
+
+    An abandoned worker holds its closure for as long as the storage stays
+    wedged, and AgentDeps carries the request's message history, repository
+    context and caches. Four of those is far more than the bounded payload the
+    slot limit was reasoning about.
+    """
+    return SimpleNamespace(
+        path_resolver=getattr(deps, "path_resolver", None),
+        sandbox_enabled=getattr(deps, "sandbox_enabled", True),
+        chat_id=getattr(deps, "chat_id", ""),
+    )
+
+
 def spill_overflow(text: str, *, deps: Any, kind: str = "output") -> Optional[Spill]:
     """Clip *text* and write it somewhere this chat can read it."""
     payload, clipped = _clip(text)
@@ -610,9 +643,10 @@ def _spill_payload(
     elif not _spill_pinned(payload, shared_host, chat, name, dir_mode, file_mode):
         return None
 
+    written = shared_host / ".overflow" / chat / name
     if virtual is not None:
-        return Spill(virtual, clipped)
-    return Spill(str(shared_host / ".overflow" / chat / name), clipped)
+        return Spill(virtual, clipped, str(written))
+    return Spill(str(written), clipped, str(written))
 
 
 #: Held for the duration of a sweep, so a wedged one cannot be joined by the
@@ -714,11 +748,17 @@ def spill_overflow_bounded(
         )
         return None
 
+    snapshot = _deps_snapshot(deps)
+    abandoned = threading.Event()
     result: list[Optional[Spill]] = [None]
 
     def _worker() -> None:
         try:
-            result[0] = _spill_payload(payload, clipped, deps=deps, kind=kind)
+            spill = _spill_payload(payload, clipped, deps=snapshot, kind=kind)
+            if spill is not None and abandoned.is_set():
+                _discard(spill)
+            else:
+                result[0] = spill
         finally:
             _spill_slots.release()
 
@@ -735,6 +775,10 @@ def spill_overflow_bounded(
         return None
     thread.join(timeout=SPILL_TIMEOUT_SECONDS)
     if thread.is_alive():
+        # The write may still land. Nobody was told about it, so it would sit
+        # there consuming the per-chat and root quotas and evicting spills whose
+        # paths *were* handed out — the worker removes it when it finishes.
+        abandoned.set()
         logger.warning(
             f"[overflow] spill exceeded {SPILL_TIMEOUT_SECONDS}s — truncating "
             f"without a pointer"
@@ -771,6 +815,8 @@ async def spill_overflow_async(
     # the encode is what costs — up to four bytes per character, on the loop,
     # while every other chat waits.
     head, dropped = _bound_chars(text)
+    snapshot = _deps_snapshot(deps)
+    abandoned = threading.Event()
 
     loop = asyncio.get_running_loop()
     future: asyncio.Future = loop.create_future()
@@ -782,7 +828,10 @@ async def spill_overflow_async(
     def _worker() -> None:
         try:
             payload, clipped = _encode_bounded(head, dropped)
-            spill = _spill_payload(payload, clipped, deps=deps, kind=kind)
+            spill = _spill_payload(payload, clipped, deps=snapshot, kind=kind)
+            if spill is not None and abandoned.is_set():
+                _discard(spill)
+                spill = None
         except BaseException as e:  # noqa: BLE001 - a spill never fails its caller
             logger.debug(f"[overflow] spill failed: {e}")
             spill = None
@@ -809,6 +858,7 @@ async def spill_overflow_async(
     try:
         return await asyncio.wait_for(future, timeout=SPILL_TIMEOUT_SECONDS)
     except asyncio.TimeoutError:
+        abandoned.set()
         logger.warning(
             f"[overflow] spill exceeded {SPILL_TIMEOUT_SECONDS}s — truncating "
             f"without a pointer"
