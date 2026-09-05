@@ -1,0 +1,29 @@
+{
+  "name": {
+    "message": "Suzent Browser"
+  },
+  "description": {
+    "message": "Connect your browser to Suzent using your existing tabs and logins."
+  },
+  "paired": {
+    "message": "Pairing started. Return to Suzent Settings → Browser to check the connection."
+  },
+  "failed": {
+    "message": "Pairing failed. Generate a new pairing link in Suzent."
+  },
+  "connect": {
+    "message": "Reconnect"
+  },
+  "disconnect": {
+    "message": "Disconnect"
+  },
+  "help": {
+    "message": "Install this extension, then choose Pair browser in Suzent Settings → Browser. Disconnect removes the saved pairing."
+  },
+  "connected": {
+    "message": "Connected to Suzent"
+  },
+  "disconnected": {
+    "message": "Disconnected"
+  }
+}

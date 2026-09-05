@@ -90,12 +90,73 @@ manual interaction with the agent. Popups, frame traversal, shadow-DOM observati
 and download management are not yet exposed by the native tool.
 Persistence and using an installed browser do not guarantee avoiding site challenges.
 
-## Connect to existing Chrome or Edge
+## Use your browser with the Suzent extension
+
+The recommended personal-browser mode is **Settings → Browser → Use my browser
+(extension)**. It uses the tabs and logins in the browser profile where you install
+the extension, without MCP or remote-debugging settings.
+
+1. Click **Download extension** and extract the ZIP into a permanent folder.
+2. In Chrome or Edge, open Extensions → Manage extensions. Enable Developer mode,
+   choose **Load unpacked**, and select the extracted folder containing `manifest.json`.
+3. Back in Suzent, click **Pair browser**. The default browser opens a local pairing
+   page. If you installed the extension in another browser, copy the private pairing
+   link displayed in Suzent into that browser instead.
+4. Settings automatically shows **Browser extension connected**. Ask the agent to
+   list your tabs and select one, or open a new page. The native preview follows the
+   selected tab.
+
+Installation and pairing are one-time steps per profile. Pairing links expire after
+five minutes. Pairing also registers a per-user native messaging helper that reads only Suzent’s
+runtime port file. The extension uses it to find the backend again after browser
+or backend restarts, including desktop port changes. If system policy blocks
+helper registration, the last paired address remains usable; pair again if that
+address changes. The helper remains installed after disconnect but cannot grant
+browser access without a valid pairing token. Only one browser
+profile is paired at a time; pairing another replaces the previous authorization.
+
+**Disconnect and forget** revokes the pairing. Disconnect in the extension popup
+also removes its saved credentials. Canceling Chrome/Edge's debugger banner stops
+the connection and clears the extension's saved pairing, so the agent cannot
+immediately resume control. Browser tabs remain open. Switching back to managed
+mode detaches from the selected tab but retains pairing for later use.
+
+This PR provides an unpacked extension; there is no store listing yet. Browser
+extension installation and browser permission prompts cannot be skipped. Store
+publication can simplify installation later. Enterprise policies may prohibit
+unpacked extensions or debugger access.
+
+The extension only operates on HTTP(S) pages and blank tabs, excludes private tabs,
+and attaches its debugger only to the selected tab. Its pair token authorizes the
+local Suzent backend to control web tabs in that profile. Pairing uses a loopback
+connection, a five-minute random token, extension-origin binding, and a persisted
+token hash on the backend. The token itself stays in extension local storage.
+There is no public debugging port. Page content cannot access the isolated-world
+snapshot references. Browser navigation, tab changes, and reconnects expire refs;
+commands are not automatically replayed after transport failure.
+
+Snapshots remain bounded and omit form values. Extension interactions validate
+observed node identity and wait briefly for visibility and hit testing; they do not
+provide every Playwright auto-wait guarantee. Embedded frames, file uploads,
+download management, select-option filling, and complex keyboard layouts are not
+part of this extension version. Coordinate control requires a fresh visual preview;
+manual browser activity can change the page at any time.
+
+### Extension development
+
+Source lives in `src/suzent/browser_extension/assets/` and ships inside the Python
+package, so desktop and CLI backends serve the same ZIP. No extension build step or
+Node runtime is required for users. Load that directory unpacked for development,
+then reload the extension after changes. English and Chinese extension strings are
+in `_locales/`. Run `uv run pytest tests/tools/test_browser_extension.py` for the
+real bundled-Chromium extension regression, using an isolated test profile.
+
+## Direct connection to existing Chrome or Edge (advanced)
 
 1. Run the Suzent backend on the same computer as your browser.
 2. In Chrome, open `chrome://inspect/#remote-debugging`; in Edge, open
    `edge://inspect` and choose **Remote debugging**. Enable remote debugging.
-3. In **Settings → Browser**, select **Connect to my existing browser**, then
+3. In **Settings → Browser**, select **Direct connection (advanced)**, then
    choose Chrome or Edge. Approve the browser's connection prompt when it appears.
 4. Ask the agent to list tabs (`tabs`), select one (`select_tab ["tab-1"]`),
    and take a snapshot before interacting.

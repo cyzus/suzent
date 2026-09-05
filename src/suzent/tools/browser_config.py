@@ -43,7 +43,7 @@ class BrowserPreferences(BaseModel):
     persistent: bool = False
     headless: bool = True
     channel: Literal["chromium", "chrome", "msedge"] = "chromium"
-    connection_mode: Literal["managed", "existing"] = "managed"
+    connection_mode: Literal["managed", "existing", "extension"] = "managed"
 
     @classmethod
     def load(cls) -> Self:

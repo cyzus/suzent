@@ -304,9 +304,24 @@ export const zhCN = {
   },
   settings: {
     browser: {
+      extension: '使用我的浏览器（扩展）',
+      extensionConnected: '浏览器扩展已连接',
+      extensionDisconnected: '浏览器扩展未连接',
+      extensionHelp:
+        '使用安装扩展的浏览器中的标签页和登录状态，无需开启远程调试。连接期间 Suzent 可操作网页；可在此处或扩展中断开连接。',
+      extensionInstall:
+        '下载并解压扩展。在 Chrome 或 Edge 的扩展管理页面启用开发者模式，选择加载解压缩的扩展，再选择解压后的文件夹。暂未提供商店安装。',
+      extensionPair:
+        '安装后点击配对浏览器，在默认浏览器中打开配对页面。连接后可让智能体列出并选择标签页。',
+      extensionDownload: '下载扩展',
+      extensionPairButton: '配对浏览器',
+      extensionRevoke: '断开并忘记连接',
+      extensionOtherBrowser:
+        '如果扩展安装在其他浏览器中，请将此私密链接复制到该浏览器。链接五分钟后过期。',
+
       connectionMode: '连接方式',
       managed: '启动托管浏览器',
-      existing: '连接现有浏览器',
+      existing: '直接连接（高级）',
       existingHelp:
         '选择 Chrome 或 Edge，在浏览器的 inspect 页面启用远程调试，并批准连接提示。Suzent 从新标签页开始；可让智能体列出并选择其他标签页。断开连接不会关闭浏览器。',
 

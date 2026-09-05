@@ -35,6 +35,19 @@ describe('browser settings API', () => {
     data.available_browsers.msedge = false;
     expect(existingBrowserAvailable(data)).toBe(false);
   });
+  it('keeps managed browser preferences when selecting the extension', () => {
+    const data = {
+      settings: {
+        connection_mode: 'managed' as const,
+        channel: 'chromium' as const,
+        persistent: true,
+        headless: false,
+      },
+      available_browsers: { chromium: true, chrome: false, msedge: false },
+      environment_overrides: [],
+    };
+    expect(connectionModeChange(data, 'extension')).toEqual({ connection_mode: 'extension' });
+  });
   it('posts only the changed preference without copying effective overrides', async () => {
     const fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
     vi.stubGlobal('fetch', fetch);

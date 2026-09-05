@@ -13,6 +13,7 @@ import {
 import { BrutalSelect } from '../BrutalSelect';
 import { BrutalButton } from '../BrutalButton';
 import { SettingsCard, SettingsPage } from './SettingsCard';
+import { BrowserExtensionSetup } from './BrowserExtensionSetup';
 import { SettingsHeader } from './SettingsHeader';
 
 export function BrowserTab(): React.ReactElement {
@@ -90,6 +91,7 @@ export function BrowserTab(): React.ReactElement {
                 )
               }
               options={[
+                { value: 'extension', label: t('settings.browser.extension') },
                 { value: 'managed', label: t('settings.browser.managed') },
                 {
                   value: 'existing',
@@ -98,67 +100,77 @@ export function BrowserTab(): React.ReactElement {
                 },
               ]}
             />
+            {data.settings.connection_mode === 'extension' && <BrowserExtensionSetup />}
             {data.settings.connection_mode === 'existing' && (
               <p className="text-sm">{t('settings.browser.existingHelp')}</p>
             )}
-            <div>
-              <BrutalSelect
-                label={t('settings.browser.channel')}
-                value={data.settings.channel}
-                disabled={busy || data.environment_overrides.includes('channel')}
-                onChange={(channel) =>
-                  void update({ channel: channel as BrowserPreferences['channel'] })
-                }
-                options={browserChannelOptions(data.available_browsers, t).map((option) => ({
-                  ...option,
-                  disabled:
-                    option.disabled ||
-                    (data.settings.connection_mode === 'existing' && option.value === 'chromium'),
-                }))}
-              />
-              <p className="mt-2 text-sm text-neutral-500">{t('settings.browser.channelHelp')}</p>
-              {!data.available_browsers[data.settings.channel] && (
-                <p role="alert" className="mt-2 text-sm font-bold">
-                  {t('settings.browser.selectedUnavailable')}
-                </p>
-              )}
-            </div>
-            <div>
-              <label className="flex items-center gap-3 font-bold">
-                <input
-                  type="checkbox"
-                  className="h-5 w-5 accent-black"
-                  checked={data.settings.persistent}
-                  disabled={
-                    busy ||
-                    data.settings.connection_mode === 'existing' ||
-                    data.environment_overrides.includes('persistent')
-                  }
-                  onChange={(event) => void update({ persistent: event.target.checked })}
-                />
-                {t('settings.browser.persistent')}
-              </label>
-              <p className="mt-2 text-sm text-neutral-500">
-                {t('settings.browser.persistentHelp')}
-              </p>
-            </div>
-            <div>
-              <label className="flex items-center gap-3 font-bold">
-                <input
-                  type="checkbox"
-                  className="h-5 w-5 accent-black"
-                  checked={!data.settings.headless}
-                  disabled={
-                    busy ||
-                    data.settings.connection_mode === 'existing' ||
-                    data.environment_overrides.includes('headless')
-                  }
-                  onChange={(event) => void update({ headless: !event.target.checked })}
-                />
-                {t('settings.browser.visible')}
-              </label>
-              <p className="mt-2 text-sm text-neutral-500">{t('settings.browser.visibleHelp')}</p>
-            </div>
+            {data.settings.connection_mode !== 'extension' && (
+              <>
+                <div>
+                  <BrutalSelect
+                    label={t('settings.browser.channel')}
+                    value={data.settings.channel}
+                    disabled={busy || data.environment_overrides.includes('channel')}
+                    onChange={(channel) =>
+                      void update({ channel: channel as BrowserPreferences['channel'] })
+                    }
+                    options={browserChannelOptions(data.available_browsers, t).map((option) => ({
+                      ...option,
+                      disabled:
+                        option.disabled ||
+                        (data.settings.connection_mode === 'existing' &&
+                          option.value === 'chromium'),
+                    }))}
+                  />
+                  <p className="mt-2 text-sm text-neutral-500">
+                    {t('settings.browser.channelHelp')}
+                  </p>
+                  {!data.available_browsers[data.settings.channel] && (
+                    <p role="alert" className="mt-2 text-sm font-bold">
+                      {t('settings.browser.selectedUnavailable')}
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <label className="flex items-center gap-3 font-bold">
+                    <input
+                      type="checkbox"
+                      className="h-5 w-5 accent-black"
+                      checked={data.settings.persistent}
+                      disabled={
+                        busy ||
+                        data.settings.connection_mode !== 'managed' ||
+                        data.environment_overrides.includes('persistent')
+                      }
+                      onChange={(event) => void update({ persistent: event.target.checked })}
+                    />
+                    {t('settings.browser.persistent')}
+                  </label>
+                  <p className="mt-2 text-sm text-neutral-500">
+                    {t('settings.browser.persistentHelp')}
+                  </p>
+                </div>
+                <div>
+                  <label className="flex items-center gap-3 font-bold">
+                    <input
+                      type="checkbox"
+                      className="h-5 w-5 accent-black"
+                      checked={!data.settings.headless}
+                      disabled={
+                        busy ||
+                        data.settings.connection_mode !== 'managed' ||
+                        data.environment_overrides.includes('headless')
+                      }
+                      onChange={(event) => void update({ headless: !event.target.checked })}
+                    />
+                    {t('settings.browser.visible')}
+                  </label>
+                  <p className="mt-2 text-sm text-neutral-500">
+                    {t('settings.browser.visibleHelp')}
+                  </p>
+                </div>
+              </>
+            )}
             {data.environment_overrides.length > 0 && (
               <p className="text-sm">{t('settings.browser.overrides')}</p>
             )}

@@ -1,7 +1,7 @@
 import { getApiBase } from './api';
 
 export interface BrowserPreferences {
-  connection_mode: 'managed' | 'existing';
+  connection_mode: 'managed' | 'existing' | 'extension';
   persistent: boolean;
   headless: boolean;
   channel: 'chromium' | 'chrome' | 'msedge';

@@ -229,9 +229,24 @@ export const en = {
   },
   settings: {
     browser: {
+      extension: 'Use my browser (extension)',
+      extensionConnected: 'Browser extension connected',
+      extensionDisconnected: 'Browser extension not connected',
+      extensionHelp:
+        'Use the tabs and logins in the browser where you install the extension. No remote-debugging setup is needed. Suzent can control web tabs while connected; disconnect here or in the extension to stop access.',
+      extensionInstall:
+        'Download and extract the extension. In Chrome or Edge, open Extensions → Manage extensions, enable Developer mode, then Load unpacked and select the extracted folder. Store installation is not available yet.',
+      extensionPair:
+        'Click Pair browser after installing. The pairing page opens in your default browser. Once connected, ask the agent to list and select a tab.',
+      extensionDownload: 'Download extension',
+      extensionPairButton: 'Pair browser',
+      extensionRevoke: 'Disconnect and forget',
+      extensionOtherBrowser:
+        'If the extension is in another browser, copy this private link into that browser. The link expires in five minutes.',
+
       connectionMode: 'Connection mode',
       managed: 'Launch a managed browser',
-      existing: 'Connect to my existing browser',
+      existing: 'Direct connection (advanced)',
       existingHelp:
         'Select Chrome or Edge, open its inspect page, and enable remote debugging. Approve the browser connection prompt. Suzent starts in a new tab; ask the agent to list and select your open tabs. Your browser stays open when Suzent disconnects.',
 

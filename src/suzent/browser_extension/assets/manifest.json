@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "__MSG_name__",
+  "description": "__MSG_description__",
+  "version": "0.1.0",
+  "minimum_chrome_version": "118",
+  "default_locale": "en",
+  "permissions": ["debugger", "tabs", "storage", "alarms", "nativeMessaging"],
+  "background": { "service_worker": "worker.js", "type": "module" },
+  "action": { "default_popup": "popup.html" },
+  "content_scripts": [
+    {
+      "matches": ["http://127.0.0.1/*"],
+      "js": ["pair.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

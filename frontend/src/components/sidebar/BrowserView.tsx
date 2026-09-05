@@ -16,6 +16,7 @@ export function BrowserView({ onStreamActive }: BrowserViewProps) {
   // Remove headerHover as we can rely on group-hover usually, but keeping for overlay logic if needed
 
   const wsRef = useRef<WebSocket | null>(null);
+  const frameSize = useRef<{ width: number; height: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -65,8 +66,20 @@ export function BrowserView({ onStreamActive }: BrowserViewProps) {
     ws.onmessage = (event) => {
       const msg = JSON.parse(event.data);
       if (msg.type === 'frame' && msg.data) {
+        frameSize.current =
+          Number.isFinite(msg.width) &&
+          Number.isFinite(msg.height) &&
+          msg.width > 0 &&
+          msg.height > 0
+            ? { width: msg.width, height: msg.height }
+            : null;
         // msg.data is base64
         setImageSrc(`data:image/jpeg;base64,${msg.data}`);
+      }
+      if (msg.type === 'reset') {
+        frameSize.current = null;
+        setImageSrc(null);
+        setIsControlling(false);
       }
     };
 
@@ -131,8 +144,8 @@ export function BrowserView({ onStreamActive }: BrowserViewProps) {
   const getCoords = (e: React.MouseEvent<HTMLImageElement>) => {
     const img = e.currentTarget;
     const rect = img.getBoundingClientRect();
-    const scaleX = img.naturalWidth / rect.width;
-    const scaleY = img.naturalHeight / rect.height;
+    const scaleX = (frameSize.current?.width ?? img.naturalWidth) / rect.width;
+    const scaleY = (frameSize.current?.height ?? img.naturalHeight) / rect.height;
     return {
       x: (e.clientX - rect.left) * scaleX,
       y: (e.clientY - rect.top) * scaleY,

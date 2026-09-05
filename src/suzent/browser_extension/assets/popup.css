@@ -1,0 +1,14 @@
+body {
+  font: 14px system-ui;
+  width: 280px;
+  padding: 12px;
+  color: #222;
+  background: #fafafa;
+}
+button {
+  padding: 8px;
+  margin-right: 8px;
+  border: 2px solid #222;
+  background: white;
+  cursor: pointer;
+}

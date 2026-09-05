@@ -25,6 +25,12 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route, WebSocketRoute
 
 from suzent.auth_boundary import AuthBoundaryMiddleware
+from suzent.browser_extension.routes import (
+    extension_settings,
+    extension_connect_page,
+    extension_download,
+    extension_websocket,
+)
 from suzent.logger import get_logger, setup_logging
 from suzent.routes.chat_routes import (
     approve_tool,
@@ -995,6 +1001,9 @@ async def shutdown():
     try:
         from suzent.tools.browsing_tool import BrowserSessionManager
 
+        from suzent.browser_extension.session import session as extension_session
+
+        await _stop(extension_session.close(), "BrowserExtension")
         await _stop(
             BrowserSessionManager.get_instance().close_session(), "BrowserSession"
         )
@@ -1218,6 +1227,12 @@ app = Starlette(
         Route("/skills/reload", reload_skills, methods=["POST"]),
         Route("/skills/toggle", toggle_skill, methods=["POST"]),
         Route("/skills/{skill_name}/toggle", toggle_skill, methods=["POST"]),
+        Route(
+            "/browser/extension", extension_settings, methods=["GET", "POST", "DELETE"]
+        ),
+        Route("/browser/extension/connect", extension_connect_page),
+        Route("/browser/extension/download", extension_download),
+        WebSocketRoute("/ws/browser-extension", extension_websocket),
         Route("/browser/settings", browser_settings_endpoint, methods=["GET", "POST"]),
         WebSocketRoute("/ws/browser", browser_websocket_endpoint),
         WebSocketRoute("/ws/node", node_websocket_endpoint),
