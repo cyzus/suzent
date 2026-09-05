@@ -240,9 +240,9 @@ See [Social Messaging](../social-messaging/README.md) for platform setup.
 
 ### `browser_action`
 
-Control a headless browser via Playwright.
+Control a managed browser via Playwright, with optional persistent profiles and visible Chrome/Edge windows. See [Browser](./browser.md) for setup, snapshot pagination, and connecting existing browser tabs through MCP.
 
-**Commands:** `open`, `snapshot`, `click`, `fill`, `scroll`, `back`, `forward`, `reload`, `press`, `screenshot`, `click_coords`
+**Commands:** `open`, `snapshot`, `click`, `dblclick`, `hover`, `fill`, `type`, `scroll`, `back`, `forward`, `reload`, `refresh`, `press`, `click_coords`
 
 ### `speak`
 
