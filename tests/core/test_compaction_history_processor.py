@@ -32,7 +32,11 @@ def _quiet_bus_and_config(monkeypatch):
     monkeypatch.setattr("suzent.core.stream_registry.emit_bus_event", lambda p: None)
     # Deterministic thresholds.
     monkeypatch.setattr(CONFIG, "compaction_keep_recent_turns", 3, raising=False)
+    # Suppression state is module-level and keyed by chat_id; every test uses
+    # "c1", so it must not leak between them.
+    cc.reset_compaction_suppression()
     yield
+    cc.reset_compaction_suppression()
 
 
 def _history(n=12):
@@ -303,3 +307,102 @@ async def test_every_started_pass_reports_a_terminal_stage(monkeypatch):
     stages = [e["stage"] for e in seen if e["event"] == "auto_compaction"]
     assert stages[0] == "start"
     assert stages[-1] in {"complete", "skipped", "error"}
+
+
+@pytest.mark.asyncio
+async def test_estimate_drops_after_compaction_despite_stale_usage(monkeypatch):
+    """A retained tail message's pre-compaction usage must not inflate the estimate.
+
+    Regression: ``context_overhead_tokens`` read the provider count for a prompt
+    that still contained the compacted-away history, subtracted the new (tiny)
+    history from it, and reported the difference as fixed overhead — so the
+    estimate after a compaction equalled the estimate before it and auto-compact
+    re-fired on every subsequent request.
+    """
+    from pydantic_ai.messages import RequestUsage
+
+    limit = 200_000
+    big = "x" * 4000  # ~1k tokens each
+
+    msgs = [
+        ModelRequest(parts=[UserPromptPart(content=big)])
+        if i % 2 == 0
+        else ModelResponse(parts=[TextPart(content=big)])
+        for i in range(39)
+    ]
+    # The provider counted the whole pre-compaction prompt on the last response.
+    msgs.append(
+        ModelResponse(
+            parts=[TextPart(content=big)], usage=RequestUsage(input_tokens=170_000)
+        )
+    )
+    msgs.append(ModelRequest(parts=[UserPromptPart(content="pending")]))
+
+    before = cc.estimate_tokens(msgs, limit).estimated_tokens
+
+    keep = CONFIG.compaction_keep_recent_turns * 2
+    compacted = (
+        msgs[:1]
+        + [
+            ModelRequest(
+                parts=[
+                    UserPromptPart(content=f"{COMPACTION_SUMMARY_REQUEST_MARKER}\np")
+                ]
+            ),
+            ModelResponse(
+                parts=[TextPart(content=f"{COMPACTION_SUMMARY_RESPONSE_MARKER}\nsum")]
+            ),
+        ]
+        + cc._clear_stale_usage(msgs[-keep:])
+    )
+    after = cc.estimate_tokens(compacted, limit).estimated_tokens
+
+    assert after < before
+    assert after < limit * CONFIG.context_compaction_trigger
+
+
+@pytest.mark.asyncio
+async def test_ineffective_compaction_is_not_retried(monkeypatch):
+    """A completed pass that stays over the trigger must not re-fire every request."""
+    monkeypatch.setattr(CONFIG, "max_context_tokens", 100, raising=False)
+    monkeypatch.setattr(CONFIG, "context_compaction_trigger", 0.01, raising=False)
+    _fake_compaction(monkeypatch)
+
+    calls = []
+    original = cc.ContextCompressor._perform_compression
+
+    async def counting(self, messages, focus=None, background_flush=False):
+        calls.append(len(messages))
+        return await original(
+            self, messages, focus=focus, background_flush=background_flush
+        )
+
+    monkeypatch.setattr(cc.ContextCompressor, "_perform_compression", counting)
+
+    proc = make_compaction_history_processor()
+    out = await proc(_ctx(), _history(12))
+    assert len(calls) == 1
+
+    # Same (already compacted, still over trigger) history: no second attempt.
+    again = await proc(_ctx(), out)
+    assert len(calls) == 1
+    assert again is out
+
+
+@pytest.mark.asyncio
+async def test_suppression_rearms_when_history_grows(monkeypatch):
+    monkeypatch.setattr(CONFIG, "max_context_tokens", 100, raising=False)
+    monkeypatch.setattr(CONFIG, "context_compaction_trigger", 0.01, raising=False)
+    _fake_compaction(monkeypatch)
+
+    proc = make_compaction_history_processor()
+    out = await proc(_ctx(), _history(12))
+    assert await proc(_ctx(), out) is out  # suppressed
+
+    grown = (
+        out[:-1]
+        + [ModelResponse(parts=[TextPart(content="y" * 20_000)])]
+        + [ModelRequest(parts=[UserPromptPart(content="pending")])]
+    )
+    regrown = await proc(_ctx(), grown)
+    assert len(regrown) < len(grown)

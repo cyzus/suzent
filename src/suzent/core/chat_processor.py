@@ -1544,9 +1544,10 @@ class ChatProcessor:
     ) -> Optional[AsyncGenerator[str, None]]:
         """Detect /retry or /retry-edit and return a replay stream, else None.
 
-        /retry replays the original turn; /retry-edit replays with new user text
-        but keeps the original turn's files and config snapshot. Both restore the
-        pre-turn checkpoint, or emit a notice stream when there's nothing to replay.
+        /retry replays the original turn; /retry-edit replays with new user text.
+        Both restore the pre-turn checkpoint and its files. Checkpoint config is
+        used as a fallback, while config submitted with the retry takes precedence
+        so changes made in the composer (notably the selected model) are honored.
         """
         if not message_content or resume_approvals or is_heartbeat:
             return None
@@ -1579,13 +1580,15 @@ class ChatProcessor:
                 )
             replay_message = checkpoint_data["user_message"]
 
-        # Both variants replay with the original turn's files and config snapshot
-        # so attachments survive the retry/edit.
+        # Both variants replay with the original turn's files. Preserve settings
+        # that exist only in the original snapshot, but let the current request
+        # override them so retrying after changing model/thinking/etc. uses the
+        # newly selected values.
         replay_files = checkpoint_data["user_files"] or []
         replay_config = checkpoint_data.get("config_snapshot") or {}
         merged_config = {
-            **config,
             **replay_config,
+            **config,
             "_user_id": user_id,
             "_chat_id": chat_id,
         }
