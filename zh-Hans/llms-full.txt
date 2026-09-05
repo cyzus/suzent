@@ -3,8 +3,8 @@
 > Full text of the Suzent documentation, for answer engines and retrieval.
 > Short link index: https://suzent.com/llms.txt
 > Source: https://suzent.com — https://github.com/cyzus/suzent (Apache-2.0)
-> Generated: 2026-08-26
-> Pages: 54 documentation pages, plus the sovereignty protocol.
+> Generated: 2026-09-05
+> Pages: 53 documentation pages, plus the sovereignty protocol.
 
 ---
 
@@ -358,15 +358,11 @@ update, and the dream retires the old version.
 
 ## Settings
 
-Memory is on by default. The settings worth knowing:
+Memory is on by default. Turn it off, or change which models do the extraction and
+embedding, in **Settings → Memory** in the app.
 
-```yaml
-# config/default.yaml
-MEMORY_ENABLED: true
-```
-
-Everything else is tuning — how often the dream runs, how much it reads at a time, which
-model does the extraction. See [Configuration](https://suzent.com/docs/concepts/memory/configuration) for the full list.
+Everything else is tuning — how often the dream runs, how much it reads at a time, where
+the notebook lives. See [Configuration](https://suzent.com/docs/concepts/memory/configuration) for the full list.
 
 ## Read more
 
@@ -2407,27 +2403,27 @@ Source: https://suzent.com/docs/concepts/memory/configuration
 
 # Memory Configuration
 
-All memory settings live in `config/default.yaml`. Every one has a working default —
-memory runs without configuring anything.
+Most people never open this page. Memory is on out of the box, and the two settings you
+are most likely to want — whether it runs at all, and which models it uses — are in
+**Settings → Memory** in the app.
 
-## Turning memory on
+What follows is the tuning that has no UI. Put overrides in `~/.suzent/config/default.yaml`
+(machine-specific paths belong in `~/.suzent/config/local.yaml`); both are read after the
+shipped `config/default.example.yaml`, so anything you set there wins and survives an
+update. Keys are case-insensitive — `MEMORY_ENABLED` and `memory_enabled` are the same
+setting.
+
+## The basics
 
 ```yaml
-MEMORY_ENABLED: true
-```
-
-That's the only setting most installs need. Everything below is tuning.
-
-## What gets captured
-
-```yaml
+memory_enabled: true               # Also the toggle in Settings → Memory
 markdown_memory_enabled: true      # Write facts to /shared/memory/ as Markdown
-extraction_model: gpt-4o-mini      # Model that picks facts out of conversations
+extraction_model: gemini/gemini-2.5-flash   # "" for heuristic extraction, no model call
 user_id: default-user
 ```
 
 The extraction model runs once per exchange, so a small fast model is the right choice
-here. If it's unset, Suzent uses the default chat model.
+here. Leave it unset to use the default chat model.
 
 ## Consolidation
 
@@ -2461,8 +2457,9 @@ memory_lint_min_days: 7
 notebook_dir: <data-dir>/notebook
 ```
 
-To use an existing Obsidian vault instead, mount it — this takes precedence over
-`notebook_dir`, which stays pointing at the default path:
+To use an existing Obsidian vault instead, mount it over `/mnt/notebook`, replacing the
+default entry. This takes precedence over `notebook_dir`, which keeps pointing at the
+default path. Being machine-specific, it belongs in `~/.suzent/config/local.yaml`:
 
 ```yaml
 sandbox_volumes:
@@ -2472,27 +2469,26 @@ sandbox_volumes:
 ## Search
 
 ```yaml
-embedding_model: text-embedding-3-large
-embedding_dimension: 3072        # 0 = detect from the model
+embedding_model: gemini/gemini-embedding-001
+embedding_dimension: 3072        # Must match the model; 0 = detect from it
 embedding_timeout: 30            # Seconds before a slow provider is given up on
 lancedb_uri: <data-dir>/memory
 ```
 
-| Model | Dimensions | Cost / 1M tokens |
-|---|---|---|
-| `text-embedding-3-large` | 3072 | $0.13 |
-| `text-embedding-3-small` | 1536 | $0.02 |
+Pick the embedding model in **Settings → Memory** — the list is filtered to what your
+configured providers actually offer, so it stays correct as you add or remove keys.
 
-Changing the embedding model means re-embedding everything you've stored, which costs one
-call per chunk across your whole memory. It is not a free switch.
+Changing the embedding model means re-embedding everything you have stored: one call per
+chunk across your whole memory. It is not a free switch, and the dimension has to change
+with it.
 
 ## Sessions and transcripts
 
 ```yaml
-SESSION_DAILY_RESET_HOUR: 0        # UTC hour for a daily reset (0 = off)
-SESSION_IDLE_TIMEOUT_MINUTES: 0    # Reset after inactivity (0 = off)
-JSONL_TRANSCRIPTS_ENABLED: true    # Keep a transcript per session
-TRANSCRIPT_INDEXING_ENABLED: false # Also make transcripts searchable
+session_daily_reset_hour: 0        # UTC hour for a daily reset (0 = off)
+session_idle_timeout_minutes: 0    # Reset after inactivity (0 = off)
+jsonl_transcripts_enabled: true    # Keep a transcript per session
+transcript_indexing_enabled: false # Also make transcripts searchable
 ```
 
 Transcript indexing lets you search across past conversations, not just extracted facts.
@@ -2502,9 +2498,19 @@ is off by default.
 ## Context window
 
 ```yaml
-MAX_HISTORY_STEPS: 20              # Steps before a conversation is compressed
-MAX_CONTEXT_TOKENS: 800000
+max_context_tokens: 0              # 0 = use whatever the active model supports
 ```
+
+The compaction budget is derived from the model actually running the conversation:
+its input window, read from the model capability registry. A 1M-token model gets a
+1M-token budget, a 128k model gets 128k, and compaction triggers at the same
+*fraction* of each (`context_compaction_trigger`, 80% by default) instead of at one
+fixed token count that was wrong for every model but one.
+
+Set `max_context_tokens` to a non-zero value to cap that budget — useful to keep
+prompts (and cost) below what the model would allow. It is a ceiling, never a
+raise: the smaller of the two always wins. When a model is missing from the
+registry, the budget falls back to 200k tokens.
 
 ## Rebuilding the search index
 
@@ -2517,6 +2523,32 @@ curl -X POST http://localhost:25314/memory/reindex -H "Content-Type: application
 
 A full rebuild re-embeds every file, so expect it to take a while and to cost embedding
 calls.
+
+## The memory API
+
+Everything the Memory panel does is available over HTTP, on the same port as the app
+(`25314` unless you set `SUZENT_PORT`), so you can script it or wire it into your own tools.
+
+| Endpoint | Method | What it does |
+|---|---|---|
+| `/memory/core` | GET | Read the core blocks (`persona`, `user`, `facts`, `context`) |
+| `/memory/core` | PUT | Overwrite one core block |
+| `/memory/file` | GET | Read `MEMORY.md` |
+| `/memory/daily` | GET | List the dates that have a daily log |
+| `/memory/daily/{date}` | GET | Read one day's log |
+| `/memory/archival` | GET | Search remembered facts |
+| `/memory/archival/{id}` | DELETE | Forget one fact (records a tombstone) |
+| `/memory/stats` | GET | Counts and index size |
+| `/memory/project-contexts` | GET | List per-project context files |
+| `/memory/project-contexts/{id}` | PUT | Update a project's context |
+| `/memory/reindex` | POST | Rebuild the search index from Markdown |
+| `/memory/dream/status` | GET | Consolidation progress and pending work |
+| `/memory/consolidate` | POST | Run consolidation now |
+| `/memory/lint` | POST | Run the notebook audit now |
+
+Editing a core block through `PUT /memory/core` counts as *you* saying it, which outranks
+anything the agent worked out on its own — see
+[MEMORY.md is half yours](https://suzent.com/docs/concepts/memory#memorymd-is-half-yours).
 
 ## Debug logging
 
@@ -2624,45 +2656,79 @@ Interested in how this is built? See
 
 Source: https://suzent.com/docs/concepts/memory/llm-wiki
 
-# LLM Wiki
+# Notebook
 
-> Pattern originally described by Andrej Karpathy: [LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)
+Your agent keeps a second kind of memory: a **notebook**, an Obsidian-compatible
+folder of Markdown pages it researches, writes, and tidies itself. Conversation
+memory records facts about *you*; the notebook holds knowledge about the *world* —
+papers it read, tools it compared, projects it is tracking.
 
-The LLM Wiki is a structured knowledge base that lives alongside — but is separate from — the conversation memory system. It uses Obsidian-compatible Markdown, frontmatter, and an optional OKF-inspired metadata profile, organized according to a `schema.md` the agent reads before every operation.
+> The pattern comes from Andrej Karpathy's
+> [LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f), which is
+> why you will occasionally see it called that.
 
-## How it works
+## Where it lives
 
-- The vault root is `/mnt/notebook` (sandbox) or `${MOUNT_NOTEBOOK}` (host).
-- Three agent-maintained navigation files live at the vault root:
-  - `schema.md` — vault conventions, folder layout, and page types. The agent reads this first on every operation.
-  - `index.md` — catalog of synthesized pages, updated on every ingest or query filing.
-  - `log.md` — append-only chronological record of all agent operations.
-- The agent reads and writes vault pages directly via `ReadFileTool`/`WriteFileTool`/`EditFileTool`.
-- `WikiManager` bootstraps these three files on first init (from `skills/notebook/schema_example.md`), then stays out of the way.
+By default the notebook is a folder in your data directory. Point it at an existing
+Obsidian vault instead by mounting it — see
+[Configuration](https://suzent.com/docs/concepts/memory/configuration#where-the-notebook-lives).
 
-## Distinction from conversation memory
+Either way it is ordinary Markdown with `[[wikilinks]]`, so Obsidian, a text editor, or
+Git all work on it directly.
 
-| | Conversation Memory | LLM Wiki |
+## How it's organised
+
+```text
+notebook/
+  schema.md          # The rules of your vault — edit this to change how pages are filed
+  index.md           # Catalog of pages the agent has written
+  log.md             # What the agent did, and when
+  0_Inbox/           # Raw material you dropped in, waiting to be processed
+  1_Projects/        # Active work: roadmaps, meeting notes, TODOs
+  2_Wiki/            # The knowledge layer
+    Concepts/        #   evergreen ideas
+    Literature/      #   one page per paper or article
+    Syntheses/       #   comparisons and overviews
+    Entities/        #   specific models, datasets, tools, people
+  3_Personal/        # Long-term facts about you (written by consolidation)
+  4_Assets/          # PDFs and images — never modified
+  5_Archives/        # Finished or inactive work
+```
+
+**`schema.md` is yours to edit.** The agent reads it before every notebook operation, so
+renaming a folder or adding a filing rule there changes what it does next time. It is
+seeded once when the vault is created and never overwritten afterwards.
+
+Drop a PDF or a clipping into `0_Inbox/` and the agent will file it on its next pass.
+
+## Notebook vs. conversation memory
+
+| | Conversation memory | Notebook |
 |---|---|---|
-| **Content** | Episodic facts extracted from chats | Synthesized knowledge pages |
-| **Structure** | Daily logs + MEMORY.md + LanceDB | Obsidian vault (schema-defined folders) |
-| **Written by** | Automatic extraction | Agent directly via file tools |
-| **Searched via** | LanceDB hybrid search | GlobTool + GrepTool + Markdown links |
-| **Lifetime** | Accumulates across conversations | Persistent; updated by agent on ingest |
+| **Holds** | Facts about you, extracted from chats | Knowledge pages, written deliberately |
+| **Where** | `/shared/memory/` | your notebook folder |
+| **Written by** | Automatic extraction after each exchange | The agent, using file tools |
+| **Found by** | Semantic search | Links, file search, and semantic search |
 
-## Operational skills
+The two meet in one place: consolidated facts about you end up as pages under
+`3_Personal/`. See [How Consolidation Works](https://suzent.com/docs/concepts/memory/consolidation).
 
-The notebook skill (under `skills/notebook/`) provides the agent with procedures for working with the vault:
+## Tidying
 
-- `ingest.md` — procedure for ingesting new content into the vault
-- `lint.md` — procedure for auditing and cleaning vault pages
-- `okf.md` — optional portable metadata and linking conventions enabled by the vault schema
+When there is nothing new to consolidate, the agent audits the notebook instead —
+contradictions between pages, broken links, orphaned pages, knowledge that has gone
+stale. Nothing is deleted; pages are corrected or marked deprecated.
+
+You can also just ask it to research something and write it up; that lands in `2_Wiki/`.
+
+Building on the notebook itself? See
+[Development > Memory Internals](https://suzent.com/docs/developing/memory/internals).
 
 ---
 
 Source: https://suzent.com/docs/concepts/memory/upgrade-notes
 
-# Memory dedup: what changes for an existing install
+# Upgrade Notes: what changes for an existing install
 
 Notes for anyone upgrading a running install across the memory-deduplication work.
 Nothing here needs action on a fresh install — every item is about state that already
@@ -2694,9 +2760,9 @@ months after the vault had moved. None of them exist in the live vault. They rea
 leftover bootstrap skeleton, and deleting them on that assumption would have been the
 only irreversible mistake in this whole body of work.
 
-`resolve_notebook_dir()` stops code from reading the wrong vault from now on. It does not
-retroactively rescue anything already stranded there. **Before deleting that directory,
-diff it against your real vault.** It will look like a leftover. It may not be one.
+Suzent no longer reads the wrong vault, but that does not retroactively rescue anything
+already stranded in the default path. **Before deleting that directory, diff it against
+your real vault.** It will look like a leftover. It may not be one.
 
 ## 3. Legacy rows are not redundant copies — export before deleting
 
@@ -5397,8 +5463,8 @@ Source: https://suzent.com/docs/developing/memory/architecture
 # Memory Architecture
 
 How memory is written, consolidated, indexed, and read — and what is still missing.
-Companions: [Consolidation](https://suzent.com/docs/concepts/memory/consolidation) for the dream's design intent,
-[Deduplication](https://suzent.com/docs/developing/memory/deduplication) for the duplicate problem and its fixes.
+Companions: [Consolidation](https://suzent.com/docs/concepts/memory/consolidation) for how the dream
+behaves from the outside, [Internals](https://suzent.com/docs/developing/memory/internals) for the class-by-class reference.
 
 ## Three tiers, one job each
 
@@ -5532,11 +5598,105 @@ so as the dream fills the vault it simply stops firing.
 Both write through the same marked zone, so an agent's or user's own notes below the
 marker survive either of them.
 
+## History: why duplicates accumulated
+
+This section records the problem this design was built to fix, because the reasoning is
+easier to check against the measurements than against the code.
+
+Near-duplicate rate in the archival index, cosine over the stored embeddings; a row counts
+as redundant when an earlier row exceeds the threshold.
+
+| write path | rows | ≥0.995 | ≥0.95 | ≥0.92 |
+| --- | ---: | ---: | ---: | ---: |
+| `legacy_direct` (pre-June, had write-time dedup) | 2833 | 0.0% | 0.0% | 0.0% |
+| `archive_log` (current path) | 615 | 0.3% | 10.1% | 25.4% |
+| `notebook` (dream output) | 1342 | 14.7% | 15.6% | 17.6% |
+
+On disk the backlog was larger than the index suggested: 13,102 fact lines across 129
+daily logs, 340 exact repeats, and 581 token-set near-duplicates in 279 clusters. The
+largest cluster was a single identity fact written 64 times across 26 distinct days.
+
+Most of it was paraphrase where one side is strictly less informative:
+
+```text
+0.982  A: [preference] The user wants to be reminded to drink water hourly from 9 AM to 9 PM daily.
+       B: [preference] User wants to be reminded to drink water daily.
+```
+
+Exact-match deduplication keeps both. Similarity deduplication alone keeps the wrong one
+half the time. Three causes, all now fixed:
+
+**Extraction was context-free.** The prompt carried only the current turn, so stable
+identity and preference facts were re-extracted every time they were mentioned. The write
+path now renders the nearest `KNOWN_FACTS_LIMIT` facts under an "already in memory"
+heading, with a rule that explicitly prefers emitting a fact that *changes* one of them.
+
+**Nothing deduplicated the derived index.** Write-time dedup was removed in `98a39a3b`
+(fixes #34) because a 0.85 cosine threshold silently dropped updates. The intended
+replacement was the dream — but `DREAM_INSTRUCTIONS` step 3b resolved a duplicate by doing
+nothing, and the lint pass audits only the vault. Step 3b now ends in the tombstone
+hand-off described above. Two guards there are worth knowing: lines shorter than
+`MIN_SUPERSEDED_CHARS` (24) are refused, because date lookup is a normalized substring
+match and a fragment like "dark mode" would match logs it never came from; and the match is
+deliberately loose in the other direction, since a false positive costs one idempotent
+reindex while a missed date strands a row with no mtime change to bring the watcher back.
+
+**The dream barely ran.** `DreamRunner._failures` was in-memory, so retry-then-skip only
+fired if the process stayed up for `memory_consolidation_max_retries` consecutive attempts
+on the same batch. The counters now live in the vault's `.state/dream_state.json`.
+
+### Correction to that last diagnosis
+
+The first reading of it said the watermark had sat at `2026-03-11` for five months. It was
+measured against `CONFIG.notebook_dir`, which on that machine is a stale bootstrap
+skeleton — the real vault was mounted at `/mnt/notebook` and held 91 consolidation
+entries, not 2. Read correctly: daily ingest through April, **no ingest at all between
+2026-05-01 and 2026-06-11** (lint kept running on its own pacing), then a catch-up burst
+on 06-12/13 walking the watermark from `2026-02-22` to `2026-05-26`, and daily ingest
+after. So the wedge was real and did strand the watermark from February, but it cleared
+itself in June, before any of this work — the healthy cadence since is not evidence the
+fix works. That is what `tests/memory/test_dream_failures_persist.py` is for.
+
+`resolve_notebook_dir()` exists so nothing repeats the measurement mistake.
+
+## Borrowed from the Open Knowledge Format
+
+[OKF v0.2](https://github.com/GoogleCloudPlatform/open-knowledge-format/blob/main/SPEC.md)
+frontmatter is per-document, so it maps onto vault pages — which previously carried no
+frontmatter at all — and not onto individual log fact lines. Daily logs stay dumb.
+Producer-defined keys are explicitly permitted, so partial adoption is within its rules.
+
+- `status: draft | stable | deprecated` — `deprecated` is a softer tombstone: the claim
+  stays readable and linkable but leaves retrieval ranking, and it is reversible.
+- `stale_after` — an absolute instant that gives the dream a revisit queue. Defaults are
+  derived from the fact `category` rather than guessed per fact by the extractor: identity
+  effectively never, `preference` a year, `technical` six months, `goal` three months,
+  `context` three weeks.
+- `verified: [{by, at}]` — with OKF's actor convention, so a user editing a core memory
+  block is a `human:` verification that outranks anything the extractor produced. This also
+  supplies the contradiction-resolution rule the system otherwise lacks.
+- `generated: {by, at}` — uniform provenance across logs, vault, and core files.
+- `sources[].usage_count` — the most useful borrowing. A fact extracted 64 times is not 64
+  facts; it is one claim confirmed 64 times, so collapsing repeats into a counter turns the
+  worst noise source into a ranking signal. It is recorded on the bullet rather than in
+  frontmatter (`(confirmed 12x, last 2026-08-20)`), because these claims share a page
+  rather than getting a document each; the marker's absence means confirmed once, so no
+  page needs migrating. A repeat that *contradicts* the bullet is explicitly not a
+  confirmation — it resets the count and takes the correction path.
+
+Not adopted: the Attested Computation family (`runtime`, `parameters`, `computation`,
+`executor`, `attester`), `resource` URIs (the vault already uses `[[wikilinks]]`), and
+formal `okf_version` conformance.
+
+These rules live in `DREAM_INSTRUCTIONS` as well as in `schema_example.md`, because
+`schema.md` is copied into a vault once at bootstrap and is user-editable afterwards —
+every vault predating them keeps its own copy.
+
 ## What landed in PR #118
 
 | commit | what it fixes |
 | --- | --- |
-| `70994416` | Retry counters were in-memory, so retry-then-skip never fired across restarts and a wedged batch stranded the watermark at `2026-02-22`. (The original "barely ran" reading was measured against the wrong vault — see the correction in `deduplication.md`.) |
+| `70994416` | Retry counters were in-memory, so retry-then-skip never fired across restarts and a wedged batch stranded the watermark at `2026-02-22`. (The original "barely ran" reading was measured against the wrong vault — see the correction below.) |
 | `50621860` | Indexer state was keyed by absolute path in a synced directory — 436 entries from two machines, and only 18 of 129 logs actually indexed. Now `label:filename`, versioned, pre-v2 discarded. |
 | `ca421b74` | Extraction was context-free. The prompt now carries the nearest known facts, with an explicit rule permitting updates. |
 | `5fc97850` | The dream resolved duplicates by doing nothing. It now retires folded-in log lines through the tombstone hand-off. |
@@ -5655,281 +5815,6 @@ timestamped backup first, and refuses outright while any row is recorded nowhere
 Neither has been run against the live index: the delete is irreversible beyond that
 backup and the export writes 2,833 lines into the user's memory directory, so both are
 the user's call.
-
----
-
-Source: https://suzent.com/docs/developing/memory/deduplication
-
-# Memory Deduplication
-
-Companion to [Memory Consolidation](https://suzent.com/docs/concepts/memory/consolidation). That page describes how the
-append-only write path and the dream runner are *meant* to work. This page records
-what the live data actually looks like, why duplicates accumulate, and the plan for
-fixing it.
-
-## The measurement
-
-Near-duplicate rate in the archival index, cosine over the stored embeddings. A row
-counts as redundant when an earlier row exceeds the threshold.
-
-| write path | rows | ≥0.995 | ≥0.95 | ≥0.92 |
-| --- | ---: | ---: | ---: | ---: |
-| `legacy_direct` (pre-June, had write-time dedup) | 2833 | 0.0% | 0.0% | 0.0% |
-| `archive_log` (current path) | 615 | 0.3% | 10.1% | 25.4% |
-| `notebook` (dream output) | 1342 | 14.7% | 15.6% | 17.6% |
-
-On disk the backlog is larger than the index suggests: 13,102 fact lines across 129
-daily logs, 340 exact repeats, and 581 token-set near-duplicates in 279 clusters. The
-largest cluster is a single identity fact written 64 times across 26 distinct days.
-
-Most duplication is a paraphrase where one side is strictly less informative:
-
-```text
-0.982  A: [preference] The user wants to be reminded to drink water hourly from 9 AM to 9 PM daily.
-       B: [preference] User wants to be reminded to drink water daily.
-```
-
-Exact-match deduplication keeps both. Similarity deduplication alone would keep the
-wrong one half the time.
-
-## Why duplicates accumulate
-
-### Extraction is context-free (fixed)
-
-`FACT_EXTRACTION_SYSTEM_PROMPT` and `format_fact_extraction_user_prompt` passed only the
-current conversation turn. The extraction model never saw existing memory and was never
-told to skip what is already known, so stable identity and preference facts were
-re-extracted every time they were mentioned.
-
-The write path now retrieves the nearest `KNOWN_FACTS_LIMIT` facts and renders them into
-the prompt under an "already in memory" heading, with a rule that permits — and
-explicitly prefers — emitting a fact that *changes* one of them. Recall is best-effort:
-a search failure returns nothing and extraction proceeds exactly as before, because
-enriching the prompt must never be able to block a memory write.
-
-### Nothing deduplicates the archival index (fixed)
-
-Write-time deduplication was removed in `98a39a3b` (fixes #34) because a 0.85 cosine
-threshold silently dropped *updates* to facts. The intended replacement was the dream
-consolidation pass — but the dream consolidates into the notebook vault, while
-`DREAM_SYSTEM_PROMPT` declares the daily logs read-only and `DREAM_INSTRUCTIONS` step 3b
-resolved a duplicate by doing nothing. The lint pass audits the vault only.
-
-The archival index is derived from the logs, so a duplicate written today was permanent.
-
-Step 3b now ends in a retirement: after folding a log line into a page, the dream appends
-the fact text to `notebook/.state/superseded.txt`. That file is the hand-off. The runner —
-not the agent — reads it in `_retire_superseded`, tombstones each line, reindexes every
-day whose log contains it, and only then truncates it. Ordering is deliberate: a crash
-before the truncate replays the same lines, which is idempotent, while clearing first
-would lose them.
-
-The split keeps each side to what it is good at. The agent writes files, which is its only
-declared capability; index mutation stays with the runner. And the logs are still never
-rewritten, so the race with the live write path appending to today's log cannot happen.
-
-Two guards worth knowing about:
-
-- Lines shorter than `MIN_SUPERSEDED_CHARS` (24) are refused. Date lookup is a normalized
-  substring match, so a fragment like "dark mode" would match logs it never came from.
-- The match is deliberately loose in the other direction. A false positive costs one
-  redundant reindex, which is delete-then-add and therefore harmless; a *missed* date
-  would strand the row in the index with no mtime change to ever bring the watcher back.
-
-### The dream barely runs (fixed)
-
-`DreamRunner._failures` was ephemeral pacing state, held only in memory. It is the
-counter behind retry-then-skip, which exists so that a batch which keeps producing
-nothing cannot wedge the backlog.
-
-Because the counter reset on every process start, retry-then-skip only fired if the app
-stayed up long enough for `memory_consolidation_max_retries` consecutive attempts on the
-same batch. On a desktop app that restarts regularly, a batch that failed once kept
-failing from a fresh counter forever.
-
-**Correction to the original diagnosis.** That first read said the watermark had sat at
-`2026-03-11` for five months and the dream "barely ran". It was measured against
-`CONFIG.notebook_dir`, which on this machine is a stale bootstrap skeleton — the real
-vault is mounted at `/mnt/notebook` and holds 91 consolidation entries, not 2. Read
-correctly, the live history is: daily ingest through April, **no ingest at all between
-2026-05-01 and 2026-06-11** (lint kept running on its own pacing), then a catch-up burst
-on 06-12/13 that walked the watermark from `2026-02-22` up to `2026-05-26`, and daily
-ingest since. So the wedge was real and did strand the watermark from February — but it
-cleared itself in June, before any of this work, and the current healthy cadence is not
-evidence that this fix works. The fix is verified by
-`tests/memory/test_dream_failures_persist.py`, not by production behaviour.
-
-`resolve_notebook_dir()` now exists so nothing else repeats that measurement mistake.
-
-The counters now live in the vault's `.state/dream_state.json`, hydrated once per
-process and written back on every mutation.
-
-## The indexer is not append-only
-
-Worth stating explicitly, because it is easy to assume otherwise: only the markdown
-history is append-only.
-
-`CoreMemoryFileIndexer._reindex_file` is delete-then-add, per file — `delete_memories_by_source_date`
-for archive logs, `delete_memories_by_source_file` for notebook and core files — and its
-trigger is mtime. Rewriting a daily log would converge the index with no new machinery.
-
-Log rewriting is still the wrong tool, for three reasons:
-
-1. Duplication is cross-day, so a useful pass must edit many files, not one.
-2. Today's log is appended to by the live write path; read-modify-write races with it.
-3. Logs at or below the watermark are dropped from the index anyway.
-
-### Tombstones are the right tool
-
-`read_tombstones()` filters by normalized content at index time for archive facts and
-notebook chunks alike, and the delete route already implements the full flow:
-
-```text
-append_tombstone(content) → reindex_file_now(that day's log) → row is gone
-```
-
-History stays intact; the derived row disappears. The trap — and the reason that route
-calls reindex explicitly — is that appending a tombstone does not change the log's
-mtime, so the watcher never notices on its own. **Every tombstone write must be paired
-with an explicit reindex of the affected dates.**
-
-## Target workflow
-
-### Tiers get one job each
-
-Today the log and the vault compete: both are indexed at equal weight, so repeated raw
-extractions drown out consolidated pages.
-
-| tier | file | job | writer |
-| --- | --- | --- | --- |
-| Capture buffer | `archive/YYYY-MM-DD.md` | Lossless, fast, never reasoned over at write time | write path (append only) |
-| Knowledge base | `notebook/**/*.md` | Deduplicated claims with provenance and lifecycle | dream only |
-| Index | LanceDB | Derived; rebuilt per file | indexer only |
-
-### Write path
-
-Two new steps around the existing extraction call:
-
-1. Retrieve roughly ten nearest known claims and inject them into the extraction prompt
-   under an "already known — emit a fact only if it is new, or changes one of these"
-   heading. This removes the repetition at its source without reintroducing #34: the
-   model can still emit a revision, it just has to know it is writing one.
-2. Classify each extracted fact against that retrieved set:
-
-   | similarity | outcome | written |
-   | --- | --- | --- |
-   | ≥ 0.97, no new specifics | confirmation | one line to `confirmations.jsonl` |
-   | 0.90 – 0.97 | revision | new fact line, tagged as revising |
-   | < 0.90 | new | new fact line |
-
-   The confirmation sidecar exists for the same reason tombstones do: the write path
-   must never edit the vault, and appending to JSONL is race-free.
-
-### Dream
-
-The dream gains two queues beyond its current one:
-
-- **Ingest** — logs in `(watermark, yesterday]`. Never today's log.
-- **Confirm** — fold `confirmations.jsonl` into claim counters, then truncate it.
-- **Revisit** — vault claims past their `stale_after`.
-
-The duplicate rule in ingest is no longer "do nothing". All four outcomes are live:
-confirm (bump the count), sharpen in place (replace the wording, keep the count), supersede,
-or add as novel.
-
-Confirmation is recorded on the bullet, not in frontmatter:
-
-```markdown
-- Wants to be reminded to drink water hourly from 9 AM to 9 PM. (confirmed 12x, last 2026-08-20)
-```
-
-This is OKF's `sources[].usage_count` in the only place it can go: OKF frontmatter is
-per-document, and these claims are bullets sharing a page rather than a document each. The
-marker's absence means confirmed once, so no page needs migrating. A repeat that
-*contradicts* the bullet is explicitly not a confirmation — it resets the count and takes
-the correction path, or a reversal would count as evidence for the thing it reverses.
-
-Retrieval reads all three. A vault chunk's indexed `importance` — already a term in
-hybrid search — is now derived from its confirmation count (log-scaled, capped), its
-`status` (`deprecated` demotes hard, `draft` slightly), and whether its `stale_after` has
-passed (a discount, not a veto). Daily-log facts stay at the neutral default: they are raw
-capture and carry no lifecycle. Nothing here can remove a claim from retrieval; deletion
-stays with tombstones, where it is reversible and auditable.
-
-A person editing the `facts` block is `human:` evidence and outranks anything the
-extractor produced, so it is written to the manual zone of `MEMORY.md` with a
-`<!-- verified: human:<id> at <ts> -->` stamp, where no generator can overwrite it.
-
-`stale_after` on `3_Personal/` pages is derived from the fact category rather than guessed:
-identity never, `preference` a year, `technical` six months, `goal` three months, `context`
-three weeks. Lint honours it by re-confirming or deprecating, never deleting.
-
-These rules are stated in `DREAM_INSTRUCTIONS` as well as in `schema_example.md`, because
-`schema.md` is copied into a vault once at bootstrap and is user-editable afterwards — every
-existing vault predates them.
-
-The reconcile phase runs **in the runner, not the agent** — `_retire_superseded` reads the
-hand-off file, tombstones, and calls `reindex_file_now` per affected date.
-
-### Borrowed from the Open Knowledge Format
-
-[OKF v0.2](https://github.com/GoogleCloudPlatform/open-knowledge-format/blob/main/SPEC.md)
-frontmatter is per-document, so it maps onto notebook vault pages — which today carry no
-frontmatter at all — and not onto individual log fact lines. Daily logs stay dumb.
-
-Adopted field names, used as the spec defines them (producer-defined keys are explicitly
-permitted, so partial adoption is within its rules):
-
-- `status: draft | stable | deprecated` — `deprecated` is a softer tombstone: the claim
-  stays readable and linkable but leaves retrieval ranking, and it is reversible.
-- `stale_after` — an absolute instant that gives the dream a revisit queue. Defaults are
-  derived from the existing fact `category` rather than guessed per fact by the
-  extractor: identity effectively never, `preference` a year, `technical` six months,
-  `goal` three months, `context` three weeks.
-- `verified: [{by, at}]` — with OKF's actor convention, so a user editing a core memory
-  block is a `human:` verification that outranks anything the extractor produced. This
-  also supplies the contradiction-resolution rule the system currently lacks.
-- `generated: {by, at}` — uniform provenance across logs, vault, and core files.
-- `sources[].usage_count` — the most useful borrowing for this problem. A fact extracted
-  64 times is not 64 facts; it is one claim confirmed 64 times. Collapsing repeats into
-  a counter turns the worst noise source into a ranking signal.
-
-Not adopted: the Attested Computation family (`runtime`, `parameters`, `computation`,
-`executor`, `attester`), `resource` URIs (the vault already uses `[[wikilinks]]`), and
-formal `okf_version` conformance.
-
-## Sequence
-
-1. ~~Make the dream actually run — persist the retry counter so retry-then-skip
-   survives restarts.~~ Done. Everything below assumes consolidation happens.
-2. Repair the index: ~~key the indexer state on `label:filename` rather than absolute
-   paths so it stops leaking between machines~~ (done — discarding the old path-keyed
-   state costs one full reindex, which doubles as the backfill for the window above the
-   watermark), and retire the legacy pre-June rows.
-3. ~~Add the already-known context to extraction.~~ Done.
-4. ~~Stop the dream from resolving duplicates by doing nothing — retire folded-in log
-   lines via the tombstone hand-off.~~ Done.
-5. ~~Add OKF frontmatter to vault pages (writer side): the personal-page contract, the
-   confirmation marker, and category-derived `stale_after`.~~ Done.
-5b. ~~Read those signals back: derive a vault chunk's indexed importance from its
-   confirmation count, `status`, and `stale_after`, and record a human's core-memory edit
-   as a `human:` verification.~~ Done.
-6. ~~Run a catch-up dream over the backlog with ingest and confirm enabled.~~ Done, in
-   the field: once step 1 lifted the one-day-per-run ceiling the backlog drained itself
-   (watermark `2026-08-22`, 47 advances). What it left behind is a *backfill* gap, not a
-   backlog — the resulting pages were consolidated under the pre-step-5 prompts, so of
-   the 18 `3_Personal` pages none carries a confirmation marker or a `stale_after` yet.
-   The lint pass is the mechanism; `scripts/dream_dry_run.py` runs it against a clone
-   first.
-7. ~~Add the write-path classifier and the revisit queue.~~ Done. A restatement of a
-   durably recorded claim now goes to `.state/confirmations.jsonl` instead of becoming
-   another row; anything carrying a new specific, or matched only in a transcript, is
-   written exactly as before. See `memory/classifier.py` and the architecture doc.
-8. Export the 2,833 legacy pre-June rows (the top row of the table above) into daily
-   logs, then delete them. Not the other way round: they are recorded nowhere else.
-
-Steps 3 and 5 are independent. Step 7 did not land before step 6, because a classifier is
-only as good as the claims it compares against.
 
 ---
 
@@ -6114,17 +5999,12 @@ The memory system is designed to avoid silent loss:
 
 ## HTTP API
 
+The memory routes are registered in `src/suzent/server.py` and documented for users in
+[Concepts > Memory > Configuration](https://suzent.com/docs/concepts/memory/configuration#the-memory-api).
+Two adjacent session routes belong to the session layer rather than memory:
+
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/memory/core` | GET | Get core memory blocks |
-| `/memory/core` | PUT | Update a core memory block |
-| `/memory/archival` | GET | Search archival memories |
-| `/memory/archival/{id}` | DELETE | Delete a memory |
-| `/memory/stats` | GET | Memory statistics |
-| `/memory/daily` | GET | List daily log dates |
-| `/memory/daily/{date}` | GET | Get daily log content |
-| `/memory/file` | GET | Get MEMORY.md content |
-| `/memory/reindex` | POST | Rebuild LanceDB from markdown |
 | `/session/{id}/transcript` | GET | Get session transcript |
 | `/session/{id}/state` | GET | Get agent state snapshot |
 
@@ -6511,7 +6391,7 @@ five-question ownership test, see
 ### Core
 - [Providers](https://suzent.com/docs/concepts/providers/): Configure model providers (OpenAI, Anthropic, Gemini, Ollama, and more)
 - [Memory](https://suzent.com/docs/concepts/memory/): Persistent memory across sessions — how it works and how to configure it
-- [LLM Wiki](https://suzent.com/docs/concepts/memory/llm-wiki): Agent-maintained structured knowledge vault
+- [Notebook](https://suzent.com/docs/concepts/memory/llm-wiki): Agent-maintained knowledge vault, Obsidian-compatible
 
 ### Tools & Capabilities
 - [Tools](https://suzent.com/docs/concepts/tools/): Full reference for all built-in tools
@@ -6536,5 +6416,6 @@ five-question ownership test, see
 - [Docker Services](https://suzent.com/docs/developing/docker-services): Redis, SearXNG, and sandbox configuration
 - [Release Guide](https://suzent.com/docs/developing/releasing): Version bumping and release process
 - [Model Capability Updates](https://suzent.com/docs/developing/model-capability-updates): Maintainer workflow for refreshing shipped model metadata
-- [Memory Internals](https://suzent.com/docs/developing/memory/internals): Memory system architecture for contributors
+- [Memory Architecture](https://suzent.com/docs/developing/memory/architecture): How memory is written, consolidated, indexed, and read
+- [Memory Internals](https://suzent.com/docs/developing/memory/internals): Class-by-class reference for contributors
 - [Logo Standard](https://suzent.com/docs/developing/logo): Canonical logo geometry, component usage, and sizing guidelines
