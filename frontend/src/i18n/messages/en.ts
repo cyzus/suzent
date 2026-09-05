@@ -229,8 +229,14 @@ export const en = {
   },
   settings: {
     browser: {
+      connectionMode: 'Connection mode',
+      managed: 'Launch a managed browser',
+      existing: 'Connect to my existing browser',
+      existingHelp:
+        'Select Chrome or Edge, open its inspect page, and enable remote debugging. Approve the browser connection prompt. Suzent starts in a new tab; ask the agent to list and select your open tabs. Your browser stays open when Suzent disconnects.',
+
       title: 'Browser',
-      subtitle: 'Choose how Suzent opens its managed browser.',
+      subtitle: 'Choose how Suzent connects to a browser.',
       channel: 'Browser to use',
       chromium: 'Bundled Chromium',
       chrome: 'Google Chrome',
@@ -251,8 +257,8 @@ export const en = {
       overrides:
         'Disabled settings are controlled by environment variables. Remove those overrides to change them here.',
       restart:
-        'Changes apply on the next browser action. Suzent relaunches its managed browser and resets the current page; the backend keeps running.',
-      saved: 'Saved. The managed browser will use these settings on the next browser action.',
+        'Changes apply on the next browser action. Managed browsers restart; existing browsers are disconnected and left open. The backend keeps running.',
+      saved: 'Saved. These settings apply on the next browser action.',
       saving: 'Saving…',
       loading: 'Loading browser settings…',
       error: 'Could not load or save browser settings. Check the backend connection and try again.',

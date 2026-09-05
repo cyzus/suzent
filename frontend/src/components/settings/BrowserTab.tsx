@@ -4,6 +4,8 @@ import { useI18n } from '../../i18n';
 import {
   fetchBrowserSettings,
   browserChannelOptions,
+  connectionModeChange,
+  existingBrowserAvailable,
   saveBrowserSettings,
   type BrowserPreferences,
   type BrowserSettingsResponse,
@@ -78,6 +80,27 @@ export function BrowserTab(): React.ReactElement {
       ) : (
         <SettingsCard>
           <div className="space-y-6">
+            <BrutalSelect
+              label={t('settings.browser.connectionMode')}
+              value={data.settings.connection_mode}
+              disabled={busy || data.environment_overrides.includes('connection_mode')}
+              onChange={(value) =>
+                void update(
+                  connectionModeChange(data, value as BrowserPreferences['connection_mode'])
+                )
+              }
+              options={[
+                { value: 'managed', label: t('settings.browser.managed') },
+                {
+                  value: 'existing',
+                  label: t('settings.browser.existing'),
+                  disabled: !existingBrowserAvailable(data),
+                },
+              ]}
+            />
+            {data.settings.connection_mode === 'existing' && (
+              <p className="text-sm">{t('settings.browser.existingHelp')}</p>
+            )}
             <div>
               <BrutalSelect
                 label={t('settings.browser.channel')}
@@ -86,7 +109,12 @@ export function BrowserTab(): React.ReactElement {
                 onChange={(channel) =>
                   void update({ channel: channel as BrowserPreferences['channel'] })
                 }
-                options={browserChannelOptions(data.available_browsers, t)}
+                options={browserChannelOptions(data.available_browsers, t).map((option) => ({
+                  ...option,
+                  disabled:
+                    option.disabled ||
+                    (data.settings.connection_mode === 'existing' && option.value === 'chromium'),
+                }))}
               />
               <p className="mt-2 text-sm text-neutral-500">{t('settings.browser.channelHelp')}</p>
               {!data.available_browsers[data.settings.channel] && (
@@ -101,7 +129,11 @@ export function BrowserTab(): React.ReactElement {
                   type="checkbox"
                   className="h-5 w-5 accent-black"
                   checked={data.settings.persistent}
-                  disabled={busy || data.environment_overrides.includes('persistent')}
+                  disabled={
+                    busy ||
+                    data.settings.connection_mode === 'existing' ||
+                    data.environment_overrides.includes('persistent')
+                  }
                   onChange={(event) => void update({ persistent: event.target.checked })}
                 />
                 {t('settings.browser.persistent')}
@@ -116,7 +148,11 @@ export function BrowserTab(): React.ReactElement {
                   type="checkbox"
                   className="h-5 w-5 accent-black"
                   checked={!data.settings.headless}
-                  disabled={busy || data.environment_overrides.includes('headless')}
+                  disabled={
+                    busy ||
+                    data.settings.connection_mode === 'existing' ||
+                    data.environment_overrides.includes('headless')
+                  }
                   onChange={(event) => void update({ headless: !event.target.checked })}
                 />
                 {t('settings.browser.visible')}

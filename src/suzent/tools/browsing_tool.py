@@ -11,6 +11,7 @@ from playwright.async_api import (
     CDPSession,
     ElementHandle,
     TimeoutError as PlaywrightTimeoutError,
+    Error as PlaywrightError,
 )
 from starlette.websockets import WebSocket
 from pydantic import Field, ValidationError
@@ -19,6 +20,7 @@ from suzent.tools.browser_config import (
     BrowserSettings,
     normalize_browser_url,
 )
+from suzent.tools.browser_connection import discover_browser_endpoint
 from suzent.tools.browser_snapshot import (
     SNAPSHOT_SCRIPT,
     ELEMENT_STATE_SCRIPT,
@@ -51,6 +53,9 @@ class BrowserSessionManager:
         self._client: CDPSession | None = None
         self._websockets: list[WebSocket] = []
         self._streaming = False
+        self._attached = False
+        self._tabs: dict[str, Page] = {}
+        self._next_tab_id = 0
         self._init_lock: asyncio.Lock | None = None
 
     @classmethod
@@ -111,7 +116,7 @@ class BrowserSessionManager:
                     else self.settings
                 )
                 changed = desired != self.settings
-                replaced = changed and self._page is not None
+                replaced = self._page is not None
                 if (
                     not changed
                     and self._page
@@ -157,7 +162,9 @@ class BrowserSessionManager:
                     self._context.set_default_timeout(5000)
                     self._context.set_default_navigation_timeout(15000)
                     self._page = (
-                        next(iter(self._context.pages), None)
+                        await self._context.new_page()
+                        if self._attached
+                        else next(iter(self._context.pages), None)
                         or await self._context.new_page()
                     )
                     self._page.on("framenavigated", self._on_navigation)
@@ -174,6 +181,23 @@ class BrowserSessionManager:
         return await self._run_on_main_loop(_launch())
 
     async def _launch_context(self, headless: bool | None) -> None:
+        if self.settings.connection_mode == "existing":
+            endpoint = await asyncio.to_thread(
+                discover_browser_endpoint, self.settings.channel
+            )
+            self._attached = True
+            try:
+                self._browser = await self._playwright.chromium.connect_over_cdp(
+                    endpoint, timeout=30000
+                )
+            except PlaywrightError:
+                raise ValueError(
+                    "Could not attach to the selected browser. Keep it running, enable "
+                    "remote debugging in its inspect page, and approve the browser's "
+                    "connection prompt before retrying."
+                ) from None
+            self._context = self._browser.contexts[0]
+            return
         options = {
             "headless": self.settings.headless if headless is None else headless,
             "channel": None
@@ -195,6 +219,59 @@ class BrowserSessionManager:
             self._context = await self._browser.new_context(
                 viewport={"width": 1280, "height": 800}
             )
+
+    async def tabs(self) -> ToolResult:
+        async def _list() -> ToolResult:
+            async with self._action_lock:
+                pages = self._context.pages
+                self._tabs = {
+                    key: page for key, page in self._tabs.items() if page in pages
+                }
+                for page in pages:
+                    if page not in self._tabs.values():
+                        self._next_tab_id += 1
+                        self._tabs[f"tab-{self._next_tab_id}"] = page
+                items = [
+                    {"id": key, "url": page.url, "selected": page == self._page}
+                    for key, page in self._tabs.items()
+                ]
+                return ToolResult.success_result(
+                    "\n".join(
+                        f"{item['id']} {'*' if item['selected'] else ''} {item['url']}"
+                        for item in items
+                    ),
+                    metadata={"tabs": items},
+                )
+
+        return await self._run_on_main_loop(_list())
+
+    async def select_tab(self, tab_id: str) -> ToolResult:
+        async def _select() -> ToolResult:
+            async with self._action_lock:
+                page = self._tabs.get(tab_id)
+                if page is None or page.is_closed():
+                    return ToolResult.error_result(
+                        ToolErrorCode.INVALID_ARGUMENT,
+                        "Tab expired or unknown. Call tabs again.",
+                    )
+                await self.stop_streaming()
+                await self._dispose_refs()
+                self._snapshot_generation += 1
+                if self._client:
+                    await self._client.detach()
+                if self._page:
+                    self._page.remove_listener("framenavigated", self._on_navigation)
+                self._page = page
+                page.on("framenavigated", self._on_navigation)
+                self._client = await self._context.new_cdp_session(page)
+                self._client.on("Page.screencastFrame", self._on_screencast_frame)
+                if self._websockets:
+                    await self.start_streaming()
+                return ToolResult.success_result(
+                    "Tab selected. Call snapshot before interacting."
+                )
+
+        return await self._run_on_main_loop(_select())
 
     def _on_navigation(self, frame: Any) -> None:
         if self._page and frame == self._page.main_frame:
@@ -585,14 +662,21 @@ class BrowserSessionManager:
         self._snapshot_generation += 1
         await self._dispose_refs()
 
-        if self._context:
+        if self._page:
+            self._page.remove_listener("framenavigated", self._on_navigation)
+        if self._client:
+            try:
+                await self._client.detach()
+            except Exception:
+                pass
+        if self._context and not self._attached:
             try:
                 await self._context.close()
             except Exception as e:
                 logger.debug(f"Ignored error closing context: {e}")
             self._context = None
 
-        if self._browser:
+        if self._browser and not self._attached:
             try:
                 await self._browser.close()
             except Exception as e:
@@ -609,6 +693,10 @@ class BrowserSessionManager:
                 logger.debug(f"Ignored error stopping playwright: {e}")
             self._playwright = None
 
+        self._context = None
+        self._browser = None
+        self._attached = False
+        self._tabs.clear()
         self._page = None
         self._client = None
         logger.info("Browser Session Closed.")
@@ -641,12 +729,21 @@ class BrowsingTool(Tool):
         args = request.arguments
         try:
             replaced = await self.session_mgr.ensure_session()
-            if replaced and request.command not in {"open", "snapshot"}:
+            if replaced and request.command not in {
+                "open",
+                "snapshot",
+                "tabs",
+                "select_tab",
+            }:
                 return ToolResult.error_result(
                     ToolErrorCode.INVALID_ARGUMENT,
-                    "Browser settings changed and the managed browser was restarted. Open a page or call snapshot before interacting.",
+                    "Browser connection changed or restarted. Open a page or call snapshot before interacting.",
                 )
             match request.command:
+                case "tabs":
+                    return await self.session_mgr.tabs()
+                case "select_tab":
+                    return await self.session_mgr.select_tab(args[0])
                 case "snapshot":
                     return await self.session_mgr.get_snapshot(
                         interactive_only=arguments == ["-i"],
@@ -673,6 +770,8 @@ class BrowsingTool(Tool):
                 f"{command} completed. Call snapshot to observe the page.",
                 metadata={"command": command},
             )
+        except ValueError as exc:
+            return ToolResult.error_result(ToolErrorCode.INVALID_ARGUMENT, str(exc))
         except PlaywrightTimeoutError:
             return ToolResult.error_result(
                 ToolErrorCode.TIMEOUT,
@@ -703,6 +802,8 @@ class BrowsingTool(Tool):
                 "refresh",
                 "click_coords",
                 "scroll",
+                "tabs",
+                "select_tab",
             ],
             Field(description="Browser command to execute."),
         ],
@@ -710,7 +811,7 @@ class BrowsingTool(Tool):
             list[str] | None,
             Field(
                 default=None,
-                description="open: [url] or []; snapshot: [] or [offset, limit<=100] or [-i]; click/dblclick/hover: [ref]; fill/type/press: [ref, value]; click_coords: [x, y]; scroll: [dx, dy] or []; back/forward/reload/refresh: []. Use exact @gNeN refs from the latest snapshot; selectors are not accepted.",
+                description="tabs: [] lists stable tab IDs; select_tab: [tab-id] switches tabs; open: [url] or []; snapshot: [] or [offset, limit<=100] or [-i]; click/dblclick/hover: [ref]; fill/type/press: [ref, value]; click_coords: [x, y]; scroll: [dx, dy] or []; back/forward/reload/refresh: []. Use exact @gNeN refs from the latest snapshot; selectors are not accepted.",
             ),
         ] = None,
     ) -> ToolResult:

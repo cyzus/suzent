@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 vi.mock('./api', () => ({ getApiBase: () => 'http://localhost:8000' }));
 import {
   browserChannelOptions,
+  connectionModeChange,
+  existingBrowserAvailable,
   fetchBrowserSettings,
   saveBrowserSettings,
 } from './browserSettings';
@@ -10,6 +12,29 @@ import {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('browser settings API', () => {
+  it('chooses an installed browser for attachment and respects environment locks', () => {
+    const data = {
+      settings: {
+        connection_mode: 'managed' as const,
+        channel: 'chromium' as const,
+        persistent: false,
+        headless: true,
+      },
+      available_browsers: { chromium: true, chrome: false, msedge: true },
+      environment_overrides: [] as Array<'channel'>,
+    };
+    expect(existingBrowserAvailable(data)).toBe(true);
+    expect(connectionModeChange(data, 'existing')).toEqual({
+      connection_mode: 'existing',
+      channel: 'msedge',
+    });
+    data.environment_overrides = ['channel'];
+    expect(existingBrowserAvailable(data)).toBe(false);
+    expect(connectionModeChange(data, 'existing')).toEqual({ connection_mode: 'existing' });
+    data.environment_overrides = [];
+    data.available_browsers.msedge = false;
+    expect(existingBrowserAvailable(data)).toBe(false);
+  });
   it('posts only the changed preference without copying effective overrides', async () => {
     const fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
     vi.stubGlobal('fetch', fetch);

@@ -304,8 +304,14 @@ export const zhCN = {
   },
   settings: {
     browser: {
+      connectionMode: '连接方式',
+      managed: '启动托管浏览器',
+      existing: '连接现有浏览器',
+      existingHelp:
+        '选择 Chrome 或 Edge，在浏览器的 inspect 页面启用远程调试，并批准连接提示。Suzent 从新标签页开始；可让智能体列出并选择其他标签页。断开连接不会关闭浏览器。',
+
       title: '浏览器',
-      subtitle: '选择 Suzent 托管浏览器的启动方式。',
+      subtitle: '选择 Suzent 连接浏览器的方式。',
       channel: '使用的浏览器',
       chromium: '内置 Chromium',
       chrome: 'Google Chrome',
@@ -321,8 +327,8 @@ export const zhCN = {
       visibleHelp: '打开可见窗口，以便直接登录和操作网页。',
       overrides: '禁用的设置由环境变量控制。移除对应环境变量后即可在此修改。',
       restart:
-        '更改将在下次浏览器操作时生效。Suzent 会重新启动托管浏览器并重置当前页面，后端继续运行。',
-      saved: '已保存。托管浏览器将在下次操作时使用这些设置。',
+        '设置在下次浏览器操作时生效。托管浏览器将重启；现有浏览器仅断开连接并保持打开。后端继续运行。',
+      saved: '已保存，将在下次浏览器操作时生效。',
       saving: '保存中…',
       loading: '正在加载浏览器设置…',
       error: '无法加载或保存浏览器设置。请检查后端连接后重试。',
