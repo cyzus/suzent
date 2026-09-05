@@ -166,3 +166,14 @@ def test_overhead_is_dropped_when_the_measurement_predates_a_compaction() -> Non
 def test_overhead_is_zero_before_any_response_is_measured() -> None:
     assert context_overhead_tokens([_request("x" * 4000)]) == 0
     assert estimate_tokens([_request("x" * 4000)], 800_000).estimated_tokens == 1000
+
+
+def test_overhead_keeps_large_but_plausible_schema_weight() -> None:
+    # A deferred-tool-heavy setup can legitimately put five figures of schemas in
+    # front of the history. A fixed low ceiling would discard that as "stale" and
+    # compact far too late; the ceiling scales with the window instead.
+    history = [_request("x" * 400), _response(60_000, "y" * 400), _request("z" * 800)]
+
+    assert context_overhead_tokens(history, 128_000) == 59_900
+    # Same reading against a window small enough to make it implausible.
+    assert context_overhead_tokens(history, 64_000) == 0

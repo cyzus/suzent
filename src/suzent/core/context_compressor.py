@@ -486,9 +486,16 @@ class TokenBudget:
         return self.estimated_tokens >= self.limit * self.trigger_threshold
 
 
-# A system prompt plus every tool's JSON schema is a five-figure token count at
-# the very top end; anything beyond this is not overhead but a stale measurement.
-MAX_PLAUSIBLE_CONTEXT_OVERHEAD_TOKENS = 200_000
+# Share of the context window the non-history part of a prompt (system prompt +
+# every tool schema) can plausibly occupy. Past this, the measurement is not
+# overhead but a stale reading taken against a history that no longer exists.
+#
+# It has to scale with the window rather than sit at a fixed token count: a
+# deferred-tool-heavy setup can legitimately carry five figures of schemas, so a
+# low fixed ceiling would discard real overhead and compact too late, while a
+# ceiling at the window itself can never reject anything (no measurement can
+# exceed the window) — which is how the stale-reading guard came to be dead code.
+MAX_PLAUSIBLE_CONTEXT_OVERHEAD_RATIO = 0.5
 
 
 def _part_chars(part: Any) -> int:
@@ -513,7 +520,7 @@ def estimate_history_tokens(messages: list) -> int:
     return total_chars // 4
 
 
-def context_overhead_tokens(messages: list) -> int:
+def context_overhead_tokens(messages: list, limit: Optional[int] = None) -> int:
     """Tokens the real prompt carries beyond the message history itself.
 
     The system prompt and every tool's JSON schema are sent on each request but
@@ -536,7 +543,11 @@ def context_overhead_tokens(messages: list) -> int:
             # that request — cache reads and writes included — and the request
             # that produced this response was everything before it.
             overhead = measured - estimate_history_tokens(messages[:index])
-            if overhead > MAX_PLAUSIBLE_CONTEXT_OVERHEAD_TOKENS:
+            ceiling = int(
+                (limit or resolve_context_limit())
+                * MAX_PLAUSIBLE_CONTEXT_OVERHEAD_RATIO
+            )
+            if overhead > ceiling:
                 # The gap is far too large to be a system prompt and tool
                 # schemas: this response was produced *before* a compaction
                 # rewrote the history behind it, so its prompt covered messages
@@ -551,7 +562,7 @@ def estimate_tokens(messages: list, limit: int) -> TokenBudget:
     """Best available size of the context window these messages represent."""
     return TokenBudget(
         estimated_tokens=estimate_history_tokens(messages)
-        + context_overhead_tokens(messages),
+        + context_overhead_tokens(messages, limit),
         limit=limit,
         trigger_threshold=CONFIG.context_compaction_trigger,
         soft_trim_threshold=CONFIG.context_soft_trim_threshold,
@@ -620,6 +631,27 @@ class ToolResultTrimmer:
 # ---------------------------------------------------------------------------
 
 
+def _clear_stale_usage(messages: list) -> list:
+    """Drop provider usage from messages carried across a compaction.
+
+    ``usage.input_tokens`` on a retained tail message describes the prompt that
+    produced it — a prompt that included the history compaction has just thrown
+    away. Left in place, ``context_overhead_tokens`` reads that number against
+    the new, much shorter history and reports the discarded messages as fixed
+    overhead, so the estimate never falls and compaction re-fires forever.
+    """
+    cleared = []
+    for msg in messages:
+        usage = getattr(msg, "usage", None)
+        if usage is not None and int(getattr(usage, "input_tokens", 0) or 0):
+            try:
+                msg = dataclasses.replace(msg, usage=type(usage)())
+            except Exception:  # pragma: no cover - non-dataclass message types
+                pass
+        cleared.append(msg)
+    return cleared
+
+
 class ContextCompressor:
     """Handles compression of pydantic-ai message history.
 
@@ -680,7 +712,7 @@ class ContextCompressor:
             tail_start = safe_tool_history_tail_start(
                 messages, max(1, len(messages) - keep)
             )
-            return messages[:1] + messages[tail_start:]
+            return messages[:1] + _clear_stale_usage(messages[tail_start:])
         except Exception as e:
             logger.error(f"Context compression failed: {e}")
             return messages
@@ -776,7 +808,7 @@ class ContextCompressor:
 
         if not summary:
             logger.warning("Failed to generate summary for compression.")
-            return messages[:1] + messages[end_index:]
+            return messages[:1] + _clear_stale_usage(messages[end_index:])
 
         # Phase 6 — improved synthetic summary framing
         from suzent.core.system_reminder import make_user_prompt_part
@@ -814,7 +846,9 @@ class ContextCompressor:
         )
 
         new_messages = (
-            messages[:1] + [summary_request, summary_response] + messages[end_index:]
+            messages[:1]
+            + [summary_request, summary_response]
+            + _clear_stale_usage(messages[end_index:])
         )
 
         logger.info(
@@ -1089,6 +1123,22 @@ def context_input_tokens(
     return estimate_tokens(messages, resolve_context_limit(model_id)).estimated_tokens
 
 
+# Chats where a completed compaction failed to bring the estimate back under the
+# trigger, mapped to the estimate it settled at. Compacting again at or below
+# that size cannot do better — without this the processor re-summarizes its own
+# summary before every request for the rest of the conversation. Growth past the
+# recorded size re-arms it, since a longer tail is newly compactible.
+_COMPACTION_INEFFECTIVE_AT: dict[str, int] = {}
+
+
+def reset_compaction_suppression(chat_id: str = "") -> None:
+    """Clear the "compaction did not help" marker for a chat (or all chats)."""
+    if chat_id:
+        _COMPACTION_INEFFECTIVE_AT.pop(chat_id, None)
+    else:
+        _COMPACTION_INEFFECTIVE_AT.clear()
+
+
 def make_compaction_history_processor(
     source: str = "auto_midrun", model_id: Optional[str] = None
 ):
@@ -1132,6 +1182,15 @@ def make_compaction_history_processor(
         if current_tokens < trigger:
             return messages
 
+        # A previous pass on this chat completed and still left the estimate over
+        # the trigger. Repeating it at the same size only burns a summarization
+        # call per request; wait until the history actually grows past that point.
+        ineffective_at = _COMPACTION_INEFFECTIVE_AT.get(chat_id)
+        if ineffective_at is not None:
+            if current_tokens <= ineffective_at:
+                return messages
+            _COMPACTION_INEFFECTIVE_AT.pop(chat_id, None)
+
         # Idempotency: if the tail is already summary-framed and we're only just
         # over the line because of the recent turns, another pass can't help.
         keep_recent = CONFIG.compaction_keep_recent_turns * 2
@@ -1164,7 +1223,7 @@ def make_compaction_history_processor(
             tail_start = safe_tool_history_tail_start(
                 messages, max(1, len(messages) - keep_recent)
             )
-            compressed = messages[:1] + messages[tail_start:]
+            compressed = messages[:1] + _clear_stale_usage(messages[tail_start:])
         except Exception as e:
             logger.error(f"Mid-run compaction failed: {e}")
             emit_compaction_event(
@@ -1196,6 +1255,10 @@ def make_compaction_history_processor(
 
         if len(compressed) >= len(messages):
             # No reduction (e.g. already compacted and nothing else to drop).
+            # Nothing here will change until the history grows, and the pass
+            # already paid for a summarization call, so stop re-running it.
+            if chat_id:
+                _COMPACTION_INEFFECTIVE_AT[chat_id] = current_tokens
             # This still has to report a terminal stage: a "start" was already
             # broadcast, and a surface that animates the running pass would spin
             # forever if this path stayed silent.
@@ -1213,6 +1276,14 @@ def make_compaction_history_processor(
             return compressed
 
         tokens_after = estimate_tokens(compressed, limit).estimated_tokens
+        if tokens_after >= trigger:
+            logger.warning(
+                f"Compaction left ~{tokens_after} tokens, still at or over the "
+                f"trigger (~{int(trigger)}); suppressing further automatic "
+                f"compaction for chat {chat_id or '(none)'} until it grows."
+            )
+            if chat_id:
+                _COMPACTION_INEFFECTIVE_AT[chat_id] = tokens_after
         emit_compaction_event(
             chat_id=chat_id,
             stage="complete",
