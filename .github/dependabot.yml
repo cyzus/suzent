@@ -1,0 +1,22 @@
+# Scoped deliberately narrow: GitHub Actions only.
+#
+# The npm (frontend, website, src-tauri, apps/suzent-installer), cargo, and uv
+# manifests are intentionally left out. Six manifests on a weekly cadence
+# produces more PRs than this repo can review, and a bot everyone ignores stops
+# working for the security updates that matter. Vulnerable dependencies in
+# those ecosystems are covered by Dependabot security updates, enabled in repo
+# settings, which only opens a PR when there is an actual advisory with a fix.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      actions:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "ci"
