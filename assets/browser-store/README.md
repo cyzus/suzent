@@ -21,7 +21,7 @@ Prepared 2026-09-05. Artwork follows `docs/assets/banner_v2.png`: monochrome eng
 Three additional feature illustrations are available in both `en/` and `zh-CN/`, each at 1280 × 800:
 
 - `03-your-tabs.png`: pointing hand and tilted, hovering familiar — existing tabs and signed-in sessions.
-- `04-live-preview.png`: framing hands and front-facing familiar — preview of the selected tab.
+- `04-live-preview.png`: framing hands and a dimensional familiar reflected in the mirror — preview of the selected tab.
 - `05-your-control.png`: upright stop gesture and tumbling familiar — disconnect while leaving tabs open.
 
 These are conceptual feature cards, not product screenshots. Use alongside the actual UI captures rather than replacing them. Their text-free source illustrations are in `artwork/gesture-*.png`. Rebuild the six cards with `uv run --no-sync python scripts/build_browser_feature_assets.py`; no frontend server is needed. The cube's viewpoint and orientation intentionally vary across the series.
