@@ -12,7 +12,7 @@ from pathlib import Path
 from playwright.async_api import async_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = ROOT / "assets/browser-store"
+SOURCE = ROOT / "docs/assets/browser-store"
 OUTPUT = ROOT / "store-upload/listing-assets"
 EXTENSION = ROOT / "extensions/browser"
 
@@ -135,7 +135,7 @@ if __name__ == "__main__":
         entry.write_text(
             (SOURCE / "preview.tsx")
             .read_text(encoding="utf-8")
-            .replace("../../frontend/", "./"),
+            .replace("../../../frontend/", "./"),
             encoding="utf-8",
         )
         asyncio.run(main())

@@ -1,9 +1,9 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
-import { I18nProvider } from "../../frontend/src/i18n";
-import { BrowserTab } from "../../frontend/src/components/settings/BrowserTab";
-import { SuzentLogo } from "../../frontend/src/components/SuzentLogo";
-import "../../frontend/src/styles.css";
+import { I18nProvider } from "../../../frontend/src/i18n";
+import { BrowserTab } from "../../../frontend/src/components/settings/BrowserTab";
+import { SuzentLogo } from "../../../frontend/src/components/SuzentLogo";
+import "../../../frontend/src/styles.css";
 createRoot(document.getElementById("root")!).render(
   <I18nProvider>
     <div

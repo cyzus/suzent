@@ -97,12 +97,12 @@ bin/
 
 # Browser store exports; source artwork and renderers remain tracked.
 /store-upload/
-/assets/browser-store/en/
-/assets/browser-store/zh-CN/
-/assets/browser-store/logos/
-/assets/browser-store/promo-*.png
-/assets/browser-store/index.html
-/assets/browser-store/privacy-policy.md
-/assets/browser-store/privacy-policy-draft.md
+/docs/assets/browser-store/en/
+/docs/assets/browser-store/zh-CN/
+/docs/assets/browser-store/logos/
+/docs/assets/browser-store/promo-*.png
+/docs/assets/browser-store/index.html
+/docs/assets/browser-store/privacy-policy.md
+/docs/assets/browser-store/privacy-policy-draft.md
 /frontend/browser-store-preview.html
 /frontend/browser-store-preview.tsx

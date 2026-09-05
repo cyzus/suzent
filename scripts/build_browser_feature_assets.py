@@ -7,7 +7,7 @@ from pathlib import Path
 
 from playwright.async_api import async_playwright
 
-ROOT = Path(__file__).resolve().parents[1] / "assets/browser-store"
+ROOT = Path(__file__).resolve().parents[1] / "docs/assets/browser-store"
 OUTPUT = Path(__file__).resolve().parents[1] / "store-upload/listing-assets"
 FEATURES = [
     (
