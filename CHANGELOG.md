@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v0.12.1] - 2026-09-05
 
 ### 🐛 Fixed
+- Stop auto-compaction re-firing after every compaction (#190)
 - Add fullscreen functionality to ContextFileCard and localize 'enlarge' text
 - Measure the worked timer over the whole turn (#188)
 
