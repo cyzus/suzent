@@ -486,11 +486,16 @@ class TokenBudget:
         return self.estimated_tokens >= self.limit * self.trigger_threshold
 
 
-# A system prompt plus every tool's JSON schema is a five-figure token count at
-# the very top end; anything beyond this is not overhead but a stale measurement.
-# This must stay well *below* any model's context window: sized at the window it
-# could never reject a stale reading, because no measurement can exceed it.
-MAX_PLAUSIBLE_CONTEXT_OVERHEAD_TOKENS = 50_000
+# Share of the context window the non-history part of a prompt (system prompt +
+# every tool schema) can plausibly occupy. Past this, the measurement is not
+# overhead but a stale reading taken against a history that no longer exists.
+#
+# It has to scale with the window rather than sit at a fixed token count: a
+# deferred-tool-heavy setup can legitimately carry five figures of schemas, so a
+# low fixed ceiling would discard real overhead and compact too late, while a
+# ceiling at the window itself can never reject anything (no measurement can
+# exceed the window) — which is how the stale-reading guard came to be dead code.
+MAX_PLAUSIBLE_CONTEXT_OVERHEAD_RATIO = 0.5
 
 
 def _part_chars(part: Any) -> int:
@@ -515,7 +520,7 @@ def estimate_history_tokens(messages: list) -> int:
     return total_chars // 4
 
 
-def context_overhead_tokens(messages: list) -> int:
+def context_overhead_tokens(messages: list, limit: Optional[int] = None) -> int:
     """Tokens the real prompt carries beyond the message history itself.
 
     The system prompt and every tool's JSON schema are sent on each request but
@@ -538,7 +543,11 @@ def context_overhead_tokens(messages: list) -> int:
             # that request — cache reads and writes included — and the request
             # that produced this response was everything before it.
             overhead = measured - estimate_history_tokens(messages[:index])
-            if overhead > MAX_PLAUSIBLE_CONTEXT_OVERHEAD_TOKENS:
+            ceiling = int(
+                (limit or resolve_context_limit())
+                * MAX_PLAUSIBLE_CONTEXT_OVERHEAD_RATIO
+            )
+            if overhead > ceiling:
                 # The gap is far too large to be a system prompt and tool
                 # schemas: this response was produced *before* a compaction
                 # rewrote the history behind it, so its prompt covered messages
@@ -553,7 +562,7 @@ def estimate_tokens(messages: list, limit: int) -> TokenBudget:
     """Best available size of the context window these messages represent."""
     return TokenBudget(
         estimated_tokens=estimate_history_tokens(messages)
-        + context_overhead_tokens(messages),
+        + context_overhead_tokens(messages, limit),
         limit=limit,
         trigger_threshold=CONFIG.context_compaction_trigger,
         soft_trim_threshold=CONFIG.context_soft_trim_threshold,
