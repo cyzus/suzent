@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ArrowPathIcon,
+  ArrowsPointingOutIcon,
   CheckIcon,
   ChevronDownIcon,
   ClipboardDocumentIcon,
@@ -12,6 +13,7 @@ import { useChatStreamingStore } from '../../hooks/useChatStore';
 import { memoryApi } from '../../lib/memoryApi';
 import type { RepositoryContextResponse, RepositoryInstruction } from '../../types/memory';
 import { BrutalIconButton } from '../BrutalButton';
+import { FullscreenOverlay } from '../FullscreenOverlay';
 import { MarkdownRenderer } from '../chat/MarkdownRenderer';
 
 interface RepositoryContextViewProps {
@@ -47,6 +49,7 @@ function ContextFileCard({
 }: ContextFileCardProps) {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
+  const [enlarged, setEnlarged] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(content);
   const [saving, setSaving] = useState(false);
@@ -87,65 +90,114 @@ function ContextFileCard({
     setEditing(false);
   };
 
-  return (
-    <article className="border-2 border-brutal-black bg-white shadow-[3px_3px_0_0_#000] dark:bg-zinc-800">
-      <div className="flex items-start gap-2 px-3 py-2.5">
-        <button
-          type="button"
-          onClick={() => setExpanded((value) => !value)}
-          className="min-w-0 flex-1 text-left"
-          aria-expanded={expanded}
-        >
-          <div className="flex min-w-0 items-center gap-2">
-            <ChevronDownIcon
-              className={`h-4 w-4 shrink-0 stroke-[2.5] transition-transform ${expanded ? '' : '-rotate-90'}`}
-            />
-            <span className="truncate font-brutal text-sm uppercase leading-none text-brutal-black dark:text-white">
-              {name}
-            </span>
-            <span className="shrink-0 border border-brutal-black px-1.5 py-0.5 font-mono text-[8px] uppercase leading-none text-neutral-600 dark:border-white dark:text-neutral-300">
-              {sourceLabel}
-            </span>
-          </div>
-          <p
-            className="ml-6 mt-1.5 truncate font-mono text-[10px] leading-none text-neutral-500 dark:text-neutral-400"
-            title={path}
-          >
-            {path}
-          </p>
-        </button>
+  const closeEnlarged = () => {
+    if (saving) return;
+    cancel();
+    setEnlarged(false);
+  };
 
-        {expanded && !editing && (
-          <div className="flex shrink-0 gap-1.5">
-            <BrutalIconButton
-              label={copied ? t('coreMemory.copiedText') : t('common.copy')}
-              onClick={copy}
-            >
-              {copied ? (
-                <CheckIcon className="h-4 w-4 stroke-[2.5]" />
-              ) : (
-                <ClipboardDocumentIcon className="h-4 w-4 stroke-2" />
-              )}
-            </BrutalIconButton>
-            {editable && (
-              <BrutalIconButton
-                label={t('common.edit')}
-                onClick={() => {
-                  setSaveFailed(false);
-                  setEditing(true);
-                }}
+  const body = (
+    <div className="break-words px-3 py-2.5 text-[13px] leading-5 text-slate-700 dark:text-zinc-200 [&_blockquote]:my-2 [&_li]:my-0 [&_ol]:my-1.5 [&_p]:my-1.5 [&_pre]:my-2 [&_ul]:my-1.5">
+      <MarkdownRenderer content={content} streamingLite compact />
+    </div>
+  );
+
+  return (
+    <>
+      <article className="border-2 border-brutal-black bg-white shadow-[3px_3px_0_0_#000] dark:bg-zinc-800">
+        <div className="flex items-start gap-2 px-3 py-2.5">
+          <button
+            type="button"
+            onClick={() => setExpanded((value) => !value)}
+            className="min-w-0 flex-1 text-left"
+            aria-expanded={expanded}
+          >
+            <div className="flex min-w-0 items-center gap-2">
+              <ChevronDownIcon
+                className={`h-4 w-4 shrink-0 stroke-[2.5] transition-transform ${expanded ? '' : '-rotate-90'}`}
+              />
+              <span
+                className="truncate font-brutal text-sm uppercase leading-none text-brutal-black dark:text-white"
+                title={name}
               >
-                <PencilIcon className="h-4 w-4 stroke-2" />
-              </BrutalIconButton>
-            )}
+                {name}
+              </span>
+            </div>
+            <div className="ml-6 mt-1.5 flex min-w-0">
+              <span className="truncate border border-brutal-black px-1.5 py-0.5 font-mono text-[8px] uppercase leading-none text-neutral-600 dark:border-white dark:text-neutral-300">
+                {sourceLabel}
+              </span>
+            </div>
+            <p
+              className="ml-6 mt-1.5 truncate font-mono text-[10px] leading-none text-neutral-500 dark:text-neutral-400"
+              title={path}
+            >
+              {path}
+            </p>
+          </button>
+
+          <BrutalIconButton
+            className="shrink-0"
+            label={t('repositoryContext.enlarge')}
+            onClick={() => setEnlarged(true)}
+          >
+            <ArrowsPointingOutIcon className="h-4 w-4 stroke-2" />
+          </BrutalIconButton>
+        </div>
+
+        {expanded && (
+          <div className="border-t-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900">
+            {body}
           </div>
         )}
-      </div>
+      </article>
 
-      {expanded && (
-        <div className="border-t-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900">
+      <FullscreenOverlay open={enlarged} onClose={closeEnlarged} closeOnEscape={!editing}>
+        <header className="flex items-center gap-3 border-b-3 border-brutal-black bg-white px-4 py-3 dark:bg-zinc-800">
+          <div className="min-w-0 flex-1">
+            <h2 className="truncate font-brutal text-base uppercase leading-none text-brutal-black dark:text-white">
+              {name}
+            </h2>
+            <p
+              className="mt-1.5 truncate font-mono text-[10px] leading-none text-neutral-500 dark:text-neutral-400"
+              title={path}
+            >
+              {path}
+            </p>
+          </div>
+          {!editing && (
+            <>
+              <BrutalIconButton
+                label={copied ? t('coreMemory.copiedText') : t('common.copy')}
+                onClick={copy}
+              >
+                {copied ? (
+                  <CheckIcon className="h-4 w-4 stroke-[2.5]" />
+                ) : (
+                  <ClipboardDocumentIcon className="h-4 w-4 stroke-2" />
+                )}
+              </BrutalIconButton>
+              {editable && (
+                <BrutalIconButton
+                  label={t('common.edit')}
+                  onClick={() => {
+                    setSaveFailed(false);
+                    setEditing(true);
+                  }}
+                >
+                  <PencilIcon className="h-4 w-4 stroke-2" />
+                </BrutalIconButton>
+              )}
+            </>
+          )}
+          <BrutalIconButton label={t('common.close')} onClick={closeEnlarged} disabled={saving}>
+            <XMarkIcon className="h-4 w-4 stroke-[2.5]" />
+          </BrutalIconButton>
+        </header>
+
+        <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto bg-neutral-50 dark:bg-zinc-900">
           {editing ? (
-            <div className="space-y-2 p-2.5">
+            <div className="flex h-full min-h-0 flex-col gap-2 p-3">
               {saveFailed && (
                 <div
                   role="alert"
@@ -157,10 +209,10 @@ function ContextFileCard({
               <textarea
                 value={draft}
                 onChange={(event) => setDraft(event.target.value)}
-                className="min-h-56 w-full resize-y border-2 border-brutal-black bg-white p-2.5 font-mono text-xs leading-5 text-brutal-black focus:outline-none focus:ring-2 focus:ring-brutal-black dark:bg-zinc-800 dark:text-white"
+                className="min-h-0 w-full flex-1 resize-none border-2 border-brutal-black bg-white p-3 font-mono text-xs leading-5 text-brutal-black focus:outline-none focus:ring-2 focus:ring-brutal-black dark:bg-zinc-800 dark:text-white"
                 autoFocus
               />
-              <div className="flex justify-end gap-2">
+              <div className="flex shrink-0 justify-end gap-2">
                 <BrutalIconButton label={t('common.cancel')} onClick={cancel} disabled={saving}>
                   <XMarkIcon className="h-4 w-4 stroke-[2.5]" />
                 </BrutalIconButton>
@@ -174,13 +226,11 @@ function ContextFileCard({
               </div>
             </div>
           ) : (
-            <div className="break-words px-3 py-2.5 text-[13px] leading-5 text-slate-700 dark:text-zinc-200 [&_blockquote]:my-2 [&_li]:my-0 [&_ol]:my-1.5 [&_p]:my-1.5 [&_pre]:my-2 [&_ul]:my-1.5">
-              <MarkdownRenderer content={content} streamingLite compact />
-            </div>
+            <div className="p-1">{body}</div>
           )}
         </div>
-      )}
-    </article>
+      </FullscreenOverlay>
+    </>
   );
 }
 
