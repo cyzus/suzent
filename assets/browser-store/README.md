@@ -16,6 +16,16 @@ Prepared 2026-09-05. Artwork follows `docs/assets/banner_v2.png`: monochrome eng
 | Permission explanations and testing instructions | `reviewer-notes.md` | Draft submission text |
 | Privacy policy text | `privacy-policy-draft.md` | Fill in publisher/contact and host publicly |
 
+## Feature campaign
+
+Three additional feature illustrations are available in both `en/` and `zh-CN/`, each at 1280 × 800:
+
+- `03-your-tabs.png`: pointing hand and tilted, hovering familiar — existing tabs and signed-in sessions.
+- `04-live-preview.png`: framing hands and front-facing familiar — preview of the selected tab.
+- `05-your-control.png`: upright stop gesture and tumbling familiar — disconnect while leaving tabs open.
+
+These are conceptual feature cards, not product screenshots. Use alongside the actual UI captures rather than replacing them. Their text-free source illustrations are in `artwork/gesture-*.png`. Rebuild the six cards with `uv run --no-sync python scripts/build_browser_feature_assets.py`; no frontend server is needed. The cube's viewpoint and orientation intentionally vary across the series.
+
 The promotional files are branding illustrations, not simulated product screenshots. Both stores can use the same English-wordmark promo images. UI screenshots render the actual BrowserTab React component with sanitized fixture responses: the connection state is illustrative, not proof of a live session. No personal profile, token, or browsing history is included. The setup screenshot accurately shows the current unpacked-install instructions; replace it when the app has store-install buttons. The connected screenshot can be used first in a store listing.
 
 ## Rebuild
