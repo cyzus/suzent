@@ -70,43 +70,79 @@ export function BrowserExtensionSetup(): React.ReactElement {
   };
 
   return (
-    <div className="space-y-3">
-      <p role="status" className="font-bold">
-        {t(`settings.browser.extension${connected ? 'Connected' : 'Disconnected'}`)}
-      </p>
-      <p className="text-sm">{t('settings.browser.extensionHelp')}</p>
-      {sourceDir && (
-        <div>
-          <p className="text-sm">{t('settings.browser.extensionSource')}</p>
-          <input
-            className="w-full p-2 border-2 border-black text-sm"
-            aria-label={t('settings.browser.extensionSource')}
-            readOnly
-            value={sourceDir}
-            onFocus={(event) => event.target.select()}
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-2 border-brutal-black bg-neutral-50 p-3 dark:bg-zinc-900">
+        <div className="flex items-center gap-3" role="status">
+          <span
+            aria-hidden="true"
+            className={`h-3 w-3 shrink-0 border-2 border-brutal-black ${connected ? 'bg-brutal-green' : 'bg-brutal-yellow'}`}
           />
+          <span className="text-sm font-bold">
+            {t(`settings.browser.extension${connected ? 'Connected' : 'Disconnected'}`)}
+          </span>
         </div>
-      )}
-      <ol className="list-decimal pl-5 text-sm space-y-2">
-        <li>{t('settings.browser.extensionInstall')}</li>
-        <li>{t('settings.browser.extensionPair')}</li>
-      </ol>
-      <div className="flex gap-2 flex-wrap">
-        <BrutalButton disabled={busy} onClick={() => void action('download')}>
-          {t('settings.browser.extensionDownload')}
-        </BrutalButton>
-        <BrutalButton disabled={busy} onClick={() => void action('pair')}>
-          {t('settings.browser.extensionPairButton')}
-        </BrutalButton>
-        <BrutalButton disabled={busy} onClick={() => void action('revoke')}>
-          {t('settings.browser.extensionRevoke')}
-        </BrutalButton>
+        {connected && (
+          <BrutalButton size="sm" disabled={busy} onClick={() => void action('revoke')}>
+            {t('settings.browser.extensionRevoke')}
+          </BrutalButton>
+        )}
       </div>
+      {connected ? (
+        <p className="text-sm text-neutral-600 dark:text-neutral-400">
+          {t('settings.browser.extensionReady')}
+        </p>
+      ) : (
+        <ol className="grid gap-4 sm:grid-cols-2">
+          <li className="min-w-0 space-y-3 border-2 border-brutal-black p-4">
+            <h3 className="flex items-center gap-2 font-bold">
+              <span
+                aria-hidden="true"
+                className="flex h-6 w-6 shrink-0 items-center justify-center bg-brutal-yellow text-xs font-mono text-brutal-black"
+              >
+                1
+              </span>
+              {t('settings.browser.extensionInstallTitle')}
+            </h3>
+            <p className="text-sm leading-relaxed text-neutral-600 dark:text-neutral-400">
+              {t('settings.browser.extensionInstall')}
+            </p>
+            {sourceDir && (
+              <input
+                className="w-full min-w-0 border-2 border-brutal-black bg-neutral-50 p-2 font-mono text-xs dark:bg-zinc-900"
+                aria-label={t('settings.browser.extensionSource')}
+                title={sourceDir}
+                readOnly
+                value={sourceDir}
+                onFocus={(event) => event.target.select()}
+              />
+            )}
+          </li>
+          <li className="min-w-0 space-y-3 border-2 border-brutal-black p-4">
+            <h3 className="flex items-center gap-2 font-bold">
+              <span
+                aria-hidden="true"
+                className="flex h-6 w-6 shrink-0 items-center justify-center bg-brutal-yellow text-xs font-mono text-brutal-black"
+              >
+                2
+              </span>
+              {t('settings.browser.extensionPairTitle')}
+            </h3>
+            <p className="text-sm leading-relaxed text-neutral-600 dark:text-neutral-400">
+              {t('settings.browser.extensionPair')}
+            </p>
+            <BrutalButton variant="primary" disabled={busy} onClick={() => void action('pair')}>
+              {t('settings.browser.extensionPairButton')}
+            </BrutalButton>
+          </li>
+        </ol>
+      )}
       {pairUrl && (
-        <div>
-          <p className="text-sm">{t('settings.browser.extensionOtherBrowser')}</p>
+        <div className="space-y-2">
+          <p className="text-xs text-neutral-600 dark:text-neutral-400">
+            {t('settings.browser.extensionOtherBrowser')}
+          </p>
           <input
-            className="w-full p-2 border-2 border-black text-sm"
+            className="w-full border-2 border-brutal-black bg-neutral-50 p-2 font-mono text-xs dark:bg-zinc-900"
             aria-label={t('settings.browser.extensionPairButton')}
             readOnly
             value={pairUrl}
@@ -114,7 +150,30 @@ export function BrowserExtensionSetup(): React.ReactElement {
           />
         </div>
       )}
-      {error && <p role="alert">{t('settings.browser.error')}</p>}
+      <details className="border-t-2 border-brutal-black pt-3 text-sm">
+        <summary className="cursor-pointer font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue">
+          {t('settings.browser.extensionDetails')}
+        </summary>
+        <div className="mt-3 space-y-3 text-neutral-600 dark:text-neutral-400">
+          <p>{t('settings.browser.extensionHelp')}</p>
+          <p>{t('settings.browser.extensionDownloadHelp')}</p>
+          <div className="flex flex-wrap gap-2">
+            <BrutalButton size="sm" disabled={busy} onClick={() => void action('download')}>
+              {t('settings.browser.extensionDownload')}
+            </BrutalButton>
+            {!connected && (
+              <BrutalButton size="sm" disabled={busy} onClick={() => void action('revoke')}>
+                {t('settings.browser.extensionRevoke')}
+              </BrutalButton>
+            )}
+          </div>
+        </div>
+      </details>
+      {error && (
+        <p role="alert" className="text-sm font-bold">
+          {t('settings.browser.error')}
+        </p>
+      )}
     </div>
   );
 }

@@ -66,7 +66,7 @@ export function BrowserTab(): React.ReactElement {
         title={t('settings.browser.title')}
         subtitle={t('settings.browser.subtitle')}
         actions={
-          <BrutalButton disabled={busy} onClick={() => void load()}>
+          <BrutalButton size="sm" disabled={busy} onClick={() => void load()}>
             {t('settings.browser.recheck')}
           </BrutalButton>
         }
@@ -102,7 +102,14 @@ export function BrowserTab(): React.ReactElement {
             />
             {data.settings.connection_mode === 'extension' && <BrowserExtensionSetup />}
             {data.settings.connection_mode === 'existing' && (
-              <p className="text-sm">{t('settings.browser.existingHelp')}</p>
+              <details className="text-sm">
+                <summary className="cursor-pointer font-bold">
+                  {t('settings.browser.directSetup')}
+                </summary>
+                <p className="mt-2 text-neutral-600 dark:text-neutral-400">
+                  {t('settings.browser.existingHelp')}
+                </p>
+              </details>
             )}
             {data.settings.connection_mode !== 'extension' && (
               <>
@@ -131,50 +138,57 @@ export function BrowserTab(): React.ReactElement {
                     </p>
                   )}
                 </div>
-                <div>
-                  <label className="flex items-center gap-3 font-bold">
-                    <input
-                      type="checkbox"
-                      className="h-5 w-5 accent-black"
-                      checked={data.settings.persistent}
-                      disabled={
-                        busy ||
-                        data.settings.connection_mode !== 'managed' ||
-                        data.environment_overrides.includes('persistent')
-                      }
-                      onChange={(event) => void update({ persistent: event.target.checked })}
-                    />
-                    {t('settings.browser.persistent')}
-                  </label>
-                  <p className="mt-2 text-sm text-neutral-500">
-                    {t('settings.browser.persistentHelp')}
-                  </p>
-                </div>
-                <div>
-                  <label className="flex items-center gap-3 font-bold">
-                    <input
-                      type="checkbox"
-                      className="h-5 w-5 accent-black"
-                      checked={!data.settings.headless}
-                      disabled={
-                        busy ||
-                        data.settings.connection_mode !== 'managed' ||
-                        data.environment_overrides.includes('headless')
-                      }
-                      onChange={(event) => void update({ headless: !event.target.checked })}
-                    />
-                    {t('settings.browser.visible')}
-                  </label>
-                  <p className="mt-2 text-sm text-neutral-500">
-                    {t('settings.browser.visibleHelp')}
-                  </p>
-                </div>
+                {data.settings.connection_mode === 'managed' && (
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <label className="flex items-center gap-3 font-bold">
+                        <input
+                          type="checkbox"
+                          className="h-5 w-5 accent-black"
+                          checked={data.settings.persistent}
+                          disabled={
+                            busy ||
+                            data.settings.connection_mode !== 'managed' ||
+                            data.environment_overrides.includes('persistent')
+                          }
+                          onChange={(event) => void update({ persistent: event.target.checked })}
+                        />
+                        {t('settings.browser.persistent')}
+                      </label>
+                      <p className="mt-2 text-sm text-neutral-500">
+                        {t('settings.browser.persistentHelp')}
+                      </p>
+                    </div>
+                    <div>
+                      <label className="flex items-center gap-3 font-bold">
+                        <input
+                          type="checkbox"
+                          className="h-5 w-5 accent-black"
+                          checked={!data.settings.headless}
+                          disabled={
+                            busy ||
+                            data.settings.connection_mode !== 'managed' ||
+                            data.environment_overrides.includes('headless')
+                          }
+                          onChange={(event) => void update({ headless: !event.target.checked })}
+                        />
+                        {t('settings.browser.visible')}
+                      </label>
+                      <p className="mt-2 text-sm text-neutral-500">
+                        {t('settings.browser.visibleHelp')}
+                      </p>
+                    </div>
+                  </div>
+                )}
               </>
             )}
             {data.environment_overrides.length > 0 && (
               <p className="text-sm">{t('settings.browser.overrides')}</p>
             )}
-            <p role="status" className="text-sm font-bold">
+            <p
+              role="status"
+              className="border-t-2 border-brutal-black pt-3 text-xs text-neutral-500 dark:text-neutral-400"
+            >
               {busy
                 ? t('settings.browser.saving')
                 : saved

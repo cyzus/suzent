@@ -230,20 +230,18 @@ export const en = {
   settings: {
     browser: {
       extension: 'Use my browser (extension)',
-      extensionConnected: 'Browser extension connected',
-      extensionDisconnected: 'Browser extension not connected',
+      extensionConnected: 'Connected',
+      extensionDisconnected: 'Not connected',
       extensionHelp:
         'Use the tabs and logins in the browser where you install the extension. No remote-debugging setup is needed. Suzent can control web tabs while connected; disconnect here or in the extension to stop access.',
-      extensionInstall:
-        'In Chrome or Edge, open Extensions → Manage extensions, enable Developer mode, then Load unpacked and select the local extension folder shown above. Alternatively, download and extract the ZIP into a permanent folder and select that folder. Store installation is not available yet.',
+      extensionInstall: 'Extensions → Developer mode → Load unpacked. Select the folder below.',
       extensionSource: 'Local extension folder (select this folder when loading unpacked)',
-      extensionPair:
-        'Click Pair browser after installing. The pairing page opens in your default browser. Once connected, ask the agent to list and select a tab.',
+      extensionPair: 'Open the pairing page in the browser where you installed the extension.',
       extensionDownload: 'Download extension',
       extensionPairButton: 'Pair browser',
       extensionRevoke: 'Disconnect and forget',
       extensionOtherBrowser:
-        'If the extension is in another browser, copy this private link into that browser. The link expires in five minutes.',
+        'Different browser? Paste this private link there. Expires in 5 minutes.',
 
       connectionMode: 'Connection mode',
       managed: 'Launch a managed browser',
@@ -262,23 +260,28 @@ export const en = {
       chromiumHelp:
         'Downloaded automatically if needed; internet access is required for installation.',
       notInstalled: 'Not found in a supported installation location',
-      recheck: 'Check installed browsers',
+      recheck: 'Refresh',
       selectedUnavailable:
         'The selected browser was not found. Choose Chromium or install this browser, then check again.',
       persistent: 'Remember browser logins',
-      persistentHelp:
-        'Keep cookies and logins in a dedicated Suzent profile. This does not import logins from your everyday browser.',
+      persistentHelp: 'Keep logins in a separate Suzent profile.',
       visible: 'Show browser window',
-      visibleHelp: 'Open a visible window so you can sign in and interact with pages directly.',
+      visibleHelp: 'Show the window to sign in or browse alongside Suzent.',
       overrides:
         'Disabled settings are controlled by environment variables. Remove those overrides to change them here.',
-      restart:
-        'Changes apply on the next browser action. Managed browsers restart; existing browsers are disconnected and left open. The backend keeps running.',
-      saved: 'Saved. These settings apply on the next browser action.',
+      restart: 'Applies on the next browser action.',
+      saved: 'Saved · applies on the next action.',
       saving: 'Saving…',
       loading: 'Loading browser settings…',
       error: 'Could not load or save browser settings. Check the backend connection and try again.',
       retry: 'Try again',
+      extensionInstallTitle: 'Install extension',
+      extensionPairTitle: 'Connect browser',
+      extensionReady: 'Ready to use your tabs and logins. Ask Suzent to select a tab.',
+      extensionDetails: 'Setup help & options',
+      extensionDownloadHelp:
+        'Prefer a ZIP? Extract it to a permanent folder, then load it unpacked. No store listing yet.',
+      directSetup: 'Remote debugging setup',
     },
     title: 'Settings',
     category: 'Category',
