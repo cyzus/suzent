@@ -22,7 +22,7 @@ FEATURES = [
     ),
     (
         "04-live-preview",
-        "gesture-frame.png",
+        "gesture-reveal.png",
         {
             "en": (
                 "Follow the\nselected tab.",
