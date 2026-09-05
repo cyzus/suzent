@@ -2,7 +2,6 @@ import asyncio
 import io
 import re
 import zipfile
-from pathlib import Path
 from urllib.parse import urlsplit
 
 from starlette.requests import Request
@@ -11,9 +10,14 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
 
 from suzent.auth_boundary import is_loopback
-from suzent.browser_extension.bridge import bridge, ExtensionMessage, ExtensionHello
-from suzent.browser_extension.session import session
-from suzent.browser_extension.install import install_native_host
+from suzent.config.paths import PROJECT_DIR
+from suzent.tools.browser.extension.bridge import (
+    bridge,
+    ExtensionMessage,
+    ExtensionHello,
+)
+from suzent.tools.browser.extension.session import session
+from suzent.tools.browser.extension.install import install_native_host
 from suzent.logger import get_logger
 
 logger = get_logger(__name__)
@@ -62,7 +66,11 @@ async def extension_settings(request: Request) -> Response:
                     headers={"Cache-Control": "no-store"},
                 )
     return JSONResponse(
-        {"connected": bridge.socket is not None}, headers={"Cache-Control": "no-store"}
+        {
+            "connected": bridge.socket is not None,
+            "source_dir": str(PROJECT_DIR / "extensions" / "browser"),
+        },
+        headers={"Cache-Control": "no-store"},
     )
 
 
@@ -84,10 +92,15 @@ async def extension_connect_page(request: Request) -> Response:
 async def extension_download(request: Request) -> Response:
     if not local_setup_request(request):
         return Response(status_code=403)
+    root = PROJECT_DIR / "extensions" / "browser"
+    if not (root / "manifest.json").is_file():
+        return JSONResponse(
+            {"error": "Extension source is missing. Update the Suzent checkout."},
+            status_code=404,
+        )
 
     def archive() -> bytes:
         buffer = io.BytesIO()
-        root = Path(__file__).parent / "assets"
         with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as output:
             for path in root.rglob("*"):
                 if path.is_file():

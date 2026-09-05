@@ -4,9 +4,9 @@ from unittest.mock import AsyncMock
 import pytest
 from playwright.async_api import async_playwright
 
-from suzent.tools import browser_connection
-from suzent.tools.browser_config import BrowserCommand, BrowserSettings
-from suzent.tools.browsing_tool import BrowserSessionManager
+from suzent.tools.browser import connection as browser_connection
+from suzent.tools.browser.config import BrowserCommand, BrowserSettings
+from suzent.tools.browser.tool import BrowserSessionManager
 
 
 @pytest.mark.parametrize("channel", ["chrome", "msedge"])
@@ -64,7 +64,7 @@ async def test_failed_attachment_never_closes_external_browser() -> None:
 async def test_attach_tabs_actions_and_disconnect(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, channel: str
 ) -> None:
-    from suzent.tools.browser_detection import available_browsers
+    from suzent.tools.browser.detection import available_browsers
 
     if not available_browsers()[channel]:
         pytest.skip(f"{channel} is not installed")
@@ -87,8 +87,9 @@ async def test_attach_tabs_actions_and_disconnect(
             BrowserSettings(connection_mode="existing", channel="msedge")
         )
         try:
-            await manager.ensure_session()
-            await original.title()
+            # The owner's separate CDP connection receives the new-tab event asynchronously.
+            async with context.expect_page():
+                await manager.ensure_session()
             assert len(context.pages) == 2
             assert manager._page.url == "about:blank"
             result = await manager.tabs()
@@ -101,7 +102,8 @@ async def test_attach_tabs_actions_and_disconnect(
             await manager.select_tab(result.metadata["tabs"][1]["id"])
             assert not (await manager.interact("click", ref)).success
             await manager._page.close()
-            assert await manager.ensure_session()
+            async with context.expect_page():
+                assert await manager.ensure_session()
             assert not (await manager.select_tab(tab_id)).success
             assert not (await manager.interact("click", ref)).success
             await manager.close_session()

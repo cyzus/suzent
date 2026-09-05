@@ -8,8 +8,8 @@ from starlette.routing import Route
 
 from suzent.routes.browser_routes import browser_settings_endpoint
 from suzent.routes import browser_routes
-from suzent.tools import browser_config
-from suzent.tools.browsing_tool import BrowserSessionManager
+from suzent.tools.browser import config as browser_config
+from suzent.tools.browser.tool import BrowserSessionManager
 
 
 @pytest.fixture

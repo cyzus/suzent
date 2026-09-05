@@ -6,10 +6,12 @@ import uuid
 from pathlib import Path
 from unittest.mock import MagicMock
 
+from suzent.config.paths import PROJECT_DIR
+
 import pytest
 
-from suzent.browser_extension.native_host import serve
-from suzent.browser_extension import install
+from suzent.tools.browser.extension.native_host import serve
+from suzent.tools.browser.extension import install
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows native host launch")
@@ -25,7 +27,7 @@ async def test_browser_can_discover_changed_port_through_native_host(
     monkeypatch.setattr(install, "DATA_DIR", tmp_path)
     port_file = tmp_path / "runtime/server.port"
     port_file.parent.mkdir()
-    assets = Path(install.__file__).parent / "assets"
+    assets = PROJECT_DIR / "extensions" / "browser"
     try:
         async with async_playwright() as playwright:
             try:

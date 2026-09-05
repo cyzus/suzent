@@ -40,7 +40,10 @@ def discover_browser_endpoint(channel: str) -> str:
             raise ValueError
     except (OSError, ValueError):
         raise ValueError(
-            "Start the selected browser and enable remote debugging in its inspect page. "
-            "Suzent could not find a valid local debugging endpoint."
+            "Direct connection is selected, but Suzent could not find a valid local debugging endpoint. "
+            "An open browser does not enable remote debugging automatically. "
+            "For your everyday browser, choose Settings > Browser > Use my browser (extension), "
+            "install the extension and pair it. Alternatively, enable remote debugging "
+            "in the selected browser's inspect page to use direct connection."
         ) from None
     return f"ws://127.0.0.1:{port}{lines[1]}"

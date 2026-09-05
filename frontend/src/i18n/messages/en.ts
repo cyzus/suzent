@@ -235,7 +235,8 @@ export const en = {
       extensionHelp:
         'Use the tabs and logins in the browser where you install the extension. No remote-debugging setup is needed. Suzent can control web tabs while connected; disconnect here or in the extension to stop access.',
       extensionInstall:
-        'Download and extract the extension. In Chrome or Edge, open Extensions → Manage extensions, enable Developer mode, then Load unpacked and select the extracted folder. Store installation is not available yet.',
+        'In Chrome or Edge, open Extensions → Manage extensions, enable Developer mode, then Load unpacked and select the local extension folder shown above. Alternatively, download and extract the ZIP into a permanent folder and select that folder. Store installation is not available yet.',
+      extensionSource: 'Local extension folder (select this folder when loading unpacked)',
       extensionPair:
         'Click Pair browser after installing. The pairing page opens in your default browser. Once connected, ask the agent to list and select a tab.',
       extensionDownload: 'Download extension',

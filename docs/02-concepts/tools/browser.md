@@ -96,9 +96,11 @@ The recommended personal-browser mode is **Settings → Browser → Use my brows
 (extension)**. It uses the tabs and logins in the browser profile where you install
 the extension, without MCP or remote-debugging settings.
 
-1. Click **Download extension** and extract the ZIP into a permanent folder.
+1. Use the local extension folder shown in Settings (`extensions/browser/` in your
+   Suzent checkout). Alternatively, click **Download extension** and extract the ZIP
+   into a permanent folder.
 2. In Chrome or Edge, open Extensions → Manage extensions. Enable Developer mode,
-   choose **Load unpacked**, and select the extracted folder containing `manifest.json`.
+   choose **Load unpacked**, and select that folder containing `manifest.json`.
 3. Back in Suzent, click **Pair browser**. The default browser opens a local pairing
    page. If you installed the extension in another browser, copy the private pairing
    link displayed in Suzent into that browser instead.
@@ -144,14 +146,23 @@ manual browser activity can change the page at any time.
 
 ### Extension development
 
-Source lives in `src/suzent/browser_extension/assets/` and ships inside the Python
-package, so desktop and CLI backends serve the same ZIP. No extension build step or
-Node runtime is required for users. Load that directory unpacked for development,
+Browser-side source lives in `extensions/browser/`. The current installer clones
+the repository, so no separate extension packaging or build step is required.
+The optional download endpoint creates a ZIP from that directory. A standalone
+Python wheel alone does not include the extension source. Python browser code lives
+in `src/suzent/tools/browser/`, with the extension bridge in its `extension/` package.
+No Node runtime is required for users. Load the source directory unpacked for development,
 then reload the extension after changes. English and Chinese extension strings are
 in `_locales/`. Run `uv run pytest tests/tools/test_browser_extension.py` for the
 real bundled-Chromium extension regression, using an isolated test profile.
 
 ## Direct connection to existing Chrome or Edge (advanced)
+
+An already-open browser does not automatically expose a debugging endpoint.
+If Suzent reports a missing local debugging endpoint, the saved connection mode is
+**Direct connection (advanced)** (`existing`). To use the extension instead, select
+**Use my browser (extension)** and complete installation and pairing above. Changing
+this preference applies to the next browser action without restarting the backend.
 
 1. Run the Suzent backend on the same computer as your browser.
 2. In Chrome, open `chrome://inspect/#remote-debugging`; in Edge, open

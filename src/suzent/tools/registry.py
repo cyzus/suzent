@@ -187,7 +187,7 @@ def _all_tool_classes() -> list:
     from suzent.tools.task_create_tool import TaskCreateTool
     from suzent.tools.task_update_tool import TaskUpdateTool
     from suzent.tools.task_list_tool import TaskListTool
-    from suzent.tools.browsing_tool import BrowsingTool
+    from suzent.tools.browser.tool import BrowsingTool
     from suzent.tools.skill_tool import SkillTool
     from suzent.tools.social_message_tool import SocialMessageTool
     from suzent.tools.voice_tool import SpeakTool

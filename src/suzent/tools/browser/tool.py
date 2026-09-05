@@ -15,13 +15,13 @@ from playwright.async_api import (
 )
 from starlette.websockets import WebSocket
 from pydantic import Field, ValidationError
-from suzent.tools.browser_config import (
+from suzent.tools.browser.config import (
     BrowserCommand,
     BrowserSettings,
     normalize_browser_url,
 )
-from suzent.tools.browser_connection import discover_browser_endpoint
-from suzent.tools.browser_snapshot import (
+from suzent.tools.browser.connection import discover_browser_endpoint
+from suzent.tools.browser.snapshot import (
     SNAPSHOT_SCRIPT,
     ELEMENT_STATE_SCRIPT,
     CONTROLS_READY_SCRIPT,
@@ -732,7 +732,7 @@ class BrowsingTool(Tool):
                 isinstance(self.session_mgr, BrowserSessionManager)
                 and self.session_mgr._reload_settings
             ):
-                from suzent.browser_extension.session import session as extension
+                from suzent.tools.browser.extension.session import session as extension
 
                 async def extension_action() -> ToolResult | None:
                     settings = await asyncio.to_thread(BrowserSettings.load)

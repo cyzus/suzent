@@ -25,7 +25,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route, WebSocketRoute
 
 from suzent.auth_boundary import AuthBoundaryMiddleware
-from suzent.browser_extension.routes import (
+from suzent.tools.browser.extension.routes import (
     extension_settings,
     extension_connect_page,
     extension_download,
@@ -637,7 +637,7 @@ async def startup():
     register_global_hook(repository_agents_reminder_hook)
     register_per_turn_hook(_memory_rag_hook)
 
-    from suzent.tools.browsing_tool import BrowserSessionManager
+    from suzent.tools.browser.tool import BrowserSessionManager
     from suzent.config import CONFIG
 
     try:
@@ -999,9 +999,9 @@ async def shutdown():
     await shutdown_memory_system()
 
     try:
-        from suzent.tools.browsing_tool import BrowserSessionManager
+        from suzent.tools.browser.tool import BrowserSessionManager
 
-        from suzent.browser_extension.session import session as extension_session
+        from suzent.tools.browser.extension.session import session as extension_session
 
         await _stop(extension_session.close(), "BrowserExtension")
         await _stop(

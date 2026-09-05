@@ -6,8 +6,8 @@ import pytest
 from playwright.async_api import Error, TimeoutError as PlaywrightTimeoutError
 
 from suzent.tools.base import ToolErrorCode
-from suzent.tools.browser_config import BrowserSettings, normalize_browser_url
-from suzent.tools.browsing_tool import BrowserSessionManager, BrowsingTool
+from suzent.tools.browser.config import BrowserSettings, normalize_browser_url
+from suzent.tools.browser.tool import BrowserSessionManager, BrowsingTool
 
 
 @pytest.mark.parametrize(

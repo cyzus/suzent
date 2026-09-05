@@ -5,6 +5,8 @@ import zipfile
 from pathlib import Path
 from unittest.mock import AsyncMock
 
+from suzent.config.paths import PROJECT_DIR
+
 import pytest
 import uvicorn
 from playwright.async_api import async_playwright
@@ -15,19 +17,19 @@ from starlette.routing import Route, WebSocketRoute
 from starlette.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
-from suzent.browser_extension import bridge as bridge_module
-from suzent.browser_extension import routes as extension_routes
-from suzent.browser_extension.bridge import ExtensionBridge, bridge
-from suzent.browser_extension.routes import (
+from suzent.tools.browser.extension import bridge as bridge_module
+from suzent.tools.browser.extension import routes as extension_routes
+from suzent.tools.browser.extension.bridge import ExtensionBridge, bridge
+from suzent.tools.browser.extension.routes import (
     extension_settings,
     extension_connect_page,
     extension_download,
     extension_websocket,
 )
-from suzent.browser_extension.session import session
-from suzent.tools.browser_config import BrowserCommand
-from suzent.tools.browser_config import BrowserSettings
-from suzent.tools.browsing_tool import BrowserSessionManager, BrowsingTool
+from suzent.tools.browser.extension.session import session
+from suzent.tools.browser.config import BrowserCommand
+from suzent.tools.browser.config import BrowserSettings
+from suzent.tools.browser.tool import BrowserSessionManager, BrowsingTool
 
 
 @pytest.fixture(autouse=True)
@@ -105,6 +107,16 @@ def test_setup_rejects_untrusted_web_origin_and_requires_header() -> None:
             } <= set(package.namelist())
 
 
+def test_setup_exposes_checkout_folder_and_rejects_missing_download(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(extension_routes, "PROJECT_DIR", tmp_path)
+    with TestClient(app()) as client:
+        status = client.get("/browser/extension")
+        assert status.json()["source_dir"] == str(tmp_path / "extensions" / "browser")
+        assert client.get("/browser/extension/download").status_code == 404
+
+
 async def test_disconnect_fails_pending_commands_without_replay() -> None:
     connection = ExtensionBridge()
     connection.socket = AsyncMock()
@@ -153,7 +165,7 @@ async def test_real_extension_pair_actions_preview_and_disconnect(
     tmp_path: Path,
     browser_channel: str,
 ) -> None:
-    from suzent.tools.browser_detection import available_browsers
+    from suzent.tools.browser.detection import available_browsers
 
     if not available_browsers()[browser_channel]:
         pytest.skip("Browser is not installed")
@@ -162,7 +174,7 @@ async def test_real_extension_pair_actions_preview_and_disconnect(
     port = listener.getsockname()[1]
     server = uvicorn.Server(uvicorn.Config(app(), log_level="error", lifespan="off"))
     serving = asyncio.create_task(server.serve(sockets=[listener]))
-    assets = Path(bridge_module.__file__).parent / "assets"
+    assets = PROJECT_DIR / "extensions" / "browser"
     try:
         async with async_playwright() as playwright:
             try:

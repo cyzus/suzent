@@ -7,10 +7,10 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.websockets import WebSocket
 from suzent.logger import get_logger
-from suzent.tools.browser_config import BrowserPreferences, BrowserSettings
-from suzent.tools.browser_detection import available_browsers
-from suzent.tools.browsing_tool import BrowserSessionManager
-from suzent.browser_extension.session import session as extension_session
+from suzent.tools.browser.config import BrowserPreferences, BrowserSettings
+from suzent.tools.browser.detection import available_browsers
+from suzent.tools.browser.tool import BrowserSessionManager
+from suzent.tools.browser.extension.session import session as extension_session
 
 logger = get_logger(__name__)
 

@@ -9,6 +9,7 @@ export function BrowserExtensionSetup(): React.ReactElement {
   const [error, setError] = useState(false);
   const [busy, setBusy] = useState(false);
   const [pairUrl, setPairUrl] = useState('');
+  const [sourceDir, setSourceDir] = useState('');
 
   useEffect(() => {
     let active = true;
@@ -19,6 +20,7 @@ export function BrowserExtensionSetup(): React.ReactElement {
         const result = await response.json();
         if (active) {
           setConnected(result.connected);
+          setSourceDir(result.source_dir ?? '');
           if (result.connected) setPairUrl('');
         }
       } catch {
@@ -73,6 +75,18 @@ export function BrowserExtensionSetup(): React.ReactElement {
         {t(`settings.browser.extension${connected ? 'Connected' : 'Disconnected'}`)}
       </p>
       <p className="text-sm">{t('settings.browser.extensionHelp')}</p>
+      {sourceDir && (
+        <div>
+          <p className="text-sm">{t('settings.browser.extensionSource')}</p>
+          <input
+            className="w-full p-2 border-2 border-black text-sm"
+            aria-label={t('settings.browser.extensionSource')}
+            readOnly
+            value={sourceDir}
+            onFocus={(event) => event.target.select()}
+          />
+        </div>
+      )}
       <ol className="list-decimal pl-5 text-sm space-y-2">
         <li>{t('settings.browser.extensionInstall')}</li>
         <li>{t('settings.browser.extensionPair')}</li>

@@ -7,14 +7,14 @@ from typing import Any
 from starlette.websockets import WebSocket
 
 from suzent.tools.base import ToolResult
-from suzent.tools.browser_config import BrowserCommand
-from suzent.tools.browser_snapshot import (
+from suzent.tools.browser.config import BrowserCommand
+from suzent.tools.browser.snapshot import (
     SNAPSHOT_SCRIPT,
     ELEMENT_STATE_SCRIPT,
     CONTROLS_READY_SCRIPT,
     format_snapshot_element,
 )
-from suzent.browser_extension.bridge import bridge
+from suzent.tools.browser.extension.bridge import bridge
 
 
 class ExtensionSession:
