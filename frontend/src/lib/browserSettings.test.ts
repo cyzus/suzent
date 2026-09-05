@@ -10,6 +10,12 @@ import {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('browser settings API', () => {
+  it('posts only the changed preference without copying effective overrides', async () => {
+    const fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
+    vi.stubGlobal('fetch', fetch);
+    await saveBrowserSettings({ persistent: true });
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({ persistent: true });
+  });
   it('disables missing browsers with a hint and keeps Chromium selectable', () => {
     const options = browserChannelOptions(
       { chromium: true, chrome: false, msedge: false },

@@ -3,6 +3,7 @@
 import os
 import re
 import tempfile
+from threading import Lock
 from pathlib import Path
 from typing import Literal, Self
 from urllib.parse import urlsplit
@@ -10,6 +11,8 @@ from urllib.parse import urlsplit
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from suzent.config.paths import DATA_DIR, USER_CONFIG_DIR
+
+_PREFERENCES_LOCK = Lock()
 
 
 def normalize_browser_url(value: str) -> str:
@@ -41,6 +44,22 @@ class BrowserPreferences(BaseModel):
     headless: bool = True
     channel: Literal["chromium", "chrome", "msedge"] = "chromium"
 
+    @classmethod
+    def load(cls) -> Self:
+        path = USER_CONFIG_DIR / "browser.json"
+        return (
+            cls.model_validate_json(path.read_text(encoding="utf-8"))
+            if path.exists()
+            else cls()
+        )
+
+    def save_changes(self) -> None:
+        """Merge only submitted fields with stored preferences, before overrides."""
+        with _PREFERENCES_LOCK:
+            values = BrowserPreferences.load().model_dump()
+            values.update(self.model_dump(exclude_unset=True))
+            BrowserPreferences.model_validate(values).save()
+
     def save(self) -> None:
         path = USER_CONFIG_DIR / "browser.json"
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -62,12 +81,7 @@ class BrowserSettings(BrowserPreferences):
 
     @classmethod
     def load(cls) -> Self:
-        path = USER_CONFIG_DIR / "browser.json"
-        saved = (
-            BrowserPreferences.model_validate_json(path.read_text(encoding="utf-8"))
-            if path.exists()
-            else BrowserPreferences()
-        )
+        saved = BrowserPreferences.load()
         values = saved.model_dump()
         values.update(
             {

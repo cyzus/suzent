@@ -125,6 +125,24 @@ async def test_snapshot_budget_pagination_and_secrets(
     assert not (await browser.interact("click", old_ref)).success
 
 
+async def test_snapshot_distinguishes_unlabeled_controls(
+    browser: BrowserSessionManager,
+) -> None:
+    await browser._page.set_content("""
+        <a href="/account?token=private-token#private-fragment"><svg width="20" height="20"></svg></a>
+        <a href="https://user:private-password@example.com/settings"><svg width="20" height="20"></svg></a>
+        <input type="email" name="account_email" value="private-email">
+        <input type="password" name="account_password" value="private-secret">
+    """)
+    result = await browser.get_snapshot(interactive_only=True)
+    assert result.success, result.message
+    assert 'href="/account"' in result.message
+    assert 'href="https://example.com/settings"' in result.message
+    assert 'type="email" name="account_email"' in result.message
+    assert 'type="password" name="account_password"' in result.message
+    assert "private-" not in result.message
+
+
 async def test_detached_node_is_not_retargeted(browser: BrowserSessionManager) -> None:
     await browser._page.set_content(
         "<button onclick='window.clicked=true'>Save</button>"

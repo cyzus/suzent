@@ -91,6 +91,38 @@ async def test_environment_overrides_are_reported(
     assert browser_config.BrowserSettings.load().channel == "msedge"
 
 
+async def test_partial_update_preserves_preferences_hidden_by_overrides(
+    settings_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    browser_config.BrowserPreferences(channel="msedge", headless=False).save()
+    monkeypatch.setenv("SUZENT_BROWSER_CHANNEL", "chrome")
+    monkeypatch.setenv("SUZENT_BROWSER_HEADLESS", "true")
+    async with make_client() as client:
+        result = await client.post("/browser/settings", json={"persistent": True})
+        assert result.json()["settings"] == {
+            "channel": "chrome",
+            "headless": True,
+            "persistent": True,
+        }
+    monkeypatch.delenv("SUZENT_BROWSER_CHANNEL")
+    monkeypatch.delenv("SUZENT_BROWSER_HEADLESS")
+    stored = browser_config.BrowserSettings.load()
+    assert stored.channel == "msedge" and not stored.headless and stored.persistent
+
+
+async def test_concurrent_partial_updates_preserve_both_changes(
+    settings_path: Path,
+) -> None:
+    async with make_client() as client:
+        responses = await asyncio.gather(
+            client.post("/browser/settings", json={"persistent": True}),
+            client.post("/browser/settings", json={"headless": False}),
+        )
+        assert all(response.status_code == 200 for response in responses)
+    stored = browser_config.BrowserSettings.load()
+    assert stored.persistent and not stored.headless
+
+
 async def test_save_does_not_interrupt_active_manager(settings_path: Path) -> None:
     manager = BrowserSessionManager()
     async with make_client() as client:

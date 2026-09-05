@@ -47,7 +47,7 @@ export function BrowserTab(): React.ReactElement {
     setError(false);
     setSaved(false);
     try {
-      setData(await saveBrowserSettings({ ...data.settings, ...change }));
+      setData(await saveBrowserSettings(change));
       setSaved(true);
     } catch {
       setError(true);

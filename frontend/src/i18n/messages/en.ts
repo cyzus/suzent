@@ -235,17 +235,23 @@ export const en = {
       chromium: 'Bundled Chromium',
       chrome: 'Google Chrome',
       edge: 'Microsoft Edge',
-      channelHelp: 'Chrome or Edge must already be installed on the computer running Suzent’s backend.',
-      chromiumHelp: 'Downloaded automatically if needed; internet access is required for installation.',
+      channelHelp:
+        'Chrome or Edge must already be installed on the computer running Suzent’s backend.',
+      chromiumHelp:
+        'Downloaded automatically if needed; internet access is required for installation.',
       notInstalled: 'Not found in a supported installation location',
       recheck: 'Check installed browsers',
-      selectedUnavailable: 'The selected browser was not found. Choose Chromium or install this browser, then check again.',
+      selectedUnavailable:
+        'The selected browser was not found. Choose Chromium or install this browser, then check again.',
       persistent: 'Remember browser logins',
-      persistentHelp: 'Keep cookies and logins in a dedicated Suzent profile. This does not import logins from your everyday browser.',
+      persistentHelp:
+        'Keep cookies and logins in a dedicated Suzent profile. This does not import logins from your everyday browser.',
       visible: 'Show browser window',
       visibleHelp: 'Open a visible window so you can sign in and interact with pages directly.',
-      overrides: 'Disabled settings are controlled by environment variables. Remove those overrides to change them here.',
-      restart: 'Changes apply on the next browser action. Suzent relaunches its managed browser and resets the current page; the backend keeps running.',
+      overrides:
+        'Disabled settings are controlled by environment variables. Remove those overrides to change them here.',
+      restart:
+        'Changes apply on the next browser action. Suzent relaunches its managed browser and resets the current page; the backend keeps running.',
       saved: 'Saved. The managed browser will use these settings on the next browser action.',
       saving: 'Saving…',
       loading: 'Loading browser settings…',

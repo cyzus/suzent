@@ -1,5 +1,35 @@
 """Bounded DOM observation, retaining node identity separately from labels."""
 
+from html import escape
+from typing import Any
+from urllib.parse import urlsplit, urlunsplit
+
+
+def format_snapshot_element(ref: str, item: dict[str, Any]) -> str:
+    attributes = []
+    for key in ("type", "name", "href"):
+        value = item.get(key)
+        if not value:
+            continue
+        if key == "href":
+            try:
+                url = urlsplit(value)
+                if url.scheme.lower() not in {"", "http", "https"}:
+                    continue
+                # Destinations identify icon-only links; URL credentials and query tokens do not.
+                value = urlunsplit(
+                    (url.scheme, url.netloc.rsplit("@", 1)[-1], url.path, "", "")
+                )
+            except ValueError:
+                continue
+        if value:
+            attributes.append(f'{key}="{escape(value[:256], quote=True)}"')
+    if item["disabled"]:
+        attributes.append("disabled")
+    suffix = " " + " ".join(attributes) if attributes else ""
+    return f"{ref}: <{item['tag']}{suffix}> {item['label']}"
+
+
 CONTROLS_READY_SCRIPT = """
 () => Array.from(document.querySelectorAll(
     'a, button, input, textarea, select, [role="button"], [role="link"], [contenteditable="true"]'

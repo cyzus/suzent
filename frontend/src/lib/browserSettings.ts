@@ -41,7 +41,7 @@ export async function fetchBrowserSettings(): Promise<BrowserSettingsResponse> {
 }
 
 export async function saveBrowserSettings(
-  settings: BrowserPreferences
+  settings: Partial<BrowserPreferences>
 ): Promise<BrowserSettingsResponse> {
   const response = await fetch(`${getApiBase()}/browser/settings`, {
     method: 'POST',

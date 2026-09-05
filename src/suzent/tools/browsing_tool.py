@@ -23,6 +23,7 @@ from suzent.tools.browser_snapshot import (
     SNAPSHOT_SCRIPT,
     ELEMENT_STATE_SCRIPT,
     CONTROLS_READY_SCRIPT,
+    format_snapshot_element,
 )
 from suzent.tools.base import Tool, ToolGroup, ToolErrorCode, ToolResult
 from suzent.logger import get_logger
@@ -330,8 +331,7 @@ class BrowserSessionManager:
                     if data["text_truncated"]:
                         lines.append("[Page text truncated to 4000 characters.]")
                     for ref, (_, item) in self._selector_map.items():
-                        state = " disabled" if item["disabled"] else ""
-                        lines.append(f"{ref}: <{item['tag']}{state}> {item['label']}")
+                        lines.append(format_snapshot_element(ref, item))
                     if not data["items"]:
                         lines.append(
                             "No interactive elements in this range. The page may be loading or contain no controls."
