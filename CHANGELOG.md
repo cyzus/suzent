@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.12.1] - 2026-09-05
+
+### 🐛 Fixed
+- Stop auto-compaction re-firing after every compaction (#190)
+- Add fullscreen functionality to ContextFileCard and localize 'enlarge' text
+- Measure the worked timer over the whole turn (#188)
+
 ## [v0.12.0] - 2026-09-04
 
 <!-- highlights -->
