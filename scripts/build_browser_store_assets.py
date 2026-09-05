@@ -12,7 +12,8 @@ from pathlib import Path
 from playwright.async_api import async_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
-OUTPUT = ROOT / "assets/browser-store"
+SOURCE = ROOT / "assets/browser-store"
+OUTPUT = ROOT / "store-upload/listing-assets"
 EXTENSION = ROOT / "extensions/browser"
 
 
@@ -21,8 +22,10 @@ def image_url(path: Path, mime: str = "image/png") -> str:
 
 
 async def main() -> None:
+    for folder in ("logos", "en", "zh-CN"):
+        (OUTPUT / folder).mkdir(parents=True, exist_ok=True)
     logo = image_url(ROOT / "frontend/public/favicon.svg", "image/svg+xml")
-    art = image_url(OUTPUT / "artwork/browser-occult.png")
+    art = image_url(SOURCE / "artwork/browser-occult.png")
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch()
         page = await browser.new_page(device_scale_factor=1)
@@ -130,7 +133,7 @@ if __name__ == "__main__":
             encoding="utf-8",
         )
         entry.write_text(
-            (OUTPUT / "preview.tsx")
+            (SOURCE / "preview.tsx")
             .read_text(encoding="utf-8")
             .replace("../../frontend/", "./"),
             encoding="utf-8",

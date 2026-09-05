@@ -8,6 +8,7 @@ from pathlib import Path
 from playwright.async_api import async_playwright
 
 ROOT = Path(__file__).resolve().parents[1] / "assets/browser-store"
+OUTPUT = Path(__file__).resolve().parents[1] / "store-upload/listing-assets"
 FEATURES = [
     (
         "03-your-tabs",
@@ -46,6 +47,8 @@ FEATURES = [
 
 
 async def main() -> None:
+    for locale in ("en", "zh-CN"):
+        (OUTPUT / locale).mkdir(parents=True, exist_ok=True)
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch()
         page = await browser.new_page(viewport={"width": 1280, "height": 800})
@@ -70,7 +73,7 @@ async def main() -> None:
                     </style><main><img class="art" src="data:image/png;base64,{data}"><header>SUZENT <span style="font:12px monospace;letter-spacing:.15em">/ BROWSER</span></header><div class="copy"><h1>{title}</h1><p>{escape(description)}</p></div><footer><span>{requirement}</span><span>0{index} / 03</span></footer></main></html>''')
                 await page.locator("img").evaluate("image => image.decode()")
                 await page.evaluate("document.fonts.ready")
-                await page.screenshot(path=str(ROOT / locale / f"{name}.png"))
+                await page.screenshot(path=str(OUTPUT / locale / f"{name}.png"))
         await browser.close()
 
 

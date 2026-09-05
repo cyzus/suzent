@@ -4,6 +4,11 @@ Prepared 2026-09-05. Artwork follows `docs/assets/banner_v2.png`: monochrome eng
 
 ## Upload map
 
+Generated images below are exported to `store-upload/listing-assets/` and ignored
+by Git. Listing copy and reviewer notes remain in this source directory. The
+canonical privacy policy is `website/src/pages/browser-privacy.md`; do not maintain
+a second policy or draft here. Existing upload ZIPs remain under `store-upload/`.
+
 | Store field | File | Dimensions |
 | --- | --- | --- |
 | Chrome extension icon | `logos/icon-128.png` (also inside extension ZIP) | 128 × 128, transparent 16 px padding |
@@ -14,11 +19,11 @@ Prepared 2026-09-05. Artwork follows `docs/assets/banner_v2.png`: monochrome eng
 | Simplified Chinese screenshots | `zh-CN/01-setup.png`, `zh-CN/02-connected.png` | 1280 × 800 |
 | Descriptions | `listing-copy.md` | English and Simplified Chinese |
 | Permission explanations and testing instructions | `reviewer-notes.md` | Draft submission text |
-| Privacy policy text | `privacy-policy.md` | Public URL: https://suzent.com/browser-privacy |
+| Privacy policy | `website/src/pages/browser-privacy.md` in the repository | https://suzent.com/browser-privacy |
 
 ## Feature campaign
 
-Three additional feature illustrations are available in both `en/` and `zh-CN/`, each at 1280 × 800:
+Three additional feature illustrations are exported to `store-upload/listing-assets/en/` and `store-upload/listing-assets/zh-CN/`, each at 1280 × 800:
 
 - `03-your-tabs.png`: pointing hand and tilted, hovering familiar — existing tabs and signed-in sessions.
 - `04-live-preview.png`: a hand drawing back a curtain to reveal a browser window — preview of the selected tab.
