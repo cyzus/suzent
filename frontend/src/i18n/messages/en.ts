@@ -109,6 +109,7 @@ export const en = {
     description: 'Project memory and effective repository instructions',
     projectContext: 'Project context',
     projectMemory: 'Project memory',
+    enlarge: 'Enlarge',
     repositoryInstructions: 'Repository instructions',
     repositoryInstructionsDesc: 'Loaded ancestor-first; the closest file has final precedence.',
     empty: 'No project context or repository instructions found.',
