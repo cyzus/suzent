@@ -14,7 +14,7 @@ Prepared 2026-09-05. Artwork follows `docs/assets/banner_v2.png`: monochrome eng
 | Simplified Chinese screenshots | `zh-CN/01-setup.png`, `zh-CN/02-connected.png` | 1280 × 800 |
 | Descriptions | `listing-copy.md` | English and Simplified Chinese |
 | Permission explanations and testing instructions | `reviewer-notes.md` | Draft submission text |
-| Privacy policy text | `privacy-policy-draft.md` | Fill in publisher/contact and host publicly |
+| Privacy policy text | `privacy-policy.md` | Public URL: https://suzent.com/browser-privacy |
 
 ## Feature campaign
 
@@ -36,7 +36,7 @@ ZIP only the contents of `extensions/browser/`, with `manifest.json` at the ZIP 
 
 ## Before submitting
 
-- Fill in publisher name and privacy contact, then publish the privacy policy at a stable public URL. Confirm the wording against the released app's retention and model-provider settings.
+- Use https://suzent.com/browser-privacy as the store privacy policy URL. Confirm the wording against the exact released app and model-provider settings.
 - Give reviewers a working Suzent release that includes the extension bridge. PR #197 is not itself an installed release. Include concrete installation and model setup instructions.
 - Review the backend-supplied `Runtime.evaluate` expressions with the stores' remote-code declarations. Do not simply declare that all executable logic is packaged in the extension. See reviewer notes.
 - Test the store-signed extension's pairing, native helper registration, reconnect, and disconnect before public rollout.
