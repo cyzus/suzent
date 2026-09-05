@@ -35,6 +35,7 @@ import { MeshTab } from './MeshTab';
 import { UsageTab } from './UsageTab';
 import { SecurityTab } from './SecurityTab';
 import { BackgroundServiceTab } from './BackgroundServiceTab';
+import { BrowserTab } from './BrowserTab';
 import { useI18n } from '../../i18n';
 import { FullscreenOverlay } from '../FullscreenOverlay';
 import { closeImmediatelyAndPersist } from './settingsPersistence';
@@ -630,6 +631,7 @@ export function SettingsModal({
                 )}
 
                 {activeCategory === 'service' && <BackgroundServiceTab />}
+                {activeCategory === 'browser' && <BrowserTab />}
 
                 {activeCategory === 'data' && <DataTab onSyncComplete={refreshProviders} />}
 

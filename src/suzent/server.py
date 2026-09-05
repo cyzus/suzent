@@ -169,7 +169,10 @@ from suzent.routes.session_routes import (
     get_memory_file,
     reindex_memories,
 )
-from suzent.routes.browser_routes import browser_websocket_endpoint
+from suzent.routes.browser_routes import (
+    browser_settings_endpoint,
+    browser_websocket_endpoint,
+)
 from suzent.routes.node_routes import (
     browser_node_page,
     node_websocket_endpoint,
@@ -1215,6 +1218,7 @@ app = Starlette(
         Route("/skills/reload", reload_skills, methods=["POST"]),
         Route("/skills/toggle", toggle_skill, methods=["POST"]),
         Route("/skills/{skill_name}/toggle", toggle_skill, methods=["POST"]),
+        Route("/browser/settings", browser_settings_endpoint, methods=["GET", "POST"]),
         WebSocketRoute("/ws/browser", browser_websocket_endpoint),
         WebSocketRoute("/ws/node", node_websocket_endpoint),
         Route("/nodes", list_nodes, methods=["GET"]),
