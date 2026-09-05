@@ -105,13 +105,28 @@ async def extension_download(request: Request) -> Response:
             for path in root.rglob("*"):
                 if path.is_file():
                     output.write(path, path.relative_to(root).as_posix())
+            if not {"manifest.json", "worker.js", "pair.js", "popup.html"}.issubset(
+                output.namelist()
+            ):
+                raise ValueError("Incomplete browser extension archive")
         return buffer.getvalue()
 
+    try:
+        payload = await asyncio.to_thread(archive)
+    except (OSError, ValueError):
+        return JSONResponse(
+            {
+                "error": "Extension files are incomplete or unreadable. Update the Suzent checkout."
+            },
+            status_code=503,
+            headers={"Cache-Control": "no-store"},
+        )
     return Response(
-        await asyncio.to_thread(archive),
+        payload,
         media_type="application/zip",
         headers={
-            "Content-Disposition": 'attachment; filename="suzent-browser-extension.zip"'
+            "Content-Disposition": 'attachment; filename="suzent-browser-extension.zip"',
+            "Cache-Control": "no-store",
         },
     )
 

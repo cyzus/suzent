@@ -117,6 +117,20 @@ def test_setup_exposes_checkout_folder_and_rejects_missing_download(
         assert client.get("/browser/extension/download").status_code == 404
 
 
+def test_download_rejects_incomplete_extension(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "extensions" / "browser"
+    root.mkdir(parents=True)
+    (root / "manifest.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(extension_routes, "PROJECT_DIR", tmp_path)
+    with TestClient(app()) as client:
+        response = client.get("/browser/extension/download")
+        assert response.status_code == 503
+        assert response.headers["content-type"] == "application/json"
+        assert "content-disposition" not in response.headers
+
+
 async def test_disconnect_fails_pending_commands_without_replay() -> None:
     connection = ExtensionBridge()
     connection.socket = AsyncMock()
