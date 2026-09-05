@@ -145,7 +145,7 @@ Everything the Memory panel does is available over HTTP, on the same port as the
 
 Editing a core block through `PUT /memory/core` counts as *you* saying it, which outranks
 anything the agent worked out on its own — see
-[MEMORY.md is half yours](./README.md#memorymd-is-half-yours).
+[MEMORY.md is half yours](https://suzent.com/docs/concepts/memory#memorymd-is-half-yours).
 
 ## Debug logging
 
