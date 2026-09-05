@@ -10,6 +10,7 @@ import {
   ComputerDesktopIcon,
   Cog6ToothIcon,
   CpuChipIcon,
+  GlobeAltIcon,
   InformationCircleIcon,
   PaintBrushIcon,
   ServerStackIcon,
@@ -35,6 +36,7 @@ export type SettingsCategory =
   | 'mesh'
   | 'appearance'
   | 'service'
+  | 'browser'
   | 'security'
   | 'data'
   | 'usage'
@@ -69,6 +71,7 @@ const CATEGORY_GROUPS: CategoryGroup[] = [
     categories: [
       { id: 'social', labelKey: 'settings.categories.social', icon: ChatBubbleLeftRightIcon },
       { id: 'mcp', labelKey: 'settings.categories.mcp', icon: WrenchScrewdriverIcon },
+      { id: 'browser', labelKey: 'settings.browser.title', icon: GlobeAltIcon },
       { id: 'acp-agents', labelKey: 'settings.categories.acpAgents', icon: BoltIcon },
       { id: 'devices', labelKey: 'settings.categories.devices', icon: ComputerDesktopIcon },
       { id: 'mesh', labelKey: 'settings.categories.mesh', icon: ShareIcon },

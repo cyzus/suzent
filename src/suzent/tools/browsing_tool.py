@@ -1,5 +1,7 @@
 import asyncio
-from typing import Annotated, Optional, List, Literal
+import sys
+from collections.abc import Coroutine
+from typing import Annotated, Any, Literal, TypeVar
 from playwright.async_api import (
     async_playwright,
     Playwright,
@@ -7,9 +9,22 @@ from playwright.async_api import (
     BrowserContext,
     Page,
     CDPSession,
+    ElementHandle,
+    TimeoutError as PlaywrightTimeoutError,
 )
 from starlette.websockets import WebSocket
-from pydantic import Field
+from pydantic import Field, ValidationError
+from suzent.tools.browser_config import (
+    BrowserCommand,
+    BrowserSettings,
+    normalize_browser_url,
+)
+from suzent.tools.browser_snapshot import (
+    SNAPSHOT_SCRIPT,
+    ELEMENT_STATE_SCRIPT,
+    CONTROLS_READY_SCRIPT,
+    format_snapshot_element,
+)
 from suzent.tools.base import Tool, ToolGroup, ToolErrorCode, ToolResult
 from suzent.logger import get_logger
 from pydantic_ai import RunContext
@@ -17,34 +32,40 @@ from pydantic_ai import RunContext
 from suzent.core.agent_deps import AgentDeps
 
 logger = get_logger(__name__)
+T = TypeVar("T")
 
 
 class BrowserSessionManager:
     _instance = None
 
-    def __init__(self):
-        self._playwright: Optional[Playwright] = None
-        self._browser: Optional[Browser] = None
-        self._context: Optional[BrowserContext] = None
-        self._page: Optional[Page] = None
-        self._client: Optional[CDPSession] = None
-        self._websockets: List[WebSocket] = []
+    def __init__(self, settings: BrowserSettings | None = None) -> None:
+        self._reload_settings = settings is None
+        self.settings = settings or BrowserSettings.load()
+        self._action_lock = asyncio.Lock()
+        self._snapshot_generation = 0
+        self._selector_map: dict[str, tuple[ElementHandle, dict[str, Any]]] = {}
+        self._playwright: Playwright | None = None
+        self._browser: Browser | None = None
+        self._context: BrowserContext | None = None
+        self._page: Page | None = None
+        self._client: CDPSession | None = None
+        self._websockets: list[WebSocket] = []
         self._streaming = False
-        self._init_lock: Optional[asyncio.Lock] = None
+        self._init_lock: asyncio.Lock | None = None
 
     @classmethod
-    def get_instance(cls):
+    def get_instance(cls) -> "BrowserSessionManager":
         if cls._instance is None:
             cls._instance = BrowserSessionManager()
         return cls._instance
 
-    def set_main_loop(self, loop):
+    def set_main_loop(self, loop: asyncio.AbstractEventLoop) -> None:
         """Set the main application event loop for thread safety."""
         self._main_loop = loop
         # Initialize lock on the main loop
         self._init_lock = asyncio.Lock()
 
-    async def _run_on_main_loop(self, coro):
+    async def _run_on_main_loop(self, coro: Coroutine[Any, Any, T]) -> T:
         """Execute a coroutine on the main loop, handling cross-thread awaiting."""
         # If no main loop set (e.g. testing), try to use current or assume safety
         if not hasattr(self, "_main_loop") or self._main_loop is None:
@@ -77,294 +98,332 @@ class BrowserSessionManager:
             logger.error("Timeout waiting for main loop coroutine to complete.")
             raise RuntimeError("Browser action timed out during loop synchronization.")
 
-    async def ensure_session(self, headless: bool = True):
-        # We define the inner async function that does the actual work on the main loop
-        async def _launch():
-            logger.debug("Entering _launch coroutine.")
-            if not self._init_lock:
-                logger.warning("No init lock available, potential race condition.")
-                # Create logical fallback lock if needed, but set_main_loop should be called.
+    async def ensure_session(self, headless: bool | None = None) -> bool:
+        """Apply saved settings between actions; return whether a session was replaced."""
+
+        async def _launch() -> bool:
+            if self._init_lock is None:
                 self._init_lock = asyncio.Lock()
-
-            logger.debug("Waiting for init lock...")
-            async with self._init_lock:
-                logger.debug("Acquired init lock.")
-                # Health Check: If page exists, verify it is still functional
-                if self._page:
-                    logger.debug("Page exists, performing health check...")
-                    try:
-                        # Check if browser and page are still alive
-                        if not self._page.is_closed() and self._browser.is_connected():
-                            logger.debug("Health check passed.")
-                            return
-                        logger.info(
-                            "Browser session disconnected or page closed. Re-initializing..."
-                        )
-                    except Exception as e:
-                        logger.warning(f"Health check failed: {e}. Re-initializing...")
-
-                    # Cleanup old session if it failed health check
-                    await self.close_session()
-
-                logger.info("Starting Browser Session...")
-                self._playwright = await async_playwright().start()
-                logger.debug("Playwright started.")
-
-                args = [
-                    "--no-sandbox",
-                    "--disable-setuid-sandbox",
-                ]
-
+            async with self._init_lock, self._action_lock:
+                desired = (
+                    await asyncio.to_thread(BrowserSettings.load)
+                    if self._reload_settings
+                    else self.settings
+                )
+                changed = desired != self.settings
+                replaced = changed and self._page is not None
+                if (
+                    not changed
+                    and self._page
+                    and not self._page.is_closed()
+                    and self._browser
+                    and self._browser.is_connected()
+                ):
+                    return False
+                await self.close_session()
+                self.settings = desired
                 try:
-                    logger.debug(f"Launching Chromium (headless={headless})...")
-                    # Add a timeout to the launch call itself
+                    self._playwright = await async_playwright().start()
                     try:
-                        self._browser = await asyncio.wait_for(
-                            self._playwright.chromium.launch(
-                                headless=headless, args=args
-                            ),
-                            timeout=30.0,
-                        )
-                    except asyncio.TimeoutError:
-                        logger.warning(
-                            "Chromium launch timed out with args. Retrying without custom args..."
-                        )
-                        self._browser = await asyncio.wait_for(
-                            self._playwright.chromium.launch(headless=headless),
-                            timeout=30.0,
-                        )
-                    logger.debug("Chromium launched.")
-                except Exception as e:
-                    if (
-                        "executable doesn't exist" in str(e).lower()
-                        or "not installed" in str(e).lower()
-                    ):
-                        logger.info(
-                            "Chromium not installed. Installing now (this may take a few minutes)..."
-                        )
-                        import sys
-
-                        # Use asyncio.create_subprocess_exec to avoid blocking the loop
+                        await self._launch_context(headless)
+                    except Exception as exc:
+                        if (
+                            self.settings.channel != "chromium"
+                            or "executable doesn't exist" not in str(exc).lower()
+                        ):
+                            raise
+                        logger.info("Installing missing Chromium browser")
                         process = await asyncio.create_subprocess_exec(
                             sys.executable,
                             "-m",
                             "playwright",
                             "install",
                             "chromium",
-                            stdout=asyncio.subprocess.PIPE,
-                            stderr=asyncio.subprocess.PIPE,
+                            stdout=asyncio.subprocess.DEVNULL,
+                            stderr=asyncio.subprocess.DEVNULL,
                         )
-                        stdout, stderr = await process.communicate()
-
-                        if process.returncode == 0:
-                            logger.info("Chromium installed successfully.")
-                            self._browser = await self._playwright.chromium.launch(
-                                headless=headless, args=args
-                            )
-                        else:
-                            error_msg = (
-                                stderr.decode().strip() or stdout.decode().strip()
-                            )
+                        try:
+                            code = await asyncio.wait_for(process.wait(), timeout=120)
+                        except BaseException:
+                            if process.returncode is None:
+                                process.kill()
+                            await process.wait()
+                            raise
+                        if code != 0:
                             raise RuntimeError(
-                                f"Failed to install Chromium: {error_msg}"
-                            )
-                    else:
-                        logger.error(f"Failed to launch browser: {e}")
-                        raise
+                                "Chromium installation failed. Run uv run playwright install chromium."
+                            ) from None
+                        await self._launch_context(headless)
+                    self._context.set_default_timeout(5000)
+                    self._context.set_default_navigation_timeout(15000)
+                    self._page = (
+                        next(iter(self._context.pages), None)
+                        or await self._context.new_page()
+                    )
+                    self._page.on("framenavigated", self._on_navigation)
+                    self._client = await self._context.new_cdp_session(self._page)
+                    self._client.on("Page.screencastFrame", self._on_screencast_frame)
+                    if self._websockets:
+                        await self.start_streaming()
+                    logger.info("Browser session started")
+                    return replaced
+                except BaseException:
+                    await self.close_session()
+                    raise
 
-                logger.debug("Creating browser context...")
-                # Create context with video size tailored for sidebar
-                self._context = await self._browser.new_context(
-                    viewport={"width": 1280, "height": 800}
-                )
-                self._page = await self._context.new_page()
-                logger.debug("Browser context and page created.")
+        return await self._run_on_main_loop(_launch())
 
-                # Connect CDP for low-level control
-                self._client = await self._context.new_cdp_session(self._page)
-                logger.debug("CDP session connected.")
+    async def _launch_context(self, headless: bool | None) -> None:
+        options = {
+            "headless": self.settings.headless if headless is None else headless,
+            "channel": None
+            if self.settings.channel == "chromium"
+            else self.settings.channel,
+            "timeout": 30000,
+        }
+        if self.settings.persistent:
+            profile = self.settings.profile_dir.expanduser().resolve()
+            profile.mkdir(parents=True, exist_ok=True)
+            self._context = await self._playwright.chromium.launch_persistent_context(
+                str(profile),
+                viewport={"width": 1280, "height": 800},
+                **options,
+            )
+            self._browser = self._context.browser
+        else:
+            self._browser = await self._playwright.chromium.launch(**options)
+            self._context = await self._browser.new_context(
+                viewport={"width": 1280, "height": 800}
+            )
 
-                # Setup Screencast
-                self._client.on("Page.screencastFrame", self._on_screencast_frame)
-
-                # If we have waiting clients, start streaming immediately
-                if self._websockets:
-                    logger.debug("Starting streaming for existing clients...")
-                    await self.start_streaming()
-
-        # Execute on main loop
-        logger.debug("Calling ensure_session...")
-        await self._run_on_main_loop(_launch())
-        logger.debug("ensure_session completed.")
+    def _on_navigation(self, frame: Any) -> None:
+        if self._page and frame == self._page.main_frame:
+            self._snapshot_generation += 1
 
     # --- Wrapper methods for Thread Safety ---
 
-    async def goto(self, url: str):
-        async def _fn():
-            return await self._page.goto(
-                url, wait_until="domcontentloaded", timeout=15000
-            )
+    async def goto(self, url: str) -> None:
+        url = normalize_browser_url(url)
 
-        return await self._run_on_main_loop(_fn())
+        async def _fn() -> None:
+            async with self._action_lock:
+                self._snapshot_generation += 1
+                await self._page.goto(url, wait_until="domcontentloaded", timeout=15000)
 
-    async def click(self, x: int, y: int):
-        async def _fn():
-            return await self._page.mouse.click(x, y)
+        await self._run_on_main_loop(_fn())
 
-        return await self._run_on_main_loop(_fn())
+    async def click(self, x: int, y: int) -> None:
+        async def _fn() -> None:
+            async with self._action_lock:
+                self._snapshot_generation += 1
+                await self._page.mouse.click(x, y)
 
-    async def scroll(self, dx: int, dy: int):
-        async def _fn():
-            return await self._page.mouse.wheel(dx, dy)
+        await self._run_on_main_loop(_fn())
 
-        return await self._run_on_main_loop(_fn())
+    async def scroll(self, dx: int, dy: int) -> None:
+        async def _fn() -> None:
+            async with self._action_lock:
+                await self._page.mouse.wheel(dx, dy)
 
-    async def back(self):
-        async def _fn():
-            return await self._page.go_back(wait_until="domcontentloaded")
+        await self._run_on_main_loop(_fn())
 
-        return await self._run_on_main_loop(_fn())
+    async def back(self) -> None:
+        async def _fn() -> None:
+            async with self._action_lock:
+                self._snapshot_generation += 1
+                await self._page.go_back(wait_until="domcontentloaded")
 
-    async def forward(self):
-        async def _fn():
-            return await self._page.go_forward(wait_until="domcontentloaded")
+        await self._run_on_main_loop(_fn())
 
-        return await self._run_on_main_loop(_fn())
+    async def forward(self) -> None:
+        async def _fn() -> None:
+            async with self._action_lock:
+                self._snapshot_generation += 1
+                await self._page.go_forward(wait_until="domcontentloaded")
 
-    async def reload(self):
-        async def _fn():
-            return await self._page.reload(wait_until="domcontentloaded")
+        await self._run_on_main_loop(_fn())
 
-        return await self._run_on_main_loop(_fn())
+    async def reload(self) -> None:
+        async def _fn() -> None:
+            async with self._action_lock:
+                self._snapshot_generation += 1
+                await self._page.reload(wait_until="domcontentloaded")
 
-    # --- Native Semantic Helpers ---
-    _selector_map = {}
+        await self._run_on_main_loop(_fn())
 
-    async def get_snapshot(self, interactive_only: bool = True) -> ToolResult:
-        """Generate a semantic snapshot and populate selector map."""
-
-        async def _snap():
-            # clear previous map
-            self._selector_map.clear()
-
-            # Simple heuristic script to find interactive elements
-            js_script = """
-            () => {
-                const elements = Array.from(document.querySelectorAll('a, button, input, textarea, select, [role="button"], [role="link"]'));
-                const visibleElements = elements.filter(el => {
-                    const rect = el.getBoundingClientRect();
-                    return rect.width > 0 && rect.height > 0 && window.getComputedStyle(el).visibility !== 'hidden';
-                });
-                
-                return visibleElements.map((el, index) => {
-                    // Generate a simple unique selector if possible, or use index strategy
-                    el.setAttribute('data-agent-ref', index);
-                    
-                    let label = el.innerText || el.getAttribute('aria-label') || el.getAttribute('placeholder') || el.value || '';
-                    label = label.substring(0, 50).replace(/\\n/g, ' ');
-                    
-                    return {
-                        index: index,
-                        tagName: el.tagName.toLowerCase(),
-                        type: el.getAttribute('type'),
-                        label: label,
-                        href: el.getAttribute('href')
-                    };
-                });
-            }
-            """
+    async def _dispose_refs(self) -> None:
+        refs, self._selector_map = self._selector_map, {}
+        for element, _ in refs.values():
             try:
-                items = await self._page.evaluate(js_script)
-            except Exception as e:
-                logger.error(f"Snapshot script failed: {e}")
-                return ToolResult.error_result(
-                    ToolErrorCode.EXECUTION_FAILED,
-                    "Error generating snapshot.",
-                )
+                await element.dispose()
+            except Exception:
+                pass
 
-            output_lines = []
-            for item in items:
-                idx = item["index"]
-                ref = f"@e{idx}"
-                self._selector_map[ref] = f"[data-agent-ref='{idx}']"
-
-                line = f"{ref}: <{item['tagName']}"
-                if item["type"]:
-                    line += f" type='{item['type']}'"
-                if item["href"]:
-                    line += f" href='{item['href']}'"
-                line += f"> {item['label']}"
-                output_lines.append(line)
-
-            if output_lines:
-                return ToolResult.success_result(
-                    "\n".join(output_lines),
-                    metadata={
-                        "interactive_only": interactive_only,
-                        "element_count": len(output_lines),
-                    },
-                )
-            return ToolResult.success_result(
-                "No interactive elements found.",
-                metadata={"interactive_only": interactive_only, "element_count": 0},
-            )
+    async def get_snapshot(
+        self, interactive_only: bool = False, offset: int = 0, limit: int = 80
+    ) -> ToolResult:
+        async def _snap() -> ToolResult:
+            async with self._action_lock:
+                await self._dispose_refs()
+                self._snapshot_generation += 1
+                generation = self._snapshot_generation
+                snapshot = None
+                try:
+                    await self._page.wait_for_load_state(
+                        "domcontentloaded", timeout=5000
+                    )
+                    # Hydration can follow DOMContentLoaded; empty documents remain valid observations.
+                    try:
+                        ready = await self._page.wait_for_function(
+                            CONTROLS_READY_SCRIPT, timeout=750
+                        )
+                        await ready.dispose()
+                    except PlaywrightTimeoutError:
+                        pass
+                    snapshot = await self._page.evaluate_handle(
+                        SNAPSHOT_SCRIPT,
+                        {
+                            "offset": offset,
+                            "limit": limit,
+                            "interactiveOnly": interactive_only,
+                        },
+                    )
+                    data_handle = await snapshot.get_property("data")
+                    try:
+                        data = await data_handle.json_value()
+                    finally:
+                        await data_handle.dispose()
+                    nodes = await snapshot.get_property("nodes")
+                    try:
+                        properties = await nodes.get_properties()
+                    finally:
+                        await nodes.dispose()
+                    for index, item in enumerate(data["items"]):
+                        element = properties[str(index)].as_element()
+                        ref = f"@g{generation}e{offset + index}"
+                        self._selector_map[ref] = (element, item)
+                    if generation != self._snapshot_generation:
+                        await self._dispose_refs()
+                        return ToolResult.error_result(
+                            ToolErrorCode.EXECUTION_FAILED,
+                            "Page navigated during observation. Call snapshot again.",
+                        )
+                    metadata = {
+                        key: value
+                        for key, value in data.items()
+                        if key not in {"items", "text"}
+                    }
+                    metadata.update(
+                        {
+                            "snapshot_id": generation,
+                            "offset": offset,
+                            "element_count": len(data["items"]),
+                            "interactive_only": interactive_only,
+                        }
+                    )
+                    next_offset = offset + len(data["items"])
+                    metadata["truncated"] = next_offset < data["total"]
+                    lines = [
+                        f"[Page: {data['title'][:200]} | URL: {data['url'][:1000]} | State: {data['ready_state']} | Snapshot: {generation}]"
+                    ]
+                    if data["text"]:
+                        lines.append(data["text"])
+                    if data["text_truncated"]:
+                        lines.append("[Page text truncated to 4000 characters.]")
+                    for ref, (_, item) in self._selector_map.items():
+                        lines.append(format_snapshot_element(ref, item))
+                    if not data["items"]:
+                        lines.append(
+                            "No interactive elements in this range. The page may be loading or contain no controls."
+                        )
+                    if metadata["truncated"]:
+                        metadata["next_offset"] = next_offset
+                        lines.append(
+                            f'More elements: snapshot arguments=["{next_offset}", "{limit}"]. New snapshots expire previous refs.'
+                        )
+                    if data["frame_count"]:
+                        lines.append(
+                            "[Embedded frames are not included in this snapshot.]"
+                        )
+                    return ToolResult.success_result(
+                        "\n".join(lines), metadata=metadata
+                    )
+                except PlaywrightTimeoutError:
+                    await self._dispose_refs()
+                    return ToolResult.error_result(
+                        ToolErrorCode.TIMEOUT,
+                        "Page is still loading. Call snapshot again.",
+                    )
+                except Exception:
+                    await self._dispose_refs()
+                    return ToolResult.error_result(
+                        ToolErrorCode.EXECUTION_FAILED,
+                        "Snapshot failed; the page may have changed. Call snapshot again.",
+                    )
+                finally:
+                    if snapshot is not None:
+                        try:
+                            await snapshot.dispose()
+                        except Exception:
+                            pass
 
         return await self._run_on_main_loop(_snap())
 
-    async def interact(self, action: str, ref: str, value: str = None) -> ToolResult:
-        """Interact with an element by ref or selector."""
-
-        async def _act():
-            # Resolve ref if it exists
-            selector = self._selector_map.get(ref, ref)
-
-            try:
-                if action == "click":
-                    await self._page.click(selector)
-                    return ToolResult.success_result(
-                        f"Clicked {ref}", metadata={"action": action, "ref": ref}
-                    )
-                elif action == "dblclick":
-                    await self._page.dblclick(selector)
-                    return ToolResult.success_result(
-                        f"Double-clicked {ref}", metadata={"action": action, "ref": ref}
-                    )
-                elif action == "fill":
-                    await self._page.fill(selector, value or "")
-                    return ToolResult.success_result(
-                        f"Filled {ref} with '{value}'",
-                        metadata={"action": action, "ref": ref},
-                    )
-                elif action == "type":
-                    await self._page.type(selector, value or "")
-                    return ToolResult.success_result(
-                        f"Typed '{value}' into {ref}",
-                        metadata={"action": action, "ref": ref},
-                    )
-                elif action == "hover":
-                    await self._page.hover(selector)
-                    return ToolResult.success_result(
-                        f"Hovered {ref}", metadata={"action": action, "ref": ref}
-                    )
-                elif action == "press":
-                    # value is key name
-                    await self._page.press(selector, value)
-                    return ToolResult.success_result(
-                        f"Pressed '{value}' on {ref}",
-                        metadata={"action": action, "ref": ref},
-                    )
-                else:
+    async def interact(
+        self, action: str, ref: str, value: str | None = None
+    ) -> ToolResult:
+        async def _act() -> ToolResult:
+            async with self._action_lock:
+                target = self._selector_map.get(ref)
+                if target is None or not ref.startswith(
+                    f"@g{self._snapshot_generation}e"
+                ):
                     return ToolResult.error_result(
                         ToolErrorCode.INVALID_ARGUMENT,
-                        f"Unknown action {action}",
+                        "Ref expired or unknown. Call snapshot again.",
+                    )
+                element, observed = target
+                try:
+                    current = await element.evaluate(ELEMENT_STATE_SCRIPT)
+                    if not current["connected"] or any(
+                        current[key] != observed[key]
+                        for key in ("tag", "type", "label", "href", "name")
+                    ):
+                        return ToolResult.error_result(
+                            ToolErrorCode.INVALID_ARGUMENT,
+                            "Element changed. Call snapshot again.",
+                        )
+                    match action:
+                        case "click":
+                            await element.click(timeout=5000)
+                        case "dblclick":
+                            await element.dblclick(timeout=5000)
+                        case "hover":
+                            await element.hover(timeout=5000)
+                        case "fill":
+                            await element.fill(value or "", timeout=5000)
+                        case "type":
+                            await element.type(value or "", timeout=5000)
+                        case "press":
+                            await element.press(value, timeout=5000)
+                        case _:
+                            return ToolResult.error_result(
+                                ToolErrorCode.INVALID_ARGUMENT, "Unknown interaction."
+                            )
+                    return ToolResult.success_result(
+                        f"{action} completed on {ref}.",
                         metadata={"action": action, "ref": ref},
                     )
-            except Exception as e:
-                return ToolResult.error_result(
-                    ToolErrorCode.EXECUTION_FAILED,
-                    f"Interaction failed: {e}",
-                    metadata={"action": action, "ref": ref},
-                )
+                except PlaywrightTimeoutError:
+                    return ToolResult.error_result(
+                        ToolErrorCode.TIMEOUT,
+                        "Element was not actionable within 5 seconds. Call snapshot again.",
+                    )
+                except Exception:
+                    return ToolResult.error_result(
+                        ToolErrorCode.EXECUTION_FAILED,
+                        "Interaction failed; the element may have changed. Call snapshot again.",
+                    )
 
         return await self._run_on_main_loop(_act())
 
@@ -456,7 +515,18 @@ class BrowserSessionManager:
         """Extract and validate mouse coordinates from a message."""
         return message.get("x"), message.get("y")
 
-    async def handle_client_message(self, message: dict):
+    async def handle_client_message(self, message: dict[str, Any]) -> None:
+        async def _handle() -> None:
+            if message.get("type") == "navigate":
+                await self._handle_client_message(message)
+                return
+            async with self._action_lock:
+                self._snapshot_generation += 1
+                await self._handle_client_message(message)
+
+        await self._run_on_main_loop(_handle())
+
+    async def _handle_client_message(self, message: dict[str, Any]) -> None:
         """Process interaction events from the frontend."""
         action = message.get("type")
 
@@ -466,7 +536,7 @@ class BrowserSessionManager:
             if url:
                 await self.ensure_session()
                 await self.start_streaming()
-                await self._page.goto(url)
+                await self.goto(normalize_browser_url(url))
             return
 
         # Other actions require browser to be already running
@@ -512,6 +582,8 @@ class BrowserSessionManager:
         """Clean up browser resources."""
         logger.info("Closing Browser Session...")
         await self.stop_streaming()
+        self._snapshot_generation += 1
+        await self._dispose_refs()
 
         if self._context:
             try:
@@ -551,109 +623,66 @@ class BrowsingTool(Tool):
         super().__init__(**kwargs)
         self.session_mgr = BrowserSessionManager.get_instance()
 
-    async def _execute(self, command: str, arguments: list = None):
-        arguments = arguments or []
-
-        # Ensure session exists (this also starts CDP if needed)
-        await self.session_mgr.ensure_session()
-
-        # --- PATH A: NATIVE (System/User Logic) ---
-        if command == "open":
-            url = arguments[0] if arguments else "about:blank"
-            if not url.startswith("http"):
-                url = "https://" + url
-            try:
-                # Use manager wrapper for thread safety
-                await self.session_mgr.goto(url)
-            except Exception as e:
+    async def _execute(
+        self, command: str, arguments: list[str] | None = None
+    ) -> ToolResult:
+        try:
+            request = BrowserCommand.model_validate(
+                {
+                    "command": command,
+                    "arguments": arguments if arguments is not None else [],
+                }
+            )
+        except ValidationError as exc:
+            details = "; ".join(
+                error["msg"] for error in exc.errors(include_input=False)
+            )
+            return ToolResult.error_result(ToolErrorCode.INVALID_ARGUMENT, details)
+        args = request.arguments
+        try:
+            replaced = await self.session_mgr.ensure_session()
+            if replaced and request.command not in {"open", "snapshot"}:
                 return ToolResult.error_result(
-                    ToolErrorCode.EXECUTION_FAILED,
-                    f"Error opening {url} (partial load): {e}",
-                    metadata={"command": command, "url": url},
+                    ToolErrorCode.INVALID_ARGUMENT,
+                    "Browser settings changed and the managed browser was restarted. Open a page or call snapshot before interacting.",
                 )
+            match request.command:
+                case "snapshot":
+                    return await self.session_mgr.get_snapshot(
+                        interactive_only=arguments == ["-i"],
+                        offset=int(args[0]) if args else 0,
+                        limit=int(args[1]) if len(args) > 1 else 80,
+                    )
+                case "click" | "dblclick" | "hover" | "fill" | "type" | "press":
+                    return await self.session_mgr.interact(
+                        command, args[0], args[1] if len(args) > 1 else None
+                    )
+                case "open":
+                    await self.session_mgr.goto(args[0])
+                case "back":
+                    await self.session_mgr.back()
+                case "forward":
+                    await self.session_mgr.forward()
+                case "reload" | "refresh":
+                    await self.session_mgr.reload()
+                case "click_coords":
+                    await self.session_mgr.click(int(args[0]), int(args[1]))
+                case "scroll":
+                    await self.session_mgr.scroll(int(args[0]), int(args[1]))
             return ToolResult.success_result(
-                f"Opened {url}", metadata={"command": command, "url": url}
+                f"{command} completed. Call snapshot to observe the page.",
+                metadata={"command": command},
             )
-
-        elif command == "back":
-            await self.session_mgr.back()
-            return ToolResult.success_result(
-                "Navigated back.", metadata={"command": command}
+        except PlaywrightTimeoutError:
+            return ToolResult.error_result(
+                ToolErrorCode.TIMEOUT,
+                "Browser action timed out. Call snapshot to inspect the current page before retrying.",
             )
-
-        elif command == "forward":
-            await self.session_mgr.forward()
-            return ToolResult.success_result(
-                "Navigated forward.", metadata={"command": command}
+        except Exception:
+            return ToolResult.error_result(
+                ToolErrorCode.EXECUTION_FAILED,
+                "Browser action failed. Check browser installation/profile configuration, or call snapshot if a page is open.",
             )
-
-        elif command == "reload" or command == "refresh":
-            await self.session_mgr.reload()
-            return ToolResult.success_result(
-                "Reloaded page.", metadata={"command": command}
-            )
-
-        elif command == "click_coords":
-            x, y = int(arguments[0]), int(arguments[1])
-            # Use manager wrapper for thread safety
-            await self.session_mgr.click(x, y)
-            return ToolResult.success_result(
-                f"Clicked at {x}, {y}", metadata={"command": command, "x": x, "y": y}
-            )
-
-        elif command == "scroll":
-            # arguments: [dx, dy]
-            # If simplistic usage: just scroll down
-            await self.session_mgr.scroll(0, 500)
-            return ToolResult.success_result(
-                "Scrolled down.", metadata={"command": command}
-            )
-
-        # --- PATH B: PYTHON NATIVE SEMANTIC LOGIC (Replacing Agent-Browser CLI) ---
-        # The Agent uses 'snapshot' to "reason" about the page (e.g. use @e1 locators)
-        # We now handle this natively via Playwright injection for reliability.
-
-        if command == "snapshot":
-            # arguments like ['-i'] are ignored as we default to interactive for now
-            return await self.session_mgr.get_snapshot(interactive_only=True)
-
-        elif command in ["click", "dblclick", "hover"]:
-            if not arguments:
-                return ToolResult.error_result(
-                    ToolErrorCode.MISSING_REQUIRED_PARAM,
-                    f"{command} requires a target ref (e.g. {command} @e1)",
-                    metadata={"command": command},
-                )
-            ref = arguments[0]
-            return await self.session_mgr.interact(command, ref)
-
-        elif command in ["fill", "type"]:
-            if not arguments:
-                return ToolResult.error_result(
-                    ToolErrorCode.MISSING_REQUIRED_PARAM,
-                    f"{command} requires a target ref (e.g. {command} @e1 'text')",
-                    metadata={"command": command},
-                )
-            ref = arguments[0]
-            val = arguments[1] if len(arguments) > 1 else ""
-            return await self.session_mgr.interact(command, ref, val)
-
-        elif command == "press":
-            if not arguments:
-                return ToolResult.error_result(
-                    ToolErrorCode.MISSING_REQUIRED_PARAM,
-                    "press requires ref and key (e.g. press @e1 Enter)",
-                    metadata={"command": command},
-                )
-            ref = arguments[0]
-            key = arguments[1] if len(arguments) > 1 else "Enter"
-            return await self.session_mgr.interact("press", ref, key)
-
-        return ToolResult.error_result(
-            ToolErrorCode.INVALID_ARGUMENT,
-            f"Unknown command {command}",
-            metadata={"command": command},
-        )
 
     async def forward(
         self,
@@ -678,10 +707,10 @@ class BrowsingTool(Tool):
             Field(description="Browser command to execute."),
         ],
         arguments: Annotated[
-            Optional[list[str]],
+            list[str] | None,
             Field(
                 default=None,
-                description="Optional command arguments such as a URL, ref, text, or coordinates.",
+                description="open: [url] or []; snapshot: [] or [offset, limit<=100] or [-i]; click/dblclick/hover: [ref]; fill/type/press: [ref, value]; click_coords: [x, y]; scroll: [dx, dy] or []; back/forward/reload/refresh: []. Use exact @gNeN refs from the latest snapshot; selectors are not accepted.",
             ),
         ] = None,
     ) -> ToolResult:
@@ -691,6 +720,6 @@ class BrowsingTool(Tool):
 
         Args:
             command: The command to execute (open, snapshot, click, fill, scroll, back, forward, refresh, click_coords).
-            arguments: Optional arguments for the command (e.g., url, selector, text).
+            arguments: Command-specific string arguments. Refs expire after navigation or another snapshot.
         """
         return await self._execute(command, arguments)
