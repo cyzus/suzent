@@ -383,6 +383,9 @@ export default function Home(): ReactNode {
 
       <footer className={styles.homeFooter}>
         <span>© 2026 SUZENT</span>
+        <Link to="/browser-privacy">
+          <Translate id="home.browserPrivacy">Browser privacy</Translate>
+        </Link>
       </footer>
     </Layout>
   );

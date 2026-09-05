@@ -1,4 +1,8 @@
 {
+  "link.item.label.Browser privacy": {
+    "message": "浏览器隐私政策",
+    "description": "Footer link: Browser extension privacy policy"
+  },
   "link.title.Docs": {
     "message": "文档",
     "description": "Footer column title: Docs"

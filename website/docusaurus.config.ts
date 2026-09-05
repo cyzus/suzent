@@ -249,6 +249,10 @@ const config: Config = {
               label: 'Issues',
               href: 'https://github.com/cyzus/suzent/issues',
             },
+            {
+              label: 'Browser privacy',
+              to: '/browser-privacy',
+            },
           ],
         },
       ],

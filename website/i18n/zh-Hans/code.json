@@ -186,5 +186,8 @@
   "homepage.callout.cta.secondary": {
     "message": "浏览核心工具",
     "description": "Callout secondary CTA"
+  },
+  "home.browserPrivacy": {
+    "message": "浏览器隐私政策"
   }
 }
