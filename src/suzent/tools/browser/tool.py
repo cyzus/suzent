@@ -722,16 +722,16 @@ class BrowsingTool(Tool):
                 from suzent.tools.browser.extension.session import session as extension
 
                 async def extension_action() -> ToolResult | None:
-                    settings = await asyncio.to_thread(BrowserSettings.load)
-                    if settings.connection_mode == "extension":
-                        async with self.session_mgr._action_lock:
+                    async with self.session_mgr._action_lock:
+                        settings = await asyncio.to_thread(BrowserSettings.load)
+                        if settings.connection_mode == "extension":
                             if self.session_mgr._playwright:
                                 await self.session_mgr.close_session()
                             return await extension.execute(
                                 request, interactive_only=arguments == ["-i"]
                             )
-                    if extension.selected:
-                        await extension.close()
+                        if extension.selected:
+                            await extension.close()
                     return None
 
                 result = await self.session_mgr._run_on_main_loop(extension_action())

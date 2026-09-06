@@ -6,8 +6,11 @@ from pathlib import Path
 from unittest.mock import AsyncMock
 
 from suzent.config.paths import PROJECT_DIR
+from suzent.routes.browser_routes import browser_settings_endpoint
+from suzent.tools.browser import config as browser_config
 
 import pytest
+import httpx
 import uvicorn
 from playwright.async_api import async_playwright
 from playwright.async_api import Error as PlaywrightError
@@ -35,6 +38,8 @@ from suzent.tools.browser.tool import BrowserSessionManager, BrowsingTool
 @pytest.fixture(autouse=True)
 def isolate_pairing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(bridge_module, "USER_CONFIG_DIR", tmp_path)
+    monkeypatch.setattr(browser_config, "USER_CONFIG_DIR", tmp_path)
+    monkeypatch.delenv("SUZENT_BROWSER_CONNECTION_MODE", raising=False)
     bridge._pairing = None
     monkeypatch.setattr(extension_routes, "install_native_host", lambda _: None)
 
@@ -62,6 +67,9 @@ def test_expired_pairing_cannot_connect(monkeypatch: pytest.MonkeyPatch) -> None
 def app() -> Starlette:
     return Starlette(
         routes=[
+            Route(
+                "/browser/settings", browser_settings_endpoint, methods=["GET", "POST"]
+            ),
             Route(
                 "/browser/extension",
                 extension_settings,
@@ -183,6 +191,7 @@ async def test_real_extension_pair_actions_preview_and_disconnect(
 
     if not available_browsers()[browser_channel]:
         pytest.skip("Browser is not installed")
+    browser_config.BrowserPreferences(connection_mode="extension").save()
     listener = socket.socket()
     listener.bind(("127.0.0.1", 0))
     port = listener.getsockname()[1]
@@ -279,7 +288,24 @@ async def test_real_extension_pair_actions_preview_and_disconnect(
                 await session.remove_client(preview)
                 assert not session.streaming
                 assert session.frames.task is None
-                await session.close()
+                async with httpx.AsyncClient() as client:
+                    changed = await client.post(
+                        f"http://127.0.0.1:{port}/browser/settings",
+                        json={"connection_mode": "managed"},
+                    )
+                    assert changed.status_code == 200
+                assert session.selected is None
+                assert bridge.socket is not None
+                assert (tmp_path / "browser-extension.json").exists()
+                assert await worker.evaluate(
+                    """async (tabId) => {
+                        try {
+                            await chrome.debugger.sendCommand({tabId}, 'Page.getFrameTree');
+                            return false;
+                        } catch { return true; }
+                    }""",
+                    int(tab["id"].removeprefix("tab-")),
+                )
                 assert not page.is_closed()
                 assert await page.locator("input").input_value() == "private text"
                 await bridge.revoke()

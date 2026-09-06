@@ -63,7 +63,21 @@ async def browser_settings_endpoint(request: Request) -> JSONResponse:
     try:
         if request.method == "POST":
             preferences = BrowserPreferences.model_validate(await request.json())
-            await asyncio.to_thread(preferences.save_changes)
+            if "connection_mode" in preferences.model_fields_set:
+                manager = BrowserSessionManager.get_instance()
+                async with manager._action_lock:
+                    await asyncio.to_thread(preferences.save_changes)
+                    effective = await asyncio.to_thread(BrowserSettings.load)
+                    if effective.connection_mode != "extension":
+                        await extension_session.close()
+                    if (
+                        manager._playwright
+                        and manager.settings.connection_mode
+                        != effective.connection_mode
+                    ):
+                        await manager.close_session()
+            else:
+                await asyncio.to_thread(preferences.save_changes)
         settings = await asyncio.to_thread(BrowserSettings.load)
         return JSONResponse(
             {

@@ -16,6 +16,7 @@ from suzent.tools.browser.config import BrowserSettings
 from suzent.tools.browser.preview import PreviewFrames
 from suzent.tools.browser.extension import bridge as bridge_module
 from suzent.tools.browser.extension import session as session_module
+from suzent.tools.browser.extension import routes as extension_routes
 
 
 @pytest.mark.parametrize(
@@ -228,3 +229,43 @@ async def test_extension_timeout_resets_session_and_replaces_pending_screenshot(
     client.send_json.assert_awaited_with({"type": "reset"})
     socket.send_json.assert_awaited_once()
     await session.frames.clear()
+
+
+@pytest.mark.parametrize(
+    "error", [RuntimeError("Already closed"), OSError("Broken pipe")]
+)
+async def test_replacement_succeeds_when_old_socket_cannot_close(
+    monkeypatch: pytest.MonkeyPatch, error: Exception
+) -> None:
+    connection = bridge_module.ExtensionBridge()
+    old = AsyncMock()
+    old.close.side_effect = error
+    connection.socket = old
+    monkeypatch.setattr(session_module, "bridge", connection)
+    session = session_module.ExtensionSession()
+    session.selected = "tab-old"
+    session.streaming = True
+    session.refs["old"] = (0, {})
+    pending = asyncio.get_running_loop().create_future()
+    connection._pending[1] = pending
+    monkeypatch.setattr(extension_routes, "bridge", connection)
+    monkeypatch.setattr(extension_routes, "install_native_host", lambda _: None)
+    monkeypatch.setattr(connection, "authenticate", lambda *_: True)
+    incoming = AsyncMock()
+    incoming.client = SimpleNamespace(host="127.0.0.1")
+    incoming.headers = {"origin": "chrome-extension://" + "a" * 32}
+    incoming.receive_json.return_value = {"token": "a" * 43}
+    incoming.receive_text.side_effect = WebSocketDisconnect()
+
+    async def ready(message: dict) -> None:
+        assert message == {"type": "ready"}
+        assert connection.socket is incoming
+        assert session.selected is None
+        assert not session.streaming
+        assert not session.refs
+
+    incoming.send_json.side_effect = ready
+    await extension_routes.extension_websocket(incoming)
+    incoming.send_json.assert_awaited_once_with({"type": "ready"})
+    assert isinstance(pending.exception(), ValueError)
+    assert not connection._pending

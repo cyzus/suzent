@@ -156,9 +156,15 @@ async def extension_websocket(websocket: WebSocket) -> None:
                 logger.warning(
                     "Could not install browser endpoint discovery; re-pair if the backend port changes"
                 )
-            if bridge.socket:
-                await bridge.socket.close(code=1000)
-            await bridge.disconnected()
+            previous = bridge.socket
+            try:
+                if previous:
+                    await previous.close(code=1000)
+            except (RuntimeError, OSError):
+                pass
+            finally:
+                if bridge.socket is previous:
+                    await bridge.disconnected()
             bridge.socket = websocket
             await websocket.send_json({"type": "ready"})
         while True:
