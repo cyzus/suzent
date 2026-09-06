@@ -126,13 +126,14 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   const canvasMatchesChat = !canvas || canvas.surfacesChatId === currentChatId;
   const hasCanvasContent = canvasMatchesChat && !!canvas?.hasSurfaces;
 
-  // Canvas gets a wider, ratio-based ceiling than other tabs (it holds wide
-  // content). App passes canvasMaxWidthPx (viewport-derived, chat-width-safe);
-  // other tabs keep the standard maxWidthPx.
+  // Browser and canvas both need room for desktop-sized content. The shared
+  // wide-content ceiling is viewport-derived and preserves space for chat.
   const isCanvasActive = activeTab === 'canvas' && hasCanvasContent;
-  const activeMax = isCanvasActive
-    ? (canvasMaxWidthPx ?? maxWidthPx ?? MAX_RIGHT_SIDEBAR_WIDTH_PX)
-    : (maxWidthPx ?? MAX_RIGHT_SIDEBAR_WIDTH_PX);
+  const isBrowserActive = activeTab === 'browser';
+  const activeMax =
+    isCanvasActive || isBrowserActive
+      ? (canvasMaxWidthPx ?? maxWidthPx ?? MAX_RIGHT_SIDEBAR_WIDTH_PX)
+      : (maxWidthPx ?? MAX_RIGHT_SIDEBAR_WIDTH_PX);
   const effectiveMaxWidth = Math.max(MIN_RIGHT_SIDEBAR_WIDTH_PX, activeMax);
 
   const shouldBuildWebHistory = isOpen || isBrowserStreamActive || Boolean(forcedWebContextId);
@@ -393,6 +394,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   const shouldUseCustomWidth = hasCustomWidth && !isOverlayMode;
 
   const getDesktopDefaultWidth = () => {
+    if (isBrowserActive) return effectiveMaxWidth;
     if (isAutoExpanded) return Math.round(effectiveViewportWidth * 0.5);
     // Canvas often holds wide content (tables, forms) — give it as much room as
     // the layout allows (clamped to effectiveMaxWidth below). Drag to narrow.
@@ -471,7 +473,13 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       {isOverlayMode ? (
         <div
           className={`absolute inset-y-0 right-full transform-gpu will-change-transform transition-transform duration-300 ease-in-out border-l-3 border-brutal-black overflow-hidden bg-white dark:bg-zinc-900 ${isOpen ? 'translate-x-0' : 'translate-x-full pointer-events-none'}`}
-          style={{ width: isOpen ? desktopOpenWidth : 0 }}
+          style={{
+            width: isOpen
+              ? isBrowserActive
+                ? Math.max(0, effectiveViewportWidth - ICON_STRIP_WIDTH)
+                : desktopOpenWidth
+              : 0,
+          }}
         >
           {!forceFullView && isOpen && (
             <div

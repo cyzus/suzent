@@ -4,6 +4,12 @@ import { connectBrowserPreview } from '../../lib/browserPreview';
 
 import { useI18n } from '../../i18n';
 import { BrutalButton } from '../BrutalButton';
+import {
+  ArrowTopRightOnSquareIcon,
+  CursorArrowRaysIcon,
+  PlayIcon,
+  StopIcon,
+} from '@heroicons/react/24/outline';
 
 export interface BrowserViewProps {
   visible?: boolean;
@@ -33,6 +39,8 @@ export function BrowserView({ onStreamActive, visible = true }: BrowserViewProps
       : details?.mode === 'managed';
   const watching = visible && documentVisible;
   const streaming = watching && !!details && previewEnabled;
+  const supportsControl = details?.mode === 'managed';
+  const controlActive = supportsControl && isControlling;
 
   useEffect(() => {
     const update = (): void => setDocumentVisible(document.visibilityState === 'visible');
@@ -137,6 +145,7 @@ export function BrowserView({ onStreamActive, visible = true }: BrowserViewProps
   }, [streaming, details?.mode]);
 
   const toggleControl = () => {
+    if (!supportsControl) return;
     const newState = !isControlling;
     setIsControlling(newState);
     if (newState) {
@@ -145,7 +154,7 @@ export function BrowserView({ onStreamActive, visible = true }: BrowserViewProps
   };
 
   // Helper to check if control actions are allowed
-  const canControl = () => wsRef.current && status === 'connected' && isControlling;
+  const canControl = () => wsRef.current && status === 'connected' && controlActive;
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (!canControl()) return;
@@ -238,77 +247,104 @@ export function BrowserView({ onStreamActive, visible = true }: BrowserViewProps
   };
 
   return (
-    <div className="flex flex-col h-full bg-neutral-100 dark:bg-zinc-900" ref={containerRef}>
-      <div className="flex items-center justify-between px-3 py-2 bg-white dark:bg-zinc-800 border-b-3 border-brutal-black shrink-0">
-        <span className="text-[10px] font-bold uppercase tracking-widest font-mono text-neutral-500 dark:text-zinc-400">
-          {t('browser.title')}
-        </span>
-        <div className="flex items-center gap-3">
+    <div
+      className="flex flex-col h-full min-h-0 min-w-0 bg-neutral-100 dark:bg-zinc-900"
+      ref={containerRef}
+    >
+      <div className="px-3 pt-3 pb-3 bg-white dark:bg-zinc-800 border-b-2 border-brutal-black shrink-0">
+        <div className="flex flex-wrap items-center gap-2 pb-3 text-xs">
+          <div className="flex-1 min-w-0 basis-32">
+            <p className="flex items-center gap-2 font-bold">
+              <span
+                aria-hidden="true"
+                className={`h-2 w-2 shrink-0 rounded-full ${details?.connected ? 'bg-green-500' : 'bg-neutral-400'}`}
+              />
+              <span className="min-w-0 break-words">
+                {details?.browser === 'msedge'
+                  ? 'Edge'
+                  : details?.browser === 'chromium'
+                    ? 'Chromium'
+                    : details?.browser === 'chrome'
+                      ? 'Chrome'
+                      : (details?.browser ?? t('browser.title'))}{' '}
+                · {t(`browser.status.${details?.connected ? 'connected' : 'disconnected'}`)}
+              </span>
+            </p>
+            <p
+              className="mt-1 truncate text-neutral-500 dark:text-zinc-400"
+              title={details?.title ?? undefined}
+            >
+              {details?.title ?? t('browser.noSelectedTab')}
+            </p>
+          </div>
+          <BrutalButton
+            size="xs"
+            variant="ghost"
+            className="shrink-0"
+            disabled={!details?.selected}
+            onClick={() => void showTab()}
+          >
+            <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            {t('browser.showTab')}
+          </BrutalButton>
+        </div>
+        <div className="flex flex-wrap items-stretch gap-2 pr-0.5 pb-0.5">
           <BrutalButton
             size="sm"
+            className="min-w-0 flex-1 basis-36 break-words"
+            aria-pressed={previewEnabled}
             disabled={!details}
             onClick={() => setPreviewChoice({ mode: details!.mode, enabled: !previewEnabled })}
           >
+            {previewEnabled ? (
+              <StopIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
+            ) : (
+              <PlayIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
+            )}
             {t(previewEnabled ? 'browser.stopPreview' : 'browser.livePreview')}
           </BrutalButton>
-          {status === 'connected' && imageSrc && (
+          {supportsControl && status === 'connected' && imageSrc && (
             <BrutalButton
               onClick={toggleControl}
               size="sm"
-              variant={isControlling ? 'danger' : 'default'}
-              className="text-[10px] py-0.5 h-6"
+              variant={isControlling ? 'danger' : 'warning'}
+              aria-pressed={isControlling}
+              className="min-w-0 flex-1 basis-36 break-words"
             >
+              <CursorArrowRaysIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
               {t(isControlling ? 'browser.exitControl' : 'browser.takeControl')}
             </BrutalButton>
           )}
         </div>
       </div>
 
-      <div className="px-3 py-2 border-b-2 border-brutal-black flex items-center gap-2 text-xs">
-        <div className="flex-1 min-w-0">
-          <p className="font-bold">
-            {details?.browser === 'msedge'
-              ? 'Edge'
-              : details?.browser === 'chromium'
-                ? 'Chromium'
-                : details?.browser === 'chrome'
-                  ? 'Chrome'
-                  : (details?.browser ?? t('browser.title'))}{' '}
-            · {t(`browser.status.${details?.connected ? 'connected' : 'disconnected'}`)}
-          </p>
-          <p className="truncate text-neutral-500">
-            {details?.title ?? t('browser.noSelectedTab')}
-          </p>
-        </div>
-        <BrutalButton size="sm" disabled={!details?.selected} onClick={() => void showTab()}>
-          {t('browser.showTab')}
-        </BrutalButton>
-      </div>
       {actionError && (
         <p role="alert" className="px-3 text-xs">
           {t('browser.showTabError')}
         </p>
       )}
       <div
-        className={`relative flex-1 overflow-hidden flex items-center justify-center bg-neutral-100 dark:bg-zinc-900 ${isControlling ? 'ring-4 ring-inset ring-green-500/50' : ''}`}
+        className={`relative flex-1 min-h-0 min-w-0 overflow-hidden flex items-center justify-center bg-neutral-100 dark:bg-zinc-900 ${controlActive ? 'ring-4 ring-inset ring-green-500/50' : ''}`}
       >
         {/* Hidden input for keyboard capture */}
-        <input
-          ref={inputRef}
-          type="text"
-          className="absolute opacity-0 w-0 h-0"
-          onKeyDown={handleKeyDown}
-          autoFocus={isControlling}
-        />
+        {supportsControl && (
+          <input
+            ref={inputRef}
+            type="text"
+            className="absolute opacity-0 w-0 h-0"
+            onKeyDown={handleKeyDown}
+            autoFocus={controlActive}
+          />
+        )}
 
         {imageSrc ? (
           <div
-            className="relative group max-w-full max-h-full flex items-center justify-center"
+            className="relative group w-full h-full min-h-0 flex items-start justify-center"
             onWheel={handleWheel}
           >
             <img
               src={imageSrc}
-              className="max-w-full max-h-full shadow-2xl cursor-default"
+              className="block max-w-full max-h-full w-auto h-auto shadow-sm cursor-default"
               onMouseDown={handleMouseDown}
               onMouseUp={handleMouseUp}
               onMouseMove={handleMouseMove}
@@ -317,7 +353,7 @@ export function BrowserView({ onStreamActive, visible = true }: BrowserViewProps
             />
 
             {/* Overlay when NOT controlling but connected */}
-            {!isControlling && status === 'connected' && (
+            {supportsControl && !isControlling && status === 'connected' && (
               <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-[1px]">
                 <BrutalButton
                   onClick={toggleControl}
@@ -329,7 +365,7 @@ export function BrowserView({ onStreamActive, visible = true }: BrowserViewProps
             )}
 
             {/* Visual indicator for control mode */}
-            {isControlling && (
+            {controlActive && (
               <div className="absolute top-4 right-4 bg-green-500 text-white text-[10px] font-bold px-2 py-1 uppercase tracking-wider shadow-lg pointer-events-none animate-pulse">
                 {t('browser.liveControlActive')}
               </div>
