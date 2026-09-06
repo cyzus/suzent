@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from suzent.tools.browsing_tool import BrowserSessionManager
+from suzent.tools.browser.tool import BrowserSessionManager
 from suzent.tools.social_message_tool import SocialMessageTool
 
 
@@ -27,7 +27,7 @@ async def test_browser_manager_runs_on_main_loop_when_available(monkeypatch):
         return "ok"
 
     monkeypatch.setattr(
-        "suzent.tools.browsing_tool.asyncio.get_running_loop", lambda: main_loop
+        "suzent.tools.browser.tool.asyncio.get_running_loop", lambda: main_loop
     )
 
     result = await manager._run_on_main_loop(sample_coro())
@@ -55,10 +55,10 @@ async def test_browser_manager_dispatches_to_main_loop(monkeypatch):
         return future
 
     monkeypatch.setattr(
-        "suzent.tools.browsing_tool.asyncio.get_running_loop", lambda: object()
+        "suzent.tools.browser.tool.asyncio.get_running_loop", lambda: object()
     )
     monkeypatch.setattr(
-        "suzent.tools.browsing_tool.asyncio.run_coroutine_threadsafe",
+        "suzent.tools.browser.tool.asyncio.run_coroutine_threadsafe",
         fake_run_coroutine_threadsafe,
     )
 

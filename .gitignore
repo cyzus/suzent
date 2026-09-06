@@ -94,3 +94,15 @@ Thumbs.db
 # Pre-built UI binary
 bin/
 /suzent.exe
+
+# Browser store exports; source artwork and renderers remain tracked.
+/store-upload/
+/docs/assets/browser-store/en/
+/docs/assets/browser-store/zh-CN/
+/docs/assets/browser-store/logos/
+/docs/assets/browser-store/promo-*.png
+/docs/assets/browser-store/index.html
+/docs/assets/browser-store/privacy-policy.md
+/docs/assets/browser-store/privacy-policy-draft.md
+/frontend/browser-store-preview.html
+/frontend/browser-store-preview.tsx

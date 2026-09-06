@@ -500,6 +500,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                 className={`flex-1 h-full flex flex-col ${activeTab === 'browser' ? 'flex' : 'hidden'}`}
               >
                 <WebActivitiesView
+                  visible={effectiveOpen && activeTab === 'browser'}
                   history={webHistory}
                   isBrowserStreamActive={isBrowserStreamActive}
                   onBrowserStreamActive={setIsBrowserStreamActive}
@@ -579,6 +580,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                 className={`flex-1 h-full flex flex-col ${activeTab === 'browser' ? 'flex' : 'hidden'}`}
               >
                 <WebActivitiesView
+                  visible={effectiveOpen && activeTab === 'browser'}
                   history={webHistory}
                   isBrowserStreamActive={isBrowserStreamActive}
                   onBrowserStreamActive={setIsBrowserStreamActive}

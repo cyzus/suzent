@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 vi.mock('./api', () => ({ getApiBase: () => 'http://localhost:8000' }));
 import {
   browserChannelOptions,
+  connectionModeChange,
+  existingBrowserAvailable,
   fetchBrowserSettings,
   saveBrowserSettings,
 } from './browserSettings';
@@ -10,6 +12,42 @@ import {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('browser settings API', () => {
+  it('chooses an installed browser for attachment and respects environment locks', () => {
+    const data = {
+      settings: {
+        connection_mode: 'managed' as const,
+        channel: 'chromium' as const,
+        persistent: false,
+        headless: true,
+      },
+      available_browsers: { chromium: true, chrome: false, msedge: true },
+      environment_overrides: [] as Array<'channel'>,
+    };
+    expect(existingBrowserAvailable(data)).toBe(true);
+    expect(connectionModeChange(data, 'existing')).toEqual({
+      connection_mode: 'existing',
+      channel: 'msedge',
+    });
+    data.environment_overrides = ['channel'];
+    expect(existingBrowserAvailable(data)).toBe(false);
+    expect(connectionModeChange(data, 'existing')).toEqual({ connection_mode: 'existing' });
+    data.environment_overrides = [];
+    data.available_browsers.msedge = false;
+    expect(existingBrowserAvailable(data)).toBe(false);
+  });
+  it('keeps managed browser preferences when selecting the extension', () => {
+    const data = {
+      settings: {
+        connection_mode: 'managed' as const,
+        channel: 'chromium' as const,
+        persistent: true,
+        headless: false,
+      },
+      available_browsers: { chromium: true, chrome: false, msedge: false },
+      environment_overrides: [],
+    };
+    expect(connectionModeChange(data, 'extension')).toEqual({ connection_mode: 'extension' });
+  });
   it('posts only the changed preference without copying effective overrides', async () => {
     const fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
     vi.stubGlobal('fetch', fetch);
@@ -42,7 +80,7 @@ describe('browser settings API', () => {
     expect(await saveBrowserSettings(settings)).toEqual(response);
     expect(fetch).toHaveBeenCalledWith('http://localhost:8000/browser/settings', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-Suzent-Browser-Setup': '1' },
       body: JSON.stringify(settings),
     });
   });

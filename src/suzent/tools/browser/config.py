@@ -43,6 +43,7 @@ class BrowserPreferences(BaseModel):
     persistent: bool = False
     headless: bool = True
     channel: Literal["chromium", "chrome", "msedge"] = "chromium"
+    connection_mode: Literal["managed", "existing", "extension"] = "managed"
 
     @classmethod
     def load(cls) -> Self:
@@ -120,6 +121,8 @@ class BrowserCommand(BaseModel):
         "refresh",
         "click_coords",
         "scroll",
+        "tabs",
+        "select_tab",
     ]
     arguments: list[str] = Field(default_factory=list)
 
@@ -127,6 +130,9 @@ class BrowserCommand(BaseModel):
     def validate_arguments(self) -> Self:
         args = self.arguments
         match self.command:
+            case "select_tab":
+                if len(args) != 1 or not re.fullmatch(r"tab-\d+", args[0]):
+                    raise ValueError("select_tab expects [tab-id] from tabs")
             case "open":
                 if len(args) > 1:
                     raise ValueError("open expects [url] or [] for about:blank")

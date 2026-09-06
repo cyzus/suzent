@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from suzent.tools import browser_detection
+from suzent.tools.browser import detection as browser_detection
 
 
 def windows_environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

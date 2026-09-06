@@ -4,6 +4,8 @@ import { useI18n } from '../../i18n';
 import {
   fetchBrowserSettings,
   browserChannelOptions,
+  connectionModeChange,
+  existingBrowserAvailable,
   saveBrowserSettings,
   type BrowserPreferences,
   type BrowserSettingsResponse,
@@ -11,6 +13,7 @@ import {
 import { BrutalSelect } from '../BrutalSelect';
 import { BrutalButton } from '../BrutalButton';
 import { SettingsCard, SettingsPage } from './SettingsCard';
+import { BrowserExtensionSetup } from './BrowserExtensionSetup';
 import { SettingsHeader } from './SettingsHeader';
 
 export function BrowserTab(): React.ReactElement {
@@ -63,7 +66,7 @@ export function BrowserTab(): React.ReactElement {
         title={t('settings.browser.title')}
         subtitle={t('settings.browser.subtitle')}
         actions={
-          <BrutalButton disabled={busy} onClick={() => void load()}>
+          <BrutalButton size="sm" disabled={busy} onClick={() => void load()}>
             {t('settings.browser.recheck')}
           </BrutalButton>
         }
@@ -78,55 +81,114 @@ export function BrowserTab(): React.ReactElement {
       ) : (
         <SettingsCard>
           <div className="space-y-6">
-            <div>
-              <BrutalSelect
-                label={t('settings.browser.channel')}
-                value={data.settings.channel}
-                disabled={busy || data.environment_overrides.includes('channel')}
-                onChange={(channel) =>
-                  void update({ channel: channel as BrowserPreferences['channel'] })
-                }
-                options={browserChannelOptions(data.available_browsers, t)}
-              />
-              <p className="mt-2 text-sm text-neutral-500">{t('settings.browser.channelHelp')}</p>
-              {!data.available_browsers[data.settings.channel] && (
-                <p role="alert" className="mt-2 text-sm font-bold">
-                  {t('settings.browser.selectedUnavailable')}
+            <BrutalSelect
+              label={t('settings.browser.connectionMode')}
+              value={data.settings.connection_mode}
+              disabled={busy || data.environment_overrides.includes('connection_mode')}
+              onChange={(value) =>
+                void update(
+                  connectionModeChange(data, value as BrowserPreferences['connection_mode'])
+                )
+              }
+              options={[
+                { value: 'extension', label: t('settings.browser.extension') },
+                { value: 'managed', label: t('settings.browser.managed') },
+                {
+                  value: 'existing',
+                  label: t('settings.browser.existing'),
+                  disabled: !existingBrowserAvailable(data),
+                },
+              ]}
+            />
+            {data.settings.connection_mode === 'extension' && <BrowserExtensionSetup />}
+            {data.settings.connection_mode === 'existing' && (
+              <details className="text-sm">
+                <summary className="cursor-pointer font-bold">
+                  {t('settings.browser.directSetup')}
+                </summary>
+                <p className="mt-2 text-neutral-600 dark:text-neutral-400">
+                  {t('settings.browser.existingHelp')}
                 </p>
-              )}
-            </div>
-            <div>
-              <label className="flex items-center gap-3 font-bold">
-                <input
-                  type="checkbox"
-                  className="h-5 w-5 accent-black"
-                  checked={data.settings.persistent}
-                  disabled={busy || data.environment_overrides.includes('persistent')}
-                  onChange={(event) => void update({ persistent: event.target.checked })}
-                />
-                {t('settings.browser.persistent')}
-              </label>
-              <p className="mt-2 text-sm text-neutral-500">
-                {t('settings.browser.persistentHelp')}
-              </p>
-            </div>
-            <div>
-              <label className="flex items-center gap-3 font-bold">
-                <input
-                  type="checkbox"
-                  className="h-5 w-5 accent-black"
-                  checked={!data.settings.headless}
-                  disabled={busy || data.environment_overrides.includes('headless')}
-                  onChange={(event) => void update({ headless: !event.target.checked })}
-                />
-                {t('settings.browser.visible')}
-              </label>
-              <p className="mt-2 text-sm text-neutral-500">{t('settings.browser.visibleHelp')}</p>
-            </div>
+              </details>
+            )}
+            {data.settings.connection_mode !== 'extension' && (
+              <>
+                <div>
+                  <BrutalSelect
+                    label={t('settings.browser.channel')}
+                    value={data.settings.channel}
+                    disabled={busy || data.environment_overrides.includes('channel')}
+                    onChange={(channel) =>
+                      void update({ channel: channel as BrowserPreferences['channel'] })
+                    }
+                    options={browserChannelOptions(data.available_browsers, t).map((option) => ({
+                      ...option,
+                      disabled:
+                        option.disabled ||
+                        (data.settings.connection_mode === 'existing' &&
+                          option.value === 'chromium'),
+                    }))}
+                  />
+                  <p className="mt-2 text-sm text-neutral-500">
+                    {t('settings.browser.channelHelp')}
+                  </p>
+                  {!data.available_browsers[data.settings.channel] && (
+                    <p role="alert" className="mt-2 text-sm font-bold">
+                      {t('settings.browser.selectedUnavailable')}
+                    </p>
+                  )}
+                </div>
+                {data.settings.connection_mode === 'managed' && (
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <label className="flex items-center gap-3 font-bold">
+                        <input
+                          type="checkbox"
+                          className="h-5 w-5 accent-black"
+                          checked={data.settings.persistent}
+                          disabled={
+                            busy ||
+                            data.settings.connection_mode !== 'managed' ||
+                            data.environment_overrides.includes('persistent')
+                          }
+                          onChange={(event) => void update({ persistent: event.target.checked })}
+                        />
+                        {t('settings.browser.persistent')}
+                      </label>
+                      <p className="mt-2 text-sm text-neutral-500">
+                        {t('settings.browser.persistentHelp')}
+                      </p>
+                    </div>
+                    <div>
+                      <label className="flex items-center gap-3 font-bold">
+                        <input
+                          type="checkbox"
+                          className="h-5 w-5 accent-black"
+                          checked={!data.settings.headless}
+                          disabled={
+                            busy ||
+                            data.settings.connection_mode !== 'managed' ||
+                            data.environment_overrides.includes('headless')
+                          }
+                          onChange={(event) => void update({ headless: !event.target.checked })}
+                        />
+                        {t('settings.browser.visible')}
+                      </label>
+                      <p className="mt-2 text-sm text-neutral-500">
+                        {t('settings.browser.visibleHelp')}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
             {data.environment_overrides.length > 0 && (
               <p className="text-sm">{t('settings.browser.overrides')}</p>
             )}
-            <p role="status" className="text-sm font-bold">
+            <p
+              role="status"
+              className="border-t-2 border-brutal-black pt-3 text-xs text-neutral-500 dark:text-neutral-400"
+            >
               {busy
                 ? t('settings.browser.saving')
                 : saved

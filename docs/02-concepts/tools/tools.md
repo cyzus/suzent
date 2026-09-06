@@ -240,9 +240,9 @@ See [Social Messaging](../social-messaging/README.md) for platform setup.
 
 ### `browser_action`
 
-Control a managed browser via Playwright, with optional persistent profiles and visible Chrome/Edge windows. See [Browser](./browser.md) for setup, snapshot pagination, and connecting existing browser tabs through MCP.
+Control your existing Chrome/Edge tabs and logins through the Suzent browser extension, or use a managed Playwright browser with optional persistent profiles. Direct CDP attachment remains an advanced option. All modes use the native tool; MCP is optional. See [Browser](./browser.md) for extension installation, pairing, tab selection, and snapshot pagination.
 
-**Commands:** `open`, `snapshot`, `click`, `dblclick`, `hover`, `fill`, `type`, `scroll`, `back`, `forward`, `reload`, `refresh`, `press`, `click_coords`
+**Commands:** `tabs`, `select_tab`, `open`, `snapshot`, `click`, `dblclick`, `hover`, `fill`, `type`, `scroll`, `back`, `forward`, `reload`, `refresh`, `press`, `click_coords`
 
 ### `speak`
 

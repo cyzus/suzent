@@ -229,8 +229,28 @@ export const en = {
   },
   settings: {
     browser: {
+      extension: 'Use my browser (extension)',
+      extensionConnected: 'Connected',
+      extensionDisconnected: 'Not connected',
+      extensionHelp:
+        'Use the tabs and logins in the browser where you install the extension. No remote-debugging setup is needed. Suzent can control web tabs while connected; disconnect here or in the extension to stop access.',
+      extensionInstall: 'Extensions → Developer mode → Load unpacked. Select the folder below.',
+      extensionSource: 'Local extension folder (select this folder when loading unpacked)',
+      extensionPair: 'Open the pairing page in the browser where you installed the extension.',
+      extensionDownload: 'Download extension',
+      extensionPairButton: 'Pair browser',
+      extensionRevoke: 'Disconnect and forget',
+      extensionOtherBrowser:
+        'Different browser? Paste this private link there. Expires in 5 minutes.',
+
+      connectionMode: 'Connection mode',
+      managed: 'Launch a managed browser',
+      existing: 'Direct connection (advanced)',
+      existingHelp:
+        'Select Chrome or Edge, open its inspect page, and enable remote debugging. Approve the browser connection prompt. Suzent starts in a new tab; ask the agent to list and select your open tabs. Your browser stays open when Suzent disconnects.',
+
       title: 'Browser',
-      subtitle: 'Choose how Suzent opens its managed browser.',
+      subtitle: 'Choose how Suzent connects to a browser.',
       channel: 'Browser to use',
       chromium: 'Bundled Chromium',
       chrome: 'Google Chrome',
@@ -240,23 +260,28 @@ export const en = {
       chromiumHelp:
         'Downloaded automatically if needed; internet access is required for installation.',
       notInstalled: 'Not found in a supported installation location',
-      recheck: 'Check installed browsers',
+      recheck: 'Refresh',
       selectedUnavailable:
         'The selected browser was not found. Choose Chromium or install this browser, then check again.',
       persistent: 'Remember browser logins',
-      persistentHelp:
-        'Keep cookies and logins in a dedicated Suzent profile. This does not import logins from your everyday browser.',
+      persistentHelp: 'Keep logins in a separate Suzent profile.',
       visible: 'Show browser window',
-      visibleHelp: 'Open a visible window so you can sign in and interact with pages directly.',
+      visibleHelp: 'Show the window to sign in or browse alongside Suzent.',
       overrides:
         'Disabled settings are controlled by environment variables. Remove those overrides to change them here.',
-      restart:
-        'Changes apply on the next browser action. Suzent relaunches its managed browser and resets the current page; the backend keeps running.',
-      saved: 'Saved. The managed browser will use these settings on the next browser action.',
+      restart: 'Applies on the next browser action.',
+      saved: 'Saved · applies on the next action.',
       saving: 'Saving…',
       loading: 'Loading browser settings…',
       error: 'Could not load or save browser settings. Check the backend connection and try again.',
       retry: 'Try again',
+      extensionInstallTitle: 'Install extension',
+      extensionPairTitle: 'Connect browser',
+      extensionReady: 'Ready to use your tabs and logins. Ask Suzent to select a tab.',
+      extensionDetails: 'Setup help & options',
+      extensionDownloadHelp:
+        'Prefer a ZIP? Extract it to a permanent folder, then load it unpacked. No store listing yet.',
+      directSetup: 'Remote debugging setup',
     },
     title: 'Settings',
     category: 'Category',
@@ -794,6 +819,14 @@ export const en = {
     },
   },
   browser: {
+    exitControl: 'Exit control (Esc)',
+    livePreview: 'Live preview',
+    stopPreview: 'Stop preview',
+    previewOff: 'Preview is off',
+    waitingForStream: 'Waiting for preview',
+    showTab: 'Show tab',
+    showTabError: 'Could not show the browser tab.',
+    noSelectedTab: 'No tab selected',
     title: 'Browser',
     navigate: 'Navigate',
     execute: 'Execute',

@@ -1,0 +1,29 @@
+{
+  "name": {
+    "message": "Suzent 浏览器"
+  },
+  "description": {
+    "message": "让 Suzent 使用现有浏览器标签页和登录状态。"
+  },
+  "paired": {
+    "message": "已开始配对。请返回 Suzent 设置 → 浏览器检查连接。"
+  },
+  "failed": {
+    "message": "配对失败。请在 Suzent 中重新生成配对链接。"
+  },
+  "connect": {
+    "message": "重新连接"
+  },
+  "disconnect": {
+    "message": "断开连接"
+  },
+  "help": {
+    "message": "安装此扩展后，在 Suzent 设置 → 浏览器中选择配对浏览器。断开连接会移除已保存的配对。"
+  },
+  "connected": {
+    "message": "已连接 Suzent"
+  },
+  "disconnected": {
+    "message": "未连接"
+  }
+}
