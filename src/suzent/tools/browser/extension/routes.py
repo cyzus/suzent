@@ -23,7 +23,7 @@ from suzent.logger import get_logger
 logger = get_logger(__name__)
 
 
-def local_setup_request(request: Request) -> bool:
+def local_setup_request(request: Request | WebSocket) -> bool:
     if not request.client or not is_loopback(request.client.host):
         return False
     origin = request.headers.get("origin")

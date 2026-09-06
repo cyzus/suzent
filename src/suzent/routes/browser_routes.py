@@ -88,6 +88,10 @@ async def browser_settings_endpoint(request: Request) -> JSONResponse:
 
 
 async def browser_websocket_endpoint(websocket: WebSocket):
+    # Browser WebSocket requests bypass CORS; loopback alone is not a UI identity.
+    if not local_setup_request(websocket):
+        await websocket.close(code=1008)
+        return
     session_mgr = BrowserSessionManager.get_instance()
 
     if BrowserSettings.load().connection_mode == "extension":
