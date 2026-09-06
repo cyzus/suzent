@@ -49,6 +49,9 @@ jobs:
         uv pip install ruff
         ruff check .
 
+    - name: Install browser test runtime
+      run: uv run playwright install --with-deps chromium
+
     - name: Run tests
       run: |
         source .venv/bin/activate

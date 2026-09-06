@@ -27,6 +27,7 @@ from suzent.tools.browser.snapshot import (
     CONTROLS_READY_SCRIPT,
     format_snapshot_element,
 )
+from suzent.tools.browser.preview import PreviewFrames
 from suzent.tools.base import Tool, ToolGroup, ToolErrorCode, ToolResult
 from suzent.logger import get_logger
 from pydantic_ai import RunContext
@@ -52,6 +53,7 @@ class BrowserSessionManager:
         self._page: Page | None = None
         self._client: CDPSession | None = None
         self._websockets: list[WebSocket] = []
+        self._frames = PreviewFrames(self._websockets)
         self._streaming = False
         self._attached = False
         self._tabs: dict[str, Page] = {}
@@ -518,29 +520,13 @@ class BrowserSessionManager:
             if not data or not self._websockets:
                 return
 
-            # Broadcast to all connected websockets
-            # We send raw bytes to avoid base64 overhead in WS if possible,
-            # but for simplicity JSON wrapping might be safer initially.
-            # Let's send a JSON message with the image.
-
-            message = {
-                "type": "frame",
-                "data": data,
-                "timestamp": metadata.get("timestamp"),
-            }
-
-            # Broadcast loop - use a copy to avoid modification during iteration
-            disconnected = []
-            for ws in list(self._websockets):
-                try:
-                    await ws.send_json(message)
-                except Exception:
-                    disconnected.append(ws)
-
-            # Cleanup disconnected - safe removal (ws may already be removed by remove_client)
-            for ws in disconnected:
-                if ws in self._websockets:
-                    self._websockets.remove(ws)
+            self._frames.offer(
+                {
+                    "type": "frame",
+                    "data": data,
+                    "timestamp": (metadata or {}).get("timestamp"),
+                }
+            )
 
         except Exception as e:
             logger.error(f"Error handling screencast frame: {e}")
@@ -557,12 +543,13 @@ class BrowserSessionManager:
                 "quality": 60,
                 "maxWidth": 1280,
                 "maxHeight": 800,
-                "everyNthFrame": 1,  # Send every frame
+                "everyNthFrame": 1,
             },
         )
         self._streaming = True
 
     async def stop_streaming(self):
+        await self._frames.clear()
         if not self._streaming or not self._client:
             return
         try:

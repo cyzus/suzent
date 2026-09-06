@@ -1,90 +1,136 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { getApiBase } from '../../lib/api';
+import { connectBrowserPreview } from '../../lib/browserPreview';
 
 import { useI18n } from '../../i18n';
 import { BrutalButton } from '../BrutalButton';
 
 export interface BrowserViewProps {
+  visible?: boolean;
   onStreamActive?: (isActive: boolean) => void;
 }
 
-export function BrowserView({ onStreamActive }: BrowserViewProps) {
+export function BrowserView({ onStreamActive, visible = true }: BrowserViewProps) {
   const { t } = useI18n();
   const [status, setStatus] = useState<'connected' | 'disconnected' | 'connecting'>('disconnected');
   const [imageSrc, setImageSrc] = useState<string | null>(null);
   const [isControlling, setIsControlling] = useState(false);
-  // Remove headerHover as we can rely on group-hover usually, but keeping for overlay logic if needed
+  const [details, setDetails] = useState<{
+    mode: 'managed' | 'existing' | 'extension';
+    browser: string;
+    connected: boolean;
+    selected: boolean;
+    title: string | null;
+  } | null>(null);
+  const [previewChoice, setPreviewChoice] = useState<{ mode: string; enabled: boolean } | null>(
+    null
+  );
+  const [documentVisible, setDocumentVisible] = useState(document.visibilityState === 'visible');
+  const [actionError, setActionError] = useState(false);
+  const previewEnabled =
+    previewChoice?.mode === details?.mode
+      ? previewChoice?.enabled === true
+      : details?.mode === 'managed';
+  const watching = visible && documentVisible;
+  const streaming = watching && !!details && previewEnabled;
+
+  useEffect(() => {
+    const update = (): void => setDocumentVisible(document.visibilityState === 'visible');
+    document.addEventListener('visibilitychange', update);
+    return () => document.removeEventListener('visibilitychange', update);
+  }, []);
+
+  useEffect(() => {
+    if (!watching) return;
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout>;
+    const refresh = async (): Promise<void> => {
+      try {
+        const response = await fetch(`${getApiBase()}/browser/status`, {
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error();
+        const next = await response.json();
+        if (!controller.signal.aborted) setDetails(next);
+      } catch {
+        if (!controller.signal.aborted) setDetails(null);
+      } finally {
+        if (!controller.signal.aborted) timer = setTimeout(() => void refresh(), 5000);
+      }
+    };
+    void refresh();
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, [watching]);
+
+  const showTab = async (): Promise<void> => {
+    setActionError(false);
+    try {
+      const response = await fetch(`${getApiBase()}/browser/status`, {
+        method: 'POST',
+        headers: { 'X-Suzent-Browser-Setup': '1' },
+      });
+      if (!response.ok) throw new Error();
+    } catch {
+      setActionError(true);
+    }
+  };
 
   const wsRef = useRef<WebSocket | null>(null);
   const frameSize = useRef<{ width: number; height: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => () => onStreamActive?.(false), [onStreamActive]);
+
   // Notify parent about stream status
   useEffect(() => {
-    onStreamActive?.(!!imageSrc);
-  }, [imageSrc, onStreamActive]);
+    onStreamActive?.(streaming && !!imageSrc);
+  }, [imageSrc, streaming, onStreamActive]);
 
   useEffect(() => {
-    connect();
-    return () => {
-      cleanup();
-    };
-  }, []);
-
-  const cleanup = () => {
-    if (wsRef.current) {
-      wsRef.current.close();
-      wsRef.current = null;
-    }
-  };
-
-  const connect = () => {
-    if (wsRef.current) return;
-
-    setStatus('connecting');
-    setStatus('connecting');
-    // Convert API_BASE (http) to ws
+    setImageSrc(null);
+    setIsControlling(false);
+    frameSize.current = null;
+    setStatus('disconnected');
+    if (!streaming) return;
     const url = new URL(getApiBase());
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
     url.pathname = '/ws/browser';
-
-    const ws = new WebSocket(url.toString());
-
-    ws.onopen = () => {
-      setStatus('connected');
-      console.log('Browser WS Connected');
-    };
-
-    ws.onclose = () => {
-      setStatus('disconnected');
-      wsRef.current = null;
-      // Simple reconnect logic?
-      setTimeout(connect, 3000);
-    };
-
-    ws.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
-      if (msg.type === 'frame' && msg.data) {
-        frameSize.current =
-          Number.isFinite(msg.width) &&
-          Number.isFinite(msg.height) &&
-          msg.width > 0 &&
-          msg.height > 0
-            ? { width: msg.width, height: msg.height }
-            : null;
-        // msg.data is base64
-        setImageSrc(`data:image/jpeg;base64,${msg.data}`);
+    return connectBrowserPreview(
+      url.toString(),
+      (socket) => {
+        wsRef.current = socket;
+      },
+      (next) => {
+        setStatus(next);
+        if (next === 'disconnected') {
+          setImageSrc(null);
+          setIsControlling(false);
+        }
+      },
+      (event) => {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'frame' && msg.data) {
+          frameSize.current =
+            Number.isFinite(msg.width) &&
+            Number.isFinite(msg.height) &&
+            msg.width > 0 &&
+            msg.height > 0
+              ? { width: msg.width, height: msg.height }
+              : null;
+          setImageSrc(`data:image/jpeg;base64,${msg.data}`);
+        }
+        if (msg.type === 'reset') {
+          frameSize.current = null;
+          setImageSrc(null);
+          setIsControlling(false);
+        }
       }
-      if (msg.type === 'reset') {
-        frameSize.current = null;
-        setImageSrc(null);
-        setIsControlling(false);
-      }
-    };
-
-    wsRef.current = ws;
-  };
+    );
+  }, [streaming, details?.mode]);
 
   const toggleControl = () => {
     const newState = !isControlling;
@@ -194,6 +240,13 @@ export function BrowserView({ onStreamActive }: BrowserViewProps) {
           {t('browser.title')}
         </span>
         <div className="flex items-center gap-3">
+          <BrutalButton
+            size="sm"
+            disabled={!details}
+            onClick={() => setPreviewChoice({ mode: details!.mode, enabled: !previewEnabled })}
+          >
+            {t(previewEnabled ? 'browser.stopPreview' : 'browser.livePreview')}
+          </BrutalButton>
           {status === 'connected' && imageSrc && (
             <BrutalButton
               onClick={toggleControl}
@@ -201,26 +254,37 @@ export function BrowserView({ onStreamActive }: BrowserViewProps) {
               variant={isControlling ? 'danger' : 'default'}
               className="text-[10px] py-0.5 h-6"
             >
-              {isControlling ? 'EXIT CONTROL (ESC)' : 'TAKE CONTROL'}
+              {t(isControlling ? 'browser.exitControl' : 'browser.takeControl')}
             </BrutalButton>
           )}
-          <div className="flex items-center gap-2">
-            <div
-              className={`w-2 h-2 rounded-none border border-brutal-black ${
-                status === 'connected'
-                  ? 'bg-brutal-green'
-                  : status === 'connecting'
-                    ? 'bg-brutal-yellow animate-pulse'
-                    : 'bg-neutral-300 dark:bg-zinc-600'
-              }`}
-            />
-            <span className="text-[10px] font-mono uppercase tracking-wider text-neutral-500 dark:text-zinc-400">
-              {t(`browser.status.${status}`)}
-            </span>
-          </div>
         </div>
       </div>
 
+      <div className="px-3 py-2 border-b-2 border-brutal-black flex items-center gap-2 text-xs">
+        <div className="flex-1 min-w-0">
+          <p className="font-bold">
+            {details?.browser === 'msedge'
+              ? 'Edge'
+              : details?.browser === 'chromium'
+                ? 'Chromium'
+                : details?.browser === 'chrome'
+                  ? 'Chrome'
+                  : (details?.browser ?? t('browser.title'))}{' '}
+            · {t(`browser.status.${details?.connected ? 'connected' : 'disconnected'}`)}
+          </p>
+          <p className="truncate text-neutral-500">
+            {details?.title ?? t('browser.noSelectedTab')}
+          </p>
+        </div>
+        <BrutalButton size="sm" disabled={!details?.selected} onClick={() => void showTab()}>
+          {t('browser.showTab')}
+        </BrutalButton>
+      </div>
+      {actionError && (
+        <p role="alert" className="px-3 text-xs">
+          {t('browser.showTabError')}
+        </p>
+      )}
       <div
         className={`relative flex-1 overflow-hidden flex items-center justify-center bg-neutral-100 dark:bg-zinc-900 ${isControlling ? 'ring-4 ring-inset ring-green-500/50' : ''}`}
       >
@@ -269,7 +333,9 @@ export function BrowserView({ onStreamActive }: BrowserViewProps) {
           </div>
         ) : (
           <div className="text-neutral-400 dark:text-zinc-500 text-[11px] text-center font-mono">
-            <p className="mb-2 font-bold uppercase tracking-widest">WAITING_FOR_STREAM</p>
+            <p className="mb-2 font-bold uppercase tracking-widest">
+              {t(previewEnabled ? 'browser.waitingForStream' : 'browser.previewOff')}
+            </p>
             {status === 'connected' && (
               <p className="text-[10px] opacity-70">{t('browser.executeHint')}</p>
             )}

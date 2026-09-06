@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { useI18n } from '../../i18n';
 import { BrowserView } from './BrowserView';
 import { WebSearchSidebarView } from './WebSearchSidebarView';
 import { WebPageReaderView } from './WebPageReaderView';
@@ -7,6 +6,7 @@ import type { WebHistoryLog } from '../../hooks/useWebHistory';
 import { DisclosureChevron } from '../DisclosureChevron';
 
 interface WebActivitiesViewProps {
+  visible?: boolean;
   history: WebHistoryLog[];
   isBrowserStreamActive: boolean;
   onBrowserStreamActive: (isActive: boolean) => void;
@@ -16,14 +16,13 @@ interface WebActivitiesViewProps {
 }
 
 export const WebActivitiesView: React.FC<WebActivitiesViewProps> = ({
+  visible = true,
   history,
   isBrowserStreamActive,
   onBrowserStreamActive,
   forcedContextId,
   onClearForcedContext,
 }) => {
-  const { t } = useI18n();
-
   const [activeViewId, setActiveViewId] = useState<string>('browser_active');
   const [isTimelineOpen, setIsTimelineOpen] = useState(false);
 
@@ -65,13 +64,23 @@ export const WebActivitiesView: React.FC<WebActivitiesViewProps> = ({
 
   const renderContent = () => {
     if (activeViewId === 'browser_active') {
-      return <BrowserView onStreamActive={onBrowserStreamActive} />;
+      return (
+        <BrowserView
+          visible={visible && activeViewId === 'browser_active'}
+          onStreamActive={onBrowserStreamActive}
+        />
+      );
     }
 
     const log = history.find((h) => h.id === activeViewId);
     if (!log) {
       // Fallback: silently render BrowserView (it will handle dead states itself)
-      return <BrowserView onStreamActive={onBrowserStreamActive} />;
+      return (
+        <BrowserView
+          visible={visible && activeViewId === 'browser_active'}
+          onStreamActive={onBrowserStreamActive}
+        />
+      );
     }
 
     if (log.type === 'search') {
@@ -80,7 +89,9 @@ export const WebActivitiesView: React.FC<WebActivitiesViewProps> = ({
       let parsedArgs = { url: '' };
       try {
         parsedArgs = JSON.parse(log.args || '{}');
-      } catch {}
+      } catch {
+        parsedArgs = { url: '' };
+      }
       return <WebPageReaderView markdown={log.output} title={log.title} url={parsedArgs.url} />;
     }
 
@@ -166,7 +177,7 @@ export const WebActivitiesView: React.FC<WebActivitiesViewProps> = ({
         <div className="absolute top-[52px] left-0 right-0 max-h-[65%] bg-white dark:bg-zinc-900 z-20 border-b-4 border-brutal-black dark:border-black shadow-[0_6px_0_0_rgba(0,0,0,1)] dark:shadow-[0_6px_0_0_rgba(0,0,0,0.5)] overflow-y-auto animate-fade-in origin-top scrollbar-thin">
           <div className="p-4 py-6">
             <div className="relative pl-6 ml-2 border-l-2 border-brutal-black dark:border-zinc-700 space-y-5">
-              {history.map((item, idx) => {
+              {history.map((item) => {
                 const isActive = activeViewId === item.id;
 
                 return (
@@ -224,15 +235,13 @@ export const WebActivitiesView: React.FC<WebActivitiesViewProps> = ({
 
       {/* Dynamic View Container */}
       <div className="flex-1 w-full min-h-0 min-w-0 relative">
-        {/* 
-          IMPORTANT: BrowserView is always in DOM when activeViewId !== 'browser_active'
-          to cleanly maintain the WebSocket connection without disconnections. 
-          We use hidden class to suppress it when history is viewed.
-        */}
         <div
           className={`absolute inset-0 w-full h-full ${activeViewId === 'browser_active' ? 'flex flex-col' : 'hidden'}`}
         >
-          <BrowserView onStreamActive={onBrowserStreamActive} />
+          <BrowserView
+            visible={visible && activeViewId === 'browser_active'}
+            onStreamActive={onBrowserStreamActive}
+          />
         </div>
 
         {activeViewId !== 'browser_active' && (

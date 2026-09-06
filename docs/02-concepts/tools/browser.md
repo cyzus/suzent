@@ -223,3 +223,17 @@ the extension bridge must run on your computer and needs a separately configured
 authenticated connection; a browser launched on the server is not your local browser.
 After validating a Playwright MCP version for your environment, pin that version
 instead of `@latest` for repeatable deployments.
+
+### Preview and browser focus
+
+Personal-browser connections (extension and advanced CDP) show connection status
+and the selected tab title without streaming by default. **Show tab** brings the
+selected tab forward. Enable **Live preview** only when you want to watch inside
+Suzent; **Stop preview** closes the stream without disconnecting the agent.
+Managed browsers enable preview by default while the browser view is visible.
+
+Preview pauses when the sidebar closes, another sidebar/history view is selected,
+or the app document is hidden. Frame delivery is capped at ten updates per second
+and retains only the newest pending frame. Slow preview clients are disconnected
+without blocking browser actions. Extension 0.1.1 includes status, tab focus, and
+local frame acknowledgement; reload unpacked installations after updating.

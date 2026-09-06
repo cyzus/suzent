@@ -227,6 +227,18 @@ async def test_real_extension_pair_actions_preview_and_disconnect(
                 await session.execute(
                     BrowserCommand(command="select_tab", arguments=[tab["id"]])
                 )
+                assert not session.streaming
+                status = await bridge.request("status")
+                assert status["title"] == "Extension test"
+                assert status["selected"]
+                await bridge.request("focus")
+                worker = browser.service_workers[0]
+                assert (
+                    await worker.evaluate(
+                        "async () => (await chrome.tabs.query({active:true, lastFocusedWindow:true}))[0].url"
+                    )
+                    == page.url
+                )
                 result = await session.execute(BrowserCommand(command="snapshot"))
                 assert result.success
                 input_ref = next(
@@ -264,6 +276,9 @@ async def test_real_extension_pair_actions_preview_and_disconnect(
                     await asyncio.sleep(0.05)
                 assert preview.send_json.called
                 assert preview.send_json.call_args.args[0]["type"] == "frame"
+                await session.remove_client(preview)
+                assert not session.streaming
+                assert session.frames.task is None
                 await session.close()
                 assert not page.is_closed()
                 assert await page.locator("input").input_value() == "private text"

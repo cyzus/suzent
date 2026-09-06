@@ -11,8 +11,52 @@ from suzent.tools.browser.config import BrowserPreferences, BrowserSettings
 from suzent.tools.browser.detection import available_browsers
 from suzent.tools.browser.tool import BrowserSessionManager
 from suzent.tools.browser.extension.session import session as extension_session
+from suzent.tools.browser.extension.bridge import bridge
+from suzent.tools.browser.extension.routes import local_setup_request
 
 logger = get_logger(__name__)
+
+
+async def browser_status_endpoint(request: Request) -> JSONResponse:
+    if not local_setup_request(request) or (
+        request.method == "POST"
+        and request.headers.get("x-suzent-browser-setup") != "1"
+    ):
+        return JSONResponse({"error": "Use the local Suzent app"}, status_code=403)
+    settings = await asyncio.to_thread(BrowserSettings.load)
+    manager = BrowserSessionManager.get_instance()
+    result = {
+        "mode": settings.connection_mode,
+        "browser": settings.channel,
+        "connected": False,
+        "selected": False,
+        "title": None,
+    }
+    try:
+        if settings.connection_mode == "extension":
+            result["connected"] = bridge.socket is not None
+            if bridge.socket:
+                result.update(await bridge.request("status"))
+            if request.method == "POST":
+                await bridge.request("focus")
+        else:
+            async with manager._action_lock:
+                page = manager._page
+                if (
+                    manager.settings.connection_mode == settings.connection_mode
+                    and page
+                    and not page.is_closed()
+                ):
+                    result.update(
+                        connected=True, selected=True, title=await page.title()
+                    )
+                    if request.method == "POST":
+                        await page.bring_to_front()
+                elif request.method == "POST":
+                    raise ValueError("No browser tab is selected")
+        return JSONResponse(result)
+    except Exception:
+        return JSONResponse({"error": "Browser tab unavailable"}, status_code=409)
 
 
 async def browser_settings_endpoint(request: Request) -> JSONResponse:

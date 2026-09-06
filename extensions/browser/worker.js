@@ -2,6 +2,8 @@ let socket;
 let connecting = false;
 let selected;
 let heartbeat;
+let frameTimer;
+let pendingFrame;
 let queue = Promise.resolve();
 const attached = new Set();
 const allowedMethods = new Set([
@@ -38,6 +40,9 @@ function emit(value) {
 }
 
 async function detach() {
+  clearTimeout(frameTimer);
+  frameTimer = undefined;
+  pendingFrame = undefined;
   selected = undefined;
   const ids = [...attached];
   attached.clear();
@@ -62,6 +67,18 @@ async function select(tabId) {
 
 export async function dispatch(action, params) {
   switch (action) {
+    case "status": {
+      const tab = selected === undefined ? null : await chrome.tabs.get(selected);
+      return { title: tab?.title?.slice(0, 200) ?? null,
+        selected: selected !== undefined,
+        browser: navigator.userAgent.includes("Edg/") ? "Edge" : "Chrome" };
+    }
+    case "focus": {
+      if (selected === undefined) throw new Error("Select a tab first.");
+      const tab = await chrome.tabs.update(selected, { active: true });
+      await chrome.windows.update(tab.windowId, { focused: true });
+      return {};
+    }
     case "tabs": {
       const tabs = await chrome.tabs.query({});
       return tabs
@@ -204,7 +221,32 @@ async function connect(usePairingAddress = false) {
   }
 }
 
+function flushFrame() {
+  frameTimer = undefined;
+  if (selected === undefined || socket?.readyState !== WebSocket.OPEN) {
+    pendingFrame = undefined;
+    return;
+  }
+  if (socket.bufferedAmount >= 512 * 1024) {
+    frameTimer = setTimeout(flushFrame, 100);
+    return;
+  }
+  if (pendingFrame) {
+    emit({ type: "event", method: "Page.screencastFrame", params: pendingFrame });
+    pendingFrame = undefined;
+  }
+}
+
 chrome.debugger.onEvent.addListener((source, method, params) => {
+  if (source.tabId === selected && method === "Page.screencastFrame") {
+    // Acknowledge locally so slow previews cannot block agent commands.
+    void chrome.debugger.sendCommand(source, "Page.screencastFrameAck", {
+      sessionId: params.sessionId,
+    }).catch(() => {});
+    pendingFrame = params;
+    if (!frameTimer) frameTimer = setTimeout(flushFrame, 100);
+    return;
+  }
   if (
     source.tabId === selected &&
     ["Page.screencastFrame", "Page.frameNavigated"].includes(method)

@@ -7,6 +7,7 @@ from typing import Any
 from starlette.websockets import WebSocket
 
 from suzent.tools.base import ToolResult
+from suzent.tools.browser.preview import PreviewFrames
 from suzent.tools.browser.config import BrowserCommand
 from suzent.tools.browser.snapshot import (
     SNAPSHOT_SCRIPT,
@@ -27,7 +28,7 @@ class ExtensionSession:
         self.refs: dict[str, tuple[int, dict[str, Any]]] = {}
         self.world: int | None = None
         self.streaming = False
-        self._tasks: set[asyncio.Task[None]] = set()
+        self.frames = PreviewFrames(self.clients)
         bridge.on_event = self.on_event
 
     def invalidate(self) -> None:
@@ -58,30 +59,18 @@ class ExtensionSession:
             self.invalidate()
             self.selected = None
             self.streaming = False
+            await self.frames.clear()
+            self.frames.offer({"type": "reset"})
         elif method == "Page.screencastFrame":
-            task = asyncio.create_task(self._frame(params))
-            self._tasks.add(task)
-            task.add_done_callback(self._tasks.discard)
-
-    async def _frame(self, params: dict[str, Any]) -> None:
-        try:
-            await self.cdp("Page.screencastFrameAck", sessionId=params["sessionId"])
-            for client in list(self.clients):
-                try:
-                    metadata = params.get("metadata", {})
-                    await client.send_json(
-                        {
-                            "type": "frame",
-                            "data": params["data"],
-                            "width": metadata.get("deviceWidth"),
-                            "height": metadata.get("deviceHeight"),
-                        }
-                    )
-                except Exception:
-                    if client in self.clients:
-                        self.clients.remove(client)
-        except (ValueError, RuntimeError):
-            pass
+            metadata = params.get("metadata", {})
+            self.frames.offer(
+                {
+                    "type": "frame",
+                    "data": params["data"],
+                    "width": metadata.get("deviceWidth"),
+                    "height": metadata.get("deviceHeight"),
+                }
+            )
 
     async def start_streaming(self) -> None:
         if self.clients and self.selected and not self.streaming:
@@ -98,9 +87,11 @@ class ExtensionSession:
             if not self.clients and self.streaming:
                 try:
                     await self.cdp("Page.stopScreencast")
-                except ValueError:
+                except (ValueError, RuntimeError):
                     pass
                 self.streaming = False
+            if not self.clients:
+                await self.frames.clear()
 
     async def close(self) -> None:
         async with self.lock:
@@ -110,10 +101,7 @@ class ExtensionSession:
             self.world = None
             self.streaming = False
             self.invalidate()
-            for task in self._tasks:
-                task.cancel()
-            if self._tasks:
-                await asyncio.gather(*list(self._tasks), return_exceptions=True)
+            await self.frames.clear()
             for client in list(self.clients):
                 try:
                     await client.send_json({"type": "reset"})

@@ -177,6 +177,7 @@ from suzent.routes.session_routes import (
 )
 from suzent.routes.browser_routes import (
     browser_settings_endpoint,
+    browser_status_endpoint,
     browser_websocket_endpoint,
 )
 from suzent.routes.node_routes import (
@@ -1234,6 +1235,7 @@ app = Starlette(
         Route("/browser/extension/download", extension_download),
         WebSocketRoute("/ws/browser-extension", extension_websocket),
         Route("/browser/settings", browser_settings_endpoint, methods=["GET", "POST"]),
+        Route("/browser/status", browser_status_endpoint, methods=["GET", "POST"]),
         WebSocketRoute("/ws/browser", browser_websocket_endpoint),
         WebSocketRoute("/ws/node", node_websocket_endpoint),
         Route("/nodes", list_nodes, methods=["GET"]),
