@@ -80,7 +80,7 @@ describe('browser settings API', () => {
     expect(await saveBrowserSettings(settings)).toEqual(response);
     expect(fetch).toHaveBeenCalledWith('http://localhost:8000/browser/settings', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-Suzent-Browser-Setup': '1' },
       body: JSON.stringify(settings),
     });
   });

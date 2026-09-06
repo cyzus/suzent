@@ -29,7 +29,9 @@ def make_client() -> httpx.AsyncClient:
         ]
     )
     return httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="http://test"
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://test",
+        headers={"Origin": "http://localhost:18080", "X-Suzent-Browser-Setup": "1"},
     )
 
 
@@ -59,6 +61,34 @@ async def test_settings_roundtrip_and_manager_startup(settings_path: Path) -> No
     assert not manager.settings.headless
     assert manager.settings.channel == "msedge"
     assert manager._browser is None
+
+
+@pytest.mark.parametrize(
+    "origin",
+    ["http://127.0.0.1:25314", "http://localhost:8000", "https://evil.example", "null"],
+)
+async def test_html_preview_cannot_change_browser_mode(
+    settings_path: Path, origin: str
+) -> None:
+    async with make_client() as client:
+        result = await client.post(
+            "/browser/settings",
+            json={"connection_mode": "extension"},
+            headers={"Origin": origin},
+        )
+    assert result.status_code == 403
+    assert not settings_path.exists()
+
+
+async def test_browser_settings_require_setup_header(settings_path: Path) -> None:
+    async with make_client() as client:
+        result = await client.post(
+            "/browser/settings",
+            json={"connection_mode": "extension"},
+            headers={"X-Suzent-Browser-Setup": ""},
+        )
+    assert result.status_code == 403
+    assert not settings_path.exists()
 
 
 @pytest.mark.parametrize(

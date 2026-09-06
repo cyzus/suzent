@@ -66,7 +66,7 @@ export async function saveBrowserSettings(
 ): Promise<BrowserSettingsResponse> {
   const response = await fetch(`${getApiBase()}/browser/settings`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'X-Suzent-Browser-Setup': '1' },
     body: JSON.stringify(settings),
   });
   if (!response.ok) throw new Error('Failed to save browser settings');

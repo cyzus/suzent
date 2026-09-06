@@ -62,6 +62,13 @@ async def browser_status_endpoint(request: Request) -> JSONResponse:
 async def browser_settings_endpoint(request: Request) -> JSONResponse:
     try:
         if request.method == "POST":
+            if (
+                not local_setup_request(request)
+                or request.headers.get("x-suzent-browser-setup") != "1"
+            ):
+                return JSONResponse(
+                    {"error": "Use the local Suzent app"}, status_code=403
+                )
             preferences = BrowserPreferences.model_validate(await request.json())
             if "connection_mode" in preferences.model_fields_set:
                 manager = BrowserSessionManager.get_instance()

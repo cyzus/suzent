@@ -186,6 +186,7 @@ def test_websocket_rejects_websites_and_invalid_pairing() -> None:
 async def test_real_extension_pair_actions_preview_and_disconnect(
     tmp_path: Path,
     browser_channel: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from suzent.tools.browser.detection import available_browsers
 
@@ -288,10 +289,43 @@ async def test_real_extension_pair_actions_preview_and_disconnect(
                 await session.remove_client(preview)
                 assert not session.streaming
                 assert session.frames.task is None
+                # Keep discovery scoped to this temporary backend, not an installed desktop host.
+                await worker.evaluate(
+                    "url => { chrome.runtime.sendNativeMessage = async () => ({url}); }",
+                    f"ws://127.0.0.1:{port}/ws/browser-extension",
+                )
+                with monkeypatch.context() as timeout_patch:
+                    timeout_patch.setattr(bridge_module, "REQUEST_TIMEOUT", 0.1)
+                    with pytest.raises(ValueError, match="timed out"):
+                        await bridge.request(
+                            "cdp",
+                            method="Runtime.evaluate",
+                            params={
+                                "expression": "new Promise(() => {})",
+                                "awaitPromise": True,
+                            },
+                        )
+                assert bridge.socket is None
+                popup = await browser.new_page()
+                await popup.goto(worker.url.rsplit("/", 1)[0] + "/popup.html")
+                await popup.evaluate("chrome.runtime.sendMessage({type: 'connect'})")
+                for _ in range(100):
+                    if bridge.socket:
+                        break
+                    await asyncio.sleep(0.05)
+                assert bridge.socket is not None
+                assert (await session.execute(BrowserCommand(command="tabs"))).success
+                await session.execute(
+                    BrowserCommand(command="select_tab", arguments=[tab["id"]])
+                )
                 async with httpx.AsyncClient() as client:
                     changed = await client.post(
                         f"http://127.0.0.1:{port}/browser/settings",
                         json={"connection_mode": "managed"},
+                        headers={
+                            "Origin": "tauri://localhost",
+                            "X-Suzent-Browser-Setup": "1",
+                        },
                     )
                     assert changed.status_code == 200
                 assert session.selected is None

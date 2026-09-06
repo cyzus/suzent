@@ -5,7 +5,9 @@ let heartbeat;
 let frameTimer;
 let pendingFrame;
 let queue = Promise.resolve();
-const attached = new Set();
+let generation = 0;
+let cleanup = Promise.resolve();
+const attached = new Map();
 const allowedMethods = new Set([
   "Page.enable",
   "Page.getFrameTree",
@@ -44,38 +46,67 @@ async function detach() {
   frameTimer = undefined;
   pendingFrame = undefined;
   selected = undefined;
-  const ids = [...attached];
+  const ids = [...attached.keys()];
   attached.clear();
   await Promise.allSettled(
     ids.map((tabId) => chrome.debugger.detach({ tabId })),
   );
 }
 
-async function select(tabId) {
+function requireCurrent(epoch) {
+  if (epoch !== generation) throw new Error("Browser connection changed.");
+}
+
+function resetActions() {
+  generation++;
+  queue = Promise.resolve();
+  // Detach must bypass a renderer command that may never settle.
+  cleanup = Promise.allSettled([cleanup, detach()]).then(() => undefined);
+  return cleanup;
+}
+
+async function select(tabId, epoch) {
   const tab = await chrome.tabs.get(tabId);
+  requireCurrent(epoch);
   if (tab.incognito) throw new Error("Private tabs are not supported.");
   webUrl(tab.url);
   if (selected !== tabId) await detach();
+  requireCurrent(epoch);
   if (!attached.has(tabId)) {
-    await chrome.debugger.attach({ tabId }, "1.3");
-    attached.add(tabId);
+    attached.set(tabId, epoch);
+    try {
+      await chrome.debugger.attach({ tabId }, "1.3");
+    } catch (error) {
+      if (attached.get(tabId) === epoch) attached.delete(tabId);
+      throw error;
+    }
+    if (epoch !== generation) {
+      if (!attached.has(tabId))
+        await chrome.debugger.detach({ tabId }).catch(() => {});
+      requireCurrent(epoch);
+    }
   }
   selected = tabId;
   await chrome.debugger.sendCommand({ tabId }, "Page.enable");
   return { id: `tab-${tabId}`, url: tab.url };
 }
 
-export async function dispatch(action, params) {
+export async function dispatch(action, params, epoch = generation) {
+  requireCurrent(epoch);
   switch (action) {
     case "status": {
-      const tab = selected === undefined ? null : await chrome.tabs.get(selected);
-      return { title: tab?.title?.slice(0, 200) ?? null,
+      const tab =
+        selected === undefined ? null : await chrome.tabs.get(selected);
+      return {
+        title: tab?.title?.slice(0, 200) ?? null,
         selected: selected !== undefined,
-        browser: navigator.userAgent.includes("Edg/") ? "Edge" : "Chrome" };
+        browser: navigator.userAgent.includes("Edg/") ? "Edge" : "Chrome",
+      };
     }
     case "focus": {
       if (selected === undefined) throw new Error("Select a tab first.");
       const tab = await chrome.tabs.update(selected, { active: true });
+      requireCurrent(epoch);
       await chrome.windows.update(tab.windowId, { focused: true });
       return {};
     }
@@ -100,33 +131,36 @@ export async function dispatch(action, params) {
     case "select":
       if (!/^tab-\d+$/.test(params.id))
         throw new Error("List tabs and select a valid tab.");
-      return select(Number(params.id.slice(4)));
+      return select(Number(params.id.slice(4)), epoch);
     case "open": {
       const url = webUrl(params.url);
       if (selected === undefined) {
         const tab = await chrome.tabs.create({ url, active: false });
-        await waitReady(tab.id);
-        return select(tab.id);
+        await waitReady(tab.id, epoch);
+        return select(tab.id, epoch);
       }
-      await chrome.tabs.update(selected, { url });
-      await waitReady(selected);
-      return { id: `tab-${selected}`, url };
+      const tabId = selected;
+      await chrome.tabs.update(tabId, { url });
+      await waitReady(tabId, epoch);
+      return { id: `tab-${tabId}`, url };
     }
     case "cdp": {
       if (selected === undefined || !attached.has(selected))
         throw new Error("Select a tab or open a page first.");
-      webUrl((await chrome.tabs.get(selected)).url);
+      const tabId = selected;
+      webUrl((await chrome.tabs.get(tabId)).url);
+      requireCurrent(epoch);
       if (!allowedMethods.has(params.method))
         throw new Error("Unsupported browser command.");
       const result = await chrome.debugger.sendCommand(
-        { tabId: selected },
+        { tabId },
         params.method,
         params.params || {},
       );
       if (
         ["Page.reload", "Page.navigateToHistoryEntry"].includes(params.method)
       )
-        await waitReady(selected);
+        await waitReady(tabId, epoch);
       return result;
     }
     case "detach":
@@ -137,12 +171,15 @@ export async function dispatch(action, params) {
   }
 }
 
-async function waitReady(tabId) {
+async function waitReady(tabId, epoch) {
+  requireCurrent(epoch);
   const deadline = Date.now() + 15000;
   while ((await chrome.tabs.get(tabId)).status === "loading") {
+    requireCurrent(epoch);
     if (Date.now() > deadline) throw new Error("Page is still loading.");
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
+  requireCurrent(epoch);
 }
 
 async function connect(usePairingAddress = false) {
@@ -160,7 +197,8 @@ async function connect(usePairingAddress = false) {
     if (!usePairingAddress) {
       try {
         const discovery = await chrome.runtime.sendNativeMessage(
-          "com.suzent.browser", { action: "endpoint" },
+          "com.suzent.browser",
+          { action: "endpoint" },
         );
         if (discovery?.url) endpoint = discovery.url;
       } catch {
@@ -174,9 +212,12 @@ async function connect(usePairingAddress = false) {
       url.pathname !== "/ws/browser-extension"
     )
       return;
+    await cleanup;
+    const epoch = generation;
     const ws = new WebSocket(url);
     socket = ws;
     ws.onopen = () => {
+      if (socket !== ws) return;
       ws.send(JSON.stringify({ token: pairing.token }));
       heartbeat = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN)
@@ -184,6 +225,7 @@ async function connect(usePairingAddress = false) {
       }, 20000);
     };
     ws.onmessage = ({ data }) => {
+      if (socket !== ws) return;
       const message = JSON.parse(data);
       if (message.type === "ready") {
         chrome.action.setBadgeText({ text: "ON" });
@@ -195,10 +237,15 @@ async function connect(usePairingAddress = false) {
         .then(async () => {
           if (socket !== ws || ws.readyState !== WebSocket.OPEN) return;
           try {
-            const result = await dispatch(message.action, message.params || {});
+            const result = await dispatch(
+              message.action,
+              message.params || {},
+              epoch,
+            );
             if (socket === ws)
               emit({ type: "result", id: message.id, result: result ?? {} });
           } catch {
+            if (socket !== ws) return;
             emit({
               type: "result",
               id: message.id,
@@ -214,7 +261,7 @@ async function connect(usePairingAddress = false) {
       if (code === 1008) void chrome.storage.local.remove("pairing");
       clearInterval(heartbeat);
       chrome.action.setBadgeText({ text: "" });
-      queue = queue.catch(() => {}).then(detach);
+      void resetActions();
     };
   } finally {
     connecting = false;
@@ -232,7 +279,11 @@ function flushFrame() {
     return;
   }
   if (pendingFrame) {
-    emit({ type: "event", method: "Page.screencastFrame", params: pendingFrame });
+    emit({
+      type: "event",
+      method: "Page.screencastFrame",
+      params: pendingFrame,
+    });
     pendingFrame = undefined;
   }
 }
@@ -240,9 +291,11 @@ function flushFrame() {
 chrome.debugger.onEvent.addListener((source, method, params) => {
   if (source.tabId === selected && method === "Page.screencastFrame") {
     // Acknowledge locally so slow previews cannot block agent commands.
-    void chrome.debugger.sendCommand(source, "Page.screencastFrameAck", {
-      sessionId: params.sessionId,
-    }).catch(() => {});
+    void chrome.debugger
+      .sendCommand(source, "Page.screencastFrameAck", {
+        sessionId: params.sessionId,
+      })
+      .catch(() => {});
     pendingFrame = params;
     if (!frameTimer) frameTimer = setTimeout(flushFrame, 100);
     return;
@@ -281,8 +334,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
         socket = undefined;
       }
       clearInterval(heartbeat);
-      await queue.catch(() => {});
-      await detach();
+      await resetActions();
       url.protocol = "ws:";
       url.pathname = "/ws/browser-extension";
       url.hash = "";
@@ -297,7 +349,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
     if (message.type === "disconnect") {
       await chrome.storage.local.remove("pairing");
       socket?.close();
-      await detach();
+      await resetActions();
     } else if (message.type === "connect") await connect();
     return { connected: socket?.readyState === WebSocket.OPEN };
   })().then(respond, () => respond({ ok: false }));
