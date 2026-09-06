@@ -73,6 +73,7 @@ async def browser_settings_endpoint(request: Request) -> JSONResponse:
             if "connection_mode" in preferences.model_fields_set:
                 manager = BrowserSessionManager.get_instance()
                 async with manager._action_lock:
+                    previous = await asyncio.to_thread(BrowserSettings.load)
                     await asyncio.to_thread(preferences.save_changes)
                     effective = await asyncio.to_thread(BrowserSettings.load)
                     if effective.connection_mode != "extension":
@@ -83,6 +84,19 @@ async def browser_settings_endpoint(request: Request) -> JSONResponse:
                         != effective.connection_mode
                     ):
                         await manager.close_session()
+                    if previous.connection_mode != effective.connection_mode:
+                        clients = list(manager._websockets) + list(
+                            extension_session.clients
+                        )
+                        for client in clients:
+                            await manager.remove_client(client)
+                            await extension_session.remove_client(client)
+                            try:
+                                await asyncio.wait_for(
+                                    client.close(code=1000), timeout=1
+                                )
+                            except (RuntimeError, OSError, TimeoutError):
+                                pass
             else:
                 await asyncio.to_thread(preferences.save_changes)
         settings = await asyncio.to_thread(BrowserSettings.load)
@@ -115,27 +129,37 @@ async def browser_websocket_endpoint(websocket: WebSocket):
         return
     session_mgr = BrowserSessionManager.get_instance()
 
-    if BrowserSettings.load().connection_mode == "extension":
-        async with session_mgr._action_lock:
-            if session_mgr._playwright:
-                await session_mgr.close_session()
-    # Accept connection immediately
-    await session_mgr.add_client(websocket)
-    extension_session.clients.append(websocket)
+    close_code = 1000
     try:
-        if BrowserSettings.load().connection_mode == "extension":
-            await extension_session.start_streaming()
+        async with session_mgr._action_lock:
+            mode = (await asyncio.to_thread(BrowserSettings.load)).connection_mode
+            if websocket.query_params.get("mode") != mode:
+                close_code = 1008
+                return
+            if mode == "extension":
+                if session_mgr._playwright:
+                    await session_mgr.close_session()
+                await websocket.accept()
+                async with extension_session.lock:
+                    extension_session.clients.append(websocket)
+                    await extension_session.start_streaming()
+            else:
+                await session_mgr.add_client(websocket)
         while True:
             data = await websocket.receive_json()
             try:
-                if BrowserSettings.load().connection_mode == "extension":
+                if mode == "extension":
                     async with session_mgr._action_lock:
-                        if session_mgr._playwright:
-                            await session_mgr.close_session()
+                        if (
+                            await asyncio.to_thread(BrowserSettings.load)
+                        ).connection_mode != mode:
+                            break
                         await extension_session.handle_preview(data)
                 else:
-                    if extension_session.selected:
-                        await extension_session.close()
+                    if (
+                        await asyncio.to_thread(BrowserSettings.load)
+                    ).connection_mode != mode:
+                        break
                     await session_mgr.handle_client_message(data)
             except ValueError as exc:
                 await websocket.send_json({"type": "error", "message": str(exc)})
@@ -144,3 +168,7 @@ async def browser_websocket_endpoint(websocket: WebSocket):
     finally:
         await session_mgr.remove_client(websocket)
         await extension_session.remove_client(websocket)
+        try:
+            await asyncio.wait_for(websocket.close(code=close_code), timeout=1)
+        except (RuntimeError, OSError, TimeoutError):
+            pass

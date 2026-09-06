@@ -1,4 +1,5 @@
 import asyncio
+from pathlib import Path
 from unittest.mock import AsyncMock
 from types import SimpleNamespace
 
@@ -14,6 +15,8 @@ from suzent.routes import browser_routes
 from suzent.auth_boundary import AuthBoundaryMiddleware
 from suzent.tools.browser.config import BrowserSettings
 from suzent.tools.browser.preview import PreviewFrames
+from suzent.tools.browser.tool import BrowserSessionManager
+from suzent.tools.browser import config as browser_config
 from suzent.tools.browser.extension import bridge as bridge_module
 from suzent.tools.browser.extension import session as session_module
 from suzent.tools.browser.extension import routes as extension_routes
@@ -193,9 +196,11 @@ async def test_preview_allows_local_ui_and_cleans_up(
     websocket.client = SimpleNamespace(host="127.0.0.1")
     websocket.url = URL("ws://127.0.0.1:25314/ws/browser")
     websocket.headers = {"origin": origin}
+    websocket.query_params = {"mode": "extension"}
     websocket.receive_json.side_effect = WebSocketDisconnect()
     await browser_routes.browser_websocket_endpoint(websocket)
-    manager.add_client.assert_awaited_once_with(websocket)
+    manager.add_client.assert_not_called()
+    websocket.accept.assert_awaited_once()
     extension.start_streaming.assert_awaited_once()
     manager.remove_client.assert_awaited_once_with(websocket)
     extension.remove_client.assert_awaited_once_with(websocket)
@@ -278,3 +283,110 @@ async def test_replacement_succeeds_when_old_socket_cannot_close(
     incoming.send_json.assert_awaited_once_with({"type": "ready"})
     assert isinstance(pending.exception(), ValueError)
     assert not connection._pending
+
+
+async def test_managed_preview_cannot_receive_extension_frames_after_mode_change(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manager = BrowserSessionManager(BrowserSettings())
+    connection = bridge_module.ExtensionBridge()
+    connection.request = AsyncMock()
+    monkeypatch.setattr(session_module, "bridge", connection)
+    extension = session_module.ExtensionSession()
+    monkeypatch.setattr(browser_routes, "extension_session", extension)
+    monkeypatch.setattr(
+        browser_routes.BrowserSessionManager, "get_instance", lambda: manager
+    )
+    settings = BrowserSettings(connection_mode="managed")
+    monkeypatch.setattr(browser_routes.BrowserSettings, "load", lambda: settings)
+    websocket = AsyncMock()
+    websocket.client = SimpleNamespace(host="127.0.0.1")
+    websocket.headers = {"origin": "tauri://localhost"}
+    websocket.query_params = {"mode": "managed"}
+    waiting = asyncio.Event()
+    registered = asyncio.Event()
+
+    async def receive() -> None:
+        registered.set()
+        await waiting.wait()
+        raise WebSocketDisconnect()
+
+    websocket.receive_json.side_effect = receive
+    task = asyncio.create_task(browser_routes.browser_websocket_endpoint(websocket))
+    await asyncio.wait_for(registered.wait(), timeout=2)
+    assert websocket in manager._websockets
+    assert websocket not in extension.clients
+    settings = BrowserSettings(connection_mode="extension")
+    extension.selected = "tab-personal"
+    await extension.start_streaming()
+    connection.request.assert_not_called()
+    await extension.on_event("Page.screencastFrame", {"data": "personal screenshot"})
+    websocket.send_json.assert_not_called()
+    waiting.set()
+    await task
+
+
+async def test_mode_change_closes_preview_without_waiting_for_frontend_poll(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(browser_config, "USER_CONFIG_DIR", tmp_path)
+    monkeypatch.delenv("SUZENT_BROWSER_CONNECTION_MODE", raising=False)
+    manager = BrowserSessionManager(BrowserSettings())
+    connection = bridge_module.ExtensionBridge()
+    monkeypatch.setattr(session_module, "bridge", connection)
+    extension = session_module.ExtensionSession()
+    monkeypatch.setattr(browser_routes, "extension_session", extension)
+    monkeypatch.setattr(
+        browser_routes.BrowserSessionManager, "get_instance", lambda: manager
+    )
+    websocket = AsyncMock()
+    manager._websockets.append(websocket)
+    app = Starlette(
+        routes=[
+            Route(
+                "/browser/settings",
+                browser_routes.browser_settings_endpoint,
+                methods=["POST"],
+            )
+        ]
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://localhost"
+    ) as client:
+        response = await client.post(
+            "/browser/settings",
+            json={"connection_mode": "extension"},
+            headers={"Origin": "tauri://localhost", "X-Suzent-Browser-Setup": "1"},
+        )
+    assert response.status_code == 200
+    websocket.close.assert_awaited_once_with(code=1000)
+    assert not manager._websockets
+    assert not extension.clients
+
+
+@pytest.mark.parametrize("requested", [None, "managed", "existing"])
+async def test_stale_preview_reconnect_cannot_opt_into_extension(
+    monkeypatch: pytest.MonkeyPatch, requested: str | None
+) -> None:
+    manager = BrowserSessionManager(BrowserSettings())
+    connection = bridge_module.ExtensionBridge()
+    monkeypatch.setattr(session_module, "bridge", connection)
+    extension = session_module.ExtensionSession()
+    monkeypatch.setattr(browser_routes, "extension_session", extension)
+    monkeypatch.setattr(
+        browser_routes.BrowserSessionManager, "get_instance", lambda: manager
+    )
+    monkeypatch.setattr(
+        browser_routes.BrowserSettings,
+        "load",
+        lambda: BrowserSettings(connection_mode="extension"),
+    )
+    websocket = AsyncMock()
+    websocket.client = SimpleNamespace(host="127.0.0.1")
+    websocket.headers = {"origin": "tauri://localhost"}
+    websocket.query_params = {} if requested is None else {"mode": requested}
+    await browser_routes.browser_websocket_endpoint(websocket)
+    websocket.accept.assert_not_called()
+    websocket.close.assert_awaited_once_with(code=1008)
+    assert not extension.clients
+    assert not manager._websockets

@@ -102,6 +102,7 @@ export function BrowserView({ onStreamActive, visible = true }: BrowserViewProps
     const url = new URL(getApiBase());
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
     url.pathname = '/ws/browser';
+    url.searchParams.set('mode', details!.mode);
     return connectBrowserPreview(
       url.toString(),
       (socket) => {
