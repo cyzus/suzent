@@ -5,6 +5,7 @@ import { BrutalButton } from '../BrutalButton';
 import { BrutalSegmentedTabs } from '../BrutalSegmentedTabs';
 import { useChatStore } from '../../hooks/useChatStore';
 import { FilePreview } from './FilePreview';
+import { FileTreeContextMenu } from './FileTreeContextMenu';
 import { isBinaryServedFile, isImageFile, isMarkdownFile, isCodeFile } from '../../lib/fileUtils';
 import {
   FolderIcon,
@@ -67,6 +68,10 @@ interface FileTreeNodeProps {
   selectedFile: string | null;
   onToggleDir: (path: string) => void;
   onSelectFile: (path: string, name: string) => void;
+  onContextMenu: (
+    event: React.MouseEvent<HTMLButtonElement> | React.KeyboardEvent<HTMLButtonElement>,
+    item: { path: string; name: string; isDir: boolean }
+  ) => void;
   formatSize: (bytes: number) => string;
 }
 
@@ -82,6 +87,7 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = ({
   selectedFile,
   onToggleDir,
   onSelectFile,
+  onContextMenu,
   formatSize,
 }) => {
   const isExpanded = isDir && expandedDirs.has(path);
@@ -109,6 +115,12 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = ({
     <div>
       <button
         onClick={() => (isDir ? onToggleDir(path) : onSelectFile(path, name))}
+        onContextMenu={(event) => onContextMenu(event, { path, name, isDir })}
+        onKeyDown={(event) => {
+          if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
+            onContextMenu(event, { path, name, isDir });
+          }
+        }}
         title={path}
         className={`
                     w-full flex items-center gap-1.5 py-[3px] pr-2 text-left
@@ -167,6 +179,7 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = ({
                 selectedFile={selectedFile}
                 onToggleDir={onToggleDir}
                 onSelectFile={onSelectFile}
+                onContextMenu={onContextMenu}
                 formatSize={formatSize}
               />
             ))
@@ -196,6 +209,13 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
   const [fileContent, setFileContent] = useState<string | null>(null);
   const [loadingFile, setLoadingFile] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    path: string;
+    name: string;
+    isDir: boolean;
+  } | null>(null);
 
   const fetchDirContents = useCallback(
     async (path: string) => {
@@ -238,6 +258,7 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
       setSelectedFile(null);
       setFileContent(null);
       setError(null);
+      setContextMenu(null);
       fetchDirContents(WORKSPACE_PATH);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -251,6 +272,7 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
       setSelectedFile(null);
       setFileContent(null);
       setError(null);
+      setContextMenu(null);
       fetchDirContents(nextRoot);
       onViewModeChange?.(false);
     },
@@ -342,18 +364,91 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
     // path/name identical) still re-opens it after a "back".
   }, [externalFilePath, externalFileName, externalFileNonce, fetchFileContent, onViewModeChange]);
 
-  const openRootInExplorer = async () => {
-    if (!currentChatId) return;
-    try {
-      await fetch(`${getApiBase()}/system/open_explorer`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: activeRoot, chat_id: currentChatId }),
-      });
-    } catch (e) {
-      console.error('Failed to open explorer', e);
-    }
-  };
+  const openPathInExplorer = useCallback(
+    async (path: string) => {
+      if (!currentChatId) return;
+      try {
+        const response = await fetch(`${getApiBase()}/system/open_explorer`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path, chat_id: currentChatId }),
+        });
+        if (!response.ok) {
+          const data = await response.json().catch(() => null);
+          setError(data?.error || t('sandbox.contextMenu.revealFailed'));
+        }
+      } catch {
+        setError(t('sandbox.contextMenu.revealFailed'));
+      }
+    },
+    [currentChatId, t]
+  );
+
+  const openRootInExplorer = () => openPathInExplorer(activeRoot);
+
+  const handleTreeContextMenu = useCallback(
+    (
+      event: React.MouseEvent<HTMLButtonElement> | React.KeyboardEvent<HTMLButtonElement>,
+      item: { path: string; name: string; isDir: boolean }
+    ) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const rect = event.currentTarget.getBoundingClientRect();
+      const x = 'clientX' in event && event.clientX > 0 ? event.clientX : rect.left + 16;
+      const y = 'clientY' in event && event.clientY > 0 ? event.clientY : rect.bottom;
+      setContextMenu({ ...item, x, y });
+    },
+    []
+  );
+
+  const handleDeletePath = useCallback(
+    async (path: string, name: string, isDir: boolean) => {
+      if (!currentChatId) return;
+      const message = t(
+        isDir
+          ? 'sandbox.contextMenu.deleteDirectoryConfirm'
+          : 'sandbox.contextMenu.deleteFileConfirm',
+        { name }
+      );
+      if (!window.confirm(message)) return;
+
+      setError(null);
+      try {
+        const volumesParam = JSON.stringify(config.sandbox_volumes || []);
+        const response = await fetch(
+          `${getApiBase()}/sandbox/file?chat_id=${currentChatId}&path=${encodeURIComponent(path)}&volumes=${encodeURIComponent(volumesParam)}`,
+          { method: 'DELETE' }
+        );
+        if (!response.ok) {
+          const data = await response.json().catch(() => null);
+          setError(data?.error || t('sandbox.contextMenu.deleteFailed'));
+          return;
+        }
+
+        const parentPath = path.slice(0, path.lastIndexOf('/')) || activeRoot;
+        setExpandedDirs((previous) => {
+          const next = new Set(previous);
+          for (const expandedPath of next) {
+            if (expandedPath === path || expandedPath.startsWith(`${path}/`)) {
+              next.delete(expandedPath);
+            }
+          }
+          return next;
+        });
+        setDirContents((previous) => {
+          const next = new Map(previous);
+          for (const cachedPath of next.keys()) {
+            if (cachedPath === path || cachedPath.startsWith(`${path}/`)) next.delete(cachedPath);
+          }
+          return next;
+        });
+        fetchDirContents(parentPath);
+      } catch {
+        setError(t('sandbox.contextMenu.deleteFailed'));
+      }
+    },
+    [activeRoot, config.sandbox_volumes, currentChatId, fetchDirContents, t]
+  );
 
   const handleUploadClick = () => {
     document.getElementById('sandbox-file-upload')?.click();
@@ -555,11 +650,38 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
               selectedFile={selectedFile}
               onToggleDir={handleToggleDir}
               onSelectFile={handleSelectFile}
+              onContextMenu={handleTreeContextMenu}
               formatSize={formatSize}
             />
           ))
         )}
       </div>
+
+      {contextMenu && (
+        <FileTreeContextMenu
+          anchor={{ x: contextMenu.x, y: contextMenu.y }}
+          isDir={contextMenu.isDir}
+          canDelete={!isMountsRoot}
+          onOpen={() =>
+            contextMenu.isDir
+              ? handleToggleDir(contextMenu.path)
+              : handleSelectFile(contextMenu.path, contextMenu.name)
+          }
+          onReveal={() => openPathInExplorer(contextMenu.path)}
+          onCopyPath={() => {
+            const clipboard = navigator.clipboard;
+            if (!clipboard) {
+              setError(t('sandbox.contextMenu.copyFailed'));
+              return;
+            }
+            clipboard.writeText(contextMenu.path).catch(() => {
+              setError(t('sandbox.contextMenu.copyFailed'));
+            });
+          }}
+          onDelete={() => handleDeletePath(contextMenu.path, contextMenu.name, contextMenu.isDir)}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
 
       {/* Status Footer */}
       <div className="bg-white dark:bg-zinc-800 text-brutal-black dark:text-white p-2 flex justify-between items-center text-[10px] font-mono border-t-3 border-brutal-black select-none">
