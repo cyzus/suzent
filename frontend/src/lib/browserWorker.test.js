@@ -5,66 +5,78 @@ afterEach(() => {
   vi.resetModules();
 });
 
+async function setup(stalled) {
+  let release;
+  const pending = new Promise((resolve) => {
+    release = resolve;
+  });
+  const event = () => ({ addListener: vi.fn() });
+  const api = {
+    debugger: {
+      attach: vi.fn(() => (stalled === 'attach' ? pending : Promise.resolve())),
+      detach: vi.fn(async () => {}),
+      sendCommand: vi.fn(async (_, method) => (method === 'Runtime.evaluate' ? pending : {})),
+      onEvent: event(),
+      onDetach: event(),
+    },
+    tabs: {
+      get: vi.fn(async () => ({ url: 'https://example.com', title: 'Example' })),
+      query: vi.fn(async () => []),
+    },
+    runtime: {
+      onMessage: event(),
+      onStartup: event(),
+      getURL: (path) => 'chrome-extension://' + 'a'.repeat(32) + '/' + path,
+      sendNativeMessage: vi.fn(async () => ({ url: 'ws://127.0.0.1:8000/ws/browser-extension' })),
+    },
+    storage: {
+      local: {
+        set: vi.fn(async () => {}),
+        remove: vi.fn(async () => {}),
+        get: vi.fn(async () => ({
+          pairing: { url: 'ws://127.0.0.1:8000/ws/browser-extension', token: 'token' },
+        })),
+      },
+    },
+    action: { setBadgeText: vi.fn() },
+    alarms: { create: vi.fn(), onAlarm: event() },
+  };
+  const sockets = [];
+  class Socket {
+    static OPEN = 1;
+    static CONNECTING = 0;
+    readyState = 1;
+    sent = [];
+    constructor() {
+      sockets.push(this);
+      queueMicrotask(() => this.onopen?.());
+    }
+    send(data) {
+      const message = JSON.parse(data);
+      this.sent.push(message);
+      if (message.token === 'token')
+        queueMicrotask(() => this.onmessage?.({ data: JSON.stringify({ type: 'ready' }) }));
+    }
+    close() {
+      this.readyState = 3;
+      this.onclose?.({ code: 1011 });
+    }
+    command(id, action, params = {}) {
+      this.onmessage({ data: JSON.stringify({ id, action, params }) });
+    }
+  }
+  vi.stubGlobal('chrome', api);
+  vi.stubGlobal('WebSocket', Socket);
+  vi.stubGlobal('navigator', { userAgent: 'Edg/123' });
+  await import('../../../extensions/browser/worker.js');
+  await vi.waitFor(() => expect(sockets).toHaveLength(1));
+  return { api, sockets, release };
+}
+
 it.each(['evaluate', 'attach'])(
   'disconnect bypasses a stalled %s and reconnect starts a fresh queue',
   async (stalled) => {
-    let release;
-    const pending = new Promise((resolve) => {
-      release = resolve;
-    });
-    const event = () => ({ addListener: vi.fn() });
-    const api = {
-      debugger: {
-        attach: vi.fn(() => (stalled === 'attach' ? pending : Promise.resolve())),
-        detach: vi.fn(async () => {}),
-        sendCommand: vi.fn(async (_, method) => (method === 'Runtime.evaluate' ? pending : {})),
-        onEvent: event(),
-        onDetach: event(),
-      },
-      tabs: {
-        get: vi.fn(async () => ({ url: 'https://example.com', title: 'Example' })),
-        query: vi.fn(async () => []),
-      },
-      runtime: {
-        onMessage: event(),
-        onStartup: event(),
-        sendNativeMessage: vi.fn(async () => ({ url: 'ws://127.0.0.1:8000/ws/browser-extension' })),
-      },
-      storage: {
-        local: {
-          get: vi.fn(async () => ({
-            pairing: { url: 'ws://127.0.0.1:8000/ws/browser-extension', token: 'token' },
-          })),
-        },
-      },
-      action: { setBadgeText: vi.fn() },
-      alarms: { create: vi.fn(), onAlarm: event() },
-    };
-    const sockets = [];
-    class Socket {
-      static OPEN = 1;
-      static CONNECTING = 0;
-      readyState = 1;
-      sent = [];
-      constructor() {
-        sockets.push(this);
-      }
-      send(data) {
-        this.sent.push(JSON.parse(data));
-      }
-      close() {
-        this.readyState = 3;
-        this.onclose?.({ code: 1011 });
-      }
-      command(id, action, params = {}) {
-        this.onmessage({ data: JSON.stringify({ id, action, params }) });
-      }
-    }
-    vi.stubGlobal('chrome', api);
-    vi.stubGlobal('WebSocket', Socket);
-    vi.stubGlobal('navigator', { userAgent: 'Edg/123' });
-    await import('../../../extensions/browser/worker.js');
-    await vi.waitFor(() => expect(sockets).toHaveLength(1));
+    const { api, sockets, release } = await setup(stalled);
     const original = sockets[0];
     original.command(1, 'select', { id: 'tab-1' });
     await vi.waitFor(() => expect(api.debugger.attach).toHaveBeenCalled());
@@ -89,3 +101,24 @@ it.each(['evaluate', 'attach'])(
     sockets[1].close();
   }
 );
+
+it('an explicit disconnect cancels a pending authenticated pairing', async () => {
+  const { api, sockets } = await setup();
+  const listener = api.runtime.onMessage.addListener.mock.calls[0][0];
+  const pairing = new Promise((resolve) =>
+    listener(
+      { type: 'pair', origin: 'http://127.0.0.1:8000', token: 'a'.repeat(43) },
+      { url: 'http://127.0.0.1:8000/browser/extension/connect' },
+      resolve
+    )
+  );
+  await vi.waitFor(() => expect(sockets).toHaveLength(2));
+  await new Promise((resolve) =>
+    listener({ type: 'disconnect' }, { url: api.runtime.getURL('popup.html') }, resolve)
+  );
+  sockets[1].onmessage({ data: JSON.stringify({ type: 'ready' }) });
+  expect(await pairing).toEqual({ ok: false });
+  expect(api.storage.local.set).not.toHaveBeenCalled();
+  expect(api.storage.local.remove).toHaveBeenCalledWith('pairing');
+  expect(sockets.every((socket) => socket.readyState === 3)).toBe(true);
+});

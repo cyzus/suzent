@@ -273,6 +273,25 @@ async def test_real_extension_pair_actions_preview_and_disconnect(
                     )
                     == page.url
                 )
+                saved_pairing = await worker.evaluate(
+                    "chrome.storage.local.get('pairing')"
+                )
+                active_socket = bridge.socket
+                invalid_pairing = await browser.new_page()
+                await invalid_pairing.goto(
+                    f"http://127.0.0.1:{port}/browser/extension/connect#{'x' * 43}"
+                )
+                failed = await worker.evaluate("chrome.i18n.getMessage('failed')")
+                await invalid_pairing.wait_for_function(
+                    "text => document.body.textContent === text", arg=failed
+                )
+                assert bridge.socket is active_socket
+                assert session.selected == tab["id"]
+                assert (
+                    await worker.evaluate("chrome.storage.local.get('pairing')")
+                    == saved_pairing
+                )
+                await invalid_pairing.close()
                 result = await session.execute(BrowserCommand(command="snapshot"))
                 assert result.success
                 input_ref = next(

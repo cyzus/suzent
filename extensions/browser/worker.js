@@ -1,5 +1,6 @@
 let socket;
 let connecting = false;
+let pairingRevision = 0;
 let selected;
 let heartbeat;
 let frameTimer;
@@ -182,7 +183,104 @@ async function waitReady(tabId, epoch) {
   requireCurrent(epoch);
 }
 
-async function connect(usePairingAddress = false) {
+function authenticate(pairing) {
+  const url = new URL(pairing.url);
+  if (
+    url.protocol !== "ws:" ||
+    url.hostname !== "127.0.0.1" ||
+    url.pathname !== "/ws/browser-extension"
+  )
+    throw new Error("Invalid browser endpoint.");
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(url);
+    const messages = [];
+    const timer = setTimeout(() => {
+      ws.close();
+      reject(new Error("Browser pairing timed out."));
+    }, 10000);
+    ws.onopen = () => ws.send(JSON.stringify({ token: pairing.token }));
+    ws.onmessage = ({ data }) => {
+      if (JSON.parse(data).type === "ready") {
+        clearTimeout(timer);
+        resolve({ ws, messages });
+      } else if (messages.length < 64) messages.push(data);
+      else ws.close();
+    };
+    ws.onclose = () => {
+      clearTimeout(timer);
+      reject(new Error("Browser pairing was rejected."));
+    };
+    ws.onerror = () => ws.close();
+  });
+}
+
+async function adopt({ ws, messages }, revision) {
+  if (revision !== pairingRevision) {
+    ws.close();
+    throw new Error("Pairing changed.");
+  }
+  await resetActions();
+  if (revision !== pairingRevision) {
+    ws.close();
+    throw new Error("Pairing changed.");
+  }
+  if (ws.readyState !== WebSocket.OPEN)
+    throw new Error("Browser disconnected.");
+  const previous = socket;
+  if (previous && previous !== ws) {
+    previous.onclose = null;
+    previous.close();
+  }
+  clearInterval(heartbeat);
+  const epoch = generation;
+  socket = ws;
+  chrome.action.setBadgeText({ text: "ON" });
+  heartbeat = setInterval(() => {
+    if (ws.readyState === WebSocket.OPEN)
+      ws.send(JSON.stringify({ type: "ping" }));
+  }, 20000);
+  ws.onmessage = ({ data }) => {
+    if (socket !== ws) return;
+    const message = JSON.parse(data);
+    if (!Number.isInteger(message.id)) return;
+    queue = queue
+      .catch(() => {})
+      .then(async () => {
+        if (socket !== ws || ws.readyState !== WebSocket.OPEN) return;
+        try {
+          const result = await dispatch(
+            message.action,
+            message.params || {},
+            epoch,
+          );
+          if (socket === ws)
+            emit({ type: "result", id: message.id, result: result ?? {} });
+        } catch {
+          if (socket !== ws) return;
+          emit({
+            type: "result",
+            id: message.id,
+            error:
+              "Browser action failed. Select a web tab and retry; check whether DevTools or browser policy prevents extension control.",
+          });
+        }
+      });
+  };
+  ws.onclose = ({ code }) => {
+    if (socket !== ws) return;
+    socket = undefined;
+    if (code === 1008) {
+      pairingRevision++;
+      void chrome.storage.local.remove("pairing");
+    }
+    clearInterval(heartbeat);
+    chrome.action.setBadgeText({ text: "" });
+    void resetActions();
+  };
+  for (const data of messages) ws.onmessage({ data });
+}
+
+async function connect() {
   if (
     connecting ||
     (socket &&
@@ -190,79 +288,24 @@ async function connect(usePairingAddress = false) {
   )
     return;
   connecting = true;
+  const revision = pairingRevision;
   try {
     const { pairing } = await chrome.storage.local.get("pairing");
     if (!pairing) return;
     let endpoint = pairing.url;
-    if (!usePairingAddress) {
-      try {
-        const discovery = await chrome.runtime.sendNativeMessage(
-          "com.suzent.browser",
-          { action: "endpoint" },
-        );
-        if (discovery?.url) endpoint = discovery.url;
-      } catch {
-        // Host registration may be blocked by browser policy; retain the paired address.
-      }
+    try {
+      const discovery = await chrome.runtime.sendNativeMessage(
+        "com.suzent.browser",
+        { action: "endpoint" },
+      );
+      if (discovery?.url) endpoint = discovery.url;
+    } catch {
+      // Host registration may be blocked by browser policy; retain the paired address.
     }
-    const url = new URL(endpoint);
-    if (
-      url.protocol !== "ws:" ||
-      url.hostname !== "127.0.0.1" ||
-      url.pathname !== "/ws/browser-extension"
-    )
-      return;
     await cleanup;
-    const epoch = generation;
-    const ws = new WebSocket(url);
-    socket = ws;
-    ws.onopen = () => {
-      if (socket !== ws) return;
-      ws.send(JSON.stringify({ token: pairing.token }));
-      heartbeat = setInterval(() => {
-        if (ws.readyState === WebSocket.OPEN)
-          ws.send(JSON.stringify({ type: "ping" }));
-      }, 20000);
-    };
-    ws.onmessage = ({ data }) => {
-      if (socket !== ws) return;
-      const message = JSON.parse(data);
-      if (message.type === "ready") {
-        chrome.action.setBadgeText({ text: "ON" });
-        return;
-      }
-      if (!Number.isInteger(message.id)) return;
-      queue = queue
-        .catch(() => {})
-        .then(async () => {
-          if (socket !== ws || ws.readyState !== WebSocket.OPEN) return;
-          try {
-            const result = await dispatch(
-              message.action,
-              message.params || {},
-              epoch,
-            );
-            if (socket === ws)
-              emit({ type: "result", id: message.id, result: result ?? {} });
-          } catch {
-            if (socket !== ws) return;
-            emit({
-              type: "result",
-              id: message.id,
-              error:
-                "Browser action failed. Select a web tab and retry; check whether DevTools or browser policy prevents extension control.",
-            });
-          }
-        });
-    };
-    ws.onclose = ({ code }) => {
-      if (socket !== ws) return;
-      socket = undefined;
-      if (code === 1008) void chrome.storage.local.remove("pairing");
-      clearInterval(heartbeat);
-      chrome.action.setBadgeText({ text: "" });
-      void resetActions();
-    };
+    await adopt(await authenticate({ ...pairing, url: endpoint }), revision);
+  } catch {
+    // Keep saved credentials until a replacement is authenticated or explicitly revoked.
   } finally {
     connecting = false;
   }
@@ -328,25 +371,25 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
         !/^[A-Za-z0-9_-]{43}$/.test(message.token)
       )
         throw new Error("Invalid pairing request");
-      if (socket) {
-        socket.onclose = null;
-        socket.close();
-        socket = undefined;
-      }
-      clearInterval(heartbeat);
-      await resetActions();
       url.protocol = "ws:";
       url.pathname = "/ws/browser-extension";
       url.hash = "";
-      await chrome.storage.local.set({
-        pairing: { url: url.href, token: message.token },
-      });
-      await connect(true);
+      const pairing = { url: url.href, token: message.token };
+      const expectedRevision = pairingRevision;
+      const candidate = await authenticate(pairing);
+      if (expectedRevision !== pairingRevision) {
+        candidate.ws.close();
+        throw new Error("Pairing changed.");
+      }
+      const revision = ++pairingRevision;
+      await chrome.storage.local.set({ pairing });
+      await adopt(candidate, revision);
       return { ok: true };
     }
     if (sender.url !== chrome.runtime.getURL("popup.html"))
       return { ok: false };
     if (message.type === "disconnect") {
+      pairingRevision++;
       await chrome.storage.local.remove("pairing");
       socket?.close();
       await resetActions();
