@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import binascii
 import random
 import secrets
 import time
@@ -13,14 +14,19 @@ from dataclasses import dataclass
 from typing import Any
 
 import httpx
+from cryptography.hazmat.primitives import padding
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 from suzent.channels.base import SocialChannel, UnifiedMessage
-from suzent.logger import logger
+from suzent.logger import get_logger
 
 
+logger = get_logger(__name__)
 DEFAULT_BASE_URL = "https://ilinkai.weixin.qq.com"
+DEFAULT_CDN_URL = "https://novac2c.cdn.weixin.qq.com/c2c/download"
 DEFAULT_CHANNEL_VERSION = "1.0.2"
 DEFAULT_BOT_AGENT = "suzent-wechat/0.7.0"
+DEFAULT_MAX_MEDIA_BYTES = 25 * 1024 * 1024
 TEXT_ITEM_TYPE = 1
 USER_MESSAGE_TYPE = 1
 BOT_MESSAGE_TYPE = 2
@@ -67,7 +73,7 @@ def _new_client_id() -> str:
 def _extract_text(item_list: list[dict[str, Any]]) -> str:
     text_parts: list[str] = []
     for item in item_list:
-        item_type = item.get("type")
+        item_type = _item_type(item)
         if item_type == TEXT_ITEM_TYPE:
             text = (item.get("text_item") or {}).get("text")
             if isinstance(text, str) and text:
@@ -84,7 +90,7 @@ def _extract_text(item_list: list[dict[str, Any]]) -> str:
 def _extract_attachments(item_list: list[dict[str, Any]]) -> list[dict[str, Any]]:
     attachments: list[dict[str, Any]] = []
     for item in item_list:
-        item_type = item.get("type")
+        item_type = _item_type(item)
         if item_type == TEXT_ITEM_TYPE:
             continue
 
@@ -100,6 +106,68 @@ def _extract_attachments(item_list: list[dict[str, Any]]) -> list[dict[str, Any]
         }
         attachments.append(attachment)
     return attachments
+
+
+def _item_type(item: dict[str, Any]) -> int | None:
+    item_type = item.get("type")
+    if isinstance(item_type, int):
+        return item_type
+    for inferred_type, payload_key in (
+        (1, "text_item"),
+        (2, "image_item"),
+        (3, "voice_item"),
+        (4, "file_item"),
+        (5, "video_item"),
+    ):
+        if payload_key in item:
+            return inferred_type
+    return None
+
+
+def _decode_media_key(value: str) -> bytes:
+    """Decode the AES-128 key formats observed in iLink media payloads."""
+    candidate = value.strip()
+    if len(candidate) == 32:
+        try:
+            return bytes.fromhex(candidate)
+        except ValueError:
+            pass
+
+    try:
+        decoded = base64.b64decode(candidate, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise ValueError("Invalid WeChat media AES key") from exc
+
+    if len(decoded) == 16:
+        return decoded
+    if len(decoded) == 32:
+        try:
+            return bytes.fromhex(decoded.decode("ascii"))
+        except (UnicodeDecodeError, ValueError) as exc:
+            raise ValueError("Invalid WeChat media AES key") from exc
+    raise ValueError("WeChat media AES key must decode to 16 bytes")
+
+
+def _decrypt_media(ciphertext: bytes, key: bytes) -> bytes:
+    if not ciphertext or len(ciphertext) % 16:
+        raise ValueError("Invalid WeChat media ciphertext length")
+
+    decryptor = Cipher(algorithms.AES(key), modes.ECB()).decryptor()
+    padded = decryptor.update(ciphertext) + decryptor.finalize()
+    unpadder = padding.PKCS7(algorithms.AES.block_size).unpadder()
+    return unpadder.update(padded) + unpadder.finalize()
+
+
+def _image_extension(content: bytes) -> str:
+    if content.startswith(b"\x89PNG\r\n\x1a\n"):
+        return ".png"
+    if content.startswith((b"GIF87a", b"GIF89a")):
+        return ".gif"
+    if content.startswith(b"RIFF") and content[8:12] == b"WEBP":
+        return ".webp"
+    if content.startswith(b"BM"):
+        return ".bmp"
+    return ".jpg"
 
 
 class WeChatAuthClient:
@@ -190,6 +258,9 @@ class WeChatChannel(SocialChannel):
         self.channel_version = config.get("channel_version") or DEFAULT_CHANNEL_VERSION
         self.get_updates_buf = config.get("get_updates_buf", "")
         self.poll_timeout_seconds = float(config.get("poll_timeout_seconds", 40))
+        self.max_media_bytes = int(
+            config.get("max_media_bytes", DEFAULT_MAX_MEDIA_BYTES)
+        )
         self._client: httpx.AsyncClient | None = None
         self._polling_task: asyncio.Task | None = None
         self._running = False
@@ -405,6 +476,7 @@ class WeChatChannel(SocialChannel):
                 for raw_msg in response.get("msgs") or []:
                     unified = self._to_unified_message(raw_msg)
                     if unified:
+                        await self._download_inbound_images(unified)
                         await self._invoke_callback(unified)
             except asyncio.CancelledError:
                 raise
@@ -449,17 +521,107 @@ class WeChatChannel(SocialChannel):
         except (TypeError, ValueError):
             timestamp_value = time.time()
 
+        attachments = _extract_attachments(item_list)
+        content = _extract_text(item_list)
+        if not content and any(item.get("type") == "image" for item in attachments):
+            content = "[Image]"
+
         return UnifiedMessage(
             id=message_id,
-            content=_extract_text(item_list),
+            content=content,
             sender_id=sender_id,
             sender_name=raw_msg.get("sender_name") or sender_id,
             platform="wechat",
             timestamp=timestamp_value,
             thread_id=target_id if group_id else None,
-            attachments=_extract_attachments(item_list),
+            attachments=attachments,
             raw_data=raw_msg,
         )
+
+    async def _download_inbound_images(self, message: UnifiedMessage) -> None:
+        """Download and decrypt image items before passing them to ChatProcessor."""
+        for index, attachment in enumerate(message.attachments):
+            if attachment.get("type") != "image":
+                continue
+            try:
+                content = await self._download_media_item(attachment["raw"])
+                suffix = _image_extension(content)
+                filename = f"wechat-{message.id}-{index + 1}{suffix}"
+                path = self._get_upload_path(f"wechat-{secrets.token_hex(8)}{suffix}")
+                path.write_bytes(content)
+                attachment.update(
+                    {
+                        "path": str(path),
+                        "filename": filename,
+                        "size": len(content),
+                        "mime": "image/jpeg"
+                        if suffix == ".jpg"
+                        else f"image/{suffix.lstrip('.')}",
+                    }
+                )
+                logger.info("Downloaded WeChat image {}", filename)
+            except Exception as exc:
+                logger.warning(
+                    "Failed to download WeChat image from message {}: {}",
+                    message.id,
+                    exc,
+                )
+
+    async def _download_media_item(self, item: dict[str, Any]) -> bytes:
+        if not self._client:
+            raise RuntimeError("WeChat HTTP client is not initialized.")
+
+        image_item = item.get("image_item")
+        if not isinstance(image_item, dict):
+            raise ValueError("WeChat image item has no image payload")
+        media = image_item.get("media")
+        if not isinstance(media, dict):
+            media = {}
+
+        key_value = image_item.get("aeskey") or image_item.get("aes_key")
+        if not key_value:
+            key_value = media.get("aes_key") or media.get("aeskey")
+        if not isinstance(key_value, str) or not key_value:
+            raise ValueError("WeChat image item has no AES key")
+
+        download_url = next(
+            (
+                value
+                for value in (
+                    media.get("download_url"),
+                    media.get("full_url"),
+                    media.get("url"),
+                    image_item.get("url"),
+                )
+                if isinstance(value, str) and value.startswith("https://")
+            ),
+            None,
+        )
+        if download_url is None:
+            encrypted_param = media.get("encrypt_query_param") or media.get(
+                "encrypted_query_param"
+            )
+            if not isinstance(encrypted_param, str) or not encrypted_param:
+                raise ValueError("WeChat image item has no CDN download reference")
+            download_url = DEFAULT_CDN_URL
+            params = {"encrypted_query_param": encrypted_param}
+        else:
+            params = None
+
+        chunks: list[bytes] = []
+        total = 0
+        async with self._client.stream("GET", download_url, params=params) as response:
+            response.raise_for_status()
+            content_length = response.headers.get("content-length")
+            if content_length and int(content_length) > self.max_media_bytes:
+                raise ValueError("WeChat image exceeds the configured size limit")
+            async for chunk in response.aiter_bytes():
+                total += len(chunk)
+                if total > self.max_media_bytes:
+                    raise ValueError("WeChat image exceeds the configured size limit")
+                chunks.append(chunk)
+
+        return _decrypt_media(b"".join(chunks), _decode_media_key(key_value))
 
     async def _get(
         self, endpoint: str, params: dict[str, Any] | None = None
