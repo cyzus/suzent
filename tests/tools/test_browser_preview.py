@@ -118,6 +118,11 @@ async def test_status_and_focus_do_not_start_preview(
                 "/browser/status", headers={"Origin": "https://evil.example"}
             )
         ).status_code == 403
+        assert (
+            await client.get(
+                "/browser/status", headers={"Sec-Fetch-Site": "same-origin"}
+            )
+        ).status_code == 403
     assert [call.args[0] for call in request.call_args_list] == [
         "status",
         "status",

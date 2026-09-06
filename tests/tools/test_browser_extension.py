@@ -182,6 +182,26 @@ def test_websocket_rejects_websites_and_invalid_pairing() -> None:
                 ws.receive_json()
 
 
+def test_download_navigation_is_allowed_but_browser_fetch_without_origin_is_not() -> (
+    None
+):
+    with TestClient(app()) as client:
+        assert (
+            client.get(
+                "/browser/extension/download",
+                headers={"Sec-Fetch-Site": "none", "Sec-Fetch-Mode": "navigate"},
+            ).status_code
+            == 200
+        )
+        assert (
+            client.get(
+                "/browser/extension",
+                headers={"Sec-Fetch-Site": "same-origin", "Sec-Fetch-Mode": "cors"},
+            ).status_code
+            == 403
+        )
+
+
 @pytest.mark.parametrize("browser_channel", ["chromium", "msedge"])
 async def test_real_extension_pair_actions_preview_and_disconnect(
     tmp_path: Path,

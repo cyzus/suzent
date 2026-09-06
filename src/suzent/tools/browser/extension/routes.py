@@ -23,12 +23,17 @@ from suzent.logger import get_logger
 logger = get_logger(__name__)
 
 
-def local_setup_request(request: Request | WebSocket) -> bool:
+def local_setup_request(
+    request: Request | WebSocket, *, allow_navigation: bool = False
+) -> bool:
     if not request.client or not is_loopback(request.client.host):
         return False
     origin = request.headers.get("origin")
     if not origin:
-        return True
+        # Same-origin fetches can omit Origin; they are still browser requests.
+        return "sec-fetch-site" not in request.headers or (
+            allow_navigation and request.headers.get("sec-fetch-mode") == "navigate"
+        )
     if origin in {
         "tauri://localhost",
         "http://tauri.localhost",
@@ -91,7 +96,7 @@ async def extension_connect_page(request: Request) -> Response:
 
 
 async def extension_download(request: Request) -> Response:
-    if not local_setup_request(request):
+    if not local_setup_request(request, allow_navigation=True):
         return Response(status_code=403)
     root = PROJECT_DIR / "extensions" / "browser"
     if not (root / "manifest.json").is_file():
