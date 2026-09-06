@@ -102,7 +102,8 @@ def test_setup_rejects_untrusted_web_origin_and_requires_header() -> None:
         )
         assert client.post("/browser/extension").status_code == 403
         result = client.post(
-            "/browser/extension", headers={"X-Suzent-Browser-Setup": "1"}
+            "/browser/extension",
+            headers={"X-Suzent-Browser-Setup": "1", "Origin": "tauri://localhost"},
         )
         assert result.status_code == 200 and "#" in result.json()["url"]
         archive = client.get("/browser/extension/download")
@@ -120,7 +121,9 @@ def test_setup_exposes_checkout_folder_and_rejects_missing_download(
 ) -> None:
     monkeypatch.setattr(extension_routes, "PROJECT_DIR", tmp_path)
     with TestClient(app()) as client:
-        status = client.get("/browser/extension")
+        status = client.get(
+            "/browser/extension", headers={"Origin": "tauri://localhost"}
+        )
         assert status.json()["source_dir"] == str(tmp_path / "extensions" / "browser")
         assert client.get("/browser/extension/download").status_code == 404
 
@@ -186,6 +189,7 @@ def test_download_navigation_is_allowed_but_browser_fetch_without_origin_is_not(
     None
 ):
     with TestClient(app()) as client:
+        assert client.get("/browser/extension").status_code == 403
         assert (
             client.get(
                 "/browser/extension/download",

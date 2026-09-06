@@ -105,12 +105,16 @@ async def test_status_and_focus_do_not_start_preview(
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://localhost"
     ) as client:
-        result = await client.get("/browser/status")
+        assert (await client.get("/browser/status")).status_code == 403
+        result = await client.get(
+            "/browser/status", headers={"Origin": "tauri://localhost"}
+        )
         assert result.json()["title"] == "Example"
         assert (await client.post("/browser/status")).status_code == 403
         assert (
             await client.post(
-                "/browser/status", headers={"X-Suzent-Browser-Setup": "1"}
+                "/browser/status",
+                headers={"X-Suzent-Browser-Setup": "1", "Origin": "tauri://localhost"},
             )
         ).status_code == 200
         assert (
