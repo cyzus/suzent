@@ -136,7 +136,7 @@ async def test_disconnect_fails_pending_commands_without_replay() -> None:
     connection.socket = AsyncMock()
     pending = asyncio.create_task(connection.request("open", url="https://example.com"))
     await asyncio.sleep(0)
-    connection.disconnected()
+    await connection.disconnected()
     with pytest.raises(ValueError, match="disconnected"):
         await pending
     assert not connection._pending

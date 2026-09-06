@@ -14,9 +14,16 @@ from suzent.routes import browser_routes
 from suzent.auth_boundary import AuthBoundaryMiddleware
 from suzent.tools.browser.config import BrowserSettings
 from suzent.tools.browser.preview import PreviewFrames
+from suzent.tools.browser.extension import bridge as bridge_module
+from suzent.tools.browser.extension import session as session_module
 
 
-def test_loopback_auth_boundary_does_not_allow_hostile_preview_origin() -> None:
+@pytest.mark.parametrize(
+    "origin", ["http://evil.example", "http://127.0.0.1:25314", "http://localhost:8000"]
+)
+def test_loopback_auth_boundary_does_not_allow_hostile_preview_origin(
+    origin: str,
+) -> None:
     app = AuthBoundaryMiddleware(
         Starlette(
             routes=[
@@ -24,11 +31,11 @@ def test_loopback_auth_boundary_does_not_allow_hostile_preview_origin() -> None:
             ]
         )
     )
-    with TestClient(app, client=("127.0.0.1", 50000)) as client:
+    with TestClient(
+        app, base_url="http://127.0.0.1:25314", client=("127.0.0.1", 50000)
+    ) as client:
         with pytest.raises(WebSocketDisconnect):
-            with client.websocket_connect(
-                "/ws/browser", headers={"Origin": "http://evil.example"}
-            ):
+            with client.websocket_connect("/ws/browser", headers={"Origin": origin}):
                 pytest.fail("An untrusted page must not receive a preview connection")
 
 
@@ -119,7 +126,14 @@ async def test_status_and_focus_do_not_start_preview(
 
 @pytest.mark.parametrize(
     "origin",
-    ["https://evil.example", "http://evil.example", "null", "http://localhost:9999"],
+    [
+        "https://evil.example",
+        "http://evil.example",
+        "null",
+        "http://localhost:9999",
+        "http://127.0.0.1:25314",
+        "http://localhost:8000",
+    ],
 )
 async def test_preview_rejects_untrusted_origins_before_registration(
     monkeypatch: pytest.MonkeyPatch, origin: str
@@ -145,7 +159,7 @@ async def test_preview_rejects_untrusted_origins_before_registration(
         "http://tauri.localhost",
         "https://tauri.localhost",
         "http://localhost:18080",
-        "http://127.0.0.1:25314",
+        "http://127.0.0.1:18080",
     ],
 )
 async def test_preview_allows_local_ui_and_cleans_up(
@@ -175,3 +189,42 @@ async def test_preview_allows_local_ui_and_cleans_up(
     extension.start_streaming.assert_awaited_once()
     manager.remove_client.assert_awaited_once_with(websocket)
     extension.remove_client.assert_awaited_once_with(websocket)
+
+
+@pytest.mark.parametrize("close_fails", [False, True])
+async def test_extension_timeout_resets_session_and_replaces_pending_screenshot(
+    monkeypatch: pytest.MonkeyPatch, close_fails: bool
+) -> None:
+    connection = bridge_module.ExtensionBridge()
+    socket = AsyncMock()
+    if close_fails:
+        socket.close.side_effect = RuntimeError("Already closed")
+    connection.socket = socket
+    monkeypatch.setattr(bridge_module, "REQUEST_TIMEOUT", 0.01)
+    monkeypatch.setattr(session_module, "bridge", connection)
+    session = session_module.ExtensionSession()
+    session.selected = "tab-1"
+    session.streaming = True
+    session.world = 42
+    session.refs["old-ref"] = (0, {})
+    client = AsyncMock()
+
+    async def send(message: dict) -> None:
+        if message["type"] == "frame":
+            await asyncio.Event().wait()
+
+    client.send_json.side_effect = send
+    session.clients.append(client)
+    session.frames.offer({"type": "frame", "data": "old screenshot"})
+    with pytest.raises(ValueError, match="timed out"):
+        await connection.request("cdp", method="Runtime.evaluate")
+    assert connection.socket is None
+    assert session.selected is None
+    assert not session.streaming
+    assert session.world is None
+    assert not session.refs
+    assert not connection._pending
+    await session.frames.task
+    client.send_json.assert_awaited_with({"type": "reset"})
+    socket.send_json.assert_awaited_once()
+    await session.frames.clear()

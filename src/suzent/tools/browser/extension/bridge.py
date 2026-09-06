@@ -14,6 +14,9 @@ from starlette.websockets import WebSocket
 from suzent.config.paths import USER_CONFIG_DIR
 
 
+REQUEST_TIMEOUT = 20.0
+
+
 class ExtensionMessage(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     type: Literal["result", "event", "ping"]
@@ -37,6 +40,7 @@ class ExtensionBridge:
         self._counter = 0
         self._pending: dict[int, asyncio.Future[Any]] = {}
         self._pairing: tuple[str, float] | None = None
+        self.on_disconnect: Callable[[], Awaitable[None]] | None = None
         self.on_event: Callable[[str, dict[str, Any]], Awaitable[None]] | None = None
 
     def create_pairing(self) -> str:
@@ -75,13 +79,15 @@ class ExtensionBridge:
     async def revoke(self) -> None:
         self._pairing = None
         (USER_CONFIG_DIR / "browser-extension.json").unlink(missing_ok=True)
+        socket = self.socket
         try:
-            if self.socket:
-                await self.socket.close(code=1008)
+            if socket:
+                await socket.close(code=1008)
         finally:
-            self.disconnected()
+            if self.socket is socket:
+                await self.disconnected()
 
-    def disconnected(self) -> None:
+    async def disconnected(self) -> None:
         self.socket = None
         self.generation += 1
         for future in self._pending.values():
@@ -92,9 +98,12 @@ class ExtensionBridge:
                     )
                 )
         self._pending.clear()
+        if self.on_disconnect:
+            await self.on_disconnect()
 
     async def request(self, action: str, **params: Any) -> Any:
-        if self.socket is None:
+        socket = self.socket
+        if socket is None:
             raise ValueError(
                 "Connect the Suzent browser extension in Settings → Browser first."
             )
@@ -103,15 +112,20 @@ class ExtensionBridge:
         future = asyncio.get_running_loop().create_future()
         self._pending[request_id] = future
         try:
-            await self.socket.send_json(
+            await socket.send_json(
                 {"id": request_id, "action": action, "params": params}
             )
-            return await asyncio.wait_for(future, timeout=20)
+            return await asyncio.wait_for(future, timeout=REQUEST_TIMEOUT)
         except TimeoutError:
             # Never replay a command whose outcome is unknown.
-            if self.socket:
-                await self.socket.close(code=1011)
-            self.disconnected()
+            try:
+                if self.socket is socket:
+                    await socket.close(code=1011)
+            except (RuntimeError, OSError):
+                pass
+            finally:
+                if self.socket is socket:
+                    await self.disconnected()
             raise ValueError(
                 "Browser extension timed out. Reconnect and take a fresh snapshot before retrying."
             ) from None

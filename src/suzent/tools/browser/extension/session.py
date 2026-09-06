@@ -30,6 +30,7 @@ class ExtensionSession:
         self.streaming = False
         self.frames = PreviewFrames(self.clients)
         bridge.on_event = self.on_event
+        bridge.on_disconnect = self.reset
 
     def invalidate(self) -> None:
         self.generation += 1
@@ -56,11 +57,7 @@ class ExtensionSession:
             self.invalidate()
             self.world = None
         elif method == "detached":
-            self.invalidate()
-            self.selected = None
-            self.streaming = False
-            await self.frames.clear()
-            self.frames.offer({"type": "reset"})
+            await self.reset()
         elif method == "Page.screencastFrame":
             metadata = params.get("metadata", {})
             self.frames.offer(
@@ -97,16 +94,15 @@ class ExtensionSession:
         async with self.lock:
             if bridge.socket and self.selected:
                 await bridge.request("detach")
-            self.selected = None
-            self.world = None
-            self.streaming = False
-            self.invalidate()
-            await self.frames.clear()
-            for client in list(self.clients):
-                try:
-                    await client.send_json({"type": "reset"})
-                except Exception:
-                    pass
+            await self.reset()
+
+    async def reset(self) -> None:
+        self.selected = None
+        self.world = None
+        self.streaming = False
+        self.invalidate()
+        await self.frames.clear()
+        self.frames.offer({"type": "reset"})
 
     async def snapshot(self, args: list[str], interactive_only: bool) -> ToolResult:
         self.invalidate()

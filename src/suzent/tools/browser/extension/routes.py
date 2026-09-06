@@ -40,7 +40,8 @@ def local_setup_request(request: Request | WebSocket) -> bool:
         return (
             parsed.scheme == "http"
             and parsed.hostname in {"127.0.0.1", "localhost"}
-            and parsed.port in {18080, 8000, request.url.port}
+            and parsed.port == 18080
+            and parsed.port != request.url.port
         )
     except ValueError:
         return False
@@ -157,11 +158,13 @@ async def extension_websocket(websocket: WebSocket) -> None:
                 )
             if bridge.socket:
                 await bridge.socket.close(code=1000)
-            bridge.disconnected()
+            await bridge.disconnected()
             bridge.socket = websocket
             await websocket.send_json({"type": "ready"})
         while True:
             raw = await websocket.receive_text()
+            if bridge.socket is not websocket:
+                return
             if len(raw) > 8_000_000:
                 await websocket.close(code=1009)
                 return
@@ -177,12 +180,4 @@ async def extension_websocket(websocket: WebSocket) -> None:
             pass
     finally:
         if bridge.socket is websocket:
-            bridge.disconnected()
-            session.selected = None
-            session.streaming = False
-            session.invalidate()
-            for client in list(session.clients):
-                try:
-                    await client.send_json({"type": "reset"})
-                except Exception:
-                    pass
+            await bridge.disconnected()
