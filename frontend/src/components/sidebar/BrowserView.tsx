@@ -41,7 +41,10 @@ export function BrowserView({ onStreamActive, visible = true }: BrowserViewProps
   }, []);
 
   useEffect(() => {
-    if (!watching) return;
+    if (!watching) {
+      setDetails(null);
+      return;
+    }
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
     const refresh = async (): Promise<void> => {
