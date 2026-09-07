@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v0.13.0] - 2026-09-07
 
 ### 🚀 Added
+- Update browser extension installation instructions and add store link
 - Add file context menu for file actions in the sidebar
 - Enhance browser control features and UI responsiveness
 
