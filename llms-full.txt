@@ -4404,15 +4404,13 @@ The recommended personal-browser mode is **Settings → Browser → Use my brows
 (extension)**. It uses the tabs and logins in the browser profile where you install
 the extension, without MCP or remote-debugging settings.
 
-1. Use the local extension folder shown in Settings (`extensions/browser/` in your
-   Suzent checkout). Alternatively, click **Download extension** and extract the ZIP
-   into a permanent folder.
-2. In Chrome or Edge, open Extensions → Manage extensions. Enable Developer mode,
-   choose **Load unpacked**, and select that folder containing `manifest.json`.
-3. Back in Suzent, click **Pair browser**. The default browser opens a local pairing
+1. Click **Open Chrome Web Store** in Settings and install
+   [Suzent Browser](https://chromewebstore.google.com/detail/suzent-browser/mjfjhclnoepglnjjmheollfpbngjebno)
+   in the browser profile you want Suzent to use.
+2. Back in Suzent, click **Pair browser**. The default browser opens a local pairing
    page. If you installed the extension in another browser, copy the private pairing
    link displayed in Suzent into that browser instead.
-4. Settings automatically shows **Browser extension connected**. Ask the agent to
+3. Settings automatically shows **Browser extension connected**. Ask the agent to
    list your tabs and select one, or open a new page. The native preview follows the
    selected tab.
 
@@ -4431,10 +4429,14 @@ the connection and clears the extension's saved pairing, so the agent cannot
 immediately resume control. Browser tabs remain open. Switching back to managed
 mode detaches from the selected tab but retains pairing for later use.
 
-This PR provides an unpacked extension; there is no store listing yet. Browser
-extension installation and browser permission prompts cannot be skipped. Store
-publication can simplify installation later. Enterprise policies may prohibit
-unpacked extensions or debugger access.
+For manual installation in Chrome or Edge, expand **Setup help & options** and use
+the local extension folder (`extensions/browser/` in your Suzent checkout), or
+click **Download extension** and extract the ZIP into a permanent folder. Open
+Extensions → Manage extensions, enable Developer mode, choose **Load unpacked**,
+and select the folder containing `manifest.json`.
+
+Browser extension installation and browser permission prompts cannot be skipped.
+Enterprise policies may prohibit extension installation or debugger access.
 
 The extension only operates on HTTP(S) pages and blank tabs, excludes private tabs,
 and attaches its debugger only to the selected tab. Its pair token authorizes the
