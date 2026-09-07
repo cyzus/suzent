@@ -234,7 +234,8 @@ export const en = {
       extensionDisconnected: 'Not connected',
       extensionHelp:
         'Use the tabs and logins in the browser where you install the extension. No remote-debugging setup is needed. Suzent can control web tabs while connected; disconnect here or in the extension to stop access.',
-      extensionInstall: 'Extensions → Developer mode → Load unpacked. Select the folder below.',
+      extensionInstall: 'Install Suzent Browser from the Chrome Web Store, then pair your browser.',
+      extensionStore: 'Open Chrome Web Store',
       extensionSource: 'Local extension folder (select this folder when loading unpacked)',
       extensionPair: 'Open the pairing page in the browser where you installed the extension.',
       extensionDownload: 'Download extension',
@@ -280,7 +281,7 @@ export const en = {
       extensionReady: 'Ready to use your tabs and logins. Ask Suzent to select a tab.',
       extensionDetails: 'Setup help & options',
       extensionDownloadHelp:
-        'Prefer a ZIP? Extract it to a permanent folder, then load it unpacked. No store listing yet.',
+        'For manual installation, use the folder below or extract the ZIP to a permanent folder. Open Extensions → Developer mode → Load unpacked.',
       directSetup: 'Remote debugging setup',
     },
     title: 'Settings',

@@ -309,7 +309,8 @@ export const zhCN = {
       extensionDisconnected: '未连接',
       extensionHelp:
         '使用安装扩展的浏览器中的标签页和登录状态，无需开启远程调试。连接期间 Suzent 可操作网页；可在此处或扩展中断开连接。',
-      extensionInstall: '扩展管理 → 开发者模式 → 加载解压缩的扩展。选择下方文件夹。',
+      extensionInstall: '从 Chrome 应用商店安装 Suzent Browser，然后配对浏览器。',
+      extensionStore: '打开 Chrome 应用商店',
       extensionSource: '本地扩展文件夹（加载解压缩扩展时选择此文件夹）',
       extensionPair: '在已安装扩展的浏览器中打开配对页面。',
       extensionDownload: '下载扩展',
@@ -349,7 +350,8 @@ export const zhCN = {
       extensionPairTitle: '连接浏览器',
       extensionReady: '可以使用你的标签页和登录状态了，让 Suzent 选择一个标签页即可。',
       extensionDetails: '安装帮助与更多选项',
-      extensionDownloadHelp: '也可下载 ZIP，解压到固定文件夹后加载。暂未提供商店安装。',
+      extensionDownloadHelp:
+        '手动安装可使用下方文件夹，或将 ZIP 解压到固定文件夹。打开扩展管理 → 开发者模式 → 加载解压缩的扩展。',
       directSetup: '远程调试设置',
     },
     title: '设置',
