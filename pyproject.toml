@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "suzent"
-version = "0.12.1"
+version = "0.13.0"
 description = "Suzent is a sovereign AI agent: own its memory, govern its actions, choose its intelligence, and keep its continuity."
 readme = "README.md"
 requires-python = ">=3.12"
