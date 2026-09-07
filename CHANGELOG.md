@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [v0.13.0] - 2026-09-07
 
+<!-- highlights -->
+The browser is the story of this release. Suzent can now drive the Chrome or
+Edge you already use, through a native extension, so a task that needs your
+logged-in sessions no longer starts from an empty profile. Desktop browser
+settings persist, snapshots are reliable, and overridden preferences survive a
+restart.
+
+Because that feature reaches into a personal browser, most of the work went
+into making it trustworthy rather than merely functional. The personal preview
+is opt-in and its streaming is bounded; preview sockets are restricted to
+trusted local origins, isolated per origin, and bound to the provider you
+actually opted into. Pairing is authenticated before credentials are replaced,
+private browser endpoints require explicit origins, and originless status
+requests are rejected. Stale bridges, timed-out sessions, stalled extension
+actions, and mid-task mode changes all recover instead of hanging, and an
+incomplete extension download is refused rather than installed.
+
+Elsewhere, the file sidebar gained a context menu for acting on files directly,
+WeChat now receives standalone images and defers media download until it is
+authorized, and the Dependabot security backlog across Python, Rust and npm is
+cleared, with GitHub Actions SHA-pinned and enrolled in Dependabot.
+<!-- /highlights -->
+
 ### 🚀 Added
 - Update browser extension installation instructions and add store link
 - Add file context menu for file actions in the sidebar
