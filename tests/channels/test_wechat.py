@@ -129,7 +129,7 @@ async def test_wechat_downloads_and_decrypts_single_image():
     assert message is not None
 
     try:
-        await channel._download_inbound_images(message)
+        await channel.prepare_incoming_message(message)
         attachment = message.attachments[0]
         downloaded_path = Path(attachment["path"])
         assert downloaded_path.read_bytes() == image

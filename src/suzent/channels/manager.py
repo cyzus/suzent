@@ -76,6 +76,12 @@ class ChannelManager:
         )
         await self.message_queue.put(message)
 
+    async def prepare_incoming_message(self, message: UnifiedMessage) -> None:
+        """Let a channel materialize deferred data for an authorized message."""
+        channel = self.channels.get(message.platform)
+        if channel:
+            await channel.prepare_incoming_message(message)
+
     async def start_all(self):
         """Connect all registered channels."""
         self._running = True

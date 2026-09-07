@@ -476,7 +476,6 @@ class WeChatChannel(SocialChannel):
                 for raw_msg in response.get("msgs") or []:
                     unified = self._to_unified_message(raw_msg)
                     if unified:
-                        await self._download_inbound_images(unified)
                         await self._invoke_callback(unified)
             except asyncio.CancelledError:
                 raise
@@ -538,7 +537,7 @@ class WeChatChannel(SocialChannel):
             raw_data=raw_msg,
         )
 
-    async def _download_inbound_images(self, message: UnifiedMessage) -> None:
+    async def prepare_incoming_message(self, message: UnifiedMessage) -> None:
         """Download and decrypt image items before passing them to ChatProcessor."""
         for index, attachment in enumerate(message.attachments):
             if attachment.get("type") != "image":

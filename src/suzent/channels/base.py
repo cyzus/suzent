@@ -93,6 +93,9 @@ class SocialChannel(ABC):
             lines.append(f"• {label}  ({value})")
         return await self.send_message(target_id, "\n".join(lines))
 
+    async def prepare_incoming_message(self, message: UnifiedMessage) -> None:
+        """Materialize deferred inbound data after the sender is authorized."""
+
     async def _invoke_callback(self, message: UnifiedMessage):
         """Helper to safely invoke the registered callback (sync or async)."""
         if self.on_message:
