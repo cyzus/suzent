@@ -5,6 +5,7 @@ unverified everywhere, so neither may leak an approval across platforms.
 """
 
 import json
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -43,6 +44,43 @@ def test_denies_sender_impersonating_an_allowed_id_by_display_name(brain):
 
 def test_denies_platform_with_no_allowlist(brain):
     assert brain._is_authorized(_message("slack", "111")) is False
+
+
+@pytest.mark.asyncio
+async def test_denied_sender_cannot_materialize_deferred_attachments():
+    channel_manager = AsyncMock()
+    brain = SocialBrain(channel_manager, platform_allowlists={"wechat": ["allowed"]})
+
+    await brain._route_message(_message("wechat", "denied"))
+
+    channel_manager.prepare_incoming_message.assert_not_awaited()
+    channel_manager.send_message.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_authorized_sender_materializes_deferred_attachments():
+    channel_manager = AsyncMock()
+    brain = SocialBrain(channel_manager, platform_allowlists={"wechat": ["allowed"]})
+    brain._process_and_drain = AsyncMock()
+
+    await brain._route_message(_message("wechat", "allowed"))
+    await brain._get_run_state("social-wechat-allowed").active_task
+
+    channel_manager.prepare_incoming_message.assert_awaited_once()
+    brain._process_and_drain.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_command_does_not_materialize_unused_attachments():
+    channel_manager = AsyncMock()
+    brain = SocialBrain(channel_manager, platform_allowlists={"wechat": ["allowed"]})
+    message = _message("wechat", "allowed")
+    message.content = "/help"
+
+    await brain._route_message(message)
+
+    channel_manager.prepare_incoming_message.assert_not_awaited()
+    channel_manager.send_message.assert_awaited_once()
 
 
 @pytest.mark.asyncio

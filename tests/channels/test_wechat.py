@@ -1,10 +1,18 @@
 import json
 import asyncio
+import base64
+from pathlib import Path
 
 import pytest
 import httpx
+from cryptography.hazmat.primitives import padding
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
-from suzent.channels.wechat import WeChatAuthClient, WeChatChannel
+from suzent.channels.wechat import (
+    WeChatAuthClient,
+    WeChatChannel,
+    _decode_media_key,
+)
 
 
 def _make_channel(handler) -> WeChatChannel:
@@ -44,6 +52,93 @@ async def test_wechat_unifies_text_message_and_caches_context():
     assert message.platform == "wechat"
     assert message.get_chat_id() == "wechat:user-1@im.wechat"
     assert channel._contexts["user-1@im.wechat"].context_token == "ctx-1"
+
+
+def test_wechat_single_image_gets_non_empty_content():
+    channel = WeChatChannel({"bot_token": "token"})
+
+    message = channel._to_unified_message(
+        {
+            "msg_id": "image-1",
+            "from_user_id": "user-1@im.wechat",
+            "message_type": 1,
+            "context_token": "ctx-1",
+            "item_list": [
+                {
+                    "image_item": {
+                        "aeskey": "00112233445566778899aabbccddeeff",
+                        "media": {"encrypt_query_param": "download-token"},
+                    },
+                }
+            ],
+        }
+    )
+
+    assert message is not None
+    assert message.content == "[Image]"
+    assert message.attachments[0]["type"] == "image"
+
+
+@pytest.mark.parametrize(
+    "encoded_key",
+    [
+        "00112233445566778899aabbccddeeff",
+        base64.b64encode(bytes.fromhex("00112233445566778899aabbccddeeff")).decode(),
+        base64.b64encode(b"00112233445566778899aabbccddeeff").decode(),
+    ],
+)
+def test_wechat_decodes_media_key_formats(encoded_key):
+    assert _decode_media_key(encoded_key) == bytes.fromhex(
+        "00112233445566778899aabbccddeeff"
+    )
+
+
+@pytest.mark.asyncio
+async def test_wechat_downloads_and_decrypts_single_image():
+    image = b"\x89PNG\r\n\x1a\nmock-image"
+    key = bytes.fromhex("00112233445566778899aabbccddeeff")
+    padder = padding.PKCS7(algorithms.AES.block_size).padder()
+    padded = padder.update(image) + padder.finalize()
+    encryptor = Cipher(algorithms.AES(key), modes.ECB()).encryptor()
+    ciphertext = encryptor.update(padded) + encryptor.finalize()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.host == "novac2c.cdn.weixin.qq.com"
+        assert request.url.path == "/c2c/download"
+        assert request.url.params["encrypted_query_param"] == "download-token"
+        return httpx.Response(200, content=ciphertext)
+
+    channel = _make_channel(handler)
+    message = channel._to_unified_message(
+        {
+            "msg_id": "image-1",
+            "from_user_id": "user-1@im.wechat",
+            "message_type": 1,
+            "context_token": "ctx-1",
+            "item_list": [
+                {
+                    "type": 2,
+                    "image_item": {
+                        "aeskey": key.hex(),
+                        "media": {"encrypt_query_param": "download-token"},
+                    },
+                }
+            ],
+        }
+    )
+    assert message is not None
+
+    try:
+        await channel.prepare_incoming_message(message)
+        attachment = message.attachments[0]
+        downloaded_path = Path(attachment["path"])
+        assert downloaded_path.read_bytes() == image
+        assert attachment["filename"] == "wechat-image-1-1.png"
+        assert attachment["mime"] == "image/png"
+    finally:
+        if message.attachments[0].get("path"):
+            Path(message.attachments[0]["path"]).unlink(missing_ok=True)
+        await channel._client.aclose()
 
 
 @pytest.mark.asyncio
