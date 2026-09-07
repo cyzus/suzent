@@ -42,11 +42,16 @@ export function BrowserExtensionSetup(): React.ReactElement {
     } else window.open(url, '_blank', 'noopener,noreferrer');
   };
 
-  const action = async (kind: 'download' | 'pair' | 'revoke'): Promise<void> => {
+  const action = async (kind: 'store' | 'download' | 'pair' | 'revoke'): Promise<void> => {
     setBusy(true);
     setError(false);
     try {
-      if (kind === 'download') await openExternal(`${getApiBase()}/browser/extension/download`);
+      if (kind === 'store')
+        await openExternal(
+          'https://chromewebstore.google.com/detail/suzent-browser/mjfjhclnoepglnjjmheollfpbngjebno'
+        );
+      else if (kind === 'download')
+        await openExternal(`${getApiBase()}/browser/extension/download`);
       else {
         const response = await fetch(`${getApiBase()}/browser/extension`, {
           method: kind === 'pair' ? 'POST' : 'DELETE',
@@ -106,16 +111,9 @@ export function BrowserExtensionSetup(): React.ReactElement {
             <p className="text-sm leading-relaxed text-neutral-600 dark:text-neutral-400">
               {t('settings.browser.extensionInstall')}
             </p>
-            {sourceDir && (
-              <input
-                className="w-full min-w-0 border-2 border-brutal-black bg-neutral-50 p-2 font-mono text-xs dark:bg-zinc-900"
-                aria-label={t('settings.browser.extensionSource')}
-                title={sourceDir}
-                readOnly
-                value={sourceDir}
-                onFocus={(event) => event.target.select()}
-              />
-            )}
+            <BrutalButton variant="primary" disabled={busy} onClick={() => void action('store')}>
+              {t('settings.browser.extensionStore')}
+            </BrutalButton>
           </li>
           <li className="min-w-0 space-y-3 border-2 border-brutal-black p-4">
             <h3 className="flex items-center gap-2 font-bold">
@@ -157,6 +155,16 @@ export function BrowserExtensionSetup(): React.ReactElement {
         <div className="mt-3 space-y-3 text-neutral-600 dark:text-neutral-400">
           <p>{t('settings.browser.extensionHelp')}</p>
           <p>{t('settings.browser.extensionDownloadHelp')}</p>
+          {sourceDir && (
+            <input
+              className="w-full min-w-0 border-2 border-brutal-black bg-neutral-50 p-2 font-mono text-xs dark:bg-zinc-900"
+              aria-label={t('settings.browser.extensionSource')}
+              title={sourceDir}
+              readOnly
+              value={sourceDir}
+              onFocus={(event) => event.target.select()}
+            />
+          )}
           <div className="flex flex-wrap gap-2">
             <BrutalButton size="sm" disabled={busy} onClick={() => void action('download')}>
               {t('settings.browser.extensionDownload')}
