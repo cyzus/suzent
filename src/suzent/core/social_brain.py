@@ -267,6 +267,8 @@ class SocialBrain(BaseBrain):
                 )
             return
 
+        await self.channel_manager.prepare_incoming_message(message)
+
         # Resolve active chat (may have been switched via /sess)
         social_chat_id = get_active_chat_id(message.sender_id, default_chat_id)
 
