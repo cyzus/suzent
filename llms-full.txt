@@ -5014,11 +5014,10 @@ Performs web searches using SearXNG (self-hosted, privacy-focused) with automati
 
 ### Shell capability
 
-Executes code in a secure environment. Runs inside an isolated Docker container when sandbox mode is enabled, or on the host when disabled.
+Executes shell commands in a secure environment. Runs inside an isolated Docker container when sandbox mode is enabled, or on the host when disabled.
 
 **Parameters:**
-- `content` (required): Code or shell command to execute
-- `language`: `python`, `nodejs`, or `command`
+- `content` (required): Shell command to execute
 - `run_command`: run bounded work synchronously with an optional timeout
 - `start_command`: start a long-running command and return a command ID
 - `check_command`: read incremental output and check completion
