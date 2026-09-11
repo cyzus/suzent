@@ -113,6 +113,10 @@ export async function dispatch(action, params, epoch = generation) {
     }
     case "tabs": {
       const tabs = await chrome.tabs.query({});
+      const [foreground] = await chrome.tabs.query({
+        active: true,
+        lastFocusedWindow: true,
+      });
       return tabs
         .filter((tab) => {
           try {
@@ -127,6 +131,8 @@ export async function dispatch(action, params, epoch = generation) {
           title: tab.title?.slice(0, 200),
           url: tab.url,
           selected: tab.id === selected,
+          active: tab.active === true,
+          focused: tab.id === foreground?.id,
         }));
     }
     case "select":
