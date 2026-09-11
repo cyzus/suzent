@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 🚀 Added
 - Report which tab the user is viewing (#209)
 
+### ⚡ Changed
+- Remove the language param from the shell tools (#212)
+
 ### 🐛 Fixed
 - Display images in analysis and generation tool results (#211)
 
