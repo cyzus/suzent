@@ -3,7 +3,7 @@
 > Full text of the Suzent documentation, for answer engines and retrieval.
 > Short link index: https://suzent.com/llms.txt
 > Source: https://suzent.com — https://github.com/cyzus/suzent (Apache-2.0)
-> Generated: 2026-09-07
+> Generated: 2026-09-11
 > Pages: 54 documentation pages, plus the sovereignty protocol.
 
 ---
