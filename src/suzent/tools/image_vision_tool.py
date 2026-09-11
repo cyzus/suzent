@@ -146,7 +146,9 @@ class ImageVisionTool(Tool):
                 # reader with no idea the model never answered.
                 raise EmptyCompletionError(model)
 
-            return ToolResult.success_result(result_text)
+            return ToolResult.success_result(
+                result_text, metadata={"image_path": str(path)}
+            )
 
         except Exception as e:
             logger.error(f"Image vision failed: {e}")

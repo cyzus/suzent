@@ -120,36 +120,30 @@ def _get_resolver_for_request(
     chat_id: str, override_volumes: list[str] | None = None
 ) -> PathResolver:
     """Helper to create a PathResolver instance for the request context."""
-    custom_volumes = []
+    sandbox_enabled = CONFIG.sandbox_enabled
+    cwd: str | None = None
+    configured_volumes: list[str] = []
+    try:
+        chat = get_database().get_chat(chat_id)
+        if chat is not None:
+            config = (
+                chat.get("config") if isinstance(chat, dict) else chat.config
+            ) or {}
+            working_directory = (
+                chat.get("working_directory")
+                if isinstance(chat, dict)
+                else chat.working_directory
+            )
+            cwd = working_directory or config.get("cwd")
+            sandbox_enabled = config.get("sandbox_enabled", CONFIG.sandbox_enabled)
+            configured_volumes = config.get("sandbox_volumes", [])
+    except Exception as e:
+        logger.warning(f"Failed to fetch chat config for file access: {e}")
 
-    if override_volumes is not None:
-        # trust the client provided volumes (e.g. from frontend state)
-        # but still apply global defaults/skills via get_effective_volumes
-        custom_volumes = get_effective_volumes(override_volumes)
-    else:
-        try:
-            db = get_database()
-            chat = db.get_chat(chat_id)
-            if chat and "config" in chat:
-                # Get raw volumes from chat config
-                cv = chat["config"].get("sandbox_volumes", [])
-                # Calculate effective volumes (merges global + chat + defaults like skills)
-                custom_volumes = get_effective_volumes(cv)
-                sandbox_enabled = chat["config"].get(
-                    "sandbox_enabled", CONFIG.sandbox_enabled
-                )
-            else:
-                # Even if no chat specific config, we want global defaults (like skills)
-                custom_volumes = get_effective_volumes([])
-                sandbox_enabled = CONFIG.sandbox_enabled
-        except Exception as e:
-            logger.warning(f"Failed to fetch chat config for volumes: {e}")
-            # Fallback to defaults
-            custom_volumes = get_effective_volumes([])
-            sandbox_enabled = CONFIG.sandbox_enabled
-
-    if override_volumes is not None and "sandbox_enabled" not in locals():
-        sandbox_enabled = CONFIG.sandbox_enabled
+    # Volume overrides must not discard the chat's persisted working-directory grant.
+    custom_volumes = get_effective_volumes(
+        override_volumes if override_volumes is not None else configured_volumes
+    )
 
     custom_volumes = _with_discovered_skill_volumes(
         chat_id, custom_volumes, sandbox_enabled=sandbox_enabled
@@ -157,7 +151,10 @@ def _get_resolver_for_request(
 
     # Create resolver for virtual paths such as /workspace, /shared, and custom mounts.
     return PathResolver(
-        chat_id=chat_id, sandbox_enabled=sandbox_enabled, custom_volumes=custom_volumes
+        chat_id=chat_id,
+        sandbox_enabled=sandbox_enabled,
+        custom_volumes=custom_volumes,
+        cwd=cwd,
     )
 
 

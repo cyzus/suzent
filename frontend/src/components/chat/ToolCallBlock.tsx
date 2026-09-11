@@ -17,6 +17,7 @@ import type {
   ToolPermissionResolution,
 } from '../../types/agui';
 import { DisclosureChevron } from '../DisclosureChevron';
+import { ImageToolRenderer } from './ImageToolRenderer';
 
 export interface ToolRendererProps {
   toolName: string;
@@ -39,6 +40,8 @@ const OUTPUT_RENDERERS: Record<string, React.FC<ToolRendererProps> | undefined> 
   run_command: BashOutputRenderer,
   start_command: BashOutputRenderer,
   read_file: FileDiffViewer,
+  analyze_image: ImageToolRenderer,
+  generate_image: ImageToolRenderer,
 };
 
 export type ApprovalState = 'pending' | 'approved' | 'denied' | undefined;

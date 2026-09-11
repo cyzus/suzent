@@ -1,4 +1,7 @@
 export const zhCN = {
+  imageTool: {
+    previewFailed: '图片预览加载失败，点击文件重试。',
+  },
   common: {
     ok: '确定',
     cancel: '取消',
