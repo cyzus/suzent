@@ -35,7 +35,6 @@ def test_policy_prompts_for_dangerous_command_when_unapproved(monkeypatch, tmp_p
             _ctx(tmp_path),
             content="sudo ls",
             description="List files with sudo",
-            language="command",
         )
 
 
@@ -63,7 +62,6 @@ def test_approved_dangerous_command_reaches_execution(monkeypatch, tmp_path):
         _ctx(tmp_path, approved=True),
         content="sudo ls",
         description="List files with sudo",
-        language="command",
     )
 
     assert result.success
@@ -90,7 +88,6 @@ def test_policy_asks_unknown_command_in_full_approval(monkeypatch, tmp_path):
             _ctx(tmp_path),
             content="echo hi",
             description="Print a test line for validation",
-            language="command",
         )
 
 
@@ -118,7 +115,6 @@ def test_policy_allows_readonly_command_in_strict_mode(monkeypatch, tmp_path):
         _ctx(tmp_path),
         content="ls",
         description="List files in working directory",
-        language="command",
     )
 
     assert result.success
@@ -136,7 +132,6 @@ def test_chain_command_requires_approval_by_baseline(tmp_path):
             _ctx(tmp_path),
             content="echo hi && echo bye",
             description="Run two chained echo commands",
-            language="command",
         )
 
 
@@ -148,5 +143,4 @@ def test_git_command_requires_approval_by_baseline(tmp_path):
             _ctx(tmp_path),
             content="git status",
             description="Check git working tree status",
-            language="command",
         )
