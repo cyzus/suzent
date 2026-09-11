@@ -81,6 +81,7 @@ async def test_image_vision_success(mock_open, mock_acompletion, mock_ctx):
 
             assert result.success
             assert "cyber tentacle" in result.message
+            assert result.metadata["image_path"] == str(mock_path)
 
 
 @pytest.mark.asyncio
