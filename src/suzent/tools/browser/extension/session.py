@@ -279,7 +279,9 @@ class ExtensionSession:
                 tabs = await bridge.request("tabs")
                 return ToolResult.success_result(
                     "\n".join(
-                        f"{tab['id']} {'*' if tab['selected'] else ''} {tab.get('title', '')} {tab['url']}"
+                        f"{tab['id']} {'*' if tab['selected'] else ''}"
+                        f"{'>' if tab.get('focused') else ''} "
+                        f"{tab.get('title', '')} {tab['url']}"
                         for tab in tabs
                     ),
                     metadata={"tabs": tabs},

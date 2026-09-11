@@ -273,6 +273,10 @@ async def test_real_extension_pair_actions_preview_and_disconnect(
                     )
                     == page.url
                 )
+                listed = await session.execute(BrowserCommand(command="tabs"))
+                focused = [t for t in listed.metadata["tabs"] if t["focused"]]
+                assert [t["url"] for t in focused] == [page.url]
+                assert focused[0]["active"]
                 saved_pairing = await worker.evaluate(
                     "chrome.storage.local.get('pairing')"
                 )

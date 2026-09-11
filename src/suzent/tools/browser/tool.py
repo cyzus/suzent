@@ -234,7 +234,12 @@ class BrowserSessionManager:
                         self._next_tab_id += 1
                         self._tabs[f"tab-{self._next_tab_id}"] = page
                 items = [
-                    {"id": key, "url": page.url, "selected": page == self._page}
+                    {
+                        "id": key,
+                        "url": page.url,
+                        "selected": page == self._page,
+                        "focused": None,
+                    }
                     for key, page in self._tabs.items()
                 ]
                 return ToolResult.success_result(
@@ -820,7 +825,7 @@ class BrowsingTool(Tool):
             list[str] | None,
             Field(
                 default=None,
-                description="tabs: [] lists stable tab IDs; select_tab: [tab-id] switches tabs; open: [url] or []; snapshot: [] or [offset, limit<=100] or [-i]; click/dblclick/hover: [ref]; fill/type/press: [ref, value]; click_coords: [x, y]; scroll: [dx, dy] or []; back/forward/reload/refresh: []. Use exact @gNeN refs from the latest snapshot; selectors are not accepted.",
+                description="tabs: [] lists stable tab IDs (* marks the tab this tool controls, > marks the tab the user is currently viewing); select_tab: [tab-id] switches tabs; open: [url] or []; snapshot: [] or [offset, limit<=100] or [-i]; click/dblclick/hover: [ref]; fill/type/press: [ref, value]; click_coords: [x, y]; scroll: [dx, dy] or []; back/forward/reload/refresh: []. Use exact @gNeN refs from the latest snapshot; selectors are not accepted.",
             ),
         ] = None,
     ) -> ToolResult:
