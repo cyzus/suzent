@@ -1,4 +1,7 @@
 export const en = {
+  imageTool: {
+    previewFailed: 'Image preview unavailable. Open the file to retry.',
+  },
   common: {
     ok: 'OK',
     cancel: 'Cancel',
