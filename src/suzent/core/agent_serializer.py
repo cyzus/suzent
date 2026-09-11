@@ -17,6 +17,15 @@ logger = get_logger(__name__)
 # Format version for migration detection
 STATE_FORMAT_VERSION = 3
 
+# Tool arguments dropped from the model-facing schema. History persisted before
+# the removal can still carry them, and pydantic-ai validates tool call args
+# with additionalProperties=False, so a replayed legacy call would fail with
+# extra_forbidden before it ever runs. Strip them on restore.
+_REMOVED_TOOL_ARGS: dict[str, tuple[str, ...]] = {
+    "run_command": ("language",),
+    "start_command": ("language",),
+}
+
 
 # ─── Public API ────────────────────────────────────────────────────────
 
@@ -108,6 +117,49 @@ def deserialize_state(data: bytes) -> Optional[Dict[str, Any]]:
 # ─── Internal helpers ──────────────────────────────────────────────────
 
 
+def _strip_removed_tool_args(history_data: Any) -> None:
+    """Drop arguments that are no longer part of a tool's schema, in place.
+
+    Tool call args are stored either as a dict or as a JSON-encoded string,
+    so both shapes are handled.
+    """
+    if not isinstance(history_data, list):
+        return
+
+    for message in history_data:
+        if not isinstance(message, dict):
+            continue
+        for part in message.get("parts") or []:
+            if not isinstance(part, dict):
+                continue
+            removed = _REMOVED_TOOL_ARGS.get(str(part.get("tool_name") or ""))
+            if not removed:
+                continue
+
+            args = part.get("args")
+            if isinstance(args, str):
+                try:
+                    decoded = json.loads(args)
+                except Exception:
+                    continue
+                if not isinstance(decoded, dict):
+                    continue
+                if any(key in decoded for key in removed):
+                    for key in removed:
+                        decoded.pop(key, None)
+                    part["args"] = json.dumps(decoded)
+                    logger.debug(
+                        f"Stripped legacy args {removed} from {part.get('tool_name')}"
+                    )
+            elif isinstance(args, dict):
+                if any(key in args for key in removed):
+                    for key in removed:
+                        args.pop(key, None)
+                    logger.debug(
+                        f"Stripped legacy args {removed} from {part.get('tool_name')}"
+                    )
+
+
 def _restore_v3(raw: dict) -> Optional[Dict[str, Any]]:
     """Restore v3 format (pydantic-ai message history)."""
     try:
@@ -116,6 +168,8 @@ def _restore_v3(raw: dict) -> Optional[Dict[str, Any]]:
         history_data = raw.get("message_history")
         if history_data is None:
             return None
+
+        _strip_removed_tool_args(history_data)
 
         messages = ModelMessagesTypeAdapter.validate_python(history_data)
 
