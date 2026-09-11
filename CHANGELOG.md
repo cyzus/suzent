@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 🚀 Added
 - Report which tab the user is viewing (#209)
 
+### 🐛 Fixed
+- Display images in analysis and generation tool results (#211)
+
 ## [v0.13.0] - 2026-09-07
 
 <!-- highlights -->
