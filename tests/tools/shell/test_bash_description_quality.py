@@ -21,7 +21,7 @@ def test_description_is_required_by_signature(tmp_path):
     tool = RunCommandTool()
 
     try:
-        tool.forward(_ctx(tmp_path), content="echo hi", language="command")
+        tool.forward(_ctx(tmp_path), content="echo hi")
     except TypeError as exc:
         assert "description" in str(exc)
         return
@@ -47,7 +47,6 @@ def test_accepts_required_description(monkeypatch, tmp_path):
     result = tool.forward(
         _ctx(tmp_path),
         content="echo hi",
-        language="command",
         description="Echo a test line",
     )
 

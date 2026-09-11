@@ -19,7 +19,7 @@ import tempfile
 from fnmatch import fnmatchcase
 from math import ceil
 from pathlib import Path
-from typing import Annotated, Literal, Optional
+from typing import Annotated, Optional
 
 from pydantic import Field
 from pydantic_ai import ApprovalRequired, RunContext
@@ -32,13 +32,17 @@ from suzent.logger import get_logger
 
 logger = get_logger(__name__)
 
+# The shell tools only ever run shell commands; the sandbox manager defaults to
+# Python, so every call into it pins the language explicitly.
+SANDBOX_COMMAND_LANGUAGE = "command"
+
 
 class ShellCommandBackend(Tool):
     """
     Execute code in an isolated sandbox environment.
 
     Features:
-    - Supports Python, Node.js, and shell commands
+    - Runs shell commands through the platform shell
     - Working directory is the project workspace at /workspace (shared across chats in the project)
     - Shared storage at /shared (accessible by all sessions)
     - Internet access for package installation and API calls
@@ -55,7 +59,6 @@ class ShellCommandBackend(Tool):
     )
     guidance_priority = 10
     keep_output_tail = True
-    _SUPPORTED_LANGUAGES = {"python", "nodejs", "command"}
     DEFAULT_TIMEOUT_SECONDS = 120
     TOOL_STREAM_TIMEOUT_GRACE_SECONDS = 30
     TIMEOUT_OUTPUT_BYTES_PER_STREAM = 12_000
@@ -129,14 +132,12 @@ class ShellCommandBackend(Tool):
     def _execution_metadata(
         self,
         mode: str,
-        language: str,
         timeout: Optional[int],
         background: bool,
         **extra,
     ) -> dict:
         metadata = {
             "mode": mode,
-            "language": language,
             "timeout": timeout,
             "background": background,
         }
@@ -147,16 +148,13 @@ class ShellCommandBackend(Tool):
         self,
         message: str,
         mode: str,
-        language: str,
         timeout: Optional[int],
         background: bool,
         **extra,
     ) -> ToolResult:
         return ToolResult.success_result(
             message,
-            metadata=self._execution_metadata(
-                mode, language, timeout, background, **extra
-            ),
+            metadata=self._execution_metadata(mode, timeout, background, **extra),
         )
 
     def _error_result(
@@ -164,7 +162,6 @@ class ShellCommandBackend(Tool):
         error_code: ToolErrorCode,
         message: str,
         mode: str,
-        language: str,
         timeout: Optional[int],
         background: bool,
         **extra,
@@ -172,9 +169,7 @@ class ShellCommandBackend(Tool):
         return ToolResult.error_result(
             error_code,
             message,
-            metadata=self._execution_metadata(
-                mode, language, timeout, background, **extra
-            ),
+            metadata=self._execution_metadata(mode, timeout, background, **extra),
         )
 
     def _audit_execution(
@@ -206,10 +201,6 @@ class ShellCommandBackend(Tool):
                 ),
             ),
         ],
-        language: Annotated[
-            Literal["python", "nodejs", "command"],
-            Field(description="Execution mode for the content."),
-        ] = "command",
         timeout: Annotated[
             Optional[int],
             Field(
@@ -232,14 +223,12 @@ class ShellCommandBackend(Tool):
             ),
         ] = False,
     ) -> ToolResult:
-        """Executes a shell command or code and returns its output.
+        """Executes a shell command and returns its output.
 
         The working directory persists between commands within a session.
 
-        Supported languages:
-        - command: Shell commands (bash on Linux/Mac, PowerShell on Windows)
-        - python: Execute Python code
-        - nodejs: Execute Node.js code
+        Commands run through the platform shell (bash on Linux/Mac,
+        PowerShell on Windows).
 
         Output is capped at 30,000 characters. stdout and stderr are returned separately.
 
@@ -248,9 +237,8 @@ class ShellCommandBackend(Tool):
 
         Args:
             ctx: The pydantic-ai run context with agent dependencies.
-            content: The code or shell command to execute.
+            content: The shell command to execute.
             description: Short description of what the command does (for audit log).
-            language: Execution language. Defaults to 'command'.
             timeout: Execution timeout in seconds. For long-running tasks use background=True.
             background: If True, run in background and return a process_id.
         """
@@ -290,7 +278,6 @@ class ShellCommandBackend(Tool):
                 self.tool_name,
                 "execute",
                 "denied",
-                language=language,
                 background=background,
                 reason=denied_reason,
                 description=description,
@@ -299,30 +286,6 @@ class ShellCommandBackend(Tool):
                 ToolErrorCode.PERMISSION_DENIED,
                 denied_reason,
                 mode="unknown",
-                language=language,
-                timeout=timeout,
-                background=background,
-            )
-
-        lang = language.strip().lower()
-        if lang not in self._SUPPORTED_LANGUAGES:
-            self.audit_operation(
-                self.tool_name,
-                "execute",
-                "rejected",
-                language=lang,
-                background=background,
-                reason="unsupported_language",
-                description=description,
-            )
-            return self._error_result(
-                ToolErrorCode.INVALID_ARGUMENT,
-                (
-                    f"Unsupported language '{language}'. "
-                    "Use 'python', 'nodejs', or 'command'."
-                ),
-                mode="unknown",
-                language=lang,
                 timeout=timeout,
                 background=background,
             )
@@ -332,75 +295,72 @@ class ShellCommandBackend(Tool):
         default_action = str(tool_policy.get("default_action", "ask"))
         raw_rules = tool_policy.get("command_rules", [])
 
-        if lang == "command":
-            resolver = get_or_create_path_resolver(ctx.deps)
-            baseline_eval = evaluate_command_policy(
-                command_text=content,
-                resolver=resolver,
-                mode_value="accept_edits",
-                raw_rules=[],
-                default_action="ask",
-            )
+        resolver = get_or_create_path_resolver(ctx.deps)
+        baseline_eval = evaluate_command_policy(
+            command_text=content,
+            resolver=resolver,
+            mode_value="accept_edits",
+            raw_rules=[],
+            default_action="ask",
+        )
 
-            baseline_hard_reasons = (
-                "Command blocked by high-risk shell semantics",
-                "Path denied by policy",
-                "Dangerous delete target blocked",
+        baseline_hard_reasons = (
+            "Command blocked by high-risk shell semantics",
+            "Path denied by policy",
+            "Dangerous delete target blocked",
+        )
+        if (
+            baseline_eval.decision == CommandDecision.DENY
+            and baseline_eval.reason.startswith(baseline_hard_reasons)
+        ):
+            tool_call_approved = bool(getattr(ctx, "tool_call_approved", False))
+            self.audit_operation(
+                self.tool_name,
+                "policy",
+                "allow" if tool_call_approved else "ask",
+                mode="baseline",
+                reason=baseline_eval.reason,
+                description=description,
+                command_class=baseline_eval.command_class.value,
             )
-            if (
-                baseline_eval.decision == CommandDecision.DENY
-                and baseline_eval.reason.startswith(baseline_hard_reasons)
-            ):
-                tool_call_approved = bool(getattr(ctx, "tool_call_approved", False))
-                self.audit_operation(
-                    self.tool_name,
-                    "policy",
-                    "allow" if tool_call_approved else "ask",
-                    language=lang,
-                    mode="baseline",
-                    reason=baseline_eval.reason,
-                    description=description,
-                    command_class=baseline_eval.command_class.value,
+            if not tool_call_approved:
+                raise ApprovalRequired(
+                    metadata={
+                        "reason": baseline_eval.reason,
+                        "mode": "baseline",
+                        "command_class": baseline_eval.command_class.value,
+                        "description": description,
+                    }
                 )
-                if not tool_call_approved:
-                    raise ApprovalRequired(
-                        metadata={
-                            "reason": baseline_eval.reason,
-                            "mode": "baseline",
-                            "command_class": baseline_eval.command_class.value,
-                            "description": description,
-                        }
-                    )
 
-            baseline_ask_reasons = (
-                "Command requires approval due to shell chaining semantics",
-                "Git commands require approval",
+        baseline_ask_reasons = (
+            "Command requires approval due to shell chaining semantics",
+            "Git commands require approval",
+        )
+        if (
+            baseline_eval.decision == CommandDecision.ASK
+            and baseline_eval.reason.startswith(baseline_ask_reasons)
+        ):
+            self.audit_operation(
+                self.tool_name,
+                "policy",
+                "ask",
+                mode="baseline",
+                reason=baseline_eval.reason,
+                description=description,
+                command_class=baseline_eval.command_class.value,
             )
-            if (
-                baseline_eval.decision == CommandDecision.ASK
-                and baseline_eval.reason.startswith(baseline_ask_reasons)
-            ):
-                self.audit_operation(
-                    self.tool_name,
-                    "policy",
-                    "ask",
-                    language=lang,
-                    mode="baseline",
-                    reason=baseline_eval.reason,
-                    description=description,
-                    command_class=baseline_eval.command_class.value,
+            if not bool(getattr(ctx, "tool_call_approved", False)):
+                raise ApprovalRequired(
+                    metadata={
+                        "reason": baseline_eval.reason,
+                        "mode": "baseline",
+                        "command_class": baseline_eval.command_class.value,
+                        "description": description,
+                    }
                 )
-                if not bool(getattr(ctx, "tool_call_approved", False)):
-                    raise ApprovalRequired(
-                        metadata={
-                            "reason": baseline_eval.reason,
-                            "mode": "baseline",
-                            "command_class": baseline_eval.command_class.value,
-                            "description": description,
-                        }
-                    )
 
-        if policy_enabled and lang == "command":
+        if policy_enabled:
             policy_eval = evaluate_command_policy(
                 command_text=content,
                 resolver=resolver,
@@ -413,7 +373,6 @@ class ShellCommandBackend(Tool):
                 self.tool_name,
                 "policy",
                 policy_eval.decision.value,
-                language=lang,
                 mode=mode_value,
                 reason=policy_eval.reason,
                 description=description,
@@ -429,7 +388,6 @@ class ShellCommandBackend(Tool):
                         ToolErrorCode.PERMISSION_DENIED,
                         f"Command blocked by bash policy: {policy_eval.reason}",
                         mode="unknown",
-                        language=lang,
                         timeout=timeout,
                         background=background,
                         policy_decision=policy_eval.decision.value,
@@ -450,40 +408,36 @@ class ShellCommandBackend(Tool):
 
         if background:
             if self.sandbox_enabled:
-                return self._execute_background(content, lang, description=description)
-            return self._execute_background_on_host(
-                content, lang, description=description
-            )
+                return self._execute_background(content, description=description)
+            return self._execute_background_on_host(content, description=description)
 
         effective_timeout = timeout or self.default_timeout_seconds()
         if self.sandbox_enabled:
             return self._execute_in_sandbox(
-                content, lang, effective_timeout, description=description
+                content, effective_timeout, description=description
             )
         return self._execute_on_host(
-            content, lang, effective_timeout, description=description
+            content, effective_timeout, description=description
         )
 
     def _execute_background(
-        self, content: str, language: str, description: Optional[str] = None
+        self, content: str, description: Optional[str] = None
     ) -> ToolResult:
         """Start a background process and return its process_id."""
         try:
             proc_id = self.manager.start_background(
                 session_id=self.chat_id,
                 content=content,
-                language=language,
+                language=SANDBOX_COMMAND_LANGUAGE,
             )
             self._audit_execution(
                 "background",
                 description=description,
-                language=language,
                 process_id=proc_id,
             )
             return self._success_result(
                 "Background process started.",
                 mode="sandbox",
-                language=language,
                 timeout=None,
                 background=True,
                 process_id=proc_id,
@@ -493,14 +447,12 @@ class ShellCommandBackend(Tool):
             self._audit_execution(
                 "background",
                 description=description,
-                language=language,
                 error=str(e),
             )
             return self._error_result(
                 ToolErrorCode.EXECUTION_FAILED,
                 f"Error starting background process: {e}",
                 mode="sandbox",
-                language=language,
                 timeout=None,
                 background=True,
             )
@@ -508,7 +460,6 @@ class ShellCommandBackend(Tool):
     def _execute_in_sandbox(
         self,
         content: str,
-        language: str,
         timeout: Optional[int] = None,
         description: Optional[str] = None,
     ) -> ToolResult:
@@ -518,27 +469,23 @@ class ShellCommandBackend(Tool):
             result = self.manager.execute(
                 session_id=self.chat_id,
                 content=content,
-                language=language,
+                language=SANDBOX_COMMAND_LANGUAGE,
                 timeout=timeout,
             )
 
             if result.success:
                 output = result.output if result.output else "(no output)"
-                logger.info(
-                    f"Sandbox execution successful [{language}] for chat {self.chat_id}"
-                )
+                logger.info(f"Sandbox execution successful for chat {self.chat_id}")
                 self._audit_execution(
                     "success",
                     description=description,
                     mode="sandbox",
-                    language=language,
                     timeout=timeout,
                     background=False,
                 )
                 return self._success_result(
                     output,
                     mode="sandbox",
-                    language=language,
                     timeout=timeout,
                     background=False,
                 )
@@ -550,7 +497,6 @@ class ShellCommandBackend(Tool):
                         "timeout",
                         description=description,
                         mode="sandbox",
-                        language=language,
                         timeout=timeout,
                         background=False,
                     )
@@ -563,7 +509,6 @@ class ShellCommandBackend(Tool):
                             "use background=True."
                         ),
                         mode="sandbox",
-                        language=language,
                         timeout=timeout,
                         background=False,
                         returncode=124,
@@ -573,7 +518,6 @@ class ShellCommandBackend(Tool):
                     "error",
                     description=description,
                     mode="sandbox",
-                    language=language,
                     timeout=timeout,
                     background=False,
                     error=result.error,
@@ -582,7 +526,6 @@ class ShellCommandBackend(Tool):
                     ToolErrorCode.EXECUTION_FAILED,
                     f"Execution Error: {result.error}",
                     mode="sandbox",
-                    language=language,
                     timeout=timeout,
                     background=False,
                 )
@@ -593,7 +536,6 @@ class ShellCommandBackend(Tool):
                 "timeout",
                 description=description,
                 mode="sandbox",
-                language=language,
                 timeout=timeout,
                 background=False,
             )
@@ -606,7 +548,6 @@ class ShellCommandBackend(Tool):
                     "background=True."
                 ),
                 mode="sandbox",
-                language=language,
                 timeout=timeout,
                 background=False,
                 returncode=124,
@@ -616,7 +557,6 @@ class ShellCommandBackend(Tool):
             self._audit_execution(
                 "error",
                 mode="sandbox",
-                language=language,
                 timeout=timeout,
                 background=False,
                 error=str(e),
@@ -625,7 +565,6 @@ class ShellCommandBackend(Tool):
                 ToolErrorCode.EXECUTION_FAILED,
                 f"Sandbox Error: {str(e)}",
                 mode="sandbox",
-                language=language,
                 timeout=timeout,
                 background=False,
             )
@@ -633,7 +572,6 @@ class ShellCommandBackend(Tool):
     def _execute_background_on_host(
         self,
         content: str,
-        language: str,
         description: Optional[str] = None,
     ) -> ToolResult:
         """Start a background process on the host and return its process_id."""
@@ -644,12 +582,11 @@ class ShellCommandBackend(Tool):
                 ToolErrorCode.INVALID_ARGUMENT,
                 "workspace_root not configured for host execution",
                 mode="host",
-                language=language,
                 timeout=None,
                 background=True,
             )
 
-        cmd = self._build_cmd(content, language)
+        cmd = self._build_cmd(content)
         working_dir = self._resolve_working_dir()
         env = self._get_host_env()
 
@@ -665,14 +602,12 @@ class ShellCommandBackend(Tool):
                 "background",
                 description=description,
                 mode="host",
-                language=language,
                 process_id=process_id,
             )
             return self._success_result(
                 "Background command started. Use check_command to read output "
                 "or stop_command to terminate it.",
                 mode="host",
-                language=language,
                 timeout=None,
                 background=True,
                 process_id=process_id,
@@ -683,18 +618,13 @@ class ShellCommandBackend(Tool):
                 ToolErrorCode.EXECUTION_FAILED,
                 f"Error starting background process: {e}",
                 mode="host",
-                language=language,
                 timeout=None,
                 background=True,
             )
 
-    def _build_cmd(self, content: str, language: str) -> list[str]:
-        """Build the command list for the given language."""
-        if language == "python":
-            return ["python", "-c", content]
-        elif language == "nodejs":
-            return ["node", "-e", content]
-        elif language == "command" and os.name == "nt":
+    def _build_cmd(self, content: str) -> list[str]:
+        """Build the shell command list for the host platform."""
+        if os.name == "nt":
             utf8_preamble = "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; "
             return ["powershell", "-NoProfile", "-Command", utf8_preamble + content]
         else:
@@ -721,7 +651,6 @@ class ShellCommandBackend(Tool):
     def _execute_on_host(
         self,
         content: str,
-        language: str,
         timeout: Optional[int] = None,
         description: Optional[str] = None,
     ) -> ToolResult:
@@ -731,12 +660,11 @@ class ShellCommandBackend(Tool):
                 ToolErrorCode.INVALID_ARGUMENT,
                 "workspace_root not configured for host execution",
                 mode="host",
-                language=language,
                 timeout=timeout,
                 background=False,
             )
 
-        cmd = self._build_cmd(content, language)
+        cmd = self._build_cmd(content)
         working_dir = self._resolve_working_dir()
         effective_timeout = timeout or self.default_timeout_seconds()
         process = None
@@ -773,14 +701,11 @@ class ShellCommandBackend(Tool):
             body = "\n".join(parts) if parts else "(no output)"
             output = f"[cwd: {working_dir}]\n{body}"
 
-            logger.info(
-                f"Host execution successful [{language}] for chat {self.chat_id}"
-            )
+            logger.info(f"Host execution successful for chat {self.chat_id}")
             self._audit_execution(
                 "success",
                 description=description,
                 mode="host",
-                language=language,
                 timeout=effective_timeout,
                 background=False,
                 returncode=returncode,
@@ -788,7 +713,6 @@ class ShellCommandBackend(Tool):
             return self._success_result(
                 output,
                 mode="host",
-                language=language,
                 timeout=effective_timeout,
                 background=False,
                 returncode=returncode,
@@ -825,7 +749,6 @@ class ShellCommandBackend(Tool):
                 "timeout",
                 description=description,
                 mode="host",
-                language=language,
                 timeout=effective_timeout,
                 background=False,
             )
@@ -833,7 +756,6 @@ class ShellCommandBackend(Tool):
                 ToolErrorCode.TIMEOUT,
                 message,
                 mode="host",
-                language=language,
                 timeout=effective_timeout,
                 background=False,
                 returncode=124,
@@ -846,7 +768,6 @@ class ShellCommandBackend(Tool):
             self._audit_execution(
                 "error",
                 mode="host",
-                language=language,
                 timeout=effective_timeout,
                 background=False,
                 error=str(e),
@@ -855,7 +776,6 @@ class ShellCommandBackend(Tool):
                 ToolErrorCode.EXECUTION_FAILED,
                 f"Command not found - {e}",
                 mode="host",
-                language=language,
                 timeout=effective_timeout,
                 background=False,
             )
@@ -864,7 +784,6 @@ class ShellCommandBackend(Tool):
             self._audit_execution(
                 "error",
                 mode="host",
-                language=language,
                 timeout=effective_timeout,
                 background=False,
                 error=str(e),
@@ -873,7 +792,6 @@ class ShellCommandBackend(Tool):
                 ToolErrorCode.EXECUTION_FAILED,
                 str(e),
                 mode="host",
-                language=language,
                 timeout=effective_timeout,
                 background=False,
             )

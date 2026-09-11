@@ -3,21 +3,14 @@ import type { ToolRendererProps } from './ToolCallBlock';
 
 export type BashRendererProps = ToolRendererProps;
 
-const LANGUAGE_LABELS: Record<string, string> = {
-  python: 'Python',
-  nodejs: 'Node.js',
-  command: 'Shell',
-};
-
 // Renders in the args section: command only, with copy button.
 export const BashCommandRenderer: React.FC<BashRendererProps> = ({ parsedArgs }) => {
   const [copied, setCopied] = useState(false);
 
-  const { command, langLabel } = useMemo(() => {
-    const command = typeof parsedArgs?.content === 'string' ? parsedArgs.content : '';
-    const rawLang = typeof parsedArgs?.language === 'string' ? parsedArgs.language : 'command';
-    return { command, langLabel: LANGUAGE_LABELS[rawLang] ?? rawLang };
-  }, [parsedArgs]);
+  const command = useMemo(
+    () => (typeof parsedArgs?.content === 'string' ? parsedArgs.content : ''),
+    [parsedArgs],
+  );
 
   const handleCopy = useCallback(() => {
     navigator.clipboard.writeText(command).then(() => {
@@ -29,7 +22,7 @@ export const BashCommandRenderer: React.FC<BashRendererProps> = ({ parsedArgs })
   return (
     <div className="flex items-start min-w-0 mt-1">
       <span className="w-14 shrink-0 text-[10px] font-mono font-bold text-neutral-400 dark:text-neutral-500 uppercase pt-[5px] pr-2 text-right select-none">
-        {langLabel}
+        Shell
       </span>
       <div className="relative flex-1 min-w-0 group">
         <pre className="tool-call-pre font-mono text-[12px] leading-5 text-neutral-700 dark:text-neutral-200 bg-neutral-100 dark:bg-zinc-800 pl-2 pr-8 py-1.5 rounded-sm overflow-x-auto whitespace-pre-wrap break-all m-0">

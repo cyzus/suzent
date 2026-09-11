@@ -1,6 +1,6 @@
 """Model-facing tools provided by :class:`ShellCapability`."""
 
-from typing import Annotated, Literal, Optional
+from typing import Annotated, Optional
 
 from pydantic import Field
 from pydantic_ai import RunContext
@@ -18,10 +18,7 @@ class RunCommandTool(ShellCommandBackend):
     tool_name = "run_command"
     group = ToolGroup.SHELL
     display_name = "Run command"
-    description = (
-        "Run a bounded shell command, Python snippet, or Node.js snippet and wait "
-        "for its complete output."
-    )
+    description = "Run a bounded shell command and wait for its complete output."
     deferrable = False
     session_guidance = (
         "Shell is for shell/system commands only. Use run_command for bounded "
@@ -35,7 +32,7 @@ class RunCommandTool(ShellCommandBackend):
         ctx: RunContext[AgentDeps],
         content: Annotated[
             str,
-            Field(description="Command or Python/Node.js code to execute."),
+            Field(description="Shell command to execute."),
         ],
         description: Annotated[
             str,
@@ -43,10 +40,6 @@ class RunCommandTool(ShellCommandBackend):
                 description="Concise active-voice description for approval and audit."
             ),
         ],
-        language: Annotated[
-            Literal["python", "nodejs", "command"],
-            Field(description="Execution mode for the content."),
-        ] = "command",
         timeout: Annotated[
             Optional[int],
             Field(
@@ -60,7 +53,6 @@ class RunCommandTool(ShellCommandBackend):
             ctx,
             content=content,
             description=description,
-            language=language,
             timeout=timeout,
             background=False,
         )
@@ -85,7 +77,7 @@ class StartCommandTool(ShellCommandBackend):
         ctx: RunContext[AgentDeps],
         content: Annotated[
             str,
-            Field(description="Command or Python/Node.js code to start."),
+            Field(description="Shell command to start."),
         ],
         description: Annotated[
             str,
@@ -93,16 +85,11 @@ class StartCommandTool(ShellCommandBackend):
                 description="Concise active-voice description for approval and audit."
             ),
         ],
-        language: Annotated[
-            Literal["python", "nodejs", "command"],
-            Field(description="Execution mode for the content."),
-        ] = "command",
     ) -> ToolResult:
         return super().forward(
             ctx,
             content=content,
             description=description,
-            language=language,
             timeout=None,
             background=True,
         )
