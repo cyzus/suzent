@@ -9,7 +9,7 @@ export const BashCommandRenderer: React.FC<BashRendererProps> = ({ parsedArgs })
 
   const command = useMemo(
     () => (typeof parsedArgs?.content === 'string' ? parsedArgs.content : ''),
-    [parsedArgs],
+    [parsedArgs]
   );
 
   const handleCopy = useCallback(() => {
