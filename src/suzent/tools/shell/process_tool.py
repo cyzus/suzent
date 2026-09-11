@@ -11,7 +11,7 @@ Actions:
 
 Usage (agent perspective):
     # Start a long-running process
-    command_id = start_command(content="npm install", language="command")
+    command_id = start_command(content="npm install")
 
     # Poll for output
     check_command(command_id="abc123")

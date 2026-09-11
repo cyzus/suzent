@@ -29,7 +29,6 @@ def test_respects_explicit_deny_policy(tmp_path):
     result = ShellCommandBackend().forward(
         ctx,
         content="echo hi",
-        language="command",
         description="Echo a test line",
     )
 
@@ -38,25 +37,7 @@ def test_respects_explicit_deny_policy(tmp_path):
     assert result.message == "Tool 'run_command' is denied by policy"
 
 
-def test_rejects_unsupported_language(tmp_path):
-    tool = ShellCommandBackend()
-
-    result = tool.forward(
-        _ctx(tmp_path),
-        content="print('hi')",
-        language="ruby",
-        description="Run a ruby snippet",
-    )
-
-    assert not result.success
-    assert result.error_code.value == "invalid_argument"
-    assert result.message.startswith("Unsupported language")
-    assert "python" in result.message
-    assert "nodejs" in result.message
-    assert "command" in result.message
-
-
-def test_accepts_command_language_on_host(monkeypatch, tmp_path):
+def test_accepts_command_on_host(monkeypatch, tmp_path):
     tool = ShellCommandBackend()
 
     class _Process:
@@ -78,7 +59,6 @@ def test_accepts_command_language_on_host(monkeypatch, tmp_path):
     result = tool.forward(
         _ctx(tmp_path),
         content="echo hi",
-        language="command",
         description="Echo a test line",
     )
 
@@ -120,7 +100,6 @@ def test_host_env_includes_suzent_base_url(monkeypatch, tmp_path):
     result = tool.forward(
         _ctx(tmp_path),
         content="echo $SUZENT_BASE_URL",
-        language="command",
         description="Print the Suzent base URL",
     )
 
@@ -157,7 +136,6 @@ def test_host_timeout_kills_process_tree_and_returns_tool_error(monkeypatch, tmp
     result = tool.forward(
         _ctx(tmp_path),
         content='node -e "setTimeout(() => {}, 500000)"',
-        language="command",
         timeout=1,
         description="Run a slow node command",
     )
@@ -201,7 +179,6 @@ def test_host_timeout_bounds_captured_output(monkeypatch, tmp_path):
     result = tool.forward(
         _ctx(tmp_path),
         content="verbose-command",
-        language="command",
         timeout=1,
         description="Run a verbose command",
     )
@@ -234,7 +211,6 @@ def test_sandbox_timeout_result_is_classified(monkeypatch, tmp_path):
     result = tool.forward(
         _ctx(tmp_path, sandbox_enabled=True),
         content="sleep 10",
-        language="command",
         timeout=1,
         description="Run a slow sandbox command",
     )
@@ -258,7 +234,6 @@ def test_sandbox_timeout_exception_uses_hidden_system_reminder(monkeypatch, tmp_
     result = tool.forward(
         _ctx(tmp_path, sandbox_enabled=True),
         content="sleep 10",
-        language="command",
         timeout=1,
         description="Run a slow sandbox command",
     )
@@ -285,7 +260,6 @@ def test_sandbox_exit_code_124_is_not_assumed_to_be_timeout(monkeypatch, tmp_pat
     result = tool.forward(
         _ctx(tmp_path, sandbox_enabled=True),
         content="exit 124",
-        language="command",
         timeout=1,
         description="Exit with status 124",
     )
@@ -315,6 +289,5 @@ def test_baseline_guardrails_require_approval_for_dangerous_command(tmp_path):
         ShellCommandBackend().forward(
             _ctx(tmp_path),
             content="sudo ls",
-            language="command",
             description="List files with elevated privileges",
         )
