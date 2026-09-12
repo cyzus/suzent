@@ -105,6 +105,17 @@ suzent doctor
 suzent upgrade
 ```
 
+**启动快捷方式**
+
+```bash
+suzent shortcuts
+```
+
+安装和更新都会创建并修复应用菜单入口（Windows 开始菜单、macOS
+`~/Applications/Suzent.app`、Linux 应用菜单）。快捷方式被删除或安装目录变化后，
+可手动运行该命令修复；`--desktop` / `--no-desktop` 与 `--menu` / `--no-menu`
+的选择会被记住，`--remove` 只删除 Suzent 自己创建的入口。
+
 ---
 
 ## 后续步骤

@@ -989,6 +989,9 @@ fn stage_playwright(config: &InstallConfig) -> StageOutcome {
     }
 }
 
+/// Delegates to `suzent.cli.shortcuts`, the single implementation the updater
+/// and the shell setup scripts also use, so an entry created here is repaired
+/// by every later update no matter which path runs it.
 fn stage_shortcuts(config: &InstallConfig) -> StageOutcome {
     let ui = config.dir.join("bin").join(ui_binary_name());
     if !ui.exists() {
@@ -998,241 +1001,35 @@ fn stage_shortcuts(config: &InstallConfig) -> StageOutcome {
         ));
     }
 
-    if cfg!(windows) {
-        return create_windows_shortcuts(config, &ui);
-    }
-    if cfg!(target_os = "linux") {
-        return create_linux_shortcuts(config, &ui);
-    }
-    if cfg!(target_os = "macos") {
-        return create_macos_shortcuts(config, &ui);
+    let python = workspace_python(&config.dir);
+    if !python.exists() {
+        return StageOutcome::skipped(format!(
+            "Python environment not found at {}; run 'suzent shortcuts' once install finishes.",
+            python.display()
+        ));
     }
 
-    StageOutcome::skipped("Shortcut creation is not implemented for this platform yet.")
-}
-
-#[cfg(windows)]
-fn create_windows_shortcuts(config: &InstallConfig, ui: &std::path::Path) -> StageOutcome {
-    let script = format!(
-        "$ui = '{}'; \
-         $workspace = '{}'; \
-         $w = New-Object -ComObject WScript.Shell; \
-         $locations = @( \
-           @([Environment]::GetFolderPath('DesktopDirectory'), 'Desktop'), \
-           @([Environment]::GetFolderPath('Programs'), 'Start Menu') \
-         ); \
-         foreach ($location in $locations) {{ \
-           $dir = $location[0]; \
-           $label = $location[1]; \
-           if ([string]::IsNullOrWhiteSpace($dir)) {{ continue; }} \
-           New-Item -ItemType Directory -Force -Path $dir | Out-Null; \
-           $path = Join-Path $dir 'Suzent.lnk'; \
-           $s = $w.CreateShortcut($path); \
-           $s.TargetPath = $ui; \
-           $s.WorkingDirectory = $workspace; \
-           $s.IconLocation = $ui; \
-           $s.Save(); \
-           Write-Output \"[$label] $path\"; \
-         }}",
-        escape_powershell_single_quoted(&ui.display().to_string()),
-        escape_powershell_single_quoted(&config.dir.display().to_string()),
-    );
-
-    let mut command = Command::new("powershell");
+    let mut command = Command::new(&python);
     command
-        .args([
-            "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-Command",
-            &script,
-        ])
-        .stdout(child_stdio())
-        .stderr(child_stdio());
-    hide_command_window(&mut command);
+        .args(["-m", "suzent.cli", "shortcuts"])
+        .current_dir(&config.dir);
 
     if run_command(&mut command) {
-        print_human("[OK] Windows shortcuts created");
+        print_human("[OK] Launcher shortcuts created");
         StageOutcome::ok()
     } else {
-        StageOutcome::skipped("Failed to create Windows shortcuts; install can continue.")
+        StageOutcome::skipped(
+            "Shortcut creation failed; run 'suzent shortcuts' to retry. Install can continue.",
+        )
     }
 }
 
-#[cfg(not(windows))]
-fn create_windows_shortcuts(_config: &InstallConfig, _ui: &std::path::Path) -> StageOutcome {
-    StageOutcome::skipped("Windows shortcuts are not supported on this platform.")
-}
-
-#[cfg(target_os = "linux")]
-fn create_linux_shortcuts(config: &InstallConfig, ui: &std::path::Path) -> StageOutcome {
-    let applications_dir = dirs_home()
-        .join(".local")
-        .join("share")
-        .join("applications");
-    if let Err(error) = fs::create_dir_all(&applications_dir) {
-        return StageOutcome::skipped(format!(
-            "Failed to create applications directory {}: {}",
-            applications_dir.display(),
-            error
-        ));
+fn workspace_python(workspace: &Path) -> PathBuf {
+    if cfg!(windows) {
+        workspace.join(".venv").join("Scripts").join("python.exe")
+    } else {
+        workspace.join(".venv").join("bin").join("python")
     }
-
-    let desktop_file = applications_dir.join("suzent.desktop");
-    let content = format!(
-        "[Desktop Entry]\n\
-Type=Application\n\
-Name=Suzent\n\
-Comment=Your personal agent\n\
-Exec=\"{}\"\n\
-Path={}\n\
-Terminal=false\n\
-Categories=Utility;Development;\n",
-        ui.display(),
-        config.dir.display()
-    );
-
-    if let Err(error) = fs::write(&desktop_file, content) {
-        return StageOutcome::skipped(format!(
-            "Failed to write Linux desktop launcher {}: {}",
-            desktop_file.display(),
-            error
-        ));
-    }
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        if let Ok(metadata) = fs::metadata(&desktop_file) {
-            let mut permissions = metadata.permissions();
-            permissions.set_mode(0o755);
-            let _ = fs::set_permissions(&desktop_file, permissions);
-        }
-    }
-
-    print_human(format!(
-        "[OK] Linux launcher created at {}",
-        desktop_file.display()
-    ));
-    StageOutcome::ok()
-}
-
-#[cfg(not(target_os = "linux"))]
-fn create_linux_shortcuts(_config: &InstallConfig, _ui: &std::path::Path) -> StageOutcome {
-    StageOutcome::skipped("Linux shortcuts are not supported on this platform.")
-}
-
-#[cfg(target_os = "macos")]
-fn create_macos_shortcuts(config: &InstallConfig, ui: &Path) -> StageOutcome {
-    let app_bundle = config.dir.join("Suzent.app");
-    let contents_dir = app_bundle.join("Contents");
-    let macos_dir = contents_dir.join("MacOS");
-    let executable = macos_dir.join("Suzent");
-    let plist = contents_dir.join("Info.plist");
-
-    if let Err(error) = fs::create_dir_all(&macos_dir) {
-        return StageOutcome::skipped(format!(
-            "Failed to create macOS app bundle {}: {}",
-            app_bundle.display(),
-            error
-        ));
-    }
-
-    let launcher = format!(
-        "#!/bin/sh\n\
-exec \"{}\" \"$@\"\n",
-        ui.display()
-    );
-    if let Err(error) = fs::write(&executable, launcher) {
-        return StageOutcome::skipped(format!(
-            "Failed to write macOS launcher {}: {}",
-            executable.display(),
-            error
-        ));
-    }
-
-    let plist_content = r#"<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>CFBundleName</key>
-  <string>Suzent</string>
-  <key>CFBundleDisplayName</key>
-  <string>Suzent</string>
-  <key>CFBundleIdentifier</key>
-  <string>com.suzent.app</string>
-  <key>CFBundleVersion</key>
-  <string>0.6.3</string>
-  <key>CFBundleShortVersionString</key>
-  <string>0.6.3</string>
-  <key>CFBundleExecutable</key>
-  <string>Suzent</string>
-  <key>CFBundlePackageType</key>
-  <string>APPL</string>
-  <key>LSMinimumSystemVersion</key>
-  <string>10.13</string>
-</dict>
-</plist>
-"#;
-    if let Err(error) = fs::write(&plist, plist_content) {
-        return StageOutcome::skipped(format!(
-            "Failed to write macOS Info.plist {}: {}",
-            plist.display(),
-            error
-        ));
-    }
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        if let Ok(metadata) = fs::metadata(&executable) {
-            let mut permissions = metadata.permissions();
-            permissions.set_mode(0o755);
-            let _ = fs::set_permissions(&executable, permissions);
-        }
-    }
-
-    let applications_dir = dirs_home().join("Applications");
-    if let Err(error) = fs::create_dir_all(&applications_dir) {
-        return StageOutcome::skipped(format!(
-            "Failed to create user Applications directory {}: {}",
-            applications_dir.display(),
-            error
-        ));
-    }
-
-    let app_link = applications_dir.join("Suzent.app");
-    if let Ok(metadata) = fs::symlink_metadata(&app_link) {
-        if metadata.file_type().is_symlink() {
-            let _ = fs::remove_file(&app_link);
-        } else {
-            return StageOutcome::skipped(format!(
-                "{} already exists and is not a symlink; app bundle is available at {}.",
-                app_link.display(),
-                app_bundle.display()
-            ));
-        }
-    }
-
-    if let Err(error) = std::os::unix::fs::symlink(&app_bundle, &app_link) {
-        return StageOutcome::skipped(format!(
-            "Failed to link macOS app into {}: {}. App bundle is available at {}.",
-            app_link.display(),
-            error,
-            app_bundle.display()
-        ));
-    }
-
-    print_human(format!(
-        "[OK] macOS app shortcut created at {}",
-        app_link.display()
-    ));
-    StageOutcome::ok()
-}
-
-#[cfg(not(target_os = "macos"))]
-fn create_macos_shortcuts(_config: &InstallConfig, _ui: &Path) -> StageOutcome {
-    StageOutcome::skipped("macOS shortcuts are not supported on this platform.")
 }
 
 fn stage_shim(config: &InstallConfig) -> StageOutcome {

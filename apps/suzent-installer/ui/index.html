@@ -587,7 +587,7 @@
         refreshStageDurations();
       }
 
-      function phaseIndex(phase) { const aliases = { fetch:'download', switching:'source', rollback:'verify', rolled_back:'complete', repair_required:'complete' }; const key = aliases[phase] || phase; return updateStages.findIndex(([name]) => name === key); }
+      function phaseIndex(phase) { const aliases = { fetch:'download', switching:'source', rollback:'verify', rolled_back:'complete', repair_required:'complete', shortcuts:'verify' }; const key = aliases[phase] || phase; return updateStages.findIndex(([name]) => name === key); }
       function applyUpdateStatus(status) {
         if (!status) return;
         const index = phaseIndex(status.phase);
