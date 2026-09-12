@@ -270,7 +270,7 @@ def _remove_entry(entry: dict, report: ShortcutReport) -> bool:
     path = Path(entry["path"])
     if not path.exists() and not path.is_symlink():
         return True
-    if IS_MACOS and not _macos_owned(path, Path(entry.get("target", ""))):
+    if not _entry_owned(path, Path(entry.get("target", ""))):
         report.ok = False
         report.notes.append(f"leaving unrecognized launcher intact: {path}")
         return False
@@ -280,6 +280,24 @@ def _remove_entry(entry: dict, report: ShortcutReport) -> bool:
     report.ok = False
     report.notes.append(f"could not remove {path}; retry 'suzent shortcuts --remove'")
     return False
+
+
+def _entry_owned(path: Path, binary: Path) -> bool:
+    if IS_MACOS:
+        return _macos_owned(path, binary)
+    if not IS_WINDOWS:
+        return _legacy_owned(path, binary)
+    script = (
+        "$ErrorActionPreference = 'Stop'; "
+        "$shell = New-Object -ComObject WScript.Shell; "
+        f"$link = $shell.CreateShortcut('{_ps_quote(path)}'); "
+        f"if ($link.TargetPath -eq '{_ps_quote(binary)}') "
+        "{ Write-Output 'owned' }"
+    )
+    result = _run(
+        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script]
+    )
+    return result is not None and result.stdout.strip() == "owned"
 
 
 def _macos_owned(path: Path, binary: Path) -> bool:

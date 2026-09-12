@@ -360,3 +360,65 @@ def test_macos_failed_bundle_swap_restores_original(workspace, macos, monkeypatc
     assert (bundle / "Contents" / "Info.plist").read_bytes() == plist
     assert shortcuts.read_manifest(workspace)["entries"] == original
     assert shortcuts.install_or_repair(workspace).ok
+
+
+@pytest.mark.parametrize("disable", [False, True])
+@pytest.mark.parametrize("windows", [False, True])
+def test_preserves_replaced_non_macos_shortcut(
+    workspace: Path,
+    linux,
+    monkeypatch: pytest.MonkeyPatch,
+    windows: bool,
+    disable: bool,
+) -> None:
+    shortcuts.install_or_repair(workspace, desktop=True)
+    manifest = shortcuts.read_manifest(workspace)
+    entry = next(item for item in manifest["entries"] if item["kind"] == "desktop")
+    path = Path(entry["path"])
+    path.write_text("[Desktop Entry]\nExec=/user/other-app\n")
+    if windows:
+        monkeypatch.setattr(shortcuts, "IS_WINDOWS", True)
+        (workspace / "bin" / "suzent-ui.exe").touch()
+        monkeypatch.setattr(shortcuts, "_apply_windows", lambda *args: [])
+
+        def inspect_link(command: list[str]) -> subprocess.CompletedProcess[str]:
+            assert "CreateShortcut" in command[-1]
+            assert "$link.TargetPath -eq" in command[-1]
+            return subprocess.CompletedProcess(command, 0, "", "")
+
+        monkeypatch.setattr(shortcuts, "_run", inspect_link)
+    report = (
+        shortcuts.install_or_repair(workspace, desktop=False)
+        if disable
+        else shortcuts.remove(workspace)
+    )
+    assert not report.ok
+    assert path.read_text() == "[Desktop Entry]\nExec=/user/other-app\n"
+    assert entry in shortcuts.read_manifest(workspace)["entries"]
+
+
+@pytest.mark.parametrize("helper_fails", [False, True])
+def test_windows_removal_checks_target(
+    workspace: Path, monkeypatch: pytest.MonkeyPatch, helper_fails: bool
+) -> None:
+    monkeypatch.setattr(shortcuts, "IS_WINDOWS", True)
+    monkeypatch.setattr(shortcuts, "IS_MACOS", False)
+    path = workspace / "Suzent.lnk"
+    path.touch()
+    binary = workspace / "bin" / "suzent-ui.exe"
+
+    def inspect_link(command: list[str]) -> subprocess.CompletedProcess[str] | None:
+        assert shortcuts._ps_quote(path) in command[-1]
+        assert shortcuts._ps_quote(binary) in command[-1]
+        if helper_fails:
+            return None
+        return subprocess.CompletedProcess(command, 0, "owned\n", "")
+
+    monkeypatch.setattr(shortcuts, "_run", inspect_link)
+    report = shortcuts.ShortcutReport()
+    assert (
+        shortcuts._remove_entry(shortcuts._entry("desktop", path, binary), report)
+        is not helper_fails
+    )
+    assert path.exists() is helper_fails
+    assert report.ok is not helper_fails
