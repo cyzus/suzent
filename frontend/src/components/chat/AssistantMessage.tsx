@@ -860,6 +860,8 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
   //    never show two animated/sticky badges at once.
   const isHistory = !isLastMessage && !isPendingApproval;
 
+  // Keep overflow clipping on the chat scroller and message contents, not the
+  // sticky badge ancestor: WebKit can jitter sticky layers inside overflow: clip.
   const badgeContainer = isHistory ? (
     <div className="mb-2 mt-1 flex flex-col gap-0.5">
       <div className="flex items-center gap-1.5 text-neutral-400 dark:text-neutral-500">
@@ -883,8 +885,8 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
   ) : (
     <div
       className={`
-      sticky top-2 z-20 ml-0 mr-auto mb-3 overflow-hidden
-      transition-all duration-500 ease-[cubic-bezier(0.4,0,0.2,1)] max-w-full
+      sticky top-2 z-20 isolate transform-gpu ml-0 mr-auto mb-3 overflow-hidden
+      transition-[width,height] duration-500 ease-[cubic-bezier(0.4,0,0.2,1)] max-w-full
       bg-white dark:bg-zinc-800 border-3 border-brutal-black shadow-brutal-lg
       ${isThinking ? 'w-[400px] h-[80px]' : 'w-[90px] h-[40px]'}
     `}
@@ -945,7 +947,7 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
   if (effectiveParts !== undefined) {
     return (
       <CitationProvider sources={citationSourcesMap}>
-        <div className="group w-full max-w-4xl break-all overflow-x-clip text-sm leading-relaxed relative pr-4 md:pr-12 animate-brutal-pop">
+        <div className="group w-full max-w-4xl break-all text-sm leading-relaxed relative pr-4 md:pr-12 animate-brutal-pop">
           {/* Badge/Assembly Container */}
           {badgeContainer}
 
@@ -1001,7 +1003,7 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
 
   if (toolOnly) {
     return (
-      <div className="group w-full max-w-4xl break-all overflow-x-clip text-sm leading-relaxed relative pr-4 md:pr-12 animate-brutal-pop">
+      <div className="group w-full max-w-4xl break-all text-sm leading-relaxed relative pr-4 md:pr-12 animate-brutal-pop">
         {badgeContainer}
         <div className="pl-1 pr-2 pb-1">
           <StepPills
@@ -1068,7 +1070,7 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
 
   return (
     <CitationProvider sources={citationSourcesMap}>
-      <div className="group w-full max-w-4xl break-all overflow-x-clip text-sm leading-relaxed relative pr-4 md:pr-12 animate-brutal-pop">
+      <div className="group w-full max-w-4xl break-all text-sm leading-relaxed relative pr-4 md:pr-12 animate-brutal-pop">
         {/* Badge/Assembly Container is rendered at the top of the entire message timeline */}
         {badgeContainer}
 
