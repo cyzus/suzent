@@ -139,6 +139,19 @@ In a source checkout, plain `suzent update` detects the workspace and switches
 to the development channel automatically. `suzent update --dev` remains
 available when you want to select that channel explicitly.
 
+**Launcher shortcuts**
+
+```bash
+suzent shortcuts
+```
+
+Every install and update creates the application menu entry — Start Menu on
+Windows, `~/Applications/Suzent.app` on macOS, the applications menu on Linux —
+and repairs it if it went missing or points at an old install directory. Run the
+command yourself to fix a shortcut in between updates, or to change what you
+want: `--desktop` / `--no-desktop` and `--menu` / `--no-menu` are remembered for
+later repairs, and `--remove` deletes only the entries Suzent created.
+
 ---
 
 ## Next Steps

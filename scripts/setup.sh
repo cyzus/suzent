@@ -380,6 +380,19 @@ printf '%s' "$([ -n "$RELEASE_TAG" ] && printf stable || printf dev)" \
     > "$SUZENT_DIR/.suzent/update-channel"
 ok "Workspace marked as bootstrapped"
 
+# ── Launcher shortcuts ────────────────────────────────────────────────────────
+# suzent.cli.shortcuts is the same module the Rust installer and the standalone
+# updater call, so a CLI install or update creates — and repairs — exactly the
+# same launcher entries as the graphical installer.
+info "Creating launcher shortcuts..."
+if [ -x ".venv/bin/python" ]; then
+    .venv/bin/python -m suzent.cli shortcuts \
+        || warn "Launcher shortcut setup failed — run 'suzent shortcuts' to retry (non-fatal)."
+else
+    uv run suzent shortcuts \
+        || warn "Launcher shortcut setup failed — run 'suzent shortcuts' to retry (non-fatal)."
+fi
+
 add_to_path_config "$INSTALL_BIN"
 refresh_path
 

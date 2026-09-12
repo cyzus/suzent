@@ -399,6 +399,21 @@ $Channel = if ($ReleaseTag) { "stable" } else { "dev" }
 Set-Content -Path (Join-Path $ChannelDir "update-channel") -Value $Channel -NoNewline -Encoding ASCII
 Write-Ok "Workspace marked as bootstrapped"
 
+# ── Launcher shortcuts ────────────────────────────────────────────────────────
+# suzent.cli.shortcuts is the same module the Rust installer and the standalone
+# updater call, so a CLI install or update creates — and repairs — exactly the
+# same launcher entries as the graphical installer.
+Write-Info "Creating launcher shortcuts..."
+$VenvPython = Join-Path $SuzentDir ".venv\Scripts\python.exe"
+if (Test-Path $VenvPython) {
+    & $VenvPython -m suzent.cli shortcuts
+} else {
+    uv run suzent shortcuts
+}
+if ($LASTEXITCODE -ne 0) {
+    Write-Warn "Launcher shortcut setup failed — run 'suzent shortcuts' to retry (non-fatal)."
+}
+
 Add-ToUserPath $BinDir
 
 # Also add scripts/ dir (legacy, for suzent.ps1 wrapper)

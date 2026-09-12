@@ -421,7 +421,41 @@ fn install_target(paths: &UpdatePaths, target_tag: &str) -> Result<(), String> {
         .map_err(display_io("record installed release"))?;
     fs::write(paths.state_dir.join("update-channel"), "stable")
         .map_err(display_io("record update channel"))?;
+
+    write_status(
+        paths,
+        "shortcuts",
+        96,
+        "Refreshing launcher shortcuts",
+        target_tag,
+    )?;
+    refresh_shortcuts(paths);
     Ok(())
+}
+
+/// Repairs the launcher entries through `suzent.cli.shortcuts`, the same code
+/// the installer and the setup scripts run, so entries the user deleted or that
+/// point at a moved install come back on every update.
+///
+/// Deliberately not fatal: a missing desktop icon is no reason to roll back an
+/// otherwise working update, so a failure is reported and the update completes.
+fn refresh_shortcuts(paths: &UpdatePaths) {
+    let python = service_python(&paths.root);
+    if !python.exists() {
+        eprintln!(
+            "skipped launcher shortcut repair: {} is missing",
+            python.display()
+        );
+        return;
+    }
+    if let Err(error) = run_checked(
+        Command::new(python)
+            .args(["-m", "suzent.cli", "shortcuts"])
+            .current_dir(&paths.root),
+        "refresh launcher shortcuts",
+    ) {
+        eprintln!("{error}; run 'suzent shortcuts' to retry");
+    }
 }
 
 fn rollback(paths: &UpdatePaths, transaction: &UpdateTransaction) -> Result<(), String> {
