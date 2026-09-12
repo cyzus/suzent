@@ -110,6 +110,25 @@ def _write_update_channel(root: Path, channel: str) -> None:
     path.write_text(channel, encoding="utf-8")
 
 
+def _refresh_shortcuts(root: Path) -> None:
+    """Repair launcher entries after an update, never failing the update itself."""
+    from suzent.cli import shortcuts as shortcut_manager
+
+    typer.echo("  • Refreshing launcher shortcuts...")
+    try:
+        report = shortcut_manager.install_or_repair(root)
+    except Exception as error:  # pragma: no cover - defensive, never fatal
+        typer.echo(f"  ⚠️  Launcher shortcut repair failed: {error}")
+        return
+    if report.ok:
+        typer.echo(f"  ✅ Launcher shortcuts: {report.summary()}")
+        return
+    typer.echo(
+        "  ⚠️  Launcher shortcuts need attention: "
+        f"{'; '.join(report.notes) or 'unknown issue'}"
+    )
+
+
 def _is_ui_binary_current(root: Path, binary: Path) -> bool:
     """Return True when a discovered UI binary can be launched."""
     return binary.exists()
@@ -1909,6 +1928,9 @@ def register_commands(app: typer.Typer):
                 raise typer.Exit(code=1)
 
         _write_update_channel(root, channel)
+        # The stable path returns earlier and lets the standalone updater repair
+        # shortcuts; this is the development channel's equivalent.
+        _refresh_shortcuts(root)
         if dev:
             _restore_stashed_changes(root, stashed_changes)
         elif stashed_changes:
@@ -1988,6 +2010,58 @@ def register_commands(app: typer.Typer):
             repair=True,
             headless=headless,
         )
+
+    @app.command()
+    def shortcuts(
+        menu: bool | None = typer.Option(
+            None,
+            "--menu/--no-menu",
+            help="Create or drop the application menu entry.",
+        ),
+        desktop: bool | None = typer.Option(
+            None,
+            "--desktop/--no-desktop",
+            help="Create or drop the desktop shortcut.",
+        ),
+        remove: bool = typer.Option(
+            False, "--remove", help="Delete the shortcuts Suzent created."
+        ),
+        json_output: bool = typer.Option(
+            False, "--json", help="Print machine-readable JSON."
+        ),
+    ) -> None:
+        """Create or repair the launcher shortcuts for this installation.
+
+        Runs automatically during install and update; call it directly to fix
+        shortcuts that were deleted or to change which ones you want.
+        """
+        from suzent.cli import shortcuts as shortcut_manager
+
+        root = get_project_root()
+        if remove:
+            report = shortcut_manager.remove(root)
+        else:
+            report = shortcut_manager.install_or_repair(
+                root, application_menu=menu, desktop=desktop
+            )
+
+        if json_output:
+            typer.echo(json.dumps(report.as_dict()))
+        else:
+            for label, paths in (
+                ("Created", report.created),
+                ("Repaired", report.repaired),
+                ("Removed", report.removed),
+                ("Unchanged", report.kept),
+            ):
+                for path in paths:
+                    typer.echo(f"  • {label}: {path}")
+            for note in report.notes:
+                typer.echo(f"  ⚠️  {note}")
+            typer.echo(f"🔗 Launcher shortcuts: {report.summary()}")
+
+        if not report.ok:
+            raise typer.Exit(code=1)
 
     @app.command("check-update")
     def check_update(
