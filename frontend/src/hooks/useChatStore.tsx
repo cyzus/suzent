@@ -170,6 +170,10 @@ const keyForChat = (chatId: string | null) => chatId ?? UNSAVED_CHAT_KEY;
 const stripReusableConfig = (config: ChatConfig): ChatConfig => {
   const reusable = { ...config } as Record<string, unknown>;
   [
+    // Host paths are machine-specific: a volume mounted on one device is
+    // meaningless (and shows as `missing`) on another, so never carry them
+    // into a new chat.
+    'sandbox_volumes',
     'tool_approval_policy',
     'permission_policies',
     'permission_mode',
