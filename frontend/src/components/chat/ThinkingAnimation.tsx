@@ -52,7 +52,7 @@ const ThinkingAnimationComponent: React.FC<ThinkingAnimationProps> = ({ isThinki
   return (
     <div
       className={`
-      absolute inset-0 pointer-events-none overflow-hidden
+      absolute inset-0 isolate pointer-events-none overflow-hidden
       transition-opacity duration-500 rounded-lg
       ${isThinking ? 'opacity-100' : 'opacity-0'}
     `}
