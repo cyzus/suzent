@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Remove the language param from the shell tools (#212)
 
 ### 🐛 Fixed
+- Improve overflow handling for chat components and animations
 - Exclude machine-specific host paths from reusable chat config
 - Display images in analysis and generation tool results (#211)
 
