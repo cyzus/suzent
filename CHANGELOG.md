@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v0.14.0] - 2026-09-12
 
 ### 🚀 Added
+- Share launcher shortcut setup and repair across install paths (#213)
 - Report which tab the user is viewing (#209)
 
 ### ⚡ Changed
