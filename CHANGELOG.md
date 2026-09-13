@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Report which tab the user is viewing (#209)
 
 ### ⚡ Changed
+- Migrate documentation website to Fumadocs (#216)
 - Remove the language param from the shell tools (#212)
 
 ### 🐛 Fixed
