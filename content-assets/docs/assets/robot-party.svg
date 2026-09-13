@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">
+  <!-- Body -->
+  <rect x="0" y="0" width="24" height="24" rx="4" fill="#000000" />
+  <!-- Glasses -->
+  <rect x="4" y="8" width="16" height="6" rx="1" fill="#FFFFFF" />
+  <!-- Glare -->
+  <rect x="5" y="9" width="14" height="1" fill="#CCCCCC" opacity="0.5" />
+</svg>

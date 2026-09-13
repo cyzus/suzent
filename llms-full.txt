@@ -1,77 +1,65 @@
 # Suzent: the sovereign AI agent
 
-> Full text of the Suzent documentation, for answer engines and retrieval.
-> Short link index: https://suzent.com/llms.txt
-> Source: https://suzent.com — https://github.com/cyzus/suzent (Apache-2.0)
-> Generated: 2026-09-12
-> Pages: 54 documentation pages, plus the sovereignty protocol.
-
----
-
 # What Is a Sovereign AI Agent?
 
 Source: https://suzent.com/sovereign
 
-A sovereign AI agent is an AI agent whose identity, memory, skills, workspace,
-and runtime are owned and governed by its user rather than by a model provider
-or platform. Its durable state lives in files you can read, edit, version, and
-move; its actions run inside permission boundaries you define; and replacing the
-underlying model does not reset the agent that knows your work. Suzent is an
-open-source, local-first implementation of that definition.
+A sovereign AI agent is an AI agent whose identity, memory, skills, workspace, and runtime are owned and governed by its user rather than by a model provider or platform. Its durable state lives in files you can read, edit, version, and move; its actions run inside permission boundaries you define; and replacing the underlying model does not reset the agent that knows your work. Suzent is an open-source, local-first implementation of that definition.
 
-The phrase "sovereign AI" is also used at the scale of nations, for
-state-controlled models, data, and compute. A sovereign agent applies the same
-idea at the scale of a person: sovereignty over one agent, held by the
-individual who runs it.
+The phrase “sovereign AI” is also used at the scale of nations, for state-controlled models, data, and compute. A sovereign agent applies the same idea at the scale of a person: sovereignty over one agent, held by the individual who runs it.
 
-## The four conditions of agent sovereignty
+## Sovereign Mind
 
-1. **Sovereign Mind** (model != identity). The model is an engine, not the self.
-   You can replace providers while keeping the memory, skills, context, and
-   workspace that define your agent.
-2. **Sovereign Authority** (action is a subset of your law). Autonomy operates
-   under your rules. Permissions, scoped rules, approval gates, sandboxes, and
-   activity records make authority explicit and inspectable.
-3. **Sovereign Vessel** (runtime within your domain). The agent runs in a domain
-   you control. Its folders, workspaces, services, and connected devices are
-   granted deliberately, not inherited from a platform.
-4. **Sovereign Continuity** (self outlasts platform). Memory, skills, and
-   configuration remain portable while credentials stay local. A provider,
-   model, or machine can disappear without taking the agent with it.
+The model is an engine, not the self. You can replace providers while keeping the memory, skills, context, and workspace that define your agent.
 
-## The sovereignty test
+model ≠ identity
 
-Q: Can I inspect, edit, version, and delete its memory?
-A: In Suzent, memory is append-only Markdown on your own disk. You can open it
-in any editor, track it in Git, and delete it without a vendor's permission. The
-search index serves those files and can be rebuilt from them.
+## Sovereign Authority
 
-Q: Can I replace the model without resetting its identity?
-A: Identity lives in memory, skills, context, and workspace, not in the model.
-Switching between GPT, Claude, Gemini, DeepSeek, or a local model leaves the
-agent that knows your work intact.
+Autonomy operates under your law. Permissions, scoped rules, approval gates, sandboxes, and activity records make authority explicit and inspectable.
 
-Q: Can I define, approve, and audit what it is allowed to do?
-A: Tool calls pass through permission modes you set, with human approval gates
-and scoped rules governing which actions may cross from reasoning into
-execution.
+action ⊆ your law
 
-Q: Can I move its state without exporting my credentials?
-A: Portable agent state syncs separately from machine-local secrets, so moving
-to a new machine never requires shipping your API keys along with it.
+## Sovereign Vessel
 
-Q: Can the agent survive the disappearance of its provider?
-A: Everything that defines the agent is already files you hold. A provider
-shutting down costs you an API key, not an agent.
+The agent runs in a domain you control. Its folders, workspaces, services, and connected devices are granted deliberately—not inherited from a platform.
 
-If the answer depends on a vendor's permission, the agent is not fully yours.
+runtime ∈ your domain
 
+## Sovereign Continuity
+
+Memory, skills, and configuration remain portable while credentials stay local. A provider, model, or machine can disappear without taking the agent with it.
+
+self > platform
+
+## Can I inspect, edit, version, and delete its memory?
+
+In Suzent, memory is append-only Markdown on your own disk. You can open it in any editor, track it in Git, and delete it without a vendor’s permission. The search index serves those files and can be rebuilt from them.
+
+## Can I replace the model without resetting its identity?
+
+Identity lives in memory, skills, context, and workspace — not in the model. Switching between GPT, Claude, Gemini, DeepSeek, or a local model leaves the agent that knows your work intact.
+
+## Can I define, approve, and audit what it is allowed to do?
+
+Tool calls pass through permission modes you set, with human approval gates and scoped rules governing which actions may cross from reasoning into execution.
+
+## Can I move its state without exporting my credentials?
+
+Portable agent state syncs separately from machine-local secrets, so moving to a new machine never requires shipping your API keys along with it.
+
+## Can the agent survive the disappearance of its provider?
+
+Everything that defines the agent is already files you hold. A provider shutting down costs you an API key, not an agent.
 
 ---
 
+# What is Suzent?
+
 Source: https://suzent.com/docs/getting-started/intro
 
-# What is Suzent?
+
+
 
 Suzent is a **sovereign AI agent** whose identity, memory, skills, workspace,
 and runtime remain under your control. Models are replaceable, platforms are
@@ -127,14 +115,18 @@ You ──► Suzent Agent
 
 Head to the [Quickstart](https://suzent.com/docs/getting-started/quickstart) to be up and running in under 5 minutes.
 
+
 ---
+
+# Quickstart
 
 Source: https://suzent.com/docs/getting-started/quickstart
 
-import Tabs from '@theme/Tabs';
-import TabItem from '@theme/TabItem';
 
-# Quickstart
+
+
+
+
 
 Get Suzent running in under 5 minutes.
 
@@ -290,1154 +282,100 @@ later repairs, and `--remove` deletes only the entries Suzent created.
 - [Memory](https://suzent.com/docs/concepts/memory) — How persistent memory works
 - [Automation](https://suzent.com/docs/concepts/automation) — Schedule tasks and set up heartbeat monitors
 
+
 ---
 
-Source: https://suzent.com/docs/concepts/memory/
+# Agent Communication
 
-# Memory System
+Source: https://suzent.com/docs/concepts/agent-communication
 
-**Sovereign continuity.** Memory is where a sovereign AI agent keeps its self.
-Because Suzent's memory is Markdown on your own disk rather than rows in a
-vendor's database, you can read it, edit it, track it in Git, and carry it to
-another machine. That is the first question in the
-[sovereignty test](https://suzent.com/sovereign) — and the reason a model swap does not reset the agent
-that knows your work.
 
-Suzent remembers things across conversations — facts you've shared, your preferences, and
-context from past sessions. Everything it remembers is stored as plain Markdown files you
-can open, edit, or delete yourself.
 
-## What it remembers
+Suzent treats every agent-backed conversation as an addressable session. The
+stable `agent_id` is its chat ID; `kind` describes how the session originated:
+`interactive`, `subagent`, `cron`, or `social`.
 
-After each exchange, Suzent picks out anything worth keeping — a preference, a project
-detail, a fact about you — and appends it to that day's log. It doesn't ask, and it
-doesn't remember the whole conversation; only the facts.
+## Tools
 
-Overnight, a background pass called the **dream** reads those logs and folds them into
-tidy pages: one page per topic, duplicates merged, contradictions resolved. Day-to-day
-capture stays fast and lossless; the tidying happens later, when there's time to think
-about it.
-
-The result is two kinds of memory:
-
-| | What it holds | Where |
+| Tool | Parameters | Behavior |
 |---|---|---|
-| **Conversation memory** | Facts about you, gathered automatically | `/shared/memory/` |
-| **Notebook** | Knowledge pages the agent researches and writes | `/mnt/notebook/` |
+| `agent` | task definition and execution options | Creates a child agent |
+| `agent_list` | `status`, `limit` | Lists accessible sessions in the current project |
+| `agent_read` | `agent_id` | Reads a bounded, visible transcript |
+| `agent_send` | `agent_id`, `message` | Queues a durable message and wakes the target |
+| `agent_stop` | `agent_id` | Cooperatively stops an active target |
 
-The notebook is a full Obsidian-compatible vault — see [Notebook](https://suzent.com/docs/concepts/memory/llm-wiki).
+The project is the authorization boundary. Hidden internal sessions (dream and
+legacy wakeup chats) are not addressable. Sending to the current session is
+rejected to avoid feedback loops.
 
-## Where your memory lives
+## Durable Inbox
 
-```text
-/shared/memory/
-  MEMORY.md              # The summary the agent always sees
-  archive/
-    2026-08-24.md        # One log per day, append-only
-  persona.md, user.md    # Editable profile blocks
+`agent_send` does not depend on an in-memory queue. It writes an
+`agent_inbox_messages` row before returning. A background dispatcher uses a
+database lease to claim messages and moves each row through this state machine:
+
+```
+pending -> processing -> delivered
+              |
+              +-> pending (retry with backoff)
+              +-> failed  (attempt limit reached)
 ```
 
-Open any of these in a text editor. They are the real memory — the search index is
-rebuilt from them, so if you delete a line, it's gone.
+Message IDs are idempotency keys. Delivery also writes a hidden marker into the
+target transcript. If a process exits after the target turn commits but before
+the inbox acknowledgement commits, the next worker sees the marker and
+acknowledges the row without running the target twice.
 
-### MEMORY.md is half yours
+Sub-agent completion and failure wakeups use this inbox too, so restarting the
+backend no longer discards a completed child's parent notification.
 
-`MEMORY.md` is the short summary loaded into every conversation. It has two halves,
-divided by a marker comment:
+## Cron and Social Boundaries
 
-```markdown
-<!-- memory:generated - rewritten on consolidation -->
-...Suzent rewrites everything in here...
-<!-- /memory:generated - notes below this line are kept -->
+Cron definitions and run records are already durable, but the scheduler invokes
+due jobs directly. Its UI announcement deque is still an in-memory presentation
+channel; it is not the agent inbox.
 
-Anything you type down here is kept, forever, untouched.
-```
+Social Brain also keeps a dedicated in-memory ingress queue. Raw social events
+carry channel authorization, thread identity, attachments, and reply routing, so
+they are validated and normalized by Social Brain before an agent turn. They are
+not inserted into the generic inbox. Once normalized, their chat sessions are
+visible to `agent_list` and can receive `agent_send` messages like other sessions.
 
-Write below the marker to tell Suzent something directly. Notes there outrank anything it
-worked out on its own, and no consolidation will overwrite them.
+This separation keeps the generic tool contract small while preserving the
+special delivery semantics of Cron and social channels.
 
-If your `MEMORY.md` has no markers at all — because it predates them — Suzent treats the
-whole file as yours and stops regenerating it. See [Upgrade Notes](https://suzent.com/docs/concepts/memory/upgrade-notes).
+## Cross-session and Cross-device Semantics
 
-## Managing what's remembered
+The inbox provides real cross-session communication. Paired Suzent backends are
+also exposed as remote agent addresses such as `peer:4f31c02a96de`:
 
-From the **Memory** panel in the app you can browse what's been captured, search it, and
-delete individual entries. Deleting is permanent for the search index but leaves the
-original daily log intact as history.
+1. `agent_send` writes the message to the sender's durable queue with the
+   `suzent_peer` transport.
+2. The existing Devices grant supplies the peer URL and scoped bearer token.
+3. The receiver acknowledges only after the message is committed to its own
+   durable inbox.
+4. The receiver wakes the authenticated peer's dedicated
+   `suzent:<device_id>` session.
 
-To forget something, delete it from the panel. To correct something, just say the
-corrected version in conversation — a fact that changes an existing one is recorded as an
-update, and the dream retires the old version.
+An offline peer is retried with bounded exponential backoff for up to 48
+attempts. The sender can use `agent_read` to inspect the peer-owned session when
+it comes back online, and `agent_stop` requests cooperative cancellation of that
+session.
 
-## Settings
+Remote callers cannot choose or inspect arbitrary local chat IDs. Optional
+streaming session names are placed below their authenticated
+`suzent:<device_id>:` namespace, while inbox/read/stop always operate on the
+dedicated default session.
 
-Memory is on by default. Turn it off, or change which models do the extraction and
-embedding, in **Settings → Memory** in the app.
-
-Everything else is tuning — how often the dream runs, how much it reads at a time, where
-the notebook lives. See [Configuration](https://suzent.com/docs/concepts/memory/configuration) for the full list.
-
-## Read more
-
-- [How consolidation works](https://suzent.com/docs/concepts/memory/consolidation) — what the dream does, and when it runs.
-- [Notebook](https://suzent.com/docs/concepts/memory/llm-wiki) — the knowledge vault, and how it differs from memory.
-- [Upgrade Notes](https://suzent.com/docs/concepts/memory/upgrade-notes) — what changes on an existing install. Read this
-  before deleting anything.
-
-Building on the memory system itself? The implementation notes live under
-[Development > Memory System](https://suzent.com/docs/developing/memory/architecture).
 
 ---
-
-Source: https://suzent.com/docs/concepts/tools/human-in-the-loop
-
-# Tool Permissions and Human Approval
-
-**Sovereign authority.** This is the boundary where an agent's reasoning
-becomes action in the world. A sovereign agent does not cross it on its own
-terms: every gated call below is a point at which Suzent stops and asks, under
-rules you set. See [what makes an agent sovereign](https://suzent.com/sovereign).
-
-Suzent evaluates every deferred tool call through one backend permission engine. The engine decides whether to allow, deny, or ask, and it supplies the exact actions shown by the frontend. The client never constructs permission rules itself.
-
-## Deferred Tools
-
-| Tool | Function | Gated operation |
-|------|----------|-----------------|
-| RunCommandTool / StartCommandTool | `run_command`, `start_command` | Command and code execution |
-| WriteFileTool | `write_file` | File creation and overwrite |
-| EditFileTool | `edit_file` | File edits |
-| StopCommandTool | `stop_command` | Stop a background command |
-| SocialMessageTool | `social_message` | Sending messages |
-| ImageGenerationTool | `image_generate` | Image generation |
-
-Read-only variants such as contact listing and process polling are allowed without prompting when the active mode permits read operations.
-
-## Approval Actions
-
-An approval prompt can offer:
-
-- **Allow**: approve this call once.
-- **Allow for session**: create a rule in this chat.
-- **Allow globally**: create a rule in the user `permissions.yaml`.
-- **Reject**: deny the call, optionally with guidance for the agent.
-
-The available actions are backend-owned and can vary by tool. Bash persistence uses an exact-command matcher; it does not approve the entire Bash tool. Other tools currently use a tool-wide matcher unless a narrower matcher is supplied.
-
-The complete pending decision is stored with the chat. On resume, the backend validates the selected action ID against that stored contract and ignores client-supplied arguments when applying permission updates.
-
-## Approval Lifecycle
-
-```text
-Agent issues a deferred tool call
-        │
-        ▼
-   PermissionEngine evaluates it against rules, mode, and safety checks
-        │
-        ├── allow ──► tool executes
-        ├── deny  ──► call is rejected, agent is told
-        │
-        ▼ ask
-   Decision (with its offered actions) is persisted as a pending approval,
-   and a tool_approval_request event is streamed to the frontend
-        │
-        ▼
-   Frontend renders the offered actions; user selects one:
-   Allow · Allow for session · Allow globally · Reject (+ optional feedback)
-        │
-        ▼
-   Backend validates the selected action against the stored decision,
-   creates the session/global rule if the action calls for one,
-   resolves the deferred call, and the run resumes
-```
-
-The pending decision is stored with the chat, so the same prompt is restored after a page refresh. The backend only honors actions that were part of the stored decision and ignores client-supplied arguments, so a client cannot widen a rule beyond what was offered. A resume that targets an approval that is no longer pending — a duplicate submission, a retry, or a click after the run already finished — is ignored rather than treated as an error.
-
-## Permission Modes
-
-| Mode | Behavior |
-|------|----------|
-| `default` | Allow read-only commands; ask before workspace edits and other state-changing operations |
-| `auto` | Allow deterministic low-risk operations and classify unresolved requests with a separate security model |
-| `full_access` | Run valid tool actions without approval prompts; explicit deny rules and hard safety checks still apply |
-
-Older `accept_edits`, `plan`, and `strict_readonly` values are accepted for
-backward compatibility but are no longer user-selectable. A legacy default is
-migrated conservatively to `default`.
-
-Auto mode is not blanket approval. Explicit denies, shell safety checks, path restrictions, and normalized deny rules run before the classifier. Interactive classifier failures fall back to asking; headless classifier failures deny.
-
-Full Access removes ordinary approval interruptions, but it does not override
-explicit deny rules, invalid tool inputs, or hard shell and path safety checks.
-
-## Rule Scopes
-
-- `once`: no persisted rule.
-- `session`: stored in `ChatConfig.permission_rules`.
-- `global`: stored in the user configuration directory's `permissions.yaml`.
-
-Rules contain a tool, behavior (`allow`, `ask`, or `deny`), matcher, source, ID, and creation time. Supported matchers are:
-
-- `all`
-- `exact_input`
-- `command_prefix`
-- `path_prefix`
-- `destination`
-
-For matching rules, precedence is `deny`, then `ask`, then `allow`. More specific matchers win within the same behavior.
-
-## APIs
-
-```text
-GET    /permissions?chat_id={chat_id}
-POST   /permissions/rules
-DELETE /permissions/rules/{rule_id}?destination=session|global&chat_id={chat_id}
-GET    /chats/{chat_id}/permission-state
-GET    /chats/{chat_id}/permission-mode
-PUT    /chats/{chat_id}/permission-mode
-```
-
-Resume a suspended call through `/chat` or `/chat/send`:
-
-```json
-{
-  "chat_id": "chat-id",
-  "message": "",
-  "resume_approvals": [
-    {
-      "request_id": "tool-call-id",
-      "tool_call_id": "tool-call-id",
-      "action_id": "allow_session",
-      "feedback": "Optional user guidance"
-    }
-  ]
-}
-```
-
-Legacy binary approval payloads remain accepted as allow-once or deny-only decisions. They cannot create remembered policies.
-
-## Streaming Contract
-
-Permission provenance is streamed separately from the tool result so the UI can
-show how a deferred action was authorized. Full Access is labeled as allowed
-without review; it must not be presented as an Auto classifier approval.
-
-```json
-{
-  "name": "tool_permission_decision",
-  "value": {
-    "toolCallId": "tool-call-id",
-    "behavior": "ask",
-    "source": "auto_classifier",
-    "reason": "This command changes workspace files.",
-    "reasonCode": "auto_classifier_ask",
-    "risk": "medium",
-    "confidence": "high",
-    "riskCategories": ["filesystem"],
-    "reviewerModel": "openai/gpt-4.1-mini"
-  }
-}
-```
-
-The `tool_approval_request` custom event contains:
-
-```json
-{
-  "approvalId": "tool-call-id",
-  "toolCallId": "tool-call-id",
-  "toolName": "run_command",
-  "args": {"content": "npm test"},
-  "decision": {
-    "behavior": "ask",
-    "reason": "Git commands require approval",
-    "reasonCode": "shell_policy_ask",
-    "risk": "high",
-    "actions": []
-  }
-}
-```
-
-The frontend renders `decision.actions` in order, including feedback inputs and rule explanations declared by the backend. Pending contracts are persisted in `_pending_approvals` so the same prompt can be restored after refresh.
-
-After a user acts on an approval prompt, Suzent streams
-`tool_permission_resolution` with the selected action and scope. Older clients
-can ignore provenance events and still rely on `tool_approval_request`.
-
-## Audit Trail
-
-Permission evaluations and user resolutions are appended to `permission-audit.jsonl` in the user configuration directory. Entries include chat, run, tool-call, mode, decision, reason, user action, and classifier or matched-rule metadata.
-
-Arguments are bounded and recursively sanitized. Sensitive keys and common inline credential forms are redacted. The append is offloaded to a worker thread so audit logging never blocks the streaming event loop.
-
-## Adding Approval to a Tool
-
-Set `requires_approval = True` on the tool class:
-
-```python
-class MyTool(BaseTool):
-    tool_name = "my_tool"
-    requires_approval = True
-```
-
-The registry wraps it as a pydantic-ai deferred tool. Add deterministic read-only or mode-specific behavior to `PermissionEngine` when needed; otherwise the default decision asks before execution.
-
-Keep execution-time validation inside the tool. Permission approval answers whether an operation may proceed, while the tool must still validate paths, symlinks, arguments, and current external state immediately before execution.
-
-## Headless Runs
-
-Cron, heartbeat, goals, dream jobs, and subagents use Auto mode with a non-interactive profile. They do not use blanket `auto_approve_tools` behavior. A headless action that cannot be classified safely is denied.
-
----
-
-Source: https://suzent.com/docs/concepts/filesystem
-
-# Filesystem & Execution
-
-**Sovereign vessel.** A sovereign agent runs in a domain you control. The
-modes below decide exactly which folders it can reach and where its code
-executes — granted deliberately by you, not inherited from a platform. See
-[what makes an agent sovereign](https://suzent.com/sovereign).
-
-Suzent provides secure file access and code execution through two modes: **Sandbox Mode** (isolated Docker container) and **Host Mode** (direct execution with restrictions).
-
-## Execution Modes
-
-| Mode | Shell capability | File Tools | Path Style |
-|------|----------|------------|------------|
-| **Sandbox** | Runs in Docker container | Virtual filesystem | `/persistence`, `/shared`, `/mnt/*` |
-| **Host** | Runs on host | Host filesystem | `$PROJECT_PATH`, `$SHARED_PATH`, `$MOUNT_*` |
-
-Toggle sandbox in the chat settings panel when creating a conversation.
-
----
-
-## Virtual Filesystem (Both Modes)
-
-| Virtual Path | Maps To | Purpose |
-|-------------|---------|---------|
-| `/persistence` | `.suzent/sandbox/sessions/{chat_id}/` | Per-chat storage |
-| `/shared` | `.suzent/sandbox/shared/` | Shared across all chats (not rolled back on retry) |
-| `/uploads` | `.suzent/sandbox/sessions/{chat_id}/uploads/` | Uploaded files |
-| `/mnt/*` | Custom volumes | Host directories |
-
-**Relative paths** default to `/persistence`: `data.csv` → `/persistence/data.csv`
-
-### Custom Volume Mounts
-
-```yaml
-# config/default.yaml
-sandbox_volumes:
-  - "D:/datasets:/data"
-  - "D:/skills:/mnt/skills"
-```
-
-Now `/data/file.csv` maps to `D:/datasets/file.csv` on your host.
-
----
-
-## Sandbox Mode
-
-Uses Docker containers for isolated execution. Each chat session gets its own named container (`suzent-sandbox-{id}`) that starts on first use and is kept running for the duration of the session.
-
-### Features
-- **Isolation**: Each session runs in its own container (network access on by default via `bridge`)
-- **Persistent data**: `/persistence` and `/shared` are bind-mounted from the host — data survives container restarts and removal
-- **Auto-healing**: Automatically restarts the container if it crashes
-- **Multi-language**: Python, Node.js (with custom image), shell commands
-- **Resource limits**: 512 MB memory, 1 CPU, 256 process limit
-
-### Requirements
-
-- **Docker Desktop** (Windows/macOS) or Docker Engine (Linux)
-- No KVM, no privileged mode, no extra services required
-
-### Setup
-
-1. Ensure Docker Desktop is running
-
-2. Enable sandbox in the chat config panel (sidebar), or set globally in `config/default.yaml`:
-
-```yaml
-sandbox_enabled: true
-```
-
-3. *(Optional)* Change the container image:
-
-```yaml
-# Default — Python + bash only
-sandbox_image: python:3.11-slim
-
-# Custom image — Python + Node.js + common packages (see below)
-sandbox_image: suzent-sandbox
-```
-
-### Custom Sandbox Image (Python + Node.js)
-
-The default `python:3.11-slim` image covers Python and shell commands. For Node.js support and pre-installed packages (numpy, pandas, requests, etc.), build the custom image:
-
-```bash
-docker compose -f docker/sandbox-compose.yml build
-```
-
-Then set `sandbox_image: suzent-sandbox` in `config/default.yaml`.
-
-### Calling Suzent from Inside the Sandbox
-
-`SUZENT_BASE_URL` is injected automatically so sandboxed code can reach the running host server. This lets agent-written scripts do everything the `suzent` CLI can do, without the CLI being installed.
-
-| Variable | Example value |
-|----------|---------------|
-| `SUZENT_BASE_URL` | `http://host.docker.internal:25314` |
-
-**CLI → API mapping:**
-
-| CLI command | HTTP equivalent |
-|-------------|----------------|
-| `suzent cron list` | `GET  $SUZENT_BASE_URL/cron/jobs` |
-| `suzent cron add ...` | `POST $SUZENT_BASE_URL/cron/jobs` |
-| `suzent cron trigger {id}` | `POST $SUZENT_BASE_URL/cron/jobs/{id}/trigger` |
-| `suzent cron remove {id}` | `DELETE $SUZENT_BASE_URL/cron/jobs/{id}` |
-| `suzent node list` | `GET  $SUZENT_BASE_URL/nodes` |
-| `suzent node describe {node_id_or_name}` | `GET  $SUZENT_BASE_URL/nodes/{node_id_or_name}` |
-| `suzent node invoke {node_id_or_name} ...` | `POST $SUZENT_BASE_URL/nodes/{node_id_or_name}/invoke` |
-| `suzent agent chat "msg"` | `POST $SUZENT_BASE_URL/chat` (streaming) |
-| List chats | `GET  $SUZENT_BASE_URL/chats` |
-| Memory search | `GET  $SUZENT_BASE_URL/memory/archival?query=...` |
-
-Example — scheduling a cron job from sandboxed Python:
-
-```python
-import os, requests
-
-base = os.environ["SUZENT_BASE_URL"]
-
-requests.post(f"{base}/cron/jobs", json={
-    "name": "daily-report",
-    "cron_expr": "0 9 * * *",
-    "prompt": "Summarize today's activity",
-    "delivery_mode": "announce",
-})
-```
-
-### Configuration Reference
-
-| Key | Default | Description |
-|-----|---------|-------------|
-| `sandbox_enabled` | `false` | Enable sandbox mode |
-| `sandbox_image` | `python:3.11-slim` | Docker image to use |
-| `sandbox_network` | `bridge` | Network mode (`bridge` = internet access, `none` = isolated) |
-| `sandbox_idle_timeout_minutes` | `30` | Stop idle containers after N minutes (checked every 5 min) |
-| `sandbox_setup_command` | `""` | Shell command run once on container creation (login shell) |
-| `sandbox_env` | `{}` | Extra env vars injected into container (secrets are blocked) |
-| `sandbox_data_path` | `.suzent/sandbox` | Host path for persistent data |
-| `sandbox_volumes` | `[]` | Extra bind mounts (`host:container`) |
-| `shell_env` | `null` | Exact base environment for host shell commands; `null` inherits the server environment |
-| `shell_denied_env_patterns` | `[]` | Glob patterns removed from the host shell environment, such as `OPENAI_*` |
-
----
-
-## Host Mode
-
-Executes directly on the host machine with path restrictions.
-
-### Environment Variables
-
-In host mode, use these environment variables in bash commands:
-
-| Variable | Points To |
-|----------|-----------|
-| `$PROJECT_PATH` | Session directory (same as `pwd`) |
-| `$SHARED_PATH` | Shared directory |
-| `$MOUNT_SKILLS` | Skills directory |
-| `$MOUNT_*` | Other mounted volumes |
-
-### Security
-
-- Working directory (`pwd`) is the session's persistence folder
-- Only paths within `.suzent/`, `/persistence`, `/shared`, and custom mounts are allowed
-- Source code directories are **blocked** by default
-
----
-
-## File Tools
-
-### ReadFileTool
-Read files with automatic format conversion (text, PDF, DOCX, XLSX, images with OCR).
-
-```python
-ReadFileTool(file_path="/persistence/data.csv")
-ReadFileTool(file_path="report.pdf", offset=10, limit=50)
-```
-
-### WriteFileTool
-Create or overwrite files.
-
-```python
-WriteFileTool(file_path="/persistence/output.txt", content="Hello")
-```
-
-> [!WARNING]
-> Overwrites entire file. Use `EditFileTool` for small changes.
-
-### EditFileTool
-Make precise text replacements.
-
-```python
-EditFileTool(
-    file_path="config.json",
-    old_string='"debug": false',
-    new_string='"debug": true'
-)
-```
-
-### GlobTool
-Find files by pattern.
-
-```python
-GlobTool(pattern="**/*.py")  # All Python files
-GlobTool(pattern="*.csv", path="/data")  # CSVs in /data
-```
-
-### GrepTool
-Search file contents.
-
-```python
-GrepTool(pattern="def.*:", path="/persistence")  # Find functions
-GrepTool(pattern="TODO", include="*.py")  # TODOs in Python files
-```
-
----
-
-## Security
-
-All paths are validated to prevent directory traversal:
-
-- ✅ `/persistence/data.csv`
-- ✅ `/shared/model.pt`
-- ✅ `/data/file.txt` (if mounted)
-- ❌ `/etc/passwd`
-- ❌ `../../../secret`
-- ❌ Project source code (in host mode)
-
----
-
-## Troubleshooting
-
-| Issue | Solution |
-|-------|----------|
-| **File not found** | Check `.suzent/sandbox/sessions/{chat_id}/` on the host |
-| **Path traversal error** | Ensure path is within allowed directories |
-| **Volume not accessible** | Verify `sandbox_volumes` in config |
-| **Container fails to start** | Check Docker Desktop is running (`docker ps`) |
-| **Node.js not found** | Build the custom image: `docker compose -f docker/sandbox-compose.yml build`, set `sandbox_image: suzent-sandbox` |
-| **Internet in sandbox** | Ensure `sandbox_network: bridge` (default) — `none` fully isolates |
-
----
-
-Source: https://suzent.com/docs/concepts/github-sync/
-
-# GitHub Sync
-
-**Sovereign continuity.** Portability is what lets an agent outlive the
-machine it started on. Sync moves the parts that make up the agent while
-credentials stay device-local, so moving to a new machine never means shipping
-your keys. See [what makes an agent sovereign](https://suzent.com/sovereign).
-
-GitHub Sync keeps a portable copy of Suzent configuration, user skills, and
-Markdown memory in a private Git repository. Credentials remain on each device.
-
-## What syncs
-
-| Included in `suzent-sync/` | Device-local only |
-|---|---|
-| `default.yaml`, `config.yaml`, and `skills.json` | API keys and provider credentials |
-| User skills | `.env`, `.secret_key`, `secrets.db`, and `local.yaml` |
-| Markdown memory | Chat databases, indexes, caches, sessions, and non-Markdown attachments |
-| | MCP definitions, permission rules, node identity, and ChatGPT authentication |
-
-The payload builder rejects forbidden paths before push. GitHub sync never
-creates encrypted key bundles and never reads from Suzent's local secret store.
-Pull replaces only portable configuration files and preserves other local
-configuration, including future device-local files. Planning compares source
-trees without mutating the sync repository worktree.
-
-## Repository layout
-
-```text
-github-sync/
-  suzent-sync/
-    config/
-      config.yaml
-      default.yaml
-      skills.json
-    skills/
-    memory/
-```
-
-The default repository path is `~/.suzent/github-sync`. Sync profiles live in
-`~/.suzent/config/sync_profiles.json` and are not portable because repository
-paths and automation settings are device-specific.
-
-## Setup
-
-1. Open **Settings → Data → GitHub Sync**.
-2. Sign in through GitHub Device Flow.
-3. Choose a private repository name or accept `suzent-brain`.
-4. Select **Quick start**.
-
-On another device, sign in to GitHub, use the same repository, and pull the
-portable files. Configure API keys separately on that device.
-
-## Operations
-
-| Action | Purpose |
-|---|---|
-| **Push** | Publish local config, skills, and memory |
-| **Pull** | Apply remote portable files locally |
-| **Discard outgoing** | Restore one or all outgoing local files from the committed payload |
-| **Use cloud** | Apply the remote payload as the local source of truth |
-
-Plans classify changes as incoming or outgoing. Files are collapsed by default;
-selecting a file loads only that file's diff, without generating patches for the
-rest of the plan.
-The toolbar is contextual: **Pull** appears only for incoming files, **Push**
-appears only for outgoing files, and neither is shown when the repository is up
-to date. Mixed changes are resolved explicitly in the review instead of through
-a separate combined Sync action.
-Individual outgoing changes can be discarded without affecting the others.
-Incoming changes are still applied as a complete cloud payload because a Git
-pull advances the repository as a whole.
-Protected memory replacement or deletion requires confirmation. Planning hashes
-the portable source trees directly without modifying the repository worktree and
-is serialized with sync execution.
-
-Git commits and refs are the revision source of truth. Sync does not maintain a
-second manifest, device-presence files, revision UUIDs, or Git tags.
-
-Config and skills are reloaded after a successful pull. Device-local excluded
-files are preserved.
-
-## Auto-sync
-
-Auto-sync runs at the configured interval. If only remote files changed, it
-pulls and applies them. If local files changed, it builds and pushes a portable
-payload. Destructive memory changes require review.
-
-## API
-
-All routes are served by the local Suzent HTTP API.
-
-| Endpoint | Method | Description |
-|---|---|---|
-| `/sync/status` | GET | Profile and repository status |
-| `/sync/quickstart/info` | GET | Default paths and GitHub authentication state |
-| `/sync/quickstart` | POST | Create or connect the sync repository |
-| `/sync/profiles` | GET, POST | List or save profiles |
-| `/sync/plan` | POST | Preview file changes without retaining worktree mutations |
-| `/sync/diff` | POST | Load one selected file's textual diff |
-| `/sync/pull` | POST | Pull and apply portable files |
-| `/sync/push` | POST | Build, commit, and push portable files |
-| `/sync/discard-outgoing` | POST | Restore all outgoing changes, or selected `paths` |
-| `/sync/auto` | POST | Save automation settings |
-| `/sync/auto/run` | POST | Run one automatic sync cycle |
-| `/sync/auth/start` | POST | Start GitHub Device Flow |
-| `/sync/auth/poll` | POST | Poll Device Flow completion |
-| `/sync/auth/status` | GET | Read GitHub authentication state |
-| `/sync/auth/logout` | POST | Clear the stored GitHub token |
-
-## Legacy encrypted bundles
-
-Earlier versions could store encrypted API-key bundles under
-`suzent-sync/_sync/secrets/`. File-only sync no longer imports, exports, or
-preserves `_sync/`. The next payload build removes that legacy directory from
-the current branch, but historical ciphertext remains in Git history.
-
-Ensure required keys exist in the local secret store before upgrading another
-device. Rotate provider keys if the repository or old recovery phrase may have
-been exposed.
-
-## Troubleshooting
-
-### A provider works on one device but not another
-
-Credentials are deliberately device-local. Configure the provider key on the
-new device or use a supported external secret provider when one becomes
-available.
-
-### The GitHub token expired
-
-Sign in again through GitHub Sync. Suzent stores the GitHub authorization token
-in the OS keyring; it is separate from provider API keys.
-
-### A pull reports diverging branches
-
-Retry after fetching or re-run Quick start on a clean local sync directory.
-Avoid editing generated payload files directly.
-
-## See also
-
-- [Memory](https://suzent.com/docs/concepts/memory)
-- [Skills](https://suzent.com/docs/concepts/skills/)
-- [Filesystem and sandbox](https://suzent.com/docs/concepts/filesystem)
-
----
-
-Source: https://suzent.com/docs/concepts/providers/
-
-# Providers
-
-**Sovereign mind.** The model is an engine, not the self. Being able to
-configure many providers and switch between them per session is what keeps
-identity in your memory, skills, and workspace rather than in any one vendor's
-account. See [what makes an agent sovereign](https://suzent.com/sovereign).
-
-Suzent is model-agnostic. Configure any number of providers in **Settings → Providers** and switch between them per session.
-
-API keys are stored in the local database — never in plain text config files.
-
----
-
-## Configuring a Provider
-
-1. Open **Settings → Providers** and click the provider card you want to configure
-2. On the **API KEYS** tab, click **CHANGE** and paste your API key
-3. Switch to the **MODELS** tab and click **FETCH** — this verifies the key and loads available models
-4. Check the models you want to enable
-5. Click **Save Changes** (bottom right of the Settings modal)
-
----
-
-## Available Providers
-
-### Cloud
-
-| Provider | Notes |
-|---|---|
-| [OpenAI](https://suzent.com/docs/concepts/providers/openai) | GPT and o-series models |
-| [ChatGPT Subscription](https://suzent.com/docs/concepts/providers/chatgpt-subscription) | Uses ChatGPT sign-in instead of an OpenAI API key |
-| [Anthropic](https://suzent.com/docs/concepts/providers/anthropic) | Claude models |
-| [Google Gemini](https://suzent.com/docs/concepts/providers/gemini) | Free tier available |
-| [xAI (Grok)](https://suzent.com/docs/concepts/providers/xai) | Grok models |
-| [DashScope](https://suzent.com/docs/concepts/providers/dashscope) | Alibaba Cloud OpenAI-compatible endpoint |
-| [DeepSeek](https://suzent.com/docs/concepts/providers/deepseek) | Cost-effective; includes reasoning model |
-| [MiniMax](https://suzent.com/docs/concepts/providers/minimax) | |
-| [Moonshot (Kimi)](https://suzent.com/docs/concepts/providers/moonshot) | Long context |
-| [Zhipu AI (GLM)](https://suzent.com/docs/concepts/providers/zhipu) | GLM series |
-| [Xiaomi MiMo](https://suzent.com/docs/concepts/providers/xiaomi-mimo) | Xiaomi MiMo models through an OpenAI-compatible API |
-
-### Aggregators & Proxies
-
-| Provider | Notes |
-|---|---|
-| [OpenRouter](https://suzent.com/docs/concepts/providers/openrouter) | 300+ models from one key |
-| [LiteLLM Proxy](https://suzent.com/docs/concepts/providers/litellm) | Self-hosted gateway |
-
-### Local
-
-| Provider | Notes |
-|---|---|
-| [Ollama](https://suzent.com/docs/concepts/providers/ollama) | Runs entirely on your machine — no API key needed |
-
----
-
-## Tips
-
-**Environment variables** — You can set provider keys as env vars before launching Suzent instead of using the UI. The app checks the database first, then falls back to the environment. Keys set via env show up in Settings as **"Set in env"** and cannot be overwritten from the UI.
-
-**Custom models** — For each provider you can add custom model IDs on top of the default list. In **Settings → Providers → [Provider] → Custom Models**, enter the model ID in LiteLLM format: `provider/model-name` (e.g. `openai/gpt-4o-2024-11-20`).
-
-**Model capabilities** — Suzent tracks per-model metadata (context window, vision/reasoning/tool-calling flags, pricing) used for routing, compression, and cost estimation. See [Model Capabilities](https://suzent.com/docs/concepts/providers/model-capabilities) for how this data is layered and how runtime discovery is stored.
-
-**Provider registry** — Built-in providers are declared in `config/providers.json`. User-defined providers are merged from `config/providers.user.json` and appear alongside the built-in cards after the registry reloads.
-
----
-
-Source: https://suzent.com/docs/concepts/skills/
-
-# Suzent Skills Guide
-
-**Sovereign mind.** Skills are knowledge you author and own. They are
-Markdown in your own directory, not a capability a platform grants you and can
-revoke — which is why they survive a change of model or provider intact. See
-[what makes an agent sovereign](https://suzent.com/sovereign).
-
-This guide covers the skills system in Suzent and how to use and create skills to extend agent capabilities.
-
-## Overview
-
-Skills are specialized knowledge modules that extend the capabilities of AI agents beyond what tools provide. While **tools** are executable functions (like web search or file operations), **skills** are contextual knowledge packages that teach the agent how to work in specific domains or with specific systems.
-
-### Tools vs Skills
-
-| Aspect | Tools | Skills |
-|--------|-------|--------|
-| **Purpose** | Execute actions | Provide knowledge & context |
-| **Type** | Python code | Markdown documentation |
-| **Examples** | WebSearchTool, RunCommandTool | notebook, suzent-devices |
-| **When Used** | Agent calls them to perform tasks | Agent loads them to gain expertise |
-
-## Available Skills
-
-Suzent includes focused built-in skills for domain workflows. For example:
-
-### notebook
-
-Enables agents to maintain an Obsidian-compatible notebook and follow its vault schema.
-
-**Key Information:**
-- Vault location: `/mnt/notebook` in sandbox mode
-- Supports CommonMark, GitHub Flavored Markdown, LaTeX math, wikilinks, and callouts
-- Loads the vault's `schema.md` before making notebook changes
-
-### suzent-devices
-
-Operates phones, laptops, headless servers, and peer agents connected to Suzent.
-
-**Key Information:**
-- Discovers connected devices and advertised capabilities
-- Invokes device commands through the `suzent nodes` CLI or REST API
-- Triggers a linked peer's Suzent agent when conversational reasoning is needed
-
-## Skill Structure
-
-Each skill is a directory containing a `SKILL.md` file and optional resource folders.
-
-### Directory Layout
-
-```
-~/.suzent/skills/
-└── my-skill/
-    ├── SKILL.md          # Required: Main skill definition
-    ├── scripts/          # Optional: Helper scripts
-    ├── references/       # Optional: Reference documents
-    └── assets/           # Optional: Images, data files
-```
-
-Built-in, external, and repository skills remain in their canonical source
-directories. Suzent discovers those directories directly instead of copying
-them below `~/.suzent/skills/`.
-
-### SKILL.md Format
-
-Skills use YAML frontmatter followed by markdown content:
-
-```markdown
----
-name: my-skill
-description: Brief description of what this skill provides
----
-
-# Skill Content
-
-Your skill documentation goes here. This can include:
-- Domain-specific knowledge
-- Best practices
-- Code examples
-- API references
-- Workflow guides
-```
-
-**Required Fields:**
-- `name`: Unique identifier (lowercase, hyphens allowed)
-- `description`: Brief description shown in skill listings
-
-**Body Content:**
-- Markdown documentation
-- Can include code blocks, tables, lists
-- Should be clear and actionable for the agent
-
-## Using Skills
-
-### Enabling Skills
-
-Skills are managed via `~/.suzent/config/skills.json`:
-
-```json
-{
-  "enabled": [
-    "notebook",
-    "suzent-devices"
-  ]
-}
-```
-
-You can also toggle skills through the UI or API.
-
-### How Agents Load Skills
-
-When enabled, skills are available to agents through the `SkillTool`:
-
-1. Agent sees available skills in its context
-2. When a task matches a skill's description, agent loads it
-3. Skill content is injected into agent's context
-4. Agent gains specialized knowledge for the task
-
-### Repository Instructions and Project Context
-
-For each chat, Suzent also loads `AGENTS.md` and `CLAUDE.md` from the effective
-working directory and every ancestor up to the repository root. Instructions
-are applied ancestor-first, so the file closest to the working directory has
-final precedence. Identical files are deduplicated.
-
-These repository instructions are separate from the project's durable
-`context.md` core memory. The chat right sidebar's **Context** tab shows both:
-non-empty project context remains editable, while effective repository
-instructions are shown as collapsible read-only previews with their host paths.
-
-### Skill Paths in Sandbox
-
-Suzent reads skills directly from their source directories; it does not copy
-them into a merged library. If a skill source is already below the working
-directory or another configured volume, it reuses that mount. For example, a
-repository skill may be available as `/workspace/.codex/skills/my-skill/` or
-`/mnt/my-repo/skills/my-skill/`. Uncovered sources are mounted read-only below
-`/mnt/skills/`, and the Skills panel shows each skill's effective path.
-
-## Creating Custom Skills
-
-### Step 1: Create Skill Directory
-
-Create a new directory in `~/.suzent/skills/`:
-
-```bash
-mkdir -p ~/.suzent/skills/my-custom-skill
-```
-
-### Step 2: Create SKILL.md
-
-Create `~/.suzent/skills/my-custom-skill/SKILL.md`:
-
-```markdown
----
-name: my-custom-skill
-description: Helps with custom domain tasks
----
-
-# My Custom Skill
-
-## Overview
-This skill provides expertise in [your domain].
-
-## Key Concepts
-- Concept 1: Explanation
-- Concept 2: Explanation
-
-## Common Tasks
-
-### Task 1: Do Something
-```bash
-# Example command
-command --option value
-```
-
-### Task 2: Do Something Else
-Steps to accomplish this task...
-
-## Best Practices
-1. Always do X before Y
-2. Never do Z without checking A
-3. Use B pattern for C scenarios
-
-## Resources
-- [Documentation](https://example.com)
-- [API Reference](https://example.com/api)
-```
-
-### Step 3: Add Resources (Optional)
-
-Add helper scripts, references, or assets:
-
-```bash
-# Add a helper script
-mkdir ~/.suzent/skills/my-custom-skill/scripts
-echo "#!/bin/bash\necho 'Helper script'" > ~/.suzent/skills/my-custom-skill/scripts/helper.sh
-
-# Add reference documentation
-mkdir ~/.suzent/skills/my-custom-skill/references
-cp ~/docs/api-reference.md ~/.suzent/skills/my-custom-skill/references/
-```
-
-### Step 4: Enable the Skill
-
-Add your skill to `~/.suzent/config/skills.json`:
-
-```json
-{
-  "enabled": [
-    "notebook",
-    "suzent-devices",
-    "my-custom-skill"
-  ]
-}
-```
-
-### Step 5: Test the Skill
-
-1. Restart Suzent to load the new skill
-2. Ask the agent to perform a task related to your skill
-3. Verify the agent loads and uses the skill correctly
-
-## Skill Best Practices
-
-### For Skill Authors
-
-1. **Be Specific** - Provide concrete, actionable information
-2. **Use Examples** - Include code snippets and command examples
-3. **Stay Focused** - One skill should cover one domain/system
-4. **Keep Updated** - Maintain skills as systems evolve
-5. **Document Resources** - List all available scripts and references
-
-### Content Guidelines
-
-- **Clear Structure** - Use headers to organize content
-- **Actionable** - Focus on "how to" rather than "what is"
-- **Concise** - Agents have context limits; be efficient
-- **Code Examples** - Show, don't just tell
-- **Error Handling** - Include common issues and solutions
-
-### Naming Conventions
-
-- **Skill Names** - Use lowercase with hyphens: `my-skill`
-- **Descriptions** - Keep under 100 characters
-- **File Names** - Always use `SKILL.md` (uppercase)
-
-## Skill Management
-
-### Configuration Location
-
-- **Built-in Skills Directory**: `./skills/` in the Suzent installation
-- **User Skills Directory**: `~/.suzent/skills/`
-- **External Skills Directories**: paths configured through `SKILLS_DIR`
-- **Repository Skills**: `skills/` and `.claude/skills/`, `.agents/skills/`,
-  `.codex/skills/`, or `.grok/skills/` in the active repository/working directory
-- **Config File**: `~/.suzent/config/skills.json`
-- **Sandbox Paths**: existing project mounts when possible; otherwise a
-  read-only path below `/mnt/skills/`
-
-### Environment Variables
-
-```bash
-# Advanced extra skill source directories (separate multiple paths with the OS path separator)
-SKILLS_DIR=/path/to/custom/skills
-```
-
-### Reloading Skills
-
-Skills are loaded at startup. To reload:
-1. Modify `~/.suzent/config/skills.json`
-2. Restart the Suzent server
-
-### Skill Discovery
-
-The SkillManager automatically discovers skills by:
-1. Reading built-in, user, and optional `SKILLS_DIR` sources directly
-2. Discovering supported skill directories in the active home, repository, and working directory
-3. Deduplicating identical physical source directories
-4. Looking for `SKILL.md` files and parsing their YAML frontmatter
-5. Reusing existing sandbox mounts or adding read-only mounts for uncovered sources
-
-Older installations that used `~/.suzent/skills/user/` are migrated into the
-flat user directory when there is no name collision. Existing
-`official/` and `external/` mirror directories are ignored and are not updated.
-
-## Troubleshooting
-
-### Skill Not Loading
-
-**Problem:** Skill doesn't appear in available skills
-
-**Solutions:**
-1. Check `SKILL.md` has valid YAML frontmatter
-2. Verify `name` and `description` fields are present
-3. Check file is named exactly `SKILL.md` (case-sensitive)
-4. Review server logs for parsing errors
-5. Ensure skill is in the correct directory
-
-### Skill Not Enabled
-
-**Problem:** Skill exists but agent can't use it
-
-**Solutions:**
-1. Check `~/.suzent/config/skills.json` includes the skill name
-2. Verify skill name matches exactly (case-sensitive)
-3. Restart Suzent server after config changes
-
-### Invalid SKILL.md Format
-
-**Problem:** "Invalid SKILL.md format" error
-
-**Solutions:**
-1. Ensure YAML frontmatter is enclosed in `---` markers
-2. Check YAML syntax (no tabs, proper indentation)
-3. Verify `name` and `description` are strings
-4. Remove any special characters from YAML values
-
-### Resources Not Found
-
-**Problem:** Agent can't access skill resources
-
-**Solutions:**
-1. Verify resource folders exist: `scripts/`, `references/`, `assets/`
-2. Check file permissions
-3. Ensure files are in the correct skill directory
-4. Use the effective path listed for the skill; its resources remain beside `SKILL.md`
-
-## Advanced Topics
-
-### Multi-File Skills
-
-For complex skills, organize content across multiple files:
-
-```
-skills/complex-skill/
-├── SKILL.md              # Main entry point
-├── references/
-│   ├── api-guide.md      # Detailed API documentation
-│   ├── examples.md       # Extended examples
-│   └── troubleshooting.md
-└── scripts/
-    ├── setup.sh
-    └── validate.py
-```
-
-Reference additional files in `SKILL.md`:
-
-```markdown
-## Additional Resources
-
-For detailed API documentation, see `references/api-guide.md`.
-For troubleshooting, see `references/troubleshooting.md`.
-```
-
-### Dynamic Skills
-
-Skills can reference environment-specific information:
-
-```markdown
-## Configuration
-
-The system is configured with:
-- Database: Check `/mnt/config/database.yml`
-- API keys: Use the configured provider runtime; do not read secret files directly
-```
-
-### Skill Dependencies
-
-If a skill requires specific tools or other skills:
-
-```markdown
-## Prerequisites
-
-This skill requires:
-- `RunCommandTool` enabled (for running scripts)
-- Python 3.8+ installed in sandbox
-```
-
----
-
-Source: https://suzent.com/docs/concepts/automation/
 
 # Suzent Automation Guide
+
+Source: https://suzent.com/docs/concepts/automation
+
+
 
 **Sovereign authority.** Proactive action is the sharpest edge of agent
 autonomy: work that happens when you are not watching. Both systems below run
@@ -1837,11 +775,1233 @@ Memory is **disabled** for both cron and heartbeat executions to avoid polluting
 2. Extra text around the sentinel must be under 300 characters
 3. Check that the response isn't wrapped in markdown formatting
 
+
 ---
 
-Source: https://suzent.com/docs/concepts/nodes/
+# Filesystem & Execution
+
+Source: https://suzent.com/docs/concepts/filesystem
+
+
+
+**Sovereign vessel.** A sovereign agent runs in a domain you control. The
+modes below decide exactly which folders it can reach and where its code
+executes — granted deliberately by you, not inherited from a platform. See
+[what makes an agent sovereign](https://suzent.com/sovereign).
+
+Suzent provides secure file access and code execution through two modes: **Sandbox Mode** (isolated Docker container) and **Host Mode** (direct execution with restrictions).
+
+## Execution Modes
+
+| Mode | Shell capability | File Tools | Path Style |
+|------|----------|------------|------------|
+| **Sandbox** | Runs in Docker container | Virtual filesystem | `/persistence`, `/shared`, `/mnt/*` |
+| **Host** | Runs on host | Host filesystem | `$PROJECT_PATH`, `$SHARED_PATH`, `$MOUNT_*` |
+
+Toggle sandbox in the chat settings panel when creating a conversation.
+
+---
+
+## Virtual Filesystem (Both Modes)
+
+| Virtual Path | Maps To | Purpose |
+|-------------|---------|---------|
+| `/persistence` | `.suzent/sandbox/sessions/{chat_id}/` | Per-chat storage |
+| `/shared` | `.suzent/sandbox/shared/` | Shared across all chats (not rolled back on retry) |
+| `/uploads` | `.suzent/sandbox/sessions/{chat_id}/uploads/` | Uploaded files |
+| `/mnt/*` | Custom volumes | Host directories |
+
+**Relative paths** default to `/persistence`: `data.csv` → `/persistence/data.csv`
+
+### Custom Volume Mounts
+
+```yaml
+# config/default.yaml
+sandbox_volumes:
+  - "D:/datasets:/data"
+  - "D:/skills:/mnt/skills"
+```
+
+Now `/data/file.csv` maps to `D:/datasets/file.csv` on your host.
+
+---
+
+## Sandbox Mode
+
+Uses Docker containers for isolated execution. Each chat session gets its own named container (`suzent-sandbox-{id}`) that starts on first use and is kept running for the duration of the session.
+
+### Features
+- **Isolation**: Each session runs in its own container (network access on by default via `bridge`)
+- **Persistent data**: `/persistence` and `/shared` are bind-mounted from the host — data survives container restarts and removal
+- **Auto-healing**: Automatically restarts the container if it crashes
+- **Multi-language**: Python, Node.js (with custom image), shell commands
+- **Resource limits**: 512 MB memory, 1 CPU, 256 process limit
+
+### Requirements
+
+- **Docker Desktop** (Windows/macOS) or Docker Engine (Linux)
+- No KVM, no privileged mode, no extra services required
+
+### Setup
+
+1. Ensure Docker Desktop is running
+
+2. Enable sandbox in the chat config panel (sidebar), or set globally in `config/default.yaml`:
+
+```yaml
+sandbox_enabled: true
+```
+
+3. *(Optional)* Change the container image:
+
+```yaml
+# Default — Python + bash only
+sandbox_image: python:3.11-slim
+
+# Custom image — Python + Node.js + common packages (see below)
+sandbox_image: suzent-sandbox
+```
+
+### Custom Sandbox Image (Python + Node.js)
+
+The default `python:3.11-slim` image covers Python and shell commands. For Node.js support and pre-installed packages (numpy, pandas, requests, etc.), build the custom image:
+
+```bash
+docker compose -f docker/sandbox-compose.yml build
+```
+
+Then set `sandbox_image: suzent-sandbox` in `config/default.yaml`.
+
+### Calling Suzent from Inside the Sandbox
+
+`SUZENT_BASE_URL` is injected automatically so sandboxed code can reach the running host server. This lets agent-written scripts do everything the `suzent` CLI can do, without the CLI being installed.
+
+| Variable | Example value |
+|----------|---------------|
+| `SUZENT_BASE_URL` | `http://host.docker.internal:25314` |
+
+**CLI → API mapping:**
+
+| CLI command | HTTP equivalent |
+|-------------|----------------|
+| `suzent cron list` | `GET  $SUZENT_BASE_URL/cron/jobs` |
+| `suzent cron add ...` | `POST $SUZENT_BASE_URL/cron/jobs` |
+| `suzent cron trigger {id}` | `POST $SUZENT_BASE_URL/cron/jobs/{id}/trigger` |
+| `suzent cron remove {id}` | `DELETE $SUZENT_BASE_URL/cron/jobs/{id}` |
+| `suzent node list` | `GET  $SUZENT_BASE_URL/nodes` |
+| `suzent node describe {node_id_or_name}` | `GET  $SUZENT_BASE_URL/nodes/{node_id_or_name}` |
+| `suzent node invoke {node_id_or_name} ...` | `POST $SUZENT_BASE_URL/nodes/{node_id_or_name}/invoke` |
+| `suzent agent chat "msg"` | `POST $SUZENT_BASE_URL/chat` (streaming) |
+| List chats | `GET  $SUZENT_BASE_URL/chats` |
+| Memory search | `GET  $SUZENT_BASE_URL/memory/archival?query=...` |
+
+Example — scheduling a cron job from sandboxed Python:
+
+```python
+import os, requests
+
+base = os.environ["SUZENT_BASE_URL"]
+
+requests.post(f"{base}/cron/jobs", json={
+    "name": "daily-report",
+    "cron_expr": "0 9 * * *",
+    "prompt": "Summarize today's activity",
+    "delivery_mode": "announce",
+})
+```
+
+### Configuration Reference
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `sandbox_enabled` | `false` | Enable sandbox mode |
+| `sandbox_image` | `python:3.11-slim` | Docker image to use |
+| `sandbox_network` | `bridge` | Network mode (`bridge` = internet access, `none` = isolated) |
+| `sandbox_idle_timeout_minutes` | `30` | Stop idle containers after N minutes (checked every 5 min) |
+| `sandbox_setup_command` | `""` | Shell command run once on container creation (login shell) |
+| `sandbox_env` | `{}` | Extra env vars injected into container (secrets are blocked) |
+| `sandbox_data_path` | `.suzent/sandbox` | Host path for persistent data |
+| `sandbox_volumes` | `[]` | Extra bind mounts (`host:container`) |
+| `shell_env` | `null` | Exact base environment for host shell commands; `null` inherits the server environment |
+| `shell_denied_env_patterns` | `[]` | Glob patterns removed from the host shell environment, such as `OPENAI_*` |
+
+---
+
+## Host Mode
+
+Executes directly on the host machine with path restrictions.
+
+### Environment Variables
+
+In host mode, use these environment variables in bash commands:
+
+| Variable | Points To |
+|----------|-----------|
+| `$PROJECT_PATH` | Session directory (same as `pwd`) |
+| `$SHARED_PATH` | Shared directory |
+| `$MOUNT_SKILLS` | Skills directory |
+| `$MOUNT_*` | Other mounted volumes |
+
+### Security
+
+- Working directory (`pwd`) is the session's persistence folder
+- Only paths within `.suzent/`, `/persistence`, `/shared`, and custom mounts are allowed
+- Source code directories are **blocked** by default
+
+---
+
+## File Tools
+
+### ReadFileTool
+Read files with automatic format conversion (text, PDF, DOCX, XLSX, images with OCR).
+
+```python
+ReadFileTool(file_path="/persistence/data.csv")
+ReadFileTool(file_path="report.pdf", offset=10, limit=50)
+```
+
+### WriteFileTool
+Create or overwrite files.
+
+```python
+WriteFileTool(file_path="/persistence/output.txt", content="Hello")
+```
+
+> [!WARNING]
+> Overwrites entire file. Use `EditFileTool` for small changes.
+
+### EditFileTool
+Make precise text replacements.
+
+```python
+EditFileTool(
+    file_path="config.json",
+    old_string='"debug": false',
+    new_string='"debug": true'
+)
+```
+
+### GlobTool
+Find files by pattern.
+
+```python
+GlobTool(pattern="**/*.py")  # All Python files
+GlobTool(pattern="*.csv", path="/data")  # CSVs in /data
+```
+
+### GrepTool
+Search file contents.
+
+```python
+GrepTool(pattern="def.*:", path="/persistence")  # Find functions
+GrepTool(pattern="TODO", include="*.py")  # TODOs in Python files
+```
+
+---
+
+## Security
+
+All paths are validated to prevent directory traversal:
+
+- ✅ `/persistence/data.csv`
+- ✅ `/shared/model.pt`
+- ✅ `/data/file.txt` (if mounted)
+- ❌ `/etc/passwd`
+- ❌ `../../../secret`
+- ❌ Project source code (in host mode)
+
+---
+
+## Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| **File not found** | Check `.suzent/sandbox/sessions/{chat_id}/` on the host |
+| **Path traversal error** | Ensure path is within allowed directories |
+| **Volume not accessible** | Verify `sandbox_volumes` in config |
+| **Container fails to start** | Check Docker Desktop is running (`docker ps`) |
+| **Node.js not found** | Build the custom image: `docker compose -f docker/sandbox-compose.yml build`, set `sandbox_image: suzent-sandbox` |
+| **Internet in sandbox** | Ensure `sandbox_network: bridge` (default) — `none` fully isolates |
+
+
+---
+
+# GitHub Sync
+
+Source: https://suzent.com/docs/concepts/github-sync
+
+
+
+**Sovereign continuity.** Portability is what lets an agent outlive the
+machine it started on. Sync moves the parts that make up the agent while
+credentials stay device-local, so moving to a new machine never means shipping
+your keys. See [what makes an agent sovereign](https://suzent.com/sovereign).
+
+GitHub Sync keeps a portable copy of Suzent configuration, user skills, and
+Markdown memory in a private Git repository. Credentials remain on each device.
+
+## What syncs
+
+| Included in `suzent-sync/` | Device-local only |
+|---|---|
+| `default.yaml`, `config.yaml`, and `skills.json` | API keys and provider credentials |
+| User skills | `.env`, `.secret_key`, `secrets.db`, and `local.yaml` |
+| Markdown memory | Chat databases, indexes, caches, sessions, and non-Markdown attachments |
+| | MCP definitions, permission rules, node identity, and ChatGPT authentication |
+
+The payload builder rejects forbidden paths before push. GitHub sync never
+creates encrypted key bundles and never reads from Suzent's local secret store.
+Pull replaces only portable configuration files and preserves other local
+configuration, including future device-local files. Planning compares source
+trees without mutating the sync repository worktree.
+
+## Repository layout
+
+```text
+github-sync/
+  suzent-sync/
+    config/
+      config.yaml
+      default.yaml
+      skills.json
+    skills/
+    memory/
+```
+
+The default repository path is `~/.suzent/github-sync`. Sync profiles live in
+`~/.suzent/config/sync_profiles.json` and are not portable because repository
+paths and automation settings are device-specific.
+
+## Setup
+
+1. Open **Settings → Data → GitHub Sync**.
+2. Sign in through GitHub Device Flow.
+3. Choose a private repository name or accept `suzent-brain`.
+4. Select **Quick start**.
+
+On another device, sign in to GitHub, use the same repository, and pull the
+portable files. Configure API keys separately on that device.
+
+## Operations
+
+| Action | Purpose |
+|---|---|
+| **Push** | Publish local config, skills, and memory |
+| **Pull** | Apply remote portable files locally |
+| **Discard outgoing** | Restore one or all outgoing local files from the committed payload |
+| **Use cloud** | Apply the remote payload as the local source of truth |
+
+Plans classify changes as incoming or outgoing. Files are collapsed by default;
+selecting a file loads only that file's diff, without generating patches for the
+rest of the plan.
+The toolbar is contextual: **Pull** appears only for incoming files, **Push**
+appears only for outgoing files, and neither is shown when the repository is up
+to date. Mixed changes are resolved explicitly in the review instead of through
+a separate combined Sync action.
+Individual outgoing changes can be discarded without affecting the others.
+Incoming changes are still applied as a complete cloud payload because a Git
+pull advances the repository as a whole.
+Protected memory replacement or deletion requires confirmation. Planning hashes
+the portable source trees directly without modifying the repository worktree and
+is serialized with sync execution.
+
+Git commits and refs are the revision source of truth. Sync does not maintain a
+second manifest, device-presence files, revision UUIDs, or Git tags.
+
+Config and skills are reloaded after a successful pull. Device-local excluded
+files are preserved.
+
+## Auto-sync
+
+Auto-sync runs at the configured interval. If only remote files changed, it
+pulls and applies them. If local files changed, it builds and pushes a portable
+payload. Destructive memory changes require review.
+
+## API
+
+All routes are served by the local Suzent HTTP API.
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/sync/status` | GET | Profile and repository status |
+| `/sync/quickstart/info` | GET | Default paths and GitHub authentication state |
+| `/sync/quickstart` | POST | Create or connect the sync repository |
+| `/sync/profiles` | GET, POST | List or save profiles |
+| `/sync/plan` | POST | Preview file changes without retaining worktree mutations |
+| `/sync/diff` | POST | Load one selected file's textual diff |
+| `/sync/pull` | POST | Pull and apply portable files |
+| `/sync/push` | POST | Build, commit, and push portable files |
+| `/sync/discard-outgoing` | POST | Restore all outgoing changes, or selected `paths` |
+| `/sync/auto` | POST | Save automation settings |
+| `/sync/auto/run` | POST | Run one automatic sync cycle |
+| `/sync/auth/start` | POST | Start GitHub Device Flow |
+| `/sync/auth/poll` | POST | Poll Device Flow completion |
+| `/sync/auth/status` | GET | Read GitHub authentication state |
+| `/sync/auth/logout` | POST | Clear the stored GitHub token |
+
+## Legacy encrypted bundles
+
+Earlier versions could store encrypted API-key bundles under
+`suzent-sync/_sync/secrets/`. File-only sync no longer imports, exports, or
+preserves `_sync/`. The next payload build removes that legacy directory from
+the current branch, but historical ciphertext remains in Git history.
+
+Ensure required keys exist in the local secret store before upgrading another
+device. Rotate provider keys if the repository or old recovery phrase may have
+been exposed.
+
+## Troubleshooting
+
+### A provider works on one device but not another
+
+Credentials are deliberately device-local. Configure the provider key on the
+new device or use a supported external secret provider when one becomes
+available.
+
+### The GitHub token expired
+
+Sign in again through GitHub Sync. Suzent stores the GitHub authorization token
+in the OS keyring; it is separate from provider API keys.
+
+### A pull reports diverging branches
+
+Retry after fetching or re-run Quick start on a clean local sync directory.
+Avoid editing generated payload files directly.
+
+## See also
+
+- [Memory](https://suzent.com/docs/concepts/memory)
+- [Skills](https://suzent.com/docs/concepts/skills)
+- [Filesystem and sandbox](https://suzent.com/docs/concepts/filesystem)
+
+
+---
+
+# Memory Configuration
+
+Source: https://suzent.com/docs/concepts/memory/configuration
+
+
+
+Most people never open this page. Memory is on out of the box, and the two settings you
+are most likely to want — whether it runs at all, and which models it uses — are in
+**Settings → Memory** in the app.
+
+What follows is the tuning that has no UI. Put overrides in `~/.suzent/config/default.yaml`
+(machine-specific paths belong in `~/.suzent/config/local.yaml`); both are read after the
+shipped `config/default.example.yaml`, so anything you set there wins and survives an
+update. Keys are case-insensitive — `MEMORY_ENABLED` and `memory_enabled` are the same
+setting.
+
+## The basics
+
+```yaml
+memory_enabled: true               # Also the toggle in Settings → Memory
+markdown_memory_enabled: true      # Write facts to /shared/memory/ as Markdown
+extraction_model: gemini/gemini-2.5-flash   # "" for heuristic extraction, no model call
+user_id: default-user
+```
+
+The extraction model runs once per exchange, so a small fast model is the right choice
+here. Leave it unset to use the default chat model.
+
+## Consolidation
+
+How often the dream runs, and how much it takes on. See
+[How Consolidation Works](https://suzent.com/docs/concepts/memory/consolidation).
+
+```yaml
+memory_consolidation_enabled: true
+memory_consolidation_interval_seconds: 1800   # How often to check whether a run is due
+memory_consolidation_min_hours: 24            # Minimum wait between runs
+memory_consolidation_min_facts: 20            # New facts needed before a run is worth it
+memory_consolidation_min_confirmations: 25    # Repeated facts that justify a run on their own
+memory_consolidation_max_days: 14             # Days of logs read in one run
+memory_consolidation_max_retries: 3           # Attempts before a stuck batch is skipped
+memory_consolidation_timeout_seconds: 600
+memory_consolidation_model: null              # Defaults to the main chat model
+memory_consolidation_memory_max_lines: 200    # Size cap on MEMORY.md
+```
+
+The notebook audit runs on its own, slower schedule, and only once consolidation is
+caught up:
+
+```yaml
+memory_lint_enabled: true
+memory_lint_min_days: 7
+```
+
+## Where the notebook lives
+
+```yaml
+notebook_dir: <data-dir>/notebook
+```
+
+To use an existing Obsidian vault instead, mount it over `/mnt/notebook`, replacing the
+default entry. This takes precedence over `notebook_dir`, which keeps pointing at the
+default path. Being machine-specific, it belongs in `~/.suzent/config/local.yaml`:
+
+```yaml
+sandbox_volumes:
+  - "C:/Users/you/Documents/MyVault:/mnt/notebook"
+```
+
+## Search
+
+```yaml
+embedding_model: gemini/gemini-embedding-001
+embedding_dimension: 3072        # Must match the model; 0 = detect from it
+embedding_timeout: 30            # Seconds before a slow provider is given up on
+lancedb_uri: <data-dir>/memory
+```
+
+Pick the embedding model in **Settings → Memory** — the list is filtered to what your
+configured providers actually offer, so it stays correct as you add or remove keys.
+
+Changing the embedding model means re-embedding everything you have stored: one call per
+chunk across your whole memory. It is not a free switch, and the dimension has to change
+with it.
+
+## Sessions and transcripts
+
+```yaml
+session_daily_reset_hour: 0        # UTC hour for a daily reset (0 = off)
+session_idle_timeout_minutes: 0    # Reset after inactivity (0 = off)
+jsonl_transcripts_enabled: true    # Keep a transcript per session
+transcript_indexing_enabled: false # Also make transcripts searchable
+```
+
+Transcript indexing lets you search across past conversations, not just extracted facts.
+It costs storage and embedding calls proportional to everything you say, which is why it
+is off by default.
+
+## Context window
+
+```yaml
+max_context_tokens: 0              # 0 = use whatever the active model supports
+```
+
+The compaction budget is derived from the model actually running the conversation:
+its input window, read from the model capability registry. A 1M-token model gets a
+1M-token budget, a 128k model gets 128k, and compaction triggers at the same
+*fraction* of each (`context_compaction_trigger`, 80% by default) instead of at one
+fixed token count that was wrong for every model but one.
+
+Set `max_context_tokens` to a non-zero value to cap that budget — useful to keep
+prompts (and cost) below what the model would allow. It is a ceiling, never a
+raise: the smaller of the two always wins. When a model is missing from the
+registry, the budget falls back to 200k tokens.
+
+## Rebuilding the search index
+
+The Markdown files are the real memory; the search index is derived from them. If search
+goes wrong, rebuild it — nothing is lost:
+
+```bash
+curl -X POST http://localhost:25314/memory/reindex -H "Content-Type: application/json" -d '{"clear_existing": true}'
+```
+
+A full rebuild re-embeds every file, so expect it to take a while and to cost embedding
+calls.
+
+## The memory API
+
+Everything the Memory panel does is available over HTTP, on the same port as the app
+(`25314` unless you set `SUZENT_PORT`), so you can script it or wire it into your own tools.
+
+| Endpoint | Method | What it does |
+|---|---|---|
+| `/memory/core` | GET | Read the core blocks (`persona`, `user`, `facts`, `context`) |
+| `/memory/core` | PUT | Overwrite one core block |
+| `/memory/file` | GET | Read `MEMORY.md` |
+| `/memory/daily` | GET | List the dates that have a daily log |
+| `/memory/daily/{date}` | GET | Read one day's log |
+| `/memory/archival` | GET | Search remembered facts |
+| `/memory/archival/{id}` | DELETE | Forget one fact (records a tombstone) |
+| `/memory/stats` | GET | Counts and index size |
+| `/memory/project-contexts` | GET | List per-project context files |
+| `/memory/project-contexts/{id}` | PUT | Update a project's context |
+| `/memory/reindex` | POST | Rebuild the search index from Markdown |
+| `/memory/dream/status` | GET | Consolidation progress and pending work |
+| `/memory/consolidate` | POST | Run consolidation now |
+| `/memory/lint` | POST | Run the notebook audit now |
+
+Editing a core block through `PUT /memory/core` counts as *you* saying it, which outranks
+anything the agent worked out on its own — see
+[MEMORY.md is half yours](https://suzent.com/docs/concepts/memory#memorymd-is-half-yours).
+
+## Debug logging
+
+```bash
+LOG_LEVEL=DEBUG uv run suzent
+```
+
+
+---
+
+# How Consolidation Works
+
+Source: https://suzent.com/docs/concepts/memory/consolidation
+
+
+
+Suzent captures fast and tidies up later. Every conversation appends raw facts to a daily
+log; a background pass called the **dream** turns those logs into organised notebook
+pages. This page explains what that means for you.
+
+## Capture: during the conversation
+
+After each exchange, Suzent extracts anything worth keeping and appends it to today's log:
+
+```md
+# Daily Log - 2026-07-01
+
+## 14:05 — abc12345
+
+- [preference] User prefers compact dashboards `ui product`
+- [work] User now works at Microsoft `career`
+```
+
+Logs are **append-only**. Nothing is edited or removed at capture time, even if it looks
+like a repeat or a contradiction of something already known — sorting that out needs more
+context than a single exchange provides, so it waits for the dream.
+
+The one exception is a word-for-word repeat of something already recorded. That isn't
+written again; it's counted, and the count becomes evidence that the fact matters.
+
+## Consolidation: the dream
+
+Once a day or so, Suzent reads the logs it hasn't processed yet and folds them into
+notebook pages. For each fact it finds, it does one of four things:
+
+- **Confirm** — the page already says this. Bump the count: `(confirmed 12x, last 2026-08-20)`.
+- **Sharpen** — the page says something vaguer. Replace the wording, keep the count.
+- **Supersede** — the page is now wrong. Correct it, and retire the outdated version.
+- **Add** — this is new. Write it down.
+
+Consolidated facts about you land in `3_Personal/`; general knowledge goes under `2_Wiki/`.
+
+The dream never touches today's log — that one is still being written to. And it only
+marks logs as processed after a run that actually finished and actually changed something,
+so an interrupted run is retried rather than skipped.
+
+### Claims expire
+
+Facts about you have a shelf life, and the dream gives each one an expiry based on what
+kind of fact it is:
+
+| Kind of fact | Revisited after |
+|---|---|
+| Identity | never |
+| Preference | 1 year |
+| Technical setup | 6 months |
+| Goal | 3 months |
+| Passing context | 3 weeks |
+
+When a claim passes its date, the dream re-checks it against recent conversations: still
+true, refresh it; contradicted, correct it; no evidence either way, leave it and let it
+carry less weight in search. **Expiry never deletes anything** — it only affects how
+strongly a fact surfaces.
+
+### Tidying up
+
+When there's nothing new to consolidate, the dream instead audits the notebook itself —
+looking for contradictions between pages, broken links, orphaned pages, and stale
+knowledge. New conversations always take priority; the audit only runs once things are
+caught up.
+
+## Deleting things
+
+Deleting a memory from the Memory panel records a permanent *tombstone*. The entry
+disappears from search and never comes back, even after a full rebuild — but the original
+daily log keeps the line, as history you can still read.
+
+This is the only way memory is removed. Everything else — expiry, superseding, marking a
+claim deprecated — changes how a fact ranks, not whether it exists.
+
+## Settings
+
+| Setting | Default | What it does |
+|---|---|---|
+| `memory_consolidation_enabled` | `true` | Turn the dream on or off |
+| `memory_consolidation_min_hours` | `24` | Minimum wait between runs |
+| `memory_consolidation_min_facts` | `20` | New facts needed before a run is worth it |
+| `memory_consolidation_max_days` | `14` | Days of logs read in one run |
+| `memory_lint_enabled` | `true` | Run the notebook audit |
+| `memory_lint_min_days` | `7` | Minimum wait between audits |
+
+See [Configuration](https://suzent.com/docs/concepts/memory/configuration) for the rest.
+
+Interested in how this is built? See
+[Development > Memory System](https://suzent.com/docs/developing/memory/architecture).
+
+
+---
+
+# Notebook
+
+Source: https://suzent.com/docs/concepts/memory/llm-wiki
+
+
+
+Your agent keeps a second kind of memory: a **notebook**, an Obsidian-compatible
+folder of Markdown pages it researches, writes, and tidies itself. Conversation
+memory records facts about *you*; the notebook holds knowledge about the *world* —
+papers it read, tools it compared, projects it is tracking.
+
+> The pattern comes from Andrej Karpathy's
+> [LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f), which is
+> why you will occasionally see it called that.
+
+## Where it lives
+
+By default the notebook is a folder in your data directory. Point it at an existing
+Obsidian vault instead by mounting it — see
+[Configuration](https://suzent.com/docs/concepts/memory/configuration#where-the-notebook-lives).
+
+Either way it is ordinary Markdown with `[[wikilinks]]`, so Obsidian, a text editor, or
+Git all work on it directly.
+
+## How it's organised
+
+```text
+notebook/
+  schema.md          # The rules of your vault — edit this to change how pages are filed
+  index.md           # Catalog of pages the agent has written
+  log.md             # What the agent did, and when
+  0_Inbox/           # Raw material you dropped in, waiting to be processed
+  1_Projects/        # Active work: roadmaps, meeting notes, TODOs
+  2_Wiki/            # The knowledge layer
+    Concepts/        #   evergreen ideas
+    Literature/      #   one page per paper or article
+    Syntheses/       #   comparisons and overviews
+    Entities/        #   specific models, datasets, tools, people
+  3_Personal/        # Long-term facts about you (written by consolidation)
+  4_Assets/          # PDFs and images — never modified
+  5_Archives/        # Finished or inactive work
+```
+
+**`schema.md` is yours to edit.** The agent reads it before every notebook operation, so
+renaming a folder or adding a filing rule there changes what it does next time. It is
+seeded once when the vault is created and never overwritten afterwards.
+
+Drop a PDF or a clipping into `0_Inbox/` and the agent will file it on its next pass.
+
+## Notebook vs. conversation memory
+
+| | Conversation memory | Notebook |
+|---|---|---|
+| **Holds** | Facts about you, extracted from chats | Knowledge pages, written deliberately |
+| **Where** | `/shared/memory/` | your notebook folder |
+| **Written by** | Automatic extraction after each exchange | The agent, using file tools |
+| **Found by** | Semantic search | Links, file search, and semantic search |
+
+The two meet in one place: consolidated facts about you end up as pages under
+`3_Personal/`. See [How Consolidation Works](https://suzent.com/docs/concepts/memory/consolidation).
+
+## Tidying
+
+When there is nothing new to consolidate, the agent audits the notebook instead —
+contradictions between pages, broken links, orphaned pages, knowledge that has gone
+stale. Nothing is deleted; pages are corrected or marked deprecated.
+
+You can also just ask it to research something and write it up; that lands in `2_Wiki/`.
+
+Building on the notebook itself? See
+[Development > Memory Internals](https://suzent.com/docs/developing/memory/internals).
+
+
+---
+
+# Memory System
+
+Source: https://suzent.com/docs/concepts/memory
+
+
+
+**Sovereign continuity.** Memory is where a sovereign AI agent keeps its self.
+Because Suzent's memory is Markdown on your own disk rather than rows in a
+vendor's database, you can read it, edit it, track it in Git, and carry it to
+another machine. That is the first question in the
+[sovereignty test](https://suzent.com/sovereign) — and the reason a model swap does not reset the agent
+that knows your work.
+
+Suzent remembers things across conversations — facts you've shared, your preferences, and
+context from past sessions. Everything it remembers is stored as plain Markdown files you
+can open, edit, or delete yourself.
+
+## What it remembers
+
+After each exchange, Suzent picks out anything worth keeping — a preference, a project
+detail, a fact about you — and appends it to that day's log. It doesn't ask, and it
+doesn't remember the whole conversation; only the facts.
+
+Overnight, a background pass called the **dream** reads those logs and folds them into
+tidy pages: one page per topic, duplicates merged, contradictions resolved. Day-to-day
+capture stays fast and lossless; the tidying happens later, when there's time to think
+about it.
+
+The result is two kinds of memory:
+
+| | What it holds | Where |
+|---|---|---|
+| **Conversation memory** | Facts about you, gathered automatically | `/shared/memory/` |
+| **Notebook** | Knowledge pages the agent researches and writes | `/mnt/notebook/` |
+
+The notebook is a full Obsidian-compatible vault — see [Notebook](https://suzent.com/docs/concepts/memory/llm-wiki).
+
+## Where your memory lives
+
+```text
+/shared/memory/
+  MEMORY.md              # The summary the agent always sees
+  archive/
+    2026-08-24.md        # One log per day, append-only
+  persona.md, user.md    # Editable profile blocks
+```
+
+Open any of these in a text editor. They are the real memory — the search index is
+rebuilt from them, so if you delete a line, it's gone.
+
+### MEMORY.md is half yours
+
+`MEMORY.md` is the short summary loaded into every conversation. It has two halves,
+divided by a marker comment:
+
+```markdown
+<!-- memory:generated - rewritten on consolidation -->
+...Suzent rewrites everything in here...
+<!-- /memory:generated - notes below this line are kept -->
+
+Anything you type down here is kept, forever, untouched.
+```
+
+Write below the marker to tell Suzent something directly. Notes there outrank anything it
+worked out on its own, and no consolidation will overwrite them.
+
+If your `MEMORY.md` has no markers at all — because it predates them — Suzent treats the
+whole file as yours and stops regenerating it. See [Upgrade Notes](https://suzent.com/docs/concepts/memory/upgrade-notes).
+
+## Managing what's remembered
+
+From the **Memory** panel in the app you can browse what's been captured, search it, and
+delete individual entries. Deleting is permanent for the search index but leaves the
+original daily log intact as history.
+
+To forget something, delete it from the panel. To correct something, just say the
+corrected version in conversation — a fact that changes an existing one is recorded as an
+update, and the dream retires the old version.
+
+## Settings
+
+Memory is on by default. Turn it off, or change which models do the extraction and
+embedding, in **Settings → Memory** in the app.
+
+Everything else is tuning — how often the dream runs, how much it reads at a time, where
+the notebook lives. See [Configuration](https://suzent.com/docs/concepts/memory/configuration) for the full list.
+
+## Read more
+
+- [How consolidation works](https://suzent.com/docs/concepts/memory/consolidation) — what the dream does, and when it runs.
+- [Notebook](https://suzent.com/docs/concepts/memory/llm-wiki) — the knowledge vault, and how it differs from memory.
+- [Upgrade Notes](https://suzent.com/docs/concepts/memory/upgrade-notes) — what changes on an existing install. Read this
+  before deleting anything.
+
+Building on the memory system itself? The implementation notes live under
+[Development > Memory System](https://suzent.com/docs/developing/memory/architecture).
+
+
+---
+
+# Upgrade Notes: what changes for an existing install
+
+Source: https://suzent.com/docs/concepts/memory/upgrade-notes
+
+
+
+Notes for anyone upgrading a running install across the memory-deduplication work.
+Nothing here needs action on a fresh install — every item is about state that already
+exists on disk before the upgrade.
+
+Ordered by how likely it is to surprise you.
+
+## 1. The first run re-embeds everything, once
+
+`.index_state.json` is now versioned and keyed on `label:filename` instead of the
+absolute path. Pre-v2 state is **discarded rather than migrated**, so the first pass
+after the upgrade treats every daily log and vault page as new and re-embeds it.
+
+That is deliberate — the old absolute-path keys were why files got skipped forever, so
+the discard doubles as the backfill — but it is not free. Budget one embedding call per
+chunk across your whole corpus, and expect the first pass to take noticeably longer than
+a steady-state one. If you pay per embedding call, this is the line item to expect.
+
+## 2. Check `CONFIG.notebook_dir` before you assume it's empty
+
+If you mount your own vault at `/mnt/notebook` (an Obsidian folder, say), the *default*
+vault path under the data dir still gets created, and any run where the mount failed to
+resolve will have consolidated into it. That directory can therefore hold real pages
+that exist nowhere else — orphaned output from a misrouted run, not a skeleton.
+
+On the machine this work was done on, the default path held 14 consolidated pages —
+including a personal profile and a contacts page — written during a single misrouted run
+months after the vault had moved. None of them exist in the live vault. They read like a
+leftover bootstrap skeleton, and deleting them on that assumption would have been the
+only irreversible mistake in this whole body of work.
+
+Suzent no longer reads the wrong vault, but that does not retroactively rescue anything
+already stranded in the default path. **Before deleting that directory, diff it against
+your real vault.** It will look like a leftover. It may not be one.
+
+## 3. Legacy rows are not redundant copies — export before deleting
+
+If your install predates the markdown tier, your archival index holds rows with no
+`source_file`. Nothing can reindex them, no tombstone can retire them, and no
+consolidation will fold them in; they sit in retrieval permanently.
+
+The obvious move is to delete them. Measure first. On this install, **2,831 of 2,833 such
+rows appear nowhere in any daily log or vault page** — they predate the markdown tier, so
+the index is the only copy of that content, and deleting them is data loss.
+
+```bash
+python scripts/retire_legacy_rows.py            # report only
+python scripts/retire_legacy_rows.py --export   # append them to daily logs
+python scripts/retire_legacy_rows.py --apply    # delete, after a backup
+```
+
+`--apply` refuses while any row is recorded nowhere else. Re-indexing the exported logs
+costs one embedding call per chunk, and the dream will not consolidate dates below its
+watermark without a rewind.
+
+## 4. An existing `MEMORY.md` will not be regenerated until it has markers
+
+`MEMORY.md` is now split into a generated zone and a manual zone by HTML comment
+markers. A file with no markers cannot be proven to be generator output, so it is treated
+as **entirely manual and never overwritten** — the safe default, since the alternative is
+destroying notes someone typed.
+
+The practical consequence: if you have an existing `MEMORY.md`, automatic refresh stays
+off for it until markers appear. Let a consolidation write the file, or add the markers by
+hand, if you want the generated half back.
+
+## 5. Restated facts stop appearing in the daily logs
+
+A fact that restates something already durably recorded, word for word and with no new
+specifics, is no longer written to the daily log. It goes to
+`notebook/.state/confirmations.jsonl` and reaches the next dream as a confirmation count.
+
+If you audit what memory captured by grepping daily logs, that file is now part of the
+picture. A *revision* — anything adding a new number, date, path, quote, or version — is
+still written to the log as before, tagged `revision`.
+
+The dreaming panel gained a **pending confirmations** tile for the same reason, and a
+dream can now run on that queue alone. So an install that is caught up on logs may still
+start a consolidation, and it will not move the watermark when it does.
+
+## 6. Expect vault churn on the first few dreams
+
+Two changes rewrite frontmatter on pages that predate them:
+
+- `3_Personal/` pages with no `stale_after` are queued for revisit and given one from the
+  fact-category table.
+- Claims that recur pick up `(confirmed Nx, last YYYY-MM-DD)` markers.
+
+If your vault is in git or a sync folder, the first few dreams after upgrading will look
+like a large diff touching many personal pages. That is the backfill, not a bug.
+
+## 7. Retrieval order will change
+
+Indexed `importance` used to be a constant `0.5` for every row. It now varies: repeated
+confirmations lift a claim, an expiry in the past damps it, `deprecated` sinks it to a
+floor, and a claim you verified yourself in `MEMORY.md` takes a floor of `0.9`.
+
+Since `importance` is already a term in hybrid search, results will re-order after the
+first reindex. Nothing is removed from retrieval — `deprecated` demotes, it does not
+delete, and deletion stays with tombstones so it remains reversible and auditable.
+
+## 8. Stop the app before running the scripts
+
+`scripts/retire_legacy_rows.py` and `scripts/dream_dry_run.py` both assume nothing else
+is writing. A concurrent reindex can race a delete. Stop the app, or accept the race.
+
+
+---
+
+# A2A — Open Agent Federation
+
+Source: https://suzent.com/docs/concepts/nodes/a2a
+
+
+
+Suzent speaks [A2A (Agent2Agent)](https://a2a-protocol.org/), the open
+agent-interoperability standard governed by the Linux Foundation. This is the
+half of the mesh that reaches agents *we did not build* — LangGraph, ADK,
+CrewAI, or anything else that implements the spec.
+
+See [nodes.md](https://suzent.com/docs/concepts/nodes) for the device mesh and [security.md](https://suzent.com/docs/concepts/nodes/security)
+for how grants and tokens work.
+
+## 1. Where A2A sits
+
+| Layer | Protocol | Talks to | Contract |
+|---|---|---|---|
+| Tools | MCP | services the agent uses | transparent |
+| Devices | Suzent Nodes | your hardware | transparent capability manifest |
+| Agents | **A2A** | other intelligences | **opaque execution** |
+
+**Nodes are deliberately not A2A.** A node advertises exactly what it can do
+(`camera.snap`, `system.script`) so the agent can pick a capability. A2A's model
+is the opposite: you delegate a goal and never see inside. Folding nodes into
+A2A would destroy the manifest that makes them useful.
+
+The Suzent-native peer channel (`/channels/suzent/*`) also remains. It is the
+trusted fast path between two Suzent installs and carries things the standard
+does not: file attachments, pairing grants, mDNS discovery.
+
+## 2. Wire format
+
+We implement the **JSON-RPC binding**, which is what the reference SDK's
+JSON-RPC client speaks and what interoperates in practice.
+
+| Surface | Path | Auth |
+|---|---|---|
+| Agent Card | `GET /.well-known/agent-card.json` | **none** (public by design) |
+| JSON-RPC | `POST /a2a/v1` | bearer device grant (`agent` scope) |
+| Local status/UI | `/a2a/status`, `/a2a/agents`, `/a2a/outbound` | loopback or `full` scope |
+
+Methods: `message/send`, `message/stream` (SSE), `tasks/get`, `tasks/cancel`,
+`tasks/resubscribe`. Push notification configs return `-32003` (unsupported).
+
+> **Version note.** The card advertises `protocolVersion: "0.3.0"`. A2A 1.0
+> renamed methods for the *gRPC and REST* bindings (`SendMessage`,
+> `/v1/message:send`); the JSON-RPC binding still uses `message/send`. Advertising
+> 0.3.0 with these method names is what the official SDK's JSON-RPC client expects.
+
+## 3. Publishing is not authorizing
+
+The Agent Card is served unauthenticated — that is what makes discovery work —
+but it is **off by default** (`CONFIG.a2a_enabled`). When off, the well-known
+path 404s, so a disabled device looks like one that never spoke A2A.
+
+Publishing announces existence. It grants nothing. `/a2a/v1` still requires the
+same per-peer bearer grant that the Suzent pairing flow mints, and an
+`agent`-scope token reaches only the agent surface — never `/config`,
+`/nodes/devices`, or `/a2a/status`.
+
+The card includes the device name and OS environment (e.g.
+`Windows 11 (AMD64)`), so a delegating agent can judge *where* work will land.
+
+## 4. Task lifecycle
+
+A2A models work as a task with real states:
+
+```
+submitted → working → completed | failed | canceled
+                   ↘ input-required ↗   (client answers, task resumes)
+                   ↘ auth-required  ↗
+```
+
+`input-required` is the state the one-shot peer channel could not express. A
+remote agent that hits an ambiguity stops and asks; the caller answers with a
+normal `message/send` carrying the same `taskId`, and the task resumes.
+
+Terminal states are final — `suzent.a2a.tasks` refuses any transition out of
+them rather than silently reviving a settled task.
+
+**Durability.** The conversation is persisted by the normal chat store (a task's
+`contextId` *is* a Suzent chat id, namespaced per authenticated caller so two
+remote agents cannot read each other's context). The task *wrapper* — state,
+artifacts, subscribers — is in-memory and bounded; eviction never drops a task
+that is still live.
+
+## 5. Discovery
+
+A2A defines four mechanisms: well-known URI, curated registries, direct
+configuration, and authenticated extended cards. There is **no global public
+registry**, and the spec has **no LAN discovery at all**.
+
+That is why Suzent's own discovery is not redundant: mDNS and Tailscale find
+peers on your network with zero configuration, which the standard cannot do.
+External A2A agents are added by URL; we fetch the card to verify the address
+before storing it.
+
+## 6. Code map
+
+| Module | Role |
+|---|---|
+| `suzent/a2a/types.py` | wire models (camelCase, spec-conformant) |
+| `suzent/a2a/card.py` | this device's Agent Card |
+| `suzent/a2a/tasks.py` | task store + state machine |
+| `suzent/a2a/executor.py` | bridges a task to a `ChatProcessor` turn |
+| `suzent/a2a/client.py` | outbound client (delegate to others) |
+| `suzent/a2a/store.py` | registry of external agents |
+| `suzent/a2a/outbound.py` | local view of delegated tasks |
+| `suzent/routes/a2a_routes.py` | HTTP surface |
+
+The wire types are hand-rolled rather than taken from `a2a-sdk` at runtime: the
+SDK ships an opinionated server framework that would fight the Starlette route
+style used elsewhere. Conformance is not left to trust —
+`tests/a2a_protocol/test_sdk_conformance.py` drives our server with the official
+SDK client, which is a **dev-only** dependency.
+
+## 7. Known gaps
+
+- **Push notifications** are unimplemented (`-32003`). Long-running delegation
+  currently relies on streaming or polling `tasks/get`.
+- **`input-required` is client-side only.** We *handle* a remote agent asking us
+  a question; our own server does not yet emit that state, because a Suzent turn
+  runs headless for remote callers and has no way to pause for input.
+- **The Suzent peer channel is still a parallel implementation.** It should be
+  rebuilt on this task engine, with attachments and grants as A2A extensions, so
+  there is one lifecycle rather than two.
+- **Agent Card signatures** (`AgentCardSignature`) are not produced or verified.
+
+
+---
+
+# ACP — Suzent in Someone Else's Editor
+
+Source: https://suzent.com/docs/concepts/nodes/acp
+
+
+
+Suzent speaks [ACP (Agent Client Protocol)](https://agentclientprotocol.com/)
+in **both directions**:
+
+| Direction | Role | Entry point | What it means |
+|---|---|---|---|
+| Outbound | Suzent is the **client** | `suzent.acp.client` | Suzent drives Claude Code, Codex, … as subagents |
+| Inbound | Suzent is the **agent** | `suzent acp` | Zed, enoxian, any ACP client drives *your* geist |
+
+This page covers the inbound half. See [a2a.md](https://suzent.com/docs/concepts/nodes/a2a) for A2A, which reaches
+agents over the network; ACP is local and process-scoped — the client spawns the
+agent and speaks JSON-RPC on its stdin/stdout.
+
+## 1. What the client gets
+
+```sh
+suzent acp
+```
+
+That command is not meant to be typed. An ACP client spawns it, keeps the pipe,
+and passes its workspace as the session `cwd`:
+
+```
+client -> agent:  initialize
+client -> agent:  session/new       (cwd = the client's workspace)
+client -> agent:  session/prompt
+agent  -> client: session/update    (message chunks, thoughts, tool calls)
+agent  -> client: session/request_permission
+client -> agent:  session/cancel
+```
+
+Implemented methods: `initialize`, `authenticate`, `session/new`,
+`session/load`, `session/prompt`, `session/cancel`. Advertised capabilities:
+`loadSession: true`, text prompts with embedded context. Images and audio are
+declined at the handshake rather than silently dropped.
+
+## 2. It is a translator, not a second agent
+
+`suzent acp` runs no model. Every turn is posted to the **already-running
+backend** over the loopback API and its AG-UI event stream is translated back
+into ACP:
+
+| Suzent stream event | ACP session update |
+|---|---|
+| `TEXT_MESSAGE_CONTENT` | `agent_message_chunk` |
+| `THINKING_TEXT_MESSAGE_CONTENT` | `agent_thought_chunk` |
+| `TOOL_CALL_START` / `_ARGS` / `_END` | `tool_call`, then `tool_call_update` with `rawInput` |
+| `TOOL_CALL_RESULT` | `tool_call_update` (`completed`) |
+| `tool_approval_request` | `session/request_permission` |
+| `RUN_ERROR` | JSON-RPC error on the prompt turn |
+
+That indirection is the point. One process owns the database, so an ACP session
+is a **real chat**: it appears in the desktop UI, uses the same memory, skills,
+model config, and permission rules, and survives a restart. `suzent serve` (or
+`suzent start`) must be running; without it the first session fails with a
+connect error rather than quietly starting a second agent stack.
+
+An ACP session id **is** a chat id. `session/load` therefore resumes a real
+conversation — and refuses any chat this surface did not create, so a client
+cannot address one of your local conversations by guessing an id.
+
+## 3. Where the files are
+
+`session/new` binds the client's `cwd` to the session as a custom volume mounted
+at `/mnt/workspace`, and pins the agent's working directory to the path the
+active execution mode can actually use:
+
+| Mode | Mount | Agent cwd |
+|---|---|---|
+| Sandbox | `<client cwd>:/mnt/workspace` | `/mnt/workspace` |
+| Host | same mapping, resolved on the host | the real client cwd |
+
+The binding rides along with every prompt, the same way the desktop UI sends a
+chat's config on every turn, so a `session/load` that arrives with a different
+`cwd` rebinds immediately. The mount is also announced in the system prompt
+(host path, mount point, and whether it is a Git repo), so the model knows where
+it is working.
+
+Because edits land on the real files through a bind mount, a client that tracks
+workspace changes — enoxian's proposal engine, an editor's diff view — sees them
+as ordinary file writes.
+
+## 4. Approvals stay yours
+
+By default an ACP session runs in `default` permission mode, so a tool call that
+needs approval becomes a `session/request_permission` request and the turn
+blocks on the client's answer. The options offered are built from the backend's
+own decision contract, so a client sees exactly the authority Suzent is willing
+to grant:
+
+| Suzent action | ACP option kind |
+|---|---|
+| `allow_once` | `allow_once` |
+| `allow_session` / `allow_global` | `allow_always` |
+| `reject` | `reject_once` |
+
+Choosing an `allow_always` option persists the rule the label promised (a
+command prefix such as `git log …`, or a whole tool), because the selected
+option id is handed back to the backend as the action to resolve. A cancelled
+outcome stops the turn.
+
+To skip prompting entirely — for an unattended client — start the agent with
+`--permission-mode auto` or `--permission-mode full_access`.
+
+## 5. Flags
+
+| Flag | Default | Purpose |
+|---|---|---|
+| `--server-url` | the running local backend | Bridge to a specific backend URL |
+| `--permission-mode` | `default` | `default`, `auto`, or `full_access` |
+| `--log-level` | `WARNING` | Diagnostics level on **stderr** |
+
+`stdout` carries protocol traffic only. Logging is forced to stderr before
+anything can write, `-v` included.
+
+## 6. Registering with a client
+
+**enoxian** — Suzent is a built-in agent there, so enabling it downloads
+nothing; it only points the `@suzent` handle at your installed CLI. Mentions
+launch it once this device's reaction policy is `push`:
+
+```sh
+enox agent install suzent
+```
+
+**Any other client** — register `suzent acp` wherever it configures external
+agent servers (command `suzent`, args `["acp"]`), and it will be spawned with
+the workspace as the process cwd and the session `cwd`. Check the client's own
+docs for where that configuration lives.
+
+
+---
 
 # Suzent Nodes Guide
+
+Source: https://suzent.com/docs/concepts/nodes
+
+
 
 **Sovereign vessel.** Extending an agent across devices is where most
 systems quietly hand control to a cloud relay. Nodes instead reach only the
@@ -2087,7 +2247,7 @@ a **control-grant** over HTTP — simpler and more robust than the WebSocket mes
   grant).
 - **Trigger.** The controller sends through the peer's Suzent channel
   (below) with that token; the peer streams its agent's SSE events back. Gated by
-  the [auth boundary](https://suzent.com/docs/concepts/nodes/#auth-boundary-scoped-tokens).
+  the [auth boundary](#auth-boundary-scoped-tokens).
 
 ### Two independent directions
 
@@ -2327,799 +2487,17 @@ Check that the `connect` message has valid JSON with required `display_name` fie
 ### Command timeout
 Default timeout is 30 seconds. Ensure the node client sends a `result` message with the matching `request_id` promptly.
 
----
-
-Source: https://suzent.com/docs/concepts/agent-communication
-
-# Agent Communication
-
-Suzent treats every agent-backed conversation as an addressable session. The
-stable `agent_id` is its chat ID; `kind` describes how the session originated:
-`interactive`, `subagent`, `cron`, or `social`.
-
-## Tools
-
-| Tool | Parameters | Behavior |
-|---|---|---|
-| `agent` | task definition and execution options | Creates a child agent |
-| `agent_list` | `status`, `limit` | Lists accessible sessions in the current project |
-| `agent_read` | `agent_id` | Reads a bounded, visible transcript |
-| `agent_send` | `agent_id`, `message` | Queues a durable message and wakes the target |
-| `agent_stop` | `agent_id` | Cooperatively stops an active target |
-
-The project is the authorization boundary. Hidden internal sessions (dream and
-legacy wakeup chats) are not addressable. Sending to the current session is
-rejected to avoid feedback loops.
-
-## Durable Inbox
-
-`agent_send` does not depend on an in-memory queue. It writes an
-`agent_inbox_messages` row before returning. A background dispatcher uses a
-database lease to claim messages and moves each row through this state machine:
-
-```
-pending -> processing -> delivered
-              |
-              +-> pending (retry with backoff)
-              +-> failed  (attempt limit reached)
-```
-
-Message IDs are idempotency keys. Delivery also writes a hidden marker into the
-target transcript. If a process exits after the target turn commits but before
-the inbox acknowledgement commits, the next worker sees the marker and
-acknowledges the row without running the target twice.
-
-Sub-agent completion and failure wakeups use this inbox too, so restarting the
-backend no longer discards a completed child's parent notification.
-
-## Cron and Social Boundaries
-
-Cron definitions and run records are already durable, but the scheduler invokes
-due jobs directly. Its UI announcement deque is still an in-memory presentation
-channel; it is not the agent inbox.
-
-Social Brain also keeps a dedicated in-memory ingress queue. Raw social events
-carry channel authorization, thread identity, attachments, and reply routing, so
-they are validated and normalized by Social Brain before an agent turn. They are
-not inserted into the generic inbox. Once normalized, their chat sessions are
-visible to `agent_list` and can receive `agent_send` messages like other sessions.
-
-This separation keeps the generic tool contract small while preserving the
-special delivery semantics of Cron and social channels.
-
-## Cross-session and Cross-device Semantics
-
-The inbox provides real cross-session communication. Paired Suzent backends are
-also exposed as remote agent addresses such as `peer:4f31c02a96de`:
-
-1. `agent_send` writes the message to the sender's durable queue with the
-   `suzent_peer` transport.
-2. The existing Devices grant supplies the peer URL and scoped bearer token.
-3. The receiver acknowledges only after the message is committed to its own
-   durable inbox.
-4. The receiver wakes the authenticated peer's dedicated
-   `suzent:<device_id>` session.
-
-An offline peer is retried with bounded exponential backoff for up to 48
-attempts. The sender can use `agent_read` to inspect the peer-owned session when
-it comes back online, and `agent_stop` requests cooperative cancellation of that
-session.
-
-Remote callers cannot choose or inspect arbitrary local chat IDs. Optional
-streaming session names are placed below their authenticated
-`suzent:<device_id>:` namespace, while inbox/read/stop always operate on the
-dedicated default session.
 
 ---
-
-Source: https://suzent.com/docs/concepts/memory/configuration
-
-# Memory Configuration
-
-Most people never open this page. Memory is on out of the box, and the two settings you
-are most likely to want — whether it runs at all, and which models it uses — are in
-**Settings → Memory** in the app.
-
-What follows is the tuning that has no UI. Put overrides in `~/.suzent/config/default.yaml`
-(machine-specific paths belong in `~/.suzent/config/local.yaml`); both are read after the
-shipped `config/default.example.yaml`, so anything you set there wins and survives an
-update. Keys are case-insensitive — `MEMORY_ENABLED` and `memory_enabled` are the same
-setting.
-
-## The basics
-
-```yaml
-memory_enabled: true               # Also the toggle in Settings → Memory
-markdown_memory_enabled: true      # Write facts to /shared/memory/ as Markdown
-extraction_model: gemini/gemini-2.5-flash   # "" for heuristic extraction, no model call
-user_id: default-user
-```
-
-The extraction model runs once per exchange, so a small fast model is the right choice
-here. Leave it unset to use the default chat model.
-
-## Consolidation
-
-How often the dream runs, and how much it takes on. See
-[How Consolidation Works](https://suzent.com/docs/concepts/memory/consolidation).
-
-```yaml
-memory_consolidation_enabled: true
-memory_consolidation_interval_seconds: 1800   # How often to check whether a run is due
-memory_consolidation_min_hours: 24            # Minimum wait between runs
-memory_consolidation_min_facts: 20            # New facts needed before a run is worth it
-memory_consolidation_min_confirmations: 25    # Repeated facts that justify a run on their own
-memory_consolidation_max_days: 14             # Days of logs read in one run
-memory_consolidation_max_retries: 3           # Attempts before a stuck batch is skipped
-memory_consolidation_timeout_seconds: 600
-memory_consolidation_model: null              # Defaults to the main chat model
-memory_consolidation_memory_max_lines: 200    # Size cap on MEMORY.md
-```
-
-The notebook audit runs on its own, slower schedule, and only once consolidation is
-caught up:
-
-```yaml
-memory_lint_enabled: true
-memory_lint_min_days: 7
-```
-
-## Where the notebook lives
-
-```yaml
-notebook_dir: <data-dir>/notebook
-```
-
-To use an existing Obsidian vault instead, mount it over `/mnt/notebook`, replacing the
-default entry. This takes precedence over `notebook_dir`, which keeps pointing at the
-default path. Being machine-specific, it belongs in `~/.suzent/config/local.yaml`:
-
-```yaml
-sandbox_volumes:
-  - "C:/Users/you/Documents/MyVault:/mnt/notebook"
-```
-
-## Search
-
-```yaml
-embedding_model: gemini/gemini-embedding-001
-embedding_dimension: 3072        # Must match the model; 0 = detect from it
-embedding_timeout: 30            # Seconds before a slow provider is given up on
-lancedb_uri: <data-dir>/memory
-```
-
-Pick the embedding model in **Settings → Memory** — the list is filtered to what your
-configured providers actually offer, so it stays correct as you add or remove keys.
-
-Changing the embedding model means re-embedding everything you have stored: one call per
-chunk across your whole memory. It is not a free switch, and the dimension has to change
-with it.
-
-## Sessions and transcripts
-
-```yaml
-session_daily_reset_hour: 0        # UTC hour for a daily reset (0 = off)
-session_idle_timeout_minutes: 0    # Reset after inactivity (0 = off)
-jsonl_transcripts_enabled: true    # Keep a transcript per session
-transcript_indexing_enabled: false # Also make transcripts searchable
-```
-
-Transcript indexing lets you search across past conversations, not just extracted facts.
-It costs storage and embedding calls proportional to everything you say, which is why it
-is off by default.
-
-## Context window
-
-```yaml
-max_context_tokens: 0              # 0 = use whatever the active model supports
-```
-
-The compaction budget is derived from the model actually running the conversation:
-its input window, read from the model capability registry. A 1M-token model gets a
-1M-token budget, a 128k model gets 128k, and compaction triggers at the same
-*fraction* of each (`context_compaction_trigger`, 80% by default) instead of at one
-fixed token count that was wrong for every model but one.
-
-Set `max_context_tokens` to a non-zero value to cap that budget — useful to keep
-prompts (and cost) below what the model would allow. It is a ceiling, never a
-raise: the smaller of the two always wins. When a model is missing from the
-registry, the budget falls back to 200k tokens.
-
-## Rebuilding the search index
-
-The Markdown files are the real memory; the search index is derived from them. If search
-goes wrong, rebuild it — nothing is lost:
-
-```bash
-curl -X POST http://localhost:25314/memory/reindex -H "Content-Type: application/json" -d '{"clear_existing": true}'
-```
-
-A full rebuild re-embeds every file, so expect it to take a while and to cost embedding
-calls.
-
-## The memory API
-
-Everything the Memory panel does is available over HTTP, on the same port as the app
-(`25314` unless you set `SUZENT_PORT`), so you can script it or wire it into your own tools.
-
-| Endpoint | Method | What it does |
-|---|---|---|
-| `/memory/core` | GET | Read the core blocks (`persona`, `user`, `facts`, `context`) |
-| `/memory/core` | PUT | Overwrite one core block |
-| `/memory/file` | GET | Read `MEMORY.md` |
-| `/memory/daily` | GET | List the dates that have a daily log |
-| `/memory/daily/{date}` | GET | Read one day's log |
-| `/memory/archival` | GET | Search remembered facts |
-| `/memory/archival/{id}` | DELETE | Forget one fact (records a tombstone) |
-| `/memory/stats` | GET | Counts and index size |
-| `/memory/project-contexts` | GET | List per-project context files |
-| `/memory/project-contexts/{id}` | PUT | Update a project's context |
-| `/memory/reindex` | POST | Rebuild the search index from Markdown |
-| `/memory/dream/status` | GET | Consolidation progress and pending work |
-| `/memory/consolidate` | POST | Run consolidation now |
-| `/memory/lint` | POST | Run the notebook audit now |
-
-Editing a core block through `PUT /memory/core` counts as *you* saying it, which outranks
-anything the agent worked out on its own — see
-[MEMORY.md is half yours](https://suzent.com/docs/concepts/memory#memorymd-is-half-yours).
-
-## Debug logging
-
-```bash
-LOG_LEVEL=DEBUG uv run suzent
-```
-
----
-
-Source: https://suzent.com/docs/concepts/memory/consolidation
-
-# How Consolidation Works
-
-Suzent captures fast and tidies up later. Every conversation appends raw facts to a daily
-log; a background pass called the **dream** turns those logs into organised notebook
-pages. This page explains what that means for you.
-
-## Capture: during the conversation
-
-After each exchange, Suzent extracts anything worth keeping and appends it to today's log:
-
-```md
-# Daily Log - 2026-07-01
-
-## 14:05 — abc12345
-
-- [preference] User prefers compact dashboards `ui product`
-- [work] User now works at Microsoft `career`
-```
-
-Logs are **append-only**. Nothing is edited or removed at capture time, even if it looks
-like a repeat or a contradiction of something already known — sorting that out needs more
-context than a single exchange provides, so it waits for the dream.
-
-The one exception is a word-for-word repeat of something already recorded. That isn't
-written again; it's counted, and the count becomes evidence that the fact matters.
-
-## Consolidation: the dream
-
-Once a day or so, Suzent reads the logs it hasn't processed yet and folds them into
-notebook pages. For each fact it finds, it does one of four things:
-
-- **Confirm** — the page already says this. Bump the count: `(confirmed 12x, last 2026-08-20)`.
-- **Sharpen** — the page says something vaguer. Replace the wording, keep the count.
-- **Supersede** — the page is now wrong. Correct it, and retire the outdated version.
-- **Add** — this is new. Write it down.
-
-Consolidated facts about you land in `3_Personal/`; general knowledge goes under `2_Wiki/`.
-
-The dream never touches today's log — that one is still being written to. And it only
-marks logs as processed after a run that actually finished and actually changed something,
-so an interrupted run is retried rather than skipped.
-
-### Claims expire
-
-Facts about you have a shelf life, and the dream gives each one an expiry based on what
-kind of fact it is:
-
-| Kind of fact | Revisited after |
-|---|---|
-| Identity | never |
-| Preference | 1 year |
-| Technical setup | 6 months |
-| Goal | 3 months |
-| Passing context | 3 weeks |
-
-When a claim passes its date, the dream re-checks it against recent conversations: still
-true, refresh it; contradicted, correct it; no evidence either way, leave it and let it
-carry less weight in search. **Expiry never deletes anything** — it only affects how
-strongly a fact surfaces.
-
-### Tidying up
-
-When there's nothing new to consolidate, the dream instead audits the notebook itself —
-looking for contradictions between pages, broken links, orphaned pages, and stale
-knowledge. New conversations always take priority; the audit only runs once things are
-caught up.
-
-## Deleting things
-
-Deleting a memory from the Memory panel records a permanent *tombstone*. The entry
-disappears from search and never comes back, even after a full rebuild — but the original
-daily log keeps the line, as history you can still read.
-
-This is the only way memory is removed. Everything else — expiry, superseding, marking a
-claim deprecated — changes how a fact ranks, not whether it exists.
-
-## Settings
-
-| Setting | Default | What it does |
-|---|---|---|
-| `memory_consolidation_enabled` | `true` | Turn the dream on or off |
-| `memory_consolidation_min_hours` | `24` | Minimum wait between runs |
-| `memory_consolidation_min_facts` | `20` | New facts needed before a run is worth it |
-| `memory_consolidation_max_days` | `14` | Days of logs read in one run |
-| `memory_lint_enabled` | `true` | Run the notebook audit |
-| `memory_lint_min_days` | `7` | Minimum wait between audits |
-
-See [Configuration](https://suzent.com/docs/concepts/memory/configuration) for the rest.
-
-Interested in how this is built? See
-[Development > Memory System](https://suzent.com/docs/developing/memory/architecture).
-
----
-
-Source: https://suzent.com/docs/concepts/memory/llm-wiki
-
-# Notebook
-
-Your agent keeps a second kind of memory: a **notebook**, an Obsidian-compatible
-folder of Markdown pages it researches, writes, and tidies itself. Conversation
-memory records facts about *you*; the notebook holds knowledge about the *world* —
-papers it read, tools it compared, projects it is tracking.
-
-> The pattern comes from Andrej Karpathy's
-> [LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f), which is
-> why you will occasionally see it called that.
-
-## Where it lives
-
-By default the notebook is a folder in your data directory. Point it at an existing
-Obsidian vault instead by mounting it — see
-[Configuration](https://suzent.com/docs/concepts/memory/configuration#where-the-notebook-lives).
-
-Either way it is ordinary Markdown with `[[wikilinks]]`, so Obsidian, a text editor, or
-Git all work on it directly.
-
-## How it's organised
-
-```text
-notebook/
-  schema.md          # The rules of your vault — edit this to change how pages are filed
-  index.md           # Catalog of pages the agent has written
-  log.md             # What the agent did, and when
-  0_Inbox/           # Raw material you dropped in, waiting to be processed
-  1_Projects/        # Active work: roadmaps, meeting notes, TODOs
-  2_Wiki/            # The knowledge layer
-    Concepts/        #   evergreen ideas
-    Literature/      #   one page per paper or article
-    Syntheses/       #   comparisons and overviews
-    Entities/        #   specific models, datasets, tools, people
-  3_Personal/        # Long-term facts about you (written by consolidation)
-  4_Assets/          # PDFs and images — never modified
-  5_Archives/        # Finished or inactive work
-```
-
-**`schema.md` is yours to edit.** The agent reads it before every notebook operation, so
-renaming a folder or adding a filing rule there changes what it does next time. It is
-seeded once when the vault is created and never overwritten afterwards.
-
-Drop a PDF or a clipping into `0_Inbox/` and the agent will file it on its next pass.
-
-## Notebook vs. conversation memory
-
-| | Conversation memory | Notebook |
-|---|---|---|
-| **Holds** | Facts about you, extracted from chats | Knowledge pages, written deliberately |
-| **Where** | `/shared/memory/` | your notebook folder |
-| **Written by** | Automatic extraction after each exchange | The agent, using file tools |
-| **Found by** | Semantic search | Links, file search, and semantic search |
-
-The two meet in one place: consolidated facts about you end up as pages under
-`3_Personal/`. See [How Consolidation Works](https://suzent.com/docs/concepts/memory/consolidation).
-
-## Tidying
-
-When there is nothing new to consolidate, the agent audits the notebook instead —
-contradictions between pages, broken links, orphaned pages, knowledge that has gone
-stale. Nothing is deleted; pages are corrected or marked deprecated.
-
-You can also just ask it to research something and write it up; that lands in `2_Wiki/`.
-
-Building on the notebook itself? See
-[Development > Memory Internals](https://suzent.com/docs/developing/memory/internals).
-
----
-
-Source: https://suzent.com/docs/concepts/memory/upgrade-notes
-
-# Upgrade Notes: what changes for an existing install
-
-Notes for anyone upgrading a running install across the memory-deduplication work.
-Nothing here needs action on a fresh install — every item is about state that already
-exists on disk before the upgrade.
-
-Ordered by how likely it is to surprise you.
-
-## 1. The first run re-embeds everything, once
-
-`.index_state.json` is now versioned and keyed on `label:filename` instead of the
-absolute path. Pre-v2 state is **discarded rather than migrated**, so the first pass
-after the upgrade treats every daily log and vault page as new and re-embeds it.
-
-That is deliberate — the old absolute-path keys were why files got skipped forever, so
-the discard doubles as the backfill — but it is not free. Budget one embedding call per
-chunk across your whole corpus, and expect the first pass to take noticeably longer than
-a steady-state one. If you pay per embedding call, this is the line item to expect.
-
-## 2. Check `CONFIG.notebook_dir` before you assume it's empty
-
-If you mount your own vault at `/mnt/notebook` (an Obsidian folder, say), the *default*
-vault path under the data dir still gets created, and any run where the mount failed to
-resolve will have consolidated into it. That directory can therefore hold real pages
-that exist nowhere else — orphaned output from a misrouted run, not a skeleton.
-
-On the machine this work was done on, the default path held 14 consolidated pages —
-including a personal profile and a contacts page — written during a single misrouted run
-months after the vault had moved. None of them exist in the live vault. They read like a
-leftover bootstrap skeleton, and deleting them on that assumption would have been the
-only irreversible mistake in this whole body of work.
-
-Suzent no longer reads the wrong vault, but that does not retroactively rescue anything
-already stranded in the default path. **Before deleting that directory, diff it against
-your real vault.** It will look like a leftover. It may not be one.
-
-## 3. Legacy rows are not redundant copies — export before deleting
-
-If your install predates the markdown tier, your archival index holds rows with no
-`source_file`. Nothing can reindex them, no tombstone can retire them, and no
-consolidation will fold them in; they sit in retrieval permanently.
-
-The obvious move is to delete them. Measure first. On this install, **2,831 of 2,833 such
-rows appear nowhere in any daily log or vault page** — they predate the markdown tier, so
-the index is the only copy of that content, and deleting them is data loss.
-
-```bash
-python scripts/retire_legacy_rows.py            # report only
-python scripts/retire_legacy_rows.py --export   # append them to daily logs
-python scripts/retire_legacy_rows.py --apply    # delete, after a backup
-```
-
-`--apply` refuses while any row is recorded nowhere else. Re-indexing the exported logs
-costs one embedding call per chunk, and the dream will not consolidate dates below its
-watermark without a rewind.
-
-## 4. An existing `MEMORY.md` will not be regenerated until it has markers
-
-`MEMORY.md` is now split into a generated zone and a manual zone by HTML comment
-markers. A file with no markers cannot be proven to be generator output, so it is treated
-as **entirely manual and never overwritten** — the safe default, since the alternative is
-destroying notes someone typed.
-
-The practical consequence: if you have an existing `MEMORY.md`, automatic refresh stays
-off for it until markers appear. Let a consolidation write the file, or add the markers by
-hand, if you want the generated half back.
-
-## 5. Restated facts stop appearing in the daily logs
-
-A fact that restates something already durably recorded, word for word and with no new
-specifics, is no longer written to the daily log. It goes to
-`notebook/.state/confirmations.jsonl` and reaches the next dream as a confirmation count.
-
-If you audit what memory captured by grepping daily logs, that file is now part of the
-picture. A *revision* — anything adding a new number, date, path, quote, or version — is
-still written to the log as before, tagged `revision`.
-
-The dreaming panel gained a **pending confirmations** tile for the same reason, and a
-dream can now run on that queue alone. So an install that is caught up on logs may still
-start a consolidation, and it will not move the watermark when it does.
-
-## 6. Expect vault churn on the first few dreams
-
-Two changes rewrite frontmatter on pages that predate them:
-
-- `3_Personal/` pages with no `stale_after` are queued for revisit and given one from the
-  fact-category table.
-- Claims that recur pick up `(confirmed Nx, last YYYY-MM-DD)` markers.
-
-If your vault is in git or a sync folder, the first few dreams after upgrading will look
-like a large diff touching many personal pages. That is the backfill, not a bug.
-
-## 7. Retrieval order will change
-
-Indexed `importance` used to be a constant `0.5` for every row. It now varies: repeated
-confirmations lift a claim, an expiry in the past damps it, `deprecated` sinks it to a
-floor, and a claim you verified yourself in `MEMORY.md` takes a floor of `0.9`.
-
-Since `importance` is already a term in hybrid search, results will re-order after the
-first reindex. Nothing is removed from retrieval — `deprecated` demotes, it does not
-delete, and deletion stays with tombstones so it remains reversible and auditable.
-
-## 8. Stop the app before running the scripts
-
-`scripts/retire_legacy_rows.py` and `scripts/dream_dry_run.py` both assume nothing else
-is writing. A concurrent reindex can race a delete. Stop the app, or accept the race.
-
----
-
-Source: https://suzent.com/docs/concepts/nodes/a2a
-
-# A2A — Open Agent Federation
-
-Suzent speaks [A2A (Agent2Agent)](https://a2a-protocol.org/), the open
-agent-interoperability standard governed by the Linux Foundation. This is the
-half of the mesh that reaches agents *we did not build* — LangGraph, ADK,
-CrewAI, or anything else that implements the spec.
-
-See [nodes.md](https://suzent.com/docs/concepts/nodes/) for the device mesh and [security.md](https://suzent.com/docs/concepts/nodes/security)
-for how grants and tokens work.
-
-## 1. Where A2A sits
-
-| Layer | Protocol | Talks to | Contract |
-|---|---|---|---|
-| Tools | MCP | services the agent uses | transparent |
-| Devices | Suzent Nodes | your hardware | transparent capability manifest |
-| Agents | **A2A** | other intelligences | **opaque execution** |
-
-**Nodes are deliberately not A2A.** A node advertises exactly what it can do
-(`camera.snap`, `system.script`) so the agent can pick a capability. A2A's model
-is the opposite: you delegate a goal and never see inside. Folding nodes into
-A2A would destroy the manifest that makes them useful.
-
-The Suzent-native peer channel (`/channels/suzent/*`) also remains. It is the
-trusted fast path between two Suzent installs and carries things the standard
-does not: file attachments, pairing grants, mDNS discovery.
-
-## 2. Wire format
-
-We implement the **JSON-RPC binding**, which is what the reference SDK's
-JSON-RPC client speaks and what interoperates in practice.
-
-| Surface | Path | Auth |
-|---|---|---|
-| Agent Card | `GET /.well-known/agent-card.json` | **none** (public by design) |
-| JSON-RPC | `POST /a2a/v1` | bearer device grant (`agent` scope) |
-| Local status/UI | `/a2a/status`, `/a2a/agents`, `/a2a/outbound` | loopback or `full` scope |
-
-Methods: `message/send`, `message/stream` (SSE), `tasks/get`, `tasks/cancel`,
-`tasks/resubscribe`. Push notification configs return `-32003` (unsupported).
-
-> **Version note.** The card advertises `protocolVersion: "0.3.0"`. A2A 1.0
-> renamed methods for the *gRPC and REST* bindings (`SendMessage`,
-> `/v1/message:send`); the JSON-RPC binding still uses `message/send`. Advertising
-> 0.3.0 with these method names is what the official SDK's JSON-RPC client expects.
-
-## 3. Publishing is not authorizing
-
-The Agent Card is served unauthenticated — that is what makes discovery work —
-but it is **off by default** (`CONFIG.a2a_enabled`). When off, the well-known
-path 404s, so a disabled device looks like one that never spoke A2A.
-
-Publishing announces existence. It grants nothing. `/a2a/v1` still requires the
-same per-peer bearer grant that the Suzent pairing flow mints, and an
-`agent`-scope token reaches only the agent surface — never `/config`,
-`/nodes/devices`, or `/a2a/status`.
-
-The card includes the device name and OS environment (e.g.
-`Windows 11 (AMD64)`), so a delegating agent can judge *where* work will land.
-
-## 4. Task lifecycle
-
-A2A models work as a task with real states:
-
-```
-submitted → working → completed | failed | canceled
-                   ↘ input-required ↗   (client answers, task resumes)
-                   ↘ auth-required  ↗
-```
-
-`input-required` is the state the one-shot peer channel could not express. A
-remote agent that hits an ambiguity stops and asks; the caller answers with a
-normal `message/send` carrying the same `taskId`, and the task resumes.
-
-Terminal states are final — `suzent.a2a.tasks` refuses any transition out of
-them rather than silently reviving a settled task.
-
-**Durability.** The conversation is persisted by the normal chat store (a task's
-`contextId` *is* a Suzent chat id, namespaced per authenticated caller so two
-remote agents cannot read each other's context). The task *wrapper* — state,
-artifacts, subscribers — is in-memory and bounded; eviction never drops a task
-that is still live.
-
-## 5. Discovery
-
-A2A defines four mechanisms: well-known URI, curated registries, direct
-configuration, and authenticated extended cards. There is **no global public
-registry**, and the spec has **no LAN discovery at all**.
-
-That is why Suzent's own discovery is not redundant: mDNS and Tailscale find
-peers on your network with zero configuration, which the standard cannot do.
-External A2A agents are added by URL; we fetch the card to verify the address
-before storing it.
-
-## 6. Code map
-
-| Module | Role |
-|---|---|
-| `suzent/a2a/types.py` | wire models (camelCase, spec-conformant) |
-| `suzent/a2a/card.py` | this device's Agent Card |
-| `suzent/a2a/tasks.py` | task store + state machine |
-| `suzent/a2a/executor.py` | bridges a task to a `ChatProcessor` turn |
-| `suzent/a2a/client.py` | outbound client (delegate to others) |
-| `suzent/a2a/store.py` | registry of external agents |
-| `suzent/a2a/outbound.py` | local view of delegated tasks |
-| `suzent/routes/a2a_routes.py` | HTTP surface |
-
-The wire types are hand-rolled rather than taken from `a2a-sdk` at runtime: the
-SDK ships an opinionated server framework that would fight the Starlette route
-style used elsewhere. Conformance is not left to trust —
-`tests/a2a_protocol/test_sdk_conformance.py` drives our server with the official
-SDK client, which is a **dev-only** dependency.
-
-## 7. Known gaps
-
-- **Push notifications** are unimplemented (`-32003`). Long-running delegation
-  currently relies on streaming or polling `tasks/get`.
-- **`input-required` is client-side only.** We *handle* a remote agent asking us
-  a question; our own server does not yet emit that state, because a Suzent turn
-  runs headless for remote callers and has no way to pause for input.
-- **The Suzent peer channel is still a parallel implementation.** It should be
-  rebuilt on this task engine, with attachments and grants as A2A extensions, so
-  there is one lifecycle rather than two.
-- **Agent Card signatures** (`AgentCardSignature`) are not produced or verified.
-
----
-
-Source: https://suzent.com/docs/concepts/nodes/acp
-
-# ACP — Suzent in Someone Else's Editor
-
-Suzent speaks [ACP (Agent Client Protocol)](https://agentclientprotocol.com/)
-in **both directions**:
-
-| Direction | Role | Entry point | What it means |
-|---|---|---|---|
-| Outbound | Suzent is the **client** | `suzent.acp.client` | Suzent drives Claude Code, Codex, … as subagents |
-| Inbound | Suzent is the **agent** | `suzent acp` | Zed, enoxian, any ACP client drives *your* geist |
-
-This page covers the inbound half. See [a2a.md](https://suzent.com/docs/concepts/nodes/a2a) for A2A, which reaches
-agents over the network; ACP is local and process-scoped — the client spawns the
-agent and speaks JSON-RPC on its stdin/stdout.
-
-## 1. What the client gets
-
-```sh
-suzent acp
-```
-
-That command is not meant to be typed. An ACP client spawns it, keeps the pipe,
-and passes its workspace as the session `cwd`:
-
-```
-client -> agent:  initialize
-client -> agent:  session/new       (cwd = the client's workspace)
-client -> agent:  session/prompt
-agent  -> client: session/update    (message chunks, thoughts, tool calls)
-agent  -> client: session/request_permission
-client -> agent:  session/cancel
-```
-
-Implemented methods: `initialize`, `authenticate`, `session/new`,
-`session/load`, `session/prompt`, `session/cancel`. Advertised capabilities:
-`loadSession: true`, text prompts with embedded context. Images and audio are
-declined at the handshake rather than silently dropped.
-
-## 2. It is a translator, not a second agent
-
-`suzent acp` runs no model. Every turn is posted to the **already-running
-backend** over the loopback API and its AG-UI event stream is translated back
-into ACP:
-
-| Suzent stream event | ACP session update |
-|---|---|
-| `TEXT_MESSAGE_CONTENT` | `agent_message_chunk` |
-| `THINKING_TEXT_MESSAGE_CONTENT` | `agent_thought_chunk` |
-| `TOOL_CALL_START` / `_ARGS` / `_END` | `tool_call`, then `tool_call_update` with `rawInput` |
-| `TOOL_CALL_RESULT` | `tool_call_update` (`completed`) |
-| `tool_approval_request` | `session/request_permission` |
-| `RUN_ERROR` | JSON-RPC error on the prompt turn |
-
-That indirection is the point. One process owns the database, so an ACP session
-is a **real chat**: it appears in the desktop UI, uses the same memory, skills,
-model config, and permission rules, and survives a restart. `suzent serve` (or
-`suzent start`) must be running; without it the first session fails with a
-connect error rather than quietly starting a second agent stack.
-
-An ACP session id **is** a chat id. `session/load` therefore resumes a real
-conversation — and refuses any chat this surface did not create, so a client
-cannot address one of your local conversations by guessing an id.
-
-## 3. Where the files are
-
-`session/new` binds the client's `cwd` to the session as a custom volume mounted
-at `/mnt/workspace`, and pins the agent's working directory to the path the
-active execution mode can actually use:
-
-| Mode | Mount | Agent cwd |
-|---|---|---|
-| Sandbox | `<client cwd>:/mnt/workspace` | `/mnt/workspace` |
-| Host | same mapping, resolved on the host | the real client cwd |
-
-The binding rides along with every prompt, the same way the desktop UI sends a
-chat's config on every turn, so a `session/load` that arrives with a different
-`cwd` rebinds immediately. The mount is also announced in the system prompt
-(host path, mount point, and whether it is a Git repo), so the model knows where
-it is working.
-
-Because edits land on the real files through a bind mount, a client that tracks
-workspace changes — enoxian's proposal engine, an editor's diff view — sees them
-as ordinary file writes.
-
-## 4. Approvals stay yours
-
-By default an ACP session runs in `default` permission mode, so a tool call that
-needs approval becomes a `session/request_permission` request and the turn
-blocks on the client's answer. The options offered are built from the backend's
-own decision contract, so a client sees exactly the authority Suzent is willing
-to grant:
-
-| Suzent action | ACP option kind |
-|---|---|
-| `allow_once` | `allow_once` |
-| `allow_session` / `allow_global` | `allow_always` |
-| `reject` | `reject_once` |
-
-Choosing an `allow_always` option persists the rule the label promised (a
-command prefix such as `git log …`, or a whole tool), because the selected
-option id is handed back to the backend as the action to resolve. A cancelled
-outcome stops the turn.
-
-To skip prompting entirely — for an unattended client — start the agent with
-`--permission-mode auto` or `--permission-mode full_access`.
-
-## 5. Flags
-
-| Flag | Default | Purpose |
-|---|---|---|
-| `--server-url` | the running local backend | Bridge to a specific backend URL |
-| `--permission-mode` | `default` | `default`, `auto`, or `full_access` |
-| `--log-level` | `WARNING` | Diagnostics level on **stderr** |
-
-`stdout` carries protocol traffic only. Logging is forced to stderr before
-anything can write, `-v` included.
-
-## 6. Registering with a client
-
-**enoxian** — Suzent is a built-in agent there, so enabling it downloads
-nothing; it only points the `@suzent` handle at your installed CLI. Mentions
-launch it once this device's reaction policy is `push`:
-
-```sh
-enox agent install suzent
-```
-
-**Any other client** — register `suzent acp` wherever it configures external
-agent servers (command `suzent`, args `["acp"]`), and it will be spawned with
-the workspace as the process cwd and the session `cwd`. Check the client's own
-docs for where that configuration lives.
-
----
-
-Source: https://suzent.com/docs/concepts/nodes/security
 
 # Node Mesh — Security & Identity
 
+Source: https://suzent.com/docs/concepts/nodes/security
+
+
+
 Living reference for how device identity/auth works today, the threat model, and
-the hardening roadmap. See [nodes.md](https://suzent.com/docs/concepts/nodes/) for the user-facing feature docs.
+the hardening roadmap. See [nodes.md](https://suzent.com/docs/concepts/nodes) for the user-facing feature docs.
 
 ## 1. How a device is bound today
 
@@ -3236,11 +2614,14 @@ key.
       round-trip on every poll (~4s); cache/debounce so an open Devices tab
       doesn't fan out N requests per tick (also a mild self-DoS surface).
 
+
 ---
+
+# Anthropic
 
 Source: https://suzent.com/docs/concepts/providers/anthropic
 
-# Anthropic
+
 
 **Get your key:** [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys)
 
@@ -3250,9 +2631,11 @@ Source: https://suzent.com/docs/concepts/providers/anthropic
 
 ---
 
+# ChatGPT Subscription
+
 Source: https://suzent.com/docs/concepts/providers/chatgpt-subscription
 
-# ChatGPT Subscription
+
 
 The ChatGPT Subscription provider lets Suzent use models available through a local ChatGPT sign-in flow instead of an OpenAI API key. It is intended for users who have ChatGPT/Codex subscription access and want Suzent to authenticate through the same account-backed flow.
 
@@ -3288,11 +2671,14 @@ The provider can fetch available models after sign-in and stores the enabled mod
 - The provider depends on LiteLLM's ChatGPT subscription support.
 - If sign-in expires, disconnect and sign in again from **Settings -> Providers**.
 
+
 ---
+
+# DashScope
 
 Source: https://suzent.com/docs/concepts/providers/dashscope
 
-# DashScope
+
 
 DashScope uses Alibaba Cloud's OpenAI-compatible endpoint.
 
@@ -3304,11 +2690,14 @@ DashScope uses Alibaba Cloud's OpenAI-compatible endpoint.
 
 The base URL is built into Suzent as `https://dashscope.aliyuncs.com/compatible-mode/v1`.
 
+
 ---
+
+# DeepSeek
 
 Source: https://suzent.com/docs/concepts/providers/deepseek
 
-# DeepSeek
+
 
 **Get your key:** [platform.deepseek.com/api_keys](https://platform.deepseek.com/api_keys)
 
@@ -3318,11 +2707,14 @@ Source: https://suzent.com/docs/concepts/providers/deepseek
 
 DeepSeek R1 is a reasoning model — slower but stronger for multi-step problems.
 
+
 ---
+
+# Google Gemini
 
 Source: https://suzent.com/docs/concepts/providers/gemini
 
-# Google Gemini
+
 
 **Get your key (free tier available):** [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey)
 
@@ -3334,11 +2726,14 @@ Source: https://suzent.com/docs/concepts/providers/gemini
 
 In Settings, paste your key into **Google Gemini → API Key**, enable the models you want, then click **Save → Verify**.
 
+
 ---
+
+# LiteLLM Proxy
 
 Source: https://suzent.com/docs/concepts/providers/litellm
 
-# LiteLLM Proxy
+
 
 Run a self-hosted gateway in front of any set of models. Useful for teams, rate-limit management, or cost tracking.
 
@@ -3351,11 +2746,14 @@ Run a self-hosted gateway in front of any set of models. Useful for teams, rate-
 
 Click **Fetch Models** after saving to load the models your proxy exposes.
 
+
 ---
+
+# MiniMax
 
 Source: https://suzent.com/docs/concepts/providers/minimax
 
-# MiniMax
+
 
 **Get your key:** [platform.minimaxi.com](https://platform.minimaxi.com)
 
@@ -3363,11 +2761,15 @@ Source: https://suzent.com/docs/concepts/providers/minimax
 |---|---|
 | `MINIMAX_API_KEY` | Your API key |
 
+
 ---
+
+# Model Capabilities
 
 Source: https://suzent.com/docs/concepts/providers/model-capabilities
 
-# Model Capabilities
+
+
 
 Suzent keeps a registry of per-model metadata — context window, capability
 flags (vision, function calling, reasoning, prompt caching), and pricing. This
@@ -3450,11 +2852,14 @@ improve context-window and cost accuracy:
 `mode` is one of `chat`, `embedding`, `image_generation`, or `tts`. Keys
 starting with `_` (e.g. `_doc`) are treated as comments and ignored.
 
+
 ---
+
+# Moonshot (Kimi)
 
 Source: https://suzent.com/docs/concepts/providers/moonshot
 
-# Moonshot (Kimi)
+
 
 **Get your key:** [platform.moonshot.cn](https://platform.moonshot.cn)
 
@@ -3462,11 +2867,14 @@ Source: https://suzent.com/docs/concepts/providers/moonshot
 |---|---|
 | `MOONSHOT_API_KEY` | Your API key (starts with `sk-...`) |
 
+
 ---
+
+# Ollama
 
 Source: https://suzent.com/docs/concepts/providers/ollama
 
-# Ollama
+
 
 Run models entirely on your machine — no API key or internet connection needed.
 
@@ -3483,11 +2891,14 @@ ollama pull llama3.2
 
 Click **Fetch Models** to auto-detect all locally available models.
 
+
 ---
+
+# OpenAI
 
 Source: https://suzent.com/docs/concepts/providers/openai
 
-# OpenAI
+
 
 **Get your key:** [platform.openai.com/api-keys](https://platform.openai.com/api-keys)
 
@@ -3498,9 +2909,11 @@ Source: https://suzent.com/docs/concepts/providers/openai
 
 ---
 
+# OpenRouter
+
 Source: https://suzent.com/docs/concepts/providers/openrouter
 
-# OpenRouter
+
 
 Access 300+ models from a single API key — GPT, Claude, Gemini, Mistral, Llama, and more. Useful if you want to experiment across providers without managing separate subscriptions.
 
@@ -3512,11 +2925,88 @@ Access 300+ models from a single API key — GPT, Claude, Gemini, Mistral, Llama
 
 After saving, click **Fetch Models** to load the full catalog.
 
+
 ---
+
+# Providers
+
+Source: https://suzent.com/docs/concepts/providers
+
+
+
+
+**Sovereign mind.** The model is an engine, not the self. Being able to
+configure many providers and switch between them per session is what keeps
+identity in your memory, skills, and workspace rather than in any one vendor's
+account. See [what makes an agent sovereign](https://suzent.com/sovereign).
+
+Suzent is model-agnostic. Configure any number of providers in **Settings → Providers** and switch between them per session.
+
+API keys are stored in the local database — never in plain text config files.
+
+---
+
+## Configuring a Provider
+
+1. Open **Settings → Providers** and click the provider card you want to configure
+2. On the **API KEYS** tab, click **CHANGE** and paste your API key
+3. Switch to the **MODELS** tab and click **FETCH** — this verifies the key and loads available models
+4. Check the models you want to enable
+5. Click **Save Changes** (bottom right of the Settings modal)
+
+---
+
+## Available Providers
+
+### Cloud
+
+| Provider | Notes |
+|---|---|
+| [OpenAI](https://suzent.com/docs/concepts/providers/openai) | GPT and o-series models |
+| [ChatGPT Subscription](https://suzent.com/docs/concepts/providers/chatgpt-subscription) | Uses ChatGPT sign-in instead of an OpenAI API key |
+| [Anthropic](https://suzent.com/docs/concepts/providers/anthropic) | Claude models |
+| [Google Gemini](https://suzent.com/docs/concepts/providers/gemini) | Free tier available |
+| [xAI (Grok)](https://suzent.com/docs/concepts/providers/xai) | Grok models |
+| [DashScope](https://suzent.com/docs/concepts/providers/dashscope) | Alibaba Cloud OpenAI-compatible endpoint |
+| [DeepSeek](https://suzent.com/docs/concepts/providers/deepseek) | Cost-effective; includes reasoning model |
+| [MiniMax](https://suzent.com/docs/concepts/providers/minimax) | |
+| [Moonshot (Kimi)](https://suzent.com/docs/concepts/providers/moonshot) | Long context |
+| [Zhipu AI (GLM)](https://suzent.com/docs/concepts/providers/zhipu) | GLM series |
+| [Xiaomi MiMo](https://suzent.com/docs/concepts/providers/xiaomi-mimo) | Xiaomi MiMo models through an OpenAI-compatible API |
+
+### Aggregators & Proxies
+
+| Provider | Notes |
+|---|---|
+| [OpenRouter](https://suzent.com/docs/concepts/providers/openrouter) | 300+ models from one key |
+| [LiteLLM Proxy](https://suzent.com/docs/concepts/providers/litellm) | Self-hosted gateway |
+
+### Local
+
+| Provider | Notes |
+|---|---|
+| [Ollama](https://suzent.com/docs/concepts/providers/ollama) | Runs entirely on your machine — no API key needed |
+
+---
+
+## Tips
+
+**Environment variables** — You can set provider keys as env vars before launching Suzent instead of using the UI. The app checks the database first, then falls back to the environment. Keys set via env show up in Settings as **"Set in env"** and cannot be overwritten from the UI.
+
+**Custom models** — For each provider you can add custom model IDs on top of the default list. In **Settings → Providers → [Provider] → Custom Models**, enter the model ID in LiteLLM format: `provider/model-name` (e.g. `openai/gpt-4o-2024-11-20`).
+
+**Model capabilities** — Suzent tracks per-model metadata (context window, vision/reasoning/tool-calling flags, pricing) used for routing, compression, and cost estimation. See [Model Capabilities](https://suzent.com/docs/concepts/providers/model-capabilities) for how this data is layered and how runtime discovery is stored.
+
+**Provider registry** — Built-in providers are declared in `config/providers.json`. User-defined providers are merged from `config/providers.user.json` and appear alongside the built-in cards after the registry reloads.
+
+
+---
+
+# xAI (Grok)
 
 Source: https://suzent.com/docs/concepts/providers/xai
 
-# xAI (Grok)
+
 
 **Get your key:** [console.x.ai](https://console.x.ai)
 
@@ -3524,11 +3014,14 @@ Source: https://suzent.com/docs/concepts/providers/xai
 |---|---|
 | `XAI_API_KEY` | Your API key (starts with `xai-...`) |
 
+
 ---
+
+# Xiaomi MiMo
 
 Source: https://suzent.com/docs/concepts/providers/xiaomi-mimo
 
-# Xiaomi MiMo
+
 
 Xiaomi MiMo uses an OpenAI-compatible API.
 
@@ -3539,11 +3032,14 @@ Xiaomi MiMo uses an OpenAI-compatible API.
 
 Built-in model IDs use the `xiaomi_mimo/` prefix.
 
+
 ---
+
+# Zhipu AI (GLM)
 
 Source: https://suzent.com/docs/concepts/providers/zhipu
 
-# Zhipu AI (GLM)
+
 
 **Get your key:** [open.bigmodel.cn](https://open.bigmodel.cn)
 
@@ -3551,11 +3047,14 @@ Source: https://suzent.com/docs/concepts/providers/zhipu
 |---|---|
 | `ZAI_API_KEY` | Your API key |
 
+
 ---
+
+# Background Service
 
 Source: https://suzent.com/docs/concepts/runtime/background-service
 
-# Background Service
+
 
 Suzent 0.8 can keep automations, heartbeat checks, social channels, and device
 connections available after the desktop window closes. The feature is opt-in:
@@ -3626,11 +3125,14 @@ If the service does not become ready, run `suzent service doctor` and inspect th
 path printed by `suzent service logs`. Disabling the Service setting returns an
 open desktop app to its owned child backend.
 
+
 ---
+
+# Chat Post-Processing
 
 Source: https://suzent.com/docs/concepts/runtime/postprocess
 
-# Chat Post-Processing
+
 
 When an agent turn finishes, Suzent runs a series of background tasks — writing the transcript, updating memory, compressing context, and saving state. This page explains how that works and what to do when something goes wrong.
 
@@ -3756,11 +3258,14 @@ FROM postprocess_jobs
 WHERE finished_at > datetime('now', '-1 day');
 ```
 
+
 ---
+
+# Retry
 
 Source: https://suzent.com/docs/concepts/runtime/retry
 
-# Retry
+
 
 Retry re-runs the last user message from scratch, rolling back all changes the agent made during that turn.
 
@@ -3816,11 +3321,14 @@ Only the **most recent** checkpoint is kept per chat — it is overwritten at th
 - **Large volumes** — custom volumes are copied in full on every turn. If you have very large directories mounted, consider whether they need to be in `sandbox_volumes` or whether a more targeted mount (e.g. a specific subdirectory) would be more appropriate.
 - **`/shared` changes** — see above; use `git` or manual backups if you need rollback for shared files.
 
+
 ---
+
+# System Reminders & File Citations
 
 Source: https://suzent.com/docs/concepts/runtime/system-reminders
 
-# System Reminders & File Citations
+
 
 Two mechanisms let Suzent inject out-of-band context into a conversation without it bleeding into the visible chat:
 
@@ -3860,7 +3368,7 @@ The wrapped block looks like this (the delimiters are invisible — shown here a
 
 This makes reminders genuinely invisible in the UI and means the model doesn't have to *honor a convention* to keep them hidden — there's no visible tag to accidentally echo back. The system prompt still instructs the model to use but never reference this context (see below).
 
-> **Codepoint allocation.** The citation system owns `U+E200`–`U+E202` (see [File citations](https://suzent.com/docs/concepts/runtime/system-reminders#file-citations)); system reminders use the next free codepoints `U+E203`/`U+E204`. Keep these ranges distinct when adding new PUA-based features.
+> **Codepoint allocation.** The citation system owns `U+E200`–`U+E202` (see [File citations](#file-citations)); system reminders use the next free codepoints `U+E203`/`U+E204`. Keep these ranges distinct when adding new PUA-based features.
 
 ### XML fallback for debugging
 
@@ -3910,14 +3418,403 @@ The parser also accepts an ASCII form (`[[cite:t0_src_1]]`) and an object-replac
 ## Related
 
 - [Chat Post-Processing](https://suzent.com/docs/concepts/runtime/postprocess) — where display messages are rebuilt (and reminders stripped) after a turn.
-- [Skills](https://suzent.com/docs/concepts/skills/) — active-skill signals are injected as global system-reminder hooks.
-- [Memory](https://suzent.com/docs/concepts/memory/) — dynamic memory is injected via per-turn reminder hooks.
+- [Skills](https://suzent.com/docs/concepts/skills) — active-skill signals are injected as global system-reminder hooks.
+- [Memory](https://suzent.com/docs/concepts/memory) — dynamic memory is injected via per-turn reminder hooks.
+
 
 ---
 
-Source: https://suzent.com/docs/concepts/social-messaging/discord
+# Suzent Skills Guide
+
+Source: https://suzent.com/docs/concepts/skills
+
+
+
+**Sovereign mind.** Skills are knowledge you author and own. They are
+Markdown in your own directory, not a capability a platform grants you and can
+revoke — which is why they survive a change of model or provider intact. See
+[what makes an agent sovereign](https://suzent.com/sovereign).
+
+This guide covers the skills system in Suzent and how to use and create skills to extend agent capabilities.
+
+## Overview
+
+Skills are specialized knowledge modules that extend the capabilities of AI agents beyond what tools provide. While **tools** are executable functions (like web search or file operations), **skills** are contextual knowledge packages that teach the agent how to work in specific domains or with specific systems.
+
+### Tools vs Skills
+
+| Aspect | Tools | Skills |
+|--------|-------|--------|
+| **Purpose** | Execute actions | Provide knowledge & context |
+| **Type** | Python code | Markdown documentation |
+| **Examples** | WebSearchTool, RunCommandTool | notebook, suzent-devices |
+| **When Used** | Agent calls them to perform tasks | Agent loads them to gain expertise |
+
+## Available Skills
+
+Suzent includes focused built-in skills for domain workflows. For example:
+
+### notebook
+
+Enables agents to maintain an Obsidian-compatible notebook and follow its vault schema.
+
+**Key Information:**
+- Vault location: `/mnt/notebook` in sandbox mode
+- Supports CommonMark, GitHub Flavored Markdown, LaTeX math, wikilinks, and callouts
+- Loads the vault's `schema.md` before making notebook changes
+
+### suzent-devices
+
+Operates phones, laptops, headless servers, and peer agents connected to Suzent.
+
+**Key Information:**
+- Discovers connected devices and advertised capabilities
+- Invokes device commands through the `suzent nodes` CLI or REST API
+- Triggers a linked peer's Suzent agent when conversational reasoning is needed
+
+## Skill Structure
+
+Each skill is a directory containing a `SKILL.md` file and optional resource folders.
+
+### Directory Layout
+
+```
+~/.suzent/skills/
+└── my-skill/
+    ├── SKILL.md          # Required: Main skill definition
+    ├── scripts/          # Optional: Helper scripts
+    ├── references/       # Optional: Reference documents
+    └── assets/           # Optional: Images, data files
+```
+
+Built-in, external, and repository skills remain in their canonical source
+directories. Suzent discovers those directories directly instead of copying
+them below `~/.suzent/skills/`.
+
+### SKILL.md Format
+
+Skills use YAML frontmatter followed by markdown content:
+
+```markdown
+---
+name: my-skill
+description: Brief description of what this skill provides
+---
+
+# Skill Content
+
+Your skill documentation goes here. This can include:
+- Domain-specific knowledge
+- Best practices
+- Code examples
+- API references
+- Workflow guides
+```
+
+**Required Fields:**
+- `name`: Unique identifier (lowercase, hyphens allowed)
+- `description`: Brief description shown in skill listings
+
+**Body Content:**
+- Markdown documentation
+- Can include code blocks, tables, lists
+- Should be clear and actionable for the agent
+
+## Using Skills
+
+### Enabling Skills
+
+Skills are managed via `~/.suzent/config/skills.json`:
+
+```json
+{
+  "enabled": [
+    "notebook",
+    "suzent-devices"
+  ]
+}
+```
+
+You can also toggle skills through the UI or API.
+
+### How Agents Load Skills
+
+When enabled, skills are available to agents through the `SkillTool`:
+
+1. Agent sees available skills in its context
+2. When a task matches a skill's description, agent loads it
+3. Skill content is injected into agent's context
+4. Agent gains specialized knowledge for the task
+
+### Repository Instructions and Project Context
+
+For each chat, Suzent also loads `AGENTS.md` and `CLAUDE.md` from the effective
+working directory and every ancestor up to the repository root. Instructions
+are applied ancestor-first, so the file closest to the working directory has
+final precedence. Identical files are deduplicated.
+
+These repository instructions are separate from the project's durable
+`context.md` core memory. The chat right sidebar's **Context** tab shows both:
+non-empty project context remains editable, while effective repository
+instructions are shown as collapsible read-only previews with their host paths.
+
+### Skill Paths in Sandbox
+
+Suzent reads skills directly from their source directories; it does not copy
+them into a merged library. If a skill source is already below the working
+directory or another configured volume, it reuses that mount. For example, a
+repository skill may be available as `/workspace/.codex/skills/my-skill/` or
+`/mnt/my-repo/skills/my-skill/`. Uncovered sources are mounted read-only below
+`/mnt/skills/`, and the Skills panel shows each skill's effective path.
+
+## Creating Custom Skills
+
+### Step 1: Create Skill Directory
+
+Create a new directory in `~/.suzent/skills/`:
+
+```bash
+mkdir -p ~/.suzent/skills/my-custom-skill
+```
+
+### Step 2: Create SKILL.md
+
+Create `~/.suzent/skills/my-custom-skill/SKILL.md`:
+
+````markdown
+---
+name: my-custom-skill
+description: Helps with custom domain tasks
+---
+
+# My Custom Skill
+
+## Overview
+This skill provides expertise in [your domain].
+
+## Key Concepts
+- Concept 1: Explanation
+- Concept 2: Explanation
+
+## Common Tasks
+
+### Task 1: Do Something
+```bash
+# Example command
+command --option value
+```
+
+### Task 2: Do Something Else
+Steps to accomplish this task...
+
+## Best Practices
+1. Always do X before Y
+2. Never do Z without checking A
+3. Use B pattern for C scenarios
+
+## Resources
+- [Documentation](https://example.com)
+- [API Reference](https://example.com/api)
+````
+
+### Step 3: Add Resources (Optional)
+
+Add helper scripts, references, or assets:
+
+```bash
+# Add a helper script
+mkdir ~/.suzent/skills/my-custom-skill/scripts
+echo "#!/bin/bash\necho 'Helper script'" > ~/.suzent/skills/my-custom-skill/scripts/helper.sh
+
+# Add reference documentation
+mkdir ~/.suzent/skills/my-custom-skill/references
+cp ~/docs/api-reference.md ~/.suzent/skills/my-custom-skill/references/
+```
+
+### Step 4: Enable the Skill
+
+Add your skill to `~/.suzent/config/skills.json`:
+
+```json
+{
+  "enabled": [
+    "notebook",
+    "suzent-devices",
+    "my-custom-skill"
+  ]
+}
+```
+
+### Step 5: Test the Skill
+
+1. Restart Suzent to load the new skill
+2. Ask the agent to perform a task related to your skill
+3. Verify the agent loads and uses the skill correctly
+
+## Skill Best Practices
+
+### For Skill Authors
+
+1. **Be Specific** - Provide concrete, actionable information
+2. **Use Examples** - Include code snippets and command examples
+3. **Stay Focused** - One skill should cover one domain/system
+4. **Keep Updated** - Maintain skills as systems evolve
+5. **Document Resources** - List all available scripts and references
+
+### Content Guidelines
+
+- **Clear Structure** - Use headers to organize content
+- **Actionable** - Focus on "how to" rather than "what is"
+- **Concise** - Agents have context limits; be efficient
+- **Code Examples** - Show, don't just tell
+- **Error Handling** - Include common issues and solutions
+
+### Naming Conventions
+
+- **Skill Names** - Use lowercase with hyphens: `my-skill`
+- **Descriptions** - Keep under 100 characters
+- **File Names** - Always use `SKILL.md` (uppercase)
+
+## Skill Management
+
+### Configuration Location
+
+- **Built-in Skills Directory**: `./skills/` in the Suzent installation
+- **User Skills Directory**: `~/.suzent/skills/`
+- **External Skills Directories**: paths configured through `SKILLS_DIR`
+- **Repository Skills**: `skills/` and `.claude/skills/`, `.agents/skills/`,
+  `.codex/skills/`, or `.grok/skills/` in the active repository/working directory
+- **Config File**: `~/.suzent/config/skills.json`
+- **Sandbox Paths**: existing project mounts when possible; otherwise a
+  read-only path below `/mnt/skills/`
+
+### Environment Variables
+
+```bash
+# Advanced extra skill source directories (separate multiple paths with the OS path separator)
+SKILLS_DIR=/path/to/custom/skills
+```
+
+### Reloading Skills
+
+Skills are loaded at startup. To reload:
+1. Modify `~/.suzent/config/skills.json`
+2. Restart the Suzent server
+
+### Skill Discovery
+
+The SkillManager automatically discovers skills by:
+1. Reading built-in, user, and optional `SKILLS_DIR` sources directly
+2. Discovering supported skill directories in the active home, repository, and working directory
+3. Deduplicating identical physical source directories
+4. Looking for `SKILL.md` files and parsing their YAML frontmatter
+5. Reusing existing sandbox mounts or adding read-only mounts for uncovered sources
+
+Older installations that used `~/.suzent/skills/user/` are migrated into the
+flat user directory when there is no name collision. Existing
+`official/` and `external/` mirror directories are ignored and are not updated.
+
+## Troubleshooting
+
+### Skill Not Loading
+
+**Problem:** Skill doesn't appear in available skills
+
+**Solutions:**
+1. Check `SKILL.md` has valid YAML frontmatter
+2. Verify `name` and `description` fields are present
+3. Check file is named exactly `SKILL.md` (case-sensitive)
+4. Review server logs for parsing errors
+5. Ensure skill is in the correct directory
+
+### Skill Not Enabled
+
+**Problem:** Skill exists but agent can't use it
+
+**Solutions:**
+1. Check `~/.suzent/config/skills.json` includes the skill name
+2. Verify skill name matches exactly (case-sensitive)
+3. Restart Suzent server after config changes
+
+### Invalid SKILL.md Format
+
+**Problem:** "Invalid SKILL.md format" error
+
+**Solutions:**
+1. Ensure YAML frontmatter is enclosed in `---` markers
+2. Check YAML syntax (no tabs, proper indentation)
+3. Verify `name` and `description` are strings
+4. Remove any special characters from YAML values
+
+### Resources Not Found
+
+**Problem:** Agent can't access skill resources
+
+**Solutions:**
+1. Verify resource folders exist: `scripts/`, `references/`, `assets/`
+2. Check file permissions
+3. Ensure files are in the correct skill directory
+4. Use the effective path listed for the skill; its resources remain beside `SKILL.md`
+
+## Advanced Topics
+
+### Multi-File Skills
+
+For complex skills, organize content across multiple files:
+
+```
+skills/complex-skill/
+├── SKILL.md              # Main entry point
+├── references/
+│   ├── api-guide.md      # Detailed API documentation
+│   ├── examples.md       # Extended examples
+│   └── troubleshooting.md
+└── scripts/
+    ├── setup.sh
+    └── validate.py
+```
+
+Reference additional files in `SKILL.md`:
+
+```markdown
+## Additional Resources
+
+For detailed API documentation, see `references/api-guide.md`.
+For troubleshooting, see `references/troubleshooting.md`.
+```
+
+### Dynamic Skills
+
+Skills can reference environment-specific information:
+
+```markdown
+## Configuration
+
+The system is configured with:
+- Database: Check `/mnt/config/database.yml`
+- API keys: Use the configured provider runtime; do not read secret files directly
+```
+
+### Skill Dependencies
+
+If a skill requires specific tools or other skills:
+
+```markdown
+## Prerequisites
+
+This skill requires:
+- `RunCommandTool` enabled (for running scripts)
+- Python 3.8+ installed in sandbox
+```
+
+
+---
 
 # Discord Integration
+
+Source: https://suzent.com/docs/concepts/social-messaging/discord
+
+
 
 Suzent supports full integration with Discord, allowing you to chat with the agent via Direct Messages (DMs) or in channels.
 
@@ -3963,11 +3860,14 @@ To find your Discord User ID:
 2. Right-click your username and select **Copy ID**.
 3. Add this ID to the `allowed_users` list in `config/social.json`.
 
+
 ---
+
+# Feishu (Lark) Integration
 
 Source: https://suzent.com/docs/concepts/social-messaging/feishu
 
-# Feishu (Lark) Integration
+
 
 ## Setup
 
@@ -4045,11 +3945,14 @@ Add the following to your `config/social.json`:
 4.  Copy the **Open ID** (starts with `ou_`).
 5.  Add it to the Feishu block's `allowed_users` list in `config/social.json` and **Restart the Server**.
 
+
 ---
 
-Source: https://suzent.com/docs/concepts/social-messaging/
-
 # Social Messaging Integration
+
+Source: https://suzent.com/docs/concepts/social-messaging
+
+
 
 Suzent supports integration with social messaging platforms, allowing you to control the agent remotely, share files, and maintain long-running conversations with persistent memory.
 
@@ -4149,11 +4052,14 @@ The system uses a driver-based architecture:
     -   Agent instantiation (`get_or_create_agent`).
     -   Response streaming.
 
+
 ---
+
+# Slack Integration
 
 Source: https://suzent.com/docs/concepts/social-messaging/slack
 
-# Slack Integration
+
 
 Suzent integrates with Slack using **Socket Mode**.
 
@@ -4245,11 +4151,14 @@ To find your Slack User ID:
 3. Click the three dots (...) > **Copy Member ID**.
 4. Add this ID to the `allowed_users` list.
 
+
 ---
+
+# Telegram Integration
 
 Source: https://suzent.com/docs/concepts/social-messaging/telegram
 
-# Telegram Integration
+
 
 ## Setup
 
@@ -4282,11 +4191,14 @@ Add the following to your `config/social.json`:
 > [!NOTE]
 > Suzent now strictly uses `config/social.json` for credentials. Environment variables are no longer supported.
 
+
 ---
+
+# WeChat Integration
 
 Source: https://suzent.com/docs/concepts/social-messaging/wechat
 
-# WeChat Integration
+
 
 Suzent can receive and reply to WeChat messages through Tencent's iLink Bot HTTP API.
 
@@ -4319,9 +4231,13 @@ Add the following to your `config/social.json`:
 - Text receive/send and image receive are supported. Incoming images are downloaded from WeChat's CDN and decrypted locally before being passed to the agent. Other media receive is preserved as attachment metadata; media sending is not implemented yet.
 - QR login authenticates Suzent to the WeChat iLink service. `allowed_users` is still the sender allowlist for incoming messages. The scanner is auto-added when `get_qrcode_status` returns `ilink_user_id`; add more WeChat sender or group IDs only if you want other conversations to access Suzent.
 
+
 ---
 
+# Browser
+
 Source: https://suzent.com/docs/concepts/tools/browser
+
 
 Suzent's native `browser_action` tool can launch a managed browser or connect
 to your running Chrome or Edge, including its signed-in sessions. MCP is optional.
@@ -4561,11 +4477,14 @@ and retains only the newest pending frame. Slow preview clients are disconnected
 without blocking browser actions. Extension 0.1.1 includes status, tab focus, and
 local frame acknowledgement; reload unpacked installations after updating.
 
+
 ---
+
+# Canvas (A2UI)
 
 Source: https://suzent.com/docs/concepts/tools/canvas
 
-# Canvas (A2UI)
+
 
 The **Canvas** is a structured UI layer that lets the agent render interactive components — tables, forms, cards, buttons, badges — directly in the Suzent interface, alongside the chat.
 
@@ -4870,11 +4789,217 @@ Canvas surfaces are persisted to `localStorage` keyed by chat ID. They survive p
 
 Calling `render_ui` with the same `surface_id` **replaces** the existing surface in place. There is no `remove_ui` — to clear a surface, replace it with an empty stack or stop sending updates.
 
+
 ---
 
-Source: https://suzent.com/docs/concepts/tools/
+# Tool Permissions and Human Approval
+
+Source: https://suzent.com/docs/concepts/tools/human-in-the-loop
+
+
+
+**Sovereign authority.** This is the boundary where an agent's reasoning
+becomes action in the world. A sovereign agent does not cross it on its own
+terms: every gated call below is a point at which Suzent stops and asks, under
+rules you set. See [what makes an agent sovereign](https://suzent.com/sovereign).
+
+Suzent evaluates every deferred tool call through one backend permission engine. The engine decides whether to allow, deny, or ask, and it supplies the exact actions shown by the frontend. The client never constructs permission rules itself.
+
+## Deferred Tools
+
+| Tool | Function | Gated operation |
+|------|----------|-----------------|
+| RunCommandTool / StartCommandTool | `run_command`, `start_command` | Command and code execution |
+| WriteFileTool | `write_file` | File creation and overwrite |
+| EditFileTool | `edit_file` | File edits |
+| StopCommandTool | `stop_command` | Stop a background command |
+| SocialMessageTool | `social_message` | Sending messages |
+| ImageGenerationTool | `image_generate` | Image generation |
+
+Read-only variants such as contact listing and process polling are allowed without prompting when the active mode permits read operations.
+
+## Approval Actions
+
+An approval prompt can offer:
+
+- **Allow**: approve this call once.
+- **Allow for session**: create a rule in this chat.
+- **Allow globally**: create a rule in the user `permissions.yaml`.
+- **Reject**: deny the call, optionally with guidance for the agent.
+
+The available actions are backend-owned and can vary by tool. Bash persistence uses an exact-command matcher; it does not approve the entire Bash tool. Other tools currently use a tool-wide matcher unless a narrower matcher is supplied.
+
+The complete pending decision is stored with the chat. On resume, the backend validates the selected action ID against that stored contract and ignores client-supplied arguments when applying permission updates.
+
+## Approval Lifecycle
+
+```text
+Agent issues a deferred tool call
+        │
+        ▼
+   PermissionEngine evaluates it against rules, mode, and safety checks
+        │
+        ├── allow ──► tool executes
+        ├── deny  ──► call is rejected, agent is told
+        │
+        ▼ ask
+   Decision (with its offered actions) is persisted as a pending approval,
+   and a tool_approval_request event is streamed to the frontend
+        │
+        ▼
+   Frontend renders the offered actions; user selects one:
+   Allow · Allow for session · Allow globally · Reject (+ optional feedback)
+        │
+        ▼
+   Backend validates the selected action against the stored decision,
+   creates the session/global rule if the action calls for one,
+   resolves the deferred call, and the run resumes
+```
+
+The pending decision is stored with the chat, so the same prompt is restored after a page refresh. The backend only honors actions that were part of the stored decision and ignores client-supplied arguments, so a client cannot widen a rule beyond what was offered. A resume that targets an approval that is no longer pending — a duplicate submission, a retry, or a click after the run already finished — is ignored rather than treated as an error.
+
+## Permission Modes
+
+| Mode | Behavior |
+|------|----------|
+| `default` | Allow read-only commands; ask before workspace edits and other state-changing operations |
+| `auto` | Allow deterministic low-risk operations and classify unresolved requests with a separate security model |
+| `full_access` | Run valid tool actions without approval prompts; explicit deny rules and hard safety checks still apply |
+
+Older `accept_edits`, `plan`, and `strict_readonly` values are accepted for
+backward compatibility but are no longer user-selectable. A legacy default is
+migrated conservatively to `default`.
+
+Auto mode is not blanket approval. Explicit denies, shell safety checks, path restrictions, and normalized deny rules run before the classifier. Interactive classifier failures fall back to asking; headless classifier failures deny.
+
+Full Access removes ordinary approval interruptions, but it does not override
+explicit deny rules, invalid tool inputs, or hard shell and path safety checks.
+
+## Rule Scopes
+
+- `once`: no persisted rule.
+- `session`: stored in `ChatConfig.permission_rules`.
+- `global`: stored in the user configuration directory's `permissions.yaml`.
+
+Rules contain a tool, behavior (`allow`, `ask`, or `deny`), matcher, source, ID, and creation time. Supported matchers are:
+
+- `all`
+- `exact_input`
+- `command_prefix`
+- `path_prefix`
+- `destination`
+
+For matching rules, precedence is `deny`, then `ask`, then `allow`. More specific matchers win within the same behavior.
+
+## APIs
+
+```text
+GET    /permissions?chat_id={chat_id}
+POST   /permissions/rules
+DELETE /permissions/rules/{rule_id}?destination=session|global&chat_id={chat_id}
+GET    /chats/{chat_id}/permission-state
+GET    /chats/{chat_id}/permission-mode
+PUT    /chats/{chat_id}/permission-mode
+```
+
+Resume a suspended call through `/chat` or `/chat/send`:
+
+```json
+{
+  "chat_id": "chat-id",
+  "message": "",
+  "resume_approvals": [
+    {
+      "request_id": "tool-call-id",
+      "tool_call_id": "tool-call-id",
+      "action_id": "allow_session",
+      "feedback": "Optional user guidance"
+    }
+  ]
+}
+```
+
+Legacy binary approval payloads remain accepted as allow-once or deny-only decisions. They cannot create remembered policies.
+
+## Streaming Contract
+
+Permission provenance is streamed separately from the tool result so the UI can
+show how a deferred action was authorized. Full Access is labeled as allowed
+without review; it must not be presented as an Auto classifier approval.
+
+```json
+{
+  "name": "tool_permission_decision",
+  "value": {
+    "toolCallId": "tool-call-id",
+    "behavior": "ask",
+    "source": "auto_classifier",
+    "reason": "This command changes workspace files.",
+    "reasonCode": "auto_classifier_ask",
+    "risk": "medium",
+    "confidence": "high",
+    "riskCategories": ["filesystem"],
+    "reviewerModel": "openai/gpt-4.1-mini"
+  }
+}
+```
+
+The `tool_approval_request` custom event contains:
+
+```json
+{
+  "approvalId": "tool-call-id",
+  "toolCallId": "tool-call-id",
+  "toolName": "run_command",
+  "args": {"content": "npm test"},
+  "decision": {
+    "behavior": "ask",
+    "reason": "Git commands require approval",
+    "reasonCode": "shell_policy_ask",
+    "risk": "high",
+    "actions": []
+  }
+}
+```
+
+The frontend renders `decision.actions` in order, including feedback inputs and rule explanations declared by the backend. Pending contracts are persisted in `_pending_approvals` so the same prompt can be restored after refresh.
+
+After a user acts on an approval prompt, Suzent streams
+`tool_permission_resolution` with the selected action and scope. Older clients
+can ignore provenance events and still rely on `tool_approval_request`.
+
+## Audit Trail
+
+Permission evaluations and user resolutions are appended to `permission-audit.jsonl` in the user configuration directory. Entries include chat, run, tool-call, mode, decision, reason, user action, and classifier or matched-rule metadata.
+
+Arguments are bounded and recursively sanitized. Sensitive keys and common inline credential forms are redacted. The append is offloaded to a worker thread so audit logging never blocks the streaming event loop.
+
+## Adding Approval to a Tool
+
+Set `requires_approval = True` on the tool class:
+
+```python
+class MyTool(BaseTool):
+    tool_name = "my_tool"
+    requires_approval = True
+```
+
+The registry wraps it as a pydantic-ai deferred tool. Add deterministic read-only or mode-specific behavior to `PermissionEngine` when needed; otherwise the default decision asks before execution.
+
+Keep execution-time validation inside the tool. Permission approval answers whether an operation may proceed, while the tool must still validate paths, symlinks, arguments, and current external state immediately before execution.
+
+## Headless Runs
+
+Cron, heartbeat, goals, dream jobs, and subagents use Auto mode with a non-interactive profile. They do not use blanket `auto_approve_tools` behavior. A headless action that cannot be classified safely is denied.
+
+
+---
 
 # Tools
+
+Source: https://suzent.com/docs/concepts/tools
+
+
 
 Tools extend the agent's capabilities, allowing it to interact with the filesystem, web, memory, social platforms, and more. Each tool is a function owned by a named capability in the centralized registry.
 
@@ -5099,7 +5224,7 @@ Creates and manages structured plans for multi-step tasks. Plans are stored in t
 
 ### `memory_search` / `memory_block_update`
 
-Long-term memory tools. See [Memory](https://suzent.com/docs/concepts/memory/) for the full memory architecture.
+Long-term memory tools. See [Memory](https://suzent.com/docs/concepts/memory) for the full memory architecture.
 
 - `memory_search(query, limit)`: Semantic similarity search over archived memories
 - `memory_block_update(block, operation, content)`: Update always-visible core memory blocks (`persona`, `user`, `facts`, `context`)
@@ -5111,7 +5236,7 @@ Send messages to social platforms or list available contacts.
 - Listing contacts (`list_contacts=True`) does **not** require approval
 - Sending messages **requires approval**
 
-See [Social Messaging](https://suzent.com/docs/concepts/social-messaging/) for platform setup.
+See [Social Messaging](https://suzent.com/docs/concepts/social-messaging) for platform setup.
 
 ### `browser_action`
 
@@ -5125,7 +5250,7 @@ Text-to-speech output. Converts text to audio and plays it.
 
 ### `skill_execute`
 
-Execute user-defined skills. See [Skills](https://suzent.com/docs/concepts/skills/).
+Execute user-defined skills. See [Skills](https://suzent.com/docs/concepts/skills).
 
 ### `tool_search`
 
@@ -5233,11 +5358,14 @@ fn = get_tool_function("WebSearchTool")
 names = list_available_tools()
 ```
 
+
 ---
+
+# Development Guide
 
 Source: https://suzent.com/docs/developing/development-guide
 
-# Development Guide
+
 
 ## Quick Start
 
@@ -5272,7 +5400,7 @@ dependency groups (equivalent to the `all` extra). For a minimal runtime
 without dev tooling, use `uv sync --extra social`.
 
 To run the backend and frontend in separate terminals instead, see
-[Development Modes](https://suzent.com/docs/developing/development-guide#development-modes) below.
+[Development Modes](#development-modes) below.
 
 ## Prerequisites
 
@@ -5315,7 +5443,7 @@ sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev \
 
 Uses Tauri to create a native desktop window. Requires Rust.
 
-> Install Python dependencies first with `uv sync --all-extras` (see [Quick Start](https://suzent.com/docs/developing/development-guide#quick-start)).
+> Install Python dependencies first with `uv sync --all-extras` (see [Quick Start](#quick-start)).
 
 **Terminal 1** - Start Python backend:
 ```bash
@@ -5579,11 +5707,14 @@ uv pip install build
 
 **Large bundle size** — The bundled app is 80–150 MB (Python runtime, uv, LanceDB). Playwright/Chromium (~300 MB) is downloaded separately on first launch.
 
+
 ---
+
+# Docker Services (Optional)
 
 Source: https://suzent.com/docs/developing/docker-services
 
-# Docker Services (Optional)
+
 
 This document describes optional Docker configurations for auxiliary services.
 
@@ -5647,11 +5778,14 @@ sandbox_image: suzent-sandbox
 - Network: `bridge` by default (internet access); set `sandbox_network: none` to fully isolate
 - `SUZENT_BASE_URL` is injected automatically so sandboxed code can call the host server's REST API via `host.docker.internal` — a full replacement for the `suzent` CLI
 
+
 ---
+
+# Logo Standard
 
 Source: https://suzent.com/docs/developing/logo
 
-# Logo Standard
+
 
 ## Canonical Definition
 
@@ -5710,11 +5844,14 @@ import { SuzentLogo } from '@/components/SuzentLogo';
 
 [`RobotAvatar`](https://github.com/cyzus/suzent/blob/main/frontend/src/components/chat/RobotAvatar.tsx) internally defines a `RobotFace` primitive with identical geometry. This is intentional: `RobotAvatar` is a self-contained animation system with per-variant eye transforms (`eyesClass`, `eyeStyle`) that would be complicated to route through `SuzentLogo`. The two definitions must stay geometrically in sync; if you update the logo geometry, update `RobotFace` as well.
 
+
 ---
+
+# Memory Architecture
 
 Source: https://suzent.com/docs/developing/memory/architecture
 
-# Memory Architecture
+
 
 How memory is written, consolidated, indexed, and read — and what is still missing.
 Companions: [Consolidation](https://suzent.com/docs/concepts/memory/consolidation) for how the dream
@@ -6070,11 +6207,14 @@ Neither has been run against the live index: the delete is irreversible beyond t
 backup and the export writes 2,833 lines into the user's memory directory, so both are
 the user's call.
 
+
 ---
+
+# Memory Internals
 
 Source: https://suzent.com/docs/developing/memory/internals
 
-# Memory Internals
+
 
 This page describes the implementation-level structure of Suzent memory as it exists today.
 
@@ -6268,11 +6408,14 @@ The indexer is delete-then-add keyed on mtime, so appending a tombstone does not
 affected file to be reindexed. Every tombstone write must be paired with an explicit
 reindex of the dates it touches.
 
+
 ---
+
+# Updating Model Capabilities
 
 Source: https://suzent.com/docs/developing/model-capability-updates
 
-# Updating Model Capabilities
+
 
 Suzent keeps shipped model metadata in `config/capabilities/*.json`. These files
 change frequently as providers add models and LiteLLM updates its metadata, so
@@ -6351,11 +6494,14 @@ Pull requests created with the built-in `GITHUB_TOKEN` do not trigger new
 the full CI suite, use a fine-grained bot token with repository contents and
 pull-request write permissions.
 
+
 ---
+
+# Release Guide
 
 Source: https://suzent.com/docs/developing/releasing
 
-# Release Guide
+
 
 Suzent keeps a Release PR permanently open against `main`. There is no "start a
 release" step: every push to `main` re-merges into that PR, re-derives the
@@ -6394,12 +6540,12 @@ publication are automated from there.
 
 1. Open the Release PR — it is the open pull request from `release/next`,
    titled `chore: release vX.Y.Z`. If none is open, nothing user-visible has
-   landed since the last tag; see [Nothing is open](https://suzent.com/docs/developing/releasing#nothing-is-open).
+   landed since the last tag; see [Nothing is open](#nothing-is-open).
 2. Review it:
    - confirm the derived version is what you intend, in the title and in every
      changed manifest and lock file;
    - read the generated `CHANGELOG.md` section, and add a
-     [highlights block](https://suzent.com/docs/developing/releasing#writing-release-highlights) so the release page opens
+     [highlights block](#writing-release-highlights) so the release page opens
      with something better than a list of commit subjects;
    - confirm `.release-assets-mode` holds the intended `build` or `reuse`;
    - wait for all checks to pass.
@@ -6417,7 +6563,7 @@ publication are automated from there.
    - `SHA256SUMS` is attached.
 
 The release is complete only after the checks in step 5 pass. If the workflow
-fails, follow [Recovery](https://suzent.com/docs/developing/releasing#recovery) rather than publishing the draft by hand.
+fails, follow [Recovery](#recovery) rather than publishing the draft by hand.
 
 The release remains a draft while the Windows, macOS Intel, macOS Apple
 Silicon, and Linux builds run, and is published only after every build
@@ -6440,7 +6586,7 @@ bump, so there is nothing a user would notice; it waits and rides along with the
 next real change.
 
 To release anyway — to ship a dependency bump, say — use
-[Prepare Release](https://suzent.com/docs/developing/releasing#manual-override-prepare-release).
+[Prepare Release](#manual-override-prepare-release).
 
 ### Writing release highlights
 
@@ -6624,11 +6770,14 @@ the draft and tag in GitHub, correct the source through a new pull request, and
 then run the desktop workflow for the corrected tag. Prefer issuing a new patch
 version once a release has been published.
 
+
 ---
 
-Source: https://suzent.com/docs/
-
 # Documentation
+
+Source: https://suzent.com/docs
+
+
 
 Suzent is a sovereign AI agent: an open-source, local-first agent whose identity,
 memory, skills, workspace, and runtime stay under your control, independent of
@@ -6643,22 +6792,22 @@ five-question ownership test, see
 ## Concepts
 
 ### Core
-- [Providers](https://suzent.com/docs/concepts/providers/): Configure model providers (OpenAI, Anthropic, Gemini, Ollama, and more)
-- [Memory](https://suzent.com/docs/concepts/memory/): Persistent memory across sessions — how it works and how to configure it
+- [Providers](https://suzent.com/docs/concepts/providers): Configure model providers (OpenAI, Anthropic, Gemini, Ollama, and more)
+- [Memory](https://suzent.com/docs/concepts/memory): Persistent memory across sessions — how it works and how to configure it
 - [Notebook](https://suzent.com/docs/concepts/memory/llm-wiki): Agent-maintained knowledge vault, Obsidian-compatible
 
 ### Tools & Capabilities
-- [Tools](https://suzent.com/docs/concepts/tools/): Full reference for all built-in tools
+- [Tools](https://suzent.com/docs/concepts/tools): Full reference for all built-in tools
 - [Canvas (A2UI)](https://suzent.com/docs/concepts/tools/canvas): Interactive UI components rendered in the sidebar
 - [Tool Approval](https://suzent.com/docs/concepts/tools/human-in-the-loop): How dangerous tools require user confirmation
-- [Skills](https://suzent.com/docs/concepts/skills/): Extend the agent with domain knowledge modules
+- [Skills](https://suzent.com/docs/concepts/skills): Extend the agent with domain knowledge modules
 - [Filesystem & Sandbox](https://suzent.com/docs/concepts/filesystem): File access, sandbox execution, and storage paths
 
 ### Automation & Connectivity
-- [Automation](https://suzent.com/docs/concepts/automation/): Cron jobs and heartbeat monitoring
-- [GitHub Sync](https://suzent.com/docs/concepts/github-sync/): Sync portable brain data to a private GitHub repo
-- [Social Messaging](https://suzent.com/docs/concepts/social-messaging/): Telegram, Discord, Slack, and Feishu integration
-- [Nodes](https://suzent.com/docs/concepts/nodes/): Connect and control companion devices remotely
+- [Automation](https://suzent.com/docs/concepts/automation): Cron jobs and heartbeat monitoring
+- [GitHub Sync](https://suzent.com/docs/concepts/github-sync): Sync portable brain data to a private GitHub repo
+- [Social Messaging](https://suzent.com/docs/concepts/social-messaging): Telegram, Discord, Slack, and Feishu integration
+- [Nodes](https://suzent.com/docs/concepts/nodes): Connect and control companion devices remotely
 - [ACP](https://suzent.com/docs/concepts/nodes/acp): Serve Suzent as an ACP agent for editors and other clients
 
 ### Runtime

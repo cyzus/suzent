@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">
+  <!-- Body -->
+  <rect x="0" y="0" width="24" height="24" rx="4" fill="#000000" />
+  <!-- Headband -->
+  <rect x="0" y="4" width="24" height="3" fill="#FFFFFF" opacity="0.8" />
+  <!-- Eyes -->
+  <rect x="5" y="9" width="5" height="5" rx="1.5" fill="#FFFFFF" />
+  <rect x="14" y="9" width="5" height="5" rx="1.5" fill="#FFFFFF" />
+</svg>

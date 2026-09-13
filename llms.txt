@@ -1,27 +1,61 @@
 # Suzent
 
-> Suzent is a sovereign AI agent: an open-source, local-first agent whose identity, memory, skills, workspace, and runtime remain under the user's control. Models are replaceable; the agent is not.
+A sovereign AI agent is an AI agent whose identity, memory, skills, workspace, and runtime are owned and governed by its user rather than by a model provider or platform. Its durable state lives in files you can read, edit, version, and move; its actions run inside permission boundaries you define; and replacing the underlying model does not reset the agent that knows your work. Suzent is an open-source, local-first implementation of that definition.
 
-A sovereign AI agent is an AI agent whose identity, memory, skills, workspace, and runtime are owned and governed by its user rather than by a model provider or platform. Its durable state lives in files the user can read, edit, version, and move; its actions run inside permission boundaries the user defines; and replacing the underlying model does not reset the agent. Suzent is an implementation of that definition.
+Full documentation: https://suzent.com/llms-full.txt
 
-Full text of this documentation, in one file: https://suzent.com/llms-full.txt
-
-## Start here
-
-- [What is a sovereign AI agent?](https://suzent.com/sovereign): The definition, the four conditions of agent sovereignty, and a five-question ownership test.
-- [Introduction](https://suzent.com/docs/getting-started/intro): What Suzent is and how it differs from a rented AI account.
-- [Quickstart](https://suzent.com/docs/getting-started/quickstart): Install and run Suzent.
-
-## Sovereignty architecture
-
-- [Memory](https://suzent.com/docs/concepts/memory): Sovereign continuity — readable, file-backed memory where the index serves the files.
-- [Human in the loop](https://suzent.com/docs/concepts/tools/human-in-the-loop): Sovereign authority — approval boundaries for tool execution.
-- [Filesystem](https://suzent.com/docs/concepts/filesystem): Sovereign vessel — controlled workspaces and filesystem access.
-- [GitHub sync](https://suzent.com/docs/concepts/github-sync): Sovereign continuity — portable agent state with credentials kept local.
-- [Automation](https://suzent.com/docs/concepts/automation): Goals, schedules, and continuing work.
-- [Nodes](https://suzent.com/docs/concepts/nodes): Extending the agent across approved devices.
-
-## Source
-
-- [GitHub repository](https://github.com/cyzus/suzent): Apache-2.0 licensed source, releases, issues, and contribution history.
-- [PyPI package](https://pypi.org/project/suzent/): Published Python distribution.
+- [What is Suzent?](https://suzent.com/docs/getting-started/intro)
+- [Quickstart](https://suzent.com/docs/getting-started/quickstart)
+- [Agent Communication](https://suzent.com/docs/concepts/agent-communication)
+- [Suzent Automation Guide](https://suzent.com/docs/concepts/automation)
+- [Filesystem & Execution](https://suzent.com/docs/concepts/filesystem)
+- [GitHub Sync](https://suzent.com/docs/concepts/github-sync)
+- [Memory Configuration](https://suzent.com/docs/concepts/memory/configuration)
+- [How Consolidation Works](https://suzent.com/docs/concepts/memory/consolidation)
+- [Notebook](https://suzent.com/docs/concepts/memory/llm-wiki)
+- [Memory System](https://suzent.com/docs/concepts/memory)
+- [Upgrade Notes: what changes for an existing install](https://suzent.com/docs/concepts/memory/upgrade-notes)
+- [A2A — Open Agent Federation](https://suzent.com/docs/concepts/nodes/a2a)
+- [ACP — Suzent in Someone Else's Editor](https://suzent.com/docs/concepts/nodes/acp)
+- [Suzent Nodes Guide](https://suzent.com/docs/concepts/nodes)
+- [Node Mesh — Security & Identity](https://suzent.com/docs/concepts/nodes/security)
+- [Anthropic](https://suzent.com/docs/concepts/providers/anthropic)
+- [ChatGPT Subscription](https://suzent.com/docs/concepts/providers/chatgpt-subscription)
+- [DashScope](https://suzent.com/docs/concepts/providers/dashscope)
+- [DeepSeek](https://suzent.com/docs/concepts/providers/deepseek)
+- [Google Gemini](https://suzent.com/docs/concepts/providers/gemini)
+- [LiteLLM Proxy](https://suzent.com/docs/concepts/providers/litellm)
+- [MiniMax](https://suzent.com/docs/concepts/providers/minimax)
+- [Model Capabilities](https://suzent.com/docs/concepts/providers/model-capabilities)
+- [Moonshot (Kimi)](https://suzent.com/docs/concepts/providers/moonshot)
+- [Ollama](https://suzent.com/docs/concepts/providers/ollama)
+- [OpenAI](https://suzent.com/docs/concepts/providers/openai)
+- [OpenRouter](https://suzent.com/docs/concepts/providers/openrouter)
+- [Providers](https://suzent.com/docs/concepts/providers)
+- [xAI (Grok)](https://suzent.com/docs/concepts/providers/xai)
+- [Xiaomi MiMo](https://suzent.com/docs/concepts/providers/xiaomi-mimo)
+- [Zhipu AI (GLM)](https://suzent.com/docs/concepts/providers/zhipu)
+- [Background Service](https://suzent.com/docs/concepts/runtime/background-service)
+- [Chat Post-Processing](https://suzent.com/docs/concepts/runtime/postprocess)
+- [Retry](https://suzent.com/docs/concepts/runtime/retry)
+- [System Reminders & File Citations](https://suzent.com/docs/concepts/runtime/system-reminders)
+- [Suzent Skills Guide](https://suzent.com/docs/concepts/skills)
+- [Discord Integration](https://suzent.com/docs/concepts/social-messaging/discord)
+- [Feishu (Lark) Integration](https://suzent.com/docs/concepts/social-messaging/feishu)
+- [Social Messaging Integration](https://suzent.com/docs/concepts/social-messaging)
+- [Slack Integration](https://suzent.com/docs/concepts/social-messaging/slack)
+- [Telegram Integration](https://suzent.com/docs/concepts/social-messaging/telegram)
+- [WeChat Integration](https://suzent.com/docs/concepts/social-messaging/wechat)
+- [Browser](https://suzent.com/docs/concepts/tools/browser)
+- [Canvas (A2UI)](https://suzent.com/docs/concepts/tools/canvas)
+- [Tool Permissions and Human Approval](https://suzent.com/docs/concepts/tools/human-in-the-loop)
+- [Tools](https://suzent.com/docs/concepts/tools)
+- [Development Guide](https://suzent.com/docs/developing/development-guide)
+- [Docker Services (Optional)](https://suzent.com/docs/developing/docker-services)
+- [Logo Standard](https://suzent.com/docs/developing/logo)
+- [Memory Architecture](https://suzent.com/docs/developing/memory/architecture)
+- [Memory Internals](https://suzent.com/docs/developing/memory/internals)
+- [Updating Model Capabilities](https://suzent.com/docs/developing/model-capability-updates)
+- [Release Guide](https://suzent.com/docs/developing/releasing)
+- [Documentation](https://suzent.com/docs)
+- [What Is a Sovereign AI Agent?](https://suzent.com/sovereign)
