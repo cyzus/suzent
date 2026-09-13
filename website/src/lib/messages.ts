@@ -1,0 +1,101 @@
+import type { Locale } from "./locales";
+const en = {
+  docs: "Docs",
+  blog: "Blog",
+  manifesto: "Manifesto",
+  home: "Home",
+  search: "Search documentation",
+  searchPlaceholder: "Search all documentation…",
+  noResults: "No matching pages",
+  searchLoading: "Loading search…",
+  searchError: "Search could not load. Try again.",
+  retry: "Try again",
+  handbook: "THE SUZENT HANDBOOK",
+  tagline: "Your agent. Your rules.",
+  edit: "Edit this page on GitHub ↗",
+  fallback:
+    "This page is available in English. A Chinese translation is not available yet.",
+  onThisPage: "On this page",
+  archive: "Archive",
+  tags: "Tags",
+  authors: "Authors",
+  readMore: "Read article",
+  allPosts: "All articles",
+  privacy: "Browser privacy",
+  notFound: "This page could not be found.",
+  theme: "Theme",
+  auto: "Auto",
+  light: "Light",
+  dark: "Dark",
+  navigation: "Site navigation",
+  language: "Switch language",
+  copied: "Copied",
+  copyFailed: "Could not copy",
+  next: "Next page",
+  previous: "Previous page",
+  close: "Close",
+  openSidebar: "Open navigation",
+};
+const zh: typeof en = {
+  docs: "文档",
+  blog: "博客",
+  manifesto: "主权宣言",
+  home: "首页",
+  search: "搜索文档",
+  searchPlaceholder: "搜索全部文档…",
+  noResults: "没有匹配的页面",
+  searchLoading: "正在加载搜索…",
+  searchError: "无法加载搜索，请重试。",
+  retry: "重试",
+  handbook: "SUZENT 使用手册",
+  tagline: "你的智能体，你的规则。",
+  edit: "在 GitHub 上编辑此页 ↗",
+  fallback: "此页面目前提供英文内容，中文翻译尚未完成。",
+  onThisPage: "本页内容",
+  archive: "归档",
+  tags: "标签",
+  authors: "作者",
+  readMore: "阅读文章",
+  allPosts: "全部文章",
+  privacy: "浏览器隐私政策",
+  notFound: "找不到此页面。",
+  theme: "主题",
+  auto: "跟随系统",
+  light: "浅色",
+  dark: "深色",
+  navigation: "网站导航",
+  language: "切换语言",
+  copied: "已复制",
+  copyFailed: "复制失败",
+  next: "下一页",
+  previous: "上一页",
+  close: "关闭",
+  openSidebar: "打开导航",
+};
+export function messages(locale: Locale): typeof en {
+  return locale === "zh-Hans" ? zh : en;
+}
+
+export function fumadocsTranslations(locale: Locale): Record<string, string> {
+  const text = messages(locale);
+  return {
+    Search: text.search,
+    "On this page(table of contents)": text.onThisPage,
+    "Next Page(pagination)": text.next,
+    "Previous Page(pagination)": text.previous,
+    "Copied Text(code block)(aria-label)": text.copied,
+    "Copy Text(code block)(aria-label)":
+      locale === "zh-Hans" ? "复制文本" : "Copy Text",
+    "Copy Anchor Link(heading anchor)(aria-label)":
+      locale === "zh-Hans" ? "复制锚点链接" : "Copy Anchor Link",
+    "Open Sidebar(sidebar)(aria-label)": text.openSidebar,
+    "Close Sidebar(sidebar)(aria-label)":
+      locale === "zh-Hans" ? "关闭导航" : "Close Sidebar",
+    "Collapse Sidebar(sidebar)(aria-label)":
+      locale === "zh-Hans" ? "收起导航" : "Collapse Sidebar",
+    "Toggle Theme(theme switcher)(aria-label)": text.theme,
+    "Dark(theme switcher)(aria-label)": text.dark,
+    "Light(theme switcher)(aria-label)": text.light,
+    "System(theme switcher)(aria-label)": text.auto,
+  };
+}

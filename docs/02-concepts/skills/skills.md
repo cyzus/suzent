@@ -151,7 +151,7 @@ mkdir -p ~/.suzent/skills/my-custom-skill
 
 Create `~/.suzent/skills/my-custom-skill/SKILL.md`:
 
-```markdown
+````markdown
 ---
 name: my-custom-skill
 description: Helps with custom domain tasks
@@ -185,7 +185,7 @@ Steps to accomplish this task...
 ## Resources
 - [Documentation](https://example.com)
 - [API Reference](https://example.com/api)
-```
+````
 
 ### Step 3: Add Resources (Optional)
 

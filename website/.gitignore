@@ -28,3 +28,10 @@ build_log*.txt
 # these too only produces churn when the two drift.
 /src/components/RobotAvatar.tsx
 /src/css/robot-animations.css
+
+.next/
+out/
+.generated/
+public/
+next-env.d.ts
+*.tsbuildinfo
