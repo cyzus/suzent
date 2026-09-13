@@ -603,9 +603,7 @@ code {
 }
 
 .activity-rail-scroll {
-  max-height: 18rem;
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  overflow-x: clip;
 }
 
 /*
