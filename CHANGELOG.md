@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v0.14.0] - 2026-09-12
+## [v0.14.0] - 2026-09-13
 
 ### 🚀 Added
 - Share launcher shortcut setup and repair across install paths (#213)
@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Remove the language param from the shell tools (#212)
 
 ### 🐛 Fixed
+- Render ACP citations as portable references (#215)
 - Improve overflow handling for chat components and animations
 - Exclude machine-specific host paths from reusable chat config
 - Display images in analysis and generation tool results (#211)
