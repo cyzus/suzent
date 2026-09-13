@@ -116,6 +116,21 @@ Source: https://suzent.com/zh-Hans/docs/getting-started/quickstart
 
 ## 1. 安装
 
+### 使用安装程序
+
+从[首页](https://suzent.com/zh-Hans#download)下载适合你电脑的安装程序。M 系列 Mac 选择 Apple Silicon，Intel Mac 选择 Intel。Windows 和 Linux 下载适用于 x86_64。
+
+在 Windows 上打开下载的 `.exe`。在 macOS 或 Linux 上，在下载文件夹中打开终端，将 `<filename>` 替换为下载的安装程序的完整文件名后运行：
+
+```bash
+chmod +x ./<filename>
+./<filename>
+```
+
+按照安装程序的引导选择工作区并安装 Suzent。安装需要联网。当前发行版在 macOS 和 Linux 上需要 Git；如果安装程序提示缺少 Git，请先安装 Git。
+
+### 使用终端
+
 **前提条件：** [Node.js 20+](https://nodejs.org/) 和 [Git](https://git-scm.com/downloads)。
 
 <Tabs groupId="os">

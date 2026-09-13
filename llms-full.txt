@@ -134,6 +134,21 @@ Get Suzent running in under 5 minutes.
 
 ## 1. Install
 
+### Use the installer
+
+Download the installer for your platform from the [landing page](https://suzent.com/#download). On macOS, choose Apple Silicon for M-series Macs or Intel for Intel-based Macs. Windows and Linux downloads target x86_64.
+
+On Windows, open the downloaded `.exe`. On macOS or Linux, open Terminal in your download folder and run the following, replacing `<filename>` with the downloaded installer's exact name:
+
+```bash
+chmod +x ./<filename>
+./<filename>
+```
+
+Follow the installer to choose your workspace and set up Suzent. Internet access is required. The current release requires Git on macOS and Linux; install it first if the installer asks for it.
+
+### Use the terminal
+
 **Prerequisites:** [Node.js 20+](https://nodejs.org/) and [Git](https://git-scm.com/downloads).
 
 <Tabs groupId="os">
