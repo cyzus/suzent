@@ -235,5 +235,92 @@
   },
   "homepage.download.other": {
     "message": "其他系统"
+  },
+  "homepage.hero.description": {
+    "message": "你的智能体，不止于模型。"
+  },
+  "homepage.download.desktop": {
+    "message": "选择你的桌面平台"
+  },
+  "homepage.download.intel": {
+    "message": "Intel Mac？↗"
+  },
+  "homepage.download.apple": {
+    "message": "Apple Silicon？↗"
+  },
+  "homepage.examples.title": {
+    "message": "让智能体帮你做事"
+  },
+  "homepage.examples.files.title": {
+    "message": "处理你的文件"
+  },
+  "homepage.examples.files.body": {
+    "message": "总结文档，把笔记变成初稿。"
+  },
+  "homepage.examples.memory.title": {
+    "message": "记住重要的事"
+  },
+  "homepage.examples.memory.body": {
+    "message": "跨对话保留你的偏好与背景。"
+  },
+  "homepage.examples.automation.title": {
+    "message": "自动处理日常事务"
+  },
+  "homepage.examples.automation.body": {
+    "message": "安排任务，让智能体持续跟进。"
+  },
+  "homepage.explore.docs": {
+    "message": "探索文档 ↗"
+  },
+  "homepage.explore.sovereign": {
+    "message": "阅读主权协议 ↗"
+  },
+  "homepage.download.for.macos": {
+    "message": "下载 macOS 版"
+  },
+  "homepage.download.for.windows": {
+    "message": "下载 Windows 版"
+  },
+  "homepage.download.for.linux": {
+    "message": "下载 Linux 版"
+  },
+  "homepage.difference.title": {
+    "message": "始终属于你的"
+  },
+  "homepage.examples.continuity.title": {
+    "message": "换模型，不换智能体。"
+  },
+  "homepage.examples.continuity.body": {
+    "message": "切换提供商时，智能体的身份、记忆和技能仍然保留。"
+  },
+  "homepage.examples.ownership.title": {
+    "message": "你自己的工作区。"
+  },
+  "homepage.examples.ownership.body": {
+    "message": "文件、记忆和配置留在你的电脑上，也能随你迁移。"
+  },
+  "homepage.examples.authority.title": {
+    "message": "边界由你决定。"
+  },
+  "homepage.examples.authority.body": {
+    "message": "选择工具，限定文件访问范围，查看它执行的操作。"
+  },
+  "homepage.download.detecting": {
+    "message": "正在识别你的系统"
+  },
+  "homepage.download.terminalLabel": {
+    "message": "终端"
+  },
+  "homepage.openSource.description": {
+    "message": "主权始于拥有。你的智能体、你的数据、你选择的模型——由你做主。"
+  },
+  "homepage.openSource.action": {
+    "message": "探索源代码"
+  },
+  "homepage.openSource.free": {
+    "message": "100% 免费。"
+  },
+  "homepage.openSource.open": {
+    "message": "完全开源。"
   }
 }

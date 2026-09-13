@@ -213,12 +213,48 @@ function OSIcon({ os }: { os: InstallerOS }): ReactNode {
   );
 }
 
+function ResolvingLabel({
+  label,
+  detecting,
+}: {
+  label: string;
+  detecting: boolean;
+}): ReactNode {
+  const runes = ["◈", "⊕", "⟁", "⊗", "⌁", "◆"];
+  return (
+    <span className={styles.resolvingLabel} aria-label={label}>
+      {Array.from(label).map((letter, index) => (
+        <span className={styles.resolveCell} key={index} aria-hidden="true">
+          <span className={styles.resolveMeasure}>
+            {letter === " " ? "\u00a0" : letter}
+          </span>
+          <span
+            className={styles.resolveTrack}
+            data-resolving={detecting}
+            style={{ animationDelay: `${index * 13}ms` }}
+          >
+            {[0, 1, 2].map((step) => (
+              <span key={step}>
+                {letter === " "
+                  ? "\u00a0"
+                  : runes[(index + step) % runes.length]}
+              </span>
+            ))}
+            <span>{letter === " " ? "\u00a0" : letter}</span>
+          </span>
+        </span>
+      ))}
+    </span>
+  );
+}
+
 function InstallerDownloads(): ReactNode {
   const t = useTranslator();
   const locale = useLocale();
-  const [os, setOS] = useState<InstallerOS>("macos");
+  const [os, setOS] = useState<InstallerOS | null>(null);
+  const [detecting, setDetecting] = useState(true);
   const [macArch, setMacArch] = useState("aarch64");
-  const [detected, setDetected] = useState(false);
+  const [terminalOS, setTerminalOS] = useState<"unix" | "windows" | null>(null);
   useEffect(() => {
     const ua = navigator.userAgent;
     if (
@@ -227,20 +263,31 @@ function InstallerDownloads(): ReactNode {
     ) {
       if (/Windows/.test(ua)) {
         setOS("windows");
-        setDetected(true);
       } else if (/Mac/.test(ua)) {
         setOS("macos");
-        setDetected(true);
       } else if (/Linux/.test(ua)) {
         setOS("linux");
-        setDetected(true);
       }
     }
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setDetecting(false);
+      return;
+    }
+    // Keep the action disabled until the glyphs have settled into its label.
+    let timer: number | undefined;
+    const frame = window.requestAnimationFrame(() => {
+      timer = window.setTimeout(() => setDetecting(false), 1400);
+    });
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+    };
   }, []);
   const name =
     os === "macos" ? "macOS" : os === "windows" ? "Windows" : "Linux";
   const asset = `suzent-installer-${os}-${os === "macos" ? macArch : "x86_64"}${os === "windows" ? ".exe" : ""}`;
-  const cmd = os === "windows" ? WIN_CMD : UNIX_CMD;
+  const activeTerminal = terminalOS ?? (os === "windows" ? "windows" : "unix");
+  const cmd = activeTerminal === "windows" ? WIN_CMD : UNIX_CMD;
   return (
     <section
       id="download"
@@ -250,86 +297,102 @@ function InstallerDownloads(): ReactNode {
         message: "Download installer",
       })}
     >
-      <a
-        className={styles.downloadPrimary}
-        href={`https://github.com/cyzus/suzent/releases/latest/download/${asset}`}
+      <div
+        className={styles.downloadBand}
+        aria-busy={detecting}
+        data-loading={detecting}
+        data-platform={os ?? "unknown"}
       >
-        <OSIcon os={os} />
-        <span>
-          {t({ id: "homepage.download.button", message: "Download installer" })}{" "}
-          · {name}
-          {os === "macos"
-            ? ` (${macArch === "aarch64" ? "Apple Silicon" : "Intel"})`
-            : ""}
-        </span>
-        <span aria-hidden="true">↓</span>
-      </a>
-      <p className={styles.downloadInstruction}>
-        {t({
-          id:
-            os === "windows"
-              ? "homepage.download.openWindows"
-              : "homepage.download.openUnix",
-          message:
-            os === "windows"
-              ? "Open the download. Follow the setup."
-              : "Download, make executable, then open.",
-        })}{" "}
-        <Link href={localePath("/docs/getting-started/quickstart", locale)}>
-          {t({ id: "homepage.download.help", message: "Setup guide ↗" })}
-        </Link>
-      </p>
-      <details className={styles.otherSystems}>
-        <summary>
-          {t({ id: "homepage.download.other", message: "Other systems" })}
-        </summary>
-        <div className={styles.installChoices}>
-          <span>
-            {t({
-              id: detected
-                ? "homepage.download.detected"
-                : "homepage.download.choose",
-              message: detected ? "YOUR SYSTEM" : "CHOOSE YOUR SYSTEM",
-            })}
-          </span>
+        <div className={styles.downloadControls}>
+          {os ? (
+            <a
+              className={styles.downloadPrimary}
+              href={
+                detecting
+                  ? undefined
+                  : `https://github.com/cyzus/suzent/releases/latest/download/${asset}`
+              }
+              aria-disabled={detecting}
+              tabIndex={detecting ? -1 : undefined}
+            >
+              <OSIcon os={os} />
+              <ResolvingLabel
+                detecting={detecting}
+                label={t({
+                  id: `homepage.download.for.${os}`,
+                  message: `Download for ${name}`,
+                })}
+              />
+            </a>
+          ) : (
+            <span className={styles.platformPrompt}>
+              {t({
+                id: "homepage.download.desktop",
+                message: "Choose your desktop platform",
+              })}
+            </span>
+          )}
           <select
+            className={styles.systemSelect}
             aria-label={t({
               id: "homepage.download.system",
               message: "Operating system",
             })}
-            value={os}
+            value={os === "macos" ? `macos-${macArch}` : (os ?? "")}
             onChange={(e) => {
-              setOS(e.target.value as InstallerOS);
-              setDetected(false);
+              const value = e.target.value;
+              if (value.startsWith("macos-")) {
+                setOS("macos");
+                setMacArch(value.slice(6));
+              } else setOS(value as InstallerOS);
             }}
           >
-            <option value="macos">macOS</option>
-            <option value="windows">Windows</option>
-            <option value="linux">Linux</option>
-          </select>
-          {os === "macos" && (
-            <select
-              aria-label={t({
-                id: "homepage.download.processor",
-                message: "Mac processor",
+            <option value="" disabled>
+              {t({
+                id: "homepage.download.choose",
+                message: "CHOOSE YOUR SYSTEM",
               })}
-              value={macArch}
-              onChange={(e) => setMacArch(e.target.value)}
-            >
-              <option value="aarch64">Apple Silicon</option>
-              <option value="x86_64">Intel</option>
-            </select>
-          )}
-          {os !== "macos" && <span>x86_64</span>}
+            </option>
+            <option value="macos-aarch64">macOS · Apple Silicon</option>
+            <option value="macos-x86_64">macOS · Intel</option>
+            <option value="windows">Windows · x86_64</option>
+            <option value="linux">Linux · x86_64</option>
+          </select>
         </div>
-      </details>
-      <details className={styles.terminalAlternative}>
-        <summary>
-          {t({
-            id: "homepage.download.terminal",
-            message: "Or install via terminal",
-          })}
-        </summary>
+      </div>
+      <div className={styles.terminalAlternative}>
+        <div className={styles.terminalHeader}>
+          <p className={styles.terminalLabel}>
+            {t({
+              id: "homepage.download.terminalLabel",
+              message: "Terminal",
+            })}
+          </p>
+          <div
+            className={styles.terminalSwitch}
+            data-system={activeTerminal}
+            role="group"
+            aria-label={t({
+              id: "homepage.download.system",
+              message: "Operating system",
+            })}
+          >
+            <button
+              type="button"
+              aria-pressed={activeTerminal === "unix"}
+              onClick={() => setTerminalOS("unix")}
+            >
+              macOS / Linux
+            </button>
+            <button
+              type="button"
+              aria-pressed={activeTerminal === "windows"}
+              onClick={() => setTerminalOS("windows")}
+            >
+              Windows
+            </button>
+          </div>
+        </div>
         <div className={styles.cmdRow}>
           <pre className={styles.cmdText}>{cmd}</pre>
           <CopyButton text={cmd} />
@@ -338,7 +401,7 @@ function InstallerDownloads(): ReactNode {
           <pre className={styles.cmdText}>suzent start</pre>
           <CopyButton text="suzent start" />
         </div>
-      </details>
+      </div>
     </section>
   );
 }
@@ -412,8 +475,8 @@ function HomepageHeader(): ReactNode {
 
           <p className={styles.heroTagline}>
             {translate({
-              id: "homepage.hero.subtitle",
-              message: "Models are replaceable. Your agent remains.",
+              id: "homepage.hero.description",
+              message: "Your agent. Beyond any model.",
             })}
           </p>
           <InstallerDownloads />
@@ -421,28 +484,6 @@ function HomepageHeader(): ReactNode {
         <div className={styles.heroOrb} ref={heroOrbRef}>
           <DotCube pointer={orbPointer} />
           <HeroArt pointer={orbPointer} />
-        </div>
-      </div>
-      <div className={styles.heroAction}>
-        <div className={styles.heroCta}>
-          <Link
-            className={styles.heroCtaBtn}
-            href={localePath("/docs/getting-started/quickstart", locale)}
-          >
-            {translate({
-              id: "homepage.hero.cta.primary",
-              message: "Summon Suzent",
-            })}
-          </Link>
-          <Link
-            className={clsx(styles.heroCtaBtn, styles.heroCtaBtnSecondary)}
-            href={localePath("/sovereign", locale)}
-          >
-            {translate({
-              id: "homepage.hero.cta.sovereign",
-              message: "Read the Sovereignty Protocol",
-            })}
-          </Link>
         </div>
       </div>
     </header>
@@ -490,6 +531,61 @@ export default function Home(): ReactNode {
             </div>
           </div>
         </section>
+        <section
+          className={styles.openSourceSection}
+          aria-labelledby="open-source-title"
+        >
+          <div className={styles.openSourceBlock}>
+            <div className={styles.openSourceContent}>
+              <span className={styles.openSourceEyebrow}>Apache 2.0</span>
+              <h2 id="open-source-title">
+                <span>
+                  {translate({
+                    id: "homepage.openSource.free",
+                    message: "100% free.",
+                  })}
+                </span>
+                <span>
+                  {translate({
+                    id: "homepage.openSource.open",
+                    message: "Fully open source.",
+                  })}
+                </span>
+              </h2>
+              <p>
+                {translate({
+                  id: "homepage.openSource.description",
+                  message:
+                    "Sovereignty starts with ownership. Your agent, your data, your choice of model—on your terms.",
+                })}
+              </p>
+              <a
+                href="https://github.com/cyzus/suzent"
+                className={styles.openSourceLink}
+              >
+                {translate({
+                  id: "homepage.openSource.action",
+                  message: "Explore the source",
+                })}
+                <span aria-hidden="true">↗</span>
+              </a>
+            </div>
+          </div>
+        </section>
+        <div className={styles.exploreMore}>
+          <Link href={localePath("/docs/getting-started/intro", locale)}>
+            {translate({
+              id: "homepage.explore.docs",
+              message: "Explore the documentation ↗",
+            })}
+          </Link>
+          <Link href={localePath("/sovereign", locale)}>
+            {translate({
+              id: "homepage.explore.sovereign",
+              message: "Read the sovereignty protocol ↗",
+            })}
+          </Link>
+        </div>
       </main>
 
       <footer className={styles.homeFooter}>
