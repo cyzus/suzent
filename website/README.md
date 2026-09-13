@@ -39,8 +39,8 @@ The build writes `out/` and validates every generated page against the legacy ro
 
 The site uses separate locale root layouts so Chinese HTML has the correct language before hydration. Next.js's experimental `globalNotFound` option supplies the shared static 404 page across those layouts.
 
-## Deployment review
+## Deployment
 
-The current GitHub Pages workflow has intentionally **not** been changed. It still publishes `website/build`; this migration produces `website/out`. Do not merge this migration into the production branch until the workflow change in `deployment-proposal.patch` has been reviewed and approved. That patch also changes CI to Node.js 22 and adds the content tests before the build. Applying the patch alone does not publish a site; the existing main-branch workflow trigger controls deployment.
+The GitHub Pages workflow installs dependencies with Node.js 22, runs the content tests and production build, and publishes `website/out` to `suzent.com`. Changes to documentation or website files on `main` trigger deployment; the workflow also supports manual runs.
 
 The old `npm run deploy` command has been removed. Deployment remains controlled by the GitHub Pages workflow.
