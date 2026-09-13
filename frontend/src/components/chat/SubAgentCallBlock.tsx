@@ -216,7 +216,7 @@ const SubAgentCallBlockComponent: React.FC<SubAgentCallBlockProps> = ({
         ${expanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}
       >
         <div className="overflow-hidden min-h-0 min-w-0 w-full">
-          <div className="ml-2 pl-3 border-l-2 border-neutral-200 dark:border-zinc-600 mt-1 mb-2 space-y-2 min-w-0 w-full overflow-x-hidden">
+          <div className="ml-2 pl-3 border-l-2 border-neutral-200 dark:border-zinc-600 mt-1 mb-2 space-y-2 min-w-0 overflow-x-hidden">
             {/* Task description */}
             {description && (
               <div className="min-w-0">
