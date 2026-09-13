@@ -203,8 +203,10 @@ class TurnTranslator:
     ``rawInput`` once the call is closed.
     """
 
-    def __init__(self) -> None:
-        self._citations = CitationStreamRenderer()
+    def __init__(self, citations: CitationStreamRenderer | None = None) -> None:
+        self._citations = (
+            citations if citations is not None else CitationStreamRenderer()
+        )
         self._buffer = ""
         self._tool_names: dict[str, str] = {}
         self._tool_args: dict[str, str] = {}
@@ -607,6 +609,7 @@ class ACPAgentServer:
         message = text
         resume_approvals: list[dict[str, Any]] = []
         failure: str | None = None
+        citations = CitationStreamRenderer()
 
         while True:
             payload: dict[str, Any] = {
@@ -618,7 +621,7 @@ class ACPAgentServer:
             if resume_approvals:
                 payload["resume_approvals"] = resume_approvals
 
-            translator = TurnTranslator()
+            translator = TurnTranslator(citations)
             pending: list[dict[str, Any]] = []
             async for chunk in self._backend.stream_turn(payload):
                 if session.cancelled:
@@ -634,11 +637,11 @@ class ACPAgentServer:
 
             if session.cancelled:
                 return "cancelled"
-            for item in translator.finish():
-                await self._update(session.chat_id, item.payload)
             if failure:
                 raise ACPServerError(failure)
             if not pending:
+                for item in translator.finish():
+                    await self._update(session.chat_id, item.payload)
                 return "end_turn"
 
             resume_approvals = []

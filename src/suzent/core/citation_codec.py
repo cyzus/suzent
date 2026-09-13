@@ -35,6 +35,9 @@ _PARTIAL_MARKER_RE = re.compile(
     r"(?:\[$|(?:\[\[|\ue200|\ufffc)[a-zA-Z]*"
     r"(?:[:\ue202\ufffc][^\]\ue201\ufffc]*\]?)?$)"
 )
+_STREAMING_LOOSE_MARKER_RE = re.compile(
+    r"\bc(?:i(?:t(?:e(?:[-:][a-zA-Z0-9_]*(?:\s*,\s*[a-zA-Z0-9_]*)*\s*)?)?)?)?$"
+)
 _ID_SEPARATOR_RE = re.compile(r"[,\ue202\ufffc]")
 _RESERVED_DELIMITER_RE = re.compile(r"[\ue200-\ue202\ufffc]")
 
@@ -203,8 +206,12 @@ class CitationStreamRenderer:
 
     def feed(self, chunk: str) -> str:
         self._raw += chunk
+        # Loose markers have no closing delimiter, so hold a possible opener
+        # and its payload until subsequent text establishes the full match.
+        pending = _STREAMING_LOOSE_MARKER_RE.search(self._raw)
+        stable = self._raw[: pending.start()] if pending else self._raw
         rendered = render_citations_plain_text(
-            self._raw, self._sources.values(), include_sources=False
+            stable, self._sources.values(), include_sources=False
         )
         if not rendered.startswith(self._rendered_body):
             # Defensive fallback: never leak protocol characters if an upstream
