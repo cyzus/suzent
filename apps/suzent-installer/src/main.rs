@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod git_install;
 mod updater;
 
 use serde::{Deserialize, Serialize};
@@ -264,6 +265,10 @@ fn launch_installed_app(dir: String) -> Result<(), String> {
     Ok(())
 }
 
+fn installer_context_config() -> tauri::Context<tauri::Wry> {
+    tauri::generate_context!()
+}
+
 fn run_tauri_app() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -276,7 +281,7 @@ fn run_tauri_app() {
             launch_installed_app,
             updater_status,
         ])
-        .run(tauri::generate_context!())
+        .run(installer_context_config())
         .expect("error while running Suzent installer");
 }
 
@@ -300,7 +305,7 @@ fn run_update_tauri(args: Vec<String>, repair: bool) {
             start_update_worker(app.handle().clone(), setup_runtime.clone())?;
             Ok(())
         })
-        .run(tauri::generate_context!())
+        .run(installer_context_config())
         .expect("error while running Suzent updater");
 }
 
@@ -397,7 +402,7 @@ fn stages() -> Vec<InstallStage> {
             name: "git",
             title: "Installing Git",
             category: "prereqs",
-            needs_user_input: false,
+            needs_user_input: true,
             worker: stage_git,
         },
         InstallStage {
@@ -529,7 +534,7 @@ fn run_stage(config: &InstallConfig, stage: InstallStage) -> StageResult {
 }
 
 fn stage_git(_config: &InstallConfig) -> StageOutcome {
-    if let Some(path) = find_executable("git") {
+    if let Some(path) = find_git_after_install() {
         print_human(format!("[OK] Git found at {}", path.display()));
         return StageOutcome::ok();
     }
@@ -559,6 +564,14 @@ fn stage_git(_config: &InstallConfig) -> StageOutcome {
         }
     }
 
+    if cfg!(target_os = "macos") {
+        return git_install::install_macos();
+    }
+    if cfg!(target_os = "linux") {
+        // GUI stage requests suppress terminal prompts but can use PolicyKit dialogs.
+        let gui = git_install::allows_gui_authorization(&env::args().skip(1).collect::<Vec<_>>());
+        return git_install::install_linux(_config.non_interactive && !gui);
+    }
     StageOutcome::fail("Git is required. Install it from https://git-scm.com/downloads and retry.")
 }
 
@@ -1243,19 +1256,6 @@ fn run_command(command: &mut Command) -> bool {
     )
 }
 
-#[cfg(test)]
-mod tests {
-    use super::is_release_tag;
-
-    #[test]
-    fn validates_stable_release_tags() {
-        assert!(is_release_tag("v0.7.3"));
-        assert!(!is_release_tag("0.7.3"));
-        assert!(!is_release_tag("v0.7"));
-        assert!(!is_release_tag("v0.7.3-rc1"));
-    }
-}
-
 fn find_executable(name: &str) -> Option<PathBuf> {
     let exe_name = if cfg!(windows) && !name.ends_with(".exe") {
         format!("{name}.exe")
@@ -1293,20 +1293,29 @@ fn find_executable(name: &str) -> Option<PathBuf> {
 }
 
 fn find_git_after_install() -> Option<PathBuf> {
-    find_executable("git").or_else(|| {
-        if cfg!(windows) {
+    let mut candidates: Vec<PathBuf> = find_executable("git").into_iter().collect();
+    if cfg!(windows) {
+        candidates.extend(
             [
                 r"C:\Program Files\Git\cmd\git.exe",
                 r"C:\Program Files\Git\bin\git.exe",
                 r"C:\Program Files (x86)\Git\cmd\git.exe",
             ]
-            .iter()
-            .map(PathBuf::from)
-            .find(|path| path.exists())
-        } else {
-            None
-        }
-    })
+            .map(PathBuf::from),
+        );
+    } else if cfg!(target_os = "macos") {
+        candidates.extend(
+            [
+                "/opt/homebrew/bin/git",
+                "/usr/local/bin/git",
+                "/usr/bin/git",
+            ]
+            .map(PathBuf::from),
+        );
+    }
+    candidates
+        .into_iter()
+        .find(|path| git_install::usable_git(path))
 }
 
 fn find_uv_after_install() -> Option<PathBuf> {
@@ -1483,4 +1492,17 @@ fn exit_with_prompt(code: i32, non_interactive: bool) -> ! {
         let _ = io::stdout().flush();
     }
     std::process::exit(code);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_release_tag;
+
+    #[test]
+    fn validates_stable_release_tags() {
+        assert!(is_release_tag("v0.7.3"));
+        assert!(!is_release_tag("0.7.3"));
+        assert!(!is_release_tag("v0.7"));
+        assert!(!is_release_tag("v0.7.3-rc1"));
+    }
 }

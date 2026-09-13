@@ -193,5 +193,47 @@
   "homepage.copy.failed": {
     "message": "复制失败",
     "description": "Clipboard copy failure"
+  },
+  "homepage.download.eyebrow": {
+    "message": "你的智能体，你的电脑。"
+  },
+  "homepage.download.title": {
+    "message": "从安装程序开始"
+  },
+  "homepage.download.description": {
+    "message": "引导你安装 Suzent 及其依赖。选择适合你电脑的平台下载。"
+  },
+  "homepage.download.button": {
+    "message": "下载安装程序"
+  },
+  "homepage.download.note": {
+    "message": "需要联网。在 macOS 和 Linux 上，可能需要先为下载的文件添加执行权限。"
+  },
+  "homepage.download.help": {
+    "message": "安装指南 ↗"
+  },
+  "homepage.download.terminal": {
+    "message": "或通过终端安装"
+  },
+  "homepage.download.detected": {
+    "message": "你的系统"
+  },
+  "homepage.download.choose": {
+    "message": "选择你的系统"
+  },
+  "homepage.download.system": {
+    "message": "操作系统"
+  },
+  "homepage.download.processor": {
+    "message": "Mac 处理器"
+  },
+  "homepage.download.openWindows": {
+    "message": "打开下载的文件，按照引导完成安装。"
+  },
+  "homepage.download.openUnix": {
+    "message": "下载，添加执行权限，然后打开。"
+  },
+  "homepage.download.other": {
+    "message": "其他系统"
   }
 }
