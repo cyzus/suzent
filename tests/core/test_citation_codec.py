@@ -86,3 +86,28 @@ def test_malformed_marker_never_leaks_reserved_delimiters():
 
     assert "\ue200" not in rendered
     assert "\ue202" not in rendered
+
+
+def test_stream_renderer_buffers_loose_citations_at_every_boundary() -> None:
+    for marker in ("cite:t0_src_1", "cite-t0_src_1", "cite:t0_src_1, t0_src_12"):
+        for tail in ("", ". More"):
+            text = f"Fact {marker}{tail}"
+            expected = render_citations_plain_text(text, SOURCES)
+            for boundary in range(1, len(text)):
+                renderer = CitationStreamRenderer()
+                renderer.add_sources(SOURCES)
+                output = renderer.feed(text[:boundary])
+                output += renderer.feed(text[boundary:])
+                output += renderer.finish()
+                assert output == expected
+            renderer = CitationStreamRenderer()
+            renderer.add_sources(SOURCES)
+            output = "".join(renderer.feed(char) for char in text)
+            assert output + renderer.finish() == expected
+
+
+def test_stream_renderer_preserves_words_resembling_loose_citations() -> None:
+    for text in ("c", "ci", "cit", "cite", "cite: example", "A city with citrus."):
+        renderer = CitationStreamRenderer()
+        output = "".join(renderer.feed(char) for char in text)
+        assert output + renderer.finish() == text
