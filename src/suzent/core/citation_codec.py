@@ -33,7 +33,7 @@ CITATION_MARKER_RE = re.compile(
 )
 _PARTIAL_MARKER_RE = re.compile(
     r"(?:\[$|(?:\[\[|\ue200|\ufffc)[a-zA-Z]*"
-    r"(?:[:\ue202\ufffc][^\]\ue201]*)?$)"
+    r"(?:[:\ue202\ufffc][^\]\ue201\ufffc]*\]?)?$)"
 )
 _ID_SEPARATOR_RE = re.compile(r"[,\ue202\ufffc]")
 _RESERVED_DELIMITER_RE = re.compile(r"[\ue200-\ue202\ufffc]")
@@ -166,7 +166,8 @@ def render_citations_plain_text(
             prefix = " "
         return f"{prefix}[{', '.join(labels)}]"
 
-    body = strip_trailing_partial_marker(CITATION_MARKER_RE.sub(replace, text))
+    text = strip_trailing_partial_marker(text)
+    body = CITATION_MARKER_RE.sub(replace, text)
     # A malformed marker must still never leak Suzent's reserved protocol
     # characters to an external text surface.
     body = _RESERVED_DELIMITER_RE.sub("", body).rstrip()

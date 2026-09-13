@@ -574,3 +574,47 @@ def test_tool_kinds_cover_the_common_tools():
     assert tool_kind("run_command") == "execute"
     assert tool_kind("web_search") == "fetch"
     assert tool_kind("summon_daemon") == "other"
+
+
+@pytest.mark.parametrize(
+    "marker", ["[[cite:t0_src_1]]", "\ue200cite\ue202t0_src_1\ue201"]
+)
+async def test_acp_renders_streamed_citations(marker):
+    frames = [sse({"type": "TEXT_MESSAGE_CONTENT", "delta": "Found it."})]
+    frames.extend(
+        sse({"type": "TEXT_MESSAGE_CONTENT", "delta": char}) for char in marker
+    )
+    frames.append(
+        sse(
+            {
+                "type": "CUSTOM",
+                "name": "citation_sources",
+                "value": {
+                    "sources": [
+                        {
+                            "id": "t0_src_1",
+                            "title": "Docs",
+                            "url": "https://example.com",
+                        }
+                    ]
+                },
+            }
+        )
+    )
+    translator = TurnTranslator()
+    updates = [item for frame in frames for item in translator.feed(frame)]
+    updates.extend(translator.finish())
+    text = "".join(item.payload["content"]["text"] for item in updates)
+    assert text == "Found it. [1]\n\nSources:\n[1] Docs — https://example.com"
+    assert list(translator.finish()) == []
+
+
+def test_acp_hides_incomplete_citation():
+    translator = TurnTranslator()
+    updates = list(
+        translator.feed(
+            sse({"type": "TEXT_MESSAGE_CONTENT", "delta": "Answer[[cite:t0_"})
+        )
+    )
+    updates.extend(translator.finish())
+    assert "".join(item.payload["content"]["text"] for item in updates) == "Answer"
