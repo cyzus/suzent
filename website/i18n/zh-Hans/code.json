@@ -189,5 +189,9 @@
   },
   "home.browserPrivacy": {
     "message": "浏览器隐私政策"
+  },
+  "homepage.copy.failed": {
+    "message": "复制失败",
+    "description": "Clipboard copy failure"
   }
 }
