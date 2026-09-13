@@ -1,41 +1,46 @@
-# Website
+# Suzent website
 
-This website is built using [Docusaurus](https://docusaurus.io/), a modern static website generator.
+The website uses Next.js and Fumadocs and exports static HTML for GitHub Pages. The landing page and sovereignty protocol retain their existing designs. No server is required in production.
 
-## Installation
+## Development
 
-```bash
-yarn
+Use Node.js 22 or newer and npm:
+
+```sh
+npm ci
+npm run dev
 ```
 
-## Local Development
+Open http://127.0.0.1:3101. Set `PORT` to choose another port. The development command watches documentation, translations, blog posts, standalone content, and static assets, regenerating content as they change. `npm start` is an alias for development.
 
-```bash
-yarn start
+## Content
+
+- Documentation: `../docs/`. Numeric directory prefixes set source organization; the published URLs omit them. `README.md`, `index.md`, and a document named after its directory retain the directory URL.
+- Chinese documentation: `i18n/zh-Hans/docusaurus-plugin-content-docs/current/`. This legacy directory name is retained to avoid moving translated content. Translation matching uses the published URL, including the older `providers.md` translation. Missing translations display the English content with a Chinese notice.
+- Landing copy: the existing translation IDs in `i18n/zh-Hans/code.json`, with English defaults in the native React landing component.
+- Navigation/UI copy: `src/lib/messages.ts`.
+- Sovereignty protocol: `content/sovereignty.json`, shared by the rendered page and LLM corpus.
+- Blog: `blog/*.md` and `blog/authors.yml`. Article, tag, archive, author, RSS, Atom, and JSON-feed URLs are generated automatically. Chinese blog routes currently show an explicit English fallback.
+- Browser privacy policy: `content/browser-privacy.md`.
+- Public source assets: `static/` and documentation images in `../docs/assets/`.
+
+`npm run prepare:content` generates `.generated/content.json` and `public/`, including language-specific full-text search indexes, LLM indexes/corpora, feeds, and the sitemap. Do not edit those generated files. Markdown imports for the two existing Docusaurus tab components are adapted at build time; code examples are left intact. Tabs use native Fumadocs components with synchronized groups. No Docusaurus runtime or compatibility layer remains.
+
+## Validation and build
+
+```sh
+npm test
+npm run build
+npm run typecheck
+npm run serve
 ```
 
-This command starts a local development server and opens up a browser window. Most changes are reflected live without having to restart the server.
+The build writes `out/` and validates every generated page against the legacy route fixture, checking local links, heading anchors, assets, canonical metadata, HTML language, search indexes, and feeds. The URL policy adds trailing slashes, which GitHub Pages supports through directory index files. Existing paths continue resolving to the same pages.
 
-## Build
-
-```bash
-yarn build
-```
-
-This command generates static content into the `build` directory and can be served using any static contents hosting service.
+The site uses separate locale root layouts so Chinese HTML has the correct language before hydration. Next.js's experimental `globalNotFound` option supplies the shared static 404 page across those layouts.
 
 ## Deployment
 
-Using SSH:
+The GitHub Pages workflow installs dependencies with Node.js 22, runs the content tests and production build, and publishes `website/out` to `suzent.com`. Changes to documentation or website files on `main` trigger deployment; the workflow also supports manual runs.
 
-```bash
-USE_SSH=true yarn deploy
-```
-
-Not using SSH:
-
-```bash
-GIT_USER=<Your GitHub username> yarn deploy
-```
-
-If you are using GitHub pages for hosting, this command is a convenient way to build the website and push to the `gh-pages` branch.
+The old `npm run deploy` command has been removed. Deployment remains controlled by the GitHub Pages workflow.
