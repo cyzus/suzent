@@ -574,3 +574,113 @@ def test_tool_kinds_cover_the_common_tools():
     assert tool_kind("run_command") == "execute"
     assert tool_kind("web_search") == "fetch"
     assert tool_kind("summon_daemon") == "other"
+
+
+@pytest.mark.parametrize(
+    "marker", ["[[cite:t0_src_1]]", "\ue200cite\ue202t0_src_1\ue201"]
+)
+async def test_acp_renders_streamed_citations(marker):
+    frames = [sse({"type": "TEXT_MESSAGE_CONTENT", "delta": "Found it."})]
+    frames.extend(
+        sse({"type": "TEXT_MESSAGE_CONTENT", "delta": char}) for char in marker
+    )
+    frames.append(
+        sse(
+            {
+                "type": "CUSTOM",
+                "name": "citation_sources",
+                "value": {
+                    "sources": [
+                        {
+                            "id": "t0_src_1",
+                            "title": "Docs",
+                            "url": "https://example.com",
+                        }
+                    ]
+                },
+            }
+        )
+    )
+    translator = TurnTranslator()
+    updates = [item for frame in frames for item in translator.feed(frame)]
+    updates.extend(translator.finish())
+    text = "".join(item.payload["content"]["text"] for item in updates)
+    assert text == "Found it. [1]\n\nSources:\n[1] Docs — https://example.com"
+    assert list(translator.finish()) == []
+
+
+def test_acp_hides_incomplete_citation():
+    translator = TurnTranslator()
+    updates = list(
+        translator.feed(
+            sse({"type": "TEXT_MESSAGE_CONTENT", "delta": "Answer[[cite:t0_"})
+        )
+    )
+    updates.extend(translator.finish())
+    assert "".join(item.payload["content"]["text"] for item in updates) == "Answer"
+
+
+async def test_citations_survive_approval_resume(tmp_path):
+    turns = suspended_then_finished()
+    turns[0].insert(
+        0,
+        sse({"type": "TEXT_MESSAGE_CONTENT", "delta": "First [[cite:t0_src_1]]."}),
+    )
+    turns[0].insert(
+        0,
+        sse(
+            {
+                "type": "CUSTOM",
+                "name": "citation_sources",
+                "value": {"sources": [{"id": "t0_src_1", "title": "First source"}]},
+            }
+        ),
+    )
+    turns[1] = [
+        sse({"type": "TEXT_MESSAGE_CONTENT", "delta": " Second [[cite:t0_src_2]]."}),
+        sse(
+            {
+                "type": "CUSTOM",
+                "name": "citation_sources",
+                "value": {"sources": [{"id": "t0_src_2", "title": "Second source"}]},
+            }
+        ),
+    ]
+    wire = Wire()
+    server = ACPAgentServer(FakeBackend(turns), wire)
+
+    async def answer(message: dict[str, Any]) -> None:
+        assert not any(
+            "Sources:" in update.get("content", {}).get("text", "")
+            for update in wire.updates()
+        )
+        await server.dispatch(
+            {
+                "jsonrpc": "2.0",
+                "id": message["id"],
+                "result": {
+                    "outcome": {"outcome": "selected", "optionId": "allow_once"}
+                },
+            }
+        )
+
+    wire.responder = answer
+    await server.dispatch(request(1, "initialize", {}))
+    await server.dispatch(request(2, "session/new", {"cwd": str(tmp_path)}))
+    await server.dispatch(
+        request(
+            3,
+            "session/prompt",
+            {"sessionId": "chat-1", "prompt": [{"type": "text", "text": "status"}]},
+        )
+    )
+    await server.drain()
+    assert wire.result(3) == {"stopReason": "end_turn"}
+    text = "".join(
+        update["content"]["text"]
+        for update in wire.updates()
+        if update["sessionUpdate"] == "agent_message_chunk"
+    )
+    assert text == (
+        "First [1]. Second [2].\n\nSources:\n[1] First source\n[2] Second source"
+    )

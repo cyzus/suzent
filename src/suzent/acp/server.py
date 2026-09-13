@@ -36,6 +36,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from suzent.core.citation_codec import CitationStreamRenderer
 from suzent.logger import get_logger
 
 logger = get_logger(__name__)
@@ -202,7 +203,10 @@ class TurnTranslator:
     ``rawInput`` once the call is closed.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, citations: CitationStreamRenderer | None = None) -> None:
+        self._citations = (
+            citations if citations is not None else CitationStreamRenderer()
+        )
         self._buffer = ""
         self._tool_names: dict[str, str] = {}
         self._tool_args: dict[str, str] = {}
@@ -227,11 +231,21 @@ class TurnTranslator:
                 if isinstance(event, dict):
                     yield from self._translate(event)
 
+    def finish(self) -> Iterator[Update]:
+        """Append portable source references after all stream events arrive."""
+        if delta := self._citations.finish():
+            yield Update(
+                {
+                    "sessionUpdate": "agent_message_chunk",
+                    "content": _text_block(delta),
+                }
+            )
+
     def _translate(self, event: dict[str, Any]) -> Iterator[TurnItem]:
         kind = str(event.get("type") or "")
 
         if kind == "TEXT_MESSAGE_CONTENT":
-            if delta := str(event.get("delta") or ""):
+            if delta := self._citations.feed(str(event.get("delta") or "")):
                 yield Update(
                     {
                         "sessionUpdate": "agent_message_chunk",
@@ -335,7 +349,13 @@ class TurnTranslator:
             custom = event["custom"]
             name = custom.get("name")
             value = custom.get("value")
-        if name == "tool_approval_request" and isinstance(value, dict):
+        if name == "citation_sources" and isinstance(value, dict):
+            sources = value.get("sources")
+            if isinstance(sources, list):
+                self._citations.add_sources(
+                    source for source in sources if isinstance(source, dict)
+                )
+        elif name == "tool_approval_request" and isinstance(value, dict):
             yield Approval(value)
 
     def _decode_args(self, tool_call_id: str) -> dict[str, Any] | None:
@@ -589,6 +609,7 @@ class ACPAgentServer:
         message = text
         resume_approvals: list[dict[str, Any]] = []
         failure: str | None = None
+        citations = CitationStreamRenderer()
 
         while True:
             payload: dict[str, Any] = {
@@ -600,7 +621,7 @@ class ACPAgentServer:
             if resume_approvals:
                 payload["resume_approvals"] = resume_approvals
 
-            translator = TurnTranslator()
+            translator = TurnTranslator(citations)
             pending: list[dict[str, Any]] = []
             async for chunk in self._backend.stream_turn(payload):
                 if session.cancelled:
@@ -619,6 +640,8 @@ class ACPAgentServer:
             if failure:
                 raise ACPServerError(failure)
             if not pending:
+                for item in translator.finish():
+                    await self._update(session.chat_id, item.payload)
                 return "end_turn"
 
             resume_approvals = []
