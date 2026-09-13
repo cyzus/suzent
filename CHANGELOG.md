@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Remove the language param from the shell tools (#212)
 
 ### 🐛 Fixed
+- Validate website builds in clean CI checkouts (#217)
 - Adjust overflow handling in SubAgentCallBlock and activity rail styles
 - Render ACP citations as portable references (#215)
 - Improve overflow handling for chat components and animations
