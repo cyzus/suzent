@@ -171,11 +171,175 @@ function ScrambleTitle({ text }: { text: string }): ReactNode {
   return (
     <span
       className={styles.heroTitleInner}
-      data-text={displayText}
+      data-text={text}
+      aria-label={text}
       onMouseEnter={handleMouseEnter}
     >
-      {displayText}
+      {text.split("").map((character, index) => (
+        <span className={styles.titleCell} key={index} aria-hidden="true">
+          <span className={styles.titleMeasure}>{character}</span>
+          <span className={styles.titleGlyph}>{displayText[index]}</span>
+        </span>
+      ))}
     </span>
+  );
+}
+
+type InstallerOS = "macos" | "windows" | "linux";
+
+function OSIcon({ os }: { os: InstallerOS }): ReactNode {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="20"
+      height="20"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      {os === "windows" ? (
+        <path d="M2 4l9-1.2v8.3H2zm10-1.4L22 1v10.1H12zM2 12h9v8.3L2 19zm10 0h10v11l-10-1.6z" />
+      ) : os === "macos" ? (
+        <path d="M16.7 1c.2 1.5-.5 3-1.4 4-.9 1-2.4 1.6-3.8 1.5-.2-1.5.5-3 1.4-4C13.9 1.5 15.5 1 16.7 1zM20.8 17.2c-.5 1.2-.8 1.8-1.5 2.8-1 1.4-2.4 3-4.1 3-1.5 0-1.9-1-4-1s-2.5 1-4 1c-1.7 0-3-1.5-4-3C.4 15.8 1 9.7 5.3 7.5c1.5-.8 3.1-.8 4.6-.2 1.1.4 1.8.5 2.5.5s1.7-.4 3-.7c1.6-.3 3.4.3 4.6 1.7-4 2.2-3.4 6.9.8 8.4z" />
+      ) : (
+        <>
+          <path d="M8 9c-1-6 1-8 4-8s5 2 4 8l3 8-3 4H8l-3-4z" />
+          <ellipse cx="12" cy="15" rx="4" ry="5" fill="var(--h-bg)" />
+          <circle cx="10" cy="7" r="1" fill="var(--h-bg)" />
+          <circle cx="14" cy="7" r="1" fill="var(--h-bg)" />
+          <path d="m10 9 2 2 2-2zM4 20l5-1v3H3zm11-1 5 1 1 2h-6z" />
+        </>
+      )}
+    </svg>
+  );
+}
+
+function InstallerDownloads(): ReactNode {
+  const t = useTranslator();
+  const locale = useLocale();
+  const [os, setOS] = useState<InstallerOS>("macos");
+  const [macArch, setMacArch] = useState("aarch64");
+  const [detected, setDetected] = useState(false);
+  useEffect(() => {
+    const ua = navigator.userAgent;
+    if (
+      !/Android|iPhone|iPad/.test(ua) &&
+      !(navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+    ) {
+      if (/Windows/.test(ua)) {
+        setOS("windows");
+        setDetected(true);
+      } else if (/Mac/.test(ua)) {
+        setOS("macos");
+        setDetected(true);
+      } else if (/Linux/.test(ua)) {
+        setOS("linux");
+        setDetected(true);
+      }
+    }
+  }, []);
+  const name =
+    os === "macos" ? "macOS" : os === "windows" ? "Windows" : "Linux";
+  const asset = `suzent-installer-${os}-${os === "macos" ? macArch : "x86_64"}${os === "windows" ? ".exe" : ""}`;
+  const cmd = os === "windows" ? WIN_CMD : UNIX_CMD;
+  return (
+    <section
+      id="download"
+      className={styles.installCompact}
+      aria-label={t({
+        id: "homepage.download.button",
+        message: "Download installer",
+      })}
+    >
+      <a
+        className={styles.downloadPrimary}
+        href={`https://github.com/cyzus/suzent/releases/latest/download/${asset}`}
+      >
+        <OSIcon os={os} />
+        <span>
+          {t({ id: "homepage.download.button", message: "Download installer" })}{" "}
+          · {name}
+          {os === "macos"
+            ? ` (${macArch === "aarch64" ? "Apple Silicon" : "Intel"})`
+            : ""}
+        </span>
+        <span aria-hidden="true">↓</span>
+      </a>
+      <p className={styles.downloadInstruction}>
+        {t({
+          id:
+            os === "windows"
+              ? "homepage.download.openWindows"
+              : "homepage.download.openUnix",
+          message:
+            os === "windows"
+              ? "Open the download. Follow the setup."
+              : "Download, make executable, then open.",
+        })}{" "}
+        <Link href={localePath("/docs/getting-started/quickstart", locale)}>
+          {t({ id: "homepage.download.help", message: "Setup guide ↗" })}
+        </Link>
+      </p>
+      <details className={styles.otherSystems}>
+        <summary>
+          {t({ id: "homepage.download.other", message: "Other systems" })}
+        </summary>
+        <div className={styles.installChoices}>
+          <span>
+            {t({
+              id: detected
+                ? "homepage.download.detected"
+                : "homepage.download.choose",
+              message: detected ? "YOUR SYSTEM" : "CHOOSE YOUR SYSTEM",
+            })}
+          </span>
+          <select
+            aria-label={t({
+              id: "homepage.download.system",
+              message: "Operating system",
+            })}
+            value={os}
+            onChange={(e) => {
+              setOS(e.target.value as InstallerOS);
+              setDetected(false);
+            }}
+          >
+            <option value="macos">macOS</option>
+            <option value="windows">Windows</option>
+            <option value="linux">Linux</option>
+          </select>
+          {os === "macos" && (
+            <select
+              aria-label={t({
+                id: "homepage.download.processor",
+                message: "Mac processor",
+              })}
+              value={macArch}
+              onChange={(e) => setMacArch(e.target.value)}
+            >
+              <option value="aarch64">Apple Silicon</option>
+              <option value="x86_64">Intel</option>
+            </select>
+          )}
+          {os !== "macos" && <span>x86_64</span>}
+        </div>
+      </details>
+      <details className={styles.terminalAlternative}>
+        <summary>
+          {t({
+            id: "homepage.download.terminal",
+            message: "Or install via terminal",
+          })}
+        </summary>
+        <div className={styles.cmdRow}>
+          <pre className={styles.cmdText}>{cmd}</pre>
+          <CopyButton text={cmd} />
+        </div>
+        <div className={styles.cmdRow}>
+          <pre className={styles.cmdText}>suzent start</pre>
+          <CopyButton text="suzent start" />
+        </div>
+      </details>
+    </section>
   );
 }
 
@@ -184,17 +348,12 @@ function ScrambleTitle({ text }: { text: string }): ReactNode {
 function HomepageHeader(): ReactNode {
   const locale = useLocale();
   const translate = useTranslator();
-  const [platform, setPlatform] = useState<"unix" | "windows">("unix");
   const [orbPointer, setOrbPointer] = useState<DotFieldPointer>({
     x: 0,
     y: 0,
     active: false,
   });
   const heroOrbRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (navigator.userAgent.includes("Windows")) setPlatform("windows");
-  }, []);
 
   useEffect(() => {
     function updateOrbPointer(
@@ -235,112 +394,36 @@ function HomepageHeader(): ReactNode {
     };
   }, []);
 
-  const installCmd = platform === "windows" ? WIN_CMD : UNIX_CMD;
-
   return (
     <header className={styles.heroBanner}>
-      {/* Above fold — title + orb fills the full viewport */}
       <div className={styles.heroInner}>
-        <div className={styles.heroTitleArea}>
-          <h1 className={styles.heroTitleBox}>
-            <ScrambleTitle text={"SUZENT"} />
-          </h1>
-          <p className={styles.heroSubtitle}>
+        <div className={styles.heroCopy}>
+          <div className={styles.heroTitleArea}>
+            <h1 className={styles.heroTitleBox}>
+              <ScrambleTitle text={"SUZENT"} />
+            </h1>
+            <p className={styles.heroSubtitle}>
+              {translate({
+                id: "homepage.hero.kicker",
+                message: "THE SOVEREIGN AI AGENT",
+              })}
+            </p>
+          </div>
+
+          <p className={styles.heroTagline}>
             {translate({
-              id: "homepage.hero.kicker",
-              message: "THE SOVEREIGN AI AGENT",
+              id: "homepage.hero.subtitle",
+              message: "Models are replaceable. Your agent remains.",
             })}
           </p>
+          <InstallerDownloads />
         </div>
-
         <div className={styles.heroOrb} ref={heroOrbRef}>
           <DotCube pointer={orbPointer} />
           <HeroArt pointer={orbPointer} />
         </div>
-
-        <p className={styles.heroTagline}>
-          {translate({
-            id: "homepage.hero.subtitle",
-            message: "Models are replaceable. Your agent remains.",
-          })}
-        </p>
       </div>
-
-      {/* Below fold — install + CTA revealed on scroll */}
       <div className={styles.heroAction}>
-        <div className={styles.heroInstall}>
-          <div className={styles.installSystemBar}>
-            <span>
-              {translate({
-                id: "homepage.install.status",
-                message: "RITUAL STATUS: LISTENING",
-              })}
-            </span>
-            <span>
-              {translate({
-                id: "homepage.install.saasJab",
-                message: "NO SUBSCRIPTION ALTAR REQUIRED",
-              })}
-            </span>
-          </div>
-          <div className={styles.platformTabs}>
-            <button
-              className={clsx(
-                styles.platformTab,
-                platform === "unix" && styles.platformTabActive,
-              )}
-              onClick={() => setPlatform("unix")}
-            >
-              {translate({
-                id: "homepage.install.unix",
-                message: "Linux/Mac Rite",
-              })}
-            </button>
-            <button
-              className={clsx(
-                styles.platformTab,
-                platform === "windows" && styles.platformTabActive,
-              )}
-              onClick={() => setPlatform("windows")}
-            >
-              {translate({
-                id: "homepage.install.windows",
-                message: "Windows Rite",
-              })}
-            </button>
-          </div>
-          <div className={styles.cmdLabel}>
-            {translate({
-              id: "homepage.install.invocation",
-              message: "Invocation Script",
-            })}
-          </div>
-          <div className={styles.cmdRow}>
-            <pre className={styles.cmdText}>{installCmd}</pre>
-            <CopyButton text={installCmd} />
-          </div>
-          <div className={styles.installDivider}>
-            <span className={styles.installDividerLine} />
-            <span className={styles.installDividerLabel}>
-              {translate({
-                id: "homepage.install.thenRun",
-                message: "then run",
-              })}
-            </span>
-            <span className={styles.installDividerLine} />
-          </div>
-          <div className={styles.cmdLabel}>
-            {translate({
-              id: "homepage.install.vessel",
-              message: "Open Vessel",
-            })}
-          </div>
-          <div className={styles.cmdRow}>
-            <pre className={styles.cmdText}>suzent start</pre>
-            <CopyButton text="suzent start" />
-          </div>
-        </div>
-
         <div className={styles.heroCta}>
           <Link
             className={styles.heroCtaBtn}

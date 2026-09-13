@@ -3,6 +3,10 @@ use std::io::{self, IsTerminal};
 use std::path::Path;
 use std::process::{Command, Stdio};
 
+pub(super) fn allows_gui_authorization(args: &[String]) -> bool {
+    args.is_empty() || args.iter().any(|arg| arg == "--gui")
+}
+
 pub(super) fn usable_git(path: &Path) -> bool {
     let mut command = Command::new(path);
     command
@@ -106,6 +110,16 @@ pub(super) fn install_linux(non_interactive: bool) -> StageOutcome {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn desktop_bootstrap_can_authorize_without_enabling_cli_prompts() {
+        let args = ["--stage", "git", "--json", "--non-interactive"].map(String::from);
+        assert!(!allows_gui_authorization(&args));
+        let mut desktop_args = args.to_vec();
+        desktop_args.push("--gui".to_string());
+        assert!(allows_gui_authorization(&desktop_args));
+        assert!(allows_gui_authorization(&[]));
+    }
 
     #[test]
     fn debian_refreshes_indexes_before_installing_git() {

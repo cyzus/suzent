@@ -211,27 +211,9 @@
   margin: 0;
 }
 
-.heroTitleBox::before {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  z-index: 0;
-  width: min(92vw, 1060px);
-  height: 5px;
-  transform: translate(-50%, -50%);
-  background: linear-gradient(
-    90deg,
-    var(--h-text) 0 calc(50% - 26rem),
-    transparent calc(50% - 26rem) calc(50% + 26rem),
-    var(--h-text) calc(50% + 26rem) 100%
-  );
-  opacity: 0.18;
-  pointer-events: none;
-}
-
 .heroTitleInner {
   display: block;
+  white-space: nowrap;
   position: relative;
   z-index: 1;
   font-size: 9.35rem;
@@ -1068,4 +1050,188 @@
     position: static;
     margin-top: 1.5rem;
   }
+}
+
+/* Keep installation and the animation together in the first viewport. */
+.heroInner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  min-height: calc(100svh - 56px);
+  max-width: 1200px;
+  padding: 3rem 3rem;
+  gap: 3rem;
+}
+.heroCopy {
+  position: relative;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1.4rem;
+  min-width: 0;
+}
+.heroCopy .heroTitleArea {
+  align-items: flex-start;
+  text-align: left;
+}
+.heroInner .heroOrb {
+  width: min(440px, 38vw);
+  height: min(440px, 38vw);
+  justify-self: center;
+}
+.heroInner .heroTitleInner {
+  font-size: clamp(3.5rem, 7.5vw, 6.5rem);
+}
+.heroInner .heroTagline {
+  margin: 0;
+  text-align: left;
+  line-height: 1.8;
+  letter-spacing: 0.12em;
+}
+.heroCopy .installChoices {
+  justify-content: flex-start;
+}
+.installCompact {
+  position: relative;
+  z-index: 6;
+  width: min(100%, 480px);
+  scroll-margin-top: 70px;
+  margin-top: 0.6rem;
+  font-family: "IBM Plex Mono", monospace;
+}
+.installChoices {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-bottom: 0.65rem;
+  font-size: 0.62rem;
+  color: var(--h-text-mid);
+}
+.installChoices > span:first-child {
+  letter-spacing: 0.1em;
+}
+.installChoices select {
+  background: var(--h-bg);
+  color: var(--h-text);
+  border: 1px solid var(--h-text-mid);
+  border-radius: 0;
+  padding: 0.3rem;
+  font: inherit;
+  cursor: pointer;
+}
+.downloadPrimary {
+  display: flex;
+  gap: 0.8rem;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: var(--h-text);
+  color: var(--h-bg);
+  border: 1px solid var(--h-text);
+  text-decoration: none;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.downloadPrimary:hover {
+  opacity: 0.85;
+}
+.downloadPrimary svg {
+  flex-shrink: 0;
+}
+.downloadPrimary:focus-visible,
+.installChoices select:focus-visible,
+.terminalAlternative summary:focus-visible {
+  outline: 2px solid var(--h-text);
+  outline-offset: 4px;
+}
+.installCompact .downloadInstruction {
+  font-size: 0.62rem;
+  line-height: 1.7;
+  color: var(--h-text-mid);
+  text-align: center;
+  margin: 0.65rem 0;
+}
+.downloadInstruction a {
+  color: var(--h-text);
+  white-space: nowrap;
+}
+.terminalAlternative {
+  border-top: 1px solid var(--h-border-faint);
+  font-size: 0.65rem;
+}
+.terminalAlternative summary {
+  cursor: pointer;
+  text-align: center;
+  padding: 0.6rem;
+  color: var(--h-text-mid);
+}
+.terminalAlternative .cmdRow {
+  border: 1px solid var(--h-border-faint);
+}
+@media (max-width: 760px) {
+  .heroInner {
+    grid-template-columns: 1fr;
+    padding: 2.5rem 1.5rem 1rem;
+    gap: 0;
+    align-content: center;
+  }
+  .heroCopy {
+    align-items: center;
+    gap: 1rem;
+  }
+  .heroCopy .heroTitleArea {
+    align-items: center;
+    text-align: center;
+  }
+  .heroInner .heroTitleInner {
+    font-size: clamp(3.5rem, 13vw, 6rem);
+  }
+  .heroInner .heroTagline {
+    text-align: center;
+  }
+  .heroCopy .installChoices {
+    justify-content: center;
+  }
+  .heroInner .heroOrb {
+    width: min(240px, 27svh);
+    height: min(240px, 27svh);
+    margin-top: 1rem;
+  }
+  .downloadPrimary {
+    font-size: 0.72rem;
+  }
+}
+
+.otherSystems {
+  font-size: 0.65rem;
+  color: var(--h-text-mid);
+  margin-bottom: 0.5rem;
+}
+.otherSystems summary {
+  text-align: center;
+  cursor: pointer;
+  padding: 0.4rem;
+}
+.otherSystems .installChoices {
+  justify-content: center;
+  margin: 0.5rem 0;
+}
+.otherSystems summary:focus-visible {
+  outline: 2px solid var(--h-text);
+  outline-offset: 2px;
+}
+
+.titleCell {
+  position: relative;
+  display: inline-block;
+}
+.titleMeasure {
+  visibility: hidden;
+}
+.titleGlyph {
+  position: absolute;
+  inset: 0;
+  text-align: center;
 }

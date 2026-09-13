@@ -235,6 +235,7 @@ fn run_bootstrap_stage(
             request.stage.as_str(),
             "--json",
             "--non-interactive",
+            "--gui",
             "--dir",
             workspace_arg.as_str(),
         ],

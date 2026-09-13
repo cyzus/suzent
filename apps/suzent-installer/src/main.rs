@@ -569,7 +569,7 @@ fn stage_git(_config: &InstallConfig) -> StageOutcome {
     }
     if cfg!(target_os = "linux") {
         // GUI stage requests suppress terminal prompts but can use PolicyKit dialogs.
-        let gui = env::args().len() == 1;
+        let gui = git_install::allows_gui_authorization(&env::args().skip(1).collect::<Vec<_>>());
         return git_install::install_linux(_config.non_interactive && !gui);
     }
     StageOutcome::fail("Git is required. Install it from https://git-scm.com/downloads and retry.")
