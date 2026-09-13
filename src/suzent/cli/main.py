@@ -993,6 +993,45 @@ def get_pid_on_port(port: int) -> int | None:
     return None
 
 
+def _wait_for_port_release(port: int, timeout: float = 2.0) -> bool:
+    """Poll until no process owns `port`, returning False if it never frees up."""
+    deadline = time.monotonic() + timeout
+    while True:
+        if get_pid_on_port(port) is None:
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(0.1)
+
+
+def _stop_backend(port: int) -> bool:
+    """Stop the backend listening on `port`.
+
+    Returns False when nothing was running. Exits with an error when a server
+    responds but cannot be stopped.
+    """
+    if not _is_suzent_server_running("127.0.0.1", port):
+        return False
+
+    pid = get_pid_on_port(port)
+    if not pid:
+        typer.echo(
+            f"⚠️  A Suzent server responded on port {port}, but no owning "
+            "PID could be found to stop it."
+        )
+        raise typer.Exit(code=1)
+
+    typer.echo(f"🛑 Stopping Suzent Server (PID {pid}) on port {port}...")
+    try:
+        kill_process(pid)
+    except Exception as e:
+        typer.echo(f"❌ Failed to stop server: {e}")
+        raise typer.Exit(code=1)
+
+    typer.echo("✅ Server stopped.")
+    return True
+
+
 def kill_process(pid: int):
     """Kill a process by PID."""
     if IS_WINDOWS:
@@ -1350,11 +1389,7 @@ def register_commands(app: typer.Typer):
             except Exception as error:
                 typer.echo(f"  ❌ Failed to restart existing backend: {error}")
                 raise typer.Exit(code=1)
-            for _attempt in range(20):
-                if get_pid_on_port(DEFAULT_PORT) is None:
-                    break
-                time.sleep(0.1)
-            else:
+            if not _wait_for_port_release(DEFAULT_PORT):
                 typer.echo("  ❌ Existing backend did not release its port.")
                 raise typer.Exit(code=1)
             backend_running = False
@@ -1452,25 +1487,30 @@ def register_commands(app: typer.Typer):
         port: int = typer.Option(DEFAULT_PORT, help="Port the backend is running on"),
     ):
         """Stop a running Suzent backend server."""
-        if not _is_suzent_server_running("127.0.0.1", port):
+        if not _stop_backend(port):
             typer.echo(f"No Suzent server running on http://127.0.0.1:{port}.")
-            return
 
-        pid = get_pid_on_port(port)
-        if not pid:
+    @app.command()
+    def restart(
+        port: int = typer.Option(DEFAULT_PORT, help="Port the backend is running on"),
+        debug: bool = typer.Option(False, "--debug", help="Run server in debug mode"),
+        dev: bool = typer.Option(
+            False,
+            "--dev",
+            help="Force developer mode (backend in debug + Tauri dev), skipping the pre-built UI binary",
+        ),
+    ):
+        """Stop a running Suzent backend, then start Suzent again."""
+        if _stop_backend(port):
+            if not _wait_for_port_release(port):
+                typer.echo(f"❌ Port {port} was not released; restart aborted.")
+                raise typer.Exit(code=1)
+        else:
             typer.echo(
-                f"⚠️  A Suzent server responded on port {port}, but no owning "
-                "PID could be found to stop it."
+                f"No Suzent server running on http://127.0.0.1:{port}; starting one."
             )
-            raise typer.Exit(code=1)
 
-        typer.echo(f"🛑 Stopping Suzent Server (PID {pid}) on port {port}...")
-        try:
-            kill_process(pid)
-            typer.echo("✅ Server stopped.")
-        except Exception as e:
-            typer.echo(f"❌ Failed to stop server: {e}")
-            raise typer.Exit(code=1)
+        start(debug=debug, dev=dev, docs=False)
 
     @app.command()
     def ui(

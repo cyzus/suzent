@@ -78,6 +78,7 @@ suzent start           # Start the backend and the desktop app
 suzent serve           # Start the backend only (headless / standalone)
 suzent ui              # Start the desktop app against a running backend
 suzent stop            # Stop a running backend server
+suzent restart         # Stop a running backend server, then start Suzent again
 suzent doctor          # Check requirements and diagnose a broken install
 suzent update          # Update to the latest stable release
 suzent check-update    # Report whether a newer release exists
