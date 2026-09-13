@@ -304,5 +304,23 @@
   },
   "homepage.examples.authority.body": {
     "message": "选择工具，限定文件访问范围，查看它执行的操作。"
+  },
+  "homepage.download.detecting": {
+    "message": "正在识别你的系统"
+  },
+  "homepage.download.terminalLabel": {
+    "message": "终端"
+  },
+  "homepage.openSource.description": {
+    "message": "主权始于拥有。你的智能体、你的数据、你选择的模型——由你做主。"
+  },
+  "homepage.openSource.action": {
+    "message": "探索源代码"
+  },
+  "homepage.openSource.free": {
+    "message": "100% 免费。"
+  },
+  "homepage.openSource.open": {
+    "message": "完全开源。"
   }
 }
