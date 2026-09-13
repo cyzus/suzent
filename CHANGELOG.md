@@ -8,11 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v0.14.0] - 2026-09-13
 
 ### 🚀 Added
+- Refine landing page downloads and terminal setup
 - Add installer landing-page entry and automatic Git setup (#218)
 - Share launcher shortcut setup and repair across install paths (#213)
 - Report which tab the user is viewing (#209)
 
 ### ⚡ Changed
+- Refine landing installer animation and open-source section
 - Migrate documentation website to Fumadocs (#216)
 - Remove the language param from the shell tools (#212)
 
