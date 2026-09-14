@@ -1,10 +1,15 @@
+---
+sidebar_position: 4
+title: Upgrading
+---
+
 # Upgrading Suzent
 
 Manual steps needed when moving an existing install across versions. Each section
 names the release that introduced the change; find the version you are coming from
 and read forward from there. A fresh install needs none of this.
 
-For the full list of what changed in each release, see [CHANGELOG.md](./CHANGELOG.md).
+For the full list of what changed in each release, see [CHANGELOG.md](../CHANGELOG.md).
 
 ## v0.10.0 — Memory deduplication and consolidation
 
@@ -13,8 +18,8 @@ upgrading from any version before v0.10.0.*
 
 Every item below is about state that already exists on disk before the upgrade, ordered
 by how likely it is to surprise you. See
-[Concepts > Memory](./docs/02-concepts/memory/README.md) for what the system does, and
-[Development > Memory Architecture](./docs/03-developing/memory/architecture.md) for why.
+[Concepts > Memory](./02-concepts/memory/README.md) for what the system does, and
+[Development > Memory Architecture](./03-developing/memory/architecture.md) for why.
 
 ### The first run re-embeds everything, once
 

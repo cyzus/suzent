@@ -61,7 +61,7 @@ Write below the marker to tell Suzent something directly. Notes there outrank an
 worked out on its own, and no consolidation will overwrite them.
 
 If your `MEMORY.md` has no markers at all — because it predates them — Suzent treats the
-whole file as yours and stops regenerating it. See [Upgrading](../../../UPGRADING.md).
+whole file as yours and stops regenerating it. See [Upgrading](../../04-upgrading.md).
 
 ## Managing what's remembered
 
@@ -85,7 +85,7 @@ the notebook lives. See [Configuration](./configuration.md) for the full list.
 
 - [How consolidation works](./consolidation.md) — what the dream does, and when it runs.
 - [Notebook](./llm-wiki.md) — the knowledge vault, and how it differs from memory.
-- [Upgrading](../../../UPGRADING.md) — what changes on an existing install. Read this
+- [Upgrading](../../04-upgrading.md) — what changes on an existing install. Read this
   before deleting anything.
 
 Building on the memory system itself? The implementation notes live under
