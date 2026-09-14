@@ -41,7 +41,6 @@
   "/docs/concepts/memory/configuration",
   "/docs/concepts/memory/consolidation",
   "/docs/concepts/memory/llm-wiki",
-  "/docs/concepts/memory/upgrade-notes",
   "/docs/concepts/nodes",
   "/docs/concepts/nodes/a2a",
   "/docs/concepts/nodes/acp",
@@ -85,5 +84,6 @@
   "/docs/developing/releasing",
   "/docs/getting-started/intro",
   "/docs/getting-started/quickstart",
+  "/docs/upgrading",
   "/sovereign"
 ]
