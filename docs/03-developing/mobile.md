@@ -11,29 +11,30 @@ The desktop backend owns agent execution, memory and chat history. Mobile has tw
 independent roles: a remote client and an opt-in foreground device Node. A Node
 grant does not authorize HTTP access. No Python runtime runs on the phone.
 
-## Delivery plan
+## Status and roadmap
 
-1. **Foundation (this increment):** native projects, secure credential storage,
-   explicit backend address, remote-host token login, chat list/create/load,
-   background turn submission with live text, stop, foreground refresh, and
-   independently paired foreground Node exposing `device.status`.
-2. **Mobile authorization:** operator-approved short-lived QR bootstrap, a
-   resource-scoped client grant, protocol/version negotiation, scoped attachment
-   upload and client approval UI. Do not silently broaden Node or agent grants.
-3. **Useful device capabilities:** user-confirmed camera capture and upload,
-   audio capture, single location fix; native permission and lifecycle adapters.
-4. **Resilience:** durable event cursor/replay, idempotent send IDs in the backend,
-   local outbox and transcript cache, endpoint migration, retry/backoff, device
-   command deadlines and deduplication. Current sends are never retried automatically.
-5. **System integration:** share extensions/intents, opt-in APNs/FCM notification
+The first increment is a developer preview, not a release-ready mobile product. What it
+covers is described under [Run](#run) and [Preview flow](#preview-flow); what it does not
+is under [Limits](#limits).
+
+It deliberately uses existing full-access host tokens: the user must create one in desktop
+Settings → Devices → Remote host access. This permits administration of the backend, even
+though the preview UI only uses chat endpoints. Peer agent grants are not a substitute —
+they use unattended peer-agent semantics and do not provide a full interactive client
+session. Narrowing this is the first roadmap item.
+
+Planned, in order:
+
+1. **Mobile authorization** — operator-approved short-lived QR bootstrap, a
+   resource-scoped client grant, protocol/version negotiation, scoped attachment upload
+   and client approval UI. Do not silently broaden Node or agent grants.
+2. **Device capabilities** — user-confirmed camera capture and upload, audio capture,
+   single location fix; native permission and lifecycle adapters.
+3. **Resilience** — durable event cursor/replay, idempotent send IDs in the backend, local
+   outbox and transcript cache, endpoint migration, retry/backoff, device command
+   deadlines and deduplication. Current sends are never retried automatically.
+4. **System integration** — share extensions/intents, opt-in APNs/FCM notification
    delivery, platform-specific background work, accessibility and device QA.
-
-The first increment is a developer preview, not a release-ready mobile product.
-It deliberately uses existing full-access host tokens: the user must create one
-in desktop Settings → Devices → Remote host access. This permits administration
-of the backend, even though the preview UI only uses chat endpoints. Peer agent
-grants are not a substitute: they use unattended peer-agent semantics and do not
-provide a full interactive client session.
 
 ## Layout
 
@@ -95,7 +96,7 @@ Tokens are encrypted with an Android Keystore AES-GCM key; app backup is disable
    Disabling Node closes the connection but retains its pairing credential.
    Forgetting the connection removes local credentials; revoke remotely on desktop.
 
-## Limits and verification
+## Limits
 
 The preview renders Markdown replies and structured tool/reasoning activities in
 expandable native views. Tool approvals, attachments, citations, A2UI and some
@@ -103,29 +104,26 @@ legacy inline tool formats still require desktop. Shared palette and filtering
 rules live in `packages/presentation`; regenerate platform files with
 `uv run python scripts/generate_presentation.py` after editing their source.
 It lists the latest 50 chats. Replay is bounded and in-memory; it is not a durable
-event cursor or an always-online phone. An in-flight connection has no automatic retry loop; refresh
-or foreground the app to reconnect. Full native builds and simulator/device smoke
-tests are required before release, in addition to protocol unit tests.
+event cursor or an always-online phone. An in-flight connection has no automatic retry
+loop; refresh or foreground the app to reconnect.
 
-Test on both platforms: denied/revoked tokens; wrong address; background during
-generation; return after completion; stopped task; lost send acknowledgment;
-Node pending/approved/rejected; capability invocation; background disconnect;
-forget/re-pair; TLS failure. Never put real credentials into fixtures or logs.
+### Test coverage
 
-### Verified checks
+Covered by automated tests on both platforms: protocol and URL validation, authenticated
+HTTP/SSE, safe GET recovery, no mutation retries, and the shared display fixtures. The
+backend side covers independent observers, disconnection, overflow recovery, and
+preserving the desktop's unread position during a mobile replay. Desktop TypeScript checks
+and its display tests run in the same suite.
 
-- Android Debug build and eight JVM tests pass, covering protocol/URL validation,
-  authenticated HTTP/SSE, safe GET recovery, no mutation retries, and six shared
-  display fixtures. Real backend history and tool cards were inspected on Android 35.
-- iOS builds with Xcode 26.6 and runs on the iOS 26.5 iPhone 17 Pro simulator.
-  All five Swift core tests pass, including the shared display fixtures. Real
-  backend history and expandable tool output were inspected without starting a run.
-- Desktop TypeScript checks and 19 display tests pass; its production build was
-  also verified during shared-presentation implementation.
-- 24 focused backend tests pass, including independent observers, disconnection,
-  overflow recovery, and preserving desktop unread position during mobile replay.
-- Physical-device lifecycle, TLS, Node pairing, and end-to-end concurrent generation
-  still need broader QA. CI definitions do not imply a successful remote run.
+Not covered, and required before any release: physical-device lifecycle, TLS, Node pairing,
+and end-to-end concurrent generation. Full native builds and simulator/device smoke tests
+are release gates in addition to the protocol unit tests — CI definitions do not imply a
+successful remote run.
+
+Manual matrix, to run on both platforms: denied/revoked tokens; wrong address; background
+during generation; return after completion; stopped task; lost send acknowledgment; Node
+pending/approved/rejected; capability invocation; background disconnect; forget/re-pair;
+TLS failure. Never put real credentials into fixtures or logs.
 
 ### Running the iOS simulator
 

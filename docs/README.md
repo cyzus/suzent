@@ -36,7 +36,7 @@ five-question ownership test, see
 - [Post-Processing](02-concepts/runtime/postprocess.md): Background tasks after each turn
 
 ## Development
-- [Native Mobile](03-developing/mobile.md): SwiftUI/Compose monorepo, preview setup, implementation plan, and verification
+- [Native Mobile](03-developing/mobile.md): SwiftUI/Compose monorepo, developer-preview setup, and roadmap
 - [Development Guide](03-developing/development-guide.md): Setup, workflow, production builds, and architecture
 - [Docker Services](03-developing/docker-services.md): Redis, SearXNG, and sandbox configuration
 - [Release Guide](03-developing/releasing.md): Version bumping and release process
