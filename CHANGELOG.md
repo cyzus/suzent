@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v0.14.0] - 2026-09-14
 
 ### 🚀 Added
+- Release the extension automatically and offer the Edge listing (#220)
 - Add top-level `suzent restart` command (#219)
 - Refine landing page downloads and terminal setup
 - Add installer landing-page entry and automatic Git setup (#218)
