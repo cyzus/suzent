@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Report which tab the user is viewing (#209)
 
 ### ⚡ Changed
+- Recover streams after reload with snapshots and cursors (#227)
 - Keep final persistence off the event loop and retry failed drafts (#225)
 - Refine landing installer animation and open-source section
 - Migrate documentation website to Fumadocs (#216)
