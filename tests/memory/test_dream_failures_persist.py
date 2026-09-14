@@ -77,3 +77,60 @@ def test_malformed_state_shapes_are_ignored(store):
     )
 
     assert store.read_dream_failures() == {}
+
+
+@pytest.mark.parametrize("read_fails", [False, True])
+async def test_status_read_cannot_overwrite_concurrent_retry(
+    store, monkeypatch: pytest.MonkeyPatch, read_fails: bool
+) -> None:
+    import asyncio
+    import threading
+
+    from starlette.concurrency import run_in_threadpool
+
+    from suzent.core import dream_runner
+
+    mgr = _FakeManager(store)
+    runner = DreamRunner()
+    monkeypatch.setattr(dream_runner, "get_memory_manager", lambda: mgr)
+    monkeypatch.setattr(runner, "_load_last_result_from_dream_chat", lambda *a, **k: {})
+    read_started = threading.Event()
+    finish_read = threading.Event()
+
+    def slow_read() -> dict[str, int]:
+        read_started.set()
+        assert finish_read.wait(timeout=5)
+        if read_fails:
+            raise TimeoutError("storage timed out")
+        return {"2026-03-25": 1}
+
+    monkeypatch.setattr(store, "read_dream_failures", slow_read)
+    task = asyncio.create_task(run_in_threadpool(runner.status))
+    try:
+        assert await asyncio.to_thread(read_started.wait, 5)
+        runner._failures = {"2026-03-25": 3}
+        runner._failures_loaded = True
+    finally:
+        finish_read.set()
+        await task
+
+    assert runner._failures == {"2026-03-25": 3}
+    assert runner._failures_loaded is True
+    runner._save_failures(mgr)
+    assert json.loads(store.dream_state_path.read_text())["failures"] == {
+        "2026-03-25": 3
+    }
+
+
+def test_status_does_not_hydrate_runner(store, monkeypatch: pytest.MonkeyPatch) -> None:
+    from suzent.core import dream_runner
+
+    mgr = _FakeManager(store)
+    runner = DreamRunner()
+    store.write_dream_failures({"2026-03-25": 2})
+    monkeypatch.setattr(dream_runner, "get_memory_manager", lambda: mgr)
+    monkeypatch.setattr(runner, "_load_last_result_from_dream_chat", lambda *a, **k: {})
+
+    assert runner.status()["failures"] == {"2026-03-25": 2}
+    assert runner._failures == {}
+    assert runner._failures_loaded is False
