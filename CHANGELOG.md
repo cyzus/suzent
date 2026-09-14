@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Remove the language param from the shell tools (#212)
 
 ### 🐛 Fixed
+- Keep dream status polling from mutating retry state (#226)
 - Handle dream status storage failures without blocking server (#224)
 - Validate website builds in clean CI checkouts (#217)
 - Adjust overflow handling in SubAgentCallBlock and activity rail styles
