@@ -312,8 +312,10 @@ export const zhCN = {
       extensionDisconnected: '未连接',
       extensionHelp:
         '使用安装扩展的浏览器中的标签页和登录状态，无需开启远程调试。连接期间 Suzent 可操作网页；可在此处或扩展中断开连接。',
-      extensionInstall: '从 Chrome 应用商店安装 Suzent Browser，然后配对浏览器。',
-      extensionStore: '打开 Chrome 应用商店',
+      extensionInstall: '从所用浏览器的应用商店安装 Suzent Browser，然后配对浏览器。',
+      extensionStore: '打开{store}',
+      extensionStoreChrome: 'Chrome 应用商店',
+      extensionStoreEdge: 'Edge 加载项商店',
       extensionSource: '本地扩展文件夹（加载解压缩扩展时选择此文件夹）',
       extensionPair: '在已安装扩展的浏览器中打开配对页面。',
       extensionDownload: '下载扩展',

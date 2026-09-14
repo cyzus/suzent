@@ -237,8 +237,11 @@ export const en = {
       extensionDisconnected: 'Not connected',
       extensionHelp:
         'Use the tabs and logins in the browser where you install the extension. No remote-debugging setup is needed. Suzent can control web tabs while connected; disconnect here or in the extension to stop access.',
-      extensionInstall: 'Install Suzent Browser from the Chrome Web Store, then pair your browser.',
-      extensionStore: 'Open Chrome Web Store',
+      extensionInstall:
+        'Install Suzent Browser from your browser\u2019s store, then pair your browser.',
+      extensionStore: 'Open {store}',
+      extensionStoreChrome: 'Chrome Web Store',
+      extensionStoreEdge: 'Edge Add-ons',
       extensionSource: 'Local extension folder (select this folder when loading unpacked)',
       extensionPair: 'Open the pairing page in the browser where you installed the extension.',
       extensionDownload: 'Download extension',

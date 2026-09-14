@@ -43,3 +43,6 @@ five-question ownership test, see
 - [Memory Architecture](03-developing/memory/architecture.md): How memory is written, consolidated, indexed, and read
 - [Memory Internals](03-developing/memory/internals.md): Class-by-class reference for contributors
 - [Logo Standard](03-developing/logo.md): Canonical logo geometry, component usage, and sizing guidelines
+
+## Upgrading
+- [Upgrading](04-upgrading.md): Manual steps when moving an existing install across versions, by release
