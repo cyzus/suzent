@@ -37,6 +37,12 @@ def read_version() -> str:
     return version
 
 
+def as_tuple(version: str) -> tuple[int, ...]:
+    """Chrome allows one to four dot-separated integers, so pad before comparing."""
+    parts = tuple(int(part) for part in version.split("."))
+    return parts + (0,) * (4 - len(parts))
+
+
 def sources() -> list[Path]:
     found = sorted(
         path
@@ -75,9 +81,25 @@ def main() -> None:
         action="store_true",
         help="Print the manifest version and exit",
     )
+    parser.add_argument(
+        "--newer-than",
+        metavar="VERSION",
+        help="Fail unless the manifest version is strictly greater than VERSION",
+    )
     args = parser.parse_args()
 
     version = read_version()
+    if args.newer_than is not None:
+        if not VERSION_PATTERN.match(args.newer_than):
+            raise SystemExit(f"Not a version to compare against: {args.newer_than!r}")
+        # Strictly greater, not merely different: the stores reject a downgrade,
+        # and a version that only differs can still be one already spent.
+        if as_tuple(version) <= as_tuple(args.newer_than):
+            raise SystemExit(
+                f"Extension version {version} must be greater than {args.newer_than}."
+            )
+        print(f"{args.newer_than} -> {version}")
+        return
     if args.print_version:
         print(version)
         return

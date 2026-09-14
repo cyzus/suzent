@@ -39,15 +39,21 @@ jobs:
           tag="browser-v$version"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          # Re-running on a version that already shipped is a no-op, not a
-          # failure: pushes that touch the extension without bumping it land
-          # here too (a README edit, a workflow tweak).
-          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
-            echo "$tag already exists; nothing to release."
+          # Keyed on the asset, not the tag, and not the release either. The tag
+          # is pushed before the release exists and the release exists before
+          # the ZIP finishes uploading, so either one alone would let a run that
+          # failed part-way make every rerun skip and strand the version without
+          # a downloadable asset. Only the asset proves the publish finished.
+          assets="$(gh release view "$tag" --json assets --jq '[.assets[].name] | join(" ")' 2>/dev/null || true)"
+          if [[ " $assets " == *" suzent-browser-$version.zip "* ]]; then
+            echo "$tag is already published with its asset; nothing to do."
             echo "publish=false" >> "$GITHUB_OUTPUT"
           else
             echo "publish=true" >> "$GITHUB_OUTPUT"
           fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
 
       - name: Build extension ZIP
         if: steps.version.outputs.publish == 'true'
@@ -57,10 +63,21 @@ jobs:
         if: steps.version.outputs.publish == 'true'
         shell: bash
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "$TAG" -m "Browser extension $VERSION"
-          git push origin "$TAG"
+          # A tag left behind by a run that failed before publishing is reused,
+          # as long as it names this commit. One naming anything else means the
+          # version was already spent on different code.
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            if [[ "$(git rev-list -n 1 "$TAG")" != "$GITHUB_SHA" ]]; then
+              echo "::error::$TAG already points at another commit. Bump the extension version."
+              exit 1
+            fi
+            echo "Reusing existing $TAG from an interrupted run."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "$TAG" -m "Browser extension $VERSION"
+            git push origin "$TAG"
+          fi
         env:
           TAG: ${{ steps.version.outputs.tag }}
           VERSION: ${{ steps.version.outputs.version }}
@@ -84,11 +101,27 @@ jobs:
           - Edge: https://microsoftedge.microsoft.com/addons/detail/suzent-browser/hobapppkcjggdhbbpnokgcoiddailnib
           NOTES
           sed -i "s/VERSION/$VERSION/" release-notes.md
-          gh release create "$TAG" \
-            --verify-tag \
-            --title "Browser extension $VERSION" \
-            --notes-file release-notes.md \
-            "dist/suzent-browser-$VERSION.zip"
+          # --latest=false is load-bearing: gh picks the latest release
+          # automatically, and the landing page, both setup scripts, and the
+          # installer updater all resolve /releases/latest expecting an app
+          # release. A browser release winning that would 404 every download.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            # Resuming a run that created the release but did not finish the
+            # upload. Re-upload rather than recreate, so the release keeps its
+            # identity and anything already attached is replaced in place.
+            gh release edit "$TAG" \
+              --latest=false \
+              --title "Browser extension $VERSION" \
+              --notes-file release-notes.md
+            gh release upload "$TAG" "dist/suzent-browser-$VERSION.zip" --clobber
+          else
+            gh release create "$TAG" \
+              --verify-tag \
+              --latest=false \
+              --title "Browser extension $VERSION" \
+              --notes-file release-notes.md \
+              "dist/suzent-browser-$VERSION.zip"
+          fi
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}

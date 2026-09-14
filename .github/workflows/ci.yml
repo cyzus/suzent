@@ -230,7 +230,19 @@ jobs:
           echo "Changed:"; echo "$packaged"
           exit 1
         fi
-        echo "Extension version $before -> $after"
+        # Strictly greater, because the stores reject a downgrade.
+        if ! python scripts/build_browser_extension.py --newer-than "$before"; then
+          echo "::error::Extension version must increase from $before, not move to $after."
+          exit 1
+        fi
+        # Two PRs can bump to the same version independently. Whichever merges
+        # first takes the tag; the second would merge with different extension
+        # code, and the release workflow would skip it as already released - so
+        # the code would never reach users and nothing would report a failure.
+        if [[ -n "$(git ls-remote --tags origin "refs/tags/browser-v$after")" ]]; then
+          echo "::error::browser-v$after is already released. Another PR took this version - bump past it."
+          exit 1
+        fi
       env:
         BASE_SHA: ${{ github.event.pull_request.base.sha }}
 
