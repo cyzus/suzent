@@ -123,7 +123,7 @@ interface ChatCoreContextValue {
   createNewChat: () => Promise<string | null>;
   loadChat: (
     chatId: string,
-    options?: { force?: boolean; authoritative?: boolean }
+    options?: { force?: boolean; authoritative?: boolean; throwOnError?: boolean }
   ) => Promise<void>;
   saveCurrentChat: (skipRefresh?: boolean) => Promise<void>;
   finalSave: (chatId?: string | null) => Promise<void>;
@@ -1364,7 +1364,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
   ]);
 
   const loadChat = useCallback(
-    async (chatId: string, options?: { force?: boolean; authoritative?: boolean }) => {
+    async (chatId: string, options?: { force?: boolean; authoritative?: boolean; throwOnError?: boolean }) => {
       const force = !!options?.force || !!options?.authoritative;
       // authoritative: the backend rejected whatever the client did optimistically,
       // so its snapshot replaces local state outright. The guards below all exist
@@ -1748,9 +1748,11 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
           setShouldResetNext(false);
         } else {
           console.error('Failed to load chat:', res.status, res.statusText);
+          if (options?.throwOnError) throw new Error(`Failed to load chat: HTTP ${res.status}`);
         }
       } catch (error) {
         console.error('Error loading chat:', error);
+        if (options?.throwOnError) throw error;
       }
     },
     [chats, configByChat, currentChatId, clearScheduledSave]

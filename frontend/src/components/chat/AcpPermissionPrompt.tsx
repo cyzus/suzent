@@ -19,7 +19,8 @@ interface Props {
 export const AcpPermissionPrompt: React.FC<Props> = ({ request, stale }) => {
   const { t } = useI18n();
   const [pending, setPending] = useState(false);
-  const [outcome, setOutcome] = useState<'approved' | 'denied' | null>(request.resolved ?? null);
+  const [localOutcome, setOutcome] = useState<'approved' | 'denied' | null>(null);
+  const outcome = request.resolved ?? localOutcome;
   const [error, setError] = useState<string | null>(null);
 
   const decide = async (approved: boolean, optionId?: string) => {

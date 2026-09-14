@@ -117,6 +117,9 @@ async def a2ui_answer(request: Request) -> JSONResponse:
 
     resolved = pending_questions.resolve(chat_id, surface_id, answer)
     if resolved:
+        from suzent.core.stream_registry import push_custom_event
+
+        await push_custom_event(chat_id, "a2ui.resolved", {"surfaceId": surface_id})
         logger.info(
             f"Resolved pending question — chat_id={chat_id}, surface={surface_id}"
         )

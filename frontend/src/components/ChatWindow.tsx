@@ -11,6 +11,7 @@ import {
 } from '../lib/api';
 import { stripDenyApprovalPolicies } from '../lib/approvalPolicy';
 import { hideStreamingDrafts } from '../lib/streamingDrafts';
+import { StreamRecoveryError } from '../lib/recoverableStream';
 import { reconcileToolCallMessages } from '../lib/toolCallReconciliation';
 import type { Message, FileAttachment } from '../types/api';
 import type { ContentBlock } from '../lib/chatUtils';
@@ -943,7 +944,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     removeInlineSurface,
   } = useAGUI({
     url: `${getApiBase()}/chat`,
-    onFinish: (parts) => {
+    onFinish: async (parts, persistence) => {
       const chatId = streamingChatIdRef.current || activeChatIdRef.current;
 
       const hasPendingApprovals = parts.some(
@@ -962,11 +963,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         setCurrentUsage(null);
         setCurrentStreamDisplayRole('assistant');
         // Reload chat from DB to reflect rolled-back state.
-        setTimeout(() => {
-          try {
-            loadChat(chatId!, { force: true });
-          } catch {}
-        }, 300);
+        setTimeout(
+          () => {
+            try {
+              loadChat(chatId!, { force: true });
+            } catch {}
+          },
+          persistence?.confirmed ? 0 : 300
+        );
         return;
       }
 
@@ -1017,7 +1021,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         streamDisplayRoleRef.current,
         safeConfig.model
       );
-      if (storeMsg.content.trim()) {
+      if (storeMsg.content.trim() && !persistence?.confirmed) {
         addMessage(storeMsg, chatId!);
         if (/context compacted/i.test(storeMsg.content)) {
           upsertCompactNotice('Context compacted');
@@ -1026,24 +1030,18 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
       setCurrentUsage(null);
       setCurrentStreamDisplayRole('assistant');
-      // Clear streaming state synchronously in the same React batch as addMessage so
-      // the transient assistant bubble is replaced by the optimistic message in one
-      // render. Previously these lived in .finally(), causing a window where the
-      // transient disappeared but the DB reload hadn't returned yet — the user saw
-      // stale pending-approval tool blocks from the backend race condition.
+      const syncHistory = () => loadChat(chatId!, { force: true }).catch(() => {});
+      if (persistence?.confirmed) {
+        await loadChat(chatId!, { force: true, throwOnError: true });
+        if (activeChatIdRef.current !== chatId) return;
+      }
       setIsStreaming(false, chatId);
       clearParts();
       _clearStreamSeed();
-
-      // Background DB sync — delay slightly so the backend has time to commit tool
-      // results before we reload. An immediate reload risks getting stale
-      // approval-requested state that the guards may not catch in all edge cases.
-      const _syncChatId = chatId!;
-      setTimeout(() => {
-        try {
-          loadChat(_syncChatId, { force: true });
-        } catch {}
-      }, 800);
+      if (!persistence?.confirmed) {
+        // Compatibility for callers still using the legacy multipart transport.
+        setTimeout(syncHistory, 800);
+      }
 
       try {
         loadCoreMemory();
@@ -1160,16 +1158,23 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         abandonedPartsRef.current.delete(chatId);
       }
       const errorMessage = typeof error?.message === 'string' ? error.message : '';
-      const isNetworkError = errorMessage === 'Failed to fetch' || error instanceof TypeError;
       const isOutputValidationRetryError =
         errorMessage.includes('output validation') &&
         errorMessage.includes('Exceeded maximum retries');
 
-      const displayMessage = isOutputValidationRetryError
-        ? t('chatWindow.outputValidationRetryError')
-        : errorMessage || t('chatWindow.genericError');
+      const recoveryMessages = {
+        unavailable: t('chatWindow.streamRecoveryUnavailable'),
+        persistence: t('chatWindow.streamPersistenceFailed'),
+        interrupted: t('chatWindow.streamInterrupted'),
+      };
+      const displayMessage =
+        error instanceof StreamRecoveryError
+          ? recoveryMessages[error.reason]
+          : isOutputValidationRetryError
+            ? t('chatWindow.outputValidationRetryError')
+            : errorMessage || t('chatWindow.genericError');
 
-      if (!wasHeartbeat && !isNetworkError) {
+      if (!wasHeartbeat) {
         const partialMessage = aguiPartsToStoreMessage(
           parts,
           currentUsage,
@@ -1412,7 +1417,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const reconciledMessages = useMemo(
     () =>
       reconcileToolCallMessages(
-        hideStreamingDrafts(messages || [], showTransientAssistant),
+        hideStreamingDrafts(messages || [], showTransientAssistant && streamingParts.length > 0),
         showTransientAssistant ? streamingParts : []
       ),
     [messages, showTransientAssistant, streamingParts]
@@ -1908,7 +1913,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       let streamed: boolean;
       try {
         streamed = await sendAGUI(
-          { chat_id: chatIdAtMount, wait_ms: 8000 },
+          { chat_id: chatIdAtMount, wait_ms: 0, protocol: 1 },
           {
             urlOverride: liveUrl,
             seedParts,
@@ -1937,6 +1942,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       if (!streamed || cancelled) {
         // 204 (no active stream) or cancelled — clear pending so it doesn't loop.
         pendingConnectRef.current = false;
+        if (!cancelled) await loadChat(chatIdAtMount, { force: true }).catch(() => {});
         return;
       }
 
@@ -1957,7 +1963,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         'assistant',
         safeConfig.model
       );
-      setIsStreaming(false, chatIdAtMount);
       // Stream finished cleanly — drop preserved reconnect state for this chat.
       streamStartByChatRef.current.delete(chatIdAtMount);
       abandonedPartsRef.current.delete(chatIdAtMount);
@@ -1967,13 +1972,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       // message. The backend attaches file_changes as the stream closes, so every chat
       // must reload here; limiting this sync to social chats left desktop diffs hidden
       // until the user manually refreshed.
-      if (richMsg.content.trim()) addMessage(richMsg, chatIdAtMount);
       try {
-        await loadChat(chatIdAtMount, { force: true });
+        await loadChat(chatIdAtMount, { force: true, throwOnError: true });
       } catch {
-        /* ignore */
+        if (!cancelled && richMsg.content.trim()) addMessage(richMsg, chatIdAtMount);
       }
+      if (cancelled) return;
 
+      setIsStreaming(false, chatIdAtMount);
       clearParts();
       liveStreamPartsRef.current = [];
       isLiveStreamRef.current = false;
@@ -1986,9 +1992,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     };
 
     // If a stream is already active when this chat is opened, connect immediately.
-    if (isBusStreaming(chatIdAtMount)) {
-      tryConnect();
-    }
+    // Probe even before the event-bus snapshot arrives (including pending persistence).
+    tryConnect();
 
     // Expose tryConnect so handleSend can call it directly after /chat/send 202,
     // without depending on stream_started arriving from the event bus.

@@ -22,6 +22,8 @@ import asyncio
 import time
 from typing import Any, Dict, Optional, Set
 
+from suzent.core.stream_replay import StreamReplay
+
 
 class StreamControl:
     """Holds cooperative cancellation state for an active stream."""
@@ -250,6 +252,8 @@ def _emit_to_bus(payload: dict) -> None:
         try:
             q.put_nowait(payload)
         except asyncio.QueueFull:
+            q.get_nowait()
+            q.put_nowait(None)
             dead.add(q)
     _bus_subscribers.difference_update(dead)
 
@@ -289,6 +293,7 @@ class _BusStreamQueue:
 
     def __init__(self, chat_id: str, maxsize: int = 4096):
         self.chat_id = chat_id
+        self.replay = StreamReplay(maxsize)
         self._q: asyncio.Queue = asyncio.Queue(maxsize=maxsize)
         # Cleared when the None sentinel is put so is_background_streaming()
         # returns False as soon as the producer finishes, even if a late
@@ -300,15 +305,14 @@ class _BusStreamQueue:
     # --- write side ---
 
     async def put(self, item) -> None:
-        if item is None:
-            self.producer_active = False
-            self.done_event.set()
-        if self._q.full():
-            self._q.get_nowait()
-        self._q.put_nowait(item)
-        _fan_chunk_to_bus(self.chat_id, item)
+        self.put_nowait(item)
 
     def put_nowait(self, item) -> None:
+        if item is None and not self.producer_active:
+            return
+        if isinstance(item, tuple) and len(item) == 2 and item[0] == "chunk":
+            item = item[1]
+        self.replay.append(item)
         if item is None:
             self.producer_active = False
             self.done_event.set()
@@ -333,15 +337,38 @@ class _BusStreamQueue:
 
 
 background_queues: Dict[str, _BusStreamQueue] = {}
+_MAX_COMPLETED_STREAMS = 64
+_COMPLETED_STREAM_TTL = 300.0
+
+
+def _prune_completed_streams() -> None:
+    now = time.monotonic()
+    completed = sorted(
+        (
+            (cid, q.replay.closed_at)
+            for cid, q in background_queues.items()
+            if q.replay.closed_at is not None
+            and (q.replay.persistence is None or q.replay.persistence.done())
+        ),
+        key=lambda entry: entry[1],
+    )
+    for index, (cid, closed_at) in enumerate(completed):
+        if (
+            now - closed_at > _COMPLETED_STREAM_TTL
+            or index < len(completed) - _MAX_COMPLETED_STREAMS
+        ):
+            background_queues.pop(cid, None)
 
 
 def register_background_stream(chat_id: str) -> _BusStreamQueue:
     """Create and register a background SSE queue for a chat. Returns the queue."""
+    _prune_completed_streams()
     existing = background_queues.get(chat_id)
     if existing is not None:
         # Signal any live subscriber on the old queue to terminate gracefully
         # so it doesn't hang on a dead queue for up to 60 seconds.
         try:
+            existing.replay.superseded = True
             existing.put_nowait(None)
         except asyncio.QueueFull:
             pass
@@ -371,6 +398,7 @@ def unregister_background_stream(
 
 def get_background_queue(chat_id: str) -> Optional[_BusStreamQueue]:
     """Return the active background queue for a chat, or None if not streaming."""
+    _prune_completed_streams()
     return background_queues.get(chat_id)
 
 

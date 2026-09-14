@@ -53,6 +53,8 @@ async def event_bus_stream(request: Request) -> StreamingResponse:
             while True:
                 try:
                     payload = await asyncio.wait_for(q.get(), timeout=20.0)
+                    if payload is None:
+                        return
                     yield f"data: {json.dumps(payload)}\n\n"
                 except asyncio.TimeoutError:
                     yield ": keep-alive\n\n"

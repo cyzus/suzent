@@ -101,3 +101,35 @@ describe('permission approval events', () => {
     expect(result.parts[0].permission?.actions[1].feedbackKind).toBe('reject');
   });
 });
+
+it('restores resolved ACP approvals without resurrecting the action buttons', () => {
+  const request = { requestId: 'request', options: [], toolCall: {} };
+  const pending = processEvent(
+    { type: 'CUSTOM', data: { name: 'acp.permission_request', value: request } },
+    []
+  ).parts;
+  const resolved = processEvent(
+    {
+      type: 'CUSTOM',
+      data: { name: 'acp.permission_request', value: { ...request, resolved: 'approved' } },
+    },
+    pending
+  ).parts;
+  expect(resolved).toHaveLength(1);
+  expect(resolved[0].acpPermission?.resolved).toBe('approved');
+});
+
+it('does not restore an already answered inline form from a snapshot', () => {
+  const open = processEvent(
+    {
+      type: 'CUSTOM',
+      data: { name: 'a2ui.render', value: { id: 'form', target: 'inline', deferred: true } },
+    },
+    []
+  ).parts;
+  const resolved = processEvent(
+    { type: 'CUSTOM', data: { name: 'a2ui.resolved', value: { surfaceId: 'form' } } },
+    open
+  ).parts;
+  expect(resolved).toEqual([]);
+});

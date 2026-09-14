@@ -184,10 +184,12 @@ class ACPPermissionBroker:
                 self._pending.pop(request_id, None)
                 return _cancelled()
 
+        outcome = _cancelled()
         try:
-            return await asyncio.wait_for(
+            outcome = await asyncio.wait_for(
                 asyncio.shield(pending.future), timeout=timeout
             )
+            return outcome
         except asyncio.TimeoutError:
             logger.info(
                 "ACP permission %s timed out after %ss; denying", request_id, timeout
@@ -197,6 +199,24 @@ class ACPPermissionBroker:
             return _cancelled()
         finally:
             self._pending.pop(request_id, None)
+            if on_relay is not None:
+                selected = outcome["outcome"].get("optionId")
+                allowed = any(
+                    (option.get("optionId") or option.get("id")) == selected
+                    and str(option.get("kind", "")).startswith("allow")
+                    for option in options
+                )
+                try:
+                    result = on_relay(
+                        {
+                            **pending.to_event(),
+                            "resolved": "approved" if allowed else "denied",
+                        }
+                    )
+                    if asyncio.iscoroutine(result):
+                        await result
+                except Exception:
+                    logger.exception("Failed to relay ACP permission resolution")
 
 
 _broker: ACPPermissionBroker | None = None
