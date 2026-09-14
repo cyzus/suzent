@@ -21,6 +21,11 @@ a second policy or draft here. Existing upload ZIPs remain under `store-upload/`
 | Permission explanations and testing instructions | `reviewer-notes.md` | Draft submission text |
 | Privacy policy | `website/src/pages/browser-privacy.md` in the repository | https://suzent.com/browser-privacy |
 
+Both listings are live: [Chrome](https://chromewebstore.google.com/detail/suzent-browser/mjfjhclnoepglnjjmheollfpbngjebno)
+(`mjfjhclnoepglnjjmheollfpbngjebno`) and
+[Edge](https://microsoftedge.microsoft.com/addons/detail/suzent-browser/hobapppkcjggdhbbpnokgcoiddailnib)
+(`hobapppkcjggdhbbpnokgcoiddailnib`). Each release has to be submitted to both.
+
 ## Feature campaign
 
 Three additional feature illustrations are exported to `store-upload/listing-assets/en/` and `store-upload/listing-assets/zh-CN/`, each at 1280 × 800:

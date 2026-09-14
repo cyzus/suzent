@@ -77,8 +77,11 @@ jobs:
           reproducible, so this asset can be compared byte-for-byte against a local
           `python scripts/build_browser_extension.py`.
 
-          Submit it through the Chrome Web Store and Edge Partner Center dashboards;
-          both queue a human review before the update reaches users.
+          Submit it to both listings; each queues a human review before the update
+          reaches users.
+
+          - Chrome: https://chromewebstore.google.com/detail/suzent-browser/mjfjhclnoepglnjjmheollfpbngjebno
+          - Edge: https://microsoftedge.microsoft.com/addons/detail/suzent-browser/hobapppkcjggdhbbpnokgcoiddailnib
           NOTES
           sed -i "s/VERSION/$VERSION/" release-notes.md
           gh release create "$TAG" \
