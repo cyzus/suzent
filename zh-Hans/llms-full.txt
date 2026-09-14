@@ -4250,8 +4250,9 @@ The recommended personal-browser mode is **Settings → Browser → Use my brows
 (extension)**. It uses the tabs and logins in the browser profile where you install
 the extension, without MCP or remote-debugging settings.
 
-1. Click **Open Chrome Web Store** in Settings and install
+1. In Settings, click **Open Chrome Web Store** or **Open Edge Add-ons** and install
    [Suzent Browser](https://chromewebstore.google.com/detail/suzent-browser/mjfjhclnoepglnjjmheollfpbngjebno)
+   ([Edge](https://microsoftedge.microsoft.com/addons/detail/suzent-browser/hobapppkcjggdhbbpnokgcoiddailnib))
    in the browser profile you want Suzent to use.
 2. Back in Suzent, click **Pair browser**. The default browser opens a local pairing
    page. If you installed the extension in another browser, copy the private pairing
