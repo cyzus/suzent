@@ -1,12 +1,27 @@
-# Upgrade Notes: what changes for an existing install
+---
+sidebar_position: 4
+title: Upgrading
+---
 
-Notes for anyone upgrading a running install across the memory-deduplication work.
-Nothing here needs action on a fresh install — every item is about state that already
-exists on disk before the upgrade.
+# Upgrading Suzent
 
-Ordered by how likely it is to surprise you.
+Manual steps needed when moving an existing install across versions. Each section
+names the release that introduced the change; find the version you are coming from
+and read forward from there. A fresh install needs none of this.
 
-## 1. The first run re-embeds everything, once
+For the full list of what changed in each release, see [CHANGELOG.md](../CHANGELOG.md).
+
+## v0.10.0 — Memory deduplication and consolidation
+
+*Released 2026-08-25 ([#118](https://github.com/cyzus/suzent/pull/118)). Applies when
+upgrading from any version before v0.10.0.*
+
+Every item below is about state that already exists on disk before the upgrade, ordered
+by how likely it is to surprise you. See
+[Concepts > Memory](./02-concepts/memory/README.md) for what the system does, and
+[Development > Memory Architecture](./03-developing/memory/architecture.md) for why.
+
+### The first run re-embeds everything, once
 
 `.index_state.json` is now versioned and keyed on `label:filename` instead of the
 absolute path. Pre-v2 state is **discarded rather than migrated**, so the first pass
@@ -17,7 +32,7 @@ the discard doubles as the backfill — but it is not free. Budget one embedding
 chunk across your whole corpus, and expect the first pass to take noticeably longer than
 a steady-state one. If you pay per embedding call, this is the line item to expect.
 
-## 2. Check `CONFIG.notebook_dir` before you assume it's empty
+### Check `CONFIG.notebook_dir` before you assume it's empty
 
 If you mount your own vault at `/mnt/notebook` (an Obsidian folder, say), the *default*
 vault path under the data dir still gets created, and any run where the mount failed to
@@ -34,7 +49,7 @@ Suzent no longer reads the wrong vault, but that does not retroactively rescue a
 already stranded in the default path. **Before deleting that directory, diff it against
 your real vault.** It will look like a leftover. It may not be one.
 
-## 3. Legacy rows are not redundant copies — export before deleting
+### Legacy rows are not redundant copies — export before deleting
 
 If your install predates the markdown tier, your archival index holds rows with no
 `source_file`. Nothing can reindex them, no tombstone can retire them, and no
@@ -54,7 +69,7 @@ python scripts/retire_legacy_rows.py --apply    # delete, after a backup
 costs one embedding call per chunk, and the dream will not consolidate dates below its
 watermark without a rewind.
 
-## 4. An existing `MEMORY.md` will not be regenerated until it has markers
+### An existing `MEMORY.md` will not be regenerated until it has markers
 
 `MEMORY.md` is now split into a generated zone and a manual zone by HTML comment
 markers. A file with no markers cannot be proven to be generator output, so it is treated
@@ -65,7 +80,7 @@ The practical consequence: if you have an existing `MEMORY.md`, automatic refres
 off for it until markers appear. Let a consolidation write the file, or add the markers by
 hand, if you want the generated half back.
 
-## 5. Restated facts stop appearing in the daily logs
+### Restated facts stop appearing in the daily logs
 
 A fact that restates something already durably recorded, word for word and with no new
 specifics, is no longer written to the daily log. It goes to
@@ -79,7 +94,7 @@ The dreaming panel gained a **pending confirmations** tile for the same reason, 
 dream can now run on that queue alone. So an install that is caught up on logs may still
 start a consolidation, and it will not move the watermark when it does.
 
-## 6. Expect vault churn on the first few dreams
+### Expect vault churn on the first few dreams
 
 Two changes rewrite frontmatter on pages that predate them:
 
@@ -90,7 +105,7 @@ Two changes rewrite frontmatter on pages that predate them:
 If your vault is in git or a sync folder, the first few dreams after upgrading will look
 like a large diff touching many personal pages. That is the backfill, not a bug.
 
-## 7. Retrieval order will change
+### Retrieval order will change
 
 Indexed `importance` used to be a constant `0.5` for every row. It now varies: repeated
 confirmations lift a claim, an expiry in the past damps it, `deprecated` sinks it to a
@@ -100,7 +115,7 @@ Since `importance` is already a term in hybrid search, results will re-order aft
 first reindex. Nothing is removed from retrieval — `deprecated` demotes, it does not
 delete, and deletion stays with tombstones so it remains reversible and auditable.
 
-## 8. Stop the app before running the scripts
+### Stop the app before running the scripts
 
 `scripts/retire_legacy_rows.py` and `scripts/dream_dry_run.py` both assume nothing else
 is writing. A concurrent reindex can race a delete. Stop the app, or accept the race.

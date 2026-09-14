@@ -248,4 +248,4 @@ letting it run over a real vault.
 
 One outstanding one-time cleanup — retiring pre-June index rows that predate the markdown
 tier — is described in
-[Concepts > Memory > Upgrade Notes](../../02-concepts/memory/upgrade-notes.md).
+[Upgrading](../../04-upgrading.md).
