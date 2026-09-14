@@ -1,0 +1,29 @@
+[
+  {
+    "turns": 10,
+    "display_kib": 32.5,
+    "repeats": 5,
+    "snapshot_ms": 0.99,
+    "draft_ms": 0.84,
+    "finalize_ms": 2.65,
+    "loop_stall_ms": 0.27
+  },
+  {
+    "turns": 100,
+    "display_kib": 325.8,
+    "repeats": 5,
+    "snapshot_ms": 2.85,
+    "draft_ms": 2.48,
+    "finalize_ms": 15.11,
+    "loop_stall_ms": 1.65
+  },
+  {
+    "turns": 500,
+    "display_kib": 1630.0,
+    "repeats": 5,
+    "snapshot_ms": 12.2,
+    "draft_ms": 10.65,
+    "finalize_ms": 72.86,
+    "loop_stall_ms": 11.05
+  }
+]

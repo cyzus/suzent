@@ -1962,105 +1962,119 @@ class ChatProcessor:
         file_snapshot: Optional[list[dict]] = None,
     ) -> None:
         """Persist conversation state to database."""
-        try:
-            db = get_database()
-            # System/forked chats (dream, sub-agents) are stateless by design and are
-            # reset to a clean slate before every run. Persisting their agent_state lets
-            # a prior run's history survive into the next one — and a late finalize here
-            # can resurrect it after the next run's reset. Keep agent_state empty so each
-            # run starts clean (display messages are still rebuilt below for inspection).
-            stateless = self._is_system_chat(chat_id)
-            agent_state = (
-                b""
-                if stateless
-                else serialize_state(messages, model_id=model_id, tool_names=tool_names)
-            )
 
-            current_chat = db.get_chat(chat_id)
-            chat_messages = current_chat.messages if current_chat else []
+        # This stage serializes history, rebuilds display rows, updates SQLite/FTS
+        # and writes the state mirror. Keep those synchronous operations off the
+        # event loop so finishing one chat cannot pause another chat's tokens.
+        def _sync() -> None:
+            try:
+                db = get_database()
+                # System/forked chats (dream, sub-agents) are stateless by design and are
+                # reset to a clean slate before every run. Persisting their agent_state lets
+                # a prior run's history survive into the next one — and a late finalize here
+                # can resurrect it after the next run's reset. Keep agent_state empty so each
+                # run starts clean (display messages are still rebuilt below for inspection).
+                stateless = self._is_system_chat(chat_id)
+                agent_state = (
+                    b""
+                    if stateless
+                    else serialize_state(
+                        messages, model_id=model_id, tool_names=tool_names
+                    )
+                )
 
-            if skip_messages:
-                # Heartbeat: rollback already owns message state; only save agent_state.
-                target_messages = None
-            else:
-                # 100% Backend Authored: rebuild the complete display log from the full agent history
-                # so chat.messages is always a faithful log of all exchanges, including tools and reasoning.
-                rebuilt = _rebuild_display_messages(messages, model_id=model_id)
-                rebuilt = _preserve_display_triggers(rebuilt, chat_messages)
-                rebuilt = _preserve_permission_metadata(rebuilt, chat_messages)
-                rebuilt = _preserve_citation_sources(rebuilt, chat_messages)
-                rebuilt = _preserve_trailing_notices(rebuilt, chat_messages)
-                rebuilt = _append_inline_a2ui_surfaces(rebuilt, inline_a2ui_surfaces)
+                current_chat = db.get_chat(chat_id)
+                chat_messages = current_chat.messages if current_chat else []
 
-                # Guard: if the agent produced no output and this is a social chat, the
-                # pre-save at turn start left an orphaned user message in chat_messages.
-                # Roll it back so the history doesn't show a user turn with no reply.
-                if (
-                    not agent_content.strip()
-                    and chat_id.startswith("social-")
-                    and not rebuilt
-                ):
-                    chat_messages = [
-                        m
-                        for m in chat_messages
-                        if not (
-                            m.get("role") == "user" and m.get("content") == user_content
+                if skip_messages:
+                    # Heartbeat: rollback already owns message state; only save agent_state.
+                    target_messages = None
+                else:
+                    # 100% Backend Authored: rebuild the complete display log from the full agent history
+                    # so chat.messages is always a faithful log of all exchanges, including tools and reasoning.
+                    rebuilt = _rebuild_display_messages(messages, model_id=model_id)
+                    rebuilt = _preserve_display_triggers(rebuilt, chat_messages)
+                    rebuilt = _preserve_permission_metadata(rebuilt, chat_messages)
+                    rebuilt = _preserve_citation_sources(rebuilt, chat_messages)
+                    rebuilt = _preserve_trailing_notices(rebuilt, chat_messages)
+                    rebuilt = _append_inline_a2ui_surfaces(
+                        rebuilt, inline_a2ui_surfaces
+                    )
+
+                    # Guard: if the agent produced no output and this is a social chat, the
+                    # pre-save at turn start left an orphaned user message in chat_messages.
+                    # Roll it back so the history doesn't show a user turn with no reply.
+                    if (
+                        not agent_content.strip()
+                        and chat_id.startswith("social-")
+                        and not rebuilt
+                    ):
+                        chat_messages = [
+                            m
+                            for m in chat_messages
+                            if not (
+                                m.get("role") == "user"
+                                and m.get("content") == user_content
+                            )
+                        ]
+                    # When the agent history has been compacted, the rebuild is a
+                    # lossy subset: the original middle messages were dropped from
+                    # the LLM context. The stored display log still holds them, so
+                    # keep it as the base and append only this turn's new rows
+                    # rather than overwriting (and losing) the originals.
+                    if _agent_history_is_compacted(messages):
+                        target_messages = _merge_rebuilt_after_compaction(
+                            chat_messages, rebuilt
                         )
-                    ]
-                # When the agent history has been compacted, the rebuild is a
-                # lossy subset: the original middle messages were dropped from
-                # the LLM context. The stored display log still holds them, so
-                # keep it as the base and append only this turn's new rows
-                # rather than overwriting (and losing) the originals.
-                if _agent_history_is_compacted(messages):
-                    target_messages = _merge_rebuilt_after_compaction(
-                        chat_messages, rebuilt
+                    else:
+                        rebuilt = _preserve_file_change_metadata(rebuilt, chat_messages)
+                        target_messages = rebuilt or chat_messages
+                    target_messages = _coalesce_unanswered_cron_triggers(
+                        target_messages
                     )
+                    target_messages = _attach_latest_file_changes(
+                        target_messages, file_snapshot
+                    )
+
+                if expected_revision is not None:
+                    finalized = db.finalize_state_if_revision_matches(
+                        chat_id=chat_id,
+                        expected_revision=expected_revision,
+                        agent_state=agent_state,
+                        messages=target_messages,
+                        update_lifecycle=True,
+                    )
+                    if not finalized:
+                        logger.info(
+                            "Skipping stale post-process finalize for chat {} (job_id={}, expected_revision={})",
+                            chat_id,
+                            postprocess_job_id or "n/a",
+                            expected_revision,
+                        )
+                        return
                 else:
-                    rebuilt = _preserve_file_change_metadata(rebuilt, chat_messages)
-                    target_messages = rebuilt or chat_messages
-                target_messages = _coalesce_unanswered_cron_triggers(target_messages)
-                target_messages = _attach_latest_file_changes(
-                    target_messages, file_snapshot
-                )
+                    if target_messages is None:
+                        db.update_chat(chat_id, agent_state=agent_state)
+                    else:
+                        db.update_chat(
+                            chat_id, agent_state=agent_state, messages=target_messages
+                        )
 
-            if expected_revision is not None:
-                finalized = db.finalize_state_if_revision_matches(
-                    chat_id=chat_id,
-                    expected_revision=expected_revision,
-                    agent_state=agent_state,
-                    messages=target_messages,
-                    update_lifecycle=True,
-                )
-                if not finalized:
-                    logger.info(
-                        "Skipping stale post-process finalize for chat {} (job_id={}, expected_revision={})",
-                        chat_id,
-                        postprocess_job_id or "n/a",
-                        expected_revision,
-                    )
-                    return
-            else:
-                if target_messages is None:
-                    db.update_chat(chat_id, agent_state=agent_state)
-                else:
-                    db.update_chat(
-                        chat_id, agent_state=agent_state, messages=target_messages
-                    )
+                # Mirror state to inspectable JSON file
+                if agent_state:
+                    try:
+                        from suzent.session.state_mirror import StateMirror
 
-            # Mirror state to inspectable JSON file
-            if agent_state:
-                try:
-                    from suzent.session.state_mirror import StateMirror
+                        StateMirror().mirror_state(chat_id, agent_state)
+                    except Exception as mirror_err:
+                        logger.debug(f"State mirror failed: {mirror_err}")
 
-                    StateMirror().mirror_state(chat_id, agent_state)
-                except Exception as mirror_err:
-                    logger.debug(f"State mirror failed: {mirror_err}")
+                logger.info(f"Persisted state for chat {chat_id}")
 
-            logger.info(f"Persisted state for chat {chat_id}")
+            except Exception as e:
+                logger.error(f"Failed to persist state for {chat_id}: {e}")
 
-        except Exception as e:
-            logger.error(f"Failed to persist state for {chat_id}: {e}")
+        await asyncio.to_thread(_sync)
 
     async def _persist_agent_state_snapshot(
         self,
