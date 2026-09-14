@@ -57,5 +57,6 @@ Full documentation: https://suzent.com/zh-Hans/llms-full.txt
 - [Memory Internals](https://suzent.com/zh-Hans/docs/developing/memory/internals)
 - [Updating Model Capabilities](https://suzent.com/zh-Hans/docs/developing/model-capability-updates)
 - [Release Guide](https://suzent.com/zh-Hans/docs/developing/releasing)
+- [Streaming persistence: measurements and convergence plan](https://suzent.com/zh-Hans/docs/developing/streaming-persistence-analysis)
 - [Documentation](https://suzent.com/zh-Hans/docs)
 - [What Is a Sovereign AI Agent?](https://suzent.com/zh-Hans/sovereign)
