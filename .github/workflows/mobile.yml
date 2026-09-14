@@ -11,6 +11,7 @@ on:
       - 'frontend/src/presentation.css'
       - 'src/suzent/nodes/**'
       - 'src/suzent/core/stream_registry.py'
+      - 'src/suzent/core/stream_replay.py'
       - 'src/suzent/routes/chat_routes.py'
       - '.github/workflows/mobile.yml'
   workflow_dispatch:

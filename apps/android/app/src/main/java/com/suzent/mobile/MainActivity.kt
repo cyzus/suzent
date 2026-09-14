@@ -107,7 +107,7 @@ private fun ColumnScope.Conversation(model: MobileModel) {
     LazyColumn(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Text(chat.title, style = MaterialTheme.typography.headlineSmall) }
         items(presentMessages(chat.messages)) { message -> MessageView(message) }
-        if (model.streaming) item {
+        if (model.streaming || model.liveText.isNotEmpty()) item {
             MarkdownText(model.liveText.ifEmpty { stringResource(R.string.working) })
         }
     }

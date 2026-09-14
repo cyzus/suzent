@@ -28,10 +28,11 @@ public struct Backend: Sendable, Equatable {
 }
 
 public enum ClientError: Error, LocalizedError, Sendable {
-    case invalidAddress, http(Int), invalidResponse, interrupted
+    case invalidAddress, http(Int), invalidResponse, interrupted, saveFailed
 
     public var errorDescription: String? {
         switch self {
+        case .saveFailed: String(localized: "The response could not be saved. Keep this view open and retry refreshing history.")
         case .invalidAddress: String(localized: "Enter an HTTPS origin without a path. HTTP is available in debug builds.")
         case .http(let code): String(localized: "Backend request failed (HTTP \(code)).")
         case .invalidResponse: String(localized: "The backend returned an invalid response.")

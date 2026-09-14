@@ -92,7 +92,7 @@ import SuzentCore
         selected = chat
         liveText = ""
         await refresh()
-        if selected?.id == chat.id, chats.first(where: { $0.id == chat.id })?.isRunning == true {
+        if selected?.id == chat.id {
             observe(chat.id, client: client)
         }
     }
@@ -135,18 +135,21 @@ import SuzentCore
                 try await client.observe(id) { [weak self] event in
                     await self?.receive(event, generation: current)
                 }
+                let saved = try await client.chat(id)
+                guard generation == current, !Task.isCancelled, selected?.id == id else { return }
+                selected = saved
+                liveText = ""
             } catch {
                 if !Task.isCancelled, generation == current { self.error = error.localizedDescription }
             }
             guard generation == current, !Task.isCancelled else { return }
             streaming = false
-            liveText = ""
-            await refresh()
         }
     }
 
     private func receive(_ event: StreamEvent, generation current: UUID) {
         guard generation == current, foreground else { return }
+        if event.type == "STREAM_RESET" { liveText = "" }
         if event.type == "TEXT_MESSAGE_CONTENT" { liveText += event.delta ?? "" }
         if event.type == "RUN_ERROR" { error = event.message ?? String(localized: "Task failed.") }
     }
@@ -166,7 +169,7 @@ import SuzentCore
             disconnectNode()
         } else {
             await refresh()
-            if let chat = selected, let client, chats.first(where: { $0.id == chat.id })?.isRunning == true {
+            if let chat = selected, let client {
                 observe(chat.id, client: client)
             }
             if nodeEnabled { startNode() }

@@ -47,6 +47,9 @@ packages/SuzentCore/       Foundation-only Swift protocol/client package
 
 ## Run
 
+Use a backend with snapshot/cursor protocol 1 (main after #227). Older backends
+are not compatible with the mobile recovery transport.
+
 Enable desktop **Reachable by other devices**, restart, and use its LAN/Tailscale
 address on port 25314 (never the phone's localhost). Create a revocable host token
 and enter it in the app. HTTPS/WSS is required for release builds. Debug builds
@@ -82,11 +85,11 @@ Tokens are encrypted with an Android Keystore AES-GCM key; app backup is disable
 1. Connect with backend origin and host token; create or open a chat.
 2. Send text. `/chat/send` starts work on the backend, independently of the screen.
    `/chat/live` supplies transient text; the persisted transcript is authoritative.
-   Mobile sends `replay: true` to receive an independent bounded replay queue.
-   Default requests preserve the desktop's existing consume-once reconnect
-   semantics. A slow subscriber or truncated replay receives `REPLAY_UNAVAILABLE`
-   and must refresh persisted history. This is
-   in-memory replay for the current turn, not a durable event cursor.
+   Mobile uses `protocol: 1`, sharing desktop's authoritative snapshots and
+   sequence cursors. Reconnects resume from the last applied event, deduplicate
+   retransmissions and replace transient text when a fresh snapshot arrives.
+   `STREAM_END` confirms persistence; the received response stays visible until
+   saved history has loaded. See [Stream recovery](stream-recovery-protocol.md).
 3. On foreground return, refresh the transcript. A dropped stream does not
    automatically resend the message. A lost send acknowledgment has an unknown
    outcome: inspect history before sending again.
@@ -104,15 +107,16 @@ legacy inline tool formats still require desktop. Shared palette and filtering
 rules live in `packages/presentation`; regenerate platform files with
 `uv run python scripts/generate_presentation.py` after editing their source.
 It lists the latest 50 chats. Replay is bounded and in-memory; it is not a durable
-event cursor or an always-online phone. An in-flight connection has no automatic retry
-loop; refresh or foreground the app to reconnect.
+event cursor or an always-online phone. An observer reconnects up to five times with capped backoff. Mutation requests
+are never automatically retried. Exhausted recovery preserves received text.
 
 ### Test coverage
 
-Covered by automated tests on both platforms: protocol and URL validation, authenticated
-HTTP/SSE, safe GET recovery, no mutation retries, and the shared display fixtures. The
+Both platforms test protocol/URL validation and shared display/recovery fixtures.
+Android additionally tests authenticated HTTP/SSE, safe GET recovery, no mutation
+retries and interrupted-observer cursor recovery. The
 backend side covers independent observers, disconnection, overflow recovery, and
-preserving the desktop's unread position during a mobile replay. Desktop TypeScript checks
+snapshot handoff, terminal save confirmation and compatibility with legacy clients. Desktop TypeScript checks
 and its display tests run in the same suite.
 
 Not covered, and required before any release: physical-device lifecycle, TLS, Node pairing,

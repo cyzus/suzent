@@ -76,23 +76,39 @@ public final class SuzentClient: Sendable {
     }
 
     public func observe(_ chatID: String, onEvent: @Sendable (StreamEvent) async -> Void) async throws {
-        var request = try request("chat/live", body: ["chat_id": chatID])
-        request.httpBody = try JSONSerialization.data(withJSONObject: ["chat_id": chatID, "wait_ms": 1000, "replay": true])
-        let (bytes, response) = try await session.bytes(for: request)
-        try validate(response)
-        if (response as? HTTPURLResponse)?.statusCode == 204 { return }
-        guard (response as? HTTPURLResponse)?.mimeType == "text/event-stream" else {
-            throw ClientError.invalidResponse
-        }
-        var decoder = SSEByteDecoder()
-        var terminal = false
-        for try await byte in bytes {
+        var recovery = StreamRecovery()
+        for attempt in 0..<5 {
             try Task.checkCancellation()
-            guard let payload = decoder.consume(byte), payload != "[DONE]" else { continue }
-            guard let event = try? JSONDecoder().decode(StreamEvent.self, from: Data(payload.utf8)) else { continue }
-            if event.type == "RUN_FINISHED" || event.type == "RUN_ERROR" { terminal = true }
-            await onEvent(event)
+            var request = try request("chat/live", body: ["chat_id": chatID])
+            request.httpBody = try recovery.request(chatID: chatID)
+            do {
+                let (bytes, response) = try await session.bytes(for: request)
+                try validate(response)
+                if (response as? HTTPURLResponse)?.statusCode == 204 { return }
+                guard (response as? HTTPURLResponse)?.mimeType == "text/event-stream" else {
+                    throw ClientError.invalidResponse
+                }
+                var decoder = SSEByteDecoder()
+                for try await byte in bytes {
+                    try Task.checkCancellation()
+                    guard let payload = decoder.consume(byte) else { continue }
+                    let frame = try JSONDecoder().decode(StreamFrame.self, from: Data(payload.utf8))
+                    for event in try recovery.consume(frame) { await onEvent(event) }
+                    if recovery.ended { break }
+                }
+                if recovery.ended {
+                    if recovery.superseded { recovery = StreamRecovery() }
+                    else if recovery.persisted { return }
+                    else { throw ClientError.saveFailed }
+                } else { throw ClientError.interrupted }
+            } catch {
+                try Task.checkCancellation()
+                if case ClientError.saveFailed = error { throw error }
+                if case ClientError.http(let code) = error, code < 500 { throw error }
+                if attempt == 4 { throw error }
+            }
+            try await Task.sleep(for: .milliseconds(250 * (1 << attempt)))
         }
-        if !terminal { throw ClientError.interrupted }
+        throw ClientError.interrupted
     }
 }

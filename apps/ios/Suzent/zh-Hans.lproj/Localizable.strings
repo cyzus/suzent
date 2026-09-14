@@ -37,3 +37,4 @@
 "View this activity on desktop." = "请在桌面端查看此活动。";
 
 "This simulator connects to the backend on your Mac using its trusted local connection." = "此模拟器通过受信任的本机连接访问 Mac 上的后端。";
+"The response could not be saved. Keep this view open and retry refreshing history." = "回复未能保存。请保留当前页面，并尝试重新刷新历史记录。";

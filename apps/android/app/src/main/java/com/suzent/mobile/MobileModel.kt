@@ -107,7 +107,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         liveText = ""
         viewModelScope.launch {
             refreshNow()
-            if (selected?.id == chat.id && chats.any { it.id == chat.id && it.running }) observe(chat.id)
+            if (selected?.id == chat.id) observe(chat.id)
         }
     }
 
@@ -154,19 +154,21 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                     withContext(Dispatchers.Main) {
                         if (current == generation && foreground) {
                             when (event.optString("type")) {
+                                "STREAM_RESET" -> liveText = ""
                                 "TEXT_MESSAGE_CONTENT" -> liveText += event.optString("delta")
                                 "RUN_ERROR" -> error = text(R.string.task_error)
                             }
                         }
                     }
                 }
+                val saved = api.chat(id)
+                if (current == generation && selected?.id == id) {
+                    selected = saved
+                    liveText = ""
+                }
             } catch (error: CancellationException) { throw error }
             catch (_: Exception) { if (current == generation && foreground) error = text(R.string.stream_error) }
-            if (current == generation) {
-                streaming = false
-                liveText = ""
-                refreshNow()
-            }
+            finally { if (current == generation) streaming = false }
         }
     }
 
@@ -189,7 +191,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         } else {
             viewModelScope.launch {
                 refreshNow()
-                selected?.let { chat -> if (chats.any { it.id == chat.id && it.running }) observe(chat.id) }
+                selected?.let { chat -> observe(chat.id) }
                 if (nodeEnabled && foreground) startNode()
             }
         }

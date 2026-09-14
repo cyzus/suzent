@@ -43,7 +43,7 @@ class BackendClientTest {
         server.enqueue(MockResponse().setResponseCode(201).setBody(chat))
         server.enqueue(MockResponse().setResponseCode(202).setBody("""{"chat_id":"test"}"""))
         server.enqueue(MockResponse().setHeader("Content-Type", "text/event-stream").setBody(
-            "data: {\"type\":\"TEXT_MESSAGE_CONTENT\",\r\ndata: \"delta\":\"你好 🌱\"}\r\n\r\ndata: {\"type\":\"RUN_FINISHED\"}\n\n"))
+            "data: {\"type\":\"STREAM_SNAPSHOT\",\"run_id\":\"r\",\"seq\":1,\r\ndata: \"events\":[{\"type\":\"TEXT_MESSAGE_CONTENT\",\"delta\":\"你好 🌱\"}]}\r\n\r\ndata: {\"type\":\"STREAM_END\",\"run_id\":\"r\",\"seq\":1,\"persisted\":true}\n\n"))
         server.enqueue(MockResponse().setBody("""{"status":"stopping"}"""))
         server.enqueue(MockResponse().setBody(chat))
         server.start()
@@ -65,6 +65,7 @@ class BackendClientTest {
                 val request = requireNotNull(server.takeRequest(1, TimeUnit.SECONDS))
                 assertEquals(route, "${request.method} ${request.path}")
                 assertEquals("Bearer fixture-token", request.getHeader("Authorization"))
+                if (request.path == "/chat/live") assertEquals(1, JSONObject(request.body.readUtf8()).getInt("protocol"))
                 if (request.path == "/chat/send") {
                     val body = JSONObject(request.body.readUtf8())
                     assertEquals("hello", body.getString("message"))

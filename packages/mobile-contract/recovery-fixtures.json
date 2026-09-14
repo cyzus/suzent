@@ -1,0 +1,10 @@
+[
+  {"frame":{"type":"STREAM_SNAPSHOT","run_id":"one","seq":5,"events":[{"type":"TEXT_MESSAGE_CONTENT","delta":"hello"}]},"text":"hello","error":false,"ended":false,"persisted":false},
+  {"frame":{"type":"STREAM_EVENT","run_id":"one","seq":6,"event":{"type":"TEXT_MESSAGE_CONTENT","delta":" world"}},"text":"hello world","error":false,"ended":false,"persisted":false},
+  {"frame":{"type":"STREAM_EVENT","run_id":"one","seq":6,"event":{"type":"TEXT_MESSAGE_CONTENT","delta":" world"}},"text":"hello world","error":false,"ended":false,"persisted":false},
+  {"frame":{"type":"STREAM_EVENT","run_id":"one","seq":8,"event":{"type":"TEXT_MESSAGE_CONTENT","delta":" missing"}},"text":"hello world","error":true,"ended":false,"persisted":false},
+  {"frame":{"type":"STREAM_EVENT","run_id":"wrong","seq":7,"event":{"type":"TEXT_MESSAGE_CONTENT","delta":" wrong"}},"text":"hello world","error":true,"ended":false,"persisted":false},
+  {"frame":{"type":"STREAM_SNAPSHOT","run_id":"two","seq":1,"events":[{"type":"TEXT_MESSAGE_CONTENT","delta":"replacement"},{"type":"AGENT_FINISHED"}]},"text":"replacement","error":false,"ended":false,"persisted":false},
+  {"frame":{"type":"STREAM_END","run_id":"two","seq":0,"persisted":true},"text":"replacement","error":true,"ended":false,"persisted":false},
+  {"frame":{"type":"STREAM_END","run_id":"two","seq":1,"persisted":false},"text":"replacement","error":false,"ended":true,"persisted":false}
+]

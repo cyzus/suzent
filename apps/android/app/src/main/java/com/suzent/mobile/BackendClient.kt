@@ -3,6 +3,10 @@ package com.suzent.mobile
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import okhttp3.Call
 import okhttp3.OkHttpClient
@@ -48,28 +52,44 @@ class BackendClient(val backend: Backend, private val token: String) {
     suspend fun stop(id: String) { json("chat/stop", JSONObject().put("chat_id", id)) }
 
     suspend fun observe(id: String, event: suspend (JSONObject) -> Unit) = withContext(Dispatchers.IO) {
-        val call = http.newCall(request("chat/live", JSONObject().put("chat_id", id).put("wait_ms", 1000).put("replay", true)))
-        liveCall = call
-        try {
-            call.execute().use { response ->
-                if (!response.isSuccessful) throw IOException("HTTP ${response.code}")
-                if (response.code == 204) return@withContext
-                if (response.body?.contentType()?.subtype != "event-stream") throw IOException("Invalid stream")
-                val source = response.body?.source() ?: throw IOException("Empty stream")
-                val decoder = SSEDecoder()
-                var terminal = false
-                while (!call.isCanceled()) {
-                    val line = source.readUtf8Line() ?: break
-                    val payload = decoder.consume(line) ?: continue
-                    if (payload == "[DONE]") continue
-                    val value = runCatching { JSONObject(payload) }.getOrNull() ?: continue
-                    if (value.optString("type") in listOf("RUN_FINISHED", "RUN_ERROR")) terminal = true
-                    event(value)
+        var recovery = StreamRecovery()
+        repeat(5) { attempt ->
+            currentCoroutineContext().ensureActive()
+            val call = http.newCall(request("chat/live", recovery.request(id)))
+            liveCall = call
+            try {
+                call.execute().use { response ->
+                    if (!response.isSuccessful) {
+                        if (response.code < 500) throw StreamRejected("HTTP ${response.code}")
+                        throw IOException("HTTP ${response.code}")
+                    }
+                    if (response.code == 204) return@withContext
+                    if (response.body?.contentType()?.subtype != "event-stream") throw IOException("Invalid stream")
+                    val source = response.body?.source() ?: throw IOException("Empty stream")
+                    val decoder = SSEDecoder()
+                    while (!call.isCanceled()) {
+                        val line = source.readUtf8Line() ?: break
+                        val payload = decoder.consume(line) ?: continue
+                        recovery.consume(JSONObject(payload)).forEach { event(it) }
+                        if (recovery.ended) break
+                    }
+                    if (call.isCanceled()) throw CancellationException("Observer detached")
+                    if (recovery.ended) {
+                        if (recovery.superseded) recovery = StreamRecovery()
+                        else if (recovery.persisted) return@withContext
+                        else throw StreamRejected("Response was not saved")
+                    } else throw IOException("Interrupted stream")
                 }
-                if (!terminal && !call.isCanceled()) throw IOException("Interrupted stream")
-            }
-        } finally { if (liveCall === call) liveCall = null }
+            } catch (error: Exception) {
+                if (call.isCanceled() || error is CancellationException) throw CancellationException("Observer detached", error)
+                if (error is StreamRejected || attempt == 4) throw error
+            } finally { if (liveCall === call) liveCall = null }
+            delay(250L * (1L shl attempt))
+        }
+        throw IOException("Interrupted stream")
     }
+
+    private class StreamRejected(message: String) : IOException(message)
 
     fun node(listener: WebSocketListener): WebSocket = http.newWebSocket(
         Request.Builder().url(backend.endpoint("ws/node")).build(), listener)

@@ -104,7 +104,7 @@ struct ContentView: View {
                     ForEach(Array(presentMessages(chat.messages ?? []).enumerated()), id: \.offset) { _, message in
                         MessageView(message: message)
                     }
-                    if model.streaming {
+                    if model.streaming || !model.liveText.isEmpty {
                         Markdown(model.liveText.isEmpty ? String(localized: "Working…") : model.liveText).textSelection(.enabled)
                     }
                 }.padding()
