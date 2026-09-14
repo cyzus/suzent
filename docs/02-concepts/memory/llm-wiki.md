@@ -64,4 +64,4 @@ stale. Nothing is deleted; pages are corrected or marked deprecated.
 You can also just ask it to research something and write it up; that lands in `2_Wiki/`.
 
 Building on the notebook itself? See
-[Development > Memory Internals](../../03-developing/memory/internals.md).
+[Memory Internals](../../02-concepts/memory/internals.md).

@@ -1,7 +1,11 @@
+---
+sidebar_position: 90
+---
+
 # Memory Architecture
 
 How memory is written, consolidated, indexed, and read.
-Companions: [Consolidation](../../02-concepts/memory/consolidation.md) for how the dream
+Companions: [Consolidation](./consolidation.md) for how the dream
 behaves from the outside, [Internals](./internals.md) for the class-by-class reference.
 
 ## Three tiers, one job each

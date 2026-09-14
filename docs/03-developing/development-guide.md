@@ -265,6 +265,35 @@ When the desktop app launches for the first time (or after an update):
 
 Contents: `backend-venv/`, `chats.db`, `memory/`, `skills/`, `sandbox-data/`, `config/`
 
+## Logo standard
+
+Use [`SuzentLogo`](../../frontend/src/components/SuzentLogo.tsx) for UI placements:
+
+```tsx
+import { SuzentLogo } from '@/components/SuzentLogo';
+
+<SuzentLogo className="h-7 w-7" />
+<SuzentLogo className="h-7 w-7" interactive />
+```
+
+`className` controls size; `interactive` defaults to false and enables cursor-following
+eyes. Use 28 px (`h-7 w-7`) in headers and 64 px or larger on splash screens.
+Avoid interactive instances in large lists.
+
+The canonical 24 × 24 geometry is a black rounded square (`rx=4`) with white
+5 × 5 eyes at `(5,8)` and `(14,8)`, each with `rx=1.5`. Change the component first,
+then synchronize `frontend/public/favicon.svg` and the `RobotFace` primitive in
+`frontend/src/components/chat/RobotAvatar.tsx`. RobotAvatar retains its own
+primitive for its animation variants. Do not inline new copies of the logo or
+add an outer white border.
+
+## Memory implementation
+
+Memory documentation has one entry point under [Memory](../02-concepts/memory/README.md).
+Contributors should read [Architecture](../02-concepts/memory/architecture.md)
+for invariants and [Internals](../02-concepts/memory/internals.md) for classes,
+storage layout, and failure behavior.
+
 ## Troubleshooting
 
 ### Backend Issues

@@ -1,6 +1,7 @@
 import data from "../../.generated/content.json";
 import type { Locale } from "./locales";
 export type PageKind =
+  | "redirect"
   | "doc"
   | "category"
   | "post"
@@ -20,6 +21,7 @@ export interface Page {
   canonicalPath: string;
   title: string;
   description?: string;
+  redirectTo?: string;
   locale: Locale;
   content?: string;
   source?: string;

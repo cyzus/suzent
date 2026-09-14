@@ -1,0 +1,7 @@
+{
+  "/docs/developing/memory/architecture": "/docs/concepts/memory/architecture",
+  "/docs/developing/memory/internals": "/docs/concepts/memory/internals",
+  "/docs/category/memory-system": "/docs/concepts/memory",
+  "/docs/developing/logo": "/docs/developing/development-guide#logo-standard",
+  "/docs/developing/streaming-persistence-analysis": "/docs/developing/stream-recovery-protocol"
+}

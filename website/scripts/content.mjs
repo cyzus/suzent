@@ -230,7 +230,11 @@ export function createContent() {
     },
     { kind: "notfound", url: "/404", title: "Page not found" },
   ];
-  const all = [...docs, ...categories, ...posts, ...collections, ...other];
+  const redirects = Object.entries(JSON.parse(fs.readFileSync(
+    path.join(root, "content/doc-redirects.json"), "utf8",
+  ))).filter(([url]) => ![...docs, ...categories].some((page) => page.url === url))
+    .map(([url, redirectTo]) => ({ kind: "redirect", url, redirectTo, title: "Page moved" }));
+  const all = [...docs, ...categories, ...posts, ...collections, ...other, ...redirects];
   const urls = new Set(all.map((p) => p.url));
   const unresolved = [];
   function resolveTarget(target, doc, isImage = false) {
@@ -325,6 +329,7 @@ export function createContent() {
           categoryTranslations[
             "sidebar.tutorialSidebar.category." + original.title
           ]?.message || original.title;
+      if (doc.redirectTo) doc.redirectTo = localize(doc.redirectTo, locale);
       if (doc.content) {
         const sourceDoc = { ...doc, url: original.url };
         let removedTitle = false;

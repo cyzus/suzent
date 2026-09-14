@@ -1,3 +1,4 @@
+import { DocRedirect } from "@/components/doc-redirect";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -29,7 +30,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       : page.kind === "home" && isZh
         ? zh["homepage.meta.description"].message
         : page.description;
-  const canonical = page.url === "/" ? "/" : page.url + "/";
+  const canonical = page.redirectTo?.split("#")[0] ?? (page.url === "/" ? "/" : page.url + "/");
   return {
     title,
     description,
@@ -56,7 +57,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       type: page.kind === "post" ? "article" : "website",
     },
     twitter: { title, description },
-    ...(page.kind === "notfound"
+    ...((page.kind === "notfound" || page.kind === "redirect")
       ? { robots: { index: false, follow: true } }
       : {}),
   };
@@ -64,6 +65,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function Page({ params }: Props) {
   const page = getPage("/" + ((await params).path ?? []).join("/"));
   if (!page) notFound();
+  if (page.kind === "redirect") return <DocRedirect target={page.redirectTo!} />;
   const text = messages(page.locale);
   if (page.kind === "home") return <Home />;
   if (page.kind === "sovereign")

@@ -19,7 +19,7 @@ upgrading from any version before v0.10.0.*
 Every item below is about state that already exists on disk before the upgrade, ordered
 by how likely it is to surprise you. See
 [Concepts > Memory](./02-concepts/memory/README.md) for what the system does, and
-[Development > Memory Architecture](./03-developing/memory/architecture.md) for why.
+[Memory Architecture](./02-concepts/memory/architecture.md) for why.
 
 ### The first run re-embeds everything, once
 
