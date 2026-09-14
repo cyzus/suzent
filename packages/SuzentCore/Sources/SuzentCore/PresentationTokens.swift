@@ -9,8 +9,18 @@ public enum PresentationTokens {
     public static let gray: UInt32 = 0x333333
     public static let code_bg: UInt32 = 0xf5f5f5
     public static let code_text: UInt32 = 0x1a1a1a
+    public static let surface_dark: UInt32 = 0x171717
+    public static let muted_light: UInt32 = 0x666666
+    public static let muted_dark: UInt32 = 0xB3B3B3
     public static let borderWidth: Double = 2
     public static let shadowOffset: Double = 2
+    public static let spaceSmall: Double = 8
+    public static let spaceMedium: Double = 12
+    public static let spacePage: Double = 16
+    public static let spaceLarge: Double = 24
+    public static let typeTitle: Double = 24
+    public static let typeBody: Double = 17
+    public static let typeCaption: Double = 13
     public static let ignoredToolNames: [String] = ["final_answer", "final answer"]
     public static let compactionSummaryMarkers: [String] = ["[CONTEXT SUMMARY — READ BEFORE RESPONDING]", "--- ARCHIVED CONTEXT SUMMARY ---"]
 }

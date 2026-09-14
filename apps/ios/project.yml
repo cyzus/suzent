@@ -29,6 +29,7 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: Suzent
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_NSCameraUsageDescription: Scan a pairing invitation from your Suzent desktop.
         INFOPLIST_KEY_NSLocalNetworkUsageDescription: Connect to your paired Suzent desktop backend.
         INFOPLIST_FILE: Config/Release.plist
       configs:

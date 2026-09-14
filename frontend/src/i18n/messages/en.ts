@@ -1,4 +1,33 @@
 export const en = {
+  mobileAccess: {
+    title: 'Mobile access',
+    description:
+      'Pair the Suzent app with this desktop. Each phone receives its own revocable access.',
+    origin: 'Backend address reachable from your phone',
+    network:
+      'Use your LAN or Tailscale address. Release apps require HTTPS; HTTP is available in debug builds only.',
+    generate: 'Pair a phone',
+    expired: 'Invitation expired. Generate a new QR code.',
+    qrAlt: 'Suzent mobile pairing QR code',
+    scan: 'Scan in the Suzent app, then approve this phone below.',
+    expires: 'Expires in {seconds}s',
+    copy: 'Copy pairing invitation',
+    compare: 'Confirm that the phone shows code {code}.',
+    all_chats: 'Read all conversations, including future ones',
+    create_chats: 'Create conversations',
+    send: 'Send messages',
+    stop: 'Stop responses',
+    sharedChats: 'Conversations this phone can read',
+    toolPolicy:
+      'Sending can run agent tools under the existing conversation policy. Tool approvals remain on the desktop. Node access is enabled separately.',
+    approve: 'Approve phone',
+    deny: 'Deny',
+    revoke: 'Revoke access',
+    chatCount: '{count} shared conversations',
+    readOnly: 'Read only',
+    loadError: 'Could not load mobile access. Refresh to retry.',
+    actionError: 'Could not complete the action. Check the address and connection, then retry.',
+  },
   imageTool: {
     previewFailed: 'Image preview unavailable. Open the file to retry.',
   },

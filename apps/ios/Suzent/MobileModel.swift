@@ -4,7 +4,12 @@ import SuzentCore
 
 @MainActor @Observable final class MobileModel {
     var origin = ""
-    var token = ""
+    var invitationText = ""
+    var pairingInvitation: PairingInvitation?
+    var pairingCode: String?
+    var device: ClientDevice?
+    var canReconnect = false
+    private var pairingTask: Task<Void, Never>?
     var chats: [Chat] = []
     var selected: Chat?
     var draft = ""
@@ -28,63 +33,132 @@ import SuzentCore
             if let saved = try CredentialStore.load() {
                 connection = saved
                 origin = saved.origin
-                token = saved.hostToken
+                canReconnect = saved.clientProtocol == 1
             }
         } catch { self.error = error.localizedDescription }
     }
 
-    var needsHostToken: Bool {
-        #if DEBUG && targetEnvironment(simulator)
-        guard let backend = try? Backend(origin, allowHTTP: true) else { return true }
-        return !["127.0.0.1", "::1", "[::1]", "localhost"].contains(backend.url.host ?? "")
-        #else
+    private var allowsHTTP: Bool {
+        #if DEBUG
         return true
+        #else
+        return false
         #endif
     }
 
-    func connect() async {
+    func stageInvitation(_ text: String) {
         guard !busy else { return }
+        do {
+            pairingInvitation = try PairingInvitation.parse(text, allowHTTP: allowsHTTP)
+            invitationText = ""
+            error = nil
+        } catch { handle(error) }
+    }
+
+    func cancelPairing() {
+        pairingTask?.cancel()
+        pairingTask = nil
+        pairingInvitation = nil
+        pairingCode = nil
+        busy = false
+        generation = UUID()
+    }
+
+    func approveDestination() {
+        guard let invitation = pairingInvitation, !busy else { return }
+        busy = true
+        error = nil
+        let current = generation
+        pairingTask = Task {
+            defer { if generation == current { busy = false; pairingCode = nil } }
+            do {
+                let backend = try Backend(invitation.origin, allowHTTP: allowsHTTP)
+                let bootstrap = SuzentClient(backend: backend, token: "")
+                defer { bootstrap.close() }
+                _ = try await bootstrap.capabilities()
+                try Task.checkCancellation()
+                let claim = try await bootstrap.claim(invitation, name: UIDevice.current.name)
+                guard generation == current else { return }
+                pairingCode = String(invitation.pairingId.prefix(6))
+                while Date().timeIntervalSince1970 < claim.expiresAt {
+                    try Task.checkCancellation()
+                    let result = try await bootstrap.collect(pairingID: invitation.pairingId, pickupSecret: claim.pickupSecret)
+                    guard generation == current else { return }
+                    if result.status == "denied" { throw PairingError.denied }
+                    if result.status == "approved" {
+                        guard let token = result.token, !token.isEmpty, result.device != nil else {
+                            throw ClientError.invalidResponse
+                        }
+                        let saved = Connection(origin: backend.url.absoluteString, hostToken: token, clientProtocol: 1)
+                        try CredentialStore.save(saved)
+                        connection = saved
+                        origin = saved.origin
+                        canReconnect = true
+                        pairingInvitation = nil
+                        try await activate(saved)
+                        return
+                    }
+                    guard result.status == "pending" else { throw ClientError.invalidResponse }
+                    try await Task.sleep(for: .seconds(1))
+                }
+                throw PairingError.expired
+            } catch {
+                if !Task.isCancelled, generation == current {
+                    pairingInvitation = nil
+                    handle(error)
+                }
+            }
+        }
+    }
+
+    private func activate(_ saved: Connection) async throws {
+        guard saved.clientProtocol == 1 else { throw PairingError.incompatible }
+        let backend = try Backend(saved.origin, allowHTTP: allowsHTTP)
+        let candidate = SuzentClient(backend: backend, token: saved.hostToken)
+        do {
+            _ = try await candidate.capabilities()
+            let session = try await candidate.clientSession()
+            let listing = try await candidate.chats()
+            try Task.checkCancellation()
+            client?.close()
+            client = candidate
+            device = session.device
+            chats = listing
+            connected = true
+        } catch { candidate.close(); throw error }
+    }
+
+    func connect() async {
+        guard let connection, canReconnect, !busy else { return }
         busy = true
         defer { busy = false }
         error = nil
-        do {
-            #if DEBUG
-            let backend = try Backend(origin, allowHTTP: true)
-            #else
-            let backend = try Backend(origin)
-            #endif
-            let credential = token.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !needsHostToken || !credential.isEmpty else { throw ClientError.http(401) }
-            let candidate = SuzentClient(backend: backend, token: credential)
-            let listing: [Chat]
-            do { listing = try await candidate.chats() }
-            catch { candidate.close(); throw error }
-            let saved = Connection(origin: backend.url.absoluteString, hostToken: credential,
-                                   nodeToken: connection?.origin == backend.url.absoluteString ? connection?.nodeToken ?? "" : "")
-            do { try CredentialStore.save(saved) }
-            catch { candidate.close(); throw error }
-            client?.close()
-            client = candidate
-            connection = saved
-            chats = listing
-            connected = true
-            token = ""
-        } catch { self.error = error.localizedDescription }
+        do { try await activate(connection) }
+        catch { handle(error) }
+    }
+
+    private func handle(_ failure: Error) {
+        if case ClientError.http(401) = failure {
+            forget()
+            error = String(localized: "Access was revoked or expired. Pair this phone again.")
+        } else { error = failure.localizedDescription }
     }
 
     func refresh() async {
         guard let client else { return }
         let current = generation
         do {
+            let session = try await client.clientSession()
             let listing = try await client.chats()
             guard generation == current else { return }
+            device = session.device
             chats = listing
             if let id = selected?.id, !streaming {
                 let chat = try await client.chat(id)
                 guard generation == current, selected?.id == id else { return }
                 selected = chat
             }
-        } catch { if generation == current { self.error = error.localizedDescription } }
+        } catch { if generation == current { handle(error) } }
     }
 
     func open(_ chat: Chat) async {
@@ -98,18 +172,18 @@ import SuzentCore
     }
 
     func createChat() async {
-        guard let client, !busy, !streaming else { return }
+        guard let client, device?.permissions.createChats == true, !busy, !streaming else { return }
         busy = true
         defer { busy = false }
         do {
             let chat = try await client.createChat(title: String(localized: "Mobile conversation"))
             selected = chat
             await refresh()
-        } catch { self.error = error.localizedDescription }
+        } catch { handle(error) }
     }
 
     func send() async {
-        guard let client, let id = selected?.id, !busy, !streaming else { return }
+        guard let client, device?.permissions.send == true, let id = selected?.id, !busy, !streaming else { return }
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         busy = true
@@ -121,7 +195,8 @@ import SuzentCore
             await refresh()
             if foreground { observe(id, client: client) }
         } catch {
-            self.error = String(localized: "Send could not be confirmed. Refresh history before sending again.")
+            if case ClientError.http(401) = error { handle(error) }
+            else { self.error = String(localized: "Send could not be confirmed. Refresh history before sending again.") }
         }
     }
 
@@ -140,7 +215,7 @@ import SuzentCore
                 selected = saved
                 liveText = ""
             } catch {
-                if !Task.isCancelled, generation == current { self.error = error.localizedDescription }
+                if !Task.isCancelled, generation == current { handle(error) }
             }
             guard generation == current, !Task.isCancelled else { return }
             streaming = false
@@ -155,9 +230,9 @@ import SuzentCore
     }
 
     func stop() async {
-        guard let id = selected?.id, let client else { return }
+        guard device?.permissions.stop == true, let id = selected?.id, let client else { return }
         do { try await client.stop(id) }
-        catch { self.error = error.localizedDescription }
+        catch { handle(error) }
     }
 
     func setForeground(_ active: Bool) async {
@@ -238,8 +313,9 @@ import SuzentCore
     }
 
     func forget() {
+        pairingTask?.cancel()
         do { try CredentialStore.clear() }
-        catch { self.error = error.localizedDescription; return }
+        catch { self.error = error.localizedDescription }
         generation = UUID()
         nodeEnabled = false
         disconnectNode()
@@ -248,9 +324,14 @@ import SuzentCore
         client = nil
         connection = nil
         connected = false
+        busy = false
         selected = nil
         chats = []
-        token = ""
+        canReconnect = false
+        device = nil
+        pairingInvitation = nil
+        pairingCode = nil
+        invitationText = ""
         origin = ""
         draft = ""
         streaming = false

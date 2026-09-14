@@ -32,36 +32,55 @@ class BackendClient(val backend: Backend, private val token: String) {
     private suspend fun json(path: String, body: JSONObject? = null): JSONObject = withContext(Dispatchers.IO) {
         val transport = if (body == null) reads else http
         transport.newCall(request(path, body)).execute().use { response ->
-            if (!response.isSuccessful) throw IOException("HTTP ${response.code}")
+            if (!response.isSuccessful) throw HttpFailure(response.code)
             JSONObject(response.body?.string() ?: throw IOException("Empty response"))
         }
     }
 
+    class HttpFailure(val code: Int) : IOException("HTTP $code")
+
+    suspend fun capabilities() {
+        try { validateMobileCapabilities(json("mobile/capabilities"), pairing = true) }
+        catch (failure: HttpFailure) {
+            if (failure.code == 404 || failure.code == 405) throw PairingFailure(PairingFailure.Reason.INCOMPATIBLE)
+            throw failure
+        } catch (_: org.json.JSONException) { throw PairingFailure(PairingFailure.Reason.INCOMPATIBLE) }
+    }
+    suspend fun session(): ClientDevice {
+        val value = json("mobile/client/session")
+        validateMobileCapabilities(value)
+        return ClientDevice.parse(value.getJSONObject("device"))
+    }
+    suspend fun claim(invitation: PairingInvitation, name: String): JSONObject = json("mobile/pairing/claim",
+        JSONObject().put("pairing_id", invitation.id).put("invitation", invitation.secret)
+            .put("display_name", name).put("platform", "android"))
+    suspend fun collect(id: String, pickupSecret: String): JSONObject = json("mobile/pairing/collect",
+        JSONObject().put("pairing_id", id).put("pickup_secret", pickupSecret))
+
     suspend fun chats(): List<Chat> {
-        val array = json("chats").getJSONArray("chats")
+        val array = json("mobile/client/chats").getJSONArray("chats")
         return (0 until array.length()).map { Chat.parse(array.getJSONObject(it)) }
     }
-    suspend fun create(title: String): Chat = Chat.parse(json("chats", JSONObject().put("title", title)))
+    suspend fun create(title: String): Chat = Chat.parse(json("mobile/client/chats", JSONObject().put("title", title)))
     suspend fun chat(id: String): Chat {
         require(!id.contains('/') && id != "." && id != "..")
-        return Chat.parse(json("chats/$id"))
+        return Chat.parse(json("mobile/client/chats/$id"))
     }
     suspend fun send(id: String, text: String) {
-        json("chat/send", JSONObject().put("chat_id", id).put("message", text))
+        json("mobile/client/send", JSONObject().put("chat_id", id).put("message", text))
     }
-    suspend fun stop(id: String) { json("chat/stop", JSONObject().put("chat_id", id)) }
+    suspend fun stop(id: String) { json("mobile/client/stop", JSONObject().put("chat_id", id)) }
 
     suspend fun observe(id: String, event: suspend (JSONObject) -> Unit) = withContext(Dispatchers.IO) {
         var recovery = StreamRecovery()
         repeat(5) { attempt ->
             currentCoroutineContext().ensureActive()
-            val call = http.newCall(request("chat/live", recovery.request(id)))
+            val call = http.newCall(request("mobile/client/live", recovery.request(id)))
             liveCall = call
             try {
                 call.execute().use { response ->
                     if (!response.isSuccessful) {
-                        if (response.code < 500) throw StreamRejected("HTTP ${response.code}")
-                        throw IOException("HTTP ${response.code}")
+                        throw HttpFailure(response.code)
                     }
                     if (response.code == 204) return@withContext
                     if (response.body?.contentType()?.subtype != "event-stream") throw IOException("Invalid stream")
@@ -82,6 +101,7 @@ class BackendClient(val backend: Backend, private val token: String) {
                 }
             } catch (error: Exception) {
                 if (call.isCanceled() || error is CancellationException) throw CancellationException("Observer detached", error)
+                if (error is HttpFailure && error.code < 500) throw error
                 if (error is StreamRejected || attempt == 4) throw error
             } finally { if (liveCall === call) liveCall = null }
             delay(250L * (1L shl attempt))

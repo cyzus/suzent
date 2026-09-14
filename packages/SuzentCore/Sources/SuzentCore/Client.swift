@@ -52,34 +52,69 @@ public final class SuzentClient: Sendable {
         return data
     }
 
+    private func mobileDecode<T: Decodable>(_ type: T.Type, _ data: Data) throws -> T {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        return try decoder.decode(type, from: data)
+    }
+
+    public func capabilities() async throws -> MobileCapabilities {
+        do {
+            let result = try mobileDecode(MobileCapabilities.self, await data("mobile/capabilities"))
+            try result.validate()
+            return result
+        } catch ClientError.http(let code) where code == 404 || code == 405 {
+            throw PairingError.incompatible
+        } catch is DecodingError { throw PairingError.incompatible }
+    }
+
+    public func clientSession() async throws -> ClientSession {
+        let result = try mobileDecode(ClientSession.self, await data("mobile/client/session"))
+        try result.validate()
+        return result
+    }
+
+    public func claim(_ invitation: PairingInvitation, name: String) async throws -> PairingClaim {
+        try mobileDecode(PairingClaim.self, await data("mobile/pairing/claim", body: [
+            "pairing_id": invitation.pairingId, "invitation": invitation.invitation,
+            "display_name": name, "platform": "ios"
+        ]))
+    }
+
+    public func collect(pairingID: String, pickupSecret: String) async throws -> PairingResult {
+        try mobileDecode(PairingResult.self, await data("mobile/pairing/collect", body: [
+            "pairing_id": pairingID, "pickup_secret": pickupSecret
+        ]))
+    }
+
     public func chats() async throws -> [Chat] {
         struct Listing: Decodable { let chats: [Chat] }
-        return try JSONDecoder().decode(Listing.self, from: await data("chats")).chats
+        return try JSONDecoder().decode(Listing.self, from: await data("mobile/client/chats")).chats
     }
 
     public func createChat(title: String) async throws -> Chat {
-        try JSONDecoder().decode(Chat.self, from: await data("chats", body: ["title": title]))
+        try JSONDecoder().decode(Chat.self, from: await data("mobile/client/chats", body: ["title": title]))
     }
 
     public func chat(_ id: String) async throws -> Chat {
         // IDs are backend-issued. Reject path separators instead of treating them as routes.
         guard !id.contains("/"), id != ".", id != ".." else { throw ClientError.invalidResponse }
-        return try JSONDecoder().decode(Chat.self, from: await data("chats/\(id)"))
+        return try JSONDecoder().decode(Chat.self, from: await data("mobile/client/chats/\(id)"))
     }
 
     public func send(_ text: String, chatID: String) async throws {
-        _ = try await data("chat/send", body: ["chat_id": chatID, "message": text])
+        _ = try await data("mobile/client/send", body: ["chat_id": chatID, "message": text])
     }
 
     public func stop(_ chatID: String) async throws {
-        _ = try await data("chat/stop", body: ["chat_id": chatID])
+        _ = try await data("mobile/client/stop", body: ["chat_id": chatID])
     }
 
     public func observe(_ chatID: String, onEvent: @Sendable (StreamEvent) async -> Void) async throws {
         var recovery = StreamRecovery()
         for attempt in 0..<5 {
             try Task.checkCancellation()
-            var request = try request("chat/live", body: ["chat_id": chatID])
+            var request = try request("mobile/client/live", body: ["chat_id": chatID])
             request.httpBody = try recovery.request(chatID: chatID)
             do {
                 let (bytes, response) = try await session.bytes(for: request)

@@ -10,6 +10,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.withContext
 import okhttp3.Response
 import okhttp3.WebSocket
@@ -18,7 +21,12 @@ import org.json.JSONObject
 
 class MobileModel(application: Application) : AndroidViewModel(application) {
     var origin by mutableStateOf("")
-    var token by mutableStateOf("")
+    var invitationText by mutableStateOf("")
+    var pairingInvitation by mutableStateOf<PairingInvitation?>(null)
+    var pairingCode by mutableStateOf<String?>(null)
+    var device by mutableStateOf<ClientDevice?>(null)
+    var canReconnect by mutableStateOf(false)
+    private var pairingJob: Job? = null
     var chats by mutableStateOf<List<Chat>>(emptyList())
     var selected by mutableStateOf<Chat?>(null)
     var draft by mutableStateOf("")
@@ -43,37 +51,116 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         try {
             connection = store.load()
             origin = connection?.origin.orEmpty()
-            token = connection?.hostToken.orEmpty()
+            canReconnect = connection?.clientProtocol == 1
         } catch (_: Exception) { error = text(R.string.secure_error) }
     }
 
-    fun connect() {
+    fun stageInvitation(value: String) {
+        if (busy) return
+        try {
+            pairingInvitation = PairingInvitation.parse(value, BuildConfig.DEBUG)
+            invitationText = ""
+            error = null
+        } catch (failure: Exception) { handle(failure) }
+    }
+
+    fun cancelPairing() {
+        pairingJob?.cancel()
+        pairingJob = null
+        pairingInvitation = null
+        pairingCode = null
+        generation++
+        busy = false
+    }
+
+    fun approveDestination() {
+        val invitation = pairingInvitation ?: return
         if (busy) return
         busy = true
         error = null
-        viewModelScope.launch {
-            var candidate: BackendClient? = null
+        val current = generation
+        pairingJob = viewModelScope.launch {
+            val bootstrap = BackendClient(Backend.parse(invitation.origin, BuildConfig.DEBUG), "")
             try {
-                val backend = Backend.parse(origin, BuildConfig.DEBUG)
-                val credential = token.trim()
-                require(credential.isNotEmpty())
-                val api = BackendClient(backend, credential)
-                candidate = api
-                val listing = api.chats()
-                val saved = Connection(backend.origin.toString(), credential,
-                    if (connection?.origin == backend.origin.toString()) connection?.nodeToken.orEmpty() else "")
-                store.save(saved)
-                client?.close()
-                client = api
-                connection = saved
-                chats = listing
-                connected = true
-                token = ""
-            } catch (_: Exception) {
-                candidate?.close()
-                error = text(R.string.connect_error)
-            } finally { busy = false }
+                bootstrap.capabilities()
+                val claim = bootstrap.claim(invitation, android.os.Build.MODEL)
+                if (generation != current) return@launch
+                pairingCode = invitation.id.take(6)
+                while (System.currentTimeMillis() / 1000.0 < claim.getDouble("expires_at")) {
+                    currentCoroutineContext().ensureActive()
+                    val result = bootstrap.collect(invitation.id, claim.getString("pickup_secret"))
+                    if (generation != current) return@launch
+                    when (result.getString("status")) {
+                        "denied" -> throw PairingFailure(PairingFailure.Reason.DENIED)
+                        "approved" -> {
+                            val credential = result.getString("token")
+                            require(credential.isNotEmpty())
+                            val saved = Connection(Backend.parse(invitation.origin, BuildConfig.DEBUG).origin.toString(),
+                                credential, clientProtocol = 1)
+                            store.save(saved)
+                            connection = saved
+                            origin = saved.origin
+                            canReconnect = true
+                            pairingInvitation = null
+                            activate(saved)
+                            return@launch
+                        }
+                        "pending" -> delay(1000)
+                        else -> throw PairingFailure(PairingFailure.Reason.INVALID)
+                    }
+                }
+                throw PairingFailure(PairingFailure.Reason.EXPIRED)
+            } catch (failure: CancellationException) { throw failure }
+            catch (failure: Exception) {
+                if (generation == current) { pairingInvitation = null; handle(failure) }
+            } finally {
+                bootstrap.close()
+                if (generation == current) { busy = false; pairingCode = null }
+            }
         }
+    }
+
+    private suspend fun activate(saved: Connection) {
+        require(saved.clientProtocol == 1)
+        val candidate = BackendClient(Backend.parse(saved.origin, BuildConfig.DEBUG), saved.hostToken)
+        try {
+            candidate.capabilities()
+            val session = candidate.session()
+            val listing = candidate.chats()
+            currentCoroutineContext().ensureActive()
+            client?.close()
+            client = candidate
+            device = session
+            chats = listing
+            connected = true
+        } catch (failure: Exception) { candidate.close(); throw failure }
+    }
+
+    fun connect() {
+        val saved = connection ?: return
+        if (busy || !canReconnect) return
+        busy = true
+        error = null
+        viewModelScope.launch {
+            try { activate(saved) }
+            catch (failure: CancellationException) { throw failure }
+            catch (failure: Exception) { handle(failure) }
+            finally { busy = false }
+        }
+    }
+
+    private fun handle(failure: Exception, fallback: Int = R.string.request_error) {
+        if (failure is BackendClient.HttpFailure && failure.code == 401) {
+            forget()
+            error = text(R.string.access_revoked)
+        } else if (failure is PairingFailure) {
+            error = text(when (failure.reason) {
+                PairingFailure.Reason.INVALID -> R.string.pairing_invalid
+                PairingFailure.Reason.INCOMPATIBLE -> R.string.pairing_incompatible
+                PairingFailure.Reason.EXPIRED -> R.string.pairing_expired
+                PairingFailure.Reason.DENIED -> R.string.pairing_denied
+            })
+        } else { error = text(fallback) }
     }
 
     fun refresh() { viewModelScope.launch { refreshNow() } }
@@ -82,8 +169,10 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         val api = client ?: return
         val current = generation
         try {
+            val session = api.session()
             val listing = api.chats()
             if (current != generation) return
+            device = session
             chats = listing
             val id = selected?.id
             if (id != null && !streaming) {
@@ -97,7 +186,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                 val status = failure.message?.takeIf { it.matches(Regex("HTTP [0-9]{3}")) }
                 android.util.Log.d("SuzentNetwork", "Refresh failure: ${failure.javaClass.simpleName} / ${status ?: failure.cause?.javaClass?.simpleName ?: "transport"}")
             }
-            if (current == generation) error = text(R.string.refresh_error)
+            if (current == generation) handle(failure, R.string.refresh_error)
         }
     }
 
@@ -113,13 +202,13 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
 
     fun create() {
         val api = client ?: return
-        if (busy || streaming) return
+        if (busy || streaming || device?.permissions?.createChats != true) return
         busy = true
         viewModelScope.launch {
             try {
                 selected = api.create(text(R.string.mobile_conversation))
                 refreshNow()
-            } catch (_: Exception) { error = text(R.string.request_error) }
+            } catch (failure: Exception) { handle(failure) }
             finally { busy = false }
         }
     }
@@ -128,7 +217,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         val api = client ?: return
         val id = selected?.id ?: return
         val message = draft.trim()
-        if (busy || streaming || message.isEmpty()) return
+        if (busy || streaming || message.isEmpty() || device?.permissions?.send != true) return
         busy = true
         error = null
         viewModelScope.launch {
@@ -137,7 +226,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                 draft = ""
                 refreshNow()
                 if (foreground) observe(id)
-            } catch (_: Exception) { error = text(R.string.send_unknown) }
+            } catch (failure: Exception) { handle(failure, R.string.send_unknown) }
             finally { busy = false }
         }
     }
@@ -167,16 +256,17 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                     liveText = ""
                 }
             } catch (error: CancellationException) { throw error }
-            catch (_: Exception) { if (current == generation && foreground) error = text(R.string.stream_error) }
+            catch (failure: Exception) { if (current == generation && foreground) handle(failure, R.string.stream_error) }
             finally { if (current == generation) streaming = false }
         }
     }
 
     fun stop() {
+        if (device?.permissions?.stop != true) return
         val api = client ?: return
         val id = selected?.id ?: return
         viewModelScope.launch {
-            try { api.stop(id) } catch (_: Exception) { error = text(R.string.request_error) }
+            try { api.stop(id) } catch (failure: Exception) { handle(failure) }
         }
     }
 
@@ -257,8 +347,8 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun forget() {
-        if (busy) return
-        try { store.clear() } catch (_: Exception) { error = text(R.string.secure_error); return }
+        pairingJob?.cancel()
+        try { store.clear() } catch (_: Exception) { error = text(R.string.secure_error) }
         generation++
         nodeEnabled = false
         disconnectNode()
@@ -267,9 +357,14 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         client = null
         connection = null
         connected = false
+        busy = false
         selected = null
         chats = emptyList()
-        token = ""
+        canReconnect = false
+        device = null
+        pairingInvitation = null
+        pairingCode = null
+        invitationText = ""
         origin = ""
         draft = ""
         streaming = false

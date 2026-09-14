@@ -17,6 +17,10 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.viewinterop.AndroidView
 import io.noties.markwon.Markwon
 import io.noties.markwon.ext.tables.TablePlugin
@@ -27,13 +31,18 @@ fun SuzentTheme(content: @Composable () -> Unit) {
     val colors = if (isSystemInDarkTheme()) darkColorScheme(
         primary = Color(PresentationTokens.yellow), onPrimary = Color.Black,
         secondaryContainer = Color(PresentationTokens.yellow), onSecondaryContainer = Color.Black,
-        surface = Color(0xFF171717), background = Color(0xFF171717), outline = Color.White
+        surface = Color(PresentationTokens.surface_dark), background = Color(PresentationTokens.surface_dark), outline = Color.White
     ) else lightColorScheme(
         primary = Color.Black, onPrimary = Color(PresentationTokens.yellow),
         secondaryContainer = Color(PresentationTokens.yellow), onSecondaryContainer = Color.Black,
         surface = Color.White, background = Color.White, outline = Color.Black
     )
-    MaterialTheme(colorScheme = colors, shapes = Shapes(
+    val typography = Typography()
+    MaterialTheme(colorScheme = colors, typography = typography.copy(
+        titleLarge = typography.titleLarge.copy(fontSize = PresentationTokens.typeTitle.sp, fontWeight = FontWeight.Bold),
+        bodyLarge = typography.bodyLarge.copy(fontSize = PresentationTokens.typeBody.sp),
+        bodySmall = typography.bodySmall.copy(fontSize = PresentationTokens.typeCaption.sp)
+    ), shapes = Shapes(
         small = RoundedCornerShape(0.dp), medium = RoundedCornerShape(0.dp), large = RoundedCornerShape(0.dp)
     ), content = content)
 }
@@ -85,5 +94,20 @@ fun MessageView(message: DisplayMessage) {
                 }
             }
         }
+    }
+}
+
+@Composable
+fun SuzentAction(label: String, onClick: () -> Unit, prominent: Boolean = false, enabled: Boolean = true) {
+    val outline = MaterialTheme.colorScheme.outline
+    Button(onClick = onClick, enabled = enabled, shape = RectangleShape,
+        border = BorderStroke(PresentationTokens.borderWidth.dp, outline),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = if (prominent) Color(PresentationTokens.yellow) else MaterialTheme.colorScheme.surface,
+            contentColor = if (prominent) Color.Black else MaterialTheme.colorScheme.onSurface),
+        modifier = Modifier.fillMaxWidth().padding(end = 2.dp, bottom = 2.dp).drawBehind {
+            if (enabled) drawRect(outline, topLeft = Offset(PresentationTokens.shadowOffset.dp.toPx(), PresentationTokens.shadowOffset.dp.toPx()))
+        }, contentPadding = PaddingValues(PresentationTokens.spacePage.dp)) {
+        Text(label, style = MaterialTheme.typography.titleMedium)
     }
 }

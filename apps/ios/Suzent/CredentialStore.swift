@@ -5,6 +5,7 @@ struct Connection: Codable {
     let origin: String
     let hostToken: String
     var nodeToken: String = ""
+    var clientProtocol: Int? = nil
 }
 
 enum CredentialStore {

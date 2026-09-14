@@ -15,7 +15,17 @@ def outputs() -> dict[Path, str]:
         name = key.replace("-", "_")
         kotlin += f"    const val {name}: Long = 0xFF{value[1:]}\n"
         swift += f"    public static let {name}: UInt32 = 0x{value[1:]}\n"
-    for key in ("borderWidth", "shadowOffset"):
+    for key in (
+        "borderWidth",
+        "shadowOffset",
+        "spaceSmall",
+        "spaceMedium",
+        "spacePage",
+        "spaceLarge",
+        "typeTitle",
+        "typeBody",
+        "typeCaption",
+    ):
         kotlin += f"    const val {key} = {data[key]}\n"
         swift += f"    public static let {key}: Double = {data[key]}\n"
     for key in ("ignoredToolNames", "compactionSummaryMarkers"):

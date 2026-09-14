@@ -1,0 +1,101 @@
+package com.suzent.mobile
+
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
+
+@Composable
+fun PairingView(model: MobileModel) {
+    val context = LocalContext.current
+    val scanner = rememberLauncherForActivityResult(ScanContract()) { result ->
+        result.contents?.let(model::stageInvitation)
+    }
+    val launchScanner = {
+        scanner.launch(ScanOptions().setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+            .setOrientationLocked(false).setBeepEnabled(false).setBarcodeImageEnabled(false)
+            .setPrompt(context.getString(R.string.scan_desktop)))
+    }
+    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) launchScanner() else model.error = context.getString(R.string.camera_unavailable)
+    }
+    var paste by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(PresentationTokens.spaceLarge.dp)) {
+        Column(Modifier.fillMaxWidth().background(Color(PresentationTokens.yellow))
+            .border(PresentationTokens.borderWidth.dp, Color.Black).padding(PresentationTokens.spaceLarge.dp),
+            verticalArrangement = Arrangement.spacedBy(PresentationTokens.spaceSmall.dp)) {
+            Text(stringResource(R.string.pairing_heading), style = MaterialTheme.typography.titleLarge, color = Color.Black)
+            Text(stringResource(R.string.pairing_intro), color = Color.Black)
+        }
+        val invitation = model.pairingInvitation
+        val code = model.pairingCode
+        if (code != null) {
+            LinearProgressIndicator(Modifier.fillMaxWidth())
+            Text(stringResource(R.string.waiting_approval), style = MaterialTheme.typography.titleLarge)
+            Text(code, style = MaterialTheme.typography.headlineLarge)
+            Text(stringResource(R.string.compare_code))
+            SuzentAction(stringResource(R.string.cancel_pairing), model::cancelPairing)
+        } else if (invitation != null) {
+            Text(stringResource(R.string.confirm_desktop), style = MaterialTheme.typography.titleLarge)
+            Text(invitation.origin)
+            Text(stringResource(R.string.confirm_desktop_help))
+            SuzentAction(stringResource(R.string.request_pairing), model::approveDestination, prominent = true, enabled = !model.busy)
+            TextButton(onClick = model::cancelPairing, enabled = !model.busy) { Text(stringResource(R.string.cancel_pairing)) }
+        } else {
+            Text(stringResource(R.string.pairing_steps))
+            SuzentAction(stringResource(R.string.scan_desktop), {
+                if (context.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) launchScanner()
+                else permission.launch(Manifest.permission.CAMERA)
+            }, prominent = true, enabled = !model.busy)
+            TextButton(onClick = { paste = !paste }) { Text(stringResource(R.string.paste_invitation)) }
+            if (paste) {
+                OutlinedTextField(value = model.invitationText, onValueChange = { model.invitationText = it },
+                    label = { Text(stringResource(R.string.pairing_invitation)) }, modifier = Modifier.fillMaxWidth(), minLines = 3, maxLines = 6)
+                SuzentAction(stringResource(R.string.review_invitation), { model.stageInvitation(model.invitationText) },
+                    enabled = !model.busy && model.invitationText.isNotBlank())
+            }
+            if (model.canReconnect) {
+                HorizontalDivider()
+                Text(model.origin, style = MaterialTheme.typography.bodySmall)
+                SuzentAction(stringResource(R.string.reconnect), model::connect, enabled = !model.busy)
+            }
+        }
+        Spacer(Modifier.height(PresentationTokens.spaceLarge.dp))
+    }
+}
+
+@Composable
+fun ClientPermissionsView(device: ClientDevice, origin: String) {
+    Column(Modifier.fillMaxWidth().border(PresentationTokens.borderWidth.dp, MaterialTheme.colorScheme.outline)
+        .padding(PresentationTokens.spacePage.dp), verticalArrangement = Arrangement.spacedBy(PresentationTokens.spaceSmall.dp)) {
+        Text(stringResource(R.string.desktop_access), style = MaterialTheme.typography.titleLarge)
+        Text(device.name, style = MaterialTheme.typography.titleMedium)
+        Text(origin, style = MaterialTheme.typography.bodySmall)
+        Text(if (device.permissions.allChats) stringResource(R.string.all_conversations)
+            else stringResource(R.string.shared_conversations, device.permissions.chatIds.size))
+        listOf(R.string.create_conversations to device.permissions.createChats,
+            R.string.send_messages to device.permissions.send, R.string.stop_responses to device.permissions.stop).forEach { (label, enabled) ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(stringResource(label))
+                Text(stringResource(if (enabled) R.string.allowed else R.string.not_allowed), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        Text(stringResource(R.string.manage_access), style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(R.string.tool_approval_desktop), style = MaterialTheme.typography.bodySmall)
+    }
+}

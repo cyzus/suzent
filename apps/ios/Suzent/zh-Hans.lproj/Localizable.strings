@@ -38,3 +38,40 @@
 
 "This simulator connects to the backend on your Mac using its trusted local connection." = "此模拟器通过受信任的本机连接访问 Mac 上的后端。";
 "The response could not be saved. Keep this view open and retry refreshing history." = "回复未能保存。请保留当前页面，并尝试重新刷新历史记录。";
+
+"Your Suzent, together." = "随时连接你的 Suzent。";
+"Connect to your desktop. Continue conversations wherever you are." = "连接桌面端，随时继续你的对话。";
+"Waiting for desktop approval" = "等待桌面端批准";
+"Check this code on your desktop, then choose which conversations and actions to share." = "核对桌面端的验证码，然后选择要共享的会话和操作权限。";
+"Cancel pairing" = "取消配对";
+"Connect to this desktop?" = "连接此桌面端？";
+"Your desktop will ask you to approve this phone. Node access stays separate." = "桌面端会请求批准这台手机。Node 访问需单独开启。";
+"Request pairing" = "请求配对";
+"On desktop, open Settings → Devices → Mobile access, then choose Pair a phone." = "在桌面端打开「设置 → 设备 → 移动端访问」，选择「配对手机」。";
+"Scan desktop QR code" = "扫描桌面二维码";
+"Paste an invitation instead" = "粘贴配对邀请";
+"Pairing invitation" = "配对邀请";
+"Review invitation" = "检查邀请";
+"Reconnect to desktop" = "重新连接桌面端";
+"Desktop access" = "桌面端访问";
+"All conversations" = "所有会话";
+"Shared conversations: %lld" = "已共享会话：%lld";
+"Create conversations" = "创建会话";
+"Send messages" = "发送消息";
+"Stop responses" = "停止回复";
+"Allowed" = "允许";
+"Not allowed" = "不允许";
+"Manage or revoke access in desktop Settings → Devices → Mobile access." = "在桌面端「设置 → 设备 → 移动端访问」管理或撤销访问。";
+"Tool approvals remain on your desktop. Node access is separate." = "工具审批仍在桌面端进行。Node 访问需单独开启。";
+"Camera unavailable" = "相机不可用";
+"Allow camera access in Settings, or paste the pairing invitation from your desktop." = "请在设置中允许相机访问，或粘贴桌面端生成的配对邀请。";
+"Scan pairing code" = "扫描配对二维码";
+"Cancel" = "取消";
+"Invalid pairing invitation. Scan a new QR code from your desktop." = "配对邀请无效，请扫描桌面端的新二维码。";
+"This backend is incompatible. Update Suzent on your desktop and phone." = "后端协议不兼容，请更新桌面端和手机端 Suzent。";
+"Pairing expired. Generate a new QR code on your desktop." = "配对已过期，请在桌面端生成新二维码。";
+"Pairing was declined on the desktop." = "桌面端已拒绝配对。";
+"Access was revoked or expired. Pair this phone again." = "访问已被撤销或已失效，请重新配对。";
+
+"Access" = "权限";
+"Done" = "完成";

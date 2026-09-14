@@ -50,3 +50,26 @@ struct MessageView: View {
 private extension String {
     var nonEmpty: String? { isEmpty ? nil : self }
 }
+
+struct SuzentButtonStyle: ButtonStyle {
+    var prominent = false
+    @Environment(\.isEnabled) private var enabled
+    @Environment(\.colorScheme) private var scheme
+
+    func makeBody(configuration: Configuration) -> some View {
+        let outline: Color = scheme == .dark ? .white : .black
+        return configuration.label
+            .font(.headline)
+            .padding(PresentationTokens.spacePage)
+            .frame(maxWidth: .infinity)
+            .foregroundStyle(prominent ? .black : outline)
+            .background(prominent ? Color(presentation: PresentationTokens.yellow)
+                : scheme == .dark ? Color(presentation: PresentationTokens.surface_dark) : .white)
+            .overlay(Rectangle().stroke(outline, lineWidth: PresentationTokens.borderWidth))
+            .compositingGroup()
+            .shadow(color: outline, radius: 0, x: configuration.isPressed ? 0 : PresentationTokens.shadowOffset,
+                    y: configuration.isPressed ? 0 : PresentationTokens.shadowOffset)
+            .offset(x: configuration.isPressed ? 1 : 0, y: configuration.isPressed ? 1 : 0)
+            .opacity(enabled ? 1 : 0.45)
+    }
+}

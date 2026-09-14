@@ -59,14 +59,14 @@ class BackendClientTest {
             assertEquals("你好 🌱", text)
             client.stop(created.id)
             assertEquals(text, client.chat(created.id).messages.first().content)
-            val expected = listOf("GET /chats", "POST /chats", "POST /chat/send", "POST /chat/live",
-                "POST /chat/stop", "GET /chats/test")
+            val expected = listOf("GET /mobile/client/chats", "POST /mobile/client/chats", "POST /mobile/client/send", "POST /mobile/client/live",
+                "POST /mobile/client/stop", "GET /mobile/client/chats/test")
             expected.forEach { route ->
                 val request = requireNotNull(server.takeRequest(1, TimeUnit.SECONDS))
                 assertEquals(route, "${request.method} ${request.path}")
                 assertEquals("Bearer fixture-token", request.getHeader("Authorization"))
-                if (request.path == "/chat/live") assertEquals(1, JSONObject(request.body.readUtf8()).getInt("protocol"))
-                if (request.path == "/chat/send") {
+                if (request.path == "/mobile/client/live") assertEquals(1, JSONObject(request.body.readUtf8()).getInt("protocol"))
+                if (request.path == "/mobile/client/send") {
                     val body = JSONObject(request.body.readUtf8())
                     assertEquals("hello", body.getString("message"))
                     assertEquals("test", body.getString("chat_id"))
@@ -86,4 +86,16 @@ class BackendClientTest {
             assertEquals(1, server.requestCount)
         } finally { client.close(); server.shutdown() }
     }
+    @Test fun revokedStreamFailsWithoutRetry() = runBlocking {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setResponseCode(401))
+        server.start()
+        val client = BackendClient(Backend.parse(server.url("/").toString(), true), "revoked")
+        try {
+            val error = runCatching { client.observe("test") {} }.exceptionOrNull()
+            assertTrue(error is BackendClient.HttpFailure && error.code == 401)
+            assertEquals(1, server.requestCount)
+        } finally { client.close(); server.shutdown() }
+    }
+
 }

@@ -17,17 +17,16 @@ The first increment is a developer preview, not a release-ready mobile product. 
 covers is described under [Run](#run) and [Preview flow](#preview-flow); what it does not
 is under [Limits](#limits).
 
-It deliberately uses existing full-access host tokens: the user must create one in desktop
-Settings → Devices → Remote host access. This permits administration of the backend, even
-though the preview UI only uses chat endpoints. Peer agent grants are not a substitute —
-they use unattended peer-agent semantics and do not provide a full interactive client
-session. Narrowing this is the first roadmap item.
+Mobile uses a separate, revocable client credential issued after desktop approval.
+In desktop Settings → Devices → Mobile access, generate a short-lived QR invitation.
+Scan it in the native app (or paste the invitation), confirm the backend address,
+compare the displayed code, and approve the required conversations and actions.
+Host and peer-agent tokens are not accepted as mobile credentials. Existing preview
+connections must pair again. See the [pairing contract](../../packages/mobile-contract/pairing.md).
 
 Planned, in order:
 
-1. **Mobile authorization** — operator-approved short-lived QR bootstrap, a
-   resource-scoped client grant, protocol/version negotiation, scoped attachment upload
-   and client approval UI. Do not silently broaden Node or agent grants.
+1. **Interactive tools and attachments** — scoped upload and mobile tool-approval UI.
 2. **Device capabilities** — user-confirmed camera capture and upload, audio capture,
    single location fix; native permission and lifecycle adapters.
 3. **Resilience** — durable event cursor/replay, idempotent send IDs in the backend, local
@@ -47,12 +46,12 @@ packages/SuzentCore/       Foundation-only Swift protocol/client package
 
 ## Run
 
-Use a backend with snapshot/cursor protocol 1 (main after #227). Older backends
-are not compatible with the mobile recovery transport.
+Use a backend with mobile pairing/client protocol 1 and snapshot/cursor protocol 1.
+The phone checks capabilities before connecting and reports incompatible versions.
 
 Enable desktop **Reachable by other devices**, restart, and use its LAN/Tailscale
-address on port 25314 (never the phone's localhost). Create a revocable host token
-and enter it in the app. HTTPS/WSS is required for release builds. Debug builds
+address on port 25314 (never the phone's localhost) in the desktop pairing card.
+Pair the phone and select its permissions on desktop. HTTPS/WSS is required for release builds. Debug builds
 allow explicit HTTP addresses for a trusted LAN/tailnet; HTTP is not encrypted.
 No certificate-validation bypass or automatic URL redirect is supported.
 
@@ -82,9 +81,11 @@ Tokens are encrypted with an Android Keystore AES-GCM key; app backup is disable
 
 ### Preview flow
 
-1. Connect with backend origin and host token; create or open a chat.
-2. Send text. `/chat/send` starts work on the backend, independently of the screen.
-   `/chat/live` supplies transient text; the persisted transcript is authoritative.
+1. Pair with the desktop and open a shared chat. New conversations require the
+   corresponding permission; send and stop permissions are independent. The
+   phone’s **Access** page shows the grant and the separate Node controls.
+2. Send text. `/mobile/client/send` starts work on the backend, independently of the screen.
+   `/mobile/client/live` supplies transient text; the persisted transcript is authoritative.
    Mobile uses `protocol: 1`, sharing desktop's authoritative snapshots and
    sequence cursors. Reconnects resume from the last applied event, deduplicate
    retransmissions and replace transient text when a fresh snapshot arrives.
@@ -106,7 +107,7 @@ expandable native views. Tool approvals, attachments, citations, A2UI and some
 legacy inline tool formats still require desktop. Shared palette and filtering
 rules live in `packages/presentation`; regenerate platform files with
 `uv run python scripts/generate_presentation.py` after editing their source.
-It lists the latest 50 chats. Replay is bounded and in-memory; it is not a durable
+It lists up to 1,000 conversations permitted by the device grant. Replay is bounded and in-memory; it is not a durable
 event cursor or an always-online phone. An observer reconnects up to five times with capped backoff. Mutation requests
 are never automatically retried. Exhausted recovery preserves received text.
 
@@ -141,8 +142,16 @@ xcodebuild -project apps/ios/Suzent.xcodeproj -scheme Suzent \
 ```
 
 Unsigned CI builds check compilation only; launching an unsigned app can fail
-Keychain access. Debug simulator builds accept an empty host token only for exact
-loopback origins (`127.0.0.1`, `::1`, `localhost`), matching the backend's existing
-trusted local access policy. Enter `http://127.0.0.1:25314` to preview the backend
-on the same Mac. Physical devices, non-loopback origins and Release builds still
-require a host token. No server authentication policy is changed.
+Keychain access. The simulator uses the same pairing flow as a physical device.
+For a backend on the same Mac, generate an invitation for `http://127.0.0.1:25314`
+and paste it into the simulator app. HTTP is debug-only. Simulator cameras may be
+unavailable; paste uses the same protocol and operator approval as camera scanning.
+
+### Visual foundation
+
+Both native apps use the desktop palette, square outlines, 2-unit borders and hard
+shadows. Shared spacing and type-scale constants also live in
+`packages/presentation/tokens.json`. Pairing, conversations, chat and access are
+separate views; system navigation, keyboard and camera permission prompts stay
+native. iOS uses VisionKit QR recognition; Android uses ZXing embedded. Neither
+scanner saves an image. Both apps provide English and Simplified Chinese strings.

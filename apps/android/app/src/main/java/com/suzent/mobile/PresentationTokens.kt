@@ -11,8 +11,18 @@ object PresentationTokens {
     const val gray: Long = 0xFF333333
     const val code_bg: Long = 0xFFf5f5f5
     const val code_text: Long = 0xFF1a1a1a
+    const val surface_dark: Long = 0xFF171717
+    const val muted_light: Long = 0xFF666666
+    const val muted_dark: Long = 0xFFB3B3B3
     const val borderWidth = 2
     const val shadowOffset = 2
+    const val spaceSmall = 8
+    const val spaceMedium = 12
+    const val spacePage = 16
+    const val spaceLarge = 24
+    const val typeTitle = 24
+    const val typeBody = 17
+    const val typeCaption = 13
     val ignoredToolNames = listOf("final_answer", "final answer")
     val compactionSummaryMarkers = listOf("[CONTEXT SUMMARY — READ BEFORE RESPONDING]", "--- ARCHIVED CONTEXT SUMMARY ---")
 }

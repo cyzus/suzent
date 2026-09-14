@@ -55,9 +55,9 @@ class StreamRecoveryTest {
                 if (event.optString("type") == "TEXT_MESSAGE_CONTENT") text += event.optString("delta")
             }
             assertEquals("hello world", text)
-            assertEquals("/chat/live", server.takeRequest().path)
+            assertEquals("/mobile/client/live", server.takeRequest().path)
             val resumed = server.takeRequest()
-            assertEquals("/chat/live", resumed.path)
+            assertEquals("/mobile/client/live", resumed.path)
             assertEquals(1, JSONObject(resumed.body.readUtf8()).getInt("after_seq"))
             assertEquals(2, server.requestCount)
         } finally { client.close(); server.shutdown() }
