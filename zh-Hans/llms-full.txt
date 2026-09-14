@@ -5176,6 +5176,82 @@ existing frontend event contract.
 | Build full app | `cd src-tauri && npm run build:full` |
 | Build Tauri only | `cd src-tauri && npm run build` |
 
+## Production Build
+
+Build the complete standalone application:
+
+```bash
+cd src-tauri
+npm run build:full
+```
+
+This automatically bundles the Python runtime, uv, and suzent wheel, then builds the Tauri application.
+
+**Convenience scripts:**
+
+```powershell
+# Windows
+.\scripts\build_tauri.ps1
+```
+
+```bash
+# macOS / Linux
+./scripts/build_tauri.sh
+```
+
+### Build Artifacts
+
+| Platform | Location |
+|----------|----------|
+| Windows | `src-tauri/target/release/bundle/msi/SUZENT_x.x.x_x64_en-US.msi` |
+| macOS | `src-tauri/target/release/bundle/dmg/SUZENT_x.x.x_x64.dmg` |
+| Linux | `src-tauri/target/release/bundle/appimage/suzent_x.x.x_amd64.AppImage` |
+
+**Bundle size** — the bundled app is 80–150 MB (Python runtime, uv, LanceDB).
+Playwright/Chromium (~300 MB) is downloaded separately on first launch.
+
+## Desktop App Architecture
+
+```
++-------------------------------------------+
+|           Tauri Application               |
+|  +--------------+    +------------------+ |
+|  |   Webview    |    |  Rust Process    | |
+|  |   (React)    |    |  - Backend       | |
+|  |  Frontend    |--->|    Lifecycle     | |
+|  |  Built       |    |  - Port Mgmt     | |
+|  |  Assets      |    |  - First-Run     | |
+|  +--------------+    |    Setup         | |
+|         |            +------------------+ |
+|         +-----HTTP API------+             |
+|             (localhost:dynamic)           |
++-------------------------------------------+
+                    |
+            +-------v--------+
+            | Python Backend |
+            | (uv-managed    |
+            |  venv)         |
+            +----------------+
+```
+
+## First-Run Behavior
+
+When the desktop app launches for the first time (or after an update):
+
+1. **Venv Creation** (~10–30 seconds): Rust runs `uv venv` with bundled Python, then installs the suzent wheel. A version marker prevents re-running on subsequent launches.
+2. **Playwright Install** (~1–2 minutes): Chromium is downloaded for the browsing tool. Non-fatal — retries on first use if it fails.
+3. **Config Sync**: Example configs and skills are copied to the app data directory. Existing files are preserved.
+
+## Application Data Location
+
+| Platform | Location |
+|----------|----------|
+| Windows | `%APPDATA%\com.suzent.app\` |
+| macOS | `~/Library/Application Support/com.suzent.app/` |
+| Linux | `~/.config/com.suzent.app/` |
+
+Contents: `backend-venv/`, `chats.db`, `memory/`, `skills/`, `sandbox-data/`, `config/`
+
 ## Troubleshooting
 
 ### Backend Issues
@@ -5223,109 +5299,24 @@ cd src-tauri && cargo clean
 - Backend changes: Restart the backend (Ctrl+C, then restart).
 - Rust changes: Restart Tauri dev server.
 
-### General Issues
-
-**First build is very slow**
-
-The first Rust build takes 5-10 minutes to compile all dependencies. Subsequent builds are faster due to caching.
-
----
-
----
-
-## Production Build
-
-Build the complete standalone application:
-
-```bash
-cd src-tauri
-npm run build:full
-```
-
-This automatically bundles the Python runtime, uv, and suzent wheel, then builds the Tauri application.
-
-**Convenience scripts:**
-
-```powershell
-# Windows
-.\scripts\build_tauri.ps1
-```
-
-```bash
-# macOS / Linux
-./scripts/build_tauri.sh
-```
-
-### Build Artifacts
-
-| Platform | Location |
-|----------|----------|
-| Windows | `src-tauri/target/release/bundle/msi/SUZENT_x.x.x_x64_en-US.msi` |
-| macOS | `src-tauri/target/release/bundle/dmg/SUZENT_x.x.x_x64.dmg` |
-| Linux | `src-tauri/target/release/bundle/appimage/suzent_x.x.x_amd64.AppImage` |
-
----
-
-## Desktop App Architecture
-
-```
-+-------------------------------------------+
-|           Tauri Application               |
-|  +--------------+    +------------------+ |
-|  |   Webview    |    |  Rust Process    | |
-|  |   (React)    |    |  - Backend       | |
-|  |  Frontend    |--->|    Lifecycle     | |
-|  |  Built       |    |  - Port Mgmt     | |
-|  |  Assets      |    |  - First-Run     | |
-|  +--------------+    |    Setup         | |
-|         |            +------------------+ |
-|         +-----HTTP API------+             |
-|             (localhost:dynamic)           |
-+-------------------------------------------+
-                    |
-            +-------v--------+
-            | Python Backend |
-            | (uv-managed    |
-            |  venv)         |
-            +----------------+
-```
-
----
-
-## First-Run Behavior
-
-When the desktop app launches for the first time (or after an update):
-
-1. **Venv Creation** (~10–30 seconds): Rust runs `uv venv` with bundled Python, then installs the suzent wheel. A version marker prevents re-running on subsequent launches.
-2. **Playwright Install** (~1–2 minutes): Chromium is downloaded for the browsing tool. Non-fatal — retries on first use if it fails.
-3. **Config Sync**: Example configs and skills are copied to the app data directory. Existing files are preserved.
-
----
-
-## Application Data Location
-
-| Platform | Location |
-|----------|----------|
-| Windows | `%APPDATA%\com.suzent.app\` |
-| macOS | `~/Library/Application Support/com.suzent.app/` |
-| Linux | `~/.config/com.suzent.app/` |
-
-Contents: `backend-venv/`, `chats.db`, `memory/`, `skills/`, `sandbox-data/`, `config/`
-
----
-
-## Additional Troubleshooting
+### Built App Issues
 
 **Bundle script fails — missing `build` package:**
 ```bash
 uv pip install build
 ```
 
-**Backend fails to start in built app:**
-- Check `~/suzent_startup.log` for startup logs
-- Delete `backend-venv/` in the app data directory to force venv re-creation on next launch
+**Backend fails to start in the built app**
 
-**Large bundle size** — The bundled app is 80–150 MB (Python runtime, uv, LanceDB). Playwright/Chromium (~300 MB) is downloaded separately on first launch.
+- Check `~/suzent_startup.log` for startup logs.
+- Delete `backend-venv/` in the [app data directory](#application-data-location) to force
+  venv re-creation on the next launch.
+
+### General Issues
+
+**First build is very slow**
+
+The first Rust build takes 5-10 minutes to compile all dependencies. Subsequent builds are faster due to caching.
 
 
 ---
@@ -5473,7 +5464,7 @@ Source: https://suzent.com/zh-Hans/docs/developing/memory/architecture
 
 
 
-How memory is written, consolidated, indexed, and read — and what is still missing.
+How memory is written, consolidated, indexed, and read.
 Companions: [Consolidation](https://suzent.com/zh-Hans/docs/concepts/memory/consolidation) for how the dream
 behaves from the outside, [Internals](https://suzent.com/zh-Hans/docs/developing/memory/internals) for the class-by-class reference.
 
@@ -5609,67 +5600,12 @@ so as the dream fills the vault it simply stops firing.
 Both write through the same marked zone, so an agent's or user's own notes below the
 marker survive either of them.
 
-## History: why duplicates accumulated
+### Always resolve the vault path
 
-This section records the problem this design was built to fix, because the reasoning is
-easier to check against the measurements than against the code.
-
-Near-duplicate rate in the archival index, cosine over the stored embeddings; a row counts
-as redundant when an earlier row exceeds the threshold.
-
-| write path | rows | ≥0.995 | ≥0.95 | ≥0.92 |
-| --- | ---: | ---: | ---: | ---: |
-| `legacy_direct` (pre-June, had write-time dedup) | 2833 | 0.0% | 0.0% | 0.0% |
-| `archive_log` (current path) | 615 | 0.3% | 10.1% | 25.4% |
-| `notebook` (dream output) | 1342 | 14.7% | 15.6% | 17.6% |
-
-On disk the backlog was larger than the index suggested: 13,102 fact lines across 129
-daily logs, 340 exact repeats, and 581 token-set near-duplicates in 279 clusters. The
-largest cluster was a single identity fact written 64 times across 26 distinct days.
-
-Most of it was paraphrase where one side is strictly less informative:
-
-```text
-0.982  A: [preference] The user wants to be reminded to drink water hourly from 9 AM to 9 PM daily.
-       B: [preference] User wants to be reminded to drink water daily.
-```
-
-Exact-match deduplication keeps both. Similarity deduplication alone keeps the wrong one
-half the time. Three causes, all now fixed:
-
-**Extraction was context-free.** The prompt carried only the current turn, so stable
-identity and preference facts were re-extracted every time they were mentioned. The write
-path now renders the nearest `KNOWN_FACTS_LIMIT` facts under an "already in memory"
-heading, with a rule that explicitly prefers emitting a fact that *changes* one of them.
-
-**Nothing deduplicated the derived index.** Write-time dedup was removed in `98a39a3b`
-(fixes #34) because a 0.85 cosine threshold silently dropped updates. The intended
-replacement was the dream — but `DREAM_INSTRUCTIONS` step 3b resolved a duplicate by doing
-nothing, and the lint pass audits only the vault. Step 3b now ends in the tombstone
-hand-off described above. Two guards there are worth knowing: lines shorter than
-`MIN_SUPERSEDED_CHARS` (24) are refused, because date lookup is a normalized substring
-match and a fragment like "dark mode" would match logs it never came from; and the match is
-deliberately loose in the other direction, since a false positive costs one idempotent
-reindex while a missed date strands a row with no mtime change to bring the watcher back.
-
-**The dream barely ran.** `DreamRunner._failures` was in-memory, so retry-then-skip only
-fired if the process stayed up for `memory_consolidation_max_retries` consecutive attempts
-on the same batch. The counters now live in the vault's `.state/dream_state.json`.
-
-### Correction to that last diagnosis
-
-The first reading of it said the watermark had sat at `2026-03-11` for five months. It was
-measured against `CONFIG.notebook_dir`, which on that machine is a stale bootstrap
-skeleton — the real vault was mounted at `/mnt/notebook` and held 91 consolidation
-entries, not 2. Read correctly: daily ingest through April, **no ingest at all between
-2026-05-01 and 2026-06-11** (lint kept running on its own pacing), then a catch-up burst
-on 06-12/13 walking the watermark from `2026-02-22` to `2026-05-26`, and daily ingest
-after. So the wedge was real and did strand the watermark from February, but it cleared
-itself in June, before any of this work — the healthy cadence since is not evidence the
-fix works. That is what `tests/memory/test_dream_failures_persist.py` is for.
-
-`resolve_notebook_dir()` exists so nothing repeats the measurement mistake.
-
+The configured `notebook_dir` and the vault the dream actually writes to are not always the
+same directory — a vault mounted at `/mnt/notebook` leaves a stale bootstrap skeleton at
+the configured path. Anything inspecting or measuring the vault must go through
+`resolve_notebook_dir()`, or it reports on the wrong tree.
 ## Borrowed from the Open Knowledge Format
 
 [OKF v0.2](https://github.com/GoogleCloudPlatform/open-knowledge-format/blob/main/SPEC.md)
@@ -5703,129 +5639,80 @@ These rules live in `DREAM_INSTRUCTIONS` as well as in `schema_example.md`, beca
 `schema.md` is copied into a vault once at bootstrap and is user-editable afterwards —
 every vault predating them keeps its own copy.
 
-## What landed in PR #118
+## Claim lifecycle and ranking
 
-| commit | what it fixes |
-| --- | --- |
-| `70994416` | Retry counters were in-memory, so retry-then-skip never fired across restarts and a wedged batch stranded the watermark at `2026-02-22`. (The original "barely ran" reading was measured against the wrong vault — see the correction below.) |
-| `50621860` | Indexer state was keyed by absolute path in a synced directory — 436 entries from two machines, and only 18 of 129 logs actually indexed. Now `label:filename`, versioned, pre-v2 discarded. |
-| `ca421b74` | Extraction was context-free. The prompt now carries the nearest known facts, with an explicit rule permitting updates. |
-| `5fc97850` | The dream resolved duplicates by doing nothing. It now retires folded-in log lines through the tombstone hand-off. |
-| `07f24c4b` | Repeats had nowhere to go but the bin. Personal claims now carry `(confirmed 12x, last YYYY-MM-DD)` and a category-derived `stale_after`. |
-| `fb47218d` | This document. |
-| `2af08c7b` | Every append to a daily log re-embedded the whole file — 28.5x amplification over the real corpus, quadratic in appends per day, and ~374k single-row inserts fragmenting the table. Archive reindex is now a diff, falling back to full replace if the diff query fails. |
-| `7842c41d` | `MEMORY.md` was a blind overwrite with three writers, and the per-turn refresh filtered on an importance column the indexer stamps with a constant — so it rebuilt the file exclusively from pre-June legacy rows. |
-| `d1067d4e` | The confirmation counts, `status`, and `stale_after` the dream writes were read by nothing; retrieval scored every row identically. |
-| `5b21f156` | A dry-run harness for the dream, and a ranker that reads the status the live vault actually writes (`active`, not `stable`). |
-| _this_ | Every re-statement of a known claim became another row competing with the original. The write path now recognises a word-for-word repeat of a durably recorded claim and records the recurrence instead. |
-
-## Next steps
-
-```mermaid
-%%{init: {'theme':'neutral'}}%%
-flowchart LR
-    D1["✓ dream runs"] --> D2["✓ index repaired"]
-    D2 --> D3["✓ context-aware extraction"]
-    D3 --> D4["✓ retire duplicates"]
-    D4 --> D5["✓ claim lifecycle (writer)"]
-    D5 --> N6["✓ rank on the new signals"]
-    N6 --> N7["✓ catch-up dream<br/>(completed itself)"]
-    N7 --> N8["✓ write-path classifier<br/>+ revisit queue"]
-    N7 --> N9["9 · export, then retire 2,833 legacy rows"]
-```
-
-**6 — Rank on the signals now being written.** Done. A vault chunk's indexed `importance`
-is derived from its confirmation count (log-scaled, capped at +0.25), its `status`
-(`deprecated` drops it to 0.1, `draft` −0.05), and its `stale_after` (×0.6 once passed).
-Daily-log facts keep the neutral 0.5 — raw capture has no lifecycle. A person's edit to the
-`facts` block is recorded as a `human:` verification in the manual zone of `MEMORY.md`.
+The lifecycle fields the dream writes are read back by retrieval. A vault chunk's indexed
+`importance` is derived from its confirmation count (log-scaled, capped at +0.25), its
+`status` (`deprecated` drops it to 0.1, `draft` −0.05), and its `stale_after` (×0.6 once
+passed). Daily-log facts keep the neutral 0.5 — raw capture has no lifecycle.
 
 A person editing the `facts` block is the one claim in the system that did not come from
-extraction — it is the claim's subject stating it directly — so `write_memory_manual_zone`
-stamps the manual zone with a `human:` actor and retrieval now reads that stamp. It takes
-an importance *floor* (`HUMAN_VERIFIED_FLOOR`, 0.9) rather than a bonus, so a low base
-score cannot dilute it, and it skips the `stale_after` decay: an expiry means nobody has
-re-confirmed the claim lately, which is exactly the question a human verification answers.
-`deprecated` still wins — a person retiring a claim is also a person — and only a `human:`
-actor qualifies, or an agent stamping itself would launder its own output into the
-strongest evidence class there is. Because the floor applies per row, MEMORY.md is now
-chunked per zone instead of per file: paragraph merging otherwise produced a single row
-spanning the generated half and the human half, which is neither.
+extraction: it is the claim's subject stating it directly. `write_memory_manual_zone`
+stamps the manual zone of `MEMORY.md` with a `human:` actor, and retrieval reads that
+stamp as an importance *floor* (`HUMAN_VERIFIED_FLOOR`, 0.9) rather than a bonus, so a low
+base score cannot dilute it. It also skips the `stale_after` decay — an expiry means
+nobody has re-confirmed the claim lately, which is exactly the question a human
+verification answers. `deprecated` still wins, because a person retiring a claim is also a
+person, and only a `human:` actor qualifies, or an agent would launder its own output into
+the strongest evidence class there is.
 
-**7 — The catch-up dream.** Done, and not by us. The backlog was 129 logs because the
-dream advanced the watermark by at most one day per run; the pacing fix in `70994416`
-removed that ceiling and the backlog drained itself in the field. Measured on the live
-system: watermark `2026-08-22`, 47 advances recorded in `log.md`, 130 archive logs
-spanning `2026-02-09`–`2026-08-23`, and exactly one date pending — today's, which the
-dream never ingests while it is still being appended to.
+Because the floor applies per row, `MEMORY.md` is chunked per zone rather than per file:
+paragraph merging otherwise produced a single row spanning the generated half and the
+human half, which is neither.
 
-`scripts/dream_dry_run.py` remains, because the next mutating pass deserves the same
-caution this one would have: it clones `~/.suzent`, redirects the `/mnt/notebook` volume
-at a copy of the vault, and drives the real `DreamRunner` over the clone, leaving a
-unified diff to review. The redirect is the point — the vault is a host path mounted into
-the sandbox, *not* a directory inside the data dir, so cloning `~/.suzent` alone isolates
-everything except the one thing the dream rewrites.
+## Classifying a restatement
 
-What the catch-up left behind is a gap, not a backlog. Those 309 pages were consolidated
-under the pre-`07f24c4b` prompts: of the 18 `3_Personal` pages, 8 carry frontmatter and
-**none carry a confirmation marker or a `stale_after`**. Step 6's ranking is live but has
-nothing to read on existing pages — the lint pass is the backfill, and it should be
-exercised against a clone before the real vault.
+`memory/classifier.py` compares each extracted fact against the recall set already
+assembled for the extraction prompt, so it costs no extra retrieval and no extra model
+call. The comparison is lexical on purpose — the only band that changes behaviour is
+"practically the same sentence", which is what a lexical measure is good at and what a
+semantic one is too generous about.
 
-**8 — Write-path classifier and revisit queue.** Done. `memory/classifier.py` compares
-each extracted fact against the recall set already assembled for the extraction prompt,
-so it costs no extra retrieval and no extra model call — the comparison is lexical on
-purpose, because the only band that changes behaviour is "practically the same
-sentence", which is what a lexical measure is good at and what a semantic one is too
-generous about.
+Three outcomes:
 
-Three outcomes. A **confirmation** (≥0.97 similar, no new specifics, matched against a
-*durable* source) is not written to the daily log; it becomes a line in
-`.state/confirmations.jsonl`, and the dream folds the count into the claim's
-`(confirmed Nx)` marker. A **revision** (similar, or a strict superset carrying a new
-specific) is written exactly as before and tagged `revision`. Everything else is
-**new**. Two guards do the real work: a match found only in a chat transcript or in the
-generated `MEMORY.md` can never divert a write, because neither is a record the write
-path can defer to; and any new number, date, quote, path, or version in the restatement
-makes it a revision however similar the surrounding prose (`moved to Berlin in 2024` is
-not a repeat of `moved to Berlin`).
+| outcome | test | effect |
+| --- | --- | --- |
+| confirmation | ≥0.97 similar, no new specifics, matched against a *durable* source | not written to the daily log; a line in `.state/confirmations.jsonl` that the dream folds into the claim's `(confirmed Nx)` marker |
+| revision | similar, or a strict superset carrying a new specific | written exactly as before, tagged `revision` |
+| new | everything else | written as before |
 
-The **revisit queue** is a deterministic frontmatter scan by the runner, handed to the
-dream alongside the confirmations: vault pages past their `stale_after`, soonest first,
-to be re-confirmed against the logs being ingested — never deleted. Both queues are
-runner-owned for the same reason the watermark is: index and lifecycle mutation stays
-out of the agent's hands.
+Two guards do the real work. A match found only in a chat transcript or in the generated
+`MEMORY.md` can never divert a write, because neither is a record the write path can defer
+to. And any new number, date, quote, path, or version in the restatement makes it a
+revision however similar the surrounding prose — `moved to Berlin in 2024` is not a repeat
+of `moved to Berlin`.
+
+The confirmations sidecar is truncated only by the number of lines the agent was actually
+shown, since conversations keep appending to it while the dream runs.
+
+## The revisit queue
+
+A deterministic frontmatter scan by the runner, handed to the dream alongside the
+confirmations: vault pages past their `stale_after`, soonest first, to be re-confirmed
+against the logs being ingested — never deleted. Both queues are runner-owned for the same
+reason the watermark is: index and lifecycle mutation stays out of the agent's hands.
 
 A `3_Personal/` page with no `stale_after` *at all* is queued too, after every genuinely
-expired one. Every page written before `07f24c4b` is in that state — 6 of the live vault's
-personal pages — and selecting strictly on the field would mean they are never queued, so
-the dream never visits them, so the field is never written: the pages most in need of a
-first pass would be the only ones permanently exempt from one. Letting the dream backfill
-the field beats a script guessing it, because a wrong `stale_after` actively damps a good
-claim in step 6's ranking and only the dream can see which category a claim belongs to.
-The undated branch is scoped to `3_Personal/`: a wiki or project page having no expiry is
-correct, not a backlog item. The confirmations sidecar is truncated only by the number of
-lines the agent was actually shown, since conversations keep appending to it while the
-dream runs.
+expired one. Selecting strictly on the field would mean pages written before the field
+existed are never queued, so the dream never visits them, so the field is never written —
+the pages most in need of a first pass would be the only ones permanently exempt from one.
+Letting the dream backfill the field beats a script guessing it, because a wrong
+`stale_after` actively damps a good claim in the ranking above, and only the dream can see
+which category a claim belongs to. The undated branch is scoped to `3_Personal/`: a wiki
+or project page having no expiry is correct, not a backlog item.
 
-**9 — Retire the legacy rows: export first, then delete.** 2,833 pre-June rows predate
-the current write path and carry no source file, so no reindex can replace them and no
-tombstone can retire them. The plan said deleting them was safe once `MEMORY.md` stopped
-depending on them. Measuring rather than assuming overturned that: `scripts/retire_legacy_rows.py`
-checked every legacy row's first 90 characters against every daily log and every vault
-page, and **2,832 of 2,833 appear nowhere in markdown**. A separate 120-row random sample
-found zero matches — not reworded, not summarised, not at all. These rows predate the
-markdown tier, so the index is the only place that content exists; deleting them is data
-loss, not index cleanup.
+## Testing a mutating pass
 
-So the sequence is `--export` then `--apply`. The export appends each row to the daily
-log for its `created_at` date, which puts it in the append-only tier, gives it a
-`source_file` the indexer owns, and makes it something the dream can consolidate — only
-then is the delete removing a duplicate. `--apply` copies the table directory to a
-timestamped backup first, and refuses outright while any row is recorded nowhere else.
-Neither has been run against the live index: the delete is irreversible beyond that
-backup and the export writes 2,833 lines into the user's memory directory, so both are
-the user's call.
+`scripts/dream_dry_run.py` clones `~/.suzent`, redirects the `/mnt/notebook` volume at a
+copy of the vault, and drives the real `DreamRunner` over the clone, leaving a unified diff
+to review. The redirect is the point — the vault is a host path mounted into the sandbox,
+*not* a directory inside the data dir, so cloning `~/.suzent` alone isolates everything
+except the one thing the dream rewrites. Exercise the lint pass against a clone before
+letting it run over a real vault.
+
+One outstanding one-time cleanup — retiring pre-June index rows that predate the markdown
+tier — is described in
+[Concepts > Memory > Upgrade Notes](https://suzent.com/zh-Hans/docs/concepts/memory/upgrade-notes).
 
 
 ---
@@ -6560,6 +6447,7 @@ five-question ownership test, see
 - [Providers](https://suzent.com/zh-Hans/docs/concepts/providers): Configure model providers (OpenAI, Anthropic, Gemini, Ollama, and more)
 - [Memory](https://suzent.com/zh-Hans/docs/concepts/memory): Persistent memory across sessions — how it works and how to configure it
 - [Notebook](https://suzent.com/zh-Hans/docs/concepts/memory/llm-wiki): Agent-maintained knowledge vault, Obsidian-compatible
+- [Memory Upgrade Notes](https://suzent.com/zh-Hans/docs/concepts/memory/upgrade-notes): What changes on an existing install, and the one-time cleanups
 
 ### Tools & Capabilities
 - [Tools](https://suzent.com/zh-Hans/docs/concepts/tools): Full reference for all built-in tools
