@@ -8,6 +8,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import type { A2UISurface } from '../types/a2ui';
 import type { AGUIPart, AcpPermissionRequest, ApprovalRememberScope } from '../types/agui';
 import type { CitationSource } from '../lib/streamEvents';
+import { recoverableStream } from '../lib/recoverableStream';
 
 // ── Types ────────────────────────────────────────────────────────────
 export type AGUIStatus = 'idle' | 'submitted' | 'streaming' | 'error';
@@ -15,7 +16,7 @@ export type { AGUIPart, AcpPermissionRequest, ApprovalRememberScope };
 
 interface UseAGUIOptions {
   url: string;
-  onFinish?: (parts: AGUIPart[]) => void;
+  onFinish?: (parts: AGUIPart[], persistence?: { confirmed: boolean }) => void | Promise<void>;
   onCustomEvent?: (name: string, value: unknown) => void;
   onMarkDeferred?: (surfaceId: string) => void;
   onError?: (error: Error, parts: AGUIPart[]) => void;
@@ -350,8 +351,10 @@ export function processEvent(
         // as its own part; it is answered via the ACP endpoint, not the native
         // resume_approvals flow.
         const req = value as AcpPermissionRequest;
-        if (req?.requestId && !next.some((p) => p.acpPermission?.requestId === req.requestId)) {
-          next.push({ type: 'acp-permission', acpPermission: req });
+        if (req?.requestId) {
+          const existing = next.findIndex((p) => p.acpPermission?.requestId === req.requestId);
+          if (existing >= 0) next[existing] = { ...next[existing], acpPermission: req };
+          else next.push({ type: 'acp-permission', acpPermission: req });
         }
       } else if (name === 'acp.session_reset') {
         const notice = value as Record<string, unknown>;
@@ -499,6 +502,13 @@ export function processEvent(
             next.push({ type: 'citation-sources', citationSources: incoming });
           }
         }
+      } else if (name === 'a2ui.resolved') {
+        const resolved = value as { surfaceId?: string };
+        return {
+          parts: next.filter(
+            (part) => part.type !== 'a2ui' || part.surface?.id !== resolved.surfaceId
+          ),
+        };
       } else if (name === 'a2ui.render') {
         const surface = value as A2UISurface & { target?: string; deferred?: boolean };
         if (surface?.target === 'inline') {
@@ -990,6 +1000,54 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
       abortRef.current = controller;
 
       try {
+        if ((isProbe && body.protocol === 1) || (!isProbe && !opts?.formData)) {
+          const liveUrl = isProbe ? targetUrl : targetUrl.replace(/\/chat$/, '/chat/live');
+          const observeBody = isProbe ? body : { chat_id: body.chat_id, wait_ms: 8000 };
+          let started = false;
+          for await (const batch of recoverableStream(
+            liveUrl,
+            observeBody,
+            controller.signal,
+            () => {
+              started = true;
+              setError(undefined);
+              resetApprovalTracking();
+              opts?.onStreamStart?.();
+              setStatus('streaming');
+            },
+            isProbe ? undefined : { url: targetUrl, body }
+          )) {
+            let currentParts = batch.reset ? [] : [...partsRef.current];
+            if (batch.reset) resetApprovalTracking();
+            for (const data of batch.events) {
+              const result = processEvent(
+                { type: data.type, data },
+                currentParts,
+                onCustomEvent,
+                onMarkDeferred
+              );
+              currentParts = result.parts;
+              if (result.error) {
+                publishParts(currentParts, true);
+                throw new Error(result.error);
+              }
+            }
+            publishParts(currentParts, batch.reset);
+            setPendingApprovalCountSync(
+              currentParts.filter(
+                (part) =>
+                  part.type === 'tool' && part.state === 'approval-requested' && !!part.approvalId
+              ).length
+            );
+          }
+          if (started) {
+            publishParts(partsRef.current, true);
+            setStatus('idle');
+            await onFinish?.(partsRef.current, { confirmed: true });
+          }
+          return started;
+        }
+
         const fetchBody = opts?.formData || JSON.stringify(body);
         const headers: Record<string, string> = opts?.formData
           ? {} // Let browser set Content-Type for FormData

@@ -802,7 +802,7 @@ async def _run_subagent(
         if wakeup_parent:
             _queue_parent_wakeup(task)
     finally:
-        unregister_background_stream(task.chat_id)
+        unregister_background_stream(task.chat_id, stream_queue)
         # An ACP sub-agent owns a subprocess; without this it outlives the task
         # and only dies at server shutdown. Close it before the worktree goes
         # away, since the agent's cwd may point inside it.
