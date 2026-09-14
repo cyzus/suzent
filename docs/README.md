@@ -16,6 +16,7 @@ five-question ownership test, see
 - [Providers](02-concepts/providers/README.md): Configure model providers (OpenAI, Anthropic, Gemini, Ollama, and more)
 - [Memory](02-concepts/memory/README.md): Persistent memory across sessions — how it works and how to configure it
 - [Notebook](02-concepts/memory/llm-wiki.md): Agent-maintained knowledge vault, Obsidian-compatible
+- [Memory Upgrade Notes](02-concepts/memory/upgrade-notes.md): What changes on an existing install, and the one-time cleanups
 
 ### Tools & Capabilities
 - [Tools](02-concepts/tools/tools.md): Full reference for all built-in tools
