@@ -1,3 +1,4 @@
+const presentation = require('../packages/presentation/tokens.json');
 /**** @type {import('tailwindcss').Config} ****/
 module.exports = {
   darkMode: 'class',
@@ -7,6 +8,7 @@ module.exports = {
   ],
   theme: {
     extend: {
+      borderWidth: { 2: `${presentation.borderWidth}px` },
       colors: {
         // Neo-Brutalist Tech-Forward Palette
         brand: {
@@ -23,15 +25,8 @@ module.exports = {
         },
         // Neo-Brutalist core colors
         brutal: {
-          black: '#000000',
-          white: '#FFFFFF',
-          blue: '#0066FF',
-          green: '#A8E6A3',  // Softer pastel green - easier on eyes
-          yellow: 'var(--brutal-yellow)',  // accent color, scheme-dependent (Warm/Cold/Green)
-          red: '#FF0000',
-          gray: '#333333',
-          'code-bg': '#f5f5f5',  // Light gray background for better readability
-          'code-text': '#1a1a1a', // Dark text on light background
+          ...presentation.colors,
+          yellow: 'var(--brutal-yellow)',
         },
         // Legacy colors for gradual migration
         accent: {
@@ -56,7 +51,7 @@ module.exports = {
         }
       },
       boxShadow: {
-        'brutal-sm': '2px 2px 0px #000000',
+        'brutal-sm': `${presentation.shadowOffset}px ${presentation.shadowOffset}px 0px ${presentation.colors.black}`,
         'brutal': '4px 4px 0px #000000',
         'brutal-lg': '6px 6px 0px #000000',
         'brutal-xl': '8px 8px 0px #000000',

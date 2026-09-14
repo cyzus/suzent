@@ -106,3 +106,14 @@ bin/
 /docs/assets/browser-store/privacy-policy-draft.md
 /frontend/browser-store-preview.html
 /frontend/browser-store-preview.tsx
+
+# Native mobile build outputs
+.build/
+.swiftpm/
+apps/ios/Generated/
+apps/ios/*.xcodeproj/
+apps/ios/DerivedData/
+apps/android/.gradle/
+apps/android/local.properties
+apps/android/.kotlin/
+*.xcuserstate

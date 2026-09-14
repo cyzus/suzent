@@ -1,0 +1,8 @@
+[
+  {"name":"structured text wins over legacy content","messages":[{"role":"assistant","content":"duplicate","parts":[{"type":"text","text":"**Final** answer"}]}],"texts":["**Final** answer"],"activities":[0]},
+  {"name":"tool outputs are not assistant answers and are deduplicated","messages":[{"role":"assistant","content":null,"parts":[{"type":"tool","toolName":"read_file","toolCallId":"call-1","args":"{}","output":"result","state":"completed"}]},{"role":"tool","tool_call_id":"call-1","name":"read_file","content":"result"},{"role":"assistant","content":"Done"}],"texts":["","Done"],"activities":[1,0]},
+  {"name":"orphan tool results remain accessible","messages":[{"role":"tool","name":"read_file","content":"result"}],"texts":[""],"activities":[1]},
+  {"name":"hide internal compaction and final answer scaffolding","messages":[{"role":"user","content":"[CONTEXT SUMMARY — READ BEFORE RESPONDING] internal"},{"role":"assistant","content":null,"parts":[{"type":"tool","toolName":"FINAL_ANSWER"}]},{"role":"assistant","content":""}],"texts":[],"activities":[]},
+  {"name":"reasoning and unsupported surfaces stay separate","messages":[{"role":"assistant","parts":[{"type":"reasoning","text":"thinking"},{"type":"a2ui","surface":{"id":"one"}},{"type":"text","text":"Answer"}]}],"texts":["Answer"],"activities":[2]},
+  {"name":"ordinary users and legacy assistant markdown","messages":[{"role":"user","content":"Hello"},{"role":"assistant","content":"# Title\n\n- One\n- Two\n\n```swift\nprint(1)\n```"}],"texts":["Hello","# Title\n\n- One\n- Two\n\n```swift\nprint(1)\n```"],"activities":[0,0]}
+]

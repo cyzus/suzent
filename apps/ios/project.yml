@@ -1,0 +1,41 @@
+name: Suzent
+options:
+  bundleIdPrefix: com.suzent
+  deploymentTarget:
+    iOS: "17.0"
+packages:
+  MarkdownUI:
+    url: https://github.com/gonzalezreal/swift-markdown-ui
+    exactVersion: 2.4.1
+  SuzentCore:
+    path: ../../packages/SuzentCore
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    TARGETED_DEVICE_FAMILY: "1,2"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  Suzent:
+    type: application
+    platform: iOS
+    sources: [Suzent]
+    dependencies:
+      - package: SuzentCore
+      - package: MarkdownUI
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.suzent.mobile
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Suzent
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_NSLocalNetworkUsageDescription: Connect to your paired Suzent desktop backend.
+        INFOPLIST_FILE: Config/Release.plist
+      configs:
+        Debug:
+          INFOPLIST_FILE: Config/Debug.plist
+schemes:
+  Suzent:
+    build:
+      targets:
+        Suzent: all
