@@ -240,3 +240,19 @@ class GitHubSyncProvider:
             command = " ".join(_redact_git_credentials(arg) for arg in args)
             raise RuntimeError(f"git {command} failed: {detail}")
         return completed.stdout
+
+
+def git_remote_names(repo_path: Path) -> list[str]:
+    """List the remotes configured in ``repo_path``; empty list if git fails."""
+    completed = subprocess.run(
+        ["git", "remote"],
+        cwd=repo_path,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        capture_output=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        return []
+    return [line.strip() for line in completed.stdout.splitlines() if line.strip()]

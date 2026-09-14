@@ -14,7 +14,7 @@ from suzent.sync.models import (
     SyncProfile,
 )
 from suzent.sync.payload import PAYLOAD_DIR_NAME, SyncPayloadBuilder
-from suzent.sync.provider import GitHubSyncProvider
+from suzent.sync.provider import GitHubSyncProvider, git_remote_names
 from suzent.sync.quickstart import (
     DEFAULT_REPO_NAME,
     default_repo_path,
@@ -424,9 +424,20 @@ class GitHubSyncService:
         data = json.loads(self.profiles_path.read_text(encoding="utf-8"))
         profiles = data.get("profiles", [])
         loaded = {item["id"]: SyncProfile.model_validate(item) for item in profiles}
-        if self._heal_repo_paths(loaded):
+        if self._heal_profiles(loaded):
             self._save_profiles(loaded)
         return loaded
+
+    def _heal_profiles(self, profiles: dict[str, SyncProfile]) -> bool:
+        """Repair profiles that can no longer address their repo.
+
+        Runs repo_path healing first: a profile pointing at a missing directory
+        has no remotes to inspect, so remote healing would be meaningless until
+        the path is corrected. Returns True if any profile was changed.
+        """
+        healed_paths = self._heal_repo_paths(profiles)
+        healed_remotes = self._heal_remotes(profiles)
+        return healed_paths or healed_remotes
 
     def _heal_repo_paths(self, profiles: dict[str, SyncProfile]) -> bool:
         """Self-heal profiles whose repo_path no longer points at a git repo.
@@ -460,6 +471,49 @@ class GitHubSyncService:
                     prof.id,
                     prof.repo_path,
                 )
+        return changed
+
+    def _heal_remotes(self, profiles: dict[str, SyncProfile]) -> bool:
+        """Self-heal profiles whose ``remote`` names a remote the repo lacks.
+
+        Every sync op starts with ``git remote get-url <remote>``, so a profile
+        naming a remote that was never created (e.g. a leaked test profile that
+        set remote="upstream") fails with "No such remote" and no amount of
+        retrying helps. Repoint at the repo's real remote: "origin" when it
+        exists, otherwise the sole remote if there is exactly one. An ambiguous
+        repo (several remotes, no "origin") is left alone — guessing could push
+        the user's brain to the wrong GitHub repository.
+        """
+        changed = False
+        for prof in profiles.values():
+            repo_path = Path(prof.repo_path)
+            if not (repo_path / ".git").is_dir():
+                continue  # already reported by _heal_repo_paths
+            remotes = git_remote_names(repo_path)
+            if not remotes or prof.remote in remotes:
+                continue
+            if "origin" in remotes:
+                replacement = "origin"
+            elif len(remotes) == 1:
+                replacement = remotes[0]
+            else:
+                logger.warning(
+                    "Sync profile %s names remote %r which %s does not have "
+                    "(remotes: %s) — sync will fail until reconfigured.",
+                    prof.id,
+                    prof.remote,
+                    repo_path,
+                    ", ".join(remotes),
+                )
+                continue
+            logger.warning(
+                "Sync profile %s named missing remote %r; repointing to %r",
+                prof.id,
+                prof.remote,
+                replacement,
+            )
+            prof.remote = replacement
+            changed = True
         return changed
 
     def _save_profiles(self, profiles: dict[str, SyncProfile]) -> None:
