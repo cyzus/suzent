@@ -1192,6 +1192,266 @@ Avoid editing generated payload files directly.
 
 ---
 
+# Memory Architecture
+
+Source: https://suzent.com/docs/concepts/memory/architecture
+
+
+
+
+How memory is written, consolidated, indexed, and read.
+Companions: [Consolidation](https://suzent.com/docs/concepts/memory/consolidation) for how the dream
+behaves from the outside, [Internals](https://suzent.com/docs/concepts/memory/internals) for the class-by-class reference.
+
+## Three tiers, one job each
+
+| tier | location | job | who writes it |
+| --- | --- | --- | --- |
+| Capture buffer | `sandbox/shared/memory/archive/YYYY-MM-DD.md` | Lossless and fast. Never reasoned over at write time. | write path, append only |
+| Knowledge base | `~/.suzent/notebook/**/*.md` | Consolidated claims with provenance and lifecycle | the dream, via file tools |
+| Search index | `~/.suzent/memory` (LanceDB) | Derived. Rebuilt per file, never authored. | the indexer, exclusively |
+
+The direction of travel is one-way: logs feed the vault, both feed the index, and the
+index feeds retrieval. Nothing reads back up the chain.
+
+```mermaid
+%%{init: {'theme':'neutral'}}%%
+flowchart LR
+    subgraph capture["Capture"]
+        LOG[("archive/<br/>YYYY-MM-DD.md")]
+    end
+    subgraph knowledge["Knowledge"]
+        VAULT[("notebook/<br/>vault pages")]
+        STATE[".state/<br/>tombstones · superseded<br/>dream_state"]
+    end
+    subgraph derived["Derived"]
+        DB[("LanceDB<br/>archival_memories<br/>memory_blocks")]
+    end
+
+    TURN["chat turn"] --> WRITE["write path"]
+    WRITE -->|append| LOG
+    LOG -->|read-only| DREAM["dream"]
+    DREAM -->|create / update| VAULT
+    DREAM -->|hand-off| STATE
+    LOG --> IDX["indexer"]
+    VAULT --> IDX
+    STATE -->|filter| IDX
+    IDX -->|delete-then-add| DB
+    DB --> RECALL["retrieval"]
+    RECALL --> TURN
+```
+
+## Write path, per conversation turn
+
+Runs after the assistant response completes, in
+`MemoryManager.process_conversation_turn_for_memories`.
+
+```mermaid
+%%{init: {'theme':'neutral'}}%%
+flowchart TD
+    A["turn text"] --> B["recall 10 nearest known facts<br/>(best-effort — failure means<br/>extraction runs as before)"]
+    B --> C["LLM extraction<br/>prompt carries 'already in memory'"]
+    C -->|nothing new| Z["stop"]
+    C --> D["append to today's log"]
+    D --> E["reindex_file_now(archive, today)"]
+    E --> F[("LanceDB")]
+    D --> G{"any fact important?"}
+    G -->|yes| H["refresh MEMORY.md"]
+```
+
+There is deliberately **no write-time deduplication**. A 0.85 cosine threshold used to
+sit here and silently dropped *updates* to facts (#34). Repetition is suppressed one step
+earlier instead — the extractor is shown what memory already holds and told that a fact
+which *changes* a known one must still be emitted.
+
+## The dream
+
+A background loop ticking every `memory_consolidation_interval_seconds`. It has one gate
+and two phases.
+
+```mermaid
+%%{init: {'theme':'neutral'}}%%
+flowchart TD
+    T["tick"] --> P{"logs above<br/>the watermark?"}
+    P -->|no| L{"lint due?"}
+    L -->|yes| LINT["lint pass<br/>editorial audit of the vault"]
+    L -->|no| IDLE["idle"]
+    P -->|yes| B{"far behind?"}
+    B -->|yes| RUN["ingest batch"]
+    B -->|no| G{"enough new facts<br/>+ enough time passed?"}
+    G -->|no| IDLE
+    G -->|yes| RUN
+    RUN --> AGENT["forked agent:<br/>fold logs into vault pages"]
+    AGENT --> WM["advance watermark"]
+    WM --> REC["reconcile (runner-owned)"]
+    REC --> R1["retire superseded:<br/>tombstone + reindex those days"]
+    REC --> R2["check_and_update:<br/>mtime sweep of vault"]
+    REC --> R3["optimize: compact LanceDB"]
+```
+
+Ingest is always preferred over lint, so an editorial audit can never starve
+consolidation of new logs.
+
+### Why the reconcile belongs to the runner
+
+The agent's only declared capability is writing files. It hands the runner a list of log
+facts it has folded into pages, in `notebook/.state/superseded.txt`; the runner
+tombstones each line, reindexes each affected day, and truncates the file last so a crash
+replays rather than loses.
+
+The explicit reindex is not a belt-and-braces measure. **Appending a tombstone does not
+change the log's mtime**, so the watcher — which triggers on mtime — would never revisit
+those days on its own.
+
+## Invariants worth not breaking
+
+1. **Daily logs are append-only.** Never rewritten, so nothing races the live write path
+   appending to today's file.
+2. **The indexer is the only writer to LanceDB.** Every other component asks it.
+3. **The indexer is not append-only.** Only the markdown history is. `_reindex_file` is
+   delete-then-add per file, which is what makes reindexing idempotent and safe to repeat.
+4. **Tombstones are the only removal mechanism.** History stays intact; the derived row
+   disappears. Every tombstone write must be paired with an explicit reindex.
+5. **Recall enrichment must never block a write.** A search outage degrades extraction
+   quality, never durability.
+5b. **The write path may recognise a repeat, never an update.** The one case it is
+   allowed to divert is a word-for-word restatement of a claim already recorded in an
+   append-only store, adding no new specifics. Anything else — a new detail, a
+   contradiction, a match found only in a transcript — is written exactly as before.
+   Issue #34 was this line being crossed.
+6. **Only the generated zone of `MEMORY.md` is generated.** The file has two generators
+   and an agent editing it directly; everything after the `<!-- /memory:generated -->`
+   marker is copied through untouched, and a file with no marker that we cannot prove we
+   wrote is treated as entirely manual.
+
+### Who owns MEMORY.md
+
+Two writers regenerate the same file. `refresh_core_memory_facts` (per turn, from the top
+archival rows) is the legacy path; `promote_memory_md` (per productive dream, from
+consolidated `3_Personal/` pages plus recall signal) is its replacement. The hand-over
+needs no flag day: the legacy path stands down as soon as the vault has any personal page,
+so as the dream fills the vault it simply stops firing.
+
+Both write through the same marked zone, so an agent's or user's own notes below the
+marker survive either of them.
+
+### Always resolve the vault path
+
+The configured `notebook_dir` and the vault the dream actually writes to are not always the
+same directory — a vault mounted at `/mnt/notebook` leaves a stale bootstrap skeleton at
+the configured path. Anything inspecting or measuring the vault must go through
+`resolve_notebook_dir()`, or it reports on the wrong tree.
+## Borrowed from the Open Knowledge Format
+
+[OKF v0.2](https://github.com/GoogleCloudPlatform/open-knowledge-format/blob/main/SPEC.md)
+frontmatter is per-document, so it maps onto vault pages — which previously carried no
+frontmatter at all — and not onto individual log fact lines. Daily logs stay dumb.
+Producer-defined keys are explicitly permitted, so partial adoption is within its rules.
+
+- `status: draft | stable | deprecated` — `deprecated` is a softer tombstone: the claim
+  stays readable and linkable but leaves retrieval ranking, and it is reversible.
+- `stale_after` — an absolute instant that gives the dream a revisit queue. Defaults are
+  derived from the fact `category` rather than guessed per fact by the extractor: identity
+  effectively never, `preference` a year, `technical` six months, `goal` three months,
+  `context` three weeks.
+- `verified: [{by, at}]` — with OKF's actor convention, so a user editing a core memory
+  block is a `human:` verification that outranks anything the extractor produced. This also
+  supplies the contradiction-resolution rule the system otherwise lacks.
+- `generated: {by, at}` — uniform provenance across logs, vault, and core files.
+- `sources[].usage_count` — the most useful borrowing. A fact extracted 64 times is not 64
+  facts; it is one claim confirmed 64 times, so collapsing repeats into a counter turns the
+  worst noise source into a ranking signal. It is recorded on the bullet rather than in
+  frontmatter (`(confirmed 12x, last 2026-08-20)`), because these claims share a page
+  rather than getting a document each; the marker's absence means confirmed once, so no
+  page needs migrating. A repeat that *contradicts* the bullet is explicitly not a
+  confirmation — it resets the count and takes the correction path.
+
+Not adopted: the Attested Computation family (`runtime`, `parameters`, `computation`,
+`executor`, `attester`), `resource` URIs (the vault already uses `[[wikilinks]]`), and
+formal `okf_version` conformance.
+
+These rules live in `DREAM_INSTRUCTIONS` as well as in `schema_example.md`, because
+`schema.md` is copied into a vault once at bootstrap and is user-editable afterwards —
+every vault predating them keeps its own copy.
+
+## Claim lifecycle and ranking
+
+The lifecycle fields the dream writes are read back by retrieval. A vault chunk's indexed
+`importance` is derived from its confirmation count (log-scaled, capped at +0.25), its
+`status` (`deprecated` drops it to 0.1, `draft` −0.05), and its `stale_after` (×0.6 once
+passed). Daily-log facts keep the neutral 0.5 — raw capture has no lifecycle.
+
+A person editing the `facts` block is the one claim in the system that did not come from
+extraction: it is the claim's subject stating it directly. `write_memory_manual_zone`
+stamps the manual zone of `MEMORY.md` with a `human:` actor, and retrieval reads that
+stamp as an importance *floor* (`HUMAN_VERIFIED_FLOOR`, 0.9) rather than a bonus, so a low
+base score cannot dilute it. It also skips the `stale_after` decay — an expiry means
+nobody has re-confirmed the claim lately, which is exactly the question a human
+verification answers. `deprecated` still wins, because a person retiring a claim is also a
+person, and only a `human:` actor qualifies, or an agent would launder its own output into
+the strongest evidence class there is.
+
+Because the floor applies per row, `MEMORY.md` is chunked per zone rather than per file:
+paragraph merging otherwise produced a single row spanning the generated half and the
+human half, which is neither.
+
+## Classifying a restatement
+
+`memory/classifier.py` compares each extracted fact against the recall set already
+assembled for the extraction prompt, so it costs no extra retrieval and no extra model
+call. The comparison is lexical on purpose — the only band that changes behaviour is
+"practically the same sentence", which is what a lexical measure is good at and what a
+semantic one is too generous about.
+
+Three outcomes:
+
+| outcome | test | effect |
+| --- | --- | --- |
+| confirmation | ≥0.97 similar, no new specifics, matched against a *durable* source | not written to the daily log; a line in `.state/confirmations.jsonl` that the dream folds into the claim's `(confirmed Nx)` marker |
+| revision | similar, or a strict superset carrying a new specific | written exactly as before, tagged `revision` |
+| new | everything else | written as before |
+
+Two guards do the real work. A match found only in a chat transcript or in the generated
+`MEMORY.md` can never divert a write, because neither is a record the write path can defer
+to. And any new number, date, quote, path, or version in the restatement makes it a
+revision however similar the surrounding prose — `moved to Berlin in 2024` is not a repeat
+of `moved to Berlin`.
+
+The confirmations sidecar is truncated only by the number of lines the agent was actually
+shown, since conversations keep appending to it while the dream runs.
+
+## The revisit queue
+
+A deterministic frontmatter scan by the runner, handed to the dream alongside the
+confirmations: vault pages past their `stale_after`, soonest first, to be re-confirmed
+against the logs being ingested — never deleted. Both queues are runner-owned for the same
+reason the watermark is: index and lifecycle mutation stays out of the agent's hands.
+
+A `3_Personal/` page with no `stale_after` *at all* is queued too, after every genuinely
+expired one. Selecting strictly on the field would mean pages written before the field
+existed are never queued, so the dream never visits them, so the field is never written —
+the pages most in need of a first pass would be the only ones permanently exempt from one.
+Letting the dream backfill the field beats a script guessing it, because a wrong
+`stale_after` actively damps a good claim in the ranking above, and only the dream can see
+which category a claim belongs to. The undated branch is scoped to `3_Personal/`: a wiki
+or project page having no expiry is correct, not a backlog item.
+
+## Testing a mutating pass
+
+`scripts/dream_dry_run.py` clones `~/.suzent`, redirects the `/mnt/notebook` volume at a
+copy of the vault, and drives the real `DreamRunner` over the clone, leaving a unified diff
+to review. The redirect is the point — the vault is a host path mounted into the sandbox,
+*not* a directory inside the data dir, so cloning `~/.suzent` alone isolates everything
+except the one thing the dream rewrites. Exercise the lint pass against a clone before
+letting it run over a real vault.
+
+One outstanding one-time cleanup — retiring pre-June index rows that predate the markdown
+tier — is described in
+[Upgrading](https://suzent.com/docs/upgrading).
+
+
+---
+
 # Memory Configuration
 
 Source: https://suzent.com/docs/concepts/memory/configuration
@@ -1448,7 +1708,209 @@ claim deprecated — changes how a fact ranks, not whether it exists.
 See [Configuration](https://suzent.com/docs/concepts/memory/configuration) for the rest.
 
 Interested in how this is built? See
-[Development > Memory System](https://suzent.com/docs/developing/memory/architecture).
+[Memory Architecture](https://suzent.com/docs/concepts/memory/architecture).
+
+
+---
+
+# Memory Internals
+
+Source: https://suzent.com/docs/concepts/memory/internals
+
+
+
+
+This page describes the implementation-level structure of Suzent memory as it exists today.
+
+## Layers
+
+| Layer | Responsibility |
+|---|---|
+| Agent prompt and tools | `memory_search`, `block_update`, and file access. |
+| `MemoryManager` | Extraction, retrieval, and core memory formatting. |
+| `MarkdownMemoryStore` | File-backed operational memory plus notebook state helpers. |
+| `CoreMemoryFileIndexer` | Converts memory files into embedding rows in LanceDB. |
+| `LanceDBMemoryStore` | Derived hybrid and semantic search index. |
+| `WikiManager` + notebook skill | Vault bootstrap, schema, ingest, lint, and wiki-file conventions. |
+| `DreamRunner` | Autonomous daily-log consolidation and notebook lint scheduling. |
+
+## On-disk layout
+
+```text
+DATA_DIR/
+  memory/                         # LanceDB derived index
+  notebook/                       # default always-on wiki vault
+    schema.md
+    index.md
+    log.md                        # consolidation watermark + operation log
+    .state/
+      recall_log.jsonl
+      tombstones.jsonl
+    0_Inbox/
+    1_Projects/
+    2_Wiki/
+    3_Personal/
+    4_Assets/
+    5_Archives/
+  sandbox/shared/memory/          # agent-visible operational memory
+    persona.md
+    user.md
+    MEMORY.md
+    .index_state.json
+    archive/
+      YYYY-MM-DD.md
+
+.suzent/transcripts/ or configured data paths
+  {session_id}.jsonl              # session transcripts
+```
+
+In sandbox mode, the agent sees operational memory as `/shared/memory/` and the notebook as `/mnt/notebook/`. In host mode, configured mount paths can be shown in the prompt instead.
+
+## MarkdownMemoryStore
+
+`MarkdownMemoryStore` manages file-backed memory:
+
+- `archive/YYYY-MM-DD.md` daily logs.
+- `MEMORY.md` curated long-term summary.
+- `persona.md` and `user.md` core blocks.
+- Project-scoped `context.md` files.
+- Notebook `log.md` helpers for watermark and lint entries.
+- Notebook `.state/recall_log.jsonl` retrieval usage signals.
+- Notebook `.state/tombstones.jsonl` normalized deletion tombstones.
+
+Reads tolerate invalid UTF-8 bytes with replacement so a single bad paste does not wedge consolidation or indexing.
+
+## MemoryManager
+
+`MemoryManager` coordinates extraction, retrieval, and core memory formatting.
+
+### Core blocks
+
+Core memory is file-backed when markdown memory is enabled:
+
+| Block | File |
+|---|---|
+| `persona` | `/shared/memory/persona.md` |
+| `user` | `/shared/memory/user.md` |
+| `facts` | `/shared/memory/MEMORY.md` |
+| `context` | project `context.md` when a chat/project is available |
+
+Missing blocks fall back to built-in defaults.
+
+### Extraction path
+
+`process_conversation_turn_for_memories()` extracts structured facts, appends them to today’s archive log, and asks the shared `CoreMemoryFileIndexer` to reindex the archive file. It returns `MemoryExtractionResult.extracted_facts` for logging and downstream diagnostics.
+
+The current implementation reindexes the whole current-day archive file after a turn rather than appending a single LanceDB row per fact. This preserves the mutation invariant and makes the operation idempotent, at the cost of growing work as the day’s log grows.
+
+### Retrieval path
+
+`retrieve_relevant_memories()` first checks whether the archival index has rows. It then uses either embedding-backed hybrid search or FTS-only search. Results are formatted for prompt injection and logged best-effort to the notebook recall log for later `MEMORY.md` promotion.
+
+### MEMORY.md writers
+
+There are two MEMORY.md update paths:
+
+- `refresh_core_memory_facts()` summarizes high-importance archival rows. This remains as a compatibility path for high-importance per-turn extraction.
+- `promote_memory_md()` is the dream-era path. It summarizes consolidated personal notebook pages plus recall signals after successful consolidation.
+
+## CoreMemoryFileIndexer
+
+The indexer watches and reindexes:
+
+- `persona.md`, `user.md`, `MEMORY.md`,
+- `archive/YYYY-MM-DD.md`,
+- notebook content pages under the vault root.
+
+It excludes root notebook navigation files (`schema.md`, `index.md`, `log.md`) and files under `.state/`.
+
+Index granularity differs by source:
+
+| Source | Row granularity | Metadata source type |
+|---|---|---|
+| Archive logs | one row per `- [category] ...` fact line | `archive_log` |
+| Notebook pages | paragraph chunks | `notebook` |
+| Core files | paragraph chunks | `core_file` |
+
+The indexer persists mtimes in `/shared/memory/.index_state.json`. If a file has the same mtime as the saved state, it is skipped. `clear_and_full_reindex()` deletes user rows and rebuilds from core files, notebook pages, and post-watermark archive logs.
+
+The indexer embeds all new rows before deleting stale rows for a file. This keeps transient embedding failures from erasing working search rows or writing unusable placeholder vectors.
+
+## LanceDBMemoryStore
+
+`LanceDBMemoryStore` owns LanceDB tables and search operations. It still supports legacy core block storage as a fallback when markdown storage is unavailable, but the normal path uses markdown files for core blocks and treats LanceDB as a disposable search projection.
+
+The archival table stores indexed content with metadata such as source type, source file, category, tags, chunk index, user id, chat id, importance, and timestamps. Search combines vector retrieval and full-text search where available.
+
+## WikiManager
+
+`WikiManager` is an idempotent bootstrapper for the notebook vault. It creates the root, seeds `schema.md` from `skills/notebook/schema_example.md`, creates a starter `index.md` and `log.md`, and ensures the standard zone folders exist. It does not continuously manage wiki content after bootstrap.
+
+## DreamRunner
+
+`DreamRunner` is the autonomous consolidation service. It runs in the background when memory consolidation is enabled and a memory manager with markdown and LLM support exists.
+
+Main responsibilities:
+
+- Determine pending archive dates from the watermark in notebook `log.md`.
+- Skip today’s in-progress daily log.
+- Batch pending dates by `memory_consolidation_max_days`.
+- Start a hidden dream chat for the consolidation agent.
+- Run the notebook ingest instructions over daily logs.
+- Advance the watermark only after a clean agent run with content-page changes.
+- Regenerate `MEMORY.md` from consolidated personal knowledge.
+- Schedule reindexing after durable consolidation.
+- Run notebook lint when ingestion is caught up and lint is due.
+
+The dream runner exposes frontend-safe status fields including pending dates, pending fact count, progress percentage, last results, lint state, and gate settings.
+
+## Notebook skill
+
+The notebook skill supplies operational runbooks:
+
+- `SKILL.md` explains the vault contract and requires reading `schema.md` first.
+- `ingest.md` describes how to compile raw sources and daily logs into notebook pages.
+- `lint.md` describes editorial checks for contradictions, structure, and stale pages.
+- `schema_example.md` defines zones, page types, frontmatter, links, and maintenance rules.
+
+The dream prompt adapts the ingest workflow by making the runner own the watermark entry.
+
+## Transcripts and session state
+
+Conversation transcripts are append-only JSONL files managed by the session layer. Transcript indexing is separate from memory-file indexing and is opt-in via `transcript_indexing_enabled`.
+
+State snapshots are inspectable JSON mirrors of agent state. They support UI/debug workflows but are not the memory source of truth.
+
+## Deletion model
+
+Deleting an archival memory removes the indexed row and records a normalized tombstone. Reindexing checks tombstones before adding archive facts, notebook chunks, or core chunks. This makes deletion durable across a full rebuild as long as the future text exactly normalizes to the tombstoned content.
+
+## Failure behavior
+
+The memory system is designed to avoid silent loss:
+
+- Per-turn extraction stores raw facts without semantic deduplication.
+- Dream watermarks do not advance on failed or non-productive runs.
+- Embedding failures abort file replacement before old rows are deleted.
+- Tombstones are applied during every source-type reindex.
+- Invalid bytes in markdown are replaced during reads instead of aborting the whole pass.
+
+## HTTP API
+
+The memory routes are registered in `src/suzent/server.py` and documented for users in
+[Concepts > Memory > Configuration](https://suzent.com/docs/concepts/memory/configuration#the-memory-api).
+Two adjacent session routes belong to the session layer rather than memory:
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/session/{id}/transcript` | GET | Get session transcript |
+| `/session/{id}/state` | GET | Get agent state snapshot |
+
+## Tombstones do not change a file's mtime
+
+The indexer is delete-then-add keyed on mtime, so appending a tombstone does not cause the
+affected file to be reindexed. Every tombstone write must be paired with an explicit
+reindex of the dates it touches.
 
 
 ---
@@ -1523,7 +1985,7 @@ stale. Nothing is deleted; pages are corrected or marked deprecated.
 You can also just ask it to research something and write it up; that lands in `2_Wiki/`.
 
 Building on the notebook itself? See
-[Development > Memory Internals](https://suzent.com/docs/developing/memory/internals).
+[Memory Internals](https://suzent.com/docs/concepts/memory/internals).
 
 
 ---
@@ -1623,7 +2085,7 @@ the notebook lives. See [Configuration](https://suzent.com/docs/concepts/memory/
   before deleting anything.
 
 Building on the memory system itself? The implementation notes live under
-[Development > Memory System](https://suzent.com/docs/developing/memory/architecture).
+[Memory Architecture](https://suzent.com/docs/concepts/memory/architecture).
 
 
 ---
@@ -3243,72 +3705,71 @@ Source: https://suzent.com/docs/concepts/runtime/system-reminders
 
 
 
-Two mechanisms let Suzent inject out-of-band context into a conversation without it bleeding into the visible chat:
-
-- **System reminders** — hidden operational context for the *model* (active skills, dynamic memory, ad-hoc signals), delimited by invisible Unicode characters so the user never sees it.
-- **File citations** — references to local files (`file://`) rendered as clickable citation badges alongside web sources.
-
-Both rely on Unicode **Private Use Area (PUA)** codepoints — characters that render as nothing in the UI but survive round-trips through the model and the message store.
+System reminders carry runtime-authored context for the model. File citations
+render source references for the user. Both use Private Use Area (PUA) markers,
+but invisible formatting is not a trust boundary.
 
 ## System reminders
 
-### How a reminder is built
+### Assembly and provider contract
 
-`build_combined_reminder` (`core/system_reminder.py`) merges several sources into a single hidden block each turn:
+`core/system_reminder.py` owns assembly and parsing. `build_combined_reminder`
+runs global hooks each turn and per-turn hooks when a nonblank user message is
+present. Hooks run concurrently with a two-second timeout per provider; failed
+or timed-out providers are skipped with a warning. Blocking provider work uses
+`run_provider_blocking` so it does not block the event loop.
 
-1. **Global hooks** — `(chat_id, deps) -> str | None`, run on every turn. Used for always-on signals like active skills or tool availability.
-2. **Per-turn hooks** — `(chat_id, deps, user_message) -> str | None`, run only when there's a real user message. Used for query-dependent retrieval such as dynamic RAG memory injection. Each runs under a 2 s timeout so a slow embedding/search call can't stall the pipeline; timed-out hooks are skipped silently.
-3. **Ad-hoc reminders** — one-off strings the caller supplies for a single turn.
+Ad-hoc caller directives precede hook output. Hook registration order determines
+priority. Fragments are sanitized before deduplication and budget measurement.
+The assembled body has a 6,000-character budget including display-trigger markup
+and separators; the outer reminder wrapper is separate. Trailing fragments that
+do not fit are dropped. When necessary, the first fragment is truncated with a
+marker. With dependencies available, the implementation attempts to spill that
+fragment to a file and includes its accessible path and retention hint; if the
+spill fails, the truncation marker remains. This does not guarantee every dropped
+fragment is saved.
 
-The merged parts are joined with `---` separators and wrapped by `wrap_in_system_reminder`.
+Providers should read state without mutating it: goal turn accounting belongs to
+turn completion, not prompt construction. Log metadata rather than prompt or
+reminder bodies.
 
-### Invisible PUA delimiters
+### Runtime provenance and ingress
 
-By default, reminders are wrapped in invisible PUA delimiters rather than a visible `<system-reminder>` XML tag:
+The process generates `RUNTIME_NONCE`. Default wrappers contain both the nonce
+and PUA delimiters `U+E203` / `U+E204`; `SUZENT_XML_SYSTEM_REMINDER` switches to
+an XML wrapper carrying the nonce. These formats are presentation and parsing
+mechanisms, not permission grants. A model can see the nonce, so external text
+must never gain runtime provenance by copying it.
 
-| Constant | Codepoint | Role |
-|----------|-----------|------|
-| `PUA_START` | `U+E203` | hidden-content start |
-| `PUA_END`   | `U+E204` | hidden-content end |
+`make_user_prompt_part` is the shared construction boundary. External user
+content is sanitized; runtime-authored content uses the explicit trusted call
+path. Tool payload sanitization and the tool-output history processor prevent
+untrusted output from becoming runtime reminder blocks. Stored user prompts are
+sanitized on reuse; blocks from an earlier process do not carry the current
+nonce. This does not imply all same-process reminder history is deduplicated.
 
-The wrapped block looks like this (the delimiters are invisible — shown here as their codepoints):
+Keep per-turn reminders in the user-prompt suffix so the stable system-prompt
+prefix can be cached. Do not move mutable context into that prefix as a shortcut
+for establishing trust.
 
-```
-<U+E203>
-<reminder body>
-<U+E204>
-```
+### Display and parsing
 
-This makes reminders genuinely invisible in the UI and means the model doesn't have to *honor a convention* to keep them hidden — there's no visible tag to accidentally echo back. The system prompt still instructs the model to use but never reference this context (see below).
+A `display_trigger` is the user-visible explanation for a hidden action. Callers
+can supply a sequence of constituents; assembly owns joining, deduplication, and
+budgeting so the transcript reflects what was actually delivered.
 
-> **Codepoint allocation.** The citation system owns `U+E200`–`U+E202` (see [File citations](#file-citations)); system reminders use the next free codepoints `U+E203`/`U+E204`. Keep these ranges distinct when adding new PUA-based features.
+Use the module's helpers rather than parsing wrapper strings independently:
 
-### XML fallback for debugging
+| Helper | Responsibility |
+| --- | --- |
+| `wrap_in_system_reminder` | Sanitize and wrap runtime reminder content. |
+| `strip_system_reminders` | Remove reminder blocks for display. |
+| `extract_system_reminder_content` | Extract reminder content; not a provenance check. |
+| `iter_reminder_fragments` | Parse fragments using the module's boundary rules. |
+| `extract_system_reminder_display_trigger` | Recover the visible trigger. |
+| `register_global_hook` / `register_per_turn_hook` | Register asynchronous providers. |
 
-Set the `SUZENT_XML_SYSTEM_REMINDER` environment variable to wrap reminders in readable `<system-reminder>…</system-reminder>` XML tags instead of invisible PUA characters. This makes the raw context easy to inspect while debugging. All consumers (`strip_system_reminders`, `extract_system_reminder_content`) understand **both** formats, so mixed histories are handled transparently.
-
-### Display triggers
-
-A reminder may carry an optional `display_trigger` — user-visible text explaining *why* a hidden action happened (e.g. a "Skill activated" notice). It's nested as a `<system-reminder-display-trigger>` XML sub-tag **inside** the block regardless of the outer delimiter, so `_rebuild_display_messages` (`core/chat_processor.py`) can extract it via `extract_system_reminder_display_trigger` when reconstructing what the user sees.
-
-### Helper functions
-
-| Function | Purpose |
-|----------|---------|
-| `wrap_in_system_reminder(content, display_trigger=None)` | Wrap content in a hidden block (PUA, or XML under the debug env var). |
-| `strip_system_reminders(text)` | Remove all reminder blocks (PUA **and** XML) — used to clean text before display. |
-| `extract_system_reminder_content(text)` | Return the concatenated inner text of all reminder blocks (PUA + XML). |
-| `extract_system_reminder_display_trigger(text)` | Return only the user-visible trigger text marked inside reminders. |
-| `register_global_hook` / `register_per_turn_hook` | Register reminder-producing callbacks. |
-
-### Model behavior
-
-The system prompt (`prompts.py`) tells the model how to treat this context:
-
-> Tool results and user messages may occasionally contain hidden system context, delimited either by invisible Unicode markers or by `<system-reminder>` blocks. These blocks carry out-of-band operational context injected by the system — they are NOT part of the user's actual message.
-> - Use the information in these blocks to inform your actions.
-> - NEVER acknowledge, quote, or reference these blocks in your reply.
-> - NEVER tell the user that you received a system reminder.
+PUA markers must remain distinct from citation markers (`U+E200`–`U+E202`).
 
 ## File citations
 
@@ -5546,6 +6007,35 @@ When the desktop app launches for the first time (or after an update):
 
 Contents: `backend-venv/`, `chats.db`, `memory/`, `skills/`, `sandbox-data/`, `config/`
 
+## Logo standard
+
+Use [`SuzentLogo`](https://github.com/cyzus/suzent/blob/main/frontend/src/components/SuzentLogo.tsx) for UI placements:
+
+```tsx
+import { SuzentLogo } from '@/components/SuzentLogo';
+
+<SuzentLogo className="h-7 w-7" />
+<SuzentLogo className="h-7 w-7" interactive />
+```
+
+`className` controls size; `interactive` defaults to false and enables cursor-following
+eyes. Use 28 px (`h-7 w-7`) in headers and 64 px or larger on splash screens.
+Avoid interactive instances in large lists.
+
+The canonical 24 × 24 geometry is a black rounded square (`rx=4`) with white
+5 × 5 eyes at `(5,8)` and `(14,8)`, each with `rx=1.5`. Change the component first,
+then synchronize `frontend/public/favicon.svg` and the `RobotFace` primitive in
+`frontend/src/components/chat/RobotAvatar.tsx`. RobotAvatar retains its own
+primitive for its animation variants. Do not inline new copies of the logo or
+add an outer white border.
+
+## Memory implementation
+
+Memory documentation has one entry point under [Memory](https://suzent.com/docs/concepts/memory).
+Contributors should read [Architecture](https://suzent.com/docs/concepts/memory/architecture)
+for invariants and [Internals](https://suzent.com/docs/concepts/memory/internals) for classes,
+storage layout, and failure behavior.
+
 ## Troubleshooting
 
 ### Backend Issues
@@ -5682,532 +6172,6 @@ sandbox_image: suzent-sandbox
 - Security: dropped capabilities, no privilege escalation, memory/CPU limits
 - Network: `bridge` by default (internet access); set `sandbox_network: none` to fully isolate
 - `SUZENT_BASE_URL` is injected automatically so sandboxed code can call the host server's REST API via `host.docker.internal` — a full replacement for the `suzent` CLI
-
-
----
-
-# Logo Standard
-
-Source: https://suzent.com/docs/developing/logo
-
-
-
-## Canonical Definition
-
-The Suzent logo is a **black rounded square with two white rectangular eyes** — a minimal neo-brutalist face.
-
-**Single source of truth: [`frontend/src/components/SuzentLogo.tsx`](https://github.com/cyzus/suzent/blob/main/frontend/src/components/SuzentLogo.tsx)**
-
-All UI placements use this component. The static asset [`frontend/public/favicon.svg`](https://github.com/cyzus/suzent/blob/main/frontend/public/favicon.svg) mirrors the same geometry for browser favicon and OS-level use; it is **not** the source — `SuzentLogo.tsx` is.
-
-### Geometry (SVG viewBox `0 0 24 24`)
-
-| Element | x | y | width | height | rx | fill |
-|---------|---|---|-------|--------|----|------|
-| Background | 0 | 0 | 24 | 24 | 4 | `#000000` |
-| Left eye | 5 | 8 | 5 | 5 | 1.5 | `#FFFFFF` |
-| Right eye | 14 | 8 | 5 | 5 | 1.5 | `#FFFFFF` |
-
-Do not alter these values. Any visual change to the logo must be made in `SuzentLogo.tsx` first, then `favicon.svg` updated to match.
-
-## Usage
-
-```tsx
-import { SuzentLogo } from '@/components/SuzentLogo';
-
-// Static
-<SuzentLogo className="h-7 w-7" />
-
-// Interactive — eyes follow the cursor within the SVG bounds
-<SuzentLogo className="h-7 w-7" interactive />
-```
-
-### Props
-
-| Prop | Type | Default | Description |
-|------|------|---------|-------------|
-| `className` | `string` | `''` | Tailwind / CSS classes (controls size and spacing) |
-| `interactive` | `boolean` | `false` | Eyes track the cursor within ±1.5 SVG units. Pure event-driven CSS transform — no animation loop. |
-
-### Sizing guidance
-
-| Context | Recommended size |
-|---------|-----------------|
-| Sidebar header (h-12 bar) | `h-7 w-7` (28 px) |
-| Collapsed sidebar toggle | `h-7 w-7` (28 px) |
-| Splash / onboarding screen | `h-16 w-16` or larger |
-| Favicon / OS icon | Use `favicon.svg` directly |
-
-## What NOT to do
-
-- Do not inline the SVG in component files — always import `SuzentLogo`.
-- Do not add a white outer border or additional wrapper rectangles (this was the pre-DRY bug).
-- Do not change the eye coordinates or background color without updating `favicon.svg` in the same commit.
-- Do not use `interactive` in contexts where the component may render hundreds of times (e.g. inside a list row).
-
-## RobotAvatar relationship
-
-[`RobotAvatar`](https://github.com/cyzus/suzent/blob/main/frontend/src/components/chat/RobotAvatar.tsx) internally defines a `RobotFace` primitive with identical geometry. This is intentional: `RobotAvatar` is a self-contained animation system with per-variant eye transforms (`eyesClass`, `eyeStyle`) that would be complicated to route through `SuzentLogo`. The two definitions must stay geometrically in sync; if you update the logo geometry, update `RobotFace` as well.
-
-
----
-
-# Memory Architecture
-
-Source: https://suzent.com/docs/developing/memory/architecture
-
-
-
-How memory is written, consolidated, indexed, and read.
-Companions: [Consolidation](https://suzent.com/docs/concepts/memory/consolidation) for how the dream
-behaves from the outside, [Internals](https://suzent.com/docs/developing/memory/internals) for the class-by-class reference.
-
-## Three tiers, one job each
-
-| tier | location | job | who writes it |
-| --- | --- | --- | --- |
-| Capture buffer | `sandbox/shared/memory/archive/YYYY-MM-DD.md` | Lossless and fast. Never reasoned over at write time. | write path, append only |
-| Knowledge base | `~/.suzent/notebook/**/*.md` | Consolidated claims with provenance and lifecycle | the dream, via file tools |
-| Search index | `~/.suzent/memory` (LanceDB) | Derived. Rebuilt per file, never authored. | the indexer, exclusively |
-
-The direction of travel is one-way: logs feed the vault, both feed the index, and the
-index feeds retrieval. Nothing reads back up the chain.
-
-```mermaid
-%%{init: {'theme':'neutral'}}%%
-flowchart LR
-    subgraph capture["Capture"]
-        LOG[("archive/<br/>YYYY-MM-DD.md")]
-    end
-    subgraph knowledge["Knowledge"]
-        VAULT[("notebook/<br/>vault pages")]
-        STATE[".state/<br/>tombstones · superseded<br/>dream_state"]
-    end
-    subgraph derived["Derived"]
-        DB[("LanceDB<br/>archival_memories<br/>memory_blocks")]
-    end
-
-    TURN["chat turn"] --> WRITE["write path"]
-    WRITE -->|append| LOG
-    LOG -->|read-only| DREAM["dream"]
-    DREAM -->|create / update| VAULT
-    DREAM -->|hand-off| STATE
-    LOG --> IDX["indexer"]
-    VAULT --> IDX
-    STATE -->|filter| IDX
-    IDX -->|delete-then-add| DB
-    DB --> RECALL["retrieval"]
-    RECALL --> TURN
-```
-
-## Write path, per conversation turn
-
-Runs after the assistant response completes, in
-`MemoryManager.process_conversation_turn_for_memories`.
-
-```mermaid
-%%{init: {'theme':'neutral'}}%%
-flowchart TD
-    A["turn text"] --> B["recall 10 nearest known facts<br/>(best-effort — failure means<br/>extraction runs as before)"]
-    B --> C["LLM extraction<br/>prompt carries 'already in memory'"]
-    C -->|nothing new| Z["stop"]
-    C --> D["append to today's log"]
-    D --> E["reindex_file_now(archive, today)"]
-    E --> F[("LanceDB")]
-    D --> G{"any fact important?"}
-    G -->|yes| H["refresh MEMORY.md"]
-```
-
-There is deliberately **no write-time deduplication**. A 0.85 cosine threshold used to
-sit here and silently dropped *updates* to facts (#34). Repetition is suppressed one step
-earlier instead — the extractor is shown what memory already holds and told that a fact
-which *changes* a known one must still be emitted.
-
-## The dream
-
-A background loop ticking every `memory_consolidation_interval_seconds`. It has one gate
-and two phases.
-
-```mermaid
-%%{init: {'theme':'neutral'}}%%
-flowchart TD
-    T["tick"] --> P{"logs above<br/>the watermark?"}
-    P -->|no| L{"lint due?"}
-    L -->|yes| LINT["lint pass<br/>editorial audit of the vault"]
-    L -->|no| IDLE["idle"]
-    P -->|yes| B{"far behind?"}
-    B -->|yes| RUN["ingest batch"]
-    B -->|no| G{"enough new facts<br/>+ enough time passed?"}
-    G -->|no| IDLE
-    G -->|yes| RUN
-    RUN --> AGENT["forked agent:<br/>fold logs into vault pages"]
-    AGENT --> WM["advance watermark"]
-    WM --> REC["reconcile (runner-owned)"]
-    REC --> R1["retire superseded:<br/>tombstone + reindex those days"]
-    REC --> R2["check_and_update:<br/>mtime sweep of vault"]
-    REC --> R3["optimize: compact LanceDB"]
-```
-
-Ingest is always preferred over lint, so an editorial audit can never starve
-consolidation of new logs.
-
-### Why the reconcile belongs to the runner
-
-The agent's only declared capability is writing files. It hands the runner a list of log
-facts it has folded into pages, in `notebook/.state/superseded.txt`; the runner
-tombstones each line, reindexes each affected day, and truncates the file last so a crash
-replays rather than loses.
-
-The explicit reindex is not a belt-and-braces measure. **Appending a tombstone does not
-change the log's mtime**, so the watcher — which triggers on mtime — would never revisit
-those days on its own.
-
-## Invariants worth not breaking
-
-1. **Daily logs are append-only.** Never rewritten, so nothing races the live write path
-   appending to today's file.
-2. **The indexer is the only writer to LanceDB.** Every other component asks it.
-3. **The indexer is not append-only.** Only the markdown history is. `_reindex_file` is
-   delete-then-add per file, which is what makes reindexing idempotent and safe to repeat.
-4. **Tombstones are the only removal mechanism.** History stays intact; the derived row
-   disappears. Every tombstone write must be paired with an explicit reindex.
-5. **Recall enrichment must never block a write.** A search outage degrades extraction
-   quality, never durability.
-5b. **The write path may recognise a repeat, never an update.** The one case it is
-   allowed to divert is a word-for-word restatement of a claim already recorded in an
-   append-only store, adding no new specifics. Anything else — a new detail, a
-   contradiction, a match found only in a transcript — is written exactly as before.
-   Issue #34 was this line being crossed.
-6. **Only the generated zone of `MEMORY.md` is generated.** The file has two generators
-   and an agent editing it directly; everything after the `<!-- /memory:generated -->`
-   marker is copied through untouched, and a file with no marker that we cannot prove we
-   wrote is treated as entirely manual.
-
-### Who owns MEMORY.md
-
-Two writers regenerate the same file. `refresh_core_memory_facts` (per turn, from the top
-archival rows) is the legacy path; `promote_memory_md` (per productive dream, from
-consolidated `3_Personal/` pages plus recall signal) is its replacement. The hand-over
-needs no flag day: the legacy path stands down as soon as the vault has any personal page,
-so as the dream fills the vault it simply stops firing.
-
-Both write through the same marked zone, so an agent's or user's own notes below the
-marker survive either of them.
-
-### Always resolve the vault path
-
-The configured `notebook_dir` and the vault the dream actually writes to are not always the
-same directory — a vault mounted at `/mnt/notebook` leaves a stale bootstrap skeleton at
-the configured path. Anything inspecting or measuring the vault must go through
-`resolve_notebook_dir()`, or it reports on the wrong tree.
-## Borrowed from the Open Knowledge Format
-
-[OKF v0.2](https://github.com/GoogleCloudPlatform/open-knowledge-format/blob/main/SPEC.md)
-frontmatter is per-document, so it maps onto vault pages — which previously carried no
-frontmatter at all — and not onto individual log fact lines. Daily logs stay dumb.
-Producer-defined keys are explicitly permitted, so partial adoption is within its rules.
-
-- `status: draft | stable | deprecated` — `deprecated` is a softer tombstone: the claim
-  stays readable and linkable but leaves retrieval ranking, and it is reversible.
-- `stale_after` — an absolute instant that gives the dream a revisit queue. Defaults are
-  derived from the fact `category` rather than guessed per fact by the extractor: identity
-  effectively never, `preference` a year, `technical` six months, `goal` three months,
-  `context` three weeks.
-- `verified: [{by, at}]` — with OKF's actor convention, so a user editing a core memory
-  block is a `human:` verification that outranks anything the extractor produced. This also
-  supplies the contradiction-resolution rule the system otherwise lacks.
-- `generated: {by, at}` — uniform provenance across logs, vault, and core files.
-- `sources[].usage_count` — the most useful borrowing. A fact extracted 64 times is not 64
-  facts; it is one claim confirmed 64 times, so collapsing repeats into a counter turns the
-  worst noise source into a ranking signal. It is recorded on the bullet rather than in
-  frontmatter (`(confirmed 12x, last 2026-08-20)`), because these claims share a page
-  rather than getting a document each; the marker's absence means confirmed once, so no
-  page needs migrating. A repeat that *contradicts* the bullet is explicitly not a
-  confirmation — it resets the count and takes the correction path.
-
-Not adopted: the Attested Computation family (`runtime`, `parameters`, `computation`,
-`executor`, `attester`), `resource` URIs (the vault already uses `[[wikilinks]]`), and
-formal `okf_version` conformance.
-
-These rules live in `DREAM_INSTRUCTIONS` as well as in `schema_example.md`, because
-`schema.md` is copied into a vault once at bootstrap and is user-editable afterwards —
-every vault predating them keeps its own copy.
-
-## Claim lifecycle and ranking
-
-The lifecycle fields the dream writes are read back by retrieval. A vault chunk's indexed
-`importance` is derived from its confirmation count (log-scaled, capped at +0.25), its
-`status` (`deprecated` drops it to 0.1, `draft` −0.05), and its `stale_after` (×0.6 once
-passed). Daily-log facts keep the neutral 0.5 — raw capture has no lifecycle.
-
-A person editing the `facts` block is the one claim in the system that did not come from
-extraction: it is the claim's subject stating it directly. `write_memory_manual_zone`
-stamps the manual zone of `MEMORY.md` with a `human:` actor, and retrieval reads that
-stamp as an importance *floor* (`HUMAN_VERIFIED_FLOOR`, 0.9) rather than a bonus, so a low
-base score cannot dilute it. It also skips the `stale_after` decay — an expiry means
-nobody has re-confirmed the claim lately, which is exactly the question a human
-verification answers. `deprecated` still wins, because a person retiring a claim is also a
-person, and only a `human:` actor qualifies, or an agent would launder its own output into
-the strongest evidence class there is.
-
-Because the floor applies per row, `MEMORY.md` is chunked per zone rather than per file:
-paragraph merging otherwise produced a single row spanning the generated half and the
-human half, which is neither.
-
-## Classifying a restatement
-
-`memory/classifier.py` compares each extracted fact against the recall set already
-assembled for the extraction prompt, so it costs no extra retrieval and no extra model
-call. The comparison is lexical on purpose — the only band that changes behaviour is
-"practically the same sentence", which is what a lexical measure is good at and what a
-semantic one is too generous about.
-
-Three outcomes:
-
-| outcome | test | effect |
-| --- | --- | --- |
-| confirmation | ≥0.97 similar, no new specifics, matched against a *durable* source | not written to the daily log; a line in `.state/confirmations.jsonl` that the dream folds into the claim's `(confirmed Nx)` marker |
-| revision | similar, or a strict superset carrying a new specific | written exactly as before, tagged `revision` |
-| new | everything else | written as before |
-
-Two guards do the real work. A match found only in a chat transcript or in the generated
-`MEMORY.md` can never divert a write, because neither is a record the write path can defer
-to. And any new number, date, quote, path, or version in the restatement makes it a
-revision however similar the surrounding prose — `moved to Berlin in 2024` is not a repeat
-of `moved to Berlin`.
-
-The confirmations sidecar is truncated only by the number of lines the agent was actually
-shown, since conversations keep appending to it while the dream runs.
-
-## The revisit queue
-
-A deterministic frontmatter scan by the runner, handed to the dream alongside the
-confirmations: vault pages past their `stale_after`, soonest first, to be re-confirmed
-against the logs being ingested — never deleted. Both queues are runner-owned for the same
-reason the watermark is: index and lifecycle mutation stays out of the agent's hands.
-
-A `3_Personal/` page with no `stale_after` *at all* is queued too, after every genuinely
-expired one. Selecting strictly on the field would mean pages written before the field
-existed are never queued, so the dream never visits them, so the field is never written —
-the pages most in need of a first pass would be the only ones permanently exempt from one.
-Letting the dream backfill the field beats a script guessing it, because a wrong
-`stale_after` actively damps a good claim in the ranking above, and only the dream can see
-which category a claim belongs to. The undated branch is scoped to `3_Personal/`: a wiki
-or project page having no expiry is correct, not a backlog item.
-
-## Testing a mutating pass
-
-`scripts/dream_dry_run.py` clones `~/.suzent`, redirects the `/mnt/notebook` volume at a
-copy of the vault, and drives the real `DreamRunner` over the clone, leaving a unified diff
-to review. The redirect is the point — the vault is a host path mounted into the sandbox,
-*not* a directory inside the data dir, so cloning `~/.suzent` alone isolates everything
-except the one thing the dream rewrites. Exercise the lint pass against a clone before
-letting it run over a real vault.
-
-One outstanding one-time cleanup — retiring pre-June index rows that predate the markdown
-tier — is described in
-[Upgrading](https://suzent.com/docs/upgrading).
-
-
----
-
-# Memory Internals
-
-Source: https://suzent.com/docs/developing/memory/internals
-
-
-
-This page describes the implementation-level structure of Suzent memory as it exists today.
-
-## Layers
-
-| Layer | Responsibility |
-|---|---|
-| Agent prompt and tools | `memory_search`, `block_update`, and file access. |
-| `MemoryManager` | Extraction, retrieval, and core memory formatting. |
-| `MarkdownMemoryStore` | File-backed operational memory plus notebook state helpers. |
-| `CoreMemoryFileIndexer` | Converts memory files into embedding rows in LanceDB. |
-| `LanceDBMemoryStore` | Derived hybrid and semantic search index. |
-| `WikiManager` + notebook skill | Vault bootstrap, schema, ingest, lint, and wiki-file conventions. |
-| `DreamRunner` | Autonomous daily-log consolidation and notebook lint scheduling. |
-
-## On-disk layout
-
-```text
-DATA_DIR/
-  memory/                         # LanceDB derived index
-  notebook/                       # default always-on wiki vault
-    schema.md
-    index.md
-    log.md                        # consolidation watermark + operation log
-    .state/
-      recall_log.jsonl
-      tombstones.jsonl
-    0_Inbox/
-    1_Projects/
-    2_Wiki/
-    3_Personal/
-    4_Assets/
-    5_Archives/
-  sandbox/shared/memory/          # agent-visible operational memory
-    persona.md
-    user.md
-    MEMORY.md
-    .index_state.json
-    archive/
-      YYYY-MM-DD.md
-
-.suzent/transcripts/ or configured data paths
-  {session_id}.jsonl              # session transcripts
-```
-
-In sandbox mode, the agent sees operational memory as `/shared/memory/` and the notebook as `/mnt/notebook/`. In host mode, configured mount paths can be shown in the prompt instead.
-
-## MarkdownMemoryStore
-
-`MarkdownMemoryStore` manages file-backed memory:
-
-- `archive/YYYY-MM-DD.md` daily logs.
-- `MEMORY.md` curated long-term summary.
-- `persona.md` and `user.md` core blocks.
-- Project-scoped `context.md` files.
-- Notebook `log.md` helpers for watermark and lint entries.
-- Notebook `.state/recall_log.jsonl` retrieval usage signals.
-- Notebook `.state/tombstones.jsonl` normalized deletion tombstones.
-
-Reads tolerate invalid UTF-8 bytes with replacement so a single bad paste does not wedge consolidation or indexing.
-
-## MemoryManager
-
-`MemoryManager` coordinates extraction, retrieval, and core memory formatting.
-
-### Core blocks
-
-Core memory is file-backed when markdown memory is enabled:
-
-| Block | File |
-|---|---|
-| `persona` | `/shared/memory/persona.md` |
-| `user` | `/shared/memory/user.md` |
-| `facts` | `/shared/memory/MEMORY.md` |
-| `context` | project `context.md` when a chat/project is available |
-
-Missing blocks fall back to built-in defaults.
-
-### Extraction path
-
-`process_conversation_turn_for_memories()` extracts structured facts, appends them to today’s archive log, and asks the shared `CoreMemoryFileIndexer` to reindex the archive file. It returns `MemoryExtractionResult.extracted_facts` for logging and downstream diagnostics.
-
-The current implementation reindexes the whole current-day archive file after a turn rather than appending a single LanceDB row per fact. This preserves the mutation invariant and makes the operation idempotent, at the cost of growing work as the day’s log grows.
-
-### Retrieval path
-
-`retrieve_relevant_memories()` first checks whether the archival index has rows. It then uses either embedding-backed hybrid search or FTS-only search. Results are formatted for prompt injection and logged best-effort to the notebook recall log for later `MEMORY.md` promotion.
-
-### MEMORY.md writers
-
-There are two MEMORY.md update paths:
-
-- `refresh_core_memory_facts()` summarizes high-importance archival rows. This remains as a compatibility path for high-importance per-turn extraction.
-- `promote_memory_md()` is the dream-era path. It summarizes consolidated personal notebook pages plus recall signals after successful consolidation.
-
-## CoreMemoryFileIndexer
-
-The indexer watches and reindexes:
-
-- `persona.md`, `user.md`, `MEMORY.md`,
-- `archive/YYYY-MM-DD.md`,
-- notebook content pages under the vault root.
-
-It excludes root notebook navigation files (`schema.md`, `index.md`, `log.md`) and files under `.state/`.
-
-Index granularity differs by source:
-
-| Source | Row granularity | Metadata source type |
-|---|---|---|
-| Archive logs | one row per `- [category] ...` fact line | `archive_log` |
-| Notebook pages | paragraph chunks | `notebook` |
-| Core files | paragraph chunks | `core_file` |
-
-The indexer persists mtimes in `/shared/memory/.index_state.json`. If a file has the same mtime as the saved state, it is skipped. `clear_and_full_reindex()` deletes user rows and rebuilds from core files, notebook pages, and post-watermark archive logs.
-
-The indexer embeds all new rows before deleting stale rows for a file. This keeps transient embedding failures from erasing working search rows or writing unusable placeholder vectors.
-
-## LanceDBMemoryStore
-
-`LanceDBMemoryStore` owns LanceDB tables and search operations. It still supports legacy core block storage as a fallback when markdown storage is unavailable, but the normal path uses markdown files for core blocks and treats LanceDB as a disposable search projection.
-
-The archival table stores indexed content with metadata such as source type, source file, category, tags, chunk index, user id, chat id, importance, and timestamps. Search combines vector retrieval and full-text search where available.
-
-## WikiManager
-
-`WikiManager` is an idempotent bootstrapper for the notebook vault. It creates the root, seeds `schema.md` from `skills/notebook/schema_example.md`, creates a starter `index.md` and `log.md`, and ensures the standard zone folders exist. It does not continuously manage wiki content after bootstrap.
-
-## DreamRunner
-
-`DreamRunner` is the autonomous consolidation service. It runs in the background when memory consolidation is enabled and a memory manager with markdown and LLM support exists.
-
-Main responsibilities:
-
-- Determine pending archive dates from the watermark in notebook `log.md`.
-- Skip today’s in-progress daily log.
-- Batch pending dates by `memory_consolidation_max_days`.
-- Start a hidden dream chat for the consolidation agent.
-- Run the notebook ingest instructions over daily logs.
-- Advance the watermark only after a clean agent run with content-page changes.
-- Regenerate `MEMORY.md` from consolidated personal knowledge.
-- Schedule reindexing after durable consolidation.
-- Run notebook lint when ingestion is caught up and lint is due.
-
-The dream runner exposes frontend-safe status fields including pending dates, pending fact count, progress percentage, last results, lint state, and gate settings.
-
-## Notebook skill
-
-The notebook skill supplies operational runbooks:
-
-- `SKILL.md` explains the vault contract and requires reading `schema.md` first.
-- `ingest.md` describes how to compile raw sources and daily logs into notebook pages.
-- `lint.md` describes editorial checks for contradictions, structure, and stale pages.
-- `schema_example.md` defines zones, page types, frontmatter, links, and maintenance rules.
-
-The dream prompt adapts the ingest workflow by making the runner own the watermark entry.
-
-## Transcripts and session state
-
-Conversation transcripts are append-only JSONL files managed by the session layer. Transcript indexing is separate from memory-file indexing and is opt-in via `transcript_indexing_enabled`.
-
-State snapshots are inspectable JSON mirrors of agent state. They support UI/debug workflows but are not the memory source of truth.
-
-## Deletion model
-
-Deleting an archival memory removes the indexed row and records a normalized tombstone. Reindexing checks tombstones before adding archive facts, notebook chunks, or core chunks. This makes deletion durable across a full rebuild as long as the future text exactly normalizes to the tombstoned content.
-
-## Failure behavior
-
-The memory system is designed to avoid silent loss:
-
-- Per-turn extraction stores raw facts without semantic deduplication.
-- Dream watermarks do not advance on failed or non-productive runs.
-- Embedding failures abort file replacement before old rows are deleted.
-- Tombstones are applied during every source-type reindex.
-- Invalid bytes in markdown are replaced during reads instead of aborting the whole pass.
-
-## HTTP API
-
-The memory routes are registered in `src/suzent/server.py` and documented for users in
-[Concepts > Memory > Configuration](https://suzent.com/docs/concepts/memory/configuration#the-memory-api).
-Two adjacent session routes belong to the session layer rather than memory:
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/session/{id}/transcript` | GET | Get session transcript |
-| `/session/{id}/state` | GET | Get agent state snapshot |
-
-## Tombstones do not change a file's mtime
-
-The indexer is delete-then-add keyed on mtime, so appending a tombstone does not cause the
-affected file to be reindexed. Every tombstone write must be paired with an explicit
-reindex of the dates it touches.
 
 
 ---
@@ -6687,151 +6651,6 @@ accumulator only; it excludes model latency, networking and browser rendering.
 
 ---
 
-# Streaming persistence: measurements and convergence plan
-
-Source: https://suzent.com/docs/developing/streaming-persistence-analysis
-
-
-
-## Scope and results
-
-Measured on 2026-09-14 against origin/main `51e3301f`, with an isolated worktree
-and synthetic SQLite databases. No real chat content was read, no agent calls
-were made, and the running desktop backend was not restarted or modified.
-This is not a production trace of the user's reported delay.
-
-Native streaming already persists display drafts, including tool/reasoning parts.
-It is incorrect to describe all paths as saving only at turn completion.
-The fast `agent_state` snapshot and the UI draft are separate mechanisms.
-
-| Synthetic turns | Display JSON | Draft write, baseline | Finalize total, baseline → worker | Event-loop stall, baseline → worker |
-| --- | --- | --- | --- | --- |
-| 10 | 32.5 KiB | 0.91 ms | 2.38 → 2.65 ms | 1.43 → 0.27 ms |
-| 100 | 325.8 KiB | 2.47 ms | 15.19 → 15.11 ms | 14.25 → 1.65 ms |
-| 500 | 1630.0 KiB | 9.94 ms | 70.55 → 72.86 ms | 69.61 → 11.05 ms |
-
-Values are medians of five repetitions, not production percentiles. Each turn
-contains a 1 KiB synthetic prompt and answer. Event-loop stall is the median of
-per-repetition maximum lateness of a 1 ms asyncio heartbeat during finalization.
-The experiment includes serialization, rebuilding, SQLite/FTS and state mirroring,
-but excludes network/LLM time, title generation, transcript writing, concurrent
-writer load and the browser. GIL-bound Python work can still stall the loop even
-when run in a worker. This improves responsiveness, not total persistence latency.
-
-Raw results: [baseline](https://github.com/cyzus/suzent/blob/main/docs/03-developing/benchmarks/persistence-baseline.json) and
-[worker](https://github.com/cyzus/suzent/blob/main/docs/03-developing/benchmarks/persistence-worker.json). Reproduce from the desired source
-revision with:
-
-```sh
-PYTHONPATH=src uv run python scripts/benchmark_persistence.py --output /tmp/persistence.json
-```
-
-## Reproduced defects and bounded fixes
-
-1. `_persist_state` is async but had no awaits around synchronous serialization,
-   complete history rebuilding, database finalization and mirror writing. A
-   deterministic test shows another coroutine cannot run to release a blocked
-   database operation. The patch runs this stage in `asyncio.to_thread`; database
-   sessions are opened and closed inside the worker. Revision checks are retained.
-2. Draft scheduling clears `dirty` before the write completes. An unsuccessful
-   background write was swallowed without restoring `dirty`, so a forced final
-   flush could skip it. Both background and forced failures now remain retryable.
-   There is no automatic unbounded retry loop.
-
-The first two regression tests failed on the baseline and pass after the patch.
-Additional coverage verifies a failed forced flush can retry, and a real temporary
-SQLite database exposes a native draft before the run finishes. In total, 111
-focused backend tests pass (including ACP, approvals, snapshot revision guards and
-postprocess jobs), along with 17 existing desktop draft/render-plan tests.
-Ruff checks and formatting pass.
-
-## Why reload can still lose visible content
-
-- `ChatWindow.tsx` passes `showTransientAssistant` to `hideStreamingDrafts` as soon
-  as the chat is streaming. That removes a saved draft even if the reconnecting
-  stream contains only an unread suffix and cannot replace the earlier content.
-  Existing frontend tests confirm the filtering policy, not a full browser reload
-  reproduction. This is a code-supported explanation requiring an end-to-end test.
-- `_DraftDisplayAccumulator.maybe_persist` is event-triggered and throttled at
-  750 ms; it is not a periodic timer. Dirty content produced during the throttle
-  window may wait through a long tool call until another event or final flush.
-- ACP emits text through `_stream_prompt` but does not use the native draft
-  accumulator. Its assistant history append occurs after the prompt returns.
-- A failed draft write can worsen the gap; the retry fix above addresses this
-  failure mode, but does not add cursor recovery or periodic snapshots.
-
-## Other completion delays and observability gaps
-
-Native streaming awaits a pending title task before leaving the generator; that
-can delay outer turn cleanup. ACP appends its answer first, then awaits its title,
-so the same symptom can have a different durability status. Memory extraction is
-already independently scheduled and is not a required predecessor of native final
-state persistence.
-
-Native postprocessing still writes the transcript before rebuilding final display
-history, and finalization reindexes the complete conversation. The desktop uses
-an 800 ms delayed reload rather than a revision-specific durability acknowledgement.
-Also, `_persist_state` currently logs and swallows database failures; callers can
-mark the postprocess step successful. That outcome contract should be fixed with
-tests alongside the unified acknowledgement, rather than interpreting logs as a
-proof of persistence.
-
-For a production diagnosis, record monotonic timings and non-content counters for:
-last text delta, title wait, draft scheduled/committed/failed, snapshot commit,
-display rebuild, DB/FTS commit, mirror write, and client receipt of the durable
-revision. Do not log message contents, tokens, or user identifiers.
-
-## Unified path: retain runtime adapters, share delivery and persistence
-
-```mermaid
-flowchart LR
-  N[Native runtime] --> A[Normalized run events]
-  C[ACP runtime] --> A
-  A --> P[Per-run display projection]
-  A --> R[Sequence-numbered replay]
-  P --> D[Draft checkpoint and final commit]
-  D --> S[Snapshot with applied and durable sequence]
-  S --> U[Desktop / iOS / Android]
-  R --> U
-```
-
-Recommended delivery order:
-
-1. **One event envelope and lifecycle contract.** Normalize existing terminal
-   variants (including ACP `AGENT_FINISHED`), assign run IDs and monotonic event
-   sequences before fanout. Treat EOF as transport state, not successful completion.
-2. **Snapshot + cursor recovery.** Return current projection, run state, `applied_seq`
-   and `durable_seq`. Attach after the snapshot's applied sequence with atomic
-   snapshot/replay handoff. Deduplicate by run/sequence, and reset on a retention
-   gap. Preserve the saved draft until the replacement projection covers it.
-   Never blindly concatenate a snapshot with overlapping deltas.
-3. **Shared persistence coordinator.** Native and ACP feed the same projection
-   and single-writer checkpoint path. Add a timer for dirty snapshots during quiet
-   periods, a final flush barrier, and explicit commit/failure notifications.
-   Schedule cancellation, tool approval and restart recovery against the same run.
-   Keep existing revision guards; canceling an await does not stop a worker write.
-4. **Short critical save path.** Persist the current turn incrementally, acknowledge
-   its durable revision, then run title/index/transcript/mirror work with retries.
-   Avoid multiple whole-history writes. Define index consistency and transcript
-   ordering explicitly before moving these tasks independently.
-5. **All clients converge.** Replace desktop consume-once/seed behavior and mobile
-   full replay with the same cursor protocol, gated by server capability/version.
-   Add send idempotency keys and run-status lookup; reconnect must never resend a
-   user instruction merely because its acknowledgment was lost.
-
-Acceptance tests must exercise: reload after text and during a long tool call;
-interleaved snapshot and new events; desktop plus phone plus a second tab; repeated
-reconnect without duplicates; database failure and retry; retention overflow;
-approval suspension/resume; stop; backend restart; and a delayed title task.
-Assert visible content, tool state, event sequence and durable revision, rather
-than relying on sleep durations or whether a socket remains open.
-
-These broader changes are a follow-up design, not implemented by this analysis
-branch. It does not modify mobile PR #222 or fix the complete reload experience.
-
-
----
-
 # Upgrading
 
 Source: https://suzent.com/docs/upgrading
@@ -6853,7 +6672,7 @@ upgrading from any version before v0.10.0.*
 Every item below is about state that already exists on disk before the upgrade, ordered
 by how likely it is to surprise you. See
 [Concepts > Memory](https://suzent.com/docs/concepts/memory) for what the system does, and
-[Development > Memory Architecture](https://suzent.com/docs/developing/memory/architecture) for why.
+[Memory Architecture](https://suzent.com/docs/concepts/memory/architecture) for why.
 
 ### The first run re-embeds everything, once
 
@@ -6979,6 +6798,8 @@ five-question ownership test, see
 - [Providers](https://suzent.com/docs/concepts/providers): Configure model providers (OpenAI, Anthropic, Gemini, Ollama, and more)
 - [Memory](https://suzent.com/docs/concepts/memory): Persistent memory across sessions — how it works and how to configure it
 - [Notebook](https://suzent.com/docs/concepts/memory/llm-wiki): Agent-maintained knowledge vault, Obsidian-compatible
+- [Memory Architecture](https://suzent.com/docs/concepts/memory/architecture): How memory is written, consolidated, indexed, and read
+- [Memory Internals](https://suzent.com/docs/concepts/memory/internals): Class-by-class reference for contributors
 
 ### Tools & Capabilities
 - [Tools](https://suzent.com/docs/concepts/tools): Full reference for all built-in tools
@@ -6995,17 +6816,16 @@ five-question ownership test, see
 - [ACP](https://suzent.com/docs/concepts/nodes/acp): Serve Suzent as an ACP agent for editors and other clients
 
 ### Runtime
+- [System Reminders](https://suzent.com/docs/concepts/runtime/system-reminders): Runtime context, trust boundaries, and file citations
 - [Retry](https://suzent.com/docs/concepts/runtime/retry): Roll back the last agent turn and rerun
 - [Post-Processing](https://suzent.com/docs/concepts/runtime/postprocess): Background tasks after each turn
 
 ## Development
+- [Stream Recovery Protocol](https://suzent.com/docs/developing/stream-recovery-protocol): Snapshot, replay, and persistence acknowledgements
 - [Development Guide](https://suzent.com/docs/developing/development-guide): Setup, workflow, production builds, and architecture
 - [Docker Services](https://suzent.com/docs/developing/docker-services): Redis, SearXNG, and sandbox configuration
 - [Release Guide](https://suzent.com/docs/developing/releasing): Version bumping and release process
 - [Model Capability Updates](https://suzent.com/docs/developing/model-capability-updates): Maintainer workflow for refreshing shipped model metadata
-- [Memory Architecture](https://suzent.com/docs/developing/memory/architecture): How memory is written, consolidated, indexed, and read
-- [Memory Internals](https://suzent.com/docs/developing/memory/internals): Class-by-class reference for contributors
-- [Logo Standard](https://suzent.com/docs/developing/logo): Canonical logo geometry, component usage, and sizing guidelines
 
 ## Upgrading
 - [Upgrading](https://suzent.com/docs/upgrading): Manual steps when moving an existing install across versions, by release
