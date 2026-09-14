@@ -8,9 +8,10 @@ This module handles all chat endpoints including:
 """
 
 import asyncio
+from collections.abc import AsyncGenerator
 import json
 import traceback
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, ValidationError
 from starlette.requests import Request
@@ -24,7 +25,6 @@ from suzent.core.stream_registry import (
     get_background_queue,
     is_background_streaming,
     register_background_stream,
-    unregister_background_stream,
 )
 
 logger = get_logger(__name__)
@@ -197,6 +197,33 @@ def _prewrite_user_display_message(
         logger.debug(f"Failed to prewrite user display message for {chat_id}: {exc}")
 
 
+def _recoverable_response(
+    chat_id: str, generator: AsyncGenerator[str, None]
+) -> StreamingResponse:
+    queue = register_background_stream(chat_id)
+
+    async def produce() -> None:
+        try:
+            async for chunk in generator:
+                await queue.put(chunk)
+        except Exception as exc:
+            logger.error("Background stream failed: {}", traceback.format_exc())
+            await queue.put(
+                f"data: {json.dumps({'type': 'RUN_ERROR', 'message': str(exc)})}\n\n"
+            )
+        finally:
+            await queue.put(None)
+
+    task = asyncio.create_task(produce())
+    _chat_send_tasks.add(task)
+    task.add_done_callback(_chat_send_tasks.discard)
+    return StreamingResponse(
+        queue.replay.subscribe(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 async def chat(request: Request) -> StreamingResponse:
     """
     Handle chat requests, stream agent responses, and manage the SSE stream.
@@ -238,6 +265,7 @@ async def chat(request: Request) -> StreamingResponse:
             except json.JSONDecodeError:
                 file_mentions = []
             is_heartbeat = False
+            recovery_protocol = form.get("protocol") == "1"
         else:
             data = await request.json()
             message = data.get("message", "").strip()
@@ -249,6 +277,7 @@ async def chat(request: Request) -> StreamingResponse:
             file_mentions = data.get("file_mentions", [])
             resume_approvals = data.get("resume_approvals", [])
             is_heartbeat = data.get("is_heartbeat", False)
+            recovery_protocol = data.get("protocol") == 1
 
         if not message and not files_list and not resume_approvals and not is_heartbeat:
             return StreamingResponse(
@@ -355,6 +384,13 @@ async def chat(request: Request) -> StreamingResponse:
             )
 
         if stream:
+            if recovery_protocol and chat_id:
+                if is_background_streaming(chat_id):
+                    await generator.aclose()
+                    return JSONResponse(
+                        {"error": "Chat is already streaming"}, status_code=409
+                    )
+                return _recoverable_response(chat_id, generator)
             return StreamingResponse(
                 generator,
                 media_type="text/event-stream",
@@ -744,6 +780,14 @@ async def deactivate_tool(request: Request) -> JSONResponse:
     return JSONResponse({"status": "ok", "tool_name": tool_name})
 
 
+class LiveStreamRequest(BaseModel):
+    chat_id: str = Field(min_length=1)
+    wait_ms: int = Field(default=0, ge=0, le=30000)
+    protocol: Literal[1] | None = None
+    run_id: str | None = None
+    after_seq: Annotated[StrictInt, Field(ge=0)] | None = None
+
+
 async def live_stream(request: Request) -> StreamingResponse:
     """Subscribe to a live background stream for a chat (cron, heartbeat, social).
 
@@ -754,19 +798,10 @@ async def live_stream(request: Request) -> StreamingResponse:
     from starlette.responses import Response
 
     try:
-        data = await request.json()
-    except Exception:
+        data = LiveStreamRequest.model_validate(await request.json())
+    except (ValueError, TypeError):
         return Response(status_code=400)
-
-    chat_id = data.get("chat_id", "")
-    wait_ms_raw = data.get("wait_ms", 0)
-    try:
-        wait_ms = max(0, int(wait_ms_raw or 0))
-    except Exception:
-        wait_ms = 0
-
-    if not chat_id:
-        return Response(status_code=400)
+    chat_id, wait_ms = data.chat_id, data.wait_ms
 
     q = get_background_queue(chat_id)
     if q is None and wait_ms > 0:
@@ -778,8 +813,19 @@ async def live_stream(request: Request) -> StreamingResponse:
             if q is not None:
                 break
 
-    if q is None:
+    if q is None or (data.protocol is None and not q.producer_active and q.empty()):
         return Response(status_code=204)
+
+    if data.protocol == 1:
+        # Fresh pages read completed history directly; existing cursors drain
+        # their terminal events. Pending saves remain recoverable after reload.
+        if q.replay.persisted and not data.run_id:
+            return Response(status_code=204)
+        return StreamingResponse(
+            q.replay.subscribe(data.run_id, data.after_seq),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
 
     async def generate():
         while True:
@@ -790,7 +836,6 @@ async def live_stream(request: Request) -> StreamingResponse:
                 yield ": keep-alive\n\n"
                 continue
             if chunk is None:
-                unregister_background_stream(chat_id, q)
                 return
             yield chunk
 

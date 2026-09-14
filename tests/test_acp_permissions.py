@@ -228,9 +228,31 @@ async def test_permission_does_not_stall_the_update_stream(tmp_path):
         assert broker.resolve(relayed["requestId"], approved=True) is True
         assert (await asyncio.wait_for(prompt, timeout=10))["stopReason"] == "end_turn"
 
+        resolution = await asyncio.wait_for(managed.updates.get(), timeout=5)
+        assert resolution[PERMISSION_QUEUE_KEY]["resolved"] == "approved"
         # The agent echoes back what it received, proving the outcome reached it.
         tail = await asyncio.wait_for(managed.updates.get(), timeout=5)
         echoed = json.loads(tail["update"]["content"]["text"].lstrip("|"))
         assert echoed == {"outcome": "selected", "optionId": "yes"}
     finally:
         await manager.shutdown()
+
+
+async def test_relay_includes_resolution_for_refresh_and_other_observers():
+    broker = ACPPermissionBroker()
+    events = []
+    requested = asyncio.Event()
+
+    def relay(event):
+        events.append(event)
+        requested.set()
+
+    task = asyncio.create_task(
+        broker.request("chat", {"options": OPTIONS}, on_relay=relay)
+    )
+    await requested.wait()
+    broker.resolve(events[0]["requestId"], approved=True)
+    await task
+    assert events[-1]["requestId"] == events[0]["requestId"]
+    assert events[-1]["resolved"] == "approved"
+    assert len(events) == 2

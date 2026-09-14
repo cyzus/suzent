@@ -50,6 +50,7 @@ from suzent.tools.filesystem.path_resolver import PathResolver
 from suzent.routes.sandbox_routes import sanitize_filename
 from suzent.core.stream_parser import StreamParser, TextChunk, ErrorEvent
 from suzent.core.stream_registry import (
+    get_background_queue,
     pop_pending_auto_approvals,
     register_background_stream,
 )
@@ -453,6 +454,8 @@ class ChatProcessor:
         3. Response Streaming (pydantic-ai async)
         4. Background Tasks (Memory, Compression, Persistence)
         """
+
+        replay_queue = get_background_queue(chat_id)
 
         # 0. Wait for any pending post-processing from the previous turn to finish.
         # This prevents resuming with a stale message history from the DB if the user
@@ -1276,7 +1279,7 @@ class ChatProcessor:
 
             task_id = f"post_process_{chat_id}_{postprocess_job_id}"
             try:
-                await register_background_task(
+                persistence_task = await register_background_task(
                     _make_post_process_coro(),
                     task_id=task_id,
                     description=f"Post-processing for chat {chat_id}",
@@ -1287,7 +1290,7 @@ class ChatProcessor:
                     "Retrying with overflow tracking."
                 )
                 try:
-                    await register_background_task(
+                    persistence_task = await register_background_task(
                         _make_post_process_coro(),
                         task_id=f"{task_id}_overflow",
                         description=f"Post-processing overflow for chat {chat_id}",
@@ -1300,7 +1303,10 @@ class ChatProcessor:
                     )
                     # Last-resort fallback. This path should be rare because overflow
                     # registration bypasses max_concurrent but still respects shutdown.
-                    asyncio.create_task(_make_post_process_coro())
+                    persistence_task = asyncio.create_task(_make_post_process_coro())
+
+            if replay_queue is not None:
+                replay_queue.replay.persistence = persistence_task
 
             # Charge the goal before continuation is allowed to look at the
             # budget. Doing it inside the background post-process raced this
@@ -1351,7 +1357,7 @@ class ChatProcessor:
         agent: Any,
         postprocess_job_id: str,
         file_snapshot: list[dict],
-    ) -> None:
+    ) -> bool:
         """Background post-processing for a completed turn.
 
         Runs the transcript write, memory extraction (scheduled independently),
@@ -1482,9 +1488,10 @@ class ChatProcessor:
                 except Exception:
                     pass
 
+            persisted = False
             # B4+B5: Display Rebuild + State Persistence (display is integrated in _persist_state)
             try:
-                await self._persist_state(
+                persisted = await self._persist_state(
                     chat_id=chat_id,
                     messages=compressed_messages,
                     model_id=getattr(agent, "_model_id", None),
@@ -1497,6 +1504,11 @@ class ChatProcessor:
                     inline_a2ui_surfaces=getattr(deps, "inline_a2ui_surfaces", None),
                     file_snapshot=file_snapshot,
                 )
+                if not persisted:
+                    db.finalize_postprocess_job(
+                        job_id, PostProcessOutcome.SKIPPED_STALE
+                    )
+                    return False
                 db.update_job_step_status(
                     job_id, PostProcessStep.PERSIST, StepStatus.SUCCESS
                 )
@@ -1522,7 +1534,11 @@ class ChatProcessor:
             logger.info(
                 f"[ChatProcessor] Background post-processing complete for {chat_id}"
             )
-            db.finalize_postprocess_job(job_id, PostProcessOutcome.SUCCESS)
+            db.finalize_postprocess_job(
+                job_id,
+                PostProcessOutcome.SUCCESS if persisted else PostProcessOutcome.FAILED,
+            )
+            return persisted
         except Exception as e:
             logger.error(f"Post-processing background task failed: {e}")
             db.finalize_postprocess_job(
@@ -1531,6 +1547,7 @@ class ChatProcessor:
                 error_class=type(e).__name__,
                 error_message=str(e),
             )
+            return False
 
     def _handle_retry_command(
         self,
@@ -1960,13 +1977,13 @@ class ChatProcessor:
         postprocess_job_id: Optional[str] = None,
         inline_a2ui_surfaces: Optional[dict] = None,
         file_snapshot: Optional[list[dict]] = None,
-    ) -> None:
+    ) -> bool:
         """Persist conversation state to database."""
 
         # This stage serializes history, rebuilds display rows, updates SQLite/FTS
         # and writes the state mirror. Keep those synchronous operations off the
         # event loop so finishing one chat cannot pause another chat's tokens.
-        def _sync() -> None:
+        def _sync() -> bool:
             try:
                 db = get_database()
                 # System/forked chats (dream, sub-agents) are stateless by design and are
@@ -2051,7 +2068,7 @@ class ChatProcessor:
                             postprocess_job_id or "n/a",
                             expected_revision,
                         )
-                        return
+                        return False
                 else:
                     if target_messages is None:
                         db.update_chat(chat_id, agent_state=agent_state)
@@ -2070,11 +2087,13 @@ class ChatProcessor:
                         logger.debug(f"State mirror failed: {mirror_err}")
 
                 logger.info(f"Persisted state for chat {chat_id}")
+                return True
 
             except Exception as e:
                 logger.error(f"Failed to persist state for {chat_id}: {e}")
+                raise
 
-        await asyncio.to_thread(_sync)
+        return await asyncio.to_thread(_sync)
 
     async def _persist_agent_state_snapshot(
         self,
