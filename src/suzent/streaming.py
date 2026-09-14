@@ -542,7 +542,11 @@ class _DraftDisplayAccumulator:
         if force:
             # The last write of a turn has to land before the stream reports
             # itself finished, so this one is waited on.
-            await coro
+            try:
+                await coro
+            except Exception:
+                self.dirty = True
+                raise
             return
         self._persist_task = asyncio.create_task(self._persist_quietly(coro))
 
@@ -552,13 +556,13 @@ class _DraftDisplayAccumulator:
         if task is not None and not task.done():
             await task
 
-    @staticmethod
-    async def _persist_quietly(coro: Any) -> None:
+    async def _persist_quietly(self, coro: Any) -> None:
         """Run a draft write, logging rather than raising: a draft that fails
         to save must not take the stream down with it."""
         try:
             await coro
-        except Exception as exc:  # pragma: no cover - defensive
+        except Exception as exc:
+            self.dirty = True
             logger.debug(f"[Streaming] Draft persist failed: {exc}")
 
     def _find_tool(self, tool_call_id: str) -> Optional[dict[str, Any]]:
