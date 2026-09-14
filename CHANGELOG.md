@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.14.0] - 2026-09-14
+
+### 🚀 Added
+- Release the extension automatically and offer the Edge listing (#220)
+- Add top-level `suzent restart` command (#219)
+- Refine landing page downloads and terminal setup
+- Add installer landing-page entry and automatic Git setup (#218)
+- Share launcher shortcut setup and repair across install paths (#213)
+- Report which tab the user is viewing (#209)
+
+### ⚡ Changed
+- Recover streams after reload with snapshots and cursors (#227)
+- Keep final persistence off the event loop and retry failed drafts (#225)
+- Refine landing installer animation and open-source section
+- Migrate documentation website to Fumadocs (#216)
+- Remove the language param from the shell tools (#212)
+
+### 🐛 Fixed
+- Self-heal a profile naming a remote the repo does not have (#228)
+- Point the upgrade guide's route contract at its new URL
+- Keep dream status polling from mutating retry state (#226)
+- Handle dream status storage failures without blocking server (#224)
+- Validate website builds in clean CI checkouts (#217)
+- Adjust overflow handling in SubAgentCallBlock and activity rail styles
+- Render ACP citations as portable references (#215)
+- Improve overflow handling for chat components and animations
+- Exclude machine-specific host paths from reusable chat config
+- Display images in analysis and generation tool results (#211)
+
 ## [v0.13.0] - 2026-09-07
 
 <!-- highlights -->
