@@ -162,6 +162,7 @@ class GitHubSyncProvider:
                 self.repo_path,
                 authed_remote_for_push(remote_url, token),
                 self.branch,
+                self.remote,
             )
         return self._git("fetch", self.remote, self.branch)
 

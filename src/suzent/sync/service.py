@@ -479,10 +479,15 @@ class GitHubSyncService:
         Every sync op starts with ``git remote get-url <remote>``, so a profile
         naming a remote that was never created (e.g. a leaked test profile that
         set remote="upstream") fails with "No such remote" and no amount of
-        retrying helps. Repoint at the repo's real remote: "origin" when it
-        exists, otherwise the sole remote if there is exactly one. An ambiguous
-        repo (several remotes, no "origin") is left alone — guessing could push
-        the user's brain to the wrong GitHub repository.
+        retrying helps. Repoint at the repo's real remote, but *only* when there
+        is exactly one — then it is the unambiguous sync destination.
+
+        A repo with several remotes is left alone even when one is called
+        "origin": the conventional name does not establish that it is the
+        intended destination (``origin`` is often a fork while another remote is
+        the real target), and picking it would silently push the user's brain to
+        the wrong GitHub repository. Being stuck with a clear "No such remote"
+        error is recoverable; a sync to the wrong repo is not.
         """
         changed = False
         for prof in profiles.values():
@@ -492,20 +497,18 @@ class GitHubSyncService:
             remotes = git_remote_names(repo_path)
             if not remotes or prof.remote in remotes:
                 continue
-            if "origin" in remotes:
-                replacement = "origin"
-            elif len(remotes) == 1:
-                replacement = remotes[0]
-            else:
+            if len(remotes) != 1:
                 logger.warning(
-                    "Sync profile %s names remote %r which %s does not have "
-                    "(remotes: %s) — sync will fail until reconfigured.",
+                    "Sync profile %s names remote %r which %s does not have, "
+                    "and its remotes (%s) are ambiguous — sync will fail until "
+                    "reconfigured.",
                     prof.id,
                     prof.remote,
                     repo_path,
                     ", ".join(remotes),
                 )
                 continue
+            replacement = remotes[0]
             logger.warning(
                 "Sync profile %s named missing remote %r; repointing to %r",
                 prof.id,

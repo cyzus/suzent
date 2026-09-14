@@ -127,7 +127,7 @@ def _write_profile(cfg: Path, repo_path: Path, remote: str):
 
 
 def test_missing_remote_heals_to_origin(tmp_path, monkeypatch):
-    """A profile naming a remote the repo lacks repoints to origin.
+    """A profile naming a remote the repo lacks repoints to the sole remote.
 
     This is the exact shape of the leaked-test-profile bug: remote="upstream"
     on a repo that only ever had "origin", which broke every sync op with
@@ -186,8 +186,8 @@ def test_ambiguous_remotes_left_alone(tmp_path, monkeypatch):
     _write_profile(tmp_path / "config", repo, "upstream")
 
     svc = GitHubSyncService()
-    # No "origin" and more than one candidate — guessing could push the user's
-    # brain to the wrong repo, so the profile is left for manual reconfiguration.
+    # More than one candidate — guessing could push the user's brain to the
+    # wrong repo, so the profile is left for manual reconfiguration.
     assert svc.get_profile("p1").remote == "upstream"
 
 
@@ -195,6 +195,29 @@ def test_repo_with_no_remotes_left_alone(tmp_path, monkeypatch):
     monkeypatch.setenv("SUZENT_DATA_DIR", str(tmp_path))
     repo = tmp_path / "github-sync"
     _init_repo(repo)
+    _write_profile(tmp_path / "config", repo, "upstream")
+
+    svc = GitHubSyncService()
+    assert svc.get_profile("p1").remote == "upstream"
+
+
+def test_origin_not_preferred_when_other_remotes_exist(tmp_path, monkeypatch):
+    """ "origin" alongside other remotes is ambiguous, not a safe default.
+
+    "origin" is conventional, not authoritative — it is often a fork while
+    another remote is the real sync destination. Healing to it by name could
+    push the user's portable brain to the wrong repository, so a multi-remote
+    repo is left for manual reconfiguration even when "origin" is present.
+    """
+    monkeypatch.setenv("SUZENT_DATA_DIR", str(tmp_path))
+    repo = tmp_path / "github-sync"
+    _init_repo_with_remotes(
+        repo,
+        {
+            "origin": "https://github.com/alice/fork.git",
+            "canonical": "https://github.com/acme/brain.git",
+        },
+    )
     _write_profile(tmp_path / "config", repo, "upstream")
 
     svc = GitHubSyncService()
