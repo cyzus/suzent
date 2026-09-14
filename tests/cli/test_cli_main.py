@@ -184,6 +184,139 @@ def test_start_dev_restarts_existing_backend(monkeypatch, tmp_path):
     assert "--debug" in popen_calls[0]
 
 
+def _stub_dev_start(monkeypatch, tmp_path, popen_calls):
+    """Neutralize everything `start --dev` touches outside process control."""
+
+    def fake_popen(cmd, **kwargs):
+        popen_calls.append(cmd)
+        return _ServeProcessSuccess()
+
+    monkeypatch.setattr(cli_main, "get_project_root", lambda: tmp_path)
+    monkeypatch.setattr(cli_main, "_notify_update_available", lambda root: None)
+    monkeypatch.setattr(cli_main, "ensure_cargo_in_path", lambda: None)
+    monkeypatch.setattr(cli_main, "ensure_msvc_linker", lambda: None)
+    monkeypatch.setattr(cli_main.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(cli_main, "_ensure_npm_deps", lambda root: None)
+    monkeypatch.setattr(cli_main, "run_command", lambda *args, **kwargs: None)
+    monkeypatch.setattr(cli_main, "_terminate_process_gracefully", lambda process: None)
+
+
+def test_restart_stops_running_backend_then_starts(monkeypatch, tmp_path):
+    app = typer.Typer()
+    cli_main.register_commands(app)
+    killed_pids = []
+    popen_calls = []
+
+    _stub_dev_start(monkeypatch, tmp_path, popen_calls)
+    # Running before the stop, gone once its PID has been killed.
+    monkeypatch.setattr(
+        cli_main, "_is_suzent_server_running", lambda *args: not killed_pids
+    )
+    monkeypatch.setattr(
+        cli_main, "get_pid_on_port", lambda port: None if killed_pids else 4321
+    )
+    monkeypatch.setattr(cli_main, "kill_process", killed_pids.append)
+
+    result = runner.invoke(app, ["restart", "--dev"])
+
+    assert result.exit_code == 0
+    assert killed_pids == [4321]
+    assert popen_calls[0][:3] == [cli_main.sys.executable, "-m", "suzent.server"]
+
+
+def test_restart_forwards_custom_port_to_the_new_backend(monkeypatch, tmp_path):
+    """The replacement backend must bind the port that was just stopped."""
+    app = typer.Typer()
+    cli_main.register_commands(app)
+    killed_pids = []
+    popen_calls = []
+    popen_envs = []
+
+    def fake_popen(cmd, env=None, **kwargs):
+        popen_calls.append(cmd)
+        popen_envs.append(env)
+        return _ServeProcessSuccess()
+
+    _stub_dev_start(monkeypatch, tmp_path, [])
+    monkeypatch.setattr(cli_main.subprocess, "Popen", fake_popen)
+    probed_ports = []
+
+    def fake_running(host, port, *args):
+        probed_ports.append(port)
+        return not killed_pids
+
+    monkeypatch.setattr(cli_main, "_is_suzent_server_running", fake_running)
+    monkeypatch.setattr(
+        cli_main, "get_pid_on_port", lambda port: None if killed_pids else 4321
+    )
+    monkeypatch.setattr(cli_main, "kill_process", killed_pids.append)
+
+    result = runner.invoke(app, ["restart", "--port", "8001", "--dev"])
+
+    assert result.exit_code == 0
+    assert probed_ports == [8001, 8001]
+    assert popen_envs[0]["SUZENT_PORT"] == "8001"
+
+
+def test_restart_starts_when_nothing_is_running(monkeypatch, tmp_path):
+    app = typer.Typer()
+    cli_main.register_commands(app)
+    popen_calls = []
+
+    _stub_dev_start(monkeypatch, tmp_path, popen_calls)
+    monkeypatch.setattr(cli_main, "_is_suzent_server_running", lambda *args: False)
+    monkeypatch.setattr(cli_main, "get_pid_on_port", lambda port: None)
+    monkeypatch.setattr(
+        cli_main,
+        "kill_process",
+        lambda pid: pytest.fail("nothing was running, so nothing should be killed"),
+    )
+
+    result = runner.invoke(app, ["restart", "--dev"])
+
+    assert result.exit_code == 0
+    assert "No Suzent server running" in result.output
+    assert popen_calls[0][:3] == [cli_main.sys.executable, "-m", "suzent.server"]
+
+
+def test_restart_aborts_when_port_stays_busy(monkeypatch, tmp_path):
+    app = typer.Typer()
+    cli_main.register_commands(app)
+    popen_calls = []
+
+    _stub_dev_start(monkeypatch, tmp_path, popen_calls)
+    monkeypatch.setattr(cli_main, "_is_suzent_server_running", lambda *args: True)
+    monkeypatch.setattr(cli_main, "get_pid_on_port", lambda port: 4321)
+    monkeypatch.setattr(cli_main, "kill_process", lambda pid: None)
+    monkeypatch.setattr(
+        cli_main, "_wait_for_port_release", lambda port, timeout=2.0: False
+    )
+
+    result = runner.invoke(app, ["restart"])
+
+    assert result.exit_code == 1
+    assert "was not released" in result.output
+    assert popen_calls == []
+
+
+def test_wait_for_port_release_times_out(monkeypatch):
+    monkeypatch.setattr(cli_main, "get_pid_on_port", lambda port: 4321)
+
+    assert cli_main._wait_for_port_release(1234, timeout=0.0) is False
+
+
+def test_stop_reports_when_no_server_is_running(monkeypatch):
+    app = typer.Typer()
+    cli_main.register_commands(app)
+
+    monkeypatch.setattr(cli_main, "_is_suzent_server_running", lambda *args: False)
+
+    result = runner.invoke(app, ["stop"])
+
+    assert result.exit_code == 0
+    assert "No Suzent server running" in result.output
+
+
 def test_get_ui_binary_prefers_managed_release_over_newer_local_build(
     monkeypatch, tmp_path
 ):

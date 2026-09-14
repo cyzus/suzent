@@ -78,6 +78,7 @@ suzent start           # 启动后端与桌面应用
 suzent serve           # 仅启动后端（无界面 / 独立模式）
 suzent ui              # 连接已运行的后端，仅启动桌面应用
 suzent stop            # 停止正在运行的后端服务
+suzent restart         # 停止正在运行的后端服务，然后重新启动 Suzent
 suzent doctor          # 检查依赖环境，诊断安装问题
 suzent update          # 更新到最新稳定版
 suzent check-update    # 查看是否有新版本可用
