@@ -219,8 +219,10 @@ jobs:
       - name: Copy desktop assets from previous published release
         shell: bash
         run: |
+          # `^v` keeps browser-extension releases (browser-v*) out: they carry
+          # no desktop assets, so reusing one would fail the asset count below.
           previous_tag="$(gh release list --exclude-drafts --exclude-pre-releases --limit 20 --json tagName --jq \
-            '.[].tagName' | grep -Fvx "$RELEASE_TAG" | head -n 1)"
+            '.[].tagName' | grep -E '^v[0-9]' | grep -Fvx "$RELEASE_TAG" | head -n 1)"
           if [[ -z "$previous_tag" ]]; then
             echo "::error::No previous published release is available for asset reuse"
             exit 1

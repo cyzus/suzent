@@ -1,0 +1,93 @@
+name: Release Browser Extension
+
+# The extension versions independently of the app: its store listing is updated
+# on its own cadence, and Chrome refuses a re-upload at an existing version. So
+# a merge that changes extensions/browser/ and bumps manifest.json publishes its
+# own `browser-v<version>` release carrying the store-ready ZIP. A merge that
+# touches the extension without bumping is stopped in CI, not here.
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'extensions/browser/**'
+      - '.github/workflows/browser-extension.yml'
+      - 'scripts/build_browser_extension.py'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Package and release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Resolve version
+        id: version
+        shell: bash
+        run: |
+          version="$(python scripts/build_browser_extension.py --print-version)"
+          tag="browser-v$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          # Re-running on a version that already shipped is a no-op, not a
+          # failure: pushes that touch the extension without bumping it land
+          # here too (a README edit, a workflow tweak).
+          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            echo "$tag already exists; nothing to release."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build extension ZIP
+        if: steps.version.outputs.publish == 'true'
+        run: python scripts/build_browser_extension.py --output "dist/suzent-browser-${{ steps.version.outputs.version }}.zip"
+
+      - name: Tag release
+        if: steps.version.outputs.publish == 'true'
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Browser extension $VERSION"
+          git push origin "$TAG"
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+
+      - name: Publish release
+        if: steps.version.outputs.publish == 'true'
+        shell: bash
+        run: |
+          cat > release-notes.md <<'NOTES'
+          Suzent Browser extension for Chrome and Edge.
+
+          `suzent-browser-VERSION.zip` is the store upload: the contents of
+          `extensions/browser/` with `manifest.json` at the ZIP root. The build is
+          reproducible, so this asset can be compared byte-for-byte against a local
+          `python scripts/build_browser_extension.py`.
+
+          Submit it through the Chrome Web Store and Edge Partner Center dashboards;
+          both queue a human review before the update reaches users.
+          NOTES
+          sed -i "s/VERSION/$VERSION/" release-notes.md
+          gh release create "$TAG" \
+            --verify-tag \
+            --title "Browser extension $VERSION" \
+            --notes-file release-notes.md \
+            "dist/suzent-browser-$VERSION.zip"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
