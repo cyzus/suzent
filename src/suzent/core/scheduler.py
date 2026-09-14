@@ -394,7 +394,7 @@ class SchedulerBrain(BaseBrain):
             db.update_cron_job_run_state(job_id, last_error=str(e))
             raise
         finally:
-            unregister_background_stream(chat_id)
+            unregister_background_stream(chat_id, stream_queue)
 
     def _build_config_override(
         self, db, *, model_override: Optional[str] = None

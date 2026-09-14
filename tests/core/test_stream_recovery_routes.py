@@ -48,7 +48,10 @@ async def test_http_refresh_recovers_already_consumed_tokens():
     await response.body_iterator.aclose()
 
 
-async def test_refresh_during_save_receives_snapshot_then_commit_confirmation():
+@pytest.mark.parametrize("unregister", [False, True])
+async def test_refresh_during_save_receives_snapshot_then_commit_confirmation(
+    unregister,
+):
     queue = stream_registry.register_background_stream("chat")
     release = asyncio.Event()
 
@@ -59,6 +62,9 @@ async def test_refresh_during_save_receives_snapshot_then_commit_confirmation():
     queue.replay.persistence = asyncio.create_task(save())
     await queue.put('data: {"type":"TEXT_MESSAGE_CONTENT","delta":"answer"}\n\n')
     await queue.put(None)
+    if unregister:
+        stream_registry.unregister_background_stream("chat", queue)
+        assert stream_registry.get_background_queue("chat") is queue
     response = await live_stream(request({"chat_id": "chat", "protocol": 1}))
     assert response.status_code == 200
     assert decode(await anext(response.body_iterator))["events"][0]["delta"] == "answer"

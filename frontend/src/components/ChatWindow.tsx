@@ -12,6 +12,7 @@ import {
 import { stripDenyApprovalPolicies } from '../lib/approvalPolicy';
 import { hideStreamingDrafts } from '../lib/streamingDrafts';
 import { StreamRecoveryError } from '../lib/recoverableStream';
+import { completeDirectStream } from './chat/completeDirectStream';
 import { reconcileToolCallMessages } from '../lib/toolCallReconciliation';
 import type { Message, FileAttachment } from '../types/api';
 import type { ContentBlock } from '../lib/chatUtils';
@@ -388,8 +389,9 @@ function _loadStreamSeed(chatId: string): StreamSeed | null {
   }
 }
 
-function _clearStreamSeed(): void {
+function _clearStreamSeed(chatId?: string | null): void {
   try {
+    if (chatId && !_loadStreamSeed(chatId)) return;
     sessionStorage.removeItem(STREAM_SEED_KEY);
   } catch {
     /* ignore */
@@ -946,6 +948,26 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     url: `${getApiBase()}/chat`,
     onFinish: async (parts, persistence) => {
       const chatId = streamingChatIdRef.current || activeChatIdRef.current;
+      const finishDirect = (loadHistory: () => Promise<void>) =>
+        completeDirectStream({
+          isSelected: () => activeChatIdRef.current === chatId,
+          ownsStream: () => streamingChatIdRef.current === chatId,
+          loadHistory,
+          clearChatStreaming: () => setIsStreaming(false, chatId),
+          clearTransient: () => {
+            streamingChatIdRef.current = null;
+            clearParts();
+            setCurrentUsage(null);
+            setCurrentStreamDisplayRole('assistant');
+          },
+          clearSeed: () => _clearStreamSeed(chatId),
+        });
+      if (!isLiveStreamRef.current && activeChatIdRef.current !== chatId) {
+        heartbeatInFlightRef.current = false;
+        setHeartbeatRunning(false, chatId);
+        await finishDirect(async () => {});
+        return;
+      }
 
       const hasPendingApprovals = parts.some(
         (p) => p.type === 'tool' && p.state === 'approval-requested' && !p.output && !!p.approvalId
@@ -966,7 +988,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         setTimeout(
           () => {
             try {
-              loadChat(chatId!, { force: true });
+              if (activeChatIdRef.current === chatId) loadChat(chatId!, { force: true });
             } catch {}
           },
           persistence?.confirmed ? 0 : 300
@@ -1008,7 +1030,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         setHeartbeatRunning(false, null);
       }
       heartbeatInFlightRef.current = false;
-      streamingChatIdRef.current = null;
       // Clear any stale live-stream parts from a previous background turn so
       // tryConnect's cleanup path doesn't convert them to a redundant message.
       liveStreamPartsRef.current = [];
@@ -1030,17 +1051,17 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
       setCurrentUsage(null);
       setCurrentStreamDisplayRole('assistant');
-      const syncHistory = () => loadChat(chatId!, { force: true }).catch(() => {});
-      if (persistence?.confirmed) {
-        await loadChat(chatId!, { force: true, throwOnError: true });
-        if (activeChatIdRef.current !== chatId) return;
-      }
-      setIsStreaming(false, chatId);
-      clearParts();
-      _clearStreamSeed();
+      const syncHistory = async () => {
+        if (activeChatIdRef.current === chatId) await loadChat(chatId!, { force: true });
+      };
+      await finishDirect(async () => {
+        if (persistence?.confirmed) {
+          await loadChat(chatId!, { force: true, throwOnError: true });
+        }
+      });
       if (!persistence?.confirmed) {
         // Compatibility for callers still using the legacy multipart transport.
-        setTimeout(syncHistory, 800);
+        setTimeout(() => syncHistory().catch(() => {}), 800);
       }
 
       try {

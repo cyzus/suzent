@@ -842,7 +842,7 @@ class SocialBrain(BaseBrain):
                     process_task.cancel()
                     raise
                 finally:
-                    unregister_background_stream(social_chat_id)
+                    unregister_background_stream(social_chat_id, stream_queue)
             else:
                 try:
                     if is_steer:
@@ -867,7 +867,7 @@ class SocialBrain(BaseBrain):
                             citation_sources_out=social_citation_sources,
                         )
                 finally:
-                    unregister_background_stream(social_chat_id)
+                    unregister_background_stream(social_chat_id, stream_queue)
 
             try:
                 get_database().set_last_result_at(social_chat_id)

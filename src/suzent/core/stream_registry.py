@@ -389,11 +389,14 @@ def try_register_background_stream(chat_id: str) -> Optional[_BusStreamQueue]:
 def unregister_background_stream(
     chat_id: str, queue: Optional[_BusStreamQueue] = None
 ) -> None:
-    """Remove the background queue for a chat (signals no active stream)."""
-    if queue is not None and background_queues.get(chat_id) is not queue:
+    """End production, retaining recovery state under the normal replay policy."""
+    current = background_queues.get(chat_id)
+    if current is None or (queue is not None and current is not queue):
         return
-    background_queues.pop(chat_id, None)
-    # stream_ended is already emitted by the None sentinel put_nowait in _BusStreamQueue
+    current.put_nowait(None)
+    # Persistence can outlive the producer. Registry pruning owns eviction so
+    # scheduler/social cleanup cannot strand observers during the final save.
+    _prune_completed_streams()
 
 
 def get_background_queue(chat_id: str) -> Optional[_BusStreamQueue]:

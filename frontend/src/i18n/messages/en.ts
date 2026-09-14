@@ -1113,9 +1113,12 @@ export const en = {
     connecting: 'Connecting to Neural Core...',
     outputValidationRetryError:
       'The model response format failed validation too many times. Please retry this message.',
-    streamRecoveryUnavailable: 'Stream recovery is no longer available. Reload to read the saved conversation.',
-    streamPersistenceFailed: 'The response could not be saved. Your received content is shown below.',
-    streamInterrupted: 'The connection was interrupted. Reload to reconnect; your received content is shown below.',
+    streamRecoveryUnavailable:
+      'Stream recovery is no longer available. Reload to read the saved conversation.',
+    streamPersistenceFailed:
+      'The response could not be saved. Your received content is shown below.',
+    streamInterrupted:
+      'The connection was interrupted. Reload to reconnect; your received content is shown below.',
     genericError: 'Something went wrong. Please try again.',
     acpAgentLocked: 'ACP agent is fixed for this chat',
     heartbeatOff: 'Heartbeat off',

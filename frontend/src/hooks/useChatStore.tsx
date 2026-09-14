@@ -1200,6 +1200,13 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
 
   const setStreamingState = useCallback(
     (streaming: boolean, chatId?: string | null) => {
+      if (
+        !streaming &&
+        chatId &&
+        activeStreamingChatIdRef.current &&
+        activeStreamingChatIdRef.current !== chatId
+      )
+        return;
       setIsStreamingState(streaming);
       const targetChatId = chatId ?? currentChatId;
 
@@ -1364,7 +1371,10 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
   ]);
 
   const loadChat = useCallback(
-    async (chatId: string, options?: { force?: boolean; authoritative?: boolean; throwOnError?: boolean }) => {
+    async (
+      chatId: string,
+      options?: { force?: boolean; authoritative?: boolean; throwOnError?: boolean }
+    ) => {
       const force = !!options?.force || !!options?.authoritative;
       // authoritative: the backend rejected whatever the client did optimistically,
       // so its snapshot replaces local state outright. The guards below all exist
