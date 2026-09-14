@@ -213,7 +213,14 @@ class DreamRunner(BaseBrain):
                 "last_lint_result": last_lint_result,
             }
 
-        self._load_failures(mgr)
+        # Status can run in a worker thread. Never hydrate the live runner here:
+        # a slow read could overwrite retry counts recorded by a concurrent run.
+        failures = dict(self._failures)
+        if not self._failures_loaded:
+            try:
+                failures = mgr.markdown_store.read_dream_failures()
+            except Exception:
+                logger.warning("[dream] could not read pacing state for status")
         watermark = mgr.markdown_store.read_watermark()
         pending = self._pending_dates(mgr, watermark)
         pending_facts = self._count_fact_lines(mgr, pending)
@@ -260,7 +267,7 @@ class DreamRunner(BaseBrain):
             "last_ingest_result": last_ingest_result,
             "last_lint_finished_at": last_lint_finished_at,
             "last_lint_result": last_lint_result,
-            "failures": dict(self._failures),
+            "failures": failures,
             "min_facts": CONFIG.memory_consolidation_min_facts,
             "min_hours": CONFIG.memory_consolidation_min_hours,
             "max_days": CONFIG.memory_consolidation_max_days,
