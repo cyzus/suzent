@@ -88,4 +88,4 @@ claim deprecated — changes how a fact ranks, not whether it exists.
 See [Configuration](./configuration.md) for the rest.
 
 Interested in how this is built? See
-[Development > Memory System](../../03-developing/memory/architecture.md).
+[Memory Architecture](../../02-concepts/memory/architecture.md).

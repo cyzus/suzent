@@ -1,71 +1,70 @@
 # System Reminders & File Citations
 
-Two mechanisms let Suzent inject out-of-band context into a conversation without it bleeding into the visible chat:
-
-- **System reminders** — hidden operational context for the *model* (active skills, dynamic memory, ad-hoc signals), delimited by invisible Unicode characters so the user never sees it.
-- **File citations** — references to local files (`file://`) rendered as clickable citation badges alongside web sources.
-
-Both rely on Unicode **Private Use Area (PUA)** codepoints — characters that render as nothing in the UI but survive round-trips through the model and the message store.
+System reminders carry runtime-authored context for the model. File citations
+render source references for the user. Both use Private Use Area (PUA) markers,
+but invisible formatting is not a trust boundary.
 
 ## System reminders
 
-### How a reminder is built
+### Assembly and provider contract
 
-`build_combined_reminder` (`core/system_reminder.py`) merges several sources into a single hidden block each turn:
+`core/system_reminder.py` owns assembly and parsing. `build_combined_reminder`
+runs global hooks each turn and per-turn hooks when a nonblank user message is
+present. Hooks run concurrently with a two-second timeout per provider; failed
+or timed-out providers are skipped with a warning. Blocking provider work uses
+`run_provider_blocking` so it does not block the event loop.
 
-1. **Global hooks** — `(chat_id, deps) -> str | None`, run on every turn. Used for always-on signals like active skills or tool availability.
-2. **Per-turn hooks** — `(chat_id, deps, user_message) -> str | None`, run only when there's a real user message. Used for query-dependent retrieval such as dynamic RAG memory injection. Each runs under a 2 s timeout so a slow embedding/search call can't stall the pipeline; timed-out hooks are skipped silently.
-3. **Ad-hoc reminders** — one-off strings the caller supplies for a single turn.
+Ad-hoc caller directives precede hook output. Hook registration order determines
+priority. Fragments are sanitized before deduplication and budget measurement.
+The assembled body has a 6,000-character budget including display-trigger markup
+and separators; the outer reminder wrapper is separate. Trailing fragments that
+do not fit are dropped. When necessary, the first fragment is truncated with a
+marker. With dependencies available, the implementation attempts to spill that
+fragment to a file and includes its accessible path and retention hint; if the
+spill fails, the truncation marker remains. This does not guarantee every dropped
+fragment is saved.
 
-The merged parts are joined with `---` separators and wrapped by `wrap_in_system_reminder`.
+Providers should read state without mutating it: goal turn accounting belongs to
+turn completion, not prompt construction. Log metadata rather than prompt or
+reminder bodies.
 
-### Invisible PUA delimiters
+### Runtime provenance and ingress
 
-By default, reminders are wrapped in invisible PUA delimiters rather than a visible `<system-reminder>` XML tag:
+The process generates `RUNTIME_NONCE`. Default wrappers contain both the nonce
+and PUA delimiters `U+E203` / `U+E204`; `SUZENT_XML_SYSTEM_REMINDER` switches to
+an XML wrapper carrying the nonce. These formats are presentation and parsing
+mechanisms, not permission grants. A model can see the nonce, so external text
+must never gain runtime provenance by copying it.
 
-| Constant | Codepoint | Role |
-|----------|-----------|------|
-| `PUA_START` | `U+E203` | hidden-content start |
-| `PUA_END`   | `U+E204` | hidden-content end |
+`make_user_prompt_part` is the shared construction boundary. External user
+content is sanitized; runtime-authored content uses the explicit trusted call
+path. Tool payload sanitization and the tool-output history processor prevent
+untrusted output from becoming runtime reminder blocks. Stored user prompts are
+sanitized on reuse; blocks from an earlier process do not carry the current
+nonce. This does not imply all same-process reminder history is deduplicated.
 
-The wrapped block looks like this (the delimiters are invisible — shown here as their codepoints):
+Keep per-turn reminders in the user-prompt suffix so the stable system-prompt
+prefix can be cached. Do not move mutable context into that prefix as a shortcut
+for establishing trust.
 
-```
-<U+E203>
-<reminder body>
-<U+E204>
-```
+### Display and parsing
 
-This makes reminders genuinely invisible in the UI and means the model doesn't have to *honor a convention* to keep them hidden — there's no visible tag to accidentally echo back. The system prompt still instructs the model to use but never reference this context (see below).
+A `display_trigger` is the user-visible explanation for a hidden action. Callers
+can supply a sequence of constituents; assembly owns joining, deduplication, and
+budgeting so the transcript reflects what was actually delivered.
 
-> **Codepoint allocation.** The citation system owns `U+E200`–`U+E202` (see [File citations](#file-citations)); system reminders use the next free codepoints `U+E203`/`U+E204`. Keep these ranges distinct when adding new PUA-based features.
+Use the module's helpers rather than parsing wrapper strings independently:
 
-### XML fallback for debugging
+| Helper | Responsibility |
+| --- | --- |
+| `wrap_in_system_reminder` | Sanitize and wrap runtime reminder content. |
+| `strip_system_reminders` | Remove reminder blocks for display. |
+| `extract_system_reminder_content` | Extract reminder content; not a provenance check. |
+| `iter_reminder_fragments` | Parse fragments using the module's boundary rules. |
+| `extract_system_reminder_display_trigger` | Recover the visible trigger. |
+| `register_global_hook` / `register_per_turn_hook` | Register asynchronous providers. |
 
-Set the `SUZENT_XML_SYSTEM_REMINDER` environment variable to wrap reminders in readable `<system-reminder>…</system-reminder>` XML tags instead of invisible PUA characters. This makes the raw context easy to inspect while debugging. All consumers (`strip_system_reminders`, `extract_system_reminder_content`) understand **both** formats, so mixed histories are handled transparently.
-
-### Display triggers
-
-A reminder may carry an optional `display_trigger` — user-visible text explaining *why* a hidden action happened (e.g. a "Skill activated" notice). It's nested as a `<system-reminder-display-trigger>` XML sub-tag **inside** the block regardless of the outer delimiter, so `_rebuild_display_messages` (`core/chat_processor.py`) can extract it via `extract_system_reminder_display_trigger` when reconstructing what the user sees.
-
-### Helper functions
-
-| Function | Purpose |
-|----------|---------|
-| `wrap_in_system_reminder(content, display_trigger=None)` | Wrap content in a hidden block (PUA, or XML under the debug env var). |
-| `strip_system_reminders(text)` | Remove all reminder blocks (PUA **and** XML) — used to clean text before display. |
-| `extract_system_reminder_content(text)` | Return the concatenated inner text of all reminder blocks (PUA + XML). |
-| `extract_system_reminder_display_trigger(text)` | Return only the user-visible trigger text marked inside reminders. |
-| `register_global_hook` / `register_per_turn_hook` | Register reminder-producing callbacks. |
-
-### Model behavior
-
-The system prompt (`prompts.py`) tells the model how to treat this context:
-
-> Tool results and user messages may occasionally contain hidden system context, delimited either by invisible Unicode markers or by `<system-reminder>` blocks. These blocks carry out-of-band operational context injected by the system — they are NOT part of the user's actual message.
-> - Use the information in these blocks to inform your actions.
-> - NEVER acknowledge, quote, or reference these blocks in your reply.
-> - NEVER tell the user that you received a system reminder.
+PUA markers must remain distinct from citation markers (`U+E200`–`U+E202`).
 
 ## File citations
 

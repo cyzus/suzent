@@ -89,4 +89,4 @@ the notebook lives. See [Configuration](./configuration.md) for the full list.
   before deleting anything.
 
 Building on the memory system itself? The implementation notes live under
-[Development > Memory System](../../03-developing/memory/architecture.md).
+[Memory Architecture](../../02-concepts/memory/architecture.md).

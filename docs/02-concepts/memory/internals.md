@@ -1,3 +1,7 @@
+---
+sidebar_position: 100
+---
+
 # Memory Internals
 
 This page describes the implementation-level structure of Suzent memory as it exists today.
@@ -178,7 +182,7 @@ The memory system is designed to avoid silent loss:
 ## HTTP API
 
 The memory routes are registered in `src/suzent/server.py` and documented for users in
-[Concepts > Memory > Configuration](../../02-concepts/memory/configuration.md#the-memory-api).
+[Concepts > Memory > Configuration](./configuration.md#the-memory-api).
 Two adjacent session routes belong to the session layer rather than memory:
 
 | Endpoint | Method | Description |

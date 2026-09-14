@@ -42,7 +42,7 @@ write(
   "sitemap.xml",
   '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' +
     content.pages
-      .filter((p) => p.kind !== "notfound")
+      .filter((p) => p.kind !== "notfound" && p.kind !== "redirect")
       .map(
         (p) =>
           `<url><loc>${site}${xml(p.url === "/" ? "/" : p.url + "/")}</loc></url>`,
