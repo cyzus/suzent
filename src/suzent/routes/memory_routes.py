@@ -8,7 +8,9 @@ This module handles all memory endpoints including:
 """
 
 import json
+import traceback
 from typing import Any, Optional
+from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
@@ -617,8 +619,18 @@ async def get_dream_status(request: Request) -> JSONResponse:
                 }
             )
 
-        return JSONResponse(runner.status())
+        # Status scans the archive and reads notebook files, which can block on
+        # slow or unavailable storage independently of the server event loop.
+        return JSONResponse(await run_in_threadpool(runner.status))
+
+    except OSError as e:
+        logger.warning(f"Dream status storage unavailable (errno={e.errno})")
+        return JSONResponse(
+            {"error": "Memory storage temporarily unavailable. Please retry."},
+            status_code=503,
+            headers={"Retry-After": "5"},
+        )
 
     except Exception as e:
-        logger.error(f"Error getting dream status: {e}")
+        logger.error(f"Error getting dream status: {traceback.format_exc()}")
         return JSONResponse({"error": str(e)}, status_code=500)
