@@ -3,6 +3,17 @@ import { useI18n } from '../../i18n';
 import { getApiBase } from '../../lib/api';
 import { BrutalButton } from '../BrutalButton';
 
+const STORES = {
+  chrome: {
+    name: 'settings.browser.extensionStoreChrome',
+    url: 'https://chromewebstore.google.com/detail/suzent-browser/mjfjhclnoepglnjjmheollfpbngjebno',
+  },
+  edge: {
+    name: 'settings.browser.extensionStoreEdge',
+    url: 'https://microsoftedge.microsoft.com/addons/detail/suzent-browser/hobapppkcjggdhbbpnokgcoiddailnib',
+  },
+} as const;
+
 export function BrowserExtensionSetup(): React.ReactElement {
   const { t } = useI18n();
   const [connected, setConnected] = useState(false);
@@ -42,14 +53,13 @@ export function BrowserExtensionSetup(): React.ReactElement {
     } else window.open(url, '_blank', 'noopener,noreferrer');
   };
 
-  const action = async (kind: 'store' | 'download' | 'pair' | 'revoke'): Promise<void> => {
+  const action = async (
+    kind: 'chrome' | 'edge' | 'download' | 'pair' | 'revoke'
+  ): Promise<void> => {
     setBusy(true);
     setError(false);
     try {
-      if (kind === 'store')
-        await openExternal(
-          'https://chromewebstore.google.com/detail/suzent-browser/mjfjhclnoepglnjjmheollfpbngjebno'
-        );
+      if (kind === 'chrome' || kind === 'edge') await openExternal(STORES[kind].url);
       else if (kind === 'download')
         await openExternal(`${getApiBase()}/browser/extension/download`);
       else {
@@ -111,9 +121,18 @@ export function BrowserExtensionSetup(): React.ReactElement {
             <p className="text-sm leading-relaxed text-neutral-600 dark:text-neutral-400">
               {t('settings.browser.extensionInstall')}
             </p>
-            <BrutalButton variant="primary" disabled={busy} onClick={() => void action('store')}>
-              {t('settings.browser.extensionStore')}
-            </BrutalButton>
+            <div className="flex flex-wrap gap-2">
+              {(['chrome', 'edge'] as const).map((kind) => (
+                <BrutalButton
+                  key={kind}
+                  variant={kind === 'chrome' ? 'primary' : 'default'}
+                  disabled={busy}
+                  onClick={() => void action(kind)}
+                >
+                  {t('settings.browser.extensionStore', { store: t(STORES[kind].name) })}
+                </BrutalButton>
+              ))}
+            </div>
           </li>
           <li className="min-w-0 space-y-3 border-2 border-brutal-black p-4">
             <h3 className="flex items-center gap-2 font-bold">
