@@ -258,7 +258,10 @@ def _release_boundary(root: Path, next_version: str) -> str | None:
                     return commit
 
     tag_result = subprocess.run(
-        ["git", "describe", "--tags", "--abbrev=0"],
+        # Only app release tags. `browser-v*` tags the browser extension, which
+        # versions independently; an unfiltered describe would take one as the
+        # baseline and derive the app's bump from the wrong commit range.
+        ["git", "describe", "--tags", "--abbrev=0", "--match", "v[0-9]*"],
         cwd=root,
         capture_output=True,
         text=True,

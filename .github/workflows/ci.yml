@@ -194,3 +194,57 @@ jobs:
     - name: Build website
       working-directory: website
       run: npm run build
+
+  browser-extension:
+    name: Browser extension
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        fetch-depth: 0
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      with:
+        python-version: "3.12"
+
+    # The store copy of the extension can only be updated at a new version, and
+    # the backend tolerates an older extension by omitting fields rather than
+    # erroring - so an unbumped change to packaged code diverges silently and
+    # stays invisible until someone compares a store install against unpacked.
+    - name: Require a manifest bump for packaged changes
+      shell: bash
+      run: |
+        git fetch --depth=1 origin "$BASE_SHA"
+        packaged="$(git diff --name-only "$BASE_SHA...HEAD" -- extensions/browser/)"
+        if [[ -z "$packaged" ]]; then
+          echo "No extension changes."
+          exit 0
+        fi
+        before="$(git show "$BASE_SHA:extensions/browser/manifest.json" | python -c 'import json,sys; print(json.load(sys.stdin)["version"])')"
+        after="$(python scripts/build_browser_extension.py --print-version)"
+        if [[ "$before" == "$after" ]]; then
+          echo "::error::extensions/browser/ changed but manifest.json is still $before. Bump the version so the change can reach the Chrome and Edge stores."
+          echo "Changed:"; echo "$packaged"
+          exit 1
+        fi
+        # Strictly greater, because the stores reject a downgrade.
+        if ! python scripts/build_browser_extension.py --newer-than "$before"; then
+          echo "::error::Extension version must increase from $before, not move to $after."
+          exit 1
+        fi
+        # Two PRs can bump to the same version independently. Whichever merges
+        # first takes the tag; the second would merge with different extension
+        # code, and the release workflow would skip it as already released - so
+        # the code would never reach users and nothing would report a failure.
+        if [[ -n "$(git ls-remote --tags origin "refs/tags/browser-v$after")" ]]; then
+          echo "::error::browser-v$after is already released. Another PR took this version - bump past it."
+          exit 1
+        fi
+      env:
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+
+    - name: Verify the ZIP builds
+      run: python scripts/build_browser_extension.py --output dist/extension.zip
