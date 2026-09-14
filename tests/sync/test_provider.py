@@ -165,3 +165,57 @@ def test_pull_clears_untracked_payload_files(tmp_path: Path):
     GitHubSyncProvider(repo, branch="master").pull_ff_only()
 
     assert (payload / "node_devices.json").read_text(encoding="utf-8") == "[]"
+
+
+def test_fetch_updates_tracking_ref_for_non_origin_remote(tmp_path, monkeypatch):
+    """The authenticated fetch must name the *configured* remote in its refspec.
+
+    `_push_with_rebase` and the pull preview both resolve "<remote>/<branch>",
+    so a refspec hardcoded to refs/remotes/origin/<branch> leaves a non-origin
+    remote's tracking ref missing (pull fails) or stale (previews and auto-sync
+    silently use old data).
+    """
+    from suzent.sync import provider as provider_module
+
+    captured: dict[str, object] = {}
+
+    def fake_fetch(cwd, remote_url, branch, remote="origin"):
+        captured["remote"] = remote
+        captured["branch"] = branch
+        return "fetched"
+
+    monkeypatch.setattr(provider_module, "resolve_github_token", lambda: "tok")
+    monkeypatch.setattr(provider_module, "git_fetch_with_token", fake_fetch)
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    prov = provider_module.GitHubSyncProvider(repo, remote="github", branch="main")
+    monkeypatch.setattr(
+        prov, "_remote_url", lambda: "https://github.com/alice/brain.git"
+    )
+
+    assert prov._fetch() == "fetched"
+    assert captured["remote"] == "github"
+    assert captured["branch"] == "main"
+
+
+def test_fetch_with_token_builds_refspec_from_remote_name(tmp_path, monkeypatch):
+    from suzent.sync import github_token
+
+    captured: dict[str, tuple] = {}
+
+    def fake_run_git(cwd, *args, extra_env=None):
+        captured["args"] = args
+        return ""
+
+    monkeypatch.setattr(github_token, "_run_git", fake_run_git)
+    github_token.git_fetch_with_token(
+        tmp_path, "https://github.com/alice/brain.git", "main", "github"
+    )
+    assert "main:refs/remotes/github/main" in captured["args"]
+
+    # Default stays "origin" for every existing caller.
+    github_token.git_fetch_with_token(
+        tmp_path, "https://github.com/alice/brain.git", "main"
+    )
+    assert "main:refs/remotes/origin/main" in captured["args"]

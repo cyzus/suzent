@@ -12,9 +12,15 @@ def git_push_with_token(cwd: Path, remote_url: str, branch: str) -> str:
     return _run_git(cwd, "push", remote_url, branch, extra_env=_git_auth_env())
 
 
-def git_fetch_with_token(cwd: Path, remote_url: str, branch: str) -> str:
-    # Use refspec to update the remote-tracking ref (origin/branch), not just FETCH_HEAD
-    refspec = f"{branch}:refs/remotes/origin/{branch}"
+def git_fetch_with_token(
+    cwd: Path, remote_url: str, branch: str, remote: str = "origin"
+) -> str:
+    # Use a refspec to update the remote-tracking ref (<remote>/<branch>), not
+    # just FETCH_HEAD. The ref must be named after the *configured* remote:
+    # preview and rebase both resolve "<profile.remote>/<branch>", so hardcoding
+    # "origin" here would leave a non-origin remote's tracking ref missing (pull
+    # fails) or stale (previews and auto-sync silently use old data).
+    refspec = f"{branch}:refs/remotes/{remote}/{branch}"
     return _run_git(cwd, "fetch", remote_url, refspec, extra_env=_git_auth_env())
 
 
