@@ -16,7 +16,6 @@ five-question ownership test, see
 - [Providers](02-concepts/providers/README.md): Configure model providers (OpenAI, Anthropic, Gemini, Ollama, and more)
 - [Memory](02-concepts/memory/README.md): Persistent memory across sessions — how it works and how to configure it
 - [Notebook](02-concepts/memory/llm-wiki.md): Agent-maintained knowledge vault, Obsidian-compatible
-- [Upgrading](../UPGRADING.md): Manual steps when moving an existing install across versions
 
 ### Tools & Capabilities
 - [Tools](02-concepts/tools/tools.md): Full reference for all built-in tools
@@ -44,3 +43,6 @@ five-question ownership test, see
 - [Memory Architecture](03-developing/memory/architecture.md): How memory is written, consolidated, indexed, and read
 - [Memory Internals](03-developing/memory/internals.md): Class-by-class reference for contributors
 - [Logo Standard](03-developing/logo.md): Canonical logo geometry, component usage, and sizing guidelines
+
+## Upgrading
+- [Upgrading](04-upgrading.md): Manual steps when moving an existing install across versions, by release
