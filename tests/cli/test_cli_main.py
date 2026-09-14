@@ -224,6 +224,40 @@ def test_restart_stops_running_backend_then_starts(monkeypatch, tmp_path):
     assert popen_calls[0][:3] == [cli_main.sys.executable, "-m", "suzent.server"]
 
 
+def test_restart_forwards_custom_port_to_the_new_backend(monkeypatch, tmp_path):
+    """The replacement backend must bind the port that was just stopped."""
+    app = typer.Typer()
+    cli_main.register_commands(app)
+    killed_pids = []
+    popen_calls = []
+    popen_envs = []
+
+    def fake_popen(cmd, env=None, **kwargs):
+        popen_calls.append(cmd)
+        popen_envs.append(env)
+        return _ServeProcessSuccess()
+
+    _stub_dev_start(monkeypatch, tmp_path, [])
+    monkeypatch.setattr(cli_main.subprocess, "Popen", fake_popen)
+    probed_ports = []
+
+    def fake_running(host, port, *args):
+        probed_ports.append(port)
+        return not killed_pids
+
+    monkeypatch.setattr(cli_main, "_is_suzent_server_running", fake_running)
+    monkeypatch.setattr(
+        cli_main, "get_pid_on_port", lambda port: None if killed_pids else 4321
+    )
+    monkeypatch.setattr(cli_main, "kill_process", killed_pids.append)
+
+    result = runner.invoke(app, ["restart", "--port", "8001", "--dev"])
+
+    assert result.exit_code == 0
+    assert probed_ports == [8001, 8001]
+    assert popen_envs[0]["SUZENT_PORT"] == "8001"
+
+
 def test_restart_starts_when_nothing_is_running(monkeypatch, tmp_path):
     app = typer.Typer()
     cli_main.register_commands(app)

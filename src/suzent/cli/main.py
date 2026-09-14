@@ -1292,6 +1292,7 @@ def register_commands(app: typer.Typer):
 
     @app.command()
     def start(
+        port: int = typer.Option(DEFAULT_PORT, help="Port for the backend to run on"),
         debug: bool = typer.Option(False, "--debug", help="Run server in debug mode"),
         dev: bool = typer.Option(
             False,
@@ -1332,7 +1333,9 @@ def register_commands(app: typer.Typer):
             try:
                 subprocess.run(
                     [str(_macos_launch_target(root, ui_bin))],
-                    env=_ui_launch_env({"SUZENT_DIR": str(root)}),
+                    env=_ui_launch_env(
+                        {"SUZENT_DIR": str(root), "SUZENT_PORT": str(port)}
+                    ),
                 )
             except (subprocess.CalledProcessError, KeyboardInterrupt):
                 pass
@@ -1347,20 +1350,21 @@ def register_commands(app: typer.Typer):
         ensure_cargo_in_path()
         ensure_msvc_linker()
 
-        backend_running = _is_suzent_server_running("127.0.0.1", DEFAULT_PORT)
+        backend_running = _is_suzent_server_running("127.0.0.1", port)
         ports_to_check = [(18080, "Frontend")]
         if not backend_running:
-            ports_to_check.insert(0, (DEFAULT_PORT, "Backend"))
+            ports_to_check.insert(0, (port, "Backend"))
         elif not dev:
             typer.echo(
-                f"  ✅ Backend already running on http://127.0.0.1:{DEFAULT_PORT}; "
-                "reusing it."
+                f"  ✅ Backend already running on http://127.0.0.1:{port}; reusing it."
             )
 
-        for port, name in ports_to_check:
-            pid = get_pid_on_port(port)
+        for busy_port, name in ports_to_check:
+            pid = get_pid_on_port(busy_port)
             if pid:
-                typer.echo(f"\n⚠️  {name} Port {port} is already in use by PID {pid}.")
+                typer.echo(
+                    f"\n⚠️  {name} Port {busy_port} is already in use by PID {pid}."
+                )
                 if typer.confirm("   Do you want to kill this process to continue?"):
                     typer.echo(f"   🔪 Killing PID {pid}...")
                     try:
@@ -1374,7 +1378,7 @@ def register_commands(app: typer.Typer):
                     raise typer.Exit(code=1)
 
         if dev and backend_running:
-            pid = get_pid_on_port(DEFAULT_PORT)
+            pid = get_pid_on_port(port)
             if not pid:
                 typer.echo(
                     "  ❌ Dev mode found an existing Suzent backend but could not "
@@ -1389,13 +1393,13 @@ def register_commands(app: typer.Typer):
             except Exception as error:
                 typer.echo(f"  ❌ Failed to restart existing backend: {error}")
                 raise typer.Exit(code=1)
-            if not _wait_for_port_release(DEFAULT_PORT):
+            if not _wait_for_port_release(port):
                 typer.echo("  ❌ Existing backend did not release its port.")
                 raise typer.Exit(code=1)
             backend_running = False
 
         backend_env = os.environ.copy()
-        backend_env["SUZENT_PORT"] = str(DEFAULT_PORT)
+        backend_env["SUZENT_PORT"] = str(port)
         if dev:
             backend_env["SUZENT_DEV_MODE"] = "1"
 
@@ -1510,7 +1514,7 @@ def register_commands(app: typer.Typer):
                 f"No Suzent server running on http://127.0.0.1:{port}; starting one."
             )
 
-        start(debug=debug, dev=dev, docs=False)
+        start(port=port, debug=debug, dev=dev, docs=False)
 
     @app.command()
     def ui(
