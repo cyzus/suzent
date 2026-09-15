@@ -44,10 +44,12 @@ private func invitation(_ overrides: [String: Any] = [:]) throws -> String {
     let value = try PairingInvitation.parse(text)
     let selected = try await value.resolving { origin in
         if origin == "https://desktop.example" { throw URLError(.cannotConnectToHost) }
+        return "validated preview"
     }
-    #expect(selected.origin == "https://tailnet.example")
+    #expect(selected.invitation.origin == "https://tailnet.example")
+    #expect(selected.value == "validated preview")
     do {
-        _ = try await value.resolving { _ in throw URLError(.cannotConnectToHost) }
+        _ = try await value.resolving { _ -> Void in throw URLError(.cannotConnectToHost) }
         Issue.record("Expected all unreachable candidates to fail")
     } catch PairingError.unreachable { }
 }

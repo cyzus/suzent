@@ -128,9 +128,8 @@ fun MessageView(message: DisplayMessage) {
                 color = if (user) Color.Black else MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.labelLarge)
             if (user) SelectionContainer { Text(message.text, color = Color.Black) }
-            else if (message.parts.isEmpty()) MarkdownText(message.text)
         }
-        if (!user) ActivityContent(message.parts.ifEmpty { message.activities }, live = false)
+        if (!user) ActivityContent(message.parts, live = false)
 
     }
 }

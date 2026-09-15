@@ -23,9 +23,8 @@ struct MessageView: View {
                         .font(.caption.bold())
                 }
                 if user { Text(message.text).textSelection(.enabled) }
-                else if message.parts.isEmpty { SuzentMarkdown(text: message.text) }
             }
-            if !user { ActivityContent(parts: message.parts.isEmpty ? message.activities : message.parts, live: false) }
+            if !user { ActivityContent(parts: message.parts, live: false) }
 
         }
         .padding(user ? 14 : 0)

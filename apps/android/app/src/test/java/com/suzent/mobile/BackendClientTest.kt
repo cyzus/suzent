@@ -113,7 +113,7 @@ class BackendClientTest {
                 val probe = BackendClient(Backend.parse(origin, true), "", probeOnly = true)
                 try { probe.capabilities() } finally { probe.close() }
             }
-            assertEquals(origins[1], selected.origin)
+            assertEquals(origins[1], selected.first.origin)
             for (server in listOf(first, second)) {
                 assertEquals(1, server.requestCount)
                 val request = server.takeRequest(1, TimeUnit.SECONDS)!!
@@ -135,7 +135,10 @@ class BackendClientTest {
         val api = BackendClient(Backend.parse(server.url("/").toString(), true), "")
         val invitation = PairingInvitation(server.url("/").toString(), id, "b".repeat(43), expiry, phoneConfirmation = true)
         try {
-            val preview = api.pairingPreview(invitation)
+            val selected = resolvePairingInvitation(invitation) { api.pairingPreview(invitation) }
+            val preview = selected.second
+            assertEquals(invitation.origin, selected.first.origin)
+            assertEquals(1, server.requestCount)
             assertEquals("Test desktop", preview.desktopName)
             assertEquals(listOf("one"), preview.permissions.chatIds)
             assertFalse(preview.permissions.stop)

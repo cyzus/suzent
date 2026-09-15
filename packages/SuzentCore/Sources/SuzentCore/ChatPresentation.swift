@@ -18,13 +18,9 @@ public struct MessagePart: Decodable, Sendable, Equatable {
 }
 
 public struct DisplayMessage: Sendable {
-    public var role: String
-    public var text: String
-    public var activities: [MessagePart]
-    public var parts: [MessagePart]
-    public init(role: String, text: String, activities: [MessagePart], parts: [MessagePart] = []) {
-        self.role = role; self.text = text; self.activities = activities; self.parts = parts
-    }
+    public let role: String
+    public let parts: [MessagePart]
+    public var text: String { parts.filter { $0.type == "text" }.compactMap(\.text).joined(separator: "\n\n") }
 }
 
 public func presentMessages(_ messages: [ChatMessage], liveToolIds: Set<String> = []) -> [DisplayMessage] {
@@ -33,16 +29,16 @@ public func presentMessages(_ messages: [ChatMessage], liveToolIds: Set<String> 
     return messages.compactMap { message in
         if PresentationTokens.compactionSummaryMarkers.contains(where: { message.content.contains($0) }) { return nil }
         if message.role == "tool", let id = message.toolCallId, (represented.contains(id) || liveToolIds.contains(id)) { return nil }
-        let parts = message.role == "tool"
-            ? [MessagePart(type: "tool", text: nil, toolName: message.name, args: nil,
-                           output: message.content, toolCallId: message.toolCallId, state: nil)] : message.parts.filter { $0.type != "tool" || !liveToolIds.contains($0.toolCallId ?? "") }
-        let textParts = parts.filter { $0.type == "text" }
-        let text = !textParts.isEmpty ? textParts.compactMap(\.text).joined(separator: "\n\n")
-            : parts.isEmpty && message.parts.isEmpty ? message.content : ""
-        let activities = normalizeParts(parts).filter { $0.type != "text" && !($0.type == "tool" &&
-            PresentationTokens.ignoredToolNames.contains(($0.toolName ?? "").lowercased())) }
-        return text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && activities.isEmpty
-            ? nil : DisplayMessage(role: message.role, text: text, activities: activities, parts: normalizeParts(parts.isEmpty ? [MessagePart(type: "text", text: text)] : parts))
+        let rawParts: [MessagePart]
+        if message.role == "tool" {
+            rawParts = [MessagePart(type: "tool", toolName: message.name, output: message.content, toolCallId: message.toolCallId)]
+        } else if message.parts.isEmpty {
+            rawParts = [MessagePart(type: "text", text: message.content)]
+        } else {
+            rawParts = message.parts.filter { $0.type != "tool" || !liveToolIds.contains($0.toolCallId ?? "") }
+        }
+        let parts = normalizeParts(rawParts)
+        return parts.isEmpty ? nil : DisplayMessage(role: message.role, parts: parts)
     }
 }
 
@@ -65,9 +61,10 @@ public func normalizeParts(_ parts: [MessagePart]) -> [MessagePart] {
     return result
 }
 
+/// Groups parts already normalized at the history or live-publication boundary.
 public func activityChunks(_ parts: [MessagePart]) -> [[MessagePart]] {
     var chunks: [[MessagePart]] = []
-    for part in normalizeParts(parts) {
+    for part in parts {
         if part.type == "text" || chunks.isEmpty || chunks.last?.last?.type == "text" { chunks.append([part]) }
         else { chunks[chunks.count - 1].append(part) }
     }

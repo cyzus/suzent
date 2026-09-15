@@ -36,7 +36,6 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     var pendingApprovals by mutableStateOf<List<ApprovalRequest>>(emptyList())
     var approvalChoices by mutableStateOf<Map<String, String>>(emptyMap())
     var approvalBusy by mutableStateOf(false)
-    var liveText by mutableStateOf("")
     var error by mutableStateOf<String?>(null)
     var busy by mutableStateOf(false)
     var streaming by mutableStateOf(false)
@@ -77,14 +76,10 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                     val probe = BackendClient(Backend.parse(origin, BuildConfig.DEBUG), "", probeOnly = true)
                     try {
                         probe.capabilities()
-                        if (invitation.phoneConfirmation) probe.pairingPreview(invitation)
+                        if (invitation.phoneConfirmation) probe.pairingPreview(invitation) else null
                     } finally { probe.close() }
                 }
-                val preview = if (selected.phoneConfirmation) {
-                    val probe = BackendClient(Backend.parse(selected.origin, BuildConfig.DEBUG), "", probeOnly = true)
-                    try { probe.pairingPreview(selected) } finally { probe.close() }
-                } else null
-                if (current == generation) { pairingPreview = preview; pairingInvitation = selected }
+                if (current == generation) { pairingPreview = selected.second; pairingInvitation = selected.first }
             } catch (failure: CancellationException) { throw failure }
             catch (failure: Exception) { if (current == generation) handle(failure) }
             finally { if (current == generation) busy = false }
@@ -226,7 +221,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     fun open(chat: Chat) {
         if (streaming || busy) return
         selected = chat
-        liveText = ""; liveParts = emptyList()
+        liveParts = emptyList()
         viewModelScope.launch {
             try {
                 val api = client ?: return@launch
@@ -284,13 +279,14 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         if (streaming || !foreground) return
         val current = generation
         streaming = true
-        liveText = ""; liveParts = emptyList()
+        liveParts = emptyList()
         streamJob = viewModelScope.launch {
             val buffer = LiveActivityBuffer()
+            fun publishActivity() { buffer.drain()?.let { liveParts = it } }
             val publisher = launch {
                 while (isActive) {
                     delay(50)
-                    if (current == generation && foreground) buffer.drain()?.let { liveParts = it; liveText = it.filter { part -> part.type == "text" }.joinToString("\n\n") { part -> part.text } }
+                    if (current == generation && foreground) publishActivity()
                 }
             }
             try {
@@ -303,19 +299,19 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
                 publisher.cancel()
-                if (current == generation && foreground) buffer.drain()?.let { liveParts = it; liveText = it.filter { part -> part.type == "text" }.joinToString("\n\n") { part -> part.text } }
+                if (current == generation && foreground) publishActivity()
                 val saved = api.chat(id)
                 if (current == generation && selected?.id == id) {
                     selected = saved
                     chats = chats.map { if (it.id == saved.id) saved.copy(messages = emptyList()) else it }
-                    liveText = ""; liveParts = emptyList()
+                    liveParts = emptyList()
                 }
             } catch (error: CancellationException) { throw error }
             catch (failure: Exception) { if (current == generation && foreground) handle(failure, R.string.stream_error) }
             finally {
                 publisher.cancel()
                 if (current == generation) {
-                    if (foreground) buffer.drain()?.let { liveParts = it; liveText = it.filter { part -> part.type == "text" }.joinToString("\n\n") { part -> part.text } }
+                    if (foreground) publishActivity()
                     streaming = false
                 }
             }
@@ -341,7 +337,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                     if (state.running && !streaming) observe(id)
                     if (!state.running && !streaming && liveParts.isEmpty() && (previousRunning || previousPending && state.pending.isEmpty())) {
                         val saved = api.chat(id)
-                        if (selected?.id == id && generation == current) { selected = saved; liveText = ""; liveParts = emptyList() }
+                        if (selected?.id == id && generation == current) { selected = saved; liveParts = emptyList() }
                     }
                     previousRunning = state.running; previousPending = state.pending.isNotEmpty()
                 } catch (failure: CancellationException) { throw failure }
@@ -392,7 +388,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
             client?.cancelLive()
             streamJob?.cancel()
             streaming = false
-            liveText = ""; liveParts = emptyList()
+            liveParts = emptyList()
             disconnectNode()
         } else {
             viewModelScope.launch {
@@ -485,7 +481,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         origin = ""
         draft = ""
         streaming = false
-        liveText = ""; liveParts = emptyList()
+        liveParts = emptyList()
     }
 
     override fun onCleared() { disconnectNode(); client?.close() }

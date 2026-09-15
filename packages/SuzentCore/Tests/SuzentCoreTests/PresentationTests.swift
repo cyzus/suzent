@@ -15,7 +15,7 @@ import Testing
     for fixture in try JSONDecoder().decode([Fixture].self, from: data) {
         let rows = presentMessages(fixture.messages)
         #expect(rows.map(\.text) == fixture.texts, "\(fixture.name)")
-        #expect(rows.map { $0.activities.count } == fixture.activities, "\(fixture.name)")
+        #expect(rows.map { $0.parts.filter { $0.type != "text" }.count } == fixture.activities, "\(fixture.name)")
     }
 }
 
@@ -47,4 +47,19 @@ import Testing
         let next = buffer.drain()
         #expect(next == nil)
     }
+}
+
+@Test func batchesDeltasAndFlushesFinalChunk() {
+    var buffer = LiveActivityBuffer()
+    for _ in 0..<100 { buffer.consume(StreamEvent(type: "TEXT_MESSAGE_CONTENT", delta: "a", message: nil)) }
+    let batch = buffer.drain()
+    #expect(batch?.first?.text == String(repeating: "a", count: 100))
+    let idle = buffer.drain()
+    #expect(idle == nil)
+    buffer.consume(StreamEvent(type: "TEXT_MESSAGE_CONTENT", delta: "尾", message: nil))
+    let final = buffer.drain()
+    #expect(final?.first?.text == String(repeating: "a", count: 100) + "尾")
+    buffer.consume(StreamEvent(type: "STREAM_RESET", delta: nil, message: nil))
+    let reset = buffer.drain()
+    #expect(reset == [])
 }

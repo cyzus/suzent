@@ -66,13 +66,14 @@ data class PairingInvitation(val origin: String, val id: String, val secret: Str
 }
 
 
-suspend fun resolvePairingInvitation(invitation: PairingInvitation, probe: suspend (String) -> Unit): PairingInvitation {
+suspend fun <T> resolvePairingInvitation(invitation: PairingInvitation, probe: suspend (String) -> T): Pair<PairingInvitation, T> {
     for (origin in invitation.origins) {
         kotlinx.coroutines.currentCoroutineContext().ensureActive()
         if (invitation.expiresAt <= System.currentTimeMillis() / 1000.0) throw PairingFailure(PairingFailure.Reason.EXPIRED)
         try {
-            probe(origin)
-            return invitation.copy(origin = origin)
+            val value = probe(origin)
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            return invitation.copy(origin = origin) to value
         } catch (failure: kotlinx.coroutines.CancellationException) { throw failure }
         catch (_: Exception) { }
     }

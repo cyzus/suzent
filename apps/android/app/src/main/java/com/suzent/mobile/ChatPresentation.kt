@@ -6,7 +6,9 @@ data class MessagePart(
     val state: String = "", val messageId: String = ""
 )
 
-data class DisplayMessage(val role: String, val text: String, val activities: List<MessagePart>, val parts: List<MessagePart> = emptyList())
+data class DisplayMessage(val role: String, val parts: List<MessagePart>) {
+    val text: String get() = parts.filter { it.type == "text" }.joinToString("\n\n") { it.text }
+}
 
 fun presentMessages(messages: List<ChatMessage>, liveToolIds: Set<String> = emptySet()): List<DisplayMessage> {
     val representedTools = messages.flatMap { it.parts }.filter { it.type == "tool" }
@@ -14,14 +16,13 @@ fun presentMessages(messages: List<ChatMessage>, liveToolIds: Set<String> = empt
     return messages.mapNotNull { message ->
         if (PresentationTokens.compactionSummaryMarkers.any { message.content.contains(it) }) return@mapNotNull null
         if (message.role == "tool" && (message.toolCallId in representedTools || message.toolCallId in liveToolIds)) return@mapNotNull null
-        val parts = if (message.role == "tool") listOf(MessagePart("tool", toolName = message.name,
-            output = message.content, toolCallId = message.toolCallId)) else message.parts.filter { it.type != "tool" || it.toolCallId !in liveToolIds }
-        val textParts = parts.filter { it.type == "text" }
-        val text = if (textParts.isNotEmpty()) textParts.joinToString("\n\n") { it.text }
-            else if (parts.isEmpty() && message.parts.isEmpty()) message.content else ""
-        val activities = normalizeParts(parts).filter { it.type != "text" &&
-            !(it.type == "tool" && it.toolName.lowercase() in PresentationTokens.ignoredToolNames) }
-        if (text.isBlank() && activities.isEmpty()) null else DisplayMessage(message.role, text, activities, normalizeParts(if (parts.isEmpty()) listOf(MessagePart("text", text)) else parts))
+        val rawParts = when {
+            message.role == "tool" -> listOf(MessagePart("tool", toolName = message.name, output = message.content, toolCallId = message.toolCallId))
+            message.parts.isEmpty() -> listOf(MessagePart("text", text = message.content))
+            else -> message.parts.filter { it.type != "tool" || it.toolCallId !in liveToolIds }
+        }
+        val parts = normalizeParts(rawParts)
+        if (parts.isEmpty()) null else DisplayMessage(message.role, parts)
     }
 }
 
@@ -40,9 +41,10 @@ fun normalizeParts(parts: List<MessagePart>): List<MessagePart> {
     return result
 }
 
+// Parts are normalized at the history or live-publication boundary.
 fun activityChunks(parts: List<MessagePart>): List<List<MessagePart>> {
     val chunks = mutableListOf<MutableList<MessagePart>>()
-    normalizeParts(parts).forEach { part ->
+    parts.forEach { part ->
         if (part.type == "text" || chunks.isEmpty() || chunks.last().last().type == "text") chunks.add(mutableListOf(part))
         else chunks.last().add(part)
     }

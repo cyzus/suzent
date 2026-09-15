@@ -77,16 +77,16 @@ public struct PairingInvitation: Decodable, Sendable {
         return value
     }
 
-    public func resolving(probe: @Sendable (String) async throws -> Void) async throws -> Self {
+    public func resolving<Value: Sendable>(probe: @Sendable (String) async throws -> Value) async throws -> (invitation: Self, value: Value) {
         for candidate in origins ?? [origin] {
             try Task.checkCancellation()
             guard expiresAt > Date().timeIntervalSince1970 else { throw PairingError.expired }
             do {
-                try await probe(candidate)
+                let value = try await probe(candidate)
                 try Task.checkCancellation()
                 var result = self
                 result.origin = candidate
-                return result
+                return (result, value)
             } catch {
                 try Task.checkCancellation()
             }

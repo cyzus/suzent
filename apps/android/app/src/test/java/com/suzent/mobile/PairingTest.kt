@@ -44,10 +44,10 @@ class PairingTest {
             calls.add(origin)
             if (origin == "https://desktop.example") throw java.io.IOException()
         }
-        assertEquals("https://tailnet.example", selected.origin)
+        assertEquals("https://tailnet.example", selected.first.origin)
         assertEquals(listOf("https://desktop.example", "https://tailnet.example"), calls)
         val failure = runCatching {
-            resolvePairingInvitation(selected) { throw java.io.IOException() }
+            resolvePairingInvitation<Unit>(selected.first) { throw java.io.IOException() }
         }.exceptionOrNull() as PairingFailure
         assertEquals(PairingFailure.Reason.UNREACHABLE, failure.reason)
     }

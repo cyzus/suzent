@@ -18,7 +18,7 @@ class ChatPresentationTest {
             assertEquals(case.getString("name"), texts.length(), rows.size)
             rows.forEachIndexed { row, message ->
                 assertEquals(case.getString("name"), texts.getString(row), message.text)
-                assertEquals(case.getString("name"), activities.getInt(row), message.activities.size)
+                assertEquals(case.getString("name"), activities.getInt(row), message.parts.count { it.type != "text" })
             }
         }
     }
@@ -41,5 +41,16 @@ class ChatPresentationTest {
             assertEquals((0 until chunks.length()).map { chunks.getInt(it) }, activityChunks(parts).map { it.size })
             assertEquals(null, buffer.drain())
         }
+    }
+
+    @Test fun batchesDeltasAndFlushesFinalChunk() {
+        val buffer = LiveActivityBuffer()
+        repeat(100) { buffer.consume(JSONObject().put("type", "TEXT_MESSAGE_CONTENT").put("delta", "a")) }
+        assertEquals("a".repeat(100), buffer.drain()?.single()?.text)
+        assertEquals(null, buffer.drain())
+        buffer.consume(JSONObject().put("type", "TEXT_MESSAGE_CONTENT").put("delta", "尾"))
+        assertEquals("a".repeat(100) + "尾", buffer.drain()?.single()?.text)
+        buffer.consume(JSONObject().put("type", "STREAM_RESET"))
+        assertEquals(emptyList<MessagePart>(), buffer.drain())
     }
 }
