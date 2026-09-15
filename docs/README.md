@@ -16,6 +16,8 @@ five-question ownership test, see
 - [Providers](02-concepts/providers/README.md): Configure model providers (OpenAI, Anthropic, Gemini, Ollama, and more)
 - [Memory](02-concepts/memory/README.md): Persistent memory across sessions — how it works and how to configure it
 - [Notebook](02-concepts/memory/llm-wiki.md): Agent-maintained knowledge vault, Obsidian-compatible
+- [Memory Architecture](02-concepts/memory/architecture.md): How memory is written, consolidated, indexed, and read
+- [Memory Internals](02-concepts/memory/internals.md): Class-by-class reference for contributors
 
 ### Tools & Capabilities
 - [Tools](02-concepts/tools/tools.md): Full reference for all built-in tools
@@ -32,18 +34,17 @@ five-question ownership test, see
 - [ACP](02-concepts/nodes/acp.md): Serve Suzent as an ACP agent for editors and other clients
 
 ### Runtime
+- [System Reminders](02-concepts/runtime/system-reminders.md): Runtime context, trust boundaries, and file citations
 - [Retry](02-concepts/runtime/retry.md): Roll back the last agent turn and rerun
 - [Post-Processing](02-concepts/runtime/postprocess.md): Background tasks after each turn
 
 ## Development
 - [Native Mobile](03-developing/mobile.md): SwiftUI/Compose monorepo, developer-preview setup, and roadmap
+- [Stream Recovery Protocol](03-developing/stream-recovery-protocol.md): Snapshot, replay, and persistence acknowledgements
 - [Development Guide](03-developing/development-guide.md): Setup, workflow, production builds, and architecture
 - [Docker Services](03-developing/docker-services.md): Redis, SearXNG, and sandbox configuration
 - [Release Guide](03-developing/releasing.md): Version bumping and release process
 - [Model Capability Updates](03-developing/model-capability-updates.md): Maintainer workflow for refreshing shipped model metadata
-- [Memory Architecture](03-developing/memory/architecture.md): How memory is written, consolidated, indexed, and read
-- [Memory Internals](03-developing/memory/internals.md): Class-by-class reference for contributors
-- [Logo Standard](03-developing/logo.md): Canonical logo geometry, component usage, and sizing guidelines
 
 ## Upgrading
 - [Upgrading](04-upgrading.md): Manual steps when moving an existing install across versions, by release
