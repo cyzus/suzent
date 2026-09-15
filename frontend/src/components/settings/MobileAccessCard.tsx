@@ -1,10 +1,12 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, useRef } from 'react';
 import QRCode from 'qrcode';
 import { useI18n } from '../../i18n';
 import { getApiBase, type NodeAuthConfig } from '../../lib/api';
 import {
   mobileRequest,
+  cancelMobileInvitation,
   mobilePairingPayload,
+  mobilePairingOrigins,
   type MobileDevice,
   type MobileInvitation,
   type MobilePending,
@@ -14,34 +16,38 @@ import { BrutalButton } from '../BrutalButton';
 import { SettingsCard } from './SettingsCard';
 import { CopyButton } from './CopyButton';
 
-function ApprovePhone({
-  device,
+const emptyPermissions = (): MobilePermissions => ({
+  chat_ids: [],
+  all_chats: false,
+  create_chats: false,
+  send: false,
+  stop: false,
+  approve_tools: false,
+});
+const fullPermissions = (): MobilePermissions => ({
+  ...emptyPermissions(),
+  all_chats: true,
+  create_chats: true,
+  send: true,
+  stop: true,
+  approve_tools: true,
+});
+
+function PermissionPicker({
+  permissions,
+  setPermissions,
   chats,
   busy,
-  decide,
 }: {
-  device: MobilePending;
+  permissions: MobilePermissions;
+  setPermissions: (value: MobilePermissions) => void;
   chats: { id: string; title: string }[];
   busy: boolean;
-  decide: (id: string, permissions: MobilePermissions | null) => void;
 }): React.ReactElement {
   const { t } = useI18n();
-  const [permissions, setPermissions] = useState<MobilePermissions>({
-    chat_ids: [],
-    all_chats: false,
-    create_chats: false,
-    send: false,
-    stop: false,
-  });
   return (
-    <div className="border-2 border-brutal-black dark:border-white p-4 space-y-3">
-      <strong>
-        {device.display_name} · {device.platform}
-      </strong>
-      <p className="text-sm">
-        {t('mobileAccess.compare', { code: device.pairing_id.slice(0, 6) })}
-      </p>
-      {(['all_chats', 'create_chats', 'send', 'stop'] as const).map((key) => (
+    <div className="space-y-3">
+      {(['all_chats', 'create_chats', 'send', 'stop', 'approve_tools'] as const).map((key) => (
         <label key={key} className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"
@@ -76,6 +82,37 @@ function ApprovePhone({
         </fieldset>
       )}
       <p className="text-xs text-neutral-500">{t('mobileAccess.toolPolicy')}</p>
+    </div>
+  );
+}
+
+function ApprovePhone({
+  device,
+  chats,
+  busy,
+  decide,
+}: {
+  device: MobilePending;
+  chats: { id: string; title: string }[];
+  busy: boolean;
+  decide: (id: string, permissions: MobilePermissions | null) => void;
+}): React.ReactElement {
+  const { t } = useI18n();
+  const [permissions, setPermissions] = useState<MobilePermissions>(emptyPermissions);
+  return (
+    <div className="border-2 border-brutal-black dark:border-white p-4 space-y-3">
+      <strong>
+        {device.display_name} · {device.platform}
+      </strong>
+      <p className="text-sm">
+        {t('mobileAccess.compare', { code: device.pairing_id.slice(0, 6) })}
+      </p>
+      <PermissionPicker
+        permissions={permissions}
+        setPermissions={setPermissions}
+        chats={chats}
+        busy={busy}
+      />
       <div className="flex gap-2">
         <BrutalButton
           disabled={busy}
@@ -99,6 +136,23 @@ export function MobileAccessCard({
 }): React.ReactElement {
   const { t } = useI18n();
   const [origin, setOrigin] = useState('');
+  const [permissions, setPermissions] = useState<MobilePermissions>(fullPermissions);
+  const invitationRef = useRef<MobileInvitation | null>(null);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    const discard = () => {
+      const active = invitationRef.current;
+      invitationRef.current = null;
+      if (active) void cancelMobileInvitation(active.pairing_id).catch(() => {});
+    };
+    window.addEventListener('pagehide', discard);
+    return () => {
+      mounted.current = false;
+      window.removeEventListener('pagehide', discard);
+      discard();
+    };
+  }, []);
   const [invitation, setInvitation] = useState<MobileInvitation | null>(null);
   const [payload, setPayload] = useState('');
   const [qr, setQR] = useState('');
@@ -160,19 +214,45 @@ export function MobileAccessCard({
       setBusy(false);
     }
   };
+  const clearInvitation = () => {
+    invitationRef.current = null;
+    setInvitation(null);
+    setPayload('');
+    setQR('');
+  };
+  const cancelActive = async () => {
+    const active = invitationRef.current;
+    if (active) await cancelMobileInvitation(active.pairing_id);
+    clearInvitation();
+  };
   const generate = () =>
     void act(async () => {
-      mobilePairingPayload(origin, { pairing_id: '', invitation: '', expires_at: 0 });
-      const next = await mobileRequest<MobileInvitation>('pairing/invite', {});
-      const value = mobilePairingPayload(origin, next);
-      const image = await QRCode.toDataURL(value, {
-        errorCorrectionLevel: 'M',
-        margin: 2,
-        width: 320,
-      });
-      setInvitation(next);
-      setPayload(value);
-      setQR(image);
+      const candidates = mobilePairingOrigins(origin, config?.addresses);
+      mobilePairingPayload(origin, { pairing_id: '', invitation: '', expires_at: 0 }, candidates);
+      await cancelActive();
+      const next = await mobileRequest<MobileInvitation>('pairing/invite', { permissions });
+      if (!mounted.current || next.approval !== 'phone') {
+        await cancelMobileInvitation(next.pairing_id);
+        if (mounted.current) throw new Error('Update the desktop backend');
+        return;
+      }
+      invitationRef.current = next;
+      try {
+        const value = mobilePairingPayload(origin, next, candidates);
+        const image = await QRCode.toDataURL(value, {
+          errorCorrectionLevel: 'M',
+          margin: 2,
+          width: 320,
+        });
+        if (!mounted.current || invitationRef.current !== next) return;
+        setInvitation(next);
+        setPayload(value);
+        setQR(image);
+      } catch (error) {
+        await cancelMobileInvitation(next.pairing_id);
+        invitationRef.current = null;
+        throw error;
+      }
     });
   const decide = (id: string, permissions: MobilePermissions | null) =>
     void act(async () => {
@@ -196,11 +276,45 @@ export function MobileAccessCard({
             {error}
           </p>
         )}
+        <div className="border-2 border-brutal-black dark:border-white p-3 space-y-2">
+          <p className="font-bold">
+            {t(
+              permissions.all_chats &&
+                permissions.create_chats &&
+                permissions.send &&
+                permissions.stop &&
+                permissions.approve_tools
+                ? 'mobileAccess.fullAccess'
+                : 'mobileAccess.restrictedAccess'
+            )}
+          </p>
+          <p className="text-sm text-neutral-500">{t('mobileAccess.fullAccessHelp')}</p>
+          <details>
+            <summary className="cursor-pointer text-sm font-bold">
+              {t('mobileAccess.restrictAccess')}
+            </summary>
+            <div className="pt-3 space-y-3">
+              <PermissionPicker
+                permissions={permissions}
+                setPermissions={setPermissions}
+                chats={chats}
+                busy={busy || invitation !== null}
+              />
+              <BrutalButton
+                disabled={busy || invitation !== null}
+                onClick={() => setPermissions(fullPermissions())}
+              >
+                {t('mobileAccess.restoreFullAccess')}
+              </BrutalButton>
+            </div>
+          </details>
+        </div>
         <label className="block space-y-1 text-sm">
           <span>{t('mobileAccess.origin')}</span>
           <input
             className="w-full border-2 border-brutal-black dark:border-white bg-transparent p-2"
             value={origin}
+            disabled={busy || invitation !== null}
             onChange={(event) => {
               setOrigin(event.target.value);
               setInvitation(null);
@@ -210,9 +324,19 @@ export function MobileAccessCard({
           />
         </label>
         <p className="text-xs text-neutral-500">{t('mobileAccess.network')}</p>
+        {config?.addresses?.map((address) => (
+          <p key={address.gateway_url} className="text-xs font-mono break-all">
+            {address.label}: {address.host}
+          </p>
+        ))}
         <BrutalButton variant="warning" disabled={busy || !origin} onClick={generate}>
           {t('mobileAccess.generate')}
         </BrutalButton>
+        {invitation && (
+          <BrutalButton disabled={busy} onClick={() => void act(cancelActive)}>
+            {t('mobileAccess.cancelInvitation')}
+          </BrutalButton>
+        )}
         {invitation &&
           (expired ? (
             <p>{t('mobileAccess.expired')}</p>
@@ -263,7 +387,7 @@ export function MobileAccessCard({
                   : t('mobileAccess.chatCount', { count: device.permissions.chat_ids.length })}
               </p>
               <p className="text-xs">
-                {(['create_chats', 'send', 'stop'] as const)
+                {(['create_chats', 'send', 'stop', 'approve_tools'] as const)
                   .filter((key) => device.permissions[key])
                   .map((key) => t(`mobileAccess.${key}`))
                   .join(' · ') || t('mobileAccess.readOnly')}

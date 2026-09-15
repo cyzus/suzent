@@ -118,3 +118,101 @@ def test_new_conversations_remain_valid_after_store_reload(tmp_path):
     result = store.collect(invitation["pairing_id"], pickup["pickup_secret"])
     assert store.add_chat(result["device"]["device_id"], "new")
     assert PairingStore(path).verify(result["token"]).permissions.permits_chat("new")
+
+
+def test_phone_confirmation_uses_frozen_desktop_scope(tmp_path):
+    store = PairingStore(tmp_path / "clients.json")
+    permissions = ClientPermissions(chat_ids=["shared"], send=True)
+    invite = store.invite(permissions, "Test desktop")
+    permissions.chat_ids.append("private")
+    preview = store.preview(invite["pairing_id"])
+    assert invite["approval"] == "phone"
+    assert preview["desktop_name"] == "Test desktop"
+    assert preview["permissions"]["chat_ids"] == ["shared"]
+    assert store.devices() == []
+    assert "invitation" not in preview
+    pickup = store.claim(
+        invite["pairing_id"],
+        invite["invitation"],
+        "Phone",
+        "android",
+        confirm_permissions=True,
+    )
+    assert store.devices() == []
+    assert store.pending() == []
+    with pytest.raises(PairingError):
+        store.decide(invite["pairing_id"], ClientPermissions(all_chats=True))
+    result = store.collect(invite["pairing_id"], pickup["pickup_secret"])
+    assert result["status"] == "approved"
+    assert (
+        result["device"]["permissions"]
+        == ClientPermissions(chat_ids=["shared"], send=True).model_dump()
+    )
+    with pytest.raises(PairingError):
+        store.collect(invite["pairing_id"], pickup["pickup_secret"])
+    with pytest.raises(PairingError):
+        store.claim(invite["pairing_id"], invite["invitation"], "Other", "ios")
+    assert store.revoke(result["device"]["device_id"])
+    assert store.verify(result["token"]) is None
+
+
+@pytest.mark.parametrize("claimed_first", [False, True])
+def test_cancel_preapproved_invitation_before_credential_delivery(
+    tmp_path, claimed_first
+):
+    store = PairingStore(tmp_path / "clients.json")
+    invite = store.invite(ClientPermissions(create_chats=True))
+    pickup = None
+    if claimed_first:
+        pickup = store.claim(
+            invite["pairing_id"],
+            invite["invitation"],
+            "Phone",
+            "ios",
+            confirm_permissions=True,
+        )
+    assert store.cancel(invite["pairing_id"])
+    assert not store.cancel(invite["pairing_id"])
+    with pytest.raises(PairingError):
+        store.preview(invite["pairing_id"])
+    with pytest.raises(PairingError):
+        if pickup:
+            store.collect(invite["pairing_id"], pickup["pickup_secret"])
+        else:
+            store.claim(invite["pairing_id"], invite["invitation"], "Phone", "ios")
+    assert store.devices() == []
+
+
+def test_preapproved_invitation_expires_without_creating_a_grant(tmp_path, monkeypatch):
+    store = PairingStore(tmp_path / "clients.json")
+    invite = store.invite(ClientPermissions(send=True))
+    monkeypatch.setattr(
+        "suzent.mobile.pairing.time.time", lambda: invite["expires_at"] + 1
+    )
+    with pytest.raises(PairingError):
+        store.preview(invite["pairing_id"])
+    with pytest.raises(PairingError):
+        store.claim(invite["pairing_id"], invite["invitation"], "Phone", "ios")
+    assert store.devices() == []
+
+
+def test_concurrent_phone_confirmation_issues_only_one_grant(tmp_path):
+    store = PairingStore(tmp_path / "clients.json")
+    invite = store.invite(ClientPermissions(create_chats=True))
+
+    def accept(_):
+        try:
+            pickup = store.claim(
+                invite["pairing_id"],
+                invite["invitation"],
+                "Phone",
+                "android",
+                confirm_permissions=True,
+            )
+            return store.collect(invite["pairing_id"], pickup["pickup_secret"])
+        except PairingError:
+            return None
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        assert sum(value is not None for value in pool.map(accept, range(16))) == 1
+    assert len(store.devices()) == 1

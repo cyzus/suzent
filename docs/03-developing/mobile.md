@@ -18,9 +18,13 @@ covers is described under [Run](#run) and [Preview flow](#preview-flow); what it
 is under [Limits](#limits).
 
 Mobile uses a separate, revocable client credential issued after desktop approval.
-In desktop Settings → Devices → Mobile access, generate a short-lived QR invitation.
-Scan it in the native app (or paste the invitation), confirm the backend address,
-compare the displayed code, and approve the required conversations and actions.
+In desktop Settings → Devices → Mobile access, choose the shared conversations
+and actions, then generate a short-lived QR invitation. Scan it in the native app
+(or paste the invitation), review the desktop name and server-provided permissions,
+and confirm the connection on the phone. There is no second desktop approval.
+Closing the QR cancels an unused invitation; issued device credentials can be
+revoked separately. Abrupt desktop termination or network loss falls back to the
+five-minute invitation expiry. Old invitations retain the code-comparison flow.
 Host and peer-agent tokens are not accepted as mobile credentials. Existing preview
 connections must pair again. See the [pairing contract](../../packages/mobile-contract/pairing.md).
 
@@ -51,7 +55,13 @@ The phone checks capabilities before connecting and reports incompatible version
 
 Enable desktop **Reachable by other devices**, restart, and use its LAN/Tailscale
 address on port 25314 (never the phone's localhost) in the desktop pairing card.
-Pair the phone and select its permissions on desktop. HTTPS/WSS is required for release builds. Debug builds
+The QR includes the preferred origin plus discovered LAN/Tailscale candidates.
+Updated phones check candidate capabilities without credentials, then display the
+first reachable compatible address for confirmation. A three-second timeout per
+candidate bounds this check. Old single-origin invitations remain supported.
+Select permissions on desktop, then pair and confirm on the phone. Saved connections retain
+only the confirmed address; changing networks does not migrate credentials.
+HTTPS/WSS is required for release builds. Debug builds
 allow explicit HTTP addresses for a trusted LAN/tailnet; HTTP is not encrypted.
 No certificate-validation bypass or automatic URL redirect is supported.
 
@@ -112,7 +122,7 @@ list so the stop control cannot retain a stale list flag.
 ## Limits
 
 The preview renders Markdown replies and structured tool/reasoning activities in
-expandable native views. Tool approvals, attachments, citations, A2UI and some
+expandable activity rails. Attachments, citations, A2UI and some
 legacy inline tool formats still require desktop. Shared palette and filtering
 rules live in `packages/presentation`; regenerate platform files with
 `uv run python scripts/generate_presentation.py` after editing their source.
@@ -168,3 +178,9 @@ black language headers with horizontally scrollable light bodies. User messages
 use a neutral surface so yellow retains its emphasis role. Keyboard and camera
 permission prompts stay native. iOS uses VisionKit QR recognition; Android uses ZXing embedded. Neither
 scanner saves an image. Both apps provide English and Simplified Chinese strings.
+
+### Mobile tool approvals and activity rail
+
+New desktop invitations default to Full access; expand Restrict access for individual scopes. Existing grants keep their scope, so pair again to add `approve_tools`. The permission allows once-only decisions on pending requests, not automatic tool execution or policy editing.
+
+Both native clients use the same activity fixtures in `packages/mobile-contract/activity-fixtures.json`. They retain text/activity order, group consecutive reasoning and tools into expandable rails, replace replayed arguments, and clear the entire transient state on stream reset. Pending approvals use the desktop queue and show tool arguments with allow/reject actions. All requests in a batch must be decided before the native run resumes; ACP uses its existing live broker. Foreground polling reflects decisions made on desktop.

@@ -65,6 +65,24 @@
     <string name="allowed">Allowed</string>
     <string name="not_allowed">Not allowed</string>
     <string name="manage_access">Manage or revoke access in desktop Settings → Devices → Mobile access.</string>
-    <string name="tool_approval_desktop">Tool approvals remain on your desktop. Node access is separate.</string>
+    <string name="tool_approval_desktop">Tool requests follow the conversation policy. Node access is separate.</string>
     <string name="access">Access</string>
+    <string name="checking_addresses">Checking desktop addresses…</string>
+    <string name="pairing_unreachable">None of the desktop addresses could be reached with a compatible protocol. Check Wi-Fi or Tailscale and update the desktop app.</string>
+    <string name="confirm_connection_help">Confirm to connect with the permissions shown above. You do not need to approve again on desktop.</string>
+    <string name="confirm_connection">Confirm connection</string>
+    <string name="activity_count">Activity · %1$d</string>
+    <string name="activity_running">Running</string>
+    <string name="approval_required">Approval required</string>
+    <string name="approve_tools">Approve tool requests</string>
+    <string name="approval_backend">Via connected desktop</string>
+    <string name="allow_once">Allow once</string>
+    <string name="reject_tool">Reject</string>
+    <string name="approval_batch">Choose for each pending tool to continue.</string>
+    <string name="approval_desktop_only">Approve on desktop, or pair again with tool approval access.</string>
+    <string name="approval_refresh">Approval could not be confirmed. Refresh before trying again.</string>
+<string name="full_access">Full access</string>
+<string name="full_access_summary">All conversations, messaging, and tool approvals.</string>
+    <string name="activity_completed">Completed</string>
+    <string name="activity_failed">Failed</string>
 </resources>

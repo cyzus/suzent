@@ -24,6 +24,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     var origin by mutableStateOf("")
     var invitationText by mutableStateOf("")
     var pairingInvitation by mutableStateOf<PairingInvitation?>(null)
+    var pairingPreview by mutableStateOf<PairingPreview?>(null)
     var pairingCode by mutableStateOf<String?>(null)
     var device by mutableStateOf<ClientDevice?>(null)
     var canReconnect by mutableStateOf(false)
@@ -31,6 +32,10 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     var chats by mutableStateOf<List<Chat>>(emptyList())
     var selected by mutableStateOf<Chat?>(null)
     var draft by mutableStateOf("")
+    var liveParts by mutableStateOf<List<MessagePart>>(emptyList())
+    var pendingApprovals by mutableStateOf<List<ApprovalRequest>>(emptyList())
+    var approvalChoices by mutableStateOf<Map<String, String>>(emptyMap())
+    var approvalBusy by mutableStateOf(false)
     var liveText by mutableStateOf("")
     var error by mutableStateOf<String?>(null)
     var busy by mutableStateOf(false)
@@ -58,11 +63,32 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
 
     fun stageInvitation(value: String) {
         if (busy) return
-        try {
-            pairingInvitation = PairingInvitation.parse(value, BuildConfig.DEBUG)
-            invitationText = ""
-            error = null
-        } catch (failure: Exception) { handle(failure) }
+        val invitation = try { PairingInvitation.parse(value, BuildConfig.DEBUG) }
+        catch (failure: Exception) { handle(failure); return }
+        invitationText = ""
+        pairingInvitation = null
+        pairingPreview = null
+        error = null
+        busy = true
+        val current = generation
+        pairingJob = viewModelScope.launch {
+            try {
+                val selected = resolvePairingInvitation(invitation) { origin ->
+                    val probe = BackendClient(Backend.parse(origin, BuildConfig.DEBUG), "", probeOnly = true)
+                    try {
+                        probe.capabilities()
+                        if (invitation.phoneConfirmation) probe.pairingPreview(invitation)
+                    } finally { probe.close() }
+                }
+                val preview = if (selected.phoneConfirmation) {
+                    val probe = BackendClient(Backend.parse(selected.origin, BuildConfig.DEBUG), "", probeOnly = true)
+                    try { probe.pairingPreview(selected) } finally { probe.close() }
+                } else null
+                if (current == generation) { pairingPreview = preview; pairingInvitation = selected }
+            } catch (failure: CancellationException) { throw failure }
+            catch (failure: Exception) { if (current == generation) handle(failure) }
+            finally { if (current == generation) busy = false }
+        }
     }
 
     fun cancelPairing() {
@@ -70,6 +96,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         pairingJob = null
         pairingInvitation = null
         pairingCode = null
+        pairingPreview = null
         generation++
         busy = false
     }
@@ -84,9 +111,10 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
             val bootstrap = BackendClient(Backend.parse(invitation.origin, BuildConfig.DEBUG), "")
             try {
                 bootstrap.capabilities()
-                val claim = bootstrap.claim(invitation, android.os.Build.MODEL)
+                val claim = bootstrap.claim(invitation, android.os.Build.MODEL,
+                    confirmPermissions = invitation.phoneConfirmation && pairingPreview != null)
                 if (generation != current) return@launch
-                pairingCode = invitation.id.take(6)
+                if (!invitation.phoneConfirmation) pairingCode = invitation.id.take(6)
                 while (System.currentTimeMillis() / 1000.0 < claim.getDouble("expires_at")) {
                     currentCoroutineContext().ensureActive()
                     val result = bootstrap.collect(invitation.id, claim.getString("pickup_secret"))
@@ -102,11 +130,14 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                             connection = saved
                             origin = saved.origin
                             canReconnect = true
-                            pairingInvitation = null
                             activate(saved)
+                            pairingInvitation = null
                             return@launch
                         }
-                        "pending" -> delay(1000)
+                        "pending" -> {
+                            if (invitation.phoneConfirmation) throw PairingFailure(PairingFailure.Reason.INCOMPATIBLE)
+                            delay(1000)
+                        }
                         else -> throw PairingFailure(PairingFailure.Reason.INVALID)
                     }
                 }
@@ -160,6 +191,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                 PairingFailure.Reason.INCOMPATIBLE -> R.string.pairing_incompatible
                 PairingFailure.Reason.EXPIRED -> R.string.pairing_expired
                 PairingFailure.Reason.DENIED -> R.string.pairing_denied
+                PairingFailure.Reason.UNREACHABLE -> R.string.pairing_unreachable
             })
         } else { error = text(fallback) }
     }
@@ -194,7 +226,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     fun open(chat: Chat) {
         if (streaming || busy) return
         selected = chat
-        liveText = ""
+        liveText = ""; liveParts = emptyList()
         viewModelScope.launch {
             try {
                 val api = client ?: return@launch
@@ -252,43 +284,96 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         if (streaming || !foreground) return
         val current = generation
         streaming = true
-        liveText = ""
+        liveText = ""; liveParts = emptyList()
         streamJob = viewModelScope.launch {
-            val buffer = LiveTextBuffer()
+            val buffer = LiveActivityBuffer()
             val publisher = launch {
                 while (isActive) {
                     delay(50)
-                    if (current == generation && foreground) buffer.drain()?.let { liveText = it }
+                    if (current == generation && foreground) buffer.drain()?.let { liveParts = it; liveText = it.filter { part -> part.type == "text" }.joinToString("\n\n") { part -> part.text } }
                 }
             }
             try {
                 api.observe(id) { event ->
                     withContext(Dispatchers.Main) {
                         if (current == generation && foreground) {
-                            when (event.optString("type")) {
-                                "STREAM_RESET", "TEXT_MESSAGE_CONTENT" -> buffer.consume(event)
-                                "RUN_ERROR" -> error = text(R.string.task_error)
-                            }
+                            buffer.consume(event)
+                            if (event.optString("type") == "RUN_ERROR") error = text(R.string.task_error)
                         }
                     }
                 }
                 publisher.cancel()
-                if (current == generation && foreground) buffer.drain()?.let { liveText = it }
+                if (current == generation && foreground) buffer.drain()?.let { liveParts = it; liveText = it.filter { part -> part.type == "text" }.joinToString("\n\n") { part -> part.text } }
                 val saved = api.chat(id)
                 if (current == generation && selected?.id == id) {
                     selected = saved
                     chats = chats.map { if (it.id == saved.id) saved.copy(messages = emptyList()) else it }
-                    liveText = ""
+                    liveText = ""; liveParts = emptyList()
                 }
             } catch (error: CancellationException) { throw error }
             catch (failure: Exception) { if (current == generation && foreground) handle(failure, R.string.stream_error) }
             finally {
                 publisher.cancel()
                 if (current == generation) {
-                    if (foreground) buffer.drain()?.let { liveText = it }
+                    if (foreground) buffer.drain()?.let { liveParts = it; liveText = it.filter { part -> part.type == "text" }.joinToString("\n\n") { part -> part.text } }
                     streaming = false
                 }
             }
+        }
+    }
+
+    suspend fun watchApprovals(id: String) {
+        pendingApprovals = emptyList(); approvalChoices = emptyMap()
+        val current = generation
+        var previousRunning = false
+        var previousPending = false
+        while (currentCoroutineContext().isActive && selected?.id == id && generation == current) {
+            if (foreground && !approvalBusy) {
+                try {
+                    val api = client ?: return
+                    val state = api.approvals(id)
+                    currentCoroutineContext().ensureActive()
+                    if (selected?.id != id || generation != current) return
+                    if (!approvalBusy) {
+                        if (state.pending != pendingApprovals) approvalChoices = emptyMap()
+                        pendingApprovals = state.pending
+                    }
+                    if (state.running && !streaming) observe(id)
+                    if (!state.running && !streaming && liveParts.isEmpty() && (previousRunning || previousPending && state.pending.isEmpty())) {
+                        val saved = api.chat(id)
+                        if (selected?.id == id && generation == current) { selected = saved; liveText = ""; liveParts = emptyList() }
+                    }
+                    previousRunning = state.running; previousPending = state.pending.isNotEmpty()
+                } catch (failure: CancellationException) { throw failure }
+                catch (failure: Exception) {
+                    if (failure is BackendClient.HttpFailure && failure.code in listOf(401, 403)) { pendingApprovals = emptyList(); handle(failure); return }
+                    if (failure is BackendClient.HttpFailure && failure.code == 404) return
+                }
+            }
+            delay(2500)
+        }
+    }
+
+    fun chooseApproval(item: ApprovalRequest, action: ApprovalAction) {
+        val id = selected?.id ?: return
+        val api = client ?: return
+        if (approvalBusy || device?.permissions?.approveTools != true || item !in pendingApprovals || action !in item.actions) return
+        approvalChoices = approvalChoices + (item.id to action.id)
+        if (!pendingApprovals.all { approvalChoices.containsKey(it.id) }) return
+        val pending = pendingApprovals
+        val choices = approvalChoices
+        val current = generation
+        approvalBusy = true
+        viewModelScope.launch {
+            try {
+                api.decideApprovals(id, pending, choices)
+                if (current == generation && selected?.id == id) {
+                    pendingApprovals = emptyList()
+                    if (pending.all { it.kind == "tool" }) observe(id)
+                }
+            } catch (failure: CancellationException) { throw failure }
+            catch (failure: Exception) { if (current == generation) handle(failure, R.string.approval_refresh) }
+            finally { if (current == generation) { approvalBusy = false; approvalChoices = emptyMap() } }
         }
     }
 
@@ -307,7 +392,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
             client?.cancelLive()
             streamJob?.cancel()
             streaming = false
-            liveText = ""
+            liveText = ""; liveParts = emptyList()
             disconnectNode()
         } else {
             viewModelScope.launch {
@@ -379,6 +464,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
 
     fun forget() {
         pairingJob?.cancel()
+        pendingApprovals = emptyList(); approvalChoices = emptyMap(); approvalBusy = false
         try { store.clear() } catch (_: Exception) { error = text(R.string.secure_error) }
         generation++
         nodeEnabled = false
@@ -399,7 +485,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         origin = ""
         draft = ""
         streaming = false
-        liveText = ""
+        liveText = ""; liveParts = emptyList()
     }
 
     override fun onCleared() { disconnectNode(); client?.close() }

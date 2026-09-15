@@ -1,8 +1,9 @@
 """Mobile pairing endpoints. Operator routes require host authorization."""
 
+import socket
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, ValidationError
 from starlette.exceptions import HTTPException
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -12,12 +13,23 @@ from suzent.config import USER_CONFIG_DIR
 from suzent.mobile.pairing import ClientPermissions, PairingError, PairingStore
 
 
+class InviteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    permissions: ClientPermissions | None = None
+
+
+class PreviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    pairing_id: str = Field(pattern=r"^[a-f0-9]{32}$")
+
+
 class ClaimRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     pairing_id: str = Field(min_length=32, max_length=32)
     invitation: str = Field(min_length=40, max_length=64)
     display_name: str = Field(min_length=1, max_length=100)
     platform: Literal["ios", "android"]
+    confirm_permissions: StrictBool = False
 
 
 class PickupRequest(BaseModel):
@@ -51,9 +63,31 @@ async def capabilities(request: Request) -> JSONResponse:
 
 async def invite(request: Request) -> JSONResponse:
     try:
-        return reply(get_mobile_store(request).invite(), 201)
+        body = InviteRequest.model_validate(await request.json())
+        return reply(
+            get_mobile_store(request).invite(
+                body.permissions, socket.gethostname()[:100]
+            ),
+            201,
+        )
     except PairingError:
         return reply({"error": "Too many pending invitations"}, 429)
+    except (ValidationError, ValueError):
+        return reply({"error": "Invalid invitation permissions"}, 400)
+
+
+async def preview(request: Request) -> JSONResponse:
+    try:
+        body = PreviewRequest.model_validate(await request.json())
+        return reply(get_mobile_store(request).preview(body.pairing_id))
+    except (ValidationError, ValueError):
+        return reply({"error": "Invitation unavailable or invalid"}, 400)
+
+
+async def cancel(request: Request) -> JSONResponse:
+    return reply(
+        {"ok": get_mobile_store(request).cancel(request.path_params["pairing_id"])}
+    )
 
 
 async def claim(request: Request) -> JSONResponse:
@@ -100,6 +134,8 @@ mobile_routes = [
     Route("/mobile/capabilities", capabilities, methods=["GET"]),
     Route("/mobile/pairing/invite", invite, methods=["POST"]),
     Route("/mobile/pairing/claim", claim, methods=["POST"]),
+    Route("/mobile/pairing/preview", preview, methods=["POST"]),
+    Route("/mobile/pairing/{pairing_id}/cancel", cancel, methods=["POST"]),
     Route("/mobile/pairing/collect", collect, methods=["POST"]),
     Route("/mobile/pairing/pending", pending, methods=["GET"]),
     Route("/mobile/pairing/{pairing_id}/decide", decide, methods=["POST"]),

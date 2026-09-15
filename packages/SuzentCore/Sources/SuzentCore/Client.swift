@@ -14,17 +14,34 @@ public final class SuzentClient: Sendable {
     private let token: String
     private let session: URLSession
 
-    public init(backend: Backend, token: String) {
+    public init(backend: Backend, token: String, probeOnly: Bool = false) {
         self.backend = backend
         self.token = token
         let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = 90
-        config.timeoutIntervalForResource = 3600
+        config.timeoutIntervalForRequest = probeOnly ? 3 : 90
+        config.timeoutIntervalForResource = probeOnly ? 3 : 3600
         config.urlCache = nil
         session = URLSession(configuration: config, delegate: RedirectBlocker(), delegateQueue: nil)
     }
 
     public func close() { session.invalidateAndCancel() }
+
+    public func approvals(_ id: String) async throws -> ApprovalState {
+        guard !id.contains("/"), id != ".", id != ".." else { throw ClientError.invalidResponse }
+        return try mobileDecode(ApprovalState.self, await data("mobile/client/chats/\(id)/approvals"))
+    }
+    public func decideApprovals(_ id: String, pending: [ApprovalRequest], choices: [String: String]) async throws {
+        let decisions: [[String: String]] = try pending.map { item in
+            guard let action = choices[item.id] else { throw ClientError.invalidResponse }
+            return ["chat_id": id, "request_id": item.id, "kind": item.kind, "action_id": action]
+        }
+        var request = try request("mobile/client/approvals")
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["chat_id": id, "decisions": decisions])
+        let (_, response) = try await session.data(for: request)
+        try validate(response)
+    }
 
     public func nodeSocket() -> URLSessionWebSocketTask {
         session.webSocketTask(with: backend.webSocketURL)
@@ -32,7 +49,7 @@ public final class SuzentClient: Sendable {
 
     private func request(_ path: String, body: [String: String]? = nil) throws -> URLRequest {
         var request = URLRequest(url: backend.endpoint(path))
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        if !token.isEmpty { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         if let body {
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -74,11 +91,25 @@ public final class SuzentClient: Sendable {
         return result
     }
 
-    public func claim(_ invitation: PairingInvitation, name: String) async throws -> PairingClaim {
-        try mobileDecode(PairingClaim.self, await data("mobile/pairing/claim", body: [
+    public func pairingPreview(_ invitation: PairingInvitation) async throws -> PairingPreview {
+        let result = try mobileDecode(PairingPreview.self, await data("mobile/pairing/preview", body: ["pairing_id": invitation.pairingId]))
+        try result.validate(invitation)
+        return result
+    }
+
+    public func claim(_ invitation: PairingInvitation, name: String, confirmPermissions: Bool = false) async throws -> PairingClaim {
+        var request = try request("mobile/pairing/claim")
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        var body: [String: Any] = [
             "pairing_id": invitation.pairingId, "invitation": invitation.invitation,
             "display_name": name, "platform": "ios"
-        ]))
+        ]
+        if confirmPermissions { body["confirm_permissions"] = true }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await session.data(for: request)
+        try validate(response)
+        return try mobileDecode(PairingClaim.self, data)
     }
 
     public func collect(pairingID: String, pickupSecret: String) async throws -> PairingResult {
@@ -146,4 +177,21 @@ public final class SuzentClient: Sendable {
         }
         throw ClientError.interrupted
     }
+}
+
+public struct ApprovalAction: Decodable, Sendable, Equatable, Identifiable {
+    public let id: String
+    public let behavior: String
+}
+public struct ApprovalRequest: Decodable, Sendable, Equatable, Identifiable {
+    public let id: String
+    public let kind: String
+    public let toolName: String
+    public let args: String
+    public let reason: String
+    public let actions: [ApprovalAction]
+}
+public struct ApprovalState: Decodable, Sendable {
+    public let pending: [ApprovalRequest]
+    public let isRunning: Bool
 }

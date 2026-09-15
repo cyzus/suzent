@@ -237,3 +237,83 @@ def test_transcript_reports_current_run_without_loading_runtime(
             "messages": [],
             "isRunning": running,
         }
+
+
+def test_phone_confirmation_routes_keep_authorization_on_desktop(setup_client):
+    client, store = setup_client
+    scope = ClientPermissions(chat_ids=["shared"], send=True).model_dump()
+    assert (
+        client.post("/mobile/pairing/invite", json={"permissions": scope}).status_code
+        == 401
+    )
+    with TestClient(client.app, client=("127.0.0.1", 4321)) as desktop:
+        response = desktop.post("/mobile/pairing/invite", json={"permissions": scope})
+        assert response.status_code == 201
+        invite = response.json()
+        assert invite["approval"] == "phone"
+        preview = client.post(
+            "/mobile/pairing/preview", json={"pairing_id": invite["pairing_id"]}
+        )
+        assert preview.status_code == 200
+        assert preview.json()["permissions"] == scope
+        assert preview.headers["cache-control"] == "no-store"
+        assert (
+            client.post(
+                f"/mobile/pairing/{invite['pairing_id']}/cancel", json={}
+            ).status_code
+            == 401
+        )
+        body = {
+            "pairing_id": invite["pairing_id"],
+            "invitation": invite["invitation"],
+            "display_name": "Test phone",
+            "platform": "android",
+        }
+        assert (
+            client.post(
+                "/mobile/pairing/claim",
+                json={**body, "permissions": {"all_chats": True}},
+            ).status_code
+            == 400
+        )
+        assert client.post("/mobile/pairing/claim", json=body).status_code == 400
+        body["confirm_permissions"] = True
+        pickup = client.post("/mobile/pairing/claim", json=body).json()
+        result = client.post(
+            "/mobile/pairing/collect",
+            json={
+                "pairing_id": invite["pairing_id"],
+                "pickup_secret": pickup["pickup_secret"],
+            },
+        ).json()
+        assert result["status"] == "approved"
+        assert result["device"]["permissions"] == scope
+        client.headers["Authorization"] = f"Bearer {result['token']}"
+        assert client.get("/mobile/client/chats/private").status_code == 403
+        assert (
+            client.post("/mobile/client/stop", json={"chat_id": "shared"}).status_code
+            == 403
+        )
+        assert (
+            desktop.post(
+                f"/mobile/devices/{result['device']['device_id']}/revoke", json={}
+            ).status_code
+            == 200
+        )
+        assert client.get("/mobile/client/session").status_code == 401
+        next_invite = desktop.post(
+            "/mobile/pairing/invite", json={"permissions": scope}
+        ).json()
+        assert (
+            desktop.post(
+                f"/mobile/pairing/{next_invite['pairing_id']}/cancel", json={}
+            ).status_code
+            == 200
+        )
+        assert (
+            client.post(
+                "/mobile/pairing/preview",
+                json={"pairing_id": next_invite["pairing_id"]},
+            ).status_code
+            == 400
+        )

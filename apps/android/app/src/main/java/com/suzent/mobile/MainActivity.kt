@@ -112,13 +112,17 @@ private fun AccessView(model: MobileModel) {
 @Composable
 private fun ColumnScope.Conversation(model: MobileModel) {
     val chat = model.selected ?: return
-    val messages = remember(chat.messages) { presentMessages(chat.messages) }
+    LaunchedEffect(chat.id) { model.watchApprovals(chat.id) }
+    val liveTools = model.liveParts.filter { it.type == "tool" }.map { it.toolCallId }.toSet()
+    val messages = remember(chat.messages, liveTools) { presentMessages(chat.messages, liveTools) }
     LazyColumn(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(PresentationTokens.spaceLarge.dp)) {
         item { Text(chat.title, style = MaterialTheme.typography.titleLarge) }
         items(messages) { message -> MessageView(message) }
-        if (model.streaming || model.liveText.isNotEmpty()) item {
-            MarkdownText(model.liveText.ifEmpty { stringResource(R.string.working) })
+        if (model.streaming || model.liveParts.isNotEmpty()) item {
+            if (model.liveParts.isEmpty()) Text(stringResource(R.string.working), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            else ActivityContent(model.liveParts, live = model.streaming)
         }
+        item { ApprovalCards(model) }
     }
     Column(Modifier.fillMaxWidth().padding(vertical = 16.dp)
         .border(PresentationTokens.borderWidth.dp, MaterialTheme.colorScheme.outline).padding(16.dp),

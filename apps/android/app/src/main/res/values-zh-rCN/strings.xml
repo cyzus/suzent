@@ -65,6 +65,24 @@
     <string name="allowed">允许</string>
     <string name="not_allowed">不允许</string>
     <string name="manage_access">在桌面端「设置 → 设备 → 移动端访问」管理或撤销访问。</string>
-    <string name="tool_approval_desktop">工具审批仍在桌面端进行。Node 访问需单独开启。</string>
+    <string name="tool_approval_desktop">工具请求遵循会话策略。Node 访问需单独开启。</string>
     <string name="access">权限</string>
+    <string name="checking_addresses">正在检查桌面端地址…</string>
+    <string name="pairing_unreachable">所有候选地址均无法连接或协议不兼容。请检查 Wi-Fi、Tailscale 连接及桌面端版本。</string>
+    <string name="confirm_connection_help">确认后将按上方权限连接，无需回到桌面再次批准。</string>
+    <string name="confirm_connection">确认连接</string>
+    <string name="activity_count">活动 · %1$d</string>
+    <string name="activity_running">执行中</string>
+    <string name="approval_required">等待审批</string>
+    <string name="approve_tools">审批工具请求</string>
+    <string name="approval_backend">通过已连接的桌面执行</string>
+    <string name="allow_once">允许本次</string>
+    <string name="reject_tool">拒绝</string>
+    <string name="approval_batch">为每个待审批工具选择后继续执行。</string>
+    <string name="approval_desktop_only">请在桌面审批，或重新配对并授予工具审批权限。</string>
+    <string name="approval_refresh">未能确认审批结果，请刷新后再试。</string>
+<string name="full_access">完整访问</string>
+<string name="full_access_summary">全部会话、消息收发与工具审批。</string>
+    <string name="activity_completed">已完成</string>
+    <string name="activity_failed">失败</string>
 </resources>

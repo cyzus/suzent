@@ -22,6 +22,7 @@ class ClientPermissions(BaseModel):
     create_chats: bool = False
     send: bool = False
     stop: bool = False
+    approve_tools: bool = False
 
     def permits_chat(self, chat_id: str) -> bool:
         return self.all_chats or chat_id in self.chat_ids
@@ -90,7 +91,9 @@ class PairingStore:
             if value["expires_at"] > now
         }
 
-    def invite(self) -> dict:
+    def invite(
+        self, permissions: ClientPermissions | None = None, desktop_name: str = "Suzent"
+    ) -> dict:
         with self._lock:
             self._prune()
             if len(self._pending) >= self.MAX_PENDING:
@@ -103,11 +106,42 @@ class PairingStore:
                 "expires_at": expires_at,
                 "status": "invited",
             }
+            if permissions is not None:
+                self._pending[pairing_id].update(
+                    permissions=permissions.model_copy(deep=True),
+                    desktop_name=desktop_name,
+                    preauthorized=True,
+                )
             return {
                 "pairing_id": pairing_id,
                 "invitation": invitation,
                 "expires_at": expires_at,
+                **({"approval": "phone"} if permissions is not None else {}),
             }
+
+    def preview(self, pairing_id: str) -> dict:
+        """Reveal the immutable scope to a holder of the random invitation ID."""
+        with self._lock:
+            self._prune()
+            pending = self._pending.get(pairing_id)
+            if (
+                not pending
+                or pending["status"] != "invited"
+                or not pending.get("preauthorized")
+            ):
+                raise PairingError("Invitation unavailable")
+            return {
+                "pairing_id": pairing_id,
+                "approval": "phone",
+                "desktop_name": pending["desktop_name"],
+                "permissions": pending["permissions"].model_dump(),
+                "expires_at": pending["expires_at"],
+            }
+
+    def cancel(self, pairing_id: str) -> bool:
+        with self._lock:
+            self._prune()
+            return self._pending.pop(pairing_id, None) is not None
 
     def claim(
         self,
@@ -115,6 +149,7 @@ class PairingStore:
         invitation: str,
         display_name: str,
         platform: Literal["ios", "android"],
+        confirm_permissions: bool = False,
     ) -> dict:
         if not display_name.strip() or len(display_name) > 100:
             raise PairingError("Invalid device name")
@@ -131,9 +166,11 @@ class PairingStore:
                 )
             ):
                 raise PairingError("Invitation unavailable")
+            if pending.get("preauthorized") and not confirm_permissions:
+                raise PairingError("Confirm the desktop permissions on the phone")
             pickup = secrets.token_urlsafe(32)
             pending.update(
-                status="pending",
+                status="approved" if pending.get("preauthorized") else "pending",
                 display_name=display_name.strip(),
                 platform=platform,
                 pickup_hash=_digest(pickup),

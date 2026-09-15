@@ -17,15 +17,15 @@ import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import org.json.JSONObject
 
-class BackendClient(val backend: Backend, private val token: String) {
+class BackendClient(val backend: Backend, private val token: String, probeOnly: Boolean = false) {
     private val http = OkHttpClient.Builder().followRedirects(false).followSslRedirects(false)
         .retryOnConnectionFailure(false).connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(90, TimeUnit.SECONDS).build()
+        .readTimeout(90, TimeUnit.SECONDS).callTimeout(if (probeOnly) 3 else 0, TimeUnit.SECONDS).build()
     private val reads = http.newBuilder().retryOnConnectionFailure(true).build()
     @Volatile private var liveCall: Call? = null
 
     private fun request(path: String, body: JSONObject? = null): Request = Request.Builder()
-        .url(backend.endpoint(path)).header("Authorization", "Bearer $token")
+        .url(backend.endpoint(path)).apply { if (token.isNotEmpty()) header("Authorization", "Bearer $token") }
         .apply { if (body != null) post(body.toString().toRequestBody("application/json".toMediaType())) }
         .build()
 
@@ -51,9 +51,12 @@ class BackendClient(val backend: Backend, private val token: String) {
         validateMobileCapabilities(value)
         return ClientDevice.parse(value.getJSONObject("device"))
     }
-    suspend fun claim(invitation: PairingInvitation, name: String): JSONObject = json("mobile/pairing/claim",
+    suspend fun pairingPreview(invitation: PairingInvitation): PairingPreview = PairingPreview.parse(
+        json("mobile/pairing/preview", JSONObject().put("pairing_id", invitation.id)), invitation)
+
+    suspend fun claim(invitation: PairingInvitation, name: String, confirmPermissions: Boolean = false): JSONObject = json("mobile/pairing/claim",
         JSONObject().put("pairing_id", invitation.id).put("invitation", invitation.secret)
-            .put("display_name", name).put("platform", "android"))
+            .put("display_name", name).put("platform", "android").apply { if (confirmPermissions) put("confirm_permissions", true) })
     suspend fun collect(id: String, pickupSecret: String): JSONObject = json("mobile/pairing/collect",
         JSONObject().put("pairing_id", id).put("pickup_secret", pickupSecret))
 
@@ -68,6 +71,17 @@ class BackendClient(val backend: Backend, private val token: String) {
     }
     suspend fun send(id: String, text: String) {
         json("mobile/client/send", JSONObject().put("chat_id", id).put("message", text))
+    }
+    suspend fun approvals(id: String): ApprovalState {
+        require(!id.contains('/') && id != "." && id != "..")
+        val value = json("mobile/client/chats/$id/approvals")
+        val pending = value.getJSONArray("pending")
+        return ApprovalState((0 until pending.length()).map { ApprovalRequest.parse(pending.getJSONObject(it)) }, value.optBoolean("isRunning"))
+    }
+    suspend fun decideApprovals(id: String, pending: List<ApprovalRequest>, choices: Map<String, String>) {
+        val decisions = org.json.JSONArray()
+        pending.forEach { item -> decisions.put(JSONObject().put("chat_id", id).put("request_id", item.id).put("kind", item.kind).put("action_id", choices.getValue(item.id))) }
+        json("mobile/client/approvals", JSONObject().put("chat_id", id).put("decisions", decisions))
     }
     suspend fun stop(id: String) { json("mobile/client/stop", JSONObject().put("chat_id", id)) }
 
@@ -120,3 +134,15 @@ class BackendClient(val backend: Backend, private val token: String) {
         http.connectionPool.evictAll()
     }
 }
+
+data class ApprovalAction(val id: String, val behavior: String)
+data class ApprovalRequest(val id: String, val kind: String, val toolName: String, val args: String, val reason: String, val actions: List<ApprovalAction>) {
+    companion object {
+        fun parse(value: JSONObject): ApprovalRequest {
+            val actions = value.getJSONArray("actions")
+            return ApprovalRequest(value.getString("id"), value.getString("kind"), value.getString("tool_name"), value.getString("args"), value.optString("reason"),
+                (0 until actions.length()).map { val action = actions.getJSONObject(it); ApprovalAction(action.getString("id"), action.getString("behavior")) })
+        }
+    }
+}
+data class ApprovalState(val pending: List<ApprovalRequest>, val running: Boolean)

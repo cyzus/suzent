@@ -75,3 +75,29 @@
 
 "Access" = "权限";
 "Done" = "完成";
+
+"Checking desktop addresses…" = "正在检查桌面端地址…";
+"None of the desktop addresses could be reached with a compatible protocol. Check Wi-Fi or Tailscale and update the desktop app." = "所有候选地址均无法连接或协议不兼容。请检查 Wi-Fi、Tailscale 连接及桌面端版本。";
+
+"Confirm connection" = "确认连接";
+"Confirm to connect with the permissions shown above. You do not need to approve again on desktop. Tool approvals stay on desktop." = "确认后将按上方权限连接，无需回到桌面再次批准。工具审批仍在桌面进行。";
+
+"Activity · %lld" = "活动 · %lld";
+"Running" = "执行中";
+"Approval required" = "等待审批";
+"Approve tool requests" = "审批工具请求";
+"Via connected desktop" = "通过已连接的桌面执行";
+"Allow once" = "允许本次";
+"Reject" = "拒绝";
+"Choose for each pending tool to continue." = "为每个待审批工具选择后继续执行。";
+"Approve on desktop, or pair again with tool approval access." = "请在桌面审批，或重新配对并授予工具审批权限。";
+"Approval could not be confirmed. Refresh before trying again." = "未能确认审批结果，请刷新后再试。";
+"Confirm to connect with the permissions shown above. You do not need to approve again on desktop." = "确认后将按上方权限连接，无需回到桌面再次批准。";
+"Tool requests follow the conversation policy. Node access is separate." = "工具请求遵循会话策略。Node 访问需单独开启。";
+
+"Full access" = "完整访问";
+"All conversations, messaging, and tool approvals." = "全部会话、消息收发与工具审批。";
+
+"Completed" = "已完成";
+
+"Failed" = "失败";

@@ -6,6 +6,7 @@ import SuzentCore
     var origin = ""
     var invitationText = ""
     var pairingInvitation: PairingInvitation?
+    var pairingPreview: PairingPreview?
     var pairingCode: String?
     var device: ClientDevice?
     var canReconnect = false
@@ -13,11 +14,15 @@ import SuzentCore
     var chats: [Chat] = []
     var selected: Chat?
     var draft = ""
+    var liveParts: [MessagePart] = []
+    var pendingApprovals: [ApprovalRequest] = []
+    var approvalChoices: [String: String] = [:]
+    var approvalBusy = false
     var liveText = ""
     var error: String?
     var busy = false
     var streaming = false
-    @ObservationIgnored private var pendingLiveText = ""
+    @ObservationIgnored private var activityBuffer = LiveActivityBuffer()
     @ObservationIgnored private var liveTextDirty = false
     var connected = false
     var nodeEnabled = false
@@ -50,11 +55,36 @@ import SuzentCore
 
     func stageInvitation(_ text: String) {
         guard !busy else { return }
-        do {
-            pairingInvitation = try PairingInvitation.parse(text, allowHTTP: allowsHTTP)
-            invitationText = ""
-            error = nil
-        } catch { handle(error) }
+        let invitation: PairingInvitation
+        do { invitation = try PairingInvitation.parse(text, allowHTTP: allowsHTTP) }
+        catch { handle(error); return }
+        invitationText = ""
+        pairingInvitation = nil
+        pairingPreview = nil
+        error = nil
+        busy = true
+        let current = generation
+        let allowHTTP = allowsHTTP
+        pairingTask = Task {
+            defer { if generation == current { busy = false } }
+            do {
+                let selected = try await invitation.resolving { origin in
+                    let probe = SuzentClient(backend: try Backend(origin, allowHTTP: allowHTTP), token: "", probeOnly: true)
+                    defer { probe.close() }
+                    _ = try await probe.capabilities()
+                    if invitation.phoneConfirmation { _ = try await probe.pairingPreview(invitation) }
+                }
+                let preview: PairingPreview?
+                if selected.phoneConfirmation {
+                    let probe = SuzentClient(backend: try Backend(selected.origin, allowHTTP: allowHTTP), token: "", probeOnly: true)
+                    defer { probe.close() }
+                    preview = try await probe.pairingPreview(selected)
+                } else { preview = nil }
+                guard generation == current, !Task.isCancelled else { return }
+                pairingPreview = preview
+                pairingInvitation = selected
+            } catch { if generation == current, !Task.isCancelled { handle(error) } }
+        }
     }
 
     func cancelPairing() {
@@ -62,6 +92,7 @@ import SuzentCore
         pairingTask = nil
         pairingInvitation = nil
         pairingCode = nil
+        pairingPreview = nil
         busy = false
         generation = UUID()
     }
@@ -79,9 +110,10 @@ import SuzentCore
                 defer { bootstrap.close() }
                 _ = try await bootstrap.capabilities()
                 try Task.checkCancellation()
-                let claim = try await bootstrap.claim(invitation, name: UIDevice.current.name)
+                let claim = try await bootstrap.claim(invitation, name: UIDevice.current.name,
+                                                      confirmPermissions: invitation.phoneConfirmation && pairingPreview != nil)
                 guard generation == current else { return }
-                pairingCode = String(invitation.pairingId.prefix(6))
+                if !invitation.phoneConfirmation { pairingCode = String(invitation.pairingId.prefix(6)) }
                 while Date().timeIntervalSince1970 < claim.expiresAt {
                     try Task.checkCancellation()
                     let result = try await bootstrap.collect(pairingID: invitation.pairingId, pickupSecret: claim.pickupSecret)
@@ -96,11 +128,11 @@ import SuzentCore
                         connection = saved
                         origin = saved.origin
                         canReconnect = true
-                        pairingInvitation = nil
                         try await activate(saved)
+                        pairingInvitation = nil
                         return
                     }
-                    guard result.status == "pending" else { throw ClientError.invalidResponse }
+                    guard result.status == "pending", !invitation.phoneConfirmation else { throw ClientError.invalidResponse }
                     try await Task.sleep(for: .seconds(1))
                 }
                 throw PairingError.expired
@@ -166,7 +198,7 @@ import SuzentCore
     func open(_ chat: Chat) async {
         guard let client, !streaming else { return }
         selected = chat
-        liveText = ""
+        liveText = ""; liveParts = []
         let current = generation
         do {
             let saved = try await client.chat(chat.id)
@@ -214,9 +246,9 @@ import SuzentCore
     private func observe(_ id: String, client: SuzentClient) {
         guard !streaming, foreground else { return }
         streaming = true
-        liveText = ""
+        liveText = ""; liveParts = []
         let current = generation
-        pendingLiveText = ""
+        activityBuffer = LiveActivityBuffer()
         liveTextDirty = false
         streamTask = Task {
             let publisher = Task { @MainActor in
@@ -238,7 +270,7 @@ import SuzentCore
                 guard generation == current, !Task.isCancelled, selected?.id == id else { return }
                 selected = saved
                 syncRunning(saved)
-                liveText = ""
+                liveText = ""; liveParts = []
             } catch {
                 if !Task.isCancelled, generation == current { flushLiveText(); handle(error) }
             }
@@ -249,14 +281,17 @@ import SuzentCore
 
     private func receive(_ event: StreamEvent, generation current: UUID) {
         guard generation == current, foreground else { return }
-        if event.type == "STREAM_RESET" { pendingLiveText = ""; liveTextDirty = true }
-        if event.type == "TEXT_MESSAGE_CONTENT" { pendingLiveText += event.delta ?? ""; liveTextDirty = true }
+        activityBuffer.consume(event)
+        liveTextDirty = true
         if event.type == "RUN_ERROR" { error = event.message ?? String(localized: "Task failed.") }
     }
 
     private func flushLiveText() {
         guard liveTextDirty else { return }
-        liveText = pendingLiveText
+        if let parts = activityBuffer.drain() {
+            liveParts = parts
+            liveText = parts.filter { $0.type == "text" }.compactMap(\.text).joined(separator: "\n\n")
+        }
         liveTextDirty = false
     }
 
@@ -266,6 +301,61 @@ import SuzentCore
             var updated = item
             updated.isRunning = saved.isRunning
             return updated
+        }
+    }
+
+    func watchApprovals(_ id: String) async {
+        pendingApprovals = []; approvalChoices = [:]
+        let current = generation
+        var previousRunning = false
+        var previousPending = false
+        while !Task.isCancelled, selected?.id == id, generation == current {
+            if foreground && !approvalBusy, let client {
+                do {
+                    let state = try await client.approvals(id)
+                    guard !Task.isCancelled, selected?.id == id, generation == current else { return }
+                    if !approvalBusy {
+                        if state.pending != pendingApprovals { approvalChoices = [:] }
+                        pendingApprovals = state.pending
+                    }
+                    if state.isRunning && !streaming { observe(id, client: client) }
+                    if !state.isRunning && !streaming && liveParts.isEmpty && (previousRunning || previousPending && state.pending.isEmpty) {
+                        let saved = try await client.chat(id)
+                        guard !Task.isCancelled, selected?.id == id, generation == current else { return }
+                        selected = saved; syncRunning(saved); liveText = ""; liveParts = []
+                    }
+                    previousRunning = state.isRunning; previousPending = !state.pending.isEmpty
+                } catch {
+                    if Task.isCancelled { return }
+                    if case ClientError.http(let code) = error, [401, 403, 404].contains(code) {
+                        pendingApprovals = []
+                        if code != 404 { handle(error) }; return
+                    }
+                }
+            }
+            do { try await Task.sleep(for: .milliseconds(2500)) } catch { return }
+        }
+    }
+
+    func chooseApproval(_ item: ApprovalRequest, action: ApprovalAction) async {
+        guard let id = selected?.id, let client, !approvalBusy, device?.permissions.approveTools == true,
+              pendingApprovals.contains(item), item.actions.contains(action) else { return }
+        approvalChoices[item.id] = action.id
+        guard pendingApprovals.allSatisfy({ approvalChoices[$0.id] != nil }) else { return }
+        let pending = pendingApprovals
+        let current = generation
+        approvalBusy = true
+        defer { if current == generation { approvalBusy = false; approvalChoices = [:] } }
+        do {
+            try await client.decideApprovals(id, pending: pending, choices: approvalChoices)
+            guard current == generation, selected?.id == id else { return }
+            pendingApprovals = []
+            if pending.allSatisfy({ $0.kind == "tool" }) { observe(id, client: client) }
+        } catch {
+            if current == generation {
+                handle(error)
+                self.error = String(localized: "Approval could not be confirmed. Refresh before trying again.")
+            }
         }
     }
 
@@ -280,7 +370,7 @@ import SuzentCore
         if !active {
             streamTask?.cancel()
             streaming = false
-            liveText = ""
+            liveText = ""; liveParts = []
             disconnectNode()
         } else {
             await refresh()
@@ -353,6 +443,7 @@ import SuzentCore
     }
 
     func forget() {
+        pendingApprovals = []; approvalChoices = [:]; approvalBusy = false
         pairingTask?.cancel()
         do { try CredentialStore.clear() }
         catch { self.error = error.localizedDescription }
@@ -375,6 +466,6 @@ import SuzentCore
         origin = ""
         draft = ""
         streaming = false
-        liveText = ""
+        liveText = ""; liveParts = []
     }
 }

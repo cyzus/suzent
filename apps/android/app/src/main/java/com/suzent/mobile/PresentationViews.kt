@@ -128,26 +128,10 @@ fun MessageView(message: DisplayMessage) {
                 color = if (user) Color.Black else MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.labelLarge)
             if (user) SelectionContainer { Text(message.text, color = Color.Black) }
-            else MarkdownText(message.text)
+            else if (message.parts.isEmpty()) MarkdownText(message.text)
         }
-        message.activities.forEach { part ->
-            var expanded by remember(part) { mutableStateOf(false) }
-            OutlinedCard(onClick = { expanded = !expanded }, modifier = Modifier.fillMaxWidth(),
-                border = BorderStroke(PresentationTokens.borderWidth.dp, outline),
-                colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text((if (expanded) "−  " else "+  ") + when (part.type) {
-                        "tool" -> part.toolName.ifEmpty { stringResource(R.string.tool_activity) }
-                        "reasoning" -> stringResource(R.string.reasoning)
-                        else -> stringResource(R.string.unsupported_activity)
-                    }, style = MaterialTheme.typography.labelLarge)
-                    if (expanded) SelectionContainer {
-                        Text(listOf(part.args, part.output, part.text).filter { it.isNotBlank() }.joinToString("\n\n")
-                            .ifEmpty { stringResource(R.string.activity_on_desktop) }, style = MaterialTheme.typography.bodySmall)
-                    }
-                }
-            }
-        }
+        if (!user) ActivityContent(message.parts.ifEmpty { message.activities }, live = false)
+
     }
 }
 
@@ -189,5 +173,86 @@ private fun SuzentAssistantBadge() {
             repeat(2) { Box(Modifier.size(5.dp).background(Color.White, RoundedCornerShape(1.dp))) }
         }
         Text("SUZENT", fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+@Composable
+fun ActivityContent(parts: List<MessagePart>, live: Boolean) {
+    val chunks = remember(parts) { activityChunks(parts) }
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        chunks.forEachIndexed { index, chunk ->
+            key(index) {
+                if (chunk.first().type == "text") MarkdownText(chunk.first().text)
+                else ActivityRail(chunk, live)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ActivityRail(parts: List<MessagePart>, live: Boolean) {
+    var expanded by remember { mutableStateOf(live) }
+    val waiting = parts.any { it.state == "approval-requested" }
+    val running = live && parts.any { it.state == "running" }
+    val failed = parts.any { it.state in listOf("error", "denied") }
+    val status = stringResource(if (waiting) R.string.approval_required else if (running) R.string.activity_running else if (failed) R.string.activity_failed else R.string.activity_completed)
+    Column(Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
+        TextButton(onClick = { expanded = !expanded }, modifier = Modifier.fillMaxWidth()) {
+            Text(if (expanded) "−" else "+", color = MaterialTheme.colorScheme.onSurface)
+            Spacer(Modifier.width(8.dp))
+            Text(stringResource(R.string.activity_count, parts.size), fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
+            Text(status, style = MaterialTheme.typography.labelSmall, color = if (running) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (expanded) parts.forEachIndexed { index, part ->
+            key(part.toolCallId.ifEmpty { "reason-$index" }) {
+                var details by remember { mutableStateOf(false) }
+                val color = when {
+                    part.state == "approval-requested" -> Color(PresentationTokens.yellow)
+                    part.state in listOf("error", "denied") -> MaterialTheme.colorScheme.error
+                    live && part.state == "running" -> Color(PresentationTokens.blue)
+                    else -> Color(0xFF62A87C)
+                }
+                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp).height(IntrinsicSize.Min)) {
+                    Box(Modifier.width(18.dp).fillMaxHeight().drawBehind {
+                        drawLine(color.copy(alpha = .45f), Offset(5.dp.toPx(), 0f), Offset(5.dp.toPx(), size.height), 2.dp.toPx())
+                    }) { Box(Modifier.padding(top = 16.dp).size(10.dp).background(color).border(1.dp, MaterialTheme.colorScheme.outline)) }
+                    Column(Modifier.weight(1f).padding(bottom = 8.dp)) {
+                        TextButton(onClick = { details = !details }, contentPadding = PaddingValues(vertical = 8.dp), modifier = Modifier.fillMaxWidth()) {
+                            Text(if (part.type == "reasoning") stringResource(R.string.reasoning) else if (part.type == "tool") part.toolName.ifEmpty { stringResource(R.string.tool_activity) } else stringResource(R.string.unsupported_activity),
+                                color = MaterialTheme.colorScheme.onSurface, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
+                            Text(if (details) "−" else "+")
+                        }
+                        if (details) SelectionContainer {
+                            Text(listOf(part.args, part.output, part.text).filter { it.isNotBlank() }.joinToString("\n\n").ifEmpty { status },
+                                style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ApprovalCards(model: MobileModel) {
+    model.pendingApprovals.forEach { request ->
+        key(request.id) {
+            Column(Modifier.fillMaxWidth().border(PresentationTokens.borderWidth.dp, MaterialTheme.colorScheme.outline), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(R.string.approval_required), Modifier.fillMaxWidth().background(Color(PresentationTokens.yellow)).padding(12.dp), color = Color.Black, fontWeight = FontWeight.Bold)
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(request.toolName, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.approval_backend), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    SelectionContainer { Text(request.args, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall) }
+                    if (request.reason.isNotEmpty()) Text(request.reason, style = MaterialTheme.typography.bodySmall)
+                    if (model.device?.permissions?.approveTools == true && request.actions.isNotEmpty()) {
+                        request.actions.forEach { action ->
+                            SuzentAction((if (model.approvalChoices[request.id] == action.id) "✓ " else "") + stringResource(if (action.behavior == "allow") R.string.allow_once else R.string.reject_tool),
+                                { model.chooseApproval(request, action) }, prominent = action.behavior == "allow", enabled = !model.approvalBusy, compact = true)
+                        }
+                        Text(stringResource(R.string.approval_batch), style = MaterialTheme.typography.bodySmall)
+                    } else Text(stringResource(R.string.approval_desktop_only), style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
     }
 }

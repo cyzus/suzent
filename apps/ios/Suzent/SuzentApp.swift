@@ -111,12 +111,14 @@ struct ContentView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: PresentationTokens.spaceLarge) {
                     Text(chat.title).font(.title2.bold())
-                    ForEach(Array(presentMessages(chat.messages ?? []).enumerated()), id: \.offset) { _, message in
+                    ForEach(Array(presentMessages(chat.messages ?? [], liveToolIds: Set(model.liveParts.filter { $0.type == "tool" }.compactMap(\.toolCallId))).enumerated()), id: \.offset) { _, message in
                         MessageView(message: message)
                     }
-                    if model.streaming || !model.liveText.isEmpty {
-                        SuzentMarkdown(text: model.liveText.isEmpty ? String(localized: "Working…") : model.liveText)
+                    if model.streaming || !model.liveParts.isEmpty {
+                        if model.liveParts.isEmpty { Text("Working…").foregroundStyle(.secondary) }
+                        else { ActivityContent(parts: model.liveParts, live: model.streaming) }
                     }
+                    ApprovalCards(model: model)
                 }.padding()
             }
             VStack(alignment: .trailing, spacing: 12) {
@@ -133,6 +135,6 @@ struct ContentView: View {
                 .padding(16)
                 .overlay(Rectangle().stroke(.primary, lineWidth: PresentationTokens.borderWidth))
                 .padding(16)
-        }
+        }.task(id: chat.id) { await model.watchApprovals(chat.id) }
     }
 }

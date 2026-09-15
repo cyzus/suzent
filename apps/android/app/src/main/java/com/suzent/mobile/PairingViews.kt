@@ -52,10 +52,34 @@ fun PairingView(model: MobileModel) {
             SuzentAction(stringResource(R.string.cancel_pairing), model::cancelPairing)
         } else if (invitation != null) {
             Text(stringResource(R.string.confirm_desktop), style = MaterialTheme.typography.titleLarge)
+            model.pairingPreview?.let { preview ->
+                Text(preview.desktopName, style = MaterialTheme.typography.titleLarge)
+                val permissions = preview.permissions
+                Column(Modifier.fillMaxWidth().border(PresentationTokens.borderWidth.dp, MaterialTheme.colorScheme.outline).padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (permissions.allChats && permissions.createChats && permissions.send && permissions.stop && permissions.approveTools) {
+                        Text(stringResource(R.string.full_access), style = MaterialTheme.typography.titleMedium)
+                        Text(stringResource(R.string.full_access_summary))
+                    } else {
+                    Text(if (permissions.allChats) stringResource(R.string.all_conversations)
+                        else stringResource(R.string.shared_conversations, permissions.chatIds.size))
+                    listOf(R.string.create_conversations to permissions.createChats, R.string.send_messages to permissions.send,
+                        R.string.stop_responses to permissions.stop, R.string.approve_tools to permissions.approveTools).forEach { (label, allowed) ->
+                        Text(stringResource(label) + ": " + stringResource(if (allowed) R.string.allowed else R.string.not_allowed))
+                    }
+                    }
+                }
+            }
             Text(invitation.origin)
-            Text(stringResource(R.string.confirm_desktop_help))
-            SuzentAction(stringResource(R.string.request_pairing), model::approveDestination, prominent = true, enabled = !model.busy)
+            Text(stringResource(if (invitation.phoneConfirmation) R.string.confirm_connection_help else R.string.confirm_desktop_help))
+            if (model.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+            SuzentAction(stringResource(if (invitation.phoneConfirmation) R.string.confirm_connection else R.string.request_pairing),
+                model::approveDestination, prominent = true, enabled = !model.busy)
             TextButton(onClick = model::cancelPairing, enabled = !model.busy) { Text(stringResource(R.string.cancel_pairing)) }
+        } else if (model.busy) {
+            LinearProgressIndicator(Modifier.fillMaxWidth())
+            Text(stringResource(R.string.checking_addresses))
+            SuzentAction(stringResource(R.string.cancel_pairing), model::cancelPairing)
         } else {
             Text(stringResource(R.string.pairing_steps))
             SuzentAction(stringResource(R.string.scan_desktop), {
@@ -89,7 +113,7 @@ fun ClientPermissionsView(device: ClientDevice, origin: String) {
         Text(if (device.permissions.allChats) stringResource(R.string.all_conversations)
             else stringResource(R.string.shared_conversations, device.permissions.chatIds.size))
         listOf(R.string.create_conversations to device.permissions.createChats,
-            R.string.send_messages to device.permissions.send, R.string.stop_responses to device.permissions.stop).forEach { (label, enabled) ->
+            R.string.send_messages to device.permissions.send, R.string.stop_responses to device.permissions.stop, R.string.approve_tools to device.permissions.approveTools).forEach { (label, enabled) ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(stringResource(label))
                 Text(stringResource(if (enabled) R.string.allowed else R.string.not_allowed), color = MaterialTheme.colorScheme.onSurfaceVariant)

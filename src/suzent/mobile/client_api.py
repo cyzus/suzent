@@ -206,7 +206,21 @@ async def observe(request: Request) -> Response:
     return response
 
 
+async def list_approvals(request: Request) -> JSONResponse:
+    from suzent.mobile.approvals import listing
+
+    return await listing(request)
+
+
+async def decide_approvals(request: Request) -> JSONResponse:
+    from suzent.mobile.approvals import decide
+
+    return await decide(request)
+
+
 client_routes = [
+    Route("/mobile/client/chats/{chat_id}/approvals", list_approvals, methods=["GET"]),
+    Route("/mobile/client/approvals", decide_approvals, methods=["POST"]),
     Route("/mobile/client/session", session, methods=["GET"]),
     Route("/mobile/client/chats", chats, methods=["GET"]),
     Route("/mobile/client/chats", create, methods=["POST"]),

@@ -52,6 +52,7 @@ _HTTP_EXEMPT_PREFIXES = (
 _HTTP_EXEMPT_PATHS = {
     "/mobile/capabilities",
     "/mobile/pairing/claim",
+    "/mobile/pairing/preview",
     "/mobile/pairing/collect",
     # The browser-node page. A device joining the mesh has no token yet, so the
     # page must be fetchable without one. It is static markup carrying no

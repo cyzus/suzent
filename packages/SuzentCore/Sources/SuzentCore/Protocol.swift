@@ -75,10 +75,47 @@ public struct ChatMessage: Decodable, Sendable {
     }
 }
 
+public enum JSONValue: Codable, Sendable {
+    case string(String), number(Double), bool(Bool), object([String: JSONValue]), array([JSONValue]), null
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.singleValueContainer()
+        if c.decodeNil() { self = .null }
+        else if let v = try? c.decode(String.self) { self = .string(v) }
+        else if let v = try? c.decode(Bool.self) { self = .bool(v) }
+        else if let v = try? c.decode(Double.self) { self = .number(v) }
+        else if let v = try? c.decode([String: JSONValue].self) { self = .object(v) }
+        else { self = .array(try c.decode([JSONValue].self)) }
+    }
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.singleValueContainer()
+        switch self {
+        case .string(let v): try c.encode(v)
+        case .number(let v): try c.encode(v)
+        case .bool(let v): try c.encode(v)
+        case .object(let v): try c.encode(v)
+        case .array(let v): try c.encode(v)
+        case .null: try c.encodeNil()
+        }
+    }
+    public var text: String {
+        if case .string(let value) = self { return value }
+        return (try? String(data: JSONEncoder().encode(self), encoding: .utf8)) ?? ""
+    }
+    public subscript(_ key: String) -> JSONValue? { if case .object(let value) = self { return value[key] }; return nil }
+}
+
 public struct StreamEvent: Decodable, Sendable {
-    public let type: String
-    public let delta: String?
-    public let message: String?
+    public let fields: [String: JSONValue]
+    public var type: String { fields["type"]?.text ?? "" }
+    public var delta: String? { fields["delta"]?.text }
+    public var message: String? { fields["message"]?.text }
+    public init(type: String, delta: String?, message: String?) {
+        var fields: [String: JSONValue] = ["type": .string(type)]
+        if let delta { fields["delta"] = .string(delta) }
+        if let message { fields["message"] = .string(message) }
+        self.fields = fields
+    }
+    public init(from decoder: Decoder) throws { fields = try [String: JSONValue](from: decoder) }
 }
 
 public struct SSEDecoder: Sendable {

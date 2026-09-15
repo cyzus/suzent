@@ -32,3 +32,43 @@ private func invitation(_ overrides: [String: Any] = [:]) throws -> String {
     let unsupported = try decoder.decode(MobileCapabilities.self, from: Data(#"{"client_protocol":1,"pairing_protocol":1,"stream_protocols":[2]}"#.utf8))
     #expect(throws: PairingError.self) { try unsupported.validate() }
 }
+
+@Test func multipleAddressesValidateAndResolve() async throws {
+    let mixed = try invitation(["origin": "http://192.168.1.2", "origins": ["http://192.168.1.2", "https://desktop.example"]])
+    let release = try PairingInvitation.parse(mixed, now: Date(timeIntervalSince1970: 1000))
+    #expect(release.origins == ["https://desktop.example"])
+    let invalid = try invitation(["origins": ["https://user:secret@other.example"]])
+    #expect(throws: (any Error).self) { try PairingInvitation.parse(invalid, now: Date(timeIntervalSince1970: 1000)) }
+    let text = try invitation(["expires_at": Date().timeIntervalSince1970 + 300,
+                               "origins": ["https://desktop.example", "https://tailnet.example"]])
+    let value = try PairingInvitation.parse(text)
+    let selected = try await value.resolving { origin in
+        if origin == "https://desktop.example" { throw URLError(.cannotConnectToHost) }
+    }
+    #expect(selected.origin == "https://tailnet.example")
+    do {
+        _ = try await value.resolving { _ in throw URLError(.cannotConnectToHost) }
+        Issue.record("Expected all unreachable candidates to fail")
+    } catch PairingError.unreachable { }
+}
+
+
+@Test func phoneConfirmationBindsPreviewToInvitation() throws {
+    let expiry = Date().timeIntervalSince1970 + 300
+    let value = try PairingInvitation.parse(invitation(["approval": "phone", "expires_at": expiry]))
+    #expect(value.phoneConfirmation)
+    let decoder = JSONDecoder()
+    decoder.keyDecodingStrategy = .convertFromSnakeCase
+    let data: [String: Any] = ["pairing_id": value.pairingId, "approval": "phone", "desktop_name": "Test desktop",
+                               "expires_at": expiry, "permissions": ["chat_ids": ["one"], "all_chats": false,
+                                 "create_chats": false, "send": true, "stop": false]]
+    let preview = try decoder.decode(PairingPreview.self, from: JSONSerialization.data(withJSONObject: data))
+    try preview.validate(value)
+    #expect(preview.permissions.chatIds == ["one"])
+    #expect(preview.permissions.send && !preview.permissions.stop)
+    #expect(preview.permissions.approveTools != true)
+    var wrong = data
+    wrong["pairing_id"] = String(repeating: "c", count: 32)
+    let other = try decoder.decode(PairingPreview.self, from: JSONSerialization.data(withJSONObject: wrong))
+    #expect(throws: PairingError.self) { try other.validate(value) }
+}

@@ -26,4 +26,29 @@ class PairingTest {
         validateMobileCapabilities(data, pairing = true)
         assertTrue(runCatching { validateMobileCapabilities(data.put("stream_protocols", JSONArray().put(2)), pairing = true) }.isFailure)
     }
+
+    @Test fun validatesAllCandidatesAndKeepsHttpsForRelease() {
+        val value = invitation().put("origin", "http://192.168.1.2")
+            .put("origins", JSONArray().put("http://192.168.1.2").put("https://desktop.example"))
+        assertEquals(listOf("https://desktop.example"), PairingInvitation.parse(value.toString(), now = 1000.0).origins)
+        assertEquals(2, PairingInvitation.parse(value.toString(), allowHttp = true, now = 1000.0).origins.size)
+        value.put("origins", JSONArray().put("https://user:secret@other.example"))
+        assertTrue(runCatching { PairingInvitation.parse(value.toString(), allowHttp = true, now = 1000.0) }.isFailure)
+    }
+
+    @Test fun resolvesReachableCandidateWithoutClaimingOrRetryingMutation() = kotlinx.coroutines.runBlocking {
+        val value = invitation().put("expires_at", System.currentTimeMillis() / 1000.0 + 300)
+            .put("origins", JSONArray().put("https://desktop.example").put("https://tailnet.example"))
+        val calls = mutableListOf<String>()
+        val selected = resolvePairingInvitation(PairingInvitation.parse(value.toString())) { origin ->
+            calls.add(origin)
+            if (origin == "https://desktop.example") throw java.io.IOException()
+        }
+        assertEquals("https://tailnet.example", selected.origin)
+        assertEquals(listOf("https://desktop.example", "https://tailnet.example"), calls)
+        val failure = runCatching {
+            resolvePairingInvitation(selected) { throw java.io.IOException() }
+        }.exceptionOrNull() as PairingFailure
+        assertEquals(PairingFailure.Reason.UNREACHABLE, failure.reason)
+    }
 }

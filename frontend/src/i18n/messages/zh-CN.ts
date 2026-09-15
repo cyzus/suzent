@@ -1,13 +1,24 @@
 export const zhCN = {
   mobileAccess: {
+    fullAccess: '完整访问',
+    restrictedAccess: '受限访问',
+    fullAccessHelp: '在手机上使用会话、发送和停止响应，并审批工具请求。',
+    restrictAccess: '限制访问',
+    restoreFullAccess: '恢复完整访问',
+    approve_tools: '审批工具请求',
+
+    choosePermissions: '先选择手机可访问的内容和操作，再生成二维码。',
+    cancelInvitation: '关闭二维码并取消邀请',
+
     title: '移动端访问',
     description: '将 Suzent 手机应用与此桌面端配对。每台手机使用可单独撤销的访问凭证。',
     origin: '手机可以访问的后端地址',
-    network: '使用局域网或 Tailscale 地址。正式版需要 HTTPS；仅调试版支持 HTTP。',
+    network:
+      '二维码包含此地址及检测到的局域网和 Tailscale 地址。手机先检查可达性，再由你确认。正式版需要 HTTPS；仅调试版支持 HTTP。',
     generate: '配对手机',
     expired: '邀请已过期，请生成新的二维码。',
     qrAlt: 'Suzent 移动端配对二维码',
-    scan: '在 Suzent 应用内扫码，然后在下方批准这台手机。',
+    scan: '在 Suzent 手机端扫码并确认连接。持有此一次性二维码的人可以获得上方已选择的权限。',
     expires: '{seconds} 秒后过期',
     copy: '复制配对邀请',
     compare: '请确认手机上显示的验证码为 {code}。',
@@ -16,7 +27,8 @@ export const zhCN = {
     send: '发送消息',
     stop: '停止回复',
     sharedChats: '允许这台手机读取的会话',
-    toolPolicy: '发送消息可能按会话现有策略运行工具。工具审批仍在桌面端进行。Node 访问需单独开启。',
+    toolPolicy:
+      '发送消息可能按会话现有策略运行工具。授予审批权限后可在手机确认工具请求。Node 访问需单独开启。',
     approve: '批准手机',
     deny: '拒绝',
     revoke: '撤销访问',
