@@ -22,7 +22,7 @@ struct MessageView: View {
                     Text(user ? String(localized: "You") : String(localized: "Activity"))
                         .font(.caption.bold())
                 }
-                if user { Text(message.text).font(.callout).textSelection(.enabled) }
+                if user { Text(message.text).font(.system(size: PresentationTokens.typeChat)).textSelection(.enabled) }
             }
             if !user { ActivityContent(parts: message.parts, live: false) }
 
@@ -54,9 +54,10 @@ struct SuzentButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         let outline: Color = scheme == .dark ? .white : .black
         return configuration.label
-            .font(.headline)
-            .padding(compact ? PresentationTokens.spaceMedium : PresentationTokens.spacePage)
-            .frame(maxWidth: compact ? nil : .infinity)
+            .font(.system(size: PresentationTokens.typeControl, weight: .semibold))
+            .padding(.horizontal, compact ? PresentationTokens.spaceMedium : PresentationTokens.spacePage)
+            .padding(.vertical, compact ? 8 : 12)
+            .frame(maxWidth: compact ? nil : .infinity, minHeight: PresentationTokens.controlHeight)
             .foregroundStyle(prominent ? .white : outline)
             .background(prominent ? Color(presentation: PresentationTokens.blue)
                 : scheme == .dark ? Color(presentation: PresentationTokens.surface_dark) : .white)
@@ -87,7 +88,7 @@ struct SuzentMarkdown: View {
                 .text {
                     ForegroundColor(.primary)
                     BackgroundColor(.clear)
-                    FontSize(15)
+                    FontSize(PresentationTokens.typeChat)
                 }
                 .code {
                     FontFamilyVariant(.monospaced)
@@ -234,6 +235,51 @@ struct ApprovalCards: View {
                     } else { Text("Approve on desktop, or pair again with tool approval access.").font(.footnote) }
                 }.padding(12)
             }.overlay(Rectangle().stroke(.primary, lineWidth: PresentationTokens.borderWidth))
+        }
+    }
+}
+
+
+struct GreetingCube: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion || scenePhase != .active)) { timeline in
+            let phase = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate * .pi / 12
+            ZStack {
+                Canvas { context, size in
+                    context.scaleBy(x: size.width / 160, y: size.height / 160)
+                    context.translateBy(x: 80, y: 80)
+                    context.rotate(by: .radians(phase))
+                    let rect = Path(CGRect(x: -54, y: -54, width: 108, height: 108))
+                    context.stroke(rect, with: .color(.gray.opacity(0.5)), lineWidth: 1)
+                    context.rotate(by: .radians(-phase * 2 + .pi / 4))
+                    context.stroke(rect, with: .color(.gray.opacity(0.4)), lineWidth: 1)
+                }
+                cube
+                    .rotation3DEffect(.degrees(sin(phase * 4) * 12), axis: (x: 0, y: 1, z: 0))
+                    .rotation3DEffect(.degrees(cos(phase * 4) * 4), axis: (x: 1, y: 0, z: 0))
+                    .offset(y: sin(phase * 4) * 4)
+            }
+        }.accessibilityHidden(true)
+    }
+
+    private var cube: some View {
+        Canvas { context, size in
+            context.scaleBy(x: size.width / 160, y: size.height / 160)
+            func polygon(_ points: [CGPoint]) -> Path {
+                Path { path in path.addLines(points); path.closeSubpath() }
+            }
+            let top = polygon([CGPoint(x: 28, y: 36), CGPoint(x: 95, y: 27), CGPoint(x: 143, y: 45), CGPoint(x: 65, y: 57)])
+            let left = polygon([CGPoint(x: 28, y: 36), CGPoint(x: 65, y: 57), CGPoint(x: 65, y: 141), CGPoint(x: 28, y: 109)])
+            let front = polygon([CGPoint(x: 65, y: 57), CGPoint(x: 143, y: 45), CGPoint(x: 138, y: 122), CGPoint(x: 65, y: 141)])
+            for (face, color) in [(top, Color(white: 0.18)), (left, Color(white: 0.04)), (front, Color.black)] {
+                context.fill(face, with: .color(color)); context.stroke(face, with: .color(.gray), lineWidth: 1)
+            }
+            // Eyes share the front face projection before the cube animation.
+            context.fill(polygon([CGPoint(x: 95.334, y: 84.432), CGPoint(x: 96.236, y: 84.381), CGPoint(x: 97.066, y: 84.586), CGPoint(x: 97.770, y: 85.032), CGPoint(x: 98.300, y: 85.687), CGPoint(x: 98.621, y: 86.507), CGPoint(x: 98.711, y: 87.436), CGPoint(x: 98.405, y: 97.957), CGPoint(x: 98.261, y: 98.915), CGPoint(x: 97.894, y: 99.858), CGPoint(x: 97.328, y: 100.722), CGPoint(x: 96.601, y: 101.448), CGPoint(x: 95.762, y: 101.989), CGPoint(x: 94.867, y: 102.308), CGPoint(x: 86.343, y: 104.179), CGPoint(x: 85.432, y: 104.256), CGPoint(x: 84.584, y: 104.079), CGPoint(x: 83.859, y: 103.660), CGPoint(x: 83.306, y: 103.026), CGPoint(x: 82.964, y: 102.220), CGPoint(x: 82.858, y: 101.297), CGPoint(x: 83.025, y: 90.589), CGPoint(x: 83.163, y: 89.595), CGPoint(x: 83.537, y: 88.619), CGPoint(x: 84.122, y: 87.728), CGPoint(x: 84.877, y: 86.985), CGPoint(x: 85.750, y: 86.439), CGPoint(x: 86.681, y: 86.129)]), with: .color(.white))
+            context.fill(polygon([CGPoint(x: 123.783, y: 78.852), CGPoint(x: 124.615, y: 78.810), CGPoint(x: 125.376, y: 79.015), CGPoint(x: 126.014, y: 79.452), CGPoint(x: 126.487, y: 80.090), CGPoint(x: 126.762, y: 80.886), CGPoint(x: 126.822, y: 81.786), CGPoint(x: 126.282, y: 91.968), CGPoint(x: 126.125, y: 92.895), CGPoint(x: 125.763, y: 93.804), CGPoint(x: 125.220, y: 94.636), CGPoint(x: 124.532, y: 95.334), CGPoint(x: 123.745, y: 95.850), CGPoint(x: 122.912, y: 96.150), CGPoint(x: 115.009, y: 97.885), CGPoint(x: 114.168, y: 97.951), CGPoint(x: 113.392, y: 97.773), CGPoint(x: 112.734, y: 97.360), CGPoint(x: 112.241, y: 96.742), CGPoint(x: 111.946, y: 95.958), CGPoint(x: 111.871, y: 95.064), CGPoint(x: 112.293, y: 84.706), CGPoint(x: 112.445, y: 83.746), CGPoint(x: 112.814, y: 82.805), CGPoint(x: 113.375, y: 81.949), CGPoint(x: 114.088, y: 81.236), CGPoint(x: 114.906, y: 80.716), CGPoint(x: 115.770, y: 80.424)]), with: .color(.white))
         }
     }
 }

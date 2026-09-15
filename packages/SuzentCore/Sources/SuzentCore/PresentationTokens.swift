@@ -21,6 +21,11 @@ public enum PresentationTokens {
     public static let typeTitle: Double = 24
     public static let typeBody: Double = 17
     public static let typeCaption: Double = 13
+    public static let typeChat: Double = 15
+    public static let typeControl: Double = 15
+    public static let typeSection: Double = 20
+    public static let controlHeight: Double = 44
+    public static let sidebarWidth: Double = 320
     public static let ignoredToolNames: [String] = ["final_answer", "final answer"]
     public static let compactionSummaryMarkers: [String] = ["[CONTEXT SUMMARY — READ BEFORE RESPONDING]", "--- ARCHIVED CONTEXT SUMMARY ---"]
 }

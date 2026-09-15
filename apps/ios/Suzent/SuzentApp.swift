@@ -24,6 +24,7 @@ struct ContentView: View {
     @State private var collapsedProjects: Set<String> = []
     @FocusState private var composing: Bool
     @State private var keyboardVisible = false
+    @State private var showModelPicker = false
 
     private var projects: [Project] {
         var result = model.projects
@@ -75,26 +76,18 @@ struct ContentView: View {
                         else if !model.connected { PairingView(model: model) }
                         else if showSettings { settings }
                         else if let chat = model.selected { conversation(chat) }
-                        else {
-                            VStack(spacing: 20) {
-                                SuzentAssistantBadge()
-                                Text("Choose a conversation from the sidebar.").foregroundStyle(.secondary)
-                                Button("New conversation", systemImage: "square.and.pencil") { Task { await model.createChat() } }
-                                    .buttonStyle(SuzentButtonStyle(prominent: true))
-                                    .disabled(model.busy || model.streaming || model.device?.permissions.createChats != true)
-                            }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity)
-                        }
+                        else { ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity) }
                     }.frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
                 if !wide && model.connected {
                     Color.black.opacity(showSidebar ? 0.3 : 0).ignoresSafeArea()
                         .allowsHitTesting(showSidebar)
                         .onTapGesture { withAnimation { showSidebar = false } }
-                    sidebar.frame(width: min(geometry.size.width - 48, 330), height: geometry.size.height)
+                    sidebar.frame(width: min(geometry.size.width - 48, PresentationTokens.sidebarWidth), height: geometry.size.height)
                         .background(Color(uiColor: .systemBackground))
                         .overlay(alignment: .trailing) { Rectangle().frame(width: 2) }
                         .compositingGroup()
-                        .offset(x: showSidebar ? 0 : -min(geometry.size.width - 48, 330) - 2)
+                        .offset(x: showSidebar ? 0 : -min(geometry.size.width - 48, PresentationTokens.sidebarWidth) - 2)
                         .allowsHitTesting(showSidebar)
                         .accessibilityHidden(!showSidebar)
                 }
@@ -103,22 +96,35 @@ struct ContentView: View {
         .task { if model.canReconnect && !model.connected { await model.connect() } }
         .tint(Color(presentation: PresentationTokens.blue))
         .task(id: model.connected) { if model.connected { await model.watchNavigation() } }
-        .onChange(of: model.connected) { _, connected in showSidebar = connected; if !connected { showSettings = false } }
+        .onChange(of: model.connected) { _, connected in showModelPicker = false; showSidebar = false; if !connected { showSettings = false } }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardVisible = true }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in keyboardVisible = false }
+        .sheet(isPresented: $showModelPicker) {
+            NavigationStack {
+                List {
+                    Button("Conversation default") { model.selectedModel = nil; showModelPicker = false }
+                    ForEach(Array(Set(model.selected?.models ?? [])).sorted(), id: \.self) { name in
+                        Button { model.selectedModel = name; showModelPicker = false } label: {
+                            HStack { Text(name); Spacer(); if model.selectedModel == name { Image(systemName: "checkmark") } }
+                        }
+                    }
+                }.navigationTitle("Desktop model").navigationBarTitleDisplayMode(.inline)
+            }.presentationDetents([.medium, .large])
+        }
         .onChange(of: model.sentVersion) { _, _ in composing = false }
     }
 
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text("Chats").font(.title2.bold())
+                Text("Chats").font(.system(size: PresentationTokens.typeSection, weight: .bold))
                 Spacer()
                 Button { withAnimation { showSidebar = false } } label: { Image(systemName: "xmark").frame(width: 44, height: 44) }
                     .accessibilityLabel("Close sidebar")
             }.padding(.horizontal, 16)
-            TextField("Search chats", text: $search).padding(12)
-                .overlay(Rectangle().stroke(.secondary.opacity(0.4))).padding(.horizontal, 16).padding(.bottom, 12)
+            TextField("Search chats", text: $search).font(.system(size: PresentationTokens.typeChat)).padding(12)
+                .frame(minHeight: PresentationTokens.controlHeight)
+                .overlay(Rectangle().stroke(.primary, lineWidth: PresentationTokens.borderWidth)).padding(.horizontal, 16).padding(.bottom, 12)
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     ForEach(projects) { project in projectSection(project) }
@@ -164,7 +170,7 @@ struct ContentView: View {
                 Task { await model.open(chat); showSettings = false; showSidebar = false }
             } label: {
                 HStack {
-                    Text(chat.title).lineLimit(2).multilineTextAlignment(.leading)
+                    Text(chat.title).font(.system(size: PresentationTokens.typeChat, weight: model.selected?.id == chat.id ? .semibold : .regular)).lineLimit(2).multilineTextAlignment(.leading)
                     Spacer()
                     if chat.isRunning == true { Image(systemName: "ellipsis").foregroundStyle(.blue) }
                 }.padding(12).frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
@@ -177,10 +183,10 @@ struct ContentView: View {
     private var settings: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                Text("Settings").font(.title2.bold())
+                Text("Settings").font(.system(size: PresentationTokens.typeSection, weight: .bold))
                 DisclosureGroup("Desktop access") {
                     if let device = model.device { ClientPermissionsView(device: device, origin: model.origin).padding(.top, 16) }
-                }.padding(16).overlay(Rectangle().stroke(.secondary.opacity(0.4)))
+                }.padding(16).overlay(Rectangle().stroke(.primary, lineWidth: PresentationTokens.borderWidth))
                 VStack(alignment: .leading, spacing: 12) {
                     Text("This phone as a Node").font(.headline)
                     Toggle("Enable foreground Node", isOn: Binding(get: { model.nodeEnabled }, set: { model.toggleNode($0) }))
@@ -194,16 +200,17 @@ struct ContentView: View {
 
     private func conversation(_ chat: Chat) -> some View {
         VStack(spacing: 0) {
-            HStack {
+            if !chat.id.isEmpty { HStack {
                 VStack(alignment: .leading, spacing: 3) {
                     if let project = chat.projectName { Text(project).font(.caption).foregroundStyle(.secondary) }
                     Text(chat.id.isEmpty ? String(localized: "New conversation") : chat.title).font(.headline).lineLimit(1)
                 }
                 Spacer()
-            }.padding(.horizontal, 16).padding(.vertical, 10)
+            }.padding(.horizontal, 16).padding(.vertical, 10) }
             ScrollViewReader { reader in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: PresentationTokens.spaceLarge) {
+                        if chat.id.isEmpty { startPage(chat) }
                         ForEach(Array(presentMessages(chat.messages ?? [], liveToolIds: Set(model.liveParts.filter { $0.type == "tool" }.compactMap(\.toolCallId))).enumerated()), id: \.offset) { _, message in MessageView(message: message) }
                         if model.streaming || !model.liveParts.isEmpty {
                             if model.liveParts.isEmpty { Text("Working…").foregroundStyle(.secondary) }
@@ -220,18 +227,11 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .bottom) {
                     TextField("Message", text: $model.draft, axis: .vertical).lineLimit(keyboardVisible ? 1...6 : 1...1).focused($composing)
-                        .font(.callout).padding(.vertical, 6).disabled(model.busy)
+                        .font(.system(size: PresentationTokens.typeChat)).padding(.vertical, 6).disabled(model.busy)
                     if !keyboardVisible { sendAction(chat) }
                 }
                 if keyboardVisible { HStack {
-                    Menu {
-                        Button("Conversation default") { model.selectedModel = nil }
-                        ForEach(chat.models ?? [], id: \.self) { name in
-                            Button { model.selectedModel = name } label: {
-                                if model.selectedModel == name { Label(name, systemImage: "checkmark") } else { Text(name) }
-                            }
-                        }
-                    } label: {
+                    Button { composing = false; showModelPicker = true } label: {
                         HStack { Text(model.selectedModel ?? chat.model ?? String(localized: "Desktop model")).lineLimit(1); Image(systemName: "chevron.down") }.font(.caption.bold())
                             .frame(minHeight: 44)
                     }.buttonStyle(.plain).disabled(model.busy || model.streaming || (chat.models ?? []).isEmpty || model.device?.permissions.send != true)
@@ -242,6 +242,36 @@ struct ContentView: View {
                 .padding(.horizontal, 12).padding(.bottom, 8)
         }.task(id: chat.id) { await model.watchApprovals(chat.id) }
     }
+    private func startPage(_ chat: Chat) -> some View {
+        VStack(spacing: 28) {
+            GreetingCube().frame(width: keyboardVisible ? 90 : 160, height: keyboardVisible ? 90 : 160)
+            TimelineView(.periodic(from: .now, by: 60)) { context in
+                let hour = Calendar.current.component(.hour, from: context.date)
+                let greeting: LocalizedStringKey = hour < 5 ? "Night owl?" : hour < 12 ? "Good morning." : hour < 17 ? "Keep building." : hour < 21 ? "Good evening." : "Bed time? Or maybe late night coding?"
+                Text(greeting).textCase(.uppercase).font(.system(size: 30, weight: .black))
+                    .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+            }
+            Menu {
+                ForEach(model.projects) { project in
+                    Button(project.name) {
+                        model.selected?.projectId = project.id
+                        model.selected?.projectName = project.name
+                    }
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "cube")
+                    Text("Creating in").foregroundStyle(.secondary)
+                    Text(chat.projectName ?? String(localized: "Default")).lineLimit(1)
+                    Image(systemName: "chevron.down")
+                }.font(.system(size: PresentationTokens.typeControl, weight: .bold)).padding(12)
+                    .foregroundStyle(.primary).background(Color(uiColor: .systemBackground))
+                    .overlay(Rectangle().stroke(.primary, lineWidth: PresentationTokens.borderWidth))
+                    .shadow(color: .primary, radius: 0, x: 2, y: 2)
+            }.disabled(model.busy || model.projects.isEmpty).buttonStyle(.plain)
+        }.frame(maxWidth: .infinity).padding(.horizontal, 8).padding(.vertical, keyboardVisible ? 12 : 40)
+    }
+
     @ViewBuilder private func sendAction(_ chat: Chat) -> some View {
         Group {
             if model.streaming || chat.isRunning == true {

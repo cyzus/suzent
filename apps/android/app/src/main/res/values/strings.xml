@@ -89,7 +89,14 @@
     <string name="close_sidebar">Close sidebar</string>
     <string name="search_chats">Search chats</string>
     <string name="settings">Settings</string>
-    <string name="choose_conversation">Choose a conversation from the sidebar.</string>
     <string name="desktop_model">Desktop model</string>
     <string name="conversation_default">Conversation default</string>
+    <string name="node_heading">This phone as a Node</string>
+    <string name="greeting_night">Night owl?</string>
+    <string name="greeting_morning">Good morning.</string>
+    <string name="greeting_build">Keep building.</string>
+    <string name="greeting_evening">Good evening.</string>
+    <string name="greeting_bed">Bed time? Or maybe late night coding?</string>
+    <string name="creating_in">Creating in</string>
+    <string name="default_project">Default</string>
 </resources>

@@ -23,6 +23,11 @@ object PresentationTokens {
     const val typeTitle = 24
     const val typeBody = 17
     const val typeCaption = 13
+    const val typeChat = 15
+    const val typeControl = 15
+    const val typeSection = 20
+    const val controlHeight = 44
+    const val sidebarWidth = 320
     val ignoredToolNames = listOf("final_answer", "final answer")
     val compactionSummaryMarkers = listOf("[CONTEXT SUMMARY — READ BEFORE RESPONDING]", "--- ARCHIVED CONTEXT SUMMARY ---")
 }

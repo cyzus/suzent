@@ -89,7 +89,14 @@
     <string name="close_sidebar">关闭侧边栏</string>
     <string name="search_chats">搜索会话</string>
     <string name="settings">设置</string>
-    <string name="choose_conversation">从侧边栏选择会话。</string>
     <string name="desktop_model">桌面端管理模型</string>
     <string name="conversation_default">沿用会话模型</string>
+    <string name="node_heading">将此手机用作 Node</string>
+    <string name="greeting_night">夜猫子？</string>
+    <string name="greeting_morning">早上好。</string>
+    <string name="greeting_build">继续创造。</string>
+    <string name="greeting_evening">晚上好。</string>
+    <string name="greeting_bed">该睡了？还是深夜爆肝？</string>
+    <string name="creating_in">创建于</string>
+    <string name="default_project">默认项目</string>
 </resources>

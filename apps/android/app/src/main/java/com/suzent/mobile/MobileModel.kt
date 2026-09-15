@@ -159,12 +159,14 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
             val session = candidate.session()
             val listing = candidate.chats()
             val projectList = candidate.projects()
+            val initialChat = candidate.composer()
             currentCoroutineContext().ensureActive()
             client?.close()
             client = candidate
             device = session
             chats = listing
             projects = projectList
+            selected = initialChat
             connected = true
         } catch (failure: Exception) { candidate.close(); throw failure }
     }

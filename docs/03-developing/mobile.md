@@ -216,3 +216,28 @@ Update the backend alongside the apps: navigation requires `/mobile/client/proje
 and project/model metadata on mobile chat responses. Project listings and creation
 respect the device's existing chat scope; model selection forwards only an enabled
 model, never arbitrary configuration or permission overrides.
+
+
+Mobile chat and controls use shared `typeChat`, `typeControl`, `typeSection`,
+`controlHeight` and `sidebarWidth` tokens. Both platforms use a centered wordmark
+between equal-size navigation icons, outlined search fields, left-aligned
+monospace project headings and a leading selection bar. Primary buttons retain
+the desktop blue, square border and hard shadow. Native keyboard, selection,
+model menus and system permission controls retain their platform behavior.
+
+
+Successful connection opens the same unsaved start page as New conversation,
+with the sidebar closed. The welcome area follows the desktop: a cube mascot,
+the same localized time-of-day greeting, and a project selector. Changing the
+project only updates the unsaved composer; there are no prompt starter cards. The first send remains
+the only action that creates a stored conversation.
+
+The native greeting cube adds a six-second float and perspective sway, with
+two counter-rotating wireframes on a 24-second cycle. iOS pauses its 30 Hz
+timeline in the background and honors Reduce Motion; Android uses Compose
+animation layers and disables animation when system animators are disabled.
+
+Model selection opens a separate bottom sheet owned by the conversation screen,
+not by the keyboard-dependent composer row. Opening it clears input focus;
+closing or selecting a model does not reopen the keyboard. This avoids popup
+focus changes repeatedly removing and recreating the model menu.

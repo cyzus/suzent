@@ -25,6 +25,11 @@ def outputs() -> dict[Path, str]:
         "typeTitle",
         "typeBody",
         "typeCaption",
+        "typeChat",
+        "typeControl",
+        "typeSection",
+        "controlHeight",
+        "sidebarWidth",
     ):
         kotlin += f"    const val {key} = {data[key]}\n"
         swift += f"    public static let {key}: Double = {data[key]}\n"

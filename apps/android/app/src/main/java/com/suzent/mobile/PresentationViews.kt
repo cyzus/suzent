@@ -1,6 +1,15 @@
 package com.suzent.mobile
 
 import android.widget.TextView
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.res.painterResource
+import kotlin.math.sin
+import kotlin.math.cos
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.compose.foundation.horizontalScroll
@@ -101,7 +110,7 @@ fun MarkdownText(text: String) {
                 }
             } else {
                 AndroidView(modifier = Modifier.fillMaxWidth(), factory = { ctx ->
-                    TextView(ctx).apply { textSize = 15f; setTextIsSelectable(true); setLineSpacing(0f, 1.2f) }
+                    TextView(ctx).apply { textSize = PresentationTokens.typeChat.toFloat(); setTextIsSelectable(true); setLineSpacing(0f, 1.2f) }
                 }, update = { view ->
                     view.setTextColor(foreground); view.setLinkTextColor(link)
                     if (view.tag != block.body) { renderer.setParsedMarkdown(view, block.body as android.text.Spanned); view.tag = block.body }
@@ -128,7 +137,7 @@ fun MessageView(message: DisplayMessage) {
             else Text(stringResource(if (user) R.string.you else R.string.activity),
                 color = if (user) Color.Black else MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.labelLarge)
-            if (user) SelectionContainer { Text(message.text, color = Color.Black, style = MaterialTheme.typography.bodyMedium) }
+            if (user) SelectionContainer { Text(message.text, color = Color.Black, fontSize = PresentationTokens.typeChat.sp) }
         }
         if (!user) ActivityContent(message.parts, live = false)
 
@@ -144,16 +153,16 @@ fun SuzentAction(label: String, onClick: () -> Unit, prominent: Boolean = false,
         colors = ButtonDefaults.buttonColors(
             containerColor = if (prominent) Color(PresentationTokens.blue) else MaterialTheme.colorScheme.surface,
             contentColor = if (prominent) Color.White else MaterialTheme.colorScheme.onSurface),
-        modifier = (if (compact) Modifier else Modifier.fillMaxWidth()).padding(end = 2.dp, bottom = 2.dp).drawBehind {
+        modifier = (if (compact) Modifier else Modifier.fillMaxWidth()).heightIn(min = PresentationTokens.controlHeight.dp).padding(end = 2.dp, bottom = 2.dp).drawBehind {
             if (enabled) drawRect(outline, topLeft = Offset(PresentationTokens.shadowOffset.dp.toPx(), PresentationTokens.shadowOffset.dp.toPx()))
-        }, contentPadding = PaddingValues(if (compact) PresentationTokens.spaceMedium.dp else PresentationTokens.spacePage.dp)) {
-        Text(label, style = MaterialTheme.typography.titleMedium)
+        }, contentPadding = PaddingValues(horizontal = (if (compact) PresentationTokens.spaceMedium else PresentationTokens.spacePage).dp, vertical = (if (compact) 8 else 12).dp)) {
+        Text(label, fontSize = PresentationTokens.typeControl.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
 @Composable
 fun SuzentWordmark() {
-    Row(Modifier.fillMaxWidth().padding(vertical = 16.dp),
+    Row(Modifier.fillMaxWidth().heightIn(min = PresentationTokens.controlHeight.dp).padding(vertical = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp, androidx.compose.ui.Alignment.CenterHorizontally),
         verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
         Box(Modifier.size(10.dp).background(MaterialTheme.colorScheme.onSurface))
@@ -163,7 +172,7 @@ fun SuzentWordmark() {
 }
 
 @Composable
-private fun SuzentAssistantBadge() {
+fun SuzentAssistantBadge() {
     Row(Modifier.border(PresentationTokens.borderWidth.dp, MaterialTheme.colorScheme.outline)
         .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
@@ -255,5 +264,32 @@ fun ApprovalCards(model: MobileModel) {
                 }
             }
         }
+    }
+}
+
+
+@Composable
+fun GreetingCube(modifier: Modifier = Modifier) {
+    val motionEnabled = android.animation.ValueAnimator.areAnimatorsEnabled()
+    val phase = if (motionEnabled) {
+        val transition = rememberInfiniteTransition(label = "cube presence")
+        transition.animateFloat(initialValue = 0f, targetValue = (Math.PI * 2).toFloat(),
+            animationSpec = infiniteRepeatable(tween(24000, easing = LinearEasing)), label = "cube phase")
+    } else remember { mutableFloatStateOf(0f) }
+    Box(modifier) {
+        Canvas(Modifier.fillMaxSize()) {
+            val degrees = phase.value * 180f / Math.PI.toFloat()
+            val side = size.minDimension * 0.675f
+            val inset = Offset((size.width - side) / 2, (size.height - side) / 2)
+            rotate(degrees) { drawRect(Color.Gray.copy(alpha = 0.5f), topLeft = inset, size = androidx.compose.ui.geometry.Size(side, side), style = Stroke(1.dp.toPx())) }
+            rotate(-degrees + 45f) { drawRect(Color.Gray.copy(alpha = 0.4f), topLeft = inset, size = androidx.compose.ui.geometry.Size(side, side), style = Stroke(1.dp.toPx())) }
+        }
+        Image(painterResource(R.drawable.greeting_cube), contentDescription = null,
+            modifier = Modifier.fillMaxSize().graphicsLayer {
+                rotationY = sin(phase.value * 4) * 12
+                rotationX = cos(phase.value * 4) * 4
+                translationY = sin(phase.value * 4) * 4.dp.toPx()
+                cameraDistance = 12 * density
+            })
     }
 }

@@ -150,12 +150,14 @@ import SuzentCore
             let session = try await candidate.clientSession()
             let listing = try await candidate.chats()
             let projectList = try await candidate.projects()
+            let initialChat = try await candidate.composer()
             try Task.checkCancellation()
             client?.close()
             client = candidate
             device = session.device
             chats = listing
             projects = projectList
+            selected = initialChat
             connected = true
         } catch { candidate.close(); throw error }
     }
