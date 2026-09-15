@@ -22,13 +22,12 @@ struct MessageView: View {
                     Text(user ? String(localized: "You") : String(localized: "Activity"))
                         .font(.caption.bold())
                 }
-                if user { Text(message.text).textSelection(.enabled) }
+                if user { Text(message.text).font(.callout).textSelection(.enabled) }
             }
             if !user { ActivityContent(parts: message.parts, live: false) }
 
         }
-        .padding(user ? 14 : 0)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(user ? 10 : 0)
         .foregroundStyle(user ? Color.black : Color.primary)
         .background {
             if user {
@@ -37,7 +36,8 @@ struct MessageView: View {
                     .shadow(color: .primary, radius: 0, x: PresentationTokens.shadowOffset, y: PresentationTokens.shadowOffset)
             }
         }
-        .padding(.leading, user ? 24 : 0)
+        .padding(.leading, user ? 40 : 0)
+        .frame(maxWidth: .infinity, alignment: user ? .trailing : .leading)
     }
 }
 
@@ -87,7 +87,7 @@ struct SuzentMarkdown: View {
                 .text {
                     ForegroundColor(.primary)
                     BackgroundColor(.clear)
-                    FontSize(PresentationTokens.typeBody)
+                    FontSize(15)
                 }
                 .code {
                     FontFamilyVariant(.monospaced)

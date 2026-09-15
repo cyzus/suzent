@@ -23,6 +23,7 @@ from suzent.routes.mobile_routes import get_mobile_store, reply
 class CreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     title: str = Field(default="New conversation", min_length=1, max_length=200)
+    project_id: str | None = Field(default=None, min_length=1, max_length=200)
 
 
 class ChatRequest(BaseModel):
@@ -32,6 +33,7 @@ class ChatRequest(BaseModel):
 
 class SendRequest(ChatRequest):
     message: str = Field(min_length=1, max_length=100000)
+    model: str | None = Field(default=None, min_length=1, max_length=300)
 
 
 class ObserveRequest(ChatRequest):
@@ -87,6 +89,7 @@ async def chats(request: Request) -> JSONResponse:
         chat_ids=None if grant.permissions.all_chats else grant.permissions.chat_ids,
         limit=1000,
     )
+    projects_by_chat = db.get_chat_projects([chat_id for chat_id, _ in records])
     from suzent.core.stream_registry import is_background_streaming
 
     return reply(
@@ -96,6 +99,8 @@ async def chats(request: Request) -> JSONResponse:
                     "id": chat_id,
                     "title": title,
                     "isRunning": is_background_streaming(chat_id),
+                    "projectId": projects_by_chat.get(chat_id, (None, None))[0],
+                    "projectName": projects_by_chat.get(chat_id, (None, None))[1],
                 }
                 for chat_id, title in records
             ]
@@ -112,22 +117,74 @@ async def chat(request: Request) -> JSONResponse:
     if response.status_code != 200:
         return response
     data = json.loads(response.body)
-    # The display transcript is shared; backend config and runtime state are not.
+    from suzent.core.providers import get_default_chat_model, get_enabled_models_from_db
+
+    config = data.get("config") or {}
+    native = str(config.get("runtime", "native")).lower() != "acp"
+    metadata = get_database().get_chat_projects([chat_id]).get(chat_id, (None, None))
     return reply(
         {
-            key: data[key]
-            for key in ("id", "title", "messages", "isRunning")
-            if key in data
+            **{
+                key: data[key]
+                for key in ("id", "title", "messages", "isRunning")
+                if key in data
+            },
+            "projectId": metadata[0],
+            "projectName": metadata[1],
+            "model": (config.get("model") or get_default_chat_model())
+            if native
+            else None,
+            "models": get_enabled_models_from_db() if native else [],
         }
     )
+
+
+def allowed_projects(grant: ClientGrant) -> list[dict[str, str]]:
+    db = get_database()
+    allowed = (
+        None
+        if grant.permissions.all_chats
+        else {
+            value[0]
+            for value in db.get_chat_projects(grant.permissions.chat_ids).values()
+        }
+    )
+    return [
+        {"id": project.id, "name": project.name}
+        for project in db.list_projects()
+        if allowed is None or project.id in allowed
+    ]
+
+
+async def composer(request: Request) -> JSONResponse:
+    authorize(request)
+    from suzent.core.providers import get_default_chat_model, get_enabled_models_from_db
+
+    return reply(
+        {
+            "id": "",
+            "title": "",
+            "messages": [],
+            "model": get_default_chat_model(),
+            "models": get_enabled_models_from_db(),
+        }
+    )
+
+
+async def projects(request: Request) -> JSONResponse:
+    return reply({"projects": allowed_projects(authorize(request))})
 
 
 async def create(request: Request) -> JSONResponse:
     grant = authorize(request, action="create_chats")
     body = await parse(request, CreateRequest)
+    if body.project_id is not None and body.project_id not in {
+        project["id"] for project in allowed_projects(grant)
+    }:
+        raise HTTPException(403, "Project not shared with this device")
     from suzent.routes.chat_routes import create_chat
 
-    response = await create_chat(forwarded(request, body.model_dump()))
+    response = await create_chat(forwarded(request, body.model_dump(exclude_none=True)))
     if response.status_code != 201:
         return response
     data = json.loads(response.body)
@@ -146,7 +203,20 @@ async def send(request: Request) -> JSONResponse:
         raise HTTPException(403, "Desktop commands are not available to mobile clients")
     from suzent.routes.chat_routes import chat_send
 
-    return await chat_send(forwarded(request, body.model_dump()))
+    payload = body.model_dump(exclude={"model"})
+    if body.model is not None:
+        from suzent.core.providers import get_enabled_models_from_db
+
+        chat = get_database().get_chat(body.chat_id)
+        if chat is None:
+            raise HTTPException(404, "Conversation unavailable")
+        if (
+            str((chat.config or {}).get("runtime", "native")).lower() == "acp"
+            or body.model not in get_enabled_models_from_db()
+        ):
+            raise HTTPException(400, "Model unavailable for this conversation")
+        payload["config"] = {"model": body.model}
+    return await chat_send(forwarded(request, payload))
 
 
 async def stop(request: Request) -> JSONResponse:
@@ -219,6 +289,8 @@ async def decide_approvals(request: Request) -> JSONResponse:
 
 
 client_routes = [
+    Route("/mobile/client/composer", composer, methods=["GET"]),
+    Route("/mobile/client/projects", projects, methods=["GET"]),
     Route("/mobile/client/chats/{chat_id}/approvals", list_approvals, methods=["GET"]),
     Route("/mobile/client/approvals", decide_approvals, methods=["POST"]),
     Route("/mobile/client/session", session, methods=["GET"]),

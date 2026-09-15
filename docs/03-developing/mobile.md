@@ -184,3 +184,35 @@ scanner saves an image. Both apps provide English and Simplified Chinese strings
 New desktop invitations default to Full access; expand Restrict access for individual scopes. Existing grants keep their scope, so pair again to add `approve_tools`. The permission allows once-only decisions on pending requests, not automatic tool execution or policy editing.
 
 Both native clients use the same activity fixtures in `packages/mobile-contract/activity-fixtures.json`. They retain text/activity order, group consecutive reasoning and tools into expandable rails, replace replayed arguments, and clear the entire transient state on stream reset. Pending approvals use the desktop queue and show tool arguments with allow/reject actions. All requests in a batch must be decided before the native run resumes; ACP uses its existing live broker. Foreground polling reflects decisions made on desktop.
+
+
+### Navigation and composer
+
+Chats live in a searchable sidebar grouped by desktop Project, with collapsible
+sections and a new-conversation action per accessible, active project. New conversation
+opens an unsaved composer; only its first non-empty send creates a stored chat.
+The chosen project and model carry into that first message. If sending fails after
+creation, retries reuse the created chat and retain the draft. Settings
+is pinned to the sidebar and contains Desktop access and foreground Node controls.
+iOS keeps the sidebar visible at tablet widths; phones use a drawer. The iOS
+drawer stays in an opaque composited layer during its slide-out animation. Foreground
+navigation refreshes automatically every ten seconds without a refresh button.
+
+The composer is a compact single row while the keyboard is hidden. With the
+keyboard visible it grows up to six lines and shows the model selector; Return
+inserts a newline. A dedicated header action opens New conversation. Sending an
+accepted message clears its draft and dismisses the keyboard. Failed or uncertain
+sends retain the draft and are never retried automatically. Switching conversations
+preserves drafts for the current app session. Native conversations offer the
+backend-enabled model list, submitted with the next message; ACP conversations
+keep their desktop model configuration.
+
+Saved credentials reconnect automatically on launch and foreground return. A
+temporarily unavailable desktop shows a retry screen instead of QR onboarding;
+revoked credentials require pairing again. User messages align right and size to
+their content, with smaller chat typography on both platforms.
+
+Update the backend alongside the apps: navigation requires `/mobile/client/projects`
+and project/model metadata on mobile chat responses. Project listings and creation
+respect the device's existing chat scope; model selection forwards only an enabled
+model, never arbitrary configuration or permission overrides.

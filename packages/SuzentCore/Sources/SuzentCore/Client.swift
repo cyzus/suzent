@@ -123,8 +123,19 @@ public final class SuzentClient: Sendable {
         return try JSONDecoder().decode(Listing.self, from: await data("mobile/client/chats")).chats
     }
 
-    public func createChat(title: String) async throws -> Chat {
-        try JSONDecoder().decode(Chat.self, from: await data("mobile/client/chats", body: ["title": title]))
+    public func projects() async throws -> [Project] {
+        struct Listing: Decodable { let projects: [Project] }
+        return try JSONDecoder().decode(Listing.self, from: await data("mobile/client/projects")).projects
+    }
+
+    public func composer() async throws -> Chat {
+        try JSONDecoder().decode(Chat.self, from: await data("mobile/client/composer"))
+    }
+
+    public func createChat(title: String, projectID: String? = nil) async throws -> Chat {
+        var body = ["title": title]
+        if let projectID { body["project_id"] = projectID }
+        return try JSONDecoder().decode(Chat.self, from: await data("mobile/client/chats", body: body))
     }
 
     public func chat(_ id: String) async throws -> Chat {
@@ -133,8 +144,10 @@ public final class SuzentClient: Sendable {
         return try JSONDecoder().decode(Chat.self, from: await data("mobile/client/chats/\(id)"))
     }
 
-    public func send(_ text: String, chatID: String) async throws {
-        _ = try await data("mobile/client/send", body: ["chat_id": chatID, "message": text])
+    public func send(_ text: String, chatID: String, model: String? = nil) async throws {
+        var body = ["chat_id": chatID, "message": text]
+        if let model { body["model"] = model }
+        _ = try await data("mobile/client/send", body: body)
     }
 
     public func stop(_ chatID: String) async throws {

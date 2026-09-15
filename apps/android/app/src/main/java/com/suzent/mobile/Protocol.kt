@@ -20,7 +20,8 @@ data class Backend(val origin: HttpUrl) {
 
 data class ChatMessage(val role: String, val content: String, val parts: List<MessagePart> = emptyList(),
     val name: String = "", val toolCallId: String = "")
-data class Chat(val id: String, val title: String, val running: Boolean, val messages: List<ChatMessage>) {
+data class Chat(val id: String, val title: String, val running: Boolean, val messages: List<ChatMessage>,
+    val projectId: String? = null, val projectName: String? = null, val model: String? = null, val models: List<String> = emptyList()) {
     companion object {
         fun parse(json: JSONObject): Chat {
             val messages = json.optJSONArray("messages") ?: JSONArray()
@@ -34,10 +35,13 @@ data class Chat(val id: String, val title: String, val running: Boolean, val mes
                             MessagePart(part.optString("type"), part.optString("text"), part.optString("toolName"),
                                 part.optString("args"), part.optString("output"), part.optString("toolCallId"), part.optString("state"))
                         }, item.optString("name"), item.optString("tool_call_id"))
-                })
+                }, projectId = json.opt("projectId") as? String, projectName = json.opt("projectName") as? String,
+                model = json.opt("model") as? String, models = json.optJSONArray("models")?.let { a -> (0 until a.length()).map { a.getString(it) } } ?: emptyList())
         }
     }
 }
+
+data class Project(val id: String, val name: String)
 
 class SSEDecoder {
     private val lines = mutableListOf<String>()

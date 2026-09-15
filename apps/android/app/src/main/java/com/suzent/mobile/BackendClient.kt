@@ -64,13 +64,18 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
         val array = json("mobile/client/chats").getJSONArray("chats")
         return (0 until array.length()).map { Chat.parse(array.getJSONObject(it)) }
     }
-    suspend fun create(title: String): Chat = Chat.parse(json("mobile/client/chats", JSONObject().put("title", title)))
+    suspend fun projects(): List<Project> {
+        val array = json("mobile/client/projects").getJSONArray("projects")
+        return (0 until array.length()).map { val item = array.getJSONObject(it); Project(item.getString("id"), item.getString("name")) }
+    }
+    suspend fun composer(): Chat = Chat.parse(json("mobile/client/composer"))
+    suspend fun create(title: String, projectId: String? = null): Chat = Chat.parse(json("mobile/client/chats", JSONObject().put("title", title).apply { if (projectId != null) put("project_id", projectId) }))
     suspend fun chat(id: String): Chat {
         require(!id.contains('/') && id != "." && id != "..")
         return Chat.parse(json("mobile/client/chats/$id"))
     }
-    suspend fun send(id: String, text: String) {
-        json("mobile/client/send", JSONObject().put("chat_id", id).put("message", text))
+    suspend fun send(id: String, text: String, model: String? = null) {
+        json("mobile/client/send", JSONObject().put("chat_id", id).put("message", text).apply { if (model != null) put("model", model) })
     }
     suspend fun approvals(id: String): ApprovalState {
         require(!id.contains('/') && id != "." && id != "..")

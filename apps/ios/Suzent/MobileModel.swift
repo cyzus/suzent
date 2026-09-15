@@ -12,6 +12,10 @@ import SuzentCore
     var canReconnect = false
     private var pairingTask: Task<Void, Never>?
     var chats: [Chat] = []
+    var projects: [Project] = []
+    var selectedModel: String?
+    var sentVersion = 0
+    @ObservationIgnored private var drafts: [String: String] = [:]
     var selected: Chat?
     var draft = ""
     var liveParts: [MessagePart] = []
@@ -145,11 +149,13 @@ import SuzentCore
             _ = try await candidate.capabilities()
             let session = try await candidate.clientSession()
             let listing = try await candidate.chats()
+            let projectList = try await candidate.projects()
             try Task.checkCancellation()
             client?.close()
             client = candidate
             device = session.device
             chats = listing
+            projects = projectList
             connected = true
         } catch { candidate.close(); throw error }
     }
@@ -170,26 +176,44 @@ import SuzentCore
         } else { error = failure.localizedDescription }
     }
 
+    func watchNavigation() async {
+        while !Task.isCancelled && connected {
+            if foreground && !busy {
+                await refresh()
+            }
+            do { try await Task.sleep(for: .seconds(10)) } catch { return }
+        }
+    }
+
     func refresh() async {
         guard let client else { return }
         let current = generation
         do {
             let session = try await client.clientSession()
             let listing = try await client.chats()
+            let projectList = try await client.projects()
             guard generation == current else { return }
             device = session.device
             chats = listing
-            if let id = selected?.id, !streaming {
+            projects = projectList
+            if let id = selected?.id, !id.isEmpty, !streaming {
                 let chat = try await client.chat(id)
-                guard generation == current, selected?.id == id else { return }
+                guard generation == current, selected?.id == id, !streaming else { return }
                 selected = chat
             }
         } catch { if generation == current { handle(error) } }
     }
 
     func open(_ chat: Chat) async {
-        guard let client, !streaming else { return }
+        guard let client, !busy else { return }
+        if let id = selected?.id { drafts[id] = draft }
+        generation = UUID()
+        streamTask?.cancel()
+        streaming = false
+        pendingApprovals = []
         selected = chat
+        selectedModel = nil
+        draft = drafts[chat.id] ?? ""
         liveParts = []
         let current = generation
         do {
@@ -201,27 +225,43 @@ import SuzentCore
         } catch { if current == generation { handle(error) } }
     }
 
-    func createChat() async {
+    func createChat(projectID: String? = nil) async {
         guard let client, device?.permissions.createChats == true, !busy, !streaming else { return }
         busy = true
         defer { busy = false }
         do {
-            let chat = try await client.createChat(title: String(localized: "Mobile conversation"))
+            if let id = selected?.id { drafts[id] = draft }
+            var chat = try await client.composer()
+            chat.projectId = projectID
+            chat.projectName = projects.first { $0.id == projectID }?.name
+            generation = UUID()
+            pendingApprovals = []; approvalChoices = [:]
+            liveParts = []
             selected = chat
-            await refresh()
+            selectedModel = nil
+            draft = ""
         } catch { handle(error) }
     }
 
     func send() async {
-        guard let client, device?.permissions.send == true, let id = selected?.id, !busy, !streaming else { return }
+        guard let client, device?.permissions.send == true, var id = selected?.id, !busy, !streaming else { return }
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         busy = true
         error = nil
         defer { busy = false }
         do {
-            try await client.send(text, chatID: id)
+            if id.isEmpty {
+                guard device?.permissions.createChats == true else { return }
+                let created = try await client.createChat(title: String(localized: "Mobile conversation"), projectID: selected?.projectId)
+                selected = created
+                id = created.id
+                chats.insert(created, at: 0)
+            }
+            try await client.send(text, chatID: id, model: selectedModel)
             draft = ""
+            drafts[id] = nil
+            sentVersion += 1
             if var chat = selected, chat.id == id {
                 chat.messages = (chat.messages ?? []) + [ChatMessage(role: "user", content: text)]
                 chat.isRunning = true
@@ -231,7 +271,7 @@ import SuzentCore
             if foreground { observe(id, client: client) }
         } catch {
             if case ClientError.http(401) = error { handle(error) }
-            else { self.error = String(localized: "Send could not be confirmed. Refresh history before sending again.") }
+            else { self.error = String(localized: "Send could not be confirmed. Check the conversation before trying again.") }
         }
     }
 
@@ -292,6 +332,7 @@ import SuzentCore
     }
 
     func watchApprovals(_ id: String) async {
+        guard !id.isEmpty else { return }
         pendingApprovals = []; approvalChoices = [:]
         let current = generation
         var previousRunning = false
@@ -341,7 +382,7 @@ import SuzentCore
         } catch {
             if current == generation {
                 handle(error)
-                self.error = String(localized: "Approval could not be confirmed. Refresh before trying again.")
+                self.error = String(localized: "Approval could not be confirmed. Check its status before trying again.")
             }
         }
     }
@@ -360,6 +401,7 @@ import SuzentCore
             liveParts = []
             disconnectNode()
         } else {
+            if !connected && canReconnect { await connect() }
             await refresh()
             if let chat = selected, chat.isRunning == true, let client {
                 observe(chat.id, client: client)
@@ -430,6 +472,7 @@ import SuzentCore
     }
 
     func forget() {
+        projects = []; selectedModel = nil; drafts = [:]
         pendingApprovals = []; approvalChoices = [:]; approvalBusy = false
         pairingTask?.cancel()
         do { try CredentialStore.clear() }

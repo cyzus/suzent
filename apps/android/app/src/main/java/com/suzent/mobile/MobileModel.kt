@@ -29,6 +29,10 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     var device by mutableStateOf<ClientDevice?>(null)
     var canReconnect by mutableStateOf(false)
     private var pairingJob: Job? = null
+    var projects by mutableStateOf<List<Project>>(emptyList())
+    var selectedModel by mutableStateOf<String?>(null)
+    var sentVersion by mutableStateOf(0)
+    private val drafts = mutableMapOf<String, String>()
     var chats by mutableStateOf<List<Chat>>(emptyList())
     var selected by mutableStateOf<Chat?>(null)
     var draft by mutableStateOf("")
@@ -154,11 +158,13 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
             candidate.capabilities()
             val session = candidate.session()
             val listing = candidate.chats()
+            val projectList = candidate.projects()
             currentCoroutineContext().ensureActive()
             client?.close()
             client = candidate
             device = session
             chats = listing
+            projects = projectList
             connected = true
         } catch (failure: Exception) { candidate.close(); throw failure }
     }
@@ -191,6 +197,13 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         } else { error = text(fallback) }
     }
 
+    suspend fun watchNavigation() {
+        while (currentCoroutineContext().isActive && connected) {
+            if (foreground && !busy) refreshNow()
+            delay(10000)
+        }
+    }
+
     fun refresh() { viewModelScope.launch { refreshNow() } }
 
     private suspend fun refreshNow() {
@@ -199,15 +212,16 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         try {
             val session = api.session()
             val listing = api.chats()
+            val projectList = api.projects()
             if (current != generation) return
             device = session
             chats = listing
+            projects = projectList
             val id = selected?.id
-            if (id != null && !streaming) {
+            if (!id.isNullOrEmpty() && !streaming) {
                 val chat = api.chat(id)
-                if (current == generation && selected?.id == id) selected = chat
+                if (current == generation && selected?.id == id && !streaming) selected = chat
             }
-            if (current == generation) error = null
         } catch (error: CancellationException) { throw error }
         catch (failure: Exception) {
             if (BuildConfig.DEBUG) {
@@ -219,8 +233,16 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun open(chat: Chat) {
-        if (streaming || busy) return
+        if (busy) return
+        selected?.id?.let { drafts[it] = draft }
+        generation++
+        client?.cancelLive()
+        streamJob?.cancel()
+        streaming = false
+        pendingApprovals = emptyList()
         selected = chat
+        selectedModel = null
+        draft = drafts[chat.id].orEmpty()
         liveParts = emptyList()
         viewModelScope.launch {
             try {
@@ -237,14 +259,20 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun create() {
+    fun create(projectId: String? = null) {
         val api = client ?: return
         if (busy || streaming || device?.permissions?.createChats != true) return
         busy = true
         viewModelScope.launch {
             try {
-                selected = api.create(text(R.string.mobile_conversation))
-                refreshNow()
+                selected?.id?.let { drafts[it] = draft }
+                val composer = api.composer()
+                generation++
+                pendingApprovals = emptyList(); approvalChoices = emptyMap()
+                liveParts = emptyList()
+                selected = composer.copy(projectId = projectId, projectName = projects.firstOrNull { it.id == projectId }?.name)
+                selectedModel = null
+                draft = ""
             } catch (failure: Exception) { handle(failure) }
             finally { busy = false }
         }
@@ -252,7 +280,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
 
     fun send() {
         val api = client ?: return
-        val id = selected?.id ?: return
+        var id = selected?.id ?: return
         val message = draft.trim()
         if (busy || streaming || message.isEmpty() || device?.permissions?.send != true) return
         busy = true
@@ -260,9 +288,19 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         val current = generation
         viewModelScope.launch {
             try {
-                api.send(id, message)
+                if (id.isEmpty()) {
+                    if (device?.permissions?.createChats != true) return@launch
+                    val created = api.create(text(R.string.mobile_conversation), selected?.projectId)
+                    if (current != generation) return@launch
+                    selected = created
+                    id = created.id
+                    chats = listOf(created) + chats
+                }
+                api.send(id, message, selectedModel)
                 if (current != generation) return@launch
                 draft = ""
+                drafts.remove(id)
+                sentVersion++
                 selected?.takeIf { it.id == id }?.let { chat ->
                     selected = chat.copy(running = true, messages = chat.messages + ChatMessage("user", message))
                 }
@@ -319,6 +357,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     }
 
     suspend fun watchApprovals(id: String) {
+        if (id.isEmpty()) return
         pendingApprovals = emptyList(); approvalChoices = emptyMap()
         val current = generation
         var previousRunning = false
@@ -391,6 +430,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
             liveParts = emptyList()
             disconnectNode()
         } else {
+            if (!connected && canReconnect) connect()
             viewModelScope.launch {
                 refreshNow()
                 selected?.takeIf { it.running }?.let { chat -> observe(chat.id) }
@@ -459,6 +499,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun forget() {
+        projects = emptyList(); selectedModel = null; drafts.clear()
         pairingJob?.cancel()
         pendingApprovals = emptyList(); approvalChoices = emptyMap(); approvalBusy = false
         try { store.clear() } catch (_: Exception) { error = text(R.string.secure_error) }

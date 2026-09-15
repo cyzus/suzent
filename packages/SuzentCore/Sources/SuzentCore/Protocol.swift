@@ -46,6 +46,16 @@ public struct Chat: Decodable, Identifiable, Sendable {
     public let title: String
     public var messages: [ChatMessage]?
     public var isRunning: Bool?
+    public var projectId: String?
+    public var projectName: String?
+    public var model: String?
+    public var models: [String]?
+}
+
+public struct Project: Decodable, Identifiable, Sendable {
+    public let id: String
+    public let name: String
+    public init(id: String, name: String) { self.id = id; self.name = name }
 }
 
 public struct ChatMessage: Decodable, Sendable {

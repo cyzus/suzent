@@ -101,7 +101,7 @@ fun MarkdownText(text: String) {
                 }
             } else {
                 AndroidView(modifier = Modifier.fillMaxWidth(), factory = { ctx ->
-                    TextView(ctx).apply { textSize = PresentationTokens.typeBody.toFloat(); setTextIsSelectable(true); setLineSpacing(0f, 1.2f) }
+                    TextView(ctx).apply { textSize = 15f; setTextIsSelectable(true); setLineSpacing(0f, 1.2f) }
                 }, update = { view ->
                     view.setTextColor(foreground); view.setLinkTextColor(link)
                     if (view.tag != block.body) { renderer.setParsedMarkdown(view, block.body as android.text.Spanned); view.tag = block.body }
@@ -117,21 +117,23 @@ private data class MarkdownBlock(val body: CharSequence, val language: String? =
 fun MessageView(message: DisplayMessage) {
     val user = message.role == "user"
     val outline = MaterialTheme.colorScheme.outline
-    Column(Modifier.fillMaxWidth().then(if (user) Modifier.padding(start = 24.dp, end = 2.dp)
+    Box(Modifier.fillMaxWidth(), contentAlignment = if (user) androidx.compose.ui.Alignment.CenterEnd else androidx.compose.ui.Alignment.CenterStart) {
+    Column((if (user) Modifier.widthIn(max = 320.dp) else Modifier.fillMaxWidth()).then(if (user) Modifier.padding(start = 40.dp, end = 2.dp)
         .drawBehind { drawRect(outline, topLeft = Offset(PresentationTokens.shadowOffset.dp.toPx(), PresentationTokens.shadowOffset.dp.toPx())) }
         .background(Color(PresentationTokens.code_bg))
-        .border(PresentationTokens.borderWidth.dp, outline).padding(14.dp) else Modifier.padding(vertical = 6.dp)),
+        .border(PresentationTokens.borderWidth.dp, outline).padding(10.dp) else Modifier.padding(vertical = 6.dp)),
         verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (message.text.isNotBlank()) {
             if (message.role == "assistant") SuzentAssistantBadge()
             else Text(stringResource(if (user) R.string.you else R.string.activity),
                 color = if (user) Color.Black else MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.labelLarge)
-            if (user) SelectionContainer { Text(message.text, color = Color.Black) }
+            if (user) SelectionContainer { Text(message.text, color = Color.Black, style = MaterialTheme.typography.bodyMedium) }
         }
         if (!user) ActivityContent(message.parts, live = false)
 
     }
+}
 }
 
 @Composable
