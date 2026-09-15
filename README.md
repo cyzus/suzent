@@ -185,6 +185,7 @@ Each conversation becomes a persistent session, so history, working memory, and 
 | [Nodes](docs/02-concepts/nodes/nodes.md) | Connect and control companion devices |
 | [Retry](docs/02-concepts/runtime/retry.md) | Roll back the last agent turn and rerun it |
 | [Development Guide](docs/03-developing/development-guide.md) | Setup, workflow, builds, architecture |
+| [Native Mobile](docs/03-developing/mobile.md) | SwiftUI/Compose developer preview, monorepo layout, and roadmap |
 
 The full index lives in [docs/README.md](docs/README.md).
 

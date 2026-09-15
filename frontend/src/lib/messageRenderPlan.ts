@@ -1,3 +1,4 @@
+import presentation from '../../../packages/presentation/tokens.json';
 import type { Message } from '../types/api';
 import {
   isIntermediateStepContent,
@@ -17,15 +18,12 @@ export interface MessageRenderPlan {
   stepSummaryByMessageIndex: Map<number, string>;
 }
 
-const IGNORED_TOOL_NAMES = ['final_answer', 'final answer'];
+const IGNORED_TOOL_NAMES = presentation.ignoredToolNames;
 
 // Synthetic compaction summary messages are injected into the LLM context only.
 // Older chats may have persisted them into the display log before this was
 // fixed backend-side; hide them so users see only their original interactions.
-const COMPACTION_SUMMARY_MARKERS = [
-  '[CONTEXT SUMMARY — READ BEFORE RESPONDING]',
-  '--- ARCHIVED CONTEXT SUMMARY ---',
-];
+const COMPACTION_SUMMARY_MARKERS = presentation.compactionSummaryMarkers;
 
 function isCompactionSummaryMessage(message: Message): boolean {
   const content = message.content || '';

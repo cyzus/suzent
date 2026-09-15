@@ -1,0 +1,119 @@
+"Your desktop backend" = "连接桌面后端";
+"Remote host token" = "远程主机令牌";
+"Create a host token in desktop Settings → Devices. This credential grants full backend access." = "请在桌面端「设置 → 设备」创建主机令牌。此凭证拥有后端的完整访问权限。";
+"Connect" = "连接";
+"Chats" = "对话";
+"Refresh" = "刷新";
+"Dismiss" = "关闭";
+"This phone as a Node" = "将手机作为 Node";
+"Enable foreground Node" = "启用前台 Node";
+"Conversations" = "对话";
+"New conversation" = "新建对话";
+"Mobile conversation" = "移动端对话";
+"Forget connection" = "忘记连接";
+"To revoke access, also remove its credentials on the desktop." = "若要撤销访问权限，还需在桌面端移除相应凭证。";
+"You" = "你";
+"Working…" = "正在处理…";
+"Message" = "消息";
+"Send" = "发送";
+"Stop" = "停止";
+"Off" = "已关闭";
+"Offline" = "离线";
+"Connecting" = "正在连接";
+"Approve on desktop: %@" = "请在桌面端批准：%@";
+"Online · device.status" = "在线 · device.status";
+"Disconnected — toggle to reconnect" = "已断开，请重新开启以连接";
+"Could not access secure credentials." = "无法访问安全凭证存储。";
+"Task failed." = "任务失败。";
+"Send could not be confirmed. Check the conversation before trying again." = "无法确认消息是否已发送，请先检查会话记录，避免重复发送。";
+"Live connection ended. Refresh history before sending again." = "实时连接已结束，请先刷新历史记录再发送。";
+"Enter an HTTPS origin without a path. HTTP is available in debug builds." = "请输入不含路径的 HTTPS 后端地址。调试版本支持 HTTP。";
+"Backend request failed (HTTP %lld)." = "后端请求失败（HTTP %lld）。";
+"The backend returned an invalid response." = "后端返回的响应无效。";
+"Activity" = "活动";
+"Tool activity" = "工具活动";
+"Reasoning" = "思考过程";
+"Additional activity" = "其他活动";
+"View this activity on desktop." = "请在桌面端查看此活动。";
+
+"This simulator connects to the backend on your Mac using its trusted local connection." = "此模拟器通过受信任的本机连接访问 Mac 上的后端。";
+"The response could not be saved. Keep this view open and retry refreshing history." = "回复未能保存。请保留当前页面，并尝试重新刷新历史记录。";
+
+"Your Suzent, together." = "随时连接你的 Suzent。";
+"Connect to your desktop. Continue conversations wherever you are." = "连接桌面端，随时继续你的对话。";
+"Waiting for desktop approval" = "等待桌面端批准";
+"Check this code on your desktop, then choose which conversations and actions to share." = "核对桌面端的验证码，然后选择要共享的会话和操作权限。";
+"Cancel pairing" = "取消配对";
+"Connect to this desktop?" = "连接此桌面端？";
+"Your desktop will ask you to approve this phone. Node access stays separate." = "桌面端会请求批准这台手机。Node 访问需单独开启。";
+"Request pairing" = "请求配对";
+"On desktop, open Settings → Devices → Mobile access, then choose Pair a phone." = "在桌面端打开「设置 → 设备 → 移动端访问」，选择「配对手机」。";
+"Scan desktop QR code" = "扫描桌面二维码";
+"Paste an invitation instead" = "粘贴配对邀请";
+"Pairing invitation" = "配对邀请";
+"Review invitation" = "检查邀请";
+"Reconnect to desktop" = "重新连接桌面端";
+"Desktop access" = "桌面端访问";
+"All conversations" = "所有会话";
+"Shared conversations: %lld" = "已共享会话：%lld";
+"Create conversations" = "创建会话";
+"Send messages" = "发送消息";
+"Stop responses" = "停止回复";
+"Allowed" = "允许";
+"Not allowed" = "不允许";
+"Manage or revoke access in desktop Settings → Devices → Mobile access." = "在桌面端「设置 → 设备 → 移动端访问」管理或撤销访问。";
+"Tool approvals remain on your desktop. Node access is separate." = "工具审批仍在桌面端进行。Node 访问需单独开启。";
+"Camera unavailable" = "相机不可用";
+"Allow camera access in Settings, or paste the pairing invitation from your desktop." = "请在设置中允许相机访问，或粘贴桌面端生成的配对邀请。";
+"Scan pairing code" = "扫描配对二维码";
+"Cancel" = "取消";
+"Invalid pairing invitation. Scan a new QR code from your desktop." = "配对邀请无效，请扫描桌面端的新二维码。";
+"This backend is incompatible. Update Suzent on your desktop and phone." = "后端协议不兼容，请更新桌面端和手机端 Suzent。";
+"Pairing expired. Generate a new QR code on your desktop." = "配对已过期，请在桌面端生成新二维码。";
+"Pairing was declined on the desktop." = "桌面端已拒绝配对。";
+"Access was revoked or expired. Pair this phone again." = "访问已被撤销或已失效，请重新配对。";
+
+"Access" = "权限";
+"Done" = "完成";
+
+"Checking desktop addresses…" = "正在检查桌面端地址…";
+"None of the desktop addresses could be reached with a compatible protocol. Check Wi-Fi or Tailscale and update the desktop app." = "所有候选地址均无法连接或协议不兼容。请检查 Wi-Fi、Tailscale 连接及桌面端版本。";
+
+"Confirm connection" = "确认连接";
+"Confirm to connect with the permissions shown above. You do not need to approve again on desktop. Tool approvals stay on desktop." = "确认后将按上方权限连接，无需回到桌面再次批准。工具审批仍在桌面进行。";
+
+"Activity · %lld" = "活动 · %lld";
+"Running" = "执行中";
+"Approval required" = "等待审批";
+"Approve tool requests" = "审批工具请求";
+"Via connected desktop" = "通过已连接的桌面执行";
+"Allow once" = "允许本次";
+"Reject" = "拒绝";
+"Choose for each pending tool to continue." = "为每个待审批工具选择后继续执行。";
+"Approve on desktop, or pair again with tool approval access." = "请在桌面审批，或重新配对并授予工具审批权限。";
+"Approval could not be confirmed. Check its status before trying again." = "未能确认审批结果，请检查其状态后再试。";
+"Confirm to connect with the permissions shown above. You do not need to approve again on desktop." = "确认后将按上方权限连接，无需回到桌面再次批准。";
+"Tool requests follow the conversation policy. Node access is separate." = "工具请求遵循会话策略。Node 访问需单独开启。";
+
+"Full access" = "完整访问";
+"All conversations, messaging, and tool approvals." = "全部会话、消息收发与工具审批。";
+
+"Completed" = "已完成";
+
+"Failed" = "失败";
+
+"Open sidebar" = "打开侧边栏";
+"Close sidebar" = "关闭侧边栏";
+"Search chats" = "搜索会话";
+"Settings" = "设置";
+"Desktop model" = "桌面端管理模型";
+"Conversation default" = "沿用会话模型";
+
+
+"Night owl?" = "夜猫子？";
+"Good morning." = "早上好。";
+"Keep building." = "继续创造。";
+"Good evening." = "晚上好。";
+"Bed time? Or maybe late night coding?" = "该睡了？还是深夜爆肝？";
+"Creating in" = "创建于";
+"Default" = "默认项目";

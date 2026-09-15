@@ -1,4 +1,42 @@
 export const zhCN = {
+  mobileAccess: {
+    fullAccess: '完整访问',
+    restrictedAccess: '受限访问',
+    fullAccessHelp: '在手机上使用会话、发送和停止响应，并审批工具请求。',
+    restrictAccess: '限制访问',
+    restoreFullAccess: '恢复完整访问',
+    approve_tools: '审批工具请求',
+
+    choosePermissions: '先选择手机可访问的内容和操作，再生成二维码。',
+    cancelInvitation: '关闭二维码并取消邀请',
+
+    title: '移动端访问',
+    description: '将 Suzent 手机应用与此桌面端配对。每台手机使用可单独撤销的访问凭证。',
+    origin: '手机可以访问的后端地址',
+    network:
+      '二维码包含此地址及检测到的局域网和 Tailscale 地址。手机先检查可达性，再由你确认。正式版需要 HTTPS；仅调试版支持 HTTP。',
+    generate: '配对手机',
+    expired: '邀请已过期，请生成新的二维码。',
+    qrAlt: 'Suzent 移动端配对二维码',
+    scan: '在 Suzent 手机端扫码并确认连接。持有此一次性二维码的人可以获得上方已选择的权限。',
+    expires: '{seconds} 秒后过期',
+    copy: '复制配对邀请',
+    compare: '请确认手机上显示的验证码为 {code}。',
+    all_chats: '读取所有会话（包括未来的会话）',
+    create_chats: '创建会话',
+    send: '发送消息',
+    stop: '停止回复',
+    sharedChats: '允许这台手机读取的会话',
+    toolPolicy:
+      '发送消息可能按会话现有策略运行工具。授予审批权限后可在手机确认工具请求。Node 访问需单独开启。',
+    approve: '批准手机',
+    deny: '拒绝',
+    revoke: '撤销访问',
+    chatCount: '已共享 {count} 个会话',
+    readOnly: '只读',
+    loadError: '无法加载移动端访问，请刷新重试。',
+    actionError: '操作未完成，请检查地址和连接后重试。',
+  },
   imageTool: {
     previewFailed: '图片预览加载失败，点击文件重试。',
   },

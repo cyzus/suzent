@@ -1,0 +1,9 @@
+{
+  "connect": {"type":"connect","display_name":"Suzent Mobile","platform":"ios","capabilities":[{"name":"device.status","description":"Foreground device availability","params_schema":{}}],"device_token":""},
+  "pending": {"type":"pending","pairing_code":"ABC123","message":"Awaiting operator approval"},
+  "connected": {"type":"connected","node_id":"fixture-node","device_token":"fixture-only-token"},
+  "invoke": {"type":"invoke","request_id":"fixture-request","command":"device.status","params":{}},
+  "result": {"type":"result","request_id":"fixture-request","success":true,"result":{"platform":"ios","foreground":true}},
+  "sse": ": heartbeat\r\ndata: {\"type\":\"TEXT_MESSAGE_CONTENT\",\r\ndata: \"delta\":\"你好 🌱\"}\r\n\r\ndata: {\"type\":\"RUN_FINISHED\"}\n\n",
+  "delta": "你好 🌱"
+}

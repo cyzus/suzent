@@ -1,4 +1,44 @@
 export const en = {
+  mobileAccess: {
+    fullAccess: 'Full access',
+    restrictedAccess: 'Restricted access',
+    fullAccessHelp:
+      'Use conversations, send and stop responses, and approve tool requests from your phone.',
+    restrictAccess: 'Restrict access',
+    restoreFullAccess: 'Restore full access',
+    approve_tools: 'Approve tool requests',
+
+    choosePermissions: 'Choose what this phone can access before generating its QR code.',
+    cancelInvitation: 'Close QR code and cancel invitation',
+
+    title: 'Mobile access',
+    description:
+      'Pair the Suzent app with this desktop. Each phone receives its own revocable access.',
+    origin: 'Backend address reachable from your phone',
+    network:
+      'The QR code includes this address plus detected LAN and Tailscale addresses. Your phone checks reachability before you confirm. Release apps require HTTPS; HTTP is debug-only.',
+    generate: 'Pair a phone',
+    expired: 'Invitation expired. Generate a new QR code.',
+    qrAlt: 'Suzent mobile pairing QR code',
+    scan: 'Scan in the Suzent app and confirm the connection on your phone. Anyone with this one-time QR code can accept the permissions above.',
+    expires: 'Expires in {seconds}s',
+    copy: 'Copy pairing invitation',
+    compare: 'Confirm that the phone shows code {code}.',
+    all_chats: 'Read all conversations, including future ones',
+    create_chats: 'Create conversations',
+    send: 'Send messages',
+    stop: 'Stop responses',
+    sharedChats: 'Conversations this phone can read',
+    toolPolicy:
+      'Sending can run agent tools under the existing conversation policy. With approval access, tool requests can be confirmed on your phone. Node access is enabled separately.',
+    approve: 'Approve phone',
+    deny: 'Deny',
+    revoke: 'Revoke access',
+    chatCount: '{count} shared conversations',
+    readOnly: 'Read only',
+    loadError: 'Could not load mobile access. Refresh to retry.',
+    actionError: 'Could not complete the action. Check the address and connection, then retry.',
+  },
   imageTool: {
     previewFailed: 'Image preview unavailable. Open the file to retry.',
   },

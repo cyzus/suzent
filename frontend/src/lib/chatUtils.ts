@@ -1,3 +1,4 @@
+import presentation from '../../../packages/presentation/tokens.json';
 import type {
   AGUIPart,
   PermissionPrompt,
@@ -79,7 +80,7 @@ export function generateBlockKey(block: ContentBlock, index: number, messageIdx:
   return `msg-${messageIdx}-block-${index}-${block.type}`;
 }
 
-const IGNORED_TOOL_NAMES = ['final_answer', 'final answer'];
+const IGNORED_TOOL_NAMES = presentation.ignoredToolNames;
 
 /** Check if parsed blocks represent a tool-only message (no real prose/code content) */
 // Tool names that should NOT be collapsed into intermediate step pills —

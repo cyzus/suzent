@@ -102,7 +102,12 @@ async def get_chat_permission_state(request: Request) -> JSONResponse:
         return JSONResponse({"error": "Chat not found"}, status_code=404)
     config = dict(chat.config or {})
     stored_pending = config.get("_pending_approvals") or []
-    unanswered_ids = _unanswered_tool_call_ids(getattr(chat, "agent_state", None))
+    agent_state = getattr(chat, "agent_state", None)
+    unanswered_ids = (
+        await asyncio.to_thread(_unanswered_tool_call_ids, agent_state)
+        if stored_pending
+        else None
+    )
     if unanswered_ids is not None:
         # Prune answered approvals under the per-chat approval lock so this
         # read-modify-write cannot race a concurrent stream writer (which
@@ -117,6 +122,11 @@ async def get_chat_permission_state(request: Request) -> JSONResponse:
                 if current_chat is not None
                 else []
             )
+            if (
+                current_chat is not None
+                and getattr(current_chat, "agent_state", None) != agent_state
+            ):
+                return current
             filtered = [
                 item
                 for item in current

@@ -633,6 +633,35 @@ class ChatOperationsMixin:
                 session.add(chat)
                 session.commit()
 
+    def get_chat_projects(
+        self, chat_ids: list[str]
+    ) -> dict[str, tuple[str | None, str | None]]:
+        """Read navigation metadata only for already-authorized conversations."""
+        if not chat_ids:
+            return {}
+        with self._session() as session:
+            rows = session.exec(
+                select(ChatModel.id, ChatModel.project_id, ProjectModel.name)
+                .outerjoin(ProjectModel, ChatModel.project_id == ProjectModel.id)
+                .where(ChatModel.id.in_(chat_ids))
+            ).all()
+            return {row[0]: (row[1], row[2]) for row in rows}
+
+    def list_chat_titles(
+        self, chat_ids: list[str] | None = None, limit: int = 1000
+    ) -> list[tuple[str, str]]:
+        """Read a scoped title index without loading transcripts or checkpoints."""
+        if chat_ids == []:
+            return []
+        with self._session() as session:
+            statement = select(ChatModel.id, ChatModel.title)
+            if chat_ids is not None:
+                statement = statement.where(ChatModel.id.in_(chat_ids))
+            else:
+                statement = _apply_chat_filters(statement, None, None, None)
+            statement = statement.order_by(ChatModel.updated_at.desc()).limit(limit)
+            return [(row[0], row[1]) for row in session.exec(statement).all()]
+
     def list_chats(
         self,
         limit: int = 50,

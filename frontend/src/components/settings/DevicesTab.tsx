@@ -38,6 +38,7 @@ import { BrutalOnOff } from '../BrutalOnOff';
 import { SettingsHeader } from './SettingsHeader';
 import { NodeInvokePanel, PeerInvokePanel } from './NodeInvokePanel';
 import { CopyButton } from './CopyButton';
+import { MobileAccessCard } from './MobileAccessCard';
 import { BrowserNodeQR } from './BrowserNodeQR';
 import { NetworkAccessStrip } from './NetworkAccessCard';
 import { PeerTriggerPanel } from './PeerTriggerPanel';
@@ -439,6 +440,7 @@ export function DevicesTab(): React.ReactElement {
 
       {/* Network status — the toggle lives in Mesh; this is read-only. */}
       <NetworkAccessStrip />
+      <MobileAccessCard config={config} />
 
       {/* ── Discover peers ──────────────────────────────────────────── */}
       <SettingsCard>

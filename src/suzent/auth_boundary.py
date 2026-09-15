@@ -50,6 +50,10 @@ _HTTP_EXEMPT_PREFIXES = (
 # would also match "/nodes/devices" and "/nodes/pending/{code}/approve", handing
 # the entire device API to unauthenticated remote callers.
 _HTTP_EXEMPT_PATHS = {
+    "/mobile/capabilities",
+    "/mobile/pairing/claim",
+    "/mobile/pairing/preview",
+    "/mobile/pairing/collect",
     # The browser-node page. A device joining the mesh has no token yet, so the
     # page must be fetchable without one. It is static markup carrying no
     # secrets; the /ws/node handshake it then performs still requires approval.
@@ -143,6 +147,13 @@ class AuthBoundaryMiddleware:
 
     async def __call__(self, scope, receive, send):
         if scope["type"] not in ("http", "websocket"):
+            return await self.app(scope, receive, send)
+
+        # This dedicated surface authenticates every request in its handlers,
+        # including loopback, and never accepts host/Node tokens as client grants.
+        if scope["type"] == "http" and scope.get("path", "").startswith(
+            "/mobile/client/"
+        ):
             return await self.app(scope, receive, send)
 
         client = scope.get("client")
