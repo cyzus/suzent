@@ -83,25 +83,21 @@ async def session(request: Request) -> JSONResponse:
 async def chats(request: Request) -> JSONResponse:
     grant = authorize(request)
     db = get_database()
-    if grant.permissions.all_chats:
-        records = db.list_chats(limit=1000)
-    else:
-        records = [
-            record
-            for chat_id in grant.permissions.chat_ids
-            if (record := db.get_chat(chat_id)) is not None
-        ]
+    records = db.list_chat_titles(
+        chat_ids=None if grant.permissions.all_chats else grant.permissions.chat_ids,
+        limit=1000,
+    )
     from suzent.core.stream_registry import is_background_streaming
 
     return reply(
         {
             "chats": [
                 {
-                    "id": record.id,
-                    "title": record.title,
-                    "isRunning": is_background_streaming(record.id),
+                    "id": chat_id,
+                    "title": title,
+                    "isRunning": is_background_streaming(chat_id),
                 }
-                for record in records
+                for chat_id, title in records
             ]
         }
     )
@@ -112,7 +108,7 @@ async def chat(request: Request) -> JSONResponse:
     authorize(request, chat_id)
     from suzent.routes.chat_routes import get_chat
 
-    response = await get_chat(request)
+    response = await get_chat(request, include_runtime=False)
     if response.status_code != 200:
         return response
     data = json.loads(response.body)

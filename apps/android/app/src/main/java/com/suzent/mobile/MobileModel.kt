@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
@@ -195,8 +196,17 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         selected = chat
         liveText = ""
         viewModelScope.launch {
-            refreshNow()
-            if (selected?.id == chat.id) observe(chat.id)
+            try {
+                val api = client ?: return@launch
+                val current = generation
+                val saved = api.chat(chat.id)
+                if (current == generation && selected?.id == chat.id) {
+                    selected = saved
+                    chats = chats.map { if (it.id == saved.id) saved.copy(messages = emptyList()) else it }
+                    if (saved.running) observe(chat.id)
+                }
+            } catch (failure: CancellationException) { throw failure }
+            catch (failure: Exception) { handle(failure) }
         }
     }
 
@@ -220,14 +230,20 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         if (busy || streaming || message.isEmpty() || device?.permissions?.send != true) return
         busy = true
         error = null
+        val current = generation
         viewModelScope.launch {
             try {
                 api.send(id, message)
+                if (current != generation) return@launch
                 draft = ""
-                refreshNow()
+                selected?.takeIf { it.id == id }?.let { chat ->
+                    selected = chat.copy(running = true, messages = chat.messages + ChatMessage("user", message))
+                }
+                chats = chats.map { if (it.id == id) it.copy(running = true) else it }
                 if (foreground) observe(id)
-            } catch (failure: Exception) { handle(failure, R.string.send_unknown) }
-            finally { busy = false }
+            } catch (failure: CancellationException) { throw failure }
+            catch (failure: Exception) { if (current == generation) handle(failure, R.string.send_unknown) }
+            finally { if (current == generation) busy = false }
         }
     }
 
@@ -238,26 +254,41 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         streaming = true
         liveText = ""
         streamJob = viewModelScope.launch {
+            val buffer = LiveTextBuffer()
+            val publisher = launch {
+                while (isActive) {
+                    delay(50)
+                    if (current == generation && foreground) buffer.drain()?.let { liveText = it }
+                }
+            }
             try {
                 api.observe(id) { event ->
                     withContext(Dispatchers.Main) {
                         if (current == generation && foreground) {
                             when (event.optString("type")) {
-                                "STREAM_RESET" -> liveText = ""
-                                "TEXT_MESSAGE_CONTENT" -> liveText += event.optString("delta")
+                                "STREAM_RESET", "TEXT_MESSAGE_CONTENT" -> buffer.consume(event)
                                 "RUN_ERROR" -> error = text(R.string.task_error)
                             }
                         }
                     }
                 }
+                publisher.cancel()
+                if (current == generation && foreground) buffer.drain()?.let { liveText = it }
                 val saved = api.chat(id)
                 if (current == generation && selected?.id == id) {
                     selected = saved
+                    chats = chats.map { if (it.id == saved.id) saved.copy(messages = emptyList()) else it }
                     liveText = ""
                 }
             } catch (error: CancellationException) { throw error }
             catch (failure: Exception) { if (current == generation && foreground) handle(failure, R.string.stream_error) }
-            finally { if (current == generation) streaming = false }
+            finally {
+                publisher.cancel()
+                if (current == generation) {
+                    if (foreground) buffer.drain()?.let { liveText = it }
+                    streaming = false
+                }
+            }
         }
     }
 
@@ -281,7 +312,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         } else {
             viewModelScope.launch {
                 refreshNow()
-                selected?.let { chat -> observe(chat.id) }
+                selected?.takeIf { it.running }?.let { chat -> observe(chat.id) }
                 if (nodeEnabled && foreground) startNode()
             }
         }

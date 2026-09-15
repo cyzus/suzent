@@ -22,32 +22,35 @@ struct ContentView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
-                if !model.connected { connectionForm }
-                else if let chat = model.selected { conversation(chat) }
-                else { chatList }
-            }
-            .navigationTitle("Suzent")
-            .toolbar {
+            VStack(spacing: 0) {
+                SuzentWordmark().frame(maxWidth: .infinity).padding(.vertical, 16)
+                Rectangle().frame(height: PresentationTokens.borderWidth)
                 if model.connected {
-                    ToolbarItem(placement: .topBarLeading) {
+                    HStack(spacing: 8) {
                         Button("Chats") { model.selected = nil }
                             .disabled(model.streaming || model.busy)
-                    }
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button("Access", systemImage: "iphone.gen3") { showAccess = true }
-                    }
-                    ToolbarItem(placement: .topBarTrailing) {
+                        Spacer()
+                        Button("Access") { showAccess = true }
                         Button("Refresh", systemImage: "arrow.clockwise") { Task { await model.refresh() } }
-                    }
+                            .labelStyle(.iconOnly)
+                    }.buttonStyle(SuzentButtonStyle(compact: true)).padding(16)
                 }
+                Group {
+                    if !model.connected { connectionForm }
+                    else if let chat = model.selected { conversation(chat) }
+                    else { chatList }
+                }.frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+            .toolbar(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .bottom) {
                 if let error = model.error {
                     HStack {
                         Text(error).font(.footnote)
                         Button("Dismiss") { model.error = nil }
-                    }.padding().background(.regularMaterial)
+                    }.buttonStyle(SuzentButtonStyle(prominent: true, compact: true))
+                .padding(16)
+                .overlay(Rectangle().stroke(.primary, lineWidth: PresentationTokens.borderWidth))
+                .padding(16)
                 }
             }
         }
@@ -79,48 +82,57 @@ struct ContentView: View {
     private var connectionForm: some View { PairingView(model: model) }
 
     private var chatList: some View {
-        List {
-            Section("Conversations") {
-                Button("New conversation", systemImage: "plus") { Task { await model.createChat() } }
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                Text("Conversations").font(.caption.bold()).foregroundStyle(.secondary)
+                    .padding(.vertical, 12)
+                Button("New conversation", systemImage: "square.and.pencil") { Task { await model.createChat() } }
+                    .buttonStyle(SuzentButtonStyle(prominent: true))
                     .disabled(model.busy || model.device?.permissions.createChats != true)
-                    .opacity(model.device?.permissions.createChats == true ? 1 : 0.4)
+                    .padding(.bottom, 16)
                 ForEach(model.chats) { chat in
                     Button { Task { await model.open(chat) } } label: {
                         HStack {
-                            Text(chat.title)
+                            Text(chat.title).font(.headline).multilineTextAlignment(.leading)
                             Spacer()
                             if chat.isRunning == true { ProgressView() }
-                        }
-                    }
+                        }.frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
+                            .padding(.vertical, 8)
+                    }.buttonStyle(.plain)
+                    Divider()
                 }
-            }
+            }.padding(.horizontal, 16)
         }
-        .listStyle(.plain)
         .refreshable { await model.refresh() }
     }
 
     private func conversation(_ chat: Chat) -> some View {
         VStack(spacing: 0) {
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 18) {
+                LazyVStack(alignment: .leading, spacing: PresentationTokens.spaceLarge) {
                     Text(chat.title).font(.title2.bold())
                     ForEach(Array(presentMessages(chat.messages ?? []).enumerated()), id: \.offset) { _, message in
                         MessageView(message: message)
                     }
                     if model.streaming || !model.liveText.isEmpty {
-                        Markdown(model.liveText.isEmpty ? String(localized: "Working…") : model.liveText).textSelection(.enabled)
+                        SuzentMarkdown(text: model.liveText.isEmpty ? String(localized: "Working…") : model.liveText)
                     }
                 }.padding()
             }
-            HStack {
-                TextField("Message", text: $model.draft, axis: .vertical).lineLimit(1...6)
-                if model.streaming || model.chats.first(where: { $0.id == chat.id })?.isRunning == true {
+            VStack(alignment: .trailing, spacing: 12) {
+                TextField("Message", text: $model.draft, axis: .vertical).lineLimit(2...6)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .font(.body)
+                if model.streaming || chat.isRunning == true {
                     Button("Stop") { Task { await model.stop() } }.disabled(model.device?.permissions.stop != true)
                 } else {
-                    Button("Send", systemImage: "arrow.up.circle.fill") { Task { await model.send() } }
+                    Button("Send") { Task { await model.send() } }
                         .disabled(model.device?.permissions.send != true || model.busy || model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
-            }.padding().background(.regularMaterial)
+            }.buttonStyle(SuzentButtonStyle(prominent: true, compact: true))
+                .padding(16)
+                .overlay(Rectangle().stroke(.primary, lineWidth: PresentationTokens.borderWidth))
+                .padding(16)
         }
     }
 }

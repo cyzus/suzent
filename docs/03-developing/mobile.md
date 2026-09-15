@@ -91,6 +91,15 @@ Tokens are encrypted with an Android Keystore AES-GCM key; app backup is disable
    retransmissions and replace transient text when a fresh snapshot arrives.
    `STREAM_END` confirms persistence; the received response stays visible until
    saved history has loaded. See [Stream recovery](stream-recovery-protocol.md).
+The native clients subscribe immediately after send acknowledgment, showing the
+accepted user message locally while the backend remains authoritative. Live text
+is published in 50 ms batches, with a final flush on completion or failure.
+Android parses Markdown off the UI thread and memoizes the saved transcript's
+presentation. The scoped title index does not load transcripts/checkpoints;
+mobile detail reads omit desktop context-budget computation and return current
+`isRunning` state. Completion reconciles that state in both the selected chat and
+list so the stop control cannot retain a stale list flag.
+
 3. On foreground return, refresh the transcript. A dropped stream does not
    automatically resend the message. A lost send acknowledgment has an unknown
    outcome: inspect history before sending again.
@@ -152,6 +161,10 @@ unavailable; paste uses the same protocol and operator approval as camera scanni
 Both native apps use the desktop palette, square outlines, 2-unit borders and hard
 shadows. Shared spacing and type-scale constants also live in
 `packages/presentation/tokens.json`. Pairing, conversations, chat and access are
-separate views; system navigation, keyboard and camera permission prompts stay
-native. iOS uses VisionKit QR recognition; Android uses ZXing embedded. Neither
+separate views. Both apps use the centered SUZENT wordmark, blue primary actions,
+flat conversation rows and an outlined composer. Assistant messages carry the
+robot badge; inline code uses yellow highlights and top-level code blocks have
+black language headers with horizontally scrollable light bodies. User messages
+use a neutral surface so yellow retains its emphasis role. Keyboard and camera
+permission prompts stay native. iOS uses VisionKit QR recognition; Android uses ZXing embedded. Neither
 scanner saves an image. Both apps provide English and Simplified Chinese strings.

@@ -633,6 +633,21 @@ class ChatOperationsMixin:
                 session.add(chat)
                 session.commit()
 
+    def list_chat_titles(
+        self, chat_ids: list[str] | None = None, limit: int = 1000
+    ) -> list[tuple[str, str]]:
+        """Read a scoped title index without loading transcripts or checkpoints."""
+        if chat_ids == []:
+            return []
+        with self._session() as session:
+            statement = select(ChatModel.id, ChatModel.title)
+            if chat_ids is not None:
+                statement = statement.where(ChatModel.id.in_(chat_ids))
+            else:
+                statement = _apply_chat_filters(statement, None, None, None)
+            statement = statement.order_by(ChatModel.updated_at.desc()).limit(limit)
+            return [(row[0], row[1]) for row in session.exec(statement).all()]
+
     def list_chats(
         self,
         limit: int = 50,

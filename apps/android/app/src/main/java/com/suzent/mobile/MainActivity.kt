@@ -6,6 +6,10 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
@@ -38,15 +42,19 @@ private fun MobileScreen(model: MobileModel) {
     var showAccess by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(model.connected) { if (!model.connected) showAccess = false }
     Scaffold(topBar = {
-        TopAppBar(title = { Text(stringResource(R.string.app_name)) }, actions = {
+        Column(Modifier.statusBarsPadding()) {
+            SuzentWordmark()
+            HorizontalDivider(thickness = PresentationTokens.borderWidth.dp, color = MaterialTheme.colorScheme.outline)
             if (model.connected) {
-                TextButton(onClick = { model.selected = null; showAccess = false }, enabled = !model.streaming && !model.busy) {
-                    Text(stringResource(R.string.chats))
+                Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SuzentAction(stringResource(R.string.chats), { model.selected = null; showAccess = false },
+                        enabled = !model.streaming && !model.busy, compact = true)
+                    Spacer(Modifier.weight(1f))
+                    SuzentAction(stringResource(R.string.access), { showAccess = !showAccess }, compact = true)
+                    SuzentAction(stringResource(R.string.refresh), model::refresh, compact = true)
                 }
-                TextButton(onClick = { showAccess = !showAccess }) { Text(stringResource(R.string.access)) }
-                TextButton(onClick = model::refresh) { Text(stringResource(R.string.refresh)) }
             }
-        })
+        }
     }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).imePadding().padding(horizontal = 16.dp)) {
             model.error?.let { message ->
@@ -67,17 +75,22 @@ private fun MobileScreen(model: MobileModel) {
 
 @Composable
 private fun ChatList(model: MobileModel) {
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(PresentationTokens.spacePage.dp)) {
+    LazyColumn {
         item {
-            Button(onClick = model::create, enabled = !model.busy && model.device?.permissions?.createChats == true) { Text(stringResource(R.string.new_chat)) }
+            Text(stringResource(R.string.chats), Modifier.padding(vertical = 12.dp), style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            SuzentAction(stringResource(R.string.new_chat), model::create, prominent = true,
+                enabled = !model.busy && model.device?.permissions?.createChats == true)
+            Spacer(Modifier.height(16.dp))
         }
         items(model.chats, key = { it.id }) { chat ->
-            OutlinedCard(onClick = { model.open(chat) }, modifier = Modifier.fillMaxWidth()) {
-                Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(chat.title, modifier = Modifier.weight(1f))
-                    if (chat.running) CircularProgressIndicator(Modifier.size(20.dp))
-                }
+            Row(Modifier.fillMaxWidth().clickable { model.open(chat) }.heightIn(min = 72.dp).padding(vertical = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(chat.title, modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold)
+                if (chat.running) CircularProgressIndicator(Modifier.size(20.dp))
             }
+            HorizontalDivider()
+
         }
     }
 }
@@ -99,22 +112,33 @@ private fun AccessView(model: MobileModel) {
 @Composable
 private fun ColumnScope.Conversation(model: MobileModel) {
     val chat = model.selected ?: return
-    LazyColumn(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        item { Text(chat.title, style = MaterialTheme.typography.headlineSmall) }
-        items(presentMessages(chat.messages)) { message -> MessageView(message) }
+    val messages = remember(chat.messages) { presentMessages(chat.messages) }
+    LazyColumn(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(PresentationTokens.spaceLarge.dp)) {
+        item { Text(chat.title, style = MaterialTheme.typography.titleLarge) }
+        items(messages) { message -> MessageView(message) }
         if (model.streaming || model.liveText.isNotEmpty()) item {
             MarkdownText(model.liveText.ifEmpty { stringResource(R.string.working) })
         }
     }
-    Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedTextField(value = model.draft, onValueChange = { model.draft = it },
-            label = { Text(stringResource(R.string.message)) }, modifier = Modifier.weight(1f), maxLines = 6)
-        if (model.streaming || model.chats.any { it.id == chat.id && it.running }) {
-            Button(onClick = model::stop, enabled = model.device?.permissions?.stop == true) { Text(stringResource(R.string.stop)) }
+    Column(Modifier.fillMaxWidth().padding(vertical = 16.dp)
+        .border(PresentationTokens.borderWidth.dp, MaterialTheme.colorScheme.outline).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp), horizontalAlignment = androidx.compose.ui.Alignment.End) {
+        BasicTextField(value = model.draft, onValueChange = { model.draft = it },
+            modifier = Modifier.fillMaxWidth(), minLines = 2, maxLines = 6,
+            textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
+            cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary),
+            decorationBox = { inner ->
+                Box {
+                    if (model.draft.isEmpty()) Text(stringResource(R.string.message), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    inner()
+                }
+            })
+        if (model.streaming || chat.running) {
+            SuzentAction(stringResource(R.string.stop), model::stop, prominent = true,
+                enabled = model.device?.permissions?.stop == true, compact = true)
         } else {
-            Button(onClick = model::send, enabled = !model.busy && model.draft.isNotBlank() && model.device?.permissions?.send == true) {
-                Text(stringResource(R.string.send))
-            }
+            SuzentAction(stringResource(R.string.send), model::send, prominent = true,
+                enabled = !model.busy && model.draft.isNotBlank() && model.device?.permissions?.send == true, compact = true)
         }
     }
 }

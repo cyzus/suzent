@@ -1,6 +1,11 @@
 package com.suzent.mobile
 
 import android.widget.TextView
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -22,6 +27,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.viewinterop.AndroidView
+import io.noties.markwon.AbstractMarkwonPlugin
+import io.noties.markwon.core.MarkwonTheme
 import io.noties.markwon.Markwon
 import io.noties.markwon.ext.tables.TablePlugin
 import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
@@ -29,13 +36,17 @@ import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
 @Composable
 fun SuzentTheme(content: @Composable () -> Unit) {
     val colors = if (isSystemInDarkTheme()) darkColorScheme(
-        primary = Color(PresentationTokens.yellow), onPrimary = Color.Black,
+        primary = Color(PresentationTokens.blue), onPrimary = Color.White,
         secondaryContainer = Color(PresentationTokens.yellow), onSecondaryContainer = Color.Black,
-        surface = Color(PresentationTokens.surface_dark), background = Color(PresentationTokens.surface_dark), outline = Color.White
+        surface = Color(PresentationTokens.surface_dark), background = Color(PresentationTokens.surface_dark), outline = Color.White,
+        onSurface = Color.White, onBackground = Color.White, onSurfaceVariant = Color(PresentationTokens.muted_dark),
+        outlineVariant = Color(PresentationTokens.gray)
     ) else lightColorScheme(
-        primary = Color.Black, onPrimary = Color(PresentationTokens.yellow),
+        primary = Color(PresentationTokens.blue), onPrimary = Color.White,
         secondaryContainer = Color(PresentationTokens.yellow), onSecondaryContainer = Color.Black,
-        surface = Color.White, background = Color.White, outline = Color.Black
+        surface = Color.White, background = Color.White, outline = Color.Black,
+        onSurface = Color.Black, onBackground = Color.Black, onSurfaceVariant = Color(PresentationTokens.muted_light),
+        outlineVariant = Color(0xFFE0E0E0)
     )
     val typography = Typography()
     MaterialTheme(colorScheme = colors, typography = typography.copy(
@@ -43,7 +54,7 @@ fun SuzentTheme(content: @Composable () -> Unit) {
         bodyLarge = typography.bodyLarge.copy(fontSize = PresentationTokens.typeBody.sp),
         bodySmall = typography.bodySmall.copy(fontSize = PresentationTokens.typeCaption.sp)
     ), shapes = Shapes(
-        small = RoundedCornerShape(0.dp), medium = RoundedCornerShape(0.dp), large = RoundedCornerShape(0.dp)
+        extraSmall = RoundedCornerShape(0.dp), small = RoundedCornerShape(0.dp), medium = RoundedCornerShape(0.dp), large = RoundedCornerShape(0.dp), extraLarge = RoundedCornerShape(0.dp)
     ), content = content)
 }
 
@@ -51,16 +62,56 @@ fun SuzentTheme(content: @Composable () -> Unit) {
 fun MarkdownText(text: String) {
     val context = LocalContext.current
     val renderer = remember(context) { Markwon.builder(context)
-        .usePlugin(TablePlugin.create(context)).usePlugin(StrikethroughPlugin.create()).build() }
+        .usePlugin(object : AbstractMarkwonPlugin() {
+            override fun configureTheme(builder: MarkwonTheme.Builder) {
+                builder.codeBackgroundColor(Color(PresentationTokens.yellow).toArgb())
+                    .codeTextColor(Color.Black.toArgb())
+                    .codeBlockBackgroundColor(Color(PresentationTokens.code_bg).toArgb())
+                    .codeBlockTextColor(Color.Black.toArgb())
+                    .linkColor(Color(PresentationTokens.blue).toArgb())
+            }
+        }).usePlugin(TablePlugin.create(context)).usePlugin(StrikethroughPlugin.create()).build() }
     val foreground = MaterialTheme.colorScheme.onSurface.toArgb()
     val link = Color(PresentationTokens.blue).toArgb()
-    AndroidView(modifier = Modifier.fillMaxWidth(), factory = { ctx ->
-        TextView(ctx).apply { textSize = 16f; setTextIsSelectable(true); setLineSpacing(0f, 1.2f) }
-    }, update = { view ->
-        view.setTextColor(foreground); view.setLinkTextColor(link)
-        if (view.tag != text) { renderer.setMarkdown(view, text); view.tag = text }
-    })
+    val blocks by produceState<List<MarkdownBlock>>(initialValue = emptyList(), renderer, text) {
+        value = withContext(Dispatchers.Default) {
+            synchronized(renderer) {
+                markdownSections(renderer.parse(text)).map { section ->
+                    when (section) {
+                        is MarkdownSection.Prose -> MarkdownBlock(renderer.render(section.document))
+                        is MarkdownSection.Code -> MarkdownBlock(section.text, section.language)
+                    }
+                }
+            }
+        }
+    }
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        blocks.forEach { block ->
+            if (block.language != null) {
+                Column(Modifier.fillMaxWidth().border(PresentationTokens.borderWidth.dp, MaterialTheme.colorScheme.outline)) {
+                    Text(block.language, Modifier.fillMaxWidth().background(Color.Black).padding(12.dp),
+                        color = Color.White, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.bodySmall)
+                    Row(Modifier.fillMaxWidth().background(Color(PresentationTokens.code_bg)).horizontalScroll(rememberScrollState())) {
+                        SelectionContainer {
+                            Text(block.body.toString(), Modifier.padding(16.dp), color = Color.Black,
+                                fontFamily = FontFamily.Monospace, fontSize = 14.sp, softWrap = false)
+                        }
+                    }
+                }
+            } else {
+                AndroidView(modifier = Modifier.fillMaxWidth(), factory = { ctx ->
+                    TextView(ctx).apply { textSize = PresentationTokens.typeBody.toFloat(); setTextIsSelectable(true); setLineSpacing(0f, 1.2f) }
+                }, update = { view ->
+                    view.setTextColor(foreground); view.setLinkTextColor(link)
+                    if (view.tag != block.body) { renderer.setParsedMarkdown(view, block.body as android.text.Spanned); view.tag = block.body }
+                })
+            }
+        }
+    }
 }
+
+private data class MarkdownBlock(val body: CharSequence, val language: String? = null)
 
 @Composable
 fun MessageView(message: DisplayMessage) {
@@ -68,19 +119,22 @@ fun MessageView(message: DisplayMessage) {
     val outline = MaterialTheme.colorScheme.outline
     Column(Modifier.fillMaxWidth().then(if (user) Modifier.padding(start = 24.dp, end = 2.dp)
         .drawBehind { drawRect(outline, topLeft = Offset(PresentationTokens.shadowOffset.dp.toPx(), PresentationTokens.shadowOffset.dp.toPx())) }
-        .background(Color(PresentationTokens.yellow))
+        .background(Color(PresentationTokens.code_bg))
         .border(PresentationTokens.borderWidth.dp, outline).padding(14.dp) else Modifier.padding(vertical = 6.dp)),
         verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (message.text.isNotBlank()) {
-            Text(stringResource(if (user) R.string.you else if (message.role == "assistant") R.string.app_name else R.string.activity),
+            if (message.role == "assistant") SuzentAssistantBadge()
+            else Text(stringResource(if (user) R.string.you else R.string.activity),
                 color = if (user) Color.Black else MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.labelSmall)
+                style = MaterialTheme.typography.labelLarge)
             if (user) SelectionContainer { Text(message.text, color = Color.Black) }
             else MarkdownText(message.text)
         }
         message.activities.forEach { part ->
             var expanded by remember(part) { mutableStateOf(false) }
-            OutlinedCard(onClick = { expanded = !expanded }, modifier = Modifier.fillMaxWidth()) {
+            OutlinedCard(onClick = { expanded = !expanded }, modifier = Modifier.fillMaxWidth(),
+                border = BorderStroke(PresentationTokens.borderWidth.dp, outline),
+                colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text((if (expanded) "−  " else "+  ") + when (part.type) {
                         "tool" -> part.toolName.ifEmpty { stringResource(R.string.tool_activity) }
@@ -98,16 +152,42 @@ fun MessageView(message: DisplayMessage) {
 }
 
 @Composable
-fun SuzentAction(label: String, onClick: () -> Unit, prominent: Boolean = false, enabled: Boolean = true) {
+fun SuzentAction(label: String, onClick: () -> Unit, prominent: Boolean = false, enabled: Boolean = true, compact: Boolean = false) {
     val outline = MaterialTheme.colorScheme.outline
     Button(onClick = onClick, enabled = enabled, shape = RectangleShape,
         border = BorderStroke(PresentationTokens.borderWidth.dp, outline),
         colors = ButtonDefaults.buttonColors(
-            containerColor = if (prominent) Color(PresentationTokens.yellow) else MaterialTheme.colorScheme.surface,
-            contentColor = if (prominent) Color.Black else MaterialTheme.colorScheme.onSurface),
-        modifier = Modifier.fillMaxWidth().padding(end = 2.dp, bottom = 2.dp).drawBehind {
+            containerColor = if (prominent) Color(PresentationTokens.blue) else MaterialTheme.colorScheme.surface,
+            contentColor = if (prominent) Color.White else MaterialTheme.colorScheme.onSurface),
+        modifier = (if (compact) Modifier else Modifier.fillMaxWidth()).padding(end = 2.dp, bottom = 2.dp).drawBehind {
             if (enabled) drawRect(outline, topLeft = Offset(PresentationTokens.shadowOffset.dp.toPx(), PresentationTokens.shadowOffset.dp.toPx()))
-        }, contentPadding = PaddingValues(PresentationTokens.spacePage.dp)) {
+        }, contentPadding = PaddingValues(if (compact) PresentationTokens.spaceMedium.dp else PresentationTokens.spacePage.dp)) {
         Text(label, style = MaterialTheme.typography.titleMedium)
+    }
+}
+
+@Composable
+fun SuzentWordmark() {
+    Row(Modifier.fillMaxWidth().padding(vertical = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp, androidx.compose.ui.Alignment.CenterHorizontally),
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        Box(Modifier.size(10.dp).background(MaterialTheme.colorScheme.onSurface))
+        Text("SUZENT", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+        Box(Modifier.size(10.dp).background(MaterialTheme.colorScheme.onSurface))
+    }
+}
+
+@Composable
+private fun SuzentAssistantBadge() {
+    Row(Modifier.border(PresentationTokens.borderWidth.dp, MaterialTheme.colorScheme.outline)
+        .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.size(28.dp).background(Color.Black, RoundedCornerShape(5.dp)),
+            horizontalArrangement = Arrangement.spacedBy(4.dp, androidx.compose.ui.Alignment.CenterHorizontally),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            repeat(2) { Box(Modifier.size(5.dp).background(Color.White, RoundedCornerShape(1.dp))) }
+        }
+        Text("SUZENT", fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
     }
 }

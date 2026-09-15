@@ -34,7 +34,7 @@ fun PairingView(model: MobileModel) {
         if (granted) launchScanner() else model.error = context.getString(R.string.camera_unavailable)
     }
     var paste by remember { mutableStateOf(false) }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+    Column(Modifier.fillMaxSize().padding(top = 16.dp).verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(PresentationTokens.spaceLarge.dp)) {
         Column(Modifier.fillMaxWidth().background(Color(PresentationTokens.yellow))
             .border(PresentationTokens.borderWidth.dp, Color.Black).padding(PresentationTokens.spaceLarge.dp),

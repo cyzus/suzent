@@ -17,6 +17,8 @@ import SuzentCore
     var error: String?
     var busy = false
     var streaming = false
+    @ObservationIgnored private var pendingLiveText = ""
+    @ObservationIgnored private var liveTextDirty = false
     var connected = false
     var nodeEnabled = false
     var nodeStatus = String(localized: "Off")
@@ -165,10 +167,14 @@ import SuzentCore
         guard let client, !streaming else { return }
         selected = chat
         liveText = ""
-        await refresh()
-        if selected?.id == chat.id {
-            observe(chat.id, client: client)
-        }
+        let current = generation
+        do {
+            let saved = try await client.chat(chat.id)
+            guard current == generation, selected?.id == chat.id else { return }
+            selected = saved
+            syncRunning(saved)
+            if saved.isRunning == true { observe(chat.id, client: client) }
+        } catch { if current == generation { handle(error) } }
     }
 
     func createChat() async {
@@ -192,7 +198,12 @@ import SuzentCore
         do {
             try await client.send(text, chatID: id)
             draft = ""
-            await refresh()
+            if var chat = selected, chat.id == id {
+                chat.messages = (chat.messages ?? []) + [ChatMessage(role: "user", content: text)]
+                chat.isRunning = true
+                selected = chat
+                syncRunning(chat)
+            }
             if foreground { observe(id, client: client) }
         } catch {
             if case ClientError.http(401) = error { handle(error) }
@@ -205,17 +216,31 @@ import SuzentCore
         streaming = true
         liveText = ""
         let current = generation
+        pendingLiveText = ""
+        liveTextDirty = false
         streamTask = Task {
+            let publisher = Task { @MainActor in
+                while !Task.isCancelled {
+                    do { try await Task.sleep(for: .milliseconds(50)) } catch { return }
+                    guard generation == current, foreground else { return }
+                    flushLiveText()
+                }
+            }
+            defer { publisher.cancel() }
             do {
                 try await client.observe(id) { [weak self] event in
                     await self?.receive(event, generation: current)
                 }
+                publisher.cancel()
+                guard generation == current, !Task.isCancelled else { return }
+                flushLiveText()
                 let saved = try await client.chat(id)
                 guard generation == current, !Task.isCancelled, selected?.id == id else { return }
                 selected = saved
+                syncRunning(saved)
                 liveText = ""
             } catch {
-                if !Task.isCancelled, generation == current { handle(error) }
+                if !Task.isCancelled, generation == current { flushLiveText(); handle(error) }
             }
             guard generation == current, !Task.isCancelled else { return }
             streaming = false
@@ -224,9 +249,24 @@ import SuzentCore
 
     private func receive(_ event: StreamEvent, generation current: UUID) {
         guard generation == current, foreground else { return }
-        if event.type == "STREAM_RESET" { liveText = "" }
-        if event.type == "TEXT_MESSAGE_CONTENT" { liveText += event.delta ?? "" }
+        if event.type == "STREAM_RESET" { pendingLiveText = ""; liveTextDirty = true }
+        if event.type == "TEXT_MESSAGE_CONTENT" { pendingLiveText += event.delta ?? ""; liveTextDirty = true }
         if event.type == "RUN_ERROR" { error = event.message ?? String(localized: "Task failed.") }
+    }
+
+    private func flushLiveText() {
+        guard liveTextDirty else { return }
+        liveText = pendingLiveText
+        liveTextDirty = false
+    }
+
+    private func syncRunning(_ saved: Chat) {
+        chats = chats.map { item in
+            guard item.id == saved.id else { return item }
+            var updated = item
+            updated.isRunning = saved.isRunning
+            return updated
+        }
     }
 
     func stop() async {
@@ -244,7 +284,7 @@ import SuzentCore
             disconnectNode()
         } else {
             await refresh()
-            if let chat = selected, let client {
+            if let chat = selected, chat.isRunning == true, let client {
                 observe(chat.id, client: client)
             }
             if nodeEnabled { startNode() }

@@ -27,7 +27,12 @@ def setup_client(tmp_path, monkeypatch):
     app.add_middleware(AuthBoundaryMiddleware)
     records = {key: SimpleNamespace(id=key, title=key) for key in ("shared", "private")}
     db = SimpleNamespace(
-        get_chat=records.get, list_chats=lambda **kwargs: list(records.values())
+        get_chat=records.get,
+        list_chat_titles=lambda chat_ids, limit: [
+            (record.id, record.title)
+            for record in records.values()
+            if chat_ids is None or record.id in chat_ids
+        ][:limit],
     )
     monkeypatch.setattr("suzent.mobile.client_api.get_database", lambda: db)
     with TestClient(app, client=("192.0.2.1", 1234)) as client:
@@ -156,7 +161,8 @@ def test_transcript_excludes_backend_configuration(setup_client, monkeypatch):
     result = grant(store, chat_ids=["shared"])
     client.headers["Authorization"] = f"Bearer {result['token']}"
 
-    async def detail(request):
+    async def detail(request, *, include_runtime=True):
+        assert include_runtime is False
         assert request.path_params["chat_id"] == "shared"
         return JSONResponse(
             {
@@ -198,3 +204,36 @@ def test_corrupt_store_fails_without_exposing_records(tmp_path, monkeypatch):
         response = client.get("/mobile/client/session")
         assert response.status_code == 503
         assert "private-name" not in response.text
+
+
+def test_transcript_reports_current_run_without_loading_runtime(
+    setup_client, monkeypatch
+):
+    client, store = setup_client
+    result = grant(store, chat_ids=["shared"])
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+    record = SimpleNamespace(
+        model_dump=lambda **kwargs: {
+            "id": "shared",
+            "title": "Test",
+            "messages": [],
+            "config": {"private": "hidden"},
+        }
+    )
+    monkeypatch.setattr(
+        "suzent.routes.chat_routes.get_database",
+        lambda: SimpleNamespace(get_chat=lambda _: record),
+    )
+    monkeypatch.setattr("suzent.core.retry.load_retry_checkpoint", lambda _: None)
+    for running in (True, False):
+        monkeypatch.setattr(
+            "suzent.routes.chat_routes.is_background_streaming", lambda _: running
+        )
+        response = client.get("/mobile/client/chats/shared")
+        assert response.status_code == 200
+        assert response.json() == {
+            "id": "shared",
+            "title": "Test",
+            "messages": [],
+            "isRunning": running,
+        }

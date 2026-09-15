@@ -44,8 +44,8 @@ public enum ClientError: Error, LocalizedError, Sendable {
 public struct Chat: Decodable, Identifiable, Sendable {
     public let id: String
     public let title: String
-    public let messages: [ChatMessage]?
-    public let isRunning: Bool?
+    public var messages: [ChatMessage]?
+    public var isRunning: Bool?
 }
 
 public struct ChatMessage: Decodable, Sendable {
@@ -55,6 +55,14 @@ public struct ChatMessage: Decodable, Sendable {
     public let parts: [MessagePart]
     public let name: String?
     public let toolCallId: String?
+
+    public init(role: String, content: String) {
+        self.role = role
+        self.content = content
+        self.parts = []
+        self.name = nil
+        self.toolCallId = nil
+    }
 
     enum CodingKeys: String, CodingKey { case role, content, parts, name; case toolCallId = "tool_call_id" }
     public init(from decoder: Decoder) throws {
