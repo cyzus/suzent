@@ -25,6 +25,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route, WebSocketRoute
 
 from suzent.auth_boundary import AuthBoundaryMiddleware
+from suzent.webui import webui_routes
 from suzent.tools.browser.extension.routes import (
     extension_settings,
     extension_connect_page,
@@ -1028,6 +1029,28 @@ async def shutdown():
         pass
 
 
+# Loopback origins, at any port: the Vite dev server (127.0.0.1:18080), the
+# Tauri webview, and a browser opened against the backend directly.
+_LOOPBACK_ORIGIN_REGEX = r"https?://(localhost|127\.0\.0\.1|\[::1\])(:\d+)?"
+
+
+def _allowed_origin_regex() -> str:
+    """Origins allowed to make cross-origin calls to this backend.
+
+    ``SUZENT_ALLOWED_ORIGINS`` adds explicit origins, comma-separated, for
+    anyone fronting the UI with their own static host or domain.
+    """
+    import re as _re
+
+    extra = [
+        o.strip().rstrip("/")
+        for o in os.getenv("SUZENT_ALLOWED_ORIGINS", "").split(",")
+        if o.strip()
+    ]
+    patterns = [_LOOPBACK_ORIGIN_REGEX] + [_re.escape(o) for o in extra]
+    return "|".join(patterns)
+
+
 @asynccontextmanager
 async def lifespan(app):
     await startup()
@@ -1354,11 +1377,19 @@ app = Starlette(
         Route("/subagents", list_subagents, methods=["GET"]),
         Route("/subagents/{task_id}", get_subagent, methods=["GET"]),
         Route("/subagents/{task_id}/stop", stop_subagent_route, methods=["POST"]),
+        # Last: the SPA catch-all must not shadow an API route. Empty when the
+        # bundle is not built in or SUZENT_SERVE_HEADLESS is set.
+        *webui_routes(),
     ],
     middleware=[
         Middleware(
             CORSMiddleware,
-            allow_origins=["*"],
+            # Not "*": loopback is a trusted caller here, so a wildcard lets any
+            # web page in the user's browser drive this API and read the replies.
+            # The web UI is served from this same origin and needs no CORS at
+            # all; the allowance exists for the Vite dev server and for an
+            # origin the operator names explicitly.
+            allow_origin_regex=_allowed_origin_regex(),
             allow_methods=["*"],
             allow_headers=["*"],
         ),

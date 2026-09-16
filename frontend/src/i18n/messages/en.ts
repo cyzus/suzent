@@ -36,9 +36,6 @@ export const en = {
     startingBackend: 'Starting and checking the backend service',
     verifyingBackend: 'Verifying backend compatibility',
     startupElapsed: 'Elapsed {seconds}s',
-    desktopRequiredTitle: 'Desktop required',
-    desktopRequiredDesc:
-      'Suzent is a desktop-only application. Please run this application using the native desktop launcher.',
     logoAriaLabel: 'Suzent logo',
     backendCompatibility: {
       api: 'Frontend/backend API mismatch ({frontend} vs {backend}). Run suzent update.',
@@ -48,6 +45,14 @@ export const en = {
         'Backend version verification timed out. The backend may still be recovering; close and reopen Suzent.',
       verifyFailed: 'Failed to verify backend version: {error}',
     },
+  },
+  hostPicker: {
+    title: 'Choose a folder',
+    roots: 'Drives',
+    loading: 'Loading...',
+    empty: 'No sub-folders here',
+    cancel: 'Cancel',
+    select: 'Select',
   },
   bootstrap: {
     title: 'Set up Suzent',
@@ -231,6 +236,10 @@ export const en = {
     },
   },
   settings: {
+    network: {
+      restartRequiredManually:
+        'Saved. Restart the Suzent backend for the new network binding to take effect.',
+    },
     browser: {
       extension: 'Use my browser (extension)',
       extensionConnected: 'Connected',

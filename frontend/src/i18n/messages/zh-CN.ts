@@ -35,8 +35,6 @@ export const zhCN = {
     startingBackend: '正在启动并检查后端服务',
     verifyingBackend: '正在验证后端兼容性',
     startupElapsed: '已等待 {seconds} 秒',
-    desktopRequiredTitle: '需要桌面端',
-    desktopRequiredDesc: 'Suzent 仅支持桌面端运行。请使用原生桌面启动器打开该应用。',
     logoAriaLabel: 'Suzent 标志',
     backendCompatibility: {
       api: '前后端 API 版本不匹配（{frontend} 与 {backend}）。请运行 suzent update。',
@@ -45,6 +43,14 @@ export const zhCN = {
       verifyTimeout: '后端版本验证超时。后端可能仍在恢复，请关闭并重新打开 Suzent。',
       verifyFailed: '无法验证后端版本：{error}',
     },
+  },
+  hostPicker: {
+    title: '选择文件夹',
+    roots: '驱动器',
+    loading: '加载中...',
+    empty: '此处没有子文件夹',
+    cancel: '取消',
+    select: '选择',
   },
   bootstrap: {
     title: '设置 Suzent',
@@ -306,6 +312,9 @@ export const zhCN = {
     },
   },
   settings: {
+    network: {
+      restartRequiredManually: '已保存。请重启 Suzent 后端以使新的网络绑定生效。',
+    },
     browser: {
       extension: '使用我的浏览器（扩展）',
       extensionConnected: '已连接',

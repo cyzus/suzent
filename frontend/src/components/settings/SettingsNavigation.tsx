@@ -23,6 +23,7 @@ import {
 import { useI18n } from '../../i18n';
 import { BrutalIconButton } from '../BrutalButton';
 import { BrutalSelect } from '../BrutalSelect';
+import { isWeb } from '../../lib/runtime';
 
 export type SettingsCategory =
   | 'providers'
@@ -46,6 +47,8 @@ type CategoryDefinition = {
   id: SettingsCategory;
   labelKey: string;
   icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
+  /** Driven by Tauri commands, so it has nothing to show in a browser. */
+  desktopOnly?: boolean;
 };
 
 type CategoryGroup = {
@@ -54,7 +57,7 @@ type CategoryGroup = {
   categories: CategoryDefinition[];
 };
 
-const CATEGORY_GROUPS: CategoryGroup[] = [
+const ALL_CATEGORY_GROUPS: CategoryGroup[] = [
   {
     id: 'agent',
     labelKey: 'settings.groups.agent',
@@ -82,7 +85,12 @@ const CATEGORY_GROUPS: CategoryGroup[] = [
     labelKey: 'settings.groups.application',
     categories: [
       { id: 'appearance', labelKey: 'settings.categories.appearance', icon: PaintBrushIcon },
-      { id: 'service', labelKey: 'settings.categories.service', icon: CpuChipIcon },
+      {
+        id: 'service',
+        labelKey: 'settings.categories.service',
+        icon: CpuChipIcon,
+        desktopOnly: true,
+      },
       { id: 'security', labelKey: 'settings.categories.security', icon: ShieldCheckIcon },
       { id: 'data', labelKey: 'settings.categories.data', icon: CloudArrowUpIcon },
       { id: 'usage', labelKey: 'settings.categories.usage', icon: ChartBarIcon },
@@ -90,6 +98,12 @@ const CATEGORY_GROUPS: CategoryGroup[] = [
     ],
   },
 ];
+
+// Hiding the whole entry beats rendering a tab that can only report failure.
+const CATEGORY_GROUPS: CategoryGroup[] = ALL_CATEGORY_GROUPS.map((group) => ({
+  ...group,
+  categories: group.categories.filter((category) => !(category.desktopOnly && isWeb())),
+})).filter((group) => group.categories.length > 0);
 
 interface SettingsNavigationProps {
   activeCategory: SettingsCategory;

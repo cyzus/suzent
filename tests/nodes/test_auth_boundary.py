@@ -232,3 +232,78 @@ def test_browser_node_page_is_public_but_not_the_devices_api():
         "/nodex",
     ):
         assert not is_http_exempt(guarded), f"{guarded} must stay behind auth"
+
+
+# ── Web UI additions ────────────────────────────────────────────────────────
+
+
+def test_query_token_only_for_stream_paths():
+    from suzent.auth_boundary import extract_query_token
+
+    assert extract_query_token("/events/stream", b"token=abc") == "abc"
+    assert extract_query_token("/subagents/stream", b"x=1&token=abc") == "abc"
+    # Everything else must keep using a header, so a token in the query is
+    # ignored rather than honoured.
+    assert extract_query_token("/config", b"token=abc") == ""
+    assert extract_query_token("/chat", b"token=abc") == ""
+    assert extract_query_token("/events/stream", b"") == ""
+
+
+def test_host_header_allowed():
+    from suzent.auth_boundary import host_header_allowed
+
+    assert host_header_allowed("127.0.0.1:8000")
+    assert host_header_allowed("localhost")
+    assert host_header_allowed("[::1]:8000")
+    assert host_header_allowed("")  # no name, nothing to rebind
+    # A rebound DNS name pointing at loopback is the attack this catches.
+    assert not host_header_allowed("attacker.example:8000")
+
+
+def test_host_header_extra_allowed(monkeypatch):
+    from suzent.auth_boundary import host_header_allowed
+
+    monkeypatch.setenv("SUZENT_ALLOWED_HOSTS", "suzent.example.com")
+    assert host_header_allowed("suzent.example.com")
+    assert not host_header_allowed("other.example.com")
+
+
+class TestRebindingGuard:
+    @pytest.mark.asyncio
+    async def test_loopback_with_foreign_host_header_rejected(self):
+        # DNS rebinding: the request really comes from 127.0.0.1, but the page
+        # that made it thinks it is talking to attacker.example.
+        scope = _scope("http", "127.0.0.1", headers=[(b"host", b"attacker.example")])
+        called, sent = await _run(scope)
+        assert not called
+        assert sent[0]["status"] == 421
+
+    @pytest.mark.asyncio
+    async def test_loopback_with_loopback_host_header_passes(self):
+        scope = _scope("http", "127.0.0.1", headers=[(b"host", b"127.0.0.1:8000")])
+        called, _ = await _run(scope)
+        assert called
+
+    @pytest.mark.asyncio
+    async def test_stream_query_token_authenticates(self, tmp_path):
+        store = DeviceTokenStore(path=tmp_path / "d.json")
+        _id, token = store.mint("Browser", "web", scope="full")
+        scope = _scope(
+            "http",
+            "100.64.0.5",
+            path="/events/stream",
+            store=store,
+        )
+        scope["query_string"] = f"token={token}".encode()
+        called, _ = await _run(scope)
+        assert called
+
+    @pytest.mark.asyncio
+    async def test_query_token_rejected_on_other_paths(self, tmp_path):
+        store = DeviceTokenStore(path=tmp_path / "d.json")
+        _id, token = store.mint("Browser", "web", scope="full")
+        scope = _scope("http", "100.64.0.5", path="/config", store=store)
+        scope["query_string"] = f"token={token}".encode()
+        called, sent = await _run(scope)
+        assert not called
+        assert sent[0]["status"] == 401

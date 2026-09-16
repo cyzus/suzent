@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { isWeb } from '../../lib/runtime';
+import { getInitialLocale, tForLocale } from '../../i18n';
 import {
   fetchNodeConfig,
   fetchA2AStatus,
@@ -45,6 +47,13 @@ export function NetworkAccessCard(): React.ReactElement {
       if (next.restart_required) {
         setRestarting(true);
         await new Promise((r) => setTimeout(r, 150));
+        // Only the desktop shell owns the backend process; a browser session
+        // cannot restart it, so the user has to do it themselves.
+        if (isWeb()) {
+          setRestarting(false);
+          setError(tForLocale(getInitialLocale(), 'settings.network.restartRequiredManually'));
+          return;
+        }
         await invoke('restart_app');
       }
     } catch (e) {

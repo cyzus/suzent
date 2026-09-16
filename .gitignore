@@ -106,3 +106,6 @@ bin/
 /docs/assets/browser-store/privacy-policy-draft.md
 /frontend/browser-store-preview.html
 /frontend/browser-store-preview.tsx
+
+# Built web UI staged into the package by scripts/build_webui.py
+src/suzent/webui/
