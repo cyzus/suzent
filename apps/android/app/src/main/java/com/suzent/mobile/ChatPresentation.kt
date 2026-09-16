@@ -13,7 +13,7 @@ data class DisplayMessage(val role: String, val parts: List<MessagePart>) {
 fun presentMessages(messages: List<ChatMessage>, liveToolIds: Set<String> = emptySet()): List<DisplayMessage> {
     val representedTools = messages.flatMap { it.parts }.filter { it.type == "tool" }
         .map { it.toolCallId }.filter { it.isNotEmpty() }.toSet()
-    return messages.mapNotNull { message ->
+    val rows = messages.mapNotNull { message ->
         if (PresentationTokens.compactionSummaryMarkers.any { message.content.contains(it) }) return@mapNotNull null
         if (message.role == "tool" && (message.toolCallId in representedTools || message.toolCallId in liveToolIds)) return@mapNotNull null
         val rawParts = when {
@@ -24,6 +24,17 @@ fun presentMessages(messages: List<ChatMessage>, liveToolIds: Set<String> = empt
         val parts = normalizeParts(rawParts)
         if (parts.isEmpty()) null else DisplayMessage(message.role, parts)
     }
+    val grouped = mutableListOf<DisplayMessage>()
+    rows.forEach { row ->
+        val previous = grouped.lastOrNull()
+        if (previous != null && previous.role in listOf("assistant", "tool") && row.role in listOf("assistant", "tool") &&
+            previous.parts.last().type != "text" && row.parts.first().type != "text") {
+            grouped[grouped.lastIndex] = DisplayMessage(
+                if (previous.role == "assistant" || row.role == "assistant") "assistant" else "tool",
+                normalizeParts(previous.parts + row.parts))
+        } else grouped.add(row)
+    }
+    return grouped
 }
 
 fun normalizeParts(parts: List<MessagePart>): List<MessagePart> {

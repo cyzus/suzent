@@ -26,7 +26,7 @@ public struct DisplayMessage: Sendable {
 public func presentMessages(_ messages: [ChatMessage], liveToolIds: Set<String> = []) -> [DisplayMessage] {
     let represented = Set(messages.flatMap { $0.parts }.filter { $0.type == "tool" }
         .compactMap(\.toolCallId).filter { !$0.isEmpty })
-    return messages.compactMap { message in
+    let rows: [DisplayMessage] = messages.compactMap { message in
         if PresentationTokens.compactionSummaryMarkers.contains(where: { message.content.contains($0) }) { return nil }
         if message.role == "tool", let id = message.toolCallId, (represented.contains(id) || liveToolIds.contains(id)) { return nil }
         let rawParts: [MessagePart]
@@ -40,6 +40,17 @@ public func presentMessages(_ messages: [ChatMessage], liveToolIds: Set<String> 
         let parts = normalizeParts(rawParts)
         return parts.isEmpty ? nil : DisplayMessage(role: message.role, parts: parts)
     }
+    var grouped: [DisplayMessage] = []
+    for row in rows {
+        if let previous = grouped.last,
+           ["assistant", "tool"].contains(previous.role), ["assistant", "tool"].contains(row.role),
+           previous.parts.last?.type != "text", row.parts.first?.type != "text" {
+            grouped[grouped.count - 1] = DisplayMessage(
+                role: previous.role == "assistant" || row.role == "assistant" ? "assistant" : "tool",
+                parts: normalizeParts(previous.parts + row.parts))
+        } else { grouped.append(row) }
+    }
+    return grouped
 }
 
 public func normalizeParts(_ parts: [MessagePart]) -> [MessagePart] {
