@@ -299,15 +299,19 @@ def test_restart_aborts_when_port_stays_busy(monkeypatch, tmp_path):
     assert popen_calls == []
 
 
-def _netstat_stub(monkeypatch, stdout):
-    def fake_run(cmd, *args, **kwargs):
+def _netstat_stub(monkeypatch: pytest.MonkeyPatch, stdout: str) -> None:
+    def fake_run(
+        cmd: str | list[str], *args: object, **kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(cmd, 0, stdout=stdout, stderr="")
 
     monkeypatch.setattr(cli_main, "IS_WINDOWS", True)
     monkeypatch.setattr(cli_main.subprocess, "run", fake_run)
 
 
-def test_get_pid_on_port_finds_the_listening_pid(monkeypatch):
+def test_get_pid_on_port_finds_the_listening_pid(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     _netstat_stub(
         monkeypatch,
         "  TCP    127.0.0.1:1212     127.0.0.1:25314    ESTABLISHED     51296\n"
@@ -317,7 +321,9 @@ def test_get_pid_on_port_finds_the_listening_pid(monkeypatch):
     assert cli_main.get_pid_on_port(25314) == 95696
 
 
-def test_get_pid_on_port_ignores_lingering_time_wait_sockets(monkeypatch):
+def test_get_pid_on_port_ignores_lingering_time_wait_sockets(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     # What a killed backend leaves behind: accepted connections draining with an
     # owning PID of 0, and no LISTENING row. The port is free.
     _netstat_stub(
@@ -330,7 +336,9 @@ def test_get_pid_on_port_ignores_lingering_time_wait_sockets(monkeypatch):
     assert cli_main.get_pid_on_port(25314) is None
 
 
-def test_get_pid_on_port_ignores_a_listener_on_a_longer_port(monkeypatch):
+def test_get_pid_on_port_ignores_a_listener_on_a_longer_port(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     _netstat_stub(
         monkeypatch,
         "  TCP    0.0.0.0:125314     0.0.0.0:0          LISTENING       95696\n",
