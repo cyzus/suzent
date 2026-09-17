@@ -67,6 +67,64 @@ def is_loopback(host: str | None) -> bool:
     return (host or "") in LOOPBACK_HOSTS
 
 
+# Host names a loopback client may address us by. A browser reaching
+# 127.0.0.1 through a rebound DNS name is same-origin with the attacker's page,
+# so CORS never runs — the Host header is the only thing that still tells the
+# two apart. Names an operator legitimately fronts us with (a reverse proxy on
+# the same machine) go in SUZENT_ALLOWED_HOSTS, comma-separated.
+# "testserver" is the Host that Starlette's in-process TestClient sends; it
+# never appears on a real network.
+LOOPBACK_HOST_NAMES = {"127.0.0.1", "localhost", "::1", "[::1]", "testserver"}
+
+
+def extra_allowed_hosts() -> set[str]:
+    import os
+
+    return {
+        h.strip().lower()
+        for h in os.getenv("SUZENT_ALLOWED_HOSTS", "").split(",")
+        if h.strip()
+    }
+
+
+def _host_name(host_header: str) -> str:
+    """The Host header's name, lowercased, without its port."""
+    name = host_header.strip().lower()
+    # Strip the port, keeping IPv6 brackets intact.
+    if name.startswith("["):
+        return name.split("]")[0] + "]"
+    if ":" in name:
+        return name.rsplit(":", 1)[0]
+    return name
+
+
+def host_header_is_local(host_header: str) -> bool:
+    """Whether the Host header names this server as the local machine.
+
+    This is the question that decides trust. An operator-configured name from
+    SUZENT_ALLOWED_HOSTS is deliberately *not* local: see the middleware.
+    """
+    if not host_header:
+        # HTTP/1.0 and some local probes send none; there is no rebinding
+        # without a name, so nothing to defend against.
+        return True
+    return _host_name(host_header) in LOOPBACK_HOST_NAMES
+
+
+def host_header_allowed(host_header: str) -> bool:
+    """Whether a loopback client's Host header names this server legitimately.
+
+    Answers the anti-rebinding question only. Being allowed is not the same as
+    being trusted -- ``host_header_is_local`` decides that.
+    """
+    if not host_header:
+        return True
+    return (
+        host_header_is_local(host_header)
+        or _host_name(host_header) in extra_allowed_hosts()
+    )
+
+
 def extract_token(headers: list[tuple[bytes, bytes]]) -> str:
     """Pull a bearer token from Authorization or X-Suzent-Token headers."""
     lookup = {k.lower(): v for k, v in (headers or [])}
@@ -74,6 +132,31 @@ def extract_token(headers: list[tuple[bytes, bytes]]) -> str:
     if auth[:7].lower() == "bearer ":
         return auth[7:].strip()
     return lookup.get(b"x-suzent-token", b"").decode("latin-1").strip()
+
+
+# Paths that may carry their token in the query string instead of a header.
+#
+# Deliberately tiny: a query token lands in access logs, Referer headers and
+# browser history, so it is only worth it where a header is impossible. The
+# browser's `EventSource` is exactly that case — it cannot set request headers,
+# and these two endpoints are how the web UI receives everything the agent does.
+# Both are read-only GET streams.
+QUERY_TOKEN_PATHS = {"/events/stream", "/subagents/stream"}
+
+
+def extract_query_token(path: str, query_string: bytes | str) -> str:
+    """Pull a token from the query string, for the few paths that allow it."""
+    if path not in QUERY_TOKEN_PATHS:
+        return ""
+    from urllib.parse import parse_qs
+
+    raw = (
+        query_string.decode("latin-1")
+        if isinstance(query_string, bytes)
+        else (query_string or "")
+    )
+    values = parse_qs(raw).get("token") or []
+    return values[0].strip() if values else ""
 
 
 # Routes a remote "agent"-scope token (a control grant) may reach — just enough
@@ -148,7 +231,22 @@ class AuthBoundaryMiddleware:
         client = scope.get("client")
         host = client[0] if client else ""
         if is_loopback(host):
-            return await self.app(scope, receive, send)
+            headers = {k.lower(): v for k, v in (scope.get("headers") or [])}
+            host_header = headers.get(b"host", b"").decode("latin-1")
+            if not host_header_allowed(host_header):
+                resp = JSONResponse(
+                    {"error": f"Unrecognized Host header: {host_header}"},
+                    status_code=421,
+                )
+                return await resp(scope, receive, send)
+            # Only a genuinely local name earns the loopback trust. A name from
+            # SUZENT_ALLOWED_HOSTS reaching us over loopback means a reverse
+            # proxy on this machine forwarded it -- the connection is local but
+            # the *caller* is not, and we have no trustworthy way to tell who
+            # they were. Such a request falls through to the token check below,
+            # exactly as if it had arrived from the network directly.
+            if host_header_is_local(host_header):
+                return await self.app(scope, receive, send)
 
         path = scope.get("path", "")
         # The node WebSocket authenticates itself in its handshake.
@@ -157,6 +255,13 @@ class AuthBoundaryMiddleware:
         # HTTP bootstrap endpoints (issue no secret; operator-gated).
         if scope["type"] == "http" and is_http_exempt(path):
             return await self.app(scope, receive, send)
+        # The web UI's own static shell. Imported lazily so the auth boundary
+        # stays importable (and unit-testable) without the server package.
+        if scope["type"] == "http":
+            from suzent.webui import is_public_asset
+
+            if is_public_asset(path):
+                return await self.app(scope, receive, send)
 
         tok_scope = self._token_scope(scope)
         if tok_scope is None:
@@ -186,7 +291,9 @@ class AuthBoundaryMiddleware:
         return await resp(scope, receive, send)
 
     def _token_scope(self, scope) -> str | None:
-        token = extract_token(scope.get("headers", []))
+        token = extract_token(scope.get("headers", [])) or extract_query_token(
+            scope.get("path", ""), scope.get("query_string", b"")
+        )
         app = scope.get("app")
         nm = getattr(getattr(app, "state", None), "node_manager", None)
         device_store = getattr(nm, "device_store", None) if nm is not None else None

@@ -9,7 +9,6 @@ import {
   type PermissionMode,
   type ThinkingEffort,
 } from '../types/api';
-import { open } from '@tauri-apps/plugin-dialog';
 import { FileIcon } from './FileIcon';
 import { PaperClipIcon, XMarkIcon, FolderIcon } from '@heroicons/react/24/outline';
 import { FolderContextPicker } from './chat/FolderContextPicker';

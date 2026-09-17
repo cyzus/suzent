@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { isWeb } from './runtime';
 
 export interface UpdateStatus {
   current_version?: string;
@@ -13,6 +14,9 @@ let cachedUpdateStatus: { value: UpdateStatus; checkedAt: number } | null = null
 let pendingUpdateCheck: Promise<UpdateStatus> | null = null;
 
 export function checkDesktopUpdate(force = false): Promise<UpdateStatus> {
+  // The web UI is updated by updating the backend that serves it; there is no
+  // app binary to replace, so callers get "nothing available" rather than an error.
+  if (isWeb()) return Promise.resolve({});
   if (pendingUpdateCheck) return pendingUpdateCheck;
   if (
     !force &&
@@ -35,5 +39,6 @@ export function checkDesktopUpdate(force = false): Promise<UpdateStatus> {
 }
 
 export async function startDesktopUpdateAndRestart(): Promise<void> {
+  if (isWeb()) throw new Error('Self-update is only available in the desktop app.');
   await invoke('start_update_and_restart');
 }

@@ -1,6 +1,7 @@
 import React from 'react';
 
 import { getInitialLocale, tForLocale } from '../i18n';
+import { isDesktop } from '../lib/runtime';
 
 interface BackendLoadingScreenProps {
   error?: string | null;
@@ -132,35 +133,38 @@ export function BackendLoadingScreen({
           <div className="h-2.5 w-2.5 bg-brutal-black" />
           <span className="font-brutal text-xs uppercase text-brutal-black">SUZENT</span>
         </div>
-        <div className="flex h-full items-center text-brutal-black">
-          <button
-            type="button"
-            onMouseDown={(event) => event.stopPropagation()}
-            onClick={() => appWindow?.minimize()}
-            className="h-full w-10 flex items-center justify-center hover:bg-neutral-100"
-            title={t('titlebar.minimize')}
-          >
-            <span className="h-0.5 w-3 bg-current" />
-          </button>
-          <button
-            type="button"
-            onMouseDown={(event) => event.stopPropagation()}
-            onClick={handleMaximize}
-            className="h-full w-10 flex items-center justify-center hover:bg-neutral-100"
-            title={isMaximized ? t('titlebar.restore') : t('titlebar.maximize')}
-          >
-            <span className="h-3 w-3 border-2 border-current" />
-          </button>
-          <button
-            type="button"
-            onMouseDown={(event) => event.stopPropagation()}
-            onClick={() => appWindow?.close()}
-            className="h-full w-10 flex items-center justify-center hover:bg-brutal-red hover:text-white"
-            title={t('titlebar.close')}
-          >
-            <span className="text-lg leading-none">×</span>
-          </button>
-        </div>
+        {/* The browser supplies its own window chrome; these would be dead buttons. */}
+        {isDesktop() && (
+          <div className="flex h-full items-center text-brutal-black">
+            <button
+              type="button"
+              onMouseDown={(event) => event.stopPropagation()}
+              onClick={() => appWindow?.minimize()}
+              className="h-full w-10 flex items-center justify-center hover:bg-neutral-100"
+              title={t('titlebar.minimize')}
+            >
+              <span className="h-0.5 w-3 bg-current" />
+            </button>
+            <button
+              type="button"
+              onMouseDown={(event) => event.stopPropagation()}
+              onClick={handleMaximize}
+              className="h-full w-10 flex items-center justify-center hover:bg-neutral-100"
+              title={isMaximized ? t('titlebar.restore') : t('titlebar.maximize')}
+            >
+              <span className="h-3 w-3 border-2 border-current" />
+            </button>
+            <button
+              type="button"
+              onMouseDown={(event) => event.stopPropagation()}
+              onClick={() => appWindow?.close()}
+              className="h-full w-10 flex items-center justify-center hover:bg-brutal-red hover:text-white"
+              title={t('titlebar.close')}
+            >
+              <span className="text-lg leading-none">×</span>
+            </button>
+          </div>
+        )}
       </div>
       <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden p-8">
         <div

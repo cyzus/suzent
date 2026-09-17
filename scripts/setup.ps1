@@ -353,6 +353,17 @@ function Install-DevDependencies {
     if ($LASTEXITCODE -ne 0) { Pop-Location; Write-Fail "npm install failed in src-tauri/." }
     Pop-Location
     Write-Ok "Tauri JS dependencies ready"
+
+    # `suzent web` serves the SPA out of src/suzent/webui/, which is a build
+    # artifact rather than source. Nothing else in this script produces it, so
+    # without this step the command reports "no web UI is built".
+    Write-Info "Building the web UI bundle (scripts/build_webui.py)..."
+    uv run python scripts/build_webui.py
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warn "Web UI build failed -- 'suzent web' will report no bundle (non-fatal)."
+    } else {
+        Write-Ok "Web UI bundle staged"
+    }
 }
 
 if ($env:SUZENT_DEV_SETUP -eq "1") {

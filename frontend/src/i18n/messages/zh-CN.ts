@@ -1,4 +1,47 @@
 export const zhCN = {
+  console: {
+    nav: {
+      label: '控制台导航',
+      chat: '对话',
+      ops: '运维',
+      devices: '设备',
+      mesh: '网格',
+      usage: '用量',
+      settings: '设置',
+      about: '关于',
+    },
+    ops: {
+      title: '运维',
+      subtitle: '本主机上的后台服务，以及它最近记录的日志。',
+      serviceTitle: '后台服务',
+      serviceDesc: '无需桌面会话即可运行 Suzent，崩溃后自动重启，并随登录启动。',
+      status: '状态',
+      uptime: '运行时长',
+      memory: '内存',
+      notInstalled: '未安装',
+      ready: '就绪',
+      starting: '启动中',
+      stopped: '已停止',
+      restart: '重启服务',
+      refresh: '刷新',
+      selfManagedNote: '本控制台正由下方的服务提供，重启它会使此页面短暂断开。',
+      reconnecting: '正在重启 —— 等待主机恢复…',
+      reconnectTimeout: '主机在一分钟内没有恢复。请查看日志，或在主机上检查服务管理器。',
+      cannotDisableSelf:
+        '该服务正在提供本控制台。在此关闭它将无法再远程开启 —— 请在主机上执行 “suzent service uninstall”。',
+      unreachable: '无法连接到该主机。它可能正在重启，或者连接已断开。',
+      logTitle: '服务日志',
+      logDesc: 'server.log 的末尾内容，这是无头启动过程的唯一记录。',
+      logLines: '行数',
+      follow: '跟随',
+      logMissing: '还没有日志文件。服务运行后才会出现。',
+    },
+    health: {
+      checking: '正在检查连接',
+      online: '已连接',
+      offline: '无法连接',
+    },
+  },
   imageTool: {
     previewFailed: '图片预览加载失败，点击文件重试。',
   },
@@ -35,8 +78,6 @@ export const zhCN = {
     startingBackend: '正在启动并检查后端服务',
     verifyingBackend: '正在验证后端兼容性',
     startupElapsed: '已等待 {seconds} 秒',
-    desktopRequiredTitle: '需要桌面端',
-    desktopRequiredDesc: 'Suzent 仅支持桌面端运行。请使用原生桌面启动器打开该应用。',
     logoAriaLabel: 'Suzent 标志',
     backendCompatibility: {
       api: '前后端 API 版本不匹配（{frontend} 与 {backend}）。请运行 suzent update。',
@@ -45,6 +86,14 @@ export const zhCN = {
       verifyTimeout: '后端版本验证超时。后端可能仍在恢复，请关闭并重新打开 Suzent。',
       verifyFailed: '无法验证后端版本：{error}',
     },
+  },
+  hostPicker: {
+    title: '选择文件夹',
+    roots: '驱动器',
+    loading: '加载中...',
+    empty: '此处没有子文件夹',
+    cancel: '取消',
+    select: '选择',
   },
   bootstrap: {
     title: '设置 Suzent',
@@ -306,6 +355,9 @@ export const zhCN = {
     },
   },
   settings: {
+    network: {
+      restartRequiredManually: '已保存。请重启 Suzent 后端以使新的网络绑定生效。',
+    },
     browser: {
       extension: '使用我的浏览器（扩展）',
       extensionConnected: '已连接',

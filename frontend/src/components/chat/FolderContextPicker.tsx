@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { CheckIcon, ClockIcon, FolderIcon, PlusIcon, XMarkIcon } from '@heroicons/react/24/outline';
-import { open } from '@tauri-apps/plugin-dialog';
+import { pickHostDirectory } from '../../lib/hostPathPicker';
 import { useI18n } from '../../i18n';
 
 interface RecentFolder {
@@ -70,10 +70,7 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
 
   const handleNativePick = async () => {
     try {
-      const selected = await open({
-        directory: true,
-        multiple: true,
-      });
+      const selected = await pickHostDirectory({ multiple: true });
 
       if (!selected) return;
       const paths = Array.isArray(selected) ? selected : [selected];
@@ -83,7 +80,7 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
       onMount(paths);
       setIsOpen(false);
     } catch (err) {
-      console.error('Failed to open native dialog', err);
+      console.error('Failed to pick a host folder', err);
     }
   };
 
