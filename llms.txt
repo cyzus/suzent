@@ -57,6 +57,7 @@ Full documentation: https://suzent.com/llms-full.txt
 - [Updating Model Capabilities](https://suzent.com/docs/developing/model-capability-updates)
 - [Release Guide](https://suzent.com/docs/developing/releasing)
 - [Stream recovery protocol](https://suzent.com/docs/developing/stream-recovery-protocol)
+- [Running the web UI](https://suzent.com/docs/developing/web-ui)
 - [Upgrading](https://suzent.com/docs/upgrading)
 - [Documentation](https://suzent.com/docs)
 - [What Is a Sovereign AI Agent?](https://suzent.com/sovereign)
