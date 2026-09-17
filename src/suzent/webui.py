@@ -65,6 +65,13 @@ def _no_store(response: Response) -> Response:
 
 
 async def _serve_index(request) -> Response:
+    # A page load is the moment the answer matters, and it is rare enough to
+    # afford the check. The rebuild it may start is a background one: this
+    # request still gets the bundle that exists now.
+    from suzent.webui_build import rebuild_if_stale
+
+    rebuild_if_stale()
+
     if not webui_available():
         return JSONResponse(
             {"error": "web UI is not built into this install"}, status_code=404

@@ -609,6 +609,25 @@ async def _monitor_service_resources() -> None:
         return
 
 
+def _rebuild_webui_if_stale() -> None:
+    """Catch a stale web UI bundle at startup, in a source checkout.
+
+    The bundle is a build artifact nothing regenerates on its own, so without
+    this a developer serves last week's frontend and has no way to tell. The
+    rebuild runs on a worker thread; an install with no frontend source finds
+    nothing to do.
+    """
+    from suzent.webui import webui_available
+    from suzent.webui_build import auto_build_enabled, rebuild_if_stale
+
+    if rebuild_if_stale() and not webui_available():
+        # Routes are registered at import, so the bundle this build produces is
+        # served from the next start rather than this one.
+        logger.info("Web UI is being built for the first time; restart to serve it")
+    elif not webui_available() and not auto_build_enabled():
+        logger.debug("No web UI bundle; run scripts/build_webui.py to serve one")
+
+
 async def startup():
     """Initialize services on application startup."""
     from suzent.memory.lifecycle import init_memory_system, _memory_rag_hook
@@ -624,6 +643,7 @@ async def startup():
 
     logger.info("Application startup - initializing services")
     app.state.background_services_ready = False
+    _rebuild_webui_if_stale()
     if os.getenv("SUZENT_RUN_MODE") == "service":
         app.state.service_resource_guard = asyncio.create_task(
             _monitor_service_resources(), name="service_resource_guard"

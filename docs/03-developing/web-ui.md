@@ -119,7 +119,34 @@ That runs `npm run build` in `frontend/` and copies `frontend/dist` into
 Without it, `suzent web` reports that no UI is built in and the backend simply
 serves the API.
 
-During frontend development you do not need this -- see below.
+### The backend keeps it up to date
+
+Nothing in the edit-and-refresh loop regenerates that bundle, so a checkout will
+serve a frontend from weeks ago and give no sign of it -- the code is right, the
+page is old, and the obvious conclusion is that the change did not work.
+
+So `src/suzent/webui_build.py` checks, at startup and on each page load, whether
+anything under `frontend/` is newer than the staged `index.html`, and runs the
+build script on a worker thread when it is. The request still gets the bundle
+that exists now; the log says what happened:
+
+```text
+Web UI bundle is out of date; rebuilding from D:\workspace\suzentrontend
+Web UI rebuilt in 15s; refresh the page to pick it up
+```
+
+The scan skips `node_modules/` and `dist/`, is rate-limited to once every two
+seconds, never runs two builds at once, and does not retry a failed build until
+the source changes again. It only ever happens in a source checkout that has
+`frontend/` and npm: an installed wheel carries a prebuilt bundle and finds
+nothing to do. `SUZENT_AUTO_BUILD_WEBUI=0` turns it off.
+
+One case it cannot fix from inside: the routes that serve the bundle are
+registered when the app is built, so a *first* build -- where there was no
+bundle at startup -- is served from the next restart rather than the current
+process.
+
+During frontend development you do not need any of this -- see below.
 
 ## Developing against it
 
