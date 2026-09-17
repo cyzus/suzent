@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v0.14.0] - 2026-09-17
 
 ### 🚀 Added
+- Run the backend and frontend detached, with `suzent logs` (#232)
 - Restore web UI support alongside the desktop app (#230)
 - Release the extension automatically and offer the Edge listing (#220)
 - Add top-level `suzent restart` command (#219)
