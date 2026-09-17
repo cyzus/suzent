@@ -1,4 +1,20 @@
 export const zhCN = {
+  console: {
+    nav: {
+      label: '控制台导航',
+      chat: '对话',
+      devices: '设备',
+      mesh: '网格',
+      usage: '用量',
+      settings: '设置',
+      about: '关于',
+    },
+    health: {
+      checking: '正在检查连接',
+      online: '已连接',
+      offline: '无法连接',
+    },
+  },
   imageTool: {
     previewFailed: '图片预览加载失败，点击文件重试。',
   },

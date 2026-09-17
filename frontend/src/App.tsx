@@ -1169,7 +1169,16 @@ function StartupDecisionScreen(): React.ReactElement {
   return <div className="h-screen w-screen bg-neutral-100" />;
 }
 
-export default function App() {
+interface AppProps {
+  /**
+   * What to render once the backend is up and the providers are mounted.
+   * Defaults to the chat workspace. The web console passes its own subtree
+   * here for the pages that need chat's provider stack without being chat.
+   */
+  children?: React.ReactNode;
+}
+
+export default function App({ children }: AppProps = {}) {
   const locale = getInitialLocale();
   const t = (key: string, params?: Record<string, string>) => tForLocale(locale, key, params);
 
@@ -1399,9 +1408,7 @@ export default function App() {
       ) : (
         <ProjectProvider>
           <ChatProvider>
-            <GoalTasksProvider>
-              <AppInner />
-            </GoalTasksProvider>
+            <GoalTasksProvider>{children ?? <AppInner />}</GoalTasksProvider>
           </ChatProvider>
         </ProjectProvider>
       )}

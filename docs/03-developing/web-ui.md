@@ -17,6 +17,33 @@ ordinary backend, so whatever already serves the API serves the UI too, from one
 origin — which is what lets the frontend use relative URLs and keep working
 behind a reverse proxy or a tunnel.
 
+## The browser gets a console, not the desktop window
+
+The desktop app is a chat window that keeps its operational surfaces folded
+into a settings modal. That is the right shape when the machine is in front of
+you. A browser session is the opposite case -- a headless host, reached from
+somewhere else -- so the same bundle renders a different shell there:
+`frontend/src/shells/WebShell.tsx`, chosen in `main.tsx` by `isWeb()`.
+
+The console is a left nav rail over a hash router (`wouter`), with chat as one
+destination among Devices, Mesh, Usage, Settings and About. Destinations live
+in `frontend/src/shells/webRoutes.ts` -- one list, read by the rail, the router
+and the tests.
+
+Two details are load-bearing:
+
+- **Hash routing** (`#/devices`), not paths. The server only ever sees `/`, so
+  no pre-auth route has to be exempted from the device-token check in
+  `is_public_asset()`, and console navigation stays out of access logs.
+- **Devices, Mesh, Usage and About mount outside `<App>`**, so they do not wait
+  on its backend-readiness gate. A console opened against a struggling host
+  still shows the pages you opened it to look at. Chat and Settings do sit
+  inside `<App>`: they need its provider stack, which needs the backend.
+
+Everything under `components/`, `hooks/`, `lib/` and `i18n/` is shared by both
+shells. The console reuses the settings tabs verbatim rather than restating
+them.
+
 ## The backend is a service, not something you launch
 
 `suzent web` does not start a server of its own. It makes sure *something* is

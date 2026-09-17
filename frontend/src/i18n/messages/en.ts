@@ -1,4 +1,20 @@
 export const en = {
+  console: {
+    nav: {
+      label: 'Console sections',
+      chat: 'Chat',
+      devices: 'Devices',
+      mesh: 'Mesh',
+      usage: 'Usage',
+      settings: 'Settings',
+      about: 'About',
+    },
+    health: {
+      checking: 'Checking the connection',
+      online: 'Connected',
+      offline: 'Not reachable',
+    },
+  },
   imageTool: {
     previewFailed: 'Image preview unavailable. Open the file to retry.',
   },
