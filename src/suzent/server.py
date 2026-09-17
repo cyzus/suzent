@@ -1029,9 +1029,17 @@ async def shutdown():
         pass
 
 
-# Loopback origins, at any port: the Vite dev server (127.0.0.1:18080), the
-# Tauri webview, and a browser opened against the backend directly.
+# Loopback origins, at any port: the Vite dev server (127.0.0.1:18080) and a
+# browser opened against the backend directly.
 _LOOPBACK_ORIGIN_REGEX = r"https?://(localhost|127\.0\.0\.1|\[::1\])(:\d+)?"
+
+# The packaged desktop webview. Tauri v2 does not serve the app from loopback:
+# it uses a custom protocol whose origin is "tauri://localhost" on macOS/Linux
+# and "http://tauri.localhost" on Windows. Neither is a loopback origin, so
+# leaving them out here would let development pass while the released app loses
+# CORS access to its own backend. These are the same origins
+# ``local_setup_request`` already trusts for browser-extension setup.
+_TAURI_ORIGIN_REGEX = r"tauri://localhost|https?://tauri\.localhost"
 
 
 def _allowed_origin_regex() -> str:
@@ -1047,7 +1055,9 @@ def _allowed_origin_regex() -> str:
         for o in os.getenv("SUZENT_ALLOWED_ORIGINS", "").split(",")
         if o.strip()
     ]
-    patterns = [_LOOPBACK_ORIGIN_REGEX] + [_re.escape(o) for o in extra]
+    patterns = [_LOOPBACK_ORIGIN_REGEX, _TAURI_ORIGIN_REGEX] + [
+        _re.escape(o) for o in extra
+    ]
     return "|".join(patterns)
 
 

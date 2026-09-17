@@ -87,19 +87,42 @@ def extra_allowed_hosts() -> set[str]:
     }
 
 
-def host_header_allowed(host_header: str) -> bool:
-    """Whether a loopback client's Host header names this server legitimately."""
+def _host_name(host_header: str) -> str:
+    """The Host header's name, lowercased, without its port."""
+    name = host_header.strip().lower()
+    # Strip the port, keeping IPv6 brackets intact.
+    if name.startswith("["):
+        return name.split("]")[0] + "]"
+    if ":" in name:
+        return name.rsplit(":", 1)[0]
+    return name
+
+
+def host_header_is_local(host_header: str) -> bool:
+    """Whether the Host header names this server as the local machine.
+
+    This is the question that decides trust. An operator-configured name from
+    SUZENT_ALLOWED_HOSTS is deliberately *not* local: see the middleware.
+    """
     if not host_header:
         # HTTP/1.0 and some local probes send none; there is no rebinding
         # without a name, so nothing to defend against.
         return True
-    name = host_header.strip().lower()
-    # Strip the port, keeping IPv6 brackets intact.
-    if name.startswith("["):
-        name = name.split("]")[0] + "]"
-    elif ":" in name:
-        name = name.rsplit(":", 1)[0]
-    return name in LOOPBACK_HOST_NAMES or name in extra_allowed_hosts()
+    return _host_name(host_header) in LOOPBACK_HOST_NAMES
+
+
+def host_header_allowed(host_header: str) -> bool:
+    """Whether a loopback client's Host header names this server legitimately.
+
+    Answers the anti-rebinding question only. Being allowed is not the same as
+    being trusted -- ``host_header_is_local`` decides that.
+    """
+    if not host_header:
+        return True
+    return (
+        host_header_is_local(host_header)
+        or _host_name(host_header) in extra_allowed_hosts()
+    )
 
 
 def extract_token(headers: list[tuple[bytes, bytes]]) -> str:
@@ -216,7 +239,14 @@ class AuthBoundaryMiddleware:
                     status_code=421,
                 )
                 return await resp(scope, receive, send)
-            return await self.app(scope, receive, send)
+            # Only a genuinely local name earns the loopback trust. A name from
+            # SUZENT_ALLOWED_HOSTS reaching us over loopback means a reverse
+            # proxy on this machine forwarded it -- the connection is local but
+            # the *caller* is not, and we have no trustworthy way to tell who
+            # they were. Such a request falls through to the token check below,
+            # exactly as if it had arrived from the network directly.
+            if host_header_is_local(host_header):
+                return await self.app(scope, receive, send)
 
         path = scope.get("path", "")
         # The node WebSocket authenticates itself in its handshake.

@@ -74,7 +74,15 @@ const ALL_CATEGORY_GROUPS: CategoryGroup[] = [
     categories: [
       { id: 'social', labelKey: 'settings.categories.social', icon: ChatBubbleLeftRightIcon },
       { id: 'mcp', labelKey: 'settings.categories.mcp', icon: WrenchScrewdriverIcon },
-      { id: 'browser', labelKey: 'settings.browser.title', icon: GlobeAltIcon },
+      {
+        id: 'browser',
+        labelKey: 'settings.browser.title',
+        icon: GlobeAltIcon,
+        // The /browser/* routes gate on local_setup_request, which trusts only
+        // the Tauri origins and the Vite dev origin -- the same-origin web UI
+        // is rejected, so the tab could only report 403s.
+        desktopOnly: true,
+      },
       { id: 'acp-agents', labelKey: 'settings.categories.acpAgents', icon: BoltIcon },
       { id: 'devices', labelKey: 'settings.categories.devices', icon: ComputerDesktopIcon },
       { id: 'mesh', labelKey: 'settings.categories.mesh', icon: ShareIcon },

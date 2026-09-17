@@ -260,6 +260,16 @@ def test_host_header_allowed():
     assert not host_header_allowed("attacker.example:8000")
 
 
+def test_host_header_is_local_excludes_configured_names(monkeypatch):
+    from suzent.auth_boundary import host_header_allowed, host_header_is_local
+
+    monkeypatch.setenv("SUZENT_ALLOWED_HOSTS", "suzent.example.com")
+    # Allowed (not a rebinding attempt) but not local (not trusted).
+    assert host_header_allowed("suzent.example.com")
+    assert not host_header_is_local("suzent.example.com")
+    assert host_header_is_local("127.0.0.1:8000")
+
+
 def test_host_header_extra_allowed(monkeypatch):
     from suzent.auth_boundary import host_header_allowed
 
@@ -281,6 +291,37 @@ class TestRebindingGuard:
     @pytest.mark.asyncio
     async def test_loopback_with_loopback_host_header_passes(self):
         scope = _scope("http", "127.0.0.1", headers=[(b"host", b"127.0.0.1:8000")])
+        called, _ = await _run(scope)
+        assert called
+
+    @pytest.mark.asyncio
+    async def test_proxied_allowed_host_still_needs_a_token(self, monkeypatch):
+        # A reverse proxy on this machine forwards an internet request: the ASGI
+        # client is 127.0.0.1 and the Host is one the operator allowed. Allowing
+        # the name defeats rebinding; it must not hand out unauthenticated
+        # access to whoever was on the other side of the proxy.
+        monkeypatch.setenv("SUZENT_ALLOWED_HOSTS", "suzent.example.com")
+        scope = _scope("http", "127.0.0.1", headers=[(b"host", b"suzent.example.com")])
+        called, sent = await _run(scope)
+        assert not called
+        assert sent[0]["status"] == 401
+
+    @pytest.mark.asyncio
+    async def test_proxied_allowed_host_accepts_a_valid_token(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.setenv("SUZENT_ALLOWED_HOSTS", "suzent.example.com")
+        store = DeviceTokenStore(path=tmp_path / "d.json")
+        _id, token = store.mint("Browser", "web", scope="full")
+        scope = _scope(
+            "http",
+            "127.0.0.1",
+            headers=[
+                (b"host", b"suzent.example.com"),
+                (b"authorization", f"Bearer {token}".encode()),
+            ],
+            store=store,
+        )
         called, _ = await _run(scope)
         assert called
 

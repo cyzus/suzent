@@ -96,9 +96,7 @@ function HostDirectoryPicker(props: {
       setSelected([full]);
       return;
     }
-    setSelected((prev) =>
-      prev.includes(full) ? prev.filter((p) => p !== full) : [...prev, full]
-    );
+    setSelected((prev) => (prev.includes(full) ? prev.filter((p) => p !== full) : [...prev, full]));
   };
 
   const confirm = () => {
