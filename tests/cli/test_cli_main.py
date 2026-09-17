@@ -1,6 +1,7 @@
 """Unit tests for CLI process control helpers."""
 
 import importlib
+import json
 import subprocess
 import threading
 from pathlib import Path
@@ -103,6 +104,8 @@ def test_terminate_process_fallback_to_kill(monkeypatch):
 
 class _ServeProcessSuccess:
     """Process double that exits successfully."""
+
+    pid = 4242
 
     def __init__(self):
         self.wait_calls = 0
@@ -213,6 +216,8 @@ def _stub_detached_launch(monkeypatch: pytest.MonkeyPatch) -> None:
     never actually started.
     """
     monkeypatch.setattr(cli_main, "_open_log", lambda name: _NullLog())
+    monkeypatch.setattr(cli_main, "_record_pid", lambda name, pid: None)
+    monkeypatch.setattr(cli_main, "_stop_frontend", lambda: False)
     monkeypatch.setattr(
         cli_main, "_wait_until_serving", lambda port, timeout=60.0: True
     )
@@ -1397,29 +1402,148 @@ def test_start_dev_warns_when_the_backend_never_answers(
     assert "No backend answered" in result.output
 
 
-def test_stop_also_stops_the_detached_dev_frontend(
-    monkeypatch: pytest.MonkeyPatch,
+class _FakePsutilProcess:
+    """psutil.Process double for the recorded-PID tests."""
+
+    def __init__(self, pid: int, created: float, children: list | None = None) -> None:
+        self.pid = pid
+        self._created = created
+        self._children = children or []
+        self.killed = False
+
+    def create_time(self) -> float:
+        return self._created
+
+    def children(self, recursive: bool = False) -> list:
+        return list(self._children)
+
+    def kill(self) -> None:
+        self.killed = True
+
+
+def _record_frontend(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, process: _FakePsutilProcess
+) -> None:
+    """Write the pid record `_stop_frontend` reads, for `process`."""
+    runtime = tmp_path / "runtime"
+    runtime.mkdir(exist_ok=True)
+    monkeypatch.setattr(cli_main, "RUNTIME_DIR", runtime)
+    (runtime / "frontend.pid").write_text(
+        json.dumps({"pid": process.pid, "created_at": process.create_time()}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        cli_main.psutil, "Process", lambda pid: process if pid == process.pid else None
+    )
+    monkeypatch.setattr(cli_main.psutil, "wait_procs", lambda procs, timeout=None: None)
+
+
+def test_stop_ends_the_recorded_dev_frontend_and_its_children(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     app = typer.Typer()
     cli_main.register_commands(app)
-    killed: list[int] = []
-
+    vite = _FakePsutilProcess(5556, 1000.0)
+    launcher = _FakePsutilProcess(5555, 1000.0, children=[vite])
+    _record_frontend(monkeypatch, tmp_path, launcher)
     monkeypatch.setattr(
         cli_main, "_is_suzent_server_running", lambda *args, **kwargs: False
     )
+
+    result = runner.invoke(app, ["stop"])
+
+    assert result.exit_code == 0
+    # `npm run dev` only launches; its children are what hold the port.
+    assert launcher.killed and vite.killed
+    assert "Dev frontend stopped" in result.output
+    assert "No Suzent server running" not in result.output
+    assert not (tmp_path / "runtime" / "frontend.pid").exists()
+
+
+def test_stop_leaves_an_unrelated_process_on_the_frontend_port_alone(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Holding port 18080 is not proof that Suzent started it."""
+    app = typer.Typer()
+    cli_main.register_commands(app)
+    killed: list[int] = []
+    monkeypatch.setattr(cli_main, "RUNTIME_DIR", tmp_path / "runtime")
     monkeypatch.setattr(
-        cli_main,
-        "get_pid_on_port",
-        lambda port: 5555 if port == cli_main.DEV_FRONTEND_PORT else None,
+        cli_main, "_is_suzent_server_running", lambda *args, **kwargs: False
     )
+    monkeypatch.setattr(cli_main, "get_pid_on_port", lambda port: 9999)
     monkeypatch.setattr(cli_main, "kill_process", killed.append)
 
     result = runner.invoke(app, ["stop"])
 
     assert result.exit_code == 0
-    assert killed == [5555]
-    assert "Dev frontend stopped" in result.output
-    assert "No Suzent server running" not in result.output
+    assert killed == []
+    assert "No Suzent server running" in result.output
+
+
+def test_recorded_process_rejects_a_recycled_pid(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    stranger = _FakePsutilProcess(5555, 9999.0)
+    _record_frontend(monkeypatch, tmp_path, _FakePsutilProcess(5555, 1000.0))
+    monkeypatch.setattr(cli_main.psutil, "Process", lambda pid: stranger)
+
+    assert cli_main._recorded_process("frontend") is None
+
+
+def test_launch_detached_records_the_pid_it_started(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(cli_main, "RUNTIME_DIR", tmp_path / "runtime")
+    monkeypatch.setattr(cli_main, "_open_log", lambda name: _NullLog())
+    monkeypatch.setattr(
+        cli_main.subprocess, "Popen", lambda cmd, **kwargs: _ServeProcessSuccess()
+    )
+    monkeypatch.setattr(
+        cli_main.psutil, "Process", lambda pid: _FakePsutilProcess(pid, 1000.0)
+    )
+
+    cli_main._launch_detached(["sleep", "1"], log_name="frontend")
+
+    record = json.loads(
+        (tmp_path / "runtime" / "frontend.pid").read_text(encoding="utf-8")
+    )
+    assert record == {"pid": _ServeProcessSuccess.pid, "created_at": 1000.0}
+
+
+def test_restart_stops_the_dev_frontend_before_starting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: a leftover frontend made `restart` stop and ask about port 18080."""
+    app = typer.Typer()
+    cli_main.register_commands(app)
+    calls: list[str] = []
+
+    monkeypatch.setattr(cli_main, "_stop_backend", lambda port: False)
+    monkeypatch.setattr(
+        cli_main, "_stop_frontend", lambda: calls.append("frontend") is None
+    )
+    monkeypatch.setattr(
+        cli_main, "_is_suzent_server_running", lambda *args, **kwargs: False
+    )
+    monkeypatch.setattr(cli_main, "get_project_root", lambda: Path("."))
+    monkeypatch.setattr(
+        cli_main, "_notify_update_available", lambda root: calls.append("start")
+    )
+    monkeypatch.setattr(cli_main, "_get_ui_binary", lambda root: None)
+    monkeypatch.setattr(cli_main, "ensure_cargo_in_path", lambda: None)
+    monkeypatch.setattr(cli_main, "ensure_msvc_linker", lambda: None)
+    monkeypatch.setattr(cli_main, "_ensure_npm_deps", lambda root: None)
+    monkeypatch.setattr(cli_main, "get_pid_on_port", lambda port: None)
+    monkeypatch.setattr(cli_main, "_launch_detached", lambda cmd, **kwargs: None)
+    monkeypatch.setattr(
+        cli_main, "_wait_until_serving", lambda port, timeout=60.0: True
+    )
+
+    result = runner.invoke(app, ["restart", "--dev"])
+
+    assert result.exit_code == 0
+    assert calls == ["frontend", "start"]
 
 
 def test_logs_prints_the_tail_of_the_requested_log(
@@ -1482,3 +1606,37 @@ def test_server_probe_retries_before_declaring_the_server_absent(
     assert not cli_main._is_suzent_server_running("127.0.0.1", 25314)
     attempts.clear()
     assert cli_main._is_suzent_server_running("127.0.0.1", 25314, attempts=3)
+
+
+@pytest.mark.parametrize(
+    ("args", "expected_hint"),
+    [
+        (["start"], "suzent logs --desktop -f"),
+        (["start", "--dev"], "suzent logs --frontend -f"),
+    ],
+)
+def test_start_points_at_the_log_a_failure_would_land_in(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, args: list[str], expected_hint: str
+) -> None:
+    """The packaged app logs to desktop.log, the dev pair to frontend.log."""
+    app = typer.Typer()
+    cli_main.register_commands(app)
+    ui_binary = tmp_path / "bin" / "suzent-ui.exe"
+
+    _stub_detached_launch(monkeypatch)
+    monkeypatch.setattr(cli_main, "_launch_detached", lambda cmd, **kwargs: None)
+    monkeypatch.setattr(cli_main, "get_project_root", lambda: tmp_path)
+    monkeypatch.setattr(cli_main, "_notify_update_available", lambda root: None)
+    monkeypatch.setattr(cli_main, "_get_ui_binary", lambda root: ui_binary)
+    monkeypatch.setattr(cli_main, "ensure_cargo_in_path", lambda: None)
+    monkeypatch.setattr(cli_main, "ensure_msvc_linker", lambda: None)
+    monkeypatch.setattr(cli_main, "_ensure_npm_deps", lambda root: None)
+    monkeypatch.setattr(
+        cli_main, "_is_suzent_server_running", lambda *args, **kwargs: False
+    )
+    monkeypatch.setattr(cli_main, "get_pid_on_port", lambda port: None)
+
+    result = runner.invoke(app, args)
+
+    assert result.exit_code == 0
+    assert expected_hint in result.output

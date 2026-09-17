@@ -22,6 +22,7 @@ import urllib.request
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
+import psutil
 import typer
 from suzent.config import DEFAULT_PORT, RUNTIME_DIR
 from suzent.version import (
@@ -1064,24 +1065,29 @@ def _stop_backend(port: int) -> bool:
     return True
 
 
-def _stop_frontend(port: int = DEV_FRONTEND_PORT) -> bool:
-    """Stop a detached dev frontend listening on `port`.
+def _stop_frontend() -> bool:
+    """Stop the dev frontend this CLI started, if it is still running.
 
-    Returns False when nothing was listening. `start --dev` leaves the frontend
-    running after the CLI returns, so `stop` has to end it too or it would
-    outlive the backend it was serving.
+    Returns False when there is nothing of ours to stop. `start --dev` leaves
+    the frontend running after the CLI returns, so `stop` has to end it too or
+    it would outlive the backend it was serving.
     """
-    pid = get_pid_on_port(port)
-    if not pid:
+    process = _recorded_process("frontend")
+    if process is None:
+        _clear_pid("frontend")
         return False
 
-    typer.echo(f"🛑 Stopping dev frontend (PID {pid}) on port {port}...")
-    try:
-        kill_process(pid)
-    except Exception as error:
-        typer.echo(f"⚠️  Failed to stop the dev frontend: {error}")
-        return False
-
+    typer.echo(f"🛑 Stopping dev frontend (PID {process.pid})...")
+    # `npm run dev` is only the launcher: Vite and the Tauri binary run as its
+    # children and are what actually hold the port.
+    doomed = [*_children_of(process), process]
+    for victim in doomed:
+        try:
+            victim.kill()
+        except psutil.Error:
+            pass
+    psutil.wait_procs(doomed, timeout=5)
+    _clear_pid("frontend")
     typer.echo("✅ Dev frontend stopped.")
     return True
 
@@ -1292,6 +1298,69 @@ def _log_path(name: str) -> Path:
     return RUNTIME_DIR / f"{name}.log"
 
 
+def _pid_path(name: str) -> Path:
+    """Path of the record identifying a detached process."""
+    return RUNTIME_DIR / f"{name}.pid"
+
+
+def _record_pid(name: str, pid: int) -> None:
+    """Remember a detached process so `stop` can end that exact process.
+
+    The creation time is stored alongside the PID: the operating system reuses
+    PIDs, and a stale record must never be enough to kill a stranger.
+    """
+    record: dict = {"pid": pid}
+    try:
+        record["created_at"] = psutil.Process(pid).create_time()
+    except psutil.Error:
+        pass
+    path = _pid_path(name)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        path.write_text(json.dumps(record), encoding="utf-8")
+    except OSError:
+        # Losing the record only costs us the ability to stop the process by
+        # name later; it must not fail the launch itself.
+        pass
+
+
+def _clear_pid(name: str) -> None:
+    """Forget a detached process, whether or not a record exists."""
+    try:
+        _pid_path(name).unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def _recorded_process(name: str) -> psutil.Process | None:
+    """Return the live process recorded for `name`, or None.
+
+    Holding a well-known port is not proof of identity -- another project's
+    dev server may be on 18080 -- so `stop` only ever ends a process this CLI
+    recorded when it launched it.
+    """
+    try:
+        record = json.loads(_pid_path(name).read_text(encoding="utf-8"))
+        process = psutil.Process(int(record["pid"]))
+    except (OSError, KeyError, TypeError, ValueError, psutil.Error):
+        return None
+    created = record.get("created_at")
+    try:
+        if created is not None and abs(process.create_time() - created) > 1.0:
+            return None  # The PID was recycled by an unrelated process.
+    except psutil.Error:
+        return None
+    return process
+
+
+def _children_of(process: psutil.Process) -> list[psutil.Process]:
+    """Every descendant of `process` that is still alive."""
+    try:
+        return process.children(recursive=True)
+    except psutil.Error:
+        return []
+
+
 def _open_log(name: str):
     """Open a detached process's log for appending, creating its directory."""
     path = _log_path(name)
@@ -1325,17 +1394,25 @@ def _launch_detached(
         kwargs["start_new_session"] = True
     handle = _open_log(log_name)
     try:
-        return subprocess.Popen(cmd, stdout=handle, stderr=handle, **kwargs)
+        process = subprocess.Popen(cmd, stdout=handle, stderr=handle, **kwargs)
     finally:
         # The child holds its own duplicate of the descriptor.
         handle.close()
+    _record_pid(log_name, process.pid)
+    return process
 
 
-def _report_detached(port: int, *, frontend: bool) -> None:
+_LOG_FLAGS = {"backend": "", "frontend": " --frontend", "desktop": " --desktop"}
+
+
+def _report_detached(port: int, *, log_name: str) -> None:
     """Print the confirmation every detached start path ends with.
 
     Both the packaged desktop app and the dev pair report themselves the same
     way, so `suzent start`/`restart` reads identically whichever mode you are in.
+    `log_name` is the log a failure would land in -- the one worth reading --
+    which is the desktop app's own log in packaged mode and the frontend's in
+    dev mode.
     """
     if _wait_until_serving(port, timeout=_READY_TIMEOUT):
         typer.echo(f"  ✅ Suzent is running at http://127.0.0.1:{port}")
@@ -1344,7 +1421,7 @@ def _report_detached(port: int, *, frontend: bool) -> None:
             f"  ⚠️  No backend answered on port {port} within "
             f"{_READY_TIMEOUT:.0f}s; it may still be starting, or it failed."
         )
-    typer.echo(f"     Logs:  suzent logs{' --frontend' if frontend else ''} -f")
+    typer.echo(f"     Logs:  suzent logs{_LOG_FLAGS[log_name]} -f")
     typer.echo("     Stop:  suzent stop")
 
 
@@ -1531,7 +1608,7 @@ def register_commands(app: typer.Typer):
             except OSError as error:
                 typer.echo(f"  ❌ Could not launch the desktop app: {error}")
                 raise typer.Exit(code=1)
-            _report_detached(port, frontend=False)
+            _report_detached(port, log_name="desktop")
             return
 
         # ── Developer fallback: tauri dev ────────────────────────────────────
@@ -1615,7 +1692,7 @@ def register_commands(app: typer.Typer):
             # `npm` is a shell script; without a console it needs cmd to resolve.
             frontend_cmd = ["cmd", "/c", *frontend_cmd]
         _launch_detached(frontend_cmd, log_name="frontend", cwd=root / "src-tauri")
-        _report_detached(port, frontend=True)
+        _report_detached(port, log_name="frontend")
 
     @app.command()
     def serve(
@@ -1833,7 +1910,7 @@ def register_commands(app: typer.Typer):
             help="Force developer mode (backend in debug + Tauri dev), skipping the pre-built UI binary",
         ),
     ):
-        """Stop a running Suzent backend, then start Suzent again."""
+        """Stop a running Suzent backend and dev frontend, then start again."""
         if _stop_backend(port):
             if not _wait_for_port_release(port):
                 typer.echo(f"❌ Port {port} was not released; restart aborted.")
@@ -1842,6 +1919,11 @@ def register_commands(app: typer.Typer):
             typer.echo(
                 f"No Suzent server running on http://127.0.0.1:{port}; starting one."
             )
+
+        # A dev frontend from the previous session still holds its port, and
+        # `start` would stop to ask about it -- which a restart should never
+        # need to do about a process Suzent itself left running.
+        _stop_frontend()
 
         start(port=port, debug=debug, dev=dev, docs=False)
 
@@ -1869,7 +1951,7 @@ def register_commands(app: typer.Typer):
             except OSError as error:
                 typer.echo(f"  ❌ Could not launch the desktop app: {error}")
                 raise typer.Exit(code=1)
-            _report_detached(port, frontend=False)
+            _report_detached(port, log_name="desktop")
             return
 
         ensure_cargo_in_path()
@@ -1885,7 +1967,7 @@ def register_commands(app: typer.Typer):
         _launch_detached(
             frontend_cmd, log_name="frontend", cwd=root / "src-tauri", env=env
         )
-        _report_detached(port, frontend=True)
+        _report_detached(port, log_name="frontend")
 
     @app.command()
     def doctor():
