@@ -26,8 +26,8 @@ somewhere else -- so the same bundle renders a different shell there:
 `frontend/src/shells/WebShell.tsx`, chosen in `main.tsx` by `isWeb()`.
 
 The console is a left nav rail over a hash router (`wouter`), with chat as one
-destination among Devices, Mesh, Usage, Settings and About. Destinations live
-in `frontend/src/shells/webRoutes.ts` -- one list, read by the rail, the router
+destination among Operations, Devices, Mesh, Usage, Settings and About.
+Destinations live in `frontend/src/shells/webRoutes.ts` -- one list, read by the rail, the router
 and the tests.
 
 Two details are load-bearing:
@@ -35,14 +35,47 @@ Two details are load-bearing:
 - **Hash routing** (`#/devices`), not paths. The server only ever sees `/`, so
   no pre-auth route has to be exempted from the device-token check in
   `is_public_asset()`, and console navigation stays out of access logs.
-- **Devices, Mesh, Usage and About mount outside `<App>`**, so they do not wait
-  on its backend-readiness gate. A console opened against a struggling host
+- **Operations, Devices, Mesh, Usage and About mount outside `<App>`**, so they
+  do not wait on its backend-readiness gate. A console opened against a struggling host
   still shows the pages you opened it to look at. Chat and Settings do sit
   inside `<App>`: they need its provider stack, which needs the backend.
 
 Everything under `components/`, `hooks/`, `lib/` and `i18n/` is shared by both
 shells. The console reuses the settings tabs verbatim rather than restating
 them.
+
+## Operations over HTTP
+
+The desktop app manages the background service through Tauri commands that
+shell out to `suzent service`. A browser has no such bridge, and the browser is
+exactly the client that needs one -- running a headless host from elsewhere is
+mostly "is it up, why did it stop, restart it".
+
+`src/suzent/routes/ops_routes.py` exposes that over HTTP, wrapping the same
+`ServiceController` the CLI uses:
+
+| Route | Does |
+| --- | --- |
+| `GET /ops/service/status` | Service status, plus `self_managed` and the log path |
+| `GET /ops/logs?lines=N` | Tail of `server.log`, read backwards, capped at 2000 lines |
+| `POST /ops/service/restart` | Restart the service |
+| `POST /ops/service/enabled` | Install or uninstall it |
+
+None of these are in `AGENT_ALLOWED_PATHS`, so a remote agent-scope token
+cannot reach them; they need loopback or a full-scope token.
+
+Two of them can act on the process serving the request, which is the normal
+case on a headless host, and that shapes both:
+
+- **Restart answers first.** When `self_managed` is true the route returns
+  `202 {"status": "restarting"}` and defers the restart past the response.
+  Restarting inline would kill the process mid-reply, and the console could not
+  distinguish the restart it asked for from a host that fell over. The page
+  then polls `/ops/service/status` until the host answers again.
+- **Disabling yourself is refused** with `409 would_disable_self`. The call
+  would succeed and take the console permanently offline: re-enabling needs a
+  shell on the host, which is the one thing a remote browser does not have.
+  Run `suzent service uninstall` there instead.
 
 ## The backend is a service, not something you launch
 

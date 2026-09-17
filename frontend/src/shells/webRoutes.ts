@@ -10,6 +10,7 @@ import type { ComponentType, SVGProps } from 'react';
 import {
   ChatBubbleLeftRightIcon,
   ComputerDesktopIcon,
+  ServerStackIcon,
   ShareIcon,
   ChartBarIcon,
   Cog6ToothIcon,
@@ -31,6 +32,7 @@ export interface WebDestination {
 
 export const WEB_DESTINATIONS: WebDestination[] = [
   { path: '/', labelKey: 'console.nav.chat', icon: ChatBubbleLeftRightIcon, framed: false },
+  { path: '/ops', labelKey: 'console.nav.ops', icon: ServerStackIcon, framed: true },
   { path: '/devices', labelKey: 'console.nav.devices', icon: ComputerDesktopIcon, framed: true },
   { path: '/mesh', labelKey: 'console.nav.mesh', icon: ShareIcon, framed: true },
   { path: '/usage', labelKey: 'console.nav.usage', icon: ChartBarIcon, framed: true },

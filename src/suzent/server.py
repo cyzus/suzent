@@ -162,6 +162,12 @@ from suzent.routes.sandbox_routes import (
     get_sandbox_volumes,
     upload_files,
 )
+from suzent.routes.ops_routes import (
+    get_ops_logs,
+    get_ops_status,
+    restart_ops_service,
+    set_ops_service_enabled,
+)
 from suzent.routes.skill_routes import get_skills, reload_skills, toggle_skill
 from suzent.routes.system_routes import (
     get_system_version,
@@ -1223,6 +1229,13 @@ app = Starlette(
             methods=["GET"],
         ),
         Route("/sandbox/upload", upload_files, methods=["POST"]),
+        # Service control for clients that have no Tauri bridge -- the web
+        # console. Not in AGENT_ALLOWED_PATHS, so a remote agent-scope token
+        # cannot reach them; they need loopback or a full-scope token.
+        Route("/ops/service/status", get_ops_status, methods=["GET"]),
+        Route("/ops/service/restart", restart_ops_service, methods=["POST"]),
+        Route("/ops/service/enabled", set_ops_service_enabled, methods=["POST"]),
+        Route("/ops/logs", get_ops_logs, methods=["GET"]),
         Route("/system/version", get_system_version, methods=["GET"]),
         Route("/system/files", list_host_files, methods=["GET"]),
         Route("/system/open_explorer", open_in_explorer, methods=["POST"]),

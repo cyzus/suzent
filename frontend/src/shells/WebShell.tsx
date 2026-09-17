@@ -11,6 +11,7 @@ import { SettingsModal } from '../components/settings/SettingsModal';
 import { useBackendHealth } from '../hooks/useBackendHealth';
 import { useI18n } from '../i18n';
 import { ConsolePage } from './ConsolePage';
+import { OpsTab } from './OpsTab';
 import { WEB_DESTINATIONS } from './webRoutes';
 
 const HEALTH_DOT: Record<string, string> = {
@@ -95,6 +96,11 @@ export function WebShell(): React.ReactElement {
         <NavRail />
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <Switch>
+            <Route path="/ops">
+              <ConsolePage>
+                <OpsTab />
+              </ConsolePage>
+            </Route>
             <Route path="/devices">
               <ConsolePage>
                 <DevicesTab />
