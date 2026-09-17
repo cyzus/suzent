@@ -74,10 +74,11 @@ suzent start
 
 ```bash
 suzent --version       # Print the backend version, commit, and UI version
-suzent start           # Start the backend and the desktop app
+suzent start           # Start the backend and the desktop app (in the background)
 suzent serve           # Start the backend only (headless / standalone)
 suzent ui              # Start the desktop app against a running backend
-suzent stop            # Stop a running backend server
+suzent logs -f         # Follow the log of a backgrounded process
+suzent stop            # Stop the backend server and the dev frontend
 suzent restart         # Stop a running backend server, then start Suzent again
 suzent doctor          # Check requirements and diagnose a broken install
 suzent update          # Update to the latest stable release
