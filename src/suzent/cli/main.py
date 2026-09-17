@@ -16,6 +16,7 @@ import sys
 import tempfile
 import threading
 import time
+import webbrowser
 import urllib.error
 import urllib.request
 from importlib.metadata import PackageNotFoundError, version
@@ -1233,6 +1234,78 @@ def run_command(
     subprocess.run(cmd, cwd=cwd, check=check, shell=use_shell)
 
 
+def _wait_until_serving(port: int, timeout: float = 60.0) -> bool:
+    """Block until a Suzent backend answers on ``port``, or the timeout passes."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if _is_suzent_server_running("127.0.0.1", port):
+            return True
+        time.sleep(0.5)
+    return False
+
+
+def _open_when_ready(port: int, open_browser: bool, timeout: float = 60.0) -> bool:
+    """Wait for the backend, then point the browser at it. Returns readiness."""
+    url = f"http://127.0.0.1:{port}/"
+    if not _wait_until_serving(port, timeout):
+        typer.echo(f"WARNING  Backend did not answer on {url} within {timeout:.0f}s.")
+        typer.echo("   Check it with: suzent service status")
+        return False
+    typer.echo(f"OK  Suzent is serving at {url}")
+    if open_browser:
+        webbrowser.open(url)
+    return True
+
+
+def _open_in_background(port: int, timeout: float = 60.0) -> None:
+    """Open the browser once the server answers, without blocking the caller.
+
+    Used by --foreground, where this process goes on to babysit the server and
+    cannot sit in a wait loop. The thread is a daemon so Ctrl-C still exits.
+    """
+
+    def _wait() -> None:
+        if _wait_until_serving(port, timeout):
+            webbrowser.open(f"http://127.0.0.1:{port}/")
+
+    threading.Thread(target=_wait, daemon=True).start()
+
+
+def _web_foreground(port: int, host: str, debug: bool, open_browser: bool) -> None:
+    """Serve the UI from a throwaway backend tied to this terminal.
+
+    The supported path is the background service; this exists for development
+    and for a one-off on a non-default port or binding, where a login-persistent
+    service would be the wrong thing to install.
+    """
+    if host not in ("127.0.0.1", "localhost", "::1"):
+        # A remote browser is a remote caller: AuthBoundaryMiddleware will
+        # demand a device token for every request it makes. Say so up front
+        # rather than letting the user meet a wall of 401s.
+        typer.echo(
+            f"WARNING  Binding {host} exposes the API beyond this machine. Remote "
+            "browsers must carry a host-scope token; see "
+            "docs/03-developing/web-ui.md."
+        )
+
+    env = os.environ.copy()
+    env["SUZENT_PORT"] = str(port)
+    env["SUZENT_HOST"] = host
+    cmd = [sys.executable, "-m", "suzent.server"]
+    if debug:
+        cmd.append("--debug")
+
+    typer.echo(f"Serving Suzent at http://{host}:{port}/")
+    proc = subprocess.Popen(cmd, cwd=get_project_root(), env=env)
+    if open_browser:
+        _open_in_background(port)
+    try:
+        proc.wait()
+    except KeyboardInterrupt:
+        typer.echo("Stopping...")
+        _terminate_process_gracefully(proc)
+
+
 def _terminate_process_gracefully(process: subprocess.Popen, timeout: float = 5.0):
     """Attempt graceful child-process shutdown, then escalate if needed."""
     if process.poll() is not None:
@@ -1485,6 +1558,106 @@ def register_commands(app: typer.Typer):
         except Exception as e:
             typer.echo(f"❌ Server failed: {e}")
             raise typer.Exit(code=1)
+
+    @app.command()
+    def web(
+        open_browser: bool = typer.Option(
+            True, "--open/--no-open", help="Open the UI in the default browser"
+        ),
+        install: bool = typer.Option(
+            None,
+            "--install/--no-install",
+            help="Install the background service when it is not installed yet",
+        ),
+        foreground: bool = typer.Option(
+            False,
+            "--foreground",
+            help="Run a throwaway server in this terminal instead of using the service",
+        ),
+        port: int = typer.Option(
+            DEFAULT_PORT, "--port", "-p", help="Port to serve on (--foreground only)"
+        ),
+        host: str = typer.Option(
+            "127.0.0.1",
+            "--host",
+            help="Address to bind (--foreground only). Anything but loopback "
+            "exposes the API to the network",
+        ),
+        debug: bool = typer.Option(
+            False, "--debug", help="Run the server in debug mode (--foreground only)"
+        ),
+    ):
+        """Open Suzent in the browser.
+
+        The web UI is a route set on the ordinary Suzent backend, so there is no
+        separate web server to run: whatever already serves the API serves the
+        UI too. This command only makes sure *something* is serving -- preferring
+        the background service, which outlives this terminal and starts at login
+        -- and then hands the browser a URL.
+        """
+        from suzent.webui import webui_available
+
+        if not webui_available():
+            typer.echo("ERROR  No web UI is built into this install.")
+            typer.echo("   Build it with: python scripts/build_webui.py")
+            raise typer.Exit(code=1)
+
+        if foreground:
+            _web_foreground(port, host, debug, open_browser)
+            return
+
+        from suzent.service import get_service_controller
+
+        controller = get_service_controller()
+        status = controller.status()
+
+        if status.running:
+            if not status.ready:
+                typer.echo("The Suzent service is still starting...")
+            ready = _open_when_ready(status.port or DEFAULT_PORT, open_browser)
+            raise typer.Exit(code=0 if ready else 1)
+
+        # The service is not up, but something else may already be serving --
+        # `suzent serve`, or the backend the desktop app launched. Reuse it
+        # rather than starting a second backend that would lose the port race.
+        if _is_suzent_server_running("127.0.0.1", port):
+            typer.echo(f"OK  Suzent is already serving at http://127.0.0.1:{port}/")
+            if open_browser:
+                webbrowser.open(f"http://127.0.0.1:{port}/")
+            return
+
+        if status.installed:
+            typer.echo("Starting the Suzent background service...")
+            try:
+                controller.start()
+            except Exception as exc:
+                typer.echo(f"ERROR  Could not start the service: {exc}")
+                raise typer.Exit(code=1) from exc
+            ready = _open_when_ready(status.port or DEFAULT_PORT, open_browser)
+            raise typer.Exit(code=0 if ready else 1)
+
+        # Nothing is installed and nothing is running.
+        if install is None:
+            install = sys.stdin.isatty() and typer.confirm(
+                "No Suzent background service is installed. Install it now so the "
+                f"UI is always available at http://127.0.0.1:{DEFAULT_PORT}/ ?",
+                default=True,
+            )
+        if not install:
+            typer.echo("No Suzent backend is running. Either:")
+            typer.echo("  suzent service install   # start at login, always available")
+            typer.echo("  suzent web --foreground  # one-off server in this terminal")
+            raise typer.Exit(code=1)
+
+        typer.echo("Installing the Suzent background service...")
+        try:
+            controller.install(start=True)
+        except Exception as exc:
+            typer.echo(f"ERROR  Could not install the service: {exc}")
+            raise typer.Exit(code=1) from exc
+        typer.echo("OK  Service installed; it will start automatically at login.")
+        ready = _open_when_ready(DEFAULT_PORT, open_browser)
+        raise typer.Exit(code=0 if ready else 1)
 
     @app.command()
     def stop(

@@ -105,6 +105,16 @@ all = [
     "suzent[social,dev]",
 ]
 
+# The web UI is a build artifact (scripts/build_webui.py), so it is gitignored
+# and hatchling would otherwise drop it from the wheel. Naming it here ships it
+# as package data when present, without failing a source-only build when absent.
+[tool.hatch.build.targets.wheel]
+packages = ["src/suzent"]
+artifacts = ["src/suzent/webui/**"]
+
+[tool.hatch.build.targets.sdist]
+artifacts = ["src/suzent/webui/**"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]

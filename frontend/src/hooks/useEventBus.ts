@@ -14,6 +14,7 @@
  */
 import { useEffect, useState } from 'react';
 import { getApiBase } from '../lib/api';
+import { withAuthQuery } from '../lib/authToken';
 
 // ─── Module-level shared state ────────────────────────────────────────────────
 
@@ -93,7 +94,7 @@ function _hasSubscribers(): boolean {
 
 function _openEventSource() {
   if (_es) return;
-  _es = new EventSource(`${getApiBase()}/events/stream`);
+  _es = new EventSource(withAuthQuery(`${getApiBase()}/events/stream`));
   _es.onmessage = _handleMessage;
   _es.onerror = () => {
     // EventSource auto-reconnects per spec; no manual action needed.

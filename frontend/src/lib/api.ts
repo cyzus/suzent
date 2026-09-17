@@ -14,11 +14,9 @@ import socialExampleConfig from '../../../config/social.example.json';
 // -----------------------------------------------------------------------------
 
 // Get backend port injected by Tauri (available in both dev and prod modes)
-// Falls back to empty string for browser mode (uses relative URLs via Vite proxy)
 // IMPORTANT: This is a function, not a constant, because the port may not be
 // set in sessionStorage when the module first loads.
 export function getApiBase(): string {
-  // We strictly target Tauri desktop environment
   // The backend port is injected by the main process into sessionStorage
   if (window.__TAURI__) {
     const injectedPort = (window as any).__SUZENT_BACKEND_PORT__;
@@ -45,9 +43,17 @@ export function getApiBase(): string {
     return '';
   }
 
-  // Fallback for standard dev port if injection missing (e.g. during early init or HMR)
-  // or running in browser mode
-  return 'http://127.0.0.1:8000';
+  // Web mode. In production the backend serves this bundle itself, so relative
+  // URLs are same-origin and keep working behind a reverse proxy or a tunnel.
+  // The Vite dev server is a different origin, so it has to name the backend;
+  // the backend's CORS policy allows loopback origins for exactly this case.
+  //
+  // In dev the Vite config finds the backend that is already running -- the
+  // service, or the desktop app's -- and bakes its origin in here, so working
+  // on the console does not mean starting a second backend that fights it for
+  // the channel connections. `VITE_SUZENT_BACKEND` overrides the search.
+  if (!import.meta.env.DEV) return '';
+  return import.meta.env.VITE_SUZENT_BACKEND || 'http://127.0.0.1:8000';
 }
 
 export interface ServiceRuntimeStatus {

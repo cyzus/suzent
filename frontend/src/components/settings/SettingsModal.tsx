@@ -67,6 +67,16 @@ interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   initialCategory?: CategoryType;
+  /**
+   * Fill the parent instead of floating over it.
+   *
+   * The desktop app opens settings on top of the chat window it interrupted,
+   * so a modal is right there. The web console gives settings a route of its
+   * own, where a dialog floating over an empty page -- with a backdrop that
+   * dismisses it and a scroll lock on a body that never scrolls -- is only a
+   * smaller version of the space it already owns.
+   */
+  embedded?: boolean;
 }
 
 type ProviderTab = 'credentials' | 'models';
@@ -76,6 +86,7 @@ export function SettingsModal({
   isOpen,
   onClose,
   initialCategory = 'providers',
+  embedded = false,
 }: SettingsModalProps): React.ReactElement | null {
   const { refreshBackendConfig, backendConfig } = useChatStore();
   const { t } = useI18n();
@@ -492,14 +503,8 @@ export function SettingsModal({
 
   if (!isOpen) return null;
 
-  return (
-    <FullscreenOverlay
-      open={isOpen}
-      onClose={handleClose}
-      zIndexClassName="z-[100]"
-      backdropClassName="bg-brutal-black/80 backdrop-blur-sm animate-view-fade"
-      containerClassName="relative w-full h-[95vh] md:w-[95vw] lg:w-[90vw] xl:w-[82vw] 2xl:max-w-[1600px] bg-neutral-100 dark:bg-zinc-900 border-4 border-brutal-black shadow-brutal-xl flex overflow-hidden"
-    >
+  const body = (
+    <>
       <SettingsNavigation
         activeCategory={activeCategory}
         onCategoryChange={setActiveCategory}
@@ -645,6 +650,26 @@ export function SettingsModal({
           </div>
         </div>
       </div>
+    </>
+  );
+
+  if (embedded) {
+    return (
+      <div className="flex h-full w-full overflow-hidden bg-neutral-100 dark:bg-zinc-900">
+        {body}
+      </div>
+    );
+  }
+
+  return (
+    <FullscreenOverlay
+      open={isOpen}
+      onClose={handleClose}
+      zIndexClassName="z-[100]"
+      backdropClassName="bg-brutal-black/80 backdrop-blur-sm animate-view-fade"
+      containerClassName="relative w-full h-[95vh] md:w-[95vw] lg:w-[90vw] xl:w-[82vw] 2xl:max-w-[1600px] bg-neutral-100 dark:bg-zinc-900 border-4 border-brutal-black shadow-brutal-xl flex overflow-hidden"
+    >
+      {body}
     </FullscreenOverlay>
   );
 }

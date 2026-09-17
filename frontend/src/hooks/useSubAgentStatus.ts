@@ -13,6 +13,7 @@
  */
 import { useEffect, useState } from 'react';
 import { getApiBase } from '../lib/api';
+import { withAuthQuery } from '../lib/authToken';
 import {
   SubAgentSpawnedPayload,
   SubAgentCompletedPayload,
@@ -178,7 +179,7 @@ export function watchSubAgentTask(taskId: string): () => void {
 
 function _openEventSource() {
   if (_es) return;
-  _es = new EventSource(`${getApiBase()}/subagents/stream`);
+  _es = new EventSource(withAuthQuery(`${getApiBase()}/subagents/stream`));
 
   _es.onmessage = (evt) => {
     try {

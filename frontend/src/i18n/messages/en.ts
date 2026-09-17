@@ -1,4 +1,49 @@
 export const en = {
+  console: {
+    nav: {
+      label: 'Console sections',
+      chat: 'Chat',
+      ops: 'Operations',
+      devices: 'Devices',
+      mesh: 'Mesh',
+      usage: 'Usage',
+      settings: 'Settings',
+      about: 'About',
+    },
+    ops: {
+      title: 'Operations',
+      subtitle: 'The background service on this host, and what it last logged.',
+      serviceTitle: 'Background service',
+      serviceDesc: 'Runs Suzent without a desktop session, restarting it on crash and at login.',
+      status: 'Status',
+      uptime: 'Uptime',
+      memory: 'Memory',
+      notInstalled: 'Not installed',
+      ready: 'Ready',
+      starting: 'Starting',
+      stopped: 'Stopped',
+      restart: 'Restart service',
+      refresh: 'Refresh',
+      selfManagedNote:
+        'This console is served by the service below, so restarting it will briefly disconnect this page.',
+      reconnecting: 'Restarting — waiting for the host to come back…',
+      reconnectTimeout:
+        'The host did not come back within a minute. Check the log, or the service manager on the host.',
+      cannotDisableSelf:
+        'This service is serving the console. Turning it off here would leave no way to turn it back on remotely — run "suzent service uninstall" on the host instead.',
+      unreachable: 'Could not reach this host. It may be restarting, or the connection is gone.',
+      logTitle: 'Service log',
+      logDesc: 'The tail of server.log, which is the only account of a headless start-up.',
+      logLines: 'Lines',
+      follow: 'Follow',
+      logMissing: 'No log file yet. It appears once the service has run.',
+    },
+    health: {
+      checking: 'Checking the connection',
+      online: 'Connected',
+      offline: 'Not reachable',
+    },
+  },
   imageTool: {
     previewFailed: 'Image preview unavailable. Open the file to retry.',
   },
@@ -36,9 +81,6 @@ export const en = {
     startingBackend: 'Starting and checking the backend service',
     verifyingBackend: 'Verifying backend compatibility',
     startupElapsed: 'Elapsed {seconds}s',
-    desktopRequiredTitle: 'Desktop required',
-    desktopRequiredDesc:
-      'Suzent is a desktop-only application. Please run this application using the native desktop launcher.',
     logoAriaLabel: 'Suzent logo',
     backendCompatibility: {
       api: 'Frontend/backend API mismatch ({frontend} vs {backend}). Run suzent update.',
@@ -48,6 +90,14 @@ export const en = {
         'Backend version verification timed out. The backend may still be recovering; close and reopen Suzent.',
       verifyFailed: 'Failed to verify backend version: {error}',
     },
+  },
+  hostPicker: {
+    title: 'Choose a folder',
+    roots: 'Drives',
+    loading: 'Loading...',
+    empty: 'No sub-folders here',
+    cancel: 'Cancel',
+    select: 'Select',
   },
   bootstrap: {
     title: 'Set up Suzent',
@@ -231,6 +281,10 @@ export const en = {
     },
   },
   settings: {
+    network: {
+      restartRequiredManually:
+        'Saved. Restart the Suzent backend for the new network binding to take effect.',
+    },
     browser: {
       extension: 'Use my browser (extension)',
       extensionConnected: 'Connected',
