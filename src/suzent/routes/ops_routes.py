@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 from pathlib import Path
 
 from starlette.requests import Request
@@ -31,6 +32,11 @@ from suzent.service.state import read_process_state
 logger = get_logger(__name__)
 
 LOG_PATH = RUNTIME_DIR / "server.log"
+
+# The service logs through the same formatter the terminal gets, so the file
+# carries colour codes. A terminal renders them; a <pre> shows them as litter
+# like "[32m[0m" in front of every line.
+_ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 
 # Enough to see a startup sequence or a traceback, bounded so a wedged log
 # cannot turn one request into a multi-megabyte response.
@@ -97,7 +103,8 @@ def _tail(path: Path, lines: int) -> list[str]:
             found += chunks[-1].count(b"\n")
         data = b"".join(reversed(chunks))
     # errors="replace": a log truncated mid-character must still be readable.
-    return data.decode("utf-8", errors="replace").splitlines()[-lines:]
+    text = _ANSI.sub("", data.decode("utf-8", errors="replace"))
+    return text.splitlines()[-lines:]
 
 
 async def get_ops_logs(request: Request) -> JSONResponse:

@@ -274,6 +274,19 @@ def test_log_tail_survives_undecodable_bytes(client, tmp_path, monkeypatch):
     assert body["lines"][-1] == "last line"
 
 
+def test_log_tail_strips_terminal_colour_codes(client, tmp_path, monkeypatch):
+    """The file carries the same colour codes the terminal formatter emits."""
+    log = tmp_path / "server.log"
+    log.write_text(
+        "\x1b[32m2026-01-01 INFO\x1b[0m \x1b[1mready\x1b[0m\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(ops_routes, "LOG_PATH", log)
+
+    body = client.get("/ops/logs").json()
+    assert body["lines"] == ["2026-01-01 INFO ready"]
+
+
 def test_missing_log_is_reported_not_an_error(client, tmp_path, monkeypatch):
     monkeypatch.setattr(ops_routes, "LOG_PATH", tmp_path / "absent.log")
     body = client.get("/ops/logs").json()

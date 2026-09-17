@@ -74,9 +74,13 @@ function ConsoleSettings(): React.ReactElement {
   // is what keeps every category reachable in the console without forking it.
   // It reads the chat store, so it has to sit inside App's provider stack --
   // which also means it waits on the backend, as the desktop modal does.
+  //
+  // `embedded` drops the dialog chrome: here settings is a destination that
+  // already owns the pane, not something floating over the screen it took you
+  // away from.
   return (
     <App>
-      <SettingsModal isOpen onClose={() => navigate('/')} />
+      <SettingsModal isOpen embedded onClose={() => navigate('/')} />
     </App>
   );
 }
