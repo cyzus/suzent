@@ -1284,13 +1284,13 @@ def test_concurrent_cache_writers_do_not_share_a_temporary_file(tmp_path):
 
 
 @pytest.mark.skipif(
-    not hasattr(subprocess, "DETACHED_PROCESS"),
-    reason="DETACHED_PROCESS only exists on Windows",
+    not hasattr(subprocess, "CREATE_NO_WINDOW"),
+    reason="CREATE_NO_WINDOW only exists on Windows",
 )
 def test_launch_detached_logs_to_a_file_and_detaches(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A detached child writes to its log and is cut loose from this console."""
+    """A detached child logs to its file, leaves this console, and shows no window."""
     captured: dict = {}
 
     def fake_popen(cmd: list[str], **kwargs: object) -> _ServeProcessSuccess:
@@ -1308,7 +1308,11 @@ def test_launch_detached_logs_to_a_file_and_detaches(
     kwargs = captured["kwargs"]
     assert kwargs["stdin"] is cli_main.subprocess.DEVNULL
     assert kwargs["stdout"] is kwargs["stderr"]
-    assert kwargs["creationflags"] & cli_main.subprocess.DETACHED_PROCESS
+    assert kwargs["creationflags"] & cli_main.subprocess.CREATE_NO_WINDOW
+    assert kwargs["creationflags"] & cli_main.subprocess.CREATE_NEW_PROCESS_GROUP
+    # DETACHED_PROCESS would leave the child without a console at all, so its
+    # first console descendant would allocate one -- with a visible window.
+    assert not kwargs["creationflags"] & cli_main.subprocess.DETACHED_PROCESS
     assert "hello from the child" in (tmp_path / "runtime" / "backend.log").read_text(
         encoding="utf-8"
     )
