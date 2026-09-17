@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Remove the language param from the shell tools (#212)
 
 ### 🐛 Fixed
+- Ignore draining sockets when checking if a port is free (#231)
 - Self-heal a profile naming a remote the repo does not have (#228)
 - Point the upgrade guide's route contract at its new URL
 - Keep dream status polling from mutating retry state (#226)
