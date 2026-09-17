@@ -14,6 +14,7 @@ so every route below degrades to "not built" rather than to a crash.
 
 from __future__ import annotations
 
+import asyncio
 import os
 from pathlib import Path
 
@@ -68,9 +69,12 @@ async def _serve_index(request) -> Response:
     # A page load is the moment the answer matters, and it is rare enough to
     # afford the check. The rebuild it may start is a background one: this
     # request still gets the bundle that exists now.
+    #
+    # Off the event loop, because the check stats every frontend file -- about
+    # 10ms here, which is not much until it is 10ms no other request can use.
     from suzent.webui_build import rebuild_if_stale
 
-    rebuild_if_stale()
+    await asyncio.to_thread(rebuild_if_stale)
 
     if not webui_available():
         return JSONResponse(
