@@ -133,19 +133,32 @@ same Vite server before opening the Tauri window) serves the UI on
 You can keep both open against the same Vite process and watch a change land in
 each at once, which is the cheapest way to see where the two shells differ.
 
-The one thing the browser tab needs telling is which backend to call. The
-desktop window is handed its port at runtime; a browser tab has no such channel
-and defaults to `http://127.0.0.1:8000`. Point it at a backend that is already
-running instead of starting a second one that would fight the first for the
-channel connections:
+The browser tab still has to know which backend to call -- the desktop window is
+handed its port at runtime, and a tab has no such channel -- but it works this
+out for itself. `frontend/devBackend.ts` runs when the dev server starts and
+looks for a backend that is already running, so developing on the console does
+not mean starting a second one that fights the first for the channel
+connections. In order:
 
-```bash
-VITE_SUZENT_BACKEND=http://127.0.0.1:25314 npm run dev
+1. `VITE_SUZENT_BACKEND`, if you set it
+2. the port in `~/.suzent/runtime/service.json`, written by the installed service
+3. `SUZENT_PORT`, then the default `25314`, then the older `8000`
+
+Everything but the override has to answer `/system/version` to be chosen. The
+result sets both the client's API base and the Vite proxy targets, and is printed
+at startup:
+
+```text
+  suzent backend  http://127.0.0.1:25314  (runtime/service.json, answering)
 ```
 
-The variable sets both the client's API base and the Vite proxy targets, and it
-is read from the shell, so no `.env` file is needed. Requests then arrive from
-the Vite origin, which the backend's CORS policy already allows as loopback.
+Requests then arrive from the Vite origin, which the backend's CORS policy
+already allows as loopback. The search runs once, at startup, so a backend you
+start afterwards needs a Vite restart -- or name it directly:
+
+```bash
+VITE_SUZENT_BACKEND=http://127.0.0.1:9000 npm run dev
+```
 
 ## Desktop-only features
 
