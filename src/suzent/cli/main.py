@@ -1380,14 +1380,21 @@ def _launch_detached(
 ) -> subprocess.Popen:
     """Start `cmd` so it outlives this CLI invocation, logging to `log_name`.
 
-    The process gets its own session (POSIX) or is detached from this console
+    The process gets its own session (POSIX) or its own console with no window
     (Windows), so closing the terminal -- or this command returning -- leaves it
-    running. Its output goes to a log file rather than a terminal nobody is
-    watching; `suzent logs` reads it back.
+    running, and nothing pops up on screen. Its output goes to a log file rather
+    than a terminal nobody is watching; `suzent logs` reads it back.
+
+    On Windows this is CREATE_NO_WINDOW rather than DETACHED_PROCESS: a detached
+    process has no console at all, so the first console descendant (`npm`, then
+    `node` and `cargo`) allocates a fresh one -- and a fresh console comes with a
+    visible window. A windowless console is inherited quietly by the whole tree.
+    The two flags are mutually exclusive, and this one still leaves the child
+    outside this terminal's console, which is what keeps it alive afterwards.
     """
     kwargs: dict = {"cwd": cwd, "env": env, "stdin": subprocess.DEVNULL}
     if IS_WINDOWS:
-        kwargs["creationflags"] = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(
+        kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(
             subprocess, "CREATE_NEW_PROCESS_GROUP", 0
         )
     else:
