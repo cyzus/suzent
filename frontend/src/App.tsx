@@ -53,6 +53,7 @@ import { TitleBar } from './components/TitleBar';
 import { detectDesktopPlatform } from './lib/titleBarPlatform';
 import { useI18n, getInitialLocale, tForLocale } from './i18n';
 import { isWeb } from './lib/runtime';
+import { consolePathForCategory } from './shells/webRoutes';
 
 interface HeaderTitleProps {
   text?: string;
@@ -336,6 +337,14 @@ function AppInner(): React.ReactElement {
     | 'appearance'
   >('providers');
   const openSettings = (category: typeof settingsInitialCategory = 'providers') => {
+    // The console gives every settings category a route of its own and keeps
+    // its navigation on screen, so in a browser this goes to the page rather
+    // than laying the desktop's modal over the conversation.
+    const consolePath = isWeb() ? consolePathForCategory(category) : null;
+    if (consolePath) {
+      window.location.hash = `#${consolePath}`;
+      return;
+    }
     setSettingsInitialCategory(category);
     setIsSettingsOpen(true);
   };

@@ -24,7 +24,6 @@ import { useI18n } from '../../i18n';
 import { BrutalIconButton } from '../BrutalButton';
 import { BrutalSelect } from '../BrutalSelect';
 import { isWeb } from '../../lib/runtime';
-import { CONSOLE_HOSTED_CATEGORIES } from '../../shells/webRoutes';
 
 export type SettingsCategory =
   | 'providers'
@@ -128,21 +127,16 @@ const ALL_CATEGORY_GROUPS: CategoryGroup[] = [
   },
 ];
 
-// Two reasons to drop a category in the browser. A desktop-only one would
-// render a tab that can only report failure. A console-hosted one works fine
-// -- it is just already a destination on the nav rail, and a sidebar that
-// offers a second way in makes the rail look like a shortcut rather than the
-// place those pages live.
+// This sidebar is the desktop modal's, and the console navigates with its own.
+// The browser filter is left in as a guard rather than a feature: a desktop-only
+// category rendered there could only report failure.
 //
 // Computed per render rather than at module load: `isWeb()` reads `window`,
 // which does not exist when a test or a build tool merely imports this file.
 function visibleCategoryGroups(): CategoryGroup[] {
   return ALL_CATEGORY_GROUPS.map((group) => ({
     ...group,
-    categories: group.categories.filter(
-      (category) =>
-        !isWeb() || (!category.desktopOnly && !CONSOLE_HOSTED_CATEGORIES.has(category.id))
-    ),
+    categories: group.categories.filter((category) => !isWeb() || !category.desktopOnly),
   })).filter((group) => group.categories.length > 0);
 }
 

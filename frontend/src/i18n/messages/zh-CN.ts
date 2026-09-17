@@ -2,13 +2,11 @@ export const zhCN = {
   console: {
     nav: {
       label: '控制台导航',
+      title: 'Suzent',
       chat: '对话',
       ops: '运维',
-      devices: '设备',
-      mesh: '网格',
-      usage: '用量',
-      settings: '设置',
-      about: '关于',
+      collapse: '收起侧边栏',
+      expand: '展开侧边栏',
     },
     ops: {
       title: '运维',
@@ -30,11 +28,6 @@ export const zhCN = {
       cannotDisableSelf:
         '该服务正在提供本控制台。在此关闭它将无法再远程开启 —— 请在主机上执行 “suzent service uninstall”。',
       unreachable: '无法连接到该主机。它可能正在重启，或者连接已断开。',
-      logTitle: '服务日志',
-      logDesc: 'server.log 的末尾内容，这是无头启动过程的唯一记录。',
-      logLines: '行数',
-      follow: '跟随',
-      logMissing: '还没有日志文件。服务运行后才会出现。',
     },
     health: {
       checking: '正在检查连接',
@@ -620,6 +613,11 @@ export const zhCN = {
       restart: '重启服务',
       copyLogPath: '复制日志路径',
       refresh: '刷新',
+      logTitle: '服务日志',
+      logDesc: 'server.log 的末尾内容，这是无头启动过程的唯一记录。',
+      logLines: '行数',
+      follow: '跟随',
+      logMissing: '还没有日志文件。服务运行后才会出现。',
     },
     security: {
       title: '安全',
