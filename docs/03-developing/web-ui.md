@@ -119,9 +119,33 @@ That runs `npm run build` in `frontend/` and copies `frontend/dist` into
 Without it, `suzent web` reports that no UI is built in and the backend simply
 serves the API.
 
-During frontend development you do not need this: `npm run dev` in `frontend/`
-serves the UI on `http://127.0.0.1:18080` and talks to the backend on port
-25314.
+During frontend development you do not need this -- see below.
+
+## Developing against it
+
+`npm run dev` in `frontend/` (or `npm run dev` in `src-tauri/`, which starts the
+same Vite server before opening the Tauri window) serves the UI on
+`http://127.0.0.1:18080`. One server, both shells:
+
+- the **Tauri window** gets the desktop shell, because `window.__TAURI__` is set
+- a **browser tab** at `http://127.0.0.1:18080` gets the console
+
+You can keep both open against the same Vite process and watch a change land in
+each at once, which is the cheapest way to see where the two shells differ.
+
+The one thing the browser tab needs telling is which backend to call. The
+desktop window is handed its port at runtime; a browser tab has no such channel
+and defaults to `http://127.0.0.1:8000`. Point it at a backend that is already
+running instead of starting a second one that would fight the first for the
+channel connections:
+
+```bash
+VITE_SUZENT_BACKEND=http://127.0.0.1:25314 npm run dev
+```
+
+The variable sets both the client's API base and the Vite proxy targets, and it
+is read from the shell, so no `.env` file is needed. Requests then arrive from
+the Vite origin, which the backend's CORS policy already allows as loopback.
 
 ## Desktop-only features
 

@@ -47,7 +47,13 @@ export function getApiBase(): string {
   // URLs are same-origin and keep working behind a reverse proxy or a tunnel.
   // The Vite dev server is a different origin, so it has to name the backend;
   // the backend's CORS policy allows loopback origins for exactly this case.
-  return import.meta.env.DEV ? 'http://127.0.0.1:8000' : '';
+  //
+  // `VITE_SUZENT_BACKEND` points dev at a backend that is already running --
+  // usually the installed service or the desktop app's, on 25314 -- so working
+  // on the console does not mean starting a second one that fights it for the
+  // channel connections.
+  if (!import.meta.env.DEV) return '';
+  return import.meta.env.VITE_SUZENT_BACKEND || 'http://127.0.0.1:8000';
 }
 
 export interface ServiceRuntimeStatus {

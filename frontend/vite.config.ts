@@ -11,6 +11,12 @@ function getBuildCommit(): string {
   }
 }
 
+// Where dev-mode requests go. The desktop app injects its own port at runtime,
+// but a browser tab on the Vite origin has to be told, and the backend worth
+// developing against is usually one that is already running (the service or
+// the desktop app's, on 25314) rather than a second one started just for this.
+const DEV_BACKEND = process.env.VITE_SUZENT_BACKEND || 'http://127.0.0.1:8000';
+
 export default defineConfig({
   plugins: [react()],
   define: {
@@ -24,17 +30,17 @@ export default defineConfig({
     port: 18080,
     proxy: {
       // Proxy API routes to backend
-      '/config': 'http://127.0.0.1:8000',
-      '/preferences': 'http://127.0.0.1:8000',
-      '/chat': 'http://127.0.0.1:8000',
-      '/chats': 'http://127.0.0.1:8000',
-      '/plans': 'http://127.0.0.1:8000',
-      '/plan': 'http://127.0.0.1:8000',
-      '/mcp_servers': 'http://127.0.0.1:8000',
-      '/memory': 'http://127.0.0.1:8000',
-      '/sandbox': 'http://127.0.0.1:8000',
-      '/skills': 'http://127.0.0.1:8000',
-      '/files': 'http://127.0.0.1:8000',
+      '/config': DEV_BACKEND,
+      '/preferences': DEV_BACKEND,
+      '/chat': DEV_BACKEND,
+      '/chats': DEV_BACKEND,
+      '/plans': DEV_BACKEND,
+      '/plan': DEV_BACKEND,
+      '/mcp_servers': DEV_BACKEND,
+      '/memory': DEV_BACKEND,
+      '/sandbox': DEV_BACKEND,
+      '/skills': DEV_BACKEND,
+      '/files': DEV_BACKEND,
     }
   }
 });
