@@ -974,7 +974,14 @@ def ensure_msvc_linker():
 
 
 def get_pid_on_port(port: int) -> int | None:
-    """Get the PID of the process using the specified port."""
+    """Get the PID of the process *listening* on the specified port.
+
+    Only listening sockets count. A busy server leaves dozens of accepted
+    connections behind in TIME_WAIT/FIN_WAIT_2 when it dies, and those linger
+    for up to a couple of minutes. `netstat` reports them with a local address
+    of `127.0.0.1:<port>` and an owning PID of 0, so matching on the local
+    address alone makes a long-dead backend look like it still holds the port.
+    """
     try:
         if IS_WINDOWS:
             cmd = f"netstat -ano | findstr :{port}"
@@ -982,10 +989,16 @@ def get_pid_on_port(port: int) -> int | None:
             if result.returncode == 0 and result.stdout:
                 for line in result.stdout.strip().splitlines():
                     parts = line.split()
-                    if len(parts) >= 5 and f":{port}" in parts[1]:
-                        return int(parts[-1])
+                    # TCP <local> <foreign> LISTENING <pid>
+                    if len(parts) < 5 or parts[3].upper() != "LISTENING":
+                        continue
+                    if not parts[1].endswith(f":{port}"):
+                        continue
+                    pid = int(parts[-1])
+                    if pid:
+                        return pid
         else:
-            cmd = ["lsof", "-t", f"-i:{port}"]
+            cmd = ["lsof", "-t", f"-iTCP:{port}", "-sTCP:LISTEN"]
             result = subprocess.run(cmd, capture_output=True, text=True)
             if result.returncode == 0 and result.stdout:
                 return int(result.stdout.strip().split("\n")[0])
