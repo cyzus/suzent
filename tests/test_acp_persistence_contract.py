@@ -37,7 +37,7 @@ def _text_chunk(text):
     }
 
 
-async def _run_turn(chat_id, updates, result, *, append_result=True):
+async def _run_turn(chat_id, updates, result, *, append_result=True, replay=None):
     managed = _managed()
 
     async def prompt(session_id, message):
@@ -67,7 +67,7 @@ async def _run_turn(chat_id, updates, result, *, append_result=True):
         manager.ensure.return_value = managed
         get_manager.return_value = manager
 
-        chunks = [c async for c in stream_acp_turn(chat_id, "hi")]
+        chunks = [c async for c in stream_acp_turn(chat_id, "hi", replay=replay)]
         return chunks, db
 
 
@@ -85,7 +85,7 @@ def queue():
 async def test_persisted_only_after_the_assistant_row_is_written(queue):
     chat_id, q = queue
     chunks, db = await _run_turn(
-        chat_id, [_text_chunk("hello")], {"stopReason": "end_turn"}
+        chat_id, [_text_chunk("hello")], {"stopReason": "end_turn"}, replay=q.replay
     )
 
     roles = [c.args[1]["role"] for c in db.append_chat_message.call_args_list]
@@ -103,7 +103,9 @@ async def test_persisted_only_after_the_assistant_row_is_written(queue):
 @pytest.mark.asyncio
 async def test_a_turn_that_never_writes_reports_not_persisted(queue):
     chat_id, q = queue
-    chunks, db = await _run_turn(chat_id, [], {"stopReason": "end_turn"})
+    chunks, db = await _run_turn(
+        chat_id, [], {"stopReason": "end_turn"}, replay=q.replay
+    )
 
     assert json.loads(chunks[-1][6:])["type"] == "RUN_ERROR" or any(
         "RUN_ERROR" in c for c in chunks
@@ -126,7 +128,7 @@ async def test_a_chat_that_does_not_exist_is_not_persisted(queue):
         db = MagicMock()
         db.get_chat.return_value = None
         get_db.return_value = db
-        chunks = [c async for c in stream_acp_turn(chat_id, "hi")]
+        chunks = [c async for c in stream_acp_turn(chat_id, "hi", replay=q.replay)]
 
     assert any("Chat not found" in c for c in chunks)
     assert q.replay.persistence is not None
@@ -142,6 +144,7 @@ async def test_an_append_that_found_no_chat_is_not_persisted(queue):
         [_text_chunk("hello")],
         {"stopReason": "end_turn"},
         append_result=False,
+        replay=q.replay,
     )
 
     assert q.replay.persistence is not None
@@ -153,18 +156,18 @@ async def test_an_append_that_found_no_chat_is_not_persisted(queue):
 
 
 @pytest.mark.asyncio
-async def test_a_finished_replay_is_left_alone(queue):
-    """A queue whose producer already finished belongs to the previous turn.
+async def test_a_turn_with_no_replay_leaves_the_registry_alone(queue):
+    """A turn that owns no replay must not claim whatever the chat has.
 
-    The registry keeps it for a few minutes so a late /chat/live subscriber can
-    drain it. Claiming its replay would hand that subscriber this turn's
-    outcome — and could turn a persisted turn into `persisted: false`.
+    An agent-inbox delivery or a sub-agent runs `run_acp_turn_text(..., None)`,
+    and the registry can hand out a replay that is either a finished turn's,
+    kept for a late /chat/live subscriber, or another producer's live one.
+    Either way its persistence belongs to that turn, not this one.
     """
     chat_id, q = queue
     settled: asyncio.Future[bool] = asyncio.get_running_loop().create_future()
     settled.set_result(True)
     q.replay.persistence = settled
-    q.producer_active = False
 
     await _run_turn(chat_id, [], {"stopReason": "end_turn"})
 

@@ -18,26 +18,23 @@ def _sse(event: dict[str, Any]) -> str:
     return f"data: {json.dumps(event, ensure_ascii=False, separators=(',', ':'))}\n\n"
 
 
-def _attach_persistence(chat_id: str) -> asyncio.Future[bool] | None:
-    """Give this chat's replay a pending persistence future, if it has a replay.
+def _attach_persistence(replay: Any | None) -> asyncio.Future[bool] | None:
+    """Attach a pending persistence future to the replay this turn produces into.
 
     Mirrors what ChatProcessor does with its post-process task: the replay only
     emits STREAM_END{persisted:true} once this resolves True.
-    """
-    from suzent.core.stream_registry import get_background_queue
 
-    queue = get_background_queue(chat_id)
-    # A finished queue is kept around for a few minutes so a late /chat/live
-    # subscriber can still drain it. Claiming that replay would overwrite the
-    # previous turn's persistence state and report this turn's outcome as its
-    # own — so only a queue whose producer is still running is ours. A turn
-    # with no replay at all (a sub-agent, the non-recoverable path) attaches
-    # nothing, which is what `persisted` already assumes for producers that
-    # never claimed the contract.
-    if queue is None or not queue.producer_active or queue.replay.closed:
+    The replay is passed in rather than looked up by chat_id, because a chat can
+    have more than one at a time - a finished turn's, kept for a few minutes so
+    a late /chat/live subscriber can drain it, or another producer's live one -
+    and claiming a replay this turn is not writing to would report this turn's
+    outcome as that one's. A turn with no replay attaches nothing, which is what
+    `persisted` already assumes for producers that never claimed the contract.
+    """
+    if replay is None:
         return None
     future: asyncio.Future[bool] = asyncio.get_running_loop().create_future()
-    queue.replay.persistence = future
+    replay.persistence = future
     return future
 
 
@@ -200,6 +197,7 @@ async def stream_acp_turn(
     file_mentions: list[Any] | None = None,
     runtime_authored: bool = False,
     system_preamble: str | None = None,
+    replay: Any | None = None,
 ) -> AsyncGenerator[str, None]:
     """Run one ACP turn, claiming the replay's persistence contract for it.
 
@@ -211,7 +209,7 @@ async def stream_acp_turn(
     STREAM_END{persisted:true} for a turn that was never stored, which the
     client trusts enough to replace what it is showing.
     """
-    persistence = _attach_persistence(chat_id)
+    persistence = _attach_persistence(replay)
     try:
         async for chunk in _run_acp_turn(
             chat_id,
@@ -520,6 +518,7 @@ async def run_acp_turn_text(
         config_override,
         runtime_authored=runtime_authored,
         system_preamble=system_preamble,
+        replay=getattr(stream_queue, "replay", None),
     ):
         if stream_queue is not None:
             await stream_queue.put(chunk)

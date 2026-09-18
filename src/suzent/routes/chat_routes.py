@@ -11,7 +11,7 @@ import asyncio
 from collections.abc import AsyncGenerator
 import json
 import traceback
-from typing import Annotated, Literal
+from typing import Annotated, Any, Callable, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, ValidationError
 from starlette.requests import Request
@@ -198,9 +198,13 @@ def _prewrite_user_display_message(
 
 
 def _recoverable_response(
-    chat_id: str, generator: AsyncGenerator[str, None]
+    chat_id: str,
+    make_generator: Callable[[Any], AsyncGenerator[str, None]],
 ) -> StreamingResponse:
+    # The turn is built after the queue exists, and from it: a producer that
+    # has to find its own replay by chat_id can find someone else's.
     queue = register_background_stream(chat_id)
+    generator = make_generator(queue.replay)
 
     async def produce() -> None:
         try:
@@ -361,18 +365,19 @@ async def chat(request: Request) -> StreamingResponse:
             except Exception as _hb_err:
                 logger.warning(f"Heartbeat pre-processing failed: {_hb_err}")
 
-        if effective_runtime == "acp":
-            from suzent.acp.runtime import stream_acp_turn
+        def _make_generator(replay: Any | None = None) -> AsyncGenerator[str, None]:
+            if effective_runtime == "acp":
+                from suzent.acp.runtime import stream_acp_turn
 
-            generator = stream_acp_turn(
-                chat_id,
-                message,
-                {**config, **config_override},
-                files=files_list or None,
-                file_mentions=file_mentions or None,
-            )
-        else:
-            generator = processor.process_turn(
+                return stream_acp_turn(
+                    chat_id,
+                    message,
+                    {**config, **config_override},
+                    files=files_list or None,
+                    file_mentions=file_mentions or None,
+                    replay=replay,
+                )
+            return processor.process_turn(
                 chat_id=chat_id,
                 user_id=CONFIG.user_id,
                 message_content=message,
@@ -386,13 +391,12 @@ async def chat(request: Request) -> StreamingResponse:
         if stream:
             if recovery_protocol and chat_id:
                 if is_background_streaming(chat_id):
-                    await generator.aclose()
                     return JSONResponse(
                         {"error": "Chat is already streaming"}, status_code=409
                     )
-                return _recoverable_response(chat_id, generator)
+                return _recoverable_response(chat_id, _make_generator)
             return StreamingResponse(
-                generator,
+                _make_generator(),
                 media_type="text/event-stream",
                 headers={
                     "Content-Type": "text/event-stream",
@@ -404,7 +408,7 @@ async def chat(request: Request) -> StreamingResponse:
 
         # Non-streaming: consume generator and return JSON
         full_response = ""
-        async for chunk in generator:
+        async for chunk in _make_generator():
             try:
                 if chunk.startswith("data: "):
                     json_str = chunk[6:].strip()
@@ -481,6 +485,7 @@ async def chat_send(request: Request) -> JSONResponse:
                     {**config, **config_override},
                     files=files_list or None,
                     file_mentions=file_mentions or None,
+                    replay=stream_queue.replay,
                 )
             else:
                 generator = processor.process_turn(
