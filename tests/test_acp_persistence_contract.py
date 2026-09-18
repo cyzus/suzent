@@ -53,12 +53,19 @@ async def _run_turn(
     files=None,
     existing=None,
     prewritten=False,
+    prompt_error=None,
 ):
     managed = _managed()
     managed.restored = restored
     results = list(result) if isinstance(result, list) else None
 
     async def prompt(session_id, message, on_sent=None):
+        if prompt_error is not None:
+            # Before `on_sent`: the agent never heard this prompt.
+            raise prompt_error
+        if on_sent is not None:
+            # As the real client does, once the request is on the wire.
+            on_sent()
         if prompted is not None:
             prompted.append(message)
         for item in updates:
@@ -748,3 +755,25 @@ async def test_the_session_is_idle_again_once_the_prompt_comes_back(queue):
 
     assert q.replay.producer_started is True
     assert q.replay.prompt_in_flight is False
+
+
+@pytest.mark.asyncio
+async def test_a_prompt_that_never_reached_the_agent_is_not_live(queue):
+    """A dead process raises before the write.
+
+    Nothing is running under this run's name, so a stop must not be answered by
+    cancelling the chat's session -- it would reach whatever else that session
+    picked up, and this turn would carry on to its own error ending.
+    """
+    chat_id, q = queue
+
+    await _run_turn(
+        chat_id,
+        [],
+        {"stopReason": "end_turn"},
+        replay=q.replay,
+        prompt_error=RuntimeError("agent stdin is closed"),
+    )
+
+    assert q.replay.producer_started is False
+    assert q.replay.prompt_in_flight is not True

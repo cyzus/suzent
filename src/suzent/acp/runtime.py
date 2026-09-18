@@ -115,7 +115,14 @@ async def _stream_prompt(
             waiter.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await waiter
-        deferred_stop = go_live() if go_live is not None else None
+        # Only if the dispatch waiter is what woke us. A prompt that raised
+        # before the write -- a dead process, a closed stdin -- ends the attempt
+        # without the agent ever hearing it, and calling the session live there
+        # would take a stop waiting for this run and answer it by cancelling a
+        # session that is running nothing.
+        deferred_stop = (
+            go_live() if go_live is not None and dispatched.is_set() else None
+        )
         if deferred_stop:
             # Accepted while the prompt was in flight, so it was never delivered
             # to the session. Now that the agent has the prompt, it can hear it.
