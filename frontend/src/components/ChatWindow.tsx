@@ -1352,23 +1352,27 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         abandonedPartsRef.current.set(chatId, currentParts);
       }
 
+      // Name the turn: this POST starts one, and until /chat/live yields its
+      // first frame the token is the only name a stop has for it. Keep the name
+      // this request minted: by the time the request settles a redirect may have
+      // minted a newer one, and retiring that would leave the turn now running
+      // nameless.
+      const runToken = mintRunToken(chatId);
       let resp: Response;
       try {
         resp = await fetch(`${getApiBase()}/chat/send`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          // Name the turn: this POST starts one, and until /chat/live yields its
-          // first frame the token is the only name a stop has for it.
-          body: JSON.stringify({ ...body, client_run_token: mintRunToken(chatId) }),
+          body: JSON.stringify({ ...body, client_run_token: runToken }),
         });
       } catch (err) {
         // The turn never started; the name minted for it must not outlive it.
-        retireRunToken();
+        retireRunToken(runToken);
         throw err;
       }
 
       if (!resp.ok) {
-        retireRunToken();
+        retireRunToken(runToken);
         const msg =
           resp.status === 409 ? 'Chat is already responding' : `Resume failed (${resp.status})`;
         setStatusBar(msg, 'error', 4000);
@@ -1401,7 +1405,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       chatId: string,
       status: number,
       action: SendAction,
-      opts?: { seedParts?: AGUIPart[]; restoreInput?: string }
+      opts?: { seedParts?: AGUIPart[]; restoreInput?: string; runToken?: string }
     ): boolean => {
       const plan = planSendFailureRecovery(status, action);
       setStatusBar(t(plan.messageKey, plan.messageParams), plan.tone, 4000);
@@ -1410,7 +1414,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       // one is already running. Drop the name now: the reattach below is a
       // probe on this same chat, and it would otherwise carry that dead name
       // into a stop meant for the turn that really is running.
-      retireRunToken();
+      //
+      // Retire only the name this rejected request minted. A redirect issued
+      // while it was in flight has already installed the replacement turn's
+      // name, and clearing that would leave the turn that really is running
+      // without one until its first frame arrives.
+      retireRunToken(opts?.runToken);
 
       if (!plan.reattach) {
         setIsStreaming(false, chatId);
@@ -2257,6 +2266,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       isLiveStreamRef.current = false;
 
       const steerChatId = currentChatId;
+      const steerRunToken = mintRunToken(steerChatId);
       fetch(`${getApiBase()}/chat/steer-send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2264,7 +2274,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           chat_id: steerChatId,
           message: prompt,
           config: safeConfig,
-          client_run_token: mintRunToken(steerChatId),
+          client_run_token: steerRunToken,
         }),
       })
         .then((resp) => {
@@ -2272,6 +2282,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             recoverFromSendFailure(steerChatId, resp.status, 'steer', {
               seedParts: steerSeedParts,
               restoreInput: prompt,
+              runToken: steerRunToken,
             });
             return;
           }
@@ -2279,7 +2290,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         })
         .catch((err) => {
           console.error('[send] /chat/steer-send failed:', err);
-          retireRunToken();
+          retireRunToken(steerRunToken);
           setIsStreaming(false, steerChatId);
         })
         .finally(() => {
@@ -2376,7 +2387,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     };
     if (mentionsToSend.length > 0) payload.file_mentions = mentionsToSend;
     if (uploadedFileMetadata) payload.files = uploadedFileMetadata;
-    payload.client_run_token = mintRunToken(chatIdForSend);
+    const sendRunToken = mintRunToken(chatIdForSend);
+    payload.client_run_token = sendRunToken;
 
     // Fire /chat/send — backend registers the background stream and returns 202.
     // On success, call tryConnect() directly so we attach to /chat/live immediately
@@ -2395,6 +2407,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             // composer without its attachments would offer a different message
             // than the one that was rejected.
             restoreInput: filesToSend.length === 0 ? prompt : undefined,
+            runToken: sendRunToken,
           });
           if (!reattached) clearPartsIfStillViewingSendChat();
           return;
@@ -2408,7 +2421,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         // Left installed, the next probe on this chat inherits it and a stop
         // goes out under a dead name -- answered 409, which reads as "already
         // stopped" while the turn that is running carries on.
-        retireRunToken();
+        retireRunToken(sendRunToken);
         setIsStreaming(false, chatIdForSend);
         clearPartsIfStillViewingSendChat();
       });
@@ -2470,6 +2483,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     activeChatIdRef.current = chatIdForRetry;
     retireStopAttempt();
 
+    const retryRunToken = mintRunToken(chatIdForRetry);
     fetch(`${getApiBase()}/chat/send`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -2477,19 +2491,21 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         message: '/retry',
         chat_id: chatIdForRetry,
         config: safeConfig,
-        client_run_token: mintRunToken(chatIdForRetry),
+        client_run_token: retryRunToken,
       }),
     })
       .then((resp) => {
         if (!resp.ok) {
-          recoverFromSendFailure(chatIdForRetry, resp.status, 'retry');
+          recoverFromSendFailure(chatIdForRetry, resp.status, 'retry', {
+            runToken: retryRunToken,
+          });
           return;
         }
         tryConnectRef.current?.();
       })
       .catch((err) => {
         console.error('[handleRetry] /chat/send failed:', err);
-        retireRunToken();
+        retireRunToken(retryRunToken);
         setIsStreaming(false, chatIdForRetry);
       });
   }, [
@@ -2555,6 +2571,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       activeChatIdRef.current = chatIdForEdit;
       retireStopAttempt();
 
+      const editRunToken = mintRunToken(chatIdForEdit);
       fetch(`${getApiBase()}/chat/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2562,19 +2579,22 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           message: `/retry-edit ${prompt}`,
           chat_id: chatIdForEdit,
           config: safeConfig,
-          client_run_token: mintRunToken(chatIdForEdit),
+          client_run_token: editRunToken,
         }),
       })
         .then((resp) => {
           if (!resp.ok) {
-            recoverFromSendFailure(chatIdForEdit, resp.status, 'edit', { restoreInput: prompt });
+            recoverFromSendFailure(chatIdForEdit, resp.status, 'edit', {
+              restoreInput: prompt,
+              runToken: editRunToken,
+            });
             return;
           }
           tryConnectRef.current?.();
         })
         .catch((err) => {
           console.error('[handleEditUserMessage] /chat/send failed:', err);
-          retireRunToken();
+          retireRunToken(editRunToken);
           setIsStreaming(false, chatIdForEdit);
         });
     },

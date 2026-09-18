@@ -754,12 +754,14 @@ async def stop_chat(request: Request) -> JSONResponse:
     run_id = data.get("run_id")
     queue = get_background_queue(chat_id)
     matched_run: str | None = None
+    matched_replay = None
     if run_id and queue is not None:
         if run_id not in (queue.replay.run_id, queue.replay.client_token):
             return JSONResponse(
                 {"status": "stale_run", "run_id": queue.replay.run_id}, status_code=409
             )
         matched_run = queue.replay.run_id
+        matched_replay = queue.replay
 
     # Matching the replay says which run the stop meant; it does not say that
     # run is the one holding the chat's cancellation control. A steer registers
@@ -783,14 +785,21 @@ async def stop_chat(request: Request) -> JSONResponse:
             success = await get_acp_manager().cancel(chat_id)
         except Exception:
             success = False
-    if not success and matched_run and defer_stop_to_pending_run(chat_id, reason):
+    if (
+        not success
+        and matched_run
+        and defer_stop_to_pending_run(chat_id, reason, matched_replay)
+    ):
         # The run is real and still producing -- it just has not started yet, so
         # it has nothing that can be cancelled. Leaving the stop on its replay is
         # an acceptance, not a miss: the turn cancels the moment it starts and
         # the client still gets its STREAM_END. A run already producing is past
         # the points that read the mark, so it is refused there and a failed
         # cancellation of a live prompt stays a failed stop -- which the client
-        # can act on, unlike a promise nothing will keep.
+        # can act on, unlike a promise nothing will keep. The mark goes on the
+        # replay this stop was matched against and nowhere else: the awaited
+        # cancellation above gives a redirect room to register a replacement,
+        # and that run never carried this stop's name.
         success = True
 
     # Stop reached a chat's blocking sub-agents only as collateral damage and

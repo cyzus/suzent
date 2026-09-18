@@ -167,3 +167,22 @@ def test_a_stop_is_not_left_for_a_run_that_has_already_started():
 
     assert defer_stop_to_pending_run("chat", "Stream stopped by user") is False
     assert queue.replay.stop_requested is None
+
+
+def test_a_stop_is_not_left_for_a_replay_that_replaced_the_matched_one():
+    """The stop names one run; the chat's current replay may already be another.
+
+    The endpoint matches the stop against a replay, then awaits a cancellation.
+    A redirect arriving in that gap registers the replacement's replay, so a
+    fresh lookup here would hand the replacement a stop aimed at the turn it
+    replaced.
+    """
+    matched = register_background_stream("chat")
+    bind_producer_replay(matched.replay)
+    replacement = register_background_stream("chat")
+
+    assert (
+        defer_stop_to_pending_run("chat", "bye", expect_replay=matched.replay) is False
+    )
+    assert replacement.replay.stop_requested is None
+    assert matched.replay.stop_requested is None

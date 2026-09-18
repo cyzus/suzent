@@ -198,7 +198,9 @@ def stop_stream(
     return True
 
 
-def defer_stop_to_pending_run(chat_id: str, reason: str) -> bool:
+def defer_stop_to_pending_run(
+    chat_id: str, reason: str, expect_replay: Optional["StreamReplay"] = None
+) -> bool:
     """Leave a stop on the current replay for the run that has yet to start.
 
     The turn takes it when it claims the chat, so the stop still ends in the
@@ -207,9 +209,17 @@ def defer_stop_to_pending_run(chat_id: str, reason: str) -> bool:
     Only a run that has not started can be handed a stop this way: one already
     producing is past the points where the mark is read, so leaving it there
     would report a stop that nothing will ever carry out.
+
+    `expect_replay` is the replay the caller matched the stop against. The chat's
+    current replay can be replaced between that match and this call -- a steer
+    registers the replacement while the cancellation of the turn it replaces is
+    still awaiting -- and marking the newcomer would cancel a turn the stop was
+    never aimed at.
     """
     queue = background_queues.get(chat_id)
     if queue is None or not queue.producer_active:
+        return False
+    if expect_replay is not None and queue.replay is not expect_replay:
         return False
     if queue.replay.producer_started:
         return False

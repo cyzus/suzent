@@ -259,3 +259,35 @@ async def test_an_acp_stop_the_session_refuses_is_not_kept_for_a_live_run(monkey
 
     assert response.status_code == 404
     assert queue.replay.stop_requested is None
+
+
+async def test_a_stop_is_not_kept_for_a_run_that_replaced_the_one_it_named(monkeypatch):
+    """The replacement registers itself while the ACP cancellation is awaited.
+
+    Looking the replay up again here would leave the stop on the newcomer -- a
+    run this stop never named, which would cancel itself the moment it started
+    while the endpoint reported the stale stop as applied.
+    """
+    monkeypatch.setattr(
+        "suzent.routes.chat_routes.stop_stream",
+        lambda chat_id, reason, expect_run=None: False,
+    )
+    queue = stream_registry.register_background_stream("chat")
+    queue.replay.producer_started = True
+    replacement: list[object] = []
+
+    class _Session:
+        async def cancel(self, chat_id):
+            # The redirect lands while this cancellation is in flight.
+            replacement.append(stream_registry.register_background_stream(chat_id))
+            return False
+
+    monkeypatch.setattr("suzent.acp.get_acp_manager", lambda: _Session())
+
+    response = await stop_chat(
+        request({"chat_id": "chat", "run_id": queue.replay.run_id})
+    )
+
+    assert response.status_code == 404
+    assert queue.replay.stop_requested is None
+    assert replacement[0].replay.stop_requested is None
