@@ -2,10 +2,29 @@ import type { Message } from '../types/api';
 import { isIntermediateStepContent, splitAssistantContent } from './chatUtils';
 
 /**
- * A turn is everything the agent produced in response to one user message, so
- * its index is simply how many user messages precede it. Comparing local and
- * server state only ever makes sense *within* one turn: these guards exist to
- * hold optimistic content while the backend catches up on the SAME turn, and
+ * Roles that open a new turn.
+ *
+ * The store and the server disagree on the label, not on the fact: a canvas
+ * dispatch is appended locally as a `canvas_action` pill but persisted as a
+ * plain `user` row, and cron/heartbeat runs come back as `system_triggered`.
+ * All three prompt exactly one agent response, so all three have to advance
+ * the counter — otherwise the same message lands in turn N locally and turn
+ * N+1 on the server, which is precisely the misalignment this file exists to
+ * prevent. `notice` is the odd one out: it is decoration, never a prompt.
+ */
+function startsTurn(message: Message): boolean {
+  return (
+    message.role === 'user' ||
+    message.role === 'canvas_action' ||
+    message.role === 'system_triggered'
+  );
+}
+
+/**
+ * A turn is everything the agent produced in response to one prompt, so its
+ * index is simply how many prompts precede it. Comparing local and server
+ * state only ever makes sense *within* one turn: these guards exist to hold
+ * optimistic content while the backend catches up on the SAME turn, and
  * comparing the last assistant on each side compares two different messages
  * whenever one side already knows about a turn the other doesn't.
  */
@@ -13,7 +32,7 @@ function assistantForTurn(messages: Message[], turnIndex: number): Message | und
   let turn = 0;
   let found: Message | undefined;
   for (const message of messages) {
-    if (message.role === 'user') {
+    if (startsTurn(message)) {
       if (turn > turnIndex) break;
       turn += 1;
       continue;
@@ -27,7 +46,7 @@ function lastAssistantTurnIndex(messages: Message[]): number {
   let turn = 0;
   let lastAssistantTurn = -1;
   for (const message of messages) {
-    if (message.role === 'user') turn += 1;
+    if (startsTurn(message)) turn += 1;
     else if (message.role === 'assistant') lastAssistantTurn = turn;
   }
   return lastAssistantTurn;

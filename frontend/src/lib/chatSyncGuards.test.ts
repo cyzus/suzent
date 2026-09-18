@@ -143,4 +143,37 @@ describe('shouldKeepLocalAssistantContent', () => {
     const server: Message[] = [{ role: 'user', content: 'question' }];
     expect(shouldKeepLocalAssistantContent(local, server)).toBe(true);
   });
+
+  it('pairs a canvas dispatch with the user row the server persisted for it', () => {
+    // The pill is local-only: the backend stores the same dispatch as a `user`
+    // row. Counting only `user` puts the local assistant one turn behind the
+    // server's, so the fresh reply gets compared with the short answer from the
+    // previous turn and the complete snapshot is rejected as a regression.
+    const local: Message[] = [
+      { role: 'user', content: 'open the canvas' },
+      { role: 'assistant', content: 'Done.' },
+      { role: 'canvas_action', content: '[canvas: apply] "Apply"' },
+      { role: 'assistant', content: 'Applying the two edits to the file you selected' },
+    ];
+    const server: Message[] = [
+      { role: 'user', content: 'open the canvas' },
+      { role: 'assistant', content: 'Done.' },
+      { role: 'user', content: '[canvas: apply] "Apply"' },
+      {
+        role: 'assistant',
+        content: 'Applying the two edits to the file you selected — both are in now.',
+      },
+    ];
+    expect(shouldKeepLocalAssistantContent(local, server)).toBe(false);
+  });
+
+  it('pairs a cron turn with its system_triggered prompt', () => {
+    const local: Message[] = [
+      { role: 'user', content: 'set up the digest' },
+      { role: 'assistant', content: 'Scheduled it. I will post a digest every morning at nine.' },
+      { role: 'system_triggered', content: '' },
+    ];
+    const server: Message[] = [...local, { role: 'assistant', content: 'Nothing new today.' }];
+    expect(shouldKeepLocalAssistantContent(local, server)).toBe(false);
+  });
 });
