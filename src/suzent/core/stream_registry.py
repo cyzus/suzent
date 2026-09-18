@@ -273,11 +273,31 @@ _pending_client_stops: Dict[str, tuple[str, str, float]] = {}
 # Long enough for a slow start, short enough that a name nobody claims cannot
 # reach through to some later turn that happens to reuse it.
 PENDING_CLIENT_STOP_TTL = 30.0
+# Nothing obliges the start these are waiting for to ever arrive -- a chat can
+# be deleted, a request abandoned -- and each entry is only ever read by the
+# one run that shares its chat_id. So the TTL alone does not bound this: it is
+# swept on every write, and a flood that outruns the sweep gives up its oldest
+# rather than growing.
+MAX_PENDING_CLIENT_STOPS = 256
+
+
+def _prune_pending_client_stops(now: float) -> None:
+    for chat_id in [
+        chat_id
+        for chat_id, (_, _, at) in _pending_client_stops.items()
+        if now - at > PENDING_CLIENT_STOP_TTL
+    ]:
+        _pending_client_stops.pop(chat_id, None)
+    while len(_pending_client_stops) >= MAX_PENDING_CLIENT_STOPS:
+        _pending_client_stops.pop(next(iter(_pending_client_stops)), None)
 
 
 def remember_stop_for_unregistered_run(chat_id: str, token: str, reason: str) -> None:
     """Keep a stop for a run whose start request has not registered yet."""
-    _pending_client_stops[chat_id] = (token, reason, time.monotonic())
+    now = time.monotonic()
+    _pending_client_stops.pop(chat_id, None)
+    _prune_pending_client_stops(now)
+    _pending_client_stops[chat_id] = (token, reason, now)
 
 
 def claim_remembered_stop(chat_id: str, token: str | None) -> str | None:

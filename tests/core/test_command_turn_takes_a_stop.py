@@ -56,7 +56,9 @@ async def _run_command_turn(monkeypatch, stop_before=None, stop_during=None):
         return _Agent()
 
     db = MagicMock()
-    db.get_chat.return_value = None
+    chat = MagicMock()
+    chat.messages = []
+    db.get_chat.return_value = chat
 
     monkeypatch.setattr(
         "suzent.core.commands.dispatch", AsyncMock(side_effect=dispatch)
@@ -80,14 +82,14 @@ async def _run_command_turn(monkeypatch, stop_before=None, stop_during=None):
                 message_content="/compact", chat_id="chat-cmd", user_id="u"
             )
         ]
-    return _events(chunks), ran, queue
+    return _events(chunks), ran, queue, db
 
 
 @pytest.mark.asyncio
 async def test_a_stop_accepted_before_the_command_runs_keeps_it_from_running(
     monkeypatch,
 ):
-    events, ran, queue = await _run_command_turn(
+    events, ran, queue, db = await _run_command_turn(
         monkeypatch, stop_before="Stream stopped by user"
     )
 
@@ -101,7 +103,7 @@ async def test_a_stop_accepted_before_the_command_runs_keeps_it_from_running(
 @pytest.mark.asyncio
 async def test_a_stop_accepted_while_the_command_ran_still_gets_its_ending(monkeypatch):
     """Nothing can call the work back, but the client is owed the ending."""
-    events, ran, queue = await _run_command_turn(
+    events, ran, queue, db = await _run_command_turn(
         monkeypatch, stop_during="Stream stopped by user"
     )
 
@@ -112,8 +114,27 @@ async def test_a_stop_accepted_while_the_command_ran_still_gets_its_ending(monke
 
 @pytest.mark.asyncio
 async def test_an_ordinary_command_turn_is_not_tagged_as_stopped(monkeypatch):
-    events, ran, _ = await _run_command_turn(monkeypatch)
+    events, ran, _, db = await _run_command_turn(monkeypatch)
 
     assert ran == ["/compact"]
     assert not any(e.get("code") == "stream_stopped" for e in events)
     assert any("compacted" in str(e.get("delta") or "") for e in events)
+
+
+@pytest.mark.asyncio
+async def test_a_command_stopped_before_it_ran_still_stores_what_was_shown(monkeypatch):
+    """Nothing prewrites a slash command, and this turn ends without the agent.
+
+    The stream tells the client the reload is trustworthy, so the rows it was
+    shown -- the command and the notice -- have to be there when it reloads.
+    """
+    _, ran, _, db = await _run_command_turn(
+        monkeypatch, stop_before="Stream stopped by user"
+    )
+
+    assert ran == []
+    (_, kwargs) = db.update_chat.call_args
+    assert [(m["role"], m["content"]) for m in kwargs["messages"]] == [
+        ("user", "/compact"),
+        ("notice", "⏹ Stopped before the command ran."),
+    ]

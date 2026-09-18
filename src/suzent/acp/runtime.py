@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import uuid
 from typing import Any, AsyncGenerator
@@ -101,11 +102,19 @@ async def _stream_prompt(
     try:
         # Either the request is on the wire or the attempt is already over --
         # a dead process raises before sending, and waiting for a signal that
-        # is never coming would hang the turn.
-        await asyncio.wait(
-            [asyncio.ensure_future(dispatched.wait()), prompt_task],
-            return_when=asyncio.FIRST_COMPLETED,
-        )
+        # is never coming would hang the turn. The loser of that race is this
+        # waiter, which is never woken: dropped rather than cancelled, it and
+        # its event would be held for the life of the process, one pair per
+        # failed connection.
+        waiter = asyncio.ensure_future(dispatched.wait())
+        try:
+            await asyncio.wait(
+                [waiter, prompt_task], return_when=asyncio.FIRST_COMPLETED
+            )
+        finally:
+            waiter.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await waiter
         deferred_stop = go_live() if go_live is not None else None
         if deferred_stop:
             # Accepted while the prompt was in flight, so it was never delivered

@@ -151,6 +151,29 @@ def _append_command_messages(
     return updated
 
 
+def _persist_command_pair(chat_id: str, user_content: str, notice: str) -> None:
+    """Store the command the user sent and the notice they were shown.
+
+    A command turn writes its own rows: nothing prewrites a slash command, and
+    the turn ends without the agent ever running. Skipping this leaves the
+    stream claiming the reload is trustworthy while that reload comes back
+    without the command or the answer to it.
+    """
+    try:
+        db = get_database()
+        chat = db.get_chat(chat_id)
+        if chat is None:
+            return
+        db.update_chat(
+            chat_id,
+            messages=_append_command_messages(
+                list(chat.messages or []), user_content, notice
+            ),
+        )
+    except Exception as exc:
+        logger.debug(f"Failed to persist slash command result for {chat_id}: {exc}")
+
+
 def _coerce_approval_args(raw_args: Any) -> dict[str, Any]:
     if isinstance(raw_args, dict):
         return raw_args
@@ -811,8 +834,13 @@ class ChatProcessor:
             # left to give, but the client is owed that either way.
             stopped = claim_pending_stop(current_run_replay.get())
             if stopped:
+                notice = "⏹ Stopped before the command ran."
+                # The same rows the command path writes. Without them the turn
+                # still promises the reload is trustworthy, and that reload
+                # comes back missing both the command and this notice.
+                _persist_command_pair(chat_id, message_content, notice)
                 async for chunk in _emit_notice_stream(
-                    chat_id, "⏹ Stopped before the command ran.", stopped=stopped
+                    chat_id, notice, stopped=stopped
                 ):
                     yield chunk
                 return
@@ -822,19 +850,7 @@ class ChatProcessor:
                 message_content,
             )
             if cmd_result is not None:
-                try:
-                    db = get_database()
-                    chat = db.get_chat(chat_id)
-                    if chat is not None:
-                        existing_messages = list(chat.messages or [])
-                        updated_messages = _append_command_messages(
-                            existing_messages, message_content, cmd_result
-                        )
-                        db.update_chat(chat_id, messages=updated_messages)
-                except Exception as e:
-                    logger.debug(
-                        f"Failed to persist slash command result for {chat_id}: {e}"
-                    )
+                _persist_command_pair(chat_id, message_content, cmd_result)
 
                 async for chunk in _emit_notice_stream(
                     chat_id,

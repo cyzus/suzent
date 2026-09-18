@@ -114,3 +114,23 @@ async def test_a_stop_accepted_while_the_prompt_was_in_flight_is_delivered(queue
     # Taken once, and the turn ends as the stop the client asked for.
     assert q.replay.stop_requested is None
     assert '"code":"stream_stopped"' in "".join(chunks)
+
+
+@pytest.mark.asyncio
+async def test_a_prompt_that_never_reaches_the_agent_leaves_nothing_behind(queue):
+    """The waiter for a signal that never comes is the turn's to clean up.
+
+    A dead process raises before the request is written, so the race is won by
+    the failure. Dropping the loser instead of cancelling it holds a task and
+    its event for the life of the process -- one pair per failed connection.
+    """
+    chat_id, q = queue
+
+    async def prompt(session_id, message, on_sent=None):
+        raise RuntimeError("ACP process is not running")
+
+    before = len(asyncio.all_tasks())
+    await _run(chat_id, q.replay, prompt)
+    await asyncio.sleep(0)
+
+    assert len(asyncio.all_tasks()) <= before
