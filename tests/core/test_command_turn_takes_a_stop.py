@@ -40,7 +40,9 @@ class _Agent:
     _last_messages: list = []
 
 
-async def _run_command_turn(monkeypatch, stop_before=None, stop_during=None):
+async def _run_command_turn(
+    monkeypatch, stop_before=None, stop_during=None, write_fails=False
+):
     queue = register_background_stream("chat-cmd")
     if stop_before:
         queue.replay.stop_requested = stop_before
@@ -59,6 +61,8 @@ async def _run_command_turn(monkeypatch, stop_before=None, stop_during=None):
     chat = MagicMock()
     chat.messages = []
     db.get_chat.return_value = chat
+    if write_fails:
+        db.update_chat.side_effect = RuntimeError("disk full")
 
     monkeypatch.setattr(
         "suzent.core.commands.dispatch", AsyncMock(side_effect=dispatch)
@@ -138,3 +142,32 @@ async def test_a_command_stopped_before_it_ran_still_stores_what_was_shown(monke
         ("user", "/compact"),
         ("notice", "⏹ Stopped before the command ran."),
     ]
+
+
+@pytest.mark.asyncio
+async def test_a_command_turn_that_could_not_store_its_rows_says_so(monkeypatch):
+    """A failed write must not pass for a good one.
+
+    The client reads STREAM_END{persisted:true} as permission to reload, and on
+    a reload after a failed write the command and the notice it was just shown
+    are gone. A replay with no persistence future reports true, so this turn has
+    to attach its own answer.
+    """
+    _, ran, queue, db = await _run_command_turn(
+        monkeypatch, stop_before="Stream stopped by user", write_fails=True
+    )
+
+    assert ran == []
+    queue.replay.closed = True
+    assert queue.replay.persisted is False
+
+
+@pytest.mark.asyncio
+async def test_a_command_turn_that_stored_its_rows_reports_a_trustworthy_reload(
+    monkeypatch,
+):
+    _, ran, queue, _ = await _run_command_turn(monkeypatch)
+
+    assert ran == ["/compact"]
+    queue.replay.closed = True
+    assert queue.replay.persisted is True

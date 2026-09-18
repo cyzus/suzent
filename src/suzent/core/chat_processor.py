@@ -151,27 +151,50 @@ def _append_command_messages(
     return updated
 
 
-def _persist_command_pair(chat_id: str, user_content: str, notice: str) -> None:
+def _persist_command_pair(chat_id: str, user_content: str, notice: str) -> bool:
     """Store the command the user sent and the notice they were shown.
 
     A command turn writes its own rows: nothing prewrites a slash command, and
     the turn ends without the agent ever running. Skipping this leaves the
     stream claiming the reload is trustworthy while that reload comes back
     without the command or the answer to it.
+
+    Returns whether the rows are really stored, so the caller can put that
+    answer where the client will see it rather than let a failed write pass for
+    a good one.
     """
     try:
         db = get_database()
         chat = db.get_chat(chat_id)
         if chat is None:
-            return
+            return False
         db.update_chat(
             chat_id,
             messages=_append_command_messages(
                 list(chat.messages or []), user_content, notice
             ),
         )
+        return True
     except Exception as exc:
         logger.debug(f"Failed to persist slash command result for {chat_id}: {exc}")
+        return False
+
+
+def _report_command_persistence(persisted: bool) -> None:
+    """Carry a command turn's write outcome into its replay contract.
+
+    `persisted` on a replay with no persistence future means "nobody wrote
+    anything, so there is nothing to wait for" -- true of a producer that never
+    claimed the contract, and a lie for a turn that tried to write and failed.
+    The client reads STREAM_END{persisted:true} as permission to reload; on a
+    failed write that reload drops the command and the notice it just showed.
+    """
+    replay = current_run_replay.get()
+    if replay is None:
+        return
+    future: asyncio.Future[bool] = asyncio.get_running_loop().create_future()
+    future.set_result(persisted)
+    replay.persistence = future
 
 
 def _coerce_approval_args(raw_args: Any) -> dict[str, Any]:
@@ -838,7 +861,9 @@ class ChatProcessor:
                 # The same rows the command path writes. Without them the turn
                 # still promises the reload is trustworthy, and that reload
                 # comes back missing both the command and this notice.
-                _persist_command_pair(chat_id, message_content, notice)
+                _report_command_persistence(
+                    _persist_command_pair(chat_id, message_content, notice)
+                )
                 async for chunk in _emit_notice_stream(
                     chat_id, notice, stopped=stopped
                 ):
@@ -850,7 +875,9 @@ class ChatProcessor:
                 message_content,
             )
             if cmd_result is not None:
-                _persist_command_pair(chat_id, message_content, cmd_result)
+                _report_command_persistence(
+                    _persist_command_pair(chat_id, message_content, cmd_result)
+                )
 
                 async for chunk in _emit_notice_stream(
                     chat_id,

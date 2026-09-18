@@ -2736,13 +2736,30 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     // await never settles — which would leave the composer disabled and
     // "Stopping" on screen with no timer to rescue it. The timer covers both
     // that and a turn wedged in a tool call that outlives its own ending.
+    let stopSent = false;
     const armFallback = () => {
       if (stopFallbackRef.current) clearTimeout(stopFallbackRef.current);
       stopFallbackRef.current = setTimeout(() => {
         stopFallbackRef.current = null;
-        if (stopAttemptRef.current === attempt && stopInFlightRef.current) {
-          abandonStream(targetChatId);
+        if (stopAttemptRef.current !== attempt || !stopInFlightRef.current) return;
+        // Say the word before walking away. Giving up here also aborts the
+        // start this attempt was waiting for, but an abort is the client
+        // leaving, not the server stopping: a start already received still
+        // registers its run and streams the turn with nobody listening. The
+        // name this client minted is good for a run the backend has not seen
+        // yet -- the stop is kept under it until that run arrives -- so the
+        // one path that never sent it was the one that needed it most.
+        const name = !stopSent ? getStreamingRunId() : undefined;
+        if (name) {
+          void requestStopTurn(
+            getApiBase(),
+            targetChatId,
+            'User requested stop',
+            fetch,
+            name
+          ).catch(() => {});
         }
+        abandonStream(targetChatId);
       }, STOP_STREAM_END_TIMEOUT_MS);
     };
     armFallback();
@@ -2795,6 +2812,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       abandonStream(targetChatId);
       return;
     }
+    stopSent = true;
     const result = await requestStopTurn(
       getApiBase(),
       targetChatId,
