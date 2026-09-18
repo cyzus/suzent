@@ -255,3 +255,32 @@ async def test_a_turn_handed_a_stop_before_it_started_ends_stopped(queue):
         q.replay.append(chunk)
     q.replay.append(None)
     assert q.replay.persisted is True
+
+
+@pytest.mark.asyncio
+async def test_a_stop_whose_prompt_could_not_be_stored_is_not_persisted(queue):
+    """The stop's contract is the prompt row; a failed write breaks it.
+
+    `persisted: true` sends the client to a reload it trusts over what it is
+    showing. If the row never landed -- a chat deleted mid-turn, a database
+    that refused the write -- that reload comes back without the message the
+    user just sent, and the optimistic copy on screen is replaced by nothing.
+    """
+    chat_id, q = queue
+    q.replay.stop_requested = "Stream stopped by user"
+
+    chunks, db = await _run_turn(
+        chat_id,
+        [],
+        {"stopReason": "end_turn"},
+        append_result=False,
+        replay=q.replay,
+    )
+
+    event = json.loads(chunks[-1][6:])
+    assert event["code"] == "stream_stopped"
+    assert q.replay.persistence.result() is False
+    for chunk in chunks:
+        q.replay.append(chunk)
+    q.replay.append(None)
+    assert q.replay.persisted is False

@@ -1356,7 +1356,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         headers: { 'Content-Type': 'application/json' },
         // Name the turn: this POST starts one, and until /chat/live yields its
         // first frame the token is the only name a stop has for it.
-        body: JSON.stringify({ ...body, client_run_token: mintRunToken() }),
+        body: JSON.stringify({ ...body, client_run_token: mintRunToken(chatId) }),
       });
 
       if (!resp.ok) {
@@ -2249,7 +2249,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           chat_id: steerChatId,
           message: prompt,
           config: safeConfig,
-          client_run_token: mintRunToken(),
+          client_run_token: mintRunToken(steerChatId),
         }),
       })
         .then((resp) => {
@@ -2360,7 +2360,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     };
     if (mentionsToSend.length > 0) payload.file_mentions = mentionsToSend;
     if (uploadedFileMetadata) payload.files = uploadedFileMetadata;
-    payload.client_run_token = mintRunToken();
+    payload.client_run_token = mintRunToken(chatIdForSend);
 
     // Fire /chat/send — backend registers the background stream and returns 202.
     // On success, call tryConnect() directly so we attach to /chat/live immediately
@@ -2456,7 +2456,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         message: '/retry',
         chat_id: chatIdForRetry,
         config: safeConfig,
-        client_run_token: mintRunToken(),
+        client_run_token: mintRunToken(chatIdForRetry),
       }),
     })
       .then((resp) => {
@@ -2539,7 +2539,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           message: `/retry-edit ${prompt}`,
           chat_id: chatIdForEdit,
           config: safeConfig,
-          client_run_token: mintRunToken(),
+          client_run_token: mintRunToken(chatIdForEdit),
         }),
       })
         .then((resp) => {

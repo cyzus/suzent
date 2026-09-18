@@ -233,8 +233,8 @@ async def stream_acp_turn(
         # /chat stream has no route that pre-wrote that row, so store it here
         # or the reload the client trusts after a stop comes back without the
         # prompt in it.
-        _persist_stopped_prompt(chat_id, message, runtime_authored)
-        _resolve_persistence(persistence, True)
+        stored = _persist_stopped_prompt(chat_id, message, runtime_authored)
+        _resolve_persistence(persistence, stored)
         yield _sse(
             {"type": "RUN_ERROR", "message": pending_stop, "code": "stream_stopped"}
         )
@@ -322,39 +322,46 @@ def _derive_user_row(message: str, runtime_authored: bool) -> tuple[str, str, st
 
 def _append_user_row(
     db: Any, chat_id: str, existing: list[Any], role: str, content: str
-) -> None:
+) -> bool:
     """Store the user's row unless the route already pre-wrote it.
 
     /chat/send pre-writes it so the UI has something to show before the first
-    token arrives; the direct /chat stream does not.
+    token arrives; the direct /chat stream does not. Returns whether the row is
+    in the transcript afterwards, which is what a caller resolving the
+    persistence contract has to promise.
     """
     if not content.strip():
-        return
+        return True
     if (
         existing
         and existing[-1].get("role") == role
         and str(existing[-1].get("content") or "").strip() == content.strip()
     ):
-        return
-    db.append_chat_message(chat_id, {"role": role, "content": content.strip()})
+        return True
+    return bool(
+        db.append_chat_message(chat_id, {"role": role, "content": content.strip()})
+    )
 
 
-def _persist_stopped_prompt(chat_id: str, message: str, runtime_authored: bool) -> None:
+def _persist_stopped_prompt(chat_id: str, message: str, runtime_authored: bool) -> bool:
     """Store the prompt of a turn stopped before it ever ran.
 
     The turn produced nothing, but the user did send something, and the client
     trusts the reload that follows a stop: without the row, that reload shows a
-    history with the prompt missing.
+    history with the prompt missing. Returns whether the transcript really holds
+    it, so the stop reports `persisted: false` -- and the client keeps showing
+    what it has -- rather than sending the user to a reload that lost it.
     """
     try:
         db = get_database()
         chat = db.get_chat(chat_id)
         if chat is None:
-            return
+            return False
         _, role, content = _derive_user_row(message, runtime_authored)
-        _append_user_row(db, chat_id, list(chat.messages or []), role, content)
+        return _append_user_row(db, chat_id, list(chat.messages or []), role, content)
     except Exception as exc:  # pragma: no cover - a stop must not fail on this
         logger.debug(f"Could not store the prompt of a stopped ACP turn: {exc}")
+        return False
 
 
 async def _run_acp_turn(

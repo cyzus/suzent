@@ -51,7 +51,7 @@ interface UseAGUIReturn {
    * request body. Callers that POST a turn themselves (/chat/send and friends)
    * must call this, or a stop raised before the first frame has no run to name.
    */
-  mintRunToken: () => string;
+  mintRunToken: (chatId?: string) => string;
   /**
    * The run's name, waiting up to `timeoutMs` for the stream to supply one.
    * Re-attaching to a turn this client did not ask for (a reload, a chat
@@ -557,6 +557,10 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
   // on the run's replay, so a stop can name the run before the stream has told
   // us the run_id the backend assigned it.
   const clientRunTokenRef = useRef<string | undefined>(undefined);
+  // The chat that token was minted for. A probe attaching to the same chat is
+  // almost always attaching to the very turn this client just asked for, so the
+  // name it already has is the right one to keep.
+  const clientRunTokenChatRef = useRef<string | undefined>(undefined);
   // Publishing a token delta straight to React state re-renders the whole chat
   // view; at streaming rates that starves the main thread and scrolling crawls.
   // `publishParts` keeps `partsRef` exact and synchronous but coalesces the
@@ -666,11 +670,12 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
     }
     return runIdRef.current ?? clientRunTokenRef.current;
   }, []);
-  const mintRunToken = useCallback(() => {
+  const mintRunToken = useCallback((chatId?: string) => {
     const token =
       globalThis.crypto?.randomUUID?.() ??
       `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
     clientRunTokenRef.current = token;
+    clientRunTokenChatRef.current = chatId;
     runIdRef.current = undefined;
     return token;
   }, []);
@@ -764,18 +769,27 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
       // there is actually an active stream — this prevents every 204 probe from
       // clearing streaming parts that should stay visible.
       const isProbe = !!opts?.urlOverride;
+      const chatId = typeof body.chat_id === 'string' ? body.chat_id : undefined;
       // Name the turn before asking for it: the Stop button goes live now, not
       // when the first protocol frame arrives with the backend's run_id.
       //
-      // A probe mints nothing: it re-attaches to a turn that already has a name
-      // and was very likely asked for by someone else (a reload, a chat switch,
-      // a server-started turn). It must still drop the names of whatever turn
-      // was observed before, or a stop would confidently name the wrong run;
-      // `waitForRunId` covers the gap until the first frame names this one.
-      const requestBody = isProbe ? body : { ...body, client_run_token: mintRunToken() };
+      // A probe mints nothing: it re-attaches to a turn that already has a name.
+      // It must drop the names of whatever turn was observed before, or a stop
+      // would confidently name the wrong run -- except the name this client just
+      // minted for this same chat, because the probe that follows a /chat/send,
+      // retry, edit, steer or resume is attaching to that very turn. Dropping it
+      // there would leave a stop with no run to name for as long as the first
+      // snapshot takes, and an unnamed stop lands on whatever run is current --
+      // which, after a redirect, is the replacement turn. A token kept past its
+      // turn costs nothing: the backend answers a stop that names a run it no
+      // longer has with 409 rather than stopping the wrong one.
+      const requestBody = isProbe ? body : { ...body, client_run_token: mintRunToken(chatId) };
       if (isProbe) {
         runIdRef.current = undefined;
-        clientRunTokenRef.current = undefined;
+        if (!chatId || clientRunTokenChatRef.current !== chatId) {
+          clientRunTokenRef.current = undefined;
+          clientRunTokenChatRef.current = undefined;
+        }
       }
 
       if (!isProbe) {
