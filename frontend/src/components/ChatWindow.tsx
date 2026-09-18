@@ -1462,6 +1462,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       // without one until its first frame arrives.
       retireRunToken(opts?.runToken);
 
+      // And retire the stop that was waiting for this start. It was raised for
+      // the turn this request was asking for, and that turn was never accepted;
+      // left standing, it resumes after this recovery, reads the name of the
+      // turn that really is running -- the one the reattach below puts back on
+      // screen -- and cancels that instead.
+      retireStopAttempt();
+
       if (!plan.reattach) {
         setIsStreaming(false, chatId);
         return false;
@@ -1495,7 +1502,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       tryConnectRef.current?.();
       return true;
     },
-    [loadChat, retireRunToken, setInput, setIsStreaming, setStatusBar, t]
+    [loadChat, retireRunToken, retireStopAttempt, setInput, setIsStreaming, setStatusBar, t]
   );
 
   const { handleToolApproval } = useToolApproval({
