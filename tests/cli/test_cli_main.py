@@ -2,6 +2,9 @@
 
 import importlib
 import json
+import os
+import shutil
+import socket
 import subprocess
 import threading
 from pathlib import Path
@@ -12,6 +15,34 @@ from typer.testing import CliRunner
 
 cli_main = importlib.import_module("suzent.cli.main")
 runner = CliRunner()
+
+
+@pytest.mark.skipif(os.name == "nt" or not shutil.which("lsof"), reason="Requires lsof")
+def test_get_pid_on_port_ignores_connected_clients() -> None:
+    with socket.socket() as listener, socket.socket() as client:
+        listener.bind(("127.0.0.1", 0))
+        listener.listen()
+        port = listener.getsockname()[1]
+        client.connect(("127.0.0.1", port))
+        connection, _ = listener.accept()
+        with connection:
+            assert cli_main.get_pid_on_port(port) == os.getpid()
+            assert cli_main.get_pid_on_port(client.getsockname()[1]) is None
+
+
+def test_get_pid_on_port_windows_requires_exact_listening_port(monkeypatch) -> None:
+    monkeypatch.setattr(cli_main, "IS_WINDOWS", True)
+    output = (
+        "  TCP 127.0.0.1:25314 127.0.0.1:60000 ESTABLISHED 111\n"
+        "  TCP 127.0.0.1:253140 0.0.0.0:0 LISTENING 222\n"
+        "  TCP 127.0.0.1:25314 0.0.0.0:0 LISTENING 333\n"
+    )
+    monkeypatch.setattr(
+        cli_main.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args, 0, stdout=output),
+    )
+    assert cli_main.get_pid_on_port(25314) == 333
 
 
 class _DummyProcess:
