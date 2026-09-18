@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { ChatInputPanel, type FileMentionSelection } from './ChatInputPanel';
 import { ConfigOptions, ChatConfig } from '../types/api';
 import { GreetingCube } from './chat/GreetingCube';
 import { useI18n } from '../i18n';
 import { useProjects } from '../hooks/useProjects';
+import { resolveProjectMenuPosition, type ProjectMenuGeometry } from '../lib/projectMenuPosition';
 
 interface NewChatViewProps {
   input: string;
@@ -60,6 +62,61 @@ const ProjectPicker: React.FC = () => {
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
+  const [geometry, setGeometry] = useState<ProjectMenuGeometry | null>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  const updatePosition = useCallback(() => {
+    const button = buttonRef.current;
+    if (!button) return;
+    setGeometry(
+      resolveProjectMenuPosition(button.getBoundingClientRect(), {
+        width: window.innerWidth,
+        height: window.innerHeight,
+      })
+    );
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    updatePosition();
+
+    window.addEventListener('resize', updatePosition);
+    // Capture, so scrolling any ancestor keeps the menu pinned to the button.
+    window.addEventListener('scroll', updatePosition, true);
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [open, updatePosition]);
+
+  // The menu is portalled out of the button's subtree, so closing it needs
+  // explicit outside-click and Escape handling.
+  useEffect(() => {
+    if (!open) return;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (buttonRef.current?.contains(target)) return;
+      if (menuRef.current?.contains(target)) return;
+      setOpen(false);
+      setCreating(false);
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setOpen(false);
+      setCreating(false);
+      buttonRef.current?.focus();
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [open]);
 
   const current = projects.find((p) => p.id === currentProjectId) || projects[0];
   if (!current) return null;
@@ -75,10 +132,82 @@ const ProjectPicker: React.FC = () => {
     setOpen(false);
   };
 
+  const menu =
+    open &&
+    geometry &&
+    createPortal(
+      <div
+        ref={menuRef}
+        role="dialog"
+        aria-label={t('newChat.creatingIn')}
+        className="fixed z-[9999] flex flex-col bg-white dark:bg-zinc-800 border-2 border-brutal-black shadow-[3px_3px_0_0_#000]"
+        style={{
+          top: geometry.top,
+          left: geometry.left,
+          width: geometry.width,
+          maxHeight: geometry.maxHeight,
+        }}
+      >
+        <div className="min-h-0 flex-1 overflow-y-auto scrollbar-thin">
+          {projects.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => {
+                setCurrentProjectId(p.id);
+                setOpen(false);
+              }}
+              className={`w-full text-left px-3 py-2 text-xs font-bold hover:bg-neutral-100 dark:hover:bg-zinc-700 flex items-center justify-between gap-2 ${p.id === currentProjectId ? 'bg-brutal-yellow text-brutal-black' : 'dark:text-white'}`}
+            >
+              <span className="truncate">{p.name}</span>
+              {p.id === currentProjectId && (
+                <span className="text-[9px] uppercase opacity-70">●</span>
+              )}
+            </button>
+          ))}
+        </div>
+        <div className="shrink-0 border-t-2 border-brutal-black">
+          {creating ? (
+            <form onSubmit={handleCreate} className="flex items-center gap-1 p-2">
+              <input
+                autoFocus
+                type="text"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') setCreating(false);
+                }}
+                placeholder={t('chatList.newProjectPlaceholder')}
+                className="flex-1 min-w-0 px-2 py-1 text-xs font-bold bg-white dark:bg-zinc-700 dark:text-white border-2 border-brutal-black focus:outline-none"
+              />
+              <button
+                type="submit"
+                className="px-2 py-1 text-[10px] font-extrabold uppercase border-2 border-brutal-black bg-brutal-yellow hover:bg-yellow-300 text-brutal-black shrink-0"
+              >
+                ✓
+              </button>
+            </form>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setCreating(true)}
+              className="w-full text-left px-3 py-2 text-xs font-extrabold uppercase tracking-wider hover:bg-brutal-yellow hover:text-brutal-black dark:text-white"
+            >
+              + {t('chatList.newProject')}
+            </button>
+          )}
+        </div>
+      </div>,
+      document.body
+    );
+
   return (
     <div className="relative mb-3 flex justify-center">
       <button
+        ref={buttonRef}
         type="button"
+        aria-haspopup="dialog"
+        aria-expanded={open}
         onClick={() => setOpen(!open)}
         className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-extrabold uppercase tracking-wider border-2 border-brutal-black bg-white dark:bg-zinc-800 dark:text-white shadow-[2px_2px_0_0_#000] hover:bg-brutal-yellow hover:translate-y-[1px] hover:translate-x-[1px] hover:shadow-[1px_1px_0_0_#000] transition-all"
       >
@@ -103,59 +232,7 @@ const ProjectPicker: React.FC = () => {
           <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
         </svg>
       </button>
-      {open && (
-        <div className="absolute top-full mt-1 z-30 min-w-[220px] bg-white dark:bg-zinc-800 border-2 border-brutal-black shadow-[3px_3px_0_0_#000]">
-          <div className="max-h-60 overflow-y-auto">
-            {projects.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => {
-                  setCurrentProjectId(p.id);
-                  setOpen(false);
-                }}
-                className={`w-full text-left px-3 py-2 text-xs font-bold hover:bg-neutral-100 dark:hover:bg-zinc-700 flex items-center justify-between gap-2 ${p.id === currentProjectId ? 'bg-brutal-yellow text-brutal-black' : 'dark:text-white'}`}
-              >
-                <span className="truncate">{p.name}</span>
-                {p.id === currentProjectId && (
-                  <span className="text-[9px] uppercase opacity-70">●</span>
-                )}
-              </button>
-            ))}
-          </div>
-          <div className="border-t-2 border-brutal-black">
-            {creating ? (
-              <form onSubmit={handleCreate} className="flex items-center gap-1 p-2">
-                <input
-                  autoFocus
-                  type="text"
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Escape') setCreating(false);
-                  }}
-                  placeholder={t('chatList.newProjectPlaceholder')}
-                  className="flex-1 min-w-0 px-2 py-1 text-xs font-bold bg-white dark:bg-zinc-700 dark:text-white border-2 border-brutal-black focus:outline-none"
-                />
-                <button
-                  type="submit"
-                  className="px-2 py-1 text-[10px] font-extrabold uppercase border-2 border-brutal-black bg-brutal-yellow hover:bg-yellow-300 text-brutal-black shrink-0"
-                >
-                  ✓
-                </button>
-              </form>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setCreating(true)}
-                className="w-full text-left px-3 py-2 text-xs font-extrabold uppercase tracking-wider hover:bg-brutal-yellow hover:text-brutal-black dark:text-white"
-              >
-                + {t('chatList.newProject')}
-              </button>
-            )}
-          </div>
-        </div>
-      )}
+      {menu}
     </div>
   );
 };
