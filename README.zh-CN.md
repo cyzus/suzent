@@ -186,6 +186,7 @@ GitHub Sync 通过私有仓库迁移配置、用户技能和 Markdown 记忆，�
 | [节点](docs/02-concepts/nodes/nodes.md) | 连接并控制伴侣设备 |
 | [Retry](docs/02-concepts/runtime/retry.md) | 回滚上一轮并重新运行 |
 | [开发指南](docs/03-developing/development-guide.md) | 环境搭建、工作流、构建与架构 |
+| [原生移动端](docs/03-developing/mobile.md) | SwiftUI/Compose 开发预览、monorepo 结构与实施计划 |
 
 完整索引见 [docs/README.md](docs/README.md)。
 

@@ -1,0 +1,207 @@
+[
+  {
+    "name": "Reasoning, tool, answer retain execution order",
+    "events": [
+      {
+        "type": "REASONING_MESSAGE_CHUNK",
+        "delta": "Checking"
+      },
+      {
+        "type": "REASONING_END"
+      },
+      {
+        "type": "TOOL_CALL_START",
+        "toolCallId": "t1",
+        "toolCallName": "read_file"
+      },
+      {
+        "type": "TOOL_CALL_ARGS",
+        "toolCallId": "t1",
+        "delta": "{\"path\":"
+      },
+      {
+        "type": "TOOL_CALL_ARGS",
+        "toolCallId": "t1",
+        "delta": "\"README.md\"}"
+      },
+      {
+        "type": "TOOL_CALL_END",
+        "toolCallId": "t1"
+      },
+      {
+        "type": "TOOL_CALL_RESULT",
+        "toolCallId": "t1",
+        "content": "Read successfully"
+      },
+      {
+        "type": "TEXT_MESSAGE_START",
+        "messageId": "m1"
+      },
+      {
+        "type": "TEXT_MESSAGE_CONTENT",
+        "messageId": "m1",
+        "delta": "Done"
+      }
+    ],
+    "types": [
+      "reasoning",
+      "tool",
+      "text"
+    ],
+    "chunks": [
+      2,
+      1
+    ],
+    "args": [
+      "",
+      "{\"path\":\"README.md\"}",
+      ""
+    ],
+    "outputs": [
+      "",
+      "Read successfully",
+      ""
+    ],
+    "texts": [
+      "Checking",
+      "",
+      "Done"
+    ],
+    "states": [
+      "completed",
+      "completed",
+      ""
+    ]
+  },
+  {
+    "name": "Replayed tool arguments replace prior snapshot",
+    "events": [
+      {
+        "type": "CUSTOM",
+        "name": "tool_approval_request",
+        "value": {
+          "toolCallId": "t",
+          "toolName": "read_file",
+          "args": "{\"path\":\"README.md\"}"
+        }
+      },
+      {
+        "type": "TOOL_CALL_START",
+        "toolCallId": "t",
+        "toolCallName": "read_file"
+      },
+      {
+        "type": "TOOL_CALL_ARGS",
+        "toolCallId": "t",
+        "delta": "{\"path\":\"README.md\"}"
+      },
+      {
+        "type": "CUSTOM",
+        "name": "tool_approval_result",
+        "value": {
+          "toolCallId": "t",
+          "status": "executed",
+          "output": "ok"
+        }
+      }
+    ],
+    "types": [
+      "tool"
+    ],
+    "chunks": [
+      1
+    ],
+    "args": [
+      "{\"path\":\"README.md\"}"
+    ],
+    "outputs": [
+      "ok"
+    ],
+    "texts": [
+      ""
+    ],
+    "states": [
+      "completed"
+    ]
+  },
+  {
+    "name": "Reset discards entire replay before new run",
+    "events": [
+      {
+        "type": "TOOL_CALL_START",
+        "toolCallId": "old",
+        "toolCallName": "read_file"
+      },
+      {
+        "type": "TEXT_MESSAGE_CONTENT",
+        "delta": "stale"
+      },
+      {
+        "type": "STREAM_RESET"
+      },
+      {
+        "type": "TEXT_MESSAGE_CONTENT",
+        "delta": "Fresh"
+      }
+    ],
+    "types": [
+      "text"
+    ],
+    "chunks": [
+      1
+    ],
+    "args": [
+      ""
+    ],
+    "outputs": [
+      ""
+    ],
+    "texts": [
+      "Fresh"
+    ],
+    "states": [
+      ""
+    ]
+  },
+  {
+    "name": "Tool denial is an error rather than completed",
+    "events": [
+      {
+        "type": "CUSTOM",
+        "name": "tool_approval_request",
+        "value": {
+          "toolCallId": "t",
+          "toolName": "read_file",
+          "args": "{}"
+        }
+      },
+      {
+        "type": "CUSTOM",
+        "name": "tool_approval_result",
+        "value": {
+          "toolCallId": "t",
+          "status": "rejected",
+          "content": "Denied"
+        }
+      }
+    ],
+    "types": [
+      "tool"
+    ],
+    "chunks": [
+      1
+    ],
+    "args": [
+      "{}"
+    ],
+    "outputs": [
+      "Denied"
+    ],
+    "texts": [
+      ""
+    ],
+    "states": [
+      "error"
+    ]
+  }
+]

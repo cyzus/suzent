@@ -107,5 +107,16 @@ bin/
 /frontend/browser-store-preview.html
 /frontend/browser-store-preview.tsx
 
+# Native mobile build outputs
+.build/
+.swiftpm/
+apps/ios/Generated/
+apps/ios/*.xcodeproj/
+apps/ios/DerivedData/
+apps/android/.gradle/
+apps/android/local.properties
+apps/android/.kotlin/
+*.xcuserstate
+
 # Built web UI staged into the package by scripts/build_webui.py
 src/suzent/webui/

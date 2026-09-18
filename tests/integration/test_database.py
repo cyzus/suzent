@@ -30,6 +30,17 @@ class TestChatOperations:
         assert chat_id is not None
         assert len(chat_id) == 36  # UUID format
 
+    def test_scoped_title_index(self, db):
+        shared = db.create_chat(
+            "Shared", {}, [{"role": "user", "content": "Large transcript"}]
+        )
+        db.create_chat("Private", {})
+        assert db.list_chat_titles([shared, "missing"]) == [(shared, "Shared")]
+        assert db.list_chat_titles([]) == []
+        assert len(db.list_chat_titles(limit=1)) == 1
+        db.create_chat("Internal", {"platform": "dream"})
+        assert {title for _, title in db.list_chat_titles()} == {"Shared", "Private"}
+
     def test_get_chat(self, db):
         chat_id = db.create_chat(
             "Test Chat",

@@ -915,7 +915,7 @@ async def get_chats(request: Request) -> JSONResponse:
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
-async def get_chat(request: Request) -> JSONResponse:
+async def get_chat(request: Request, *, include_runtime: bool = True) -> JSONResponse:
     """Return a specific chat by ID (excluding binary agent_state)."""
     try:
         chat_id = request.path_params["chat_id"]
@@ -942,6 +942,15 @@ async def get_chat(request: Request) -> JSONResponse:
             response_chat["messages"] = _attach_latest_file_changes(
                 response_chat["messages"],
                 list(getattr(checkpoint, "file_snapshot", []) or []),
+            )
+        if not include_runtime:
+            return JSONResponse(
+                {
+                    "id": response_chat["id"],
+                    "title": response_chat["title"],
+                    "messages": response_chat.get("messages", []),
+                    "isRunning": is_background_streaming(chat_id),
+                }
             )
         context_usage = dict(chat.context_usage or {})
 

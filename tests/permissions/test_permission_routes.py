@@ -340,3 +340,63 @@ def test_permission_state_keeps_only_unanswered_tool_call_ids(monkeypatch) -> No
     assert [item["toolCallId"] for item in db.chat.config["_pending_approvals"]] == [
         "call-pending"
     ]
+
+
+def test_permission_poll_skips_history_decode_without_pending(monkeypatch) -> None:
+    db = FakeDatabase()
+    monkeypatch.setattr(permission_routes, "get_database", lambda: db)
+
+    def unexpected_decode(state):
+        raise AssertionError("Idle polls must not deserialize chat history")
+
+    monkeypatch.setattr(
+        permission_routes, "_unanswered_tool_call_ids", unexpected_decode
+    )
+    app = Starlette(
+        routes=[
+            Route(
+                "/chats/{chat_id}/permissions",
+                permission_routes.get_chat_permission_state,
+            )
+        ]
+    )
+    assert (
+        TestClient(app).get("/chats/chat-1/permissions").json()["pendingApprovals"]
+        == []
+    )
+
+
+def test_permission_poll_preserves_newer_history_during_decode(monkeypatch) -> None:
+    db = FakeDatabase()
+    db.chat.config = {
+        "_pending_approvals": [
+            {
+                "approvalId": "new",
+                "toolCallId": "new",
+                "toolName": "read_file",
+                "args": {},
+            }
+        ]
+    }
+    db.chat.agent_state = b"old"
+    monkeypatch.setattr(permission_routes, "get_database", lambda: db)
+
+    def changed_history(state):
+        db.chat.agent_state = b"new"
+        return set()
+
+    monkeypatch.setattr(permission_routes, "_unanswered_tool_call_ids", changed_history)
+    app = Starlette(
+        routes=[
+            Route(
+                "/chats/{chat_id}/permissions",
+                permission_routes.get_chat_permission_state,
+            )
+        ]
+    )
+    assert (
+        TestClient(app)
+        .get("/chats/chat-1/permissions")
+        .json()["pendingApprovals"][0]["approvalId"]
+        == "new"
+    )
