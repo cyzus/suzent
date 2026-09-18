@@ -238,6 +238,19 @@ def _recoverable_response(
     )
 
 
+def _names_a_run(value: Any) -> bool:
+    """Whether a request's idea of a run's name is one this process can use.
+
+    Both names -- the chat and the token the client minted for its turn --
+    become parts of registry keys, and a JSON client can put a list or a dict
+    where a string belongs. That reaches the registry as an unhashable key and
+    raises, which the route would report as a 500 after it had already written
+    the user's row. A malformed request is not a server fault: say so at the
+    boundary, before anything has been stored.
+    """
+    return value is None or isinstance(value, str)
+
+
 async def chat(request: Request) -> StreamingResponse:
     """
     Handle chat requests, stream agent responses, and manage the SSE stream.
@@ -301,6 +314,12 @@ async def chat(request: Request) -> StreamingResponse:
                     ['data: {"type": "error", "data": "Empty message received."}\n\n']
                 ),
                 media_type="text/event-stream",
+                status_code=400,
+            )
+
+        if not _names_a_run(chat_id) or not _names_a_run(client_run_token):
+            return JSONResponse(
+                {"error": "chat_id and client_run_token must be strings"},
                 status_code=400,
             )
 
@@ -469,6 +488,10 @@ async def chat_send(request: Request) -> JSONResponse:
 
     if not chat_id:
         return JSONResponse({"error": "chat_id is required"}, status_code=400)
+    if not _names_a_run(chat_id) or not _names_a_run(data.get("client_run_token")):
+        return JSONResponse(
+            {"error": "chat_id and client_run_token must be strings"}, status_code=400
+        )
     if not message and not files_list and not resume_approvals:
         return JSONResponse({"error": "Empty message"}, status_code=400)
     from suzent.core.chat_processor import ChatProcessor
@@ -549,6 +572,10 @@ async def steer_chat_send(request: Request) -> JSONResponse:
 
     if not chat_id:
         return JSONResponse({"error": "chat_id is required"}, status_code=400)
+    if not _names_a_run(chat_id) or not _names_a_run(data.get("client_run_token")):
+        return JSONResponse(
+            {"error": "chat_id and client_run_token must be strings"}, status_code=400
+        )
     if not message:
         return JSONResponse({"error": "message is required"}, status_code=400)
 
@@ -739,6 +766,10 @@ async def stop_chat(request: Request) -> JSONResponse:
     chat_id = data.get("chat_id")
     if not chat_id:
         return JSONResponse({"error": "chat_id is required"}, status_code=400)
+    if not _names_a_run(chat_id) or not _names_a_run(data.get("run_id")):
+        return JSONResponse(
+            {"error": "chat_id and run_id must be strings"}, status_code=400
+        )
 
     reason = data.get("reason") or "Stream stopped by user"
 
