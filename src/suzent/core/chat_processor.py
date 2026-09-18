@@ -180,7 +180,13 @@ def _persist_command_pair(chat_id: str, user_content: str, notice: str) -> bool:
             )
         )
     except Exception as exc:
-        logger.debug(f"Failed to persist slash command result for {chat_id}: {exc}")
+        # The type only. A database error carries its statement's bound
+        # parameters, which here are the command the user typed and the whole
+        # transcript it was appended to -- exactly what must not reach a log.
+        logger.debug(
+            f"Failed to persist slash command result for {chat_id}: "
+            f"{type(exc).__name__}"
+        )
         return False
 
 

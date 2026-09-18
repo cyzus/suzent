@@ -190,3 +190,33 @@ async def test_a_command_turn_whose_chat_vanished_mid_write_says_so(monkeypatch)
     assert ran == []
     queue.replay.closed = True
     assert queue.replay.persisted is False
+
+
+@pytest.mark.asyncio
+async def test_a_failed_command_write_is_logged_without_the_prompt(monkeypatch):
+    """A database error carries its statement's bound parameters.
+
+    Here those are the command the user typed and the whole transcript it was
+    appended to, so the log gets the exception's type and nothing else.
+    """
+    from suzent.core import chat_processor
+
+    written: list[str] = []
+    monkeypatch.setattr(
+        chat_processor.logger, "debug", lambda msg, *a, **k: written.append(str(msg))
+    )
+
+    class _Leaky(RuntimeError):
+        def __str__(self):
+            return "UPDATE chats SET messages=? -- ['/compact', 'the transcript']"
+
+    db = MagicMock()
+    chat = MagicMock()
+    chat.messages = []
+    db.get_chat.return_value = chat
+    db.update_chat.side_effect = _Leaky()
+    monkeypatch.setattr(chat_processor, "get_database", lambda: db)
+
+    assert chat_processor._persist_command_pair("chat-cmd", "/compact", "note") is False
+    assert written and all("/compact" not in line for line in written)
+    assert any("_Leaky" in line for line in written)
