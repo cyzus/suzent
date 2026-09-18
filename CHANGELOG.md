@@ -57,6 +57,7 @@ failures without blocking the server or changing retry state just by polling.
 - Remove the language param from the shell tools (#212)
 
 ### 🐛 Fixed
+- Update frontend js-yaml security patch (#241)
 - Make an ACP turn claim the persistence contract (#237)
 - Stop dropping a finished turn when its reply is short (#235)
 - Launch background processes with no console window on Windows (#233)
