@@ -123,10 +123,7 @@ struct SuzentMarkdown: View {
 struct SuzentAssistantBadge: View {
     var body: some View {
         HStack(spacing: 8) {
-            HStack(spacing: 4) {
-                RoundedRectangle(cornerRadius: 1).fill(.white).frame(width: 5, height: 5)
-                RoundedRectangle(cornerRadius: 1).fill(.white).frame(width: 5, height: 5)
-            }.frame(width: 28, height: 28).background(.black, in: RoundedRectangle(cornerRadius: 5))
+            SuzentLogoMark().frame(width: 28, height: 28)
             Text("SUZENT").font(.system(.caption, design: .monospaced).bold())
         }.padding(.horizontal, 12).padding(.vertical, 8)
             .overlay(Rectangle().stroke(.primary, lineWidth: PresentationTokens.borderWidth))
@@ -152,61 +149,83 @@ struct ActivityRail: View {
     let live: Bool
     @State private var expanded: Bool
     init(parts: [MessagePart], live: Bool) {
-        self.parts = parts; self.live = live; _expanded = State(initialValue: live)
+        self.parts = parts; self.live = live; _expanded = State(initialValue: false)
     }
     private var waiting: Bool { parts.contains { $0.state == "approval-requested" } }
     private var running: Bool { live && parts.contains { $0.state == "running" } }
     private var failed: Bool { parts.contains { ["error", "denied"].contains($0.state ?? "") } }
+    private var accent: Color { failed ? .red : running ? Color(presentation: PresentationTokens.blue) : .secondary }
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button { expanded.toggle() } label: {
-                HStack {
-                    Text(expanded ? "−" : "+")
-                    Text("Activity · \(parts.count)").font(.system(.subheadline, design: .monospaced))
-                    Spacer()
+                HStack(spacing: 10) {
                     Text(waiting ? String(localized: "Approval required") : running ? String(localized: "Running") : failed ? String(localized: "Failed") : String(localized: "Completed"))
-                        .font(.caption).foregroundStyle(running ? Color(presentation: PresentationTokens.blue) : .secondary)
-                }.padding(12).contentShape(Rectangle())
+                        .foregroundStyle(waiting || failed ? accent : .secondary)
+                    Text("|").foregroundStyle(.tertiary)
+                    Text("\(parts.count) steps")
+                    Image(systemName: expanded ? "chevron.down" : "chevron.right").font(.system(size: 11, weight: .bold))
+                    Spacer(minLength: 0)
+                }.font(.system(size: 12, weight: .bold, design: .monospaced))
+                    .textCase(.uppercase).foregroundStyle(.secondary)
+                    .padding(.vertical, 12).padding(.horizontal, 4).contentShape(Rectangle())
             }.buttonStyle(.plain)
             if expanded {
-                ForEach(Array(parts.enumerated()), id: \.offset) { _, part in
-                    ActivityRow(part: part, live: live).padding(.horizontal, 12)
-                }
+                Rectangle().fill(Color.primary.opacity(0.12)).frame(height: 1)
+                VStack(spacing: 0) {
+                    ForEach(Array(parts.enumerated()), id: \.offset) { index, part in
+                        ActivityRow(part: part, live: live, last: index == parts.count - 1)
+                    }
+                }.padding(.horizontal, 12).padding(.vertical, 8)
             }
         }.frame(maxWidth: .infinity, alignment: .leading)
-            .overlay(Rectangle().stroke(.secondary.opacity(0.3), lineWidth: 1))
+            .overlay(alignment: .bottom) { Rectangle().fill(Color.primary.opacity(0.12)).frame(height: 1) }
     }
 }
 
 private struct ActivityRow: View {
     let part: MessagePart
     let live: Bool
+    let last: Bool
     @State private var expanded = false
-    private var color: Color {
-        if part.state == "approval-requested" { return Color(presentation: PresentationTokens.yellow) }
-        if ["error", "denied"].contains(part.state ?? "") { return .red }
-        if live && part.state == "running" { return Color(presentation: PresentationTokens.blue) }
-        return Color(presentation: 0x62A87C)
-    }
+    private var running: Bool { live && part.state == "running" }
+    private var failed: Bool { ["error", "denied"].contains(part.state ?? "") }
+    private var color: Color { failed ? .red : running ? Color(presentation: PresentationTokens.blue) : .secondary }
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            Rectangle().fill(color.opacity(0.45)).frame(width: 2)
-                .overlay(alignment: .top) { Rectangle().fill(color).frame(width: 10, height: 10).overlay(Rectangle().stroke(.primary, lineWidth: 1)).padding(.top, 15) }
-                .padding(.horizontal, 4)
-            VStack(alignment: .leading, spacing: 8) {
+        HStack(alignment: .top, spacing: 10) {
+            VStack(spacing: 0) {
+                Text(part.state == "approval-requested" ? "!" : failed ? "×" : running ? "·" : "✓")
+                    .font(.system(size: 10, weight: .bold)).frame(width: 16, height: 16)
+                    .foregroundStyle(part.state == "approval-requested" ? .black : color)
+                    .background(part.state == "approval-requested" ? Color(presentation: PresentationTokens.yellow) : color.opacity(0.08))
+                Rectangle().fill(last ? Color.clear : Color.primary.opacity(0.12)).frame(width: 1)
+            }.padding(.top, 14)
+            VStack(alignment: .leading, spacing: 0) {
                 Button { expanded.toggle() } label: {
-                    HStack {
+                    HStack(spacing: 8) {
                         Text(part.type == "reasoning" ? String(localized: "Reasoning") : part.type == "tool" ? part.toolName ?? String(localized: "Tool activity") : String(localized: "Additional activity"))
-                            .font(.system(.subheadline, design: .monospaced))
-                        Spacer(); Text(expanded ? "−" : "+")
-                    }.padding(.vertical, 10).contentShape(Rectangle())
+                            .font(.system(size: 13, weight: .medium, design: part.type == "tool" ? .monospaced : .default)).lineLimit(2)
+                        Spacer(minLength: 4)
+                        Image(systemName: expanded ? "chevron.down" : "chevron.right").font(.system(size: 9, weight: .semibold)).foregroundStyle(.secondary)
+                    }.frame(minHeight: 44).contentShape(Rectangle())
                 }.buttonStyle(.plain)
                 if expanded {
-                    Text([part.args, part.output, part.text].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "\n\n"))
-                        .font(.system(.footnote, design: .monospaced)).textSelection(.enabled)
+                    VStack(alignment: .leading, spacing: 12) {
+                        detail("Input", value: part.args, code: true)
+                        detail("Output", value: part.output, code: true)
+                        detail("Reasoning", value: part.text, code: false)
+                    }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.primary.opacity(0.04)).padding(.bottom, 12)
                 }
-            }.padding(.bottom, 8)
+            }
         }.fixedSize(horizontal: false, vertical: true)
+    }
+    @ViewBuilder private func detail(_ title: LocalizedStringKey, value: String?, code: Bool) -> some View {
+        if let value, !value.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(title).font(.system(size: 10, weight: .bold)).textCase(.uppercase).foregroundStyle(.secondary)
+                Text(value).font(.system(size: 12, design: code ? .monospaced : .default)).textSelection(.enabled)
+            }
+        }
     }
 }
 
@@ -277,9 +296,58 @@ struct GreetingCube: View {
             for (face, color) in [(top, Color(white: 0.18)), (left, Color(white: 0.04)), (front, Color.black)] {
                 context.fill(face, with: .color(color)); context.stroke(face, with: .color(.gray), lineWidth: 1)
             }
-            // Eyes share the front face projection before the cube animation.
-            context.fill(polygon([CGPoint(x: 95.334, y: 84.432), CGPoint(x: 96.236, y: 84.381), CGPoint(x: 97.066, y: 84.586), CGPoint(x: 97.770, y: 85.032), CGPoint(x: 98.300, y: 85.687), CGPoint(x: 98.621, y: 86.507), CGPoint(x: 98.711, y: 87.436), CGPoint(x: 98.405, y: 97.957), CGPoint(x: 98.261, y: 98.915), CGPoint(x: 97.894, y: 99.858), CGPoint(x: 97.328, y: 100.722), CGPoint(x: 96.601, y: 101.448), CGPoint(x: 95.762, y: 101.989), CGPoint(x: 94.867, y: 102.308), CGPoint(x: 86.343, y: 104.179), CGPoint(x: 85.432, y: 104.256), CGPoint(x: 84.584, y: 104.079), CGPoint(x: 83.859, y: 103.660), CGPoint(x: 83.306, y: 103.026), CGPoint(x: 82.964, y: 102.220), CGPoint(x: 82.858, y: 101.297), CGPoint(x: 83.025, y: 90.589), CGPoint(x: 83.163, y: 89.595), CGPoint(x: 83.537, y: 88.619), CGPoint(x: 84.122, y: 87.728), CGPoint(x: 84.877, y: 86.985), CGPoint(x: 85.750, y: 86.439), CGPoint(x: 86.681, y: 86.129)]), with: .color(.white))
-            context.fill(polygon([CGPoint(x: 123.783, y: 78.852), CGPoint(x: 124.615, y: 78.810), CGPoint(x: 125.376, y: 79.015), CGPoint(x: 126.014, y: 79.452), CGPoint(x: 126.487, y: 80.090), CGPoint(x: 126.762, y: 80.886), CGPoint(x: 126.822, y: 81.786), CGPoint(x: 126.282, y: 91.968), CGPoint(x: 126.125, y: 92.895), CGPoint(x: 125.763, y: 93.804), CGPoint(x: 125.220, y: 94.636), CGPoint(x: 124.532, y: 95.334), CGPoint(x: 123.745, y: 95.850), CGPoint(x: 122.912, y: 96.150), CGPoint(x: 115.009, y: 97.885), CGPoint(x: 114.168, y: 97.951), CGPoint(x: 113.392, y: 97.773), CGPoint(x: 112.734, y: 97.360), CGPoint(x: 112.241, y: 96.742), CGPoint(x: 111.946, y: 95.958), CGPoint(x: 111.871, y: 95.064), CGPoint(x: 112.293, y: 84.706), CGPoint(x: 112.445, y: 83.746), CGPoint(x: 112.814, y: 82.805), CGPoint(x: 113.375, y: 81.949), CGPoint(x: 114.088, y: 81.236), CGPoint(x: 114.906, y: 80.716), CGPoint(x: 115.770, y: 80.424)]), with: .color(.white))
+            for points in SuzentLogoGeometry.eyes {
+                context.fill(polygon(points.map { CGPoint(x: $0.0, y: $0.1) }), with: .color(.white))
+            }
         }
+    }
+}
+
+struct SuzentSelectionPanel: View {
+    let title: String
+    let options: [(id: String, title: String)]
+    let selected: String
+    let choose: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text(title).font(.system(size: 15, weight: .bold, design: .monospaced))
+                Spacer()
+                Button { dismiss() } label: { Image(systemName: "xmark").frame(width: 44, height: 44) }.accessibilityLabel("Dismiss")
+            }.padding(.leading, 16).foregroundStyle(.white).background(.black)
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(options, id: \.id) { option in
+                        Button { choose(option.id); dismiss() } label: {
+                            HStack(spacing: 12) {
+                                Text(option.title).font(.system(size: 15, weight: option.id == selected ? .semibold : .regular)).multilineTextAlignment(.leading)
+                                Spacer(minLength: 8)
+                                Image(systemName: "checkmark").opacity(option.id == selected ? 1 : 0)
+                            }.padding(16).frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+                                .foregroundStyle(option.id == selected ? Color.black : Color.primary)
+                                .background(option.id == selected ? Color(presentation: PresentationTokens.yellow) : Color(uiColor: .systemBackground))
+                        }.buttonStyle(.plain).accessibilityAddTraits(option.id == selected ? .isSelected : [])
+                        Divider()
+                    }
+                }
+            }
+        }.background(Color(uiColor: .systemBackground))
+            .overlay(Rectangle().stroke(.primary, lineWidth: 2))
+            .shadow(color: .primary, radius: 0, x: 4, y: 4).padding(16)
+            .presentationDetents([.medium, .large]).presentationDragIndicator(.hidden)
+            .presentationCornerRadius(0).presentationBackground(.clear)
+    }
+}
+
+
+struct SuzentLogoMark: View {
+    var body: some View {
+        Canvas { context, size in
+            context.scaleBy(x: size.width / 24, y: size.height / 24)
+            for (index, rect) in SuzentLogoGeometry.rectangles.enumerated() {
+                context.fill(Path(roundedRect: CGRect(x: rect[0], y: rect[1], width: rect[2], height: rect[3]), cornerRadius: rect[4]), with: .color(index == 0 ? .black : .white))
+            }
+        }.accessibilityLabel("Suzent")
     }
 }

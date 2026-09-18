@@ -126,6 +126,8 @@ expandable activity rails. Attachments, citations, A2UI and some
 legacy inline tool formats still require desktop. Shared palette and filtering
 rules live in `packages/presentation`; regenerate platform files with
 `uv run python scripts/generate_presentation.py` after editing their source.
+Mobile logo geometry is generated from `frontend/public/favicon.svg`, including
+the perspective-projected eyes on the animated start-page cube.
 It lists up to 1,000 conversations permitted by the device grant. Replay is bounded and in-memory; it is not a durable
 event cursor or an always-online phone. An observer reconnects up to five times with capped backoff. Mutation requests
 are never automatically retried. Exhausted recovery preserves received text.
@@ -237,7 +239,11 @@ two counter-rotating wireframes on a 24-second cycle. iOS pauses its 30 Hz
 timeline in the background and honors Reduce Motion; Android uses Compose
 animation layers and disables animation when system animators are disabled.
 
-Model selection opens a separate bottom sheet owned by the conversation screen,
+Model selection opens a separate selection panel owned by the conversation screen,
 not by the keyboard-dependent composer row. Opening it clears input focus;
 closing or selecting a model does not reopen the keyboard. This avoids popup
 focus changes repeatedly removing and recreating the model menu.
+
+Model and project choices share native Suzent selection panels: black title bars,
+square outlines, hard shadows, yellow selected rows and explicit checkmarks.
+Long lists scroll, and dismissal leaves the current selection unchanged.

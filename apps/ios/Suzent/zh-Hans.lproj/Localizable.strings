@@ -117,3 +117,9 @@
 "Bed time? Or maybe late night coding?" = "该睡了？还是深夜爆肝？";
 "Creating in" = "创建于";
 "Default" = "默认项目";
+
+"Input" = "参数";
+
+"Output" = "结果";
+
+"%lld steps" = "%lld 个步骤";

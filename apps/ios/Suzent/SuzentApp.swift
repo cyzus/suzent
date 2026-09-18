@@ -25,6 +25,7 @@ struct ContentView: View {
     @FocusState private var composing: Bool
     @State private var keyboardVisible = false
     @State private var showModelPicker = false
+    @State private var showProjectPicker = false
 
     private var projects: [Project] {
         var result = model.projects
@@ -100,16 +101,16 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardVisible = true }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in keyboardVisible = false }
         .sheet(isPresented: $showModelPicker) {
-            NavigationStack {
-                List {
-                    Button("Conversation default") { model.selectedModel = nil; showModelPicker = false }
-                    ForEach(Array(Set(model.selected?.models ?? [])).sorted(), id: \.self) { name in
-                        Button { model.selectedModel = name; showModelPicker = false } label: {
-                            HStack { Text(name); Spacer(); if model.selectedModel == name { Image(systemName: "checkmark") } }
-                        }
-                    }
-                }.navigationTitle("Desktop model").navigationBarTitleDisplayMode(.inline)
-            }.presentationDetents([.medium, .large])
+            SuzentSelectionPanel(title: String(localized: "Desktop model"),
+                options: [(id: "", title: String(localized: "Conversation default"))] + Array(Set(model.selected?.models ?? [])).sorted().map { (id: $0, title: $0) },
+                selected: model.selectedModel ?? "") { model.selectedModel = $0.isEmpty ? nil : $0 }
+        }
+        .sheet(isPresented: $showProjectPicker) {
+            SuzentSelectionPanel(title: String(localized: "Creating in"),
+                options: model.projects.map { (id: $0.id, title: $0.name) }, selected: model.selected?.projectId ?? "") { id in
+                model.selected?.projectId = id
+                model.selected?.projectName = model.projects.first { $0.id == id }?.name
+            }
         }
         .onChange(of: model.sentVersion) { _, _ in composing = false }
     }
@@ -225,9 +226,9 @@ struct ContentView: View {
                     .onChange(of: model.sentVersion) { _, _ in withAnimation { reader.scrollTo("bottom", anchor: .bottom) } }
             }
             VStack(alignment: .leading, spacing: 8) {
-                HStack(alignment: .bottom) {
+                HStack(alignment: .center) {
                     TextField("Message", text: $model.draft, axis: .vertical).lineLimit(keyboardVisible ? 1...6 : 1...1).focused($composing)
-                        .font(.system(size: PresentationTokens.typeChat)).padding(.vertical, 6).disabled(model.busy)
+                        .font(.system(size: PresentationTokens.typeChat)).padding(.horizontal, 4).padding(.vertical, 12).frame(minHeight: 44).disabled(model.busy)
                     if !keyboardVisible { sendAction(chat) }
                 }
                 if keyboardVisible { HStack {
@@ -238,7 +239,10 @@ struct ContentView: View {
                     Spacer(minLength: 8)
                     sendAction(chat)
                 } }
-            }.padding(keyboardVisible ? 12 : 6).overlay(Rectangle().stroke(.primary, lineWidth: PresentationTokens.borderWidth))
+            }.padding(10).background(Color(uiColor: .systemBackground))
+                .overlay(Rectangle().stroke(.primary, lineWidth: PresentationTokens.borderWidth))
+                .background { Rectangle().fill(Color.primary).offset(x: 2, y: 2) }
+                .padding(.trailing, 2).padding(.bottom, 2)
                 .padding(.horizontal, 12).padding(.bottom, 8)
         }.task(id: chat.id) { await model.watchApprovals(chat.id) }
     }
@@ -251,14 +255,7 @@ struct ContentView: View {
                 Text(greeting).textCase(.uppercase).font(.system(size: 30, weight: .black))
                     .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
             }
-            Menu {
-                ForEach(model.projects) { project in
-                    Button(project.name) {
-                        model.selected?.projectId = project.id
-                        model.selected?.projectName = project.name
-                    }
-                }
-            } label: {
+            Button { composing = false; showProjectPicker = true } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "cube")
                     Text("Creating in").foregroundStyle(.secondary)
@@ -267,7 +264,8 @@ struct ContentView: View {
                 }.font(.system(size: PresentationTokens.typeControl, weight: .bold)).padding(12)
                     .foregroundStyle(.primary).background(Color(uiColor: .systemBackground))
                     .overlay(Rectangle().stroke(.primary, lineWidth: PresentationTokens.borderWidth))
-                    .shadow(color: .primary, radius: 0, x: 2, y: 2)
+                    .background { Rectangle().fill(Color.primary).offset(x: 2, y: 2) }
+                    .padding(.trailing, 2).padding(.bottom, 2)
             }.disabled(model.busy || model.projects.isEmpty).buttonStyle(.plain)
         }.frame(maxWidth: .infinity).padding(.horizontal, 8).padding(.vertical, keyboardVisible ? 12 : 40)
     }

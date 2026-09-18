@@ -4,6 +4,8 @@ import argparse
 import json
 from pathlib import Path
 
+from mobile_logo import logo_outputs
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -38,6 +40,7 @@ def outputs() -> dict[Path, str]:
         kotlin += f"    val {key} = listOf({values})\n"
         swift += f"    public static let {key}: [String] = [{values}]\n"
     return {
+        **logo_outputs(ROOT),
         ROOT
         / "apps/android/app/src/main/java/com/suzent/mobile/PresentationTokens.kt": kotlin
         + "}\n",

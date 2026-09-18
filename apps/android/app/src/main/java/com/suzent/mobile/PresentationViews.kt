@@ -1,5 +1,8 @@
 package com.suzent.mobile
 
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import android.widget.TextView
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
@@ -15,6 +18,7 @@ import kotlinx.coroutines.withContext
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -148,15 +152,22 @@ fun MessageView(message: DisplayMessage) {
 @Composable
 fun SuzentAction(label: String, onClick: () -> Unit, prominent: Boolean = false, enabled: Boolean = true, compact: Boolean = false) {
     val outline = MaterialTheme.colorScheme.outline
-    Button(onClick = onClick, enabled = enabled, shape = RectangleShape,
-        border = BorderStroke(PresentationTokens.borderWidth.dp, outline),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = if (prominent) Color(PresentationTokens.blue) else MaterialTheme.colorScheme.surface,
-            contentColor = if (prominent) Color.White else MaterialTheme.colorScheme.onSurface),
-        modifier = (if (compact) Modifier else Modifier.fillMaxWidth()).heightIn(min = PresentationTokens.controlHeight.dp).padding(end = 2.dp, bottom = 2.dp).drawBehind {
-            if (enabled) drawRect(outline, topLeft = Offset(PresentationTokens.shadowOffset.dp.toPx(), PresentationTokens.shadowOffset.dp.toPx()))
-        }, contentPadding = PaddingValues(horizontal = (if (compact) PresentationTokens.spaceMedium else PresentationTokens.spacePage).dp, vertical = (if (compact) 8 else 12).dp)) {
-        Text(label, fontSize = PresentationTokens.typeControl.sp, fontWeight = FontWeight.SemiBold)
+    Box((if (compact) Modifier else Modifier.fillMaxWidth()).drawBehind {
+        val offset = PresentationTokens.shadowOffset.dp.toPx()
+        if (enabled) drawRect(outline, topLeft = Offset(offset, offset),
+            size = androidx.compose.ui.geometry.Size((size.width - offset).coerceAtLeast(0f), (size.height - offset).coerceAtLeast(0f)))
+    }.padding(end = PresentationTokens.shadowOffset.dp, bottom = PresentationTokens.shadowOffset.dp)) {
+        val fill = if (prominent) Color(PresentationTokens.blue) else MaterialTheme.colorScheme.surface
+        Row((if (compact) Modifier else Modifier.fillMaxWidth())
+            .background(if (enabled) fill else fill.copy(alpha = 0.45f))
+            .border(PresentationTokens.borderWidth.dp, outline)
+            .clickable(enabled = enabled, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)
+            .heightIn(min = PresentationTokens.controlHeight.dp)
+            .padding(horizontal = (if (compact) 12 else 16).dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.Center, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            Text(label, fontSize = PresentationTokens.typeControl.sp, fontWeight = FontWeight.SemiBold,
+                color = (if (prominent) Color.White else MaterialTheme.colorScheme.onSurface).copy(alpha = if (enabled) 1f else 0.45f))
+        }
     }
 }
 
@@ -177,11 +188,7 @@ fun SuzentAssistantBadge() {
         .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(Modifier.size(28.dp).background(Color.Black, RoundedCornerShape(5.dp)),
-            horizontalArrangement = Arrangement.spacedBy(4.dp, androidx.compose.ui.Alignment.CenterHorizontally),
-            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-            repeat(2) { Box(Modifier.size(5.dp).background(Color.White, RoundedCornerShape(1.dp))) }
-        }
+        Image(painterResource(R.drawable.suzent_logo), contentDescription = null, modifier = Modifier.size(28.dp))
         Text("SUZENT", fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
     }
 }
@@ -201,45 +208,67 @@ fun ActivityContent(parts: List<MessagePart>, live: Boolean) {
 
 @Composable
 private fun ActivityRail(parts: List<MessagePart>, live: Boolean) {
-    var expanded by remember { mutableStateOf(live) }
+    var expanded by remember { mutableStateOf(false) }
     val waiting = parts.any { it.state == "approval-requested" }
     val running = live && parts.any { it.state == "running" }
     val failed = parts.any { it.state in listOf("error", "denied") }
+    val ink = MaterialTheme.colorScheme.onSurface
+    val accent = if (failed) MaterialTheme.colorScheme.error else if (running) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
     val status = stringResource(if (waiting) R.string.approval_required else if (running) R.string.activity_running else if (failed) R.string.activity_failed else R.string.activity_completed)
-    Column(Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
-        TextButton(onClick = { expanded = !expanded }, modifier = Modifier.fillMaxWidth()) {
-            Text(if (expanded) "−" else "+", color = MaterialTheme.colorScheme.onSurface)
-            Spacer(Modifier.width(8.dp))
-            Text(stringResource(R.string.activity_count, parts.size), fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
-            Text(status, style = MaterialTheme.typography.labelSmall, color = if (running) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+    Column(Modifier.fillMaxWidth()) {
+        TextButton(onClick = { expanded = !expanded }, contentPadding = PaddingValues(horizontal = 4.dp, vertical = 12.dp), modifier = Modifier.fillMaxWidth()) {
+            Text(status.uppercase(), fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold,
+                color = if (waiting || failed) accent else MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("  |  ", fontSize = 12.sp, color = ink.copy(alpha = 0.25f))
+            Text(stringResource(R.string.activity_steps, parts.size).uppercase(), fontSize = 12.sp, fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(if (expanded) "  ⌄" else "  ›", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.weight(1f))
         }
-        if (expanded) parts.forEachIndexed { index, part ->
-            key(part.toolCallId.ifEmpty { "reason-$index" }) {
-                var details by remember { mutableStateOf(false) }
-                val color = when {
-                    part.state == "approval-requested" -> Color(PresentationTokens.yellow)
-                    part.state in listOf("error", "denied") -> MaterialTheme.colorScheme.error
-                    live && part.state == "running" -> Color(PresentationTokens.blue)
-                    else -> Color(0xFF62A87C)
-                }
-                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp).height(IntrinsicSize.Min)) {
-                    Box(Modifier.width(18.dp).fillMaxHeight().drawBehind {
-                        drawLine(color.copy(alpha = .45f), Offset(5.dp.toPx(), 0f), Offset(5.dp.toPx(), size.height), 2.dp.toPx())
-                    }) { Box(Modifier.padding(top = 16.dp).size(10.dp).background(color).border(1.dp, MaterialTheme.colorScheme.outline)) }
-                    Column(Modifier.weight(1f).padding(bottom = 8.dp)) {
-                        TextButton(onClick = { details = !details }, contentPadding = PaddingValues(vertical = 8.dp), modifier = Modifier.fillMaxWidth()) {
-                            Text(if (part.type == "reasoning") stringResource(R.string.reasoning) else if (part.type == "tool") part.toolName.ifEmpty { stringResource(R.string.tool_activity) } else stringResource(R.string.unsupported_activity),
-                                color = MaterialTheme.colorScheme.onSurface, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
-                            Text(if (details) "−" else "+")
-                        }
-                        if (details) SelectionContainer {
-                            Text(listOf(part.args, part.output, part.text).filter { it.isNotBlank() }.joinToString("\n\n").ifEmpty { status },
-                                style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+        if (expanded) {
+            HorizontalDivider(color = ink.copy(alpha = 0.12f))
+            Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                parts.forEachIndexed { index, part ->
+                    key(part.toolCallId.ifEmpty { "reason-$index" }) {
+                        var details by remember { mutableStateOf(false) }
+                        val active = live && part.state == "running"
+                        val error = part.state in listOf("error", "denied")
+                        val pending = part.state == "approval-requested"
+                        val color = if (error) MaterialTheme.colorScheme.error else if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Column(Modifier.width(16.dp).fillMaxHeight().padding(top = 14.dp), horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+                                Box(Modifier.size(16.dp).background(if (pending) Color(PresentationTokens.yellow) else color.copy(alpha = 0.08f)), contentAlignment = androidx.compose.ui.Alignment.Center) {
+                                    Text(if (pending) "!" else if (error) "×" else if (active) "·" else "✓", fontSize = 10.sp, lineHeight = 12.sp, color = if (pending) Color.Black else color)
+                                }
+                                Box(Modifier.width(1.dp).weight(1f).background(if (index == parts.lastIndex) Color.Transparent else ink.copy(alpha = 0.12f)))
+                            }
+                            Column(Modifier.weight(1f)) {
+                                TextButton(onClick = { details = !details }, contentPadding = PaddingValues(0.dp), modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp)) {
+                                    Text(if (part.type == "reasoning") stringResource(R.string.reasoning) else if (part.type == "tool") part.toolName.ifEmpty { stringResource(R.string.tool_activity) } else stringResource(R.string.unsupported_activity),
+                                        color = ink, fontSize = 13.sp, maxLines = 2, fontWeight = FontWeight.Medium,
+                                        fontFamily = if (part.type == "tool") FontFamily.Monospace else FontFamily.Default, modifier = Modifier.weight(1f))
+                                    Text(if (details) "⌄" else "›", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                                }
+                                if (details) Column(Modifier.padding(bottom = 12.dp).fillMaxWidth().background(ink.copy(alpha = 0.04f)).padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    ActivityDetail(R.string.activity_input, part.args, true)
+                                    ActivityDetail(R.string.activity_output, part.output, true)
+                                    ActivityDetail(R.string.reasoning, part.text, false)
+                                }
+                            }
                         }
                     }
                 }
             }
         }
+        HorizontalDivider(color = ink.copy(alpha = 0.12f))
+    }
+}
+
+@Composable
+private fun ActivityDetail(label: Int, value: String, code: Boolean) {
+    if (value.isNotEmpty()) Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(stringResource(label).uppercase(), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        SelectionContainer { Text(value, fontSize = 12.sp, lineHeight = 18.sp, fontFamily = if (code) FontFamily.Monospace else FontFamily.Default) }
     }
 }
 
@@ -291,5 +320,35 @@ fun GreetingCube(modifier: Modifier = Modifier) {
                 translationY = sin(phase.value * 4) * 4.dp.toPx()
                 cameraDistance = 12 * density
             })
+    }
+}
+
+@Composable
+fun SuzentSelectionPanel(title: String, options: List<Pair<String, String>>, selected: String, dismiss: () -> Unit, choose: (String) -> Unit) {
+    val outline = MaterialTheme.colorScheme.outline
+    androidx.compose.ui.window.Dialog(onDismissRequest = dismiss) {
+        Column(Modifier.fillMaxWidth().padding(4.dp).drawBehind {
+            drawRect(outline, topLeft = Offset(4.dp.toPx(), 4.dp.toPx()))
+        }.background(MaterialTheme.colorScheme.surface).border(2.dp, outline)) {
+            val dismissLabel = stringResource(R.string.dismiss)
+            Row(Modifier.fillMaxWidth().background(Color.Black).padding(start = 16.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Text(title, Modifier.weight(1f), fontFamily = FontFamily.Monospace, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                TextButton(onClick = dismiss, modifier = Modifier.size(44.dp)) { Text("×", color = Color.White, modifier = Modifier.semantics { contentDescription = dismissLabel }) }
+            }
+            androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxWidth().heightIn(max = 480.dp)) {
+                items(options.size) { index ->
+                    val (id, label) = options[index]
+                    val active = id == selected
+                    Row(Modifier.fillMaxWidth().background(if (active) Color(PresentationTokens.yellow) else MaterialTheme.colorScheme.surface)
+                        .selectable(selected = active, onClick = { choose(id) }, role = androidx.compose.ui.semantics.Role.RadioButton)
+                        .heightIn(min = 48.dp).padding(16.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        Text(label, Modifier.weight(1f), fontSize = 15.sp, fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                            color = if (active) Color.Black else MaterialTheme.colorScheme.onSurface)
+                        if (active) Text("✓", color = Color.Black)
+                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                }
+            }
+        }
     }
 }

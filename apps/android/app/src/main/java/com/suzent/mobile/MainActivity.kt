@@ -222,15 +222,20 @@ private fun ColumnScope.Conversation(model: MobileModel) {
         }
         item { ApprovalCards(model) }
     }
-    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)
-        .border(PresentationTokens.borderWidth.dp, MaterialTheme.colorScheme.outline).padding(if (expanded) 12.dp else 6.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.Bottom) {
+    val composerOutline = MaterialTheme.colorScheme.outline
+    Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp).drawBehind {
+        val offset = PresentationTokens.shadowOffset.dp.toPx()
+        drawRect(composerOutline, topLeft = androidx.compose.ui.geometry.Offset(offset, offset), size = Size(size.width - offset, size.height - offset))
+    }.padding(end = PresentationTokens.shadowOffset.dp, bottom = PresentationTokens.shadowOffset.dp)) {
+    Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)
+        .border(PresentationTokens.borderWidth.dp, composerOutline).padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
         BasicTextField(value = model.draft, onValueChange = { model.draft = it }, enabled = !model.busy,
-            modifier = Modifier.weight(1f).padding(vertical = 6.dp), minLines = 1, maxLines = if (expanded) 6 else 1,
+            modifier = Modifier.weight(1f).heightIn(min = 44.dp).padding(horizontal = 4.dp, vertical = 12.dp), minLines = 1, maxLines = if (expanded) 6 else 1,
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Default),
             textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = PresentationTokens.typeChat.sp, color = MaterialTheme.colorScheme.onSurface),
             cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary),
-            decorationBox = { inner -> Box { if (model.draft.isEmpty()) Text(stringResource(R.string.message), color = MaterialTheme.colorScheme.onSurfaceVariant); inner() } })
+            decorationBox = { inner -> Box { if (model.draft.isEmpty()) Text(stringResource(R.string.message), fontSize = PresentationTokens.typeChat.sp, color = MaterialTheme.colorScheme.onSurfaceVariant); inner() } })
         if (!expanded) SendAction(model, chat)
         }
         if (expanded) Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
@@ -243,24 +248,12 @@ private fun ColumnScope.Conversation(model: MobileModel) {
             SendAction(model, chat)
         }
     }
-    if (modelsExpanded) {
-        ModalBottomSheet(onDismissRequest = { modelsExpanded = false }) {
-            Text(stringResource(R.string.desktop_model), modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
-                fontSize = PresentationTokens.typeSection.sp, fontWeight = FontWeight.Bold)
-            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 480.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
-                item {
-                    TextButton(onClick = { model.selectedModel = null; modelsExpanded = false }, modifier = Modifier.fillMaxWidth()) {
-                        Text(stringResource(R.string.conversation_default), Modifier.fillMaxWidth().padding(8.dp))
-                    }
-                }
-                items(chat.models.distinct()) { name ->
-                    TextButton(onClick = { model.selectedModel = name; modelsExpanded = false }, modifier = Modifier.fillMaxWidth()) {
-                        Text((if (model.selectedModel == name) "✓ " else "") + name, Modifier.fillMaxWidth().padding(8.dp))
-                    }
-                }
-            }
-        }
     }
+    if (modelsExpanded) SuzentSelectionPanel(
+        title = stringResource(R.string.desktop_model),
+        options = listOf("" to stringResource(R.string.conversation_default)) + chat.models.distinct().map { it to it },
+        selected = model.selectedModel.orEmpty(), dismiss = { modelsExpanded = false }
+    ) { model.selectedModel = it.ifEmpty { null }; modelsExpanded = false }
 
 }
 
@@ -285,13 +278,12 @@ private fun StartPage(model: MobileModel, chat: Chat, keyboardVisible: Boolean) 
         Box {
             SuzentAction(stringResource(R.string.creating_in) + "  " + (chat.projectName ?: stringResource(R.string.default_project)) + "  ▾",
                 { projectsExpanded = true }, enabled = !model.busy && model.projects.isNotEmpty(), compact = true)
-            DropdownMenu(expanded = projectsExpanded, onDismissRequest = { projectsExpanded = false }) {
-                model.projects.forEach { project ->
-                    DropdownMenuItem(text = { Text(project.name) }, onClick = {
-                        model.selected = model.selected?.copy(projectId = project.id, projectName = project.name)
-                        projectsExpanded = false
-                    })
-                }
+            if (projectsExpanded) SuzentSelectionPanel(
+                title = stringResource(R.string.creating_in), options = model.projects.map { it.id to it.name },
+                selected = chat.projectId.orEmpty(), dismiss = { projectsExpanded = false }
+            ) { id ->
+                model.selected = model.selected?.copy(projectId = id, projectName = model.projects.first { it.id == id }.name)
+                projectsExpanded = false
             }
         }
     }

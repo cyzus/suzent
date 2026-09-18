@@ -99,4 +99,7 @@
     <string name="greeting_bed">该睡了？还是深夜爆肝？</string>
     <string name="creating_in">创建于</string>
     <string name="default_project">默认项目</string>
+    <string name="activity_input">参数</string>
+    <string name="activity_output">结果</string>
+    <string name="activity_steps">%1$d 个步骤</string>
 </resources>

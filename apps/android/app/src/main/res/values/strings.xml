@@ -99,4 +99,7 @@
     <string name="greeting_bed">Bed time? Or maybe late night coding?</string>
     <string name="creating_in">Creating in</string>
     <string name="default_project">Default</string>
+    <string name="activity_input">Input</string>
+    <string name="activity_output">Output</string>
+    <string name="activity_steps">%1$d steps</string>
 </resources>
