@@ -8,6 +8,14 @@ import {
 } from 'react';
 
 export type Theme = 'light' | 'dark';
+/**
+ * What the user asked for, as opposed to what is on screen.
+ *
+ * `system` is the difference between the two: it follows the OS and keeps
+ * following it, so a machine that turns dark in the evening takes Suzent with
+ * it. The stored value used to be a `Theme`, and still reads as one.
+ */
+export type ThemeMode = Theme | 'system';
 export type Scheme = 'warm' | 'cold' | 'green';
 
 /** Accent colors shown on interactive elements, headers, buttons */
@@ -24,14 +32,27 @@ export const SCHEME_SURFACES: Record<Scheme, { bg1: string; bg2: string; bg3: st
   green: { bg1: '#131816', bg2: '#202622', bg3: '#2d352e' },
 };
 
-function getInitialTheme(): Theme {
+const SYSTEM_DARK = '(prefers-color-scheme: dark)';
+
+function prefersDark(): boolean {
   try {
-    const stored = localStorage.getItem('suzent-theme') as Theme | null;
-    if (stored === 'dark' || stored === 'light') return stored;
-    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    return window.matchMedia(SYSTEM_DARK).matches;
   } catch {
-    return 'light';
+    return false;
   }
+}
+
+function getInitialMode(): ThemeMode {
+  try {
+    const stored = localStorage.getItem('suzent-theme') as ThemeMode | null;
+    if (stored === 'dark' || stored === 'light' || stored === 'system') return stored;
+  } catch {
+    /* storage blocked */
+  }
+  // Nothing stored is not the same as no preference: before there was a mode to
+  // store, first run read the OS once and then froze. Following it is what that
+  // was reaching for.
+  return 'system';
 }
 
 function getInitialScheme(): Scheme {
@@ -49,7 +70,10 @@ function getInitialScheme(): Scheme {
 }
 
 interface ThemeContextValue {
+  /** What is on screen: `mode` with `system` already resolved. */
   theme: Theme;
+  mode: ThemeMode;
+  setMode: (m: ThemeMode) => void;
   toggleTheme: () => void;
   scheme: Scheme;
   setScheme: (s: Scheme) => void;
@@ -58,18 +82,38 @@ interface ThemeContextValue {
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState<Theme>(getInitialTheme);
+  const [mode, setModeState] = useState<ThemeMode>(getInitialMode);
+  const [systemDark, setSystemDark] = useState<boolean>(prefersDark);
   const [scheme, setSchemeState] = useState<Scheme>(getInitialScheme);
 
+  const theme: Theme = mode === 'system' ? (systemDark ? 'dark' : 'light') : mode;
+
+  // Subscribed whatever the mode, so switching to `system` shows the OS
+  // preference as it is now rather than as it was when the app started.
   useEffect(() => {
-    const root = document.documentElement;
-    root.classList.toggle('dark', theme === 'dark');
+    let query: MediaQueryList;
     try {
-      localStorage.setItem('suzent-theme', theme);
+      query = window.matchMedia(SYSTEM_DARK);
+    } catch {
+      return;
+    }
+    const onChange = (event: MediaQueryListEvent) => setSystemDark(event.matches);
+    setSystemDark(query.matches);
+    query.addEventListener('change', onChange);
+    return () => query.removeEventListener('change', onChange);
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', theme === 'dark');
+  }, [theme]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('suzent-theme', mode);
     } catch {
       /* storage blocked */
     }
-  }, [theme]);
+  }, [mode]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -86,13 +130,17 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   function setScheme(s: Scheme) {
     setSchemeState(s);
   }
+  function setMode(m: ThemeMode) {
+    setModeState(m);
+  }
+  /** Flips what is on screen, which means leaving `system` behind. */
   function toggleTheme() {
-    setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
+    setModeState(theme === 'dark' ? 'light' : 'dark');
   }
 
   return createElement(
     ThemeContext.Provider,
-    { value: { theme, toggleTheme, scheme, setScheme } },
+    { value: { theme, mode, setMode, toggleTheme, scheme, setScheme } },
     children
   );
 }

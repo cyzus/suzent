@@ -41,10 +41,11 @@ starts was the shape this replaced.
 Destinations live in `frontend/src/shells/webRoutes.ts` -- one list, read by the
 nav, the router and the tests.
 
-The nav's footer carries the light/dark switch and the host it is talking to.
-The desktop keeps that switch in the chat header, which a console route does not
-draw at all, so in a browser it belongs to the window's navigation instead --
-on screen on every route, rail included -- and the header's copy is hidden.
+The nav's footer carries the host it is talking to and its reachability. The
+theme -- light, dark, or the machine's own setting -- is a setting like any
+other and lives on the Appearance page (`#/appearance`), which is what a console
+route can reach and the chat header is not; the header keeps its quick flip
+between light and dark for the shell that draws it.
 
 The console page replaces `<App>`'s own window rather than sitting beside it:
 `ConsoleRoute` renders one `<App>` for chat and for the settings routes and
