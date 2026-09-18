@@ -355,3 +355,26 @@ async def test_a_turn_that_reaches_its_prompt_declares_the_run_live(queue):
 
     assert seen == [False]
     assert q.replay.producer_started is True
+
+
+@pytest.mark.asyncio
+async def test_a_stop_whose_prompt_was_refused_mid_turn_is_not_persisted(queue):
+    """Same contract at the other stop: the one the agent itself reports.
+
+    The turn reached the agent and was cancelled before its first token, so the
+    user's row is the whole of what this turn had to store. If that write was
+    refused, the reload `persisted: true` sends the client to comes back
+    without the prompt.
+    """
+    chat_id, q = queue
+    chunks, db = await _run_turn(
+        chat_id,
+        [],
+        {"stopReason": "cancelled"},
+        append_result=False,
+        replay=q.replay,
+    )
+
+    event = json.loads(chunks[-1][6:])
+    assert event["code"] == "stream_stopped"
+    assert q.replay.persistence.result() is False

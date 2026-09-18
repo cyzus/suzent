@@ -582,10 +582,13 @@ async def _run_acp_turn(
                 #
                 # The contract is "everything this turn produced is in the
                 # database", and a turn stopped before its first token produced
-                # nothing -- so it is met. Saying otherwise would end the stream
-                # with STREAM_END{persisted:false} and turn the stop the client
-                # just accepted back into "Stream persistence failed".
-                _resolve_persistence(persistence, True)
+                # nothing from the agent -- so the user's row is all of it.
+                # Where that row landed the contract is met, and saying
+                # otherwise would turn the stop the client just accepted back
+                # into "Stream persistence failed"; where it did not, the
+                # reload this promise sends the client to would come back
+                # without the prompt they just sent.
+                _resolve_persistence(persistence, stored_prompt)
                 yield _sse(
                     {
                         "type": "RUN_ERROR",
