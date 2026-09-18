@@ -30,6 +30,8 @@ class ClaimRequest(BaseModel):
     display_name: str = Field(min_length=1, max_length=100)
     platform: Literal["ios", "android"]
     confirm_permissions: StrictBool = False
+    rotate: StrictBool = False
+    repair_proof: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
 
 
 class PickupRequest(BaseModel):
@@ -58,7 +60,14 @@ def reply(data: dict, status: int = 200) -> JSONResponse:
 
 
 async def capabilities(request: Request) -> JSONResponse:
-    return reply({"client_protocol": 1, "stream_protocols": [1], "pairing_protocol": 1})
+    return reply(
+        {
+            "client_protocol": 1,
+            "stream_protocols": [1],
+            "pairing_protocol": 1,
+            "pairing_repair": 1,
+        }
+    )
 
 
 async def invite(request: Request) -> JSONResponse:

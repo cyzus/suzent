@@ -454,3 +454,13 @@ def test_composer_does_not_create_or_list_chats(setup_client, monkeypatch):
     assert store.verify(result["token"]).permissions.chat_ids == []
     store.revoke(result["device"]["device_id"])
     assert client.get("/mobile/client/composer").status_code == 401
+
+
+def test_confirm_pairing_requires_mobile_credential(setup_client):
+    client, store = setup_client
+    assert client.post("/mobile/client/pairing/confirm", json={}).status_code == 401
+    result = grant(store, chat_ids=["shared"])
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+    assert client.post("/mobile/client/pairing/confirm", json={}).status_code == 200
+    store.revoke(result["device"]["device_id"])
+    assert client.post("/mobile/client/pairing/confirm", json={}).status_code == 401

@@ -288,7 +288,15 @@ async def decide_approvals(request: Request) -> JSONResponse:
     return await decide(request)
 
 
+async def confirm_pairing(request: Request) -> JSONResponse:
+    token = extract_token(request.scope.get("headers", []))
+    if not get_mobile_store(request).confirm(token):
+        raise HTTPException(401, "Mobile credential revoked or invalid")
+    return reply({"ok": True})
+
+
 client_routes = [
+    Route("/mobile/client/pairing/confirm", confirm_pairing, methods=["POST"]),
     Route("/mobile/client/composer", composer, methods=["GET"]),
     Route("/mobile/client/projects", projects, methods=["GET"]),
     Route("/mobile/client/chats/{chat_id}/approvals", list_approvals, methods=["GET"]),

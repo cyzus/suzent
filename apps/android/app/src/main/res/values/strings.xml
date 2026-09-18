@@ -102,4 +102,10 @@
     <string name="activity_input">Input</string>
     <string name="activity_output">Output</string>
     <string name="activity_steps">%1$d steps</string>
+    <string name="scan_heading">Connect your desktop</string>
+    <string name="scan_hint">Place the pairing code inside the frame</string>
+    <string name="scan_again">Scan again</string>
+    <string name="desktop_recognized">Desktop recognized</string>
+    <string name="flashlight">Flashlight</string>
+    <string name="pair_again">Pair again</string>
 </resources>

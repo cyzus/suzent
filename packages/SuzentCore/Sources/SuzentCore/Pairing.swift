@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 public struct ClientPermissions: Codable, Sendable {
     public let chatIds: [String]
@@ -20,6 +21,7 @@ public struct ClientSession: Decodable, Sendable {
     public let device: ClientDevice
     public let clientProtocol: Int
     public let streamProtocols: [Int]
+    public let pairingRepair: Int?
 
     public func validate() throws {
         guard clientProtocol == 1, streamProtocols.contains(1) else { throw PairingError.incompatible }
@@ -30,6 +32,7 @@ public struct MobileCapabilities: Decodable, Sendable {
     public let clientProtocol: Int
     public let pairingProtocol: Int
     public let streamProtocols: [Int]
+    public let pairingRepair: Int?
 
     public func validate() throws {
         guard clientProtocol == 1, pairingProtocol == 1, streamProtocols.contains(1) else {
@@ -110,6 +113,7 @@ public struct PairingPreview: Decodable, Sendable {
 }
 
 public struct PairingClaim: Decodable, Sendable {
+    public let serverProof: String?
     public let pickupSecret: String
     public let expiresAt: Double
 }
@@ -117,6 +121,7 @@ public struct PairingClaim: Decodable, Sendable {
 public struct PairingResult: Decodable, Sendable {
     public let status: String
     public let token: String?
+    public let reused: Bool?
     public let device: ClientDevice?
 }
 
@@ -132,4 +137,12 @@ public enum PairingError: Error, LocalizedError {
         case .denied: return String(localized: "Pairing was declined on the desktop.")
         }
     }
+}
+
+
+public func pairingRepairProof(token: String, invitation: PairingInvitation, side: String) -> String {
+    let key = SymmetricKey(data: SHA256.hash(data: Data(token.utf8)))
+    let message = "suzent-mobile-repair-v1:\(side):\(invitation.pairingId):\(invitation.invitation)"
+    return HMAC<SHA256>.authenticationCode(for: Data(message.utf8), using: key)
+        .map { String(format: "%02x", $0) }.joined()
 }

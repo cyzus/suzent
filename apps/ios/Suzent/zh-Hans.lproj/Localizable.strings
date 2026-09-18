@@ -123,3 +123,11 @@
 "Output" = "结果";
 
 "%lld steps" = "%lld 个步骤";
+
+"Connect your desktop" = "连接你的桌面端";
+"Place the pairing code inside the frame" = "将配对二维码放入取景框";
+"Scan again" = "重新扫描";
+"Desktop recognized" = "已识别桌面端";
+"Flashlight" = "手电筒";
+
+"Pair again" = "重新配对";

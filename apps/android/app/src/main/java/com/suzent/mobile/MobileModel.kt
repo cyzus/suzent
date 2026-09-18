@@ -32,6 +32,8 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     var projects by mutableStateOf<List<Project>>(emptyList())
     var selectedModel by mutableStateOf<String?>(null)
     var sentVersion by mutableStateOf(0)
+    var openedVersion by mutableStateOf(0)
+    var pairingVersion by mutableStateOf(0)
     private val drafts = mutableMapOf<String, String>()
     var chats by mutableStateOf<List<Chat>>(emptyList())
     var selected by mutableStateOf<Chat?>(null)
@@ -110,8 +112,13 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
             val bootstrap = BackendClient(Backend.parse(invitation.origin, BuildConfig.DEBUG), "")
             try {
                 bootstrap.capabilities()
+                val previous = connection?.hostToken?.takeIf { bootstrap.supportsPairingRepair }
                 val claim = bootstrap.claim(invitation, android.os.Build.MODEL,
-                    confirmPermissions = invitation.phoneConfirmation && pairingPreview != null)
+                    confirmPermissions = invitation.phoneConfirmation && pairingPreview != null,
+                    repairProof = previous?.let { pairingRepairProof(it, invitation, "phone") },
+                    rotate = connection?.origin != bootstrap.backend.origin.toString())
+                val recognized = previous != null && claim.optString("server_proof") == pairingRepairProof(previous, invitation, "desktop")
+                require(!claim.has("server_proof") || recognized)
                 if (generation != current) return@launch
                 if (!invitation.phoneConfirmation) pairingCode = invitation.id.take(6)
                 while (System.currentTimeMillis() / 1000.0 < claim.getDouble("expires_at")) {
@@ -121,15 +128,19 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                     when (result.getString("status")) {
                         "denied" -> throw PairingFailure(PairingFailure.Reason.DENIED)
                         "approved" -> {
-                            val credential = result.getString("token")
+                            val reused = result.optBoolean("reused")
+                            require(!reused || (recognized && connection?.origin == bootstrap.backend.origin.toString()))
+                            val credential = if (reused) requireNotNull(previous) else result.getString("token")
                             require(credential.isNotEmpty())
                             val saved = Connection(Backend.parse(invitation.origin, BuildConfig.DEBUG).origin.toString(),
-                                credential, clientProtocol = 1)
+                                credential, nodeToken = if (recognized) connection?.nodeToken.orEmpty() else "", clientProtocol = 1, previousToken = if (recognized && !reused) previous.orEmpty() else "",
+                                previousOrigin = if (recognized && !reused) connection?.origin.orEmpty() else "")
                             store.save(saved)
                             connection = saved
                             origin = saved.origin
                             canReconnect = true
                             activate(saved)
+                            pairingVersion++
                             pairingInvitation = null
                             return@launch
                         }
@@ -155,6 +166,17 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         require(saved.clientProtocol == 1)
         val candidate = BackendClient(Backend.parse(saved.origin, BuildConfig.DEBUG), saved.hostToken)
         try {
+            if (saved.previousToken.isNotEmpty()) {
+                try { candidate.confirmPairing() }
+                catch (failure: BackendClient.HttpFailure) {
+                    if (failure.code != 401) throw failure
+                    val restored = saved.copy(origin = saved.previousOrigin.ifEmpty { saved.origin }, hostToken = saved.previousToken, previousToken = "", previousOrigin = "")
+                    store.save(restored); connection = restored; origin = restored.origin
+                    candidate.close(); activate(restored); return
+                }
+                val confirmed = saved.copy(previousToken = "", previousOrigin = "")
+                store.save(confirmed); connection = confirmed
+            }
             candidate.capabilities()
             val session = candidate.session()
             val listing = candidate.chats()
@@ -253,6 +275,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                 val saved = api.chat(chat.id)
                 if (current == generation && selected?.id == chat.id) {
                     selected = saved
+                    openedVersion++
                     chats = chats.map { if (it.id == saved.id) saved.copy(messages = emptyList()) else it }
                     if (saved.running) observe(chat.id)
                 }

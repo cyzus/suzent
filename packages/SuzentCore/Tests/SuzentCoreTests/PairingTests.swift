@@ -74,3 +74,9 @@ private func invitation(_ overrides: [String: Any] = [:]) throws -> String {
     let other = try decoder.decode(PairingPreview.self, from: JSONSerialization.data(withJSONObject: wrong))
     #expect(throws: PairingError.self) { try other.validate(value) }
 }
+
+@Test func repairProofIsBoundToInvitationAndDirection() throws {
+    let value = try PairingInvitation.parse(invitation(), now: Date(timeIntervalSince1970: 1000))
+    #expect(pairingRepairProof(token: "old-token", invitation: value, side: "phone") == "9e02aadf5f8ce4580dbaab7080c9630d4b87e87aee6622f061023b59523b01be")
+    #expect(pairingRepairProof(token: "old-token", invitation: value, side: "desktop") != "9e02aadf5f8ce4580dbaab7080c9630d4b87e87aee6622f061023b59523b01be")
+}

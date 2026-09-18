@@ -1,9 +1,5 @@
 package com.suzent.mobile
 
-import android.Manifest
-import android.content.pm.PackageManager
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -13,26 +9,15 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import com.journeyapps.barcodescanner.ScanContract
-import com.journeyapps.barcodescanner.ScanOptions
 
 @Composable
 fun PairingView(model: MobileModel) {
-    val context = LocalContext.current
-    val scanner = rememberLauncherForActivityResult(ScanContract()) { result ->
-        result.contents?.let(model::stageInvitation)
-    }
-    val launchScanner = {
-        scanner.launch(ScanOptions().setDesiredBarcodeFormats(ScanOptions.QR_CODE)
-            .setOrientationLocked(false).setBeepEnabled(false).setBarcodeImageEnabled(false)
-            .setPrompt(context.getString(R.string.scan_desktop)))
-    }
-    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) launchScanner() else model.error = context.getString(R.string.camera_unavailable)
-    }
+    var scanning by remember { mutableStateOf(false) }
+    val launchScanner = { scanning = true }
+
+    if (scanning) PairingScanner(model) { scanning = false }
     var paste by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().padding(top = 16.dp).verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(PresentationTokens.spaceLarge.dp)) {
@@ -83,8 +68,7 @@ fun PairingView(model: MobileModel) {
         } else {
             Text(stringResource(R.string.pairing_steps))
             SuzentAction(stringResource(R.string.scan_desktop), {
-                if (context.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) launchScanner()
-                else permission.launch(Manifest.permission.CAMERA)
+                launchScanner()
             }, prominent = true, enabled = !model.busy)
             TextButton(onClick = { paste = !paste }) { Text(stringResource(R.string.paste_invitation)) }
             if (paste) {

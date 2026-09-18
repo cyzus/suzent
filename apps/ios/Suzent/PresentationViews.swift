@@ -11,18 +11,15 @@ extension Color {
 
 struct MessageView: View {
     let message: DisplayMessage
+    var isLatest = false
     private var user: Bool { message.role == "user" }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            if !message.text.isEmpty {
-                if message.role == "assistant" {
-                    SuzentAssistantBadge()
-                } else {
-                    Text(user ? String(localized: "You") : String(localized: "Activity"))
-                        .font(.caption.bold())
-                }
-                if user { Text(message.text).font(.system(size: PresentationTokens.typeChat)).textSelection(.enabled) }
+            if !user { SuzentAssistantBadge(compact: !isLatest) }
+            if user && !message.text.isEmpty {
+                Text("You").font(.caption.bold())
+                Text(message.text).font(.system(size: PresentationTokens.typeChat)).textSelection(.enabled)
             }
             if !user { ActivityContent(parts: message.parts, live: false) }
 
@@ -121,13 +118,22 @@ struct SuzentMarkdown: View {
 }
 
 struct SuzentAssistantBadge: View {
+    var compact = false
     var body: some View {
-        HStack(spacing: 8) {
-            SuzentLogoMark().frame(width: 28, height: 28)
-            Text("SUZENT").font(.system(.caption, design: .monospaced).bold())
-        }.padding(.horizontal, 12).padding(.vertical, 8)
-            .overlay(Rectangle().stroke(.primary, lineWidth: PresentationTokens.borderWidth))
-            .accessibilityElement(children: .ignore).accessibilityLabel("Suzent")
+        Group {
+            if compact {
+                HStack(spacing: 6) {
+                    SuzentLogoMark().frame(width: 16, height: 16).opacity(0.5)
+                    Text("SUZENT").font(.system(size: 10, weight: .bold, design: .monospaced)).foregroundStyle(.secondary)
+                }
+            } else {
+                SuzentLogoMark().frame(width: 26, height: 26)
+                    .frame(width: 90, height: 40).background(Color(uiColor: .systemBackground))
+                    .overlay(Rectangle().stroke(.primary, lineWidth: PresentationTokens.borderWidth))
+                    .background { Rectangle().fill(Color.primary).offset(x: 3, y: 3) }
+                    .padding(.trailing, 3).padding(.bottom, 3)
+            }
+        }.accessibilityElement(children: .ignore).accessibilityLabel("Suzent")
     }
 }
 
@@ -140,6 +146,7 @@ struct ActivityContent: View {
                 if chunk.first?.type == "text" { SuzentMarkdown(text: chunk.first?.text ?? "") }
                 else { ActivityRail(parts: chunk, live: live) }
             }
+            if live { StreamingPulse().padding(.vertical, 4).accessibilityLabel("Working…") }
         }
     }
 }
@@ -161,6 +168,7 @@ struct ActivityRail: View {
                 HStack(spacing: 10) {
                     Text(waiting ? String(localized: "Approval required") : running ? String(localized: "Running") : failed ? String(localized: "Failed") : String(localized: "Completed"))
                         .foregroundStyle(waiting || failed ? accent : .secondary)
+                    if running { StreamingPulse() }
                     Text("|").foregroundStyle(.tertiary)
                     Text("\(parts.count) steps")
                     Image(systemName: expanded ? "chevron.down" : "chevron.right").font(.system(size: 11, weight: .bold))
@@ -173,7 +181,7 @@ struct ActivityRail: View {
                 Rectangle().fill(Color.primary.opacity(0.12)).frame(height: 1)
                 VStack(spacing: 0) {
                     ForEach(Array(parts.enumerated()), id: \.offset) { index, part in
-                        ActivityRow(part: part, live: live, last: index == parts.count - 1)
+                        ToolActivityBlock(part: part, live: live, last: index == parts.count - 1)
                     }
                 }.padding(.horizontal, 12).padding(.vertical, 8)
             }
@@ -182,10 +190,10 @@ struct ActivityRail: View {
     }
 }
 
-private struct ActivityRow: View {
+struct ToolActivityBlock: View {
     let part: MessagePart
     let live: Bool
-    let last: Bool
+    var last = true
     @State private var expanded = false
     private var running: Bool { live && part.state == "running" }
     private var failed: Bool { ["error", "denied"].contains(part.state ?? "") }
@@ -202,18 +210,24 @@ private struct ActivityRow: View {
             VStack(alignment: .leading, spacing: 0) {
                 Button { expanded.toggle() } label: {
                     HStack(spacing: 8) {
-                        Text(part.type == "reasoning" ? String(localized: "Reasoning") : part.type == "tool" ? part.toolName ?? String(localized: "Tool activity") : String(localized: "Additional activity"))
+                        Text(part.type == "reasoning" ? String(localized: "Reasoning") : part.type == "tool" ? part.toolName?.nonEmpty ?? String(localized: "Tool activity") : String(localized: "Additional activity"))
                             .font(.system(size: 13, weight: .medium, design: part.type == "tool" ? .monospaced : .default)).lineLimit(2)
                         Spacer(minLength: 4)
+                        if running { StreamingPulse() }
                         Image(systemName: expanded ? "chevron.down" : "chevron.right").font(.system(size: 9, weight: .semibold)).foregroundStyle(.secondary)
                     }.frame(minHeight: 44).contentShape(Rectangle())
                 }.buttonStyle(.plain)
+                if !expanded, part.type == "tool", let preview = (failed ? part.output?.nonEmpty : part.args?.nonEmpty) {
+                    Text(preview).font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(.secondary).lineLimit(1).padding(.bottom, 10)
+                }
                 if expanded {
                     VStack(alignment: .leading, spacing: 12) {
                         detail("Input", value: part.args, code: true)
                         detail("Output", value: part.output, code: true)
                         detail("Reasoning", value: part.text, code: false)
                     }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
+                        .overlay(Rectangle().stroke(Color.primary.opacity(0.12), lineWidth: 1))
                         .background(Color.primary.opacity(0.04)).padding(.bottom, 12)
                 }
             }
@@ -349,5 +363,23 @@ struct SuzentLogoMark: View {
                 context.fill(Path(roundedRect: CGRect(x: rect[0], y: rect[1], width: rect[2], height: rect[3]), cornerRadius: rect[4]), with: .color(index == 0 ? .black : .white))
             }
         }.accessibilityLabel("Suzent")
+    }
+}
+
+
+struct StreamingPulse: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 20, paused: reduceMotion || scenePhase != .active)) { timeline in
+            let phase = timeline.date.timeIntervalSinceReferenceDate * 4
+            HStack(spacing: 3) {
+                ForEach(0..<3) { index in
+                    Rectangle().fill(Color(presentation: PresentationTokens.blue))
+                        .frame(width: 4, height: 4)
+                        .opacity(reduceMotion ? 0.7 : 0.3 + 0.7 * (sin(phase - Double(index) * 0.8) + 1) / 2)
+                }
+            }.frame(width: 18, height: 12)
+        }.accessibilityHidden(true)
     }
 }

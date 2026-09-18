@@ -13,7 +13,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
@@ -170,6 +170,8 @@ private fun SidebarChat(chat: Chat, selected: Boolean, enabled: Boolean, open: (
 
 @Composable
 private fun SettingsView(model: MobileModel) {
+    var repairScanner by remember { mutableStateOf(false) }
+    if (repairScanner) PairingScanner(model) { repairScanner = false }
     var accessExpanded by rememberSaveable { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
         Text(stringResource(R.string.settings), fontSize = PresentationTokens.typeSection.sp, fontWeight = FontWeight.Bold)
@@ -183,6 +185,7 @@ private fun SettingsView(model: MobileModel) {
             Switch(checked = model.nodeEnabled, onCheckedChange = model::toggleNode)
         }
         Text(model.nodeStatus, style = MaterialTheme.typography.bodySmall)
+        SuzentAction(stringResource(R.string.pair_again), { repairScanner = true }, enabled = !model.busy && !model.streaming)
         TextButton(onClick = model::forget, enabled = !model.busy) { Text(stringResource(R.string.forget), color = MaterialTheme.colorScheme.error) }
         Text(stringResource(R.string.revoke_help), style = MaterialTheme.typography.bodySmall)
     }
@@ -195,14 +198,14 @@ private fun ColumnScope.Conversation(model: MobileModel) {
     val expanded = WindowInsets.ime.getBottom(LocalDensity.current) > 0
     val keyboard = LocalSoftwareKeyboardController.current
     val focus = LocalFocusManager.current
-    val scroll = rememberLazyListState()
+    val scroll = remember(chat.id) { androidx.compose.foundation.lazy.LazyListState() }
+    LaunchedEffect(model.openedVersion) { scroll.scrollToItem(0) }
     var modelsExpanded by remember(chat.id) { mutableStateOf(false) }
     LaunchedEffect(chat.id) { model.watchApprovals(chat.id) }
     LaunchedEffect(model.sentVersion) {
         if (model.sentVersion > 0) {
             keyboard?.hide(); focus.clearFocus()
-            val last = scroll.layoutInfo.totalItemsCount - 1
-            if (last >= 0) scroll.animateScrollToItem(last)
+            scroll.animateScrollToItem(0)
         }
     }
     val liveTools = model.liveParts.filter { it.type == "tool" }.map { it.toolCallId }.toSet()
@@ -213,14 +216,19 @@ private fun ColumnScope.Conversation(model: MobileModel) {
     }
     LazyColumn(Modifier.weight(1f).fillMaxWidth().pointerInput(Unit) {
         detectTapGestures(onTap = { keyboard?.hide(); focus.clearFocus() })
-    }, state = scroll, contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(PresentationTokens.spaceLarge.dp)) {
-        if (chat.id.isEmpty()) item { StartPage(model, chat, expanded) }
-        items(messages) { MessageView(it) }
-        if (model.streaming || model.liveParts.isNotEmpty()) item {
-            if (model.liveParts.isEmpty()) Text(stringResource(R.string.working), color = MaterialTheme.colorScheme.onSurfaceVariant)
-            else ActivityContent(model.liveParts, live = model.streaming)
+    }, state = scroll, reverseLayout = chat.id.isNotEmpty(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(PresentationTokens.spaceLarge.dp)) {
+        item(key = "approvals") { ApprovalCards(model) }
+        if (model.streaming || model.liveParts.isNotEmpty()) item(key = "live") {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                SuzentAssistantBadge()
+                if (model.liveParts.isEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { StreamingPulse(); Text(stringResource(R.string.working), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                else ActivityContent(model.liveParts, live = model.streaming)
+            }
         }
-        item { ApprovalCards(model) }
+        itemsIndexed(messages.asReversed(), key = { index, _ -> "message-${messages.lastIndex - index}" }) { index, message ->
+            MessageView(message, isLatest = index == 0 && !model.streaming && model.liveParts.isEmpty())
+        }
+        if (chat.id.isEmpty()) item { StartPage(model, chat, expanded) }
     }
     val composerOutline = MaterialTheme.colorScheme.outline
     Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp).drawBehind {

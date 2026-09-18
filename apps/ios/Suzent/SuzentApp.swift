@@ -20,6 +20,7 @@ struct ContentView: View {
     @Bindable var model: MobileModel
     @State private var showSidebar = false
     @State private var showSettings = false
+    @State private var repairScanner = false
     @State private var search = ""
     @State private var collapsedProjects: Set<String> = []
     @FocusState private var composing: Bool
@@ -71,7 +72,8 @@ struct ContentView: View {
                                 Text("Reconnect to desktop").font(.headline)
                                 if model.busy { ProgressView() }
                                 else { Button("Reconnect to desktop") { Task { await model.connect() } } }
-                                Button("Forget connection", role: .destructive) { model.forget() }.disabled(model.busy)
+                                Button("Pair again") { repairScanner = true }.buttonStyle(SuzentButtonStyle()).disabled(model.busy || model.streaming)
+                Button("Forget connection", role: .destructive) { model.forget() }.disabled(model.busy)
                             }.frame(maxWidth: .infinity, maxHeight: .infinity)
                         }
                         else if !model.connected { PairingView(model: model) }
@@ -193,10 +195,11 @@ struct ContentView: View {
                     Toggle("Enable foreground Node", isOn: Binding(get: { model.nodeEnabled }, set: { model.toggleNode($0) }))
                     Text(model.nodeStatus).font(.footnote).foregroundStyle(.secondary)
                 }
+                Button("Pair again") { repairScanner = true }.buttonStyle(SuzentButtonStyle()).disabled(model.busy || model.streaming)
                 Button("Forget connection", role: .destructive) { model.forget() }.disabled(model.busy)
                 Text("To revoke access, also remove its credentials on the desktop.").font(.footnote).foregroundStyle(.secondary)
             }.padding(20)
-        }
+        }.fullScreenCover(isPresented: $repairScanner) { PairingScanner(model: model) }
     }
 
     private func conversation(_ chat: Chat) -> some View {
@@ -212,10 +215,17 @@ struct ContentView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: PresentationTokens.spaceLarge) {
                         if chat.id.isEmpty { startPage(chat) }
-                        ForEach(Array(presentMessages(chat.messages ?? [], liveToolIds: Set(model.liveParts.filter { $0.type == "tool" }.compactMap(\.toolCallId))).enumerated()), id: \.offset) { _, message in MessageView(message: message) }
-                        if model.streaming || !model.liveParts.isEmpty {
-                            if model.liveParts.isEmpty { Text("Working…").foregroundStyle(.secondary) }
-                            else { ActivityContent(parts: model.liveParts, live: model.streaming) }
+                        let messages = presentMessages(chat.messages ?? [], liveToolIds: Set(model.liveParts.filter { $0.type == "tool" }.compactMap(\.toolCallId)))
+                        let hasLiveMessage = model.streaming || !model.liveParts.isEmpty
+                        ForEach(Array(messages.enumerated()), id: \.offset) { index, message in
+                            MessageView(message: message, isLatest: !hasLiveMessage && index == messages.count - 1)
+                        }
+                        if hasLiveMessage {
+                            VStack(alignment: .leading, spacing: 10) {
+                                SuzentAssistantBadge()
+                                if model.liveParts.isEmpty { HStack(spacing: 8) { StreamingPulse(); Text("Working…").foregroundStyle(.secondary) } }
+                                else { ActivityContent(parts: model.liveParts, live: model.streaming) }
+                            }
                         }
                         ApprovalCards(model: model)
                         Color.clear.frame(height: 1).id("bottom")
@@ -223,8 +233,10 @@ struct ContentView: View {
                 }.contentShape(Rectangle())
                     .simultaneousGesture(TapGesture().onEnded { composing = false })
                     .scrollDismissesKeyboard(.interactively)
+                    .defaultScrollAnchor(chat.id.isEmpty ? .top : .bottom)
+                    .onChange(of: model.openedVersion) { _, _ in reader.scrollTo("bottom", anchor: .bottom) }
                     .onChange(of: model.sentVersion) { _, _ in withAnimation { reader.scrollTo("bottom", anchor: .bottom) } }
-            }
+            }.id(chat.id)
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .center) {
                     TextField("Message", text: $model.draft, axis: .vertical).lineLimit(keyboardVisible ? 1...6 : 1...1).focused($composing)

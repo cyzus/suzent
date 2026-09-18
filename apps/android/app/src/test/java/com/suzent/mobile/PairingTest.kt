@@ -10,6 +10,12 @@ class PairingTest {
         .put("origin", "https://desktop.example").put("pairing_id", "a".repeat(32))
         .put("invitation", "b".repeat(43)).put("expires_at", 2000)
 
+    @Test fun repairProofMatchesSharedVector() {
+        val value = PairingInvitation.parse(invitation().toString(), now = 1000.0)
+        assertEquals("9e02aadf5f8ce4580dbaab7080c9630d4b87e87aee6622f061023b59523b01be", pairingRepairProof("old-token", value, "phone"))
+        assertNotEquals("9e02aadf5f8ce4580dbaab7080c9630d4b87e87aee6622f061023b59523b01be", pairingRepairProof("old-token", value, "desktop"))
+    }
+
     @Test fun validatesOriginProtocolAndExpiryBeforeConnection() {
         assertEquals("https://desktop.example", PairingInvitation.parse(invitation().toString(), now = 1000.0).origin)
         listOf("type" to "other", "pairing_protocol" to 1.5, "pairing_protocol" to "1", "expires_at" to 999,

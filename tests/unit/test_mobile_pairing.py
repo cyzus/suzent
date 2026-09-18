@@ -216,3 +216,145 @@ def test_concurrent_phone_confirmation_issues_only_one_grant(tmp_path):
     with ThreadPoolExecutor(max_workers=8) as pool:
         assert sum(value is not None for value in pool.map(accept, range(16))) == 1
     assert len(store.devices()) == 1
+
+
+def repair(store, token, permissions, rotate=False):
+    import hashlib
+
+    invitation = store.invite(permissions)
+    proof = store.repair_proof(
+        hashlib.sha256(token.encode()).hexdigest(),
+        invitation["pairing_id"],
+        invitation["invitation"],
+        "phone",
+    )
+    claim = store.claim(
+        invitation["pairing_id"],
+        invitation["invitation"],
+        "Phone",
+        "ios",
+        True,
+        proof,
+        rotate,
+    )
+    assert claim.get("server_proof") != proof
+    return store.collect(invitation["pairing_id"], claim["pickup_secret"])
+
+
+def test_repair_reuses_same_permissions_and_device(tmp_path):
+    store = PairingStore(tmp_path / "clients.json")
+    invitation, pickup = claimed(store)
+    permissions = ClientPermissions(send=True)
+    store.decide(invitation["pairing_id"], permissions)
+    first = store.collect(invitation["pairing_id"], pickup["pickup_secret"])
+    second = repair(store, first["token"], permissions)
+    assert second["reused"] is True
+    assert "token" not in second
+    assert second["device"]["device_id"] == first["device"]["device_id"]
+    assert len(store.devices()) == 1
+    assert store.verify(first["token"])
+
+
+def test_rotation_commits_after_save_and_survives_restart(tmp_path):
+    path = tmp_path / "clients.json"
+    store = PairingStore(path)
+    invitation, pickup = claimed(store)
+    store.decide(invitation["pairing_id"], ClientPermissions(send=True))
+    first = store.collect(invitation["pairing_id"], pickup["pickup_secret"])
+    second = repair(store, first["token"], ClientPermissions(send=False))
+    assert first["device"]["device_id"] == second["device"]["device_id"]
+    assert store.verify(first["token"])
+    assert store.verify(second["token"])
+    assert len(store.devices()) == 1
+    restored = PairingStore(path)
+    assert restored.confirm(second["token"])
+    assert restored.confirm(second["token"])
+    assert restored.verify(first["token"]) is None
+    assert not restored.verify(second["token"]).permissions.send
+    assert len(restored.devices()) == 1
+
+
+def test_failed_rotation_leaves_old_token_usable(tmp_path, monkeypatch):
+    import time
+
+    store = PairingStore(tmp_path / "clients.json")
+    invitation, pickup = claimed(store)
+    store.decide(invitation["pairing_id"], ClientPermissions(send=True))
+    first = store.collect(invitation["pairing_id"], pickup["pickup_secret"])
+    second = repair(store, first["token"], ClientPermissions())
+    deadline = time.time() + store.TTL + 1
+    monkeypatch.setattr("suzent.mobile.pairing.time.time", lambda: deadline)
+    assert not store.confirm(second["token"])
+    assert store.verify(second["token"]) is None
+    assert store.verify(first["token"])
+
+
+def test_wrong_proof_cannot_replace_another_device(tmp_path):
+    store = PairingStore(tmp_path / "clients.json")
+    invitation, pickup = claimed(store)
+    store.decide(invitation["pairing_id"], ClientPermissions())
+    first = store.collect(invitation["pairing_id"], pickup["pickup_secret"])
+    second = repair(store, "wrong-token", ClientPermissions())
+    assert second["device"]["device_id"] != first["device"]["device_id"]
+    assert store.confirm(second["token"])
+    assert store.verify(first["token"])
+
+
+def test_revocation_covers_unconfirmed_replacement(tmp_path):
+    store = PairingStore(tmp_path / "clients.json")
+    invitation, pickup = claimed(store)
+    store.decide(invitation["pairing_id"], ClientPermissions())
+    first = store.collect(invitation["pairing_id"], pickup["pickup_secret"])
+    second = repair(store, first["token"], ClientPermissions(send=True))
+    assert store.revoke(first["device"]["device_id"])
+    assert store.verify(first["token"]) is None
+    assert not store.confirm(second["token"])
+
+
+def test_failed_confirmation_write_preserves_previous(tmp_path, monkeypatch):
+    store = PairingStore(tmp_path / "clients.json")
+    invitation, pickup = claimed(store)
+    store.decide(invitation["pairing_id"], ClientPermissions())
+    first = store.collect(invitation["pairing_id"], pickup["pickup_secret"])
+    second = repair(store, first["token"], ClientPermissions(send=True))
+
+    def fail(_):
+        raise OSError("disk unavailable")
+
+    monkeypatch.setattr(store, "_save", fail)
+    with pytest.raises(OSError):
+        store.confirm(second["token"])
+    assert store.verify(first["token"])
+    assert store.verify(second["token"]).provisional_until is not None
+
+
+def test_repair_proof_is_invitation_bound(tmp_path):
+    import hashlib
+
+    store = PairingStore(tmp_path / "clients.json")
+    invitation, pickup = claimed(store)
+    store.decide(invitation["pairing_id"], ClientPermissions())
+    first = store.collect(invitation["pairing_id"], pickup["pickup_secret"])
+    digest = hashlib.sha256(first["token"].encode()).hexdigest()
+    stale = store.repair_proof(
+        digest, invitation["pairing_id"], invitation["invitation"], "phone"
+    )
+    new = store.invite(ClientPermissions())
+    claim = store.claim(
+        new["pairing_id"], new["invitation"], "Phone", "ios", True, stale
+    )
+    assert "server_proof" not in claim
+    second = store.collect(new["pairing_id"], claim["pickup_secret"])
+    assert second["device"]["device_id"] != first["device"]["device_id"]
+
+
+def test_address_change_can_rotate_without_changing_scope(tmp_path):
+    store = PairingStore(tmp_path / "clients.json")
+    invitation, pickup = claimed(store)
+    store.decide(invitation["pairing_id"], ClientPermissions())
+    first = store.collect(invitation["pairing_id"], pickup["pickup_secret"])
+    second = repair(store, first["token"], ClientPermissions(), rotate=True)
+    assert second["token"] != first["token"]
+    assert second["device"]["device_id"] == first["device"]["device_id"]
+    assert store.confirm(second["token"])
+    assert store.verify(first["token"]) is None

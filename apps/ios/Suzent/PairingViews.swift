@@ -65,7 +65,7 @@ struct PairingView: View {
             }.padding(PresentationTokens.spacePage)
         }
         .font(.system(size: bodySize))
-        .sheet(isPresented: $scanner) { PairingScanner(onScan: model.stageInvitation) }
+        .fullScreenCover(isPresented: $scanner) { PairingScanner(model: model) }
     }
 }
 

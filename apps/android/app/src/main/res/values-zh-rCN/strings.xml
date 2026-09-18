@@ -102,4 +102,10 @@
     <string name="activity_input">参数</string>
     <string name="activity_output">结果</string>
     <string name="activity_steps">%1$d 个步骤</string>
+    <string name="scan_heading">连接你的桌面端</string>
+    <string name="scan_hint">将配对二维码放入取景框</string>
+    <string name="scan_again">重新扫描</string>
+    <string name="desktop_recognized">已识别桌面端</string>
+    <string name="flashlight">手电筒</string>
+    <string name="pair_again">重新配对</string>
 </resources>

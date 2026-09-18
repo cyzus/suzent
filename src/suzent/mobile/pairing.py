@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import os
 import secrets
@@ -36,6 +37,7 @@ class ClientGrant(BaseModel):
     platform: Literal["ios", "android"]
     approved_at: float
     permissions: ClientPermissions
+    provisional_until: float | None = None
 
 
 class PairingError(ValueError):
@@ -68,6 +70,11 @@ class PairingStore:
             }
 
     def _save(self, grants: dict[str, ClientGrant]) -> None:
+        grants = {
+            key: grant
+            for key, grant in grants.items()
+            if grant.provisional_until is None or grant.provisional_until > time.time()
+        }
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.path.with_name(f".{self.path.name}.{secrets.token_hex(8)}")
         try:
@@ -143,6 +150,13 @@ class PairingStore:
             self._prune()
             return self._pending.pop(pairing_id, None) is not None
 
+    @staticmethod
+    def repair_proof(digest: str, pairing_id: str, invitation: str, side: str) -> str:
+        message = f"suzent-mobile-repair-v1:{side}:{pairing_id}:{invitation}"
+        return hmac.new(
+            bytes.fromhex(digest), message.encode(), hashlib.sha256
+        ).hexdigest()
+
     def claim(
         self,
         pairing_id: str,
@@ -150,6 +164,8 @@ class PairingStore:
         display_name: str,
         platform: Literal["ios", "android"],
         confirm_permissions: bool = False,
+        repair_proof: str | None = None,
+        rotate: bool = False,
     ) -> dict:
         if not display_name.strip() or len(display_name) > 100:
             raise PairingError("Invalid device name")
@@ -168,6 +184,27 @@ class PairingStore:
                 raise PairingError("Invitation unavailable")
             if pending.get("preauthorized") and not confirm_permissions:
                 raise PairingError("Confirm the desktop permissions on the phone")
+            previous = next(
+                (
+                    digest
+                    for digest, grant in self._grants.items()
+                    if grant.platform == platform
+                    and grant.provisional_until is None
+                    and repair_proof
+                    and secrets.compare_digest(
+                        repair_proof,
+                        self.repair_proof(digest, pairing_id, invitation, "phone"),
+                    )
+                ),
+                None,
+            )
+            server_proof = None
+            if previous:
+                pending["previous"] = previous
+                pending["rotate"] = rotate
+                server_proof = self.repair_proof(
+                    previous, pairing_id, invitation, "desktop"
+                )
             pickup = secrets.token_urlsafe(32)
             pending.update(
                 status="approved" if pending.get("preauthorized") else "pending",
@@ -176,7 +213,11 @@ class PairingStore:
                 pickup_hash=_digest(pickup),
             )
             del pending["invitation_hash"]
-            return {"pickup_secret": pickup, "expires_at": pending["expires_at"]}
+            return {
+                "pickup_secret": pickup,
+                "expires_at": pending["expires_at"],
+                **({"server_proof": server_proof} if server_proof else {}),
+            }
 
     def pending(self) -> list[dict]:
         with self._lock:
@@ -213,9 +254,24 @@ class PairingStore:
                 raise PairingError("Pairing unavailable")
             if pending["status"] != "approved":
                 return {"status": pending["status"]}
+            previous = self._grants.get(pending.get("previous", ""))
+            if pending.get("previous") and previous is None:
+                raise PairingError("Previous authorization was revoked")
+            if (
+                previous
+                and previous.permissions == pending["permissions"]
+                and not pending.get("rotate")
+            ):
+                del self._pending[pairing_id]
+                return {
+                    "status": "approved",
+                    "reused": True,
+                    "device": previous.model_dump(),
+                }
             token = secrets.token_urlsafe(32)
             grant = ClientGrant(
-                device_id=secrets.token_hex(16),
+                device_id=previous.device_id if previous else secrets.token_hex(16),
+                provisional_until=time.time() + self.TTL if previous else None,
                 display_name=pending["display_name"],
                 platform=pending["platform"],
                 approved_at=time.time(),
@@ -228,11 +284,39 @@ class PairingStore:
     def verify(self, token: str) -> ClientGrant | None:
         with self._lock:
             grant = self._grants.get(_digest(token)) if token else None
+            if (
+                grant
+                and grant.provisional_until is not None
+                and grant.provisional_until <= time.time()
+            ):
+                return None
             return grant.model_copy(deep=True) if grant else None
+
+    def confirm(self, token: str) -> bool:
+        """Retire predecessors only after the phone has durably saved its token."""
+        with self._lock:
+            grant = self.verify(token)
+            if grant is None:
+                return False
+            if grant.provisional_until is None:
+                return True
+            digest = _digest(token)
+            grants = {
+                key: value
+                for key, value in self._grants.items()
+                if value.device_id != grant.device_id or key == digest
+            }
+            grants[digest] = grant.model_copy(update={"provisional_until": None})
+            self._save(grants)
+            return True
 
     def devices(self) -> list[dict]:
         with self._lock:
-            return [grant.model_dump() for grant in self._grants.values()]
+            devices = {}
+            for grant in self._grants.values():
+                if grant.provisional_until is None:
+                    devices[grant.device_id] = grant.model_dump()
+            return list(devices.values())
 
     def add_chat(self, device_id: str, chat_id: str) -> bool:
         with self._lock:

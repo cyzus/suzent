@@ -90,3 +90,12 @@ data class PairingPreview(val desktopName: String, val permissions: ClientPermis
         }
     }
 }
+
+
+fun pairingRepairProof(token: String, invitation: PairingInvitation, side: String): String {
+    val key = java.security.MessageDigest.getInstance("SHA-256").digest(token.toByteArray(Charsets.UTF_8))
+    val mac = javax.crypto.Mac.getInstance("HmacSHA256")
+    mac.init(javax.crypto.spec.SecretKeySpec(key, "HmacSHA256"))
+    return mac.doFinal("suzent-mobile-repair-v1:$side:${invitation.id}:${invitation.secret}".toByteArray(Charsets.UTF_8))
+        .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+}

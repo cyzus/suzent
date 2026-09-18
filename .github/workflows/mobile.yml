@@ -9,6 +9,7 @@ on:
       - 'packages/presentation/**'
       - 'scripts/generate_presentation.py'
       - 'scripts/mobile_logo.py'
+      - 'scripts/generate_app_icons.py'
       - 'frontend/public/favicon.svg'
       - 'frontend/src/presentation.css'
       - 'src/suzent/nodes/**'

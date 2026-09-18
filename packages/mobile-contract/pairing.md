@@ -86,3 +86,30 @@ Durable tokens are high-entropy random values. Only SHA-256 hashes are stored in
 an atomically replaced, owner-readable/writable file. A failed disk write does
 not issue an in-memory grant. Pending bootstrap secrets are memory-only and
 pending/list responses never expose them.
+
+## Re-pairing an existing phone
+
+Backends advertise `pairing_repair: 1`. Claim optionally accepts `repair_proof`
+and `rotate`. The proof is HMAC-SHA256 keyed by the SHA-256 bytes of the saved
+mobile token over `suzent-mobile-repair-v1:phone:<pairing_id>:<invitation>`.
+The backend matches an active, finalized grant of the same platform and returns
+`server_proof` using the `desktop` domain instead of `phone`. Clients verify this
+before accepting `reused: true`; neither the token nor its stored hash is sent
+in the unauthenticated claim. Unknown proofs receive an ordinary new grant.
+
+An unchanged scope can reuse the existing token: collect returns `reused: true`
+and its device, without a token. Changed scope, or `rotate: true`, returns a new
+token with the same device ID. Clients force rotation when the selected origin
+changes (for example LAN to Tailscale), never reusing the old bearer at a new
+address. The replacement is provisional for five minutes. After securely saving
+it alongside the previous token and origin for recovery, the phone posts to
+`/mobile/client/pairing/confirm` authenticated with the new token. This atomically
+retires all predecessors and finalizes the replacement. Confirmation is
+idempotent. On an expired replacement, the client restores its previous saved
+origin/token. A dropped confirmation response can be retried after restarting.
+Device revocation removes both finalized and provisional tokens.
+
+Use Settings → Pair again to retain the ownership proof. Forgetting the
+connection, clearing app storage, or losing credentials prevents proof of the
+old installation; it is treated as a new device. Existing duplicate grants are
+not automatically removed by matching names or IP addresses.

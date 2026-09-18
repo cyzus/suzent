@@ -15,6 +15,8 @@ import SuzentCore
     var projects: [Project] = []
     var selectedModel: String?
     var sentVersion = 0
+    var openedVersion = 0
+    var pairingVersion = 0
     @ObservationIgnored private var drafts: [String: String] = [:]
     var selected: Chat?
     var draft = ""
@@ -104,10 +106,15 @@ import SuzentCore
                 let backend = try Backend(invitation.origin, allowHTTP: allowsHTTP)
                 let bootstrap = SuzentClient(backend: backend, token: "")
                 defer { bootstrap.close() }
-                _ = try await bootstrap.capabilities()
+                let capabilities = try await bootstrap.capabilities()
+                let previous = capabilities.pairingRepair == 1 ? connection?.hostToken : nil
                 try Task.checkCancellation()
                 let claim = try await bootstrap.claim(invitation, name: UIDevice.current.name,
-                                                      confirmPermissions: invitation.phoneConfirmation && pairingPreview != nil)
+                                                      confirmPermissions: invitation.phoneConfirmation && pairingPreview != nil,
+                                                      repairProof: previous.map { pairingRepairProof(token: $0, invitation: invitation, side: "phone") },
+                                                      rotate: connection?.origin != backend.url.absoluteString)
+                let recognized = previous.map { claim.serverProof == pairingRepairProof(token: $0, invitation: invitation, side: "desktop") } ?? false
+                if claim.serverProof != nil && !recognized { throw ClientError.invalidResponse }
                 guard generation == current else { return }
                 if !invitation.phoneConfirmation { pairingCode = String(invitation.pairingId.prefix(6)) }
                 while Date().timeIntervalSince1970 < claim.expiresAt {
@@ -116,15 +123,19 @@ import SuzentCore
                     guard generation == current else { return }
                     if result.status == "denied" { throw PairingError.denied }
                     if result.status == "approved" {
-                        guard let token = result.token, !token.isEmpty, result.device != nil else {
+                        if result.reused == true && (!recognized || connection?.origin != backend.url.absoluteString) { throw ClientError.invalidResponse }
+                        guard let token = result.reused == true ? previous : result.token, !token.isEmpty, result.device != nil else {
                             throw ClientError.invalidResponse
                         }
-                        let saved = Connection(origin: backend.url.absoluteString, hostToken: token, clientProtocol: 1)
+                        let saved = Connection(origin: backend.url.absoluteString, hostToken: token, nodeToken: recognized ? connection?.nodeToken ?? "" : "", clientProtocol: 1,
+                                               previousToken: recognized && result.reused != true ? previous : nil,
+                                               previousOrigin: recognized && result.reused != true ? connection?.origin : nil)
                         try CredentialStore.save(saved)
                         connection = saved
                         origin = saved.origin
                         canReconnect = true
                         try await activate(saved)
+                        pairingVersion += 1
                         pairingInvitation = nil
                         return
                     }
@@ -146,6 +157,18 @@ import SuzentCore
         let backend = try Backend(saved.origin, allowHTTP: allowsHTTP)
         let candidate = SuzentClient(backend: backend, token: saved.hostToken)
         do {
+            if let previous = saved.previousToken {
+                var restored = saved
+                do { try await candidate.confirmPairing() }
+                catch ClientError.http(401) {
+                    restored = Connection(origin: saved.previousOrigin ?? saved.origin, hostToken: previous, nodeToken: saved.nodeToken, clientProtocol: 1)
+                    try CredentialStore.save(restored); connection = restored; origin = restored.origin
+                    candidate.close(); try await activate(restored); return
+                }
+                restored.previousToken = nil
+                restored.previousOrigin = nil
+                try CredentialStore.save(restored); connection = restored
+            }
             _ = try await candidate.capabilities()
             let session = try await candidate.clientSession()
             let listing = try await candidate.chats()
@@ -222,6 +245,7 @@ import SuzentCore
             let saved = try await client.chat(chat.id)
             guard current == generation, selected?.id == chat.id else { return }
             selected = saved
+            openedVersion += 1
             syncRunning(saved)
             if saved.isRunning == true { observe(chat.id, client: client) }
         } catch { if current == generation { handle(error) } }
