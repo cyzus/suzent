@@ -337,6 +337,18 @@ def _append_user_row(
     )
 
 
+def _stopped_frames(message_id: str, reason: str) -> list[str]:
+    """Close the open assistant message and report the stop the way a stop is.
+
+    Tagged, so the client keeps listening for the STREAM_END that confirms the
+    turn instead of tearing the connection down on an error notice.
+    """
+    return [
+        _sse({"type": "TEXT_MESSAGE_END", "messageId": message_id}),
+        _sse({"type": "RUN_ERROR", "message": reason, "code": "stream_stopped"}),
+    ]
+
+
 def _claim_pending_stop(replay: Any | None) -> str | None:
     """Take the stop that was left for this run before it could take one.
 
@@ -518,15 +530,13 @@ async def _run_acp_turn(
         # so no stop can fall through the gap.
         pending_stop = _claim_pending_stop(replay)
         if pending_stop:
-            yield _sse({"type": "TEXT_MESSAGE_END", "messageId": message_id})
             message_open = False
             # The agent was never prompted, so nothing it produced is missing --
             # only the user's row has to be there, and the turn says so only if
             # it really is.
             _resolve_persistence(persistence, stored_prompt)
-            yield _sse(
-                {"type": "RUN_ERROR", "message": pending_stop, "code": "stream_stopped"}
-            )
+            for frame in _stopped_frames(message_id, pending_stop):
+                yield frame
             return
         if replay is not None:
             replay.producer_started = True
@@ -543,6 +553,13 @@ async def _run_acp_turn(
             and not "".join(state["parts"]).strip()
             and state["stop_reason"] == "error"
         ):
+            # The session that was running this turn's prompt is gone, and
+            # building a fresh one takes as long as the first connect did. The
+            # run is not live for that window: a stop landing in it has nothing
+            # to cancel, so it belongs back on the replay rather than being
+            # reported against a session that cannot carry it out.
+            if replay is not None:
+                replay.producer_started = False
             managed = await get_acp_manager().create(
                 chat_id,
                 managed.agent_id,
@@ -563,6 +580,19 @@ async def _run_acp_turn(
                 }
             )
             state = {"parts": [], "stop_reason": "", "error": ""}
+            # Same rule as the first prompt: take any stop from the reconnect
+            # window here, and only then say the new session is running this
+            # run's prompt.
+            pending_stop = _claim_pending_stop(replay)
+            if pending_stop:
+                message_open = False
+                _resolve_persistence(persistence, stored_prompt)
+                for frame in _stopped_frames(message_id, pending_stop):
+                    yield frame
+                return
+            if replay is not None:
+                replay.producer_started = True
+
             # _prompt, not message: the retry is the same request, so it needs
             # the same preamble. Passing `message` here dropped the precedence
             # rules for exactly the sub-agents that recovered from a stale

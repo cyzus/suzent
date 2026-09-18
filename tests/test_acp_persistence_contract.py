@@ -46,16 +46,20 @@ async def _run_turn(
     replay=None,
     steer=False,
     on_ensure=None,
+    on_create=None,
     prompted=None,
+    restored=False,
 ):
     managed = _managed()
+    managed.restored = restored
+    results = list(result) if isinstance(result, list) else None
 
     async def prompt(session_id, message):
         if prompted is not None:
             prompted.append(message)
         for item in updates:
             managed.updates.put_nowait(item)
-        return result
+        return results.pop(0) if results else result
 
     managed.client.prompt = prompt
 
@@ -83,6 +87,15 @@ async def _run_turn(
             return managed
 
         manager.ensure.side_effect = ensure
+
+        async def create(*args, **kwargs):
+            # The rebuilt session is not a restored one, so one retry only.
+            managed.restored = False
+            if on_create is not None:
+                on_create()
+            return managed
+
+        manager.create.side_effect = create
         get_manager.return_value = manager
 
         turn = (
@@ -378,3 +391,37 @@ async def test_a_stop_whose_prompt_was_refused_mid_turn_is_not_persisted(queue):
     event = json.loads(chunks[-1][6:])
     assert event["code"] == "stream_stopped"
     assert q.replay.persistence.result() is False
+
+
+@pytest.mark.asyncio
+async def test_a_stop_while_a_stale_session_is_rebuilt_is_taken_at_the_retry(queue):
+    """Rebuilding the session is a second connect, and a stop can land in it.
+
+    The prompt that was live died with the session it ran on, so for that window
+    the run is not live either: a stop there is left on the replay, and the retry
+    has to take it rather than prompt the agent for a turn the user stopped.
+    """
+    chat_id, q = queue
+    prompted: list[str] = []
+
+    def on_create():
+        assert q.replay.producer_started is False
+        q.replay.stop_requested = "Stream stopped by user"
+
+    chunks, db = await _run_turn(
+        chat_id,
+        [],
+        [{"stopReason": "error"}, {"stopReason": "end_turn"}],
+        replay=q.replay,
+        restored=True,
+        on_create=on_create,
+        prompted=prompted,
+    )
+
+    # The first prompt ran; the retry never did.
+    assert len(prompted) == 1
+    event = json.loads(chunks[-1][6:])
+    assert event["type"] == "RUN_ERROR"
+    assert event["code"] == "stream_stopped"
+    assert q.replay.stop_requested is None
+    assert q.replay.persistence.result() is True

@@ -2658,12 +2658,24 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     // A turn this client asked for is named already; one it re-attached to is
     // named by its first frame, so wait briefly rather than stop blind. The
     // fallback timer above is already armed over this wait.
-    const runId = getStreamingRunId() ?? (await waitForRunId());
+    // Wait out the fallback window rather than a couple of seconds: an unnamed
+    // stop is applied to whatever run is current when it lands, so a slow first
+    // snapshot plus a redirect is enough to cancel the turn the user just
+    // asked for. The timer armed above is watching this wait too.
+    const runId = getStreamingRunId() ?? (await waitForRunId(STOP_STREAM_END_TIMEOUT_MS));
     // That wait reads whatever run is current when it resolves, and this attempt
     // may not have survived it: if the stream ended and the user started another
     // turn, the name that came back is the new turn's. Check before sending, not
     // only after -- afterwards the request has already cancelled it.
     if (stopAttemptRef.current !== attempt) return;
+    if (!runId) {
+      // Nothing ever named this stream, so there is no run this client can ask
+      // to stop without risking a different one. Give the composer back the way
+      // the fallback would; the reload it schedules shows whatever the turn
+      // really did.
+      abandonStream(targetChatId);
+      return;
+    }
     const result = await requestStopTurn(
       getApiBase(),
       targetChatId,
