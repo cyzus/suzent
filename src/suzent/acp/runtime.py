@@ -175,16 +175,22 @@ async def stream_acp_steer(
     chat_id: str,
     message: str,
     config_override: dict[str, Any] | None = None,
+    *,
+    replay: Any | None = None,
 ) -> AsyncGenerator[str, None]:
     """Cancel the running ACP prompt, then send a new turn.
 
-    ACP has no dedicated steer RPC — a steer is cancel + re-prompt.
+    ACP has no dedicated steer RPC — a steer is cancel + re-prompt. The new
+    turn owns the replay the steer route registered for it, so it carries the
+    persistence contract like any other turn.
     """
     try:
         await get_acp_manager().cancel(chat_id)
     except Exception:
         pass  # Nothing running is fine; we'll still send the new turn.
-    async for event in stream_acp_turn(chat_id, message, config_override):
+    async for event in stream_acp_turn(
+        chat_id, message, config_override, replay=replay
+    ):
         yield event
 
 

@@ -556,7 +556,10 @@ async def steer_chat_send(request: Request) -> JSONResponse:
                 from suzent.acp.runtime import stream_acp_steer
 
                 generator = stream_acp_steer(
-                    chat_id, message, {**config, **config_override}
+                    chat_id,
+                    message,
+                    {**config, **config_override},
+                    replay=stream_queue.replay,
                 )
             else:
                 generator = processor.process_steer(

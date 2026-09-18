@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from suzent.acp.runtime import stream_acp_turn
+from suzent.acp.runtime import stream_acp_steer, stream_acp_turn
 from suzent.core.stream_registry import background_queues, register_background_stream
 
 
@@ -37,7 +37,9 @@ def _text_chunk(text):
     }
 
 
-async def _run_turn(chat_id, updates, result, *, append_result=True, replay=None):
+async def _run_turn(
+    chat_id, updates, result, *, append_result=True, replay=None, steer=False
+):
     managed = _managed()
 
     async def prompt(session_id, message):
@@ -67,7 +69,12 @@ async def _run_turn(chat_id, updates, result, *, append_result=True, replay=None
         manager.ensure.return_value = managed
         get_manager.return_value = manager
 
-        chunks = [c async for c in stream_acp_turn(chat_id, "hi", replay=replay)]
+        turn = (
+            stream_acp_steer(chat_id, "hi", replay=replay)
+            if steer
+            else stream_acp_turn(chat_id, "hi", replay=replay)
+        )
+        chunks = [c async for c in turn]
         return chunks, db
 
 
@@ -173,3 +180,22 @@ async def test_a_turn_with_no_replay_leaves_the_registry_alone(queue):
 
     assert q.replay.persistence is settled
     assert q.replay.persistence.result() is True
+
+
+@pytest.mark.asyncio
+async def test_a_steered_turn_claims_the_contract_too(queue):
+    """A steer is cancel + re-prompt, and the re-prompt is a turn like any other.
+
+    /chat/steer-send registers a replay for it, so a steer that dies before
+    writing its assistant row must report `persisted: false` rather than
+    letting the client accept a snapshot without that turn in it.
+    """
+    chat_id, q = queue
+    with patch("suzent.acp.runtime.get_acp_manager") as get_manager:
+        get_manager.return_value = AsyncMock()
+        await _run_turn(
+            chat_id, [], {"stopReason": "end_turn"}, replay=q.replay, steer=True
+        )
+
+    assert q.replay.persistence is not None
+    assert q.replay.persistence.result() is False
