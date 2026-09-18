@@ -49,6 +49,8 @@ async def _run_turn(
     on_create=None,
     prompted=None,
     restored=False,
+    message="hi",
+    files=None,
 ):
     managed = _managed()
     managed.restored = restored
@@ -99,9 +101,9 @@ async def _run_turn(
         get_manager.return_value = manager
 
         turn = (
-            stream_acp_steer(chat_id, "hi", replay=replay)
+            stream_acp_steer(chat_id, message, replay=replay)
             if steer
-            else stream_acp_turn(chat_id, "hi", replay=replay)
+            else stream_acp_turn(chat_id, message, replay=replay, files=files)
         )
         chunks = [c async for c in turn]
         return chunks, db
@@ -425,3 +427,74 @@ async def test_a_stop_while_a_stale_session_is_rebuilt_is_taken_at_the_retry(que
     assert event["code"] == "stream_stopped"
     assert q.replay.stop_requested is None
     assert q.replay.persistence.result() is True
+
+
+@pytest.mark.asyncio
+async def test_a_stop_before_the_prompt_stores_the_attachments_too(queue):
+    """The row a stop promises is the message the user sent, files included.
+
+    A message can be nothing but attachments. Storing only its text leaves the
+    transcript with no row at all, while `persisted: true` sends the client to
+    a reload that trusts it -- and the uploaded files disappear from the chat.
+    """
+    chat_id, q = queue
+    q.replay.stop_requested = "Stream stopped by user"
+
+    chunks, db = await _run_turn(
+        chat_id,
+        [],
+        {"stopReason": "end_turn"},
+        replay=q.replay,
+        message="",
+        files=[{"name": "report.pdf", "path": "/tmp/report.pdf"}],
+    )
+
+    (entry,) = [c.args[1] for c in db.append_chat_message.call_args_list]
+    assert entry["role"] == "user"
+    assert entry["files"] == [{"name": "report.pdf", "path": "/tmp/report.pdf"}]
+    event = json.loads(chunks[-1][6:])
+    assert event["code"] == "stream_stopped"
+    assert q.replay.persistence.result() is True
+
+
+@pytest.mark.asyncio
+async def test_a_file_only_stop_that_could_not_be_stored_is_not_persisted(queue):
+    """Nothing to write used to read as nothing owed, and promised the reload."""
+    chat_id, q = queue
+    q.replay.stop_requested = "Stream stopped by user"
+
+    chunks, db = await _run_turn(
+        chat_id,
+        [],
+        {"stopReason": "end_turn"},
+        append_result=False,
+        replay=q.replay,
+        message="",
+        files=[{"name": "report.pdf"}],
+    )
+
+    assert db.append_chat_message.called
+    assert q.replay.persistence.result() is False
+
+
+@pytest.mark.asyncio
+async def test_a_turn_that_runs_stores_its_attachments_with_the_prompt(queue):
+    """The direct /chat stream has no route that pre-wrote the row."""
+    chat_id, q = queue
+
+    chunks, db = await _run_turn(
+        chat_id,
+        [_text_chunk("hello")],
+        {"stopReason": "end_turn"},
+        replay=q.replay,
+        files=[{"name": "report.pdf"}],
+    )
+
+    user_rows = [
+        c.args[1]
+        for c in db.append_chat_message.call_args_list
+        if c.args[1]["role"] == "user"
+    ]
+    assert user_rows == [
+        {"role": "user", "content": "hi", "files": [{"name": "report.pdf"}]}
+    ]

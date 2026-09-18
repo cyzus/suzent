@@ -232,7 +232,7 @@ async def stream_acp_turn(
         # /chat stream has no route that pre-wrote that row, so store it here
         # or the reload the client trusts after a stop comes back without the
         # prompt in it.
-        stored = _persist_stopped_prompt(chat_id, message, runtime_authored)
+        stored = _persist_stopped_prompt(chat_id, message, runtime_authored, files)
         _resolve_persistence(persistence, stored)
         yield _sse(
             {"type": "RUN_ERROR", "message": pending_stop, "code": "stream_stopped"}
@@ -314,8 +314,22 @@ def _derive_user_row(message: str, runtime_authored: bool) -> tuple[str, str, st
     return message, persisted_role, persisted_content
 
 
+def _display_files(files: list[Any] | None) -> list[dict]:
+    """The attachment metadata the transcript row carries, JSON-safe.
+
+    Same shape /chat/send pre-writes, so a row stored here and a row stored
+    there render as the same message.
+    """
+    return [file for file in files or [] if isinstance(file, dict)]
+
+
 def _append_user_row(
-    db: Any, chat_id: str, existing: list[Any], role: str, content: str
+    db: Any,
+    chat_id: str,
+    existing: list[Any],
+    role: str,
+    content: str,
+    files: list[Any] | None = None,
 ) -> bool:
     """Store the user's row unless the route already pre-wrote it.
 
@@ -323,18 +337,24 @@ def _append_user_row(
     token arrives; the direct /chat stream does not. Returns whether the row is
     in the transcript afterwards, which is what a caller resolving the
     persistence contract has to promise.
+
+    Attachments are part of that row: a message can be nothing but files, and a
+    row stored without them is not the message the user sent.
     """
-    if not content.strip():
+    attachments = _display_files(files)
+    if not content.strip() and not attachments:
         return True
     if (
         existing
         and existing[-1].get("role") == role
         and str(existing[-1].get("content") or "").strip() == content.strip()
+        and bool(existing[-1].get("files")) == bool(attachments)
     ):
         return True
-    return bool(
-        db.append_chat_message(chat_id, {"role": role, "content": content.strip()})
-    )
+    entry: dict[str, Any] = {"role": role, "content": content.strip()}
+    if attachments:
+        entry["files"] = attachments
+    return bool(db.append_chat_message(chat_id, entry))
 
 
 def _stopped_frames(message_id: str, reason: str) -> list[str]:
@@ -362,7 +382,12 @@ def _claim_pending_stop(replay: Any | None) -> str | None:
     return pending
 
 
-def _persist_stopped_prompt(chat_id: str, message: str, runtime_authored: bool) -> bool:
+def _persist_stopped_prompt(
+    chat_id: str,
+    message: str,
+    runtime_authored: bool,
+    files: list[Any] | None = None,
+) -> bool:
     """Store the prompt of a turn stopped before it ever ran.
 
     The turn produced nothing, but the user did send something, and the client
@@ -377,7 +402,9 @@ def _persist_stopped_prompt(chat_id: str, message: str, runtime_authored: bool) 
         if chat is None:
             return False
         _, role, content = _derive_user_row(message, runtime_authored)
-        return _append_user_row(db, chat_id, list(chat.messages or []), role, content)
+        return _append_user_row(
+            db, chat_id, list(chat.messages or []), role, content, files
+        )
     except Exception as exc:  # pragma: no cover - a stop must not fail on this
         logger.debug(f"Could not store the prompt of a stopped ACP turn: {exc}")
         return False
@@ -494,7 +521,7 @@ async def _run_acp_turn(
             return
 
         stored_prompt = _append_user_row(
-            db, chat_id, existing, persisted_role, persisted_content
+            db, chat_id, existing, persisted_role, persisted_content, files
         )
 
         # Auto-titling lives in suzent.streaming, which an ACP turn never goes
