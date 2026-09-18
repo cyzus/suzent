@@ -127,3 +127,34 @@ def test_a_producer_that_declared_no_run_leaves_the_control_unnamed():
     assert control.run_id is None
     assert stop_stream("chat", "bye", expect_run=queue.replay.run_id) is False
     assert stop_stream("chat", "bye") is True
+
+
+@pytest.mark.asyncio
+async def test_a_background_turn_declares_the_run_it_produces():
+    """Heartbeat, cron and sub-agent turns are watchable, so they are stoppable.
+
+    Their queue is a real, observable one: the frontend attaches to it and
+    stops it by the run id the replay hands out. A producer that never says
+    which run it is producing leaves its control unnamed, and the stop is
+    refused and then deferred onto a run that is already past taking it.
+    """
+    from unittest.mock import AsyncMock, patch
+
+    from suzent.core.chat_processor import ChatProcessor
+    from suzent.core.stream_registry import current_run_replay
+
+    seen: list[object] = []
+
+    async def _turn(*args, **kwargs):
+        seen.append(current_run_replay.get())
+        return "done"
+
+    with patch.object(ChatProcessor, "process_turn_text", AsyncMock(side_effect=_turn)):
+        await ChatProcessor().process_background_turn(
+            chat_id="chat", user_id="u", message_content="hi"
+        )
+
+    queue = stream_registry.background_queues["chat"]
+    assert seen == [queue.replay]
+    # And the declaration does not outlive the turn.
+    assert current_run_replay.get() is None

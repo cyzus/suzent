@@ -8,10 +8,13 @@ import uuid
 from typing import Any, AsyncGenerator
 
 from suzent.core.auto_title import generate_auto_title, should_generate_auto_title
+from suzent.logger import get_logger
 from suzent.database import get_database
 
 from .manager import get_acp_manager
 from .permissions import PERMISSION_QUEUE_KEY
+
+logger = get_logger(__name__)
 
 
 def _sse(event: dict[str, Any]) -> str:
@@ -226,6 +229,11 @@ async def stream_acp_turn(
     pending_stop = getattr(replay, "stop_requested", None) if replay else None
     if pending_stop:
         replay.stop_requested = None
+        # The turn ran nothing, but the user did send something. The direct
+        # /chat stream has no route that pre-wrote that row, so store it here
+        # or the reload the client trusts after a stop comes back without the
+        # prompt in it.
+        _persist_stopped_prompt(chat_id, message, runtime_authored)
         _resolve_persistence(persistence, True)
         yield _sse(
             {"type": "RUN_ERROR", "message": pending_stop, "code": "stream_stopped"}
@@ -256,32 +264,13 @@ async def stream_acp_turn(
         _resolve_persistence(persistence, False)
 
 
-async def _run_acp_turn(
-    chat_id: str,
-    message: str,
-    config_override: dict[str, Any] | None = None,
-    *,
-    persistence: asyncio.Future[bool] | None,
-    files: list[Any] | None = None,
-    file_mentions: list[Any] | None = None,
-    runtime_authored: bool = False,
-    system_preamble: str | None = None,
-) -> AsyncGenerator[str, None]:
-    db = get_database()
-    chat = db.get_chat(chat_id)
-    if chat is None:
-        yield _sse({"type": "RUN_ERROR", "message": "Chat not found"})
-        return
-    config = {**dict(chat.config or {}), **dict(config_override or {})}
-    config["runtime"] = "acp"
-    run_id = str(uuid.uuid4())
-    message_id = str(uuid.uuid4())
-    message_open = False
-    # Annotate the prompt with user-referenced file paths so the ACP agent
-    # can act on them — it runs locally and has filesystem access.
-    # Only the agent sees that annotation; the transcript keeps what the user
-    # typed. Comparing the annotated text against the stored row defeated the
-    # duplicate check below and persisted the message twice.
+def _derive_user_row(message: str, runtime_authored: bool) -> tuple[str, str, str]:
+    """Sanitize a prompt and derive the transcript row it should leave.
+
+    Returns the text to send the agent, the role to store it under, and the
+    content to store. Shared with the stopped-before-it-started path, which
+    stores the row without running anything.
+    """
     from suzent.core.system_reminder import (
         extract_system_reminder_display_trigger,
         sanitize_incoming_prompt,
@@ -328,8 +317,82 @@ async def _run_acp_turn(
         if persisted_role == "system_triggered"
         else visible_user_message
     )
+    return message, persisted_role, persisted_content
+
+
+def _append_user_row(
+    db: Any, chat_id: str, existing: list[Any], role: str, content: str
+) -> None:
+    """Store the user's row unless the route already pre-wrote it.
+
+    /chat/send pre-writes it so the UI has something to show before the first
+    token arrives; the direct /chat stream does not.
+    """
+    if not content.strip():
+        return
+    if (
+        existing
+        and existing[-1].get("role") == role
+        and str(existing[-1].get("content") or "").strip() == content.strip()
+    ):
+        return
+    db.append_chat_message(chat_id, {"role": role, "content": content.strip()})
+
+
+def _persist_stopped_prompt(chat_id: str, message: str, runtime_authored: bool) -> None:
+    """Store the prompt of a turn stopped before it ever ran.
+
+    The turn produced nothing, but the user did send something, and the client
+    trusts the reload that follows a stop: without the row, that reload shows a
+    history with the prompt missing.
+    """
+    try:
+        db = get_database()
+        chat = db.get_chat(chat_id)
+        if chat is None:
+            return
+        _, role, content = _derive_user_row(message, runtime_authored)
+        _append_user_row(db, chat_id, list(chat.messages or []), role, content)
+    except Exception as exc:  # pragma: no cover - a stop must not fail on this
+        logger.debug(f"Could not store the prompt of a stopped ACP turn: {exc}")
+
+
+async def _run_acp_turn(
+    chat_id: str,
+    message: str,
+    config_override: dict[str, Any] | None = None,
+    *,
+    persistence: asyncio.Future[bool] | None,
+    files: list[Any] | None = None,
+    file_mentions: list[Any] | None = None,
+    runtime_authored: bool = False,
+    system_preamble: str | None = None,
+) -> AsyncGenerator[str, None]:
+    db = get_database()
+    chat = db.get_chat(chat_id)
+    if chat is None:
+        yield _sse({"type": "RUN_ERROR", "message": "Chat not found"})
+        return
+    config = {**dict(chat.config or {}), **dict(config_override or {})}
+    config["runtime"] = "acp"
+    run_id = str(uuid.uuid4())
+    message_id = str(uuid.uuid4())
+    message_open = False
+    # Annotate the prompt with user-referenced file paths so the ACP agent
+    # can act on them — it runs locally and has filesystem access.
+    # Only the agent sees that annotation; the transcript keeps what the user
+    # typed. Comparing the annotated text against the stored row defeated the
+    # duplicate check below and persisted the message twice.
+    message, persisted_role, persisted_content = _derive_user_row(
+        message, runtime_authored
+    )
     file_context = _build_acp_file_context(file_mentions, files)
     if file_context:
+        from suzent.core.system_reminder import (
+            sanitize_incoming_prompt,
+            sanitize_untrusted_text,
+        )
+
         message = f"{file_context}\n\n{message}" if message else file_context
         # File annotations interpolate caller-supplied paths, so the assembled
         # prompt is untrusted again even though `message` was already clean.
@@ -403,17 +466,7 @@ async def _run_acp_turn(
             )
             return
 
-        # /chat/send pre-writes the user's row so the UI has something to show
-        # before the first token arrives; only append when that didn't happen.
-        if persisted_content.strip() and not (
-            existing
-            and existing[-1].get("role") == persisted_role
-            and str(existing[-1].get("content") or "").strip()
-            == persisted_content.strip()
-        ):
-            db.append_chat_message(
-                chat_id, {"role": persisted_role, "content": persisted_content.strip()}
-            )
+        _append_user_row(db, chat_id, existing, persisted_role, persisted_content)
 
         # Auto-titling lives in suzent.streaming, which an ACP turn never goes
         # through -- so every ACP chat stayed named "New Chat". The title comes

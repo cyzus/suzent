@@ -19,6 +19,7 @@ Bus event shapes:
 """
 
 import asyncio
+import contextlib
 import contextvars
 import time
 from typing import Any, Dict, Optional, Set
@@ -226,6 +227,21 @@ def bind_producer_replay(replay: Optional[StreamReplay]) -> None:
     this is scoped to that run and everything it awaits.
     """
     current_run_replay.set(replay)
+
+
+@contextlib.contextmanager
+def producing_run(replay: Optional[StreamReplay]):
+    """Declare the run for a turn run inside a task that outlives it.
+
+    `bind_producer_replay` is enough for a task that exists only for one run;
+    a scheduler, social or sub-agent worker runs turn after turn in the same
+    task, and each must leave the next one unbound rather than inherited.
+    """
+    token = current_run_replay.set(replay)
+    try:
+        yield
+    finally:
+        current_run_replay.reset(token)
 
 
 def claim_stream_control(chat_id: str, control: StreamControl) -> None:

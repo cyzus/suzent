@@ -52,6 +52,7 @@ from suzent.core.stream_parser import StreamParser, TextChunk, ErrorEvent
 from suzent.core.stream_registry import (
     get_background_queue,
     pop_pending_auto_approvals,
+    producing_run,
     register_background_stream,
 )
 
@@ -1834,17 +1835,21 @@ class ChatProcessor:
         # frontend connections (e.g. after a fast wakeup turn) still find the queue.
         # If no subscriber ever connects, the next register_background_stream call
         # for the same chat_id replaces the stale queue.
-        return await self.process_turn_text(
-            chat_id=chat_id,
-            user_id=user_id,
-            message_content=message_content,
-            config_override=config_override,
-            is_heartbeat=is_heartbeat,
-            _stream_queue=stream_queue,
-            system_reminders=system_reminders,
-            incoming_citation_sources=incoming_citation_sources,
-            counts_toward_goal=counts_toward_goal,
-        )
+        # Say which run this turn is producing: the frontend can attach to this
+        # queue and stop it by name, and a control that never learned its run
+        # refuses every stop that names one.
+        with producing_run(stream_queue.replay):
+            return await self.process_turn_text(
+                chat_id=chat_id,
+                user_id=user_id,
+                message_content=message_content,
+                config_override=config_override,
+                is_heartbeat=is_heartbeat,
+                _stream_queue=stream_queue,
+                system_reminders=system_reminders,
+                incoming_citation_sources=incoming_citation_sources,
+                counts_toward_goal=counts_toward_goal,
+            )
 
     async def _process_upload_file(
         self, file_obj, host_path: Path, agent_path_prefix: str

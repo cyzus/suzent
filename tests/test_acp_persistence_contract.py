@@ -241,7 +241,11 @@ async def test_a_turn_handed_a_stop_before_it_started_ends_stopped(queue):
         chat_id, [_text_chunk("hello")], {"stopReason": "end_turn"}, replay=q.replay
     )
 
-    assert db.append_chat_message.call_count == 0
+    # The turn ran nothing -- but the prompt the user sent is still stored, or
+    # the reload a stop is followed by would come back without it. Nothing from
+    # the agent is written, because the agent was never prompted.
+    roles = [c.args[1]["role"] for c in db.append_chat_message.call_args_list]
+    assert roles == ["user"]
     event = json.loads(chunks[-1][6:])
     assert event["type"] == "RUN_ERROR"
     assert event["code"] == "stream_stopped"
