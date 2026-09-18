@@ -318,9 +318,28 @@ def _display_files(files: list[Any] | None) -> list[dict]:
     """The attachment metadata the transcript row carries, JSON-safe.
 
     Same shape /chat/send pre-writes, so a row stored here and a row stored
-    there render as the same message.
+    there render as the same message. A multipart /chat request hands this path
+    Starlette `UploadFile` objects instead of metadata dicts; dropping those
+    would lose the attachment from the transcript entirely -- and, for a message
+    that is nothing but files, leave the stopped turn with no row to promise.
     """
-    return [file for file in files or [] if isinstance(file, dict)]
+    rows: list[dict] = []
+    for file in files or []:
+        if isinstance(file, dict):
+            rows.append(file)
+            continue
+        filename = getattr(file, "filename", None)
+        if not filename:
+            continue
+        row: dict[str, Any] = {"filename": filename}
+        mime_type = getattr(file, "content_type", None)
+        if mime_type:
+            row["mime_type"] = mime_type
+        size = getattr(file, "size", None)
+        if isinstance(size, int):
+            row["size"] = size
+        rows.append(row)
+    return rows
 
 
 def _append_user_row(

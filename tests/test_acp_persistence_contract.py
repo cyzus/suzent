@@ -498,3 +498,35 @@ async def test_a_turn_that_runs_stores_its_attachments_with_the_prompt(queue):
     assert user_rows == [
         {"role": "user", "content": "hi", "files": [{"name": "report.pdf"}]}
     ]
+
+
+@pytest.mark.asyncio
+async def test_a_stop_keeps_the_files_a_multipart_request_uploaded(queue):
+    """A multipart /chat request hands the turn UploadFile objects, not dicts.
+
+    Discarding them left a files-only message with no row at all while the stop
+    still reported the reload as trustworthy.
+    """
+
+    class _Upload:
+        filename = "report.pdf"
+        content_type = "application/pdf"
+        size = 1234
+
+    chat_id, q = queue
+    q.replay.stop_requested = "Stream stopped by user"
+
+    chunks, db = await _run_turn(
+        chat_id,
+        [],
+        {"stopReason": "end_turn"},
+        replay=q.replay,
+        message="",
+        files=[_Upload()],
+    )
+
+    (entry,) = [c.args[1] for c in db.append_chat_message.call_args_list]
+    assert entry["files"] == [
+        {"filename": "report.pdf", "mime_type": "application/pdf", "size": 1234}
+    ]
+    assert q.replay.persistence.result() is True

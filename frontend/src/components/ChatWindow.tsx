@@ -838,6 +838,23 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     stopInFlightRef.current = false;
     setIsStopping((stopping) => (stopping ? false : stopping));
   }, []);
+  // The start request that has been sent but not yet answered. Stop goes live
+  // the moment a turn is asked for, so a stop raised in this window reaches the
+  // server before the run it names exists there: it is answered "no active
+  // stream" and torn down client-side, while the start it overtook goes on to
+  // register the run and stream the turn the user just stopped. Stopping waits
+  // for whatever is in here, so the two requests arrive in the order the user
+  // issued them.
+  const pendingStartRef = useRef<Promise<unknown> | null>(null);
+  const trackPendingStart = useCallback(<T,>(started: Promise<T>): Promise<T> => {
+    const tracked: Promise<T> = started.finally(() => {
+      // Only if nothing newer has taken its place: a redirect starts its own
+      // turn while this one is still settling.
+      if (pendingStartRef.current === tracked) pendingStartRef.current = null;
+    });
+    pendingStartRef.current = tracked;
+    return tracked;
+  }, []);
   // True while a steer is in flight — prevents the normal-send finally from hiding the bubble
   const steeringRef = useRef(false);
   // True from the moment a send is accepted until it has handed off to the
@@ -2267,35 +2284,37 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
       const steerChatId = currentChatId;
       const steerRunToken = mintRunToken(steerChatId);
-      fetch(`${getApiBase()}/chat/steer-send`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chat_id: steerChatId,
-          message: prompt,
-          config: safeConfig,
-          client_run_token: steerRunToken,
-        }),
-      })
-        .then((resp) => {
-          if (!resp.ok) {
-            recoverFromSendFailure(steerChatId, resp.status, 'steer', {
-              seedParts: steerSeedParts,
-              restoreInput: prompt,
-              runToken: steerRunToken,
-            });
-            return;
-          }
-          tryConnectRef.current?.();
+      trackPendingStart(
+        fetch(`${getApiBase()}/chat/steer-send`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: steerChatId,
+            message: prompt,
+            config: safeConfig,
+            client_run_token: steerRunToken,
+          }),
         })
-        .catch((err) => {
-          console.error('[send] /chat/steer-send failed:', err);
-          retireRunToken(steerRunToken);
-          setIsStreaming(false, steerChatId);
-        })
-        .finally(() => {
-          steeringRef.current = false;
-        });
+          .then((resp) => {
+            if (!resp.ok) {
+              recoverFromSendFailure(steerChatId, resp.status, 'steer', {
+                seedParts: steerSeedParts,
+                restoreInput: prompt,
+                runToken: steerRunToken,
+              });
+              return;
+            }
+            tryConnectRef.current?.();
+          })
+          .catch((err) => {
+            console.error('[send] /chat/steer-send failed:', err);
+            retireRunToken(steerRunToken);
+            setIsStreaming(false, steerChatId);
+          })
+          .finally(() => {
+            steeringRef.current = false;
+          })
+      );
       return;
     }
 
@@ -2394,37 +2413,39 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     // On success, call tryConnect() directly so we attach to /chat/live immediately
     // without waiting for stream_started from the event bus (avoids new-chat races
     // where the subscription for the new chat ID isn't set up yet).
-    fetch(`${getApiBase()}/chat/send`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
-      .then((resp) => {
-        if (!resp.ok) {
-          const reattached = recoverFromSendFailure(chatIdForSend, resp.status, 'send', {
-            seedParts: sendSeedParts,
-            // Only hand the text back when it travelled alone. Re-populating the
-            // composer without its attachments would offer a different message
-            // than the one that was rejected.
-            restoreInput: filesToSend.length === 0 ? prompt : undefined,
-            runToken: sendRunToken,
-          });
-          if (!reattached) clearPartsIfStillViewingSendChat();
-          return;
-        }
-        // 202: stream registered — connect to /chat/live immediately.
-        tryConnectRef.current?.();
+    trackPendingStart(
+      fetch(`${getApiBase()}/chat/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
       })
-      .catch((err) => {
-        console.error('[send] /chat/send failed:', err);
-        // The turn was never started, so the name minted for it names nothing.
-        // Left installed, the next probe on this chat inherits it and a stop
-        // goes out under a dead name -- answered 409, which reads as "already
-        // stopped" while the turn that is running carries on.
-        retireRunToken(sendRunToken);
-        setIsStreaming(false, chatIdForSend);
-        clearPartsIfStillViewingSendChat();
-      });
+        .then((resp) => {
+          if (!resp.ok) {
+            const reattached = recoverFromSendFailure(chatIdForSend, resp.status, 'send', {
+              seedParts: sendSeedParts,
+              // Only hand the text back when it travelled alone. Re-populating the
+              // composer without its attachments would offer a different message
+              // than the one that was rejected.
+              restoreInput: filesToSend.length === 0 ? prompt : undefined,
+              runToken: sendRunToken,
+            });
+            if (!reattached) clearPartsIfStillViewingSendChat();
+            return;
+          }
+          // 202: stream registered — connect to /chat/live immediately.
+          tryConnectRef.current?.();
+        })
+        .catch((err) => {
+          console.error('[send] /chat/send failed:', err);
+          // The turn was never started, so the name minted for it names nothing.
+          // Left installed, the next probe on this chat inherits it and a stop
+          // goes out under a dead name -- answered 409, which reads as "already
+          // stopped" while the turn that is running carries on.
+          retireRunToken(sendRunToken);
+          setIsStreaming(false, chatIdForSend);
+          clearPartsIfStillViewingSendChat();
+        })
+    );
   };
 
   const requestFork = useCallback((messageIndex?: number) => {
@@ -2484,30 +2505,32 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     retireStopAttempt();
 
     const retryRunToken = mintRunToken(chatIdForRetry);
-    fetch(`${getApiBase()}/chat/send`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        message: '/retry',
-        chat_id: chatIdForRetry,
-        config: safeConfig,
-        client_run_token: retryRunToken,
-      }),
-    })
-      .then((resp) => {
-        if (!resp.ok) {
-          recoverFromSendFailure(chatIdForRetry, resp.status, 'retry', {
-            runToken: retryRunToken,
-          });
-          return;
-        }
-        tryConnectRef.current?.();
+    trackPendingStart(
+      fetch(`${getApiBase()}/chat/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: '/retry',
+          chat_id: chatIdForRetry,
+          config: safeConfig,
+          client_run_token: retryRunToken,
+        }),
       })
-      .catch((err) => {
-        console.error('[handleRetry] /chat/send failed:', err);
-        retireRunToken(retryRunToken);
-        setIsStreaming(false, chatIdForRetry);
-      });
+        .then((resp) => {
+          if (!resp.ok) {
+            recoverFromSendFailure(chatIdForRetry, resp.status, 'retry', {
+              runToken: retryRunToken,
+            });
+            return;
+          }
+          tryConnectRef.current?.();
+        })
+        .catch((err) => {
+          console.error('[handleRetry] /chat/send failed:', err);
+          retireRunToken(retryRunToken);
+          setIsStreaming(false, chatIdForRetry);
+        })
+    );
   }, [
     currentChatId,
     isStreaming,
@@ -2572,31 +2595,33 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       retireStopAttempt();
 
       const editRunToken = mintRunToken(chatIdForEdit);
-      fetch(`${getApiBase()}/chat/send`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: `/retry-edit ${prompt}`,
-          chat_id: chatIdForEdit,
-          config: safeConfig,
-          client_run_token: editRunToken,
-        }),
-      })
-        .then((resp) => {
-          if (!resp.ok) {
-            recoverFromSendFailure(chatIdForEdit, resp.status, 'edit', {
-              restoreInput: prompt,
-              runToken: editRunToken,
-            });
-            return;
-          }
-          tryConnectRef.current?.();
+      trackPendingStart(
+        fetch(`${getApiBase()}/chat/send`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: `/retry-edit ${prompt}`,
+            chat_id: chatIdForEdit,
+            config: safeConfig,
+            client_run_token: editRunToken,
+          }),
         })
-        .catch((err) => {
-          console.error('[handleEditUserMessage] /chat/send failed:', err);
-          retireRunToken(editRunToken);
-          setIsStreaming(false, chatIdForEdit);
-        });
+          .then((resp) => {
+            if (!resp.ok) {
+              recoverFromSendFailure(chatIdForEdit, resp.status, 'edit', {
+                restoreInput: prompt,
+                runToken: editRunToken,
+              });
+              return;
+            }
+            tryConnectRef.current?.();
+          })
+          .catch((err) => {
+            console.error('[handleEditUserMessage] /chat/send failed:', err);
+            retireRunToken(editRunToken);
+            setIsStreaming(false, chatIdForEdit);
+          })
+      );
     },
     [
       currentChatId,
@@ -2672,6 +2697,23 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         abandonStream(targetChatId);
       }
     }, STOP_STREAM_END_TIMEOUT_MS);
+
+    // Let the start request land first. Stop is live from the moment a turn is
+    // asked for, so a stop sent while that request is still in flight arrives
+    // at a server that has never heard of this run: it comes back "no active
+    // stream", the client tears the stream down, and the start it overtook
+    // then registers the run and streams the turn the user stopped. Waiting
+    // costs nothing the fallback armed above is not already watching, and once
+    // the start has landed the token this client minted names a run that
+    // exists -- which the backend honours even before the turn produces
+    // anything.
+    const pendingStart = pendingStartRef.current;
+    if (pendingStart) {
+      await pendingStart.catch(() => {});
+      // The start may have been rejected, ending the stream and this attempt
+      // with it.
+      if (stopAttemptRef.current !== attempt) return;
+    }
 
     // Name the run: a stop still in flight when the user redirects would
     // otherwise land on the replacement turn's control and cancel that instead.
