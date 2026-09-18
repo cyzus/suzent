@@ -5,9 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v0.14.0] - 2026-09-17
+## [v0.14.0] - 2026-09-18
 
 ### 🚀 Added
+- One grouped console nav, and the same log card in both shells (#234)
 - Run the backend and frontend detached, with `suzent logs` (#232)
 - Restore web UI support alongside the desktop app (#230)
 - Release the extension automatically and offer the Edge listing (#220)
