@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [v0.14.0] - 2026-09-18
 
+<!-- highlights -->
+Suzent now reaches beyond the desktop window. The web UI is back, with a
+grouped console for managing your agent, and native Android and iOS clients
+introduce QR pairing, conversations, tool approvals, and live activity views.
+Mobile is an early preview: Android test APKs are available from CI, while iOS
+currently requires a developer build. Signed mobile releases and store
+distribution are still to come; mobile versions are independent of this
+desktop and backend release.
+
+Conversations are more resilient. Streams recover after a reload using saved
+snapshots and event cursors, short replies no longer disappear when a turn
+finishes, and saving a finished turn no longer blocks the server's event loop.
+Failed draft saves are retried, ACP turns follow the same persistence contract,
+and citations and image tool results render more consistently.
+
+Running and maintaining Suzent takes fewer manual steps. The backend and web
+frontend can run detached, with `suzent logs` for inspection and `suzent restart`
+for restarts. Both shells share the service log view, launcher shortcuts can be
+set up and repaired across installation paths, and the installer can set up Git.
+Windows background processes no longer open console windows, and recently
+closed connections no longer make a free port appear occupied.
+
+Browser tasks can see which tab you are viewing, extension packages are released
+automatically, and setup links to the Edge listing. GitHub sync also recovers
+from stale remote names, while memory background-work status handles storage
+failures without blocking the server or changing retry state just by polling.
+<!-- /highlights -->
+
 ### 🚀 Added
 - Add native clients with pairing, tool approvals and activity rails
 - One grouped console nav, and the same log card in both shells (#234)
