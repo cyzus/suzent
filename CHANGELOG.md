@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Remove the language param from the shell tools (#212)
 
 ### 🐛 Fixed
+- Stop dropping a finished turn when its reply is short (#235)
 - Launch background processes with no console window on Windows (#233)
 - Ignore draining sockets when checking if a port is free (#231)
 - Self-heal a profile naming a remote the repo does not have (#228)
