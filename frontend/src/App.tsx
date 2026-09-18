@@ -24,12 +24,12 @@ import { ChatProvider, useChatCoreStore } from './hooks/useChatStore';
 import { GoalTasksProvider, useGoalTasks } from './hooks/useGoalTasks';
 import { ProjectProvider } from './hooks/useProjects';
 import { useStatusStore } from './hooks/useStatusStore';
-import { useTheme } from './hooks/useTheme';
 import {
   BackendVersionTimeoutError,
   drainCronNotifications,
   fetchHeartbeatStatus,
   fetchSystemVersion,
+  getApiBase,
   getBackendCompatibilityIssue,
 } from './lib/api';
 import {
@@ -51,6 +51,8 @@ import {
 import { TitleBar } from './components/TitleBar';
 import { detectDesktopPlatform } from './lib/titleBarPlatform';
 import { useI18n, getInitialLocale, tForLocale } from './i18n';
+import { isWeb } from './lib/runtime';
+import { consolePathForCategory } from './shells/webRoutes';
 
 interface HeaderTitleProps {
   text?: string;
@@ -334,6 +336,14 @@ function AppInner(): React.ReactElement {
     | 'appearance'
   >('providers');
   const openSettings = (category: typeof settingsInitialCategory = 'providers') => {
+    // The console gives every settings category a route of its own and keeps
+    // its navigation on screen, so in a browser this goes to the page rather
+    // than laying the desktop's modal over the conversation.
+    const consolePath = isWeb() ? consolePathForCategory(category) : null;
+    if (consolePath) {
+      window.location.hash = `#${consolePath}`;
+      return;
+    }
     setSettingsInitialCategory(category);
     setIsSettingsOpen(true);
   };
@@ -381,7 +391,6 @@ function AppInner(): React.ReactElement {
   const setStatusMsg = useStatusStore((s) => s.setStatus);
   const setHeartbeatStatus = useHeartbeatRunning((s) => s.setStatus);
   const setChatHeartbeatStatus = useHeartbeatRunning((s) => s.setChatStatus);
-  const { theme, toggleTheme } = useTheme();
   const { t } = useI18n();
   const [isWindowMaximized, setIsWindowMaximized] = useState(false);
 
@@ -389,9 +398,13 @@ function AppInner(): React.ReactElement {
     () => detectDesktopPlatform(navigator.userAgent, navigator.platform),
     []
   );
-  const showStandaloneTitleBar = desktopPlatform !== 'windows' && desktopPlatform !== 'macos';
-  const showWindowsWindowControls = desktopPlatform === 'windows';
-  const showMacWindowControls = !!window.__TAURI__ && desktopPlatform === 'macos';
+  // A browser draws its own chrome: every window-control affordance below is
+  // desktop-only, or it renders buttons that cannot do anything.
+  const desktop = !isWeb();
+  const showStandaloneTitleBar =
+    desktop && desktopPlatform !== 'windows' && desktopPlatform !== 'macos';
+  const showWindowsWindowControls = desktop && desktopPlatform === 'windows';
+  const showMacWindowControls = desktop && desktopPlatform === 'macos';
   const appWindow = window.__TAURI__?.window.getCurrentWindow();
 
   // Use refs so the interval callback always sees the latest values without re-creating the interval.
@@ -661,52 +674,6 @@ function AppInner(): React.ReactElement {
                 }}
               />
               <UpdateButton />
-
-              {/* Dark mode toggle */}
-              <button
-                onClick={toggleTheme}
-                className="h-10 w-10 flex items-center justify-center rounded-md hover:bg-neutral-200 dark:hover:bg-zinc-700 transition-colors text-brutal-black dark:text-white"
-                aria-label={
-                  theme === 'dark' ? t('settings.switchToLight') : t('settings.switchToDark')
-                }
-                title={theme === 'dark' ? t('settings.switchToLight') : t('settings.switchToDark')}
-              >
-                {theme === 'dark' ? (
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="h-5 w-5"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={2}
-                  >
-                    <circle cx="12" cy="12" r="5" />
-                    <line x1="12" y1="1" x2="12" y2="3" />
-                    <line x1="12" y1="21" x2="12" y2="23" />
-                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
-                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
-                    <line x1="1" y1="12" x2="3" y2="12" />
-                    <line x1="21" y1="12" x2="23" y2="12" />
-                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
-                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
-                  </svg>
-                ) : (
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="h-5 w-5"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={2}
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"
-                    />
-                  </svg>
-                )}
-              </button>
 
               {mainView === 'chat' ? (
                 <button
@@ -1140,35 +1107,44 @@ async function waitForBackendPort(options?: { attempts?: number }): Promise<numb
   return null;
 }
 
+// Web mode has no Tauri port handshake: the backend is simply already there, at
+// the origin serving this bundle. Poll /health so a browser opened against a
+// still-starting backend waits instead of erroring, mirroring the desktop wait.
+async function waitForBackendHealth(options?: { attempts?: number }): Promise<boolean> {
+  const attempts = options?.attempts ?? 12;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      const response = await fetch(`${getApiBase()}/health`);
+      if (response.ok) return true;
+    } catch {
+      // Backend not listening yet.
+    }
+    await new Promise((resolve) =>
+      window.setTimeout(resolve, Math.min(500 * Math.pow(1.35, attempt), 2500))
+    );
+  }
+  return false;
+}
+
 function StartupDecisionScreen(): React.ReactElement {
   return <div className="h-screen w-screen bg-neutral-100" />;
 }
 
-export default function App() {
+interface AppProps {
+  /**
+   * What to render once the backend is up and the providers are mounted.
+   * Defaults to the chat workspace. The web console passes its own subtree
+   * here for the pages that need chat's provider stack without being chat.
+   */
+  children?: React.ReactNode;
+}
+
+export default function App({ children }: AppProps = {}) {
   const locale = getInitialLocale();
   const t = (key: string, params?: Record<string, string>) => tForLocale(locale, key, params);
 
-  // Enforce desktop environment
-  if (!window.__TAURI__) {
-    return (
-      <div className="flex flex-col items-center justify-center h-screen bg-brutal-yellow font-sans p-8 text-center border-8 border-brutal-black">
-        <div className="bg-white p-8 border-4 border-brutal-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] max-w-md flex flex-col items-center">
-          <div className="w-32 h-32 mb-6">
-            <RobotAvatar variant="ghost" className="w-full h-full" />
-          </div>
-          <h1 className="text-4xl font-brutal font-black uppercase mb-4 text-brutal-black">
-            {t('app.desktopRequiredTitle')}
-          </h1>
-          <p className="font-bold text-lg mb-6 leading-tight">{t('app.desktopRequiredDesc')}</p>
-          <div className="font-mono text-xs bg-neutral-100 p-4 border-2 border-brutal-black text-left w-full">
-            $ npm run tauri dev
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   React.useEffect(() => {
+    if (isWeb()) return;
     invoke('frontend_ready').catch(() => {
       // Older/dev shells may not expose this command yet.
     });
@@ -1191,6 +1167,34 @@ export default function App() {
 
   React.useEffect(() => {
     let cancelled = false;
+
+    // Web mode: there is no installer to run and no port to negotiate — the
+    // backend either answers at this origin or it does not.
+    if (isWeb()) {
+      setBackendStartingAtStartup(true);
+      waitForBackendHealth()
+        .then((healthy) => {
+          if (cancelled) return;
+          setBackendStartingAtStartup(false);
+          setBootstrapChecked(true);
+          if (healthy) {
+            setBackendReady(true);
+            setBackendError(null);
+          } else {
+            setBackendError(tForLocale(getInitialLocale(), 'app.backendStartTimeout'));
+          }
+        })
+        .catch((error: unknown) => {
+          if (cancelled) return;
+          setBackendStartingAtStartup(false);
+          setBootstrapChecked(true);
+          setBackendError(String(error));
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
+
     invoke<BootstrapStatus>('bootstrap_status')
       .then((status) => {
         if (cancelled) return;
@@ -1234,7 +1238,7 @@ export default function App() {
   }, []);
 
   React.useEffect(() => {
-    if (backendReady) return;
+    if (backendReady || isWeb()) return;
     let unlisten: (() => void) | undefined;
     let unlistenErr: (() => void) | undefined;
     let unlistenBootstrap: (() => void) | undefined;
@@ -1365,9 +1369,7 @@ export default function App() {
       ) : (
         <ProjectProvider>
           <ChatProvider>
-            <GoalTasksProvider>
-              <AppInner />
-            </GoalTasksProvider>
+            <GoalTasksProvider>{children ?? <AppInner />}</GoalTasksProvider>
           </ChatProvider>
         </ProjectProvider>
       )}

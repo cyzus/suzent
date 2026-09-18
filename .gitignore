@@ -117,3 +117,6 @@ apps/android/.gradle/
 apps/android/local.properties
 apps/android/.kotlin/
 *.xcuserstate
+
+# Built web UI staged into the package by scripts/build_webui.py
+src/suzent/webui/

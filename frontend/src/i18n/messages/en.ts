@@ -39,6 +39,44 @@ export const en = {
     loadError: 'Could not load mobile access. Refresh to retry.',
     actionError: 'Could not complete the action. Check the address and connection, then retry.',
   },
+  console: {
+    nav: {
+      label: 'Console navigation',
+      title: 'Suzent',
+      chat: 'Chat',
+      ops: 'Operations',
+      collapse: 'Collapse sidebar',
+      expand: 'Expand sidebar',
+    },
+    ops: {
+      title: 'Operations',
+      subtitle: 'The background service on this host, and what it last logged.',
+      serviceTitle: 'Background service',
+      serviceDesc: 'Runs Suzent without a desktop session, restarting it on crash and at login.',
+      status: 'Status',
+      uptime: 'Uptime',
+      memory: 'Memory',
+      notInstalled: 'Not installed',
+      ready: 'Ready',
+      starting: 'Starting',
+      stopped: 'Stopped',
+      restart: 'Restart service',
+      refresh: 'Refresh',
+      selfManagedNote:
+        'This console is served by the service below, so restarting it will briefly disconnect this page.',
+      reconnecting: 'Restarting — waiting for the host to come back…',
+      reconnectTimeout:
+        'The host did not come back within a minute. Check the log, or the service manager on the host.',
+      cannotDisableSelf:
+        'This service is serving the console. Turning it off here would leave no way to turn it back on remotely — run "suzent service uninstall" on the host instead.',
+      unreachable: 'Could not reach this host. It may be restarting, or the connection is gone.',
+    },
+    health: {
+      checking: 'Checking the connection',
+      online: 'Connected',
+      offline: 'Not reachable',
+    },
+  },
   imageTool: {
     previewFailed: 'Image preview unavailable. Open the file to retry.',
   },
@@ -76,9 +114,6 @@ export const en = {
     startingBackend: 'Starting and checking the backend service',
     verifyingBackend: 'Verifying backend compatibility',
     startupElapsed: 'Elapsed {seconds}s',
-    desktopRequiredTitle: 'Desktop required',
-    desktopRequiredDesc:
-      'Suzent is a desktop-only application. Please run this application using the native desktop launcher.',
     logoAriaLabel: 'Suzent logo',
     backendCompatibility: {
       api: 'Frontend/backend API mismatch ({frontend} vs {backend}). Run suzent update.',
@@ -88,6 +123,14 @@ export const en = {
         'Backend version verification timed out. The backend may still be recovering; close and reopen Suzent.',
       verifyFailed: 'Failed to verify backend version: {error}',
     },
+  },
+  hostPicker: {
+    title: 'Choose a folder',
+    roots: 'Drives',
+    loading: 'Loading...',
+    empty: 'No sub-folders here',
+    cancel: 'Cancel',
+    select: 'Select',
   },
   bootstrap: {
     title: 'Set up Suzent',
@@ -271,6 +314,10 @@ export const en = {
     },
   },
   settings: {
+    network: {
+      restartRequiredManually:
+        'Saved. Restart the Suzent backend for the new network binding to take effect.',
+    },
     browser: {
       extension: 'Use my browser (extension)',
       extensionConnected: 'Connected',
@@ -544,6 +591,11 @@ export const en = {
       restart: 'Restart service',
       copyLogPath: 'Copy log path',
       refresh: 'Refresh',
+      logTitle: 'Service log',
+      logDesc: 'The tail of server.log, which is the only account of a headless start-up.',
+      logLines: 'Lines',
+      follow: 'Follow',
+      logMissing: 'No log file yet. It appears once the service has run.',
     },
     security: {
       title: 'Security',
@@ -690,6 +742,9 @@ export const en = {
       title: 'Appearance',
       subtitle: 'Choose how Suzent looks and reads',
       languageDesc: 'Choose the language used throughout the application.',
+      theme: 'Theme',
+      themeDesc: 'Light, dark, or whatever this machine is set to.',
+      modes: { light: 'Light', dark: 'Dark', system: 'System' },
       colorScheme: 'Color Scheme',
       colorSchemeDesc: 'Choose the accent palette used in light and dark mode.',
       schemes: { warm: 'Warm', cold: 'Cold', green: 'Green' },
@@ -730,8 +785,6 @@ export const en = {
       more: 'More',
       noUsageYet: 'No usage data yet. Start chatting to see your spending here.',
     },
-    switchToLight: 'Switch to light mode',
-    switchToDark: 'Switch to dark mode',
     saveChanges: 'Save Changes',
     saving: 'Saving...',
     verifyFailed: 'Verification failed or no models found.',

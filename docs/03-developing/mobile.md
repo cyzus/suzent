@@ -300,3 +300,16 @@ iOS CI builds the simulator target without signing and does not upload a device 
 This workflow does not publish GitHub Releases, Play Store builds, or TestFlight
 builds. Mobile release signing and `mobile-v*` release triggers are separate future
 work; desktop `v*` release triggers are unchanged.
+
+### Planned release distribution
+
+- Configure a fixed Android signing key in CI so downloaded builds can upgrade
+  existing installations without removing local data or pairing credentials.
+- Publish successful main builds to a rolling `mobile-preview` GitHub prerelease.
+- Publish versioned mobile releases from `mobile-v*` tags, independently of desktop
+  releases, with signed APKs and mobile-specific release notes.
+- Add iOS signing and TestFlight distribution once the Apple developer credentials
+  are configured. Keep PR builds as Actions artifacts rather than public releases.
+
+These are follow-up milestones; merging the current mobile implementation enables
+CI artifact downloads only and does not enable automatic Release publication.

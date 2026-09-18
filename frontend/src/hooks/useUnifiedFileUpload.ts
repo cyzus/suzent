@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { readFile } from '@tauri-apps/plugin-fs';
+import { isWeb } from '../lib/runtime';
 import { FileAttachment, ImageAttachment } from '../types/api';
 import { getApiBase } from '../lib/api';
 
@@ -147,10 +148,10 @@ export function useUnifiedFileUpload() {
 
   // Handle Tauri Drag and Drop
   useEffect(() => {
-    // Check if running in Tauri by checking for window.__TAURI__ or similar if needed,
-    // but the listen function works gracefully or we can just try/catch.
-    // Actually, explicit check is better to avoid errors in browser mode if imports usually fail?
-    // The imports are standard modules handled by Vite, so they exist but might throw or no-op.
+    // Only the desktop shell delivers `tauri://drag-*`, and only there can a
+    // dropped path be read off disk. In a browser this hook stays inert and the
+    // ordinary HTML5 drop handlers take over.
+    if (isWeb()) return;
 
     let unlistenDrop: (() => void) | undefined;
     let unlistenEnter: (() => void) | undefined;

@@ -2,8 +2,8 @@
 Top-level CLI commands: start, serve, stop, doctor, update, upgrade, setup-build-tools.
 """
 
-import io
 import hashlib
+import io
 import json
 import os
 import platform
@@ -16,13 +16,15 @@ import sys
 import tempfile
 import threading
 import time
+import webbrowser
 import urllib.error
 import urllib.request
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
+import psutil
 import typer
-from suzent.config import DEFAULT_PORT
+from suzent.config import DEFAULT_PORT, RUNTIME_DIR
 from suzent.version import (
     UNKNOWN,
     get_backend_commit,
@@ -37,6 +39,10 @@ _BIN_DIR = "bin"
 _UPDATE_CHECK_TTL_SECONDS = 24 * 60 * 60
 _UPDATE_CHANNEL_FILE = ".suzent/update-channel"
 _STABLE_CHANNEL = "stable"
+# How long a detached start waits for the backend before reporting readiness.
+_READY_TIMEOUT = 30.0
+# Port the Tauri/Vite dev frontend serves on.
+DEV_FRONTEND_PORT = 18080
 _DEV_CHANNEL = "dev"
 _UPDATE_HELPER_ENV = "SUZENT_UPDATE_HELPER"
 _MACOS_UI_BUNDLE = "SUZENT.app"
@@ -255,18 +261,32 @@ def _has_unreleased_ui_changes(root: Path) -> bool:
     return False
 
 
-def _is_suzent_server_running(host: str, port: int, timeout: float = 1.0) -> bool:
-    """Return True when a Suzent backend responds on host:port."""
+def _is_suzent_server_running(
+    host: str, port: int, timeout: float = 1.0, attempts: int = 1
+) -> bool:
+    """Return True when a Suzent backend responds on host:port.
+
+    A backend that is busy -- discovering models, draining a shutdown -- can
+    miss a single probe's deadline. Callers that decide whether a server exists
+    at all pass `attempts` > 1, so a loaded server is not mistaken for an absent
+    one: `restart` used to announce "No Suzent server running" and then have
+    `start` immediately find that very server and kill it.
+    """
     probe_host = "127.0.0.1" if host in {"0.0.0.0", "::"} else host
     url = f"http://{probe_host}:{port}/health"
-    try:
-        with urllib.request.urlopen(url, timeout=timeout) as response:
-            if response.status != 200:
-                return False
-            payload = json.loads(response.read().decode("utf-8"))
-    except (OSError, json.JSONDecodeError, urllib.error.URLError):
-        return False
-    return payload.get("app") == "suzent" and payload.get("status") == "ok"
+    for attempt in range(attempts):
+        if attempt:
+            time.sleep(0.25)
+        try:
+            with urllib.request.urlopen(url, timeout=timeout) as response:
+                if response.status != 200:
+                    continue
+                payload = json.loads(response.read().decode("utf-8"))
+        except (OSError, json.JSONDecodeError, urllib.error.URLError):
+            continue
+        if payload.get("app") == "suzent" and payload.get("status") == "ok":
+            return True
+    return False
 
 
 def _platform_asset_name() -> str:
@@ -973,7 +993,14 @@ def ensure_msvc_linker():
 
 
 def get_pid_on_port(port: int) -> int | None:
-    """Get the PID of the process using the specified port."""
+    """Get the PID of the process *listening* on the specified port.
+
+    Only listening sockets count. A busy server leaves dozens of accepted
+    connections behind in TIME_WAIT/FIN_WAIT_2 when it dies, and those linger
+    for up to a couple of minutes. `netstat` reports them with a local address
+    of `127.0.0.1:<port>` and an owning PID of 0, so matching on the local
+    address alone makes a long-dead backend look like it still holds the port.
+    """
     try:
         if IS_WINDOWS:
             cmd = f"netstat -ano | findstr :{port}"
@@ -981,10 +1008,16 @@ def get_pid_on_port(port: int) -> int | None:
             if result.returncode == 0 and result.stdout:
                 for line in result.stdout.strip().splitlines():
                     parts = line.split()
-                    if len(parts) >= 5 and f":{port}" in parts[1]:
-                        return int(parts[-1])
+                    # TCP <local> <foreign> LISTENING <pid>
+                    if len(parts) < 5 or parts[3].upper() != "LISTENING":
+                        continue
+                    if not parts[1].endswith(f":{port}"):
+                        continue
+                    pid = int(parts[-1])
+                    if pid:
+                        return pid
         else:
-            cmd = ["lsof", "-t", f"-i:{port}"]
+            cmd = ["lsof", "-t", f"-iTCP:{port}", "-sTCP:LISTEN"]
             result = subprocess.run(cmd, capture_output=True, text=True)
             if result.returncode == 0 and result.stdout:
                 return int(result.stdout.strip().split("\n")[0])
@@ -1010,7 +1043,7 @@ def _stop_backend(port: int) -> bool:
     Returns False when nothing was running. Exits with an error when a server
     responds but cannot be stopped.
     """
-    if not _is_suzent_server_running("127.0.0.1", port):
+    if not _is_suzent_server_running("127.0.0.1", port, attempts=3):
         return False
 
     pid = get_pid_on_port(port)
@@ -1029,6 +1062,33 @@ def _stop_backend(port: int) -> bool:
         raise typer.Exit(code=1)
 
     typer.echo("✅ Server stopped.")
+    return True
+
+
+def _stop_frontend() -> bool:
+    """Stop the dev frontend this CLI started, if it is still running.
+
+    Returns False when there is nothing of ours to stop. `start --dev` leaves
+    the frontend running after the CLI returns, so `stop` has to end it too or
+    it would outlive the backend it was serving.
+    """
+    process = _recorded_process("frontend")
+    if process is None:
+        _clear_pid("frontend")
+        return False
+
+    typer.echo(f"🛑 Stopping dev frontend (PID {process.pid})...")
+    # `npm run dev` is only the launcher: Vite and the Tauri binary run as its
+    # children and are what actually hold the port.
+    doomed = [*_children_of(process), process]
+    for victim in doomed:
+        try:
+            victim.kill()
+        except psutil.Error:
+            pass
+    psutil.wait_procs(doomed, timeout=5)
+    _clear_pid("frontend")
+    typer.echo("✅ Dev frontend stopped.")
     return True
 
 
@@ -1233,6 +1293,217 @@ def run_command(
     subprocess.run(cmd, cwd=cwd, check=check, shell=use_shell)
 
 
+def _log_path(name: str) -> Path:
+    """Path of a detached process's log, alongside the service's own log."""
+    return RUNTIME_DIR / f"{name}.log"
+
+
+def _pid_path(name: str) -> Path:
+    """Path of the record identifying a detached process."""
+    return RUNTIME_DIR / f"{name}.pid"
+
+
+def _record_pid(name: str, pid: int) -> None:
+    """Remember a detached process so `stop` can end that exact process.
+
+    The creation time is stored alongside the PID: the operating system reuses
+    PIDs, and a stale record must never be enough to kill a stranger.
+    """
+    record: dict = {"pid": pid}
+    try:
+        record["created_at"] = psutil.Process(pid).create_time()
+    except psutil.Error:
+        pass
+    path = _pid_path(name)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        path.write_text(json.dumps(record), encoding="utf-8")
+    except OSError:
+        # Losing the record only costs us the ability to stop the process by
+        # name later; it must not fail the launch itself.
+        pass
+
+
+def _clear_pid(name: str) -> None:
+    """Forget a detached process, whether or not a record exists."""
+    try:
+        _pid_path(name).unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def _recorded_process(name: str) -> psutil.Process | None:
+    """Return the live process recorded for `name`, or None.
+
+    Holding a well-known port is not proof of identity -- another project's
+    dev server may be on 18080 -- so `stop` only ever ends a process this CLI
+    recorded when it launched it.
+    """
+    try:
+        record = json.loads(_pid_path(name).read_text(encoding="utf-8"))
+        process = psutil.Process(int(record["pid"]))
+    except (OSError, KeyError, TypeError, ValueError, psutil.Error):
+        return None
+    created = record.get("created_at")
+    try:
+        if created is not None and abs(process.create_time() - created) > 1.0:
+            return None  # The PID was recycled by an unrelated process.
+    except psutil.Error:
+        return None
+    return process
+
+
+def _children_of(process: psutil.Process) -> list[psutil.Process]:
+    """Every descendant of `process` that is still alive."""
+    try:
+        return process.children(recursive=True)
+    except psutil.Error:
+        return []
+
+
+def _open_log(name: str):
+    """Open a detached process's log for appending, creating its directory."""
+    path = _log_path(name)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handle = path.open("a", encoding="utf-8", errors="replace")
+    handle.write(f"\n===== {name} started {time.strftime('%Y-%m-%d %H:%M:%S')} =====\n")
+    handle.flush()
+    return handle
+
+
+def _launch_detached(
+    cmd: list[str],
+    *,
+    log_name: str,
+    cwd: Path | None = None,
+    env: dict | None = None,
+) -> subprocess.Popen:
+    """Start `cmd` so it outlives this CLI invocation, logging to `log_name`.
+
+    The process gets its own session (POSIX) or its own console with no window
+    (Windows), so closing the terminal -- or this command returning -- leaves it
+    running, and nothing pops up on screen. Its output goes to a log file rather
+    than a terminal nobody is watching; `suzent logs` reads it back.
+
+    On Windows this is CREATE_NO_WINDOW rather than DETACHED_PROCESS: a detached
+    process has no console at all, so the first console descendant (`npm`, then
+    `node` and `cargo`) allocates a fresh one -- and a fresh console comes with a
+    visible window. A windowless console is inherited quietly by the whole tree.
+    The two flags are mutually exclusive, and this one still leaves the child
+    outside this terminal's console, which is what keeps it alive afterwards.
+    """
+    kwargs: dict = {"cwd": cwd, "env": env, "stdin": subprocess.DEVNULL}
+    if IS_WINDOWS:
+        kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(
+            subprocess, "CREATE_NEW_PROCESS_GROUP", 0
+        )
+    else:
+        kwargs["start_new_session"] = True
+    handle = _open_log(log_name)
+    try:
+        process = subprocess.Popen(cmd, stdout=handle, stderr=handle, **kwargs)
+    finally:
+        # The child holds its own duplicate of the descriptor.
+        handle.close()
+    _record_pid(log_name, process.pid)
+    return process
+
+
+_LOG_FLAGS = {"backend": "", "frontend": " --frontend", "desktop": " --desktop"}
+
+
+def _report_detached(port: int, *, log_name: str) -> None:
+    """Print the confirmation every detached start path ends with.
+
+    Both the packaged desktop app and the dev pair report themselves the same
+    way, so `suzent start`/`restart` reads identically whichever mode you are in.
+    `log_name` is the log a failure would land in -- the one worth reading --
+    which is the desktop app's own log in packaged mode and the frontend's in
+    dev mode.
+    """
+    if _wait_until_serving(port, timeout=_READY_TIMEOUT):
+        typer.echo(f"  ✅ Suzent is running at http://127.0.0.1:{port}")
+    else:
+        typer.echo(
+            f"  ⚠️  No backend answered on port {port} within "
+            f"{_READY_TIMEOUT:.0f}s; it may still be starting, or it failed."
+        )
+    typer.echo(f"     Logs:  suzent logs{_LOG_FLAGS[log_name]} -f")
+    typer.echo("     Stop:  suzent stop")
+
+
+def _wait_until_serving(port: int, timeout: float = 60.0) -> bool:
+    """Block until a Suzent backend answers on ``port``, or the timeout passes."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if _is_suzent_server_running("127.0.0.1", port):
+            return True
+        time.sleep(0.5)
+    return False
+
+
+def _open_when_ready(port: int, open_browser: bool, timeout: float = 60.0) -> bool:
+    """Wait for the backend, then point the browser at it. Returns readiness."""
+    url = f"http://127.0.0.1:{port}/"
+    if not _wait_until_serving(port, timeout):
+        typer.echo(f"WARNING  Backend did not answer on {url} within {timeout:.0f}s.")
+        typer.echo("   Check it with: suzent service status")
+        return False
+    typer.echo(f"OK  Suzent is serving at {url}")
+    if open_browser:
+        webbrowser.open(url)
+    return True
+
+
+def _open_in_background(port: int, timeout: float = 60.0) -> None:
+    """Open the browser once the server answers, without blocking the caller.
+
+    Used by --foreground, where this process goes on to babysit the server and
+    cannot sit in a wait loop. The thread is a daemon so Ctrl-C still exits.
+    """
+
+    def _wait() -> None:
+        if _wait_until_serving(port, timeout):
+            webbrowser.open(f"http://127.0.0.1:{port}/")
+
+    threading.Thread(target=_wait, daemon=True).start()
+
+
+def _web_foreground(port: int, host: str, debug: bool, open_browser: bool) -> None:
+    """Serve the UI from a throwaway backend tied to this terminal.
+
+    The supported path is the background service; this exists for development
+    and for a one-off on a non-default port or binding, where a login-persistent
+    service would be the wrong thing to install.
+    """
+    if host not in ("127.0.0.1", "localhost", "::1"):
+        # A remote browser is a remote caller: AuthBoundaryMiddleware will
+        # demand a device token for every request it makes. Say so up front
+        # rather than letting the user meet a wall of 401s.
+        typer.echo(
+            f"WARNING  Binding {host} exposes the API beyond this machine. Remote "
+            "browsers must carry a host-scope token; see "
+            "docs/03-developing/web-ui.md."
+        )
+
+    env = os.environ.copy()
+    env["SUZENT_PORT"] = str(port)
+    env["SUZENT_HOST"] = host
+    cmd = [sys.executable, "-m", "suzent.server"]
+    if debug:
+        cmd.append("--debug")
+
+    typer.echo(f"Serving Suzent at http://{host}:{port}/")
+    proc = subprocess.Popen(cmd, cwd=get_project_root(), env=env)
+    if open_browser:
+        _open_in_background(port)
+    try:
+        proc.wait()
+    except KeyboardInterrupt:
+        typer.echo("Stopping...")
+        _terminate_process_gracefully(proc)
+
+
 def _terminate_process_gracefully(process: subprocess.Popen, timeout: float = 5.0):
     """Attempt graceful child-process shutdown, then escalate if needed."""
     if process.poll() is not None:
@@ -1328,17 +1599,23 @@ def register_commands(app: typer.Typer):
 
         ui_bin = None if dev else _get_ui_binary(root)
         if ui_bin:
-            # Pre-built binary manages both backend and webview internally.
+            # Pre-built binary manages both backend and webview internally, and
+            # has its own window, so nothing useful reaches this terminal --
+            # launch it detached instead of holding the prompt hostage for the
+            # whole life of the desktop app.
             typer.echo(f"  • Launching UI binary ({ui_bin.name})...")
             try:
-                subprocess.run(
+                _launch_detached(
                     [str(_macos_launch_target(root, ui_bin))],
+                    log_name="desktop",
                     env=_ui_launch_env(
                         {"SUZENT_DIR": str(root), "SUZENT_PORT": str(port)}
                     ),
                 )
-            except (subprocess.CalledProcessError, KeyboardInterrupt):
-                pass
+            except OSError as error:
+                typer.echo(f"  ❌ Could not launch the desktop app: {error}")
+                raise typer.Exit(code=1)
+            _report_detached(port, log_name="desktop")
             return
 
         # ── Developer fallback: tauri dev ────────────────────────────────────
@@ -1350,8 +1627,8 @@ def register_commands(app: typer.Typer):
         ensure_cargo_in_path()
         ensure_msvc_linker()
 
-        backend_running = _is_suzent_server_running("127.0.0.1", port)
-        ports_to_check = [(18080, "Frontend")]
+        backend_running = _is_suzent_server_running("127.0.0.1", port, attempts=3)
+        ports_to_check = [(DEV_FRONTEND_PORT, "Frontend")]
         if not backend_running:
             ports_to_check.insert(0, (port, "Backend"))
         elif not dev:
@@ -1403,7 +1680,6 @@ def register_commands(app: typer.Typer):
         if dev:
             backend_env["SUZENT_DEV_MODE"] = "1"
 
-        backend_proc = None
         if backend_running:
             typer.echo("  • Skipping backend startup.")
         else:
@@ -1411,25 +1687,19 @@ def register_commands(app: typer.Typer):
             backend_cmd = [sys.executable, "-m", "suzent.server"]
             if debug:
                 backend_cmd.append("--debug")
-            backend_proc = subprocess.Popen(
-                backend_cmd,
-                cwd=root,
-                env=backend_env,
-            )
+            _launch_detached(backend_cmd, log_name="backend", cwd=root, env=backend_env)
 
         typer.echo("  • Starting frontend (Tauri dev)...")
         _ensure_npm_deps(root)
-
-        try:
-            run_command(
-                ["npm", "run", "dev"], cwd=root / "src-tauri", shell_on_windows=True
-            )
-        except (subprocess.CalledProcessError, KeyboardInterrupt):
-            pass
-        finally:
-            if backend_proc is not None:
-                typer.echo("\n🛑 Stopping backend...")
-                _terminate_process_gracefully(backend_proc)
+        # The frontend is detached too, so a Tauri or Vite crash no longer takes
+        # the backend down with it -- the failure lands in the frontend log and
+        # the backend keeps serving.
+        frontend_cmd = ["npm", "run", "dev"]
+        if IS_WINDOWS:
+            # `npm` is a shell script; without a console it needs cmd to resolve.
+            frontend_cmd = ["cmd", "/c", *frontend_cmd]
+        _launch_detached(frontend_cmd, log_name="frontend", cwd=root / "src-tauri")
+        _report_detached(port, log_name="frontend")
 
     @app.command()
     def serve(
@@ -1487,12 +1757,155 @@ def register_commands(app: typer.Typer):
             raise typer.Exit(code=1)
 
     @app.command()
+    def web(
+        open_browser: bool = typer.Option(
+            True, "--open/--no-open", help="Open the UI in the default browser"
+        ),
+        install: bool = typer.Option(
+            None,
+            "--install/--no-install",
+            help="Install the background service when it is not installed yet",
+        ),
+        foreground: bool = typer.Option(
+            False,
+            "--foreground",
+            help="Run a throwaway server in this terminal instead of using the service",
+        ),
+        port: int = typer.Option(
+            DEFAULT_PORT, "--port", "-p", help="Port to serve on (--foreground only)"
+        ),
+        host: str = typer.Option(
+            "127.0.0.1",
+            "--host",
+            help="Address to bind (--foreground only). Anything but loopback "
+            "exposes the API to the network",
+        ),
+        debug: bool = typer.Option(
+            False, "--debug", help="Run the server in debug mode (--foreground only)"
+        ),
+    ):
+        """Open Suzent in the browser.
+
+        The web UI is a route set on the ordinary Suzent backend, so there is no
+        separate web server to run: whatever already serves the API serves the
+        UI too. This command only makes sure *something* is serving -- preferring
+        the background service, which outlives this terminal and starts at login
+        -- and then hands the browser a URL.
+        """
+        from suzent.webui import webui_available
+
+        if not webui_available():
+            typer.echo("ERROR  No web UI is built into this install.")
+            typer.echo("   Build it with: python scripts/build_webui.py")
+            raise typer.Exit(code=1)
+
+        if foreground:
+            _web_foreground(port, host, debug, open_browser)
+            return
+
+        from suzent.service import get_service_controller
+
+        controller = get_service_controller()
+        status = controller.status()
+
+        if status.running:
+            if not status.ready:
+                typer.echo("The Suzent service is still starting...")
+            ready = _open_when_ready(status.port or DEFAULT_PORT, open_browser)
+            raise typer.Exit(code=0 if ready else 1)
+
+        # The service is not up, but something else may already be serving --
+        # `suzent serve`, or the backend the desktop app launched. Reuse it
+        # rather than starting a second backend that would lose the port race.
+        if _is_suzent_server_running("127.0.0.1", port):
+            typer.echo(f"OK  Suzent is already serving at http://127.0.0.1:{port}/")
+            if open_browser:
+                webbrowser.open(f"http://127.0.0.1:{port}/")
+            return
+
+        if status.installed:
+            typer.echo("Starting the Suzent background service...")
+            try:
+                controller.start()
+            except Exception as exc:
+                typer.echo(f"ERROR  Could not start the service: {exc}")
+                raise typer.Exit(code=1) from exc
+            ready = _open_when_ready(status.port or DEFAULT_PORT, open_browser)
+            raise typer.Exit(code=0 if ready else 1)
+
+        # Nothing is installed and nothing is running.
+        if install is None:
+            install = sys.stdin.isatty() and typer.confirm(
+                "No Suzent background service is installed. Install it now so the "
+                f"UI is always available at http://127.0.0.1:{DEFAULT_PORT}/ ?",
+                default=True,
+            )
+        if not install:
+            typer.echo("No Suzent backend is running. Either:")
+            typer.echo("  suzent service install   # start at login, always available")
+            typer.echo("  suzent web --foreground  # one-off server in this terminal")
+            raise typer.Exit(code=1)
+
+        typer.echo("Installing the Suzent background service...")
+        try:
+            controller.install(start=True)
+        except Exception as exc:
+            typer.echo(f"ERROR  Could not install the service: {exc}")
+            raise typer.Exit(code=1) from exc
+        typer.echo("OK  Service installed; it will start automatically at login.")
+        ready = _open_when_ready(DEFAULT_PORT, open_browser)
+        raise typer.Exit(code=0 if ready else 1)
+
+    @app.command()
     def stop(
         port: int = typer.Option(DEFAULT_PORT, help="Port the backend is running on"),
     ):
-        """Stop a running Suzent backend server."""
-        if not _stop_backend(port):
+        """Stop a running Suzent backend server and any detached dev frontend."""
+        stopped_backend = _stop_backend(port)
+        stopped_frontend = _stop_frontend()
+        if not stopped_backend and not stopped_frontend:
             typer.echo(f"No Suzent server running on http://127.0.0.1:{port}.")
+
+    @app.command()
+    def logs(
+        frontend: bool = typer.Option(
+            False, "--frontend", help="Read the dev frontend log instead."
+        ),
+        desktop: bool = typer.Option(
+            False, "--desktop", help="Read the packaged desktop app log instead."
+        ),
+        follow: bool = typer.Option(
+            False, "--follow", "-f", help="Stream new lines as they are written."
+        ),
+        lines: int = typer.Option(200, "--lines", "-n", help="Lines to show first."),
+    ):
+        """Show the log of a detached Suzent process."""
+        if frontend and desktop:
+            typer.echo("❌ Pick one of --frontend or --desktop.")
+            raise typer.Exit(code=1)
+        name = "frontend" if frontend else "desktop" if desktop else "backend"
+        path = _log_path(name)
+        if not path.exists():
+            typer.echo(f"No {name} log yet at {path}.")
+            raise typer.Exit(code=1)
+
+        typer.echo(f"── {path} ──")
+        with path.open("r", encoding="utf-8", errors="replace") as handle:
+            tail = handle.readlines()[-lines:] if lines > 0 else []
+            for line in tail:
+                typer.echo(line.rstrip("\n"))
+            if not follow:
+                return
+            handle.seek(0, io.SEEK_END)
+            try:
+                while True:
+                    line = handle.readline()
+                    if line:
+                        typer.echo(line.rstrip("\n"))
+                    else:
+                        time.sleep(0.25)
+            except KeyboardInterrupt:
+                pass
 
     @app.command()
     def restart(
@@ -1504,7 +1917,7 @@ def register_commands(app: typer.Typer):
             help="Force developer mode (backend in debug + Tauri dev), skipping the pre-built UI binary",
         ),
     ):
-        """Stop a running Suzent backend, then start Suzent again."""
+        """Stop a running Suzent backend and dev frontend, then start again."""
         if _stop_backend(port):
             if not _wait_for_port_release(port):
                 typer.echo(f"❌ Port {port} was not released; restart aborted.")
@@ -1513,6 +1926,11 @@ def register_commands(app: typer.Typer):
             typer.echo(
                 f"No Suzent server running on http://127.0.0.1:{port}; starting one."
             )
+
+        # A dev frontend from the previous session still holds its port, and
+        # `start` would stop to ask about it -- which a restart should never
+        # need to do about a process Suzent itself left running.
+        _stop_frontend()
 
         start(port=port, debug=debug, dev=dev, docs=False)
 
@@ -1532,9 +1950,15 @@ def register_commands(app: typer.Typer):
         if ui_bin:
             env = _ui_launch_env({"SUZENT_DIR": str(root), "SUZENT_PORT": str(port)})
             try:
-                subprocess.run([str(ui_bin)], env=env)
-            except (subprocess.CalledProcessError, KeyboardInterrupt):
-                pass
+                _launch_detached(
+                    [str(_macos_launch_target(root, ui_bin))],
+                    log_name="desktop",
+                    env=env,
+                )
+            except OSError as error:
+                typer.echo(f"  ❌ Could not launch the desktop app: {error}")
+                raise typer.Exit(code=1)
+            _report_detached(port, log_name="desktop")
             return
 
         ensure_cargo_in_path()
@@ -1544,12 +1968,13 @@ def register_commands(app: typer.Typer):
         env = os.environ.copy()
         env["SUZENT_PORT"] = str(port)
 
-        try:
-            run_command(
-                ["npm", "run", "dev"], cwd=root / "src-tauri", shell_on_windows=True
-            )
-        except (subprocess.CalledProcessError, KeyboardInterrupt):
-            pass
+        frontend_cmd = ["npm", "run", "dev"]
+        if IS_WINDOWS:
+            frontend_cmd = ["cmd", "/c", *frontend_cmd]
+        _launch_detached(
+            frontend_cmd, log_name="frontend", cwd=root / "src-tauri", env=env
+        )
+        _report_detached(port, log_name="frontend")
 
     @app.command()
     def doctor():

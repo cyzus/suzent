@@ -23,6 +23,7 @@ import {
 import { useI18n } from '../../i18n';
 import { BrutalIconButton } from '../BrutalButton';
 import { BrutalSelect } from '../BrutalSelect';
+import { isWeb } from '../../lib/runtime';
 
 export type SettingsCategory =
   | 'providers'
@@ -42,10 +43,32 @@ export type SettingsCategory =
   | 'usage'
   | 'about';
 
+/** Every category id, for tests that check the console's list against it. */
+export const SETTINGS_CATEGORY_IDS: readonly SettingsCategory[] = [
+  'providers',
+  'roles',
+  'memory',
+  'automation',
+  'social',
+  'mcp',
+  'acp-agents',
+  'devices',
+  'mesh',
+  'appearance',
+  'service',
+  'browser',
+  'security',
+  'data',
+  'usage',
+  'about',
+];
+
 type CategoryDefinition = {
   id: SettingsCategory;
   labelKey: string;
   icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
+  /** Driven by Tauri commands, so it has nothing to show in a browser. */
+  desktopOnly?: boolean;
 };
 
 type CategoryGroup = {
@@ -54,7 +77,7 @@ type CategoryGroup = {
   categories: CategoryDefinition[];
 };
 
-const CATEGORY_GROUPS: CategoryGroup[] = [
+const ALL_CATEGORY_GROUPS: CategoryGroup[] = [
   {
     id: 'agent',
     labelKey: 'settings.groups.agent',
@@ -71,7 +94,15 @@ const CATEGORY_GROUPS: CategoryGroup[] = [
     categories: [
       { id: 'social', labelKey: 'settings.categories.social', icon: ChatBubbleLeftRightIcon },
       { id: 'mcp', labelKey: 'settings.categories.mcp', icon: WrenchScrewdriverIcon },
-      { id: 'browser', labelKey: 'settings.browser.title', icon: GlobeAltIcon },
+      {
+        id: 'browser',
+        labelKey: 'settings.browser.title',
+        icon: GlobeAltIcon,
+        // The /browser/* routes gate on local_setup_request, which trusts only
+        // the Tauri origins and the Vite dev origin -- the same-origin web UI
+        // is rejected, so the tab could only report 403s.
+        desktopOnly: true,
+      },
       { id: 'acp-agents', labelKey: 'settings.categories.acpAgents', icon: BoltIcon },
       { id: 'devices', labelKey: 'settings.categories.devices', icon: ComputerDesktopIcon },
       { id: 'mesh', labelKey: 'settings.categories.mesh', icon: ShareIcon },
@@ -82,7 +113,12 @@ const CATEGORY_GROUPS: CategoryGroup[] = [
     labelKey: 'settings.groups.application',
     categories: [
       { id: 'appearance', labelKey: 'settings.categories.appearance', icon: PaintBrushIcon },
-      { id: 'service', labelKey: 'settings.categories.service', icon: CpuChipIcon },
+      {
+        id: 'service',
+        labelKey: 'settings.categories.service',
+        icon: CpuChipIcon,
+        desktopOnly: true,
+      },
       { id: 'security', labelKey: 'settings.categories.security', icon: ShieldCheckIcon },
       { id: 'data', labelKey: 'settings.categories.data', icon: CloudArrowUpIcon },
       { id: 'usage', labelKey: 'settings.categories.usage', icon: ChartBarIcon },
@@ -90,6 +126,19 @@ const CATEGORY_GROUPS: CategoryGroup[] = [
     ],
   },
 ];
+
+// This sidebar is the desktop modal's, and the console navigates with its own.
+// The browser filter is left in as a guard rather than a feature: a desktop-only
+// category rendered there could only report failure.
+//
+// Computed per render rather than at module load: `isWeb()` reads `window`,
+// which does not exist when a test or a build tool merely imports this file.
+function visibleCategoryGroups(): CategoryGroup[] {
+  return ALL_CATEGORY_GROUPS.map((group) => ({
+    ...group,
+    categories: group.categories.filter((category) => !isWeb() || !category.desktopOnly),
+  })).filter((group) => group.categories.length > 0);
+}
 
 interface SettingsNavigationProps {
   activeCategory: SettingsCategory;
@@ -128,6 +177,7 @@ export function SettingsNavigation({
   onClose,
 }: SettingsNavigationProps): React.ReactElement {
   const { t } = useI18n();
+  const groups = visibleCategoryGroups();
 
   return (
     <aside className="hidden w-60 shrink-0 flex-col border-r-4 border-brutal-black bg-white dark:bg-zinc-800 md:flex lg:w-64">
@@ -137,7 +187,7 @@ export function SettingsNavigation({
         aria-label={t('settings.title')}
       >
         <div className="space-y-3">
-          {CATEGORY_GROUPS.map((group) => (
+          {groups.map((group) => (
             <section key={group.id} aria-labelledby={`settings-group-${group.id}`}>
               <h2
                 id={`settings-group-${group.id}`}
@@ -180,7 +230,7 @@ export function SettingsMobileNavigation({
   onClose,
 }: SettingsNavigationProps): React.ReactElement {
   const { t } = useI18n();
-  const options = CATEGORY_GROUPS.flatMap((group) =>
+  const options = visibleCategoryGroups().flatMap((group) =>
     group.categories.map((category) => ({
       value: category.id,
       label: t(category.labelKey),

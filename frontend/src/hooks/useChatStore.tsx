@@ -20,7 +20,7 @@ import {
 } from '../types/api';
 import { getApiBase } from '../lib/api';
 import { stripDenyApprovalPolicies } from '../lib/approvalPolicy';
-import { shouldKeepLocalAssistantContent } from '../lib/chatSyncGuards';
+import { pairLastTurnAssistants, shouldKeepLocalAssistantContent } from '../lib/chatSyncGuards';
 import { useContextUsageStore } from './useContextUsageStore';
 import { useProjects } from './useProjects';
 
@@ -123,7 +123,12 @@ interface ChatCoreContextValue {
   createNewChat: () => Promise<string | null>;
   loadChat: (
     chatId: string,
-    options?: { force?: boolean; authoritative?: boolean; throwOnError?: boolean }
+    options?: {
+      force?: boolean;
+      authoritative?: boolean;
+      trusted?: boolean;
+      throwOnError?: boolean;
+    }
   ) => Promise<void>;
   saveCurrentChat: (skipRefresh?: boolean) => Promise<void>;
   finalSave: (chatId?: string | null) => Promise<void>;
@@ -1373,15 +1378,26 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
   const loadChat = useCallback(
     async (
       chatId: string,
-      options?: { force?: boolean; authoritative?: boolean; throwOnError?: boolean }
+      options?: {
+        force?: boolean;
+        authoritative?: boolean;
+        trusted?: boolean;
+        throwOnError?: boolean;
+      }
     ) => {
-      const force = !!options?.force || !!options?.authoritative;
+      const force = !!options?.force || !!options?.authoritative || !!options?.trusted;
       // authoritative: the backend rejected whatever the client did optimistically,
       // so its snapshot replaces local state outright. The guards below all exist
       // to protect optimistic content the backend is about to catch up with —
       // here there is nothing to catch up with, and preserving it would strand a
       // user bubble or a truncation that never happened.
+      //
+      // trusted: the backend told us this turn is fully written (STREAM_END with
+      // persisted: true, which /chat/live only sends once post-processing has
+      // returned success). Same conclusion, opposite reason: there is nothing
+      // left to catch up with, so the catch-up heuristics can only be wrong.
       const authoritative = !!options?.authoritative;
+      const serverWins = authoritative || !!options?.trusted;
       // Clear any pending saves for the previous chat before switching
       if (currentChatId && currentChatId !== chatId) {
         clearScheduledSave(currentChatId);
@@ -1389,7 +1405,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
       // The optimistic append that is about to be discarded also scheduled a
       // debounced save. Cancel it, or it would persist the rejected message
       // between now and the server snapshot arriving.
-      if (authoritative) {
+      if (serverWins) {
         clearScheduledSave(chatId);
       }
 
@@ -1613,7 +1629,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
               mappedMessages.push(currentAssistant as Message);
             }
 
-            if (authoritative) {
+            if (serverWins) {
               rollbackExpectedChatIdsRef.current.delete(chatId);
               return { ...prev, [key]: mappedMessages };
             }
@@ -1670,8 +1686,10 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
             // Guard against replacing locally-resolved content with a stale pending-approval
             // DB state. This race occurs when loadChat is called immediately after a resume
             // stream ends but before the backend persists the final resolved state.
-            // Compare the LAST assistant message on each side — this avoids false negatives
-            // when earlier history messages happen to contain pending state from old sessions.
+            // Both sides are read at the local store's last assistant turn: scanning the
+            // whole server history matched pending state left by old sessions, and scanning
+            // it against a local assistant from a different turn compared two unrelated
+            // messages — either way a perfectly fresh snapshot was thrown away.
             const msgHasPendingApproval = (m: Message) => {
               if (
                 typeof m.content === 'string' &&
@@ -1685,13 +1703,11 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
               }
               return false;
             };
-            const serverHasPendingApproval = mappedMessages.some(msgHasPendingApproval);
-            const lastLocalAssistant =
-              existing.length > 0
-                ? [...existing].reverse().find((m: Message) => m.role === 'assistant')
-                : undefined;
+            const turnAssistants = pairLastTurnAssistants(existing, mappedMessages);
+            const serverHasPendingApproval =
+              turnAssistants.server != null && msgHasPendingApproval(turnAssistants.server);
             const localLastAssistantHasNoPending =
-              lastLocalAssistant != null && !msgHasPendingApproval(lastLocalAssistant);
+              turnAssistants.local != null && !msgHasPendingApproval(turnAssistants.local);
             if (!rollbackExpected && serverHasPendingApproval && localLastAssistantHasNoPending) {
               return prev;
             }
@@ -1716,12 +1732,10 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
 
             // Guard: prevent stale backend snapshots from replacing richer local assistant
             // content with a shorter/empty variant when counts are otherwise equal.
-            const getLastAssistant = (msgs: Message[]) =>
-              msgs.length > 0
-                ? [...msgs].reverse().find((m: Message) => m.role === 'assistant')
-                : undefined;
-            const localLastAssistant = getLastAssistant(existing);
-            const serverLastAssistant = getLastAssistant(mappedMessages);
+            // Anchored to one turn for the same reason as the guards above: a new turn's
+            // reply is routinely shorter than the previous turn's and is not a regression.
+            const localLastAssistant = turnAssistants.local;
+            const serverLastAssistant = turnAssistants.server;
             if (!rollbackExpected && localLastAssistant && serverLastAssistant) {
               const localContent =
                 typeof localLastAssistant.content === 'string'

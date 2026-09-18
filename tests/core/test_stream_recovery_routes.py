@@ -114,7 +114,7 @@ async def test_detached_direct_producer_survives_refresh_for_both_runtimes(termi
         yield 'data: {"type":"TEXT_MESSAGE_CONTENT","messageId":"m","delta":"after"}\n\n'
         yield f'data: {{"type":"{terminal}"}}\n\n'
 
-    original = _recoverable_response("chat", runtime())
+    original = _recoverable_response("chat", lambda _replay: runtime())
     await anext(original.body_iterator)
     await asyncio.sleep(0)
     await original.body_iterator.aclose()

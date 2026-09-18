@@ -334,6 +334,16 @@ install_dev_deps() {
     info "Installing src-tauri dependencies (npm install)..."
     (cd src-tauri && npm install) || die "npm install failed in src-tauri/."
     ok "Tauri JS dependencies ready"
+
+    # `suzent web` serves the SPA out of src/suzent/webui/, which is a build
+    # artifact rather than source. Nothing else in this script produces it, so
+    # without this step the command reports "no web UI is built".
+    info "Building the web UI bundle (scripts/build_webui.py)..."
+    if uv run python scripts/build_webui.py; then
+        ok "Web UI bundle staged"
+    else
+        warn "Web UI build failed -- 'suzent web' will report no bundle (non-fatal)."
+    fi
 }
 
 if [ "${SUZENT_DEV_SETUP:-0}" = "1" ]; then

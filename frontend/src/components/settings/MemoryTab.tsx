@@ -1,5 +1,5 @@
 import React from 'react';
-import { open } from '@tauri-apps/plugin-dialog';
+import { pickHostDirectory } from '../../lib/hostPathPicker';
 
 import { useI18n } from '../../i18n';
 import { SettingsHeader } from './SettingsHeader';
@@ -33,10 +33,7 @@ export function MemoryTab({
 
   const pickDirectory = async () => {
     try {
-      const selected = await open({
-        directory: true,
-        multiple: false,
-      });
+      const selected = await pickHostDirectory({ multiple: false });
       if (!selected || Array.isArray(selected)) return;
       onGlobalNotebookHostPathChange(selected);
     } catch (error) {

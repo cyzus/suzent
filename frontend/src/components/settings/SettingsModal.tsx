@@ -67,6 +67,18 @@ interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   initialCategory?: CategoryType;
+  /**
+   * Show this category, and nothing else -- no dialog, no category list.
+   *
+   * The desktop app opens settings on top of the chat window it interrupted,
+   * so a modal with its own sidebar is right there. The web console gives every
+   * category a route instead and navigates with its own sidebar, so what it
+   * needs from here is the panel and the state behind it. Passing a category
+   * says the caller owns both the frame and the navigation.
+   */
+  category?: CategoryType;
+  /** Where a panel's own cross-links go, in controlled mode. */
+  onCategoryChange?: (category: CategoryType) => void;
 }
 
 type ProviderTab = 'credentials' | 'models';
@@ -76,6 +88,8 @@ export function SettingsModal({
   isOpen,
   onClose,
   initialCategory = 'providers',
+  category,
+  onCategoryChange,
 }: SettingsModalProps): React.ReactElement | null {
   const { refreshBackendConfig, backendConfig } = useChatStore();
   const { t } = useI18n();
@@ -105,7 +119,14 @@ export function SettingsModal({
   const [roleModels, setRoleModels] = useState<Record<string, string[]>>({});
   const [roleSuggestions, setRoleSuggestions] = useState<Record<string, string[]>>({});
 
-  const [activeCategory, setActiveCategory] = useState<CategoryType>('providers');
+  const [ownCategory, setOwnCategory] = useState<CategoryType>('providers');
+  // Controlled by the route in the console, by the sidebar below it on the
+  // desktop. `selectCategory` is what the panels call either way; the reset
+  // effect writes the internal one directly, since in controlled mode that
+  // would otherwise navigate out of whatever route just mounted this.
+  const controlled = category !== undefined;
+  const activeCategory = controlled ? category : ownCategory;
+  const selectCategory = controlled ? (onCategoryChange ?? (() => {})) : setOwnCategory;
 
   // Social Config State
   const [socialConfig, setSocialConfig] = useState<SocialConfig>({});
@@ -145,7 +166,7 @@ export function SettingsModal({
   useEffect(() => {
     if (!isOpen) return;
 
-    setActiveCategory(initialCategory);
+    setOwnCategory(initialCategory);
     setProvidersLoaded(false);
     setRolesLoaded(false);
     setSocialLoaded(false);
@@ -492,6 +513,157 @@ export function SettingsModal({
 
   if (!isOpen) return null;
 
+  const panel = loading ? (
+    <div className="flex justify-center items-center h-full">
+      <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-brutal-black"></div>
+    </div>
+  ) : (
+    <>
+      {activeCategory === 'providers' && (
+        <ProvidersTab
+          providers={providers}
+          apiKeys={apiKeys}
+          userConfigs={userConfigs}
+          showKey={showKey}
+          activeTabs={activeTabs}
+          verifying={verifying}
+          onKeyChange={handleKeyChange}
+          onToggleShowKey={(key) => setShowKey((prev) => ({ ...prev, [key]: !prev[key] }))}
+          onTabChange={(providerId, tab) =>
+            setActiveTabs((prev) => ({ ...prev, [providerId]: tab }))
+          }
+          onConfigChange={(providerId, config) =>
+            setUserConfigs((prev) => ({ ...prev, [providerId]: config }))
+          }
+          onAddCustomModel={addCustomModel}
+          onVerify={handleVerify}
+          onAddProvider={async (payload: CustomProviderPayload) => {
+            const result = await saveCustomProvider(payload);
+            if (!result.success) throw new Error(result.error || 'Failed to save');
+            const data = await fetchApiKeys();
+            if (data?.providers) {
+              setProviders(data.providers);
+              const configs: Record<string, UserConfig> = {};
+              const tabs: Record<string, 'credentials' | 'models'> = {};
+              for (const p of data.providers) {
+                configs[p.id] = p.user_config || {
+                  enabled_models: [],
+                  custom_models: [],
+                };
+                tabs[p.id] = activeTabs[p.id] || 'credentials';
+              }
+              setUserConfigs(configs);
+              setActiveTabs(tabs);
+            }
+          }}
+          onDeleteProvider={async (providerId: string) => {
+            await deleteCustomProvider(providerId);
+            setProviders((prev) => prev.filter((p) => p.id !== providerId));
+          }}
+          onChatGPTAuthChanged={refreshBackendConfig}
+        />
+      )}
+
+      {activeCategory === 'roles' && (
+        <ModelRolesTab
+          roleModels={roleModels}
+          suggestions={roleSuggestions}
+          unregisteredModels={roleSuggestions._unregistered || []}
+          onChange={setRoleModels}
+        />
+      )}
+
+      {activeCategory === 'memory' && (
+        <MemoryTab
+          globalNotebookHostPath={globalNotebookHostPath}
+          onGlobalNotebookHostPathChange={setGlobalNotebookHostPath}
+          memoryEnabled={memoryEnabled}
+          onMemoryEnabledChange={handleMemoryEnabledChange}
+          embeddingModel={roleModels.embedding?.[0]}
+          cheapModel={roleModels.cheap?.[0]}
+          onOpenModelRoles={() => selectCategory('roles')}
+        />
+      )}
+
+      {activeCategory === 'security' && (
+        <SecurityTab
+          sandboxEnabled={sandboxEnabled}
+          onSandboxEnabledChange={handleSandboxEnabledChange}
+        />
+      )}
+
+      {activeCategory === 'social' && (
+        <SocialTab
+          socialConfig={socialConfig}
+          tools={backendConfig?.tools || []}
+          mcpServers={mcpServers}
+          useCustomTools={useCustomTools}
+          useCustomMcp={useCustomMcp}
+          onConfigChange={setSocialConfig}
+          onUseCustomToolsChange={setUseCustomTools}
+          onUseCustomMcpChange={setUseCustomMcp}
+        />
+      )}
+
+      {activeCategory === 'devices' && <DevicesTab />}
+
+      {activeCategory === 'mesh' && <MeshTab />}
+
+      {activeCategory === 'mcp' && (
+        <McpTab
+          serverList={mcpServerList}
+          onServerListChange={setMcpServerList}
+          onMcpServersRefresh={setMcpServers}
+        />
+      )}
+
+      {activeCategory === 'acp-agents' && <AcpAgentsTab />}
+
+      {activeCategory === 'automation' && (
+        <AutomationTab models={backendConfig?.models || []} tools={backendConfig?.tools || []} />
+      )}
+
+      {activeCategory === 'service' && <BackgroundServiceTab />}
+      {activeCategory === 'browser' && <BrowserTab />}
+
+      {activeCategory === 'data' && <DataTab onSyncComplete={refreshProviders} />}
+
+      {activeCategory === 'usage' && <UsageTab />}
+
+      {activeCategory === 'appearance' && <AppearanceTab />}
+
+      {activeCategory === 'about' && <AboutTab />}
+    </>
+  );
+
+  // The console supplies the page frame and the navigation, so the panel is
+  // the whole contribution.
+  if (controlled) return panel;
+
+  const body = (
+    <>
+      <SettingsNavigation
+        activeCategory={activeCategory}
+        onCategoryChange={selectCategory}
+        onClose={handleClose}
+      />
+
+      {/* Content Area */}
+      <div className="flex-1 overflow-hidden bg-dot-pattern flex flex-col">
+        <SettingsMobileNavigation
+          activeCategory={activeCategory}
+          onCategoryChange={selectCategory}
+          onClose={handleClose}
+        />
+        <div className="settings-content flex-1 overflow-y-auto p-3 scrollbar-thin sm:p-5 lg:p-6">
+          <div className={`${activeCategory === 'usage' ? 'max-w-6xl' : 'max-w-5xl'} mx-auto`}>
+            {panel}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+
   return (
     <FullscreenOverlay
       open={isOpen}
@@ -500,151 +672,7 @@ export function SettingsModal({
       backdropClassName="bg-brutal-black/80 backdrop-blur-sm animate-view-fade"
       containerClassName="relative w-full h-[95vh] md:w-[95vw] lg:w-[90vw] xl:w-[82vw] 2xl:max-w-[1600px] bg-neutral-100 dark:bg-zinc-900 border-4 border-brutal-black shadow-brutal-xl flex overflow-hidden"
     >
-      <SettingsNavigation
-        activeCategory={activeCategory}
-        onCategoryChange={setActiveCategory}
-        onClose={handleClose}
-      />
-
-      {/* Content Area */}
-      <div className="flex-1 overflow-hidden bg-dot-pattern flex flex-col">
-        <SettingsMobileNavigation
-          activeCategory={activeCategory}
-          onCategoryChange={setActiveCategory}
-          onClose={handleClose}
-        />
-        <div className="settings-content flex-1 overflow-y-auto p-3 scrollbar-thin sm:p-5 lg:p-6">
-          <div className={`${activeCategory === 'usage' ? 'max-w-6xl' : 'max-w-5xl'} mx-auto`}>
-            {loading ? (
-              <div className="flex justify-center items-center h-full">
-                <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-brutal-black"></div>
-              </div>
-            ) : (
-              <>
-                {activeCategory === 'providers' && (
-                  <ProvidersTab
-                    providers={providers}
-                    apiKeys={apiKeys}
-                    userConfigs={userConfigs}
-                    showKey={showKey}
-                    activeTabs={activeTabs}
-                    verifying={verifying}
-                    onKeyChange={handleKeyChange}
-                    onToggleShowKey={(key) =>
-                      setShowKey((prev) => ({ ...prev, [key]: !prev[key] }))
-                    }
-                    onTabChange={(providerId, tab) =>
-                      setActiveTabs((prev) => ({ ...prev, [providerId]: tab }))
-                    }
-                    onConfigChange={(providerId, config) =>
-                      setUserConfigs((prev) => ({ ...prev, [providerId]: config }))
-                    }
-                    onAddCustomModel={addCustomModel}
-                    onVerify={handleVerify}
-                    onAddProvider={async (payload: CustomProviderPayload) => {
-                      const result = await saveCustomProvider(payload);
-                      if (!result.success) throw new Error(result.error || 'Failed to save');
-                      const data = await fetchApiKeys();
-                      if (data?.providers) {
-                        setProviders(data.providers);
-                        const configs: Record<string, UserConfig> = {};
-                        const tabs: Record<string, 'credentials' | 'models'> = {};
-                        for (const p of data.providers) {
-                          configs[p.id] = p.user_config || {
-                            enabled_models: [],
-                            custom_models: [],
-                          };
-                          tabs[p.id] = activeTabs[p.id] || 'credentials';
-                        }
-                        setUserConfigs(configs);
-                        setActiveTabs(tabs);
-                      }
-                    }}
-                    onDeleteProvider={async (providerId: string) => {
-                      await deleteCustomProvider(providerId);
-                      setProviders((prev) => prev.filter((p) => p.id !== providerId));
-                    }}
-                    onChatGPTAuthChanged={refreshBackendConfig}
-                  />
-                )}
-
-                {activeCategory === 'roles' && (
-                  <ModelRolesTab
-                    roleModels={roleModels}
-                    suggestions={roleSuggestions}
-                    unregisteredModels={roleSuggestions._unregistered || []}
-                    onChange={setRoleModels}
-                  />
-                )}
-
-                {activeCategory === 'memory' && (
-                  <MemoryTab
-                    globalNotebookHostPath={globalNotebookHostPath}
-                    onGlobalNotebookHostPathChange={setGlobalNotebookHostPath}
-                    memoryEnabled={memoryEnabled}
-                    onMemoryEnabledChange={handleMemoryEnabledChange}
-                    embeddingModel={roleModels.embedding?.[0]}
-                    cheapModel={roleModels.cheap?.[0]}
-                    onOpenModelRoles={() => setActiveCategory('roles')}
-                  />
-                )}
-
-                {activeCategory === 'security' && (
-                  <SecurityTab
-                    sandboxEnabled={sandboxEnabled}
-                    onSandboxEnabledChange={handleSandboxEnabledChange}
-                  />
-                )}
-
-                {activeCategory === 'social' && (
-                  <SocialTab
-                    socialConfig={socialConfig}
-                    tools={backendConfig?.tools || []}
-                    mcpServers={mcpServers}
-                    useCustomTools={useCustomTools}
-                    useCustomMcp={useCustomMcp}
-                    onConfigChange={setSocialConfig}
-                    onUseCustomToolsChange={setUseCustomTools}
-                    onUseCustomMcpChange={setUseCustomMcp}
-                  />
-                )}
-
-                {activeCategory === 'devices' && <DevicesTab />}
-
-                {activeCategory === 'mesh' && <MeshTab />}
-
-                {activeCategory === 'mcp' && (
-                  <McpTab
-                    serverList={mcpServerList}
-                    onServerListChange={setMcpServerList}
-                    onMcpServersRefresh={setMcpServers}
-                  />
-                )}
-
-                {activeCategory === 'acp-agents' && <AcpAgentsTab />}
-
-                {activeCategory === 'automation' && (
-                  <AutomationTab
-                    models={backendConfig?.models || []}
-                    tools={backendConfig?.tools || []}
-                  />
-                )}
-
-                {activeCategory === 'service' && <BackgroundServiceTab />}
-                {activeCategory === 'browser' && <BrowserTab />}
-
-                {activeCategory === 'data' && <DataTab onSyncComplete={refreshProviders} />}
-
-                {activeCategory === 'usage' && <UsageTab />}
-
-                {activeCategory === 'appearance' && <AppearanceTab />}
-
-                {activeCategory === 'about' && <AboutTab />}
-              </>
-            )}
-          </div>
-        </div>
-      </div>
+      {body}
     </FullscreenOverlay>
   );
 }

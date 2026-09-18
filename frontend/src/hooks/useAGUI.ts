@@ -29,16 +29,11 @@ interface UseAGUIReturn {
   sendMessage: (
     body: Record<string, unknown>,
     opts?: {
-      formData?: FormData;
       urlOverride?: string;
       onStreamStart?: () => void;
       seedParts?: AGUIPart[];
     }
   ) => Promise<boolean>;
-  /** Resume a stream after approval without clearing existing parts */
-  resumeStream: (body: Record<string, unknown>) => Promise<void>;
-  /** Interrupt the current stream and redirect the agent with a new message */
-  steerStream: (body: Record<string, unknown>) => Promise<void>;
   stop: () => void;
   /** Abort the active stream without triggering onFinish (used on chat switch) */
   stopSilently: () => void;
@@ -85,43 +80,6 @@ interface UseAGUIReturn {
 interface ParsedSSEEvent {
   type: string;
   data: Record<string, unknown>;
-}
-
-/**
- * Parse AG-UI SSE chunks from a buffer.
- * AG-UI format: `data: {"type":"EVENT_TYPE",...}\n\n`
- */
-function parseSSEBuffer(buffer: string): { events: ParsedSSEEvent[]; remainder: string } {
-  const events: ParsedSSEEvent[] = [];
-  const blocks = buffer.split('\n\n');
-  const remainder = blocks.pop() || '';
-
-  for (const block of blocks) {
-    if (!block.trim()) continue;
-
-    // Collect data lines (AG-UI uses single `data:` line per event)
-    let dataStr = '';
-    for (const line of block.split('\n')) {
-      if (line.startsWith('data: ')) {
-        dataStr += line.slice(6);
-      } else if (line.startsWith('data:')) {
-        dataStr += line.slice(5);
-      }
-    }
-
-    if (!dataStr) continue;
-
-    try {
-      const parsed = JSON.parse(dataStr);
-      if (parsed && typeof parsed.type === 'string') {
-        events.push({ type: parsed.type, data: parsed });
-      }
-    } catch {
-      // Skip malformed events
-    }
-  }
-
-  return { events, remainder };
 }
 
 // ── Event Processor ──────────────────────────────────────────────────
@@ -560,8 +518,6 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
   const [status, setStatus] = useState<AGUIStatus>('idle');
   const [error, setError] = useState<string | undefined>();
   const abortRef = useRef<AbortController | null>(null);
-  // Set to true while steerStream is running so abort-triggered onFinish is suppressed
-  const isSteeringRef = useRef(false);
   // Set to true by stopSilently() so the next abort skips onFinish entirely.
   // Used when abandoning a live background stream on chat switch — the backend
   // persists the content, so the frontend must NOT addMessage (which would
@@ -745,237 +701,10 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
     return decisions;
   }, [resetApprovalTracking]);
 
-  /**
-   * Resume a stream after tool approval without clearing existing parts.
-   * Merges new events (tool results, text) into the existing parts array.
-   */
-  const resumeStream = useCallback(async (body: Record<string, unknown>) => {
-    const { url, onFinish, onCustomEvent, onMarkDeferred, onError } = optionsRef.current;
-
-    // DON'T clear parts — keep existing tool parts from first stream
-    setError(undefined);
-    setStatus('streaming');
-    resetApprovalTracking();
-
-    const controller = new AbortController();
-    abortRef.current = controller;
-
-    try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
-
-      if (!response.ok) {
-        const text = await response.text().catch(() => response.statusText);
-        throw new Error(`HTTP ${response.status}: ${text}`);
-      }
-
-      if (!response.body) {
-        throw new Error('Response body is null');
-      }
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      // Start from existing parts instead of empty array
-      let currentParts = [...partsRef.current];
-      const pendingApprovalIds = new Set<string>();
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        // Sync with any out-of-band part mutations (e.g. removeInlineSurface)
-        currentParts = [...partsRef.current];
-
-        buffer += decoder.decode(value, { stream: true });
-        const { events, remainder } = parseSSEBuffer(buffer);
-        buffer = remainder;
-
-        for (const event of events) {
-          // Track unique approval requests in this paused stream segment.
-          if (event.type === 'CUSTOM' && (event.data.name as string) === 'tool_approval_request') {
-            const approval = event.data.value as Record<string, unknown> | undefined;
-            const approvalId = approval?.approvalId;
-            if (typeof approvalId === 'string' && approvalId.length > 0) {
-              pendingApprovalIds.add(approvalId);
-            }
-          }
-          const result = processEvent(event, currentParts, onCustomEvent, onMarkDeferred);
-          currentParts = result.parts;
-
-          if (result.error) {
-            setError(result.error);
-            setStatus('error');
-            publishParts(currentParts, true);
-            onError?.(new Error(result.error), currentParts);
-            return;
-          }
-        }
-
-        if (events.length > 0) {
-          publishParts(currentParts);
-          setPendingApprovalCountSync(pendingApprovalIds.size);
-        }
-      }
-
-      // `currentParts` is still empty when the stream closed before any event
-      // arrived, so flush the ref -- it always holds the newest parts.
-      publishParts(partsRef.current, true);
-      setStatus('idle');
-      onFinish?.(currentParts);
-    } catch (err) {
-      if ((err as Error).name === 'AbortError') {
-        // If the abort was triggered by steerStream, do nothing here —
-        // steerStream owns the status and will call onFinish when done.
-        if (!isSteeringRef.current) {
-          publishParts(partsRef.current, true);
-          setStatus('idle');
-          onFinish?.(partsRef.current);
-        }
-      } else {
-        const errorMsg = (err as Error).message;
-        setError(errorMsg);
-        setStatus('error');
-        onError?.(err as Error, partsRef.current);
-      }
-    }
-  }, []);
-
-  /**
-   * Interrupt the current stream and redirect the agent.
-   * Aborts the active fetch, inserts a visual divider, then starts a new
-   * stream from /chat/steer preserving existing parts.
-   */
-  const steerStream = useCallback(async (body: Record<string, unknown>) => {
-    const { onFinish, onCustomEvent, onMarkDeferred, onError } = optionsRef.current;
-    // Derive steer URL from the base chat URL
-    const steerUrl = optionsRef.current.url.replace(/\/chat$/, '/chat/steer');
-    const previousParts = [...partsRef.current];
-
-    // Mark any pending approvals as cancelled before aborting,
-    // so they won't show approval buttons after being saved to the store
-    const hasApprovals = partsRef.current.some(
-      (p) => p.type === 'tool' && p.state === 'approval-requested'
-    );
-    if (hasApprovals) {
-      const resolved = partsRef.current.map((p) =>
-        p.type === 'tool' && p.state === 'approval-requested'
-          ? { ...p, state: 'error' as const, approvalId: undefined }
-          : p
-      );
-      publishParts(resolved, true);
-    }
-
-    // 1. Abort the current fetch — set flag so the AbortError handler is a no-op
-    isSteeringRef.current = true;
-    abortRef.current?.abort();
-
-    // Keep existing parts visible until the steer response is confirmed.
-    // This prevents a blank UI when steering fails before the first chunk.
-    setError(undefined);
-    setStatus('submitted');
-    resetApprovalTracking();
-
-    const controller = new AbortController();
-    abortRef.current = controller;
-
-    try {
-      const response = await fetch(steerUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
-
-      if (!response.ok) {
-        const text = await response.text().catch(() => response.statusText);
-        throw new Error(`HTTP ${response.status}: ${text}`);
-      }
-
-      if (!response.body) {
-        throw new Error('Response body is null');
-      }
-
-      // Steer stream is confirmed active; start with a fresh transient message.
-      publishParts([], true);
-      setStatus('streaming');
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let currentParts = [...partsRef.current];
-      const pendingApprovalIds = new Set<string>();
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        // Sync with any out-of-band part mutations (e.g. removeInlineSurface)
-        currentParts = [...partsRef.current];
-
-        buffer += decoder.decode(value, { stream: true });
-        const { events, remainder } = parseSSEBuffer(buffer);
-        buffer = remainder;
-
-        for (const event of events) {
-          if (event.type === 'CUSTOM' && (event.data.name as string) === 'tool_approval_request') {
-            const approval = event.data.value as Record<string, unknown> | undefined;
-            const approvalId = approval?.approvalId;
-            if (typeof approvalId === 'string' && approvalId.length > 0) {
-              pendingApprovalIds.add(approvalId);
-            }
-          }
-          const result = processEvent(event, currentParts, onCustomEvent, onMarkDeferred);
-          currentParts = result.parts;
-
-          if (result.error) {
-            isSteeringRef.current = false;
-            setError(result.error);
-            setStatus('error');
-            publishParts(currentParts, true);
-            onError?.(new Error(result.error), currentParts);
-            return;
-          }
-        }
-
-        if (events.length > 0) {
-          publishParts(currentParts);
-          setPendingApprovalCountSync(pendingApprovalIds.size);
-        }
-      }
-
-      isSteeringRef.current = false;
-      publishParts(partsRef.current, true);
-      setStatus('idle');
-      onFinish?.(currentParts);
-    } catch (err) {
-      isSteeringRef.current = false;
-      if ((err as Error).name === 'AbortError') {
-        publishParts(partsRef.current, true);
-        setStatus('idle');
-        onFinish?.(partsRef.current);
-      } else {
-        // Restore previous parts if steer failed before the replacement stream started.
-        if (partsRef.current.length === 0 && previousParts.length > 0) {
-          publishParts(previousParts, true);
-        }
-        const errorMsg = (err as Error).message;
-        setError(errorMsg);
-        setStatus('error');
-        onError?.(err as Error, partsRef.current);
-      }
-    }
-  }, []);
-
   const sendMessage = useCallback(
     async (
       body: Record<string, unknown>,
       opts?: {
-        formData?: FormData;
         urlOverride?: string;
         onStreamStart?: () => void;
         seedParts?: AGUIPart[];
@@ -1000,162 +729,58 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
       abortRef.current = controller;
 
       try {
-        if ((isProbe && body.protocol === 1) || (!isProbe && !opts?.formData)) {
-          const liveUrl = isProbe ? targetUrl : targetUrl.replace(/\/chat$/, '/chat/live');
-          const observeBody = isProbe ? body : { chat_id: body.chat_id, wait_ms: 8000 };
-          let started = false;
-          for await (const batch of recoverableStream(
-            liveUrl,
-            observeBody,
-            controller.signal,
-            () => {
-              started = true;
-              setError(undefined);
-              resetApprovalTracking();
-              opts?.onStreamStart?.();
-              setStatus('streaming');
-            },
-            isProbe ? undefined : { url: targetUrl, body }
-          )) {
-            let currentParts = batch.reset ? [] : [...partsRef.current];
-            if (batch.reset) resetApprovalTracking();
-            for (const data of batch.events) {
-              const result = processEvent(
-                { type: data.type, data },
-                currentParts,
-                onCustomEvent,
-                onMarkDeferred
-              );
-              currentParts = result.parts;
-              if (result.error) {
-                publishParts(currentParts, true);
-                throw new Error(result.error);
-              }
-            }
-            publishParts(currentParts, batch.reset);
-            setPendingApprovalCountSync(
-              currentParts.filter(
-                (part) =>
-                  part.type === 'tool' && part.state === 'approval-requested' && !!part.approvalId
-              ).length
+        const liveUrl = isProbe ? targetUrl : targetUrl.replace(/\/chat$/, '/chat/live');
+        const observeBody = isProbe ? body : { chat_id: body.chat_id, wait_ms: 8000 };
+        let started = false;
+        for await (const batch of recoverableStream(
+          liveUrl,
+          observeBody,
+          controller.signal,
+          () => {
+            started = true;
+            setError(undefined);
+            resetApprovalTracking();
+            opts?.onStreamStart?.();
+            setStatus('streaming');
+          },
+          isProbe ? undefined : { url: targetUrl, body }
+        )) {
+          let currentParts = batch.reset ? [] : [...partsRef.current];
+          if (batch.reset) resetApprovalTracking();
+          for (const data of batch.events) {
+            const result = processEvent(
+              { type: data.type, data },
+              currentParts,
+              onCustomEvent,
+              onMarkDeferred
             );
-          }
-          if (started) {
-            publishParts(partsRef.current, true);
-            setStatus('idle');
-            await onFinish?.(partsRef.current, { confirmed: true });
-          }
-          return started;
-        }
-
-        const fetchBody = opts?.formData || JSON.stringify(body);
-        const headers: Record<string, string> = opts?.formData
-          ? {} // Let browser set Content-Type for FormData
-          : { 'Content-Type': 'application/json' };
-
-        const response = await fetch(targetUrl, {
-          method: 'POST',
-          headers,
-          body: fetchBody,
-          signal: controller.signal,
-        });
-
-        // 204: no active stream (e.g. /chat/live when no background run is in progress)
-        if (response.status === 204) {
-          if (!isProbe) setStatus('idle');
-          return false;
-        }
-
-        if (!response.ok) {
-          const text = await response.text().catch(() => response.statusText);
-          throw new Error(`HTTP ${response.status}: ${text}`);
-        }
-
-        if (!response.body) {
-          throw new Error('Response body is null');
-        }
-
-        if (isProbe) {
-          // Stream confirmed active — reset state now (not on every silent 204 probe).
-          // Seed with prior parts when reconnecting to a stream we abandoned on a
-          // chat switch, so previously-shown steps (and in-flight tool states)
-          // are preserved instead of resetting. The background queue is
-          // consume-once, so it only replays chunks from the reconnect point —
-          // the seed supplies everything before it.
-          const seed = opts?.seedParts ?? [];
-          publishParts(seed, true);
-          setError(undefined);
-          setStatus('submitted');
-          resetApprovalTracking();
-        }
-
-        // Notify caller (e.g. set isLiveStreamRef) before entering the read loop.
-        opts?.onStreamStart?.();
-        setStatus('streaming');
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-        let currentParts: AGUIPart[] = [];
-        const pendingApprovalIds = new Set<string>();
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          // Sync with any out-of-band part mutations (e.g. removeInlineSurface)
-          // that may have updated partsRef.current between read() calls.
-          currentParts = [...partsRef.current];
-
-          buffer += decoder.decode(value, { stream: true });
-          const { events, remainder } = parseSSEBuffer(buffer);
-          buffer = remainder;
-
-          for (const event of events) {
-            // Track approval requests
-            if (
-              event.type === 'CUSTOM' &&
-              (event.data.name as string) === 'tool_approval_request'
-            ) {
-              const approval = event.data.value as Record<string, unknown> | undefined;
-              const approvalId = approval?.approvalId;
-              if (typeof approvalId === 'string' && approvalId.length > 0) {
-                pendingApprovalIds.add(approvalId);
-              }
-            }
-            const result = processEvent(event, currentParts, onCustomEvent, onMarkDeferred);
             currentParts = result.parts;
-
             if (result.error) {
-              setError(result.error);
-              setStatus('error');
               publishParts(currentParts, true);
-              onError?.(new Error(result.error), currentParts);
-              return true;
+              throw new Error(result.error);
             }
           }
-
-          if (events.length > 0) {
-            publishParts(currentParts);
-            setPendingApprovalCountSync(pendingApprovalIds.size);
-          }
+          publishParts(currentParts, batch.reset);
+          setPendingApprovalCountSync(
+            currentParts.filter(
+              (part) =>
+                part.type === 'tool' && part.state === 'approval-requested' && !!part.approvalId
+            ).length
+          );
         }
-
-        // Land the turn's last tokens in the same commit as the status flip
-        // instead of a frame behind it. The ref, not `currentParts`: the latter is
-        // still empty when the stream closed before delivering an event.
-        publishParts(partsRef.current, true);
-        setStatus('idle');
-        onFinish?.(currentParts);
-        return true;
+        if (started) {
+          publishParts(partsRef.current, true);
+          setStatus('idle');
+          await onFinish?.(partsRef.current, { confirmed: true });
+        }
+        return started;
       } catch (err) {
         if ((err as Error).name === 'AbortError') {
           // Silent stop (chat switch): discard parts, never finalize.
           if (suppressFinishRef.current) {
             suppressFinishRef.current = false;
             setStatus('idle');
-          } else if (!isSteeringRef.current) {
-            // If the abort was triggered by steerStream, do nothing here —
-            // steerStream owns the status and will call onFinish when done.
+          } else {
             publishParts(partsRef.current, true);
             setStatus('idle');
             onFinish?.(partsRef.current);
@@ -1177,8 +802,6 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
     status,
     error,
     sendMessage,
-    resumeStream,
-    steerStream,
     stop,
     stopSilently,
     getParts,

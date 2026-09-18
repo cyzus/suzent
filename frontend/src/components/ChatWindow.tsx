@@ -677,6 +677,21 @@ const MessageList: React.FC<{
 // retrigger the O(n) message grouping logic.
 const MessageListMemo = React.memo(MessageList);
 
+/**
+ * The composer's unsent text, kept across a ChatWindow unmount.
+ *
+ * In the console, chat and settings are destinations rather than a window with
+ * a modal over it, so opening settings takes this component off screen and
+ * coming back mounts a new one. A half-written prompt is the one piece of local
+ * state a user would notice losing on that trip. Module scope rather than
+ * storage: it is a draft within a session, not a document, and it clears on
+ * send like every other copy of it.
+ */
+const composerDraft: { input: string; mentions: FileMentionSelection[] } = {
+  input: '',
+  mentions: [],
+};
+
 interface ChatWindowProps {
   isRightSidebarOpen?: boolean;
   onRightSidebarToggle?: (isOpen: boolean) => void;
@@ -733,7 +748,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const setHeartbeatRunning = useHeartbeatRunning((s) => s.setRunning);
 
   // Local state
-  const [input, setInput] = useState('');
+  const [input, setInputState] = useState(composerDraft.input);
+  const setInput = useCallback((value: React.SetStateAction<string>) => {
+    setInputState((current) => {
+      const next = typeof value === 'function' ? value(current) : value;
+      composerDraft.input = next;
+      return next;
+    });
+  }, []);
   const [viewingImage, setViewingImage] = useState<string | null>(null);
   const [viewingFile, setViewingFile] = useState<{ path: string; name: string } | null>(null);
   const [pendingFork, setPendingFork] = useState<{ messageIndex?: number } | null>(null);
@@ -761,7 +783,16 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const [viewingSubAgentTaskId, setViewingSubAgentTaskId] = useState<string | null>(null);
   const [forcedWebContextId, setForcedWebContextId] = useState<string | null>(null);
   const [isBoardFullscreen, setIsBoardFullscreen] = useState(false);
-  const [fileMentions, setFileMentions] = useState<FileMentionSelection[]>([]);
+  const [fileMentions, setFileMentionsState] = useState<FileMentionSelection[]>(
+    composerDraft.mentions
+  );
+  const setFileMentions = useCallback((value: React.SetStateAction<FileMentionSelection[]>) => {
+    setFileMentionsState((current) => {
+      const next = typeof value === 'function' ? value(current) : value;
+      composerDraft.mentions = next;
+      return next;
+    });
+  }, []);
   const [cronModelSelection, setCronModelSelection] = useState<{
     jobId: number;
     model: string | null;
@@ -1056,7 +1087,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       };
       await finishDirect(async () => {
         if (persistence?.confirmed) {
-          await loadChat(chatId!, { force: true, throwOnError: true });
+          // The stream only reports `confirmed` after the backend acknowledged the
+          // turn as persisted, so this snapshot is complete by construction — take
+          // it outright rather than running the catch-up guards against a local
+          // store that (deliberately) never saw this turn.
+          await loadChat(chatId!, { trusted: true, throwOnError: true });
         }
       });
       if (!persistence?.confirmed) {
@@ -1357,7 +1392,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       tryConnectRef.current?.();
       return true;
     },
-    [loadChat, setIsStreaming, setStatusBar, t]
+    [loadChat, setInput, setIsStreaming, setStatusBar, t]
   );
 
   const { handleToolApproval } = useToolApproval({
@@ -1994,7 +2029,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       // must reload here; limiting this sync to social chats left desktop diffs hidden
       // until the user manually refreshed.
       try {
-        await loadChat(chatIdAtMount, { force: true, throwOnError: true });
+        // Same contract as the direct path: sendAGUI only resolves truthy once the
+        // stream ended with persistence confirmed, so this snapshot supersedes
+        // whatever the store holds.
+        await loadChat(chatIdAtMount, { trusted: true, throwOnError: true });
       } catch {
         if (!cancelled && richMsg.content.trim()) addMessage(richMsg, chatIdAtMount);
       }

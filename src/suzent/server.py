@@ -25,6 +25,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route, WebSocketRoute
 
 from suzent.auth_boundary import AuthBoundaryMiddleware
+from suzent.webui import webui_routes
 from suzent.tools.browser.extension.routes import (
     extension_settings,
     extension_connect_page,
@@ -162,6 +163,12 @@ from suzent.routes.sandbox_routes import (
     serve_sandbox_file_wildcard,
     get_sandbox_volumes,
     upload_files,
+)
+from suzent.routes.ops_routes import (
+    get_ops_logs,
+    get_ops_status,
+    restart_ops_service,
+    set_ops_service_enabled,
 )
 from suzent.routes.skill_routes import get_skills, reload_skills, toggle_skill
 from suzent.routes.system_routes import (
@@ -604,6 +611,25 @@ async def _monitor_service_resources() -> None:
         return
 
 
+def _rebuild_webui_if_stale() -> None:
+    """Catch a stale web UI bundle at startup, in a source checkout.
+
+    The bundle is a build artifact nothing regenerates on its own, so without
+    this a developer serves last week's frontend and has no way to tell. The
+    rebuild runs on a worker thread; an install with no frontend source finds
+    nothing to do.
+    """
+    from suzent.webui import webui_available
+    from suzent.webui_build import auto_build_enabled, rebuild_if_stale
+
+    if rebuild_if_stale() and not webui_available():
+        # Routes are registered at import, so the bundle this build produces is
+        # served from the next start rather than this one.
+        logger.info("Web UI is being built for the first time; restart to serve it")
+    elif not webui_available() and not auto_build_enabled():
+        logger.debug("No web UI bundle; run scripts/build_webui.py to serve one")
+
+
 async def startup():
     """Initialize services on application startup."""
     from suzent.memory.lifecycle import init_memory_system, _memory_rag_hook
@@ -619,6 +645,7 @@ async def startup():
 
     logger.info("Application startup - initializing services")
     app.state.background_services_ready = False
+    _rebuild_webui_if_stale()
     if os.getenv("SUZENT_RUN_MODE") == "service":
         app.state.service_resource_guard = asyncio.create_task(
             _monitor_service_resources(), name="service_resource_guard"
@@ -1030,6 +1057,38 @@ async def shutdown():
         pass
 
 
+# Loopback origins, at any port: the Vite dev server (127.0.0.1:18080) and a
+# browser opened against the backend directly.
+_LOOPBACK_ORIGIN_REGEX = r"https?://(localhost|127\.0\.0\.1|\[::1\])(:\d+)?"
+
+# The packaged desktop webview. Tauri v2 does not serve the app from loopback:
+# it uses a custom protocol whose origin is "tauri://localhost" on macOS/Linux
+# and "http://tauri.localhost" on Windows. Neither is a loopback origin, so
+# leaving them out here would let development pass while the released app loses
+# CORS access to its own backend. These are the same origins
+# ``local_setup_request`` already trusts for browser-extension setup.
+_TAURI_ORIGIN_REGEX = r"tauri://localhost|https?://tauri\.localhost"
+
+
+def _allowed_origin_regex() -> str:
+    """Origins allowed to make cross-origin calls to this backend.
+
+    ``SUZENT_ALLOWED_ORIGINS`` adds explicit origins, comma-separated, for
+    anyone fronting the UI with their own static host or domain.
+    """
+    import re as _re
+
+    extra = [
+        o.strip().rstrip("/")
+        for o in os.getenv("SUZENT_ALLOWED_ORIGINS", "").split(",")
+        if o.strip()
+    ]
+    patterns = [_LOOPBACK_ORIGIN_REGEX, _TAURI_ORIGIN_REGEX] + [
+        _re.escape(o) for o in extra
+    ]
+    return "|".join(patterns)
+
+
 @asynccontextmanager
 async def lifespan(app):
     await startup()
@@ -1194,6 +1253,13 @@ app = Starlette(
             methods=["GET"],
         ),
         Route("/sandbox/upload", upload_files, methods=["POST"]),
+        # Service control for clients that have no Tauri bridge -- the web
+        # console. Not in AGENT_ALLOWED_PATHS, so a remote agent-scope token
+        # cannot reach them; they need loopback or a full-scope token.
+        Route("/ops/service/status", get_ops_status, methods=["GET"]),
+        Route("/ops/service/restart", restart_ops_service, methods=["POST"]),
+        Route("/ops/service/enabled", set_ops_service_enabled, methods=["POST"]),
+        Route("/ops/logs", get_ops_logs, methods=["GET"]),
         Route("/system/version", get_system_version, methods=["GET"]),
         Route("/system/files", list_host_files, methods=["GET"]),
         Route("/system/open_explorer", open_in_explorer, methods=["POST"]),
@@ -1358,11 +1424,19 @@ app = Starlette(
         Route("/subagents", list_subagents, methods=["GET"]),
         Route("/subagents/{task_id}", get_subagent, methods=["GET"]),
         Route("/subagents/{task_id}/stop", stop_subagent_route, methods=["POST"]),
+        # Last: the SPA catch-all must not shadow an API route. Empty when the
+        # bundle is not built in or SUZENT_SERVE_HEADLESS is set.
+        *webui_routes(),
     ],
     middleware=[
         Middleware(
             CORSMiddleware,
-            allow_origins=["*"],
+            # Not "*": loopback is a trusted caller here, so a wildcard lets any
+            # web page in the user's browser drive this API and read the replies.
+            # The web UI is served from this same origin and needs no CORS at
+            # all; the allowance exists for the Vite dev server and for an
+            # origin the operator names explicitly.
+            allow_origin_regex=_allowed_origin_regex(),
             allow_methods=["*"],
             allow_headers=["*"],
         ),
