@@ -745,8 +745,6 @@ export const en = {
       more: 'More',
       noUsageYet: 'No usage data yet. Start chatting to see your spending here.',
     },
-    switchToLight: 'Switch to light mode',
-    switchToDark: 'Switch to dark mode',
     saveChanges: 'Save Changes',
     saving: 'Saving...',
     verifyFailed: 'Verification failed or no models found.',

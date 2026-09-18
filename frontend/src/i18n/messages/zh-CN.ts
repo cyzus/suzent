@@ -796,8 +796,6 @@ export const zhCN = {
       more: '较多',
       noUsageYet: '暂无用量数据。开始对话后即可在此查看花费。',
     },
-    switchToLight: '切换到浅色模式',
-    switchToDark: '切换到深色模式',
     saveChanges: '保存更改',
     saving: '正在保存...',
     verifyFailed: '验证失败或未找到可用模型。',

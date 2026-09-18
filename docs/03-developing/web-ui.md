@@ -43,9 +43,9 @@ nav, the router and the tests.
 
 The nav's footer carries the host it is talking to and its reachability. The
 theme -- light, dark, or the machine's own setting -- is a setting like any
-other and lives on the Appearance page (`#/appearance`), which is what a console
-route can reach and the chat header is not; the header keeps its quick flip
-between light and dark for the shell that draws it.
+other and lives on the Appearance page (`#/appearance`) in both shells. The
+toggle the chat header used to carry is gone: it could not express "follow the
+machine", and it was drawn on one route of one shell.
 
 The console page replaces `<App>`'s own window rather than sitting beside it:
 `ConsoleRoute` renders one `<App>` for chat and for the settings routes and
