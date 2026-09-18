@@ -41,7 +41,12 @@ class _Agent:
 
 
 async def _run_command_turn(
-    monkeypatch, stop_before=None, stop_during=None, write_fails=False, wrote=True
+    monkeypatch,
+    stop_before=None,
+    stop_during=None,
+    write_fails=False,
+    wrote=True,
+    during=None,
 ):
     queue = register_background_stream("chat-cmd")
     if stop_before:
@@ -52,6 +57,8 @@ async def _run_command_turn(
         ran.append(message)
         if stop_during:
             queue.replay.stop_requested = stop_during
+        if during is not None:
+            during(queue)
         return "compacted"
 
     async def get_agent(config):
@@ -220,3 +227,32 @@ async def test_a_failed_command_write_is_logged_without_the_prompt(monkeypatch):
     assert chat_processor._persist_command_pair("chat-cmd", "/compact", "note") is False
     assert written and all("/compact" not in line for line in written)
     assert any("_Leaky" in line for line in written)
+
+
+@pytest.mark.asyncio
+async def test_a_stop_is_refused_while_the_command_is_running(monkeypatch):
+    """Nothing can interrupt the awaited command, so nothing may accept a stop.
+
+    Deferring one onto this replay is a promise read only after the work is
+    done: the client is told the stop was applied and the command runs to the
+    end anyway. A refusal is something it can act on.
+    """
+    from suzent.core.stream_registry import defer_stop_to_pending_run
+
+    accepted: list[bool] = []
+
+    def during(queue):
+        accepted.append(
+            defer_stop_to_pending_run(
+                "chat-cmd", "Stream stopped by user", queue.replay
+            )
+        )
+
+    events, ran, queue, _ = await _run_command_turn(monkeypatch, during=during)
+
+    assert ran == ["/compact"]
+    assert accepted == [False]
+    assert queue.replay.stop_requested is None
+    # And nothing offers the chat's session in its place: this run has no
+    # prompt there, so cancelling it would reach some other turn.
+    assert queue.replay.prompt_in_flight is False

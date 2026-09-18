@@ -807,6 +807,13 @@ async def stop_chat(request: Request) -> JSONResponse:
             {"error": "chat_id and run_id must be strings"}, status_code=400
         )
 
+    if not _is_text(data.get("reason")):
+        # It becomes a frame's message, which is typed as a string. A list or a
+        # number raises there instead, deep inside the producer, and the client
+        # that asked to stop gets a generic failure in place of the tagged stop
+        # and the clean ending this route promised it.
+        return JSONResponse({"error": "reason must be a string"}, status_code=400)
+
     reason = data.get("reason") or "Stream stopped by user"
 
     # A stop names the run it meant to stop. Without that, a request still in

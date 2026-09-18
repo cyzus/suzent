@@ -122,3 +122,19 @@ async def test_a_send_whose_token_is_the_empty_string_is_refused(monkeypatch):
     )
 
     assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reason", [["stop"], {"why": "stop"}, 7])
+async def test_a_stop_whose_reason_is_not_text_is_refused(reason):
+    """The reason becomes a frame's message, and that message is typed.
+
+    Carried this far it raises inside the producer instead, and the client that
+    asked to stop is answered with a generic failure in place of the tagged
+    stop and the clean ending this route promises.
+    """
+    response = await stop_chat(
+        request({"chat_id": "c1", "reason": reason}, "/chat/stop")
+    )
+
+    assert response.status_code == 400

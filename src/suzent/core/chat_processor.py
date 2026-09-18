@@ -880,6 +880,20 @@ class ChatProcessor:
                     yield chunk
                 return
 
+            # Past the point where a stop can be accepted for this run. The
+            # command is a plain await with nothing watching it -- /compact, or
+            # anything that reaches a remote node, holds it -- so a stop
+            # deferred onto the replay now would be read only once the work was
+            # already done, after the client had been told it was applied.
+            # Refusing it there is the honest answer. `prompt_in_flight` is
+            # False beside it because this run has no prompt at the agent, and
+            # cancelling the chat's session for it would reach whatever else
+            # that session is running.
+            command_replay = current_run_replay.get()
+            if command_replay is not None:
+                command_replay.producer_started = True
+                command_replay.prompt_in_flight = False
+
             cmd_result = await _dispatch_command(
                 _CmdCtx(chat_id=chat_id, user_id=user_id, surface=origin_surface),
                 message_content,
