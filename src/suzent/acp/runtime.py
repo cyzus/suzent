@@ -27,7 +27,14 @@ def _attach_persistence(chat_id: str) -> asyncio.Future[bool] | None:
     from suzent.core.stream_registry import get_background_queue
 
     queue = get_background_queue(chat_id)
-    if queue is None:
+    # A finished queue is kept around for a few minutes so a late /chat/live
+    # subscriber can still drain it. Claiming that replay would overwrite the
+    # previous turn's persistence state and report this turn's outcome as its
+    # own — so only a queue whose producer is still running is ours. A turn
+    # with no replay at all (a sub-agent, the non-recoverable path) attaches
+    # nothing, which is what `persisted` already assumes for producers that
+    # never claimed the contract.
+    if queue is None or not queue.producer_active or queue.replay.closed:
         return None
     future: asyncio.Future[bool] = asyncio.get_running_loop().create_future()
     queue.replay.persistence = future

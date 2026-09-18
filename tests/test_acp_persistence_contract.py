@@ -150,3 +150,23 @@ async def test_an_append_that_found_no_chat_is_not_persisted(queue):
         q.replay.append(chunk)
     q.replay.append(None)
     assert q.replay.persisted is False
+
+
+@pytest.mark.asyncio
+async def test_a_finished_replay_is_left_alone(queue):
+    """A queue whose producer already finished belongs to the previous turn.
+
+    The registry keeps it for a few minutes so a late /chat/live subscriber can
+    drain it. Claiming its replay would hand that subscriber this turn's
+    outcome — and could turn a persisted turn into `persisted: false`.
+    """
+    chat_id, q = queue
+    settled: asyncio.Future[bool] = asyncio.get_running_loop().create_future()
+    settled.set_result(True)
+    q.replay.persistence = settled
+    q.producer_active = False
+
+    await _run_turn(chat_id, [], {"stopReason": "end_turn"})
+
+    assert q.replay.persistence is settled
+    assert q.replay.persistence.result() is True
