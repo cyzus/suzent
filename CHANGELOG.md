@@ -7,8 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [v0.14.1] - 2026-09-18
 
-### ⚡ Changed
-- Release maintenance
+### 🐛 Fixed
+- Keep the project picker menu inside the viewport (#243)
 
 ## [v0.14.0] - 2026-09-18
 
