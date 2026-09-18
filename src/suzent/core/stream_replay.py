@@ -42,6 +42,12 @@ class StreamReplay:
         # only name a stop can use for the run it means. None for turns nobody
         # named (schedulers, sub-agents, inbox deliveries).
         self.client_token: str | None = None
+        # A stop accepted for this run before the run had a control to take it.
+        # /chat/steer-send installs the replacement replay (and its name) while
+        # the turn being replaced is still the one holding the chat's control,
+        # so a stop landing in that window must travel with the run it named
+        # and be taken when that run finally starts.
+        self.stop_requested: str | None = None
         self.events: list[dict[str, Any]] = []
         self.tail: deque[tuple[int, dict[str, Any]]] = deque(maxlen=capacity)
         self.changed = asyncio.Event()

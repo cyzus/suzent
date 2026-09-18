@@ -216,6 +216,22 @@ async def stream_acp_turn(
     client trusts enough to replace what it is showing.
     """
     persistence = _attach_persistence(replay)
+
+    # A stop this run was already given, before it existed to take one. The
+    # steer route registers this run's replay and then cancels the turn it
+    # replaces, so a stop landing in between is accepted against this run's
+    # name and left here for it. Honour it the way a stop mid-turn is honoured:
+    # nothing was produced, so the persistence contract is met, and the tagged
+    # error tells the client this is the stop it asked for.
+    pending_stop = getattr(replay, "stop_requested", None) if replay else None
+    if pending_stop:
+        replay.stop_requested = None
+        _resolve_persistence(persistence, True)
+        yield _sse(
+            {"type": "RUN_ERROR", "message": pending_stop, "code": "stream_stopped"}
+        )
+        return
+
     try:
         async for chunk in _run_acp_turn(
             chat_id,

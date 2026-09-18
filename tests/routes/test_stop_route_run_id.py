@@ -44,7 +44,7 @@ async def test_a_stop_for_a_run_that_is_gone_is_refused(monkeypatch):
     stopped: list[str] = []
     monkeypatch.setattr(
         "suzent.routes.chat_routes.stop_stream",
-        lambda chat_id, reason: stopped.append(chat_id) or True,
+        lambda chat_id, reason, expect_run=None: stopped.append(chat_id) or True,
     )
     stream_registry.register_background_stream("chat")
 
@@ -58,7 +58,7 @@ async def test_a_stop_for_the_current_run_goes_through(monkeypatch):
     stopped: list[str] = []
     monkeypatch.setattr(
         "suzent.routes.chat_routes.stop_stream",
-        lambda chat_id, reason: stopped.append(chat_id) or True,
+        lambda chat_id, reason, expect_run=None: stopped.append(chat_id) or True,
     )
     queue = stream_registry.register_background_stream("chat")
 
@@ -75,7 +75,7 @@ async def test_a_stop_without_a_run_id_still_works(monkeypatch):
     stopped: list[str] = []
     monkeypatch.setattr(
         "suzent.routes.chat_routes.stop_stream",
-        lambda chat_id, reason: stopped.append(chat_id) or True,
+        lambda chat_id, reason, expect_run=None: stopped.append(chat_id) or True,
     )
     stream_registry.register_background_stream("chat")
 
@@ -90,7 +90,7 @@ async def test_a_stop_naming_the_token_the_client_minted_goes_through(monkeypatc
     stopped: list[str] = []
     monkeypatch.setattr(
         "suzent.routes.chat_routes.stop_stream",
-        lambda chat_id, reason: stopped.append(chat_id) or True,
+        lambda chat_id, reason, expect_run=None: stopped.append(chat_id) or True,
     )
     queue = stream_registry.register_background_stream("chat")
     queue.replay.client_token = "token-for-this-turn"
@@ -107,7 +107,7 @@ async def test_a_stop_naming_a_token_from_the_previous_turn_is_refused(monkeypat
     stopped: list[str] = []
     monkeypatch.setattr(
         "suzent.routes.chat_routes.stop_stream",
-        lambda chat_id, reason: stopped.append(chat_id) or True,
+        lambda chat_id, reason, expect_run=None: stopped.append(chat_id) or True,
     )
     queue = stream_registry.register_background_stream("chat")
     queue.replay.client_token = "the-turn-that-replaced-it"
@@ -118,3 +118,56 @@ async def test_a_stop_naming_a_token_from_the_previous_turn_is_refused(monkeypat
 
     assert response.status_code == 409
     assert stopped == []
+
+
+async def test_a_stop_in_the_steer_window_is_kept_for_the_run_it_named(monkeypatch):
+    """The named run exists but has not taken the chat's control yet.
+
+    /chat/steer-send registers the replacement run's replay, then cancels the
+    turn it replaces, and only then starts the new one. A stop landing in that
+    gap matches the new run by name while the control still belongs to the old
+    turn, so cancelling whatever control is there would stop the wrong turn and
+    report success. Keep it for the run that was named instead.
+    """
+    monkeypatch.setattr(
+        "suzent.routes.chat_routes.stop_stream",
+        lambda chat_id, reason, expect_run=None: False,
+    )
+
+    class _NothingRunning:
+        async def cancel(self, chat_id):
+            return False
+
+    monkeypatch.setattr("suzent.acp.get_acp_manager", lambda: _NothingRunning())
+    queue = stream_registry.register_background_stream("chat")
+
+    response = await stop_chat(
+        request({"chat_id": "chat", "run_id": queue.replay.run_id})
+    )
+
+    assert response.status_code == 200
+    assert json.loads(bytes(response.body))["stream_stopped"] is True
+    assert queue.replay.stop_requested == "Stream stopped by user"
+
+
+async def test_a_stop_for_a_finished_run_is_not_kept(monkeypatch):
+    """Nothing is coming to take it, so this is a miss like any other."""
+    monkeypatch.setattr(
+        "suzent.routes.chat_routes.stop_stream",
+        lambda chat_id, reason, expect_run=None: False,
+    )
+
+    class _NothingRunning:
+        async def cancel(self, chat_id):
+            return False
+
+    monkeypatch.setattr("suzent.acp.get_acp_manager", lambda: _NothingRunning())
+    queue = stream_registry.register_background_stream("chat")
+    queue.put_nowait(None)
+
+    response = await stop_chat(
+        request({"chat_id": "chat", "run_id": queue.replay.run_id})
+    )
+
+    assert response.status_code == 404
+    assert queue.replay.stop_requested is None

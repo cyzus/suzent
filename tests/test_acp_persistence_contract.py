@@ -222,3 +222,32 @@ async def test_a_turn_stopped_before_its_first_token_is_persisted(queue):
         q.replay.append(chunk)
     q.replay.append(None)
     assert q.replay.persisted is True
+
+
+@pytest.mark.asyncio
+async def test_a_turn_handed_a_stop_before_it_started_ends_stopped(queue):
+    """A steer's replacement run can be stopped before it exists to be stopped.
+
+    The steer route registers this run's replay and then cancels the turn it
+    replaces; a stop in that window is accepted against this run and left on
+    the replay. The turn has to honour it the way the native path does -- as a
+    stop, tagged, with the persistence contract met because nothing was
+    produced.
+    """
+    chat_id, q = queue
+    q.replay.stop_requested = "Stream stopped by user"
+
+    chunks, db = await _run_turn(
+        chat_id, [_text_chunk("hello")], {"stopReason": "end_turn"}, replay=q.replay
+    )
+
+    assert db.append_chat_message.call_count == 0
+    event = json.loads(chunks[-1][6:])
+    assert event["type"] == "RUN_ERROR"
+    assert event["code"] == "stream_stopped"
+    assert q.replay.stop_requested is None
+    assert q.replay.persistence.result() is True
+    for chunk in chunks:
+        q.replay.append(chunk)
+    q.replay.append(None)
+    assert q.replay.persisted is True

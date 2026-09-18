@@ -22,6 +22,7 @@ from suzent.database import get_database
 from suzent.logger import get_logger
 from suzent.streaming import stop_stream
 from suzent.core.stream_registry import (
+    defer_stop_to_pending_run,
     get_background_queue,
     is_background_streaming,
     register_background_stream,
@@ -745,16 +746,21 @@ async def stop_chat(request: Request) -> JSONResponse:
     # old behaviour.
     run_id = data.get("run_id")
     queue = get_background_queue(chat_id)
-    if (
-        run_id
-        and queue is not None
-        and run_id not in (queue.replay.run_id, queue.replay.client_token)
-    ):
-        return JSONResponse(
-            {"status": "stale_run", "run_id": queue.replay.run_id}, status_code=409
-        )
+    matched_run: str | None = None
+    if run_id and queue is not None:
+        if run_id not in (queue.replay.run_id, queue.replay.client_token):
+            return JSONResponse(
+                {"status": "stale_run", "run_id": queue.replay.run_id}, status_code=409
+            )
+        matched_run = queue.replay.run_id
 
-    success = stop_stream(chat_id, reason)
+    # Matching the replay says which run the stop meant; it does not say that
+    # run is the one holding the chat's cancellation control. A steer registers
+    # the replacement run's replay first and starts its turn after cancelling
+    # the old one, so in that window the control still belongs to the turn being
+    # replaced. Requiring the control to name the same run keeps the stop off
+    # the wrong turn; the run that has yet to start takes it on arrival.
+    success = stop_stream(chat_id, reason, expect_run=matched_run)
     if not success:
         try:
             from suzent.acp import get_acp_manager
@@ -762,6 +768,11 @@ async def stop_chat(request: Request) -> JSONResponse:
             success = await get_acp_manager().cancel(chat_id)
         except Exception:
             success = False
+    if not success and matched_run and defer_stop_to_pending_run(chat_id, reason):
+        # The run is real and still producing -- it just has no control yet.
+        # Leaving the stop on its replay is an acceptance, not a miss: the turn
+        # cancels the moment it starts and the client still gets its STREAM_END.
+        success = True
 
     # Stop reached a chat's blocking sub-agents only as collateral damage and
     # never its background ones. Make it mean the same thing for both, and name

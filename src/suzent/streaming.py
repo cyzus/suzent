@@ -45,6 +45,7 @@ from suzent.core.message_history import (
 )
 from suzent.core.stream_registry import (
     StreamControl,
+    claim_stream_control,
     stream_controls,
     stop_stream,  # noqa: F401 — re-export for backwards compat
     merge_pending_auto_approvals,
@@ -1136,7 +1137,7 @@ async def stream_agent_responses(
     # wrote; see the trigger-row placement in chat_processor.
     run_id = run_id or str(uuid.uuid4())
     if chat_id:
-        stream_controls[chat_id] = control
+        claim_stream_control(chat_id, control)
     # Indicates whether the stream paused waiting for user approvals.
     # When True, keep cached auto-approvals for the next resume request.
     deps.is_suspended = False

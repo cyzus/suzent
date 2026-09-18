@@ -29,6 +29,7 @@ class StreamControl:
     """Holds cooperative cancellation state for an active stream."""
 
     __slots__ = (
+        "run_id",
         "cancel_event",
         "completed_event",
         "reason",
@@ -39,6 +40,10 @@ class StreamControl:
     )
 
     def __init__(self):
+        # The run this control cancels, as the registry named it when the run
+        # claimed the chat. A stop names its run, and a control for a different
+        # one must refuse it rather than cancel a turn nobody asked to stop.
+        self.run_id: str | None = None
         self.cancel_event = asyncio.Event()
         self.completed_event = asyncio.Event()  # Set when post-processing finishes
         self.reason = "Stream stopped by user"
@@ -167,14 +172,59 @@ def _prune_pending_auto_approvals(now: float) -> None:
         _pending_auto_approval_times.pop(chat_id, None)
 
 
-def stop_stream(chat_id: str, reason: str = "Stream stopped by user") -> bool:
-    """Request to stop an active stream."""
+def stop_stream(
+    chat_id: str,
+    reason: str = "Stream stopped by user",
+    expect_run: str | None = None,
+) -> bool:
+    """Request to stop an active stream.
+
+    `expect_run` is the run the caller means to stop. The control a chat holds
+    is not always the run the caller matched against: a steer registers the
+    replacement run's replay before the replacement turn takes the chat's
+    control, so for that moment the control still belongs to the turn being
+    replaced. Cancelling it would report success for a stop that left the turn
+    the user actually stopped running.
+    """
     control = stream_controls.get(chat_id)
     if not control:
+        return False
+    if expect_run is not None and control.run_id != expect_run:
         return False
     control.reason = reason
     control.cancel_event.set()
     return True
+
+
+def defer_stop_to_pending_run(chat_id: str, reason: str) -> bool:
+    """Leave a stop on the current replay for the run that has yet to start.
+
+    The turn takes it when it claims the chat, so the stop still ends in the
+    STREAM_END the client is waiting for instead of being silently dropped.
+    """
+    queue = background_queues.get(chat_id)
+    if queue is None or not queue.producer_active:
+        return False
+    queue.replay.stop_requested = reason
+    return True
+
+
+def claim_stream_control(chat_id: str, control: StreamControl) -> None:
+    """Install `control` as the chat's, and hand it any stop already accepted.
+
+    The run is named by whichever replay the registry is serving for this chat,
+    which is the same one a stop had to match to be accepted.
+    """
+    stream_controls[chat_id] = control
+    queue = background_queues.get(chat_id)
+    if queue is None:
+        return
+    control.run_id = queue.replay.run_id
+    pending = queue.replay.stop_requested
+    if pending:
+        queue.replay.stop_requested = None
+        control.reason = pending
+        control.cancel_event.set()
 
 
 def merge_pending_auto_approvals(chat_id: str, approvals: Dict[str, bool]) -> None:

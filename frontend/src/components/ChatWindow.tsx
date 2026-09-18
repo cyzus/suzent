@@ -2268,7 +2268,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         })
         .finally(() => {
           steeringRef.current = false;
-          retireStopAttempt();
         });
       return;
     }
@@ -2441,6 +2440,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     liveStreamPartsRef.current = [];
     streamStartByChatRef.current.set(chatIdForRetry, Date.now());
     setIsStreaming(true, chatIdForRetry);
+    // Retire the previous turn's stop here, before the POST -- not when the POST
+    // settles. Stop is clickable the moment `isStreaming` goes true, so a stop
+    // raised while this request is in flight belongs to this turn, and retiring
+    // it on settle would disarm its fallback timer and ignore its response.
     // Don't set streamingChatIdRef here — tryConnect sets it in onStreamStart,
     // same as the main send path. Setting it prematurely would block tryConnect.
     activeChatIdRef.current = chatIdForRetry;
@@ -2466,9 +2469,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       .catch((err) => {
         console.error('[handleRetry] /chat/send failed:', err);
         setIsStreaming(false, chatIdForRetry);
-      })
-      .finally(() => {
-        retireStopAttempt();
       });
   }, [
     currentChatId,
@@ -2552,9 +2552,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         .catch((err) => {
           console.error('[handleEditUserMessage] /chat/send failed:', err);
           setIsStreaming(false, chatIdForEdit);
-        })
-        .finally(() => {
-          retireStopAttempt();
         });
     },
     [
