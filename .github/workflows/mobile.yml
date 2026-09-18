@@ -1,5 +1,32 @@
 name: Native mobile
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/ios/**'
+      - 'apps/android/**'
+      - 'packages/SuzentCore/**'
+      - 'packages/mobile-contract/**'
+      - 'packages/presentation/**'
+      - 'scripts/generate_presentation.py'
+      - 'scripts/mobile_logo.py'
+      - 'scripts/generate_app_icons.py'
+      - 'scripts/generate_mobile_version.py'
+      - 'tests/test_mobile_version.py'
+      - 'frontend/public/favicon.svg'
+      - 'frontend/src/presentation.css'
+      - 'src/suzent/nodes/**'
+      - 'src/suzent/mobile/**'
+      - 'src/suzent/routes/mobile_routes.py'
+      - 'src/suzent/routes/permission_routes.py'
+      - 'src/suzent/auth_boundary.py'
+      - 'src/suzent/server.py'
+      - 'tests/unit/test_mobile_*.py'
+      - 'tests/nodes/test_auth_boundary.py'
+      - 'src/suzent/core/stream_registry.py'
+      - 'src/suzent/core/stream_replay.py'
+      - 'src/suzent/routes/chat_routes.py'
+      - '.github/workflows/mobile.yml'
   pull_request:
     paths:
       - 'apps/ios/**'
@@ -10,6 +37,8 @@ on:
       - 'scripts/generate_presentation.py'
       - 'scripts/mobile_logo.py'
       - 'scripts/generate_app_icons.py'
+      - 'scripts/generate_mobile_version.py'
+      - 'tests/test_mobile_version.py'
       - 'frontend/public/favicon.svg'
       - 'frontend/src/presentation.css'
       - 'src/suzent/nodes/**'
@@ -28,11 +57,37 @@ on:
 permissions:
   contents: read
 jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      name: ${{ steps.version.outputs.name }}
+      build: ${{ steps.version.outputs.build }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/generate_mobile_version.py --check
+      - id: version
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          version = json.loads(Path('packages/mobile-contract/version.json').read_text())
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              print(f"name={version['version']}", file=output)
+              print(f"build={1000 + int(os.environ['RUN_NUMBER'])}", file=output)
+          PY
   ios:
+    needs: version
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - run: python3 scripts/generate_presentation.py --check
+      - run: python3 scripts/generate_mobile_version.py --build-number "$MOBILE_BUILD"
+        env:
+          MOBILE_BUILD: ${{ needs.version.outputs.build }}
       - run: swift test --package-path packages/SuzentCore
       - run: brew install xcodegen
       - run: xcodegen generate
@@ -43,10 +98,14 @@ jobs:
           CODE_SIGNING_ALLOWED=NO build
         working-directory: apps/ios
   android:
+    needs: version
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - run: python3 scripts/generate_presentation.py --check
+      - run: python3 scripts/generate_mobile_version.py --build-number "$MOBILE_BUILD"
+        env:
+          MOBILE_BUILD: ${{ needs.version.outputs.build }}
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -58,3 +117,9 @@ jobs:
       - run: sdkmanager 'platforms;android-36' 'build-tools;35.0.0'
       - run: ./gradlew :app:assembleDebug :app:testDebugUnitTest
         working-directory: apps/android
+      - uses: actions/upload-artifact@v4
+        with:
+          name: suzent-android-${{ needs.version.outputs.name }}-${{ needs.version.outputs.build }}-debug
+          path: apps/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 30

@@ -265,3 +265,38 @@ retains recovery credentials and can resume on reconnect.
 Forgetting the connection or clearing app storage removes that proof. Those phones
 pair as new installations; revoke stale entries explicitly from desktop. Existing
 duplicates are not deleted based on device names.
+
+## Mobile versions and CI builds
+
+Mobile versions are independent of the desktop/backend product version. Edit
+`packages/mobile-contract/version.json`, then run
+`uv run python scripts/generate_mobile_version.py` to update Android's
+`version.properties` and iOS's `Config/Version.xcconfig`. Both platforms share the
+marketing version; the source build number is used for local builds. The desktop
+`scripts/bump_version.py` deliberately does not include these files. Protocol
+compatibility continues to use the pairing protocol and capabilities, not matching
+product version strings.
+
+The **Native mobile** workflow runs for relevant pull request updates, relevant
+pushes to `main`, and manual **Run workflow** requests. It first checks generated
+version settings, then assigns both platforms build number `1000 + github.run_number`.
+This increases with each new workflow run; retries keep the same build number.
+CI overrides generated settings only in its checkout, without committing them.
+Keep local builds below 1001; reinstalling a lower-numbered local build over a CI
+build may require an explicit development downgrade. Preserve this numbering
+sequence when introducing a separate release workflow.
+
+After Android builds and unit tests pass, download
+`suzent-android-<version>-<build>-debug` from the workflow run's **Artifacts** section.
+Unzip it to obtain `app-debug.apk`. Artifacts are retained for 30 days and include
+PR builds as well as main/manual builds; prefer a successful main build for testing.
+These APKs are debug-signed using the runner's temporary development key. They are
+not stable upgrade packages: their signature can differ from local installations
+and other CI runs. Uninstalling an existing installation to resolve a signature
+conflict removes its local connection credentials and requires pairing again.
+A fixed signing key is required before distributing upgradeable releases.
+
+iOS CI builds the simulator target without signing and does not upload a device IPA.
+This workflow does not publish GitHub Releases, Play Store builds, or TestFlight
+builds. Mobile release signing and `mobile-v*` release triggers are separate future
+work; desktop `v*` release triggers are unchanged.

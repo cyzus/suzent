@@ -1,7 +1,13 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+}
+
+val mobileVersion = Properties().apply {
+    rootProject.file("version.properties").inputStream().use { load(it) }
 }
 
 android {
@@ -11,8 +17,8 @@ android {
         applicationId = "com.suzent.mobile"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = mobileVersion.getProperty("versionCode").toInt()
+        versionName = mobileVersion.getProperty("versionName")
     }
     buildFeatures { compose = true; buildConfig = true }
     compileOptions {
