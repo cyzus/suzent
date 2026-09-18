@@ -49,6 +49,7 @@ failures without blocking the server or changing retry state just by polling.
 - Report which tab the user is viewing (#209)
 
 ### ⚡ Changed
+- Fix desktop backend recovery after CLI stop (#240)
 - Recover streams after reload with snapshots and cursors (#227)
 - Keep final persistence off the event loop and retry failed drafts (#225)
 - Refine landing installer animation and open-source section
