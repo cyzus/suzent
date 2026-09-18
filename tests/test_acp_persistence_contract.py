@@ -79,7 +79,14 @@ async def _run_turn(
         chat.messages = list(existing or [])
         db = MagicMock()
         db.get_chat.return_value = chat
-        db.append_chat_message.return_value = append_result
+        if isinstance(append_result, dict):
+            # Per-role outcomes, for the case where one row lands and the
+            # other does not.
+            db.append_chat_message.side_effect = lambda _cid, row: append_result.get(
+                row.get("role"), True
+            )
+        else:
+            db.append_chat_message.return_value = append_result
         get_db.return_value = db
 
         manager = AsyncMock()
@@ -599,3 +606,28 @@ async def test_the_row_a_stopped_turn_already_wrote_is_not_written_twice(queue):
 
     roles = [c.args[1]["role"] for c in db.append_chat_message.call_args_list]
     assert roles == ["assistant"]
+
+
+@pytest.mark.asyncio
+async def test_an_answer_stored_without_its_prompt_is_not_persisted(queue):
+    """Both rows or neither, as far as the reload is concerned.
+
+    A transient failure on the first write alone leaves the chat holding an
+    assistant answer to a prompt that is not there. `persisted: true` sends the
+    client to reload exactly that, over the transcript it was showing.
+    """
+    chat_id, q = queue
+    chunks, db = await _run_turn(
+        chat_id,
+        [_text_chunk("hello")],
+        {"stopReason": "end_turn"},
+        replay=q.replay,
+        append_result={"user": False},
+    )
+
+    roles = [c.args[1]["role"] for c in db.append_chat_message.call_args_list]
+    assert "assistant" in roles
+    for chunk in chunks:
+        q.replay.append(chunk)
+    q.replay.append(None)
+    assert q.replay.persisted is False

@@ -757,7 +757,11 @@ async def _run_acp_turn(
                 "model": f"acp/{managed.agent_id}",
             },
         )
-        _resolve_persistence(persistence, stored is not False)
+        # Both rows or neither, as far as the client is concerned: an answer
+        # stored without the prompt that asked for it is a transcript the reload
+        # would come back holding, so a turn that lost the prompt row must not
+        # tell the client its reload is trustworthy.
+        _resolve_persistence(persistence, stored_prompt and stored is not False)
         if title_task is not None:
             try:
                 title = await title_task
