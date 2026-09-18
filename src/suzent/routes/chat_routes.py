@@ -503,7 +503,11 @@ async def chat_send(request: Request) -> JSONResponse:
     if is_background_streaming(chat_id):
         return JSONResponse({"error": "Chat is already streaming"}, status_code=409)
 
-    if not resume_approvals and not message.strip().startswith("/"):
+    # Whether this route wrote the turn's user row, which the turn cannot infer:
+    # a prompt sent again after being stopped looks exactly like the row the
+    # stopped turn left behind.
+    prewritten = not resume_approvals and not message.strip().startswith("/")
+    if prewritten:
         message = _sanitized_for_display_and_turn(message)
         _prewrite_user_display_message(chat_id, message, files_list)
 
@@ -523,6 +527,7 @@ async def chat_send(request: Request) -> JSONResponse:
                     files=files_list or None,
                     file_mentions=file_mentions or None,
                     replay=stream_queue.replay,
+                    prewritten=prewritten,
                 )
             else:
                 generator = processor.process_turn(
@@ -603,6 +608,8 @@ async def steer_chat_send(request: Request) -> JSONResponse:
                     message,
                     {**config, **config_override},
                     replay=stream_queue.replay,
+                    # This route pre-wrote the row just above.
+                    prewritten=True,
                 )
             else:
                 generator = processor.process_steer(
@@ -834,9 +841,15 @@ async def stop_chat(request: Request) -> JSONResponse:
     # And only while it is still producing: `producer_started` says the prompt
     # was dispatched, never that it came back, so a closed replay kept around
     # for a late subscriber still carries it. Cancelling on that name reaches
-    # whatever the session is running now, which is some other turn.
+    # whatever the session is running now, which is some other turn. Nor is the
+    # queue closing the first moment that becomes true: the prompt returns
+    # first, and the turn is still writing its rows and awaiting its title while
+    # the session sits idle -- or has taken somebody else's prompt.
     named_run_is_live = matched_run is None or (
-        queue is not None and queue.producer_active and queue.replay.producer_started
+        queue is not None
+        and queue.producer_active
+        and queue.replay.producer_started
+        and queue.replay.prompt_in_flight is not False
     )
     if not success and named_run_is_live:
         try:

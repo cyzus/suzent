@@ -410,3 +410,65 @@ async def test_a_stop_for_a_finished_acp_run_does_not_cancel_the_session(monkeyp
 
     assert cancelled == []
     assert response.status_code == 404
+
+
+async def test_a_stop_while_the_prompt_is_back_does_not_cancel_the_session(monkeypatch):
+    """The queue is still open after the prompt returns.
+
+    An ACP turn writes its assistant row and waits on its title lookup with the
+    session idle -- or already carrying the next, non-recoverable prompt.
+    Cancelling on this run's name there stops that other prompt and reports the
+    stop as applied, while this turn runs on to its own ending.
+    """
+    cancelled: list[str] = []
+    monkeypatch.setattr(
+        "suzent.routes.chat_routes.stop_stream",
+        lambda chat_id, reason, expect_run=None: False,
+    )
+
+    class _Session:
+        async def cancel(self, chat_id):
+            cancelled.append(chat_id)
+            return True
+
+    monkeypatch.setattr("suzent.acp.get_acp_manager", lambda: _Session())
+    queue = stream_registry.register_background_stream("chat")
+    queue.replay.producer_started = True
+    queue.replay.prompt_in_flight = False
+
+    response = await stop_chat(
+        request({"chat_id": "chat", "run_id": queue.replay.run_id})
+    )
+
+    assert cancelled == []
+    assert response.status_code == 404
+    # And not left on the replay either: nothing reads the mark this late, so
+    # accepting it would promise a stop that never happens.
+    assert queue.replay.stop_requested is None
+
+
+async def test_a_stop_while_the_prompt_is_running_still_cancels_the_session(
+    monkeypatch,
+):
+    cancelled: list[str] = []
+    monkeypatch.setattr(
+        "suzent.routes.chat_routes.stop_stream",
+        lambda chat_id, reason, expect_run=None: False,
+    )
+
+    class _Session:
+        async def cancel(self, chat_id):
+            cancelled.append(chat_id)
+            return True
+
+    monkeypatch.setattr("suzent.acp.get_acp_manager", lambda: _Session())
+    queue = stream_registry.register_background_stream("chat")
+    queue.replay.producer_started = True
+    queue.replay.prompt_in_flight = True
+
+    response = await stop_chat(
+        request({"chat_id": "chat", "run_id": queue.replay.run_id})
+    )
+
+    assert cancelled == ["chat"]
+    assert response.status_code == 200

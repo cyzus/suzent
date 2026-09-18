@@ -52,6 +52,7 @@ async def _run_turn(
     message="hi",
     files=None,
     existing=None,
+    prewritten=False,
 ):
     managed = _managed()
     managed.restored = restored
@@ -109,9 +110,11 @@ async def _run_turn(
         get_manager.return_value = manager
 
         turn = (
-            stream_acp_steer(chat_id, message, replay=replay)
+            stream_acp_steer(chat_id, message, replay=replay, prewritten=prewritten)
             if steer
-            else stream_acp_turn(chat_id, message, replay=replay, files=files)
+            else stream_acp_turn(
+                chat_id, message, replay=replay, files=files, prewritten=prewritten
+            )
         )
         chunks = [c async for c in turn]
         return chunks, db
@@ -575,8 +578,11 @@ async def test_the_same_text_with_a_different_file_is_a_new_message(queue):
 
 @pytest.mark.asyncio
 async def test_the_row_a_stopped_turn_already_wrote_is_not_written_twice(queue):
-    """The pre-written row's own shape: /chat/send reads JSON, so its files are
-    metadata the route already held, never the uploads themselves."""
+    """The route that pre-wrote the row says so, and only then is it skipped.
+
+    /chat/send reads JSON, so a pre-written row's files are metadata the route
+    already held, never the uploads themselves.
+    """
     chat_id, q = queue
 
     chunks, db = await _run_turn(
@@ -584,6 +590,7 @@ async def test_the_row_a_stopped_turn_already_wrote_is_not_written_twice(queue):
         [_text_chunk("ok")],
         {"stopReason": "end_turn"},
         replay=q.replay,
+        prewritten=True,
         message="here",
         files=[{"filename": "first.pdf", "mime_type": "application/pdf", "size": 99}],
         existing=[
@@ -678,3 +685,66 @@ async def test_a_second_upload_that_only_looks_like_the_first_is_still_stored(qu
     assert user_rows[0]["files"] == [
         {"filename": "report.pdf", "mime_type": "application/pdf", "size": 1234}
     ]
+
+
+@pytest.mark.asyncio
+async def test_a_prompt_repeated_after_a_stop_is_stored_when_no_route_wrote_it(queue):
+    """Stopping a turn and sending the same thing again is two messages.
+
+    The stopped turn left its prompt in the transcript, so the repeat matches
+    the last row exactly -- and the direct /chat stream pre-writes nothing, so
+    skipping it drops the message while the turn tells the client the reload
+    holds it.
+    """
+    chat_id, q = queue
+
+    chunks, db = await _run_turn(
+        chat_id,
+        [_text_chunk("ok")],
+        {"stopReason": "end_turn"},
+        replay=q.replay,
+        message="again",
+        existing=[{"role": "user", "content": "again"}],
+    )
+
+    stored = [c.args[1] for c in db.append_chat_message.call_args_list]
+    assert [row["role"] for row in stored] == ["user", "assistant"]
+    assert stored[0]["content"] == "again"
+
+
+@pytest.mark.asyncio
+async def test_a_stopped_prompt_repeated_after_a_stop_is_stored_too(queue):
+    """The same, for the turn stopped before it ever reached the agent."""
+    chat_id, q = queue
+    q.replay.stop_requested = "Stream stopped by user"
+
+    chunks, db = await _run_turn(
+        chat_id,
+        [],
+        {"stopReason": "end_turn"},
+        replay=q.replay,
+        message="again",
+        existing=[{"role": "user", "content": "again"}],
+    )
+
+    stored = [c.args[1] for c in db.append_chat_message.call_args_list]
+    assert [row["content"] for row in stored] == ["again"]
+    assert q.replay.persistence.result() is True
+
+
+@pytest.mark.asyncio
+async def test_the_session_is_idle_again_once_the_prompt_comes_back(queue):
+    """A finished prompt is not a live one.
+
+    The turn still has rows to write and a title to wait for, and the session
+    may already be carrying somebody else's prompt. `/chat/stop` reads this to
+    decide whether cancelling the session answers for this run.
+    """
+    chat_id, q = queue
+
+    await _run_turn(
+        chat_id, [_text_chunk("hello")], {"stopReason": "end_turn"}, replay=q.replay
+    )
+
+    assert q.replay.producer_started is True
+    assert q.replay.prompt_in_flight is False

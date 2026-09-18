@@ -213,6 +213,7 @@ async def stream_acp_steer(
     config_override: dict[str, Any] | None = None,
     *,
     replay: Any | None = None,
+    prewritten: bool = False,
 ) -> AsyncGenerator[str, None]:
     """Cancel the running ACP prompt, then send a new turn.
 
@@ -225,7 +226,7 @@ async def stream_acp_steer(
     except Exception:
         pass  # Nothing running is fine; we'll still send the new turn.
     async for event in stream_acp_turn(
-        chat_id, message, config_override, replay=replay
+        chat_id, message, config_override, replay=replay, prewritten=prewritten
     ):
         yield event
 
@@ -240,6 +241,7 @@ async def stream_acp_turn(
     runtime_authored: bool = False,
     system_preamble: str | None = None,
     replay: Any | None = None,
+    prewritten: bool = False,
 ) -> AsyncGenerator[str, None]:
     """Run one ACP turn, claiming the replay's persistence contract for it.
 
@@ -265,7 +267,9 @@ async def stream_acp_turn(
         # /chat stream has no route that pre-wrote that row, so store it here
         # or the reload the client trusts after a stop comes back without the
         # prompt in it.
-        stored = _persist_stopped_prompt(chat_id, message, runtime_authored, files)
+        stored = _persist_stopped_prompt(
+            chat_id, message, runtime_authored, files, prewritten=prewritten
+        )
         _resolve_persistence(persistence, stored)
         yield _sse(
             {"type": "RUN_ERROR", "message": pending_stop, "code": "stream_stopped"}
@@ -283,6 +287,7 @@ async def stream_acp_turn(
             file_mentions=file_mentions,
             runtime_authored=runtime_authored,
             system_preamble=system_preamble,
+            prewritten=prewritten,
         ):
             yield chunk
     finally:
@@ -394,18 +399,6 @@ def _attachment_identity(files: Any) -> list[tuple]:
     ]
 
 
-def _could_have_been_prewritten(files: list[Any] | None) -> bool:
-    """Whether a route could have written this turn's row ahead of it.
-
-    A route pre-writes from attachment metadata it already holds. A multipart
-    /chat request hands this path the uploads themselves, which normalize to
-    name, type and size -- enough for two different files to look like one, so
-    a second turn sending a same-named, same-sized file would read as already
-    stored and lose its message. Nothing pre-writes those rows anyway.
-    """
-    return all(isinstance(file, dict) for file in (files or []))
-
-
 def _append_user_row(
     db: Any,
     chat_id: str,
@@ -413,6 +406,8 @@ def _append_user_row(
     role: str,
     content: str,
     files: list[Any] | None = None,
+    *,
+    prewritten: bool = False,
 ) -> bool:
     """Store the user's row unless the route already pre-wrote it.
 
@@ -420,6 +415,12 @@ def _append_user_row(
     token arrives; the direct /chat stream does not. Returns whether the row is
     in the transcript afterwards, which is what a caller resolving the
     persistence contract has to promise.
+
+    `prewritten` is the route saying it wrote that row, and nothing else stands
+    in for it. Inferring it from the message -- same text, same attachments as
+    the last row -- reads a prompt the user deliberately sent again after
+    stopping the first one as a row already there, and drops it while promising
+    the reload holds it.
 
     Attachments are part of that row: a message can be nothing but files, and a
     row stored without them is not the message the user sent.
@@ -429,7 +430,7 @@ def _append_user_row(
         return True
     if (
         existing
-        and _could_have_been_prewritten(files)
+        and prewritten
         and existing[-1].get("role") == role
         and str(existing[-1].get("content") or "").strip() == content.strip()
         and _attachment_identity(existing[-1].get("files"))
@@ -469,6 +470,8 @@ def _persist_stopped_prompt(
     message: str,
     runtime_authored: bool,
     files: list[Any] | None = None,
+    *,
+    prewritten: bool = False,
 ) -> bool:
     """Store the prompt of a turn stopped before it ever ran.
 
@@ -485,7 +488,13 @@ def _persist_stopped_prompt(
             return False
         _, role, content = _derive_user_row(message, runtime_authored)
         return _append_user_row(
-            db, chat_id, list(chat.messages or []), role, content, files
+            db,
+            chat_id,
+            list(chat.messages or []),
+            role,
+            content,
+            files,
+            prewritten=prewritten,
         )
     except Exception as exc:  # pragma: no cover - a stop must not fail on this
         # The type only. A database error carries its statement's bound
@@ -508,6 +517,7 @@ async def _run_acp_turn(
     runtime_authored: bool = False,
     system_preamble: str | None = None,
     replay: Any | None = None,
+    prewritten: bool = False,
 ) -> AsyncGenerator[str, None]:
     db = get_database()
     chat = db.get_chat(chat_id)
@@ -608,7 +618,13 @@ async def _run_acp_turn(
             return
 
         stored_prompt = _append_user_row(
-            db, chat_id, existing, persisted_role, persisted_content, files
+            db,
+            chat_id,
+            existing,
+            persisted_role,
+            persisted_content,
+            files,
+            prewritten=prewritten,
         )
 
         # Auto-titling lives in suzent.streaming, which an ACP turn never goes
@@ -649,7 +665,19 @@ async def _run_acp_turn(
             if replay is None:
                 return None
             replay.producer_started = True
+            replay.prompt_in_flight = True
             return _claim_pending_stop(replay)
+
+        def _go_idle() -> None:
+            """The prompt is back; the session is no longer running this turn.
+
+            What is left -- the assistant row, the title lookup -- cannot be
+            cancelled, and the session may already be carrying somebody else's
+            prompt. A stop arriving now is answered as the miss it is rather
+            than by cancelling whatever the session happens to be running.
+            """
+            if replay is not None:
+                replay.prompt_in_flight = False
 
         # Connecting the session is the longest part of a turn, and a stop that
         # arrives during it has no prompt to cancel. This is the last moment one
@@ -669,6 +697,7 @@ async def _run_acp_turn(
             managed, _prompt, message_id, state, _go_live
         ):
             yield event
+        _go_idle()
 
         # A session restored with session/load that fails its very first turn is
         # almost always stale: the agent accepted an id its process no longer
@@ -686,6 +715,7 @@ async def _run_acp_turn(
             # reported against a session that cannot carry it out.
             if replay is not None:
                 replay.producer_started = False
+                replay.prompt_in_flight = False
             managed = await get_acp_manager().create(
                 chat_id,
                 managed.agent_id,
@@ -724,6 +754,7 @@ async def _run_acp_turn(
                 managed, _prompt, message_id, state, _go_live
             ):
                 yield event
+            _go_idle()
 
         text = "".join(state["parts"])
         yield _sse({"type": "TEXT_MESSAGE_END", "messageId": message_id})

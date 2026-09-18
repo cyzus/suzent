@@ -54,6 +54,15 @@ class StreamReplay:
         # replaces has been cancelled -- where a cancellation aimed at the chat
         # would land on that other turn.
         self.producer_started: bool = False
+        # Whether a prompt of this run is in flight at the agent right now.
+        # `producer_started` never goes back down once a run is past the points
+        # that read a deferred stop, so it still says "started" while the turn
+        # writes its rows and waits on its title lookup -- and cancelling the
+        # chat's session in that window reaches whatever it is running now.
+        # The ACP path sets this around each prompt attempt. None means a run
+        # that does not track prompts at all, where `producer_started` alone
+        # decides.
+        self.prompt_in_flight: bool | None = None
         self.events: list[dict[str, Any]] = []
         self.tail: deque[tuple[int, dict[str, Any]]] = deque(maxlen=capacity)
         self.changed = asyncio.Event()

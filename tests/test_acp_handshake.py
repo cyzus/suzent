@@ -399,6 +399,9 @@ async def test_file_mentions_do_not_duplicate_the_user_message():
                 "chat-1",
                 "review this",
                 file_mentions=[{"path": "/repo/main.py", "type": "file"}],
+                # As /chat/send calls it: that route wrote the row already, so
+                # the turn is entitled to recognize it.
+                prewritten=True,
             )
         ]
 
