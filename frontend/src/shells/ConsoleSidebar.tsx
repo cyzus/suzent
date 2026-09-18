@@ -1,9 +1,15 @@
 import React from 'react';
-import { ChevronDoubleLeftIcon, ChevronDoubleRightIcon } from '@heroicons/react/24/outline';
+import {
+  ChevronDoubleLeftIcon,
+  ChevronDoubleRightIcon,
+  MoonIcon,
+  SunIcon,
+} from '@heroicons/react/24/outline';
 import { useLocation } from 'wouter';
 
 import { useBackendHealth } from '../hooks/useBackendHealth';
 import { useI18n } from '../i18n';
+import { useTheme } from '../hooks/useTheme';
 import { WEB_DESTINATION_GROUPS } from './webRoutes';
 
 const HEALTH_DOT: Record<string, string> = {
@@ -73,6 +79,7 @@ export function ConsoleSidebar({ railOnly = false }: ConsoleSidebarProps): React
   const { t } = useI18n();
   const [location, navigate] = useLocation();
   const health = useBackendHealth();
+  const { theme, toggleTheme } = useTheme();
   const [preference, toggleCollapsed] = useCollapsed();
   const collapsed = railOnly || preference;
 
@@ -90,6 +97,7 @@ export function ConsoleSidebar({ railOnly = false }: ConsoleSidebarProps): React
   const row = collapsed
     ? 'justify-center gap-0 px-0'
     : 'justify-center gap-0 px-0 md:justify-start md:gap-3 md:px-2';
+  const themeLabel = theme === 'dark' ? t('settings.switchToLight') : t('settings.switchToDark');
 
   return (
     <nav
@@ -168,12 +176,33 @@ export function ConsoleSidebar({ railOnly = false }: ConsoleSidebarProps): React
         ))}
       </div>
 
+      {/* Light and dark belong to the window, not to the conversation, so the
+          switch sits with the navigation rather than in the chat header: one
+          place on every route, including the rail, where the header the
+          desktop puts it in is not drawn at all. */}
+      <div className={`border-t-2 border-neutral-300 pt-1 dark:border-zinc-600 ${gutter}`}>
+        <button
+          type="button"
+          onClick={toggleTheme}
+          title={themeLabel}
+          aria-label={themeLabel}
+          className={`group flex w-full items-center border-l-4 border-transparent ${row} py-1.5 text-left text-sm font-bold text-neutral-700 transition-colors hover:border-neutral-300 hover:bg-neutral-100 dark:text-neutral-200 dark:hover:border-zinc-500 dark:hover:bg-zinc-700`}
+        >
+          {theme === 'dark' ? (
+            <SunIcon className="h-5 w-5 shrink-0" aria-hidden="true" />
+          ) : (
+            <MoonIcon className="h-5 w-5 shrink-0" aria-hidden="true" />
+          )}
+          <span className={`${labels} min-w-0 truncate`}>{themeLabel}</span>
+        </button>
+      </div>
+
       {/* The host and its reachability, pinned low. A browser pointed at a
           remote Suzent cannot tell a stopped server from a dropped tunnel from
           a revoked token until it sends a request, so the console keeps the
           answer -- and which host it is talking to -- permanently on screen. */}
       <div
-        className={`flex items-center gap-2 border-t-2 border-neutral-300 py-2 dark:border-zinc-600 ${
+        className={`flex items-center gap-2 border-t border-neutral-200 py-2 dark:border-zinc-700 ${
           collapsed ? 'justify-center px-0' : 'px-3'
         }`}
         title={`${window.location.host} - ${t(`console.health.${health}`)}`}

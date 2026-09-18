@@ -41,10 +41,18 @@ starts was the shape this replaced.
 Destinations live in `frontend/src/shells/webRoutes.ts` -- one list, read by the
 nav, the router and the tests.
 
+The nav's footer carries the light/dark switch and the host it is talking to.
+The desktop keeps that switch in the chat header, which a console route does not
+draw at all, so in a browser it belongs to the window's navigation instead --
+on screen on every route, rail included -- and the header's copy is hidden.
+
 The console page replaces `<App>`'s own window rather than sitting beside it:
-`<App>{page}</App>` mounts the provider stack and renders the page in place of
-chat, so a console route never draws chat's sidebar. Chat's settings button
-navigates (`consolePathForCategory`) instead of opening the desktop's modal.
+`ConsoleRoute` renders one `<App>` for chat and for the settings routes and
+varies only its children, so moving between them keeps the tree -- the open
+conversation and the providers under it -- instead of mounting a second copy of
+the app. Chat's settings button navigates (`consolePathForCategory`) instead of
+opening the desktop's modal; `ChatWindow` unmounts on the way, so the composer's
+unsent text is held outside it and restored on return.
 
 Two details are load-bearing:
 
