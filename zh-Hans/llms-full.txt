@@ -6283,10 +6283,35 @@ you. A browser session is the opposite case -- a headless host, reached from
 somewhere else -- so the same bundle renders a different shell there:
 `frontend/src/shells/WebShell.tsx`, chosen in `main.tsx` by `isWeb()`.
 
-The console is a left nav rail over a hash router (`wouter`), with chat as one
-destination among Operations, Devices, Mesh, Usage, Settings and About.
-Destinations live in `frontend/src/shells/webRoutes.ts` -- one list, read by the rail, the router
-and the tests.
+The console is a single left nav over a hash router (`wouter`): every page it
+can reach is one grouped list of destinations, with chat at the top and each
+settings category a route of its own (`#/providers`, `#/devices`, ...). The
+retired `#/settings` redirects to `#/providers`. Collapsed it is an icon rail;
+expanded it shows labels and group headings, and that choice is remembered.
+
+Chat is the exception, because it is the one destination that brings a column of
+its own. There the nav is the rail and nothing but the rail (`railOnly`): no
+labels, no toggle, and a hairline instead of the heavy outer border, so the rail
+and the conversation list beside it read as one navigation with a list in it
+rather than as two sidebars. Two labelled columns before the conversation even
+starts was the shape this replaced.
+
+Destinations live in `frontend/src/shells/webRoutes.ts` -- one list, read by the
+nav, the router and the tests.
+
+The nav's footer carries the host it is talking to and its reachability. The
+theme -- light, dark, or the machine's own setting -- is a setting like any
+other and lives on the Appearance page (`#/appearance`) in both shells. The
+toggle the chat header used to carry is gone: it could not express "follow the
+machine", and it was drawn on one route of one shell.
+
+The console page replaces `<App>`'s own window rather than sitting beside it:
+`ConsoleRoute` renders one `<App>` for chat and for the settings routes and
+varies only its children, so moving between them keeps the tree -- the open
+conversation and the providers under it -- instead of mounting a second copy of
+the app. Chat's settings button navigates (`consolePathForCategory`) instead of
+opening the desktop's modal; `ChatWindow` unmounts on the way, so the composer's
+unsent text is held outside it and restored on return.
 
 Two details are load-bearing:
 
@@ -6294,9 +6319,10 @@ Two details are load-bearing:
   no pre-auth route has to be exempted from the device-token check in
   `is_public_asset()`, and console navigation stays out of access logs.
 - **Operations, Devices, Mesh, Usage and About mount outside `<App>`**, so they
-  do not wait on its backend-readiness gate. A console opened against a struggling host
-  still shows the pages you opened it to look at. Chat and Settings do sit
-  inside `<App>`: they need its provider stack, which needs the backend.
+  do not wait on its backend-readiness gate. A console opened against a
+  struggling host still shows the pages you opened it to look at. Chat and the
+  other settings categories do sit inside `<App>`: they need its provider stack,
+  which needs the backend.
 
 Everything under `components/`, `hooks/`, `lib/` and `i18n/` is shared by both
 shells. The console reuses the settings tabs verbatim rather than restating
