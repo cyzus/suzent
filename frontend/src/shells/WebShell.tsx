@@ -12,12 +12,7 @@ import type { SettingsCategory } from '../components/settings/SettingsNavigation
 import { ConsolePage } from './ConsolePage';
 import { ConsoleSidebar } from './ConsoleSidebar';
 import { OpsTab } from './OpsTab';
-import {
-  LEGACY_SETTINGS_PATH,
-  LEGACY_SETTINGS_TARGET,
-  WEB_DESTINATIONS,
-  type WebDestination,
-} from './webRoutes';
+import { LEGACY_SETTINGS_PATH, LEGACY_SETTINGS_TARGET, WEB_DESTINATIONS } from './webRoutes';
 
 /**
  * Categories that can render with the backend still down.
@@ -35,53 +30,47 @@ const UNGATED: Partial<Record<SettingsCategory, React.ComponentType>> = {
   about: AboutTab,
 };
 
-function CategoryPage({ destination }: { destination: WebDestination }): React.ReactElement {
-  const [, navigate] = useLocation();
-  const category = destination.category as SettingsCategory;
-  const Ungated = UNGATED[category];
-
-  const page = Ungated ? (
-    <Ungated />
-  ) : (
-    // Mounted inside App because the panels read the chat store. It stays
-    // mounted across these routes -- only its category changes -- so moving
-    // between them costs nothing and the debounced autosave is never cut off
-    // halfway by a navigation.
-    <SettingsModal
-      isOpen
-      category={category}
-      onCategoryChange={(next) => {
-        const target = WEB_DESTINATIONS.find((d) => d.category === next);
-        if (target) navigate(target.path);
-      }}
-      onClose={() => navigate('/')}
-    />
-  );
-
-  const framed = <ConsolePage wide={destination.wide}>{page}</ConsolePage>;
-  return Ungated ? framed : <App>{framed}</App>;
-}
-
 function ConsoleRoute(): React.ReactElement {
-  const [location] = useLocation();
+  const [location, navigate] = useLocation();
 
   if (location === LEGACY_SETTINGS_PATH) return <Redirect to={LEGACY_SETTINGS_TARGET} replace />;
 
   const destination = WEB_DESTINATIONS.find((candidate) => candidate.path === location);
+  const category = destination?.framed ? (destination.category as SettingsCategory) : undefined;
+  const Ungated = category ? UNGATED[category] : undefined;
 
-  // Chat is the fallback as well as "/": an unknown hash lands somewhere
-  // usable rather than on an empty pane.
-  if (!destination || !destination.framed) return <App />;
-
-  if (!destination.category) {
-    return (
-      <ConsolePage wide={destination.wide}>
-        <OpsTab />
-      </ConsolePage>
-    );
+  // The two pages that stand outside App: Operations, and the four categories
+  // that read no settings state. A console opened at a host that will not come
+  // up is opened to look at exactly these, so they must not wait for it.
+  if (destination?.framed && (Ungated || !category)) {
+    return <ConsolePage wide={destination.wide}>{Ungated ? <Ungated /> : <OpsTab />}</ConsolePage>;
   }
 
-  return <CategoryPage destination={destination} />;
+  const page = category ? (
+    <ConsolePage wide={destination!.wide}>
+      {/* Mounted inside App because the panels read the chat store. It stays
+          mounted across these routes -- only its category changes -- so moving
+          between them costs nothing and the debounced autosave is never cut off
+          halfway by a navigation. */}
+      <SettingsModal
+        isOpen
+        category={category}
+        onCategoryChange={(next) => {
+          const target = WEB_DESTINATIONS.find((d) => d.category === next);
+          if (target) navigate(target.path);
+        }}
+        onClose={() => navigate('/')}
+      />
+    </ConsolePage>
+  ) : undefined;
+
+  // One <App /> for both cases, rendered from this one place rather than from a
+  // wrapper on the settings side: React then keeps the same tree when the route
+  // changes, and with it the open conversation and the providers under it.
+  // Chat is also the fallback -- an unknown hash lands somewhere usable rather
+  // than on an empty pane -- which is `page` being undefined, not null, so
+  // App falls through to its own chat window.
+  return <App>{page}</App>;
 }
 
 /**
