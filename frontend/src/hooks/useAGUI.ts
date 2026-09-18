@@ -52,6 +52,7 @@ interface UseAGUIReturn {
    * must call this, or a stop raised before the first frame has no run to name.
    */
   mintRunToken: (chatId?: string) => string;
+  retireRunToken: (token?: string) => void;
   /**
    * The run's name, waiting up to `timeoutMs` for the stream to supply one.
    * Re-attaching to a turn this client did not ask for (a reload, a chat
@@ -670,6 +671,17 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
     }
     return runIdRef.current ?? clientRunTokenRef.current;
   }, []);
+  // Forget the name this client minted. A token outlives its usefulness the
+  // moment the turn it named is over or was never accepted, and a probe that
+  // reattaches to the same chat would otherwise hand a stop that dead name --
+  // answered with 409, which the client reads as "already stopped" while the
+  // turn actually running keeps going.
+  const retireRunToken = useCallback((token?: string) => {
+    if (token !== undefined && clientRunTokenRef.current !== token) return;
+    clientRunTokenRef.current = undefined;
+    clientRunTokenChatRef.current = undefined;
+  }, []);
+
   const mintRunToken = useCallback((chatId?: string) => {
     const token =
       globalThis.crypto?.randomUUID?.() ??
@@ -787,10 +799,14 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
       if (isProbe) {
         runIdRef.current = undefined;
         if (!chatId || clientRunTokenChatRef.current !== chatId) {
-          clientRunTokenRef.current = undefined;
-          clientRunTokenChatRef.current = undefined;
+          retireRunToken();
         }
       }
+      // The name this attempt is attaching to. It is retired when this stream
+      // ends -- the turn it named is over, so a later probe on the same chat
+      // must not inherit it -- unless something newer has already replaced it,
+      // which is what a steer does while this loop is still draining.
+      const attachedToken = clientRunTokenRef.current;
 
       if (!isProbe) {
         // Normal send: reset immediately so the UI shows "submitted" while waiting.
@@ -868,9 +884,14 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
           onError?.(err as Error, partsRef.current);
         }
         return false;
+      } finally {
+        // Only a name this attempt actually carried: with no token of its own
+        // there is nothing to retire, and clearing blindly would take the name
+        // a steer minted while this loop was still draining.
+        if (attachedToken) retireRunToken(attachedToken);
       }
     },
-    [mintRunToken, publishParts, resetApprovalTracking, setPendingApprovalCountSync]
+    [mintRunToken, publishParts, resetApprovalTracking, retireRunToken, setPendingApprovalCountSync]
   );
 
   return {
@@ -883,6 +904,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
     getParts,
     getRunId,
     mintRunToken,
+    retireRunToken,
     waitForRunId,
     clearParts,
     restorePartsFromSeed,

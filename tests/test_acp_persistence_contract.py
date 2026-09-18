@@ -38,11 +38,21 @@ def _text_chunk(text):
 
 
 async def _run_turn(
-    chat_id, updates, result, *, append_result=True, replay=None, steer=False
+    chat_id,
+    updates,
+    result,
+    *,
+    append_result=True,
+    replay=None,
+    steer=False,
+    on_ensure=None,
+    prompted=None,
 ):
     managed = _managed()
 
     async def prompt(session_id, message):
+        if prompted is not None:
+            prompted.append(message)
         for item in updates:
             managed.updates.put_nowait(item)
         return result
@@ -66,7 +76,13 @@ async def _run_turn(
         get_db.return_value = db
 
         manager = AsyncMock()
-        manager.ensure.return_value = managed
+
+        async def ensure(*args, **kwargs):
+            if on_ensure is not None:
+                on_ensure()
+            return managed
+
+        manager.ensure.side_effect = ensure
         get_manager.return_value = manager
 
         turn = (
@@ -284,3 +300,58 @@ async def test_a_stop_whose_prompt_could_not_be_stored_is_not_persisted(queue):
         q.replay.append(chunk)
     q.replay.append(None)
     assert q.replay.persisted is False
+
+
+@pytest.mark.asyncio
+async def test_a_stop_during_session_connect_is_taken_before_the_prompt(queue):
+    """Connecting the agent is the window a stop is most likely to land in.
+
+    Nothing can cancel the turn yet -- there is no prompt -- so the route leaves
+    the stop on the replay. The turn has to take it at the prompt, or the user
+    would watch the agent answer a turn they already stopped.
+    """
+    chat_id, q = queue
+    prompted: list[str] = []
+
+    def on_ensure():
+        # The run must not claim to be live before it has a prompt to cancel;
+        # the route reads exactly this to decide between cancelling the ACP
+        # session and leaving the stop here.
+        assert q.replay.producer_started is False
+        q.replay.stop_requested = "Stream stopped by user"
+
+    chunks, db = await _run_turn(
+        chat_id,
+        [_text_chunk("hello")],
+        {"stopReason": "end_turn"},
+        replay=q.replay,
+        on_ensure=on_ensure,
+        prompted=prompted,
+    )
+
+    assert prompted == []
+    roles = [c.args[1]["role"] for c in db.append_chat_message.call_args_list]
+    assert roles == ["user"]
+    event = json.loads(chunks[-1][6:])
+    assert event["type"] == "RUN_ERROR"
+    assert event["code"] == "stream_stopped"
+    assert q.replay.stop_requested is None
+    assert q.replay.persistence.result() is True
+
+
+@pytest.mark.asyncio
+async def test_a_turn_that_reaches_its_prompt_declares_the_run_live(queue):
+    """The other half of the same rule: once prompted, the session can be cut."""
+    chat_id, q = queue
+    seen: list[bool] = []
+
+    await _run_turn(
+        chat_id,
+        [_text_chunk("hello")],
+        {"stopReason": "end_turn"},
+        replay=q.replay,
+        on_ensure=lambda: seen.append(q.replay.producer_started),
+    )
+
+    assert seen == [False]
+    assert q.replay.producer_started is True

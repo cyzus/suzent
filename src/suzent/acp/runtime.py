@@ -226,9 +226,8 @@ async def stream_acp_turn(
     # name and left here for it. Honour it the way a stop mid-turn is honoured:
     # nothing was produced, so the persistence contract is met, and the tagged
     # error tells the client this is the stop it asked for.
-    pending_stop = getattr(replay, "stop_requested", None) if replay else None
+    pending_stop = _claim_pending_stop(replay)
     if pending_stop:
-        replay.stop_requested = None
         # The turn ran nothing, but the user did send something. The direct
         # /chat stream has no route that pre-wrote that row, so store it here
         # or the reload the client trusts after a stop comes back without the
@@ -240,18 +239,13 @@ async def stream_acp_turn(
         )
         return
 
-    if replay is not None:
-        # From here the prompt this run owns is the one the chat's ACP session
-        # is running, so cancelling that session cancels this run. A steer
-        # reaches this point only after the prompt it replaces is cancelled.
-        replay.producer_started = True
-
     try:
         async for chunk in _run_acp_turn(
             chat_id,
             message,
             config_override,
             persistence=persistence,
+            replay=replay,
             files=files,
             file_mentions=file_mentions,
             runtime_authored=runtime_authored,
@@ -343,6 +337,19 @@ def _append_user_row(
     )
 
 
+def _claim_pending_stop(replay: Any | None) -> str | None:
+    """Take the stop that was left for this run before it could take one.
+
+    A stop is deferred onto the replay when the run it names has nothing that
+    can cancel it yet. Whoever claims it owes the client the ending, so the mark
+    is cleared here and honoured exactly once.
+    """
+    pending = getattr(replay, "stop_requested", None) if replay is not None else None
+    if pending:
+        replay.stop_requested = None
+    return pending
+
+
 def _persist_stopped_prompt(chat_id: str, message: str, runtime_authored: bool) -> bool:
     """Store the prompt of a turn stopped before it ever ran.
 
@@ -374,6 +381,7 @@ async def _run_acp_turn(
     file_mentions: list[Any] | None = None,
     runtime_authored: bool = False,
     system_preamble: str | None = None,
+    replay: Any | None = None,
 ) -> AsyncGenerator[str, None]:
     db = get_database()
     chat = db.get_chat(chat_id)
@@ -473,7 +481,9 @@ async def _run_acp_turn(
             )
             return
 
-        _append_user_row(db, chat_id, existing, persisted_role, persisted_content)
+        stored_prompt = _append_user_row(
+            db, chat_id, existing, persisted_role, persisted_content
+        )
 
         # Auto-titling lives in suzent.streaming, which an ACP turn never goes
         # through -- so every ACP chat stayed named "New Chat". The title comes
@@ -499,6 +509,28 @@ async def _run_acp_turn(
         # something the user said — internal policy text in a persisted user row
         # misrepresents the conversation to anyone auditing it later.
         _prompt = f"{system_preamble}\n{message}" if system_preamble else message
+        # Connecting the session is the longest part of a turn, and a stop that
+        # arrives during it has no prompt to cancel: the route leaves it on the
+        # replay rather than reporting a stop the agent never hears. This is the
+        # last moment it can be honoured for free -- and the moment after it is
+        # the first one where the chat's ACP session is running this run's
+        # prompt, so a stop then cancels it for real. Nothing awaits in between,
+        # so no stop can fall through the gap.
+        pending_stop = _claim_pending_stop(replay)
+        if pending_stop:
+            yield _sse({"type": "TEXT_MESSAGE_END", "messageId": message_id})
+            message_open = False
+            # The agent was never prompted, so nothing it produced is missing --
+            # only the user's row has to be there, and the turn says so only if
+            # it really is.
+            _resolve_persistence(persistence, stored_prompt)
+            yield _sse(
+                {"type": "RUN_ERROR", "message": pending_stop, "code": "stream_stopped"}
+            )
+            return
+        if replay is not None:
+            replay.producer_started = True
+
         async for event in _stream_prompt(managed, _prompt, message_id, state):
             yield event
 

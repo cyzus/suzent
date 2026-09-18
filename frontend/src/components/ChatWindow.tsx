@@ -999,6 +999,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     getParts: getStreamingParts,
     getRunId: getStreamingRunId,
     mintRunToken,
+    retireRunToken,
     waitForRunId,
     clearParts,
     restorePartsFromSeed,
@@ -1397,6 +1398,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       const plan = planSendFailureRecovery(status, action);
       setStatusBar(t(plan.messageKey, plan.messageParams), plan.tone, 4000);
 
+      // The turn this client named was never accepted -- a 409 means another
+      // one is already running. Drop the name now: the reattach below is a
+      // probe on this same chat, and it would otherwise carry that dead name
+      // into a stop meant for the turn that really is running.
+      retireRunToken();
+
       if (!plan.reattach) {
         setIsStreaming(false, chatId);
         return false;
@@ -1430,7 +1437,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       tryConnectRef.current?.();
       return true;
     },
-    [loadChat, setInput, setIsStreaming, setStatusBar, t]
+    [loadChat, retireRunToken, setInput, setIsStreaming, setStatusBar, t]
   );
 
   const { handleToolApproval } = useToolApproval({
