@@ -394,6 +394,18 @@ def _attachment_identity(files: Any) -> list[tuple]:
     ]
 
 
+def _could_have_been_prewritten(files: list[Any] | None) -> bool:
+    """Whether a route could have written this turn's row ahead of it.
+
+    A route pre-writes from attachment metadata it already holds. A multipart
+    /chat request hands this path the uploads themselves, which normalize to
+    name, type and size -- enough for two different files to look like one, so
+    a second turn sending a same-named, same-sized file would read as already
+    stored and lose its message. Nothing pre-writes those rows anyway.
+    """
+    return all(isinstance(file, dict) for file in (files or []))
+
+
 def _append_user_row(
     db: Any,
     chat_id: str,
@@ -417,6 +429,7 @@ def _append_user_row(
         return True
     if (
         existing
+        and _could_have_been_prewritten(files)
         and existing[-1].get("role") == role
         and str(existing[-1].get("content") or "").strip() == content.strip()
         and _attachment_identity(existing[-1].get("files"))

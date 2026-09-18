@@ -575,11 +575,8 @@ async def test_the_same_text_with_a_different_file_is_a_new_message(queue):
 
 @pytest.mark.asyncio
 async def test_the_row_a_stopped_turn_already_wrote_is_not_written_twice(queue):
-    class _Upload:
-        filename = "first.pdf"
-        content_type = "application/pdf"
-        size = 99
-
+    """The pre-written row's own shape: /chat/send reads JSON, so its files are
+    metadata the route already held, never the uploads themselves."""
     chat_id, q = queue
 
     chunks, db = await _run_turn(
@@ -588,7 +585,7 @@ async def test_the_row_a_stopped_turn_already_wrote_is_not_written_twice(queue):
         {"stopReason": "end_turn"},
         replay=q.replay,
         message="here",
-        files=[_Upload()],
+        files=[{"filename": "first.pdf", "mime_type": "application/pdf", "size": 99}],
         existing=[
             {
                 "role": "user",
@@ -631,3 +628,53 @@ async def test_an_answer_stored_without_its_prompt_is_not_persisted(queue):
         q.replay.append(chunk)
     q.replay.append(None)
     assert q.replay.persisted is False
+
+
+@pytest.mark.asyncio
+async def test_a_second_upload_that_only_looks_like_the_first_is_still_stored(queue):
+    """Name, type and size are all an upload normalizes to.
+
+    Two different files can agree on all three -- a document re-exported, a
+    screenshot retaken -- so matching on them lets the second message read as
+    already stored and vanish, while the turn promises the reload has it.
+    Nothing pre-writes a row from raw uploads anyway.
+    """
+
+    class _Upload:
+        filename = "report.pdf"
+        content_type = "application/pdf"
+        size = 1234
+
+    chat_id, q = queue
+
+    chunks, db = await _run_turn(
+        chat_id,
+        [_text_chunk("ok")],
+        {"stopReason": "end_turn"},
+        replay=q.replay,
+        message="here",
+        files=[_Upload()],
+        existing=[
+            {
+                "role": "user",
+                "content": "here",
+                "files": [
+                    {
+                        "filename": "report.pdf",
+                        "mime_type": "application/pdf",
+                        "size": 1234,
+                    }
+                ],
+            }
+        ],
+    )
+
+    user_rows = [
+        c.args[1]
+        for c in db.append_chat_message.call_args_list
+        if c.args[1]["role"] == "user"
+    ]
+    assert len(user_rows) == 1
+    assert user_rows[0]["files"] == [
+        {"filename": "report.pdf", "mime_type": "application/pdf", "size": 1234}
+    ]

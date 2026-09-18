@@ -11,6 +11,7 @@ from suzent.core import stream_registry
 from suzent.core.stream_registry import (
     MAX_PENDING_CLIENT_STOPS,
     PENDING_CLIENT_STOP_TTL,
+    claim_remembered_stop,
     remember_stop_for_unregistered_run,
 )
 
@@ -33,7 +34,7 @@ def test_stops_nobody_came_for_are_swept_by_the_next_one(monkeypatch):
     )
     remember_stop_for_unregistered_run("here", "t", "bye")
 
-    assert list(stream_registry._pending_client_stops) == ["here"]
+    assert list(stream_registry._pending_client_stops) == [("here", "t")]
 
 
 def test_a_flood_gives_up_its_oldest_rather_than_growing():
@@ -43,5 +44,20 @@ def test_a_flood_gives_up_its_oldest_rather_than_growing():
     kept = stream_registry._pending_client_stops
     assert len(kept) <= MAX_PENDING_CLIENT_STOPS
     # The newest survive: they are the ones whose start may still be coming.
-    assert f"chat-{MAX_PENDING_CLIENT_STOPS * 2 - 1}" in kept
-    assert "chat-0" not in kept
+    assert (f"chat-{MAX_PENDING_CLIENT_STOPS * 2 - 1}", "t") in kept
+    assert ("chat-0", "t") not in kept
+
+
+def test_two_starts_delayed_at_once_each_keep_their_own_stop():
+    """Two windows, or a redirect overlapping its own start.
+
+    Each names its own run and each is stopped under that name, so the one that
+    registers first must still find the stop its client was told was accepted.
+    """
+    remember_stop_for_unregistered_run("chat", "token-a", "stop a")
+    remember_stop_for_unregistered_run("chat", "token-b", "stop b")
+
+    assert claim_remembered_stop("chat", "token-a") == "stop a"
+    assert claim_remembered_stop("chat", "token-b") == "stop b"
+    # Each is taken once.
+    assert claim_remembered_stop("chat", "token-a") is None

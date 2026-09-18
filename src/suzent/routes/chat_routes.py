@@ -800,8 +800,12 @@ async def stop_chat(request: Request) -> JSONResponse:
     # once that run is the one producing. Before then -- an ACP steer that has
     # registered the replacement replay but not yet cancelled the old prompt --
     # it would cancel the turn being replaced and report the stop as applied.
+    # And only while it is still producing: `producer_started` says the prompt
+    # was dispatched, never that it came back, so a closed replay kept around
+    # for a late subscriber still carries it. Cancelling on that name reaches
+    # whatever the session is running now, which is some other turn.
     named_run_is_live = matched_run is None or (
-        queue is not None and queue.replay.producer_started
+        queue is not None and queue.producer_active and queue.replay.producer_started
     )
     if not success and named_run_is_live:
         try:

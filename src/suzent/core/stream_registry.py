@@ -269,7 +269,10 @@ def producing_run(replay: Optional[StreamReplay]):
 # that reliably stops it: the browser giving up on its own request does not
 # stop the turn, because a recoverable turn is built to outlive the connection
 # that asked for it.
-_pending_client_stops: Dict[str, tuple[str, str, float]] = {}
+# Keyed by chat and token together: two starts for the same chat can be in
+# flight at once -- two windows, overlapping redirects -- and each is stopped
+# under its own name, so one must not evict the other's.
+_pending_client_stops: Dict[tuple[str, str], tuple[str, float]] = {}
 # Long enough for a slow start, short enough that a name nobody claims cannot
 # reach through to some later turn that happens to reuse it.
 PENDING_CLIENT_STOP_TTL = 30.0
@@ -282,12 +285,12 @@ MAX_PENDING_CLIENT_STOPS = 256
 
 
 def _prune_pending_client_stops(now: float) -> None:
-    for chat_id in [
-        chat_id
-        for chat_id, (_, _, at) in _pending_client_stops.items()
+    for key in [
+        key
+        for key, (_, at) in _pending_client_stops.items()
         if now - at > PENDING_CLIENT_STOP_TTL
     ]:
-        _pending_client_stops.pop(chat_id, None)
+        _pending_client_stops.pop(key, None)
     while len(_pending_client_stops) >= MAX_PENDING_CLIENT_STOPS:
         _pending_client_stops.pop(next(iter(_pending_client_stops)), None)
 
@@ -295,25 +298,22 @@ def _prune_pending_client_stops(now: float) -> None:
 def remember_stop_for_unregistered_run(chat_id: str, token: str, reason: str) -> None:
     """Keep a stop for a run whose start request has not registered yet."""
     now = time.monotonic()
-    _pending_client_stops.pop(chat_id, None)
+    _pending_client_stops.pop((chat_id, token), None)
     _prune_pending_client_stops(now)
-    _pending_client_stops[chat_id] = (token, reason, now)
+    _pending_client_stops[(chat_id, token)] = (reason, now)
 
 
 def claim_remembered_stop(chat_id: str, token: str | None) -> str | None:
     """Take the stop left for *token*, if one is still waiting for it."""
     if not token:
         return None
-    remembered = _pending_client_stops.get(chat_id)
+    remembered = _pending_client_stops.get((chat_id, token))
     if remembered is None:
         return None
-    name, reason, at = remembered
+    reason, at = remembered
+    _pending_client_stops.pop((chat_id, token), None)
     if time.monotonic() - at > PENDING_CLIENT_STOP_TTL:
-        _pending_client_stops.pop(chat_id, None)
         return None
-    if name != token:
-        return None
-    _pending_client_stops.pop(chat_id, None)
     return reason
 
 

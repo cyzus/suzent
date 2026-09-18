@@ -377,3 +377,36 @@ async def test_a_stop_for_a_replacement_that_has_not_registered_survives_the_ref
     )
 
     assert replacement.replay.stop_requested == "Stream stopped by user"
+
+
+async def test_a_stop_for_a_finished_acp_run_does_not_cancel_the_session(monkeypatch):
+    """`producer_started` says the prompt went out, not that it came back.
+
+    A finished replay is kept for a few minutes so a late subscriber can drain
+    it, and it still carries that mark. `AcpManager.cancel` knows nothing about
+    runs, so answering a stop on that name cancels whatever the session is
+    running now -- some other turn.
+    """
+    cancelled: list[str] = []
+    monkeypatch.setattr(
+        "suzent.routes.chat_routes.stop_stream",
+        lambda chat_id, reason, expect_run=None: False,
+    )
+
+    class _Session:
+        async def cancel(self, chat_id):
+            cancelled.append(chat_id)
+            return True
+
+    monkeypatch.setattr("suzent.acp.get_acp_manager", lambda: _Session())
+    queue = stream_registry.register_background_stream("chat")
+    queue.replay.producer_started = True
+    queue.put_nowait(None)
+    assert not queue.producer_active
+
+    response = await stop_chat(
+        request({"chat_id": "chat", "run_id": queue.replay.run_id})
+    )
+
+    assert cancelled == []
+    assert response.status_code == 404
