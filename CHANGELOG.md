@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v0.14.0] - 2026-09-18
 
 ### 🚀 Added
+- Add native clients with pairing, tool approvals and activity rails
 - One grouped console nav, and the same log card in both shells (#234)
 - Run the backend and frontend detached, with `suzent logs` (#232)
 - Restore web UI support alongside the desktop app (#230)
