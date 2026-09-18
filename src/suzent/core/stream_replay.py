@@ -30,7 +30,12 @@ class StreamReplay:
         self.closed = False
         self.superseded = False
         self.closed_at: float | None = None
-        self.persistence: asyncio.Task[bool] | None = None
+        # Resolves True once this turn is in the database. A task on the native
+        # path (post-processing runs after the stream closes), a plain future on
+        # the ACP path (the write is synchronous, so it is resolved inline).
+        # None means no producer claimed the contract — treated as persisted,
+        # which is why every recoverable producer must attach one.
+        self.persistence: asyncio.Future[bool] | None = None
         self.events: list[dict[str, Any]] = []
         self.tail: deque[tuple[int, dict[str, Any]]] = deque(maxlen=capacity)
         self.changed = asyncio.Event()
