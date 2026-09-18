@@ -1,11 +1,16 @@
-/** Where the new-chat project menu should be drawn, in viewport coordinates. */
-export interface ProjectMenuGeometry {
-  top: number;
+/**
+ * Where the new-chat project menu should be drawn, in viewport coordinates.
+ *
+ * A drop-up menu is anchored by `bottom` rather than `top`: the element only
+ * caps its height with `max-height`, so a short project list renders smaller
+ * than `maxHeight` and a `top` computed from the cap would leave the menu
+ * floating well above its trigger.
+ */
+export type ProjectMenuGeometry = {
   left: number;
   width: number;
   maxHeight: number;
-  dropUp: boolean;
-}
+} & ({ dropUp: false; top: number } | { dropUp: true; bottom: number });
 
 const MENU_WIDTH = 240;
 /** What the menu wants when there is room: list (max-h-60) + the create row. */
@@ -41,17 +46,28 @@ export function resolveProjectMenuPosition(
   const available = dropUp ? spaceAbove : spaceBelow;
   const maxHeight = Math.max(MENU_MIN_HEIGHT, Math.min(MENU_PREFERRED_HEIGHT, available));
 
-  const top = dropUp
-    ? Math.max(VIEWPORT_MARGIN, buttonRect.top - MENU_GAP - maxHeight)
-    : Math.min(
-        Math.max(VIEWPORT_MARGIN, viewport.height - VIEWPORT_MARGIN - maxHeight),
-        buttonRect.bottom + MENU_GAP
-      );
-
   // The trigger is centred, so centre the menu on it before clamping.
   const centredLeft = buttonRect.left + buttonRect.width / 2 - width / 2;
   const maxLeft = Math.max(VIEWPORT_MARGIN, viewport.width - width - VIEWPORT_MARGIN);
   const left = Math.min(Math.max(VIEWPORT_MARGIN, centredLeft), maxLeft);
 
-  return { top, left, width, maxHeight, dropUp };
+  if (dropUp) {
+    // Pin the menu's bottom edge just above the trigger. The second term only
+    // bites when `maxHeight` hit its floor in a viewport with less room than
+    // that, and keeps the top edge on screen.
+    const bottom = Math.max(
+      VIEWPORT_MARGIN,
+      Math.min(
+        viewport.height - (buttonRect.top - MENU_GAP),
+        viewport.height - VIEWPORT_MARGIN - maxHeight
+      )
+    );
+    return { dropUp: true, bottom, left, width, maxHeight };
+  }
+
+  const top = Math.min(
+    Math.max(VIEWPORT_MARGIN, viewport.height - VIEWPORT_MARGIN - maxHeight),
+    buttonRect.bottom + MENU_GAP
+  );
+  return { dropUp: false, top, left, width, maxHeight };
 }

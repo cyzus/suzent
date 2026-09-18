@@ -65,6 +65,7 @@ const ProjectPicker: React.FC = () => {
   const [geometry, setGeometry] = useState<ProjectMenuGeometry | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const hasFocusedRef = useRef(false);
 
   const updatePosition = useCallback(() => {
     const button = buttonRef.current;
@@ -89,6 +90,25 @@ const ProjectPicker: React.FC = () => {
       window.removeEventListener('scroll', updatePosition, true);
     };
   }, [open, updatePosition]);
+
+  // The portal is appended after #root, so Tab from the trigger would walk the
+  // whole app before reaching the options. Move focus in explicitly once the
+  // menu has been placed, starting on the current project.
+  useEffect(() => {
+    if (!open) {
+      hasFocusedRef.current = false;
+      return;
+    }
+    if (hasFocusedRef.current) return;
+    const menu = menuRef.current;
+    if (!menu) return;
+
+    const target =
+      menu.querySelector<HTMLElement>('[data-current]') ??
+      menu.querySelector<HTMLElement>('button, input');
+    target?.focus();
+    hasFocusedRef.current = true;
+  }, [open, geometry]);
 
   // The menu is portalled out of the button's subtree, so closing it needs
   // explicit outside-click and Escape handling.
@@ -142,7 +162,9 @@ const ProjectPicker: React.FC = () => {
         aria-label={t('newChat.creatingIn')}
         className="fixed z-[9999] flex flex-col bg-white dark:bg-zinc-800 border-2 border-brutal-black shadow-[3px_3px_0_0_#000]"
         style={{
-          top: geometry.top,
+          // A drop-up menu hangs from its bottom edge so a short list stays
+          // tucked against the trigger instead of floating above it.
+          ...(geometry.dropUp ? { bottom: geometry.bottom } : { top: geometry.top }),
           left: geometry.left,
           width: geometry.width,
           maxHeight: geometry.maxHeight,
@@ -157,6 +179,7 @@ const ProjectPicker: React.FC = () => {
                 setCurrentProjectId(p.id);
                 setOpen(false);
               }}
+              data-current={p.id === currentProjectId || undefined}
               className={`w-full text-left px-3 py-2 text-xs font-bold hover:bg-neutral-100 dark:hover:bg-zinc-700 flex items-center justify-between gap-2 ${p.id === currentProjectId ? 'bg-brutal-yellow text-brutal-black' : 'dark:text-white'}`}
             >
               <span className="truncate">{p.name}</span>

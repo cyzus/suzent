@@ -14,6 +14,7 @@ describe('resolveProjectMenuPosition', () => {
     const geometry = resolveProjectMenuPosition(trigger(200), VIEWPORT);
 
     expect(geometry.dropUp).toBe(false);
+    if (geometry.dropUp) throw new Error('expected a downward menu');
     expect(geometry.top).toBe(234); // bottom (230) + gap (4)
     expect(geometry.maxHeight).toBe(296);
   });
@@ -30,14 +31,47 @@ describe('resolveProjectMenuPosition', () => {
     const geometry = resolveProjectMenuPosition(trigger(810), VIEWPORT);
 
     expect(geometry.dropUp).toBe(true);
-    expect(geometry.top).toBe(810 - 4 - geometry.maxHeight);
-    expect(geometry.top).toBeGreaterThanOrEqual(MARGIN);
+    if (!geometry.dropUp) throw new Error('expected a drop-up menu');
+    // Anchored to the trigger's top edge, minus the gap.
+    expect(geometry.bottom).toBe(VIEWPORT.height - (810 - 4));
+  });
+
+  it('anchors a drop-up menu by its bottom edge, not a height-derived top', () => {
+    // The menu only sets `max-height`, so a short project list renders shorter
+    // than `maxHeight`. Anchoring by `bottom` keeps it against the trigger
+    // whatever it renders at; a `top` derived from the cap would not.
+    const geometry = resolveProjectMenuPosition(trigger(810), VIEWPORT);
+
+    if (!geometry.dropUp) throw new Error('expected a drop-up menu');
+    expect(geometry).not.toHaveProperty('top');
+
+    // Whatever height it renders at, its bottom sits just above the trigger.
+    for (const renderedHeight of [80, 160, geometry.maxHeight]) {
+      const topEdge = VIEWPORT.height - geometry.bottom - renderedHeight;
+      expect(topEdge + renderedHeight).toBe(810 - 4);
+      expect(topEdge).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it('keeps a drop-up menu inside the top edge when room is scarce', () => {
+    // Very little space above, and even less below, so it flips into a gap
+    // smaller than the minimum height.
+    const geometry = resolveProjectMenuPosition(trigger(90), { width: 1280, height: 190 });
+
+    if (!geometry.dropUp) throw new Error('expected a drop-up menu');
+    const topEdge = 190 - geometry.bottom - geometry.maxHeight;
+    expect(topEdge).toBeGreaterThanOrEqual(MARGIN);
   });
 
   it('keeps a downward menu inside the bottom edge', () => {
-    const geometry = resolveProjectMenuPosition(trigger(200), { width: 1280, height: 420 });
+    // High in a short window: below is still the roomier side, but not roomy
+    // enough for the full menu.
+    const viewport = { width: 1280, height: 300 };
+    const geometry = resolveProjectMenuPosition(trigger(30), viewport);
 
-    expect(geometry.top + geometry.maxHeight).toBeLessThanOrEqual(420 - MARGIN);
+    if (geometry.dropUp) throw new Error('expected a downward menu');
+    expect(geometry.maxHeight).toBeLessThan(296);
+    expect(geometry.top + geometry.maxHeight).toBeLessThanOrEqual(viewport.height - MARGIN);
   });
 
   it('shrinks rather than overflowing when neither side has room', () => {
@@ -45,6 +79,7 @@ describe('resolveProjectMenuPosition', () => {
     const viewport = { width: 1280, height: 300 };
     const geometry = resolveProjectMenuPosition(trigger(130), viewport);
 
+    if (geometry.dropUp) throw new Error('expected a downward menu');
     expect(geometry.top).toBeGreaterThanOrEqual(MARGIN);
     expect(geometry.maxHeight).toBeLessThan(296);
     expect(geometry.top + geometry.maxHeight).toBeLessThanOrEqual(viewport.height - MARGIN);
