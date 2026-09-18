@@ -18,6 +18,27 @@ def _sse(event: dict[str, Any]) -> str:
     return f"data: {json.dumps(event, ensure_ascii=False, separators=(',', ':'))}\n\n"
 
 
+def _attach_persistence(chat_id: str) -> asyncio.Future[bool] | None:
+    """Give this chat's replay a pending persistence future, if it has a replay.
+
+    Mirrors what ChatProcessor does with its post-process task: the replay only
+    emits STREAM_END{persisted:true} once this resolves True.
+    """
+    from suzent.core.stream_registry import get_background_queue
+
+    queue = get_background_queue(chat_id)
+    if queue is None:
+        return None
+    future: asyncio.Future[bool] = asyncio.get_running_loop().create_future()
+    queue.replay.persistence = future
+    return future
+
+
+def _resolve_persistence(future: asyncio.Future[bool] | None, value: bool) -> None:
+    if future is not None and not future.done():
+        future.set_result(value)
+
+
 def _text_from_update(params: dict[str, Any]) -> str:
     update = params.get("update") if isinstance(params.get("update"), dict) else params
     kind = str(update.get("sessionUpdate") or update.get("type") or "")
@@ -266,6 +287,16 @@ async def stream_acp_turn(
 
     yield _sse({"type": "RUN_STARTED", "runId": run_id, "threadId": chat_id})
 
+    # Claim the same persistence contract the native runtime uses. A replay with
+    # no `persistence` reports `persisted` as True the moment it closes, so an
+    # ACP turn that died before its assistant row was written would still send
+    # STREAM_END{persisted:true} — and the client trusts that frame enough to
+    # replace what it is showing with a snapshot that is missing the turn. The
+    # write below is synchronous rather than a post-process task, so the future
+    # is resolved inline instead of being an awaited task, but the frame means
+    # the same thing on both paths: the database holds this turn.
+    persistence = _attach_persistence(chat_id)
+
     title_task: asyncio.Task[Any] | None = None
     try:
         requested_session = str(config.get("acp_session_id") or "").strip()
@@ -404,6 +435,7 @@ async def stream_acp_turn(
                 "model": f"acp/{managed.agent_id}",
             },
         )
+        _resolve_persistence(persistence, True)
         if title_task is not None:
             try:
                 title = await title_task
@@ -428,6 +460,9 @@ async def stream_acp_turn(
             yield _sse({"type": "TEXT_MESSAGE_END", "messageId": message_id})
         yield _sse({"type": "RUN_ERROR", "message": str(exc)})
     finally:
+        # Every exit that did not reach the append — RUN_ERROR, no output, a
+        # cancelled turn — leaves nothing persisted, and says so.
+        _resolve_persistence(persistence, False)
         # A failed or abandoned turn shouldn't leave a title lookup in flight.
         if title_task is not None and not title_task.done():
             title_task.cancel()
