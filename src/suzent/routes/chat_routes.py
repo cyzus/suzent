@@ -181,24 +181,38 @@ def _prewrite_user_display_message(
     chat_id: str,
     message: str,
     files_list: list,
-) -> None:
-    """Append the user's display row before stream_started can trigger reloads."""
+) -> bool:
+    """Append the user's display row before stream_started can trigger reloads.
+
+    Returns whether that row is really in the transcript. The turn uses this as
+    its licence to recognize the row and not write it again, and a write that
+    failed leaves the previous turn's row in that position -- which the same
+    prompt sent again matches exactly. Believing the prewrite then loses the
+    message.
+    """
     if not chat_id:
-        return
+        return False
 
     content = (message or "").strip()
     files = _display_file_metadata(files_list)
     if not content and not files:
-        return
+        return False
 
     entry: dict = {"role": "user", "content": content}
     if files:
         entry["files"] = files
 
     try:
-        get_database().append_chat_message(chat_id, entry)
+        return bool(get_database().append_chat_message(chat_id, entry))
     except Exception as exc:
-        logger.debug(f"Failed to prewrite user display message for {chat_id}: {exc}")
+        # The type only. A database error carries its statement's bound
+        # parameters, which here are the user's prompt and their attachments'
+        # names -- exactly what must not reach a log.
+        logger.debug(
+            f"Failed to prewrite user display message for {chat_id}: "
+            f"{type(exc).__name__}"
+        )
+        return False
 
 
 def _recoverable_response(
@@ -238,8 +252,24 @@ def _recoverable_response(
     )
 
 
+def _is_text(value: Any) -> bool:
+    """Whether a request sent text where this process will use text.
+
+    A JSON client can put a list or a dict where a string belongs, and both
+    names below become parts of registry keys -- an unhashable key raises, and
+    the route reports that as a 500, on /chat/send after the user's row has
+    already been written.
+    """
+    return value is None or isinstance(value, str)
+
+
 def _names_a_run(value: Any) -> bool:
     """Whether a request's idea of a run's name is one this process can use.
+
+    The empty string is not: it is a name the client sent, but every reader
+    tests it for truth, so it would pass for having sent none -- and a stop with
+    no name cancels whatever turn the chat is running, which is the protection
+    naming a run exists to give.
 
     Both names -- the chat and the token the client minted for its turn --
     become parts of registry keys, and a JSON client can put a list or a dict
@@ -248,7 +278,7 @@ def _names_a_run(value: Any) -> bool:
     the user's row. A malformed request is not a server fault: say so at the
     boundary, before anything has been stored.
     """
-    return value is None or isinstance(value, str)
+    return value is None or (isinstance(value, str) and value != "")
 
 
 async def chat(request: Request) -> StreamingResponse:
@@ -317,7 +347,7 @@ async def chat(request: Request) -> StreamingResponse:
                 status_code=400,
             )
 
-        if not _names_a_run(chat_id) or not _names_a_run(client_run_token):
+        if not _is_text(chat_id) or not _names_a_run(client_run_token):
             return JSONResponse(
                 {"error": "chat_id and client_run_token must be strings"},
                 status_code=400,
@@ -506,10 +536,10 @@ async def chat_send(request: Request) -> JSONResponse:
     # Whether this route wrote the turn's user row, which the turn cannot infer:
     # a prompt sent again after being stopped looks exactly like the row the
     # stopped turn left behind.
-    prewritten = not resume_approvals and not message.strip().startswith("/")
-    if prewritten:
+    prewritten = False
+    if not resume_approvals and not message.strip().startswith("/"):
         message = _sanitized_for_display_and_turn(message)
-        _prewrite_user_display_message(chat_id, message, files_list)
+        prewritten = _prewrite_user_display_message(chat_id, message, files_list)
 
     stream_queue = register_background_stream(chat_id)
     attach_client_token(chat_id, stream_queue.replay, data.get("client_run_token"))
@@ -592,7 +622,7 @@ async def steer_chat_send(request: Request) -> JSONResponse:
     effective_runtime = _resolve_chat_runtime(chat_id, config)
     stop_stream(chat_id, reason="Steered by user")
     message = _sanitized_for_display_and_turn(message)
-    _prewrite_user_display_message(chat_id, message, [])
+    prewritten = _prewrite_user_display_message(chat_id, message, [])
 
     stream_queue = register_background_stream(chat_id)
     attach_client_token(chat_id, stream_queue.replay, data.get("client_run_token"))
@@ -608,8 +638,7 @@ async def steer_chat_send(request: Request) -> JSONResponse:
                     message,
                     {**config, **config_override},
                     replay=stream_queue.replay,
-                    # This route pre-wrote the row just above.
-                    prewritten=True,
+                    prewritten=prewritten,
                 )
             else:
                 generator = processor.process_steer(

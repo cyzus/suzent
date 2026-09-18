@@ -88,3 +88,37 @@ async def test_a_stop_whose_names_are_not_names_is_refused(field):
     response = await stop_chat(request(payload, "/chat/stop"))
 
     assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_a_stop_naming_the_empty_string_is_refused(monkeypatch):
+    """An empty name is not the same as sending no name.
+
+    Every reader tests the name for truth, so `run_id: ""` reads as a stop that
+    named nothing -- and a stop that names nothing cancels whatever turn the
+    chat is running, which is exactly what naming a run protects against.
+    """
+    stopped: list[str] = []
+    monkeypatch.setattr(
+        "suzent.routes.chat_routes.stop_stream",
+        lambda chat_id, reason, expect_run=None: stopped.append(chat_id) or True,
+    )
+    stream_registry.register_background_stream("c")
+
+    response = await stop_chat(request({"chat_id": "c", "run_id": ""}, "/chat/stop"))
+
+    assert response.status_code == 400
+    assert stopped == []
+
+
+@pytest.mark.asyncio
+async def test_a_send_whose_token_is_the_empty_string_is_refused(monkeypatch):
+    monkeypatch.setattr(
+        "suzent.routes.chat_routes._prewrite_user_display_message", MagicMock()
+    )
+
+    response = await chat_send(
+        request({"chat_id": "c", "message": "hi", "client_run_token": ""}, "/chat/send")
+    )
+
+    assert response.status_code == 400
