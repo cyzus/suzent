@@ -230,3 +230,32 @@ async def test_an_acp_stop_for_the_running_prompt_cancels_the_session(monkeypatc
     assert response.status_code == 200
     assert cancelled == ["chat"]
     assert queue.replay.stop_requested is None
+
+
+async def test_an_acp_stop_the_session_refuses_is_not_kept_for_a_live_run(monkeypatch):
+    """A failed stop is news the client can act on; a false acceptance is not.
+
+    The run is already producing, so it is past every point that reads a
+    deferred mark -- leaving one there would report a stop that nothing carries
+    out, and the client would wait out its ten seconds while the agent keeps
+    going with its tools.
+    """
+    monkeypatch.setattr(
+        "suzent.routes.chat_routes.stop_stream",
+        lambda chat_id, reason, expect_run=None: False,
+    )
+
+    class _Session:
+        async def cancel(self, chat_id):
+            return False
+
+    monkeypatch.setattr("suzent.acp.get_acp_manager", lambda: _Session())
+    queue = stream_registry.register_background_stream("chat")
+    queue.replay.producer_started = True
+
+    response = await stop_chat(
+        request({"chat_id": "chat", "run_id": queue.replay.run_id})
+    )
+
+    assert response.status_code == 404
+    assert queue.replay.stop_requested is None

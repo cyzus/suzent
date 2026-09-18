@@ -784,9 +784,13 @@ async def stop_chat(request: Request) -> JSONResponse:
         except Exception:
             success = False
     if not success and matched_run and defer_stop_to_pending_run(chat_id, reason):
-        # The run is real and still producing -- it just has no control yet.
-        # Leaving the stop on its replay is an acceptance, not a miss: the turn
-        # cancels the moment it starts and the client still gets its STREAM_END.
+        # The run is real and still producing -- it just has not started yet, so
+        # it has nothing that can be cancelled. Leaving the stop on its replay is
+        # an acceptance, not a miss: the turn cancels the moment it starts and
+        # the client still gets its STREAM_END. A run already producing is past
+        # the points that read the mark, so it is refused there and a failed
+        # cancellation of a live prompt stays a failed stop -- which the client
+        # can act on, unlike a promise nothing will keep.
         success = True
 
     # Stop reached a chat's blocking sub-agents only as collateral damage and

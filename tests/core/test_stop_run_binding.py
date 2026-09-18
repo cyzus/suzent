@@ -158,3 +158,12 @@ async def test_a_background_turn_declares_the_run_it_produces():
     assert seen == [queue.replay]
     # And the declaration does not outlive the turn.
     assert current_run_replay.get() is None
+
+
+def test_a_stop_is_not_left_for_a_run_that_has_already_started():
+    """The mark is read once, at the start of a run. After that it is litter."""
+    queue = register_background_stream("chat")
+    queue.replay.producer_started = True
+
+    assert defer_stop_to_pending_run("chat", "Stream stopped by user") is False
+    assert queue.replay.stop_requested is None

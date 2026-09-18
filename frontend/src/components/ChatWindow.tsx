@@ -1352,15 +1352,23 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         abandonedPartsRef.current.set(chatId, currentParts);
       }
 
-      const resp = await fetch(`${getApiBase()}/chat/send`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        // Name the turn: this POST starts one, and until /chat/live yields its
-        // first frame the token is the only name a stop has for it.
-        body: JSON.stringify({ ...body, client_run_token: mintRunToken(chatId) }),
-      });
+      let resp: Response;
+      try {
+        resp = await fetch(`${getApiBase()}/chat/send`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          // Name the turn: this POST starts one, and until /chat/live yields its
+          // first frame the token is the only name a stop has for it.
+          body: JSON.stringify({ ...body, client_run_token: mintRunToken(chatId) }),
+        });
+      } catch (err) {
+        // The turn never started; the name minted for it must not outlive it.
+        retireRunToken();
+        throw err;
+      }
 
       if (!resp.ok) {
+        retireRunToken();
         const msg =
           resp.status === 409 ? 'Chat is already responding' : `Resume failed (${resp.status})`;
         setStatusBar(msg, 'error', 4000);
@@ -1376,7 +1384,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       // Connect immediately rather than waiting for stream_started from the bus.
       tryConnectRef.current?.();
     },
-    [currentChatId, getStreamingParts, mintRunToken, setStatusBar]
+    [currentChatId, getStreamingParts, mintRunToken, retireRunToken, setStatusBar]
   );
 
   // Recover from a rejected send/steer/retry/edit POST.
@@ -2271,6 +2279,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         })
         .catch((err) => {
           console.error('[send] /chat/steer-send failed:', err);
+          retireRunToken();
           setIsStreaming(false, steerChatId);
         })
         .finally(() => {
@@ -2395,6 +2404,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       })
       .catch((err) => {
         console.error('[send] /chat/send failed:', err);
+        // The turn was never started, so the name minted for it names nothing.
+        // Left installed, the next probe on this chat inherits it and a stop
+        // goes out under a dead name -- answered 409, which reads as "already
+        // stopped" while the turn that is running carries on.
+        retireRunToken();
         setIsStreaming(false, chatIdForSend);
         clearPartsIfStillViewingSendChat();
       });
@@ -2475,6 +2489,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       })
       .catch((err) => {
         console.error('[handleRetry] /chat/send failed:', err);
+        retireRunToken();
         setIsStreaming(false, chatIdForRetry);
       });
   }, [
@@ -2489,6 +2504,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     recoverFromSendFailure,
     retireStopAttempt,
     mintRunToken,
+    retireRunToken,
   ]);
 
   // Edit handler — re-sends the last user message with new text, dropping that
@@ -2558,6 +2574,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         })
         .catch((err) => {
           console.error('[handleEditUserMessage] /chat/send failed:', err);
+          retireRunToken();
           setIsStreaming(false, chatIdForEdit);
         });
     },
@@ -2574,6 +2591,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       recoverFromSendFailure,
       retireStopAttempt,
       mintRunToken,
+      retireRunToken,
     ]
   );
 
@@ -2640,12 +2658,18 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     // A turn this client asked for is named already; one it re-attached to is
     // named by its first frame, so wait briefly rather than stop blind. The
     // fallback timer above is already armed over this wait.
+    const runId = getStreamingRunId() ?? (await waitForRunId());
+    // That wait reads whatever run is current when it resolves, and this attempt
+    // may not have survived it: if the stream ended and the user started another
+    // turn, the name that came back is the new turn's. Check before sending, not
+    // only after -- afterwards the request has already cancelled it.
+    if (stopAttemptRef.current !== attempt) return;
     const result = await requestStopTurn(
       getApiBase(),
       targetChatId,
       'User requested stop',
       fetch,
-      getStreamingRunId() ?? (await waitForRunId())
+      runId
     );
     // The stream may have ended — and a later turn may have started and been
     // stopped — while this was in flight. Only the current attempt may act.

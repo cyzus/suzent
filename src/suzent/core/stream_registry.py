@@ -203,9 +203,15 @@ def defer_stop_to_pending_run(chat_id: str, reason: str) -> bool:
 
     The turn takes it when it claims the chat, so the stop still ends in the
     STREAM_END the client is waiting for instead of being silently dropped.
+
+    Only a run that has not started can be handed a stop this way: one already
+    producing is past the points where the mark is read, so leaving it there
+    would report a stop that nothing will ever carry out.
     """
     queue = background_queues.get(chat_id)
     if queue is None or not queue.producer_active:
+        return False
+    if queue.replay.producer_started:
         return False
     queue.replay.stop_requested = reason
     return True
