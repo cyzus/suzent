@@ -20,6 +20,7 @@ from suzent.config import CONFIG
 from suzent.database import ChatDatabase, get_database
 from suzent.logger import get_logger
 from suzent.core.stream_registry import (
+    bind_producer_replay,
     register_background_stream,
     unregister_background_stream,
     background_queues,
@@ -640,6 +641,9 @@ async def _run_subagent(
     )
 
     stream_queue = register_background_stream(task.chat_id)
+    # The sub-agent's chat is watchable and stoppable like any other, so its
+    # turn's control has to know which run it is cancelling.
+    bind_producer_replay(stream_queue.replay)
     try:
         from suzent.core.chat_processor import ChatProcessor
         from suzent.agent_manager import build_agent_config
@@ -802,6 +806,7 @@ async def _run_subagent(
         if wakeup_parent:
             _queue_parent_wakeup(task)
     finally:
+        bind_producer_replay(None)
         unregister_background_stream(task.chat_id, stream_queue)
         # An ACP sub-agent owns a subprocess; without this it outlives the task
         # and only dies at server shutdown. Close it before the worktree goes

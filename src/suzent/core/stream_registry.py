@@ -19,6 +19,8 @@ Bus event shapes:
 """
 
 import asyncio
+import contextlib
+import contextvars
 import time
 from typing import Any, Dict, Optional, Set
 
@@ -29,6 +31,7 @@ class StreamControl:
     """Holds cooperative cancellation state for an active stream."""
 
     __slots__ = (
+        "run_id",
         "cancel_event",
         "completed_event",
         "reason",
@@ -39,6 +42,10 @@ class StreamControl:
     )
 
     def __init__(self):
+        # The run this control cancels, as the registry named it when the run
+        # claimed the chat. A stop names its run, and a control for a different
+        # one must refuse it rather than cancel a turn nobody asked to stop.
+        self.run_id: str | None = None
         self.cancel_event = asyncio.Event()
         self.completed_event = asyncio.Event()  # Set when post-processing finishes
         self.reason = "Stream stopped by user"
@@ -167,14 +174,198 @@ def _prune_pending_auto_approvals(now: float) -> None:
         _pending_auto_approval_times.pop(chat_id, None)
 
 
-def stop_stream(chat_id: str, reason: str = "Stream stopped by user") -> bool:
-    """Request to stop an active stream."""
+def stop_stream(
+    chat_id: str,
+    reason: str = "Stream stopped by user",
+    expect_run: str | None = None,
+) -> bool:
+    """Request to stop an active stream.
+
+    `expect_run` is the run the caller means to stop. The control a chat holds
+    is not always the run the caller matched against: a steer registers the
+    replacement run's replay before the replacement turn takes the chat's
+    control, so for that moment the control still belongs to the turn being
+    replaced. Cancelling it would report success for a stop that left the turn
+    the user actually stopped running.
+    """
     control = stream_controls.get(chat_id)
     if not control:
+        return False
+    if expect_run is not None and control.run_id != expect_run:
         return False
     control.reason = reason
     control.cancel_event.set()
     return True
+
+
+def defer_stop_to_pending_run(
+    chat_id: str, reason: str, expect_replay: Optional["StreamReplay"] = None
+) -> bool:
+    """Leave a stop on the current replay for the run that has yet to start.
+
+    The turn takes it when it claims the chat, so the stop still ends in the
+    STREAM_END the client is waiting for instead of being silently dropped.
+
+    Only a run that has not started can be handed a stop this way: one already
+    producing is past the points where the mark is read, so leaving it there
+    would report a stop that nothing will ever carry out.
+
+    `expect_replay` is the replay the caller matched the stop against. The chat's
+    current replay can be replaced between that match and this call -- a steer
+    registers the replacement while the cancellation of the turn it replaces is
+    still awaiting -- and marking the newcomer would cancel a turn the stop was
+    never aimed at.
+    """
+    queue = background_queues.get(chat_id)
+    if queue is None or not queue.producer_active:
+        return False
+    if expect_replay is not None and queue.replay is not expect_replay:
+        return False
+    if queue.replay.producer_started:
+        return False
+    queue.replay.stop_requested = reason
+    return True
+
+
+# The replay of the run the current task is producing. A producer that looks
+# its replay up by chat_id can find someone else's: a steer registers the
+# replacement run's replay while the turn it replaces may still be starting up,
+# so for that moment the chat's current replay is not this producer's own.
+current_run_replay: contextvars.ContextVar[Optional[StreamReplay]] = (
+    contextvars.ContextVar("current_run_replay", default=None)
+)
+
+
+def bind_producer_replay(replay: Optional[StreamReplay]) -> None:
+    """Declare, from inside a producer task, which run it is producing.
+
+    Each producer runs in its own task and therefore its own context copy, so
+    this is scoped to that run and everything it awaits.
+    """
+    current_run_replay.set(replay)
+
+
+@contextlib.contextmanager
+def producing_run(replay: Optional[StreamReplay]):
+    """Declare the run for a turn run inside a task that outlives it.
+
+    `bind_producer_replay` is enough for a task that exists only for one run;
+    a scheduler, social or sub-agent worker runs turn after turn in the same
+    task, and each must leave the next one unbound rather than inherited.
+    """
+    token = current_run_replay.set(replay)
+    try:
+        yield
+    finally:
+        current_run_replay.reset(token)
+
+
+# A stop can name a run before anything of that run exists here. The client
+# mints the name when it asks for the turn and the Stop button is live from
+# that moment, but the request carrying it still has to be read, parsed and
+# configured before `_recoverable_response` registers a replay -- and a stop
+# arriving in that window has nothing to be matched against. Remembering it by
+# name lets the run take it the moment it registers, which is the only thing
+# that reliably stops it: the browser giving up on its own request does not
+# stop the turn, because a recoverable turn is built to outlive the connection
+# that asked for it.
+# Keyed by chat and token together: two starts for the same chat can be in
+# flight at once -- two windows, overlapping redirects -- and each is stopped
+# under its own name, so one must not evict the other's.
+_pending_client_stops: Dict[tuple[str, str], tuple[str, float]] = {}
+# Long enough for a slow start, short enough that a name nobody claims cannot
+# reach through to some later turn that happens to reuse it.
+PENDING_CLIENT_STOP_TTL = 30.0
+# Nothing obliges the start these are waiting for to ever arrive -- a chat can
+# be deleted, a request abandoned -- and each entry is only ever read by the
+# one run that shares its chat_id. So the TTL alone does not bound this: it is
+# swept on every write, and a flood that outruns the sweep gives up its oldest
+# rather than growing.
+MAX_PENDING_CLIENT_STOPS = 256
+
+
+def _prune_pending_client_stops(now: float) -> None:
+    for key in [
+        key
+        for key, (_, at) in _pending_client_stops.items()
+        if now - at > PENDING_CLIENT_STOP_TTL
+    ]:
+        _pending_client_stops.pop(key, None)
+    while len(_pending_client_stops) >= MAX_PENDING_CLIENT_STOPS:
+        _pending_client_stops.pop(next(iter(_pending_client_stops)), None)
+
+
+def remember_stop_for_unregistered_run(chat_id: str, token: str, reason: str) -> None:
+    """Keep a stop for a run whose start request has not registered yet."""
+    now = time.monotonic()
+    _pending_client_stops.pop((chat_id, token), None)
+    _prune_pending_client_stops(now)
+    _pending_client_stops[(chat_id, token)] = (reason, now)
+
+
+def claim_remembered_stop(chat_id: str, token: str | None) -> str | None:
+    """Take the stop left for *token*, if one is still waiting for it."""
+    if not token:
+        return None
+    remembered = _pending_client_stops.get((chat_id, token))
+    if remembered is None:
+        return None
+    reason, at = remembered
+    _pending_client_stops.pop((chat_id, token), None)
+    if time.monotonic() - at > PENDING_CLIENT_STOP_TTL:
+        return None
+    return reason
+
+
+def attach_client_token(chat_id: str, replay: StreamReplay, token: str | None) -> None:
+    """Name the run as the client named it, and take any stop left for it.
+
+    Registration is the first moment this run can be found by either name, so
+    it is also the first moment a stop that arrived before it can be applied.
+    The mark is read when the turn starts, so it is honoured exactly as a stop
+    that arrived a moment later would be.
+    """
+    replay.client_token = token
+    if token is None:
+        return
+    remembered = claim_remembered_stop(chat_id, token)
+    if remembered:
+        replay.stop_requested = remembered
+
+
+def claim_pending_stop(replay: Optional[StreamReplay]) -> str | None:
+    """Take the stop that was left for this run before it could take one.
+
+    A stop is deferred onto the replay when the run it names has nothing that
+    can cancel it yet. Whoever claims it owes the client the ending, so the
+    mark is cleared here and honoured exactly once.
+    """
+    pending = getattr(replay, "stop_requested", None) if replay is not None else None
+    if pending:
+        replay.stop_requested = None
+    return pending
+
+
+def claim_stream_control(chat_id: str, control: StreamControl) -> None:
+    """Install `control` as the chat's, and hand it any stop already accepted.
+
+    The run is the one this producer declared it was producing -- not whichever
+    replay the chat currently holds, which during a steer is already the
+    replacement's. A producer that declared nothing leaves the control unnamed,
+    and an unnamed control refuses every stop that names a run; that is the
+    safe direction, since those turns have no replay for a stop to have been
+    matched against in the first place.
+    """
+    stream_controls[chat_id] = control
+    replay = current_run_replay.get()
+    if replay is None:
+        return
+    control.run_id = replay.run_id
+    replay.producer_started = True
+    pending = claim_pending_stop(replay)
+    if pending:
+        control.reason = pending
+        control.cancel_event.set()
 
 
 def merge_pending_auto_approvals(chat_id: str, approvals: Dict[str, bool]) -> None:

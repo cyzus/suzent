@@ -6,6 +6,8 @@ export interface StreamEvent {
 
 export interface StreamBatch {
   reset: boolean;
+  /** The run these events belong to, so a caller can name it back to the backend. */
+  runId: string;
   events: StreamEvent[];
 }
 
@@ -121,7 +123,7 @@ export async function* recoverableStream(
             runId = frame.run_id;
             seq = nextSeq;
             failures = 0;
-            yield { reset: true, events: frame.events as StreamEvent[] };
+            yield { reset: true, runId: frame.run_id, events: frame.events as StreamEvent[] };
           } else if (frame.type === 'STREAM_EVENT') {
             if (!isStreamEvent(frame.event)) throw new ProtocolError('Invalid stream event');
             if (frame.run_id !== runId || seq === undefined || nextSeq > seq + 1) {
@@ -133,7 +135,7 @@ export async function* recoverableStream(
             if (nextSeq <= seq) continue;
             seq = nextSeq;
             failures = 0;
-            yield { reset: false, events: [frame.event as StreamEvent] };
+            yield { reset: false, runId: frame.run_id, events: [frame.event as StreamEvent] };
           } else if (frame.type === 'STREAM_END') {
             if (frame.superseded === true) {
               runId = undefined;

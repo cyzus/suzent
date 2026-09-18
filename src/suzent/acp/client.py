@@ -112,8 +112,19 @@ class ACPClient:
         return result if isinstance(result, dict) else {}
 
     async def request(
-        self, method: str, params: dict[str, Any] | None = None, timeout: float = 120.0
+        self,
+        method: str,
+        params: dict[str, Any] | None = None,
+        timeout: float = 120.0,
+        on_sent: Callable[[], None] | None = None,
     ) -> Any:
+        """Send one request and wait for its reply.
+
+        *on_sent* fires the moment the request has been written to the agent,
+        which is the first moment a `session/cancel` can reach the agent about
+        it. A caller that has to know when its request became cancellable has no
+        other way to learn it: awaiting this call only tells it the turn is over.
+        """
         if not self.process or self.process.returncode is not None:
             raise ACPError("ACP process is not running")
         request_id = self._next_id
@@ -129,6 +140,8 @@ class ACPClient:
                 "params": params or {},
             }
         )
+        if on_sent is not None:
+            on_sent()
         try:
             return await asyncio.wait_for(future, timeout=timeout)
         finally:
@@ -154,11 +167,17 @@ class ACPClient:
         )
         return result if isinstance(result, dict) else {}
 
-    async def prompt(self, session_id: str, text: str) -> dict[str, Any]:
+    async def prompt(
+        self,
+        session_id: str,
+        text: str,
+        on_sent: Callable[[], None] | None = None,
+    ) -> dict[str, Any]:
         result = await self.request(
             "session/prompt",
             {"sessionId": session_id, "prompt": [{"type": "text", "text": text}]},
             timeout=3600.0,
+            on_sent=on_sent,
         )
         return result if isinstance(result, dict) else {}
 
