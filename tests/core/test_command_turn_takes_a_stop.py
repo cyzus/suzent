@@ -47,6 +47,7 @@ async def _run_command_turn(
     write_fails=False,
     wrote=True,
     during=None,
+    returns="compacted",
 ):
     queue = register_background_stream("chat-cmd")
     if stop_before:
@@ -59,7 +60,7 @@ async def _run_command_turn(
             queue.replay.stop_requested = stop_during
         if during is not None:
             during(queue)
-        return "compacted"
+        return returns
 
     async def get_agent(config):
         return _Agent()
@@ -256,3 +257,31 @@ async def test_a_stop_is_refused_while_the_command_is_running(monkeypatch):
     # And nothing offers the chat's session in its place: this run has no
     # prompt there, so cancelling it would reach some other turn.
     assert queue.replay.prompt_in_flight is False
+
+
+@pytest.mark.asyncio
+async def test_a_turn_that_was_not_a_command_is_stoppable_again(monkeypatch):
+    """Every message comes through the dispatch, and most are not commands.
+
+    An ordinary prompt -- or a slash command nothing recognizes -- goes on to
+    the agent, and the reminders and the memory lookup before its control is
+    installed are a window a stop still has to reach. Left marked, the client
+    is answered 404 for a turn that is about to run.
+    """
+    seen: dict = {}
+
+    async def fake_stream(*args, **kwargs):
+        replay = stream_registry.background_queues["chat-cmd"].replay
+        seen["producer_started"] = replay.producer_started
+        seen["prompt_in_flight"] = replay.prompt_in_flight
+        return
+        yield ""  # pragma: no cover - makes this an async generator
+
+    monkeypatch.setattr(
+        "suzent.core.chat_processor.stream_agent_responses", fake_stream
+    )
+
+    _, ran, queue, _ = await _run_command_turn(monkeypatch, returns=None)
+
+    assert ran == ["/compact"]
+    assert seen == {"producer_started": False, "prompt_in_flight": None}

@@ -890,14 +890,30 @@ class ChatProcessor:
             # cancelling the chat's session for it would reach whatever else
             # that session is running.
             command_replay = current_run_replay.get()
+            was_started = False
+            was_in_flight: bool | None = None
             if command_replay is not None:
+                was_started = command_replay.producer_started
+                was_in_flight = command_replay.prompt_in_flight
                 command_replay.producer_started = True
                 command_replay.prompt_in_flight = False
 
-            cmd_result = await _dispatch_command(
-                _CmdCtx(chat_id=chat_id, user_id=user_id, surface=origin_surface),
-                message_content,
-            )
+            cmd_result = None
+            try:
+                cmd_result = await _dispatch_command(
+                    _CmdCtx(chat_id=chat_id, user_id=user_id, surface=origin_surface),
+                    message_content,
+                )
+            finally:
+                # Only a command that answered the turn is unstoppable, and
+                # every other message comes back through here: an ordinary
+                # prompt, an unrecognized slash command. That turn goes on to
+                # the agent, with reminders and a memory lookup before anything
+                # installs a control -- a window a stop must still be able to
+                # reach, or the client is answered 404 for a turn that runs.
+                if command_replay is not None and cmd_result is None:
+                    command_replay.producer_started = was_started
+                    command_replay.prompt_in_flight = was_in_flight
             if cmd_result is not None:
                 _report_command_persistence(
                     _persist_command_pair(chat_id, message_content, cmd_result)
