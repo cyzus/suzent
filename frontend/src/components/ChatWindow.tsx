@@ -820,6 +820,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   // turn's own STREAM_END to arrive, and the timer that gives up on it.
   const [isStopping, setIsStopping] = useState(false);
   const stopFallbackRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Every stop attempt takes a token. The fallback timer and the request's own
+  // continuation both check it before acting, so a stop belonging to a turn
+  // that has already ended can never reach across and abandon the next one.
+  const stopAttemptRef = useRef(0);
   // True while a steer is in flight — prevents the normal-send finally from hiding the bubble
   const steeringRef = useRef(false);
   // True from the moment a send is accepted until it has handed off to the
@@ -2542,6 +2546,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         clearTimeout(stopFallbackRef.current);
         stopFallbackRef.current = null;
       }
+      stopAttemptRef.current += 1;
       isLiveStreamRef.current = false;
       streamingChatIdRef.current = null;
       stopAGUIStream();
@@ -2580,21 +2585,31 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     }
 
     setIsStopping(true);
+    const attempt = ++stopAttemptRef.current;
+
+    // Arm the fallback before asking, not after. The request itself can be the
+    // thing that hangs — a half-open connection swallows the response and the
+    // await never settles — which would leave the composer disabled and
+    // "Stopping" on screen with no timer to rescue it. The timer covers both
+    // that and a turn wedged in a tool call that outlives its own ending.
+    stopFallbackRef.current = setTimeout(() => {
+      stopFallbackRef.current = null;
+      if (stopAttemptRef.current === attempt && stopInFlightRef.current) {
+        abandonStream(targetChatId);
+      }
+    }, STOP_STREAM_END_TIMEOUT_MS);
+
     const result = await requestStopTurn(getApiBase(), targetChatId, 'User requested stop');
+    // The stream may have ended — and a later turn may have started and been
+    // stopped — while this was in flight. Only the current attempt may act.
+    if (stopAttemptRef.current !== attempt) return;
     if (!result.accepted) {
       if (result.reason !== 'no_active_stream') {
         console.error('Stop request failed:', result.reason, result.status ?? '');
       }
       abandonStream(targetChatId);
-      return;
     }
-
-    // The backend accepted it. Hand the ending back to the stream, but don't
-    // trust it forever: a turn wedged in a tool call can outlive the request.
-    stopFallbackRef.current = setTimeout(() => {
-      stopFallbackRef.current = null;
-      if (stopInFlightRef.current) abandonStream(targetChatId);
-    }, STOP_STREAM_END_TIMEOUT_MS);
+    // Accepted: hand the ending back to the stream and let the fallback watch.
   };
 
   // The stop is done the moment the stream is: whichever path ended it — the
@@ -2606,7 +2621,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       clearTimeout(stopFallbackRef.current);
       stopFallbackRef.current = null;
     }
-    if (stopInFlightRef.current) stopInFlightRef.current = false;
+    if (stopInFlightRef.current) {
+      stopInFlightRef.current = false;
+      // Retire the attempt too, so a stop request still in flight for this
+      // finished turn cannot tear down the one that follows it.
+      stopAttemptRef.current += 1;
+    }
     setIsStopping((stopping) => (stopping ? false : stopping));
   }, [isStreaming]);
 
