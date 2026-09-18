@@ -1087,7 +1087,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       };
       await finishDirect(async () => {
         if (persistence?.confirmed) {
-          await loadChat(chatId!, { force: true, throwOnError: true });
+          // The stream only reports `confirmed` after the backend acknowledged the
+          // turn as persisted, so this snapshot is complete by construction — take
+          // it outright rather than running the catch-up guards against a local
+          // store that (deliberately) never saw this turn.
+          await loadChat(chatId!, { trusted: true, throwOnError: true });
         }
       });
       if (!persistence?.confirmed) {
@@ -2025,7 +2029,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       // must reload here; limiting this sync to social chats left desktop diffs hidden
       // until the user manually refreshed.
       try {
-        await loadChat(chatIdAtMount, { force: true, throwOnError: true });
+        // Same contract as the direct path: sendAGUI only resolves truthy once the
+        // stream ended with persistence confirmed, so this snapshot supersedes
+        // whatever the store holds.
+        await loadChat(chatIdAtMount, { trusted: true, throwOnError: true });
       } catch {
         if (!cancelled && richMsg.content.trim()) addMessage(richMsg, chatIdAtMount);
       }

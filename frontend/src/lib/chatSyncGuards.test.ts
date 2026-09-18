@@ -103,4 +103,44 @@ describe('shouldKeepLocalAssistantContent', () => {
 
     expect(shouldKeepLocalAssistantContent(local, server)).toBe(false);
   });
+  it('accepts a new turn whose reply is shorter than the previous turn (blank-until-refresh)', () => {
+    // The confirmed-stream path deliberately appends nothing locally, so the local
+    // store's last assistant belongs to the PREVIOUS turn. Comparing it with the new
+    // turn's shorter reply used to reject the snapshot, leaving the chat blank until
+    // the user refreshed.
+    const previousReply =
+      'I re-ran the change, kept the plain-text font substitution and the homepage link, ' +
+      'and saved the updated file over the path you gave me. Open it and confirm.';
+    const local: Message[] = [
+      { role: 'user', content: 'update my resume' },
+      { role: 'assistant', content: previousReply },
+      { role: 'user', content: 'the font looks wrong' },
+    ];
+    const server: Message[] = [
+      ...local,
+      { role: 'assistant', content: 'Locked the fonts back to the originals.' },
+    ];
+    expect(shouldKeepLocalAssistantContent(local, server)).toBe(false);
+  });
+
+  it('accepts a new turn that is still tool-only when the local store has no assistant for it', () => {
+    const toolOnlyContent =
+      '<details data-tool-call-id="t1"><summary>🔧 tool</summary><pre><code class="language-json">{"x":1}</code></pre></details>';
+    const local: Message[] = [
+      { role: 'user', content: 'question' },
+      { role: 'assistant', content: 'A complete earlier answer with real prose in it.' },
+      { role: 'user', content: 'follow-up' },
+    ];
+    const server: Message[] = [...local, { role: 'assistant', content: toolOnlyContent }];
+    expect(shouldKeepLocalAssistantContent(local, server)).toBe(false);
+  });
+
+  it('still keeps local content when the server has not written this turn at all', () => {
+    const local: Message[] = [
+      { role: 'user', content: 'question' },
+      { role: 'assistant', content: 'Optimistically appended final answer for the user.' },
+    ];
+    const server: Message[] = [{ role: 'user', content: 'question' }];
+    expect(shouldKeepLocalAssistantContent(local, server)).toBe(true);
+  });
 });
