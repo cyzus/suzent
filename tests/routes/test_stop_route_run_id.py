@@ -36,8 +36,10 @@ def request(payload: object) -> Request:
 @pytest.fixture(autouse=True)
 def clean_registry():
     stream_registry.background_queues.clear()
+    stream_registry._pending_client_stops.clear()
     yield
     stream_registry.background_queues.clear()
+    stream_registry._pending_client_stops.clear()
 
 
 async def test_a_stop_for_a_run_that_is_gone_is_refused(monkeypatch):
@@ -291,3 +293,54 @@ async def test_a_stop_is_not_kept_for_a_run_that_replaced_the_one_it_named(monke
     assert response.status_code == 404
     assert queue.replay.stop_requested is None
     assert replacement[0].replay.stop_requested is None
+
+
+async def test_a_stop_for_a_run_that_has_not_registered_yet_is_kept(monkeypatch):
+    """The Stop button is live before the start request has been read.
+
+    A recoverable turn outlives the connection that asked for it, so the
+    browser abandoning its own request does not stop it. Keeping the stop under
+    the name the client minted is what does: the run takes it as it registers.
+    """
+    monkeypatch.setattr(
+        "suzent.routes.chat_routes.stop_stream",
+        lambda chat_id, reason, expect_run=None: False,
+    )
+
+    response = await stop_chat(request({"chat_id": "chat", "run_id": "not-here-yet"}))
+
+    assert response.status_code == 200
+    assert json.loads(bytes(response.body))["stream_stopped"] is True
+
+    # The start lands afterwards and the run cancels itself on arrival.
+    queue = stream_registry.register_background_stream("chat")
+    stream_registry.attach_client_token("chat", queue.replay, "not-here-yet")
+    assert queue.replay.stop_requested == "Stream stopped by user"
+
+
+async def test_a_run_that_registers_under_another_name_keeps_running(monkeypatch):
+    monkeypatch.setattr(
+        "suzent.routes.chat_routes.stop_stream",
+        lambda chat_id, reason, expect_run=None: False,
+    )
+
+    await stop_chat(request({"chat_id": "chat", "run_id": "a-turn-that-never-came"}))
+
+    queue = stream_registry.register_background_stream("chat")
+    stream_registry.attach_client_token("chat", queue.replay, "some-other-turn")
+    assert queue.replay.stop_requested is None
+
+
+async def test_a_remembered_stop_does_not_reach_a_turn_minutes_later(monkeypatch):
+    monkeypatch.setattr(
+        "suzent.routes.chat_routes.stop_stream",
+        lambda chat_id, reason, expect_run=None: False,
+    )
+    await stop_chat(request({"chat_id": "chat", "run_id": "slow-start"}))
+
+    later = stream_registry.time.monotonic() + stream_registry.PENDING_CLIENT_STOP_TTL
+    monkeypatch.setattr(stream_registry.time, "monotonic", lambda: later + 60.0)
+    queue = stream_registry.register_background_stream("chat")
+    stream_registry.attach_client_token("chat", queue.replay, "slow-start")
+
+    assert queue.replay.stop_requested is None

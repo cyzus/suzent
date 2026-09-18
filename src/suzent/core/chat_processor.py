@@ -18,6 +18,7 @@ from typing import AsyncGenerator, List, Dict, Any, Optional
 
 from ag_ui.core import (
     CustomEvent,
+    RunErrorEvent,
     RunStartedEvent,
     RunFinishedEvent,
     TextMessageStartEvent,
@@ -50,6 +51,8 @@ from suzent.tools.filesystem.path_resolver import PathResolver
 from suzent.routes.sandbox_routes import sanitize_filename
 from suzent.core.stream_parser import StreamParser, TextChunk, ErrorEvent
 from suzent.core.stream_registry import (
+    claim_pending_stop,
+    current_run_replay,
     get_background_queue,
     pop_pending_auto_approvals,
     producing_run,
@@ -94,11 +97,17 @@ def _merge_citation_sources_from_sse(chunk: str, target: list[dict]) -> None:
     target[:] = by_id.values()
 
 
-def _emit_notice_stream(chat_id: str, text: str) -> AsyncGenerator[str, None]:
+def _emit_notice_stream(
+    chat_id: str, text: str, stopped: str | None = None
+) -> AsyncGenerator[str, None]:
     """Yield a minimal self-contained SSE run that shows ``text`` as a notice row.
 
     Used by terminal paths (slash commands, /retry errors) that need to surface
     a one-shot message and finish the stream without invoking the agent.
+
+    *stopped* is a stop that was accepted for this run. It is reported the way
+    every other path reports one -- tagged, so the client reads it as the stop
+    it asked for rather than as a failure.
     """
 
     async def _gen() -> AsyncGenerator[str, None]:
@@ -112,6 +121,8 @@ def _emit_notice_stream(chat_id: str, text: str) -> AsyncGenerator[str, None]:
         yield enc.encode(TextMessageStartEvent(message_id=msg_id, role="assistant"))
         yield enc.encode(TextMessageContentEvent(message_id=msg_id, delta=text))
         yield enc.encode(TextMessageEndEvent(message_id=msg_id))
+        if stopped:
+            yield enc.encode(RunErrorEvent(message=stopped, code="stream_stopped"))
         yield enc.encode(RunFinishedEvent(run_id=run_id, thread_id=chat_id))
         yield "data: [DONE]\n\n"
 
@@ -791,6 +802,21 @@ class ChatProcessor:
             if is_social:
                 origin_surface = "social"
 
+            # A slash command answers the turn by itself: the agent never runs,
+            # so nothing installs a cancellation control and a stop accepted for
+            # this run would sit unread on the replay while a long command --
+            # /compact, anything that reaches a remote node -- ran to the end.
+            # Take it here instead. Before the command, declining to run it is
+            # the stop; after it, the work is done and the ending is all that is
+            # left to give, but the client is owed that either way.
+            stopped = claim_pending_stop(current_run_replay.get())
+            if stopped:
+                async for chunk in _emit_notice_stream(
+                    chat_id, "⏹ Stopped before the command ran.", stopped=stopped
+                ):
+                    yield chunk
+                return
+
             cmd_result = await _dispatch_command(
                 _CmdCtx(chat_id=chat_id, user_id=user_id, surface=origin_surface),
                 message_content,
@@ -810,7 +836,11 @@ class ChatProcessor:
                         f"Failed to persist slash command result for {chat_id}: {e}"
                     )
 
-                async for chunk in _emit_notice_stream(chat_id, cmd_result):
+                async for chunk in _emit_notice_stream(
+                    chat_id,
+                    cmd_result,
+                    stopped=claim_pending_stop(current_run_replay.get()),
+                ):
                     yield chunk
                 return
 

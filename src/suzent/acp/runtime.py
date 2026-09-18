@@ -8,6 +8,7 @@ import uuid
 from typing import Any, AsyncGenerator
 
 from suzent.core.auto_title import generate_auto_title, should_generate_auto_title
+from suzent.core.stream_registry import claim_pending_stop
 from suzent.logger import get_logger
 from suzent.database import get_database
 
@@ -365,6 +366,25 @@ def _display_files(files: list[Any] | None) -> list[dict]:
     return rows
 
 
+def _attachment_identity(files: Any) -> list[tuple]:
+    """What makes two attachment lists the same message rather than two.
+
+    Presence alone is not enough: the same text sent twice with different files
+    -- a stopped turn resent with another upload, or two file-only messages --
+    would read as the row already being there, and the second message would be
+    dropped while the turn promised it had been stored.
+    """
+    return [
+        (
+            str(row.get("filename") or ""),
+            str(row.get("mime_type") or ""),
+            row.get("size"),
+        )
+        for row in (files or [])
+        if isinstance(row, dict)
+    ]
+
+
 def _append_user_row(
     db: Any,
     chat_id: str,
@@ -390,7 +410,8 @@ def _append_user_row(
         existing
         and existing[-1].get("role") == role
         and str(existing[-1].get("content") or "").strip() == content.strip()
-        and bool(existing[-1].get("files")) == bool(attachments)
+        and _attachment_identity(existing[-1].get("files"))
+        == _attachment_identity(attachments)
     ):
         return True
     entry: dict[str, Any] = {"role": role, "content": content.strip()}
@@ -414,14 +435,11 @@ def _stopped_frames(message_id: str, reason: str) -> list[str]:
 def _claim_pending_stop(replay: Any | None) -> str | None:
     """Take the stop that was left for this run before it could take one.
 
-    A stop is deferred onto the replay when the run it names has nothing that
-    can cancel it yet. Whoever claims it owes the client the ending, so the mark
-    is cleared here and honoured exactly once.
+    The same claim the native path makes when it installs its control, so both
+    runtimes honour a deferred stop by the one rule: cleared here, owed to the
+    client by whoever cleared it.
     """
-    pending = getattr(replay, "stop_requested", None) if replay is not None else None
-    if pending:
-        replay.stop_requested = None
-    return pending
+    return claim_pending_stop(replay)
 
 
 def _persist_stopped_prompt(

@@ -260,6 +260,72 @@ def producing_run(replay: Optional[StreamReplay]):
         current_run_replay.reset(token)
 
 
+# A stop can name a run before anything of that run exists here. The client
+# mints the name when it asks for the turn and the Stop button is live from
+# that moment, but the request carrying it still has to be read, parsed and
+# configured before `_recoverable_response` registers a replay -- and a stop
+# arriving in that window has nothing to be matched against. Remembering it by
+# name lets the run take it the moment it registers, which is the only thing
+# that reliably stops it: the browser giving up on its own request does not
+# stop the turn, because a recoverable turn is built to outlive the connection
+# that asked for it.
+_pending_client_stops: Dict[str, tuple[str, str, float]] = {}
+# Long enough for a slow start, short enough that a name nobody claims cannot
+# reach through to some later turn that happens to reuse it.
+PENDING_CLIENT_STOP_TTL = 30.0
+
+
+def remember_stop_for_unregistered_run(chat_id: str, token: str, reason: str) -> None:
+    """Keep a stop for a run whose start request has not registered yet."""
+    _pending_client_stops[chat_id] = (token, reason, time.monotonic())
+
+
+def claim_remembered_stop(chat_id: str, token: str | None) -> str | None:
+    """Take the stop left for *token*, if one is still waiting for it."""
+    if not token:
+        return None
+    remembered = _pending_client_stops.get(chat_id)
+    if remembered is None:
+        return None
+    name, reason, at = remembered
+    if time.monotonic() - at > PENDING_CLIENT_STOP_TTL:
+        _pending_client_stops.pop(chat_id, None)
+        return None
+    if name != token:
+        return None
+    _pending_client_stops.pop(chat_id, None)
+    return reason
+
+
+def attach_client_token(chat_id: str, replay: StreamReplay, token: str | None) -> None:
+    """Name the run as the client named it, and take any stop left for it.
+
+    Registration is the first moment this run can be found by either name, so
+    it is also the first moment a stop that arrived before it can be applied.
+    The mark is read when the turn starts, so it is honoured exactly as a stop
+    that arrived a moment later would be.
+    """
+    replay.client_token = token
+    if token is None:
+        return
+    remembered = claim_remembered_stop(chat_id, token)
+    if remembered:
+        replay.stop_requested = remembered
+
+
+def claim_pending_stop(replay: Optional[StreamReplay]) -> str | None:
+    """Take the stop that was left for this run before it could take one.
+
+    A stop is deferred onto the replay when the run it names has nothing that
+    can cancel it yet. Whoever claims it owes the client the ending, so the
+    mark is cleared here and honoured exactly once.
+    """
+    pending = getattr(replay, "stop_requested", None) if replay is not None else None
+    if pending:
+        replay.stop_requested = None
+    return pending
+
+
 def claim_stream_control(chat_id: str, control: StreamControl) -> None:
     """Install `control` as the chat's, and hand it any stop already accepted.
 
@@ -276,9 +342,8 @@ def claim_stream_control(chat_id: str, control: StreamControl) -> None:
         return
     control.run_id = replay.run_id
     replay.producer_started = True
-    pending = replay.stop_requested
+    pending = claim_pending_stop(replay)
     if pending:
-        replay.stop_requested = None
         control.reason = pending
         control.cancel_event.set()
 

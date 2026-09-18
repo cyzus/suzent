@@ -22,8 +22,10 @@ from suzent.database import get_database
 from suzent.logger import get_logger
 from suzent.streaming import stop_stream
 from suzent.core.stream_registry import (
+    attach_client_token,
     bind_producer_replay,
     defer_stop_to_pending_run,
+    remember_stop_for_unregistered_run,
     get_background_queue,
     is_background_streaming,
     register_background_stream,
@@ -207,7 +209,7 @@ def _recoverable_response(
     # The turn is built after the queue exists, and from it: a producer that
     # has to find its own replay by chat_id can find someone else's.
     queue = register_background_stream(chat_id)
-    queue.replay.client_token = client_token
+    attach_client_token(chat_id, queue.replay, client_token)
     generator = make_generator(queue.replay)
 
     async def produce() -> None:
@@ -483,7 +485,7 @@ async def chat_send(request: Request) -> JSONResponse:
         _prewrite_user_display_message(chat_id, message, files_list)
 
     stream_queue = register_background_stream(chat_id)
-    stream_queue.replay.client_token = data.get("client_run_token")
+    attach_client_token(chat_id, stream_queue.replay, data.get("client_run_token"))
 
     async def _run() -> None:
         bind_producer_replay(stream_queue.replay)
@@ -561,7 +563,7 @@ async def steer_chat_send(request: Request) -> JSONResponse:
     _prewrite_user_display_message(chat_id, message, [])
 
     stream_queue = register_background_stream(chat_id)
-    stream_queue.replay.client_token = data.get("client_run_token")
+    attach_client_token(chat_id, stream_queue.replay, data.get("client_run_token"))
 
     async def _run() -> None:
         bind_producer_replay(stream_queue.replay)
@@ -755,11 +757,29 @@ async def stop_chat(request: Request) -> JSONResponse:
     queue = get_background_queue(chat_id)
     matched_run: str | None = None
     matched_replay = None
-    if run_id and queue is not None:
-        if run_id not in (queue.replay.run_id, queue.replay.client_token):
+    names = (
+        (queue.replay.run_id, queue.replay.client_token) if queue is not None else ()
+    )
+    if run_id and run_id not in names:
+        if queue is not None and queue.producer_active:
+            # Something else is producing under a different name: this stop is
+            # from the turn that one replaced, and applying it would stop a run
+            # nobody asked to stop.
             return JSONResponse(
                 {"status": "stale_run", "run_id": queue.replay.run_id}, status_code=409
             )
+        # Nothing of this run is here yet. The client names a turn from the
+        # moment it asks for one, and the request carrying that ask still has
+        # to be read and configured before it registers anything -- so this is
+        # a stop for a run that is on its way, not a miss. Keep it under that
+        # name and the run takes it as it registers.
+        #
+        # This is the only thing that reliably stops it. A recoverable turn is
+        # built to outlive the connection that asked for it, so the browser
+        # abandoning its own request leaves the turn running unwatched.
+        remember_stop_for_unregistered_run(chat_id, run_id, reason)
+        return JSONResponse({"status": "stopped", "stream_stopped": True})
+    if run_id and queue is not None:
         matched_run = queue.replay.run_id
         matched_replay = queue.replay
 

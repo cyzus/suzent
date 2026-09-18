@@ -51,6 +51,7 @@ async def _run_turn(
     restored=False,
     message="hi",
     files=None,
+    existing=None,
 ):
     managed = _managed()
     managed.restored = restored
@@ -75,7 +76,7 @@ async def _run_turn(
             "acp_agent_id": "claude-code",
             "acp_session_id": "s-1",
         }
-        chat.messages = []
+        chat.messages = list(existing or [])
         db = MagicMock()
         db.get_chat.return_value = chat
         db.append_chat_message.return_value = append_result
@@ -530,3 +531,71 @@ async def test_a_stop_keeps_the_files_a_multipart_request_uploaded(queue):
         {"filename": "report.pdf", "mime_type": "application/pdf", "size": 1234}
     ]
     assert q.replay.persistence.result() is True
+
+
+@pytest.mark.asyncio
+async def test_the_same_text_with_a_different_file_is_a_new_message(queue):
+    """The row from the stopped turn is not this turn's row.
+
+    Same prompt, another attachment: reading "both have files" as "already
+    stored" dropped the upload while the turn promised the reload would have it.
+    """
+
+    class _Upload:
+        filename = "second.pdf"
+        content_type = "application/pdf"
+        size = 99
+
+    chat_id, q = queue
+
+    chunks, db = await _run_turn(
+        chat_id,
+        [_text_chunk("ok")],
+        {"stopReason": "end_turn"},
+        replay=q.replay,
+        message="here",
+        files=[_Upload()],
+        existing=[
+            {"role": "user", "content": "here", "files": [{"filename": "first.pdf"}]}
+        ],
+    )
+
+    stored = [c.args[1] for c in db.append_chat_message.call_args_list]
+    assert stored[0]["files"] == [
+        {"filename": "second.pdf", "mime_type": "application/pdf", "size": 99}
+    ]
+
+
+@pytest.mark.asyncio
+async def test_the_row_a_stopped_turn_already_wrote_is_not_written_twice(queue):
+    class _Upload:
+        filename = "first.pdf"
+        content_type = "application/pdf"
+        size = 99
+
+    chat_id, q = queue
+
+    chunks, db = await _run_turn(
+        chat_id,
+        [_text_chunk("ok")],
+        {"stopReason": "end_turn"},
+        replay=q.replay,
+        message="here",
+        files=[_Upload()],
+        existing=[
+            {
+                "role": "user",
+                "content": "here",
+                "files": [
+                    {
+                        "filename": "first.pdf",
+                        "mime_type": "application/pdf",
+                        "size": 99,
+                    }
+                ],
+            }
+        ],
+    )
+
+    roles = [c.args[1]["role"] for c in db.append_chat_message.call_args_list]
+    assert roles == ["assistant"]
