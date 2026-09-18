@@ -89,30 +89,6 @@ def logo_outputs(root: Path) -> dict[Path, str]:
                 for index, rect in enumerate(geometry)
             ],
         ),
-        root / "packages/presentation/mobile-icon.svg": (
-            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108">\n'
-            '<rect width="108" height="108" fill="#0066FF"/>\n'
-            '<g transform="rotate(-8 54 54)"><rect x="26" y="27" width="64" height="64" rx="12" fill="#000000"/>'
-            '<rect x="22" y="22" width="64" height="64" rx="12" fill="#FFFFFF"/>'
-            '<g transform="translate(24 24) scale(2.5)">'
-            + "".join(ET.tostring(rect, encoding="unicode") for rect in rects)
-            + "</g></g></svg>\n"
-        ),
-        drawable / "suzent_launcher_background.xml": vector(
-            108, [("M0,0 H108 V108 H0 Z", "#0066FF")]
-        ),
-        drawable / "suzent_launcher_foreground.xml": (
-            '<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">\n'
-            '<group android:rotation="-8" android:pivotX="54" android:pivotY="54" android:scaleX="0.82" android:scaleY="0.82">'
-            + f'<path android:fillColor="#000000" android:pathData="{path(outline([26, 27, 64, 64, 12]))}"/>'
-            + f'<path android:fillColor="#FFFFFF" android:pathData="{path(outline([22, 22, 64, 64, 12]))}"/>'
-            + '<group android:translateX="24" android:translateY="24" android:scaleX="2.5" android:scaleY="2.5">'
-            + "".join(
-                f'<path android:fillColor="{rects[index].get("fill")}" android:pathData="{path(outline(rect))}"/>'
-                for index, rect in enumerate(geometry)
-            )
-            + "</group></group></vector>\n"
-        ),
         drawable / "suzent_launcher_monochrome.xml": vector(
             108,
             [

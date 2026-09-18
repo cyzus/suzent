@@ -1,7 +1,8 @@
-"""Render the iOS launcher from the shared mobile SVG (requires librsvg)."""
+"""Package the approved mobile artwork for both launchers (macOS sips)."""
 
 import json
 import subprocess
+import shutil
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -12,19 +13,19 @@ def main() -> None:
     target.mkdir(parents=True, exist_ok=True)
     subprocess.run(
         [
-            "rsvg-convert",
-            "--width",
+            "sips",
+            "--resampleHeightWidth",
             "1024",
-            "--height",
             "1024",
-            "--background-color",
-            "#0066FF",
-            "--output",
+            str(ROOT / "packages/presentation/assets/mobile-icon.png"),
+            "--out",
             str(target / "AppIcon.png"),
-            str(ROOT / "packages/presentation/mobile-icon.svg"),
         ],
         check=True,
     )
+    android = ROOT / "apps/android/app/src/main/res/drawable-nodpi"
+    android.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(target / "AppIcon.png", android / "suzent_launcher_artwork.png")
     (target / "Contents.json").write_text(
         json.dumps(
             {

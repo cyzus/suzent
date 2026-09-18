@@ -128,9 +128,11 @@ rules live in `packages/presentation`; regenerate platform files with
 `uv run python scripts/generate_presentation.py` after editing their source.
 Mobile logo geometry is generated from `frontend/public/favicon.svg`, including
 the perspective-projected eyes on the animated start-page cube.
-The Android adaptive launcher uses the same generated geometry, including a
-monochrome layer for themed icons. Regenerate the opaque iOS launcher image with
-`uv run python scripts/generate_app_icons.py` (librsvg / `rsvg-convert` required), after regenerating the shared mobile SVG.
+Both launchers use the approved white-background cube-and-hand artwork in
+`packages/presentation/assets/mobile-icon.png`. Regenerate their opaque PNGs with
+`uv run python scripts/generate_app_icons.py` on macOS (uses `sips`). Android keeps
+the artwork inside the adaptive icon safe area and retains the canonical eyes
+for its monochrome themed icon. The in-app logo remains generated from the SVG.
 It lists up to 1,000 conversations permitted by the device grant. Replay is bounded and in-memory; it is not a durable
 event cursor or an always-online phone. An observer reconnects up to five times with capped backoff. Mutation requests
 are never automatically retried. Exhausted recovery preserves received text.
