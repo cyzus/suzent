@@ -179,3 +179,38 @@ class TestOutboundManager:
         assert await mgr.stop("ws://peer:25314/ws/node") is True
         assert mgr.list() == []
         assert await mgr.stop("ws://peer:25314/ws/node") is False
+
+
+@pytest.mark.parametrize(
+    "adapter", ["bridge100", "docker0", "vboxnet0", "vEthernet (Default Switch)"]
+)
+def test_local_ip_prefers_physical_lan_over_virtual_adapter(monkeypatch, adapter):
+    address = namedtuple("address", "family address")
+    status = namedtuple("status", "isup")
+    monkeypatch.setattr(
+        "psutil.net_if_stats", lambda: {adapter: status(True), "en0": status(True)}
+    )
+    monkeypatch.setattr(
+        "psutil.net_if_addrs",
+        lambda: {
+            adapter: [address(socket.AF_INET, "192.168.139.3")],
+            "en0": [address(socket.AF_INET, "192.168.8.246")],
+        },
+    )
+    assert discovery._local_ip() == "192.168.8.246"
+
+
+def test_local_ip_retains_bridge_when_only_available_network(monkeypatch):
+    address = namedtuple("address", "family address")
+    status = namedtuple("status", "isup")
+    monkeypatch.setattr(
+        "psutil.net_if_stats", lambda: {"bridge0": status(True), "en0": status(False)}
+    )
+    monkeypatch.setattr(
+        "psutil.net_if_addrs",
+        lambda: {
+            "bridge0": [address(socket.AF_INET, "192.168.139.3")],
+            "en0": [address(socket.AF_INET, "192.168.8.246")],
+        },
+    )
+    assert discovery._local_ip() == "192.168.139.3"

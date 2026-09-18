@@ -1,3 +1,4 @@
+import presentation from '../../../../packages/presentation/tokens.json';
 import React, { useState, useEffect, useMemo } from 'react';
 import type { Message } from '../../types/api';
 import type { AGUIPart, ApprovalRememberScope } from '../../hooks/useAGUI';
@@ -143,7 +144,7 @@ interface AssistantMessageProps {
 }
 
 // Names that should be filtered out from tool call display
-const IGNORED_TOOL_NAMES = ['final_answer', 'final answer'];
+const IGNORED_TOOL_NAMES = presentation.ignoredToolNames;
 
 function isIgnoredToolCall(block: ContentBlock): boolean {
   if (block.type !== 'toolCall') return false;

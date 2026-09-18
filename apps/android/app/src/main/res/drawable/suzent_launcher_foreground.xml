@@ -1,0 +1,4 @@
+<!-- Keep the artwork inside the adaptive icon's central 72 of 108 units. -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android" android:inset="16.6667%">
+    <bitmap android:src="@drawable/suzent_launcher_artwork" android:gravity="fill" android:filter="true" />
+</inset>

@@ -1,3 +1,5 @@
+@import './presentation.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -230,7 +232,7 @@ body,
   --scrollbar-thumb: #000000;
   --scrollbar-thumb-hover: #333333;
   --scrollbar-edge: #000000;
-  --brutal-yellow: #ffe666;
+  --brutal-yellow: var(--suzent-yellow);
 }
 
 .dark {

@@ -86,8 +86,8 @@ EventSource reconnects and refreshes its active-stream snapshot.
   progress. Failed recovery preserves the received response and shows a localized
   error. This is not send idempotency: no automatic send retry is performed.
 - Existing clients omitting `protocol` retain their legacy wire format. The
-  separate mobile preview PR must opt into this protocol before dropping its
-  older replay implementation. Legacy multipart clients retain their old path.
+  native mobile preview also uses protocol 1; its older independent replay
+  implementation has been removed. Legacy multipart clients retain their old path.
 
 ## Validation
 

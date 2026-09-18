@@ -43,7 +43,7 @@ def resolve_mesh_bind(
 
 def _local_ip() -> str:
     """Best-effort physical LAN IP, excluding overlays and VPN adapters."""
-    candidates: list[str] = []
+    candidates: list[tuple[bool, str]] = []
     try:
         import psutil
 
@@ -61,20 +61,40 @@ def _local_ip() -> str:
                 # are routable overlays, not addresses a same-LAN peer can use.
                 if ip in TAILSCALE_NETWORK or ip in VPN_BENCHMARK_NETWORK:
                     continue
-                candidates.append(str(ip))
+                # Bridges and host-only adapters may sort before the real LAN
+                # address, but phones on Wi-Fi cannot normally reach them.
+                virtual = interface.casefold().startswith(
+                    (
+                        "bridge",
+                        "br-",
+                        "docker",
+                        "veth",
+                        "virbr",
+                        "vmnet",
+                        "vboxnet",
+                        "utun",
+                        "tun",
+                        "tap",
+                        "tailscale",
+                        "wg",
+                        "vethernet",
+                    )
+                )
+                candidates.append((virtual, str(ip)))
     except Exception:
         pass
 
     if candidates:
 
-        def rank(value: str) -> tuple[int, str]:
+        def rank(candidate: tuple[bool, str]) -> tuple[bool, int, str]:
+            virtual, value = candidate
             if value.startswith("192.168."):
-                return (0, value)
+                return (virtual, 0, value)
             if value.startswith("10."):
-                return (1, value)
-            return (2, value)
+                return (virtual, 1, value)
+            return (virtual, 2, value)
 
-        return min(candidates, key=rank)
+        return min(candidates, key=rank)[1]
 
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)

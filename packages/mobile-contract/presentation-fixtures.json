@@ -1,0 +1,275 @@
+[
+  {
+    "name": "structured text wins over legacy content",
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "duplicate",
+        "parts": [
+          {
+            "type": "text",
+            "text": "**Final** answer"
+          }
+        ]
+      }
+    ],
+    "texts": [
+      "**Final** answer"
+    ],
+    "activities": [
+      0
+    ]
+  },
+  {
+    "name": "tool outputs are not assistant answers and are deduplicated",
+    "messages": [
+      {
+        "role": "assistant",
+        "content": null,
+        "parts": [
+          {
+            "type": "tool",
+            "toolName": "read_file",
+            "toolCallId": "call-1",
+            "args": "{}",
+            "output": "result",
+            "state": "completed"
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "call-1",
+        "name": "read_file",
+        "content": "result"
+      },
+      {
+        "role": "assistant",
+        "content": "Done"
+      }
+    ],
+    "texts": [
+      "",
+      "Done"
+    ],
+    "activities": [
+      1,
+      0
+    ]
+  },
+  {
+    "name": "orphan tool results remain accessible",
+    "messages": [
+      {
+        "role": "tool",
+        "name": "read_file",
+        "content": "result"
+      }
+    ],
+    "texts": [
+      ""
+    ],
+    "activities": [
+      1
+    ]
+  },
+  {
+    "name": "hide internal compaction and final answer scaffolding",
+    "messages": [
+      {
+        "role": "user",
+        "content": "[CONTEXT SUMMARY — READ BEFORE RESPONDING] internal"
+      },
+      {
+        "role": "assistant",
+        "content": null,
+        "parts": [
+          {
+            "type": "tool",
+            "toolName": "FINAL_ANSWER"
+          }
+        ]
+      },
+      {
+        "role": "assistant",
+        "content": ""
+      }
+    ],
+    "texts": [],
+    "activities": []
+  },
+  {
+    "name": "reasoning and unsupported surfaces stay separate",
+    "messages": [
+      {
+        "role": "assistant",
+        "parts": [
+          {
+            "type": "reasoning",
+            "text": "thinking"
+          },
+          {
+            "type": "a2ui",
+            "surface": {
+              "id": "one"
+            }
+          },
+          {
+            "type": "text",
+            "text": "Answer"
+          }
+        ]
+      }
+    ],
+    "texts": [
+      "Answer"
+    ],
+    "activities": [
+      2
+    ]
+  },
+  {
+    "name": "ordinary users and legacy assistant markdown",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Hello"
+      },
+      {
+        "role": "assistant",
+        "content": "# Title\n\n- One\n- Two\n\n```swift\nprint(1)\n```"
+      }
+    ],
+    "texts": [
+      "Hello",
+      "# Title\n\n- One\n- Two\n\n```swift\nprint(1)\n```"
+    ],
+    "activities": [
+      0,
+      0
+    ]
+  },
+  {
+    "name": "persisted steps stay in one rail across placeholders and tool results",
+    "messages": [
+      {
+        "role": "assistant",
+        "parts": [
+          {
+            "type": "tool",
+            "toolName": "read_file",
+            "toolCallId": "a",
+            "state": "completed",
+            "output": "ok"
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "a",
+        "name": "read_file",
+        "content": "ok"
+      },
+      {
+        "role": "assistant",
+        "content": ""
+      },
+      {
+        "role": "assistant",
+        "parts": [
+          {
+            "type": "tool",
+            "toolName": "read_file",
+            "toolCallId": "b",
+            "state": "completed",
+            "output": "ok"
+          }
+        ]
+      },
+      {
+        "role": "assistant",
+        "parts": [
+          {
+            "type": "reasoning",
+            "text": "checked"
+          }
+        ]
+      },
+      {
+        "role": "assistant",
+        "content": "Done"
+      }
+    ],
+    "texts": [
+      "",
+      "Done"
+    ],
+    "activities": [
+      3,
+      0
+    ]
+  },
+  {
+    "name": "text and user turns separate persisted rails",
+    "messages": [
+      {
+        "role": "assistant",
+        "parts": [
+          {
+            "type": "tool",
+            "toolName": "read_file",
+            "toolCallId": "a",
+            "state": "completed",
+            "output": "ok"
+          }
+        ]
+      },
+      {
+        "role": "assistant",
+        "content": "Checking more"
+      },
+      {
+        "role": "assistant",
+        "parts": [
+          {
+            "type": "tool",
+            "toolName": "read_file",
+            "toolCallId": "b",
+            "state": "completed",
+            "output": "ok"
+          }
+        ]
+      },
+      {
+        "role": "user",
+        "content": "Next"
+      },
+      {
+        "role": "assistant",
+        "parts": [
+          {
+            "type": "tool",
+            "toolName": "read_file",
+            "toolCallId": "c",
+            "state": "completed",
+            "output": "ok"
+          }
+        ]
+      }
+    ],
+    "texts": [
+      "",
+      "Checking more",
+      "",
+      "Next",
+      ""
+    ],
+    "activities": [
+      1,
+      0,
+      1,
+      0,
+      1
+    ]
+  }
+]
