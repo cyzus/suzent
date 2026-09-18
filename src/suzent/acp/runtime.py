@@ -425,7 +425,12 @@ def _persist_stopped_prompt(
             db, chat_id, list(chat.messages or []), role, content, files
         )
     except Exception as exc:  # pragma: no cover - a stop must not fail on this
-        logger.debug(f"Could not store the prompt of a stopped ACP turn: {exc}")
+        # The type only. A database error carries its statement's bound
+        # parameters, which here are the user's prompt and their attachments'
+        # names -- exactly what must not reach a log.
+        logger.debug(
+            f"Could not store the prompt of a stopped ACP turn: {type(exc).__name__}"
+        )
         return False
 
 
