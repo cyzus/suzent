@@ -2621,12 +2621,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       clearTimeout(stopFallbackRef.current);
       stopFallbackRef.current = null;
     }
-    if (stopInFlightRef.current) {
-      stopInFlightRef.current = false;
-      // Retire the attempt too, so a stop request still in flight for this
-      // finished turn cannot tear down the one that follows it.
-      stopAttemptRef.current += 1;
-    }
+    // Retire the attempt unconditionally: onError clears `stopInFlightRef`
+    // before this runs, so keying the token off that boolean would let a late
+    // stop result from the failed turn tear down the turn after it.
+    stopAttemptRef.current += 1;
+    stopInFlightRef.current = false;
     setIsStopping((stopping) => (stopping ? false : stopping));
   }, [isStreaming]);
 

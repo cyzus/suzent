@@ -487,6 +487,11 @@ export function processEvent(
     }
 
     case 'RUN_ERROR': {
+      // A user stop arrives on this frame, but it is an expected ending: the
+      // backend keeps the partial reply and persists it, then closes the
+      // stream with STREAM_END{persisted:true}. Reporting it as an error
+      // would abandon the stream just short of that confirmation.
+      if (data.code === 'stream_stopped') break;
       return { parts: next, error: (data.message as string) || 'Unknown error' };
     }
 

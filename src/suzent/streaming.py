@@ -2085,7 +2085,13 @@ async def stream_agent_responses(
                 msg = await asyncio.wait_for(out_queue.get(), timeout=0.5)
             except asyncio.TimeoutError:
                 if control.cancel_event.is_set():
-                    err = RunErrorEvent(message="Stream stopped by user")
+                    # Tagged, because a stop is not a failure: the turn drains,
+                    # keeps its partial reply and persists it like any other.
+                    # A client that reads this as an error tears the stream
+                    # down before the confirmed STREAM_END it is waiting for.
+                    err = RunErrorEvent(
+                        message="Stream stopped by user", code="stream_stopped"
+                    )
                     yield _encoder.encode(err)
                     break
                 continue
