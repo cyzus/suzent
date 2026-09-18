@@ -1129,6 +1129,7 @@ export const en = {
     fileMentionSearching: 'Searching files...',
     fileMentionNoResults: 'No matching files',
     stop: 'Stop',
+    stopping: 'Stopping',
     send: 'Send',
     redirect: 'Redirect',
     runtime: {

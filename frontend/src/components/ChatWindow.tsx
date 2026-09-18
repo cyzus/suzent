@@ -16,6 +16,7 @@ import { completeDirectStream } from './chat/completeDirectStream';
 import { reconcileToolCallMessages } from '../lib/toolCallReconciliation';
 import type { Message, FileAttachment } from '../types/api';
 import type { ContentBlock } from '../lib/chatUtils';
+import { requestStopTurn } from '../lib/stopStream';
 import { buildMessageRenderPlan, buildTurnWorkedSeconds } from '../lib/messageRenderPlan';
 import {
   capturePrependScrollSnapshot,
@@ -356,6 +357,11 @@ function groupedBlocksToAssistantContent(blocks: ContentBlock[]): string {
 // ── Stream seed helpers (sessionStorage) ─────────────────────────────
 // Persists streaming parts across page refreshes so the frontend can
 // (a) reconnect with a visual seed, or (b) detect a missed stream completion.
+// How long a stop waits for the turn's own STREAM_END before the client gives
+// up and tears the stream down itself. Long enough for a tool call to unwind,
+// short enough that a wedged turn doesn't leave the composer disabled.
+const STOP_STREAM_END_TIMEOUT_MS = 10000;
+
 const STREAM_SEED_KEY = 'chat_stream_seed_v1';
 
 interface StreamSeed {
@@ -810,6 +816,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const { setStatus: setStatusBar } = useStatusStore();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const stopInFlightRef = useRef(false);
+  // Set while a stop has been accepted by the backend and we are waiting for the
+  // turn's own STREAM_END to arrive, and the timer that gives up on it.
+  const [isStopping, setIsStopping] = useState(false);
+  const stopFallbackRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // True while a steer is in flight — prevents the normal-send finally from hiding the bubble
   const steeringRef = useRef(false);
   // True from the moment a send is accepted until it has handed off to the
@@ -2519,51 +2529,91 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     ]
   );
 
-  // Stop streaming handler
+  // Tear the stream down from the client. This is the old stop: it throws away
+  // the connection and guesses at when the backend will have written the
+  // partial turn. Kept as the fallback for the cases where the stream cannot
+  // report its own ending — nothing was streaming server-side, the stop request
+  // never landed, or it landed and STREAM_END never came.
+  const abandonStream = useCallback(
+    (targetChatId: string | null) => {
+      if (stopFallbackRef.current) {
+        clearTimeout(stopFallbackRef.current);
+        stopFallbackRef.current = null;
+      }
+      isLiveStreamRef.current = false;
+      streamingChatIdRef.current = null;
+      stopAGUIStream();
+      setIsStreaming(false, targetChatId ?? undefined);
+      clearParts();
+      setIsStopping(false);
+      stopInFlightRef.current = false;
+      if (targetChatId) {
+        setTimeout(() => {
+          try {
+            loadChat(targetChatId, { force: true });
+          } catch {}
+        }, 500);
+      }
+    },
+    [stopAGUIStream, setIsStreaming, clearParts, loadChat]
+  );
+
+  // Stop streaming handler.
+  //
+  // A stop is a request to the agent, not a client-side teardown: cancellation
+  // is cooperative, so the turn still drains, still post-processes, and still
+  // reports STREAM_END{persisted:true} for whatever it managed to produce. So
+  // ask, then keep listening — the stopped turn finishes through exactly the
+  // same confirmed path as one that ran to completion, and the partial reply is
+  // on screen the whole way. Aborting the connection first is what made a stop
+  // blank the chat until the 500ms reload guess happened to land.
   const stopStreaming = async () => {
     if (!isStreaming || stopInFlightRef.current) return;
     stopInFlightRef.current = true;
 
     const targetChatId = activeStreamingChatId || streamingChatIdRef.current;
-
-    // Abort the AG-UI SSE connection. When the stream went through tryConnect
-    // (isLiveStreamRef=true), onFinish deliberately skips setIsStreaming(false)
-    // to let tryConnect's finally() handle cleanup. But for a user-triggered stop
-    // we need to clear streaming state immediately, so we do it here instead.
-    isLiveStreamRef.current = false;
-    streamingChatIdRef.current = null;
-    stopAGUIStream();
-    setIsStreaming(false, targetChatId ?? undefined);
-    clearParts();
-    // Reload chat from DB so the partial response (saved by backend on cancel)
-    // appears immediately — prevents the blank flash while waiting for DB commit.
-    // This also brings back the notice the stop wrote about any sub-agents it
-    // stopped along the way, which is why that notice is written server-side.
-    if (targetChatId) {
-      setTimeout(() => {
-        try {
-          loadChat(targetChatId, { force: true });
-        } catch {}
-      }, 500);
+    if (!targetChatId) {
+      abandonStream(null);
+      return;
     }
 
-    stopInFlightRef.current = false;
-
-    if (!targetChatId) return;
-
-    try {
-      const res = await fetch(`${getApiBase()}/chat/stop`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: targetChatId, reason: 'User requested stop' }),
-      });
-      if (!res.ok) {
-        console.error('Stop request failed:', res.status, res.statusText);
+    setIsStopping(true);
+    const result = await requestStopTurn(getApiBase(), targetChatId, 'User requested stop');
+    if (!result.accepted) {
+      if (result.reason !== 'no_active_stream') {
+        console.error('Stop request failed:', result.reason, result.status ?? '');
       }
-    } catch (error) {
-      console.error('Error sending stop request:', error);
+      abandonStream(targetChatId);
+      return;
     }
+
+    // The backend accepted it. Hand the ending back to the stream, but don't
+    // trust it forever: a turn wedged in a tool call can outlive the request.
+    stopFallbackRef.current = setTimeout(() => {
+      stopFallbackRef.current = null;
+      if (stopInFlightRef.current) abandonStream(targetChatId);
+    }, STOP_STREAM_END_TIMEOUT_MS);
   };
+
+  // The stop is done the moment the stream is: whichever path ended it — the
+  // confirmed STREAM_END, an error, a chat switch — releases the button and
+  // cancels the fallback that would otherwise tear down the next turn.
+  useEffect(() => {
+    if (isStreaming) return;
+    if (stopFallbackRef.current) {
+      clearTimeout(stopFallbackRef.current);
+      stopFallbackRef.current = null;
+    }
+    if (stopInFlightRef.current) stopInFlightRef.current = false;
+    setIsStopping((stopping) => (stopping ? false : stopping));
+  }, [isStreaming]);
+
+  useEffect(
+    () => () => {
+      if (stopFallbackRef.current) clearTimeout(stopFallbackRef.current);
+    },
+    []
+  );
 
   // Handle file click from chat messages
   const handleFileClick = useCallback(
@@ -2840,7 +2890,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               configReady={configReady}
               streamingForCurrentChat={streamingForCurrentChat}
               stopStreaming={stopStreaming}
-              stopInFlight={stopInFlightRef.current}
+              stopInFlight={isStopping}
               modelSelectDropUp={true}
               modelValue={safeConfig.model}
               onModelChange={handleInputModelChange}
