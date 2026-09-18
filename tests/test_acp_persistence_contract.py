@@ -56,7 +56,7 @@ async def _run_turn(
     managed.restored = restored
     results = list(result) if isinstance(result, list) else None
 
-    async def prompt(session_id, message):
+    async def prompt(session_id, message, on_sent=None):
         if prompted is not None:
             prompted.append(message)
         for item in updates:

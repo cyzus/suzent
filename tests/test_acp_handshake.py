@@ -226,7 +226,7 @@ async def _collect_turn(prompt_impl):
 async def test_turn_closes_assistant_message_when_agent_errors():
     """A mid-turn failure must still emit TEXT_MESSAGE_END, or the UI streams forever."""
 
-    async def boom(session_id, message):
+    async def boom(session_id, message, on_sent=None):
         raise RuntimeError("agent crashed")
 
     events = await _collect_turn(boom)
@@ -239,7 +239,7 @@ async def test_turn_closes_assistant_message_when_agent_errors():
 
 @pytest.mark.asyncio
 async def test_turn_closes_assistant_message_when_output_is_empty():
-    async def silent(session_id, message):
+    async def silent(session_id, message, on_sent=None):
         return {"text": ""}
 
     events = await _collect_turn(silent)
@@ -298,7 +298,7 @@ async def test_turn_announces_when_resume_lost_the_session():
         managed.load_error = ""
         managed.updates = asyncio.Queue()
 
-        async def prompt(session_id, message):
+        async def prompt(session_id, message, on_sent=None):
             return {"text": "hi"}
 
         managed.client.prompt = prompt
@@ -340,7 +340,7 @@ async def test_turn_reports_why_the_agent_refused_the_session():
         managed.load_error = "no rollout found for thread id abc"
         managed.updates = asyncio.Queue()
 
-        async def prompt(session_id, message):
+        async def prompt(session_id, message, on_sent=None):
             return {"text": "hi"}
 
         managed.client.prompt = prompt
@@ -384,7 +384,7 @@ async def test_file_mentions_do_not_duplicate_the_user_message():
 
         prompts: list[str] = []
 
-        async def prompt(session_id, message):
+        async def prompt(session_id, message, on_sent=None):
             prompts.append(message)
             return {"text": "ok"}
 
@@ -445,7 +445,7 @@ async def test_first_acp_turn_renames_the_chat():
         managed.load_error = ""
         managed.updates = asyncio.Queue()
 
-        async def prompt(session_id, message):
+        async def prompt(session_id, message, on_sent=None):
             return {"text": "ok"}
 
         managed.client.prompt = prompt
@@ -490,7 +490,7 @@ async def test_a_named_chat_is_not_retitled_by_a_later_acp_turn():
         managed.load_error = ""
         managed.updates = asyncio.Queue()
 
-        async def prompt(session_id, message):
+        async def prompt(session_id, message, on_sent=None):
             return {"text": "ok"}
 
         managed.client.prompt = prompt

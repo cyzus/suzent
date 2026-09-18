@@ -81,12 +81,35 @@ async def _stream_prompt(
     message: str,
     message_id: str,
     state: dict[str, Any],
+    go_live: Any | None = None,
 ) -> AsyncGenerator[str, None]:
-    """Run one prompt turn, recording text, stopReason, and any agent error."""
+    """Run one prompt turn, recording text, stopReason, and any agent error.
+
+    *go_live* is called once the prompt has actually been written to the agent,
+    and returns a stop reason if one was accepted while it was still on its way.
+    Scheduling the request is not sending it: between `create_task` and the
+    first byte the session is still idle, so a `session/cancel` sent in that
+    window is answered by a session with nothing to cancel and the prompt runs
+    on afterwards. Waiting for the write closes that window, and honouring
+    whatever *go_live* hands back closes the one before it.
+    """
+    dispatched = asyncio.Event()
     prompt_task = asyncio.create_task(
-        managed.client.prompt(managed.session_id, message)
+        managed.client.prompt(managed.session_id, message, on_sent=dispatched.set)
     )
     try:
+        # Either the request is on the wire or the attempt is already over --
+        # a dead process raises before sending, and waiting for a signal that
+        # is never coming would hang the turn.
+        await asyncio.wait(
+            [asyncio.ensure_future(dispatched.wait()), prompt_task],
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        deferred_stop = go_live() if go_live is not None else None
+        if deferred_stop:
+            # Accepted while the prompt was in flight, so it was never delivered
+            # to the session. Now that the agent has the prompt, it can hear it.
+            await get_acp_manager().cancel(managed.chat_id)
         while True:
             if prompt_task.done() and managed.updates.empty():
                 break
@@ -572,13 +595,26 @@ async def _run_acp_turn(
         # something the user said — internal policy text in a persisted user row
         # misrepresents the conversation to anyone auditing it later.
         _prompt = f"{system_preamble}\n{message}" if system_preamble else message
+
+        def _go_live() -> str | None:
+            """The run's prompt is now the one the chat's session is running.
+
+            Until this point a stop has nothing to cancel, so the route leaves
+            it on the replay instead of reporting one the agent never hears;
+            from here on /chat/stop answers for this run by cancelling the
+            session. The handover takes any stop left in that window, so one
+            that arrived a moment too early is carried out rather than
+            stranded.
+            """
+            if replay is None:
+                return None
+            replay.producer_started = True
+            return _claim_pending_stop(replay)
+
         # Connecting the session is the longest part of a turn, and a stop that
-        # arrives during it has no prompt to cancel: the route leaves it on the
-        # replay rather than reporting a stop the agent never hears. This is the
-        # last moment it can be honoured for free -- and the moment after it is
-        # the first one where the chat's ACP session is running this run's
-        # prompt, so a stop then cancels it for real. Nothing awaits in between,
-        # so no stop can fall through the gap.
+        # arrives during it has no prompt to cancel. This is the last moment one
+        # can be honoured for free: before it, the agent has been given nothing
+        # at all.
         pending_stop = _claim_pending_stop(replay)
         if pending_stop:
             message_open = False
@@ -589,10 +625,9 @@ async def _run_acp_turn(
             for frame in _stopped_frames(message_id, pending_stop):
                 yield frame
             return
-        if replay is not None:
-            replay.producer_started = True
-
-        async for event in _stream_prompt(managed, _prompt, message_id, state):
+        async for event in _stream_prompt(
+            managed, _prompt, message_id, state, _go_live
+        ):
             yield event
 
         # A session restored with session/load that fails its very first turn is
@@ -641,14 +676,13 @@ async def _run_acp_turn(
                 for frame in _stopped_frames(message_id, pending_stop):
                     yield frame
                 return
-            if replay is not None:
-                replay.producer_started = True
-
             # _prompt, not message: the retry is the same request, so it needs
             # the same preamble. Passing `message` here dropped the precedence
             # rules for exactly the sub-agents that recovered from a stale
             # session.
-            async for event in _stream_prompt(managed, _prompt, message_id, state):
+            async for event in _stream_prompt(
+                managed, _prompt, message_id, state, _go_live
+            ):
                 yield event
 
         text = "".join(state["parts"])

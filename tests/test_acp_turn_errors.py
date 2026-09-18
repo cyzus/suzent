@@ -58,7 +58,7 @@ async def _run(managed_sequence, prompt_results, *, config=None):
     results = list(prompt_results)
 
     def attach(managed):
-        async def prompt(session_id, message):
+        async def prompt(session_id, message, on_sent=None):
             updates, result = results.pop(0)
             for item in updates:
                 managed.updates.put_nowait(item)
@@ -232,7 +232,7 @@ async def test_steer_cancels_then_reprompts():
         manager.ensure.return_value = managed
         get_mgr.return_value = manager
 
-        async def prompt(session_id, message):
+        async def prompt(session_id, message, on_sent=None):
             managed.updates.put_nowait(_text_chunk("steered"))
             return {"stopReason": "end_turn"}
 
@@ -270,7 +270,7 @@ async def test_file_mentions_injected_into_acp_prompt():
         manager.ensure.return_value = managed
         get_mgr.return_value = manager
 
-        async def prompt(session_id, message):
+        async def prompt(session_id, message, on_sent=None):
             captured_messages.append(message)
             managed.updates.put_nowait(_text_chunk("ok"))
             return {"stopReason": "end_turn"}
@@ -318,7 +318,7 @@ async def test_binary_uploads_emit_unsupported_warning():
         manager.ensure.return_value = managed
         get_mgr.return_value = manager
 
-        async def prompt(session_id, message):
+        async def prompt(session_id, message, on_sent=None):
             managed.updates.put_nowait(_text_chunk("ok"))
             return {"stopReason": "end_turn"}
 
