@@ -700,11 +700,17 @@ async def _run_acp_turn(
             for frame in _stopped_frames(message_id, pending_stop):
                 yield frame
             return
-        async for event in _stream_prompt(
-            managed, _prompt, message_id, state, _go_live
-        ):
-            yield event
-        _go_idle()
+        # In a finally: the prompt can fail after it was dispatched -- a
+        # JSON-RPC error from a live agent -- and that raises through here.
+        # The session is idle either way, and a mark left standing offers it
+        # to the next stop for a run whose prompt is long gone.
+        try:
+            async for event in _stream_prompt(
+                managed, _prompt, message_id, state, _go_live
+            ):
+                yield event
+        finally:
+            _go_idle()
 
         # A session restored with session/load that fails its very first turn is
         # almost always stale: the agent accepted an id its process no longer
@@ -757,11 +763,13 @@ async def _run_acp_turn(
             # the same preamble. Passing `message` here dropped the precedence
             # rules for exactly the sub-agents that recovered from a stale
             # session.
-            async for event in _stream_prompt(
-                managed, _prompt, message_id, state, _go_live
-            ):
-                yield event
-            _go_idle()
+            try:
+                async for event in _stream_prompt(
+                    managed, _prompt, message_id, state, _go_live
+                ):
+                    yield event
+            finally:
+                _go_idle()
 
         text = "".join(state["parts"])
         yield _sse({"type": "TEXT_MESSAGE_END", "messageId": message_id})

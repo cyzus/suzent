@@ -54,18 +54,23 @@ async def _run_turn(
     existing=None,
     prewritten=False,
     prompt_error=None,
+    error_after_sent=False,
 ):
     managed = _managed()
     managed.restored = restored
     results = list(result) if isinstance(result, list) else None
 
     async def prompt(session_id, message, on_sent=None):
-        if prompt_error is not None:
+        if prompt_error is not None and not error_after_sent:
             # Before `on_sent`: the agent never heard this prompt.
             raise prompt_error
         if on_sent is not None:
             # As the real client does, once the request is on the wire.
             on_sent()
+        if prompt_error is not None:
+            # After the write: a live agent answering the request with an
+            # error, which is the turn's to clean up after.
+            raise prompt_error
         if prompted is not None:
             prompted.append(message)
         for item in updates:
@@ -777,3 +782,25 @@ async def test_a_prompt_that_never_reached_the_agent_is_not_live(queue):
 
     assert q.replay.producer_started is False
     assert q.replay.prompt_in_flight is not True
+
+
+@pytest.mark.asyncio
+async def test_a_prompt_that_failed_after_it_was_sent_leaves_the_session_idle(queue):
+    """A live agent can answer the request with an error.
+
+    That raises through the turn on its way to the error frames, and the mark
+    left standing offers the chat's session to the next stop -- for a run whose
+    prompt is long gone, so the cancellation reaches some other turn.
+    """
+    chat_id, q = queue
+
+    await _run_turn(
+        chat_id,
+        [],
+        {"stopReason": "end_turn"},
+        replay=q.replay,
+        prompt_error=RuntimeError("agent returned a JSON-RPC error"),
+        error_after_sent=True,
+    )
+
+    assert q.replay.prompt_in_flight is False
