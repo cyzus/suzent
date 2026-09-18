@@ -998,6 +998,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     stopSilently: stopAGUIStreamSilently,
     getParts: getStreamingParts,
     getRunId: getStreamingRunId,
+    mintRunToken,
     clearParts,
     restorePartsFromSeed,
     resolveApproval,
@@ -1297,6 +1298,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         if (isHeartbeat) setHeartbeatRunning(true, chatId);
         // Mirror what handleSend does so the streaming overlay renders.
         setIsStreaming(true, chatId);
+        // This is a new turn, so a stop left over from the previous one has
+        // nothing left to stop: retire it before it can abandon this stream.
+        retireStopAttempt();
         streamingChatIdRef.current = chatId;
         sendAGUI(body, options)
           .catch((err) => {
@@ -1311,7 +1315,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     };
     window.addEventListener('agui:send-message', handler);
     return () => window.removeEventListener('agui:send-message', handler);
-  }, [sendAGUI, currentChatId, setHeartbeatRunning, setIsStreaming]);
+  }, [sendAGUI, currentChatId, setHeartbeatRunning, setIsStreaming, retireStopAttempt]);
 
   // Save the current streaming parts to sessionStorage on page hide so they
   // can be used as a seed (or to detect a missed completion) after a refresh.
@@ -1349,7 +1353,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       const resp = await fetch(`${getApiBase()}/chat/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        // Name the turn: this POST starts one, and until /chat/live yields its
+        // first frame the token is the only name a stop has for it.
+        body: JSON.stringify({ ...body, client_run_token: mintRunToken() }),
       });
 
       if (!resp.ok) {
@@ -1368,7 +1374,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       // Connect immediately rather than waiting for stream_started from the bus.
       tryConnectRef.current?.();
     },
-    [currentChatId, getStreamingParts, setStatusBar]
+    [currentChatId, getStreamingParts, mintRunToken, setStatusBar]
   );
 
   // Recover from a rejected send/steer/retry/edit POST.
@@ -1434,7 +1440,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     streamingParts,
     streamingChatIdRef,
     activeChatIdRef,
-    stopInFlightRef,
+    retireStopAttempt,
     setConfig,
     updateMessage,
     setIsStreaming,
@@ -2238,7 +2244,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       fetch(`${getApiBase()}/chat/steer-send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: steerChatId, message: prompt, config: safeConfig }),
+        body: JSON.stringify({
+          chat_id: steerChatId,
+          message: prompt,
+          config: safeConfig,
+          client_run_token: mintRunToken(),
+        }),
       })
         .then((resp) => {
           if (!resp.ok) {
@@ -2349,6 +2360,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     };
     if (mentionsToSend.length > 0) payload.file_mentions = mentionsToSend;
     if (uploadedFileMetadata) payload.files = uploadedFileMetadata;
+    payload.client_run_token = mintRunToken();
 
     // Fire /chat/send — backend registers the background stream and returns 202.
     // On success, call tryConnect() directly so we attach to /chat/live immediately
@@ -2436,7 +2448,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     fetch(`${getApiBase()}/chat/send`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: '/retry', chat_id: chatIdForRetry, config: safeConfig }),
+      body: JSON.stringify({
+        message: '/retry',
+        chat_id: chatIdForRetry,
+        config: safeConfig,
+        client_run_token: mintRunToken(),
+      }),
     })
       .then((resp) => {
         if (!resp.ok) {
@@ -2463,6 +2480,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     safeConfig,
     recoverFromSendFailure,
     retireStopAttempt,
+    mintRunToken,
   ]);
 
   // Edit handler — re-sends the last user message with new text, dropping that
@@ -2520,6 +2538,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           message: `/retry-edit ${prompt}`,
           chat_id: chatIdForEdit,
           config: safeConfig,
+          client_run_token: mintRunToken(),
         }),
       })
         .then((resp) => {
@@ -2549,6 +2568,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       safeConfig,
       recoverFromSendFailure,
       retireStopAttempt,
+      mintRunToken,
     ]
   );
 

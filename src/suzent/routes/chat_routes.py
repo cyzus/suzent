@@ -200,10 +200,12 @@ def _prewrite_user_display_message(
 def _recoverable_response(
     chat_id: str,
     make_generator: Callable[[Any], AsyncGenerator[str, None]],
+    client_token: str | None = None,
 ) -> StreamingResponse:
     # The turn is built after the queue exists, and from it: a producer that
     # has to find its own replay by chat_id can find someone else's.
     queue = register_background_stream(chat_id)
+    queue.replay.client_token = client_token
     generator = make_generator(queue.replay)
 
     async def produce() -> None:
@@ -394,7 +396,9 @@ async def chat(request: Request) -> StreamingResponse:
                     return JSONResponse(
                         {"error": "Chat is already streaming"}, status_code=409
                     )
-                return _recoverable_response(chat_id, _make_generator)
+                return _recoverable_response(
+                    chat_id, _make_generator, data.get("client_run_token")
+                )
             return StreamingResponse(
                 _make_generator(),
                 media_type="text/event-stream",
@@ -473,6 +477,7 @@ async def chat_send(request: Request) -> JSONResponse:
         _prewrite_user_display_message(chat_id, message, files_list)
 
     stream_queue = register_background_stream(chat_id)
+    stream_queue.replay.client_token = data.get("client_run_token")
 
     async def _run() -> None:
         try:
@@ -549,6 +554,7 @@ async def steer_chat_send(request: Request) -> JSONResponse:
     _prewrite_user_display_message(chat_id, message, [])
 
     stream_queue = register_background_stream(chat_id)
+    stream_queue.replay.client_token = data.get("client_run_token")
 
     async def _run() -> None:
         try:
@@ -730,11 +736,20 @@ async def stop_chat(request: Request) -> JSONResponse:
     # flight when the user redirects lands on whatever control is current and
     # cancels the replacement turn instead -- the client can retire its own
     # attempt, but it cannot call back a cancellation the server already
-    # applied. A client that sends no run_id (or a chat with no replay to
-    # compare against) keeps the old behaviour.
+    # applied.
+    #
+    # Either name identifies the same run: `run_id` once the client has seen a
+    # protocol frame, and before that the token it minted when it asked for the
+    # turn, which is the window where the Stop button is already live. A client
+    # that sends neither (or a chat with no replay to compare against) keeps the
+    # old behaviour.
     run_id = data.get("run_id")
     queue = get_background_queue(chat_id)
-    if run_id and queue is not None and queue.replay.run_id != run_id:
+    if (
+        run_id
+        and queue is not None
+        and run_id not in (queue.replay.run_id, queue.replay.client_token)
+    ):
         return JSONResponse(
             {"status": "stale_run", "run_id": queue.replay.run_id}, status_code=409
         )

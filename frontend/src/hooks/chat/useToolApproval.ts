@@ -22,7 +22,10 @@ interface UseToolApprovalOptions {
   streamingParts: AGUIPart[];
   streamingChatIdRef: MutableRefObject<string | null>;
   activeChatIdRef: MutableRefObject<string | null>;
-  stopInFlightRef: MutableRefObject<boolean>;
+  // Called whenever this hook starts (or abandons) a turn: a resume is a new
+  // turn, so any stop still outstanding from the previous one must be retired
+  // rather than left armed over it.
+  retireStopAttempt: () => void;
   setConfig: (c: ChatConfig | ((prev: ChatConfig) => ChatConfig)) => void;
   updateMessage: (index: number, update: Partial<Message>, chatId?: string | null) => void;
   setIsStreaming: (streaming: boolean, chatId?: string | null) => void;
@@ -86,7 +89,7 @@ export function useToolApproval(options: UseToolApprovalOptions): UseToolApprova
     streamingParts,
     streamingChatIdRef,
     activeChatIdRef,
-    stopInFlightRef,
+    retireStopAttempt,
     updateMessage,
     setIsStreaming,
     resumeStream,
@@ -185,12 +188,12 @@ export function useToolApproval(options: UseToolApprovalOptions): UseToolApprova
         };
 
         setIsStreaming(true, targetChatId);
-        stopInFlightRef.current = false;
+        retireStopAttempt();
         await resumeStream(payload);
       } catch (error) {
         console.error('Failed to resume with tool approval:', error);
         setIsStreaming(false, targetChatId);
-        stopInFlightRef.current = false;
+        retireStopAttempt();
       }
     },
     [
@@ -204,7 +207,7 @@ export function useToolApproval(options: UseToolApprovalOptions): UseToolApprova
       consumeApprovalDecisions,
       config,
       setIsStreaming,
-      stopInFlightRef,
+      retireStopAttempt,
       resumeStream,
     ]
   );

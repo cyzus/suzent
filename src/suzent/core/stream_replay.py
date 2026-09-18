@@ -36,6 +36,12 @@ class StreamReplay:
         # None means no producer claimed the contract — treated as persisted,
         # which is why every recoverable producer must attach one.
         self.persistence: asyncio.Future[bool] | None = None
+        # The name the client gave this turn when it asked for it, minted before
+        # the POST. `run_id` only reaches the client once the first protocol
+        # frame does, so between "Stop is clickable" and that frame this is the
+        # only name a stop can use for the run it means. None for turns nobody
+        # named (schedulers, sub-agents, inbox deliveries).
+        self.client_token: str | None = None
         self.events: list[dict[str, Any]] = []
         self.tail: deque[tuple[int, dict[str, Any]]] = deque(maxlen=capacity)
         self.changed = asyncio.Event()

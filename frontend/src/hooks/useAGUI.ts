@@ -41,9 +41,17 @@ interface UseAGUIReturn {
   getParts: () => AGUIPart[];
   /**
    * The run the live stream is on, so a caller can name it back to the backend
-   * (a stop that names its run cannot cancel the turn that replaced it).
+   * (a stop that names its run cannot cancel the turn that replaced it). Falls
+   * back to the token this client minted for the turn, which is all there is
+   * between asking for a turn and seeing its first protocol frame.
    */
   getRunId: () => string | undefined;
+  /**
+   * Name the turn about to be asked for, and return that name to put in the
+   * request body. Callers that POST a turn themselves (/chat/send and friends)
+   * must call this, or a stop raised before the first frame has no run to name.
+   */
+  mintRunToken: () => string;
   clearParts: () => void;
   /**
    * Restore saved parts directly (e.g. after a page refresh) without starting a
@@ -537,6 +545,10 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
   const partsRef = useRef<AGUIPart[]>([]);
   // The run the live stream is on; cleared when a new one starts.
   const runIdRef = useRef<string | undefined>(undefined);
+  // The name this client gave the turn it last asked for. The backend stores it
+  // on the run's replay, so a stop can name the run before the stream has told
+  // us the run_id the backend assigned it.
+  const clientRunTokenRef = useRef<string | undefined>(undefined);
   // Publishing a token delta straight to React state re-renders the whole chat
   // view; at streaming rates that starves the main thread and scrolling crawls.
   // `publishParts` keeps `partsRef` exact and synchronous but coalesces the
@@ -638,7 +650,15 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
   }, []);
 
   const getParts = useCallback(() => partsRef.current, []);
-  const getRunId = useCallback(() => runIdRef.current, []);
+  const getRunId = useCallback(() => runIdRef.current ?? clientRunTokenRef.current, []);
+  const mintRunToken = useCallback(() => {
+    const token =
+      globalThis.crypto?.randomUUID?.() ??
+      `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+    clientRunTokenRef.current = token;
+    runIdRef.current = undefined;
+    return token;
+  }, []);
 
   const restorePartsFromSeed = useCallback(
     (seed: AGUIPart[]) => {
@@ -729,6 +749,10 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
       // there is actually an active stream — this prevents every 204 probe from
       // clearing streaming parts that should stay visible.
       const isProbe = !!opts?.urlOverride;
+      // Name the turn before asking for it: the Stop button goes live now, not
+      // when the first protocol frame arrives with the backend's run_id. A probe
+      // re-attaches to a turn that already has a name, so it mints nothing.
+      const requestBody = isProbe ? body : { ...body, client_run_token: mintRunToken() };
 
       if (!isProbe) {
         // Normal send: reset immediately so the UI shows "submitted" while waiting.
@@ -743,9 +767,8 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
 
       try {
         const liveUrl = isProbe ? targetUrl : targetUrl.replace(/\/chat$/, '/chat/live');
-        const observeBody = isProbe ? body : { chat_id: body.chat_id, wait_ms: 8000 };
+        const observeBody = isProbe ? requestBody : { chat_id: requestBody.chat_id, wait_ms: 8000 };
         let started = false;
-        runIdRef.current = undefined;
         for await (const batch of recoverableStream(
           liveUrl,
           observeBody,
@@ -757,7 +780,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
             opts?.onStreamStart?.();
             setStatus('streaming');
           },
-          isProbe ? undefined : { url: targetUrl, body }
+          isProbe ? undefined : { url: targetUrl, body: requestBody }
         )) {
           runIdRef.current = batch.runId;
           let currentParts = batch.reset ? [] : [...partsRef.current];
@@ -809,7 +832,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
         return false;
       }
     },
-    [publishParts, resetApprovalTracking, setPendingApprovalCountSync]
+    [mintRunToken, publishParts, resetApprovalTracking, setPendingApprovalCountSync]
   );
 
   return {
@@ -821,6 +844,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
     stopSilently,
     getParts,
     getRunId,
+    mintRunToken,
     clearParts,
     restorePartsFromSeed,
     removeInlineSurface,
