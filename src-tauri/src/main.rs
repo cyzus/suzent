@@ -17,6 +17,7 @@ const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 struct AppState {
     backend: Mutex<Option<BackendProcess>>,
+    backend_startup: Mutex<()>,
     backend_startup_error: Mutex<Option<String>>,
 }
 
@@ -502,6 +503,21 @@ fn spawn_backend_start(app_handle: tauri::AppHandle) {
         let Some(window) = app_handle.get_webview_window("main") else {
             return;
         };
+        let Some(state) = app_handle.try_state::<AppState>() else {
+            return;
+        };
+        // Keep startup serialized, including relaunches while the first startup is pending.
+        let Ok(_startup_guard) = state.backend_startup.try_lock() else {
+            return;
+        };
+        let Ok(mut backend_guard) = state.backend.lock() else {
+            return;
+        };
+        if backend_guard.as_mut().is_some_and(BackendProcess::is_running) {
+            return;
+        }
+        backend_guard.take();
+        drop(backend_guard);
 
         let update_journal = backend::find_install_workspace_dir()
             .join(".suzent")
@@ -529,10 +545,8 @@ fn spawn_backend_start(app_handle: tauri::AppHandle) {
             Ok((port, backend)) => {
                 println!("Backend configured on port {}", port);
 
-                if let Some(state) = app_handle.try_state::<AppState>() {
-                    if let Ok(mut guard) = state.backend.lock() {
-                        *guard = Some(backend);
-                    }
+                if let Ok(mut guard) = state.backend.lock() {
+                    *guard = Some(backend);
                 }
 
                 let js = format!(
@@ -775,10 +789,12 @@ fn main() {
                 let _ = window.unminimize();
                 let _ = window.set_focus();
             }
+            spawn_backend_start(app.clone());
         }))
         .setup(|app| {
             app.manage(AppState {
                 backend: Mutex::new(None),
+                backend_startup: Mutex::new(()),
                 backend_startup_error: Mutex::new(None),
             });
 

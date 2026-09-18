@@ -25,6 +25,10 @@ impl BackendProcess {
 
     pub fn stop(&mut self) {
         if let Some(mut child) = self.child.take() {
+            if matches!(child.try_wait(), Ok(Some(_))) {
+                self.control_token = None;
+                return;
+            }
             if let Some(token) = self.control_token.take() {
                 let url = format!("http://127.0.0.1:{}/service/stop", self.port);
                 if let Ok(client) = reqwest::blocking::Client::builder()
@@ -79,6 +83,15 @@ impl BackendProcess {
 
     pub fn is_owned(&self) -> bool {
         self.child.is_some()
+    }
+
+    pub fn is_running(&mut self) -> bool {
+        if let Some(child) = self.child.as_mut() {
+            // A live child may be temporarily unresponsive; don't spawn a duplicate.
+            !matches!(child.try_wait(), Ok(Some(_)))
+        } else {
+            Self::attach_if_healthy(self.port).is_some()
+        }
     }
 }
 
@@ -246,12 +259,37 @@ impl Drop for BackendProcess {
 
 #[cfg(test)]
 mod tests {
-    use super::BACKEND_READY_TIMEOUT;
+    use super::{BackendProcess, BACKEND_READY_TIMEOUT};
     use std::time::Duration;
 
     #[test]
     fn readiness_timeout_allows_slow_first_startup() {
         assert!(BACKEND_READY_TIMEOUT >= Duration::from_secs(90));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn detects_stopped_child_and_clears_stale_control_token() {
+        let child = std::process::Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .unwrap();
+        let mut backend = BackendProcess::new();
+        backend.child = Some(child);
+        backend.control_token = Some("test-token".to_string());
+        assert!(backend.is_running());
+
+        backend.child.as_mut().unwrap().kill().unwrap();
+        backend.child.as_mut().unwrap().wait().unwrap();
+        assert!(!backend.is_running());
+        backend.stop();
+        assert!(backend.child.is_none());
+        assert!(backend.control_token.is_none());
+    }
+
+    #[test]
+    fn missing_attached_backend_is_not_running() {
+        assert!(!BackendProcess::new().is_running());
     }
 }
 
