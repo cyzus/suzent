@@ -223,7 +223,9 @@ async def test_an_acp_stop_for_the_running_prompt_cancels_the_session(monkeypatc
     monkeypatch.setattr("suzent.acp.get_acp_manager", lambda: _Session())
     queue = stream_registry.register_background_stream("chat")
     # The ACP turn is under way: its prompt is the one the session is running.
+    # Both marks, as `_go_live` sets them.
     queue.replay.producer_started = True
+    queue.replay.prompt_in_flight = True
 
     response = await stop_chat(
         request({"chat_id": "chat", "run_id": queue.replay.run_id})
@@ -275,7 +277,10 @@ async def test_a_stop_is_not_kept_for_a_run_that_replaced_the_one_it_named(monke
         lambda chat_id, reason, expect_run=None: False,
     )
     queue = stream_registry.register_background_stream("chat")
+    # An ACP run with its prompt at the agent, which is what makes the endpoint
+    # reach for the session's cancellation at all.
     queue.replay.producer_started = True
+    queue.replay.prompt_in_flight = True
     replacement: list[object] = []
 
     class _Session:
@@ -472,3 +477,37 @@ async def test_a_stop_while_the_prompt_is_running_still_cancels_the_session(
 
     assert cancelled == ["chat"]
     assert response.status_code == 200
+
+
+async def test_a_stop_on_a_native_run_does_not_reach_a_leftover_acp_session(
+    monkeypatch,
+):
+    """A chat that has used ACP keeps its session after it moves to the native
+    runtime, and a native run never says it has a prompt at an agent.
+
+    Cancelling that leftover session answers success for a run it did not
+    touch -- and stops whatever the session is running for somebody else.
+    """
+    cancelled: list[str] = []
+    monkeypatch.setattr(
+        "suzent.routes.chat_routes.stop_stream",
+        lambda chat_id, reason, expect_run=None: False,
+    )
+
+    class _Session:
+        async def cancel(self, chat_id):
+            cancelled.append(chat_id)
+            return True
+
+    monkeypatch.setattr("suzent.acp.get_acp_manager", lambda: _Session())
+    queue = stream_registry.register_background_stream("chat")
+    # What `register_stream_control` leaves behind for a native turn: started,
+    # with nothing ever setting a prompt marker.
+    queue.replay.producer_started = True
+
+    response = await stop_chat(
+        request({"chat_id": "chat", "run_id": queue.replay.run_id})
+    )
+
+    assert cancelled == []
+    assert response.status_code == 404

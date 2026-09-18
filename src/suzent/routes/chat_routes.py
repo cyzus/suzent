@@ -881,11 +881,16 @@ async def stop_chat(request: Request) -> JSONResponse:
     # queue closing the first moment that becomes true: the prompt returns
     # first, and the turn is still writing its rows and awaiting its title while
     # the session sits idle -- or has taken somebody else's prompt.
+    # A named run has to say it has a prompt there, not merely fail to deny it.
+    # A chat that has used ACP keeps its session registered after it moves to
+    # the native runtime, where nothing ever sets this -- and cancelling that
+    # session answers success for a run it did not touch, while stopping
+    # whatever the session is running for somebody else.
     named_run_is_live = matched_run is None or (
         queue is not None
         and queue.producer_active
         and queue.replay.producer_started
-        and queue.replay.prompt_in_flight is not False
+        and queue.replay.prompt_in_flight is True
     )
     if not success and named_run_is_live:
         try:
