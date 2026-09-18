@@ -103,4 +103,77 @@ describe('shouldKeepLocalAssistantContent', () => {
 
     expect(shouldKeepLocalAssistantContent(local, server)).toBe(false);
   });
+  it('accepts a new turn whose reply is shorter than the previous turn (blank-until-refresh)', () => {
+    // The confirmed-stream path deliberately appends nothing locally, so the local
+    // store's last assistant belongs to the PREVIOUS turn. Comparing it with the new
+    // turn's shorter reply used to reject the snapshot, leaving the chat blank until
+    // the user refreshed.
+    const previousReply =
+      'I re-ran the change, kept the plain-text font substitution and the homepage link, ' +
+      'and saved the updated file over the path you gave me. Open it and confirm.';
+    const local: Message[] = [
+      { role: 'user', content: 'update my resume' },
+      { role: 'assistant', content: previousReply },
+      { role: 'user', content: 'the font looks wrong' },
+    ];
+    const server: Message[] = [
+      ...local,
+      { role: 'assistant', content: 'Locked the fonts back to the originals.' },
+    ];
+    expect(shouldKeepLocalAssistantContent(local, server)).toBe(false);
+  });
+
+  it('accepts a new turn that is still tool-only when the local store has no assistant for it', () => {
+    const toolOnlyContent =
+      '<details data-tool-call-id="t1"><summary>🔧 tool</summary><pre><code class="language-json">{"x":1}</code></pre></details>';
+    const local: Message[] = [
+      { role: 'user', content: 'question' },
+      { role: 'assistant', content: 'A complete earlier answer with real prose in it.' },
+      { role: 'user', content: 'follow-up' },
+    ];
+    const server: Message[] = [...local, { role: 'assistant', content: toolOnlyContent }];
+    expect(shouldKeepLocalAssistantContent(local, server)).toBe(false);
+  });
+
+  it('still keeps local content when the server has not written this turn at all', () => {
+    const local: Message[] = [
+      { role: 'user', content: 'question' },
+      { role: 'assistant', content: 'Optimistically appended final answer for the user.' },
+    ];
+    const server: Message[] = [{ role: 'user', content: 'question' }];
+    expect(shouldKeepLocalAssistantContent(local, server)).toBe(true);
+  });
+
+  it('pairs a canvas dispatch with the user row the server persisted for it', () => {
+    // The pill is local-only: the backend stores the same dispatch as a `user`
+    // row. Counting only `user` puts the local assistant one turn behind the
+    // server's, so the fresh reply gets compared with the short answer from the
+    // previous turn and the complete snapshot is rejected as a regression.
+    const local: Message[] = [
+      { role: 'user', content: 'open the canvas' },
+      { role: 'assistant', content: 'Done.' },
+      { role: 'canvas_action', content: '[canvas: apply] "Apply"' },
+      { role: 'assistant', content: 'Applying the two edits to the file you selected' },
+    ];
+    const server: Message[] = [
+      { role: 'user', content: 'open the canvas' },
+      { role: 'assistant', content: 'Done.' },
+      { role: 'user', content: '[canvas: apply] "Apply"' },
+      {
+        role: 'assistant',
+        content: 'Applying the two edits to the file you selected — both are in now.',
+      },
+    ];
+    expect(shouldKeepLocalAssistantContent(local, server)).toBe(false);
+  });
+
+  it('pairs a cron turn with its system_triggered prompt', () => {
+    const local: Message[] = [
+      { role: 'user', content: 'set up the digest' },
+      { role: 'assistant', content: 'Scheduled it. I will post a digest every morning at nine.' },
+      { role: 'system_triggered', content: '' },
+    ];
+    const server: Message[] = [...local, { role: 'assistant', content: 'Nothing new today.' }];
+    expect(shouldKeepLocalAssistantContent(local, server)).toBe(false);
+  });
 });
