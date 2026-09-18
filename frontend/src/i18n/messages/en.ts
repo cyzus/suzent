@@ -1,14 +1,12 @@
 export const en = {
   console: {
     nav: {
-      label: 'Console sections',
+      label: 'Console navigation',
+      title: 'Suzent',
       chat: 'Chat',
       ops: 'Operations',
-      devices: 'Devices',
-      mesh: 'Mesh',
-      usage: 'Usage',
-      settings: 'Settings',
-      about: 'About',
+      collapse: 'Collapse sidebar',
+      expand: 'Expand sidebar',
     },
     ops: {
       title: 'Operations',
@@ -32,11 +30,6 @@ export const en = {
       cannotDisableSelf:
         'This service is serving the console. Turning it off here would leave no way to turn it back on remotely — run "suzent service uninstall" on the host instead.',
       unreachable: 'Could not reach this host. It may be restarting, or the connection is gone.',
-      logTitle: 'Service log',
-      logDesc: 'The tail of server.log, which is the only account of a headless start-up.',
-      logLines: 'Lines',
-      follow: 'Follow',
-      logMissing: 'No log file yet. It appears once the service has run.',
     },
     health: {
       checking: 'Checking the connection',
@@ -558,6 +551,11 @@ export const en = {
       restart: 'Restart service',
       copyLogPath: 'Copy log path',
       refresh: 'Refresh',
+      logTitle: 'Service log',
+      logDesc: 'The tail of server.log, which is the only account of a headless start-up.',
+      logLines: 'Lines',
+      follow: 'Follow',
+      logMissing: 'No log file yet. It appears once the service has run.',
     },
     security: {
       title: 'Security',
@@ -704,6 +702,9 @@ export const en = {
       title: 'Appearance',
       subtitle: 'Choose how Suzent looks and reads',
       languageDesc: 'Choose the language used throughout the application.',
+      theme: 'Theme',
+      themeDesc: 'Light, dark, or whatever this machine is set to.',
+      modes: { light: 'Light', dark: 'Dark', system: 'System' },
       colorScheme: 'Color Scheme',
       colorSchemeDesc: 'Choose the accent palette used in light and dark mode.',
       schemes: { warm: 'Warm', cold: 'Cold', green: 'Green' },
@@ -744,8 +745,6 @@ export const en = {
       more: 'More',
       noUsageYet: 'No usage data yet. Start chatting to see your spending here.',
     },
-    switchToLight: 'Switch to light mode',
-    switchToDark: 'Switch to dark mode',
     saveChanges: 'Save Changes',
     saving: 'Saving...',
     verifyFailed: 'Verification failed or no models found.',

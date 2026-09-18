@@ -677,6 +677,21 @@ const MessageList: React.FC<{
 // retrigger the O(n) message grouping logic.
 const MessageListMemo = React.memo(MessageList);
 
+/**
+ * The composer's unsent text, kept across a ChatWindow unmount.
+ *
+ * In the console, chat and settings are destinations rather than a window with
+ * a modal over it, so opening settings takes this component off screen and
+ * coming back mounts a new one. A half-written prompt is the one piece of local
+ * state a user would notice losing on that trip. Module scope rather than
+ * storage: it is a draft within a session, not a document, and it clears on
+ * send like every other copy of it.
+ */
+const composerDraft: { input: string; mentions: FileMentionSelection[] } = {
+  input: '',
+  mentions: [],
+};
+
 interface ChatWindowProps {
   isRightSidebarOpen?: boolean;
   onRightSidebarToggle?: (isOpen: boolean) => void;
@@ -733,7 +748,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const setHeartbeatRunning = useHeartbeatRunning((s) => s.setRunning);
 
   // Local state
-  const [input, setInput] = useState('');
+  const [input, setInputState] = useState(composerDraft.input);
+  const setInput = useCallback((value: React.SetStateAction<string>) => {
+    setInputState((current) => {
+      const next = typeof value === 'function' ? value(current) : value;
+      composerDraft.input = next;
+      return next;
+    });
+  }, []);
   const [viewingImage, setViewingImage] = useState<string | null>(null);
   const [viewingFile, setViewingFile] = useState<{ path: string; name: string } | null>(null);
   const [pendingFork, setPendingFork] = useState<{ messageIndex?: number } | null>(null);
@@ -761,7 +783,16 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const [viewingSubAgentTaskId, setViewingSubAgentTaskId] = useState<string | null>(null);
   const [forcedWebContextId, setForcedWebContextId] = useState<string | null>(null);
   const [isBoardFullscreen, setIsBoardFullscreen] = useState(false);
-  const [fileMentions, setFileMentions] = useState<FileMentionSelection[]>([]);
+  const [fileMentions, setFileMentionsState] = useState<FileMentionSelection[]>(
+    composerDraft.mentions
+  );
+  const setFileMentions = useCallback((value: React.SetStateAction<FileMentionSelection[]>) => {
+    setFileMentionsState((current) => {
+      const next = typeof value === 'function' ? value(current) : value;
+      composerDraft.mentions = next;
+      return next;
+    });
+  }, []);
   const [cronModelSelection, setCronModelSelection] = useState<{
     jobId: number;
     model: string | null;
@@ -1357,7 +1388,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       tryConnectRef.current?.();
       return true;
     },
-    [loadChat, setIsStreaming, setStatusBar, t]
+    [loadChat, setInput, setIsStreaming, setStatusBar, t]
   );
 
   const { handleToolApproval } = useToolApproval({

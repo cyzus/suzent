@@ -6,6 +6,7 @@ import { BrutalButton } from '../BrutalButton';
 import { BrutalOnOff } from '../BrutalOnOff';
 import { SectionCardHeader, SettingsCard, SettingsPage } from './SettingsCard';
 import { SettingsHeader } from './SettingsHeader';
+import { ServiceLogCard } from './ServiceLogCard';
 
 interface ServiceStatus {
   installed: boolean;
@@ -182,6 +183,11 @@ export function BackgroundServiceTab(): React.ReactElement {
           </BrutalButton>
         </div>
       </SettingsCard>
+
+      {/* The same card the web console shows at #/ops. The service writes one
+          log wherever it runs, so both shells read it the same way rather than
+          this one handing over a path to open by hand. */}
+      <ServiceLogCard />
     </SettingsPage>
   );
 }
