@@ -1105,7 +1105,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         }
       });
       if (!persistence?.confirmed) {
-        // Compatibility for callers still using the legacy multipart transport.
+        // No `confirmed` means the stream ended without a persisted STREAM_END —
+        // an abort, or a recovery that gave up. The local parts above are all we
+        // have, so resync once the backend has had a moment to finish the write.
         setTimeout(() => syncHistory().catch(() => {}), 800);
       }
 
