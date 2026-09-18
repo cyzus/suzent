@@ -5,6 +5,74 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.14.0] - 2026-09-18
+
+<!-- highlights -->
+Suzent now reaches beyond the desktop window. The web UI is back, with a
+grouped console for managing your agent, and native Android and iOS clients
+introduce QR pairing, conversations, tool approvals, and live activity views.
+Mobile is an early preview: Android test APKs are available from CI, while iOS
+currently requires a developer build. Signed mobile releases and store
+distribution are still to come; mobile versions are independent of this
+desktop and backend release.
+
+Conversations are more resilient. Streams recover after a reload using saved
+snapshots and event cursors, short replies no longer disappear when a turn
+finishes, and saving a finished turn no longer blocks the server's event loop.
+Failed draft saves are retried, ACP turns follow the same persistence contract,
+and citations and image tool results render more consistently.
+
+Running and maintaining Suzent takes fewer manual steps. The backend and web
+frontend can run detached, with `suzent logs` for inspection and `suzent restart`
+for restarts. Both shells share the service log view, launcher shortcuts can be
+set up and repaired across installation paths, and the installer can set up Git.
+Windows background processes no longer open console windows, and recently
+closed connections no longer make a free port appear occupied.
+
+Browser tasks can see which tab you are viewing, extension packages are released
+automatically, and setup links to the Edge listing. GitHub sync also recovers
+from stale remote names, while memory background-work status handles storage
+failures without blocking the server or changing retry state just by polling.
+<!-- /highlights -->
+
+### 🚀 Added
+- Stop a turn through the stream instead of around it (#238)
+- Add native clients with pairing, tool approvals and activity rails
+- One grouped console nav, and the same log card in both shells (#234)
+- Run the backend and frontend detached, with `suzent logs` (#232)
+- Restore web UI support alongside the desktop app (#230)
+- Release the extension automatically and offer the Edge listing (#220)
+- Add top-level `suzent restart` command (#219)
+- Refine landing page downloads and terminal setup
+- Add installer landing-page entry and automatic Git setup (#218)
+- Share launcher shortcut setup and repair across install paths (#213)
+- Report which tab the user is viewing (#209)
+
+### ⚡ Changed
+- Fix desktop backend recovery after CLI stop (#240)
+- Recover streams after reload with snapshots and cursors (#227)
+- Keep final persistence off the event loop and retry failed drafts (#225)
+- Refine landing installer animation and open-source section
+- Migrate documentation website to Fumadocs (#216)
+- Remove the language param from the shell tools (#212)
+
+### 🐛 Fixed
+- Update frontend js-yaml security patch (#241)
+- Make an ACP turn claim the persistence contract (#237)
+- Stop dropping a finished turn when its reply is short (#235)
+- Launch background processes with no console window on Windows (#233)
+- Ignore draining sockets when checking if a port is free (#231)
+- Self-heal a profile naming a remote the repo does not have (#228)
+- Point the upgrade guide's route contract at its new URL
+- Keep dream status polling from mutating retry state (#226)
+- Handle dream status storage failures without blocking server (#224)
+- Validate website builds in clean CI checkouts (#217)
+- Adjust overflow handling in SubAgentCallBlock and activity rail styles
+- Render ACP citations as portable references (#215)
+- Improve overflow handling for chat components and animations
+- Exclude machine-specific host paths from reusable chat config
+- Display images in analysis and generation tool results (#211)
+
 ## [v0.13.0] - 2026-09-07
 
 <!-- highlights -->
