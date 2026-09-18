@@ -493,6 +493,18 @@
       "supports_response_schema": true,
       "supports_reasoning": true,
       "supports_prompt_caching": true
+    },
+    "xai/grok-imagine-video": {
+      "mode": "chat"
+    },
+    "xai/grok-imagine-video-1.5": {
+      "mode": "chat"
+    },
+    "xai/grok-imagine-video-1.5-2026-05-30": {
+      "mode": "chat"
+    },
+    "xai/grok-imagine-video-1.5-preview": {
+      "mode": "chat"
     }
   }
 }
