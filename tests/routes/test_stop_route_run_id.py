@@ -344,3 +344,36 @@ async def test_a_remembered_stop_does_not_reach_a_turn_minutes_later(monkeypatch
     stream_registry.attach_client_token("chat", queue.replay, "slow-start")
 
     assert queue.replay.stop_requested is None
+
+
+async def test_a_stop_for_a_replacement_that_has_not_registered_survives_the_refusal(
+    monkeypatch,
+):
+    """Stale for the run that is producing is not stale for the one named.
+
+    A /chat/steer-send start that has not been read yet has registered nothing,
+    so the turn it replaces is still the one producing and this stop cannot be
+    applied to it. But the replacement is on its way, and the client has already
+    given up waiting -- abandoning its request does not stop a recoverable turn.
+    Answer stale, keep the name, and let the replacement take it on arrival.
+    """
+    monkeypatch.setattr(
+        "suzent.routes.chat_routes.stop_stream",
+        lambda chat_id, reason, expect_run=None: True,
+    )
+    old = stream_registry.register_background_stream("chat")
+    assert old.producer_active
+
+    response = await stop_chat(
+        request({"chat_id": "chat", "run_id": "token-for-the-steer"})
+    )
+
+    assert response.status_code == 409
+    assert old.replay.stop_requested is None
+
+    replacement = stream_registry.register_background_stream("chat")
+    stream_registry.attach_client_token(
+        "chat", replacement.replay, "token-for-the-steer"
+    )
+
+    assert replacement.replay.stop_requested == "Stream stopped by user"

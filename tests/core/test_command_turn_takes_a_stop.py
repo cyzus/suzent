@@ -41,7 +41,7 @@ class _Agent:
 
 
 async def _run_command_turn(
-    monkeypatch, stop_before=None, stop_during=None, write_fails=False
+    monkeypatch, stop_before=None, stop_during=None, write_fails=False, wrote=True
 ):
     queue = register_background_stream("chat-cmd")
     if stop_before:
@@ -63,6 +63,8 @@ async def _run_command_turn(
     db.get_chat.return_value = chat
     if write_fails:
         db.update_chat.side_effect = RuntimeError("disk full")
+    else:
+        db.update_chat.return_value = wrote
 
     monkeypatch.setattr(
         "suzent.core.commands.dispatch", AsyncMock(side_effect=dispatch)
@@ -171,3 +173,20 @@ async def test_a_command_turn_that_stored_its_rows_reports_a_trustworthy_reload(
     assert ran == ["/compact"]
     queue.replay.closed = True
     assert queue.replay.persisted is True
+
+
+@pytest.mark.asyncio
+async def test_a_command_turn_whose_chat_vanished_mid_write_says_so(monkeypatch):
+    """`update_chat` answers False when the chat is gone, without raising.
+
+    The row was looked up and then deleted, so nothing was stored -- and a turn
+    that reports that write as good sends the client to a reload that drops the
+    command and the notice it was shown.
+    """
+    _, ran, queue, _ = await _run_command_turn(
+        monkeypatch, stop_before="Stream stopped by user", wrote=False
+    )
+
+    assert ran == []
+    queue.replay.closed = True
+    assert queue.replay.persisted is False

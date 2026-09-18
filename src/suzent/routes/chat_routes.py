@@ -762,9 +762,14 @@ async def stop_chat(request: Request) -> JSONResponse:
     )
     if run_id and run_id not in names:
         if queue is not None and queue.producer_active:
-            # Something else is producing under a different name: this stop is
-            # from the turn that one replaced, and applying it would stop a run
-            # nobody asked to stop.
+            # Something else is producing under a different name, so this stop
+            # is not for that run and applying it would stop a turn nobody asked
+            # to stop. But it is not necessarily for a turn that is over: a
+            # steer registers its replacement run only once its own request has
+            # been read, and until then the run being replaced is still the one
+            # producing. Keep the name so the replacement takes the stop when it
+            # arrives, and still answer stale, because nothing was stopped here.
+            remember_stop_for_unregistered_run(chat_id, run_id, reason)
             return JSONResponse(
                 {"status": "stale_run", "run_id": queue.replay.run_id}, status_code=409
             )

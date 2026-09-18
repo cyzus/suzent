@@ -168,13 +168,17 @@ def _persist_command_pair(chat_id: str, user_content: str, notice: str) -> bool:
         chat = db.get_chat(chat_id)
         if chat is None:
             return False
-        db.update_chat(
-            chat_id,
-            messages=_append_command_messages(
-                list(chat.messages or []), user_content, notice
-            ),
+        # False when the chat disappeared between the lookup and this write:
+        # nothing was stored, and saying otherwise sends the client to reload
+        # over the rows it was just shown.
+        return bool(
+            db.update_chat(
+                chat_id,
+                messages=_append_command_messages(
+                    list(chat.messages or []), user_content, notice
+                ),
+            )
         )
-        return True
     except Exception as exc:
         logger.debug(f"Failed to persist slash command result for {chat_id}: {exc}")
         return False
