@@ -122,6 +122,18 @@ async def test_plain_empty_turn_keeps_the_generic_message():
 
 
 @pytest.mark.asyncio
+async def test_a_cancelled_empty_turn_is_tagged_as_a_stop():
+    """A stop before the first token must not look like a failure.
+
+    The client tears the stream down on an untagged RUN_ERROR, which loses the
+    turn's own ending; the tag is what tells it to keep listening.
+    """
+    events, _, _ = await _run([_managed()], [([], {"stopReason": "cancelled"})])
+    error = next(e for e in events if e["type"] == "RUN_ERROR")
+    assert error["code"] == "stream_stopped"
+
+
+@pytest.mark.asyncio
 async def test_stale_restored_session_recovers_on_a_fresh_one():
     """An agent that accepts a dead session id must not brick the chat."""
     first = _managed("s-1", restored=True)

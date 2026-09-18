@@ -388,6 +388,19 @@ async def stream_acp_turn(
         yield _sse({"type": "TEXT_MESSAGE_END", "messageId": message_id})
         message_open = False
         if not text.strip():
+            if state.get("stop_reason") == "cancelled":
+                # A stop is not a failure here either. The native path tags its
+                # own cancellation frame the same way, and the client reads the
+                # tag to keep listening for the stream's real ending instead of
+                # tearing the connection down on an error notice.
+                yield _sse(
+                    {
+                        "type": "RUN_ERROR",
+                        "message": "Stream stopped by user",
+                        "code": "stream_stopped",
+                    }
+                )
+                return
             yield _sse({"type": "RUN_ERROR", "message": _no_output_error(state)})
             return
 
