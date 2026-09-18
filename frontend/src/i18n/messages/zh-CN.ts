@@ -1126,6 +1126,7 @@ export const zhCN = {
     fileMentionSearching: '正在搜索文件...',
     fileMentionNoResults: '没有匹配的文件',
     stop: '停止',
+    stopping: '停止中',
     send: '发送',
     redirect: '重定向',
     runtime: {

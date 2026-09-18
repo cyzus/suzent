@@ -327,6 +327,7 @@ async def suzent_channel_inbound(request: Request):
     # each event onto this device's background bus so *our* UI surfaces the
     # session live (new chat + streaming reply), like a local /chat/send turn.
     from suzent.core.stream_registry import (
+        bind_producer_replay,
         register_background_stream,
         is_background_streaming,
     )
@@ -338,6 +339,10 @@ async def suzent_channel_inbound(request: Request):
     )
 
     async def _teed():
+        # This task is the turn's producer for our own UI's queue, so name the
+        # run it is producing -- a stop from that UI names it back.
+        if bus_queue is not None:
+            bind_producer_replay(bus_queue.replay)
         try:
             async for chunk in generator:
                 if bus_queue is not None:

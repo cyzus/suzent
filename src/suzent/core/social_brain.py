@@ -19,6 +19,7 @@ from suzent.core.stream_parser import ApprovalRequest
 from suzent.core.run_state import ChatRunState
 from suzent.database import get_database
 from suzent.core.stream_registry import (
+    bind_producer_replay,
     register_background_stream,
     unregister_background_stream,
 )
@@ -765,6 +766,9 @@ class SocialBrain(BaseBrain):
                     collected_approvals.append(event)
 
             stream_queue = register_background_stream(social_chat_id)
+            # The frontend can attach to this queue and stop the turn by name;
+            # a control that never learned its run refuses such a stop.
+            bind_producer_replay(stream_queue.replay)
 
             # Check if this channel supports streaming
             channel = self.channel_manager.channels.get(message.platform)
@@ -842,6 +846,7 @@ class SocialBrain(BaseBrain):
                     process_task.cancel()
                     raise
                 finally:
+                    bind_producer_replay(None)
                     unregister_background_stream(social_chat_id, stream_queue)
             else:
                 try:
@@ -867,6 +872,7 @@ class SocialBrain(BaseBrain):
                             citation_sources_out=social_citation_sources,
                         )
                 finally:
+                    bind_producer_replay(None)
                     unregister_background_stream(social_chat_id, stream_queue)
 
             try:

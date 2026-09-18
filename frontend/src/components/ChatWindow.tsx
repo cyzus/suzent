@@ -16,6 +16,7 @@ import { completeDirectStream } from './chat/completeDirectStream';
 import { reconcileToolCallMessages } from '../lib/toolCallReconciliation';
 import type { Message, FileAttachment } from '../types/api';
 import type { ContentBlock } from '../lib/chatUtils';
+import { requestStopTurn } from '../lib/stopStream';
 import { buildMessageRenderPlan, buildTurnWorkedSeconds } from '../lib/messageRenderPlan';
 import {
   capturePrependScrollSnapshot,
@@ -356,6 +357,11 @@ function groupedBlocksToAssistantContent(blocks: ContentBlock[]): string {
 // ── Stream seed helpers (sessionStorage) ─────────────────────────────
 // Persists streaming parts across page refreshes so the frontend can
 // (a) reconnect with a visual seed, or (b) detect a missed stream completion.
+// How long a stop waits for the turn's own STREAM_END before the client gives
+// up and tears the stream down itself. Long enough for a tool call to unwind,
+// short enough that a wedged turn doesn't leave the composer disabled.
+const STOP_STREAM_END_TIMEOUT_MS = 10000;
+
 const STREAM_SEED_KEY = 'chat_stream_seed_v1';
 
 interface StreamSeed {
@@ -702,6 +708,11 @@ interface ChatWindowProps {
   rightSidebarForceFullView?: boolean;
 }
 
+// An abandoned start rejects its own fetch; that is this client giving up on
+// it, not a failure to report.
+const isAbortError = (err: unknown) =>
+  err instanceof DOMException ? err.name === 'AbortError' : false;
+
 export const ChatWindow: React.FC<ChatWindowProps> = ({
   isRightSidebarOpen = false,
   onRightSidebarToggle = () => {},
@@ -810,6 +821,49 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const { setStatus: setStatusBar } = useStatusStore();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const stopInFlightRef = useRef(false);
+  // Set while a stop has been accepted by the backend and we are waiting for the
+  // turn's own STREAM_END to arrive, and the timer that gives up on it.
+  const [isStopping, setIsStopping] = useState(false);
+  const stopFallbackRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Every stop attempt takes a token. The fallback timer and the request's own
+  // continuation both check it before acting, so a stop belonging to a turn
+  // that has already ended can never reach across and abandon the next one.
+  const stopAttemptRef = useRef(0);
+  // Retire whatever stop is outstanding. Every path that starts or ends a turn
+  // goes through here, because a stop belongs to one turn: a redirect keeps
+  // `isStreaming` true, so without this the old attempt's timer and response
+  // stay armed over the new turn and can abandon it — or just leave the button
+  // stuck on "Stopping" for a turn nobody asked to stop.
+  const retireStopAttempt = useCallback(() => {
+    if (stopFallbackRef.current) {
+      clearTimeout(stopFallbackRef.current);
+      stopFallbackRef.current = null;
+    }
+    stopAttemptRef.current += 1;
+    stopInFlightRef.current = false;
+    setIsStopping((stopping) => (stopping ? false : stopping));
+  }, []);
+  // The start request that has been sent but not yet answered. Stop goes live
+  // the moment a turn is asked for, so a stop raised in this window reaches the
+  // server before the run it names exists there: it is answered "no active
+  // stream" and torn down client-side, while the start it overtook goes on to
+  // register the run and stream the turn the user just stopped. Stopping waits
+  // for whatever is in here, so the two requests arrive in the order the user
+  // issued them.
+  const pendingStartRef = useRef<{ settled: Promise<unknown>; abort: () => void } | null>(null);
+  const trackPendingStart = useCallback(
+    <T,>(started: Promise<T>, abort: () => void): Promise<T> => {
+      const entry = { settled: started as Promise<unknown>, abort };
+      entry.settled = started.finally(() => {
+        // Only if nothing newer has taken its place: a redirect starts its own
+        // turn while this one is still settling.
+        if (pendingStartRef.current === entry) pendingStartRef.current = null;
+      });
+      pendingStartRef.current = entry;
+      return entry.settled as Promise<T>;
+    },
+    []
+  );
   // True while a steer is in flight — prevents the normal-send finally from hiding the bubble
   const steeringRef = useRef(false);
   // True from the moment a send is accepted until it has handed off to the
@@ -969,6 +1023,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     stop: stopAGUIStream,
     stopSilently: stopAGUIStreamSilently,
     getParts: getStreamingParts,
+    getRunId: getStreamingRunId,
+    mintRunToken,
+    retireRunToken,
+    waitForRunId,
+    whenStartRegistered,
     clearParts,
     restorePartsFromSeed,
     resolveApproval,
@@ -1095,7 +1154,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         }
       });
       if (!persistence?.confirmed) {
-        // Compatibility for callers still using the legacy multipart transport.
+        // No `confirmed` means the stream ended without a persisted STREAM_END —
+        // an abort, or a recovery that gave up. The local parts above are all we
+        // have, so resync once the backend has had a moment to finish the write.
         setTimeout(() => syncHistory().catch(() => {}), 800);
       }
 
@@ -1206,7 +1267,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       heartbeatOkRef.current = false;
       streamingChatIdRef.current = null;
       isLiveStreamRef.current = false;
-      stopInFlightRef.current = false;
+      retireStopAttempt();
       pendingConnectRef.current = false;
       setIsStreaming(false, chatId);
       if (chatId) {
@@ -1266,6 +1327,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         if (isHeartbeat) setHeartbeatRunning(true, chatId);
         // Mirror what handleSend does so the streaming overlay renders.
         setIsStreaming(true, chatId);
+        // This is a new turn, so a stop left over from the previous one has
+        // nothing left to stop: retire it before it can abandon this stream.
+        retireStopAttempt();
         streamingChatIdRef.current = chatId;
         sendAGUI(body, options)
           .catch((err) => {
@@ -1280,7 +1344,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     };
     window.addEventListener('agui:send-message', handler);
     return () => window.removeEventListener('agui:send-message', handler);
-  }, [sendAGUI, currentChatId, setHeartbeatRunning, setIsStreaming]);
+  }, [sendAGUI, currentChatId, setHeartbeatRunning, setIsStreaming, retireStopAttempt]);
 
   // Save the current streaming parts to sessionStorage on page hide so they
   // can be used as a seed (or to detect a missed completion) after a refresh.
@@ -1315,13 +1379,34 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         abandonedPartsRef.current.set(chatId, currentParts);
       }
 
-      const resp = await fetch(`${getApiBase()}/chat/send`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
+      // Name the turn: this POST starts one, and until /chat/live yields its
+      // first frame the token is the only name a stop has for it. Keep the name
+      // this request minted: by the time the request settles a redirect may have
+      // minted a newer one, and retiring that would leave the turn now running
+      // nameless.
+      const runToken = mintRunToken(chatId);
+      // A resume is a start like any other -- the approval dialog already put
+      // the chat back into streaming, so Stop is live over this request too.
+      const resumeAbort = new AbortController();
+      let resp: Response;
+      try {
+        resp = await trackPendingStart(
+          fetch(`${getApiBase()}/chat/send`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...body, client_run_token: runToken }),
+            signal: resumeAbort.signal,
+          }),
+          () => resumeAbort.abort()
+        );
+      } catch (err) {
+        // The turn never started; the name minted for it must not outlive it.
+        retireRunToken(runToken);
+        throw err;
+      }
 
       if (!resp.ok) {
+        retireRunToken(runToken);
         const msg =
           resp.status === 409 ? 'Chat is already responding' : `Resume failed (${resp.status})`;
         setStatusBar(msg, 'error', 4000);
@@ -1337,7 +1422,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       // Connect immediately rather than waiting for stream_started from the bus.
       tryConnectRef.current?.();
     },
-    [currentChatId, getStreamingParts, setStatusBar]
+    [
+      currentChatId,
+      getStreamingParts,
+      mintRunToken,
+      retireRunToken,
+      setStatusBar,
+      trackPendingStart,
+    ]
   );
 
   // Recover from a rejected send/steer/retry/edit POST.
@@ -1354,10 +1446,28 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       chatId: string,
       status: number,
       action: SendAction,
-      opts?: { seedParts?: AGUIPart[]; restoreInput?: string }
+      opts?: { seedParts?: AGUIPart[]; restoreInput?: string; runToken?: string }
     ): boolean => {
       const plan = planSendFailureRecovery(status, action);
       setStatusBar(t(plan.messageKey, plan.messageParams), plan.tone, 4000);
+
+      // The turn this client named was never accepted -- a 409 means another
+      // one is already running. Drop the name now: the reattach below is a
+      // probe on this same chat, and it would otherwise carry that dead name
+      // into a stop meant for the turn that really is running.
+      //
+      // Retire only the name this rejected request minted. A redirect issued
+      // while it was in flight has already installed the replacement turn's
+      // name, and clearing that would leave the turn that really is running
+      // without one until its first frame arrives.
+      retireRunToken(opts?.runToken);
+
+      // And retire the stop that was waiting for this start. It was raised for
+      // the turn this request was asking for, and that turn was never accepted;
+      // left standing, it resumes after this recovery, reads the name of the
+      // turn that really is running -- the one the reattach below puts back on
+      // screen -- and cancels that instead.
+      retireStopAttempt();
 
       if (!plan.reattach) {
         setIsStreaming(false, chatId);
@@ -1392,7 +1502,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       tryConnectRef.current?.();
       return true;
     },
-    [loadChat, setInput, setIsStreaming, setStatusBar, t]
+    [loadChat, retireRunToken, retireStopAttempt, setInput, setIsStreaming, setStatusBar, t]
   );
 
   const { handleToolApproval } = useToolApproval({
@@ -1403,7 +1513,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     streamingParts,
     streamingChatIdRef,
     activeChatIdRef,
-    stopInFlightRef,
+    retireStopAttempt,
     setConfig,
     updateMessage,
     setIsStreaming,
@@ -1690,7 +1800,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       setIsStreaming(true, currentChatId);
       streamingChatIdRef.current = currentChatId;
       activeChatIdRef.current = currentChatId;
-      stopInFlightRef.current = false;
+      retireStopAttempt();
 
       try {
         await sendAGUI({ message: messageContent, config: safeConfig, chat_id: currentChatId });
@@ -1699,7 +1809,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       }
       // eslint-disable-next-line react-hooks/exhaustive-deps
     },
-    [currentChatId, canvas.deferredIds, addMessage, setIsStreaming, sendAGUI]
+    [currentChatId, canvas.deferredIds, addMessage, setIsStreaming, sendAGUI, retireStopAttempt]
   );
 
   const handleForceWebContext = useCallback(
@@ -2191,7 +2301,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       steeringRef.current = true;
       setIsStreaming(true, currentChatId);
       activeChatIdRef.current = currentChatId;
-      stopInFlightRef.current = false;
+      retireStopAttempt();
 
       // Abort the current live connection silently, then start steer via the
       // background queue (/chat/steer-send → 202 → /chat/live) so it is
@@ -2204,29 +2314,41 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       isLiveStreamRef.current = false;
 
       const steerChatId = currentChatId;
-      fetch(`${getApiBase()}/chat/steer-send`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: steerChatId, message: prompt, config: safeConfig }),
-      })
-        .then((resp) => {
-          if (!resp.ok) {
-            recoverFromSendFailure(steerChatId, resp.status, 'steer', {
-              seedParts: steerSeedParts,
-              restoreInput: prompt,
-            });
-            return;
-          }
-          tryConnectRef.current?.();
+      const steerRunToken = mintRunToken(steerChatId);
+      const steerAbort = new AbortController();
+      trackPendingStart(
+        fetch(`${getApiBase()}/chat/steer-send`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: steerAbort.signal,
+          body: JSON.stringify({
+            chat_id: steerChatId,
+            message: prompt,
+            config: safeConfig,
+            client_run_token: steerRunToken,
+          }),
         })
-        .catch((err) => {
-          console.error('[send] /chat/steer-send failed:', err);
-          setIsStreaming(false, steerChatId);
-        })
-        .finally(() => {
-          steeringRef.current = false;
-          stopInFlightRef.current = false;
-        });
+          .then((resp) => {
+            if (!resp.ok) {
+              recoverFromSendFailure(steerChatId, resp.status, 'steer', {
+                seedParts: steerSeedParts,
+                restoreInput: prompt,
+                runToken: steerRunToken,
+              });
+              return;
+            }
+            tryConnectRef.current?.();
+          })
+          .catch((err) => {
+            if (!isAbortError(err)) console.error('[send] /chat/steer-send failed:', err);
+            retireRunToken(steerRunToken);
+            setIsStreaming(false, steerChatId);
+          })
+          .finally(() => {
+            steeringRef.current = false;
+          }),
+        () => steerAbort.abort()
+      );
       return;
     }
 
@@ -2318,36 +2440,49 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     };
     if (mentionsToSend.length > 0) payload.file_mentions = mentionsToSend;
     if (uploadedFileMetadata) payload.files = uploadedFileMetadata;
+    const sendRunToken = mintRunToken(chatIdForSend);
+    payload.client_run_token = sendRunToken;
 
     // Fire /chat/send — backend registers the background stream and returns 202.
     // On success, call tryConnect() directly so we attach to /chat/live immediately
     // without waiting for stream_started from the event bus (avoids new-chat races
     // where the subscription for the new chat ID isn't set up yet).
-    fetch(`${getApiBase()}/chat/send`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
-      .then((resp) => {
-        if (!resp.ok) {
-          const reattached = recoverFromSendFailure(chatIdForSend, resp.status, 'send', {
-            seedParts: sendSeedParts,
-            // Only hand the text back when it travelled alone. Re-populating the
-            // composer without its attachments would offer a different message
-            // than the one that was rejected.
-            restoreInput: filesToSend.length === 0 ? prompt : undefined,
-          });
-          if (!reattached) clearPartsIfStillViewingSendChat();
-          return;
-        }
-        // 202: stream registered — connect to /chat/live immediately.
-        tryConnectRef.current?.();
+    const sendAbort = new AbortController();
+    trackPendingStart(
+      fetch(`${getApiBase()}/chat/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: sendAbort.signal,
       })
-      .catch((err) => {
-        console.error('[send] /chat/send failed:', err);
-        setIsStreaming(false, chatIdForSend);
-        clearPartsIfStillViewingSendChat();
-      });
+        .then((resp) => {
+          if (!resp.ok) {
+            const reattached = recoverFromSendFailure(chatIdForSend, resp.status, 'send', {
+              seedParts: sendSeedParts,
+              // Only hand the text back when it travelled alone. Re-populating the
+              // composer without its attachments would offer a different message
+              // than the one that was rejected.
+              restoreInput: filesToSend.length === 0 ? prompt : undefined,
+              runToken: sendRunToken,
+            });
+            if (!reattached) clearPartsIfStillViewingSendChat();
+            return;
+          }
+          // 202: stream registered — connect to /chat/live immediately.
+          tryConnectRef.current?.();
+        })
+        .catch((err) => {
+          if (!isAbortError(err)) console.error('[send] /chat/send failed:', err);
+          // The turn was never started, so the name minted for it names nothing.
+          // Left installed, the next probe on this chat inherits it and a stop
+          // goes out under a dead name -- answered 409, which reads as "already
+          // stopped" while the turn that is running carries on.
+          retireRunToken(sendRunToken);
+          setIsStreaming(false, chatIdForSend);
+          clearPartsIfStillViewingSendChat();
+        }),
+      () => sendAbort.abort()
+    );
   };
 
   const requestFork = useCallback((messageIndex?: number) => {
@@ -2397,30 +2532,45 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     liveStreamPartsRef.current = [];
     streamStartByChatRef.current.set(chatIdForRetry, Date.now());
     setIsStreaming(true, chatIdForRetry);
+    // Retire the previous turn's stop here, before the POST -- not when the POST
+    // settles. Stop is clickable the moment `isStreaming` goes true, so a stop
+    // raised while this request is in flight belongs to this turn, and retiring
+    // it on settle would disarm its fallback timer and ignore its response.
     // Don't set streamingChatIdRef here — tryConnect sets it in onStreamStart,
     // same as the main send path. Setting it prematurely would block tryConnect.
     activeChatIdRef.current = chatIdForRetry;
-    stopInFlightRef.current = false;
+    retireStopAttempt();
 
-    fetch(`${getApiBase()}/chat/send`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: '/retry', chat_id: chatIdForRetry, config: safeConfig }),
-    })
-      .then((resp) => {
-        if (!resp.ok) {
-          recoverFromSendFailure(chatIdForRetry, resp.status, 'retry');
-          return;
-        }
-        tryConnectRef.current?.();
+    const retryRunToken = mintRunToken(chatIdForRetry);
+    const retryAbort = new AbortController();
+    trackPendingStart(
+      fetch(`${getApiBase()}/chat/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: retryAbort.signal,
+        body: JSON.stringify({
+          message: '/retry',
+          chat_id: chatIdForRetry,
+          config: safeConfig,
+          client_run_token: retryRunToken,
+        }),
       })
-      .catch((err) => {
-        console.error('[handleRetry] /chat/send failed:', err);
-        setIsStreaming(false, chatIdForRetry);
-      })
-      .finally(() => {
-        stopInFlightRef.current = false;
-      });
+        .then((resp) => {
+          if (!resp.ok) {
+            recoverFromSendFailure(chatIdForRetry, resp.status, 'retry', {
+              runToken: retryRunToken,
+            });
+            return;
+          }
+          tryConnectRef.current?.();
+        })
+        .catch((err) => {
+          if (!isAbortError(err)) console.error('[handleRetry] /chat/send failed:', err);
+          retireRunToken(retryRunToken);
+          setIsStreaming(false, chatIdForRetry);
+        }),
+      () => retryAbort.abort()
+    );
   }, [
     currentChatId,
     isStreaming,
@@ -2431,6 +2581,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     clearParts,
     safeConfig,
     recoverFromSendFailure,
+    retireStopAttempt,
+    mintRunToken,
+    retireRunToken,
+    trackPendingStart,
   ]);
 
   // Edit handler — re-sends the last user message with new text, dropping that
@@ -2479,31 +2633,40 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       streamStartByChatRef.current.set(chatIdForEdit, Date.now());
       setIsStreaming(true, chatIdForEdit);
       activeChatIdRef.current = chatIdForEdit;
-      stopInFlightRef.current = false;
+      retireStopAttempt();
 
-      fetch(`${getApiBase()}/chat/send`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: `/retry-edit ${prompt}`,
-          chat_id: chatIdForEdit,
-          config: safeConfig,
-        }),
-      })
-        .then((resp) => {
-          if (!resp.ok) {
-            recoverFromSendFailure(chatIdForEdit, resp.status, 'edit', { restoreInput: prompt });
-            return;
-          }
-          tryConnectRef.current?.();
+      const editRunToken = mintRunToken(chatIdForEdit);
+      const editAbort = new AbortController();
+      trackPendingStart(
+        fetch(`${getApiBase()}/chat/send`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: editAbort.signal,
+          body: JSON.stringify({
+            message: `/retry-edit ${prompt}`,
+            chat_id: chatIdForEdit,
+            config: safeConfig,
+            client_run_token: editRunToken,
+          }),
         })
-        .catch((err) => {
-          console.error('[handleEditUserMessage] /chat/send failed:', err);
-          setIsStreaming(false, chatIdForEdit);
-        })
-        .finally(() => {
-          stopInFlightRef.current = false;
-        });
+          .then((resp) => {
+            if (!resp.ok) {
+              recoverFromSendFailure(chatIdForEdit, resp.status, 'edit', {
+                restoreInput: prompt,
+                runToken: editRunToken,
+              });
+              return;
+            }
+            tryConnectRef.current?.();
+          })
+          .catch((err) => {
+            if (!isAbortError(err))
+              console.error('[handleEditUserMessage] /chat/send failed:', err);
+            retireRunToken(editRunToken);
+            setIsStreaming(false, chatIdForEdit);
+          }),
+        () => editAbort.abort()
+      );
     },
     [
       currentChatId,
@@ -2516,54 +2679,183 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       clearParts,
       safeConfig,
       recoverFromSendFailure,
+      retireStopAttempt,
+      mintRunToken,
+      retireRunToken,
+      trackPendingStart,
     ]
   );
 
-  // Stop streaming handler
+  // Tear the stream down from the client. This is the old stop: it throws away
+  // the connection and guesses at when the backend will have written the
+  // partial turn. Kept as the fallback for the cases where the stream cannot
+  // report its own ending — nothing was streaming server-side, the stop request
+  // never landed, or it landed and STREAM_END never came.
+  const abandonStream = useCallback(
+    (targetChatId: string | null) => {
+      // A start still in flight would land after this teardown and reattach to
+      // a turn this client has given up on -- when the giving up was a stop,
+      // that is the turn the user asked to end, put back on screen and left
+      // running. Give up on the request too.
+      pendingStartRef.current?.abort();
+      pendingStartRef.current = null;
+      retireStopAttempt();
+      isLiveStreamRef.current = false;
+      streamingChatIdRef.current = null;
+      stopAGUIStream();
+      setIsStreaming(false, targetChatId ?? undefined);
+      clearParts();
+      if (targetChatId) {
+        setTimeout(() => {
+          try {
+            loadChat(targetChatId, { force: true });
+          } catch {}
+        }, 500);
+      }
+    },
+    [stopAGUIStream, setIsStreaming, clearParts, loadChat, retireStopAttempt]
+  );
+
+  // Stop streaming handler.
+  //
+  // A stop is a request to the agent, not a client-side teardown: cancellation
+  // is cooperative, so the turn still drains, still post-processes, and still
+  // reports STREAM_END{persisted:true} for whatever it managed to produce. So
+  // ask, then keep listening — the stopped turn finishes through exactly the
+  // same confirmed path as one that ran to completion, and the partial reply is
+  // on screen the whole way. Aborting the connection first is what made a stop
+  // blank the chat until the 500ms reload guess happened to land.
   const stopStreaming = async () => {
     if (!isStreaming || stopInFlightRef.current) return;
     stopInFlightRef.current = true;
 
     const targetChatId = activeStreamingChatId || streamingChatIdRef.current;
-
-    // Abort the AG-UI SSE connection. When the stream went through tryConnect
-    // (isLiveStreamRef=true), onFinish deliberately skips setIsStreaming(false)
-    // to let tryConnect's finally() handle cleanup. But for a user-triggered stop
-    // we need to clear streaming state immediately, so we do it here instead.
-    isLiveStreamRef.current = false;
-    streamingChatIdRef.current = null;
-    stopAGUIStream();
-    setIsStreaming(false, targetChatId ?? undefined);
-    clearParts();
-    // Reload chat from DB so the partial response (saved by backend on cancel)
-    // appears immediately — prevents the blank flash while waiting for DB commit.
-    // This also brings back the notice the stop wrote about any sub-agents it
-    // stopped along the way, which is why that notice is written server-side.
-    if (targetChatId) {
-      setTimeout(() => {
-        try {
-          loadChat(targetChatId, { force: true });
-        } catch {}
-      }, 500);
+    if (!targetChatId) {
+      abandonStream(null);
+      return;
     }
 
-    stopInFlightRef.current = false;
+    setIsStopping(true);
+    const attempt = ++stopAttemptRef.current;
 
-    if (!targetChatId) return;
+    // Arm the fallback before asking, not after. The request itself can be the
+    // thing that hangs — a half-open connection swallows the response and the
+    // await never settles — which would leave the composer disabled and
+    // "Stopping" on screen with no timer to rescue it. The timer covers both
+    // that and a turn wedged in a tool call that outlives its own ending.
+    let stopSent = false;
+    const armFallback = () => {
+      if (stopFallbackRef.current) clearTimeout(stopFallbackRef.current);
+      stopFallbackRef.current = setTimeout(() => {
+        stopFallbackRef.current = null;
+        if (stopAttemptRef.current !== attempt || !stopInFlightRef.current) return;
+        // Say the word before walking away. Giving up here also aborts the
+        // start this attempt was waiting for, but an abort is the client
+        // leaving, not the server stopping: a start already received still
+        // registers its run and streams the turn with nobody listening. The
+        // name this client minted is good for a run the backend has not seen
+        // yet -- the stop is kept under it until that run arrives -- so the
+        // one path that never sent it was the one that needed it most.
+        const name = !stopSent ? getStreamingRunId() : undefined;
+        if (name) {
+          void requestStopTurn(
+            getApiBase(),
+            targetChatId,
+            'User requested stop',
+            fetch,
+            name
+          ).catch(() => {});
+        }
+        abandonStream(targetChatId);
+      }, STOP_STREAM_END_TIMEOUT_MS);
+    };
+    armFallback();
 
-    try {
-      const res = await fetch(`${getApiBase()}/chat/stop`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: targetChatId, reason: 'User requested stop' }),
-      });
-      if (!res.ok) {
-        console.error('Stop request failed:', res.status, res.statusText);
+    // Let the start land first. Stop is live from the moment a turn is asked
+    // for, so a stop sent while that request is still in flight arrives at a
+    // server that has never heard of this run: it comes back "no active
+    // stream", the client tears the stream down, and the start it overtook then
+    // registers the run and streams the turn the user stopped. Once the start
+    // has landed, the token this client minted names a run that exists -- which
+    // the backend honours even before the turn produces anything.
+    //
+    // Two kinds of start to wait for: a POST this component sent, and a turn
+    // asked for through the stream itself -- a heartbeat "Run Now", a canvas
+    // action -- which registers its run when its own request is answered.
+    const pendingStart = pendingStartRef.current;
+    await Promise.all([
+      pendingStart ? pendingStart.settled.catch(() => {}) : Promise.resolve(),
+      whenStartRegistered(),
+    ]);
+    // This attempt may not have survived the wait: the start can be rejected,
+    // which ends the stream, or the fallback above can run out of patience --
+    // and that path aborts the outstanding start as it tears down, so nothing
+    // reattaches to the turn afterwards. Either way the stop belongs to a turn
+    // that is over and must not be sent.
+    if (stopAttemptRef.current !== attempt) return;
+    // The ask gets a full window of its own, not whatever the wait left.
+    armFallback();
+
+    // Name the run: a stop still in flight when the user redirects would
+    // otherwise land on the replacement turn's control and cancel that instead.
+    // A turn this client asked for is named already; one it re-attached to is
+    // named by its first frame, so wait briefly rather than stop blind. The
+    // fallback timer above is already armed over this wait.
+    // Wait out the fallback window rather than a couple of seconds: an unnamed
+    // stop is applied to whatever run is current when it lands, so a slow first
+    // snapshot plus a redirect is enough to cancel the turn the user just
+    // asked for. The timer armed above is watching this wait too.
+    const runId = getStreamingRunId() ?? (await waitForRunId(STOP_STREAM_END_TIMEOUT_MS));
+    // That wait reads whatever run is current when it resolves, and this attempt
+    // may not have survived it: if the stream ended and the user started another
+    // turn, the name that came back is the new turn's. Check before sending, not
+    // only after -- afterwards the request has already cancelled it.
+    if (stopAttemptRef.current !== attempt) return;
+    if (!runId) {
+      // Nothing ever named this stream, so there is no run this client can ask
+      // to stop without risking a different one. Give the composer back the way
+      // the fallback would; the reload it schedules shows whatever the turn
+      // really did.
+      abandonStream(targetChatId);
+      return;
+    }
+    stopSent = true;
+    const result = await requestStopTurn(
+      getApiBase(),
+      targetChatId,
+      'User requested stop',
+      fetch,
+      runId
+    );
+    // The stream may have ended — and a later turn may have started and been
+    // stopped — while this was in flight. Only the current attempt may act.
+    if (stopAttemptRef.current !== attempt) return;
+    if (!result.accepted) {
+      if (result.reason !== 'no_active_stream') {
+        console.error('Stop request failed:', result.reason, result.status ?? '');
       }
-    } catch (error) {
-      console.error('Error sending stop request:', error);
+      abandonStream(targetChatId);
     }
+    // Accepted: hand the ending back to the stream and let the fallback watch.
   };
+
+  // The stop is done the moment the stream is: whichever path ended it — the
+  // confirmed STREAM_END, an error, a chat switch — releases the button and
+  // cancels the fallback that would otherwise tear down the next turn.
+  useEffect(() => {
+    if (isStreaming) return;
+    // Unconditionally: onError clears `stopInFlightRef` before this runs, so
+    // keying the token off that boolean would let a late stop result from the
+    // failed turn tear down the turn after it.
+    retireStopAttempt();
+  }, [isStreaming, retireStopAttempt]);
+
+  useEffect(
+    () => () => {
+      if (stopFallbackRef.current) clearTimeout(stopFallbackRef.current);
+    },
+    []
+  );
 
   // Handle file click from chat messages
   const handleFileClick = useCallback(
@@ -2840,7 +3132,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               configReady={configReady}
               streamingForCurrentChat={streamingForCurrentChat}
               stopStreaming={stopStreaming}
-              stopInFlight={stopInFlightRef.current}
+              stopInFlight={isStopping}
               modelSelectDropUp={true}
               modelValue={safeConfig.model}
               onModelChange={handleInputModelChange}

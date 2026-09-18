@@ -22,6 +22,10 @@ from suzent.database import get_database
 from suzent.logger import get_logger
 from suzent.streaming import stop_stream
 from suzent.core.stream_registry import (
+    attach_client_token,
+    bind_producer_replay,
+    defer_stop_to_pending_run,
+    remember_stop_for_unregistered_run,
     get_background_queue,
     is_background_streaming,
     register_background_stream,
@@ -177,36 +181,56 @@ def _prewrite_user_display_message(
     chat_id: str,
     message: str,
     files_list: list,
-) -> None:
-    """Append the user's display row before stream_started can trigger reloads."""
+) -> bool:
+    """Append the user's display row before stream_started can trigger reloads.
+
+    Returns whether that row is really in the transcript. The turn uses this as
+    its licence to recognize the row and not write it again, and a write that
+    failed leaves the previous turn's row in that position -- which the same
+    prompt sent again matches exactly. Believing the prewrite then loses the
+    message.
+    """
     if not chat_id:
-        return
+        return False
 
     content = (message or "").strip()
     files = _display_file_metadata(files_list)
     if not content and not files:
-        return
+        return False
 
     entry: dict = {"role": "user", "content": content}
     if files:
         entry["files"] = files
 
     try:
-        get_database().append_chat_message(chat_id, entry)
+        return bool(get_database().append_chat_message(chat_id, entry))
     except Exception as exc:
-        logger.debug(f"Failed to prewrite user display message for {chat_id}: {exc}")
+        # The type only. A database error carries its statement's bound
+        # parameters, which here are the user's prompt and their attachments'
+        # names -- exactly what must not reach a log.
+        logger.debug(
+            f"Failed to prewrite user display message for {chat_id}: "
+            f"{type(exc).__name__}"
+        )
+        return False
 
 
 def _recoverable_response(
     chat_id: str,
     make_generator: Callable[[Any], AsyncGenerator[str, None]],
+    client_token: str | None = None,
 ) -> StreamingResponse:
     # The turn is built after the queue exists, and from it: a producer that
     # has to find its own replay by chat_id can find someone else's.
     queue = register_background_stream(chat_id)
+    attach_client_token(chat_id, queue.replay, client_token)
     generator = make_generator(queue.replay)
 
     async def produce() -> None:
+        # Say which run this task is producing, so its turn binds its
+        # cancellation control to this replay rather than to whatever replay
+        # the chat holds by the time the turn gets going.
+        bind_producer_replay(queue.replay)
         try:
             async for chunk in generator:
                 await queue.put(chunk)
@@ -226,6 +250,35 @@ def _recoverable_response(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+def _is_text(value: Any) -> bool:
+    """Whether a request sent text where this process will use text.
+
+    A JSON client can put a list or a dict where a string belongs, and both
+    names below become parts of registry keys -- an unhashable key raises, and
+    the route reports that as a 500, on /chat/send after the user's row has
+    already been written.
+    """
+    return value is None or isinstance(value, str)
+
+
+def _names_a_run(value: Any) -> bool:
+    """Whether a request's idea of a run's name is one this process can use.
+
+    The empty string is not: it is a name the client sent, but every reader
+    tests it for truth, so it would pass for having sent none -- and a stop with
+    no name cancels whatever turn the chat is running, which is the protection
+    naming a run exists to give.
+
+    Both names -- the chat and the token the client minted for its turn --
+    become parts of registry keys, and a JSON client can put a list or a dict
+    where a string belongs. That reaches the registry as an unhashable key and
+    raises, which the route would report as a 500 after it had already written
+    the user's row. A malformed request is not a server fault: say so at the
+    boundary, before anything has been stored.
+    """
+    return value is None or (isinstance(value, str) and value != "")
 
 
 async def chat(request: Request) -> StreamingResponse:
@@ -270,6 +323,7 @@ async def chat(request: Request) -> StreamingResponse:
                 file_mentions = []
             is_heartbeat = False
             recovery_protocol = form.get("protocol") == "1"
+            client_run_token = form.get("client_run_token")
         else:
             data = await request.json()
             message = data.get("message", "").strip()
@@ -282,6 +336,7 @@ async def chat(request: Request) -> StreamingResponse:
             resume_approvals = data.get("resume_approvals", [])
             is_heartbeat = data.get("is_heartbeat", False)
             recovery_protocol = data.get("protocol") == 1
+            client_run_token = data.get("client_run_token")
 
         if not message and not files_list and not resume_approvals and not is_heartbeat:
             return StreamingResponse(
@@ -289,6 +344,12 @@ async def chat(request: Request) -> StreamingResponse:
                     ['data: {"type": "error", "data": "Empty message received."}\n\n']
                 ),
                 media_type="text/event-stream",
+                status_code=400,
+            )
+
+        if not _is_text(chat_id) or not _names_a_run(client_run_token):
+            return JSONResponse(
+                {"error": "chat_id and client_run_token must be strings"},
                 status_code=400,
             )
 
@@ -394,7 +455,7 @@ async def chat(request: Request) -> StreamingResponse:
                     return JSONResponse(
                         {"error": "Chat is already streaming"}, status_code=409
                     )
-                return _recoverable_response(chat_id, _make_generator)
+                return _recoverable_response(chat_id, _make_generator, client_run_token)
             return StreamingResponse(
                 _make_generator(),
                 media_type="text/event-stream",
@@ -457,6 +518,10 @@ async def chat_send(request: Request) -> JSONResponse:
 
     if not chat_id:
         return JSONResponse({"error": "chat_id is required"}, status_code=400)
+    if not _names_a_run(chat_id) or not _names_a_run(data.get("client_run_token")):
+        return JSONResponse(
+            {"error": "chat_id and client_run_token must be strings"}, status_code=400
+        )
     if not message and not files_list and not resume_approvals:
         return JSONResponse({"error": "Empty message"}, status_code=400)
     from suzent.core.chat_processor import ChatProcessor
@@ -468,13 +533,19 @@ async def chat_send(request: Request) -> JSONResponse:
     if is_background_streaming(chat_id):
         return JSONResponse({"error": "Chat is already streaming"}, status_code=409)
 
+    # Whether this route wrote the turn's user row, which the turn cannot infer:
+    # a prompt sent again after being stopped looks exactly like the row the
+    # stopped turn left behind.
+    prewritten = False
     if not resume_approvals and not message.strip().startswith("/"):
         message = _sanitized_for_display_and_turn(message)
-        _prewrite_user_display_message(chat_id, message, files_list)
+        prewritten = _prewrite_user_display_message(chat_id, message, files_list)
 
     stream_queue = register_background_stream(chat_id)
+    attach_client_token(chat_id, stream_queue.replay, data.get("client_run_token"))
 
     async def _run() -> None:
+        bind_producer_replay(stream_queue.replay)
         try:
             if effective_runtime == "acp":
                 from suzent.acp.runtime import stream_acp_turn
@@ -486,6 +557,7 @@ async def chat_send(request: Request) -> JSONResponse:
                     files=files_list or None,
                     file_mentions=file_mentions or None,
                     replay=stream_queue.replay,
+                    prewritten=prewritten,
                 )
             else:
                 generator = processor.process_turn(
@@ -535,6 +607,10 @@ async def steer_chat_send(request: Request) -> JSONResponse:
 
     if not chat_id:
         return JSONResponse({"error": "chat_id is required"}, status_code=400)
+    if not _names_a_run(chat_id) or not _names_a_run(data.get("client_run_token")):
+        return JSONResponse(
+            {"error": "chat_id and client_run_token must be strings"}, status_code=400
+        )
     if not message:
         return JSONResponse({"error": "message is required"}, status_code=400)
 
@@ -546,11 +622,13 @@ async def steer_chat_send(request: Request) -> JSONResponse:
     effective_runtime = _resolve_chat_runtime(chat_id, config)
     stop_stream(chat_id, reason="Steered by user")
     message = _sanitized_for_display_and_turn(message)
-    _prewrite_user_display_message(chat_id, message, [])
+    prewritten = _prewrite_user_display_message(chat_id, message, [])
 
     stream_queue = register_background_stream(chat_id)
+    attach_client_token(chat_id, stream_queue.replay, data.get("client_run_token"))
 
     async def _run() -> None:
+        bind_producer_replay(stream_queue.replay)
         try:
             if effective_runtime == "acp":
                 from suzent.acp.runtime import stream_acp_steer
@@ -560,6 +638,7 @@ async def steer_chat_send(request: Request) -> JSONResponse:
                     message,
                     {**config, **config_override},
                     replay=stream_queue.replay,
+                    prewritten=prewritten,
                 )
             else:
                 generator = processor.process_steer(
@@ -723,16 +802,119 @@ async def stop_chat(request: Request) -> JSONResponse:
     chat_id = data.get("chat_id")
     if not chat_id:
         return JSONResponse({"error": "chat_id is required"}, status_code=400)
+    if not _names_a_run(chat_id) or not _names_a_run(data.get("run_id")):
+        return JSONResponse(
+            {"error": "chat_id and run_id must be strings"}, status_code=400
+        )
+
+    if not _is_text(data.get("reason")):
+        # It becomes a frame's message, which is typed as a string. A list or a
+        # number raises there instead, deep inside the producer, and the client
+        # that asked to stop gets a generic failure in place of the tagged stop
+        # and the clean ending this route promised it.
+        return JSONResponse({"error": "reason must be a string"}, status_code=400)
 
     reason = data.get("reason") or "Stream stopped by user"
-    success = stop_stream(chat_id, reason)
-    if not success:
+
+    # A stop names the run it meant to stop. Without that, a request still in
+    # flight when the user redirects lands on whatever control is current and
+    # cancels the replacement turn instead -- the client can retire its own
+    # attempt, but it cannot call back a cancellation the server already
+    # applied.
+    #
+    # Either name identifies the same run: `run_id` once the client has seen a
+    # protocol frame, and before that the token it minted when it asked for the
+    # turn, which is the window where the Stop button is already live. A client
+    # that sends neither (or a chat with no replay to compare against) keeps the
+    # old behaviour.
+    run_id = data.get("run_id")
+    queue = get_background_queue(chat_id)
+    matched_run: str | None = None
+    matched_replay = None
+    names = (
+        (queue.replay.run_id, queue.replay.client_token) if queue is not None else ()
+    )
+    if run_id and run_id not in names:
+        if queue is not None and queue.producer_active:
+            # Something else is producing under a different name, so this stop
+            # is not for that run and applying it would stop a turn nobody asked
+            # to stop. But it is not necessarily for a turn that is over: a
+            # steer registers its replacement run only once its own request has
+            # been read, and until then the run being replaced is still the one
+            # producing. Keep the name so the replacement takes the stop when it
+            # arrives, and still answer stale, because nothing was stopped here.
+            remember_stop_for_unregistered_run(chat_id, run_id, reason)
+            return JSONResponse(
+                {"status": "stale_run", "run_id": queue.replay.run_id}, status_code=409
+            )
+        # Nothing of this run is here yet. The client names a turn from the
+        # moment it asks for one, and the request carrying that ask still has
+        # to be read and configured before it registers anything -- so this is
+        # a stop for a run that is on its way, not a miss. Keep it under that
+        # name and the run takes it as it registers.
+        #
+        # This is the only thing that reliably stops it. A recoverable turn is
+        # built to outlive the connection that asked for it, so the browser
+        # abandoning its own request leaves the turn running unwatched.
+        remember_stop_for_unregistered_run(chat_id, run_id, reason)
+        return JSONResponse({"status": "stopped", "stream_stopped": True})
+    if run_id and queue is not None:
+        matched_run = queue.replay.run_id
+        matched_replay = queue.replay
+
+    # Matching the replay says which run the stop meant; it does not say that
+    # run is the one holding the chat's cancellation control. A steer registers
+    # the replacement run's replay first and starts its turn after cancelling
+    # the old one, so in that window the control still belongs to the turn being
+    # replaced. Requiring the control to name the same run keeps the stop off
+    # the wrong turn; the run that has yet to start takes it on arrival.
+    success = stop_stream(chat_id, reason, expect_run=matched_run)
+    # `AcpManager.cancel` cancels whatever prompt the chat's session is running
+    # and knows nothing about runs, so it can only answer for the named run
+    # once that run is the one producing. Before then -- an ACP steer that has
+    # registered the replacement replay but not yet cancelled the old prompt --
+    # it would cancel the turn being replaced and report the stop as applied.
+    # And only while it is still producing: `producer_started` says the prompt
+    # was dispatched, never that it came back, so a closed replay kept around
+    # for a late subscriber still carries it. Cancelling on that name reaches
+    # whatever the session is running now, which is some other turn. Nor is the
+    # queue closing the first moment that becomes true: the prompt returns
+    # first, and the turn is still writing its rows and awaiting its title while
+    # the session sits idle -- or has taken somebody else's prompt.
+    # A named run has to say it has a prompt there, not merely fail to deny it.
+    # A chat that has used ACP keeps its session registered after it moves to
+    # the native runtime, where nothing ever sets this -- and cancelling that
+    # session answers success for a run it did not touch, while stopping
+    # whatever the session is running for somebody else.
+    named_run_is_live = matched_run is None or (
+        queue is not None
+        and queue.producer_active
+        and queue.replay.producer_started
+        and queue.replay.prompt_in_flight is True
+    )
+    if not success and named_run_is_live:
         try:
             from suzent.acp import get_acp_manager
 
             success = await get_acp_manager().cancel(chat_id)
         except Exception:
             success = False
+    if (
+        not success
+        and matched_run
+        and defer_stop_to_pending_run(chat_id, reason, matched_replay)
+    ):
+        # The run is real and still producing -- it just has not started yet, so
+        # it has nothing that can be cancelled. Leaving the stop on its replay is
+        # an acceptance, not a miss: the turn cancels the moment it starts and
+        # the client still gets its STREAM_END. A run already producing is past
+        # the points that read the mark, so it is refused there and a failed
+        # cancellation of a live prompt stays a failed stop -- which the client
+        # can act on, unlike a promise nothing will keep. The mark goes on the
+        # replay this stop was matched against and nowhere else: the awaited
+        # cancellation above gives a redirect room to register a replacement,
+        # and that run never carried this stop's name.
+        success = True
 
     # Stop reached a chat's blocking sub-agents only as collateral damage and
     # never its background ones. Make it mean the same thing for both, and name
@@ -763,6 +945,10 @@ async def stop_chat(request: Request) -> JSONResponse:
         {
             "status": "stopping",
             "reason": reason,
+            # Whether the turn's own stream took the cancellation, as opposed to
+            # this being a 200 about sub-agents alone. Only the former ends in a
+            # STREAM_END the client can wait for.
+            "stream_stopped": bool(success),
             "stopped_subagents": stopped_subagents,
         }
     )

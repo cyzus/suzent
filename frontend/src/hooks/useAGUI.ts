@@ -39,6 +39,37 @@ interface UseAGUIReturn {
   stopSilently: () => void;
   /** Read the current parts synchronously (e.g. to snapshot before switching chats) */
   getParts: () => AGUIPart[];
+  /**
+   * The run the live stream is on, so a caller can name it back to the backend
+   * (a stop that names its run cannot cancel the turn that replaced it). Falls
+   * back to the token this client minted for the turn, which is all there is
+   * between asking for a turn and seeing its first protocol frame.
+   */
+  getRunId: () => string | undefined;
+  /**
+   * Name the turn about to be asked for, and return that name to put in the
+   * request body. Callers that POST a turn themselves (/chat/send and friends)
+   * must call this, or a stop raised before the first frame has no run to name.
+   */
+  mintRunToken: (chatId?: string) => string;
+  retireRunToken: (token?: string) => void;
+  /**
+   * The run's name, waiting up to `timeoutMs` for the stream to supply one.
+   * Re-attaching to a turn this client did not ask for (a reload, a chat
+   * switch, a server-started turn) is the case that has to wait: Stop goes live
+   * with the reconnect, but the run only has a name once its first frame
+   * arrives. Resolves undefined if none arrives in time.
+   */
+  waitForRunId: (timeoutMs?: number) => Promise<string | undefined>;
+  /**
+   * Resolves once the request that starts a turn here has been answered -- the
+   * point from which the backend knows the run a stop would name. Turns started
+   * through this hook rather than through a POST of the caller's own (a
+   * heartbeat "Run Now", a canvas action) have no other registration signal, and
+   * Stop goes live the moment they are asked for. Resolves immediately when no
+   * start is outstanding, and never rejects.
+   */
+  whenStartRegistered: () => Promise<void>;
   clearParts: () => void;
   /**
    * Restore saved parts directly (e.g. after a page refresh) without starting a
@@ -487,6 +518,11 @@ export function processEvent(
     }
 
     case 'RUN_ERROR': {
+      // A user stop arrives on this frame, but it is an expected ending: the
+      // backend keeps the partial reply and persists it, then closes the
+      // stream with STREAM_END{persisted:true}. Reporting it as an error
+      // would abandon the stream just short of that confirmation.
+      if (data.code === 'stream_stopped') break;
       return { parts: next, error: (data.message as string) || 'Unknown error' };
     }
 
@@ -525,6 +561,18 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
   const suppressFinishRef = useRef(false);
   // Keep a ref to latest parts so onFinish gets the final value
   const partsRef = useRef<AGUIPart[]>([]);
+  // The run the live stream is on; cleared when a new one starts.
+  const runIdRef = useRef<string | undefined>(undefined);
+  // The name this client gave the turn it last asked for. The backend stores it
+  // on the run's replay, so a stop can name the run before the stream has told
+  // us the run_id the backend assigned it.
+  const clientRunTokenRef = useRef<string | undefined>(undefined);
+  // The chat that token was minted for. A probe attaching to the same chat is
+  // almost always attaching to the very turn this client just asked for, so the
+  // name it already has is the right one to keep.
+  const clientRunTokenChatRef = useRef<string | undefined>(undefined);
+  // Resolved when the outstanding start has been answered, one way or another.
+  const startRegistrationRef = useRef<Promise<void>>(Promise.resolve());
   // Publishing a token delta straight to React state re-renders the whole chat
   // view; at streaming rates that starves the main thread and scrolling crawls.
   // `publishParts` keeps `partsRef` exact and synchronous but coalesces the
@@ -626,6 +674,36 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
   }, []);
 
   const getParts = useCallback(() => partsRef.current, []);
+  const getRunId = useCallback(() => runIdRef.current ?? clientRunTokenRef.current, []);
+  const waitForRunId = useCallback(async (timeoutMs = 2000) => {
+    const deadline = Date.now() + timeoutMs;
+    while (!runIdRef.current && !clientRunTokenRef.current && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    return runIdRef.current ?? clientRunTokenRef.current;
+  }, []);
+  // Forget the name this client minted. A token outlives its usefulness the
+  // moment the turn it named is over or was never accepted, and a probe that
+  // reattaches to the same chat would otherwise hand a stop that dead name --
+  // answered with 409, which the client reads as "already stopped" while the
+  // turn actually running keeps going.
+  const retireRunToken = useCallback((token?: string) => {
+    if (token !== undefined && clientRunTokenRef.current !== token) return;
+    clientRunTokenRef.current = undefined;
+    clientRunTokenChatRef.current = undefined;
+  }, []);
+
+  const mintRunToken = useCallback((chatId?: string) => {
+    const token =
+      globalThis.crypto?.randomUUID?.() ??
+      `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+    clientRunTokenRef.current = token;
+    clientRunTokenChatRef.current = chatId;
+    runIdRef.current = undefined;
+    return token;
+  }, []);
+
+  const whenStartRegistered = useCallback(() => startRegistrationRef.current, []);
 
   const restorePartsFromSeed = useCallback(
     (seed: AGUIPart[]) => {
@@ -716,6 +794,32 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
       // there is actually an active stream — this prevents every 204 probe from
       // clearing streaming parts that should stay visible.
       const isProbe = !!opts?.urlOverride;
+      const chatId = typeof body.chat_id === 'string' ? body.chat_id : undefined;
+      // Name the turn before asking for it: the Stop button goes live now, not
+      // when the first protocol frame arrives with the backend's run_id.
+      //
+      // A probe mints nothing: it re-attaches to a turn that already has a name.
+      // It must drop the names of whatever turn was observed before, or a stop
+      // would confidently name the wrong run -- except the name this client just
+      // minted for this same chat, because the probe that follows a /chat/send,
+      // retry, edit, steer or resume is attaching to that very turn. Dropping it
+      // there would leave a stop with no run to name for as long as the first
+      // snapshot takes, and an unnamed stop lands on whatever run is current --
+      // which, after a redirect, is the replacement turn. A token kept past its
+      // turn costs nothing: the backend answers a stop that names a run it no
+      // longer has with 409 rather than stopping the wrong one.
+      const requestBody = isProbe ? body : { ...body, client_run_token: mintRunToken(chatId) };
+      if (isProbe) {
+        runIdRef.current = undefined;
+        if (!chatId || clientRunTokenChatRef.current !== chatId) {
+          retireRunToken();
+        }
+      }
+      // The name this attempt is attaching to. It is retired when this stream
+      // ends -- the turn it named is over, so a later probe on the same chat
+      // must not inherit it -- unless something newer has already replaced it,
+      // which is what a steer does while this loop is still draining.
+      const attachedToken = clientRunTokenRef.current;
 
       if (!isProbe) {
         // Normal send: reset immediately so the UI shows "submitted" while waiting.
@@ -728,9 +832,27 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
       const controller = new AbortController();
       abortRef.current = controller;
 
+      // A turn asked for here registers its run when the backend answers this
+      // request. Until then a stop has nothing to name, so publish the moment
+      // that happens -- and settle it however this attempt ends, so a waiter is
+      // never left holding a promise for a turn that never began.
+      // Held locally, not on a ref: a later send installs its own promise while
+      // this attempt is still draining, and this one must never resolve that.
+      let registered: (() => void) | null = null;
+      if (!isProbe) {
+        startRegistrationRef.current = new Promise<void>((resolve) => {
+          registered = resolve;
+        });
+      }
+      const settleStartRegistration = () => {
+        const resolve = registered;
+        registered = null;
+        resolve?.();
+      };
+
       try {
         const liveUrl = isProbe ? targetUrl : targetUrl.replace(/\/chat$/, '/chat/live');
-        const observeBody = isProbe ? body : { chat_id: body.chat_id, wait_ms: 8000 };
+        const observeBody = isProbe ? requestBody : { chat_id: requestBody.chat_id, wait_ms: 8000 };
         let started = false;
         for await (const batch of recoverableStream(
           liveUrl,
@@ -738,13 +860,15 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
           controller.signal,
           () => {
             started = true;
+            settleStartRegistration();
             setError(undefined);
             resetApprovalTracking();
             opts?.onStreamStart?.();
             setStatus('streaming');
           },
-          isProbe ? undefined : { url: targetUrl, body }
+          isProbe ? undefined : { url: targetUrl, body: requestBody }
         )) {
+          runIdRef.current = batch.runId;
           let currentParts = batch.reset ? [] : [...partsRef.current];
           if (batch.reset) resetApprovalTracking();
           for (const data of batch.events) {
@@ -792,9 +916,17 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
           onError?.(err as Error, partsRef.current);
         }
         return false;
+      } finally {
+        // Only a name this attempt actually carried: with no token of its own
+        // there is nothing to retire, and clearing blindly would take the name
+        // a steer minted while this loop was still draining.
+        if (attachedToken) retireRunToken(attachedToken);
+        // A start that never reached `onStart` -- refused, aborted, failed --
+        // still has to release whoever is waiting on it.
+        settleStartRegistration();
       }
     },
-    [publishParts, resetApprovalTracking, setPendingApprovalCountSync]
+    [mintRunToken, publishParts, resetApprovalTracking, retireRunToken, setPendingApprovalCountSync]
   );
 
   return {
@@ -805,6 +937,11 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
     stop,
     stopSilently,
     getParts,
+    getRunId,
+    mintRunToken,
+    retireRunToken,
+    waitForRunId,
+    whenStartRegistered,
     clearParts,
     restorePartsFromSeed,
     removeInlineSurface,

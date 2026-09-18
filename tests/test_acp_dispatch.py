@@ -141,7 +141,7 @@ async def test_stream_acp_turn_no_output():
         managed_mock.cwd = "/tmp"
 
         # Mock client.prompt to return empty response
-        async def mock_prompt(session_id, message):
+        async def mock_prompt(session_id, message, on_sent=None):
             return {"text": ""}
 
         managed_mock.client.prompt = mock_prompt

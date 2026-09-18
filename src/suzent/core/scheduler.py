@@ -18,6 +18,7 @@ from suzent.database import get_database
 from suzent.logger import get_logger
 from suzent.core.stream_registry import (
     stream_controls,
+    producing_run,
     register_background_stream,
     unregister_background_stream,
 )
@@ -381,14 +382,17 @@ class SchedulerBrain(BaseBrain):
 
         stream_queue = register_background_stream(chat_id)
         try:
-            return await processor.process_turn_text(
-                chat_id=chat_id,
-                user_id=CONFIG.user_id,
-                message_content="",
-                config_override=config_override,
-                _stream_queue=stream_queue,
-                system_reminders=[cron_msg],
-            )
+            # The frontend can attach to this queue and stop the job by name,
+            # so the turn's control has to know which run it is cancelling.
+            with producing_run(stream_queue.replay):
+                return await processor.process_turn_text(
+                    chat_id=chat_id,
+                    user_id=CONFIG.user_id,
+                    message_content="",
+                    config_override=config_override,
+                    _stream_queue=stream_queue,
+                    system_reminders=[cron_msg],
+                )
         except RuntimeError as e:
             logger.error(f"Cron job {job_id} error: {e}")
             db.update_cron_job_run_state(job_id, last_error=str(e))

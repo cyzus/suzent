@@ -754,7 +754,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
               disabled={stopInFlight}
               title={t('chatInput.stopGenerating')}
             >
-              {t('chatInput.stop').toUpperCase()}
+              {(stopInFlight ? t('chatInput.stopping') : t('chatInput.stop')).toUpperCase()}
             </button>
           ) : (
             <button

@@ -315,12 +315,15 @@ def test_the_stale_session_retry_keeps_the_preamble() -> None:
     precedence rules for exactly the sub-agents that recovered from a stale
     session — the ones that had already hit a problem."""
     import inspect
+    import re
 
     from suzent.acp import runtime
 
     source = inspect.getsource(runtime._run_acp_turn)
+    # Whole-source, not line by line: the call is free to wrap.
     calls = [
-        line.strip() for line in source.splitlines() if "_stream_prompt(managed" in line
+        " ".join(args.split())
+        for args in re.findall(r"_stream_prompt\((.*?)\)", source, re.S)
     ]
 
     assert len(calls) == 2, f"expected first attempt and retry, got {calls}"

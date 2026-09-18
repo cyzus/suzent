@@ -45,6 +45,7 @@ from suzent.core.message_history import (
 )
 from suzent.core.stream_registry import (
     StreamControl,
+    claim_stream_control,
     stream_controls,
     stop_stream,  # noqa: F401 — re-export for backwards compat
     merge_pending_auto_approvals,
@@ -1136,7 +1137,7 @@ async def stream_agent_responses(
     # wrote; see the trigger-row placement in chat_processor.
     run_id = run_id or str(uuid.uuid4())
     if chat_id:
-        stream_controls[chat_id] = control
+        claim_stream_control(chat_id, control)
     # Indicates whether the stream paused waiting for user approvals.
     # When True, keep cached auto-approvals for the next resume request.
     deps.is_suspended = False
@@ -2085,7 +2086,13 @@ async def stream_agent_responses(
                 msg = await asyncio.wait_for(out_queue.get(), timeout=0.5)
             except asyncio.TimeoutError:
                 if control.cancel_event.is_set():
-                    err = RunErrorEvent(message="Stream stopped by user")
+                    # Tagged, because a stop is not a failure: the turn drains,
+                    # keeps its partial reply and persists it like any other.
+                    # A client that reads this as an error tears the stream
+                    # down before the confirmed STREAM_END it is waiting for.
+                    err = RunErrorEvent(
+                        message="Stream stopped by user", code="stream_stopped"
+                    )
                     yield _encoder.encode(err)
                     break
                 continue

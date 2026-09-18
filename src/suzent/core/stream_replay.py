@@ -36,6 +36,33 @@ class StreamReplay:
         # None means no producer claimed the contract — treated as persisted,
         # which is why every recoverable producer must attach one.
         self.persistence: asyncio.Future[bool] | None = None
+        # The name the client gave this turn when it asked for it, minted before
+        # the POST. `run_id` only reaches the client once the first protocol
+        # frame does, so between "Stop is clickable" and that frame this is the
+        # only name a stop can use for the run it means. None for turns nobody
+        # named (schedulers, sub-agents, inbox deliveries).
+        self.client_token: str | None = None
+        # A stop accepted for this run before the run had a control to take it.
+        # /chat/steer-send installs the replacement replay (and its name) while
+        # the turn being replaced is still the one holding the chat's control,
+        # so a stop landing in that window must travel with the run it named
+        # and be taken when that run finally starts.
+        self.stop_requested: str | None = None
+        # Whether this run's producer is running, and so can take a stop
+        # itself. False covers both "the turn has not started yet" and the
+        # window a steer opens by registering this replay before the turn it
+        # replaces has been cancelled -- where a cancellation aimed at the chat
+        # would land on that other turn.
+        self.producer_started: bool = False
+        # Whether a prompt of this run is in flight at the agent right now.
+        # `producer_started` never goes back down once a run is past the points
+        # that read a deferred stop, so it still says "started" while the turn
+        # writes its rows and waits on its title lookup -- and cancelling the
+        # chat's session in that window reaches whatever it is running now.
+        # The ACP path sets this around each prompt attempt. None means a run
+        # that does not track prompts at all, where `producer_started` alone
+        # decides.
+        self.prompt_in_flight: bool | None = None
         self.events: list[dict[str, Any]] = []
         self.tail: deque[tuple[int, dict[str, Any]]] = deque(maxlen=capacity)
         self.changed = asyncio.Event()

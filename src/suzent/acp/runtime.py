@@ -3,15 +3,20 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import uuid
 from typing import Any, AsyncGenerator
 
 from suzent.core.auto_title import generate_auto_title, should_generate_auto_title
+from suzent.core.stream_registry import claim_pending_stop
+from suzent.logger import get_logger
 from suzent.database import get_database
 
 from .manager import get_acp_manager
 from .permissions import PERMISSION_QUEUE_KEY
+
+logger = get_logger(__name__)
 
 
 def _sse(event: dict[str, Any]) -> str:
@@ -78,12 +83,50 @@ async def _stream_prompt(
     message: str,
     message_id: str,
     state: dict[str, Any],
+    go_live: Any | None = None,
 ) -> AsyncGenerator[str, None]:
-    """Run one prompt turn, recording text, stopReason, and any agent error."""
+    """Run one prompt turn, recording text, stopReason, and any agent error.
+
+    *go_live* is called once the prompt has actually been written to the agent,
+    and returns a stop reason if one was accepted while it was still on its way.
+    Scheduling the request is not sending it: between `create_task` and the
+    first byte the session is still idle, so a `session/cancel` sent in that
+    window is answered by a session with nothing to cancel and the prompt runs
+    on afterwards. Waiting for the write closes that window, and honouring
+    whatever *go_live* hands back closes the one before it.
+    """
+    dispatched = asyncio.Event()
     prompt_task = asyncio.create_task(
-        managed.client.prompt(managed.session_id, message)
+        managed.client.prompt(managed.session_id, message, on_sent=dispatched.set)
     )
     try:
+        # Either the request is on the wire or the attempt is already over --
+        # a dead process raises before sending, and waiting for a signal that
+        # is never coming would hang the turn. The loser of that race is this
+        # waiter, which is never woken: dropped rather than cancelled, it and
+        # its event would be held for the life of the process, one pair per
+        # failed connection.
+        waiter = asyncio.ensure_future(dispatched.wait())
+        try:
+            await asyncio.wait(
+                [waiter, prompt_task], return_when=asyncio.FIRST_COMPLETED
+            )
+        finally:
+            waiter.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await waiter
+        # Only if the dispatch waiter is what woke us. A prompt that raised
+        # before the write -- a dead process, a closed stdin -- ends the attempt
+        # without the agent ever hearing it, and calling the session live there
+        # would take a stop waiting for this run and answer it by cancelling a
+        # session that is running nothing.
+        deferred_stop = (
+            go_live() if go_live is not None and dispatched.is_set() else None
+        )
+        if deferred_stop:
+            # Accepted while the prompt was in flight, so it was never delivered
+            # to the session. Now that the agent has the prompt, it can hear it.
+            await get_acp_manager().cancel(managed.chat_id)
         while True:
             if prompt_task.done() and managed.updates.empty():
                 break
@@ -177,6 +220,7 @@ async def stream_acp_steer(
     config_override: dict[str, Any] | None = None,
     *,
     replay: Any | None = None,
+    prewritten: bool = False,
 ) -> AsyncGenerator[str, None]:
     """Cancel the running ACP prompt, then send a new turn.
 
@@ -189,7 +233,7 @@ async def stream_acp_steer(
     except Exception:
         pass  # Nothing running is fine; we'll still send the new turn.
     async for event in stream_acp_turn(
-        chat_id, message, config_override, replay=replay
+        chat_id, message, config_override, replay=replay, prewritten=prewritten
     ):
         yield event
 
@@ -204,6 +248,7 @@ async def stream_acp_turn(
     runtime_authored: bool = False,
     system_preamble: str | None = None,
     replay: Any | None = None,
+    prewritten: bool = False,
 ) -> AsyncGenerator[str, None]:
     """Run one ACP turn, claiming the replay's persistence contract for it.
 
@@ -216,16 +261,40 @@ async def stream_acp_turn(
     client trusts enough to replace what it is showing.
     """
     persistence = _attach_persistence(replay)
+
+    # A stop this run was already given, before it existed to take one. The
+    # steer route registers this run's replay and then cancels the turn it
+    # replaces, so a stop landing in between is accepted against this run's
+    # name and left here for it. Honour it the way a stop mid-turn is honoured:
+    # nothing was produced, so the persistence contract is met, and the tagged
+    # error tells the client this is the stop it asked for.
+    pending_stop = _claim_pending_stop(replay)
+    if pending_stop:
+        # The turn ran nothing, but the user did send something. The direct
+        # /chat stream has no route that pre-wrote that row, so store it here
+        # or the reload the client trusts after a stop comes back without the
+        # prompt in it.
+        stored = _persist_stopped_prompt(
+            chat_id, message, runtime_authored, files, prewritten=prewritten
+        )
+        _resolve_persistence(persistence, stored)
+        yield _sse(
+            {"type": "RUN_ERROR", "message": pending_stop, "code": "stream_stopped"}
+        )
+        return
+
     try:
         async for chunk in _run_acp_turn(
             chat_id,
             message,
             config_override,
             persistence=persistence,
+            replay=replay,
             files=files,
             file_mentions=file_mentions,
             runtime_authored=runtime_authored,
             system_preamble=system_preamble,
+            prewritten=prewritten,
         ):
             yield chunk
     finally:
@@ -234,32 +303,13 @@ async def stream_acp_turn(
         _resolve_persistence(persistence, False)
 
 
-async def _run_acp_turn(
-    chat_id: str,
-    message: str,
-    config_override: dict[str, Any] | None = None,
-    *,
-    persistence: asyncio.Future[bool] | None,
-    files: list[Any] | None = None,
-    file_mentions: list[Any] | None = None,
-    runtime_authored: bool = False,
-    system_preamble: str | None = None,
-) -> AsyncGenerator[str, None]:
-    db = get_database()
-    chat = db.get_chat(chat_id)
-    if chat is None:
-        yield _sse({"type": "RUN_ERROR", "message": "Chat not found"})
-        return
-    config = {**dict(chat.config or {}), **dict(config_override or {})}
-    config["runtime"] = "acp"
-    run_id = str(uuid.uuid4())
-    message_id = str(uuid.uuid4())
-    message_open = False
-    # Annotate the prompt with user-referenced file paths so the ACP agent
-    # can act on them — it runs locally and has filesystem access.
-    # Only the agent sees that annotation; the transcript keeps what the user
-    # typed. Comparing the annotated text against the stored row defeated the
-    # duplicate check below and persisted the message twice.
+def _derive_user_row(message: str, runtime_authored: bool) -> tuple[str, str, str]:
+    """Sanitize a prompt and derive the transcript row it should leave.
+
+    Returns the text to send the agent, the role to store it under, and the
+    content to store. Shared with the stopped-before-it-started path, which
+    stores the row without running anything.
+    """
     from suzent.core.system_reminder import (
         extract_system_reminder_display_trigger,
         sanitize_incoming_prompt,
@@ -306,8 +356,201 @@ async def _run_acp_turn(
         if persisted_role == "system_triggered"
         else visible_user_message
     )
+    return message, persisted_role, persisted_content
+
+
+def _display_files(files: list[Any] | None) -> list[dict]:
+    """The attachment metadata the transcript row carries, JSON-safe.
+
+    Same shape /chat/send pre-writes, so a row stored here and a row stored
+    there render as the same message. A multipart /chat request hands this path
+    Starlette `UploadFile` objects instead of metadata dicts; dropping those
+    would lose the attachment from the transcript entirely -- and, for a message
+    that is nothing but files, leave the stopped turn with no row to promise.
+    """
+    rows: list[dict] = []
+    for file in files or []:
+        if isinstance(file, dict):
+            rows.append(file)
+            continue
+        filename = getattr(file, "filename", None)
+        if not filename:
+            continue
+        row: dict[str, Any] = {"filename": filename}
+        mime_type = getattr(file, "content_type", None)
+        if mime_type:
+            row["mime_type"] = mime_type
+        size = getattr(file, "size", None)
+        if isinstance(size, int):
+            row["size"] = size
+        rows.append(row)
+    return rows
+
+
+def _attachment_identity(files: Any) -> list[tuple]:
+    """What makes two attachment lists the same message rather than two.
+
+    Presence alone is not enough: the same text sent twice with different files
+    -- a stopped turn resent with another upload, or two file-only messages --
+    would read as the row already being there, and the second message would be
+    dropped while the turn promised it had been stored.
+    """
+    return [
+        (
+            str(row.get("filename") or ""),
+            str(row.get("mime_type") or ""),
+            row.get("size"),
+        )
+        for row in (files or [])
+        if isinstance(row, dict)
+    ]
+
+
+def _append_user_row(
+    db: Any,
+    chat_id: str,
+    existing: list[Any],
+    role: str,
+    content: str,
+    files: list[Any] | None = None,
+    *,
+    prewritten: bool = False,
+) -> bool:
+    """Store the user's row unless the route already pre-wrote it.
+
+    /chat/send pre-writes it so the UI has something to show before the first
+    token arrives; the direct /chat stream does not. Returns whether the row is
+    in the transcript afterwards, which is what a caller resolving the
+    persistence contract has to promise.
+
+    `prewritten` is the route saying it wrote that row, and nothing else stands
+    in for it. Inferring it from the message -- same text, same attachments as
+    the last row -- reads a prompt the user deliberately sent again after
+    stopping the first one as a row already there, and drops it while promising
+    the reload holds it.
+
+    Attachments are part of that row: a message can be nothing but files, and a
+    row stored without them is not the message the user sent.
+    """
+    attachments = _display_files(files)
+    if not content.strip() and not attachments:
+        return True
+    if (
+        existing
+        and prewritten
+        and existing[-1].get("role") == role
+        and str(existing[-1].get("content") or "").strip() == content.strip()
+        and _attachment_identity(existing[-1].get("files"))
+        == _attachment_identity(attachments)
+    ):
+        return True
+    entry: dict[str, Any] = {"role": role, "content": content.strip()}
+    if attachments:
+        entry["files"] = attachments
+    return bool(db.append_chat_message(chat_id, entry))
+
+
+def _stopped_frames(message_id: str, reason: str) -> list[str]:
+    """Close the open assistant message and report the stop the way a stop is.
+
+    Tagged, so the client keeps listening for the STREAM_END that confirms the
+    turn instead of tearing the connection down on an error notice.
+    """
+    return [
+        _sse({"type": "TEXT_MESSAGE_END", "messageId": message_id}),
+        _sse({"type": "RUN_ERROR", "message": reason, "code": "stream_stopped"}),
+    ]
+
+
+def _claim_pending_stop(replay: Any | None) -> str | None:
+    """Take the stop that was left for this run before it could take one.
+
+    The same claim the native path makes when it installs its control, so both
+    runtimes honour a deferred stop by the one rule: cleared here, owed to the
+    client by whoever cleared it.
+    """
+    return claim_pending_stop(replay)
+
+
+def _persist_stopped_prompt(
+    chat_id: str,
+    message: str,
+    runtime_authored: bool,
+    files: list[Any] | None = None,
+    *,
+    prewritten: bool = False,
+) -> bool:
+    """Store the prompt of a turn stopped before it ever ran.
+
+    The turn produced nothing, but the user did send something, and the client
+    trusts the reload that follows a stop: without the row, that reload shows a
+    history with the prompt missing. Returns whether the transcript really holds
+    it, so the stop reports `persisted: false` -- and the client keeps showing
+    what it has -- rather than sending the user to a reload that lost it.
+    """
+    try:
+        db = get_database()
+        chat = db.get_chat(chat_id)
+        if chat is None:
+            return False
+        _, role, content = _derive_user_row(message, runtime_authored)
+        return _append_user_row(
+            db,
+            chat_id,
+            list(chat.messages or []),
+            role,
+            content,
+            files,
+            prewritten=prewritten,
+        )
+    except Exception as exc:  # pragma: no cover - a stop must not fail on this
+        # The type only. A database error carries its statement's bound
+        # parameters, which here are the user's prompt and their attachments'
+        # names -- exactly what must not reach a log.
+        logger.debug(
+            f"Could not store the prompt of a stopped ACP turn: {type(exc).__name__}"
+        )
+        return False
+
+
+async def _run_acp_turn(
+    chat_id: str,
+    message: str,
+    config_override: dict[str, Any] | None = None,
+    *,
+    persistence: asyncio.Future[bool] | None,
+    files: list[Any] | None = None,
+    file_mentions: list[Any] | None = None,
+    runtime_authored: bool = False,
+    system_preamble: str | None = None,
+    replay: Any | None = None,
+    prewritten: bool = False,
+) -> AsyncGenerator[str, None]:
+    db = get_database()
+    chat = db.get_chat(chat_id)
+    if chat is None:
+        yield _sse({"type": "RUN_ERROR", "message": "Chat not found"})
+        return
+    config = {**dict(chat.config or {}), **dict(config_override or {})}
+    config["runtime"] = "acp"
+    run_id = str(uuid.uuid4())
+    message_id = str(uuid.uuid4())
+    message_open = False
+    # Annotate the prompt with user-referenced file paths so the ACP agent
+    # can act on them — it runs locally and has filesystem access.
+    # Only the agent sees that annotation; the transcript keeps what the user
+    # typed. Comparing the annotated text against the stored row defeated the
+    # duplicate check below and persisted the message twice.
+    message, persisted_role, persisted_content = _derive_user_row(
+        message, runtime_authored
+    )
     file_context = _build_acp_file_context(file_mentions, files)
     if file_context:
+        from suzent.core.system_reminder import (
+            sanitize_incoming_prompt,
+            sanitize_untrusted_text,
+        )
+
         message = f"{file_context}\n\n{message}" if message else file_context
         # File annotations interpolate caller-supplied paths, so the assembled
         # prompt is untrusted again even though `message` was already clean.
@@ -381,17 +624,15 @@ async def _run_acp_turn(
             )
             return
 
-        # /chat/send pre-writes the user's row so the UI has something to show
-        # before the first token arrives; only append when that didn't happen.
-        if persisted_content.strip() and not (
-            existing
-            and existing[-1].get("role") == persisted_role
-            and str(existing[-1].get("content") or "").strip()
-            == persisted_content.strip()
-        ):
-            db.append_chat_message(
-                chat_id, {"role": persisted_role, "content": persisted_content.strip()}
-            )
+        stored_prompt = _append_user_row(
+            db,
+            chat_id,
+            existing,
+            persisted_role,
+            persisted_content,
+            files,
+            prewritten=prewritten,
+        )
 
         # Auto-titling lives in suzent.streaming, which an ACP turn never goes
         # through -- so every ACP chat stayed named "New Chat". The title comes
@@ -417,8 +658,59 @@ async def _run_acp_turn(
         # something the user said — internal policy text in a persisted user row
         # misrepresents the conversation to anyone auditing it later.
         _prompt = f"{system_preamble}\n{message}" if system_preamble else message
-        async for event in _stream_prompt(managed, _prompt, message_id, state):
-            yield event
+
+        def _go_live() -> str | None:
+            """The run's prompt is now the one the chat's session is running.
+
+            Until this point a stop has nothing to cancel, so the route leaves
+            it on the replay instead of reporting one the agent never hears;
+            from here on /chat/stop answers for this run by cancelling the
+            session. The handover takes any stop left in that window, so one
+            that arrived a moment too early is carried out rather than
+            stranded.
+            """
+            if replay is None:
+                return None
+            replay.producer_started = True
+            replay.prompt_in_flight = True
+            return _claim_pending_stop(replay)
+
+        def _go_idle() -> None:
+            """The prompt is back; the session is no longer running this turn.
+
+            What is left -- the assistant row, the title lookup -- cannot be
+            cancelled, and the session may already be carrying somebody else's
+            prompt. A stop arriving now is answered as the miss it is rather
+            than by cancelling whatever the session happens to be running.
+            """
+            if replay is not None:
+                replay.prompt_in_flight = False
+
+        # Connecting the session is the longest part of a turn, and a stop that
+        # arrives during it has no prompt to cancel. This is the last moment one
+        # can be honoured for free: before it, the agent has been given nothing
+        # at all.
+        pending_stop = _claim_pending_stop(replay)
+        if pending_stop:
+            message_open = False
+            # The agent was never prompted, so nothing it produced is missing --
+            # only the user's row has to be there, and the turn says so only if
+            # it really is.
+            _resolve_persistence(persistence, stored_prompt)
+            for frame in _stopped_frames(message_id, pending_stop):
+                yield frame
+            return
+        # In a finally: the prompt can fail after it was dispatched -- a
+        # JSON-RPC error from a live agent -- and that raises through here.
+        # The session is idle either way, and a mark left standing offers it
+        # to the next stop for a run whose prompt is long gone.
+        try:
+            async for event in _stream_prompt(
+                managed, _prompt, message_id, state, _go_live
+            ):
+                yield event
+        finally:
+            _go_idle()
 
         # A session restored with session/load that fails its very first turn is
         # almost always stale: the agent accepted an id its process no longer
@@ -429,6 +721,14 @@ async def _run_acp_turn(
             and not "".join(state["parts"]).strip()
             and state["stop_reason"] == "error"
         ):
+            # The session that was running this turn's prompt is gone, and
+            # building a fresh one takes as long as the first connect did. The
+            # run is not live for that window: a stop landing in it has nothing
+            # to cancel, so it belongs back on the replay rather than being
+            # reported against a session that cannot carry it out.
+            if replay is not None:
+                replay.producer_started = False
+                replay.prompt_in_flight = False
             managed = await get_acp_manager().create(
                 chat_id,
                 managed.agent_id,
@@ -449,17 +749,55 @@ async def _run_acp_turn(
                 }
             )
             state = {"parts": [], "stop_reason": "", "error": ""}
+            # Same rule as the first prompt: take any stop from the reconnect
+            # window here, and only then say the new session is running this
+            # run's prompt.
+            pending_stop = _claim_pending_stop(replay)
+            if pending_stop:
+                message_open = False
+                _resolve_persistence(persistence, stored_prompt)
+                for frame in _stopped_frames(message_id, pending_stop):
+                    yield frame
+                return
             # _prompt, not message: the retry is the same request, so it needs
             # the same preamble. Passing `message` here dropped the precedence
             # rules for exactly the sub-agents that recovered from a stale
             # session.
-            async for event in _stream_prompt(managed, _prompt, message_id, state):
-                yield event
+            try:
+                async for event in _stream_prompt(
+                    managed, _prompt, message_id, state, _go_live
+                ):
+                    yield event
+            finally:
+                _go_idle()
 
         text = "".join(state["parts"])
         yield _sse({"type": "TEXT_MESSAGE_END", "messageId": message_id})
         message_open = False
         if not text.strip():
+            if state.get("stop_reason") == "cancelled":
+                # A stop is not a failure here either. The native path tags its
+                # own cancellation frame the same way, and the client reads the
+                # tag to keep listening for the stream's real ending instead of
+                # tearing the connection down on an error notice.
+                #
+                # The contract is "everything this turn produced is in the
+                # database", and a turn stopped before its first token produced
+                # nothing from the agent -- so the user's row is all of it.
+                # Where that row landed the contract is met, and saying
+                # otherwise would turn the stop the client just accepted back
+                # into "Stream persistence failed"; where it did not, the
+                # reload this promise sends the client to would come back
+                # without the prompt they just sent.
+                _resolve_persistence(persistence, stored_prompt)
+                yield _sse(
+                    {
+                        "type": "RUN_ERROR",
+                        "message": "Stream stopped by user",
+                        "code": "stream_stopped",
+                    }
+                )
+                return
             yield _sse({"type": "RUN_ERROR", "message": _no_output_error(state)})
             return
 
@@ -478,7 +816,11 @@ async def _run_acp_turn(
                 "model": f"acp/{managed.agent_id}",
             },
         )
-        _resolve_persistence(persistence, stored is not False)
+        # Both rows or neither, as far as the client is concerned: an answer
+        # stored without the prompt that asked for it is a transcript the reload
+        # would come back holding, so a turn that lost the prompt row must not
+        # tell the client its reload is trustworthy.
+        _resolve_persistence(persistence, stored_prompt and stored is not False)
         if title_task is not None:
             try:
                 title = await title_task

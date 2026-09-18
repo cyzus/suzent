@@ -18,6 +18,7 @@ from typing import AsyncGenerator, List, Dict, Any, Optional
 
 from ag_ui.core import (
     CustomEvent,
+    RunErrorEvent,
     RunStartedEvent,
     RunFinishedEvent,
     TextMessageStartEvent,
@@ -50,8 +51,11 @@ from suzent.tools.filesystem.path_resolver import PathResolver
 from suzent.routes.sandbox_routes import sanitize_filename
 from suzent.core.stream_parser import StreamParser, TextChunk, ErrorEvent
 from suzent.core.stream_registry import (
+    claim_pending_stop,
+    current_run_replay,
     get_background_queue,
     pop_pending_auto_approvals,
+    producing_run,
     register_background_stream,
 )
 
@@ -93,11 +97,17 @@ def _merge_citation_sources_from_sse(chunk: str, target: list[dict]) -> None:
     target[:] = by_id.values()
 
 
-def _emit_notice_stream(chat_id: str, text: str) -> AsyncGenerator[str, None]:
+def _emit_notice_stream(
+    chat_id: str, text: str, stopped: str | None = None
+) -> AsyncGenerator[str, None]:
     """Yield a minimal self-contained SSE run that shows ``text`` as a notice row.
 
     Used by terminal paths (slash commands, /retry errors) that need to surface
     a one-shot message and finish the stream without invoking the agent.
+
+    *stopped* is a stop that was accepted for this run. It is reported the way
+    every other path reports one -- tagged, so the client reads it as the stop
+    it asked for rather than as a failure.
     """
 
     async def _gen() -> AsyncGenerator[str, None]:
@@ -111,6 +121,8 @@ def _emit_notice_stream(chat_id: str, text: str) -> AsyncGenerator[str, None]:
         yield enc.encode(TextMessageStartEvent(message_id=msg_id, role="assistant"))
         yield enc.encode(TextMessageContentEvent(message_id=msg_id, delta=text))
         yield enc.encode(TextMessageEndEvent(message_id=msg_id))
+        if stopped:
+            yield enc.encode(RunErrorEvent(message=stopped, code="stream_stopped"))
         yield enc.encode(RunFinishedEvent(run_id=run_id, thread_id=chat_id))
         yield "data: [DONE]\n\n"
 
@@ -137,6 +149,62 @@ def _append_command_messages(
     if assistant_content and assistant_content.strip():
         updated.append({"role": "notice", "content": assistant_content})
     return updated
+
+
+def _persist_command_pair(chat_id: str, user_content: str, notice: str) -> bool:
+    """Store the command the user sent and the notice they were shown.
+
+    A command turn writes its own rows: nothing prewrites a slash command, and
+    the turn ends without the agent ever running. Skipping this leaves the
+    stream claiming the reload is trustworthy while that reload comes back
+    without the command or the answer to it.
+
+    Returns whether the rows are really stored, so the caller can put that
+    answer where the client will see it rather than let a failed write pass for
+    a good one.
+    """
+    try:
+        db = get_database()
+        chat = db.get_chat(chat_id)
+        if chat is None:
+            return False
+        # False when the chat disappeared between the lookup and this write:
+        # nothing was stored, and saying otherwise sends the client to reload
+        # over the rows it was just shown.
+        return bool(
+            db.update_chat(
+                chat_id,
+                messages=_append_command_messages(
+                    list(chat.messages or []), user_content, notice
+                ),
+            )
+        )
+    except Exception as exc:
+        # The type only. A database error carries its statement's bound
+        # parameters, which here are the command the user typed and the whole
+        # transcript it was appended to -- exactly what must not reach a log.
+        logger.debug(
+            f"Failed to persist slash command result for {chat_id}: "
+            f"{type(exc).__name__}"
+        )
+        return False
+
+
+def _report_command_persistence(persisted: bool) -> None:
+    """Carry a command turn's write outcome into its replay contract.
+
+    `persisted` on a replay with no persistence future means "nobody wrote
+    anything, so there is nothing to wait for" -- true of a producer that never
+    claimed the contract, and a lie for a turn that tried to write and failed.
+    The client reads STREAM_END{persisted:true} as permission to reload; on a
+    failed write that reload drops the command and the notice it just showed.
+    """
+    replay = current_run_replay.get()
+    if replay is None:
+        return
+    future: asyncio.Future[bool] = asyncio.get_running_loop().create_future()
+    future.set_result(persisted)
+    replay.persistence = future
 
 
 def _coerce_approval_args(raw_args: Any) -> dict[str, Any]:
@@ -790,26 +858,72 @@ class ChatProcessor:
             if is_social:
                 origin_surface = "social"
 
-            cmd_result = await _dispatch_command(
-                _CmdCtx(chat_id=chat_id, user_id=user_id, surface=origin_surface),
-                message_content,
-            )
-            if cmd_result is not None:
-                try:
-                    db = get_database()
-                    chat = db.get_chat(chat_id)
-                    if chat is not None:
-                        existing_messages = list(chat.messages or [])
-                        updated_messages = _append_command_messages(
-                            existing_messages, message_content, cmd_result
-                        )
-                        db.update_chat(chat_id, messages=updated_messages)
-                except Exception as e:
-                    logger.debug(
-                        f"Failed to persist slash command result for {chat_id}: {e}"
-                    )
+            # A slash command answers the turn by itself: the agent never runs,
+            # so nothing installs a cancellation control and a stop accepted for
+            # this run would sit unread on the replay while a long command --
+            # /compact, anything that reaches a remote node -- ran to the end.
+            # Take it here instead. Before the command, declining to run it is
+            # the stop; after it, the work is done and the ending is all that is
+            # left to give, but the client is owed that either way.
+            stopped = claim_pending_stop(current_run_replay.get())
+            if stopped:
+                notice = "⏹ Stopped before the command ran."
+                # The same rows the command path writes. Without them the turn
+                # still promises the reload is trustworthy, and that reload
+                # comes back missing both the command and this notice.
+                _report_command_persistence(
+                    _persist_command_pair(chat_id, message_content, notice)
+                )
+                async for chunk in _emit_notice_stream(
+                    chat_id, notice, stopped=stopped
+                ):
+                    yield chunk
+                return
 
-                async for chunk in _emit_notice_stream(chat_id, cmd_result):
+            # Past the point where a stop can be accepted for this run. The
+            # command is a plain await with nothing watching it -- /compact, or
+            # anything that reaches a remote node, holds it -- so a stop
+            # deferred onto the replay now would be read only once the work was
+            # already done, after the client had been told it was applied.
+            # Refusing it there is the honest answer. `prompt_in_flight` is
+            # False beside it because this run has no prompt at the agent, and
+            # cancelling the chat's session for it would reach whatever else
+            # that session is running.
+            command_replay = current_run_replay.get()
+            was_started = False
+            was_in_flight: bool | None = None
+            if command_replay is not None:
+                was_started = command_replay.producer_started
+                was_in_flight = command_replay.prompt_in_flight
+                command_replay.producer_started = True
+                command_replay.prompt_in_flight = False
+
+            cmd_result = None
+            try:
+                cmd_result = await _dispatch_command(
+                    _CmdCtx(chat_id=chat_id, user_id=user_id, surface=origin_surface),
+                    message_content,
+                )
+            finally:
+                # Only a command that answered the turn is unstoppable, and
+                # every other message comes back through here: an ordinary
+                # prompt, an unrecognized slash command. That turn goes on to
+                # the agent, with reminders and a memory lookup before anything
+                # installs a control -- a window a stop must still be able to
+                # reach, or the client is answered 404 for a turn that runs.
+                if command_replay is not None and cmd_result is None:
+                    command_replay.producer_started = was_started
+                    command_replay.prompt_in_flight = was_in_flight
+            if cmd_result is not None:
+                _report_command_persistence(
+                    _persist_command_pair(chat_id, message_content, cmd_result)
+                )
+
+                async for chunk in _emit_notice_stream(
+                    chat_id,
+                    cmd_result,
+                    stopped=claim_pending_stop(current_run_replay.get()),
+                ):
                     yield chunk
                 return
 
@@ -1834,17 +1948,21 @@ class ChatProcessor:
         # frontend connections (e.g. after a fast wakeup turn) still find the queue.
         # If no subscriber ever connects, the next register_background_stream call
         # for the same chat_id replaces the stale queue.
-        return await self.process_turn_text(
-            chat_id=chat_id,
-            user_id=user_id,
-            message_content=message_content,
-            config_override=config_override,
-            is_heartbeat=is_heartbeat,
-            _stream_queue=stream_queue,
-            system_reminders=system_reminders,
-            incoming_citation_sources=incoming_citation_sources,
-            counts_toward_goal=counts_toward_goal,
-        )
+        # Say which run this turn is producing: the frontend can attach to this
+        # queue and stop it by name, and a control that never learned its run
+        # refuses every stop that names one.
+        with producing_run(stream_queue.replay):
+            return await self.process_turn_text(
+                chat_id=chat_id,
+                user_id=user_id,
+                message_content=message_content,
+                config_override=config_override,
+                is_heartbeat=is_heartbeat,
+                _stream_queue=stream_queue,
+                system_reminders=system_reminders,
+                incoming_citation_sources=incoming_citation_sources,
+                counts_toward_goal=counts_toward_goal,
+            )
 
     async def _process_upload_file(
         self, file_obj, host_path: Path, agent_path_prefix: str
