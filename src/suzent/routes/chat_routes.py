@@ -22,6 +22,7 @@ from suzent.database import get_database
 from suzent.logger import get_logger
 from suzent.streaming import stop_stream
 from suzent.core.stream_registry import (
+    bind_producer_replay,
     defer_stop_to_pending_run,
     get_background_queue,
     is_background_streaming,
@@ -210,6 +211,10 @@ def _recoverable_response(
     generator = make_generator(queue.replay)
 
     async def produce() -> None:
+        # Say which run this task is producing, so its turn binds its
+        # cancellation control to this replay rather than to whatever replay
+        # the chat holds by the time the turn gets going.
+        bind_producer_replay(queue.replay)
         try:
             async for chunk in generator:
                 await queue.put(chunk)
@@ -481,6 +486,7 @@ async def chat_send(request: Request) -> JSONResponse:
     stream_queue.replay.client_token = data.get("client_run_token")
 
     async def _run() -> None:
+        bind_producer_replay(stream_queue.replay)
         try:
             if effective_runtime == "acp":
                 from suzent.acp.runtime import stream_acp_turn
@@ -558,6 +564,7 @@ async def steer_chat_send(request: Request) -> JSONResponse:
     stream_queue.replay.client_token = data.get("client_run_token")
 
     async def _run() -> None:
+        bind_producer_replay(stream_queue.replay)
         try:
             if effective_runtime == "acp":
                 from suzent.acp.runtime import stream_acp_steer
@@ -761,7 +768,15 @@ async def stop_chat(request: Request) -> JSONResponse:
     # replaced. Requiring the control to name the same run keeps the stop off
     # the wrong turn; the run that has yet to start takes it on arrival.
     success = stop_stream(chat_id, reason, expect_run=matched_run)
-    if not success:
+    # `AcpManager.cancel` cancels whatever prompt the chat's session is running
+    # and knows nothing about runs, so it can only answer for the named run
+    # once that run is the one producing. Before then -- an ACP steer that has
+    # registered the replacement replay but not yet cancelled the old prompt --
+    # it would cancel the turn being replaced and report the stop as applied.
+    named_run_is_live = matched_run is None or (
+        queue is not None and queue.replay.producer_started
+    )
+    if not success and named_run_is_live:
         try:
             from suzent.acp import get_acp_manager
 

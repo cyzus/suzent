@@ -48,6 +48,12 @@ class StreamReplay:
         # so a stop landing in that window must travel with the run it named
         # and be taken when that run finally starts.
         self.stop_requested: str | None = None
+        # Whether this run's producer is running, and so can take a stop
+        # itself. False covers both "the turn has not started yet" and the
+        # window a steer opens by registering this replay before the turn it
+        # replaces has been cancelled -- where a cancellation aimed at the chat
+        # would land on that other turn.
+        self.producer_started: bool = False
         self.events: list[dict[str, Any]] = []
         self.tail: deque[tuple[int, dict[str, Any]]] = deque(maxlen=capacity)
         self.changed = asyncio.Event()

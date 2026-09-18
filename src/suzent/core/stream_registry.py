@@ -19,6 +19,7 @@ Bus event shapes:
 """
 
 import asyncio
+import contextvars
 import time
 from typing import Any, Dict, Optional, Set
 
@@ -209,20 +210,43 @@ def defer_stop_to_pending_run(chat_id: str, reason: str) -> bool:
     return True
 
 
+# The replay of the run the current task is producing. A producer that looks
+# its replay up by chat_id can find someone else's: a steer registers the
+# replacement run's replay while the turn it replaces may still be starting up,
+# so for that moment the chat's current replay is not this producer's own.
+current_run_replay: contextvars.ContextVar[Optional[StreamReplay]] = (
+    contextvars.ContextVar("current_run_replay", default=None)
+)
+
+
+def bind_producer_replay(replay: Optional[StreamReplay]) -> None:
+    """Declare, from inside a producer task, which run it is producing.
+
+    Each producer runs in its own task and therefore its own context copy, so
+    this is scoped to that run and everything it awaits.
+    """
+    current_run_replay.set(replay)
+
+
 def claim_stream_control(chat_id: str, control: StreamControl) -> None:
     """Install `control` as the chat's, and hand it any stop already accepted.
 
-    The run is named by whichever replay the registry is serving for this chat,
-    which is the same one a stop had to match to be accepted.
+    The run is the one this producer declared it was producing -- not whichever
+    replay the chat currently holds, which during a steer is already the
+    replacement's. A producer that declared nothing leaves the control unnamed,
+    and an unnamed control refuses every stop that names a run; that is the
+    safe direction, since those turns have no replay for a stop to have been
+    matched against in the first place.
     """
     stream_controls[chat_id] = control
-    queue = background_queues.get(chat_id)
-    if queue is None:
+    replay = current_run_replay.get()
+    if replay is None:
         return
-    control.run_id = queue.replay.run_id
-    pending = queue.replay.stop_requested
+    control.run_id = replay.run_id
+    replay.producer_started = True
+    pending = replay.stop_requested
     if pending:
-        queue.replay.stop_requested = None
+        replay.stop_requested = None
         control.reason = pending
         control.cancel_event.set()
 

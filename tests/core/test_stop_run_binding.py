@@ -9,6 +9,7 @@ replaced. A stop matched against the replay must not be applied to that control.
 from suzent.core import stream_registry
 from suzent.core.stream_registry import (
     StreamControl,
+    bind_producer_replay,
     claim_stream_control,
     defer_stop_to_pending_run,
     register_background_stream,
@@ -22,6 +23,7 @@ import pytest
 def clean_registry():
     stream_registry.background_queues.clear()
     stream_registry.stream_controls.clear()
+    bind_producer_replay(None)
     yield
     stream_registry.background_queues.clear()
     stream_registry.stream_controls.clear()
@@ -29,6 +31,7 @@ def clean_registry():
 
 def test_a_control_takes_a_stop_that_names_its_own_run():
     queue = register_background_stream("chat")
+    bind_producer_replay(queue.replay)
     control = StreamControl()
     claim_stream_control("chat", control)
 
@@ -38,7 +41,8 @@ def test_a_control_takes_a_stop_that_names_its_own_run():
 
 
 def test_a_control_refuses_a_stop_that_names_another_run():
-    register_background_stream("chat")
+    original = register_background_stream("chat")
+    bind_producer_replay(original.replay)
     control = StreamControl()
     claim_stream_control("chat", control)
     # The replacement turn's replay is registered; this control is still the
@@ -50,7 +54,8 @@ def test_a_control_refuses_a_stop_that_names_another_run():
 
 
 def test_a_stop_left_for_a_run_is_taken_when_that_run_starts():
-    register_background_stream("chat")
+    original = register_background_stream("chat")
+    bind_producer_replay(original.replay)
     old_control = StreamControl()
     claim_stream_control("chat", old_control)
     replacement = register_background_stream("chat")
@@ -58,6 +63,7 @@ def test_a_stop_left_for_a_run_is_taken_when_that_run_starts():
     assert defer_stop_to_pending_run("chat", "bye") is True
     assert replacement.replay.stop_requested == "bye"
 
+    bind_producer_replay(replacement.replay)
     new_control = StreamControl()
     claim_stream_control("chat", new_control)
 
@@ -78,9 +84,46 @@ def test_nothing_is_left_for_a_chat_with_no_live_producer():
 
 
 def test_a_stop_that_names_no_run_still_reaches_the_current_control():
-    register_background_stream("chat")
+    queue = register_background_stream("chat")
+    bind_producer_replay(queue.replay)
     control = StreamControl()
     claim_stream_control("chat", control)
 
     assert stop_stream("chat", "bye") is True
     assert control.cancel_event.is_set()
+
+
+def test_a_turn_that_started_before_the_steer_keeps_its_own_run():
+    """The steer's replay is registered while the first turn is still starting.
+
+    Binding to whatever replay the chat holds would label this control with the
+    replacement's run -- and let it swallow the stop left for that run, so the
+    stop would cancel this turn and the redirected one would run on.
+    """
+    original = register_background_stream("chat")
+    bind_producer_replay(original.replay)
+    replacement = register_background_stream("chat")
+    replacement.replay.stop_requested = "bye"
+
+    control = StreamControl()
+    claim_stream_control("chat", control)
+
+    assert control.run_id == original.replay.run_id
+    assert not control.cancel_event.is_set()
+    assert replacement.replay.stop_requested == "bye"
+
+
+def test_a_producer_that_declared_no_run_leaves_the_control_unnamed():
+    """Heartbeats, sub-agents and social turns own no replay.
+
+    An unnamed control refuses any stop that names a run, which is the safe
+    direction: there is no replay a stop could have been matched against.
+    """
+    queue = register_background_stream("chat")
+    bind_producer_replay(None)
+    control = StreamControl()
+    claim_stream_control("chat", control)
+
+    assert control.run_id is None
+    assert stop_stream("chat", "bye", expect_run=queue.replay.run_id) is False
+    assert stop_stream("chat", "bye") is True

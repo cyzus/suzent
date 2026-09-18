@@ -232,6 +232,12 @@ async def stream_acp_turn(
         )
         return
 
+    if replay is not None:
+        # From here the prompt this run owns is the one the chat's ACP session
+        # is running, so cancelling that session cancels this run. A steer
+        # reaches this point only after the prompt it replaces is cancelled.
+        replay.producer_started = True
+
     try:
         async for chunk in _run_acp_turn(
             chat_id,
