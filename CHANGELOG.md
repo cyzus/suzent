@@ -36,6 +36,7 @@ failures without blocking the server or changing retry state just by polling.
 <!-- /highlights -->
 
 ### 🚀 Added
+- Stop a turn through the stream instead of around it (#238)
 - Add native clients with pairing, tool approvals and activity rails
 - One grouped console nav, and the same log card in both shells (#234)
 - Run the backend and frontend detached, with `suzent logs` (#232)
