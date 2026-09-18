@@ -824,6 +824,20 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   // continuation both check it before acting, so a stop belonging to a turn
   // that has already ended can never reach across and abandon the next one.
   const stopAttemptRef = useRef(0);
+  // Retire whatever stop is outstanding. Every path that starts or ends a turn
+  // goes through here, because a stop belongs to one turn: a redirect keeps
+  // `isStreaming` true, so without this the old attempt's timer and response
+  // stay armed over the new turn and can abandon it — or just leave the button
+  // stuck on "Stopping" for a turn nobody asked to stop.
+  const retireStopAttempt = useCallback(() => {
+    if (stopFallbackRef.current) {
+      clearTimeout(stopFallbackRef.current);
+      stopFallbackRef.current = null;
+    }
+    stopAttemptRef.current += 1;
+    stopInFlightRef.current = false;
+    setIsStopping((stopping) => (stopping ? false : stopping));
+  }, []);
   // True while a steer is in flight — prevents the normal-send finally from hiding the bubble
   const steeringRef = useRef(false);
   // True from the moment a send is accepted until it has handed off to the
@@ -1222,7 +1236,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       heartbeatOkRef.current = false;
       streamingChatIdRef.current = null;
       isLiveStreamRef.current = false;
-      stopInFlightRef.current = false;
+      retireStopAttempt();
       pendingConnectRef.current = false;
       setIsStreaming(false, chatId);
       if (chatId) {
@@ -1706,7 +1720,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       setIsStreaming(true, currentChatId);
       streamingChatIdRef.current = currentChatId;
       activeChatIdRef.current = currentChatId;
-      stopInFlightRef.current = false;
+      retireStopAttempt();
 
       try {
         await sendAGUI({ message: messageContent, config: safeConfig, chat_id: currentChatId });
@@ -1715,7 +1729,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       }
       // eslint-disable-next-line react-hooks/exhaustive-deps
     },
-    [currentChatId, canvas.deferredIds, addMessage, setIsStreaming, sendAGUI]
+    [currentChatId, canvas.deferredIds, addMessage, setIsStreaming, sendAGUI, retireStopAttempt]
   );
 
   const handleForceWebContext = useCallback(
@@ -2207,7 +2221,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       steeringRef.current = true;
       setIsStreaming(true, currentChatId);
       activeChatIdRef.current = currentChatId;
-      stopInFlightRef.current = false;
+      retireStopAttempt();
 
       // Abort the current live connection silently, then start steer via the
       // background queue (/chat/steer-send → 202 → /chat/live) so it is
@@ -2241,7 +2255,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         })
         .finally(() => {
           steeringRef.current = false;
-          stopInFlightRef.current = false;
+          retireStopAttempt();
         });
       return;
     }
@@ -2416,7 +2430,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     // Don't set streamingChatIdRef here — tryConnect sets it in onStreamStart,
     // same as the main send path. Setting it prematurely would block tryConnect.
     activeChatIdRef.current = chatIdForRetry;
-    stopInFlightRef.current = false;
+    retireStopAttempt();
 
     fetch(`${getApiBase()}/chat/send`, {
       method: 'POST',
@@ -2435,7 +2449,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         setIsStreaming(false, chatIdForRetry);
       })
       .finally(() => {
-        stopInFlightRef.current = false;
+        retireStopAttempt();
       });
   }, [
     currentChatId,
@@ -2447,6 +2461,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     clearParts,
     safeConfig,
     recoverFromSendFailure,
+    retireStopAttempt,
   ]);
 
   // Edit handler — re-sends the last user message with new text, dropping that
@@ -2495,7 +2510,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       streamStartByChatRef.current.set(chatIdForEdit, Date.now());
       setIsStreaming(true, chatIdForEdit);
       activeChatIdRef.current = chatIdForEdit;
-      stopInFlightRef.current = false;
+      retireStopAttempt();
 
       fetch(`${getApiBase()}/chat/send`, {
         method: 'POST',
@@ -2518,7 +2533,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           setIsStreaming(false, chatIdForEdit);
         })
         .finally(() => {
-          stopInFlightRef.current = false;
+          retireStopAttempt();
         });
     },
     [
@@ -2532,6 +2547,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       clearParts,
       safeConfig,
       recoverFromSendFailure,
+      retireStopAttempt,
     ]
   );
 
@@ -2542,18 +2558,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   // never landed, or it landed and STREAM_END never came.
   const abandonStream = useCallback(
     (targetChatId: string | null) => {
-      if (stopFallbackRef.current) {
-        clearTimeout(stopFallbackRef.current);
-        stopFallbackRef.current = null;
-      }
-      stopAttemptRef.current += 1;
+      retireStopAttempt();
       isLiveStreamRef.current = false;
       streamingChatIdRef.current = null;
       stopAGUIStream();
       setIsStreaming(false, targetChatId ?? undefined);
       clearParts();
-      setIsStopping(false);
-      stopInFlightRef.current = false;
       if (targetChatId) {
         setTimeout(() => {
           try {
@@ -2562,7 +2572,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         }, 500);
       }
     },
-    [stopAGUIStream, setIsStreaming, clearParts, loadChat]
+    [stopAGUIStream, setIsStreaming, clearParts, loadChat, retireStopAttempt]
   );
 
   // Stop streaming handler.
@@ -2617,17 +2627,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   // cancels the fallback that would otherwise tear down the next turn.
   useEffect(() => {
     if (isStreaming) return;
-    if (stopFallbackRef.current) {
-      clearTimeout(stopFallbackRef.current);
-      stopFallbackRef.current = null;
-    }
-    // Retire the attempt unconditionally: onError clears `stopInFlightRef`
-    // before this runs, so keying the token off that boolean would let a late
-    // stop result from the failed turn tear down the turn after it.
-    stopAttemptRef.current += 1;
-    stopInFlightRef.current = false;
-    setIsStopping((stopping) => (stopping ? false : stopping));
-  }, [isStreaming]);
+    // Unconditionally: onError clears `stopInFlightRef` before this runs, so
+    // keying the token off that boolean would let a late stop result from the
+    // failed turn tear down the turn after it.
+    retireStopAttempt();
+  }, [isStreaming, retireStopAttempt]);
 
   useEffect(
     () => () => {
