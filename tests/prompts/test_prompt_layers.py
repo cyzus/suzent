@@ -291,7 +291,7 @@ def test_precedence_is_not_stated_twice_in_one_prompt() -> None:
 
 
 def test_the_acp_preamble_is_not_recorded_as_the_users_request() -> None:
-    """It reaches the model but not the transcript. stream_acp_turn derives the
+    """It reaches the model but not the transcript. The ACP turn derives the
     persisted rows from `message`, so concatenating the preamble there showed
     internal policy text as though the user had typed it."""
     import inspect
@@ -305,7 +305,7 @@ def test_the_acp_preamble_is_not_recorded_as_the_users_request() -> None:
         "system_preamble=SUBAGENT_PREAMBLE", ""
     )
 
-    acp = inspect.getsource(runtime.stream_acp_turn)
+    acp = inspect.getsource(runtime._run_acp_turn)
     # The transcript is derived before the preamble is attached.
     assert acp.index("persisted_content") < acp.index("system_preamble}")
 
@@ -318,7 +318,7 @@ def test_the_stale_session_retry_keeps_the_preamble() -> None:
 
     from suzent.acp import runtime
 
-    source = inspect.getsource(runtime.stream_acp_turn)
+    source = inspect.getsource(runtime._run_acp_turn)
     calls = [
         line.strip() for line in source.splitlines() if "_stream_prompt(managed" in line
     ]

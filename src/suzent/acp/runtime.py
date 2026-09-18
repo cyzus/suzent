@@ -18,6 +18,31 @@ def _sse(event: dict[str, Any]) -> str:
     return f"data: {json.dumps(event, ensure_ascii=False, separators=(',', ':'))}\n\n"
 
 
+def _attach_persistence(replay: Any | None) -> asyncio.Future[bool] | None:
+    """Attach a pending persistence future to the replay this turn produces into.
+
+    Mirrors what ChatProcessor does with its post-process task: the replay only
+    emits STREAM_END{persisted:true} once this resolves True.
+
+    The replay is passed in rather than looked up by chat_id, because a chat can
+    have more than one at a time - a finished turn's, kept for a few minutes so
+    a late /chat/live subscriber can drain it, or another producer's live one -
+    and claiming a replay this turn is not writing to would report this turn's
+    outcome as that one's. A turn with no replay attaches nothing, which is what
+    `persisted` already assumes for producers that never claimed the contract.
+    """
+    if replay is None:
+        return None
+    future: asyncio.Future[bool] = asyncio.get_running_loop().create_future()
+    replay.persistence = future
+    return future
+
+
+def _resolve_persistence(future: asyncio.Future[bool] | None, value: bool) -> None:
+    if future is not None and not future.done():
+        future.set_result(value)
+
+
 def _text_from_update(params: dict[str, Any]) -> str:
     update = params.get("update") if isinstance(params.get("update"), dict) else params
     kind = str(update.get("sessionUpdate") or update.get("type") or "")
@@ -150,16 +175,22 @@ async def stream_acp_steer(
     chat_id: str,
     message: str,
     config_override: dict[str, Any] | None = None,
+    *,
+    replay: Any | None = None,
 ) -> AsyncGenerator[str, None]:
     """Cancel the running ACP prompt, then send a new turn.
 
-    ACP has no dedicated steer RPC — a steer is cancel + re-prompt.
+    ACP has no dedicated steer RPC — a steer is cancel + re-prompt. The new
+    turn owns the replay the steer route registered for it, so it carries the
+    persistence contract like any other turn.
     """
     try:
         await get_acp_manager().cancel(chat_id)
     except Exception:
         pass  # Nothing running is fine; we'll still send the new turn.
-    async for event in stream_acp_turn(chat_id, message, config_override):
+    async for event in stream_acp_turn(
+        chat_id, message, config_override, replay=replay
+    ):
         yield event
 
 
@@ -168,6 +199,47 @@ async def stream_acp_turn(
     message: str,
     config_override: dict[str, Any] | None = None,
     *,
+    files: list[Any] | None = None,
+    file_mentions: list[Any] | None = None,
+    runtime_authored: bool = False,
+    system_preamble: str | None = None,
+    replay: Any | None = None,
+) -> AsyncGenerator[str, None]:
+    """Run one ACP turn, claiming the replay's persistence contract for it.
+
+    The contract is claimed here rather than inside the turn so that it covers
+    the turn's whole lifetime. A replay with no persistence future reports
+    `persisted` as True the moment it closes, and everything below — the chat
+    lookup, sanitizing the prompt, the agent itself — can fail or return early;
+    any of those exits would otherwise end the stream with
+    STREAM_END{persisted:true} for a turn that was never stored, which the
+    client trusts enough to replace what it is showing.
+    """
+    persistence = _attach_persistence(replay)
+    try:
+        async for chunk in _run_acp_turn(
+            chat_id,
+            message,
+            config_override,
+            persistence=persistence,
+            files=files,
+            file_mentions=file_mentions,
+            runtime_authored=runtime_authored,
+            system_preamble=system_preamble,
+        ):
+            yield chunk
+    finally:
+        # Anything that did not reach the assistant append — an early return, an
+        # exception, a cancelled subscription — persisted nothing, and says so.
+        _resolve_persistence(persistence, False)
+
+
+async def _run_acp_turn(
+    chat_id: str,
+    message: str,
+    config_override: dict[str, Any] | None = None,
+    *,
+    persistence: asyncio.Future[bool] | None,
     files: list[Any] | None = None,
     file_mentions: list[Any] | None = None,
     runtime_authored: bool = False,
@@ -409,7 +481,9 @@ async def stream_acp_turn(
         # Stamp the agent that produced this response, matching the native
         # per-message model signature, so the transcript doesn't label an ACP
         # answer with the chat's unused native model.
-        db.append_chat_message(
+        # False, not an exception, when the chat was deleted mid-turn: the row
+        # does not exist, so the turn is not persisted and must not claim to be.
+        stored = db.append_chat_message(
             chat_id,
             {
                 "role": "assistant",
@@ -417,6 +491,7 @@ async def stream_acp_turn(
                 "model": f"acp/{managed.agent_id}",
             },
         )
+        _resolve_persistence(persistence, stored is not False)
         if title_task is not None:
             try:
                 title = await title_task
@@ -462,6 +537,7 @@ async def run_acp_turn_text(
         config_override,
         runtime_authored=runtime_authored,
         system_preamble=system_preamble,
+        replay=getattr(stream_queue, "replay", None),
     ):
         if stream_queue is not None:
             await stream_queue.put(chunk)
