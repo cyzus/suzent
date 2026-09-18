@@ -1,5 +1,11 @@
 import React from 'react';
-import { useTheme, SCHEME_COLORS, SCHEME_SURFACES, type Scheme } from '../../hooks/useTheme';
+import {
+  useTheme,
+  SCHEME_COLORS,
+  SCHEME_SURFACES,
+  type Scheme,
+  type ThemeMode,
+} from '../../hooks/useTheme';
 import { useI18n, type Locale } from '../../i18n';
 import { BrutalSelect } from '../BrutalSelect';
 import { SettingsHeader } from './SettingsHeader';
@@ -39,11 +45,41 @@ function CardPreview({ s }: { s: Scheme }) {
   );
 }
 
+/** The same split as CardPreview, with one half or both depending on the mode. */
+function ModePreview({ mode, scheme }: { mode: ThemeMode; scheme: Scheme }) {
+  const { light, dark } = SCHEME_COLORS[scheme];
+  const { bg2, bg3 } = SCHEME_SURFACES[scheme];
+
+  const lightHalf = (
+    <div className="flex-1 bg-white flex flex-col gap-1.5 p-2">
+      <div className="h-2 w-full rounded-sm" style={{ backgroundColor: light }} />
+      <div className="h-1.5 w-4/5 bg-neutral-200 rounded-sm" />
+      <div className="h-1.5 w-3/5 bg-neutral-200 rounded-sm" />
+    </div>
+  );
+  const darkHalf = (
+    <div className="flex-1 flex flex-col gap-1.5 p-2" style={{ backgroundColor: bg2 }}>
+      <div className="h-2 w-full rounded-sm" style={{ backgroundColor: dark }} />
+      <div className="h-1.5 w-4/5 rounded-sm" style={{ backgroundColor: bg3 }} />
+      <div className="h-1.5 w-3/5 rounded-sm" style={{ backgroundColor: bg3 }} />
+    </div>
+  );
+
+  return (
+    <div className="flex h-full">
+      {mode !== 'dark' && lightHalf}
+      {mode === 'system' && <div className="w-px bg-neutral-200" />}
+      {mode !== 'light' && darkHalf}
+    </div>
+  );
+}
+
 export function AppearanceTab(): React.ReactElement {
-  const { scheme, setScheme } = useTheme();
+  const { scheme, setScheme, mode, setMode } = useTheme();
   const { locale, setLocale, t } = useI18n();
 
   const schemeKeys: Scheme[] = ['warm', 'cold', 'green'];
+  const modeKeys: ThemeMode[] = ['light', 'dark', 'system'];
 
   return (
     <SettingsPage>
@@ -66,6 +102,60 @@ export function AppearanceTab(): React.ReactElement {
           ]}
           className="max-w-sm"
         />
+      </SettingsCard>
+
+      <SettingsCard>
+        <SectionCardHeader
+          title={t('settings.appearance.theme')}
+          description={t('settings.appearance.themeDesc')}
+        />
+
+        <div className="flex gap-5 flex-wrap">
+          {modeKeys.map((key) => {
+            const isActive = mode === key;
+
+            return (
+              <button
+                key={key}
+                onClick={() => setMode(key)}
+                aria-pressed={isActive}
+                className="flex flex-col items-center gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-black focus-visible:ring-offset-2"
+              >
+                <div
+                  className={[
+                    'w-40 h-28 border-3 border-brutal-black overflow-hidden transition-all',
+                    isActive
+                      ? 'shadow-brutal ring-[3px] ring-black ring-offset-2 ring-offset-white dark:ring-white dark:ring-offset-zinc-800'
+                      : 'shadow-brutal hover:brightness-[0.98]',
+                  ].join(' ')}
+                >
+                  <ModePreview mode={key} scheme={scheme} />
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  {isActive && (
+                    <svg
+                      className="w-3 h-3 text-brutal-black dark:text-white flex-shrink-0"
+                      fill="currentColor"
+                      viewBox="0 0 12 12"
+                    >
+                      <path d="M10 3L5 8.5 2 5.5 1 6.5l4 4 6-7z" />
+                    </svg>
+                  )}
+                  <span
+                    className={`text-xs font-bold uppercase ${
+                      isActive
+                        ? 'text-brutal-black dark:text-white'
+                        : 'text-neutral-400 dark:text-neutral-500'
+                    }`}
+                  >
+                    {t(`settings.appearance.modes.${key}` as any)}
+                  </span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
       </SettingsCard>
 
       <SettingsCard>

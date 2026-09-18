@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { ArrowPathIcon, ServerStackIcon } from '@heroicons/react/24/outline';
 
 import { useI18n } from '../i18n';
@@ -6,19 +6,16 @@ import { BrutalButton } from '../components/BrutalButton';
 import { BrutalOnOff } from '../components/BrutalOnOff';
 import { SectionCardHeader, SettingsCard, SettingsPage } from '../components/settings/SettingsCard';
 import { SettingsHeader } from '../components/settings/SettingsHeader';
+import { ServiceLogCard } from '../components/settings/ServiceLogCard';
 import {
-  fetchOpsLogs,
   fetchOpsStatus,
   OpsError,
   restartOpsService,
   setOpsServiceEnabled,
-  type OpsLogTail,
   type OpsServiceStatus,
 } from '../lib/opsApi';
 
 const STATUS_POLL_MS = 5000;
-const LOG_POLL_MS = 5000;
-const LOG_LINE_CHOICES = [100, 500, 2000];
 
 // How long to keep asking after a self-restart before calling it a failure.
 // A cold start re-opens the database and reloads channel drivers, so it is
@@ -67,13 +64,9 @@ function StatCell({ label, value }: StatCellProps): React.ReactElement {
 export function OpsTab(): React.ReactElement {
   const { t } = useI18n();
   const [status, setStatus] = useState<OpsServiceStatus | null>(null);
-  const [logs, setLogs] = useState<OpsLogTail | null>(null);
-  const [logLines, setLogLines] = useState(LOG_LINE_CHOICES[0]);
-  const [followLogs, setFollowLogs] = useState(true);
   const [busy, setBusy] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const logBoxRef = useRef<HTMLPreElement | null>(null);
 
   /**
    * Turn a failure into something an operator can act on.
@@ -103,18 +96,6 @@ export function OpsTab(): React.ReactElement {
     [describe]
   );
 
-  const refreshLogs = useCallback(
-    async (signal?: AbortSignal): Promise<void> => {
-      try {
-        setLogs(await fetchOpsLogs(logLines, signal));
-      } catch {
-        // A log read failing is not worth displacing a service error; the
-        // status poll above is the authority on whether the host is reachable.
-      }
-    },
-    [logLines]
-  );
-
   useEffect(() => {
     const controller = new AbortController();
     void refreshStatus(controller.signal);
@@ -126,26 +107,6 @@ export function OpsTab(): React.ReactElement {
       window.clearInterval(timer);
     };
   }, [refreshStatus, reconnecting]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    void refreshLogs(controller.signal);
-    if (!followLogs) return () => controller.abort();
-    const timer = window.setInterval(() => {
-      if (!reconnecting) void refreshLogs();
-    }, LOG_POLL_MS);
-    return () => {
-      controller.abort();
-      window.clearInterval(timer);
-    };
-  }, [refreshLogs, followLogs, reconnecting]);
-
-  // Pin the view to the newest line while following, the way `tail -f` does.
-  useEffect(() => {
-    if (followLogs && logBoxRef.current) {
-      logBoxRef.current.scrollTop = logBoxRef.current.scrollHeight;
-    }
-  }, [logs, followLogs]);
 
   /**
    * Poll until the host answers again.
@@ -185,7 +146,6 @@ export function OpsTab(): React.ReactElement {
       } else {
         setStatus(immediate);
       }
-      void refreshLogs();
     } catch (restartError) {
       setError(describe(restartError));
     } finally {
@@ -294,56 +254,7 @@ export function OpsTab(): React.ReactElement {
         </div>
       </SettingsCard>
 
-      <SettingsCard>
-        <SectionCardHeader
-          title={t('console.ops.logTitle')}
-          description={t('console.ops.logDesc')}
-          actions={
-            <>
-              <label className="flex items-center gap-2 text-xs font-bold uppercase">
-                {t('console.ops.logLines')}
-                <select
-                  value={logLines}
-                  onChange={(event) => setLogLines(Number(event.target.value))}
-                  className="border-2 border-brutal-black bg-white px-2 py-1 font-mono text-xs dark:bg-zinc-900"
-                >
-                  {LOG_LINE_CHOICES.map((choice) => (
-                    <option key={choice} value={choice}>
-                      {choice}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <BrutalButton
-                size="sm"
-                isActive={followLogs}
-                onClick={() => setFollowLogs((following) => !following)}
-              >
-                {t('console.ops.follow')}
-              </BrutalButton>
-              <BrutalButton size="sm" onClick={() => void refreshLogs()}>
-                {t('console.ops.refresh')}
-              </BrutalButton>
-            </>
-          }
-        />
-
-        {logs?.available === false ? (
-          <p className="font-mono text-xs text-neutral-500">{t('console.ops.logMissing')}</p>
-        ) : (
-          <pre
-            ref={logBoxRef}
-            aria-label={t('console.ops.logTitle')}
-            className="max-h-96 overflow-auto border-2 border-brutal-black bg-brutal-black p-3 font-mono text-xs leading-relaxed text-neutral-200"
-          >
-            {logs?.lines.join('\n') ?? ''}
-          </pre>
-        )}
-
-        {status?.logPath && (
-          <p className="mt-2 break-all font-mono text-[11px] text-neutral-500">{status.logPath}</p>
-        )}
-      </SettingsCard>
+      <ServiceLogCard paused={reconnecting} />
     </SettingsPage>
   );
 }

@@ -24,7 +24,6 @@ import { ChatProvider, useChatCoreStore } from './hooks/useChatStore';
 import { GoalTasksProvider, useGoalTasks } from './hooks/useGoalTasks';
 import { ProjectProvider } from './hooks/useProjects';
 import { useStatusStore } from './hooks/useStatusStore';
-import { useTheme } from './hooks/useTheme';
 import {
   BackendVersionTimeoutError,
   drainCronNotifications,
@@ -53,6 +52,7 @@ import { TitleBar } from './components/TitleBar';
 import { detectDesktopPlatform } from './lib/titleBarPlatform';
 import { useI18n, getInitialLocale, tForLocale } from './i18n';
 import { isWeb } from './lib/runtime';
+import { consolePathForCategory } from './shells/webRoutes';
 
 interface HeaderTitleProps {
   text?: string;
@@ -336,6 +336,14 @@ function AppInner(): React.ReactElement {
     | 'appearance'
   >('providers');
   const openSettings = (category: typeof settingsInitialCategory = 'providers') => {
+    // The console gives every settings category a route of its own and keeps
+    // its navigation on screen, so in a browser this goes to the page rather
+    // than laying the desktop's modal over the conversation.
+    const consolePath = isWeb() ? consolePathForCategory(category) : null;
+    if (consolePath) {
+      window.location.hash = `#${consolePath}`;
+      return;
+    }
     setSettingsInitialCategory(category);
     setIsSettingsOpen(true);
   };
@@ -383,7 +391,6 @@ function AppInner(): React.ReactElement {
   const setStatusMsg = useStatusStore((s) => s.setStatus);
   const setHeartbeatStatus = useHeartbeatRunning((s) => s.setStatus);
   const setChatHeartbeatStatus = useHeartbeatRunning((s) => s.setChatStatus);
-  const { theme, toggleTheme } = useTheme();
   const { t } = useI18n();
   const [isWindowMaximized, setIsWindowMaximized] = useState(false);
 
@@ -667,52 +674,6 @@ function AppInner(): React.ReactElement {
                 }}
               />
               <UpdateButton />
-
-              {/* Dark mode toggle */}
-              <button
-                onClick={toggleTheme}
-                className="h-10 w-10 flex items-center justify-center rounded-md hover:bg-neutral-200 dark:hover:bg-zinc-700 transition-colors text-brutal-black dark:text-white"
-                aria-label={
-                  theme === 'dark' ? t('settings.switchToLight') : t('settings.switchToDark')
-                }
-                title={theme === 'dark' ? t('settings.switchToLight') : t('settings.switchToDark')}
-              >
-                {theme === 'dark' ? (
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="h-5 w-5"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={2}
-                  >
-                    <circle cx="12" cy="12" r="5" />
-                    <line x1="12" y1="1" x2="12" y2="3" />
-                    <line x1="12" y1="21" x2="12" y2="23" />
-                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
-                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
-                    <line x1="1" y1="12" x2="3" y2="12" />
-                    <line x1="21" y1="12" x2="23" y2="12" />
-                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
-                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
-                  </svg>
-                ) : (
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="h-5 w-5"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={2}
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"
-                    />
-                  </svg>
-                )}
-              </button>
 
               {mainView === 'chat' ? (
                 <button
