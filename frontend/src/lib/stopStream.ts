@@ -27,7 +27,23 @@ export async function requestStopTurn(
   } catch {
     return { accepted: false, reason: 'network' };
   }
-  if (res.ok) return { accepted: true };
+  if (res.ok) {
+    // 200 does not by itself mean the turn was cancelled: /chat/stop also
+    // answers 200 when all it could stop were background sub-agents, which
+    // happens for a chat paused on tool approval — the parent's control handle
+    // is already gone. Waiting for a STREAM_END that cannot come would sit on
+    // "Stopping" until the fallback timer. `stream_stopped` says which it was;
+    // an older backend omits it, and then 200 meant the turn.
+    let streamStopped: unknown;
+    try {
+      streamStopped = (await res.json())?.stream_stopped;
+    } catch {
+      streamStopped = undefined;
+    }
+    if (streamStopped === false)
+      return { accepted: false, reason: 'no_active_stream', status: 200 };
+    return { accepted: true };
+  }
   // 404 is "nothing to stop": the run already ended, or the backend has no
   // control handle for it. Not an error worth logging, just no STREAM_END.
   if (res.status === 404) return { accepted: false, reason: 'no_active_stream', status: 404 };

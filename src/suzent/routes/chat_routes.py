@@ -755,6 +755,10 @@ async def stop_chat(request: Request) -> JSONResponse:
         {
             "status": "stopping",
             "reason": reason,
+            # Whether the turn's own stream took the cancellation, as opposed to
+            # this being a 200 about sub-agents alone. Only the former ends in a
+            # STREAM_END the client can wait for.
+            "stream_stopped": bool(success),
             "stopped_subagents": stopped_subagents,
         }
     )
