@@ -61,6 +61,15 @@ interface UseAGUIReturn {
    * arrives. Resolves undefined if none arrives in time.
    */
   waitForRunId: (timeoutMs?: number) => Promise<string | undefined>;
+  /**
+   * Resolves once the request that starts a turn here has been answered -- the
+   * point from which the backend knows the run a stop would name. Turns started
+   * through this hook rather than through a POST of the caller's own (a
+   * heartbeat "Run Now", a canvas action) have no other registration signal, and
+   * Stop goes live the moment they are asked for. Resolves immediately when no
+   * start is outstanding, and never rejects.
+   */
+  whenStartRegistered: () => Promise<void>;
   clearParts: () => void;
   /**
    * Restore saved parts directly (e.g. after a page refresh) without starting a
@@ -562,6 +571,8 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
   // almost always attaching to the very turn this client just asked for, so the
   // name it already has is the right one to keep.
   const clientRunTokenChatRef = useRef<string | undefined>(undefined);
+  // Resolved when the outstanding start has been answered, one way or another.
+  const startRegistrationRef = useRef<Promise<void>>(Promise.resolve());
   // Publishing a token delta straight to React state re-renders the whole chat
   // view; at streaming rates that starves the main thread and scrolling crawls.
   // `publishParts` keeps `partsRef` exact and synchronous but coalesces the
@@ -692,6 +703,8 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
     return token;
   }, []);
 
+  const whenStartRegistered = useCallback(() => startRegistrationRef.current, []);
+
   const restorePartsFromSeed = useCallback(
     (seed: AGUIPart[]) => {
       publishParts(seed, true);
@@ -819,6 +832,24 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
       const controller = new AbortController();
       abortRef.current = controller;
 
+      // A turn asked for here registers its run when the backend answers this
+      // request. Until then a stop has nothing to name, so publish the moment
+      // that happens -- and settle it however this attempt ends, so a waiter is
+      // never left holding a promise for a turn that never began.
+      // Held locally, not on a ref: a later send installs its own promise while
+      // this attempt is still draining, and this one must never resolve that.
+      let registered: (() => void) | null = null;
+      if (!isProbe) {
+        startRegistrationRef.current = new Promise<void>((resolve) => {
+          registered = resolve;
+        });
+      }
+      const settleStartRegistration = () => {
+        const resolve = registered;
+        registered = null;
+        resolve?.();
+      };
+
       try {
         const liveUrl = isProbe ? targetUrl : targetUrl.replace(/\/chat$/, '/chat/live');
         const observeBody = isProbe ? requestBody : { chat_id: requestBody.chat_id, wait_ms: 8000 };
@@ -829,6 +860,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
           controller.signal,
           () => {
             started = true;
+            settleStartRegistration();
             setError(undefined);
             resetApprovalTracking();
             opts?.onStreamStart?.();
@@ -889,6 +921,9 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
         // there is nothing to retire, and clearing blindly would take the name
         // a steer minted while this loop was still draining.
         if (attachedToken) retireRunToken(attachedToken);
+        // A start that never reached `onStart` -- refused, aborted, failed --
+        // still has to release whoever is waiting on it.
+        settleStartRegistration();
       }
     },
     [mintRunToken, publishParts, resetApprovalTracking, retireRunToken, setPendingApprovalCountSync]
@@ -906,6 +941,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
     mintRunToken,
     retireRunToken,
     waitForRunId,
+    whenStartRegistered,
     clearParts,
     restorePartsFromSeed,
     removeInlineSurface,

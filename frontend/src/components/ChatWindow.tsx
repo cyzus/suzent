@@ -1027,6 +1027,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     mintRunToken,
     retireRunToken,
     waitForRunId,
+    whenStartRegistered,
     clearParts,
     restorePartsFromSeed,
     resolveApproval,
@@ -2746,27 +2747,30 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     };
     armFallback();
 
-    // Let the start request land first. Stop is live from the moment a turn is
-    // asked for, so a stop sent while that request is still in flight arrives
-    // at a server that has never heard of this run: it comes back "no active
-    // stream", the client tears the stream down, and the start it overtook
-    // then registers the run and streams the turn the user stopped. Waiting
-    // costs nothing the fallback armed above is not already watching, and once
-    // the start has landed the token this client minted names a run that
-    // exists -- which the backend honours even before the turn produces
-    // anything.
+    // Let the start land first. Stop is live from the moment a turn is asked
+    // for, so a stop sent while that request is still in flight arrives at a
+    // server that has never heard of this run: it comes back "no active
+    // stream", the client tears the stream down, and the start it overtook then
+    // registers the run and streams the turn the user stopped. Once the start
+    // has landed, the token this client minted names a run that exists -- which
+    // the backend honours even before the turn produces anything.
+    //
+    // Two kinds of start to wait for: a POST this component sent, and a turn
+    // asked for through the stream itself -- a heartbeat "Run Now", a canvas
+    // action -- which registers its run when its own request is answered.
     const pendingStart = pendingStartRef.current;
-    if (pendingStart) {
-      await pendingStart.settled.catch(() => {});
-      // This attempt may not have survived the wait: the start can be rejected,
-      // which ends the stream, or the fallback above can run out of patience --
-      // and that path aborts the outstanding start as it tears down, so nothing
-      // reattaches to the turn afterwards. Either way the stop belongs to a
-      // turn that is over and must not be sent.
-      if (stopAttemptRef.current !== attempt) return;
-      // The ask gets a full window of its own, not whatever the wait left.
-      armFallback();
-    }
+    await Promise.all([
+      pendingStart ? pendingStart.settled.catch(() => {}) : Promise.resolve(),
+      whenStartRegistered(),
+    ]);
+    // This attempt may not have survived the wait: the start can be rejected,
+    // which ends the stream, or the fallback above can run out of patience --
+    // and that path aborts the outstanding start as it tears down, so nothing
+    // reattaches to the turn afterwards. Either way the stop belongs to a turn
+    // that is over and must not be sent.
+    if (stopAttemptRef.current !== attempt) return;
+    // The ask gets a full window of its own, not whatever the wait left.
+    armFallback();
 
     // Name the run: a stop still in flight when the user redirects would
     // otherwise land on the replacement turn's control and cancel that instead.
