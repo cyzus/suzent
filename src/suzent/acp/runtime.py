@@ -194,6 +194,46 @@ async def stream_acp_turn(
     runtime_authored: bool = False,
     system_preamble: str | None = None,
 ) -> AsyncGenerator[str, None]:
+    """Run one ACP turn, claiming the replay's persistence contract for it.
+
+    The contract is claimed here rather than inside the turn so that it covers
+    the turn's whole lifetime. A replay with no persistence future reports
+    `persisted` as True the moment it closes, and everything below — the chat
+    lookup, sanitizing the prompt, the agent itself — can fail or return early;
+    any of those exits would otherwise end the stream with
+    STREAM_END{persisted:true} for a turn that was never stored, which the
+    client trusts enough to replace what it is showing.
+    """
+    persistence = _attach_persistence(chat_id)
+    try:
+        async for chunk in _run_acp_turn(
+            chat_id,
+            message,
+            config_override,
+            persistence=persistence,
+            files=files,
+            file_mentions=file_mentions,
+            runtime_authored=runtime_authored,
+            system_preamble=system_preamble,
+        ):
+            yield chunk
+    finally:
+        # Anything that did not reach the assistant append — an early return, an
+        # exception, a cancelled subscription — persisted nothing, and says so.
+        _resolve_persistence(persistence, False)
+
+
+async def _run_acp_turn(
+    chat_id: str,
+    message: str,
+    config_override: dict[str, Any] | None = None,
+    *,
+    persistence: asyncio.Future[bool] | None,
+    files: list[Any] | None = None,
+    file_mentions: list[Any] | None = None,
+    runtime_authored: bool = False,
+    system_preamble: str | None = None,
+) -> AsyncGenerator[str, None]:
     db = get_database()
     chat = db.get_chat(chat_id)
     if chat is None:
@@ -286,16 +326,6 @@ async def stream_acp_turn(
         )
 
     yield _sse({"type": "RUN_STARTED", "runId": run_id, "threadId": chat_id})
-
-    # Claim the same persistence contract the native runtime uses. A replay with
-    # no `persistence` reports `persisted` as True the moment it closes, so an
-    # ACP turn that died before its assistant row was written would still send
-    # STREAM_END{persisted:true} — and the client trusts that frame enough to
-    # replace what it is showing with a snapshot that is missing the turn. The
-    # write below is synchronous rather than a post-process task, so the future
-    # is resolved inline instead of being an awaited task, but the frame means
-    # the same thing on both paths: the database holds this turn.
-    persistence = _attach_persistence(chat_id)
 
     title_task: asyncio.Task[Any] | None = None
     try:
@@ -427,7 +457,9 @@ async def stream_acp_turn(
         # Stamp the agent that produced this response, matching the native
         # per-message model signature, so the transcript doesn't label an ACP
         # answer with the chat's unused native model.
-        db.append_chat_message(
+        # False, not an exception, when the chat was deleted mid-turn: the row
+        # does not exist, so the turn is not persisted and must not claim to be.
+        stored = db.append_chat_message(
             chat_id,
             {
                 "role": "assistant",
@@ -435,7 +467,7 @@ async def stream_acp_turn(
                 "model": f"acp/{managed.agent_id}",
             },
         )
-        _resolve_persistence(persistence, True)
+        _resolve_persistence(persistence, stored is not False)
         if title_task is not None:
             try:
                 title = await title_task
@@ -460,9 +492,6 @@ async def stream_acp_turn(
             yield _sse({"type": "TEXT_MESSAGE_END", "messageId": message_id})
         yield _sse({"type": "RUN_ERROR", "message": str(exc)})
     finally:
-        # Every exit that did not reach the append — RUN_ERROR, no output, a
-        # cancelled turn — leaves nothing persisted, and says so.
-        _resolve_persistence(persistence, False)
         # A failed or abandoned turn shouldn't leave a title lookup in flight.
         if title_task is not None and not title_task.done():
             title_task.cancel()

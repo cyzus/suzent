@@ -37,7 +37,7 @@ def _text_chunk(text):
     }
 
 
-async def _run_turn(chat_id, updates, result):
+async def _run_turn(chat_id, updates, result, *, append_result=True):
     managed = _managed()
 
     async def prompt(session_id, message):
@@ -60,6 +60,7 @@ async def _run_turn(chat_id, updates, result):
         chat.messages = []
         db = MagicMock()
         db.get_chat.return_value = chat
+        db.append_chat_message.return_value = append_result
         get_db.return_value = db
 
         manager = AsyncMock()
@@ -109,6 +110,40 @@ async def test_a_turn_that_never_writes_reports_not_persisted(queue):
     )
     roles = [c.args[1]["role"] for c in db.append_chat_message.call_args_list]
     assert "assistant" not in roles
+    assert q.replay.persistence is not None
+    assert q.replay.persistence.result() is False
+    for chunk in chunks:
+        q.replay.append(chunk)
+    q.replay.append(None)
+    assert q.replay.persisted is False
+
+
+@pytest.mark.asyncio
+async def test_a_chat_that_does_not_exist_is_not_persisted(queue):
+    """The early return happens before the turn ever starts — it still counts."""
+    chat_id, q = queue
+    with patch("suzent.acp.runtime.get_database") as get_db:
+        db = MagicMock()
+        db.get_chat.return_value = None
+        get_db.return_value = db
+        chunks = [c async for c in stream_acp_turn(chat_id, "hi")]
+
+    assert any("Chat not found" in c for c in chunks)
+    assert q.replay.persistence is not None
+    assert q.replay.persistence.result() is False
+
+
+@pytest.mark.asyncio
+async def test_an_append_that_found_no_chat_is_not_persisted(queue):
+    """append_chat_message returns False for a chat deleted mid-turn."""
+    chat_id, q = queue
+    chunks, db = await _run_turn(
+        chat_id,
+        [_text_chunk("hello")],
+        {"stopReason": "end_turn"},
+        append_result=False,
+    )
+
     assert q.replay.persistence is not None
     assert q.replay.persistence.result() is False
     for chunk in chunks:
