@@ -52,6 +52,14 @@ interface UseAGUIReturn {
    * must call this, or a stop raised before the first frame has no run to name.
    */
   mintRunToken: () => string;
+  /**
+   * The run's name, waiting up to `timeoutMs` for the stream to supply one.
+   * Re-attaching to a turn this client did not ask for (a reload, a chat
+   * switch, a server-started turn) is the case that has to wait: Stop goes live
+   * with the reconnect, but the run only has a name once its first frame
+   * arrives. Resolves undefined if none arrives in time.
+   */
+  waitForRunId: (timeoutMs?: number) => Promise<string | undefined>;
   clearParts: () => void;
   /**
    * Restore saved parts directly (e.g. after a page refresh) without starting a
@@ -651,6 +659,13 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
 
   const getParts = useCallback(() => partsRef.current, []);
   const getRunId = useCallback(() => runIdRef.current ?? clientRunTokenRef.current, []);
+  const waitForRunId = useCallback(async (timeoutMs = 2000) => {
+    const deadline = Date.now() + timeoutMs;
+    while (!runIdRef.current && !clientRunTokenRef.current && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    return runIdRef.current ?? clientRunTokenRef.current;
+  }, []);
   const mintRunToken = useCallback(() => {
     const token =
       globalThis.crypto?.randomUUID?.() ??
@@ -750,9 +765,18 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
       // clearing streaming parts that should stay visible.
       const isProbe = !!opts?.urlOverride;
       // Name the turn before asking for it: the Stop button goes live now, not
-      // when the first protocol frame arrives with the backend's run_id. A probe
-      // re-attaches to a turn that already has a name, so it mints nothing.
+      // when the first protocol frame arrives with the backend's run_id.
+      //
+      // A probe mints nothing: it re-attaches to a turn that already has a name
+      // and was very likely asked for by someone else (a reload, a chat switch,
+      // a server-started turn). It must still drop the names of whatever turn
+      // was observed before, or a stop would confidently name the wrong run;
+      // `waitForRunId` covers the gap until the first frame names this one.
       const requestBody = isProbe ? body : { ...body, client_run_token: mintRunToken() };
+      if (isProbe) {
+        runIdRef.current = undefined;
+        clientRunTokenRef.current = undefined;
+      }
 
       if (!isProbe) {
         // Normal send: reset immediately so the UI shows "submitted" while waiting.
@@ -845,6 +869,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
     getParts,
     getRunId,
     mintRunToken,
+    waitForRunId,
     clearParts,
     restorePartsFromSeed,
     removeInlineSurface,

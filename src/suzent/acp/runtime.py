@@ -465,6 +465,13 @@ async def _run_acp_turn(
                 # own cancellation frame the same way, and the client reads the
                 # tag to keep listening for the stream's real ending instead of
                 # tearing the connection down on an error notice.
+                #
+                # The contract is "everything this turn produced is in the
+                # database", and a turn stopped before its first token produced
+                # nothing -- so it is met. Saying otherwise would end the stream
+                # with STREAM_END{persisted:false} and turn the stop the client
+                # just accepted back into "Stream persistence failed".
+                _resolve_persistence(persistence, True)
                 yield _sse(
                     {
                         "type": "RUN_ERROR",

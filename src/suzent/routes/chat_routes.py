@@ -272,6 +272,7 @@ async def chat(request: Request) -> StreamingResponse:
                 file_mentions = []
             is_heartbeat = False
             recovery_protocol = form.get("protocol") == "1"
+            client_run_token = form.get("client_run_token")
         else:
             data = await request.json()
             message = data.get("message", "").strip()
@@ -284,6 +285,7 @@ async def chat(request: Request) -> StreamingResponse:
             resume_approvals = data.get("resume_approvals", [])
             is_heartbeat = data.get("is_heartbeat", False)
             recovery_protocol = data.get("protocol") == 1
+            client_run_token = data.get("client_run_token")
 
         if not message and not files_list and not resume_approvals and not is_heartbeat:
             return StreamingResponse(
@@ -396,9 +398,7 @@ async def chat(request: Request) -> StreamingResponse:
                     return JSONResponse(
                         {"error": "Chat is already streaming"}, status_code=409
                     )
-                return _recoverable_response(
-                    chat_id, _make_generator, data.get("client_run_token")
-                )
+                return _recoverable_response(chat_id, _make_generator, client_run_token)
             return StreamingResponse(
                 _make_generator(),
                 media_type="text/event-stream",

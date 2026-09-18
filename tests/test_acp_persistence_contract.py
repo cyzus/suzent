@@ -199,3 +199,26 @@ async def test_a_steered_turn_claims_the_contract_too(queue):
 
     assert q.replay.persistence is not None
     assert q.replay.persistence.result() is False
+
+
+@pytest.mark.asyncio
+async def test_a_turn_stopped_before_its_first_token_is_persisted(queue):
+    """A stop is an ending the client waits for, not a failed write.
+
+    Nothing was produced, so nothing is missing from the database and the
+    contract is met. Reporting False would end the stop the client just
+    accepted as "Stream persistence failed".
+    """
+    chat_id, q = queue
+    chunks, db = await _run_turn(
+        chat_id, [], {"stopReason": "cancelled"}, replay=q.replay
+    )
+
+    roles = [c.args[1]["role"] for c in db.append_chat_message.call_args_list]
+    assert "assistant" not in roles
+    assert q.replay.persistence is not None
+    assert q.replay.persistence.result() is True
+    for chunk in chunks:
+        q.replay.append(chunk)
+    q.replay.append(None)
+    assert q.replay.persisted is True

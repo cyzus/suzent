@@ -999,6 +999,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     getParts: getStreamingParts,
     getRunId: getStreamingRunId,
     mintRunToken,
+    waitForRunId,
     clearParts,
     restorePartsFromSeed,
     resolveApproval,
@@ -2632,12 +2633,15 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
     // Name the run: a stop still in flight when the user redirects would
     // otherwise land on the replacement turn's control and cancel that instead.
+    // A turn this client asked for is named already; one it re-attached to is
+    // named by its first frame, so wait briefly rather than stop blind. The
+    // fallback timer above is already armed over this wait.
     const result = await requestStopTurn(
       getApiBase(),
       targetChatId,
       'User requested stop',
       fetch,
-      getStreamingRunId()
+      getStreamingRunId() ?? (await waitForRunId())
     );
     // The stream may have ended — and a later turn may have started and been
     // stopped — while this was in flight. Only the current attempt may act.
