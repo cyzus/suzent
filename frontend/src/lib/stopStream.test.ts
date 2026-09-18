@@ -24,6 +24,25 @@ describe('requestStopTurn', () => {
     expect(JSON.parse(init.body)).toEqual({ chat_id: 'c1', reason: 'User requested stop' });
   });
 
+  it('names the run it is stopping so a stale stop cannot cancel the next turn', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(response(200, { status: 'stopping' }));
+    await requestStopTurn('/api', 'c1', 'stop', fetchImpl, 'run-7');
+    expect(JSON.parse(fetchImpl.mock.calls[0][1].body)).toEqual({
+      chat_id: 'c1',
+      reason: 'stop',
+      run_id: 'run-7',
+    });
+  });
+
+  it('treats a rejected stale run as nothing to wait for', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(response(409, { status: 'stale_run' }));
+    await expect(requestStopTurn('/api', 'c1', 'stop', fetchImpl, 'run-old')).resolves.toEqual({
+      accepted: false,
+      reason: 'no_active_stream',
+      status: 409,
+    });
+  });
+
   it('does not wait on a stop that only reached background sub-agents', async () => {
     // A chat paused on tool approval has no parent control handle left, so the
     // 200 is about the sub-agents and no STREAM_END is coming for the turn.

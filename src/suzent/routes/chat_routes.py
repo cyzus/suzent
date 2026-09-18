@@ -717,6 +717,20 @@ async def stop_chat(request: Request) -> JSONResponse:
         return JSONResponse({"error": "chat_id is required"}, status_code=400)
 
     reason = data.get("reason") or "Stream stopped by user"
+
+    # A stop names the run it meant to stop. Without that, a request still in
+    # flight when the user redirects lands on whatever control is current and
+    # cancels the replacement turn instead -- the client can retire its own
+    # attempt, but it cannot call back a cancellation the server already
+    # applied. A client that sends no run_id (or a chat with no replay to
+    # compare against) keeps the old behaviour.
+    run_id = data.get("run_id")
+    queue = get_background_queue(chat_id)
+    if run_id and queue is not None and queue.replay.run_id != run_id:
+        return JSONResponse(
+            {"status": "stale_run", "run_id": queue.replay.run_id}, status_code=409
+        )
+
     success = stop_stream(chat_id, reason)
     if not success:
         try:

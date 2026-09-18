@@ -997,6 +997,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     stop: stopAGUIStream,
     stopSilently: stopAGUIStreamSilently,
     getParts: getStreamingParts,
+    getRunId: getStreamingRunId,
     clearParts,
     restorePartsFromSeed,
     resolveApproval,
@@ -2609,7 +2610,15 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       }
     }, STOP_STREAM_END_TIMEOUT_MS);
 
-    const result = await requestStopTurn(getApiBase(), targetChatId, 'User requested stop');
+    // Name the run: a stop still in flight when the user redirects would
+    // otherwise land on the replacement turn's control and cancel that instead.
+    const result = await requestStopTurn(
+      getApiBase(),
+      targetChatId,
+      'User requested stop',
+      fetch,
+      getStreamingRunId()
+    );
     // The stream may have ended — and a later turn may have started and been
     // stopped — while this was in flight. Only the current attempt may act.
     if (stopAttemptRef.current !== attempt) return;

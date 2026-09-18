@@ -39,6 +39,11 @@ interface UseAGUIReturn {
   stopSilently: () => void;
   /** Read the current parts synchronously (e.g. to snapshot before switching chats) */
   getParts: () => AGUIPart[];
+  /**
+   * The run the live stream is on, so a caller can name it back to the backend
+   * (a stop that names its run cannot cancel the turn that replaced it).
+   */
+  getRunId: () => string | undefined;
   clearParts: () => void;
   /**
    * Restore saved parts directly (e.g. after a page refresh) without starting a
@@ -530,6 +535,8 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
   const suppressFinishRef = useRef(false);
   // Keep a ref to latest parts so onFinish gets the final value
   const partsRef = useRef<AGUIPart[]>([]);
+  // The run the live stream is on; cleared when a new one starts.
+  const runIdRef = useRef<string | undefined>(undefined);
   // Publishing a token delta straight to React state re-renders the whole chat
   // view; at streaming rates that starves the main thread and scrolling crawls.
   // `publishParts` keeps `partsRef` exact and synchronous but coalesces the
@@ -631,6 +638,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
   }, []);
 
   const getParts = useCallback(() => partsRef.current, []);
+  const getRunId = useCallback(() => runIdRef.current, []);
 
   const restorePartsFromSeed = useCallback(
     (seed: AGUIPart[]) => {
@@ -737,6 +745,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
         const liveUrl = isProbe ? targetUrl : targetUrl.replace(/\/chat$/, '/chat/live');
         const observeBody = isProbe ? body : { chat_id: body.chat_id, wait_ms: 8000 };
         let started = false;
+        runIdRef.current = undefined;
         for await (const batch of recoverableStream(
           liveUrl,
           observeBody,
@@ -750,6 +759,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
           },
           isProbe ? undefined : { url: targetUrl, body }
         )) {
+          runIdRef.current = batch.runId;
           let currentParts = batch.reset ? [] : [...partsRef.current];
           if (batch.reset) resetApprovalTracking();
           for (const data of batch.events) {
@@ -810,6 +820,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
     stop,
     stopSilently,
     getParts,
+    getRunId,
     clearParts,
     restorePartsFromSeed,
     removeInlineSurface,

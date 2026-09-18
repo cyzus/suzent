@@ -15,14 +15,18 @@ export async function requestStopTurn(
   apiBase: string,
   chatId: string,
   reason: string,
-  fetchImpl: typeof fetch = fetch
+  fetchImpl: typeof fetch = fetch,
+  runId?: string
 ): Promise<StopRequestResult> {
   let res: Response;
   try {
     res = await fetchImpl(`${apiBase}/chat/stop`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: chatId, reason }),
+      // Naming the run keeps a slow stop from landing on the turn that
+      // replaced the one it meant to cancel — a redirect submitted while the
+      // request is still in flight. The backend answers 409 for a stale run.
+      body: JSON.stringify({ chat_id: chatId, reason, ...(runId ? { run_id: runId } : {}) }),
     });
   } catch {
     return { accepted: false, reason: 'network' };
@@ -45,7 +49,9 @@ export async function requestStopTurn(
     return { accepted: true };
   }
   // 404 is "nothing to stop": the run already ended, or the backend has no
-  // control handle for it. Not an error worth logging, just no STREAM_END.
-  if (res.status === 404) return { accepted: false, reason: 'no_active_stream', status: 404 };
+  // control handle for it. 409 is the same answer for a different reason — the
+  // run we named is gone, so this stop did nothing and nothing is coming.
+  if (res.status === 404 || res.status === 409)
+    return { accepted: false, reason: 'no_active_stream', status: res.status };
   return { accepted: false, reason: 'error', status: res.status };
 }
