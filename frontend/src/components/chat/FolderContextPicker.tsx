@@ -35,7 +35,7 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
   const [dropdownPosition, setDropdownPosition] = useState<{
     top: number;
     left: number;
-    width?: number;
+    width: number;
   } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -119,7 +119,9 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
   const updatePosition = React.useCallback(() => {
     if (buttonRef.current) {
       const rect = buttonRef.current.getBoundingClientRect();
-      const width = 336;
+      // Clamp the width too: on a viewport narrower than the panel, a fixed
+      // 336 would make the `left` clamp below unsatisfiable.
+      const width = Math.min(336, Math.max(0, window.innerWidth - 32));
       const height = 420;
       const left = Math.max(16, Math.min(rect.left, window.innerWidth - width - 16));
 
@@ -200,8 +202,12 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
           top: effectiveDropUp ? 'auto' : dropdownPosition.top,
           bottom: effectiveDropUp ? window.innerHeight - dropdownPosition.top : 'auto',
           left: dropdownPosition.left,
-          // Ensure it doesn't go off screen
-          maxWidth: 'calc(100vw - 2rem)',
+          // `left` above is clamped against exactly this width, so the width
+          // has to be applied for that clamp to mean anything. Without it the
+          // panel sizes to its content and stretches to fit the longest host
+          // path, running off the right edge. A definite width is also what
+          // lets the `truncate` on those paths take effect.
+          width: dropdownPosition.width,
         }}
       >
         <div className="px-3 py-2.5 border-b-2 border-brutal-black bg-neutral-100 dark:bg-zinc-900">
