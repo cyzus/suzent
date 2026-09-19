@@ -187,6 +187,7 @@ def _all_tool_classes() -> list:
     from suzent.tools.task_create_tool import TaskCreateTool
     from suzent.tools.task_update_tool import TaskUpdateTool
     from suzent.tools.task_list_tool import TaskListTool
+    from suzent.tools.schedule_tool import ScheduleTool
     from suzent.tools.browser.tool import BrowsingTool
     from suzent.tools.skill_tool import SkillTool
     from suzent.tools.social_message_tool import SocialMessageTool
@@ -223,6 +224,7 @@ def _all_tool_classes() -> list:
         TaskCreateTool,
         TaskUpdateTool,
         TaskListTool,
+        ScheduleTool,
         RenderUITool,
         ImageGenerationTool,
         ImageVisionTool,
@@ -256,6 +258,7 @@ TOOL_DESCRIPTION_OVERRIDES = {
     "TaskCreateTool": "Create structured project tasks with dependencies, assignees, and progress metadata.",
     "TaskUpdateTool": "Update the status, ownership, description, or dependencies of an existing task.",
     "TaskListTool": "List project tasks and their current status, ownership, and dependency relationships.",
+    "ScheduleTool": "Schedule a later turn in this conversation, on a delay, an interval, or a cron expression.",
     "AgentListTool": "List local project agents and paired remote Suzent agents.",
     "AgentReadTool": "Read an accessible agent session's bounded visible transcript.",
     "AgentSendTool": "Durably send a message to another agent session and wake it.",
