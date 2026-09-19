@@ -358,19 +358,17 @@ fn prepare_target(paths: &UpdatePaths, target_tag: &str) -> Result<(), String> {
         "Downloading desktop application",
         target_tag,
     )?;
-    if paths.staging_dir.exists() {
-        fs::remove_dir_all(&paths.staging_dir)
-            .map_err(display_io("clear update staging directory"))?;
-    }
     fs::create_dir_all(&paths.staging_dir)
         .map_err(display_io("create update staging directory"))?;
-    download_file(
-        &release_asset_url(target_tag),
-        &paths.staged_ui(),
-        paths,
-        target_tag,
-    )?;
-    verify_release_asset(&paths.staged_ui(), target_tag, ui_asset_name())?;
+    let expected = release_checksum(target_tag, ui_asset_name())?;
+    prepare_ui(paths, &expected, || {
+        download_file(
+            &release_asset_url(target_tag),
+            &paths.staged_ui(),
+            paths,
+            target_tag,
+        )
+    })?;
     set_executable(&paths.staged_ui())?;
 
     write_status(paths, "fetch", 25, "Fetching release source", target_tag)?;
@@ -380,6 +378,27 @@ fn prepare_target(paths: &UpdatePaths, target_tag: &str) -> Result<(), String> {
             .current_dir(&paths.root),
         "fetch release source",
     )
+}
+
+fn prepare_ui(
+    paths: &UpdatePaths,
+    expected: &str,
+    download: impl FnOnce() -> Result<(), String>,
+) -> Result<(), String> {
+    if verify_asset_checksum(&paths.staged_ui(), expected).is_ok() {
+        return Ok(());
+    }
+    if paths.staged_ui().exists() {
+        fs::remove_file(paths.staged_ui())
+            .map_err(display_io("remove invalid staged application"))?;
+    }
+    if verify_asset_checksum(&paths.ui(), expected).is_ok() {
+        fs::copy(paths.ui(), paths.staged_ui())
+            .map_err(display_io("stage installed desktop application"))?;
+    } else {
+        download()?;
+    }
+    verify_asset_checksum(&paths.staged_ui(), expected)
 }
 
 fn install_target(paths: &UpdatePaths, target_tag: &str) -> Result<(), String> {
@@ -530,7 +549,15 @@ fn install_staged_ui(paths: &UpdatePaths, target_tag: &str) -> Result<(), String
 
 fn restore_ui_backup(paths: &UpdatePaths, old_version: &str) -> Result<(), String> {
     if paths.ui().exists() {
-        fs::remove_file(paths.ui()).map_err(display_io("remove failed desktop application"))?;
+        if paths.staged_ui().exists() {
+            fs::remove_file(paths.ui()).map_err(display_io("remove failed desktop application"))?;
+        } else {
+            // Return the candidate for retries without allocating another binary-sized copy.
+            fs::create_dir_all(&paths.staging_dir)
+                .map_err(display_io("create update staging directory"))?;
+            fs::rename(paths.ui(), paths.staged_ui())
+                .map_err(display_io("preserve desktop application for retry"))?;
+        }
     }
     if paths.backup_ui().exists() {
         fs::rename(paths.backup_ui(), paths.ui())
@@ -775,7 +802,7 @@ fn download_file(
     result
 }
 
-fn verify_release_asset(path: &Path, tag: &str, asset_name: &str) -> Result<(), String> {
+fn release_checksum(tag: &str, asset_name: &str) -> Result<String, String> {
     let url = format!("{}/SHA256SUMS", release_base_url(tag).trim_end_matches('/'));
     let checksums = reqwest::blocking::Client::builder()
         .user_agent("suzent-installer")
@@ -787,12 +814,16 @@ fn verify_release_asset(path: &Path, tag: &str, asset_name: &str) -> Result<(), 
         .map_err(|error| format!("failed to download release checksums: {error}"))?
         .text()
         .map_err(|error| format!("failed to read release checksums: {error}"))?;
-    let expected = parse_release_checksum(&checksums, asset_name)?;
+    parse_release_checksum(&checksums, asset_name)
+}
+
+fn verify_asset_checksum(path: &Path, expected: &str) -> Result<(), String> {
     let bytes = fs::read(path).map_err(display_io("read downloaded asset"))?;
     let actual = format!("{:x}", Sha256::digest(bytes));
     if actual != expected {
         return Err(format!(
-            "checksum mismatch for {asset_name}: expected {expected}, found {actual}"
+            "checksum mismatch for {}: expected {expected}, found {actual}",
+            path.display()
         ));
     }
     Ok(())
@@ -1103,6 +1134,77 @@ mod tests {
     use std::fs;
     use std::thread;
     use std::time::Duration;
+
+    #[test]
+    fn reuses_download_after_install_and_rollback() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = UpdatePaths::new(temp.path().to_path_buf(), "v1.2.3");
+        fs::create_dir_all(&paths.staging_dir).unwrap();
+        fs::create_dir_all(paths.root.join("bin")).unwrap();
+        fs::write(paths.ui(), b"old-ui").unwrap();
+        let expected = format!("{:x}", <sha2::Sha256 as sha2::Digest>::digest(b"new-ui"));
+        super::prepare_ui(&paths, &expected, || {
+            fs::write(paths.staged_ui(), b"new-ui").unwrap();
+            Ok(())
+        })
+        .unwrap();
+        backup_current_ui(&paths).unwrap();
+        super::install_staged_ui(&paths, "v1.2.3").unwrap();
+        assert!(!paths.staged_ui().exists());
+        assert_eq!(fs::read(paths.ui()).unwrap(), b"new-ui");
+        restore_ui_backup(&paths, "v1.2.2").unwrap();
+        assert_eq!(fs::read(paths.ui()).unwrap(), b"old-ui");
+        super::prepare_ui(&paths, &expected, || panic!("downloaded again")).unwrap();
+        assert_eq!(fs::read(paths.staged_ui()).unwrap(), b"new-ui");
+    }
+
+    #[test]
+    fn rollback_before_install_preserves_staged_download() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = UpdatePaths::new(temp.path().to_path_buf(), "v1.2.3");
+        fs::create_dir_all(&paths.staging_dir).unwrap();
+        fs::create_dir_all(paths.root.join("bin")).unwrap();
+        fs::write(paths.ui(), b"old-ui").unwrap();
+        fs::write(paths.staged_ui(), b"new-ui").unwrap();
+        backup_current_ui(&paths).unwrap();
+        restore_ui_backup(&paths, "v1.2.2").unwrap();
+        assert_eq!(fs::read(paths.ui()).unwrap(), b"old-ui");
+        assert_eq!(fs::read(paths.staged_ui()).unwrap(), b"new-ui");
+    }
+
+    #[test]
+    fn reuses_installed_binary_after_successful_cleanup() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = UpdatePaths::new(temp.path().to_path_buf(), "v1.2.3");
+        fs::create_dir_all(&paths.staging_dir).unwrap();
+        fs::write(paths.staged_ui(), b"new-ui").unwrap();
+        let expected = format!("{:x}", <sha2::Sha256 as sha2::Digest>::digest(b"new-ui"));
+        super::install_staged_ui(&paths, "v1.2.3").unwrap();
+        super::cleanup_transaction_files(&paths);
+        fs::create_dir_all(&paths.staging_dir).unwrap();
+        super::prepare_ui(&paths, &expected, || panic!("downloaded installed binary")).unwrap();
+        assert_eq!(fs::read(paths.staged_ui()).unwrap(), b"new-ui");
+    }
+
+    #[test]
+    fn replaces_invalid_binary_and_rejects_corrupt_downloads() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = UpdatePaths::new(temp.path().to_path_buf(), "v1.2.3");
+        fs::create_dir_all(&paths.staging_dir).unwrap();
+        fs::write(paths.staged_ui(), b"partial").unwrap();
+        let expected = format!("{:x}", <sha2::Sha256 as sha2::Digest>::digest(b"new-ui"));
+        assert!(super::prepare_ui(&paths, &expected, || {
+            fs::write(paths.staged_ui(), b"corrupt").unwrap();
+            Ok(())
+        })
+        .is_err());
+        super::prepare_ui(&paths, &expected, || {
+            fs::write(paths.staged_ui(), b"new-ui").unwrap();
+            Ok(())
+        })
+        .unwrap();
+        super::prepare_ui(&paths, &expected, || panic!("downloaded again")).unwrap();
+    }
 
     #[test]
     fn reports_command_stderr_as_failure_detail() {
