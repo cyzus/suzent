@@ -6,7 +6,7 @@ on:
       product:
         description: Product to prepare
         type: choice
-        options: [desktop, mobile]
+        options: [desktop, mobile, browser]
         default: desktop
         required: true
       version:
@@ -18,7 +18,7 @@ on:
         description: Reason for an explicit version override
         type: string
       desktop_assets:
-        description: Desktop assets (ignored for mobile)
+        description: Desktop assets (ignored for mobile and browser)
         type: choice
         options: [build, reuse]
         default: build
@@ -57,12 +57,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          branch=release/next
-          prefix=v
-          if [[ "$PRODUCT" == mobile ]]; then
-            branch=release/mobile
-            prefix=mobile-v
-          fi
+          case "$PRODUCT" in
+            desktop) branch=release/next; prefix=v ;;
+            mobile) branch=release/mobile; prefix=mobile-v ;;
+            browser) branch=release/browser; prefix=browser-v ;;
+          esac
           if [[ "$(gh pr list --base main --head "$branch" --state open --json number --jq length)" != 0 ]]; then
             echo '::error::Edit the override on the existing release PR instead of replacing it'
             exit 1
@@ -88,7 +87,7 @@ jobs:
           git commit -m "chore: prepare $PRODUCT $prefix$version"
           old="$(git ls-remote origin "refs/heads/$branch" | cut -f1)"
           git push --force-with-lease="refs/heads/$branch:$old" origin "HEAD:$branch"
-          gh pr create --base main --head "$branch" --title "chore: release $prefix$version" --body 'Review the product changelog and persistent version override. Desktop merges publish through the existing workflow; mobile merges record the version and notes only. See docs/03-developing/releasing.md.'
+          gh pr create --base main --head "$branch" --title "chore: release $prefix$version" --body 'Review the product changelog and persistent version override. Desktop and browser merges publish through their existing packaging workflows; mobile merges record the version and notes only. See docs/03-developing/releasing.md.'
           GH_TOKEN="$ACTIONS_TOKEN" gh workflow run ci.yml --ref "$branch" -f "release_product=$PRODUCT"
           if [[ "$PRODUCT" == mobile ]]; then
             GH_TOKEN="$ACTIONS_TOKEN" gh workflow run mobile.yml --ref "$branch"

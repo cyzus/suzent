@@ -20,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        product: [desktop, mobile]
+        product: [desktop, mobile, browser]
     runs-on: ubuntu-22.04
     env:
       PRODUCT: ${{ matrix.product }}
@@ -40,12 +40,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          branch=release/next
-          prefix=v
-          if [[ "$PRODUCT" == mobile ]]; then
-            branch=release/mobile
-            prefix=mobile-v
-          fi
+          case "$PRODUCT" in
+            desktop) branch=release/next; prefix=v ;;
+            mobile) branch=release/mobile; prefix=mobile-v ;;
+            browser) branch=release/browser; prefix=browser-v ;;
+          esac
           source="$(git rev-parse origin/main)"
           prs="$(gh pr list --base main --head "$branch" --state open --json number,isCrossRepository --jq '[.[] | select(.isCrossRepository == false)]')"
           count="$(jq length <<< "$prs")"
@@ -106,6 +105,7 @@ jobs:
               'Review the product changelog and release declarations. Version overrides belong in `.releases/overrides/` and survive refreshes.' \
               '' \
               'Desktop: merging tags and starts the existing desktop publication workflow.' \
+              'Browser: merging packages and publishes the extension ZIP; store submission remains manual.' \
               'Mobile: merging records the version and notes only; store and GitHub Release distribution are future work.' \
               '' \
               'Merge with a merge commit once checks pass. See docs/03-developing/releasing.md.')"

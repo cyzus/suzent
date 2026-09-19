@@ -42,6 +42,11 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     release.git(tmp_path, "config", "user.email", "release@example.invalid")
     release.write(tmp_path, "src-tauri/tauri.conf.json", {"version": "0.14.0"})
     release.write(tmp_path, release.MOBILE_SOURCE, {"version": "0.1.0", "build": 7})
+    release.write(
+        tmp_path,
+        release.BROWSER_SOURCE,
+        {"version": "0.1.2", "manifest_version": 3, "name": "Suzent"},
+    )
     (tmp_path / "apps/ios/Config").mkdir(parents=True)
     (tmp_path / "apps/android").mkdir(parents=True)
     for path, content in release.version_outputs(tmp_path).items():
@@ -336,3 +341,142 @@ def test_invalid_note_extension_is_rejected_before_release(repo: Path) -> None:
     release.write(repo, ".releases/changes/wrong.yaml", {"mobile": "patch"})
     with pytest.raises(ValueError, match="filename"):
         release.check(repo)
+
+
+def test_browser_only_release_leaves_desktop_and_mobile_unchanged(repo: Path) -> None:
+    adopt(repo)
+    note(repo, "browser-fix", browser="patch")
+    source = commit(repo, "feat(browser): title is not the release decision")
+    other_versions = {
+        p: release.product_version(repo, p) for p in ("desktop", "mobile")
+    }
+    assert not release.plan(repo, "desktop", source)["releasable"]
+    assert not release.plan(repo, "mobile", source)["releasable"]
+    data = release.apply(repo, "browser", source)
+    assert data["version"] == "0.1.3"
+    assert other_versions == {
+        p: release.product_version(repo, p) for p in other_versions
+    }
+    assert release.load(repo, release.BROWSER_SOURCE) == {
+        "version": "0.1.3",
+        "manifest_version": 3,
+        "name": "Suzent",
+    }
+    files = {p: (repo / p).read_bytes() for p in release.owned_files("browser")}
+    release.apply(repo, "browser", source)
+    assert files == {p: (repo / p).read_bytes() for p in release.owned_files("browser")}
+    release.git(repo, "add", ".")
+    release.check(repo, source, "browser")
+    shipped = commit(repo)
+    assert not release.plan(repo, "browser", shipped)["releasable"]
+
+
+def test_browser_app_pr_declares_impact_without_manifest_bump(repo: Path) -> None:
+    base = adopt(repo)
+    (repo / "extensions/browser/worker.js").write_text("// updated worker")
+    release.git(repo, "add", ".")
+    with pytest.raises(ValueError, match="browser"):
+        release.check(repo, base)
+    note(repo, "worker-fix", browser="patch")
+    release.check(repo, base)
+    release.write(repo, release.BROWSER_SOURCE, {"version": "0.1.3"})
+    with pytest.raises(ValueError, match="release PR"):
+        release.check(repo, base)
+
+
+def test_browser_and_desktop_consume_shared_change_independently(repo: Path) -> None:
+    adopt(repo)
+    note(repo, "native-host", browser="minor", desktop="patch")
+    source = commit(repo)
+    release.apply(repo, "browser", source)
+    shipped = commit(repo)
+    assert not release.plan(repo, "browser", shipped)["releasable"]
+    assert release.plan(repo, "desktop", shipped)["version"] == "0.14.1"
+    release.apply(repo, "desktop", shipped)
+    shipped = commit(repo)
+    assert not release.plan(repo, "desktop", shipped)["releasable"]
+    assert not release.plan(repo, "browser", shipped)["releasable"]
+    assert not release.plan(repo, "mobile", shipped)["releasable"]
+
+
+def test_browser_release_cannot_change_permissions(repo: Path) -> None:
+    adopt(repo)
+    note(repo, "fix", browser="patch")
+    base = commit(repo)
+    release.apply(repo, "browser", base)
+    manifest = release.load(repo, release.BROWSER_SOURCE)
+    manifest["permissions"] = ["debugger"]
+    release.write(repo, release.BROWSER_SOURCE, manifest)
+    with pytest.raises(ValueError, match="only update the manifest version"):
+        release.check(repo, base, "browser")
+
+
+def test_browser_notes_are_version_scoped_and_outside_package(repo: Path) -> None:
+    adopt(repo)
+    note(repo, "first-browser-fix", browser="patch")
+    base = commit(repo)
+    release.apply(repo, "browser", base)
+    commit(repo)
+    note(repo, "second-browser-fix", browser="patch")
+    base = commit(repo)
+    release.apply(repo, "browser", base)
+    text = release.release_notes(repo, "browser")
+    assert "browser-v0.1.4" in text
+    assert "second-browser-fix" in text
+    assert "first-browser-fix" not in text
+    assert not release.changelog_path("browser").startswith("extensions/browser/")
+
+
+def test_browser_override_is_independent(repo: Path) -> None:
+    adopt(repo)
+    note(repo, "browser-feature", browser="minor")
+    base = commit(repo)
+    release.write(
+        repo,
+        ".releases/overrides/browser.json",
+        {
+            "baseline": "0.1.2",
+            "version": "0.3.0",
+            "reason": "Reviewed browser milestone",
+        },
+    )
+    release.apply(repo, "browser", base)
+    assert release.product_version(repo, "browser") == "0.3.0"
+    assert release.product_version(repo, "desktop") == "0.14.0"
+    assert release.product_version(repo, "mobile") == "0.1.0"
+    release.apply(repo, "browser", base)
+    assert release.product_version(repo, "browser") == "0.3.0"
+    shipped = commit(repo)
+    assert not release.plan(repo, "browser", shipped)["releasable"]
+
+
+def test_browser_plan_packages_new_version_without_release_metadata(
+    repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import json
+    import zipfile
+
+    builder_spec = importlib.util.spec_from_file_location(
+        "browser_builder", SCRIPT.with_name("build_browser_extension.py")
+    )
+    assert builder_spec is not None and builder_spec.loader is not None
+    builder = importlib.util.module_from_spec(builder_spec)
+    builder_spec.loader.exec_module(builder)
+    monkeypatch.setattr(builder, "EXTENSION", repo / "extensions/browser")
+    for name in ("worker.js", "pair.js", "popup.html"):
+        (builder.EXTENSION / name).write_text("fixture")
+    adopt(repo)
+    note(repo, "browser-package", browser="patch")
+    source = commit(repo)
+    release.apply(repo, "browser", source)
+    first = builder.build(repo / "first.zip")
+    second = builder.build(repo / "second.zip")
+    assert first.read_bytes() == second.read_bytes()
+    with zipfile.ZipFile(first) as archive:
+        assert json.loads(archive.read("manifest.json"))["version"] == "0.1.3"
+        assert set(archive.namelist()) == {
+            "manifest.json",
+            "worker.js",
+            "pair.js",
+            "popup.html",
+        }

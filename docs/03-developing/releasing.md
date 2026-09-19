@@ -1,16 +1,17 @@
 # Release guide
 
-Suzent prepares independent release plans for two products:
+Suzent prepares independent release plans for three products:
 
 | Product | Includes | Release PR | What merging does |
 | --- | --- | --- | --- |
 | `desktop` | Python backend, desktop UI, Tauri app and installer | `release/next` | Records the plan, creates `vX.Y.Z`, and starts the existing desktop build/publication workflow |
 | `mobile` | iOS and Android; one shared product version | `release/mobile` | Records the version and changelog; native CI produces test artifacts |
+| `browser` | Chrome/Edge extension | `release/browser` | Creates `browser-vX.Y.Z` and publishes the store-ready ZIP; store submission remains manual |
 
 Mobile App Store, Play Store, signed distribution, and GitHub Release publishing
 remain future work. A mobile release-plan merge does **not** publish an app or
-trigger a desktop release. The browser extension retains its existing separate
-manifest/version workflow.
+trigger a desktop release. Browser releases retain their existing reproducible ZIP builder and
+`--latest=false` publication, so they never replace the desktop latest release.
 
 ## Declare release impact in a feature PR
 
@@ -40,7 +41,7 @@ For a change to application code that needs no release, explicitly document why:
 
 A PR with only documentation, tests, or CI/tooling changes needs no declaration.
 CI requires product coverage for application changes. Shared presentation assets
-require a decision for both products. Backend changes count as desktop changes;
+require a decision for desktop and mobile. Backend changes count as desktop changes;
 reviewers must also declare mobile impact if client changes are necessary. Path
 checks cannot decide protocol compatibility on their own.
 
@@ -66,7 +67,7 @@ On each push to `main`, **Refresh Release PRs** considers each product separatel
 4. Merge main into the product's existing release branch or open one if needed.
 5. Update only that product's version files, changelog, and ledger, then run CI.
 
-A declaration affecting both products is consumed independently. Shipping mobile
+A declaration affecting multiple products is consumed independently. Shipping mobile
 first does not lose the desktop portion. The ledger is recorded atomically with
 the release-plan merge, so a refresh cannot open a duplicate release while the
 desktop tagging workflow is still starting.
@@ -94,8 +95,42 @@ asset upload, and checksum succeeds. Verify the published release, version,
 notes, all eight application/installer assets, and `SHA256SUMS`. Do not manually
 publish a partially populated draft.
 
-The two product branches may be reviewed and merged independently. When one
-merges, refresh the other against main before merging it.
+The three product branches may be reviewed and merged independently. When one
+merges, refresh the others against main before merging it.
+
+## Browser extension releases
+
+Extension code PRs now add a `browser` declaration instead of changing
+`extensions/browser/manifest.json` themselves:
+
+```json
+{
+  "products": {"browser": "patch"},
+  "summary": "Recover the browser connection after the desktop restarts."
+}
+```
+
+Several browser PRs can accumulate before one release. The `release/browser` PR
+updates only the manifest version, browser changelog, and browser ledger. It uses
+the same highest-impact calculation and persistent overrides as other products.
+Changes to the desktop native host may need a separate `desktop` declaration;
+sharing a feature does not couple their version numbers.
+
+Merging an ordinary extension PR no longer publishes anything. Merging the
+browser release PR validates the plan against its pre-merge main commit, packages
+that exact merged source, tags `browser-vX.Y.Z`, and publishes
+`suzent-browser-X.Y.Z.zip`. Browser CI rejects already-used release tags. The ZIP
+keeps `manifest.json` at its root and excludes the release-planning metadata.
+
+Upload the ZIP to Chrome and Edge manually as before. To retry an interrupted
+GitHub publication, run **Release Browser Extension** with the original merged
+release commit or its `browser-v` tag as `release_ref`. Do not use a newer main
+commit: reruns validate the original plan and refuse to move a tag to different
+source. Existing completed assets are not overwritten.
+
+Browser adoption starts from the current manifest version. Old extension releases
+remain unchanged; code PRs merged after adoption use declarations. This does not
+re-infer already published browser versions from desktop commit history.
 
 ## Persistent version overrides
 
@@ -128,7 +163,7 @@ version has shipped, the override is spent and does not pin later releases.
 Remove an active override to return to automatic calculation, then apply again.
 
 If there is no open product Release PR, use **Actions → Prepare Release**. Choose
-`desktop` or `mobile`, then `auto`, a bump type, or an exact version. An explicit
+`desktop`, `mobile`, or `browser`, then `auto`, a bump type, or an exact version. An explicit
 version requires a reason and is stored as the same persistent override. An
 existing open PR is never replaced; edit it instead. Preparation and refresh use
 the same concurrency lock.
@@ -147,7 +182,8 @@ This release makes local mobile pairing easier to set up.
 
 Keep both markers on separate lines. Other generated pending notes are rebuilt;
 previously published entries are preserved. Desktop notes live in `CHANGELOG.md`,
-mobile notes in `packages/mobile-contract/CHANGELOG.md`.
+mobile notes in `packages/mobile-contract/CHANGELOG.md`, and browser notes in
+`.releases/changelogs/browser.md` (outside the packaged extension directory).
 
 ## Migration from commit-based versions
 
@@ -176,6 +212,7 @@ or moved to `release/next` before enabling the new workflow.
 uv run python scripts/release_plan.py check --base origin/main
 uv run python scripts/release_plan.py plan --product desktop --source HEAD
 uv run python scripts/release_plan.py plan --product mobile --source HEAD
+uv run python scripts/release_plan.py plan --product browser --source HEAD
 uv run python scripts/bump_version.py --check
 uv run python scripts/generate_mobile_version.py --check
 ```

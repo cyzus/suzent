@@ -19,7 +19,9 @@ else:
     import bump_version as desktop
     from generate_mobile_version import version_outputs
 
-PRODUCTS = ("desktop", "mobile")
+PRODUCTS = ("desktop", "mobile", "browser")
+TAG_PREFIXES = {"desktop": "v", "mobile": "mobile-v", "browser": "browser-v"}
+BROWSER_SOURCE = "extensions/browser/manifest.json"
 RANK = {"none": 0, "patch": 1, "minor": 2, "major": 3}
 CHANGES = ".releases/changes/"
 MOBILE_SOURCE = "packages/mobile-contract/version.json"
@@ -113,29 +115,32 @@ def declarations(root: Path, source: str | None = None) -> dict[str, dict[str, A
 
 
 def product_version(root: Path, product: str, source: str | None = None) -> str:
-    path = "src-tauri/tauri.conf.json" if product == "desktop" else MOBILE_SOURCE
+    path = {
+        "desktop": "src-tauri/tauri.conf.json",
+        "mobile": MOBILE_SOURCE,
+        "browser": BROWSER_SOURCE,
+    }[product]
     value = load(root, path, source)["version"]
     version_tuple(value)
     return value
 
 
 def owned_files(product: str) -> list[str]:
-    return (
-        [v.path for v in desktop.VERSION_FILES]
-        if product == "desktop"
-        else list(MOBILE_FILES)
-    ) + [
-        changelog_path(product),
-        f".releases/state/{product}.json",
-    ]
+    if product == "desktop":
+        versions = [v.path for v in desktop.VERSION_FILES]
+    elif product == "mobile":
+        versions = list(MOBILE_FILES)
+    else:
+        versions = [BROWSER_SOURCE]
+    return versions + [changelog_path(product), f".releases/state/{product}.json"]
 
 
 def changelog_path(product: str) -> str:
-    return (
-        "CHANGELOG.md"
-        if product == "desktop"
-        else "packages/mobile-contract/CHANGELOG.md"
-    )
+    return {
+        "desktop": "CHANGELOG.md",
+        "mobile": "packages/mobile-contract/CHANGELOG.md",
+        "browser": ".releases/changelogs/browser.md",
+    }[product]
 
 
 def legacy_commits(root: Path, source: str) -> list[tuple[str, str]]:
@@ -247,9 +252,9 @@ def render_notes(root: Path, data: dict[str, Any], source: str) -> str:
     existing = (
         read(root, path, source)
         if exists(root, path, source)
-        else "# Mobile changelog\n"
+        else f"# {product.title()} changelog\n"
     )
-    prefix = "v" if product == "desktop" else "mobile-v"
+    prefix = TAG_PREFIXES[product]
     draft = (
         desktop.generate_changelog_draft(
             version, root, subjects=[s for s, _ in data["legacy"]]
@@ -287,6 +292,18 @@ def render_notes(root: Path, data: dict[str, Any], source: str) -> str:
     )
 
 
+def release_notes(root: Path, product: str) -> str:
+    version = product_version(root, product)
+    tag = TAG_PREFIXES[product] + version
+    match = re.search(
+        rf"(?ms)^## \[{re.escape(tag)}\][^\n]*\n.*?(?=^## \[|\Z)",
+        read(root, changelog_path(product)),
+    )
+    if not match:
+        raise ValueError(f"Missing changelog entry for {tag}")
+    return match.group().strip() + "\n"
+
+
 def apply(root: Path, product: str, source: str) -> dict[str, Any]:
     data = plan(root, product, source)
     if not data["releasable"]:
@@ -296,14 +313,20 @@ def apply(root: Path, product: str, source: str) -> dict[str, Any]:
         with contextlib.redirect_stdout(io.StringIO()):
             for target in desktop.VERSION_FILES:
                 desktop.write_version(root / target.path, target, data["version"])
-    else:
+    elif product == "mobile":
         mobile = load(root, MOBILE_SOURCE, source)
         mobile["version"] = data["version"]
         mobile["build"] += 1
         write(root, MOBILE_SOURCE, mobile)
         for path, content in version_outputs(root).items():
             path.write_text(content)
-    (root / changelog_path(product)).write_text(notes, encoding="utf-8")
+    else:
+        manifest = load(root, BROWSER_SOURCE, source)
+        manifest["version"] = data["version"]
+        write(root, BROWSER_SOURCE, manifest)
+    changelog = root / changelog_path(product)
+    changelog.parent.mkdir(parents=True, exist_ok=True)
+    changelog.write_text(notes, encoding="utf-8")
     write(root, f".releases/state/{product}.json", data["state"])
     return data
 
@@ -311,7 +334,12 @@ def apply(root: Path, product: str, source: str) -> dict[str, Any]:
 def affected_products(paths: list[str]) -> set[str]:
     affected = set()
     for path in paths:
-        if path.startswith(
+        if (
+            path.startswith("extensions/browser/")
+            or path == "scripts/build_browser_extension.py"
+        ):
+            affected.add("browser")
+        elif path.startswith(
             (
                 "apps/ios/",
                 "apps/android/",
@@ -330,7 +358,7 @@ def affected_products(paths: list[str]) -> set[str]:
             "scripts/generate_app_icons.py",
             "scripts/generate_mobile_version.py",
         }:
-            affected.update(PRODUCTS)
+            affected.update(("desktop", "mobile"))
     return affected
 
 
@@ -373,7 +401,7 @@ def check(
                 for v in desktop.VERSION_FILES
             ):
                 raise ValueError("Desktop version files are not synchronized")
-        else:
+        elif release_product == "mobile":
             mobile = load(root, MOBILE_SOURCE, base)
             mobile["version"] = data["version"]
             mobile["build"] += 1
@@ -382,6 +410,13 @@ def check(
                 for path, content in version_outputs(root).items()
             ):
                 raise ValueError("Mobile version/build files are not synchronized")
+        else:
+            manifest = load(root, BROWSER_SOURCE, base)
+            manifest["version"] = data["version"]
+            if load(root, BROWSER_SOURCE) != manifest:
+                raise ValueError(
+                    "Browser release must only update the manifest version"
+                )
         allowed = set(owned_files(release_product)) | {
             f".releases/overrides/{release_product}.json"
         }
@@ -412,7 +447,7 @@ def check(
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "command", choices=("check", "plan", "apply", "files", "override")
+        "command", choices=("check", "plan", "apply", "files", "override", "notes")
     )
     parser.add_argument("--product", choices=PRODUCTS, default="desktop")
     parser.add_argument("--source", default="HEAD")
@@ -425,6 +460,8 @@ def main() -> None:
     try:
         if args.command == "check":
             check(root, args.base, args.release_product)
+        elif args.command == "notes":
+            print(release_notes(root, args.product), end="")
         elif args.command == "files":
             print("\n".join(owned_files(args.product)))
         elif args.command == "override":
