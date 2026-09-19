@@ -61,7 +61,9 @@ from suzent.permissions import (
 )
 from suzent.permissions.models import CommandDecision, PermissionDecision
 from suzent.permissions.audit import record_permission_audit
-from loguru import logger
+from suzent.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 # Module-level encoder for custom events

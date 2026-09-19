@@ -771,7 +771,7 @@ async def get_social_config(request: Request) -> JSONResponse:
                                 config[key][k] = v
             except Exception as e:
                 # Log but continue if defaults load fails
-                print(f"Failed to load social defaults: {e}")
+                logger.warning(f"Failed to load social defaults: {e}")
 
         masked_config = _mask_social_config(config)
 

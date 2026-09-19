@@ -24,14 +24,14 @@ from pathlib import Path
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from suzent.config import RUNTIME_DIR
+from suzent.config import SERVICE_LOG_PATH
 from suzent.logger import get_logger
 from suzent.service import get_service_controller
 from suzent.service.state import read_process_state
 
 logger = get_logger(__name__)
 
-LOG_PATH = RUNTIME_DIR / "server.log"
+LOG_PATH = SERVICE_LOG_PATH
 
 # The service logs through the same formatter the terminal gets, so the file
 # carries colour codes. A terminal renders them; a <pre> shows them as litter
