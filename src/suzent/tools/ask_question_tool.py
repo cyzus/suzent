@@ -47,7 +47,8 @@ class QuestionItem(BaseModel):
 class AskQuestionTool(Tool):
     name = "AskQuestionTool"
     tool_name = "ask_question"
-    group = ToolGroup.AGENT
+    group = ToolGroup.INTERACTION
+    builtin = True
     requires_approval = False
     session_guidance = (
         "Use AskQuestionTool for clarification, or genuine blockers after investigation, not as "

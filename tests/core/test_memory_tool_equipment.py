@@ -22,11 +22,6 @@ def _tool_names(config, *, deferred):
         patch.object(am, "create_pydantic_ai_model", return_value=MagicMock()),
         patch.object(am, "get_enabled_models_from_db", return_value=["test/model"]),
         patch.object(am, "_build_mcp_servers", return_value=[]),
-        patch.object(
-            am,
-            "get_skill_manager",
-            return_value=MagicMock(enabled_skills=set()),
-        ),
         patch.object(am, "Agent", fake_agent),
     ):
         am.create_agent({"model": "test/model", **config})

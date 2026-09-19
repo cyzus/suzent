@@ -280,6 +280,12 @@ export const en = {
     toolsEmpty: 'No tools available',
     toolCatalog: {
       approval: 'Approval',
+      builtin: 'Built-in',
+      builtinHint: 'Built-in tool — always equipped and cannot be turned off.',
+      off: 'Off',
+      offHint: 'Turned off — the agent cannot use this one, and cannot find it by searching.',
+      searchableNote:
+        'Unchecked tools are not loaded up front, but the agent can still find and load most of them mid-task. Ones marked OFF are the exception.',
       deactivate: 'Deactivate',
       deactivateTool: 'Deactivate {name}',
       capabilityAria: '{name} capability',

@@ -25,6 +25,7 @@ class GlobTool(Tool):
     name = "GlobTool"
     tool_name = "glob_search"
     group = ToolGroup.FILESYSTEM
+    builtin = True
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

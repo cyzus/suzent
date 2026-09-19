@@ -41,6 +41,7 @@ class ReadFileTool(Tool):
     name = "ReadFileTool"
     tool_name = "read_file"
     group = ToolGroup.FILESYSTEM
+    builtin = True
     session_guidance = (
         "Always use read_file to read files. Never use bash cat/head/tail/sed for this."
     )
