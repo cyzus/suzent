@@ -7,6 +7,7 @@ import pytest
 from suzent.core import scheduler as scheduler_mod
 from suzent.core.scheduler import (
     SchedulerBrain,
+    build_bound_task_reminder,
     compute_next_run,
     is_missed_run,
     sync_heartbeat_tasks,
@@ -30,6 +31,7 @@ class _Recorder:
         *,
         suppress_ok=False,
         heartbeat_approvals=False,
+        persist_to_chat=False,
         **kwargs,
     ):
         self.calls.append(
@@ -38,6 +40,7 @@ class _Recorder:
                 "reminder": reminder,
                 "suppress_ok": suppress_ok,
                 "heartbeat_approvals": heartbeat_approvals,
+                "persist_to_chat": persist_to_chat,
             }
         )
         return self.response
@@ -444,3 +447,111 @@ async def test_a_heartbeat_that_did_run_advances_a_full_interval(
     row = temp_db.get_cron_job(row.id)
     assert row.last_run_at is not None
     assert row.next_run_at > datetime.now() + timedelta(minutes=25)
+
+
+@pytest.mark.asyncio
+async def test_a_speaking_bound_task_reaches_the_transcript(
+    temp_db, monkeypatch, runner
+):
+    """A task that is not suppressible exists to say something in that chat.
+
+    Routed as a heartbeat it would skip message persistence, so its answer
+    would be recorded as a successful run that never appears in the chat.
+    """
+    temp_db.create_chat(title="Work", config={}, chat_id="chat-7")
+    job_id = temp_db.create_cron_job(
+        name="report",
+        prompt="x",
+        schedule_kind="interval",
+        interval_minutes=30,
+        chat_id="chat-7",
+        suppress_ok=False,
+    )
+    monkeypatch.setattr(scheduler_mod, "get_database", lambda: temp_db)
+
+    await SchedulerBrain()._execute_job(job_id)
+
+    assert runner.calls[0]["persist_to_chat"] is True
+
+
+@pytest.mark.asyncio
+async def test_a_quiet_bound_task_stays_out_of_the_transcript(
+    temp_db, monkeypatch, runner
+):
+    temp_db.create_chat(title="Work", config={}, chat_id="chat-8")
+    job_id = temp_db.create_cron_job(
+        name="watch",
+        prompt="x",
+        schedule_kind="interval",
+        interval_minutes=30,
+        chat_id="chat-8",
+        suppress_ok=True,
+    )
+    monkeypatch.setattr(scheduler_mod, "get_database", lambda: temp_db)
+
+    await SchedulerBrain()._execute_job(job_id)
+
+    # Rollback owns the message state for a turn that may be undone.
+    assert runner.calls[0]["persist_to_chat"] is False
+
+
+def test_a_quiet_task_is_told_the_exact_token_to_answer_with():
+    """ "Stay silent" invites a polite "nothing to report", which is not a no-op.
+
+    Suppression only fires on the token, so the reminder has to name it.
+    """
+    from suzent.core.heartbeat import HEARTBEAT_OK
+
+    quiet = build_bound_task_reminder("watch", "check the build", quiet=True)
+    loud = build_bound_task_reminder("report", "post the numbers", quiet=False)
+
+    assert HEARTBEAT_OK in quiet
+    assert HEARTBEAT_OK not in loud
+
+
+@pytest.mark.asyncio
+async def test_a_one_shot_is_recoverable_until_it_finishes(temp_db, monkeypatch):
+    """A crash mid-turn must not retire the reminder without running it."""
+    temp_db.create_chat(title="Work", config={}, chat_id="chat-9")
+    job_id = temp_db.create_cron_job(
+        name="remind",
+        prompt="x",
+        schedule_kind="once",
+        run_at=datetime.now(),
+        chat_id="chat-9",
+    )
+    monkeypatch.setattr(scheduler_mod, "get_database", lambda: temp_db)
+
+    class _Dies:
+        enabled = True
+
+        async def run_bound_turn(self, *a, **k):
+            raise RuntimeError("process died")
+
+    monkeypatch.setattr("suzent.core.heartbeat.get_active_heartbeat", lambda: _Dies())
+    await SchedulerBrain()._execute_job(job_id)
+
+    job = temp_db.get_cron_job(job_id)
+    # Still unspent, so a restart re-arms it from run_at instead of retiring it.
+    assert job.last_run_at is None
+    assert compute_next_run(job) is not None
+
+
+@pytest.mark.asyncio
+async def test_a_completed_one_shot_is_spent(temp_db, monkeypatch, runner):
+    temp_db.create_chat(title="Work", config={}, chat_id="chat-10")
+    job_id = temp_db.create_cron_job(
+        name="remind",
+        prompt="x",
+        schedule_kind="once",
+        run_at=datetime.now(),
+        chat_id="chat-10",
+    )
+    monkeypatch.setattr(scheduler_mod, "get_database", lambda: temp_db)
+
+    await SchedulerBrain()._execute_job(job_id)
+
+    job = temp_db.get_cron_job(job_id)
+    assert job.active is False
+    assert job.last_run_at is not None
+    assert compute_next_run(job) is None

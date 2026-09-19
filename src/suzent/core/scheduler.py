@@ -22,6 +22,7 @@ from croniter import croniter
 
 from suzent.config import CONFIG
 from suzent.core.base_brain import BaseBrain, get_active
+from suzent.core.heartbeat import HEARTBEAT_OK
 from suzent.database import get_database
 from suzent.logger import get_logger
 from suzent.core.stream_registry import (
@@ -73,6 +74,7 @@ def build_bound_task_reminder(
     job_name: str,
     prompt: str,
     *,
+    quiet: bool = False,
     triggered_at: Optional[datetime] = None,
     last_run_at: Optional[datetime] = None,
 ) -> str:
@@ -81,17 +83,28 @@ def build_bound_task_reminder(
     The isolated-chat wording ("you were woken by the scheduler") would be
     confusing mid-conversation, so a bound task says plainly that it is a
     scheduled interruption and that the surrounding chat is its context.
+
+    A ``quiet`` task is rolled back only when the answer is recognisably a
+    no-op, which means the exact token -- telling it merely to "stay silent"
+    invites a polite "nothing to report" that then sits in the transcript
+    forever. So ask for the token by name.
     """
     body = build_cron_reminder(
         job_name, prompt, triggered_at=triggered_at, last_run_at=last_run_at
     )
-    return body.replace(
-        "You were automatically woken by the cron scheduler.",
+    intro = (
         "A scheduled task attached to this conversation just fired. "
         "The conversation above is your context; continue it rather than "
-        "starting over, and stay silent unless there is something worth saying.",
-        1,
+        "starting over."
     )
+    if quiet:
+        intro += (
+            f" If there is nothing worth reporting, reply with exactly "
+            f"{HEARTBEAT_OK} and nothing else, and this turn will be removed "
+            "from the conversation. Answer normally only if something needs "
+            "attention."
+        )
+    return body.replace("You were automatically woken by the cron scheduler.", intro, 1)
 
 
 def _resolve_timezone(name: Optional[str]):
@@ -630,9 +643,11 @@ class SchedulerBrain(BaseBrain):
         # Advance before execution so a slow turn cannot drift the next fire
         # time. A one-shot disarms instead -- it must not fire twice.
         if one_shot:
-            db.update_cron_job_run_state(
-                job_id, last_run_at=now, retry_count=0, clear_next_run=True
-            )
+            # Disarm, but don't record it as run: if the process exits mid-turn,
+            # a row with last_run_at set and no next_run_at looks spent, and the
+            # reminder would be deactivated on startup without ever firing.
+            # Within the process, _in_flight is what stops a second tick.
+            db.update_cron_job_run_state(job_id, retry_count=0, clear_next_run=True)
         else:
             try:
                 nxt = compute_next_run(job, after=now)
@@ -675,6 +690,7 @@ class SchedulerBrain(BaseBrain):
                 db.set_last_result_at(chat_id)
 
             if one_shot:
+                db.update_cron_job_run_state(job_id, last_run_at=now)
                 db.update_cron_job(job_id, active=False)
                 logger.info(f"One-shot task {job_id} completed, deactivated")
 
@@ -720,14 +736,19 @@ class SchedulerBrain(BaseBrain):
                 "HeartbeatRunner is not running; cannot run a chat-bound task"
             )
 
+        quiet = bool(job.suppress_ok)
         reminder = build_bound_task_reminder(
-            job.name, job.prompt, last_run_at=last_run_at
+            job.name, job.prompt, quiet=quiet, last_run_at=last_run_at
         )
         return await runner.run_bound_turn(
             chat_id,
             reminder,
-            suppress_ok=bool(job.suppress_ok),
+            suppress_ok=quiet,
             model_override=job.model_override,
+            # A quiet task may be rolled back, so its messages must not be
+            # persisted; a task that speaks for itself has to reach the
+            # transcript or its answer is invisible in the chat it was bound to.
+            persist_to_chat=not quiet,
         )
 
     async def _run_chat_turn(

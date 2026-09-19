@@ -299,6 +299,7 @@ class HeartbeatRunner(BaseBrain):
         suppress_ok: bool = False,
         model_override: Optional[str] = None,
         heartbeat_approvals: bool = False,
+        persist_to_chat: bool = False,
     ) -> str:
         """Run one background turn inside an existing chat.
 
@@ -307,6 +308,13 @@ class HeartbeatRunner(BaseBrain):
         and the turn reported nothing worth surfacing -- in that case its
         messages are rolled back, so a quiet check leaves the conversation
         exactly as it found it.
+
+        ``persist_to_chat`` decides whether the turn joins the conversation's
+        visible transcript. A suppressible check must not: rollback owns its
+        message state, and a persisted internal prompt would survive every
+        failure path. A task that speaks for itself must, or its answer would
+        be recorded as a successful run that nobody can see -- which is the
+        whole point of binding it to a chat.
 
         ``heartbeat_approvals`` opts into the global heartbeat allow-list. It
         is off by default and only heartbeats pass it: those tools were
@@ -331,6 +339,7 @@ class HeartbeatRunner(BaseBrain):
             reminder,
             model_override=model_override,
             heartbeat_approvals=heartbeat_approvals,
+            persist_to_chat=persist_to_chat,
         )
 
         if suppress_ok and self._is_heartbeat_ok(response_text):
@@ -346,6 +355,7 @@ class HeartbeatRunner(BaseBrain):
         *,
         model_override: Optional[str] = None,
         heartbeat_approvals: bool = False,
+        persist_to_chat: bool = False,
     ) -> str:
         from suzent.core.chat_processor import ChatProcessor
 
@@ -373,7 +383,10 @@ class HeartbeatRunner(BaseBrain):
             user_id=CONFIG.user_id,
             message_content="",
             config_override=config_override,
-            is_heartbeat=True,
+            # is_heartbeat gates message persistence (skip_messages) as well as
+            # goal counting and trigger rows, so a turn meant to be seen has to
+            # go through the ordinary path.
+            is_heartbeat=not persist_to_chat,
             system_reminders=[reminder],
         )
 

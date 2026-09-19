@@ -38,6 +38,13 @@ A **heartbeat** is not a separate system: it is a task that is `interval`-schedu
 Its checklist lives in that project's `heartbeat.md` rather than in the task's
 prompt, and it keeps one delivery quirk of its own (see [Heartbeat](#heartbeat)).
 
+A bound task is either **quiet** or not, and the two behave differently on
+purpose. A quiet task is asked to answer with the exact `HEARTBEAT_OK` token
+when it has nothing to report; that turn is then rolled back, and nothing it
+did reaches the transcript. A task that is not quiet joins the conversation
+like any other turn — that is what makes it worth binding, since its answer is
+meant to be read there.
+
 **Reach for a bound task when** the work only makes sense against a conversation:
 rechecking something you and the agent were just looking at, or monitoring a
 situation the chat already explains. **Reach for an isolated task when** the
