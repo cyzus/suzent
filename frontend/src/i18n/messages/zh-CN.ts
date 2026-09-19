@@ -273,6 +273,12 @@ export const zhCN = {
     toolsEmpty: '暂无可用工具',
     toolCatalog: {
       approval: '需审批',
+      builtin: '内置',
+      builtinHint: '内置工具：始终装备，无法关闭。',
+      off: '已关闭',
+      offHint: '已关闭——智能体无法使用，也无法通过搜索找到它。',
+      searchableNote:
+        '未勾选的工具不会预先加载，但智能体仍可在执行过程中找到并加载其中大部分。标记“已关闭”的工具除外。',
       deactivate: '停用',
       deactivateTool: '停用{name}',
       capabilityAria: '{name} 能力',
@@ -284,11 +290,16 @@ export const zhCN = {
         shell: { name: '命令执行', description: '运行有时限的命令，并控制长期运行的后台进程。' },
         web: { name: '网络', description: '搜索网络、读取网页并与浏览器内容交互。' },
         'tasks-goals': { name: '任务与目标', description: '规划持久目标并跟踪结构化项目任务。' },
-        agent: { name: '智能体', description: '询问问题、渲染界面和委派独立的子智能体工作。' },
+        orchestration: { name: '编排', description: '加载技能，并把有边界的工作委派给子智能体。' },
+        interaction: { name: '交互', description: '向用户提问，并在对话中渲染界面。' },
         creative: { name: '创作', description: '生成、分析、朗读或分享多媒体及社交内容。' },
         'memory-recall': { name: '记忆与回忆', description: '搜索长期记忆并查找相关历史会话。' },
       },
       tools: {
+        SkillTool: {
+          name: '加载技能',
+          description: '在开始技能覆盖的工作之前，先加载该技能的操作说明。',
+        },
         ReadFileTool: { name: '读取文件', description: '读取已配置工作区中的文件内容。' },
         WriteFileTool: { name: '写入文件', description: '使用给定内容创建或覆盖文件。' },
         EditFileTool: { name: '编辑文件', description: '在现有文件中进行精确字符串替换。' },

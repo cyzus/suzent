@@ -28,7 +28,6 @@ from suzent.prompts import (
     STATIC_INSTRUCTIONS,
     register_dynamic_instructions,
 )
-from suzent.skills import get_skill_manager
 
 # Import memory lifecycle functions (for backward compatibility re-exports)
 
@@ -284,13 +283,13 @@ def create_agent(config: Dict[str, Any]) -> Agent[AgentDeps, str]:
     }
     tool_functions = []
     enabled_tool_names = set(tool_names)
-    # SkillTool / SocialMessageTool are equipped by their own auto-equip logic below,
-    # so skip them in the normal loop. MemorySearchTool is NOT auto-equipped: it is a
-    # regular sidebar-toggleable equipment tool, equipped when present in `tools`. The
-    # global memory toggle (`memory_enabled`) only governs memory *context injection*,
-    # not whether the search tool is available.
+    # SocialMessageTool is equipped by its own auto-equip logic below, so skip it in
+    # the normal loop. MemorySearchTool is NOT auto-equipped: it is a regular
+    # sidebar-toggleable equipment tool, equipped when present in `tools`. The global
+    # memory toggle (`memory_enabled`) only governs memory *context injection*, not
+    # whether the search tool is available. SkillTool is no longer special-cased: it
+    # is a builtin, so `expand_tool_dependencies` has already floored it in.
     _auto_equipped = {
-        "SkillTool",
         "SocialMessageTool",
     }
 
@@ -309,23 +308,6 @@ def create_agent(config: Dict[str, Any]) -> Agent[AgentDeps, str]:
     # Pydantic AI exposes its native provider-side search where supported and
     # transparently falls back to a local keyword search elsewhere.
     tool_functions.extend(get_deferred_tool_functions(enabled_tool_names))
-
-    # Auto-equip SkillTool if any skills are enabled
-    skill_manager = get_skill_manager()
-    has_enabled_skills = getattr(skill_manager, "has_enabled_skills", None)
-    global_skills_enabled = (
-        bool(has_enabled_skills())
-        if callable(has_enabled_skills)
-        else bool(getattr(skill_manager, "enabled_skills", set()))
-    )
-    if global_skills_enabled or config.get("_has_discovered_skills"):
-        fn = get_tool_function("SkillTool")
-        if fn and fn not in tool_functions:
-            tool_functions.append(fn)
-            enabled_tool_names.add("SkillTool")
-            logger.info(
-                f"SkillTool equipped ({len(skill_manager.enabled_skills)} skills enabled)"
-            )
 
     # Auto-equip SocialMessageTool
     social_ctx = config.get("social_context")

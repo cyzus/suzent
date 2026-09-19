@@ -49,7 +49,7 @@ def _surface_payload(
 class RenderUITool(Tool):
     name = "RenderUITool"
     tool_name = "render_ui"
-    group = ToolGroup.AGENT
+    group = ToolGroup.INTERACTION
     requires_approval = False
 
     async def forward(

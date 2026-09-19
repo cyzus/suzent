@@ -3,12 +3,14 @@ from typing import Annotated
 from pydantic import Field
 from pydantic_ai import RunContext
 from suzent.core.agent_deps import AgentDeps
-from suzent.tools.base import Tool, ToolErrorCode, ToolResult
+from suzent.tools.base import Tool, ToolErrorCode, ToolGroup, ToolResult
 
 
 class SkillTool(Tool):
     name = "SkillTool"
     tool_name = "skill_execute"
+    group = ToolGroup.ORCHESTRATION
+    builtin = True
     deferrable = False
     # Sole owner of *when* to reach for a skill. The catalog reminder only
     # announces what is available, and only when that set changes, so a standing

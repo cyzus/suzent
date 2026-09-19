@@ -246,12 +246,14 @@ CAPABILITY_DESCRIPTIONS = {
     "Shell": "Run bounded commands and control long-running background processes.",
     "Web": "Search the web, retrieve pages, and interact with browser-based content.",
     "Tasks & goals": "Plan durable goals and track structured project tasks.",
-    "Agent": "Ask questions, render interfaces, and delegate bounded sub-agent work.",
+    "Orchestration": "Load skills and delegate bounded work to sub-agents.",
+    "Interaction": "Ask the user a question and render interfaces in the chat.",
     "Creative": "Generate, inspect, speak, or share rich media and social content.",
     "Memory & recall": "Search durable memory and retrieve relevant past sessions.",
 }
 
 TOOL_DESCRIPTION_OVERRIDES = {
+    "SkillTool": "Load a skill's instructions before starting work the skill covers.",
     "BrowsingTool": "Open and interact with browser pages, including navigation, clicks, forms, and screenshots.",
     "AskQuestionTool": "Pause execution to ask the user a focused question when their input is required.",
     "GoalTool": "Create, inspect, and complete a durable goal that can continue across agent turns.",
@@ -301,6 +303,11 @@ def get_tool_capabilities() -> List[Dict[str, object]]:
                 "description": _tool_description(cls),
                 "runtimeName": cls.tool_name,
                 "requiresApproval": bool(cls.requires_approval),
+                "builtin": bool(getattr(cls, "builtin", False)),
+                # Unchecking a deferrable tool demotes it to the ToolSearch pool
+                # rather than denying it, so the picker has to say which of the
+                # two an empty checkbox means.
+                "deferrable": bool(getattr(cls, "deferrable", True)),
             }
         )
     return [
@@ -312,6 +319,16 @@ def get_tool_capabilities() -> List[Dict[str, object]]:
         }
         for label, tools in capabilities.items()
     ]
+
+
+def get_builtin_tool_names() -> List[str]:
+    """Registry keys of the tools the user cannot turn off.
+
+    Read off the classes rather than the ``BUILTIN_TOOL_NAMES`` constant, so a
+    tool that sets ``builtin = True`` is honoured even before the import-light
+    copy in ``names`` catches up.
+    """
+    return [cls.name for cls in _all_tool_classes() if getattr(cls, "builtin", False)]
 
 
 def group_tools_by_capability(tool_names: List[str]) -> Dict[str, List[str]]:

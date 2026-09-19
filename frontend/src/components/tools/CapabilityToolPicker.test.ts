@@ -7,6 +7,7 @@ import type { ConfigOptions } from '../../types/api';
 import {
   CapabilityToolPicker,
   getCapabilities,
+  getLockedTools,
   resolveCatalogText,
   toggleCapabilitySelection,
   toggleToolSelection,
@@ -46,12 +47,51 @@ const config = {
   ],
 } as ConfigOptions;
 
+const builtinConfig = {
+  tools: ['ReadFileTool', 'GlobTool', 'WriteFileTool'],
+  builtinTools: ['ReadFileTool', 'GlobTool'],
+  toolCapabilities: [
+    {
+      id: 'filesystem',
+      label: 'Filesystem',
+      description: 'Read and write files.',
+      tools: [
+        {
+          id: 'ReadFileTool',
+          name: 'Read file',
+          description: 'Read a file.',
+          runtimeName: 'read_file',
+          requiresApproval: false,
+          builtin: true,
+        },
+        {
+          id: 'GlobTool',
+          name: 'Find files',
+          description: 'Find files by pattern.',
+          runtimeName: 'glob_search',
+          requiresApproval: false,
+          builtin: true,
+        },
+        {
+          id: 'WriteFileTool',
+          name: 'Write file',
+          description: 'Write a file.',
+          runtimeName: 'write_file',
+          requiresApproval: true,
+          deferrable: false,
+        },
+      ],
+    },
+  ],
+} as ConfigOptions;
+
 const translatedCapabilityIds = [
   'filesystem',
   'shell',
   'web',
   'tasks-goals',
-  'agent',
+  'orchestration',
+  'interaction',
   'creative',
   'memory-recall',
 ];
@@ -70,6 +110,7 @@ const translatedToolIds = [
   'WebpageTool',
   'WebSearchTool',
   'AskQuestionTool',
+  'SkillTool',
   'GoalTool',
   'TaskCreateTool',
   'TaskUpdateTool',
@@ -118,6 +159,79 @@ describe('capability tool picker', () => {
         ['RunCommandTool', 'CheckCommandTool']
       )
     ).toEqual(['ReadFileTool']);
+  });
+
+  it('reads locked tools from both the flag and the id list', () => {
+    expect(getLockedTools(builtinConfig)).toEqual(new Set(['ReadFileTool', 'GlobTool']));
+    expect(getLockedTools(config)).toEqual(new Set());
+  });
+
+  it('refuses to turn a builtin off', () => {
+    const locked = new Set(['ReadFileTool']);
+
+    expect(toggleToolSelection(['ReadFileTool', 'WriteFileTool'], 'ReadFileTool', locked)).toEqual([
+      'ReadFileTool',
+      'WriteFileTool',
+    ]);
+    // Missing from a stale saved selection: toggling adds it rather than no-ops.
+    expect(toggleToolSelection(['WriteFileTool'], 'ReadFileTool', locked)).toEqual([
+      'WriteFileTool',
+      'ReadFileTool',
+    ]);
+  });
+
+  it('clears a capability down to its builtins', () => {
+    const locked = new Set(['ReadFileTool']);
+    const tools = ['ReadFileTool', 'WriteFileTool'];
+
+    // Header toggle with every unlocked tool on: clears them, keeps the builtin.
+    expect(toggleCapabilitySelection(['ReadFileTool', 'WriteFileTool'], tools, locked)).toEqual([
+      'ReadFileTool',
+    ]);
+    // Builtin alone must not read as "all selected", or the header would be stuck.
+    expect(toggleCapabilitySelection(['ReadFileTool'], tools, locked)).toEqual([
+      'ReadFileTool',
+      'WriteFileTool',
+    ]);
+  });
+
+  it('renders a builtin as checked, badged and non-interactive', () => {
+    const html = renderToStaticMarkup(
+      React.createElement(
+        I18nProvider,
+        null,
+        React.createElement(CapabilityToolPicker, {
+          backendConfig: builtinConfig,
+          selected: [],
+          onChange: () => undefined,
+        })
+      )
+    );
+
+    expect(html).toContain('disabled=""');
+    expect(html).toMatch(/Built-in|内置/);
+    // Two locked tools are checked despite an empty selection; the third is not.
+    expect(html.match(/M5 13l4 4L19 7/g)?.length).toBe(2);
+  });
+
+  it('marks an unchecked non-deferrable tool as off, and says the rest stay searchable', () => {
+    const html = renderToStaticMarkup(
+      React.createElement(
+        I18nProvider,
+        null,
+        React.createElement(CapabilityToolPicker, {
+          backendConfig: builtinConfig,
+          selected: [],
+          onChange: () => undefined,
+        })
+      )
+    );
+
+    // Unchecking usually demotes a tool to the ToolSearch pool rather than
+    // denying it, so the footnote has to be there and the OFF badge has to be
+    // rare — only the tool that really is unreachable when unchecked.
+    expect(html).toMatch(/mid-task|执行过程中/);
+    expect(html.match(/>Off<|>已关闭</g)?.length).toBe(1);
   });
 
   it('renders selection and deactivation as sibling buttons', () => {

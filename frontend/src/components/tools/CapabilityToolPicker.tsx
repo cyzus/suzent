@@ -27,15 +27,37 @@ export function getCapabilities(config: ConfigOptions): ToolCapabilityOption[] {
   return [];
 }
 
-export function toggleToolSelection(selected: string[], tool: string): string[] {
+export function toggleToolSelection(
+  selected: string[],
+  tool: string,
+  locked: Set<string> = new Set()
+): string[] {
+  if (locked.has(tool)) return selected.includes(tool) ? selected : [...selected, tool];
   return selected.includes(tool) ? selected.filter((value) => value !== tool) : [...selected, tool];
 }
 
-export function toggleCapabilitySelection(selected: string[], tools: string[]): string[] {
-  const allSelected = tools.every((tool) => selected.includes(tool));
-  return allSelected
-    ? selected.filter((tool) => !tools.includes(tool))
+export function toggleCapabilitySelection(
+  selected: string[],
+  tools: string[],
+  locked: Set<string> = new Set()
+): string[] {
+  // A capability whose only unlocked tools are already on is "all selected" —
+  // the locked ones can never come off, so they must not hold the header in the
+  // checked state and block the user from clearing the rest.
+  const unlockable = tools.filter((tool) => !locked.has(tool));
+  const allSelected = unlockable.length > 0 && unlockable.every((tool) => selected.includes(tool));
+  const next = allSelected
+    ? selected.filter((tool) => !unlockable.includes(tool))
     : [...new Set([...selected, ...tools])];
+  return [...new Set([...next, ...tools.filter((tool) => locked.has(tool))])];
+}
+
+export function getLockedTools(config: ConfigOptions): Set<string> {
+  const fromList = Array.isArray(config.builtinTools) ? config.builtinTools : [];
+  const fromCatalog = (config.toolCapabilities ?? []).flatMap((capability) =>
+    capability.tools.filter((tool) => tool.builtin).map((tool) => tool.id)
+  );
+  return new Set([...fromList, ...fromCatalog]);
 }
 
 export function resolveCatalogText(
@@ -58,6 +80,7 @@ export function CapabilityToolPicker({
 }: CapabilityToolPickerProps): React.ReactElement {
   const { t } = useI18n();
   const capabilities = getCapabilities(backendConfig);
+  const locked = getLockedTools(backendConfig);
   const translated = (key: string, fallback: string): string =>
     resolveCatalogText(t, key, fallback);
 
@@ -70,11 +93,12 @@ export function CapabilityToolPicker({
   }
 
   const toggleTool = (tool: string): void => {
-    onChange(toggleToolSelection(selected, tool));
+    if (locked.has(tool)) return;
+    onChange(toggleToolSelection(selected, tool, locked));
   };
 
   const toggleCapability = (tools: string[]): void => {
-    onChange(toggleCapabilitySelection(selected, tools));
+    onChange(toggleCapabilitySelection(selected, tools, locked));
   };
 
   return (
@@ -130,8 +154,16 @@ export function CapabilityToolPicker({
             </button>
             <div className={`flex flex-col gap-1.5 ${compact ? 'p-1.5 pl-3' : 'p-2 pl-4'}`}>
               {capability.tools.map((tool) => {
-                const active = selected.includes(tool.id);
+                const isLocked = locked.has(tool.id) || Boolean(tool.builtin);
+                // A builtin reads as on whatever the saved selection says — the
+                // server equips it either way, and a cleared checkbox would be a
+                // lie about what the agent can do.
+                const active = selected.includes(tool.id) || isLocked;
                 const aiActive = activatedByAI.has(tool.id) && !active;
+                // An empty checkbox means two different things. Most tools stay
+                // in the ToolSearch pool and the agent can load them mid-task;
+                // a non-deferrable one is the only kind unchecking truly denies.
+                const isOff = !active && !aiActive && tool.deferrable === false;
                 const toolName = translated(`config.toolCatalog.tools.${tool.id}.name`, tool.name);
                 const toolDescription = translated(
                   `config.toolCatalog.tools.${tool.id}.description`,
@@ -140,12 +172,14 @@ export function CapabilityToolPicker({
                 return (
                   <div
                     key={tool.id}
-                    className={`flex w-full border-2 text-left shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all ${active ? 'border-brutal-black bg-brutal-green text-brutal-black' : aiActive ? 'border-brutal-black bg-brutal-yellow text-brutal-black' : 'border-brutal-black bg-white text-brutal-black hover:bg-neutral-100 dark:bg-zinc-800 dark:text-white dark:hover:bg-zinc-700'}`}
+                    className={`flex w-full border-2 text-left shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all ${isLocked ? 'border-brutal-black bg-brutal-green/60 text-brutal-black' : active ? 'border-brutal-black bg-brutal-green text-brutal-black' : aiActive ? 'border-brutal-black bg-brutal-yellow text-brutal-black' : 'border-brutal-black bg-white text-brutal-black hover:bg-neutral-100 dark:bg-zinc-800 dark:text-white dark:hover:bg-zinc-700'}`}
                   >
                     <button
                       type="button"
                       onClick={() => toggleTool(tool.id)}
-                      className="flex min-w-0 flex-1 items-start gap-2.5 bg-transparent px-2.5 py-2 text-left"
+                      disabled={isLocked}
+                      title={isLocked ? t('config.toolCatalog.builtinHint') : undefined}
+                      className={`flex min-w-0 flex-1 items-start gap-2.5 bg-transparent px-2.5 py-2 text-left ${isLocked ? 'cursor-default' : ''}`}
                     >
                       <span
                         className={`mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center border-2 border-brutal-black ${active || aiActive ? 'bg-brutal-black' : 'bg-white dark:bg-zinc-900'}`}
@@ -170,6 +204,19 @@ export function CapabilityToolPicker({
                           <span className="text-[11px] font-black uppercase leading-tight">
                             {toolName}
                           </span>
+                          {isLocked && (
+                            <span className="border border-current px-1 py-px text-[8px] font-bold uppercase opacity-70">
+                              {t('config.toolCatalog.builtin')}
+                            </span>
+                          )}
+                          {isOff && (
+                            <span
+                              title={t('config.toolCatalog.offHint')}
+                              className="border border-current px-1 py-px text-[8px] font-bold uppercase opacity-70"
+                            >
+                              {t('config.toolCatalog.off')}
+                            </span>
+                          )}
                           {tool.requiresApproval && (
                             <span className="border border-current px-1 py-px text-[8px] font-bold uppercase opacity-70">
                               {t('config.toolCatalog.approval')}
@@ -218,6 +265,9 @@ export function CapabilityToolPicker({
           </section>
         );
       })}
+      <p className="border-t border-brutal-black/20 px-3 py-2 text-[10px] font-medium leading-snug text-neutral-500 dark:text-neutral-400">
+        {t('config.toolCatalog.searchableNote')}
+      </p>
     </div>
   );
 }
