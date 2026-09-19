@@ -128,3 +128,39 @@ def test_configuring_with_a_loguru_only_level_does_not_raise(monkeypatch, level)
 
     # loguru keeps the name it was given; only the stdlib threshold is mapped.
     assert recorder.sinks[0]["level"] == level
+
+
+def test_a_librarys_own_quieting_survives_the_intercept(monkeypatch):
+    # SQLAlchemy holds its own logger at WARNING because it narrates every
+    # statement at INFO; LiteLLM is pinned by an env var read at import.
+    # Resetting every logger to inherit the root threshold made the first log
+    # written after this pass 11,905 lines of SQL out of 21,111.
+    import sqlalchemy  # noqa: F401  -- importing is what sets the level
+
+    logging.getLogger("litellm").setLevel(logging.ERROR)
+    recorder = _Recorder()
+    monkeypatch.setattr(logger_module, "logger", recorder)
+    monkeypatch.setattr(logger_module, "_logging_configured", False)
+
+    setup_logging(level="INFO")
+
+    assert logging.getLogger("sqlalchemy").level == logging.WARNING
+    assert not logging.getLogger("sqlalchemy.engine").isEnabledFor(logging.INFO)
+    assert logging.getLogger("litellm").level == logging.ERROR
+
+
+def test_the_intercept_still_takes_over_handlers_and_propagation(monkeypatch):
+    noisy = logging.getLogger("uvicorn.access")
+    noisy.addHandler(logging.StreamHandler())
+    noisy.propagate = False
+    recorder = _Recorder()
+    monkeypatch.setattr(logger_module, "logger", recorder)
+    monkeypatch.setattr(logger_module, "_logging_configured", False)
+
+    setup_logging(level="INFO")
+
+    # Its own handler wrote uvicorn's shape into the log; propagation off
+    # meant it never reached loguru at all.
+    assert noisy.handlers == []
+    assert noisy.propagate is True
+    assert isinstance(logging.root.handlers[0], logger_module.InterceptHandler)

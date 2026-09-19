@@ -107,6 +107,15 @@ def _stdlib_threshold(level: str) -> int:
 def _intercept_standard_logging(level: str) -> None:
     """Route every ``logging`` logger into loguru, and only into loguru.
 
+    Handlers are taken away and propagation restored, but levels are left
+    exactly as they are. A library that has quietened itself has made a
+    decision this function is in no position to second-guess: SQLAlchemy
+    holds its own logger at WARNING because it narrates every statement it
+    executes at INFO, and LiteLLM is pinned by an environment variable read
+    when it is imported. Resetting them to inherit the root threshold turned
+    the first log written after this pass into 11,905 lines of SQL out of
+    21,111 -- the opposite of what the pass was for.
+
     The threshold is applied here rather than at the sinks. The file sink
     keeps everything at DEBUG, which is right for Suzent's own records and
     wrong for its dependencies: httpx and friends at DEBUG bury the log this
@@ -119,7 +128,6 @@ def _intercept_standard_logging(level: str) -> None:
         existing = logging.getLogger(name)
         existing.handlers = []
         existing.propagate = True
-        existing.setLevel(logging.NOTSET)  # defer to the root threshold
 
 
 def setup_logging(
