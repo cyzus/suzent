@@ -159,60 +159,61 @@ export function ServiceLogCard({ paused = false }: ServiceLogCardProps): React.R
       <SectionCardHeader
         title={t('settings.service.logTitle')}
         description={t('settings.service.logDesc')}
-        actions={
-          <>
-            <label className="flex items-center gap-2 text-xs font-bold uppercase">
-              {t('settings.service.logLevel')}
-              <select
-                value={minLevel ?? ''}
-                onChange={(event) => setMinLevel((event.target.value || null) as LogLevel | null)}
-                className="border-2 border-brutal-black bg-white px-2 py-1 font-mono text-xs dark:bg-zinc-900"
-              >
-                {LEVEL_CHOICES.map((choice) => (
-                  <option key={choice ?? 'all'} value={choice ?? ''}>
-                    {choice ?? t('settings.service.logLevelAll')}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex items-center gap-2 text-xs font-bold uppercase">
-              {t('settings.service.logLines')}
-              <select
-                value={lines}
-                onChange={(event) => setLines(Number(event.target.value))}
-                className="border-2 border-brutal-black bg-white px-2 py-1 font-mono text-xs dark:bg-zinc-900"
-              >
-                {LINE_CHOICES.map((choice) => (
-                  <option key={choice} value={choice}>
-                    {choice}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <input
-              type="search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder={t('settings.service.logSearch')}
-              aria-label={t('settings.service.logSearch')}
-              className="w-40 border-2 border-brutal-black bg-white px-2 py-1 font-mono text-xs dark:bg-zinc-900"
-            />
-            <BrutalButton
-              size="sm"
-              isActive={follow}
-              onClick={() => setFollow((following) => !following)}
-            >
-              {t('settings.service.follow')}
-            </BrutalButton>
-            <BrutalButton size="sm" onClick={() => void refresh()}>
-              {t('settings.service.refresh')}
-            </BrutalButton>
-            <BrutalButton size="sm" onClick={() => void copy()} disabled={shown.length === 0}>
-              {copied ? t('settings.service.logCopied') : t('settings.service.logCopy')}
-            </BrutalButton>
-          </>
-        }
       />
+
+      {/* A row of their own: crammed into the header's actions slot, these
+          controls squeezed the title into a column one word wide. */}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <label className="flex items-center gap-2 text-xs font-bold uppercase">
+          {t('settings.service.logLevel')}
+          <select
+            value={minLevel ?? ''}
+            onChange={(event) => setMinLevel((event.target.value || null) as LogLevel | null)}
+            className="border-2 border-brutal-black bg-white px-2 py-1 font-mono text-xs dark:bg-zinc-900"
+          >
+            {LEVEL_CHOICES.map((choice) => (
+              <option key={choice ?? 'all'} value={choice ?? ''}>
+                {choice ?? t('settings.service.logLevelAll')}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex items-center gap-2 text-xs font-bold uppercase">
+          {t('settings.service.logLines')}
+          <select
+            value={lines}
+            onChange={(event) => setLines(Number(event.target.value))}
+            className="border-2 border-brutal-black bg-white px-2 py-1 font-mono text-xs dark:bg-zinc-900"
+          >
+            {LINE_CHOICES.map((choice) => (
+              <option key={choice} value={choice}>
+                {choice}
+              </option>
+            ))}
+          </select>
+        </label>
+        <input
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder={t('settings.service.logSearch')}
+          aria-label={t('settings.service.logSearch')}
+          className="min-w-0 flex-1 border-2 border-brutal-black bg-white px-2 py-1 font-mono text-xs dark:bg-zinc-900 sm:max-w-xs"
+        />
+        <BrutalButton
+          size="sm"
+          isActive={follow}
+          onClick={() => setFollow((following) => !following)}
+        >
+          {t('settings.service.follow')}
+        </BrutalButton>
+        <BrutalButton size="sm" onClick={() => void refresh()}>
+          {t('settings.service.refresh')}
+        </BrutalButton>
+        <BrutalButton size="sm" onClick={() => void copy()} disabled={shown.length === 0}>
+          {copied ? t('settings.service.logCopied') : t('settings.service.logCopy')}
+        </BrutalButton>
+      </div>
 
       {logs?.available === false ? (
         <p className="font-mono text-xs text-neutral-500">{t('settings.service.logMissing')}</p>
