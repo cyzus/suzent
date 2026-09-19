@@ -906,7 +906,7 @@ def ensure_app_data():
     chatgpt_token_dir = USER_CONFIG_DIR / "chatgpt"
     os.environ.setdefault("CHATGPT_TOKEN_DIR", str(chatgpt_token_dir))
 
-    print("INFO: Starting App Data Verification...", flush=True)
+    logger.info("Starting app data verification")
 
     for target in [
         DATA_DIR,
@@ -926,7 +926,7 @@ def ensure_app_data():
             except Exception as e:
                 logger.error(f"Failed to create directory {target}: {e}")
 
-    print("INFO: App Data Verification Complete.", flush=True)
+    logger.info("App data verification complete")
 
 
 async def _stop(coro, name: str, timeout: float = 5.0):
@@ -1657,6 +1657,10 @@ if __name__ == "__main__":
             host=host,
             port=bind_port,
             log_level=log_level.lower(),
+            # Leave logging alone: setup_logging has already pointed the root
+            # logger at loguru, and uvicorn's own config would install
+            # handlers that write its lines in a second shape.
+            log_config=None,
             ws="wsproto",
             timeout_graceful_shutdown=5,  # force-close lingering SSE connections after 5s
         )

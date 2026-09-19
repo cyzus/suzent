@@ -890,7 +890,7 @@ def redirect_logs_to_stderr(level: str = "WARNING") -> None:
     loguru_logger.add(
         sys.stderr,
         level=level.upper(),
-        format="{time:HH:mm:ss} | {level:8} | {name}:{function} | {message}",
+        format=suzent_logger.FILE_FORMAT,
     )
     suzent_logger._logging_configured = True
 

@@ -12,7 +12,9 @@ import re
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from loguru import logger
+from suzent.logger import get_logger
+
+logger = get_logger(__name__)
 
 # Directories pruned from recursive walks. Searching these (a Rust target dir,
 # node_modules, .venv, .git, etc.) is almost never intended and can multiply the

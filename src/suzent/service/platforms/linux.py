@@ -45,6 +45,11 @@ class LinuxServiceManager(PlatformServiceManager):
             "[Service]\n"
             "Type=simple\n"
             f"ExecStart={command}\n"
+            # Anything that never reaches the log handler -- a traceback on
+            # the way out, a dependency writing to stdout -- would otherwise
+            # go only to the journal, which the console cannot read.
+            f"StandardOutput=append:{self.log_path}\n"
+            f"StandardError=append:{self.log_path}\n"
             "Restart=on-failure\n"
             "RestartSec=5\n"
             "TimeoutStopSec=15\n\n"

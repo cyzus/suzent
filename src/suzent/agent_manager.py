@@ -8,7 +8,6 @@ This module handles the lifecycle of AI agents including:
 """
 
 import asyncio
-import os
 from typing import Optional, Dict, Any, List, Set, cast
 
 from fastmcp.client.transports import StdioTransport
@@ -32,9 +31,6 @@ from suzent.prompts import (
 from suzent.skills import get_skill_manager
 
 # Import memory lifecycle functions (for backward compatibility re-exports)
-
-# Suppress LiteLLM's verbose logging
-os.environ["LITELLM_LOG"] = "ERROR"
 
 logger = get_logger(__name__)
 

@@ -562,7 +562,6 @@ class TelegramChannel(SocialChannel):
         self, update: Update, context: "ContextTypes.DEFAULT_TYPE"
     ):
         """Internal handler for text messages."""
-        print(f"DEBUG: Telegram update received: {update}")
         logger.debug(f"Telegram raw update: {update}")
         if not update.effective_message:
             logger.debug("Telegram update verified: No effective message found.")
@@ -571,10 +570,7 @@ class TelegramChannel(SocialChannel):
         msg = update.effective_message
         user = update.effective_user
 
-        print(f"DEBUG: Processing message from {user.id}: {msg.text}")
-        logger.info(
-            f"Telegram message received from {user.id} in chat {msg.chat.id}: {msg.text}"
-        )
+        logger.info(f"Telegram message received from {user.id} in chat {msg.chat.id}")
 
         unified_msg = UnifiedMessage(
             id=str(msg.message_id),

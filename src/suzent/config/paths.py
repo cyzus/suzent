@@ -108,6 +108,10 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 _migrate_legacy_data_dir(PROJECT_DIR, DATA_DIR)
 
 RUNTIME_DIR = DATA_DIR / "runtime"
+# The service log. Named here rather than at each of its three users --
+# the service runtime that writes it, the platform managers that point a
+# service manager at it, and the route that tails it for the console.
+SERVICE_LOG_PATH = RUNTIME_DIR / "server.log"
 CACHE_DIR = DATA_DIR / "cache"
 USER_CONFIG_DIR = DATA_DIR / "config"
 SKILLS_ROOT_DIR = DATA_DIR / "skills"

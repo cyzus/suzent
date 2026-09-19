@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from suzent.config.paths import OFFICIAL_SKILLS_DIR as OFFICIAL_SKILLS_DIR
     from suzent.config.paths import PROJECT_DIR as PROJECT_DIR
     from suzent.config.paths import RUNTIME_DIR as RUNTIME_DIR
+    from suzent.config.paths import SERVICE_LOG_PATH as SERVICE_LOG_PATH
     from suzent.config.paths import SKILLS_ROOT_DIR as SKILLS_ROOT_DIR
     from suzent.config.paths import USER_CONFIG_DIR as USER_CONFIG_DIR
     from suzent.config.paths import USER_SKILLS_DIR as USER_SKILLS_DIR
@@ -52,6 +53,7 @@ _PATHS = (
     "PROJECT_DIR",
     "DATA_DIR",
     "RUNTIME_DIR",
+    "SERVICE_LOG_PATH",
     "CACHE_DIR",
     "USER_CONFIG_DIR",
     "SKILLS_ROOT_DIR",
