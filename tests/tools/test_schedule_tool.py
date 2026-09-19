@@ -115,6 +115,23 @@ def test_a_cron_that_fires_faster_than_the_floor_is_refused(tool):
     assert "floor" in result.message
 
 
+def test_a_cron_that_is_tight_for_only_part_of_its_cycle_is_refused(tool):
+    """A cron schedule is not uniform.
+
+    "0-50 * * * *" fires every minute for most of the hour; only the gap
+    straddling :50-:00 is ten minutes. Sampling the first two occurrences can
+    land on exactly that gap and wave the whole expression through.
+    """
+    result = tool.forward(ctx(), action="create", prompt="x", cron="0-50 * * * *")
+
+    assert not result.success
+    assert "floor" in result.message
+
+
+def test_a_genuinely_sparse_cron_is_still_allowed(tool):
+    assert tool.forward(ctx(), action="create", prompt="x", cron="0 9 * * 1-5").success
+
+
 def test_an_invalid_cron_is_refused(tool):
     assert not tool.forward(ctx(), action="create", prompt="x", cron="nonsense").success
 

@@ -555,3 +555,54 @@ async def test_a_completed_one_shot_is_spent(temp_db, monkeypatch, runner):
     assert job.active is False
     assert job.last_run_at is not None
     assert compute_next_run(job) is None
+
+
+@pytest.mark.asyncio
+async def test_a_quiet_task_with_something_to_say_still_reaches_the_user(
+    temp_db, monkeypatch, runner
+):
+    """A quiet task's turn is never written to the transcript, so on the rare
+    occasion it does have something to report the notification is the only way
+    out -- even though the task itself was configured silent."""
+    temp_db.create_chat(title="Work", config={}, chat_id="chat-11")
+    job_id = temp_db.create_cron_job(
+        name="watch CI",
+        prompt="x",
+        schedule_kind="interval",
+        interval_minutes=30,
+        chat_id="chat-11",
+        suppress_ok=True,
+        delivery_mode="none",
+    )
+    monkeypatch.setattr(scheduler_mod, "get_database", lambda: temp_db)
+    runner.response = "the build is red"
+
+    await SchedulerBrain()._execute_job(job_id)
+
+    notifications = temp_db.drain_background_notifications()
+    assert [n.result for n in notifications] == ["the build is red"]
+
+
+@pytest.mark.asyncio
+async def test_a_silent_isolated_task_stays_silent(temp_db, monkeypatch, runner):
+    """The exception is only for tasks whose turn cannot be seen in a chat."""
+    job_id = temp_db.create_cron_job(
+        name="digest",
+        prompt="x",
+        cron_expr="0 9 * * *",
+        delivery_mode="none",
+    )
+    monkeypatch.setattr(scheduler_mod, "get_database", lambda: temp_db)
+    monkeypatch.setattr(
+        "suzent.core.chat_processor.ChatProcessor",
+        type("_P", (), {"process_turn_text": staticmethod(lambda **k: _done("x"))}),
+    )
+    monkeypatch.setattr(SchedulerBrain, "_build_config_override", lambda *a, **k: {})
+
+    await SchedulerBrain()._execute_job(job_id)
+
+    assert temp_db.drain_background_notifications() == []
+
+
+async def _done(value):
+    return value

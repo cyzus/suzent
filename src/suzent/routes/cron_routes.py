@@ -195,13 +195,17 @@ async def update_cron_job(request: Request) -> JSONResponse:
         {"schedule_kind", "cron_expr", "interval_minutes", "run_at"} & set(data)
     )
     if schedule_touched:
+        # Validate what was submitted, not what survived parsing. A run_at the
+        # client sent but we could not parse lands in updates as None; falling
+        # back to the stored timestamp here would pass validation and then
+        # write the None, silently unscheduling the task behind a 200.
+        if "run_at" in data:
+            submitted_run_at = updates["run_at"]
+        else:
+            submitted_run_at = job.run_at
         merged = {
             "interval_minutes": updates.get("interval_minutes", job.interval_minutes),
-            "run_at": (
-                updates["run_at"].isoformat()
-                if updates.get("run_at")
-                else (job.run_at.isoformat() if job.run_at else None)
-            ),
+            "run_at": submitted_run_at.isoformat() if submitted_run_at else None,
         }
         kind = updates.get("schedule_kind", job.schedule_kind or "cron")
         expr = updates.get("cron_expr", job.cron_expr or "")

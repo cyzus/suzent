@@ -543,12 +543,18 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
                         onChange={(next) => setEditFields({ ...editFields, ...next })}
                       />
                       {bindingControls(
-                        editFields.chat_id || '',
+                        // context_mode is placement; chat_id can also be present
+                        // purely as ownership on an agent-created isolated task,
+                        // so reading chat_id here would show it as bound.
+                        editFields.context_mode === 'bound' ? editFields.chat_id || '' : '',
                         editFields.suppress_ok ?? true,
                         (id) =>
                           setEditFields({
                             ...editFields,
-                            chat_id: id || null,
+                            // Switching to isolated keeps chat_id: dropping it
+                            // would erase the owning chat and strand the task
+                            // outside its creator's listing and quota.
+                            ...(id ? { chat_id: id } : {}),
                             context_mode: id ? 'bound' : 'isolated',
                             suppress_ok: id ? (editFields.suppress_ok ?? true) : false,
                           }),

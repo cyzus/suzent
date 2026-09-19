@@ -694,7 +694,18 @@ class SchedulerBrain(BaseBrain):
                 db.update_cron_job(job_id, active=False)
                 logger.info(f"One-shot task {job_id} completed, deactivated")
 
-            if job.delivery_mode == "announce" and response_text:
+            # A quiet bound task's turn is never written to the transcript --
+            # rollback owns its message state, and persisting the internal
+            # reminder would risk leaving it visible on a failure path. So on
+            # the rare occasion such a task does have something to say, the
+            # notification is the only way it reaches anyone: announce it even
+            # when the task was configured silent. Heartbeats have their own
+            # delivery path and never reach here.
+            speaks_only_by_exception = bound and bool(job.suppress_ok)
+            should_announce = (
+                job.delivery_mode == "announce" or speaks_only_by_exception
+            )
+            if should_announce and response_text:
                 try:
                     db.create_background_notification(
                         source="cron",

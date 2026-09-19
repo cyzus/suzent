@@ -39,6 +39,37 @@ MIN_DELAY_MINUTES = 1
 # spec can be far tighter than the interval floor allows.
 MIN_CRON_PERIOD_SECONDS = MIN_INTERVAL_MINUTES * 60
 
+# How far ahead to look for a cron expression's tightest gap. A cron schedule
+# is not uniform: "0-50 * * * *" fires every minute for most of the hour, but
+# the gap straddling the :50-:00 break is ten minutes. Sampling the first two
+# occurrences would pass that whole expression, so walk a full day.
+CRON_SAMPLE_HORIZON = timedelta(days=1)
+CRON_SAMPLE_LIMIT = 500
+
+
+def _tightest_cron_gap(cron: str) -> Optional[float]:
+    """Smallest gap between consecutive fires over the next day, in seconds.
+
+    Returns None when the expression produces fewer than two occurrences in
+    the horizon, which is far below the floor anyway.
+    """
+    iterator = croniter(cron, datetime.now())
+    previous = iterator.get_next(datetime)
+    deadline = previous + CRON_SAMPLE_HORIZON
+    smallest: Optional[float] = None
+
+    for _ in range(CRON_SAMPLE_LIMIT):
+        nxt = iterator.get_next(datetime)
+        gap = (nxt - previous).total_seconds()
+        if smallest is None or gap < smallest:
+            smallest = gap
+        # One gap below the floor is enough to reject; no need to walk on.
+        if smallest < MIN_CRON_PERIOD_SECONDS or nxt >= deadline:
+            break
+        previous = nxt
+
+    return smallest
+
 
 class ScheduleTool(Tool):
     """Schedule a future turn in this conversation, or manage ones already set."""
@@ -390,12 +421,10 @@ class ScheduleTool(Tool):
 
         if not croniter.is_valid(cron):
             return None, f"Invalid cron expression: {cron}"
-        iterator = croniter(cron, datetime.now())
-        first = iterator.get_next(datetime)
-        period = (iterator.get_next(datetime) - first).total_seconds()
-        if period < MIN_CRON_PERIOD_SECONDS:
+        period = _tightest_cron_gap(cron)
+        if period is not None and period < MIN_CRON_PERIOD_SECONDS:
             return None, (
-                f"{cron!r} fires every {int(period)}s; the floor is "
+                f"{cron!r} fires as often as every {int(period)}s; the floor is "
                 f"{MIN_CRON_PERIOD_SECONDS}s."
             )
         return {"schedule_kind": "cron", "cron_expr": cron}, None
