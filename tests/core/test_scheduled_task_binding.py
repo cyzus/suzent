@@ -1,6 +1,6 @@
 """Scheduled tasks: schedule kinds, catch-up, and chat binding."""
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -23,9 +23,22 @@ class _Recorder:
         self.pending: list[str] = []
         self.enabled = True
 
-    async def run_bound_turn(self, chat_id, reminder, *, suppress_ok=False, **kwargs):
+    async def run_bound_turn(
+        self,
+        chat_id,
+        reminder,
+        *,
+        suppress_ok=False,
+        heartbeat_approvals=False,
+        **kwargs,
+    ):
         self.calls.append(
-            {"chat_id": chat_id, "reminder": reminder, "suppress_ok": suppress_ok}
+            {
+                "chat_id": chat_id,
+                "reminder": reminder,
+                "suppress_ok": suppress_ok,
+                "heartbeat_approvals": heartbeat_approvals,
+            }
         )
         return self.response
 
@@ -347,3 +360,87 @@ async def test_a_due_heartbeat_is_offered_to_the_frontend_not_run_outright(
     assert runner.calls == []
     # No run history: a heartbeat is not a reportable task run.
     assert temp_db.list_cron_runs(row.id) == []
+
+
+def test_a_bound_task_does_not_inherit_heartbeat_tool_approvals(temp_db):
+    """Those tools were approved for a check-in the user configured.
+
+    Handing the same blanket approval to an arbitrary scheduled prompt would
+    widen it past what was agreed to.
+    """
+    from suzent.core.heartbeat import HeartbeatRunner
+
+    runner = HeartbeatRunner()
+    assert runner._build_config_override(["RunCommandTool"]).get("tool_approval_policy")
+    assert "tool_approval_policy" not in runner._build_config_override([])
+
+
+@pytest.mark.asyncio
+async def test_the_scheduler_asks_for_no_heartbeat_approvals_on_a_plain_task(
+    temp_db, monkeypatch, runner
+):
+    temp_db.create_chat(title="Work", config={}, chat_id="chat-6")
+    job_id = temp_db.create_cron_job(
+        name="recheck",
+        prompt="x",
+        schedule_kind="interval",
+        interval_minutes=30,
+        chat_id="chat-6",
+    )
+    monkeypatch.setattr(scheduler_mod, "get_database", lambda: temp_db)
+
+    await SchedulerBrain()._execute_job(job_id)
+
+    assert runner.calls[0]["heartbeat_approvals"] is False
+
+
+@pytest.mark.asyncio
+async def test_a_dropped_heartbeat_handoff_comes_back_around(
+    temp_db, monkeypatch, runner
+):
+    """Handing a heartbeat to the runner is not the same as it happening.
+
+    The chat can go busy inside the pickup window, and both the frontend and
+    the fallback then bow out. Claiming the run at hand-off would swallow that
+    heartbeat for a whole interval.
+    """
+    temp_db.create_chat(
+        title="Watched",
+        config={"heartbeat_enabled": True, "heartbeat_interval_minutes": 30},
+        chat_id="hb-6",
+    )
+    monkeypatch.setattr(scheduler_mod, "get_database", lambda: temp_db)
+    sync_heartbeat_tasks(temp_db)
+    row = temp_db.find_cron_job_by_source("heartbeat", "hb-6")
+
+    brain = SchedulerBrain()
+    await brain._execute_job(row.id)
+
+    row = temp_db.get_cron_job(row.id)
+    # Not recorded as run, and due again well before a full interval.
+    assert row.last_run_at is None
+    assert row.next_run_at < datetime.now() + timedelta(minutes=5)
+
+
+@pytest.mark.asyncio
+async def test_a_heartbeat_that_did_run_advances_a_full_interval(
+    temp_db, monkeypatch, runner
+):
+    """The runner stamps chat.config; the next sync turns that into the schedule."""
+    temp_db.create_chat(
+        title="Watched",
+        config={"heartbeat_enabled": True, "heartbeat_interval_minutes": 30},
+        chat_id="hb-7",
+    )
+    monkeypatch.setattr(scheduler_mod, "get_database", lambda: temp_db)
+    sync_heartbeat_tasks(temp_db)
+    row = temp_db.find_cron_job_by_source("heartbeat", "hb-7")
+    await SchedulerBrain()._execute_job(row.id)
+
+    ran_at = datetime.now(timezone.utc)
+    temp_db.merge_chat_config("hb-7", {"heartbeat_last_run_at": ran_at.isoformat()})
+    sync_heartbeat_tasks(temp_db)
+
+    row = temp_db.get_cron_job(row.id)
+    assert row.last_run_at is not None
+    assert row.next_run_at > datetime.now() + timedelta(minutes=25)

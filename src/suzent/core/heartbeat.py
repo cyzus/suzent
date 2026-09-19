@@ -241,6 +241,7 @@ class HeartbeatRunner(BaseBrain):
                 chat_id,
                 self.build_heartbeat_reminder(instructions),
                 suppress_ok=True,
+                heartbeat_approvals=True,
             )
             self._last_error = None
 
@@ -297,6 +298,7 @@ class HeartbeatRunner(BaseBrain):
         *,
         suppress_ok: bool = False,
         model_override: Optional[str] = None,
+        heartbeat_approvals: bool = False,
     ) -> str:
         """Run one background turn inside an existing chat.
 
@@ -305,6 +307,12 @@ class HeartbeatRunner(BaseBrain):
         and the turn reported nothing worth surfacing -- in that case its
         messages are rolled back, so a quiet check leaves the conversation
         exactly as it found it.
+
+        ``heartbeat_approvals`` opts into the global heartbeat allow-list. It
+        is off by default and only heartbeats pass it: those tools were
+        approved for a check-in the user configured, and handing the same
+        blanket approval to an arbitrary scheduled prompt -- including one the
+        agent wrote for itself -- would widen it well past what was agreed to.
 
         Raises whatever the turn raises: the scheduler needs a failed run to
         look like a failure so it can retry.
@@ -319,7 +327,10 @@ class HeartbeatRunner(BaseBrain):
         initial_message_count = len(chat.messages) if chat else 0
 
         response_text = await self._run_chat_turn(
-            chat_id, reminder, model_override=model_override
+            chat_id,
+            reminder,
+            model_override=model_override,
+            heartbeat_approvals=heartbeat_approvals,
         )
 
         if suppress_ok and self._is_heartbeat_ok(response_text):
@@ -334,21 +345,24 @@ class HeartbeatRunner(BaseBrain):
         reminder: str,
         *,
         model_override: Optional[str] = None,
+        heartbeat_approvals: bool = False,
     ) -> str:
         from suzent.core.chat_processor import ChatProcessor
 
         processor = ChatProcessor()
 
         # Read global heartbeat_allowed_tools to determine approval policy.
+        # Only a heartbeat gets them; see run_bound_turn.
         heartbeat_allowed_tools: list = []
-        try:
-            from suzent.routes.heartbeat_routes import _load_heartbeat_config
+        if heartbeat_approvals:
+            try:
+                from suzent.routes.heartbeat_routes import _load_heartbeat_config
 
-            heartbeat_allowed_tools = (
-                _load_heartbeat_config().get("allowed_tools") or []
-            )
-        except Exception:
-            pass
+                heartbeat_allowed_tools = (
+                    _load_heartbeat_config().get("allowed_tools") or []
+                )
+            except Exception:
+                pass
 
         config_override = self._build_config_override(
             heartbeat_allowed_tools, model_override=model_override

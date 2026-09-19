@@ -45,10 +45,46 @@ def test_opting_out_of_binding_gives_the_task_its_own_chat(tool, temp_db):
     )
 
     job = temp_db.get_cron_job(result.metadata["task_id"])
-    assert job.chat_id is None
     assert job.context_mode == "isolated"
+    # The originating chat is still recorded: it is ownership, not placement.
+    assert job.chat_id == "chat-1"
     # An isolated task has nowhere to speak, so it announces instead.
     assert job.delivery_mode == "announce"
+
+
+def test_isolated_tasks_still_count_against_the_quota(tool):
+    """Otherwise one chat could spawn unlimited isolated tasks."""
+    for i in range(MAX_AGENT_TASKS_PER_CHAT):
+        assert tool.forward(
+            ctx(),
+            action="create",
+            name=f"t{i}",
+            prompt="x",
+            every_minutes=30,
+            bind_to_chat=False,
+        ).success
+
+    overflow = tool.forward(
+        ctx(), action="create", prompt="x", every_minutes=30, bind_to_chat=False
+    )
+    assert not overflow.success
+
+
+def test_an_isolated_task_can_still_be_listed_and_cancelled(tool, temp_db):
+    """A task the agent cannot see is a task it can never stop."""
+    created = tool.forward(
+        ctx(),
+        action="create",
+        name="digest",
+        prompt="x",
+        every_minutes=30,
+        bind_to_chat=False,
+    )
+    task_id = created.metadata["task_id"]
+
+    assert "digest" in tool.forward(ctx(), action="list").message
+    assert tool.forward(ctx(), action="cancel", task_id=task_id).success
+    assert temp_db.get_cron_job(task_id) is None
 
 
 def test_exactly_one_schedule_must_be_given(tool):

@@ -183,6 +183,11 @@ def is_missed_run(job, now: datetime) -> bool:
 
 HEARTBEAT_SOURCE = "heartbeat"
 
+# How long to wait before re-offering a heartbeat whose hand-off went nowhere.
+# Must exceed the runner's own 20s pickup window, so a heartbeat that *was*
+# claimed is never offered a second time.
+HEARTBEAT_PICKUP_RETRY = timedelta(seconds=60)
+
 
 def _parse_heartbeat_last_run(cfg: dict) -> Optional[datetime]:
     """chat.config stores a UTC ISO string; the scheduler works in local naive."""
@@ -597,11 +602,20 @@ class SchedulerBrain(BaseBrain):
             self._arm(db, job, after=now)
             return
 
+        # Don't record this as a run yet. Handing a heartbeat to the runner is
+        # not the same as it happening: the chat can become busy inside the
+        # pickup window, and both the frontend and the fallback then bow out.
+        # Claiming the run here would swallow it for a whole interval.
+        #
+        # Arm a short retry instead. The runner stamps chat.config when it
+        # really starts, and the next sync turns that into the true last_run_at
+        # and next_run_at -- so a heartbeat that lands advances normally, and
+        # one that is dropped comes back around.
+        retry_after = max(
+            HEARTBEAT_PICKUP_RETRY, timedelta(seconds=2 * self.tick_interval)
+        )
         db.update_cron_job_run_state(
-            job.id,
-            last_run_at=now,
-            next_run_at=now + timedelta(minutes=job.interval_minutes or 30),
-            retry_count=0,
+            job.id, next_run_at=now + retry_after, retry_count=0
         )
         runner.mark_heartbeat_pending(job.chat_id)
 

@@ -210,7 +210,12 @@ class ScheduleTool(Tool):
             interval_minutes=spec.get("interval_minutes"),
             run_at=spec.get("run_at"),
             timezone=timezone,
-            chat_id=chat_id if bind_to_chat else None,
+            # chat_id is ownership, not placement: context_mode alone decides
+            # where the turn runs. Clearing it for an isolated task would hide
+            # that task from this tool's own listing, quota and cancel paths,
+            # letting one conversation spawn unlimited isolated tasks it could
+            # then never stop.
+            chat_id=chat_id,
             context_mode="bound" if bind_to_chat else "isolated",
             suppress_ok=bool(quiet_if_nothing_to_report) and bind_to_chat,
             delivery_mode="none" if bind_to_chat else "announce",
@@ -247,8 +252,13 @@ class ScheduleTool(Tool):
                 if job.next_run_at
                 else "unscheduled"
             )
+            where = (
+                "in this chat"
+                if (job.context_mode or "isolated") == "bound"
+                else "in its own chat"
+            )
             lines.append(
-                f"  [#{job.id}] {job.name} — {self._describe(job)}, "
+                f"  [#{job.id}] {job.name} — {self._describe(job)} {where}, "
                 f"next {nxt} (source: {job.source})"
             )
         body = "\n".join(lines)
