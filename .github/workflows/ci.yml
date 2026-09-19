@@ -178,10 +178,16 @@ jobs:
       with:
         fetch-depth: 0
 
-    # An npm install and an Astro build on every backend PR, to rebuild a site
+    # An npm install and a Next build on every backend PR, to rebuild a site
     # the PR cannot have changed. Guarded the same way the Rust job is, rather
     # than by a `paths:` filter on the workflow: a check that never reports
     # leaves a required check pending forever.
+    #
+    # docs/ counts as the website. `npm run build` runs prepare.mjs first,
+    # which copies ../docs/assets into the site, and validate.mjs then checks
+    # the /docs routes -- so a renamed page breaks the build. These are the
+    # same two paths deploy-docs.yml redeploys on; if this job skipped a docs
+    # change, the breakage would first appear in that deploy, after the merge.
     - name: Detect website changes
       id: changed
       shell: bash
@@ -197,7 +203,7 @@ jobs:
 
         if [[ -z "$range" ]]; then
           touched=true
-        elif git diff --name-only "$range" | grep -qE '^website/'; then
+        elif git diff --name-only "$range" | grep -qE '^(website|docs)/'; then
           touched=true
         else
           touched=false
