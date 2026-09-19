@@ -480,3 +480,34 @@ def test_browser_plan_packages_new_version_without_release_metadata(
             "pair.js",
             "popup.html",
         }
+
+
+@pytest.mark.parametrize("product", release.PRODUCTS)
+@pytest.mark.parametrize("has_none_declaration", [False, True])
+def test_explicit_maintenance_release_has_publishable_notes(
+    repo: Path, product: str, has_none_declaration: bool
+) -> None:
+    adopt(repo)
+    note(repo, "initial-release", **{product: "patch"})
+    source = commit(repo)
+    release.apply(repo, product, source)
+    source = commit(repo)
+    if has_none_declaration:
+        note(repo, "internal-only", **{product: "none"})
+        source = commit(repo)
+    baseline = release.product_version(repo, product)
+    release.write(
+        repo,
+        f".releases/overrides/{product}.json",
+        {
+            "baseline": baseline,
+            "version": release.desktop.bump_semver(baseline, "patch"),
+            "reason": "Explicit maintenance release",
+        },
+    )
+    release.apply(repo, product, source)
+    release.git(repo, "add", ".")
+    release.check(repo, source, product)
+    notes = release.release_notes(repo, product)
+    assert "Release maintenance" in notes.partition("\n")[2]
+    assert "initial-release" not in notes

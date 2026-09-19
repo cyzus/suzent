@@ -269,6 +269,8 @@ def render_notes(root: Path, data: dict[str, Any], source: str) -> str:
     ]
     if summaries:
         draft += "\n### Release notes\n" + "\n".join(f"- {s}" for s in summaries) + "\n"
+    if not summaries and not data["legacy"]:
+        draft += "\n### Release notes\n- Release maintenance\n"
     date = git(root, "show", "-s", "--format=%cs", source)
     draft = re.sub(r"^## .*", f"## [{prefix}{version}] - {date}", draft, count=1)
     if exists(root, path):
