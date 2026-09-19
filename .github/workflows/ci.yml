@@ -175,8 +175,41 @@ jobs:
 
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        fetch-depth: 0
+
+    # An npm install and an Astro build on every backend PR, to rebuild a site
+    # the PR cannot have changed. Guarded the same way the Rust job is, rather
+    # than by a `paths:` filter on the workflow: a check that never reports
+    # leaves a required check pending forever.
+    - name: Detect website changes
+      id: changed
+      shell: bash
+      run: |
+        if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+          git fetch --no-tags origin "$BASE_REF"
+          range="origin/$BASE_REF...HEAD"
+        elif git rev-parse -q --verify HEAD~1 >/dev/null; then
+          range="HEAD~1..HEAD"
+        else
+          range=""
+        fi
+
+        if [[ -z "$range" ]]; then
+          touched=true
+        elif git diff --name-only "$range" | grep -qE '^website/'; then
+          touched=true
+        else
+          touched=false
+        fi
+
+        echo "Website sources touched: $touched"
+        echo "touched=$touched" >> "$GITHUB_OUTPUT"
+      env:
+        BASE_REF: ${{ github.base_ref }}
 
     - name: Set up Node.js
+      if: steps.changed.outputs.touched == 'true'
       uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
       with:
         node-version: '22'
@@ -184,14 +217,17 @@ jobs:
         cache-dependency-path: website/package-lock.json
 
     - name: Install dependencies
+      if: steps.changed.outputs.touched == 'true'
       working-directory: website
       run: npm ci
 
     - name: Test website
+      if: steps.changed.outputs.touched == 'true'
       working-directory: website
       run: npm test
 
     - name: Build website
+      if: steps.changed.outputs.touched == 'true'
       working-directory: website
       run: npm run build
 
