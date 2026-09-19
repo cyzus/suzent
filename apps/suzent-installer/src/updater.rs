@@ -541,8 +541,7 @@ fn backup_current_ui(paths: &UpdatePaths) -> Result<(), String> {
 fn install_staged_ui(paths: &UpdatePaths, target_tag: &str) -> Result<(), String> {
     let bin = paths.root.join("bin");
     fs::create_dir_all(&bin).map_err(display_io("create desktop binary directory"))?;
-    // Keep the verified download available if a later phase fails and rolls back.
-    fs::copy(paths.staged_ui(), paths.ui()).map_err(display_io("install desktop application"))?;
+    fs::rename(paths.staged_ui(), paths.ui()).map_err(display_io("install desktop application"))?;
     fs::write(paths.ui_version(), target_tag)
         .map_err(display_io("write desktop version marker"))?;
     Ok(())
@@ -550,7 +549,15 @@ fn install_staged_ui(paths: &UpdatePaths, target_tag: &str) -> Result<(), String
 
 fn restore_ui_backup(paths: &UpdatePaths, old_version: &str) -> Result<(), String> {
     if paths.ui().exists() {
-        fs::remove_file(paths.ui()).map_err(display_io("remove failed desktop application"))?;
+        if paths.staged_ui().exists() {
+            fs::remove_file(paths.ui()).map_err(display_io("remove failed desktop application"))?;
+        } else {
+            // Return the candidate for retries without allocating another binary-sized copy.
+            fs::create_dir_all(&paths.staging_dir)
+                .map_err(display_io("create update staging directory"))?;
+            fs::rename(paths.ui(), paths.staged_ui())
+                .map_err(display_io("preserve desktop application for retry"))?;
+        }
     }
     if paths.backup_ui().exists() {
         fs::rename(paths.backup_ui(), paths.ui())
@@ -1143,8 +1150,25 @@ mod tests {
         .unwrap();
         backup_current_ui(&paths).unwrap();
         super::install_staged_ui(&paths, "v1.2.3").unwrap();
+        assert!(!paths.staged_ui().exists());
+        assert_eq!(fs::read(paths.ui()).unwrap(), b"new-ui");
         restore_ui_backup(&paths, "v1.2.2").unwrap();
+        assert_eq!(fs::read(paths.ui()).unwrap(), b"old-ui");
         super::prepare_ui(&paths, &expected, || panic!("downloaded again")).unwrap();
+        assert_eq!(fs::read(paths.staged_ui()).unwrap(), b"new-ui");
+    }
+
+    #[test]
+    fn rollback_before_install_preserves_staged_download() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = UpdatePaths::new(temp.path().to_path_buf(), "v1.2.3");
+        fs::create_dir_all(&paths.staging_dir).unwrap();
+        fs::create_dir_all(paths.root.join("bin")).unwrap();
+        fs::write(paths.ui(), b"old-ui").unwrap();
+        fs::write(paths.staged_ui(), b"new-ui").unwrap();
+        backup_current_ui(&paths).unwrap();
+        restore_ui_backup(&paths, "v1.2.2").unwrap();
+        assert_eq!(fs::read(paths.ui()).unwrap(), b"old-ui");
         assert_eq!(fs::read(paths.staged_ui()).unwrap(), b"new-ui");
     }
 
