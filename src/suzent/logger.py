@@ -87,6 +87,23 @@ class InterceptHandler(logging.Handler):
         origin.opt(exception=record.exc_info).log(level, record.getMessage())
 
 
+def _stdlib_threshold(level: str) -> int:
+    """``level`` as a number the standard library accepts.
+
+    loguru has two levels ``logging`` has never heard of, and both are named
+    in this module's own documentation as valid. Passing either one through by
+    name raises ``ValueError: Unknown level`` and takes the server down during
+    logging setup, so they are resolved to numbers here. loguru keeps the name
+    it was given; only the stdlib threshold is translated.
+    """
+    severity = {"TRACE": 5, "SUCCESS": logging.INFO}.get(level.upper())
+    if severity is not None:
+        return severity
+    resolved = logging.getLevelName(level.upper())
+    # getLevelName answers "Level <name>" for anything it does not know.
+    return resolved if isinstance(resolved, int) else logging.INFO
+
+
 def _intercept_standard_logging(level: str) -> None:
     """Route every ``logging`` logger into loguru, and only into loguru.
 
@@ -95,7 +112,9 @@ def _intercept_standard_logging(level: str) -> None:
     wrong for its dependencies: httpx and friends at DEBUG bury the log this
     pass exists to make readable. Raising ``LOG_LEVEL`` lets them through.
     """
-    logging.basicConfig(handlers=[InterceptHandler()], level=level.upper(), force=True)
+    logging.basicConfig(
+        handlers=[InterceptHandler()], level=_stdlib_threshold(level), force=True
+    )
     for name in list(logging.root.manager.loggerDict):
         existing = logging.getLogger(name)
         existing.handlers = []

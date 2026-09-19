@@ -8,8 +8,17 @@ and the console's log viewer showed each line twice.
 
 from __future__ import annotations
 
+import logging
+
+import pytest
+
 import suzent.logger as logger_module
-from suzent.logger import CONSOLE_FORMAT, FILE_FORMAT, setup_logging
+from suzent.logger import (
+    CONSOLE_FORMAT,
+    FILE_FORMAT,
+    _stdlib_threshold,
+    setup_logging,
+)
 
 
 class _Recorder:
@@ -89,3 +98,33 @@ def test_the_same_file_is_recognised_through_a_different_path(monkeypatch, tmp_p
         os.symlink(log_file, link)
         assert logger_module._is_where_stdout_already_goes(link)
         assert not logger_module._is_where_stdout_already_goes(tmp_path / "other.log")
+
+
+@pytest.mark.parametrize(
+    ("level", "expected"),
+    [
+        ("TRACE", 5),
+        ("SUCCESS", logging.INFO),
+        ("DEBUG", logging.DEBUG),
+        ("info", logging.INFO),
+        ("WARNING", logging.WARNING),
+        ("CRITICAL", logging.CRITICAL),
+    ],
+)
+def test_loguru_only_levels_become_numbers_the_stdlib_accepts(level, expected):
+    # TRACE and SUCCESS are documented as valid here and loguru takes them,
+    # but logging.basicConfig raises ValueError on the names -- which killed
+    # the server during logging setup, before it could report why.
+    assert _stdlib_threshold(level) == expected
+
+
+@pytest.mark.parametrize("level", ["TRACE", "SUCCESS"])
+def test_configuring_with_a_loguru_only_level_does_not_raise(monkeypatch, level):
+    recorder = _Recorder()
+    monkeypatch.setattr(logger_module, "logger", recorder)
+    monkeypatch.setattr(logger_module, "_logging_configured", False)
+
+    setup_logging(level=level)
+
+    # loguru keeps the name it was given; only the stdlib threshold is mapped.
+    assert recorder.sinks[0]["level"] == level
