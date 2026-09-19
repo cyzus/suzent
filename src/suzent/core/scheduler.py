@@ -760,6 +760,10 @@ class SchedulerBrain(BaseBrain):
             # persisted; a task that speaks for itself has to reach the
             # transcript or its answer is invisible in the chat it was bound to.
             persist_to_chat=not quiet,
+            # A quiet task is not rebuilt into the transcript, so an answer it
+            # does produce has to be written in explicitly. A speaking task
+            # already goes through the ordinary persistence path.
+            answer_label=job.name if quiet else None,
         )
 
     async def _run_chat_turn(

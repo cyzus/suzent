@@ -45,6 +45,13 @@ did reaches the transcript. A task that is not quiet joins the conversation
 like any other turn — that is what makes it worth binding, since its answer is
 meant to be read there.
 
+When a quiet task *does* have something to report, the answer is written into
+the conversation under a `Scheduled Task: <name>` header — after it has been
+classified, never before. That ordering is the whole trick: a turn is never
+sitting in the transcript waiting on a rollback that a failure could stop from
+running. If someone happened to be watching the chat while it ran, the
+streamed turn is already there and nothing is written twice.
+
 **Reach for a bound task when** the work only makes sense against a conversation:
 rechecking something you and the agent were just looking at, or monitoring a
 situation the chat already explains. **Reach for an isolated task when** the

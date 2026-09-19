@@ -300,6 +300,7 @@ class HeartbeatRunner(BaseBrain):
         model_override: Optional[str] = None,
         heartbeat_approvals: bool = False,
         persist_to_chat: bool = False,
+        answer_label: Optional[str] = None,
     ) -> str:
         """Run one background turn inside an existing chat.
 
@@ -308,6 +309,12 @@ class HeartbeatRunner(BaseBrain):
         and the turn reported nothing worth surfacing -- in that case its
         messages are rolled back, so a quiet check leaves the conversation
         exactly as it found it.
+
+        ``answer_label`` names the task an answer belongs to. A suppressible
+        turn is never rebuilt into the transcript, so when nobody was streaming
+        it there is nothing in the chat to show for it -- pass a label and an
+        answer that is not a no-op gets written in under it. Heartbeats leave
+        it unset: they have their own result channel in the chat's config.
 
         ``persist_to_chat`` decides whether the turn joins the conversation's
         visible transcript. A suppressible check must not: rollback owns its
@@ -342,11 +349,44 @@ class HeartbeatRunner(BaseBrain):
             persist_to_chat=persist_to_chat,
         )
 
-        if suppress_ok and self._is_heartbeat_ok(response_text):
-            self._rollback_heartbeat_messages(chat_id, initial_message_count, db)
-            return ""
+        if suppress_ok:
+            if self._is_heartbeat_ok(response_text):
+                self._rollback_heartbeat_messages(chat_id, initial_message_count, db)
+                return ""
+            if answer_label:
+                self._record_bound_answer(
+                    chat_id, response_text, initial_message_count, db, answer_label
+                )
 
         return response_text
+
+    def _record_bound_answer(
+        self, chat_id: str, text: str, original_count: int, db, label: str
+    ) -> None:
+        """Write a suppressible turn's answer into the chat it was bound to.
+
+        Ordering is the point: the answer is classified first and written
+        second, so there is never a moment where the transcript holds a turn
+        that a rollback still has to take back out. That window is what makes
+        persist-then-roll-back fragile -- a failure in between strands the row.
+
+        A turn someone was streaming already left a draft row behind, which is
+        why this checks the message count instead of appending unconditionally.
+        """
+        try:
+            chat = db.get_chat(chat_id)
+            if chat and len(chat.messages) > original_count:
+                return
+            # A bare answer with no lead-in reads as the agent talking to
+            # itself; the header says which task woke it, and matches the
+            # wording cron triggers use so the two coalesce the same way.
+            db.append_chat_message(
+                chat_id,
+                {"role": "system_triggered", "content": f"**Scheduled Task: {label}**"},
+            )
+            db.append_chat_message(chat_id, {"role": "assistant", "content": text})
+        except Exception as e:
+            logger.error(f"Failed to record scheduled task answer in {chat_id}: {e}")
 
     async def _run_chat_turn(
         self,
