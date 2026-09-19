@@ -56,7 +56,7 @@ Full documentation: https://suzent.com/llms-full.txt
 - [Docker Services (Optional)](https://suzent.com/docs/developing/docker-services)
 - [Native mobile clients](https://suzent.com/docs/developing/mobile)
 - [Updating Model Capabilities](https://suzent.com/docs/developing/model-capability-updates)
-- [Release Guide](https://suzent.com/docs/developing/releasing)
+- [Release guide](https://suzent.com/docs/developing/releasing)
 - [Stream recovery protocol](https://suzent.com/docs/developing/stream-recovery-protocol)
 - [Running the web UI](https://suzent.com/docs/developing/web-ui)
 - [Upgrading](https://suzent.com/docs/upgrading)

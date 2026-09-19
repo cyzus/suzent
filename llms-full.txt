@@ -6585,278 +6585,248 @@ pull-request write permissions.
 
 ---
 
-# Release Guide
+# Release guide
 
 Source: https://suzent.com/docs/developing/releasing
 
 
 
-Suzent keeps a Release PR permanently open against `main`. There is no "start a
-release" step: every push to `main` re-merges into that PR, re-derives the
-version from the commit range, and rewrites the notes. Releasing is a merge.
+Suzent prepares independent release plans for three products:
 
-Version synchronization, tagging, cross-platform builds, and GitHub Release
-publication are automated from there.
+| Product | Includes | Release PR | What merging does |
+| --- | --- | --- | --- |
+| `desktop` | Python backend, desktop UI, Tauri app and installer | `release/next` | Records the plan, creates `vX.Y.Z`, and starts the existing desktop build/publication workflow |
+| `mobile` | iOS and Android; one shared product version | `release/mobile` | Records the version and changelog; native CI produces test artifacts |
+| `browser` | Chrome/Edge extension | `release/browser` | Creates `browser-vX.Y.Z` and publishes the store-ready ZIP; store submission remains manual |
 
-## Before you start
+Mobile App Store, Play Store, signed distribution, and GitHub Release publishing
+remain future work. A mobile release-plan merge does **not** publish an app or
+trigger a desktop release. Browser releases retain their existing reproducible ZIP builder and
+`--latest=false` publication, so they never replace the desktop latest release.
 
-1. Make sure everything intended for the release is merged into `main` and its
-   CI checks pass.
-2. Check that the derived version on the open Release PR is the one you want.
-   You do not choose it — it comes from the commit prefixes in the range since
-   the last tag:
+## Declare release impact in a feature PR
 
-   | Prefix in the range | Bump |
-   | --- | --- |
-   | `feat:` | minor |
-   | `fix:`, `perf:` | patch |
-   | `feat!:`, or a `BREAKING CHANGE:` footer | major, but **minor while below 1.0** |
-   | only `chore:`, `ci:`, `docs:`, `test:`, `style:`, `build:`, `refactor:` | patch, as maintenance |
+Add a uniquely named JSON file under `.releases/changes/`, for example
+`.releases/changes/secure-local-pairing.json`:
 
-   The highest-ranking prefix in the range wins, so one `feat:` among twenty
-   fixes makes the release a minor. Reaching 1.0.0 stays a deliberate human act:
-   a breaking change below 1.0 bumps the minor rather than declaring stability.
-3. Check `.release-assets-mode` on the release branch:
-   - `build` for every normal release and for any frontend, desktop, installer,
-     or `API_VERSION` change;
-   - `reuse` only for a backend-only hotfix that remains compatible with the
-     previously published desktop application.
-
-   It carries over from `main`, so it is `build` unless someone changed it.
-
-## Normal release
-
-1. Open the Release PR — it is the open pull request from `release/next`,
-   titled `chore: release vX.Y.Z`. If none is open, nothing user-visible has
-   landed since the last tag; see [Nothing is open](#nothing-is-open).
-2. Review it:
-   - confirm the derived version is what you intend, in the title and in every
-     changed manifest and lock file;
-   - read the generated `CHANGELOG.md` section, and add a
-     [highlights block](#writing-release-highlights) so the release page opens
-     with something better than a list of commit subjects;
-   - confirm `.release-assets-mode` holds the intended `build` or `reuse`;
-   - wait for all checks to pass.
-3. Merge it into `main` with **Create a merge commit**. The branch is `main`
-   plus a version bump, so squashing writes a redundant duplicate-content
-   commit. The merge automatically creates the `vX.Y.Z` tag and starts
-   **Build and Publish Desktop Release**.
-4. Wait for that workflow to complete. The GitHub Release stays a draft until
-   every asset is uploaded and checksums are generated.
-5. Open the [Releases page](https://github.com/cyzus/suzent/releases) and verify:
-   - the release is published rather than draft, and is marked as latest;
-   - its title, tag, and notes match the merged changelog;
-   - all eight `suzent-*` application and installer assets are present (two
-     each for Windows, Linux, macOS Intel, and macOS Apple Silicon);
-   - `SHA256SUMS` is attached.
-
-The release is complete only after the checks in step 5 pass. If the workflow
-fails, follow [Recovery](#recovery) rather than publishing the draft by hand.
-
-The release remains a draft while the Windows, macOS Intel, macOS Apple
-Silicon, and Linux builds run, and is published only after every build
-succeeds — so a failed build cannot expose a partially populated release.
-
-Backend-only hotfixes still receive a normal version and Git tag for auditing,
-rollback, and dependency locking, but they do not rebuild four desktop targets.
-With `.release-assets-mode` set to `reuse`, the workflow copies the previously
-published UI and installer assets into the new release. The frontend accepts a
-different backend build commit as long as `API_VERSION` matches. Incompatible
-route or payload changes must bump `API_VERSION` and use `build`.
-
-Do not create the release branch, tag, or GitHub Release by hand.
-
-### Nothing is open
-
-A range containing only `chore`, `ci`, `docs`, `test`, `style`, `build`, or
-`refactor` commits does not open a Release PR on its own. Nothing in it earns a
-bump, so there is nothing a user would notice; it waits and rides along with the
-next real change.
-
-To release anyway — to ship a dependency bump, say — use
-[Prepare Release](#manual-override-prepare-release).
-
-### Writing release highlights
-
-A generated changelog section is a flat list of commit subjects. For a large
-release that is thirty or more bullets with no indication of what the release is
-actually about, and the GitHub release body is this section copied verbatim.
-
-Anything wrapped in highlights markers, placed directly under the version
-heading, survives every refresh:
-
-```markdown
-## [v0.10.0] - 2026-08-25
-
-<!-- highlights -->
-Memory is the story of this release: claims now carry a confirmation count and
-an expiry, duplicate facts retire instead of accumulating, and the memory tab
-is finally readable.
-<!-- /highlights -->
-
-### 🚀 Added
-- ...
+```json
+{
+  "products": {"desktop": "minor", "mobile": "minor"},
+  "summary": "Pair phones with a local desktop over trusted HTTPS without a public domain."
+}
 ```
 
-Both markers are required and each must sit alone on its own line. An unclosed
-block is discarded on the next refresh rather than swallowing the rest of the
-entry. The markers are HTML comments so they stay invisible on the release page.
+This is a release decision to review alongside the code, not a conclusion inferred
+from a commit title. Each product can have a different impact. Allowed values are
+`patch`, `minor`, `major`, and `none`. Unaffected products can be omitted.
 
-Write this on the Release PR, before merging, so it goes through review with
-everything else and the release is published with its summary already in place.
-Drafting it from `git log <last-tag>..HEAD` is a reasonable job to hand to an
-agent; deciding which of those commits a user actually cares about is not.
+For a change to application code that needs no release, explicitly document why:
 
-### Releasing a version other than the derived one
+```json
+{
+  "products": {"mobile": "none"},
+  "summary": "Reorganize internal mobile helpers.",
+  "reason": "No shipped behavior or interface changes."
+}
+```
 
-Edit the version files on `release/next` before merging. The tag follows the
-files at merge time, not the branch name — which is why the branch is called
-`release/next` and never names a version.
+A PR with only documentation, tests, or CI/tooling changes needs no declaration.
+CI requires product coverage for application changes. Shared presentation assets
+require a decision for desktop and mobile. Backend changes count as desktop changes;
+reviewers must also declare mobile impact if client changes are necessary. Path
+checks cannot decide protocol compatibility on their own.
 
-Be aware that the next push to `main` re-derives the version and will overwrite
-a hand-edited one. Only the highlights block survives a refresh.
+CI validates product names, impact values, summaries, and reasons for `none`.
+Before merging, edit the declaration freely. After merging, declarations are
+immutable and retained as an audit record; an incorrect *pending version decision*
+can be corrected through a release override. Do not delete old declarations.
 
-### If main changes before merge
+Conventional Commit titles remain useful development history, but new titles no
+longer control product versions. Follow the documented semantic meaning when
+choosing impacts. An explicit `major` is deliberate and can take `0.x` to `1.0.0`;
+choose `minor` if a pre-1.0 compatibility change should remain pre-1.0.
 
-Do not merge a stale Release PR — though you rarely have to think about it,
-because every push to `main` runs **Refresh Release PR** automatically. It finds
-the single open same-repository PR whose head branch starts with `release/`,
-merges `main` into it, re-derives the version, rewrites the notes, validates
-every version source, pushes, and starts CI. No PR number or manual action is
-required.
+## What happens after merging
 
-The refresh replaces any manual edits in the pending version's changelog
-section, with the single exception of the highlights block above. If the branch
-is already up to date with `main`, or the reconcile produces no file changes, it
-makes no commit at all.
+On each push to `main`, **Refresh Release PRs** considers each product separately:
 
-For recovery, **Actions → Refresh Release PR → Run workflow** performs the same
-lookup without inputs. If there is no open Release PR it exits successfully. If
-there is more than one, it stops and lists the candidates instead of guessing.
+1. Read its current version and consumed-declaration ledger from that exact main
+   commit, not from a pending release branch.
+2. Collect declarations not yet consumed by that product.
+3. Take the highest impact once: three patches mean one patch; a minor plus
+   patches means one minor. `none` alone does not open a release PR.
+4. Merge main into the product's existing release branch or open one if needed.
+5. Update only that product's version files, changelog, and ledger, then run CI.
 
-The post-merge workflow independently verifies that the Release PR head
-contained the latest pre-merge `main` commit. If it did not, tag creation and
-publication stop instead of releasing code that is missing from the notes.
+A declaration affecting multiple products is consumed independently. Shipping mobile
+first does not lose the desktop portion. The ledger is recorded atomically with
+the release-plan merge, so a refresh cannot open a duplicate release while the
+desktop tagging workflow is still starting.
 
-## What is automated
+The desktop canonical version remains `src-tauri/tauri.conf.json`, synchronized
+across Python, npm, Cargo and installer manifests/locks. The mobile source remains
+`packages/mobile-contract/version.json`; release preparation increments its stored
+build number once and regenerates iOS/Android version settings. Repeated refreshes
+do not keep incrementing it. Native CI retains its separate per-run build-number
+allocation for test artifacts; this is not yet a store distribution scheme.
 
-`scripts/bump_version.py` synchronizes the version in:
+## Review and release
 
-- the Python project and `uv.lock`;
-- the frontend and desktop npm manifests and lock files;
-- the main Tauri configuration, Cargo manifest, and Cargo lock;
-- the standalone installer's Tauri, npm, and Cargo files.
+Review the open product Release PR, its version, changelog, and CI results.
+Merge using **Create a merge commit** once it contains the latest main. CI verifies
+that its versions, consumed declarations and generated notes match its plan and
+that no unrelated files were added to the release branch.
 
-It also generates the changelog section from commits since the last tag. Scoped
-conventional commits such as `feat(ui): ...` are categorized, while unprefixed
-subjects are retained under **Changed** so release notes are not silently lost.
-The baseline for re-deriving the version is always the last *tagged* release,
-never the version already written into the release branch — otherwise each push
-would bump on top of the previous bump.
+For desktop, `.release-assets-mode` remains `build` normally. Use `reuse` only
+for a backend-only hotfix compatible with the previous desktop binaries. Any
+incompatible API change or changed desktop assets requires `build`.
 
-CI runs `python scripts/bump_version.py --check` on every pull request, and
-advisory-audits commit prefixes it cannot read. A prefix nobody recognizes earns
-no bump, so an unreadable one silently changes the version that ships; the audit
-warns without blocking a merge. A tag whose version does not match the manifests
-or changelog is rejected before any desktop build starts.
+The desktop GitHub Release stays a draft until every required platform build,
+asset upload, and checksum succeeds. Verify the published release, version,
+notes, all eight application/installer assets, and `SHA256SUMS`. Do not manually
+publish a partially populated draft.
 
-Release workflows explicitly dispatch CI and the desktop build rather than
-relying on the push events they create. GitHub suppresses ordinary workflow
-events triggered by its built-in token, and this is what works around it.
+The three product branches may be reviewed and merged independently. When one
+merges, refresh the others against main before merging it.
 
-## Manual override: Prepare Release
+## Browser extension releases
 
-**Actions → Prepare Release → Run workflow** opens a release branch with a
-version you choose. Use it only when the automatic flow will not do:
+Extension code PRs now add a `browser` declaration instead of changing
+`extensions/browser/manifest.json` themselves:
 
-- to ship a range the automatic flow considers unreleasable;
-- to force an exact version, a major, or a bump the prefixes do not imply;
-- to set `.release-assets-mode` to `reuse` as the branch is created.
+```json
+{
+  "products": {"browser": "patch"},
+  "summary": "Recover the browser connection after the desktop restarts."
+}
+```
 
-Set **version** to `auto`, `patch`, `minor`, `major`, or an exact version such
-as `0.8.0`, and **desktop_assets** to `build` or `reuse`.
+Several browser PRs can accumulate before one release. The `release/browser` PR
+updates only the manifest version, browser changelog, and browser ledger. It uses
+the same highest-impact calculation and persistent overrides as other products.
+Changes to the desktop native host may need a separate `desktop` declaration;
+sharing a feature does not couple their version numbers.
 
-It refuses to run while `release/next` already exists, rather than overwriting
-review edits on an open PR. Close that PR and delete the branch first, or just
-edit the version files on the branch that is already open.
+Merging an ordinary extension PR no longer publishes anything. Merging the
+browser release PR validates the plan against its pre-merge main commit, packages
+that exact merged source, tags `browser-vX.Y.Z`, and publishes
+`suzent-browser-X.Y.Z.zip`. Browser CI rejects already-used release tags. The ZIP
+keeps `manifest.json` at its root and excludes the release-planning metadata.
 
-## Local fallback
+Upload the ZIP to Chrome and Edge manually as before. To retry an interrupted
+GitHub publication, run **Release Browser Extension** with the original merged
+release commit or its `browser-v` tag as `release_ref`. Do not use a newer main
+commit: reruns validate the original plan and refuse to move a tag to different
+source. Existing completed assets are not overwritten.
 
-The same preparation can be run locally:
+Browser adoption starts from the current manifest version. Old extension releases
+remain unchanged; code PRs merged after adoption use declarations. This does not
+re-infer already published browser versions from desktop commit history.
+
+## Persistent version overrides
+
+Do not edit the generated version files directly. On the open product release
+branch, record the baseline, desired version, and a reason:
 
 ```bash
-# Preview release notes without changing files
-uv run python scripts/bump_version.py patch --changelog
-
-# Show the bump the commit history implies, without changing files
-uv run python scripts/bump_version.py --suggest-bump
-
-# Synchronize files and add the changelog entry
-uv run python scripts/bump_version.py patch
-
-# Verify all version sources
-uv run python scripts/bump_version.py --check
+git fetch origin main
+uv run python scripts/release_plan.py override \
+  --product desktop --source origin/main --version patch \
+  --reason "Reviewed maintenance release"
+uv run python scripts/release_plan.py apply --product desktop --source origin/main
 ```
 
-Review the diff and commit only the version files and `CHANGELOG.md`. Do not use
-`git add .` in a working tree containing unrelated changes.
+This writes `.releases/overrides/desktop.json`, for example:
 
-To rebuild an existing unpublished tag, open
-**Actions → Build and Publish Desktop Release → Run workflow** and enter the
-exact tag. The workflow refreshes an existing draft and replaces its assets.
-It refuses to overwrite an already published release.
+```json
+{
+  "baseline": "0.14.0",
+  "version": "0.14.1",
+  "reason": "Reviewed maintenance release"
+}
+```
 
-## Repository setup
+Review and commit the override **and** the regenerated product files together.
+Subsequent main merges preserve the decision even if new declarations arrive.
+Reviewers remain responsible for whether the override is still appropriate for
+the accumulated changes. The reason remains in Git history. After the target
+version has shipped, the override is spent and does not pin later releases.
+Remove an active override to return to automatic calculation, then apply again.
 
-Tagging and publication use the built-in `GITHUB_TOKEN`.
+If there is no open product Release PR, use **Actions → Prepare Release**. Choose
+`desktop`, `mobile`, or `browser`, then `auto`, a bump type, or an exact version. An explicit
+version requires a reason and is stored as the same persistent override. An
+existing open PR is never replaced; edit it instead. Preparation and refresh use
+the same concurrency lock.
 
-Opening and refreshing the Release PR uses `RELEASE_BOT_TOKEN`, a fine-grained
-personal access token scoped to this repository, falling back to `GITHUB_TOKEN`
-when the secret is absent. Without it the Release PR is still created and
-refreshed, but GitHub will not run `pull_request` workflows on a branch the
-built-in token pushed, so the PR's checks never start.
+## Release notes and highlights
 
-The token needs **Contents: Read and write**, **Pull requests: Read and write**,
-and **Workflows: Read and write**. The last one is not optional: the refresh
-merges `main` into the release branch, and that merge carries any change under
-`.github/workflows/`, which GitHub refuses from a token without it.
+Product summaries come from declarations. Desktop notes also include any pending
+legacy commits during migration. Editorial highlights survive refreshes when
+placed immediately below the pending release heading:
 
-Optionally protect the `main` branch and require review of Release PRs. That
-keeps changelog approval manual while leaving all mechanical release work
-automated.
+```markdown
+<!-- highlights -->
+This release makes local mobile pairing easier to set up.
+<!-- /highlights -->
+```
 
-## Recovery
+Keep both markers on separate lines. Other generated pending notes are rebuilt;
+previously published entries are preserved. Desktop notes live in `CHANGELOG.md`,
+mobile notes in `packages/mobile-contract/CHANGELOG.md`, and browser notes in
+`.releases/changelogs/browser.md` (outside the packaged extension directory).
 
-### A platform build fails
+## Migration from commit-based versions
 
-Fix the cause on `main`, let the refreshed Release PR pick up the fix, and merge
-it. The failed version remains a draft and is not advertised as the latest
-release.
+The first-parent commit introducing `.releases/config.json` is the adoption
+boundary. Until the first desktop release under this policy, commits before that
+boundary and after the last reachable desktop release tag use the old rules:
+`feat` → minor, `fix`/`perf` → patch; breaking changes → major, or minor below 1.0.
+This includes old PRs merged while the policy PR was being reviewed.
 
-If the failure was transient and the tagged source is correct, rerun
-**Build and Publish Desktop Release** with the existing tag.
+New declarations and pending legacy impact are combined, taking the highest.
+After the desktop ledger records the migration as consumed, old history is never
+counted again. Mobile starts from its existing explicit version with declarations;
+old mobile changes were already handled by the legacy whole-app policy and are
+not inferred a second time.
 
-### A Release PR needs changes
+Existing feature PRs merged after adoption must add declarations before merging.
+The rolling desktop branch remains `release/next`, so an existing Release PR can
+be migrated by the next refresh. If its generated version files conflict, refresh
+resolves those files from main and regenerates them; genuine conflicts elsewhere
+stop for manual resolution. Legacy versioned `release/*` branches must be closed
+or moved to `release/next` before enabling the new workflow.
 
-Edit the changelog or the version files directly on `release/next`. Do not rerun
-**Prepare Release** for the same version while that branch exists; the workflow
-stops instead of overwriting review edits.
+## Local validation
 
-Remember that the next push to `main` regenerates the changelog section. Put
-anything you want to keep inside the highlights markers.
+```bash
+uv run python scripts/release_plan.py check --base origin/main
+uv run python scripts/release_plan.py plan --product desktop --source HEAD
+uv run python scripts/release_plan.py plan --product mobile --source HEAD
+uv run python scripts/release_plan.py plan --product browser --source HEAD
+uv run python scripts/bump_version.py --check
+uv run python scripts/generate_mobile_version.py --check
+```
 
-### More than one Release PR is open
+`plan` reads committed declarations at the selected source. `apply` is for a
+release branch and must use the main baseline, normally `--source origin/main`.
+It never publishes, tags, or pushes. `bump_version.py` remains the desktop
+synchronization library and validator; its old mutating release CLI is disabled
+after policy adoption to prevent bypassing the release ledger.
 
-**Refresh Release PR** stops and lists the candidates rather than guessing which
-one to update. Close the ones that are not wanted, delete their branches, and
-re-run the workflow.
+## Permissions and recovery
 
-### A wrong tag was created
+`RELEASE_BOT_TOKEN` is optional with a fallback to `GITHUB_TOKEN`; it needs
+repository Contents, Pull requests, and Workflows write access. Explicit workflow
+dispatch uses the built-in token with Actions write permission. The workflows explicitly start CI so checks do not
+depend on events emitted by the built-in token. Require the **Release plan** check
+in branch protection alongside application checks.
 
-Do not move a published version tag. If the release is still a draft, delete
-the draft and tag in GitHub, correct the source through a new pull request, and
-then run the desktop workflow for the corrected tag. Prefer issuing a new patch
-version once a release has been published.
+A failed refresh stops without discarding reviewed overrides or unrelated
+conflicts. Fix the conflict, then rerun **Refresh Release PRs**. A stale release PR
+fails validation until refreshed. A failed desktop build leaves a draft; retry
+transient failures at the same tag, or fix source through a new patch release.
+Never move a published tag or overwrite published assets.
 
 
 ---
