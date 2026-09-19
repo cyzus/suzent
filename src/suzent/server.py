@@ -1092,8 +1092,22 @@ def _allowed_origin_regex() -> str:
 @asynccontextmanager
 async def lifespan(app):
     await startup()
-    yield
-    await shutdown()
+    from suzent.config import USER_CONFIG_DIR
+    from suzent.mobile.tls import MobileTLS
+
+    app.state.mobile_tls = MobileTLS(app, USER_CONFIG_DIR / "mobile_tls")
+    try:
+        if (USER_CONFIG_DIR / "mobile_tls/identity.pem").exists():
+            try:
+                await app.state.mobile_tls.start()
+            except (OSError, ValueError):
+                logger.warning(
+                    "Mobile TLS unavailable; check saved identity and listener port"
+                )
+        yield
+    finally:
+        await app.state.mobile_tls.stop()
+        await shutdown()
 
 
 app = Starlette(

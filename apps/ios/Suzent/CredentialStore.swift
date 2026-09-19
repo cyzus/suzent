@@ -1,8 +1,12 @@
 import Foundation
 import Security
+import SuzentCore
 
 struct Connection: Codable {
-    let origin: String
+    var origins: [String]? = nil
+    var tls: DeviceTrust? = nil
+    var previousTLS: DeviceTrust? = nil
+    var origin: String
     let hostToken: String
     var nodeToken: String = ""
     var clientProtocol: Int? = nil

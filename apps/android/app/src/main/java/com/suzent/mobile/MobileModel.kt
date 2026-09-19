@@ -79,7 +79,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         pairingJob = viewModelScope.launch {
             try {
                 val selected = resolvePairingInvitation(invitation) { origin ->
-                    val probe = BackendClient(Backend.parse(origin, BuildConfig.DEBUG), "", probeOnly = true)
+                    val probe = BackendClient(Backend.parse(origin, BuildConfig.DEBUG), "", probeOnly = true, deviceTrust = invitation.tls)
                     try {
                         probe.capabilities()
                         if (invitation.phoneConfirmation) probe.pairingPreview(invitation) else null
@@ -109,7 +109,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         error = null
         val current = generation
         pairingJob = viewModelScope.launch {
-            val bootstrap = BackendClient(Backend.parse(invitation.origin, BuildConfig.DEBUG), "")
+            val bootstrap = BackendClient(Backend.parse(invitation.origin, BuildConfig.DEBUG), "", deviceTrust = invitation.tls)
             try {
                 bootstrap.capabilities()
                 val previous = connection?.hostToken?.takeIf { bootstrap.supportsPairingRepair }
@@ -134,7 +134,8 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                             require(credential.isNotEmpty())
                             val saved = Connection(Backend.parse(invitation.origin, BuildConfig.DEBUG).origin.toString(),
                                 credential, nodeToken = if (recognized) connection?.nodeToken.orEmpty() else "", clientProtocol = 1, previousToken = if (recognized && !reused) previous.orEmpty() else "",
-                                previousOrigin = if (recognized && !reused) connection?.origin.orEmpty() else "")
+                                previousOrigin = if (recognized && !reused) connection?.origin.orEmpty() else "",
+                                origins = invitation.origins, tls = invitation.tls, previousTLS = connection?.tls)
                             store.save(saved)
                             connection = saved
                             origin = saved.origin
@@ -162,20 +163,33 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private suspend fun activate(saved: Connection) {
+    private suspend fun activate(stored: Connection) {
+        var saved = stored
+        if (saved.tls != null) {
+            var reachable: String? = null
+            for (origin in (listOf(saved.origin) + saved.origins).distinct()) {
+                val probe = BackendClient(Backend.parse(origin), "", probeOnly = true, deviceTrust = saved.tls)
+                try { probe.capabilities(); reachable = origin; break }
+                catch (failure: CancellationException) { throw failure }
+                catch (_: Exception) { }
+                finally { probe.close() }
+            }
+            saved = saved.copy(origin = reachable ?: throw PairingFailure(PairingFailure.Reason.SECURE_CONNECTION))
+        }
         require(saved.clientProtocol == 1)
-        val candidate = BackendClient(Backend.parse(saved.origin, BuildConfig.DEBUG), saved.hostToken)
+        val candidate = BackendClient(Backend.parse(saved.origin, BuildConfig.DEBUG), saved.hostToken, deviceTrust = saved.tls)
         try {
             if (saved.previousToken.isNotEmpty()) {
                 try { candidate.confirmPairing() }
                 catch (failure: BackendClient.HttpFailure) {
                     if (failure.code != 401) throw failure
-                    val restored = saved.copy(origin = saved.previousOrigin.ifEmpty { saved.origin }, hostToken = saved.previousToken, previousToken = "", previousOrigin = "")
+                    val restored = saved.copy(origin = saved.previousOrigin.ifEmpty { saved.origin }, hostToken = saved.previousToken, previousToken = "", previousOrigin = "", tls = saved.previousTLS, previousTLS = null)
                     store.save(restored); connection = restored; origin = restored.origin
                     candidate.close(); activate(restored); return
                 }
-                val confirmed = saved.copy(previousToken = "", previousOrigin = "")
+                val confirmed = saved.copy(previousToken = "", previousOrigin = "", previousTLS = null)
                 store.save(confirmed); connection = confirmed
+                saved = confirmed
             }
             candidate.capabilities()
             val session = candidate.session()
@@ -183,6 +197,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
             val projectList = candidate.projects()
             val initialChat = candidate.composer()
             currentCoroutineContext().ensureActive()
+            store.save(saved); connection = saved; origin = saved.origin
             client?.close()
             client = candidate
             device = session
@@ -216,6 +231,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                 PairingFailure.Reason.INCOMPATIBLE -> R.string.pairing_incompatible
                 PairingFailure.Reason.EXPIRED -> R.string.pairing_expired
                 PairingFailure.Reason.DENIED -> R.string.pairing_denied
+                PairingFailure.Reason.SECURE_CONNECTION -> R.string.pairing_secure_connection
                 PairingFailure.Reason.UNREACHABLE -> R.string.pairing_unreachable
             })
         } else { error = text(fallback) }

@@ -68,3 +68,22 @@ it('marks phone-confirmed invitations without embedding permissions in the QR', 
   expect(payload.approval).toBe('phone');
   expect(payload).not.toHaveProperty('permissions');
 });
+
+it('uses only device-verified HTTPS candidates for local TLS invitations', () => {
+  const tls = { version: 1, ca_certificate: 'fixture', fingerprint: 'fixture' };
+  const payload = JSON.parse(
+    mobilePairingPayload(
+      'http://192.168.1.2:25314',
+      {
+        ...invitation,
+        tls,
+        origins: ['https://192.168.1.2:25443', 'https://desktop.local:25443'],
+      },
+      ['http://192.168.1.3:25314']
+    )
+  );
+  expect(payload.pairing_protocol).toBe(2);
+  expect(payload.origin).toBe('https://192.168.1.2:25443');
+  expect(payload.origins).toEqual(['https://192.168.1.2:25443', 'https://desktop.local:25443']);
+  expect(payload.tls).toEqual(tls);
+});

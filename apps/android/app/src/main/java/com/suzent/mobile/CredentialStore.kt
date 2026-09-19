@@ -11,7 +11,7 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 import org.json.JSONObject
 
-data class Connection(val origin: String, val hostToken: String, val nodeToken: String = "", val clientProtocol: Int = 0, val previousToken: String = "", val previousOrigin: String = "")
+data class Connection(val origin: String, val hostToken: String, val nodeToken: String = "", val clientProtocol: Int = 0, val previousToken: String = "", val previousOrigin: String = "", val origins: List<String> = emptyList(), val tls: DeviceTrust? = null, val previousTLS: DeviceTrust? = null)
 
 class CredentialStore(context: Context) {
     private val preferences = context.getSharedPreferences("secure_connection", Context.MODE_PRIVATE)
@@ -30,6 +30,7 @@ class CredentialStore(context: Context) {
     fun save(value: Connection) {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, key()) }
         val plain = JSONObject().put("origin", value.origin).put("hostToken", value.hostToken)
+            .put("origins", org.json.JSONArray(value.origins)).put("tls", value.tls?.json()).put("previousTLS", value.previousTLS?.json())
             .put("previousOrigin", value.previousOrigin).put("previousToken", value.previousToken).put("clientProtocol", value.clientProtocol).put("nodeToken", value.nodeToken).toString().toByteArray(Charsets.UTF_8)
         val encrypted = cipher.doFinal(plain)
         check(preferences.edit().putString("iv", Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
@@ -43,7 +44,7 @@ class CredentialStore(context: Context) {
             init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, Base64.decode(iv, Base64.NO_WRAP)))
         }
         val json = JSONObject(String(cipher.doFinal(Base64.decode(encoded, Base64.NO_WRAP)), Charsets.UTF_8))
-        return Connection(json.getString("origin"), json.getString("hostToken"), json.optString("nodeToken"), json.optInt("clientProtocol"), json.optString("previousToken"), json.optString("previousOrigin"))
+        return Connection(json.getString("origin"), json.getString("hostToken"), json.optString("nodeToken"), json.optInt("clientProtocol"), json.optString("previousToken"), json.optString("previousOrigin"), json.optJSONArray("origins")?.let { array -> (0 until array.length()).map { array.getString(it) } }.orEmpty(), json.optJSONObject("tls")?.let { DeviceTrust.parse(it) }, json.optJSONObject("previousTLS")?.let { DeviceTrust.parse(it) })
     }
 
     fun clear() { check(preferences.edit().clear().commit()) }

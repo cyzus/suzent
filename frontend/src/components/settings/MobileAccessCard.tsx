@@ -230,7 +230,10 @@ export function MobileAccessCard({
       const candidates = mobilePairingOrigins(origin, config?.addresses);
       mobilePairingPayload(origin, { pairing_id: '', invitation: '', expires_at: 0 }, candidates);
       await cancelActive();
-      const next = await mobileRequest<MobileInvitation>('pairing/invite', { permissions });
+      const next = await mobileRequest<MobileInvitation>('pairing/invite', {
+        permissions,
+        local_tls: new URL(origin).protocol !== 'https:',
+      });
       if (!mounted.current || next.approval !== 'phone') {
         await cancelMobileInvitation(next.pairing_id);
         if (mounted.current) throw new Error('Update the desktop backend');

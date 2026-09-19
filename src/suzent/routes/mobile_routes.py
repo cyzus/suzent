@@ -16,6 +16,7 @@ from suzent.mobile.pairing import ClientPermissions, PairingError, PairingStore
 class InviteRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     permissions: ClientPermissions | None = None
+    local_tls: StrictBool = False
 
 
 class PreviewRequest(BaseModel):
@@ -66,6 +67,7 @@ async def capabilities(request: Request) -> JSONResponse:
             "stream_protocols": [1],
             "pairing_protocol": 1,
             "pairing_repair": 1,
+            "local_tls": 1,
         }
     )
 
@@ -73,12 +75,30 @@ async def capabilities(request: Request) -> JSONResponse:
 async def invite(request: Request) -> JSONResponse:
     try:
         body = InviteRequest.model_validate(await request.json())
+        transport = {}
+        if body.local_tls:
+            service = getattr(request.app.state, "mobile_tls", None)
+            if service is None:
+                return reply({"error": "Local TLS unavailable"}, 503)
+            try:
+                transport = await service.start()
+            except (OSError, ValueError):
+                return reply(
+                    {"error": "Local TLS identity or listener unavailable"}, 503
+                )
+            if not transport["origins"]:
+                return reply({"error": "No local network address available"}, 503)
         return reply(
-            get_mobile_store(request).invite(
-                body.permissions, socket.gethostname()[:100]
-            ),
+            {
+                **get_mobile_store(request).invite(
+                    body.permissions, socket.gethostname()[:100]
+                ),
+                **transport,
+            },
             201,
         )
+    except OSError:
+        return reply({"error": "Local TLS listener unavailable"}, 503)
     except PairingError:
         return reply({"error": "Too many pending invitations"}, 429)
     except (ValidationError, ValueError):
