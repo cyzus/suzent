@@ -127,7 +127,7 @@ import SuzentCore
                         guard let token = result.reused == true ? previous : result.token, !token.isEmpty, result.device != nil else {
                             throw ClientError.invalidResponse
                         }
-                        let saved = Connection(origins: invitation.origins, tls: invitation.tls, previousTLS: connection?.tls, origin: backend.url.absoluteString, hostToken: token, nodeToken: recognized ? connection?.nodeToken ?? "" : "", clientProtocol: 1,
+                        let saved = Connection(origins: invitation.origins, tls: invitation.tls, previousOrigins: connection?.origins, previousTLS: connection?.tls, origin: backend.url.absoluteString, hostToken: token, nodeToken: recognized ? connection?.nodeToken ?? "" : "", clientProtocol: 1,
                                                previousToken: recognized && result.reused != true ? previous : nil,
                                                previousOrigin: recognized && result.reused != true ? connection?.origin : nil)
                         try CredentialStore.save(saved)
@@ -173,13 +173,14 @@ import SuzentCore
                 var restored = saved
                 do { try await candidate.confirmPairing() }
                 catch ClientError.http(401) {
-                    restored = Connection(tls: saved.previousTLS, origin: saved.previousOrigin ?? saved.origin, hostToken: previous, nodeToken: saved.nodeToken, clientProtocol: 1)
+                    restored = Connection(origins: saved.previousOrigins, tls: saved.previousTLS, origin: saved.previousOrigin ?? saved.origin, hostToken: previous, nodeToken: saved.nodeToken, clientProtocol: 1)
                     try CredentialStore.save(restored); connection = restored; origin = restored.origin
                     candidate.close(); try await activate(restored); return
                 }
                 restored.previousToken = nil
                 restored.previousOrigin = nil
                 restored.previousTLS = nil
+                restored.previousOrigins = nil
                 try CredentialStore.save(restored); connection = restored
                 saved = restored
             }

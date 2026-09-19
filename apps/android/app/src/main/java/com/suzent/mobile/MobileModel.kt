@@ -135,7 +135,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                             val saved = Connection(Backend.parse(invitation.origin, BuildConfig.DEBUG).origin.toString(),
                                 credential, nodeToken = if (recognized) connection?.nodeToken.orEmpty() else "", clientProtocol = 1, previousToken = if (recognized && !reused) previous.orEmpty() else "",
                                 previousOrigin = if (recognized && !reused) connection?.origin.orEmpty() else "",
-                                origins = invitation.origins, tls = invitation.tls, previousTLS = connection?.tls)
+                                origins = invitation.origins, tls = invitation.tls, previousTLS = connection?.tls, previousOrigins = connection?.origins.orEmpty())
                             store.save(saved)
                             connection = saved
                             origin = saved.origin
@@ -183,11 +183,11 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                 try { candidate.confirmPairing() }
                 catch (failure: BackendClient.HttpFailure) {
                     if (failure.code != 401) throw failure
-                    val restored = saved.copy(origin = saved.previousOrigin.ifEmpty { saved.origin }, hostToken = saved.previousToken, previousToken = "", previousOrigin = "", tls = saved.previousTLS, previousTLS = null)
+                    val restored = saved.copy(origin = saved.previousOrigin.ifEmpty { saved.origin }, hostToken = saved.previousToken, previousToken = "", previousOrigin = "", tls = saved.previousTLS, previousTLS = null, origins = saved.previousOrigins, previousOrigins = emptyList())
                     store.save(restored); connection = restored; origin = restored.origin
                     candidate.close(); activate(restored); return
                 }
-                val confirmed = saved.copy(previousToken = "", previousOrigin = "", previousTLS = null)
+                val confirmed = saved.copy(previousToken = "", previousOrigin = "", previousTLS = null, previousOrigins = emptyList())
                 store.save(confirmed); connection = confirmed
                 saved = confirmed
             }

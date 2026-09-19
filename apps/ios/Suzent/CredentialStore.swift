@@ -5,6 +5,7 @@ import SuzentCore
 struct Connection: Codable {
     var origins: [String]? = nil
     var tls: DeviceTrust? = nil
+    var previousOrigins: [String]? = nil
     var previousTLS: DeviceTrust? = nil
     var origin: String
     let hostToken: String
