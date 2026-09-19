@@ -2,7 +2,9 @@
 
 from typing import Any
 
-from loguru import logger
+from suzent.logger import get_logger
+
+logger = get_logger(__name__)
 
 _PLACEHOLDER_TITLES = frozenset({"", "new chat", "untitled"})
 

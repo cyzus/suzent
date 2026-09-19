@@ -233,7 +233,7 @@ class TelegramChannel(SocialChannel):
 
     async def send_message(self, target_id: str, content: str, **kwargs) -> bool:
         """Send a message to a chat ID, with MarkdownV2 and plain-text fallback."""
-        logger.info(f"Telegram sending message to {target_id}: {content[:20]}...")
+        logger.info(f"Telegram sending {len(content)} characters to {target_id}")
         if not self.app:
             logger.error("Telegram app not initialized.")
             return False
@@ -562,8 +562,11 @@ class TelegramChannel(SocialChannel):
         self, update: Update, context: "ContextTypes.DEFAULT_TYPE"
     ):
         """Internal handler for text messages."""
-        print(f"DEBUG: Telegram update received: {update}")
-        logger.debug(f"Telegram raw update: {update}")
+        # Identifiers only. The full Update renders the sender, the chat and
+        # the message body, and the file sink keeps DEBUG whatever LOG_LEVEL
+        # says -- so dumping it here put conversation content in the log the
+        # console displays, on every installation with Telegram enabled.
+        logger.debug(f"Telegram update {update.update_id} received")
         if not update.effective_message:
             logger.debug("Telegram update verified: No effective message found.")
             return
@@ -571,10 +574,7 @@ class TelegramChannel(SocialChannel):
         msg = update.effective_message
         user = update.effective_user
 
-        print(f"DEBUG: Processing message from {user.id}: {msg.text}")
-        logger.info(
-            f"Telegram message received from {user.id} in chat {msg.chat.id}: {msg.text}"
-        )
+        logger.info(f"Telegram message received from {user.id} in chat {msg.chat.id}")
 
         unified_msg = UnifiedMessage(
             id=str(msg.message_id),

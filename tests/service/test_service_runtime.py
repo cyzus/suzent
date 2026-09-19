@@ -1,3 +1,4 @@
+import os
 from types import SimpleNamespace
 
 import pytest
@@ -43,3 +44,29 @@ def test_normal_shutdown_returns_successfully(monkeypatch):
     runtime.run_service()
 
     assert lock.released is True
+
+
+def test_the_service_names_its_own_log_file(monkeypatch):
+    # systemd sends stdout to the journal and the Windows supervisor discards
+    # it, so the service cannot rely on its manager to produce the file the
+    # console tails.
+    monkeypatch.delenv("LOG_FILE", raising=False)
+    lock = _Lock(25314)
+    monkeypatch.setattr(runtime, "ServiceInstanceLock", lambda port: lock)
+    monkeypatch.setattr(runtime.runpy, "run_module", lambda *_args, **_kwargs: None)
+
+    runtime.run_service()
+
+    assert os.environ["LOG_FILE"] == str(runtime.SERVICE_LOG_PATH)
+
+
+def test_an_explicit_log_file_is_left_alone(monkeypatch, tmp_path):
+    chosen = str(tmp_path / "elsewhere.log")
+    monkeypatch.setenv("LOG_FILE", chosen)
+    lock = _Lock(25314)
+    monkeypatch.setattr(runtime, "ServiceInstanceLock", lambda port: lock)
+    monkeypatch.setattr(runtime.runpy, "run_module", lambda *_args, **_kwargs: None)
+
+    runtime.run_service()
+
+    assert os.environ["LOG_FILE"] == chosen
