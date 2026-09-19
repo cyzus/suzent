@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 from suzent.config import ConfigModel
 from suzent.tools.base import Tool, truncate_tool_output
+from suzent.tools.names import BUILTIN_TOOL_NAMES
 from suzent.tools.registry import (
     expand_tool_dependencies,
     get_tool_capabilities,
@@ -15,23 +16,31 @@ from suzent.tools.shell.host_process_registry import HostProcessRegistry
 
 
 def test_legacy_shell_tools_migrate_to_capability() -> None:
-    assert expand_tool_dependencies(["ReadFileTool", "BashTool"]) == [
-        "ReadFileTool",
+    # Builtins are appended by the same call; the migration owns everything
+    # before them.
+    expanded = expand_tool_dependencies(["ReadFileTool", "BashTool"])
+    migrated = [name for name in expanded if name not in BUILTIN_TOOL_NAMES]
+
+    assert migrated == [
         "RunCommandTool",
         "StartCommandTool",
         "CheckCommandTool",
         "StopCommandTool",
     ]
+    assert expanded[0] == "ReadFileTool"
 
 
 def test_shell_dependency_expansion_is_stable() -> None:
     selected = ["BashTool", "ProcessTool", "BashTool"]
-    assert expand_tool_dependencies(selected) == [
+    expanded = expand_tool_dependencies(selected)
+
+    assert [name for name in expanded if name not in BUILTIN_TOOL_NAMES] == [
         "RunCommandTool",
         "StartCommandTool",
         "CheckCommandTool",
         "StopCommandTool",
     ]
+    assert expand_tool_dependencies(expanded) == expanded
 
 
 def test_shell_tools_share_a_capability_but_remain_individually_selectable() -> None:

@@ -231,7 +231,13 @@ def test_spawn_subagent_guidance_does_not_embed_model_workflow():
 
 
 def test_agent_tool_equips_small_lifecycle_dependencies():
-    assert expand_tool_dependencies(["AgentTool"]) == [
+    from suzent.tools.names import BUILTIN_TOOL_NAMES
+
+    expanded = expand_tool_dependencies(["AgentTool"])
+
+    # Builtins ride along on every expansion; the lifecycle pull is what this
+    # test owns.
+    assert [name for name in expanded if name not in BUILTIN_TOOL_NAMES] == [
         "AgentTool",
         "AgentListTool",
         "AgentReadTool",

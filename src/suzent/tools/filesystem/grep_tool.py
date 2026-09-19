@@ -38,6 +38,7 @@ class GrepTool(Tool):
     name = "GrepTool"
     tool_name = "grep_search"
     group = ToolGroup.FILESYSTEM
+    builtin = True
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

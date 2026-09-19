@@ -201,6 +201,15 @@ const stripReusableConfig = (config: ChatConfig): ChatConfig => {
   return reusable as unknown as ChatConfig;
 };
 
+/** Union the always-equipped tools into a selection.
+ *
+ * The server floors them anyway, so this is about the UI telling the truth: a
+ * preference saved before a tool became builtin would otherwise show it off
+ * while the agent holds it.
+ */
+const withBuiltinTools = (tools: string[] | undefined, backendDefaults: ConfigOptions): string[] =>
+  Array.from(new Set([...(tools ?? []), ...(backendDefaults.builtinTools ?? [])]));
+
 /** Build a ChatConfig from user preferences and backend defaults. */
 const buildConfigFromPreferences = (
   prefs: ConfigOptions['userPreferences'],
@@ -208,7 +217,7 @@ const buildConfigFromPreferences = (
 ): ChatConfig => ({
   model: prefs?.model || backendDefaults.defaultModel || backendDefaults.models[0] || '',
   agent: prefs?.agent || backendDefaults.agents[0] || '',
-  tools: prefs?.tools || backendDefaults.defaultTools || [],
+  tools: withBuiltinTools(prefs?.tools || backendDefaults.defaultTools, backendDefaults),
   memory_enabled: prefs?.memory_enabled,
   thinking: normalizeThinkingEffort(prefs?.thinking),
   sandbox_enabled: prefs?.sandbox_enabled ?? backendDefaults.sandboxEnabled ?? true,
@@ -483,6 +492,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
             // Ensure chat-scoped state is never inherited from localStorage.
             return {
               ...stripReusableConfig(parsed),
+              tools: withBuiltinTools(parsed.tools, backendConfig),
               permission_mode: backendConfig.defaultPermissionMode ?? 'default',
             };
           }
@@ -497,7 +507,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
       return {
         model: backendConfig.defaultModel || backendConfig.models[0] || '',
         agent: backendConfig.agents[0] || '',
-        tools: backendConfig.defaultTools || [],
+        tools: withBuiltinTools(backendConfig.defaultTools, backendConfig),
         sandbox_enabled: backendConfig.sandboxEnabled ?? true,
         permission_mode: backendConfig.defaultPermissionMode ?? 'default',
         mcp_urls: [],

@@ -72,9 +72,15 @@ class ToolCapability(str, Enum):
     SHELL = "Shell"
     WEB = "Web"
     TASKS = "Tasks & goals"
-    AGENT = "Agent"
+    ORCHESTRATION = "Orchestration"
+    INTERACTION = "Interaction"
     CREATIVE = "Creative"
     MEMORY = "Memory & recall"
+
+    # Deprecated: the old "Agent" capability mixed delegation with talking to the
+    # user. It stays as an alias so third-party tools that set ``ToolGroup.AGENT``
+    # keep working -- they land in Orchestration.
+    AGENT = "Orchestration"
 
 
 # Compatibility alias for existing tool implementations and third-party tools.
@@ -180,6 +186,7 @@ class Tool:
     display_name: Optional[str] = None
     description: Optional[str] = None
     requires_approval: bool = False
+    builtin: bool = False  # True = always equipped; the user cannot turn it off
     deferrable: bool = True  # False = never goes into the activatable pool
     session_guidance: Optional[str] = None
     guidance_priority: int = 100

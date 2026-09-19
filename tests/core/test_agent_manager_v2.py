@@ -1,4 +1,3 @@
-from types import SimpleNamespace
 from unittest.mock import patch
 
 from pydantic_ai.models.test import TestModel
@@ -19,11 +18,6 @@ def test_create_agent_uses_v2_constructor_options() -> None:
             return_value=TestModel(),
         ),
         patch.object(agent_manager, "_build_mcp_servers", return_value=[]),
-        patch.object(
-            agent_manager,
-            "get_skill_manager",
-            return_value=SimpleNamespace(enabled_skills=set()),
-        ),
     ):
         agent = agent_manager.create_agent(
             {
@@ -51,11 +45,6 @@ def _create_agent(config_extra: dict) -> object:
             return_value=TestModel(),
         ),
         patch.object(agent_manager, "_build_mcp_servers", return_value=[]),
-        patch.object(
-            agent_manager,
-            "get_skill_manager",
-            return_value=SimpleNamespace(enabled_skills=set()),
-        ),
     ):
         return agent_manager.create_agent(
             {

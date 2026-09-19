@@ -25,6 +25,7 @@ from suzent.core.providers import (
     invalidate_default_model_cache,
 )
 from suzent.tools.registry import (
+    get_builtin_tool_names,
     get_tool_capabilities,
     migrate_shell_tool_names,
 )
@@ -160,9 +161,20 @@ async def get_config(request: Request) -> JSONResponse:
         "models": available_models,
         "defaultModel": default_model,
         "agents": CONFIG.agent_options,
-        "tools": [t for t in CONFIG.ensure_tool_options() if t != "SkillTool"],
+        # SkillTool used to be filtered out of both lists because it had no
+        # capability group and was equipped behind the user's back. It is a
+        # builtin now, so it belongs in the catalog -- shown, and locked on.
+        # A catalog pinned in config predates the builtin flag, so union rather
+        # than trust it: a locked tool missing from the picker while the agent
+        # equips it is the one combination the user cannot make sense of.
+        "tools": list(
+            dict.fromkeys([*CONFIG.ensure_tool_options(), *get_builtin_tool_names()])
+        ),
         "toolCapabilities": get_tool_capabilities(),
-        "defaultTools": [t for t in CONFIG.default_tools if t != "SkillTool"],
+        "defaultTools": list(
+            dict.fromkeys([*CONFIG.default_tools, *get_builtin_tool_names()])
+        ),
+        "builtinTools": get_builtin_tool_names(),
         "codeTag": CONFIG.code_tag,
         "userId": CONFIG.user_id,
         "globalSandboxVolumes": sandbox_volumes,
