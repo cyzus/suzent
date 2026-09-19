@@ -1,8 +1,15 @@
 """
-Heartbeat Runner: Periodic agent check-ins in persistent sessions.
+Heartbeat Runner: agent check-ins that run inside a live conversation.
 
-Unlike cron (isolated, stateless, precise timing), heartbeat checks run in
-the context of a specific chat session at a fixed interval.
+Timing lives in :mod:`suzent.core.scheduler` -- a heartbeat is a scheduled task
+row like any other. What stays here is *execution*: how to take a background
+turn in a chat someone may be using, tell an answer worth showing from a
+routine all-clear, and roll a quiet check back out of the transcript.
+
+That executor is generic (:meth:`HeartbeatRunner.run_bound_turn`), so any
+chat-bound scheduled task reuses it. Heartbeats themselves keep one extra step:
+they are announced as *pending* first, giving an attached frontend the chance
+to claim and stream the turn before the server runs it headlessly.
 """
 
 import asyncio
@@ -29,15 +36,17 @@ def get_active_heartbeat() -> Optional["HeartbeatRunner"]:
 
 class HeartbeatRunner(BaseBrain):
     """
-    Runs periodic agent turns in persistent chats that have heartbeat enabled.
-    Reads the per-session heartbeat_instructions as a checklist. Suppresses HEARTBEAT_OK responses.
+    Executes agent turns inside persistent chats, for heartbeats and for any
+    other chat-bound scheduled task. Reads the per-session heartbeat.md as a
+    checklist. Suppresses HEARTBEAT_OK responses.
     """
 
     _brain_name = "HeartbeatRunner"
 
     def __init__(self, interval_minutes: int = 1):
-        # The internal polling resolution is 1 minute
         super().__init__()
+        # Kept for status reporting only: the scheduler's tick is the real
+        # resolution now that it owns heartbeat timing.
         self.polling_interval_minutes = interval_minutes
         self._enabled = False
         self._last_run_at: Optional[datetime] = None
@@ -57,55 +66,27 @@ class HeartbeatRunner(BaseBrain):
         self._notification_callback = callback
 
     async def start(self):
-        """Start the heartbeat loop."""
+        """Register as the active runner. The scheduler drives the clock."""
         from suzent.core.base_brain import _registry
 
         _registry[type(self)] = self
 
         self._enabled = True
         self._running = True
-        self._task = asyncio.create_task(self._run_loop())
-        logger.info(
-            f"HeartbeatRunner started (polling interval {self.polling_interval_minutes}m)"
-        )
+        logger.info("HeartbeatRunner started (scheduler-driven).")
 
     async def enable(self):
-        """Enable heartbeat loop."""
-        if self._running:
-            return
+        """Allow due heartbeats to run."""
         self._enabled = True
         self._running = True
-        self._task = asyncio.create_task(self._run_loop())
         logger.info("HeartbeatRunner enabled.")
 
     async def disable(self):
-        """Disable heartbeat loop."""
+        """Stop running heartbeats; scheduled rows stay armed but are skipped."""
         self._enabled = False
         self._running = False
-        if self._task:
-            self._task.cancel()
-            try:
-                await self._task
-            except asyncio.CancelledError:
-                pass
-            self._task = None
+        self._pending_heartbeats.clear()
         logger.info("HeartbeatRunner disabled.")
-
-    async def _run_loop(self):
-        """Main loop — fires heartbeat checks."""
-        while self._running:
-            try:
-                await self._tick()
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error(f"Heartbeat loop error: {e}")
-                self._last_error = str(e)
-
-            try:
-                await asyncio.sleep(self.polling_interval_minutes * 60)
-            except asyncio.CancelledError:
-                break
 
     def get_status(self, chat_id: Optional[str] = None) -> dict:
         """Return system status or specific chat status if requested."""
@@ -121,14 +102,7 @@ class HeartbeatRunner(BaseBrain):
                 }
             cfg = chat.config or {}
 
-            # Read physical file
-            hb_path = get_database().get_project_dir(chat_id) / "heartbeat.md"
-            instructions = ""
-            if hb_path.exists():
-                try:
-                    instructions = hb_path.read_text(encoding="utf-8")
-                except Exception as e:
-                    logger.error(f"Error reading heartbeat.md for chat {chat_id}: {e}")
+            instructions = self.read_instructions(chat_id)
 
             return {
                 "enabled": cfg.get("heartbeat_enabled", False),
@@ -166,50 +140,36 @@ class HeartbeatRunner(BaseBrain):
             "last_error": self._last_error,
         }
 
-    async def _tick(self):
-        """Check all active heartbeat chats and run if due."""
-        db = get_database()
-        active_chats = db.get_active_heartbeats()
+    def read_instructions(self, chat_id: str) -> str:
+        """Read a chat's heartbeat.md checklist, or '' when it has none."""
+        hb_path = get_database().get_project_dir(chat_id) / "heartbeat.md"
+        if not hb_path.exists():
+            return ""
+        try:
+            return hb_path.read_text(encoding="utf-8")
+        except Exception as e:
+            logger.error(f"Error reading heartbeat.md for chat {chat_id}: {e}")
+            return ""
 
-        now = datetime.now(timezone.utc)
-        self._last_run_at = now
+    def mark_heartbeat_pending(self, chat_id: str) -> None:
+        """Announce a due heartbeat, letting an attached frontend claim it.
 
-        for chat in active_chats:
-            cfg = chat.config or {}
-            last_run_iso = cfg.get("heartbeat_last_run_at")
-            interval = cfg.get("heartbeat_interval_minutes", 30)
+        Called by the scheduler when a heartbeat row comes due. The chat is
+        marked pending so a watching frontend can pick it up and stream the
+        turn where the user can see it; a fallback task runs it headlessly if
+        nobody claims it within 20 seconds.
+        """
+        if not self._enabled:
+            return
+        if chat_id in self._pending_heartbeats or chat_id in stream_controls:
+            return
 
-            if last_run_iso:
-                try:
-                    last_run = dateutil.parser.isoparse(last_run_iso)
-                    if last_run.tzinfo is None:
-                        last_run = last_run.replace(tzinfo=timezone.utc)
-                    elapsed = (now - last_run).total_seconds() / 60.0
-                    if elapsed < interval:
-                        continue
-                except Exception as e:
-                    logger.error(f"Error parsing last_run_at for chat {chat.id}: {e}")
-
-            # Already pending or actively streaming — skip
-            if chat.id in self._pending_heartbeats or chat.id in stream_controls:
-                continue
-
-            # Run if due
-            hb_path = get_database().get_project_dir(chat.id) / "heartbeat.md"
-            instructions = ""
-            if hb_path.exists():
-                try:
-                    instructions = hb_path.read_text(encoding="utf-8")
-                except Exception as e:
-                    logger.error(f"Error reading heartbeat.md for chat {chat.id}: {e}")
-
-            # Mark as pending so the frontend can pick it up via polling.
-            # A fallback task will run it directly after 20 s if no SSE stream appears.
-            marked_ts = time.time()
-            self._pending_heartbeats[chat.id] = marked_ts
-            asyncio.create_task(
-                self._deferred_run_task(chat.id, instructions, db, marked_ts)
-            )
+        instructions = self.read_instructions(chat_id)
+        marked_ts = time.time()
+        self._pending_heartbeats[chat_id] = marked_ts
+        asyncio.create_task(
+            self._deferred_run_task(chat_id, instructions, get_database(), marked_ts)
+        )
 
     async def _deferred_run_task(
         self, chat_id: str, instructions: str, db, marked_ts: float
@@ -244,20 +204,15 @@ class HeartbeatRunner(BaseBrain):
         asyncio.create_task(self._run_chat_heartbeat(chat_id, instructions, db))
 
     async def trigger_now(self, chat_id: str):
-        """Trigger an immediate heartbeat tick for a specific chat."""
+        """Run a heartbeat for a chat right now, bypassing its schedule."""
         db = get_database()
-        chat = db.get_chat(chat_id)
-        if chat:
-            hb_path = get_database().get_project_dir(chat_id) / "heartbeat.md"
-            instructions = ""
-            if hb_path.exists():
-                try:
-                    instructions = hb_path.read_text(encoding="utf-8")
-                except Exception:
-                    pass
-            asyncio.create_task(self._run_chat_heartbeat(chat_id, instructions, db))
+        if db.get_chat(chat_id):
+            asyncio.create_task(
+                self._run_chat_heartbeat(chat_id, self.read_instructions(chat_id), db)
+            )
 
     async def _run_chat_heartbeat(self, chat_id: str, instructions: str, db):
+        """Run a heartbeat check and publish anything it found."""
         if chat_id in stream_controls:
             logger.debug(f"Heartbeat skipped for {chat_id}: stream already active")
             return
@@ -282,19 +237,17 @@ class HeartbeatRunner(BaseBrain):
             logger.error(f"Failed to update heartbeat_last_run_at: {e}")
 
         try:
-            # Note down the latest message count to know how many to rollback if it's HEARTBEAT_OK
-            chat = db.get_chat(chat_id)
-            initial_message_count = len(chat.messages) if chat else 0
-
-            response_text = await self._run_chat_turn(chat_id, instructions)
+            response_text = await self.run_bound_turn(
+                chat_id,
+                self.build_heartbeat_reminder(instructions),
+                suppress_ok=True,
+                heartbeat_approvals=True,
+            )
             self._last_error = None
 
-            if self._is_heartbeat_ok(response_text):
+            if not response_text:
                 logger.debug(f"Heartbeat OK ({chat_id}) -- nothing needs attention")
                 self._last_result = HEARTBEAT_OK
-
-                # Rollback messages (prompt + response + tool outputs if any)
-                self._rollback_heartbeat_messages(chat_id, initial_message_count, db)
                 return
 
             self._last_result = response_text
@@ -325,46 +278,157 @@ class HeartbeatRunner(BaseBrain):
             logger.error(f"Heartbeat execution failed for {chat_id}: {e}")
             self._last_error = str(e)
 
-    async def _run_chat_turn(self, chat_id: str, instructions: str) -> str:
-        from suzent.core.chat_processor import ChatProcessor
-
-        processor = ChatProcessor()
-
-        # Read global heartbeat_allowed_tools to determine approval policy.
-        heartbeat_allowed_tools: list = []
-        try:
-            from suzent.routes.heartbeat_routes import _load_heartbeat_config
-
-            heartbeat_allowed_tools = (
-                _load_heartbeat_config().get("allowed_tools") or []
-            )
-        except Exception:
-            pass
-
-        config_override = self._build_config_override(heartbeat_allowed_tools)
-
+    @staticmethod
+    def build_heartbeat_reminder(instructions: str) -> str:
+        """The check-in prompt: shared base rules plus this chat's checklist."""
         from suzent.prompts import (
             HEARTBEAT_BASE_INSTRUCTIONS,
             HEARTBEAT_PROMPT_TEMPLATE,
         )
 
         extra_inst = f"\n\n{instructions.strip()}" if instructions.strip() else ""
-        heartbeat_msg = HEARTBEAT_PROMPT_TEMPLATE.format(
+        return HEARTBEAT_PROMPT_TEMPLATE.format(
             base_instructions=HEARTBEAT_BASE_INSTRUCTIONS, extra_instructions=extra_inst
         )
 
-        try:
-            return await processor.process_background_turn(
-                chat_id=chat_id,
-                user_id=CONFIG.user_id,
-                message_content="",
-                config_override=config_override,
-                is_heartbeat=True,
-                system_reminders=[heartbeat_msg],
-            )
-        except RuntimeError as e:
-            self._last_error = str(e)
+    async def run_bound_turn(
+        self,
+        chat_id: str,
+        reminder: str,
+        *,
+        suppress_ok: bool = False,
+        model_override: Optional[str] = None,
+        heartbeat_approvals: bool = False,
+        persist_to_chat: bool = False,
+        answer_label: Optional[str] = None,
+    ) -> str:
+        """Run one background turn inside an existing chat.
+
+        This is the executor behind every chat-bound scheduled task, heartbeats
+        included. Returns the agent's answer, or "" when ``suppress_ok`` is set
+        and the turn reported nothing worth surfacing -- in that case its
+        messages are rolled back, so a quiet check leaves the conversation
+        exactly as it found it.
+
+        ``answer_label`` names the task an answer belongs to. A suppressible
+        turn is never rebuilt into the transcript, so when nobody was streaming
+        it there is nothing in the chat to show for it -- pass a label and an
+        answer that is not a no-op gets written in under it. Heartbeats leave
+        it unset: they have their own result channel in the chat's config.
+
+        ``persist_to_chat`` decides whether the turn joins the conversation's
+        visible transcript. A suppressible check must not: rollback owns its
+        message state, and a persisted internal prompt would survive every
+        failure path. A task that speaks for itself must, or its answer would
+        be recorded as a successful run that nobody can see -- which is the
+        whole point of binding it to a chat.
+
+        ``heartbeat_approvals`` opts into the global heartbeat allow-list. It
+        is off by default and only heartbeats pass it: those tools were
+        approved for a check-in the user configured, and handing the same
+        blanket approval to an arbitrary scheduled prompt -- including one the
+        agent wrote for itself -- would widen it well past what was agreed to.
+
+        Raises whatever the turn raises: the scheduler needs a failed run to
+        look like a failure so it can retry.
+        """
+        if chat_id in stream_controls:
+            logger.debug(f"Bound turn skipped for {chat_id}: stream already active")
             return ""
+
+        db = get_database()
+        chat = db.get_chat(chat_id)
+        # Note the message count so a suppressed turn can be rolled back to it.
+        initial_message_count = len(chat.messages) if chat else 0
+
+        response_text = await self._run_chat_turn(
+            chat_id,
+            reminder,
+            model_override=model_override,
+            heartbeat_approvals=heartbeat_approvals,
+            persist_to_chat=persist_to_chat,
+        )
+
+        if suppress_ok:
+            if self._is_heartbeat_ok(response_text):
+                self._rollback_heartbeat_messages(chat_id, initial_message_count, db)
+                return ""
+            if answer_label:
+                self._record_bound_answer(
+                    chat_id, response_text, initial_message_count, db, answer_label
+                )
+
+        return response_text
+
+    def _record_bound_answer(
+        self, chat_id: str, text: str, original_count: int, db, label: str
+    ) -> None:
+        """Write a suppressible turn's answer into the chat it was bound to.
+
+        Ordering is the point: the answer is classified first and written
+        second, so there is never a moment where the transcript holds a turn
+        that a rollback still has to take back out. That window is what makes
+        persist-then-roll-back fragile -- a failure in between strands the row.
+
+        A turn someone was streaming already left a draft row behind, which is
+        why this checks the message count instead of appending unconditionally.
+        """
+        try:
+            chat = db.get_chat(chat_id)
+            if chat and len(chat.messages) > original_count:
+                return
+            # A bare answer with no lead-in reads as the agent talking to
+            # itself; the header says which task woke it, and matches the
+            # wording cron triggers use so the two coalesce the same way.
+            db.append_chat_message(
+                chat_id,
+                {"role": "system_triggered", "content": f"**Scheduled Task: {label}**"},
+            )
+            db.append_chat_message(chat_id, {"role": "assistant", "content": text})
+        except Exception as e:
+            logger.error(f"Failed to record scheduled task answer in {chat_id}: {e}")
+
+    async def _run_chat_turn(
+        self,
+        chat_id: str,
+        reminder: str,
+        *,
+        model_override: Optional[str] = None,
+        heartbeat_approvals: bool = False,
+        persist_to_chat: bool = False,
+    ) -> str:
+        from suzent.core.chat_processor import ChatProcessor
+
+        processor = ChatProcessor()
+
+        # Read global heartbeat_allowed_tools to determine approval policy.
+        # Only a heartbeat gets them; see run_bound_turn.
+        heartbeat_allowed_tools: list = []
+        if heartbeat_approvals:
+            try:
+                from suzent.routes.heartbeat_routes import _load_heartbeat_config
+
+                heartbeat_allowed_tools = (
+                    _load_heartbeat_config().get("allowed_tools") or []
+                )
+            except Exception:
+                pass
+
+        config_override = self._build_config_override(
+            heartbeat_allowed_tools, model_override=model_override
+        )
+
+        return await processor.process_background_turn(
+            chat_id=chat_id,
+            user_id=CONFIG.user_id,
+            message_content="",
+            config_override=config_override,
+            # is_heartbeat gates message persistence (skip_messages) as well as
+            # goal counting and trigger rows, so a turn meant to be seen has to
+            # go through the ordinary path.
+            is_heartbeat=not persist_to_chat,
+            system_reminders=[reminder],
+        )
 
     def _rollback_heartbeat_messages(self, chat_id: str, original_count: int, db):
         """Remove the heartbeat prompt and Ok response if no action was needed."""
@@ -385,7 +449,12 @@ class HeartbeatRunner(BaseBrain):
         except Exception as e:
             logger.error(f"Failed to rollback heartbeat messages for {chat_id}: {e}")
 
-    def _build_config_override(self, heartbeat_allowed_tools: list = None) -> dict:
+    def _build_config_override(
+        self,
+        heartbeat_allowed_tools: list = None,
+        *,
+        model_override: Optional[str] = None,
+    ) -> dict:
         from suzent.agent_manager import build_agent_config
 
         base: dict = {
@@ -393,6 +462,8 @@ class HeartbeatRunner(BaseBrain):
             "permission_mode": "auto",
             "interaction_profile": "headless",
         }
+        if model_override:
+            base["model"] = model_override
         if heartbeat_allowed_tools:
             # Only auto-approve the explicitly allowed tools.
             base["tool_approval_policy"] = {

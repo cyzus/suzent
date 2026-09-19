@@ -1,19 +1,28 @@
 """
-Scheduler Brain: Crontab-based automated task execution.
+Scheduler Brain: the one timing loop behind every scheduled task.
 
-Module-level singleton with an asyncio task loop that fires jobs
-via ChatProcessor on their cron schedule.
+A task is a row in ``cron_jobs``. ``schedule_kind`` decides when it fires
+(cron expression, fixed interval, or a single ``run_at``), and ``context_mode``
+decides where the turn runs: an isolated ``cron-{id}`` chat, or bound to an
+existing conversation so the task can see it.
+
+Heartbeats are ordinary rows here too -- interval-scheduled, bound, with
+``suppress_ok`` so a turn that finds nothing to report is rolled back. The
+HeartbeatRunner still owns heartbeat *execution*; this module owns the clock.
 """
 
 import asyncio
+import random
+import dateutil.parser
 from collections import deque
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, Set
 
 from croniter import croniter
 
 from suzent.config import CONFIG
 from suzent.core.base_brain import BaseBrain, get_active
+from suzent.core.heartbeat import HEARTBEAT_OK
 from suzent.database import get_database
 from suzent.logger import get_logger
 from suzent.core.stream_registry import (
@@ -59,6 +68,223 @@ def build_cron_reminder(
         f"Last run: {last_run}\n\n"
         f"{prompt}"
     )
+
+
+def build_bound_task_reminder(
+    job_name: str,
+    prompt: str,
+    *,
+    quiet: bool = False,
+    triggered_at: Optional[datetime] = None,
+    last_run_at: Optional[datetime] = None,
+) -> str:
+    """Reminder for a task firing inside an existing conversation.
+
+    The isolated-chat wording ("you were woken by the scheduler") would be
+    confusing mid-conversation, so a bound task says plainly that it is a
+    scheduled interruption and that the surrounding chat is its context.
+
+    A ``quiet`` task is rolled back only when the answer is recognisably a
+    no-op, which means the exact token -- telling it merely to "stay silent"
+    invites a polite "nothing to report" that then sits in the transcript
+    forever. So ask for the token by name.
+    """
+    body = build_cron_reminder(
+        job_name, prompt, triggered_at=triggered_at, last_run_at=last_run_at
+    )
+    intro = (
+        "A scheduled task attached to this conversation just fired. "
+        "The conversation above is your context; continue it rather than "
+        "starting over."
+    )
+    if quiet:
+        intro += (
+            f" If there is nothing worth reporting, reply with exactly "
+            f"{HEARTBEAT_OK} and nothing else, and this turn will be removed "
+            "from the conversation. Answer normally only if something needs "
+            "attention."
+        )
+    return body.replace("You were automatically woken by the cron scheduler.", intro, 1)
+
+
+def _resolve_timezone(name: Optional[str]):
+    """Return a tzinfo for an IANA name, or None to use machine local time."""
+    if not name:
+        return None
+    try:
+        from zoneinfo import ZoneInfo
+
+        return ZoneInfo(name)
+    except Exception as exc:
+        logger.warning(f"Unknown timezone {name!r}, falling back to local time: {exc}")
+        return None
+
+
+def compute_next_run(job, *, after: Optional[datetime] = None) -> Optional[datetime]:
+    """Next fire time for a task as naive local time.
+
+    Returns None when the task has nothing left to schedule -- a one-shot that
+    already ran, or a row whose schedule fields are incomplete.
+
+    Cron expressions are evaluated in the task's own timezone and then
+    converted back to local naive time, so every stored timestamp and every
+    comparison in the tick loop stays in a single frame of reference.
+    """
+    base = after or datetime.now()
+    kind = job.schedule_kind or "cron"
+
+    if kind == "once":
+        # A one-shot fires exactly once; last_run_at marks it spent.
+        if job.last_run_at:
+            return None
+        return job.run_at
+
+    if kind == "interval":
+        minutes = job.interval_minutes or 0
+        if minutes < 1:
+            return None
+        nxt = base + timedelta(minutes=minutes)
+    else:
+        if not job.cron_expr:
+            return None
+        tz = _resolve_timezone(job.timezone)
+        local_base = base.astimezone(tz) if tz else base
+        nxt = croniter(job.cron_expr, local_base).get_next(datetime)
+        if nxt.tzinfo is not None:
+            nxt = nxt.astimezone().replace(tzinfo=None)
+
+    if job.jitter_seconds:
+        nxt = nxt + timedelta(seconds=random.uniform(0, job.jitter_seconds))
+    return nxt
+
+
+def schedule_period_seconds(job) -> Optional[float]:
+    """Nominal gap between two fires, or None when there isn't a repeating one."""
+    kind = job.schedule_kind or "cron"
+    if kind == "interval":
+        return ((job.interval_minutes or 0) * 60) or None
+    if kind == "cron" and job.cron_expr:
+        try:
+            iterator = croniter(job.cron_expr, datetime.now())
+            first = iterator.get_next(datetime)
+            second = iterator.get_next(datetime)
+            return (second - first).total_seconds()
+        except Exception:
+            return None
+    return None
+
+
+def is_missed_run(job, now: datetime) -> bool:
+    """Whether a due run is stale enough to skip under the catch-up policy.
+
+    After the machine sleeps, every overdue task would otherwise fire at once.
+    A run overdue by more than one full period is treated as missed; with
+    ``catch_up="run_once"`` it still runs, once, instead of being dropped.
+    One-shots are never skipped -- a reminder that fires late is still useful.
+    """
+    if (job.catch_up or "skip") != "skip":
+        return False
+    if (job.schedule_kind or "cron") == "once":
+        return False
+    if not job.next_run_at:
+        return False
+    period = schedule_period_seconds(job)
+    if not period:
+        return False
+    return (now - job.next_run_at).total_seconds() > period
+
+
+HEARTBEAT_SOURCE = "heartbeat"
+
+# How long to wait before re-offering a heartbeat whose hand-off went nowhere.
+# Must exceed the runner's own 20s pickup window, so a heartbeat that *was*
+# claimed is never offered a second time.
+HEARTBEAT_PICKUP_RETRY = timedelta(seconds=60)
+
+
+def _parse_heartbeat_last_run(cfg: dict) -> Optional[datetime]:
+    """chat.config stores a UTC ISO string; the scheduler works in local naive."""
+    raw = cfg.get("heartbeat_last_run_at")
+    if not raw:
+        return None
+    try:
+        parsed = dateutil.parser.isoparse(raw)
+    except Exception:
+        return None
+    if parsed.tzinfo is not None:
+        parsed = parsed.astimezone().replace(tzinfo=None)
+    return parsed
+
+
+def _heartbeat_next_run(cfg: dict, interval_minutes: int) -> datetime:
+    """When a chat's heartbeat is next owed. A chat that never ran one is due now."""
+    last = _parse_heartbeat_last_run(cfg)
+    base = last or (datetime.now() - timedelta(minutes=interval_minutes))
+    return base + timedelta(minutes=interval_minutes)
+
+
+def sync_heartbeat_tasks(db) -> None:
+    """Project heartbeat-enabled chats onto scheduled-task rows.
+
+    Heartbeat stays configured where the UI already writes it -- ``chat.config``
+    plus the project's ``heartbeat.md`` -- while the scheduler owns its clock.
+    This reconciles the two in both directions: a config change re-arms the row,
+    and a heartbeat the frontend ran itself pushes the row's next fire time out
+    so the scheduler doesn't immediately run a second one behind it.
+    """
+    enabled_chats = {chat.id: chat for chat in db.get_active_heartbeats()}
+
+    for chat_id, chat in enabled_chats.items():
+        cfg = chat.config or {}
+        try:
+            interval = max(1, int(cfg.get("heartbeat_interval_minutes", 30)))
+        except (TypeError, ValueError):
+            interval = 30
+
+        row = db.find_cron_job_by_source(HEARTBEAT_SOURCE, chat_id)
+        if row is None:
+            job_id = db.create_cron_job(
+                name=f"Heartbeat: {chat.title or chat_id[:8]}",
+                prompt="",
+                delivery_mode="none",
+                schedule_kind="interval",
+                interval_minutes=interval,
+                chat_id=chat_id,
+                context_mode="bound",
+                suppress_ok=True,
+                source=HEARTBEAT_SOURCE,
+            )
+            db.update_cron_job_run_state(
+                job_id, next_run_at=_heartbeat_next_run(cfg, interval)
+            )
+            continue
+
+        patch = {}
+        if not row.active:
+            patch["active"] = True
+        if row.interval_minutes != interval:
+            patch["interval_minutes"] = interval
+        if patch:
+            db.update_cron_job(row.id, **patch)
+
+        external = _parse_heartbeat_last_run(cfg)
+        if external is not None and (
+            row.last_run_at is None or external > row.last_run_at
+        ):
+            db.update_cron_job_run_state(
+                row.id,
+                last_run_at=external,
+                next_run_at=external + timedelta(minutes=interval),
+            )
+        elif "interval_minutes" in patch or not row.next_run_at:
+            db.update_cron_job_run_state(
+                row.id, next_run_at=_heartbeat_next_run(cfg, interval)
+            )
+
+    # Rows whose chat turned heartbeat off (or vanished) go dormant.
+    for row in db.list_cron_jobs(active_only=True):
+        if row.source == HEARTBEAT_SOURCE and row.chat_id not in enabled_chats:
+            db.update_cron_job(row.id, active=False)
 
 
 def get_active_scheduler() -> Optional["SchedulerBrain"]:
@@ -181,6 +407,10 @@ class SchedulerBrain(BaseBrain):
         super().__init__()
         self.tick_interval = tick_interval
         self._pending_notifications: deque = deque(maxlen=20)
+        # Job ids with a run in progress. A tick must not fire a task that is
+        # already running -- for a bound task the chat's stream guard would
+        # catch it, but a one-shot disarms itself and has no other interlock.
+        self._in_flight: Set[int] = set()
 
     async def start(self):
         """Start the scheduler loop."""
@@ -204,6 +434,9 @@ class SchedulerBrain(BaseBrain):
 
     async def trigger_job_now(self, job_id: int):
         """Manually trigger a job for immediate execution."""
+        if job_id in self._in_flight:
+            logger.info(f"Scheduled task {job_id} is already running, not re-firing")
+            return
         asyncio.create_task(self._execute_job(job_id))
 
     def drain_notifications(self) -> list:
@@ -248,16 +481,32 @@ class SchedulerBrain(BaseBrain):
     # -- Internal ------------------------------------------------------------
 
     def _initialize_schedules(self):
-        """Compute initial next_run_at for active jobs missing one."""
+        """Compute initial next_run_at for active tasks missing one."""
         try:
             db = get_database()
-            now = datetime.now()
             for job in db.list_cron_jobs(active_only=True):
                 if not job.next_run_at:
-                    nxt = croniter(job.cron_expr, now).get_next(datetime)
-                    db.update_cron_job_run_state(job.id, next_run_at=nxt)
+                    self._arm(db, job)
         except Exception as e:
-            logger.error(f"Failed to initialize cron job schedules: {e}")
+            logger.error(f"Failed to initialize scheduled task timings: {e}")
+
+    def _arm(self, db, job, *, after: Optional[datetime] = None) -> None:
+        """Set a task's next fire time, deactivating it when it has none left."""
+        try:
+            nxt = compute_next_run(job, after=after)
+        except Exception as e:
+            logger.error(f"Invalid schedule for task {job.id}: {e}")
+            db.update_cron_job_run_state(job.id, last_error=str(e), clear_next_run=True)
+            db.update_cron_job(job.id, active=False)
+            return
+
+        if nxt is None:
+            db.update_cron_job_run_state(job.id, clear_next_run=True)
+            db.update_cron_job(job.id, active=False)
+            logger.info(f"Scheduled task {job.id} has no further runs, deactivated")
+            return
+
+        db.update_cron_job_run_state(job.id, next_run_at=nxt)
 
     async def _run_loop(self):
         """Main tick loop -- checks due jobs every tick_interval seconds."""
@@ -275,29 +524,56 @@ class SchedulerBrain(BaseBrain):
                 break
 
     async def _tick(self):
-        """Single tick: find due jobs and fire them."""
+        """Single tick: reconcile heartbeat rows, then fire whatever is due."""
         db = get_database()
         now = datetime.now()
 
+        try:
+            sync_heartbeat_tasks(db)
+        except Exception as e:
+            logger.error(f"Failed to sync heartbeat tasks: {e}")
+
         for job in db.list_cron_jobs(active_only=True):
-            if not job.next_run_at:
-                nxt = croniter(job.cron_expr, now).get_next(datetime)
-                db.update_cron_job_run_state(job.id, next_run_at=nxt)
+            if job.id in self._in_flight:
                 continue
 
-            if job.next_run_at <= now:
-                asyncio.create_task(self._execute_job(job.id))
+            if not job.next_run_at:
+                self._arm(db, job, after=now)
+                continue
+
+            if job.next_run_at > now:
+                continue
+
+            if is_missed_run(job, now):
+                logger.info(
+                    f"Skipping missed run of scheduled task {job.id} "
+                    f"(due {job.next_run_at.isoformat()}, catch_up=skip)"
+                )
+                self._arm(db, job, after=now)
+                continue
+
+            asyncio.create_task(self._execute_job(job.id))
 
     async def _execute_job(self, job_id: int):
-        """Execute a single cron job."""
+        """Execute a single scheduled task."""
         db = get_database()
         job = db.get_cron_job(job_id)
         if not job or not job.active:
             return
 
-        chat_id = f"cron-{job_id}"
+        bound = (job.context_mode or "isolated") == "bound" and bool(job.chat_id)
+        chat_id = job.chat_id if bound else f"cron-{job_id}"
 
         if chat_id in stream_controls:
+            if bound:
+                # The chat this task rides on is mid-turn. Competing with the
+                # user is the normal case for a bound task, not a failure, so
+                # slide to the next tick rather than spending a retry -- five
+                # retries would otherwise deactivate the task during a
+                # conversation.
+                self._defer_bound_job(db, job)
+                return
+
             error = "Previous cron run is still active"
             logger.warning(f"Deferring cron job {job_id} -- {error.lower()}")
             now = datetime.now()
@@ -306,37 +582,130 @@ class SchedulerBrain(BaseBrain):
             self._handle_retry(db, job_id, job.retry_count or 0, now, error)
             return
 
-        # Preserve the previous value before advancing the schedule for this run.
-        last_run_at = job.last_run_at
-
-        # Advance schedule before execution to avoid drift
-        now = datetime.now()
-        try:
-            nxt = croniter(job.cron_expr, now).get_next(datetime)
-            db.update_cron_job_run_state(
-                job_id, last_run_at=now, next_run_at=nxt, retry_count=0
-            )
-        except Exception as e:
-            logger.error(f"Invalid cron expression for job {job_id}: {e}")
-            db.update_cron_job_run_state(job_id, last_error=str(e), next_run_at=None)
-            db.update_cron_job(job_id, active=False)
+        if job.source == HEARTBEAT_SOURCE:
+            self._dispatch_heartbeat(db, job)
             return
 
-        self._ensure_cron_chat(chat_id, job)
+        self._in_flight.add(job_id)
+        try:
+            await self._run_scheduled_task(db, job, chat_id, bound=bound)
+        finally:
+            self._in_flight.discard(job_id)
+
+    def _defer_bound_job(self, db, job) -> None:
+        """Slide a bound task past a busy chat without spending a retry."""
+        retry_at = datetime.now() + timedelta(seconds=max(self.tick_interval, 30.0))
+        db.update_cron_job_run_state(job.id, next_run_at=retry_at)
+        logger.debug(f"Chat {job.chat_id} is busy, deferring scheduled task {job.id}")
+
+    def _dispatch_heartbeat(self, db, job) -> None:
+        """Hand a due heartbeat to the runner and re-arm the row.
+
+        Heartbeats keep their own delivery path: the runner marks the chat
+        pending so an attached frontend can claim and stream the turn, and only
+        runs it server-side if nobody does. They produce no run history and no
+        notification, so they never reach the generic task path below.
+        """
+        from suzent.core.heartbeat import get_active_heartbeat
+
+        now = datetime.now()
+        runner = get_active_heartbeat()
+        if runner is None or not runner.enabled:
+            # Subsystem is off; keep the row moving so it doesn't pile up.
+            self._arm(db, job, after=now)
+            return
+
+        # Don't record this as a run yet. Handing a heartbeat to the runner is
+        # not the same as it happening: the chat can become busy inside the
+        # pickup window, and both the frontend and the fallback then bow out.
+        # Claiming the run here would swallow it for a whole interval.
+        #
+        # Arm a short retry instead. The runner stamps chat.config when it
+        # really starts, and the next sync turns that into the true last_run_at
+        # and next_run_at -- so a heartbeat that lands advances normally, and
+        # one that is dropped comes back around.
+        retry_after = max(
+            HEARTBEAT_PICKUP_RETRY, timedelta(seconds=2 * self.tick_interval)
+        )
+        db.update_cron_job_run_state(
+            job.id, next_run_at=now + retry_after, retry_count=0
+        )
+        runner.mark_heartbeat_pending(job.chat_id)
+
+    async def _run_scheduled_task(self, db, job, chat_id: str, *, bound: bool):
+        """Advance the schedule, run the turn, and record the outcome."""
+        job_id = job.id
+        one_shot = (job.schedule_kind or "cron") == "once"
+        # Preserve the previous value before advancing the schedule for this run.
+        last_run_at = job.last_run_at
+        now = datetime.now()
+
+        # Advance before execution so a slow turn cannot drift the next fire
+        # time. A one-shot disarms instead -- it must not fire twice.
+        if one_shot:
+            # Disarm, but don't record it as run: if the process exits mid-turn,
+            # a row with last_run_at set and no next_run_at looks spent, and the
+            # reminder would be deactivated on startup without ever firing.
+            # Within the process, _in_flight is what stops a second tick.
+            db.update_cron_job_run_state(job_id, retry_count=0, clear_next_run=True)
+        else:
+            try:
+                nxt = compute_next_run(job, after=now)
+            except Exception as e:
+                logger.error(f"Invalid schedule for task {job_id}: {e}")
+                db.update_cron_job_run_state(
+                    job_id, last_error=str(e), clear_next_run=True
+                )
+                db.update_cron_job(job_id, active=False)
+                return
+            db.update_cron_job_run_state(
+                job_id,
+                last_run_at=now,
+                next_run_at=nxt,
+                retry_count=0,
+                clear_next_run=nxt is None,
+            )
+
+        if not bound:
+            self._ensure_cron_chat(chat_id, job)
         run_id = db.create_cron_run(job_id, now)
 
         try:
-            response_text = await self._run_chat_turn(
-                chat_id, job, db, job_id, run_id, last_run_at=last_run_at
-            )
+            if bound:
+                response_text = await self._run_bound_turn(
+                    chat_id, job, last_run_at=last_run_at
+                )
+            else:
+                response_text = await self._run_chat_turn(
+                    chat_id, job, db, job_id, run_id, last_run_at=last_run_at
+                )
 
             db.update_cron_job_run_state(
                 job_id, last_result=response_text, clear_error=True
             )
             db.finish_cron_run(run_id, "success", result=response_text)
-            db.set_last_result_at(chat_id)
+            # A suppressed bound turn left no trace in the chat, so it must not
+            # light up the unread badge either.
+            if response_text or not bound:
+                db.set_last_result_at(chat_id)
 
-            if job.delivery_mode == "announce" and response_text:
+            if one_shot:
+                db.update_cron_job_run_state(job_id, last_run_at=now)
+                db.update_cron_job(job_id, active=False)
+                logger.info(f"One-shot task {job_id} completed, deactivated")
+
+            # A quiet bound task's turn is never written to the transcript --
+            # rollback owns its message state, and persisting the internal
+            # reminder would risk leaving it visible on a failure path. So on
+            # the rare occasion such a task does have something to say, the
+            # notification is the only way it reaches anyone: announce it even
+            # when the task was configured silent. Heartbeats have their own
+            # delivery path and never reach here.
+            speaks_only_by_exception = bound and bool(job.suppress_ok)
+            should_announce = (
+                job.delivery_mode == "announce" or speaks_only_by_exception
+            )
+            if should_announce and response_text:
                 try:
                     db.create_background_notification(
                         source="cron",
@@ -356,9 +725,46 @@ class SchedulerBrain(BaseBrain):
                     )
 
         except Exception as e:
-            logger.error(f"Cron job {job_id} execution failed: {e}")
+            logger.error(f"Scheduled task {job_id} execution failed: {e}")
             db.finish_cron_run(run_id, "error", error=str(e))
             self._handle_retry(db, job_id, job.retry_count or 0, now, str(e))
+
+    async def _run_bound_turn(
+        self, chat_id: str, job, *, last_run_at: Optional[datetime] = None
+    ) -> str:
+        """Run a task turn inside the chat it is bound to.
+
+        Bound turns reuse the HeartbeatRunner's executor: it already knows how
+        to take a background turn in a live conversation, recognise an answer
+        that reports nothing, and roll those messages back out of the
+        transcript so a quiet check leaves the chat untouched.
+        """
+        from suzent.core.heartbeat import get_active_heartbeat
+
+        runner = get_active_heartbeat()
+        if runner is None:
+            raise RuntimeError(
+                "HeartbeatRunner is not running; cannot run a chat-bound task"
+            )
+
+        quiet = bool(job.suppress_ok)
+        reminder = build_bound_task_reminder(
+            job.name, job.prompt, quiet=quiet, last_run_at=last_run_at
+        )
+        return await runner.run_bound_turn(
+            chat_id,
+            reminder,
+            suppress_ok=quiet,
+            model_override=job.model_override,
+            # A quiet task may be rolled back, so its messages must not be
+            # persisted; a task that speaks for itself has to reach the
+            # transcript or its answer is invisible in the chat it was bound to.
+            persist_to_chat=not quiet,
+            # A quiet task is not rebuilt into the transcript, so an answer it
+            # does produce has to be written in explicitly. A speaking task
+            # already goes through the ordinary persistence path.
+            answer_label=job.name if quiet else None,
+        )
 
     async def _run_chat_turn(
         self,

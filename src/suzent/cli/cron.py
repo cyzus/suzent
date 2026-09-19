@@ -42,10 +42,16 @@ def list_jobs(
             for job in jobs:
                 status = "ON" if job["active"] else "OFF"
                 typer.echo(
-                    f"  #{job['id']:>3}  [{status}]  {job['name']:<20}  {job['cron_expr']:<15}"
+                    f"  #{job['id']:>3}  [{status}]  {job['name']:<20}  "
+                    f"{_describe_schedule(job):<15}"
                 )
 
                 if verbose:
+                    if job.get("context_mode") == "bound":
+                        target = job.get("chat_title") or job.get("chat_id")
+                        typer.echo(f"        Runs in:  {target}")
+                    if job.get("source") and job["source"] != "user":
+                        typer.echo(f"        Source:   {job['source']}")
                     prompt = job["prompt"]
                     typer.echo(
                         f"        Prompt:   {prompt[:80]}{'...' if len(prompt) > 80 else ''}"
@@ -72,37 +78,99 @@ def list_jobs(
     asyncio.run(_run())
 
 
+def _describe_schedule(job: dict) -> str:
+    """One-line schedule summary: a cron task has an expression, others don't."""
+    kind = job.get("schedule_kind") or "cron"
+    if kind == "interval":
+        return f"every {job.get('interval_minutes')}m"
+    if kind == "once":
+        return f"once @ {job.get('run_at') or '?'}"
+    return job.get("cron_expr") or "-"
+
+
 @cron_app.command("add")
 def add_job(
     name: str = typer.Option(..., "--name", "-n", help="Job name"),
-    cron: str = typer.Option(
-        ..., "--cron", "-c", help="Cron expression (e.g. '*/5 * * * *')"
-    ),
     prompt: str = typer.Option(..., "--prompt", "-p", help="Prompt to execute"),
+    cron: Optional[str] = typer.Option(
+        None, "--cron", "-c", help="Cron expression (e.g. '*/5 * * * *')"
+    ),
+    every: Optional[int] = typer.Option(
+        None, "--every", help="Repeat every N minutes instead of on a cron expression"
+    ),
+    at: Optional[str] = typer.Option(
+        None, "--at", help="Run once at an ISO 8601 timestamp"
+    ),
+    chat: Optional[str] = typer.Option(
+        None,
+        "--chat",
+        help="Run inside this chat instead of an isolated session, so the "
+        "task can see the conversation",
+    ),
+    quiet: bool = typer.Option(
+        False,
+        "--quiet",
+        help="With --chat: leave the conversation untouched when the run has "
+        "nothing to report",
+    ),
+    timezone: Optional[str] = typer.Option(
+        None, "--timezone", help="IANA timezone for a cron schedule"
+    ),
+    jitter: int = typer.Option(
+        0, "--jitter", help="Spread the fire time over N random seconds"
+    ),
+    catch_up: str = typer.Option(
+        "skip",
+        "--catch-up",
+        help="After downtime: 'skip' stale runs, or 'run_once' to make one up",
+    ),
     delivery: str = typer.Option(
         "announce", "--delivery", "-d", help="Delivery mode: announce or none"
     ),
     model: Optional[str] = typer.Option(None, "--model", "-m", help="Model override"),
     inactive: bool = typer.Option(False, "--inactive", help="Create in disabled state"),
 ):
-    """Create a new cron job — runs a prompt on schedule in an isolated session."""
+    """Create a scheduled task — on a cron expression, an interval, or once."""
+    given = [s for s in (cron, every, at) if s is not None]
+    if len(given) != 1:
+        typer.echo("❌ Give exactly one of --cron, --every or --at.")
+        raise typer.Exit(code=1)
+
+    if every is not None:
+        schedule_kind = "interval"
+    elif at is not None:
+        schedule_kind = "once"
+    else:
+        schedule_kind = "cron"
 
     async def _run():
         payload = {
             "name": name,
-            "cron_expr": cron,
             "prompt": prompt,
+            "schedule_kind": schedule_kind,
+            "cron_expr": cron or "",
+            "interval_minutes": every,
+            "run_at": at,
+            "timezone": timezone,
+            "jitter_seconds": jitter,
+            "catch_up": catch_up,
             "delivery_mode": delivery,
             "model_override": model,
             "active": not inactive,
         }
+        if chat:
+            payload.update(
+                {"chat_id": chat, "context_mode": "bound", "suppress_ok": quiet}
+            )
 
         try:
             client = get_client()
             data = await client.cron.create_job(payload)
             job = data.get("job", {})
-            typer.echo(f"Created cron job #{job.get('id')}: {name}")
-            typer.echo(f"  Schedule: {cron}")
+            typer.echo(f"Created scheduled task #{job.get('id')}: {name}")
+            typer.echo(f"  Schedule: {_describe_schedule(job)}")
+            if chat:
+                typer.echo(f"  Runs in:  {job.get('chat_title') or chat}")
             typer.echo(f"  Next run: {job.get('next_run_at', '-')}")
         except ClientError as e:
             typer.echo(f"❌ {e}")
