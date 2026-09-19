@@ -6,11 +6,56 @@ on:
   pull_request:
     branches: [ "main" ]
   workflow_dispatch:
+    inputs:
+      release_product:
+        description: Product release plan to validate (empty for ordinary CI)
+        type: string
+        default: ''
 
 permissions:
   contents: read
 
 jobs:
+  release-plan:
+    name: Release plan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Validate declarations and product versions
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_BRANCH: ${{ github.head_ref || github.ref_name }}
+          SAME_REPO: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+          REQUESTED_PRODUCT: ${{ inputs.release_product }}
+        run: |
+          set -euo pipefail
+          args=()
+          product=''
+          if [[ "$EVENT" == pull_request ]]; then
+            args+=(--base "$BASE_SHA")
+            if [[ "$SAME_REPO" == true ]]; then
+              case "$HEAD_BRANCH" in
+                release/next) product=desktop ;;
+                release/mobile) product=mobile ;;
+              esac
+            fi
+          elif [[ "$EVENT" == workflow_dispatch && -n "$REQUESTED_PRODUCT" ]]; then
+            product="$REQUESTED_PRODUCT"
+            args+=(--base origin/main)
+          fi
+          if [[ -n "$product" ]]; then
+            args+=(--release-product "$product")
+          fi
+          python scripts/release_plan.py check "${args[@]}"
+          python scripts/bump_version.py --check
+          python scripts/generate_mobile_version.py --check
+
   backend:
     name: Backend
     runs-on: ubuntu-latest
@@ -32,9 +77,7 @@ jobs:
     - name: Check version consistency
       run: python scripts/bump_version.py --check
 
-    # Advisory only. The release bump is derived from these prefixes, so an
-    # unreadable one silently changes the version that ships - but a wording
-    # nit must never block a merge.
+    # Advisory history formatting; release declarations control product versions.
     - name: Audit commit prefixes
       if: github.event_name == 'pull_request'
       run: |

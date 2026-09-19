@@ -3,19 +3,26 @@ name: Prepare Release
 on:
   workflow_dispatch:
     inputs:
-      version:
-        description: 'auto (derive from commit history), patch, minor, major, or an exact version such as 0.8.0'
+      product:
+        description: Product to prepare
+        type: choice
+        options: [desktop, mobile]
+        default: desktop
         required: true
+      version:
+        description: 'auto, patch, minor, major, or an exact version'
+        type: string
         default: auto
+        required: true
+      reason:
+        description: Reason for an explicit version override
         type: string
       desktop_assets:
-        description: 'Build new desktop assets, or reuse the previous release for a backend-only hotfix'
-        required: true
-        default: build
+        description: Desktop assets (ignored for mobile)
         type: choice
-        options:
-          - build
-          - reuse
+        options: [build, reuse]
+        default: build
+        required: true
 
 permissions:
   actions: write
@@ -23,126 +30,66 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: prepare-release
+  group: product-release-plans
   cancel-in-progress: false
-
-# The branch does not name a version: `refresh-release` keeps it open across
-# pushes and re-derives the version whenever a commit changes the bump.
-env:
-  RELEASE_BRANCH: release/next
 
 jobs:
   prepare:
     runs-on: ubuntu-22.04
+    env:
+      GH_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN || github.token }}
+      GH_REPO: ${{ github.repository }}
+      ACTIONS_TOKEN: ${{ github.token }}
+      PRODUCT: ${{ inputs.product }}
+      RELEASE_INPUT: ${{ inputs.version }}
+      OVERRIDE_REASON: ${{ inputs.reason }}
+      DESKTOP_ASSETS: ${{ inputs.desktop_assets }}
     steps:
-      - name: Checkout main
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: main
           fetch-depth: 0
           token: ${{ secrets.RELEASE_BOT_TOKEN || github.token }}
-
-      - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
-
-      - name: Bump and validate versions
-        id: version
+      - name: Prepare reviewed override
         shell: bash
         run: |
-          # `auto` reads the range since the last release: feat -> minor,
-          # fix/perf -> patch, `!` or a BREAKING CHANGE footer -> major (minor
-          # while pre-1.0). Printed into the log so the PR reviewer can see
-          # which commit set the bump and override it by editing this PR.
-          python scripts/bump_version.py --suggest-bump | tee .bump-reason
-          echo "reason=$(sed -n 's/^because: //p' .bump-reason)" >> "$GITHUB_OUTPUT"
-          rm -f .bump-reason
-          python scripts/bump_version.py "$RELEASE_INPUT"
-          python scripts/bump_version.py --check
-          printf '%s\n' "$DESKTOP_ASSETS" > .release-assets-mode
-          version="$(python scripts/bump_version.py --print-version)"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "tag=v$version" >> "$GITHUB_OUTPUT"
-        env:
-          RELEASE_INPUT: ${{ inputs.version }}
-          DESKTOP_ASSETS: ${{ inputs.desktop_assets }}
-
-      - name: Create release branch
-        shell: bash
-        run: |
-          # Same branch `refresh-release` keeps open, so the two paths cannot
-          # produce two competing release PRs. If it is already open this
-          # workflow has nothing to add: the rolling PR is the place to set a
-          # version by hand, and rewriting the branch here would throw away
-          # whatever was edited on it.
-          branch="$RELEASE_BRANCH"
-          if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
-            echo "::error::$branch is already open. Edit the version files on its release PR, or close the PR and delete the branch before re-running."
+          set -euo pipefail
+          branch=release/next
+          prefix=v
+          if [[ "$PRODUCT" == mobile ]]; then
+            branch=release/mobile
+            prefix=mobile-v
+          fi
+          if [[ "$(gh pr list --base main --head "$branch" --state open --json number --jq length)" != 0 ]]; then
+            echo '::error::Edit the override on the existing release PR instead of replacing it'
             exit 1
           fi
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          source="$(git rev-parse HEAD)"
           git switch -c "$branch"
-          git add \
-            .release-assets-mode \
-            CHANGELOG.md \
-            pyproject.toml \
-            uv.lock \
-            frontend/package.json \
-            frontend/package-lock.json \
-            src-tauri/tauri.conf.json \
-            src-tauri/tauri.conf.prod.json \
-            src-tauri/package.json \
-            src-tauri/package-lock.json \
-            src-tauri/Cargo.toml \
-            src-tauri/Cargo.lock \
-            apps/suzent-installer/tauri.conf.json \
-            apps/suzent-installer/package.json \
-            apps/suzent-installer/package-lock.json \
-            apps/suzent-installer/Cargo.toml \
-            apps/suzent-installer/Cargo.lock
-          git diff --cached --check
-          if git diff --cached --quiet; then
-            echo "::error::No release changes were generated."
-            exit 1
+          if [[ "$RELEASE_INPUT" != auto ]]; then
+            python scripts/release_plan.py override --product "$PRODUCT" --source "$source" --version "$RELEASE_INPUT" --reason "$OVERRIDE_REASON"
           fi
-          git commit -m "chore: release $RELEASE_TAG"
-          git push origin "$branch"
-        env:
-          RELEASE_TAG: ${{ steps.version.outputs.tag }}
-
-      - name: Open release pull request
-        shell: bash
-        run: |
-          # printf rather than an indented string: leading spaces would make
-          # markdown read the whole body as a code block.
-          body="$(printf '%s\n' \
-            "Automated release preparation for **$RELEASE_TAG**." \
-            '' \
-            "Bump requested as \`$RELEASE_INPUT\`; history pointed at: $BUMP_REASON" \
-            '' \
-            'Review and edit the generated changelog, wait for required checks,' \
-            'then merge. To change the version, edit the version files on this' \
-            'branch - `refresh-release` re-derives it on every push to main, so' \
-            'a hand-set version only survives if nothing lands after it.' \
-            '' \
-            "Merging tags the version the files carry at that moment and starts" \
-            "the draft build and publication workflow.")"
-
-          gh pr create \
-            --base main \
-            --head "$RELEASE_BRANCH" \
-            --title "chore: release $RELEASE_TAG" \
-            --body "$body"
-        env:
-          GH_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN || github.token }}
-          RELEASE_TAG: ${{ steps.version.outputs.tag }}
-          RELEASE_INPUT: ${{ inputs.version }}
-          BUMP_REASON: ${{ steps.version.outputs.reason }}
-
-      - name: Start Release PR CI
-        run: gh workflow run ci.yml --ref "$RELEASE_BRANCH"
-        env:
-          GH_TOKEN: ${{ github.token }}
+          plan="$(python scripts/release_plan.py apply --product "$PRODUCT" --source "$source")"
+          [[ "$(jq -r .releasable <<< "$plan")" == true ]] || { echo '::error::Nothing to release; request an explicit bump for maintenance'; exit 1; }
+          version="$(jq -r .version <<< "$plan")"
+          if [[ "$PRODUCT" == desktop ]]; then
+            printf '%s\n' "$DESKTOP_ASSETS" > .release-assets-mode
+          fi
+          python scripts/release_plan.py check --base "$source" --release-product "$PRODUCT"
+          python scripts/bump_version.py --check
+          python scripts/generate_mobile_version.py --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m "chore: prepare $PRODUCT $prefix$version"
+          old="$(git ls-remote origin "refs/heads/$branch" | cut -f1)"
+          git push --force-with-lease="refs/heads/$branch:$old" origin "HEAD:$branch"
+          gh pr create --base main --head "$branch" --title "chore: release $prefix$version" --body 'Review the product changelog and persistent version override. Desktop merges publish through the existing workflow; mobile merges record the version and notes only. See docs/03-developing/releasing.md.'
+          GH_TOKEN="$ACTIONS_TOKEN" gh workflow run ci.yml --ref "$branch" -f "release_product=$PRODUCT"
+          if [[ "$PRODUCT" == mobile ]]; then
+            GH_TOKEN="$ACTIONS_TOKEN" gh workflow run mobile.yml --ref "$branch"
+          fi

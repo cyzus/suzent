@@ -1,0 +1,5 @@
+{
+  "products": {"desktop": "none", "mobile": "none"},
+  "summary": "Manage desktop and mobile release plans independently.",
+  "reason": "Release tooling only; no shipped application behavior changes."
+}
