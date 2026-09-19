@@ -3,8 +3,10 @@ import { CheckIcon, PencilIcon, PlayIcon, TrashIcon, XMarkIcon } from '@heroicon
 
 import { useI18n } from '../../i18n';
 import {
+  BindableChat,
   CronJob,
   CronRun,
+  fetchBindableChats,
   fetchCronJobs,
   createCronJob,
   updateCronJob,
@@ -17,7 +19,12 @@ import {
 } from '../../lib/api';
 import { BrutalMultiSelect } from '../BrutalMultiSelect';
 import { BrutalSelect } from '../BrutalSelect';
-import { ScheduleBuilder, describeCron } from './ScheduleBuilder';
+import {
+  DEFAULT_SCHEDULE,
+  ScheduleBuilder,
+  ScheduleValue,
+  describeSchedule,
+} from './ScheduleBuilder';
 import { SettingsHeader } from './SettingsHeader';
 import {
   CollapsibleSettingsCard,
@@ -52,11 +59,17 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
   // Form state (new job)
   const [name, setName] = useState('');
   // Default to a friendly, valid schedule (daily at 9:00) so the builder opens populated.
-  const [cronExpr, setCronExpr] = useState('0 9 * * *');
+  const [schedule, setSchedule] = useState<ScheduleValue>(DEFAULT_SCHEDULE);
   const [prompt, setPrompt] = useState('');
   const [deliveryMode, setDeliveryMode] = useState<'announce' | 'none'>('announce');
   const [modelOverride, setModelOverride] = useState('');
   const [isActive, setIsActive] = useState(true);
+  // '' means an isolated cron-{id} chat; otherwise the task is bound to a chat.
+  const [boundChatId, setBoundChatId] = useState('');
+  const [quietWhenNothingToReport, setQuietWhenNothingToReport] = useState(true);
+
+  // Chats a task can be bound to.
+  const [chats, setChats] = useState<BindableChat[]>([]);
 
   // Edit state
   const [editingJobId, setEditingJobId] = useState<number | null>(null);
@@ -78,6 +91,9 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
 
   useEffect(() => {
     refresh();
+    fetchBindableChats()
+      .then(setChats)
+      .catch((e) => console.error('Failed to load chats for binding:', e));
     fetchHeartbeatGlobalConfig().then((cfg) => {
       const allowed = cfg.allowed_tools || [];
       setHeartbeatAllowedTools(allowed);
@@ -85,24 +101,42 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
     });
   }, []);
 
+  /** True when the builder has produced something the backend will accept. */
+  const scheduleIsComplete = (value: ScheduleValue) => {
+    if (value.schedule_kind === 'interval') return (value.interval_minutes ?? 0) >= 1;
+    if (value.schedule_kind === 'once') return Boolean(value.run_at);
+    return Boolean(value.cron_expr.trim());
+  };
+
+  const canCreate = Boolean(name.trim()) && Boolean(prompt.trim()) && scheduleIsComplete(schedule);
+
   const handleCreate = async () => {
-    if (!name.trim() || !cronExpr.trim() || !prompt.trim()) return;
+    if (!canCreate) return;
     setLoading(true);
     try {
       await createCronJob({
         name: name.trim(),
-        cron_expr: cronExpr.trim(),
         prompt: prompt.trim(),
         active: isActive,
         delivery_mode: deliveryMode,
         model_override: modelOverride || null,
+        ...schedule,
+        ...(boundChatId
+          ? {
+              chat_id: boundChatId,
+              context_mode: 'bound' as const,
+              suppress_ok: quietWhenNothingToReport,
+            }
+          : { chat_id: null, context_mode: 'isolated' as const, suppress_ok: false }),
       });
       setName('');
-      setCronExpr('0 9 * * *');
+      setSchedule(DEFAULT_SCHEDULE);
       setPrompt('');
       setDeliveryMode('announce');
       setModelOverride('');
       setIsActive(true);
+      setBoundChatId('');
+      setQuietWhenNothingToReport(true);
       setShowCreateForm(false);
       await refresh();
     } catch (e: any) {
@@ -146,12 +180,36 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
     setEditingJobId(job.id);
     setEditFields({
       name: job.name,
-      cron_expr: job.cron_expr,
       prompt: job.prompt,
       delivery_mode: job.delivery_mode,
       model_override: job.model_override,
+      schedule_kind: job.schedule_kind,
+      cron_expr: job.cron_expr,
+      interval_minutes: job.interval_minutes,
+      run_at: job.run_at,
+      timezone: job.timezone,
+      jitter_seconds: job.jitter_seconds,
+      catch_up: job.catch_up,
+      chat_id: job.chat_id,
+      context_mode: job.context_mode,
+      suppress_ok: job.suppress_ok,
     });
   };
+
+  /** The schedule half of the edit form, in the shape ScheduleBuilder speaks. */
+  const editSchedule = (): ScheduleValue => ({
+    schedule_kind: editFields.schedule_kind || 'cron',
+    cron_expr: editFields.cron_expr || '',
+    interval_minutes: editFields.interval_minutes ?? null,
+    run_at: editFields.run_at ?? null,
+    timezone: editFields.timezone ?? null,
+    jitter_seconds: editFields.jitter_seconds ?? 0,
+    catch_up: editFields.catch_up || 'skip',
+  });
+
+  /** Heartbeats are configured from the chat's own Config tab; the scheduler
+   *  recreates their rows to match, so editing them here would not stick. */
+  const isReadOnly = (job: CronJob) => job.source === 'heartbeat';
 
   const cancelEdit = () => {
     setEditingJobId(null);
@@ -197,6 +255,42 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
     { value: '', label: t('settings.automation.defaultModel') },
     ...models.map((m) => ({ value: m, label: m })),
   ];
+
+  const runsInOptions = [
+    { value: '', label: t('settings.automation.runsInIsolated') },
+    ...chats.map((c) => ({ value: c.id, label: c.title })),
+  ];
+
+  /** The "runs in" picker plus the quiet toggle a bound task needs. */
+  const bindingControls = (
+    chatId: string,
+    quiet: boolean,
+    onChat: (id: string) => void,
+    onQuiet: (value: boolean) => void
+  ) => (
+    <div className="flex flex-wrap gap-4 items-center">
+      <BrutalSelect
+        value={chatId}
+        onChange={onChat}
+        options={runsInOptions}
+        label={t('settings.automation.runsIn')}
+        className="w-64"
+      />
+      {chatId && (
+        <label className="flex items-center gap-2 cursor-pointer pt-4">
+          <input
+            type="checkbox"
+            checked={quiet}
+            onChange={(e) => onQuiet(e.target.checked)}
+            className="w-5 h-5 border-2 border-brutal-black accent-brutal-black"
+          />
+          <span className="font-bold text-xs uppercase">
+            {t('settings.automation.quietWhenNothing')}
+          </span>
+        </label>
+      )}
+    </div>
+  );
 
   return (
     <SettingsPage>
@@ -341,7 +435,17 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
             className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 dark:focus:bg-zinc-800 dark:text-white dark:placeholder-neutral-500"
           />
 
-          <ScheduleBuilder value={cronExpr} onChange={setCronExpr} />
+          <ScheduleBuilder value={schedule} onChange={setSchedule} />
+
+          {bindingControls(
+            boundChatId,
+            quietWhenNothingToReport,
+            setBoundChatId,
+            setQuietWhenNothingToReport
+          )}
+          <p className="text-[11px] text-neutral-500 dark:text-neutral-400 -mt-2">
+            {t('settings.automation.runsInHint')}
+          </p>
 
           <textarea
             value={prompt}
@@ -385,7 +489,7 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
           <BrutalButton
             variant="success"
             onClick={handleCreate}
-            disabled={loading || !name.trim() || !cronExpr.trim() || !prompt.trim()}
+            disabled={loading || !canCreate}
             className="px-4 py-2 uppercase"
           >
             {loading ? t('settings.automation.creating') : t('settings.automation.addJob')}
@@ -425,7 +529,7 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
             {jobs.map((job) => (
               <SettingsListItem key={job.id}>
                 <div className="p-4 md:p-5">
-                  {editingJobId === job.id ? (
+                  {editingJobId === job.id && !isReadOnly(job) ? (
                     /* Edit mode */
                     <div className="space-y-3">
                       <input
@@ -435,9 +539,21 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
                         className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 dark:focus:bg-zinc-800 dark:text-white dark:placeholder-neutral-500"
                       />
                       <ScheduleBuilder
-                        value={editFields.cron_expr || '0 9 * * *'}
-                        onChange={(cron) => setEditFields({ ...editFields, cron_expr: cron })}
+                        value={editSchedule()}
+                        onChange={(next) => setEditFields({ ...editFields, ...next })}
                       />
+                      {bindingControls(
+                        editFields.chat_id || '',
+                        editFields.suppress_ok ?? true,
+                        (id) =>
+                          setEditFields({
+                            ...editFields,
+                            chat_id: id || null,
+                            context_mode: id ? 'bound' : 'isolated',
+                            suppress_ok: id ? (editFields.suppress_ok ?? true) : false,
+                          }),
+                        (quiet) => setEditFields({ ...editFields, suppress_ok: quiet })
+                      )}
                       <textarea
                         value={editFields.prompt || ''}
                         onChange={(e) => setEditFields({ ...editFields, prompt: e.target.value })}
@@ -496,7 +612,7 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
                           size="sm"
                           checked={job.active}
                           onChange={() => handleToggle(job)}
-                          disabled={loading}
+                          disabled={loading || isReadOnly(job)}
                         />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
@@ -506,16 +622,38 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
                             <span className="text-[10px] px-2 py-0.5 border border-neutral-400 text-neutral-500 dark:text-neutral-400 uppercase">
                               {job.delivery_mode}
                             </span>
+                            {job.context_mode === 'bound' && (
+                              <span
+                                className="text-[10px] px-2 py-0.5 border border-neutral-400 text-neutral-500 dark:text-neutral-400 uppercase"
+                                title={job.chat_title || job.chat_id || ''}
+                              >
+                                {t('settings.automation.boundTo', {
+                                  chat: job.chat_title || job.chat_id || '',
+                                })}
+                              </span>
+                            )}
+                            {job.source !== 'user' && (
+                              <span className="text-[10px] px-2 py-0.5 border border-neutral-400 text-neutral-500 dark:text-neutral-400 uppercase">
+                                {job.source}
+                              </span>
+                            )}
                           </div>
                           <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
-                            <span className="font-bold">{describeCron(job.cron_expr, t)}</span>
-                            <span className="ml-2 font-mono text-neutral-400 dark:text-neutral-500">
-                              ({job.cron_expr})
-                            </span>
+                            <span className="font-bold">{describeSchedule(job, t)}</span>
+                            {job.schedule_kind === 'cron' && (
+                              <span className="ml-2 font-mono text-neutral-400 dark:text-neutral-500">
+                                ({job.cron_expr})
+                              </span>
+                            )}
                             {job.model_override && (
                               <span className="ml-2">model: {job.model_override}</span>
                             )}
                           </div>
+                          {isReadOnly(job) && (
+                            <div className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1">
+                              {t('settings.automation.heartbeatManagedHint')}
+                            </div>
+                          )}
                         </div>
                         <div className="flex gap-2 shrink-0 md:self-start mt-3 md:mt-0 md:ml-4">
                           <BrutalIconButton
@@ -526,21 +664,25 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
                           >
                             <PlayIcon className="h-4 w-4 stroke-2" />
                           </BrutalIconButton>
-                          <BrutalIconButton
-                            onClick={() => startEdit(job)}
-                            disabled={loading}
-                            label={t('common.edit')}
-                          >
-                            <PencilIcon className="h-4 w-4 stroke-2" />
-                          </BrutalIconButton>
-                          <BrutalIconButton
-                            variant="danger"
-                            onClick={() => handleDelete(job)}
-                            disabled={loading}
-                            label={t('common.remove')}
-                          >
-                            <TrashIcon className="h-4 w-4 stroke-2" />
-                          </BrutalIconButton>
+                          {!isReadOnly(job) && (
+                            <>
+                              <BrutalIconButton
+                                onClick={() => startEdit(job)}
+                                disabled={loading}
+                                label={t('common.edit')}
+                              >
+                                <PencilIcon className="h-4 w-4 stroke-2" />
+                              </BrutalIconButton>
+                              <BrutalIconButton
+                                variant="danger"
+                                onClick={() => handleDelete(job)}
+                                disabled={loading}
+                                label={t('common.remove')}
+                              >
+                                <TrashIcon className="h-4 w-4 stroke-2" />
+                              </BrutalIconButton>
+                            </>
+                          )}
                         </div>
                       </div>
 
