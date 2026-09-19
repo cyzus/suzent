@@ -17,10 +17,12 @@ import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import org.json.JSONObject
 
-class BackendClient(val backend: Backend, private val token: String, probeOnly: Boolean = false) {
+class BackendClient(val backend: Backend, private val token: String, probeOnly: Boolean = false, deviceTrust: DeviceTrust? = null) {
+    init { require(deviceTrust == null || backend.origin.isHttps) { "Device trust requires HTTPS" } }
     private val http = OkHttpClient.Builder().followRedirects(false).followSslRedirects(false)
         .retryOnConnectionFailure(false).connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(90, TimeUnit.SECONDS).callTimeout(if (probeOnly) 3 else 0, TimeUnit.SECONDS).build()
+        .readTimeout(90, TimeUnit.SECONDS).callTimeout(if (probeOnly) 3 else 0, TimeUnit.SECONDS)
+        .apply { deviceTrust?.configure(this) }.build()
     private val reads = http.newBuilder().retryOnConnectionFailure(true).build()
     @Volatile private var liveCall: Call? = null
 

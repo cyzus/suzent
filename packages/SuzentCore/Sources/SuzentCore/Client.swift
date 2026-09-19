@@ -1,6 +1,28 @@
 import Foundation
+import Security
 
 private final class RedirectBlocker: NSObject, URLSessionTaskDelegate, Sendable {
+    let deviceTrust: DeviceTrust?
+    init(deviceTrust: DeviceTrust?) { self.deviceTrust = deviceTrust }
+
+    func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge,
+                    completionHandler: @escaping @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        guard let deviceTrust,
+              challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust else {
+            completionHandler(.performDefaultHandling, nil)
+            return
+        }
+        guard let trust = challenge.protectionSpace.serverTrust else {
+            completionHandler(.cancelAuthenticationChallenge, nil)
+            return
+        }
+        guard deviceTrust.evaluate(trust, host: challenge.protectionSpace.host) else {
+            completionHandler(.cancelAuthenticationChallenge, nil)
+            return
+        }
+        completionHandler(.useCredential, URLCredential(trust: trust))
+    }
+
     func urlSession(_ session: URLSession, task: URLSessionTask,
                     willPerformHTTPRedirection response: HTTPURLResponse,
                     newRequest request: URLRequest,
@@ -14,14 +36,16 @@ public final class SuzentClient: Sendable {
     private let token: String
     private let session: URLSession
 
-    public init(backend: Backend, token: String, probeOnly: Bool = false) {
+    public init(backend: Backend, token: String, probeOnly: Bool = false, deviceTrust: DeviceTrust? = nil) throws {
+        guard deviceTrust == nil || backend.url.scheme == "https" else { throw ClientError.invalidAddress }
+        if let deviceTrust { _ = try deviceTrust.certificate() }
         self.backend = backend
         self.token = token
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = probeOnly ? 3 : 90
         config.timeoutIntervalForResource = probeOnly ? 3 : 3600
         config.urlCache = nil
-        session = URLSession(configuration: config, delegate: RedirectBlocker(), delegateQueue: nil)
+        session = URLSession(configuration: config, delegate: RedirectBlocker(deviceTrust: deviceTrust), delegateQueue: nil)
     }
 
     public func close() { session.invalidateAndCancel() }
