@@ -1,18 +1,8 @@
-name: Refresh Release PR
-
-# Keeps one release PR permanently open against main. Every push re-merges
-# main, re-derives the version from the commit range, and rewrites the notes -
-# so the pending release is always an accurate description of what has landed,
-# and shipping is a merge rather than a decision about numbers.
-#
-# The branch is `release/next` and deliberately does not name a version: the
-# version is re-derived whenever a commit changes the bump, and a branch that
-# spelled it would have to be recreated every time that happened.
+name: Refresh Release PRs
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -20,214 +10,109 @@ permissions:
   contents: write
   pull-requests: write
 
+# Manual preparation uses the same lock, so it cannot race a refresh.
 concurrency:
-  group: refresh-release
+  group: product-release-plans
   cancel-in-progress: false
-
-env:
-  RELEASE_BRANCH: release/next
 
 jobs:
   refresh:
+    strategy:
+      fail-fast: false
+      matrix:
+        product: [desktop, mobile, browser]
     runs-on: ubuntu-22.04
+    env:
+      PRODUCT: ${{ matrix.product }}
+      GH_REPO: ${{ github.repository }}
+      ACTIONS_TOKEN: ${{ github.token }}
+      GH_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN || github.token }}
     steps:
-      - name: Find open Release PR
-        id: pr
-        shell: bash
-        run: |
-          release_prs="$(
-            gh pr list \
-              --state open \
-              --base main \
-              --limit 100 \
-              --json number,headRefName,isCrossRepository \
-              --jq '[.[] | select(
-                .isCrossRepository == false and
-                (.headRefName | startswith("release/"))
-              )]'
-          )"
-          count="$(jq length <<< "$release_prs")"
-
-          if [[ "$count" == "0" ]]; then
-            echo "::notice::No open Release PR; one will be opened if anything is releasable"
-            echo "found=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if [[ "$count" != "1" ]]; then
-            candidates="$(jq -r '.[] | "#\(.number) \(.headRefName)"' <<< "$release_prs")"
-            echo "::error::Expected one open Release PR, found $count: $candidates"
-            exit 1
-          fi
-
-          head="$(jq -r '.[0].headRefName' <<< "$release_prs")"
-          number="$(jq -r '.[0].number' <<< "$release_prs")"
-          echo "::notice::Refreshing Release PR #$number from $head"
-          echo "found=true" >> "$GITHUB_OUTPUT"
-          echo "head=$head" >> "$GITHUB_OUTPUT"
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-
-      - name: Checkout main
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: main
           fetch-depth: 0
           token: ${{ secrets.RELEASE_BOT_TOKEN || github.token }}
-
-      - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
-
-      - name: Decide whether anything is releasable
-        id: releasable
-        if: steps.pr.outputs.found != 'true'
+      - name: Refresh product plan
         shell: bash
         run: |
-          # A docs-only or chore-only range should not open a release PR by
-          # itself; it rides along with the next change a user can see.
-          suggestion="$(python scripts/bump_version.py --suggest-bump)"
-          echo "$suggestion"
-          echo "ok=$(sed -n 's/^releasable: //p' <<< "$suggestion")" >> "$GITHUB_OUTPUT"
-
-      - name: Reconcile the release branch
-        id: refresh
-        if: >-
-          steps.pr.outputs.found == 'true' ||
-          steps.releasable.outputs.ok == 'true'
-        shell: bash
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          # An older release PR may still sit on a versioned branch; refresh
-          # whichever branch is actually open rather than insisting on the name.
-          branch="${PR_HEAD:-$RELEASE_BRANCH}"
-          echo "branch=$branch" >> "$GITHUB_OUTPUT"
-
-          if [[ "$PR_FOUND" == "true" ]]; then
+          set -euo pipefail
+          case "$PRODUCT" in
+            desktop) branch=release/next; prefix=v ;;
+            mobile) branch=release/mobile; prefix=mobile-v ;;
+            browser) branch=release/browser; prefix=browser-v ;;
+          esac
+          source="$(git rev-parse origin/main)"
+          prs="$(gh pr list --base main --head "$branch" --state open --json number,isCrossRepository --jq '[.[] | select(.isCrossRepository == false)]')"
+          count="$(jq length <<< "$prs")"
+          if [[ "$count" -gt 1 ]]; then
+            echo '::error::Multiple product release PRs found'
+            exit 1
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          if [[ "$count" == 1 ]]; then
             git fetch origin "$branch"
             git switch -c "$branch" "origin/$branch"
-            if git merge-base --is-ancestor origin/main HEAD; then
-              echo "::notice::Release PR is already up to date with main"
-              echo "updated=false" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-            # The only edit this branch makes to a version file is the version
-            # number itself, and the reconcile below re-derives that from the
-            # tags regardless. So a version file that conflicts is a textual
-            # clash - main edited a line next to `version = ` - rather than two
-            # branches disagreeing about anything. Take main's copy and write
-            # the pending version back into it. A conflict anywhere else is a
-            # real divergence, and a human has to settle it.
-            pending="$(python scripts/bump_version.py --print-version)"
-            if ! git merge --no-edit origin/main; then
-              conflicted=()
-              while IFS= read -r path; do
-                conflicted+=("$path")
-              done < <(git diff --name-only --diff-filter=U)
-              if [[ "${#conflicted[@]}" == "0" ]]; then
-                echo "::error::Merging main into $branch failed without conflicts"
-                exit 1
-              fi
-              version_files="$(python scripts/bump_version.py --list-version-files)"
-              unresolvable=()
-              for path in "${conflicted[@]}"; do
-                grep -qxF -- "$path" <<< "$version_files" || unresolvable+=("$path")
+            # Only generated product files may be resolved automatically.
+            if ! git merge --no-edit "$source"; then
+              generated="$(python scripts/release_plan.py files --product "$PRODUCT")"
+              mapfile -t conflicts < <(git diff --name-only --diff-filter=U)
+              [[ "${#conflicts[@]}" -gt 0 ]] || exit 1
+              for path in "${conflicts[@]}"; do
+                if ! grep -qxF -- "$path" <<< "$generated"; then
+                  echo "::error::Resolve $path manually before refreshing"
+                  exit 1
+                fi
               done
-              if [[ "${#unresolvable[@]}" != "0" ]]; then
-                echo "::error::$branch needs a hand-resolved merge with main in: ${unresolvable[*]}"
-                exit 1
-              fi
-              echo "::notice::Resolved a version-file clash with main in ${conflicted[*]}"
-              git checkout origin/main -- "${conflicted[@]}"
-              python scripts/bump_version.py "$pending" --no-changelog
+              git checkout "$source" -- "${conflicts[@]}"
               git add -A
               git commit --no-edit
             fi
           else
-            git switch -c "$branch" origin/main
+            git switch -c "$branch" "$source"
           fi
-
-          # Re-derives the version from the range since the last tag, moves the
-          # pending changelog heading if the bump changed, and rewrites the
-          # notes. Idempotent: the baseline is the tag, never the pending files.
-          python scripts/bump_version.py --reconcile-version | tee .reconcile
-          version="$(sed -n 's/^version=//p' .reconcile)"
-          rm -f .reconcile
-
+          plan="$(python scripts/release_plan.py apply --product "$PRODUCT" --source "$source")"
+          if [[ "$(jq -r .releasable <<< "$plan")" != true ]]; then
+            echo "::notice::No $PRODUCT release pending"
+            exit 0
+          fi
+          version="$(jq -r .version <<< "$plan")"
+          python scripts/release_plan.py check --base "$source" --release-product "$PRODUCT"
+          python scripts/bump_version.py --check
+          python scripts/generate_mobile_version.py --check
           git add -A
-          if git diff --cached --quiet; then
-            echo "::notice::Nothing changed on the release branch"
-            echo "updated=false" >> "$GITHUB_OUTPUT"
-          else
-            git commit -m "chore: reconcile release v$version"
-            echo "updated=true" >> "$GITHUB_OUTPUT"
+          git diff --cached --check
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: prepare $PRODUCT $prefix$version"
           fi
-          if [[ "$PR_FOUND" == "true" ]]; then
+          if [[ "$count" == 1 ]]; then
             git push origin "HEAD:$branch"
-            echo "openable=true" >> "$GITHUB_OUTPUT"
-          elif [[ "$(git rev-list --count origin/main..HEAD)" == "0" ]]; then
-            # Nothing is pending: the reconcile changed nothing, so this branch
-            # is main. Pushing it would leave a branch with no PR behind - which
-            # `prepare-release` then refuses to run against - and opening a PR
-            # for it fails outright with "No commits between main and ...".
-            #
-            # This is the state right after a release merges. The tag is created
-            # by `release-on-merge`, which is still running when this workflow
-            # fires on the same push, so the range since the last tag still
-            # looks releasable here even though it has just shipped.
-            echo "::notice::Nothing pending; the release branch would be identical to main"
-            echo "openable=false" >> "$GITHUB_OUTPUT"
+            number="$(jq -r '.[0].number' <<< "$prs")"
+            gh pr edit "$number" --title "chore: release $prefix$version"
           else
-            # No PR is open, so anything still sitting on the branch is a
-            # leftover from a closed one and would only reject the push.
-            git push --force origin "HEAD:$branch"
-            echo "openable=true" >> "$GITHUB_OUTPUT"
+            # A closed release PR may have left its branch behind. Lease the
+            # exact observed SHA instead of overwriting a concurrent update.
+            old="$(git ls-remote origin "refs/heads/$branch" | cut -f1)"
+            git push --force-with-lease="refs/heads/$branch:$old" origin "HEAD:$branch"
+            # shellcheck disable=SC2016
+            body="$(printf '%s\n' \
+              "Release plan for **$PRODUCT $version**." \
+              '' \
+              'Review the product changelog and release declarations. Version overrides belong in `.releases/overrides/` and survive refreshes.' \
+              '' \
+              'Desktop: merging tags and starts the existing desktop publication workflow.' \
+              'Browser: merging packages and publishes the extension ZIP; store submission remains manual.' \
+              'Mobile: merging records the version and notes only; store and GitHub Release distribution are future work.' \
+              '' \
+              'Merge with a merge commit once checks pass. See docs/03-developing/releasing.md.')"
+            gh pr create --base main --head "$branch" --title "chore: release $prefix$version" --body "$body"
           fi
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-        env:
-          PR_FOUND: ${{ steps.pr.outputs.found }}
-          PR_HEAD: ${{ steps.pr.outputs.head }}
-
-      - name: Open the Release PR
-        if: >-
-          steps.pr.outputs.found != 'true' &&
-          steps.releasable.outputs.ok == 'true' &&
-          steps.refresh.outputs.openable == 'true'
-        shell: bash
-        run: |
-          # printf rather than a heredoc: a `run: |` block cannot carry a line at
-          # column 0, and an indented body would render as a markdown code block.
-          body="$(printf '%s\n' \
-            'Rolling release PR, kept current by `refresh-release`.' \
-            '' \
-            'Every push to main re-merges main here, re-derives the version from' \
-            'the commit range, and rewrites the notes below. The version can' \
-            'change while this PR is open - a feature landing after a fix turns' \
-            'a patch into a minor.' \
-            '' \
-            'Merging tags the version the files carry at that moment and starts' \
-            'the desktop build. To release something other than the derived' \
-            'version, edit the version files on this branch before merging.' \
-            '' \
-            'Review the changelog, wait for required checks, then merge.')"
-
-          gh pr create \
-            --base main \
-            --head "$RELEASE_BRANCH" \
-            --title "chore: release v$RELEASE_VERSION" \
-            --body "$body"
-        env:
-          GH_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN || github.token }}
-          GH_REPO: ${{ github.repository }}
-          RELEASE_VERSION: ${{ steps.refresh.outputs.version }}
-
-      - name: Start CI for refreshed head
-        if: steps.refresh.outputs.updated == 'true'
-        run: gh workflow run ci.yml --ref "$BRANCH"
-        env:
-          BRANCH: ${{ steps.refresh.outputs.branch }}
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
+          # Explicit dispatch also works when the built-in token suppresses PR events.
+          GH_TOKEN="$ACTIONS_TOKEN" gh workflow run ci.yml --ref "$branch" -f "release_product=$PRODUCT"
+          if [[ "$PRODUCT" == mobile ]]; then
+            GH_TOKEN="$ACTIONS_TOKEN" gh workflow run mobile.yml --ref "$branch"
+          fi

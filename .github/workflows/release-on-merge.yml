@@ -16,7 +16,7 @@ jobs:
     if: >-
       github.event.pull_request.merged == true &&
       github.event.pull_request.head.repo.full_name == github.repository &&
-      startsWith(github.event.pull_request.head.ref, 'release/')
+      github.event.pull_request.head.ref == 'release/next'
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout merged commit
@@ -44,6 +44,7 @@ jobs:
             exit 1
           fi
 
+          python scripts/release_plan.py check --base "$BASE_SHA" --release-product desktop
           python scripts/bump_version.py --check
           version="$(python scripts/bump_version.py --print-version)"
           tag="v$version"

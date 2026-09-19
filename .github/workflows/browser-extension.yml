@@ -1,35 +1,61 @@
 name: Release Browser Extension
 
-# The extension versions independently of the app: its store listing is updated
-# on its own cadence, and Chrome refuses a re-upload at an existing version. So
-# a merge that changes extensions/browser/ and bumps manifest.json publishes its
-# own `browser-v<version>` release carrying the store-ready ZIP. A merge that
-# touches the extension without bumping is stopped in CI, not here.
-
+# Code PRs declare browser impact. Only a merged release/browser plan publishes
+# its exact source; manual runs retry that merge commit or its browser-v tag.
 on:
-  push:
-    branches: [ "main" ]
-    paths:
-      - 'extensions/browser/**'
-      - '.github/workflows/browser-extension.yml'
-      - 'scripts/build_browser_extension.py'
+  pull_request:
+    branches: [main]
+    types: [closed]
   workflow_dispatch:
+    inputs:
+      release_ref:
+        description: Merged browser release commit or browser-v tag to retry
+        type: string
+        required: true
+
+concurrency:
+  group: browser-extension-release
+  cancel-in-progress: false
 
 permissions:
   contents: write
 
 jobs:
   release:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.merged == true &&
+       github.event.pull_request.head.repo.full_name == github.repository &&
+       github.event.pull_request.head.ref == 'release/browser')
     name: Package and release
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.release_ref || github.event.pull_request.merge_commit_sha }}
           fetch-depth: 0
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
+
+      - name: Validate the merged release plan
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT" == pull_request ]]; then
+            git merge-base --is-ancestor "$BASE_SHA" "$HEAD_SHA" || {
+              echo '::error::The browser release PR was stale when merged'
+              exit 1
+            }
+            base="$BASE_SHA"
+          else
+            base="$(git rev-parse HEAD^1)"
+          fi
+          python scripts/release_plan.py check --base "$base" --release-product browser
 
       - name: Resolve version
         id: version
@@ -37,8 +63,16 @@ jobs:
         run: |
           version="$(python scripts/build_browser_extension.py --print-version)"
           tag="browser-v$version"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          source="$(git rev-parse HEAD)"
+          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null && [[ "$(git rev-list -n 1 "$tag")" != "$source" ]]; then
+            echo "::error::$tag belongs to different source; refusing to replace it"
+            exit 1
+          fi
+          {
+            echo "source=$source"
+            echo "version=$version"
+            echo "tag=$tag"
+          } >> "$GITHUB_OUTPUT"
           # Keyed on the asset, not the tag, and not the release either. The tag
           # is pushed before the release exists and the release exists before
           # the ZIP finishes uploading, so either one alone would let a run that
@@ -67,7 +101,7 @@ jobs:
           # as long as it names this commit. One naming anything else means the
           # version was already spent on different code.
           if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
-            if [[ "$(git rev-list -n 1 "$TAG")" != "$GITHUB_SHA" ]]; then
+            if [[ "$(git rev-list -n 1 "$TAG")" != "$SOURCE_SHA" ]]; then
               echo "::error::$TAG already points at another commit. Bump the extension version."
               exit 1
             fi
@@ -79,6 +113,7 @@ jobs:
             git push origin "$TAG"
           fi
         env:
+          SOURCE_SHA: ${{ steps.version.outputs.source }}
           TAG: ${{ steps.version.outputs.tag }}
           VERSION: ${{ steps.version.outputs.version }}
 
@@ -86,7 +121,11 @@ jobs:
         if: steps.version.outputs.publish == 'true'
         shell: bash
         run: |
-          cat > release-notes.md <<'NOTES'
+          python scripts/release_plan.py notes --product browser > release-notes.md
+          cat > store-notes.md <<'NOTES'
+
+          ---
+
           Suzent Browser extension for Chrome and Edge.
 
           `suzent-browser-VERSION.zip` is the store upload: the contents of
@@ -100,7 +139,7 @@ jobs:
           - Chrome: https://chromewebstore.google.com/detail/suzent-browser/mjfjhclnoepglnjjmheollfpbngjebno
           - Edge: https://microsoftedge.microsoft.com/addons/detail/suzent-browser/hobapppkcjggdhbbpnokgcoiddailnib
           NOTES
-          sed -i "s/VERSION/$VERSION/" release-notes.md
+          sed "s/VERSION/$VERSION/g" store-notes.md >> release-notes.md
           # --latest=false is load-bearing: gh picks the latest release
           # automatically, and the landing page, both setup scripts, and the
           # installer updater all resolve /releases/latest expecting an app

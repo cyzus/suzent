@@ -6,11 +6,57 @@ on:
   pull_request:
     branches: [ "main" ]
   workflow_dispatch:
+    inputs:
+      release_product:
+        description: Product release plan to validate (empty for ordinary CI)
+        type: string
+        default: ''
 
 permissions:
   contents: read
 
 jobs:
+  release-plan:
+    name: Release plan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Validate declarations and product versions
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_BRANCH: ${{ github.head_ref || github.ref_name }}
+          SAME_REPO: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+          REQUESTED_PRODUCT: ${{ inputs.release_product }}
+        run: |
+          set -euo pipefail
+          args=()
+          product=''
+          if [[ "$EVENT" == pull_request ]]; then
+            args+=(--base "$BASE_SHA")
+            if [[ "$SAME_REPO" == true ]]; then
+              case "$HEAD_BRANCH" in
+                release/next) product=desktop ;;
+                release/mobile) product=mobile ;;
+                release/browser) product=browser ;;
+              esac
+            fi
+          elif [[ "$EVENT" == workflow_dispatch && -n "$REQUESTED_PRODUCT" ]]; then
+            product="$REQUESTED_PRODUCT"
+            args+=(--base origin/main)
+          fi
+          if [[ -n "$product" ]]; then
+            args+=(--release-product "$product")
+          fi
+          python scripts/release_plan.py check "${args[@]}"
+          python scripts/bump_version.py --check
+          python scripts/generate_mobile_version.py --check
+
   backend:
     name: Backend
     runs-on: ubuntu-latest
@@ -32,9 +78,7 @@ jobs:
     - name: Check version consistency
       run: python scripts/bump_version.py --check
 
-    # Advisory only. The release bump is derived from these prefixes, so an
-    # unreadable one silently changes the version that ships - but a wording
-    # nit must never block a merge.
+    # Advisory history formatting; release declarations control product versions.
     - name: Audit commit prefixes
       if: github.event_name == 'pull_request'
       run: |
@@ -239,7 +283,7 @@ jobs:
 
   browser-extension:
     name: Browser extension
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || inputs.release_product == 'browser'
     runs-on: ubuntu-latest
 
     steps:
@@ -252,41 +296,17 @@ jobs:
       with:
         python-version: "3.12"
 
-    # The store copy of the extension can only be updated at a new version, and
-    # the backend tolerates an older extension by omitting fields rather than
-    # erroring - so an unbumped change to packaged code diverges silently and
-    # stays invisible until someone compares a store install against unpacked.
-    - name: Require a manifest bump for packaged changes
+    # Application PRs declare browser impact; only the browser release PR
+    # changes the manifest version and must reserve an unused store version.
+    - name: Check browser release version is unused
+      if: github.head_ref == 'release/browser' || inputs.release_product == 'browser'
       shell: bash
       run: |
-        git fetch --depth=1 origin "$BASE_SHA"
-        packaged="$(git diff --name-only "$BASE_SHA...HEAD" -- extensions/browser/)"
-        if [[ -z "$packaged" ]]; then
-          echo "No extension changes."
-          exit 0
-        fi
-        before="$(git show "$BASE_SHA:extensions/browser/manifest.json" | python -c 'import json,sys; print(json.load(sys.stdin)["version"])')"
-        after="$(python scripts/build_browser_extension.py --print-version)"
-        if [[ "$before" == "$after" ]]; then
-          echo "::error::extensions/browser/ changed but manifest.json is still $before. Bump the version so the change can reach the Chrome and Edge stores."
-          echo "Changed:"; echo "$packaged"
+        version="$(python scripts/build_browser_extension.py --print-version)"
+        if [[ -n "$(git ls-remote --tags origin "refs/tags/browser-v$version")" ]]; then
+          echo "::error::browser-v$version already exists. Refresh the release plan or choose a newer version."
           exit 1
         fi
-        # Strictly greater, because the stores reject a downgrade.
-        if ! python scripts/build_browser_extension.py --newer-than "$before"; then
-          echo "::error::Extension version must increase from $before, not move to $after."
-          exit 1
-        fi
-        # Two PRs can bump to the same version independently. Whichever merges
-        # first takes the tag; the second would merge with different extension
-        # code, and the release workflow would skip it as already released - so
-        # the code would never reach users and nothing would report a failure.
-        if [[ -n "$(git ls-remote --tags origin "refs/tags/browser-v$after")" ]]; then
-          echo "::error::browser-v$after is already released. Another PR took this version - bump past it."
-          exit 1
-        fi
-      env:
-        BASE_SHA: ${{ github.event.pull_request.base.sha }}
 
     - name: Verify the ZIP builds
       run: python scripts/build_browser_extension.py --output dist/extension.zip
