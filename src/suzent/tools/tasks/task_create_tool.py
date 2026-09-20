@@ -7,6 +7,7 @@ from suzent.core.agent_deps import AgentDeps
 from suzent.database import get_database
 from suzent.logger import get_logger
 from suzent.tools.base import Tool, ToolErrorCode, ToolGroup, ToolResult
+from suzent.tools.tasks.project_scope import require_project_id
 
 logger = get_logger(__name__)
 
@@ -41,12 +42,9 @@ class TaskCreateTool(Tool):
             ),
         ],
     ) -> ToolResult:
-        project_id = self._resolve_project_id(ctx)
-        if not project_id:
-            return ToolResult.error_result(
-                ToolErrorCode.INVALID_ARGUMENT,
-                "Current chat is not linked to a project.",
-            )
+        project_id, no_project = require_project_id(ctx)
+        if no_project:
+            return no_project
         if not tasks:
             return ToolResult.error_result(
                 ToolErrorCode.INVALID_ARGUMENT,
@@ -70,9 +68,3 @@ class TaskCreateTool(Tool):
 
         lines = "\n".join(f"  {c}" for c in created)
         return ToolResult.success_result(f"Created {len(created)} task(s):\n{lines}")
-
-    def _resolve_project_id(self, ctx: RunContext[AgentDeps]) -> Optional[str]:
-        chat_id = ctx.deps.chat_id
-        if not chat_id:
-            return None
-        return get_database().get_chat_project_id(chat_id)

@@ -15,7 +15,7 @@ Ownership, per the audit:
 
 from suzent.prompts import STATIC_INSTRUCTIONS
 from suzent.skills.hooks import CATALOG_HEADER
-from suzent.tools.agent_tool import AgentTool
+from suzent.tools.agents.agent_tool import AgentTool
 from suzent.tools.shell.shell_tools import RunCommandTool
 from suzent.tools.skill_tool import SkillTool
 

@@ -118,6 +118,10 @@ class ToolErrorCode(Enum):
     INVALID_ARGUMENT = "invalid_argument"
     MISSING_REQUIRED_PARAM = "missing_required_param"
 
+    # A named record the tool was asked to act on does not exist. Distinct from
+    # FILE_NOT_FOUND, which is about a path on disk.
+    NOT_FOUND = "not_found"
+
     # Generic fallback
     UNKNOWN_ERROR = "unknown_error"
 
@@ -202,17 +206,12 @@ class Tool:
     @staticmethod
     def is_tool_denied(deps: Any, tool_name: str) -> Optional[str]:
         """Return a denial reason when policy explicitly blocks a tool."""
+        from suzent.tools.names import policy_alias_names
+
         policy = getattr(deps, "tool_approval_policy", {}) or {}
-        aliases = [tool_name]
-        if tool_name == "run_command":
-            aliases.extend(["RunCommandTool", "ShellTool"])
-        elif tool_name == "start_command":
-            aliases.extend(["StartCommandTool", "ShellTool"])
-        elif tool_name == "check_command":
-            aliases.append("CheckCommandTool")
-        elif tool_name == "stop_command":
-            aliases.append("StopCommandTool")
-        if any(policy.get(name) == "always_deny" for name in aliases):
+        if any(
+            policy.get(name) == "always_deny" for name in policy_alias_names(tool_name)
+        ):
             return f"Tool '{tool_name}' is denied by policy"
         return None
 

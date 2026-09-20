@@ -394,7 +394,7 @@ def create_memory_tools() -> list:
         return []
 
     try:
-        from suzent.tools.memory_tools import MemorySearchTool
+        from suzent.tools.recall.memory_tools import MemorySearchTool
 
         search_tool = MemorySearchTool(memory_manager)
         search_tool._main_loop = main_event_loop
