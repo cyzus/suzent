@@ -302,6 +302,29 @@ def test_append_inline_a2ui_surfaces_attaches_to_last_assistant_message():
     assert "data-a2ui=" in updated[1]["content"]
 
 
+def test_append_inline_a2ui_surfaces_skips_deferred_questions():
+    # ask_question surfaces are answered and removed during the run; persisting
+    # one would render the question again the moment the turn reloads.
+    display = [
+        {"role": "user", "content": "hello"},
+        {"role": "assistant", "content": "final answer"},
+    ]
+
+    updated = _append_inline_a2ui_surfaces(
+        display,
+        {
+            "question_pick": {
+                "id": "question_pick",
+                "component": {"type": "stack", "children": []},
+                "target": "inline",
+                "deferred": True,
+            }
+        },
+    )
+
+    assert "data-a2ui=" not in updated[1]["content"]
+
+
 def test_preserve_citation_sources_attaches_turn_sources_to_rebuilt_message():
     # Both sources were registered in turn 0; only t0_src_1 is cited inline. Both
     # must survive onto the turn-0 assistant message \u2014 registration, not inline
