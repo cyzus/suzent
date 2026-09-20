@@ -45,6 +45,27 @@ LEGACY_SHELL_TOOL_NAMES = {
 }
 
 
+# Every name an approval policy may have stored for a given runtime tool. A
+# policy written before the aggregate shell tool was split still says
+# "ShellTool", and the picker writes class names while the model calls runtime
+# names, so a denial has to be looked up under all of them.
+#
+# This lives here rather than on ``Tool`` so the base class does not have to
+# know which concrete tools exist; ``names`` is already the import-light home
+# for shell-tool aliasing.
+POLICY_TOOL_ALIASES = {
+    "run_command": ("RunCommandTool", "ShellTool"),
+    "start_command": ("StartCommandTool", "ShellTool"),
+    "check_command": ("CheckCommandTool",),
+    "stop_command": ("StopCommandTool",),
+}
+
+
+def policy_alias_names(tool_name: str) -> List[str]:
+    """Names an approval policy could have stored for *tool_name*, itself first."""
+    return [tool_name, *POLICY_TOOL_ALIASES.get(tool_name, ())]
+
+
 def migrate_shell_tool_names(tool_names: List[str]) -> List[str]:
     """Expand legacy aggregate shell selections into independently selectable tools."""
     migrated: list[str] = []

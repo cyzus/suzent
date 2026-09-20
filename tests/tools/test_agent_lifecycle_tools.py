@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from suzent.tools.agent_lifecycle_tools import (
+from suzent.tools.agents.agent_lifecycle_tools import (
     AgentListTool,
     AgentReadTool,
     AgentSendTool,
@@ -24,7 +24,7 @@ def _empty_peer_transport(monkeypatch):
         peer_id=lambda agent_id: None,
     )
     monkeypatch.setattr(
-        "suzent.tools.agent_lifecycle_tools.get_peer_agent_transport",
+        "suzent.tools.agents.agent_lifecycle_tools.get_peer_agent_transport",
         lambda: transport,
     )
     return transport
@@ -62,10 +62,11 @@ def test_agent_list_recent_is_bounded_to_current_project(monkeypatch):
             return [SimpleNamespace(id=target.id)]
 
     monkeypatch.setattr(
-        "suzent.tools.agent_lifecycle_tools.get_database", lambda: FakeDatabase()
+        "suzent.tools.agents.agent_lifecycle_tools.get_database", lambda: FakeDatabase()
     )
     monkeypatch.setattr(
-        "suzent.tools.agent_lifecycle_tools._agent_is_active", lambda chat_id: False
+        "suzent.tools.agents.agent_lifecycle_tools._agent_is_active",
+        lambda chat_id: False,
     )
 
     result = AgentListTool().forward(_ctx(), status="recent", limit=5)
@@ -93,10 +94,11 @@ def test_agent_list_active_uses_runtime_sessions_and_limit(monkeypatch):
             return []
 
     monkeypatch.setattr(
-        "suzent.tools.agent_lifecycle_tools.get_database", lambda: FakeDatabase()
+        "suzent.tools.agents.agent_lifecycle_tools.get_database", lambda: FakeDatabase()
     )
     monkeypatch.setattr(
-        "suzent.tools.agent_lifecycle_tools._agent_is_active", lambda chat_id: True
+        "suzent.tools.agents.agent_lifecycle_tools._agent_is_active",
+        lambda chat_id: True,
     )
     from suzent.core import stream_registry
 
@@ -138,10 +140,11 @@ def test_agent_list_includes_paired_remote_agents(monkeypatch, _empty_peer_trans
         }
     ]
     monkeypatch.setattr(
-        "suzent.tools.agent_lifecycle_tools.get_database", lambda: FakeDatabase()
+        "suzent.tools.agents.agent_lifecycle_tools.get_database", lambda: FakeDatabase()
     )
     monkeypatch.setattr(
-        "suzent.tools.agent_lifecycle_tools._agent_is_active", lambda chat_id: False
+        "suzent.tools.agents.agent_lifecycle_tools._agent_is_active",
+        lambda chat_id: False,
     )
 
     result = AgentListTool().forward(_ctx(), status="recent")
@@ -173,7 +176,7 @@ def test_agent_list_active_excludes_paused_remote_agents(
         },
     ]
     monkeypatch.setattr(
-        "suzent.tools.agent_lifecycle_tools.get_database",
+        "suzent.tools.agents.agent_lifecycle_tools.get_database",
         lambda: SimpleNamespace(get_chat=lambda chat_id: current),
     )
     from suzent.core import stream_registry
@@ -204,11 +207,12 @@ async def test_agent_read_returns_sanitized_visible_transcript(monkeypatch):
         ],
     )
     monkeypatch.setattr(
-        "suzent.tools.agent_lifecycle_tools._accessible_agent",
+        "suzent.tools.agents.agent_lifecycle_tools._accessible_agent",
         lambda agent_id, current_chat_id: target,
     )
     monkeypatch.setattr(
-        "suzent.tools.agent_lifecycle_tools._agent_is_active", lambda chat_id: False
+        "suzent.tools.agents.agent_lifecycle_tools._agent_is_active",
+        lambda chat_id: False,
     )
 
     result = await AgentReadTool().forward(_ctx(), "agent-target")
@@ -229,13 +233,16 @@ async def test_agent_read_bounds_large_transcripts_without_more_arguments(monkey
         ],
     )
     monkeypatch.setattr(
-        "suzent.tools.agent_lifecycle_tools._accessible_agent",
+        "suzent.tools.agents.agent_lifecycle_tools._accessible_agent",
         lambda agent_id, current_chat_id: target,
     )
     monkeypatch.setattr(
-        "suzent.tools.agent_lifecycle_tools._agent_is_active", lambda chat_id: False
+        "suzent.tools.agents.agent_lifecycle_tools._agent_is_active",
+        lambda chat_id: False,
     )
-    monkeypatch.setattr("suzent.tools.agent_lifecycle_tools._MAX_TRANSCRIPT_CHARS", 100)
+    monkeypatch.setattr(
+        "suzent.tools.agents.agent_lifecycle_tools._MAX_TRANSCRIPT_CHARS", 100
+    )
 
     result = await AgentReadTool().forward(_ctx(), "agent-target")
 
@@ -249,7 +256,7 @@ async def test_agent_read_bounds_large_transcripts_without_more_arguments(monkey
 @pytest.mark.asyncio
 async def test_agent_read_rejects_agent_from_another_project(monkeypatch):
     monkeypatch.setattr(
-        "suzent.tools.agent_lifecycle_tools._accessible_agent",
+        "suzent.tools.agents.agent_lifecycle_tools._accessible_agent",
         lambda agent_id, current_chat_id: None,
     )
 
@@ -275,7 +282,7 @@ async def test_agent_read_fetches_peer_owned_transcript(
 
     _empty_peer_transport.read = read
     monkeypatch.setattr(
-        "suzent.tools.agent_lifecycle_tools.get_database",
+        "suzent.tools.agents.agent_lifecycle_tools.get_database",
         lambda: SimpleNamespace(get_chat=lambda chat_id: current),
     )
 
@@ -290,7 +297,7 @@ def test_agent_send_queues_durable_message(monkeypatch):
     target = _chat("agent-target")
     captured = {}
     monkeypatch.setattr(
-        "suzent.tools.agent_lifecycle_tools._accessible_agent",
+        "suzent.tools.agents.agent_lifecycle_tools._accessible_agent",
         lambda agent_id, current_chat_id: target,
     )
 
@@ -323,7 +330,7 @@ def test_agent_send_schema_stays_minimal():
 def test_agent_send_rejects_self_delivery(monkeypatch):
     current = _chat("agent-current")
     monkeypatch.setattr(
-        "suzent.tools.agent_lifecycle_tools._accessible_agent",
+        "suzent.tools.agents.agent_lifecycle_tools._accessible_agent",
         lambda agent_id, current_chat_id: current,
     )
 
@@ -344,7 +351,7 @@ def test_agent_send_queues_peer_transport_message(monkeypatch, _empty_peer_trans
 
     _empty_peer_transport.enqueue = enqueue
     monkeypatch.setattr(
-        "suzent.tools.agent_lifecycle_tools.get_database",
+        "suzent.tools.agents.agent_lifecycle_tools.get_database",
         lambda: SimpleNamespace(get_chat=lambda chat_id: current),
     )
 
@@ -364,11 +371,12 @@ async def test_agent_stop_stops_active_subagent(monkeypatch):
     target = _chat("subagent-sub_a", platform="subagent")
     task = SimpleNamespace(task_id="sub_a", chat_id=target.id)
     monkeypatch.setattr(
-        "suzent.tools.agent_lifecycle_tools._accessible_agent",
+        "suzent.tools.agents.agent_lifecycle_tools._accessible_agent",
         lambda agent_id, current_chat_id: target,
     )
     monkeypatch.setattr(
-        "suzent.tools.agent_lifecycle_tools._agent_is_active", lambda chat_id: True
+        "suzent.tools.agents.agent_lifecycle_tools._agent_is_active",
+        lambda chat_id: True,
     )
     monkeypatch.setattr("suzent.core.subagent_runner.list_active_tasks", lambda: [task])
     stopped = []
@@ -399,7 +407,7 @@ async def test_agent_stop_requests_peer_cancellation(
 
     _empty_peer_transport.stop = stop
     monkeypatch.setattr(
-        "suzent.tools.agent_lifecycle_tools.get_database",
+        "suzent.tools.agents.agent_lifecycle_tools.get_database",
         lambda: SimpleNamespace(get_chat=lambda chat_id: current),
     )
 
