@@ -794,3 +794,36 @@ def test_non_finite_prefill_rate_is_rejected(monkeypatch, raw) -> None:
 
     assert _timeout_for(162_000) == pytest.approx(_timeout_for(162_000))
     assert streaming._env_float("SUZENT_PREFILL_TOKENS_PER_SECOND") is None
+
+
+def test_draft_accumulator_keeps_deferred_surfaces_out_of_the_draft():
+    # ask_question renders a deferred surface the agent blocks on. It is gone
+    # from the UI as soon as the user answers, so a draft that kept it would
+    # show the question a second time when the finished turn reloads.
+    acc = streaming._DraftDisplayAccumulator(chat_id="chat-1", run_id="run-1")
+
+    acc.apply(
+        SimpleNamespace(
+            type="CUSTOM",
+            name="a2ui.render",
+            value={
+                "id": "question_pick",
+                "component": {"type": "stack", "children": []},
+                "target": "inline",
+                "deferred": True,
+            },
+        )
+    )
+    acc.apply(
+        SimpleNamespace(
+            type="CUSTOM",
+            name="a2ui.render",
+            value={
+                "id": "results",
+                "component": {"type": "text", "content": "done"},
+                "target": "inline",
+            },
+        )
+    )
+
+    assert [part["surface"]["id"] for part in acc.parts] == ["results"]

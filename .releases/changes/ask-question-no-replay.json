@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Stop an answered ask_question surface from reappearing with its options once the turn finishes."
+}
