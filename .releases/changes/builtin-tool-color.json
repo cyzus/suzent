@@ -1,4 +1,4 @@
 {
   "products": {"desktop": "patch"},
-  "summary": "Give built-in tools their own colour and a padlock in the tool picker, so a locked row no longer looks like a faded selected one."
+  "summary": "Give built-in tools their own grey fill and a padlock in the tool picker, so a locked row no longer looks like a faded selected one."
 }
