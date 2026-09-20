@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Stop an answered ask_question surface from reappearing with its options once the turn finishes.
 - Give built-in tools their own grey fill and a padlock in the tool picker, so a locked row no longer looks like a faded selected one.
 - Keep a core set of tools always equipped, and show in the picker which tools are built-in and which stay discoverable when unchecked.
+- Return a clean 'not found' refusal instead of crashing when update_task is given an unknown task id, or manage_goal is paused, resumed or given a subgoal with no active goal.
 
 ## [v0.14.0] - 2026-09-18
 
