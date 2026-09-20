@@ -212,6 +212,13 @@ describe('capability tool picker', () => {
     expect(html).toMatch(/Built-in|内置/);
     // Two locked tools are checked despite an empty selection; the third is not.
     expect(html.match(/M5 13l4 4L19 7/g)?.length).toBe(2);
+    // Locked rows are grey rather than a faded copy of the "selected" green:
+    // greyed-and-checked is the usual idiom for "managed, not yours to change".
+    // Grey alone reads as unavailable, so the padlock has to carry the rest —
+    // it also survives monochrome and colour blindness.
+    expect(html.match(/ bg-neutral-300/g)?.length).toBe(2);
+    expect(html).not.toContain('bg-brutal-green/60');
+    expect(html.match(/M8 11V7a4 4 0 0 1 8 0v4/g)?.length).toBe(2);
   });
 
   it('marks an unchecked non-deferrable tool as off, and says the rest stay searchable', () => {

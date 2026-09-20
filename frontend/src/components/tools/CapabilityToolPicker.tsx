@@ -172,7 +172,7 @@ export function CapabilityToolPicker({
                 return (
                   <div
                     key={tool.id}
-                    className={`flex w-full border-2 text-left shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all ${isLocked ? 'border-brutal-black bg-brutal-green/60 text-brutal-black' : active ? 'border-brutal-black bg-brutal-green text-brutal-black' : aiActive ? 'border-brutal-black bg-brutal-yellow text-brutal-black' : 'border-brutal-black bg-white text-brutal-black hover:bg-neutral-100 dark:bg-zinc-800 dark:text-white dark:hover:bg-zinc-700'}`}
+                    className={`flex w-full border-2 text-left shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all ${isLocked ? 'border-brutal-black bg-neutral-300 text-brutal-black dark:bg-zinc-700 dark:text-white' : active ? 'border-brutal-black bg-brutal-green text-brutal-black' : aiActive ? 'border-brutal-black bg-brutal-yellow text-brutal-black' : 'border-brutal-black bg-white text-brutal-black hover:bg-neutral-100 dark:bg-zinc-800 dark:text-white dark:hover:bg-zinc-700'}`}
                   >
                     <button
                       type="button"
@@ -205,7 +205,18 @@ export function CapabilityToolPicker({
                             {toolName}
                           </span>
                           {isLocked && (
-                            <span className="border border-current px-1 py-px text-[8px] font-bold uppercase opacity-70">
+                            <span className="flex items-center gap-0.5 border border-current px-1 py-px text-[8px] font-bold uppercase">
+                              <svg
+                                className="h-2 w-2"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth={3}
+                                aria-hidden="true"
+                              >
+                                <rect x="5" y="11" width="14" height="10" rx="1" />
+                                <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+                              </svg>
                               {t('config.toolCatalog.builtin')}
                             </span>
                           )}
