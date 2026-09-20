@@ -3223,10 +3223,13 @@ def _append_inline_a2ui_surfaces(
     if not inline_a2ui_surfaces:
         return display_messages
 
+    # Deferred surfaces (ask_question) are transient — the agent blocks on them
+    # and the frontend removes them once answered. Writing one into the display
+    # log makes the answered question reappear when the turn is reloaded.
     surfaces = [
         surface
         for surface in inline_a2ui_surfaces.values()
-        if isinstance(surface, dict)
+        if isinstance(surface, dict) and not surface.get("deferred")
     ]
     if not surfaces:
         return display_messages

@@ -628,7 +628,11 @@ class _DraftDisplayAccumulator:
             tool["displayData"] = value
             self.dirty = True
         elif name == "a2ui.render" and isinstance(value, dict):
-            if value.get("target") == "inline":
+            # Deferred surfaces (ask_question) are transient: the agent is blocked
+            # on them and the frontend drops them the moment the user answers.
+            # Persisting one into the draft makes the answered question render a
+            # second time when the finished turn is reloaded from the backend.
+            if value.get("target") == "inline" and not value.get("deferred"):
                 self.parts.append({"type": "a2ui", "surface": value})
                 self.dirty = True
         elif name == "citation_sources" and isinstance(value, dict):
@@ -1779,6 +1783,10 @@ async def stream_agent_responses(
                         ev.get("event") == "a2ui.render"
                         and ev.get("target") == "inline"
                         and ev.get("id")
+                        # Deferred (ask_question) surfaces must not be cached:
+                        # the cache is replayed into the persisted display log,
+                        # which would re-render the already-answered question.
+                        and not ev.get("deferred")
                     ):
                         try:
                             deps.inline_a2ui_surfaces[ev["id"]] = dict(ev)
