@@ -9,6 +9,7 @@ and read-only sidebar don't provide.
 import typer
 
 from suzent.core.commands.base import register_command, CommandContext
+from suzent.core.project_context import resolve_project_id
 
 
 def _schedule_step(chat_id: str, user_id: str) -> None:
@@ -17,12 +18,6 @@ def _schedule_step(chat_id: str, user_id: str) -> None:
     from suzent.core.goals import schedule_goal_step
 
     schedule_goal_step(chat_id, user_id)
-
-
-def _resolve_project_id(chat_id: str):
-    from suzent.database import get_database
-
-    return get_database().get_chat_project_id(chat_id)
 
 
 @register_command(
@@ -54,7 +49,7 @@ def handle_goal(
         sub = tokens[0].lower() if tokens else "status"
 
         db = get_database()
-        project_id = _resolve_project_id(chat_id)
+        project_id = resolve_project_id(chat_id)
         if not project_id:
             return "This chat is not linked to a project, so goals are unavailable."
 
@@ -127,7 +122,7 @@ def handle_subgoal(
         tokens = list(args or [])
 
         db = get_database()
-        project_id = _resolve_project_id(chat_id)
+        project_id = resolve_project_id(chat_id)
         if not project_id:
             return "This chat is not linked to a project, so goals are unavailable."
 

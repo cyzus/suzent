@@ -6,7 +6,8 @@ from pydantic_ai import RunContext
 from suzent.core.agent_deps import AgentDeps
 from suzent.database import get_database
 from suzent.logger import get_logger
-from suzent.tools.base import Tool, ToolErrorCode, ToolGroup, ToolResult
+from suzent.tools.base import Tool, ToolGroup, ToolResult
+from suzent.tools.tasks.project_scope import require_project_id
 
 logger = get_logger(__name__)
 
@@ -32,12 +33,9 @@ class TaskListTool(Tool):
         include_completed: Annotated[bool, Field(default=False)] = False,
         include_cancelled: Annotated[bool, Field(default=False)] = False,
     ) -> ToolResult:
-        project_id = self._resolve_project_id(ctx)
-        if not project_id:
-            return ToolResult.error_result(
-                ToolErrorCode.INVALID_ARGUMENT,
-                "Current chat is not linked to a project.",
-            )
+        project_id, no_project = require_project_id(ctx)
+        if no_project:
+            return no_project
         db = get_database()
         # "blocked" is a derived status (pending + non-empty blocked_by), not stored in DB
         db_status = None if status == "blocked" else status
@@ -71,9 +69,3 @@ class TaskListTool(Tool):
                 f"    {task.description}"
             )
         return ToolResult.success_result("\n".join(lines))
-
-    def _resolve_project_id(self, ctx: RunContext[AgentDeps]) -> Optional[str]:
-        chat_id = ctx.deps.chat_id
-        if not chat_id:
-            return None
-        return get_database().get_chat_project_id(chat_id)

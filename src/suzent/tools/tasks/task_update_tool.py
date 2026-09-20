@@ -5,6 +5,7 @@ from pydantic import Field
 from pydantic_ai import RunContext
 
 from suzent.core.agent_deps import AgentDeps
+from suzent.core.project_context import resolve_project_id
 from suzent.database import get_database
 from suzent.logger import get_logger
 from suzent.tools.base import Tool, ToolErrorCode, ToolGroup, ToolResult
@@ -47,7 +48,7 @@ class TaskUpdateTool(Tool):
                 ToolErrorCode.NOT_FOUND, f"Task [#{task_id}] not found."
             )
 
-        project_id = self._resolve_project_id(ctx)
+        project_id = resolve_project_id(ctx.deps.chat_id)
         if project_id and task.project_id != project_id:
             return ToolResult.error_result(
                 ToolErrorCode.INVALID_ARGUMENT,
@@ -92,9 +93,3 @@ class TaskUpdateTool(Tool):
                 msg += "\n\n**All project tasks completed.** Use manage_goal(action='status') to verify the goal or manage_goal(action='clear') to close it."
 
         return ToolResult.success_result(msg)
-
-    def _resolve_project_id(self, ctx: RunContext[AgentDeps]) -> Optional[str]:
-        chat_id = ctx.deps.chat_id
-        if not chat_id:
-            return None
-        return get_database().get_chat_project_id(chat_id)

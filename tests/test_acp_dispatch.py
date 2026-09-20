@@ -2,7 +2,7 @@ import pytest
 import json
 import asyncio
 from unittest.mock import AsyncMock, patch, MagicMock
-from suzent.tools.agent_tool import AgentTool
+from suzent.tools.agents.agent_tool import AgentTool
 from suzent.core.agent_deps import AgentDeps
 from suzent.core.agent_inbox import AgentInboxDispatcher
 from suzent.acp.runtime import stream_acp_turn

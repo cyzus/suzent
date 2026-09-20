@@ -166,8 +166,14 @@ def _make_tool(
 _REGISTRY: Optional[Dict[str, Union[Callable, PydanticTool]]] = None
 
 
-def _all_tool_classes() -> list:
-    """Import and return all tool classes in display order."""
+@functools.cache
+def _all_tool_classes() -> tuple:
+    """Import and return all tool classes in display order.
+
+    Cached: the list is fixed once the process has imported it, and
+    ``get_tool_class_name`` runs per discovered tool on the streaming path, so
+    rebuilding it per call was pure overhead.
+    """
     from suzent.tools.filesystem import (
         ReadFileTool,
         WriteFileTool,
@@ -183,10 +189,10 @@ def _all_tool_classes() -> list:
     )
     from suzent.tools.webpage_tool import WebpageTool
     from suzent.tools.websearch_tool import WebSearchTool
-    from suzent.tools.goal_tool import GoalTool
-    from suzent.tools.task_create_tool import TaskCreateTool
-    from suzent.tools.task_update_tool import TaskUpdateTool
-    from suzent.tools.task_list_tool import TaskListTool
+    from suzent.tools.tasks import GoalTool
+    from suzent.tools.tasks import TaskCreateTool
+    from suzent.tools.tasks import TaskUpdateTool
+    from suzent.tools.tasks import TaskListTool
     from suzent.tools.schedule_tool import ScheduleTool
     from suzent.tools.browser.tool import BrowsingTool
     from suzent.tools.skill_tool import SkillTool
@@ -194,19 +200,19 @@ def _all_tool_classes() -> list:
     from suzent.tools.voice_tool import SpeakTool
     from suzent.tools.image_generation_tool import ImageGenerationTool
     from suzent.tools.image_vision_tool import ImageVisionTool
-    from suzent.tools.memory_tools import MemorySearchTool
-    from suzent.tools.session_search_tool import SessionSearchTool
+    from suzent.tools.recall import MemorySearchTool
+    from suzent.tools.recall import SessionSearchTool
     from suzent.tools.render_ui_tool import RenderUITool
     from suzent.tools.ask_question_tool import AskQuestionTool
-    from suzent.tools.agent_tool import AgentTool
-    from suzent.tools.agent_lifecycle_tools import (
+    from suzent.tools.agents import AgentTool
+    from suzent.tools.agents import (
         AgentListTool,
         AgentReadTool,
         AgentSendTool,
         AgentStopTool,
     )
 
-    return [
+    return (
         ReadFileTool,
         WriteFileTool,
         EditFileTool,
@@ -238,7 +244,7 @@ def _all_tool_classes() -> list:
         AgentReadTool,
         AgentSendTool,
         AgentStopTool,
-    ]
+    )
 
 
 CAPABILITY_DESCRIPTIONS = {
@@ -397,20 +403,24 @@ def get_deferred_tool_functions(exclude: set[str]) -> list[PydanticTool]:
     return tools
 
 
+@functools.cache
+def _name_indexes() -> tuple[Dict[str, str], Dict[str, str]]:
+    """``(runtime name -> class name, class name -> runtime name)``."""
+    classes = _all_tool_classes()
+    return (
+        {cls.tool_name: cls.name for cls in classes},
+        {cls.name: cls.tool_name for cls in classes},
+    )
+
+
 def get_tool_class_name(runtime_name: str) -> Optional[str]:
     """Resolve a model-facing function name to its Suzent tool class name."""
-    for cls in _all_tool_classes():
-        if cls.tool_name == runtime_name:
-            return cls.name
-    return None
+    return _name_indexes()[0].get(runtime_name)
 
 
 def get_tool_runtime_name(class_name: str) -> Optional[str]:
     """Resolve a Suzent tool class name to its model-facing function name."""
-    for cls in _all_tool_classes():
-        if cls.name == class_name:
-            return cls.tool_name
-    return None
+    return _name_indexes()[1].get(class_name)
 
 
 def list_available_tools() -> List[str]:

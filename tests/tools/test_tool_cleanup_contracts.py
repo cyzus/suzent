@@ -4,7 +4,7 @@ import pytest
 
 from suzent.tools.base import ToolErrorCode, ToolResult
 from suzent.tools.skill_tool import SkillTool
-from suzent.tools.agent_tool import AgentTool
+from suzent.tools.agents.agent_tool import AgentTool
 from suzent.tools.registry import expand_tool_dependencies
 
 
@@ -159,7 +159,7 @@ async def test_spawn_subagent_legacy_shell_deny_removes_all_shell_tools(monkeypa
 @pytest.mark.asyncio
 async def test_spawn_subagent_rejects_disabled_model(monkeypatch):
     monkeypatch.setattr(
-        "suzent.tools.agent_tool.get_enabled_models_from_db",
+        "suzent.tools.agents.agent_tool.get_enabled_models_from_db",
         lambda: ["openai/gpt-4.1", "gemini/gemini-2.5-pro"],
     )
 
@@ -199,7 +199,7 @@ async def test_spawn_subagent_accepts_effective_fallback_model(monkeypatch):
         )
 
     monkeypatch.setattr(
-        "suzent.tools.agent_tool.get_enabled_models_from_db",
+        "suzent.tools.agents.agent_tool.get_enabled_models_from_db",
         lambda: ["openai/gpt-4.1"],
     )
     monkeypatch.setattr(
