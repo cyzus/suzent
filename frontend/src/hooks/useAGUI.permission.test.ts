@@ -133,3 +133,24 @@ it('does not restore an already answered inline form from a snapshot', () => {
   ).parts;
   expect(resolved).toEqual([]);
 });
+
+it('restores an unanswered inline form from a snapshot, still routed to /answer', () => {
+  // Reloading mid-question replays the run from seq 0, so the pending surface
+  // comes back through this same reducer. onMarkDeferred has to fire again:
+  // it is what keeps the answer going to /canvas/{chat}/answer instead of
+  // opening a new turn through /canvas/{chat}/action.
+  const deferred: string[] = [];
+  const restored = processEvent(
+    {
+      type: 'CUSTOM',
+      data: { name: 'a2ui.render', value: { id: 'form', target: 'inline', deferred: true } },
+    },
+    [],
+    undefined,
+    (surfaceId) => deferred.push(surfaceId)
+  ).parts;
+
+  expect(restored).toHaveLength(1);
+  expect(restored[0].surface?.id).toBe('form');
+  expect(deferred).toEqual(['form']);
+});
