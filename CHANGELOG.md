@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Keep the project picker menu inside the viewport (#243)
 
 ### Release notes
+- Give built-in tools their own grey fill and a padlock in the tool picker, so a locked row no longer looks like a faded selected one.
 - Keep a core set of tools always equipped, and show in the picker which tools are built-in and which stay discoverable when unchecked.
 
 ## [v0.14.0] - 2026-09-18
