@@ -61,7 +61,6 @@ export const en = {
       starting: 'Starting',
       stopped: 'Stopped',
       restart: 'Restart service',
-      refresh: 'Refresh',
       selfManagedNote:
         'This console is served by the service below, so restarting it will briefly disconnect this page.',
       reconnecting: 'Restarting — waiting for the host to come back…',
@@ -1747,7 +1746,6 @@ export const en = {
     selectChat: 'Select a chat',
     back: 'Back',
     maximize: 'Maximize (full screen)',
-    refresh: 'Refresh',
     openInExplorer: 'Open in Explorer',
     uploadFile: 'Upload file',
     workspace: 'Workspace',

@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Give every refresh control the same spinning-arrow icon button, and drop the redundant ones on views that already poll."
+}

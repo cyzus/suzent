@@ -5,9 +5,8 @@
  */
 
 import React from 'react';
-import { ArrowPathIcon } from '@heroicons/react/24/outline';
 import { useI18n } from '../../i18n';
-import { BrutalIconButton } from '../BrutalButton';
+import { RefreshButton } from '../RefreshButton';
 import type { MemoryStats } from '../../types/memory';
 
 interface MemoryStatsProps {
@@ -130,13 +129,12 @@ export const MemoryStatsComponent: React.FC<MemoryStatsProps> = ({
         />
 
         {onRefresh && (
-          <BrutalIconButton
+          <RefreshButton
             onClick={onRefresh}
             label={t('memoryStats.refresh')}
+            spinning={isLoading}
             className="ml-auto"
-          >
-            <ArrowPathIcon className={`h-4 w-4 stroke-2 ${isLoading ? 'animate-spin' : ''}`} />
-          </BrutalIconButton>
+          />
         )}
       </div>
 

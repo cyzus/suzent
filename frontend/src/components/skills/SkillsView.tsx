@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { XMarkIcon, MagnifyingGlassIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
+import { XMarkIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 import { useSkills } from '../../hooks/useSkills';
 import { MarkdownRenderer } from '../chat/MarkdownRenderer';
 import { BrutalButton } from '../BrutalButton';
+import { RefreshButton } from '../RefreshButton';
 import { useI18n } from '../../i18n';
 import { Skill } from '../../types/skills';
 
@@ -150,9 +151,11 @@ export const SkillsView: React.FC<SkillsViewProps> = ({ chatId }) => {
         >
           {t('skills.enabledOnly')}
         </BrutalButton>
-        <BrutalButton onClick={() => reload(chatId)} size="icon" title={t('skills.reload')}>
-          <ArrowPathIcon className="h-4 w-4 stroke-2" />
-        </BrutalButton>
+        <RefreshButton
+          onClick={() => void reload(chatId)}
+          label={t('skills.reload')}
+          spinning={loading}
+        />
       </div>
 
       <div className="space-y-4">

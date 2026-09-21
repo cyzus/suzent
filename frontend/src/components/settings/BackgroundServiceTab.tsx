@@ -178,9 +178,6 @@ export function BackgroundServiceTab(): React.ReactElement {
           <BrutalButton disabled={busy} onClick={() => void copyLogPath()}>
             {t('settings.service.copyLogPath')}
           </BrutalButton>
-          <BrutalButton disabled={busy} onClick={() => void refresh()}>
-            {t('settings.service.refresh')}
-          </BrutalButton>
         </div>
       </SettingsCard>
 
