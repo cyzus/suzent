@@ -832,7 +832,6 @@ class BrowsingTool(Tool):
         arguments: Annotated[
             list[str] | None,
             Field(
-                default=None,
                 description="tabs: [] lists stable tab IDs ([controlled] marks the tab this tool acts on, [user-viewing] marks the tab the user is currently looking at); select_tab: [tab-id] switches tabs; open: [url] or []; snapshot: [] or [offset, limit<=100] or [-i]; click/dblclick/hover: [ref]; fill/type/press: [ref, value]; click_coords: [x, y]; scroll: [dx, dy] or []; back/forward/reload/refresh: []. Use exact @gNeN refs from the latest snapshot; selectors are not accepted.",
             ),
         ] = None,
