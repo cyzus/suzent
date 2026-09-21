@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useI18n } from '../../i18n';
 import { BrutalButton } from '../BrutalButton';
+import { RefreshButton } from '../RefreshButton';
 import { SectionCardHeader, SettingsCard } from './SettingsCard';
 import { fetchOpsLogs, type OpsLogTail } from '../../lib/opsApi';
 import {
@@ -98,6 +99,7 @@ export function ServiceLogCard({ paused = false }: ServiceLogCardProps): React.R
   const [minLevel, setMinLevel] = useState<LogLevel | null>(null);
   const [query, setQuery] = useState('');
   const [copied, setCopied] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const boxRef = useRef<HTMLDivElement | null>(null);
 
   const refresh = useCallback(
@@ -111,6 +113,16 @@ export function ServiceLogCard({ paused = false }: ServiceLogCardProps): React.R
     },
     [lines]
   );
+
+  // The poll refreshes silently; only a hand-pressed refresh spins the icon.
+  const refreshNow = useCallback(async (): Promise<void> => {
+    setRefreshing(true);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refresh]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -207,9 +219,11 @@ export function ServiceLogCard({ paused = false }: ServiceLogCardProps): React.R
         >
           {t('settings.service.follow')}
         </BrutalButton>
-        <BrutalButton size="sm" onClick={() => void refresh()}>
-          {t('settings.service.refresh')}
-        </BrutalButton>
+        <RefreshButton
+          label={t('settings.service.refresh')}
+          spinning={refreshing}
+          onClick={() => void refreshNow()}
+        />
         <BrutalButton size="sm" onClick={() => void copy()} disabled={shown.length === 0}>
           {copied ? t('settings.service.logCopied') : t('settings.service.logCopy')}
         </BrutalButton>

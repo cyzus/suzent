@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { getApiBase } from '../../lib/api';
 import { useI18n } from '../../i18n';
 import { BrutalButton } from '../BrutalButton';
+import { RefreshButton } from '../RefreshButton';
 import { BrutalSegmentedTabs } from '../BrutalSegmentedTabs';
 import { useChatStore } from '../../hooks/useChatStore';
 import { FilePreview } from './FilePreview';
@@ -14,7 +15,6 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   ChevronDownIcon,
-  ArrowPathIcon,
   DocumentTextIcon,
   CodeBracketIcon,
   PhotoIcon,
@@ -519,17 +519,14 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
               {filename}
             </span>
           </div>
-          <BrutalButton
-            size="icon"
+          <RefreshButton
             onClick={() => {
               setFileContent(null);
               setError(null);
               if (!isBinaryServedFile(filename)) fetchFileContent(selectedFile);
             }}
-            title={t('sandbox.refresh')}
-          >
-            <ArrowPathIcon className={`w-4 h-4 stroke-2 ${loadingFile ? 'animate-spin' : ''}`} />
-          </BrutalButton>
+            spinning={loadingFile}
+          />
           {onMaximize && (
             <BrutalButton
               variant="warning"
@@ -579,9 +576,7 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
       {/* Toolbar */}
       <div className="bg-white dark:bg-zinc-800 p-2 border-b-3 border-brutal-black shrink-0">
         <div className="flex items-center gap-2">
-          <BrutalButton onClick={handleRefresh} title={t('sandbox.refresh')} size="icon">
-            <ArrowPathIcon className={`w-4 h-4 stroke-2 ${isRootLoading ? 'animate-spin' : ''}`} />
-          </BrutalButton>
+          <RefreshButton onClick={handleRefresh} spinning={isRootLoading} />
           <BrutalButton
             onClick={openRootInExplorer}
             title={t('sandbox.openInExplorer')}

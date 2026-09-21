@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ArrowPathIcon,
   ArrowsPointingOutIcon,
   CheckIcon,
   ChevronDownIcon,
@@ -13,6 +12,7 @@ import { useChatStreamingStore } from '../../hooks/useChatStore';
 import { memoryApi } from '../../lib/memoryApi';
 import type { RepositoryContextResponse, RepositoryInstruction } from '../../types/memory';
 import { BrutalIconButton } from '../BrutalButton';
+import { RefreshButton } from '../RefreshButton';
 import { FullscreenOverlay } from '../FullscreenOverlay';
 import { MarkdownRenderer } from '../chat/MarkdownRenderer';
 
@@ -309,13 +309,7 @@ export function RepositoryContextView({ chatId }: RepositoryContextViewProps) {
             {data?.project.projectName || t('repositoryContext.description')}
           </p>
         </div>
-        <BrutalIconButton
-          label={t('common.refresh')}
-          onClick={() => void load()}
-          disabled={loading}
-        >
-          <ArrowPathIcon className={`h-4 w-4 stroke-2 ${loading ? 'animate-spin' : ''}`} />
-        </BrutalIconButton>
+        <RefreshButton onClick={() => void load()} disabled={loading} spinning={loading} />
       </header>
 
       <div className="scrollbar-thin flex-1 space-y-5 overflow-y-auto overflow-x-hidden p-3">
