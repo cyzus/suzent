@@ -24,21 +24,26 @@ class TaskUpdateTool(Tool):
         task_id: Annotated[int, Field(description="ID of the task to update")],
         status: Annotated[
             Optional[Literal["pending", "in_progress", "completed", "cancelled"]],
-            Field(default=None),
+            Field(
+                description=(
+                    "New status. Setting 'completed' stamps completed_at; any "
+                    "other value clears it."
+                )
+            ),
         ] = None,
         assignee: Annotated[
-            Optional[str], Field(default=None, description="Agent ID or 'main'")
+            Optional[str], Field(description="Agent ID or 'main'")
         ] = None,
         description: Annotated[
-            Optional[str], Field(default=None, description="Replace task description")
+            Optional[str], Field(description="Replace task description")
         ] = None,
         add_blocks: Annotated[
             Optional[List[int]],
-            Field(default=None, description="Additional task IDs this task blocks"),
+            Field(description="Additional task IDs this task blocks"),
         ] = None,
         add_blocked_by: Annotated[
             Optional[List[int]],
-            Field(default=None, description="Additional task IDs that block this task"),
+            Field(description="Additional task IDs that block this task"),
         ] = None,
     ) -> ToolResult:
         db = get_database()

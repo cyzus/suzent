@@ -24,14 +24,25 @@ class TaskListTool(Tool):
             Optional[
                 Literal["pending", "in_progress", "completed", "blocked", "cancelled"]
             ],
-            Field(default=None),
+            Field(
+                description=(
+                    "Return only tasks in this status. 'blocked' is derived "
+                    "(pending with a non-empty blocked_by), not a stored status."
+                )
+            ),
         ] = None,
         assignee: Annotated[
-            Optional[str],
-            Field(default=None, description="Filter by agent ID or 'main'"),
+            str | None,
+            Field(description="Filter by agent ID or 'main'."),
         ] = None,
-        include_completed: Annotated[bool, Field(default=False)] = False,
-        include_cancelled: Annotated[bool, Field(default=False)] = False,
+        include_completed: Annotated[
+            bool,
+            Field(description="Include completed tasks, which are omitted by default."),
+        ] = False,
+        include_cancelled: Annotated[
+            bool,
+            Field(description="Include cancelled tasks, which are omitted by default."),
+        ] = False,
     ) -> ToolResult:
         project_id, no_project = require_project_id(ctx)
         if no_project:

@@ -32,20 +32,16 @@ class ImageGenerationTool(Tool):
         style: Annotated[
             Optional[str],
             Field(
-                default=None,
                 description="Optional style hint to fold into the generation prompt.",
             ),
         ] = None,
         size: Annotated[
             Optional[str],
-            Field(
-                default=None, description="Optional image size hint, such as 1024x1024."
-            ),
+            Field(description="Optional image size hint, such as 1024x1024."),
         ] = None,
         count: Annotated[
             int,
             Field(
-                default=1,
                 ge=1,
                 le=4,
                 description="Number of images to generate. The tool returns up to four images.",

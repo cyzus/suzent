@@ -127,9 +127,12 @@ class AgentListTool(Tool):
         ctx: RunContext[AgentDeps],
         status: Annotated[
             Literal["active", "recent"],
-            Field(default="active", description="List active agents or recent agents."),
+            Field(description="List active agents or recent agents."),
         ] = "active",
-        limit: Annotated[int, Field(default=20, ge=1, le=50)] = 20,
+        limit: Annotated[
+            int,
+            Field(ge=1, le=50, description="Maximum number of agents to return."),
+        ] = 20,
     ) -> ToolResult:
         current_chat_id = _require_chat_id(ctx)
         current = get_database().get_chat(current_chat_id) if current_chat_id else None

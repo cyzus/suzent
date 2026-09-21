@@ -11,7 +11,7 @@ a loop that quietly burns tokens while nobody is watching.
 """
 
 from datetime import datetime, timedelta
-from typing import Annotated, Optional
+from typing import Annotated, Literal, Optional
 
 from croniter import croniter
 from pydantic import Field
@@ -71,6 +71,12 @@ def _tightest_cron_gap(cron: str) -> Optional[float]:
     return smallest
 
 
+# The closed set of actions, named once so the schema the model sees and the
+# dispatch below cannot drift apart. ``test_tool_argument_conventions`` asserts
+# every member is handled.
+ScheduleAction = Literal["create", "list", "update", "cancel"]
+
+
 class ScheduleTool(Tool):
     """Schedule a future turn in this conversation, or manage ones already set."""
 
@@ -82,7 +88,7 @@ class ScheduleTool(Tool):
         self,
         ctx: RunContext[AgentDeps],
         action: Annotated[
-            str,
+            ScheduleAction,
             Field(
                 description=(
                     "'create' a task, 'list' this chat's tasks, 'update' one, "

@@ -46,7 +46,6 @@ class ImageVisionTool(Tool):
         prompt: Annotated[
             str,
             Field(
-                default="Describe this image in detail.",
                 description="What to ask the vision model about the image.",
             ),
         ] = "Describe this image in detail.",

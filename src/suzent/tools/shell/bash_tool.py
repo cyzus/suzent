@@ -204,7 +204,6 @@ class ShellCommandBackend(Tool):
         timeout: Annotated[
             Optional[int],
             Field(
-                default=None,
                 ge=0,
                 description=(
                     "Optional execution timeout in seconds. Defaults to 120s. "

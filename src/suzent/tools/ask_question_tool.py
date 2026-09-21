@@ -67,9 +67,7 @@ class AskQuestionTool(Tool):
         ],
         surface_id: Annotated[
             str,
-            Field(
-                default="", description="Stable surface id; auto-generated if omitted."
-            ),
+            Field(description="Stable surface id; auto-generated if omitted."),
         ] = "",
     ) -> ToolResult:
         """Ask the user one or more questions as an interactive inline surface.
