@@ -248,9 +248,6 @@ export function OpsTab(): React.ReactElement {
           >
             {t('console.ops.restart')}
           </BrutalButton>
-          <BrutalButton disabled={busy || reconnecting} onClick={() => void refreshStatus()}>
-            {t('console.ops.refresh')}
-          </BrutalButton>
         </div>
       </SettingsCard>
 

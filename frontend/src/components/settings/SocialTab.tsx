@@ -14,6 +14,7 @@ import {
 } from '../../lib/api';
 import { BrutalMultiSelect } from '../BrutalMultiSelect';
 import { BrutalOnOff } from '../BrutalOnOff';
+import { RefreshButton } from '../RefreshButton';
 import { SettingsHeader } from './SettingsHeader';
 import {
   SettingsCard,
@@ -443,13 +444,11 @@ export function SocialTab({
           actions={
             <>
               {handshakeEnabled && (
-                <button
-                  onClick={refreshPairings}
+                <RefreshButton
+                  onClick={() => void refreshPairings()}
                   disabled={pairingLoading}
-                  className="px-3 py-2 text-xs font-bold uppercase border-2 border-brutal-black bg-white dark:bg-zinc-700 text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-600 disabled:opacity-50 brutal-btn"
-                >
-                  {pairingLoading ? '…' : t('common.refresh')}
-                </button>
+                  spinning={pairingLoading}
+                />
               )}
               <BrutalOnOff
                 checked={handshakeEnabled}
