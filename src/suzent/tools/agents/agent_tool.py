@@ -32,7 +32,12 @@ from suzent.tools.base import Tool, ToolErrorCode, ToolGroup, ToolResult
 
 # ─── Pre-defined subagent profiles ───────────────────────────────────────────
 
-_SUBAGENT_PROFILES: dict[str, list[str]] = {
+# The profile names, declared once so the schema the model sees cannot drift
+# from the table that resolves them. ``test_tool_argument_conventions`` asserts
+# the two hold the same names.
+SubagentType = Literal["explore", "plan", "write", "verify", "web"]
+
+_SUBAGENT_PROFILES: dict[SubagentType, list[str]] = {
     "explore": ["GlobTool", "GrepTool", "ReadFileTool"],
     "plan": ["GlobTool", "GrepTool", "ReadFileTool", "WebSearchTool", "WebpageTool"],
     "write": ["ReadFileTool", "WriteFileTool", "EditFileTool", "GlobTool", "GrepTool"],
@@ -93,9 +98,8 @@ class AgentTool(Tool):
             str, Field(description="Detailed task prompt for the sub-agent to execute.")
         ],
         subagent_type: Annotated[
-            Optional[str],
+            Optional[SubagentType],
             Field(
-                default=None,
                 description=(
                     "Pre-defined agent profile. Auto-populates tools_allowed. "
                     "Available: 'explore' (read-only code search), 'plan' (read + web research), "
@@ -107,7 +111,6 @@ class AgentTool(Tool):
         tools_allowed: Annotated[
             Optional[list[str]],
             Field(
-                default=None,
                 description=(
                     "Explicit whitelist of tool class names the sub-agent may use "
                     "(e.g. ['RunCommandTool', 'ReadFileTool']). "
@@ -119,7 +122,6 @@ class AgentTool(Tool):
         tools_denied: Annotated[
             Optional[list[str]],
             Field(
-                default=None,
                 description=(
                     "Denylist path: start from all available tools, remove these. "
                     "Use for broad agents where you only need to block a few dangerous tools "
@@ -139,7 +141,6 @@ class AgentTool(Tool):
         cwd: Annotated[
             Optional[str],
             Field(
-                default=None,
                 description=(
                     "Optional absolute working directory for the sub-agent, governing "
                     "both shell commands and file tools. Defaults to the parent "
@@ -150,7 +151,6 @@ class AgentTool(Tool):
         model_override: Annotated[
             Optional[str],
             Field(
-                default=None,
                 description=(
                     "Optional enabled model ID to use for the sub-agent, exactly as listed "
                     "in the Models prompt section (for example 'openai/gpt-4.1'). "
@@ -161,7 +161,6 @@ class AgentTool(Tool):
         inherit_context: Annotated[
             bool,
             Field(
-                default=False,
                 description=(
                     "If true, the sub-agent receives a snapshot of the current conversation "
                     "history as context. Use when the task requires understanding earlier decisions "
@@ -172,7 +171,6 @@ class AgentTool(Tool):
         isolation: Annotated[
             Literal["none", "worktree"],
             Field(
-                default="none",
                 description=(
                     "'none': sub-agent shares the parent filesystem (default). "
                     "'worktree': creates a fresh git worktree on a new branch so changes "
@@ -183,7 +181,6 @@ class AgentTool(Tool):
         isolation_target_path: Annotated[
             Optional[str],
             Field(
-                default=None,
                 description=(
                     "Absolute path to the Git repository root to create the worktree in. "
                     "Required when isolation='worktree'. Must be a valid git repository with at least one commit."
@@ -193,20 +190,18 @@ class AgentTool(Tool):
         runtime: Annotated[
             Literal["native", "acp"],
             Field(
-                default="native",
                 description="Execution runtime. Use 'acp' for a configured local ACP agent.",
             ),
         ] = "native",
         acp_agent_id: Annotated[
             Optional[str],
             Field(
-                default=None,
                 description="ACP registry agent id; required when runtime='acp'.",
             ),
         ] = None,
         acp_session_id: Annotated[
             Optional[str],
-            Field(default=None, description="Optional ACP session id to resume."),
+            Field(description="Optional ACP session id to resume."),
         ] = None,
     ) -> ToolResult:
         """

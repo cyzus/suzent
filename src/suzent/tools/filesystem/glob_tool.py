@@ -41,7 +41,6 @@ class GlobTool(Tool):
         path: Annotated[
             Optional[str],
             Field(
-                default=None,
                 description="Optional search root directory. Leave empty to search the current workspace root.",
             ),
         ] = None,

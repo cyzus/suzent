@@ -12,7 +12,8 @@ All output is drawn from each message's clean AG-UI ``parts`` (see
 included only when ``role_filter`` requests it.
 """
 
-from typing import Annotated, Optional
+from collections.abc import Sequence
+from typing import Annotated, Literal, Optional
 
 from pydantic import Field
 from pydantic_ai import RunContext
@@ -26,18 +27,32 @@ logger = get_logger(__name__)
 
 VALID_ROLES = {"user", "assistant", "tool"}
 
+TranscriptRole = Literal["user", "assistant", "tool"]
 
-def _parse_role_filter(role_filter: str) -> tuple[str, ...]:
-    """Parse a comma-separated role filter into a validated tuple.
+DEFAULT_ROLES: tuple[str, ...] = ("user", "assistant")
 
-    Falls back to ``("user", "assistant")`` when nothing valid is given.
+
+def _parse_role_filter(
+    role_filter: str | Sequence[str] | None,
+) -> tuple[str, ...]:
+    """Normalise a role filter into a validated tuple.
+
+    Accepts the list the tool now takes, and still accepts the comma-separated
+    string it used to take -- the schema no longer produces one, but direct
+    callers and stored calls do. Unknown roles are dropped rather than refused,
+    and an empty result falls back to ``DEFAULT_ROLES``.
     """
-    roles = tuple(
-        r.strip().lower()
-        for r in (role_filter or "").split(",")
-        if r.strip().lower() in VALID_ROLES
+    if role_filter is None:
+        return DEFAULT_ROLES
+    parts = (
+        role_filter.split(",")
+        if isinstance(role_filter, str)
+        else [part for item in role_filter for part in str(item).split(",")]
     )
-    return roles or ("user", "assistant")
+    roles = tuple(
+        cleaned for part in parts if (cleaned := part.strip().lower()) in VALID_ROLES
+    )
+    return roles or DEFAULT_ROLES
 
 
 def _format_messages(messages: list[dict]) -> str:
@@ -63,7 +78,6 @@ class SessionSearchTool(Tool):
         query: Annotated[
             Optional[str],
             Field(
-                default=None,
                 description="Full-text search across past sessions (Discovery mode). "
                 "Supports the SQLite FTS5 query syntax. Omit to browse or read.",
             ),
@@ -71,7 +85,6 @@ class SessionSearchTool(Tool):
         session_id: Annotated[
             Optional[str],
             Field(
-                default=None,
                 description="Read one whole session by id (Read mode). Takes precedence "
                 "over query.",
             ),
@@ -79,21 +92,19 @@ class SessionSearchTool(Tool):
         limit: Annotated[
             int,
             Field(
-                default=3,
                 ge=1,
                 le=10,
                 description="Max sessions returned in Discovery/Browse modes.",
             ),
         ] = 3,
         role_filter: Annotated[
-            str,
+            Optional[list[TranscriptRole]],
             Field(
-                default="user,assistant",
-                description="Comma-separated roles to include: 'user,assistant' "
-                "(default), add 'tool' to include tool output, or 'tool' alone. "
+                description="Roles to include. Defaults to ['user', 'assistant']; "
+                "add 'tool' to include tool output, or pass ['tool'] alone. "
                 "Assistant reasoning is never shown.",
             ),
-        ] = "user,assistant",
+        ] = None,
     ) -> ToolResult:
         """Recall past conversations: read a session, search them, or browse recent ones.
 

@@ -43,7 +43,6 @@ class RunCommandTool(ShellCommandBackend):
         timeout: Annotated[
             Optional[int],
             Field(
-                default=None,
                 ge=0,
                 description="Optional timeout in seconds; defaults to 120 seconds.",
             ),

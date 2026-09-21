@@ -30,25 +30,21 @@ class GoalTool(Tool):
         ],
         objective: Annotated[
             Optional[str],
-            Field(
-                default=None, description="Goal description (required for action='set')"
-            ),
+            Field(description="Goal description (required for action='set')"),
         ] = None,
         subgoal_text: Annotated[
             Optional[str],
-            Field(default=None, description="Subgoal text to add (action='subgoal')"),
+            Field(description="Subgoal text to add (action='subgoal')"),
         ] = None,
         subgoal_index: Annotated[
             Optional[int],
             Field(
-                default=None,
                 description="Index of subgoal to remove (action='subgoal')",
             ),
         ] = None,
         max_turns: Annotated[
             Optional[int],
             Field(
-                default=None,
                 ge=1,
                 description="Max Ralph Loop turns (action='set', optional)",
             ),

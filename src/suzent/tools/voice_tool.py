@@ -32,7 +32,6 @@ class SpeakTool(Tool):
         prompt: Annotated[
             Optional[str],
             Field(
-                default="",
                 description="Optional tone or style guidance for the speech synthesis.",
             ),
         ] = "",

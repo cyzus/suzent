@@ -131,6 +131,24 @@ def _make_tool(
 
     wrapper.__name__ = tool_cls.tool_name
 
+    # The model-facing description comes from this docstring, and
+    # ``functools.wraps`` copies the *raw* ``__doc__`` -- None whenever
+    # ``forward()`` declares no docstring of its own. Fourteen tools reached the
+    # model with no description at all that way, ten of them in the ToolSearch
+    # pool, where a tool is found by its name and description.
+    #
+    # The catalog text fills the gap, because it is what the tool picker already
+    # shows and it is per-tool. An inherited ``forward()`` docstring is not used:
+    # the shell tools share one backend, whose docstring says a command "returns
+    # its output" -- true of ``run_command``, wrong for ``start_command``, which
+    # returns a process id.
+    #
+    # Only the gap is filled. The catalog text is a single line, so overwriting a
+    # docstring that is already there would throw away the detail the other
+    # seventeen tools carry.
+    if not wrapper.__doc__:
+        wrapper.__doc__ = _tool_description(tool_cls)
+
     if tool_cls.requires_approval or defer_loading:
         prepare = None
         if defer_loading:

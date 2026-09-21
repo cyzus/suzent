@@ -58,7 +58,6 @@ class MemorySearchTool(Tool):
         limit: Annotated[
             int,
             Field(
-                default=10,
                 ge=1,
                 le=20,
                 description="Maximum number of memories to return.",

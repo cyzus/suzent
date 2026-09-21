@@ -6,7 +6,7 @@ cards, buttons) in the canvas panel alongside the chat. The same surface_id
 performs an upsert: calling again with the same id replaces the existing surface.
 """
 
-from typing import Any, Annotated
+from typing import Annotated, Any, Literal
 
 from pydantic import Field, TypeAdapter, ValidationError
 from pydantic_ai import RunContext
@@ -47,6 +47,15 @@ def _surface_payload(
 
 
 class RenderUITool(Tool):
+    # The surface fields other than ``target`` stay ``Any`` on purpose. This
+    # tool takes whatever the model sends -- extra keys via ``**kwargs``, ``id``
+    # for ``surface_id``, a whole ``surface`` dict -- normalises it in
+    # ``_surface_payload`` and validates once against ``A2UISurface``, so a bad
+    # call comes back as this tool's own message with the offending fields
+    # named, rather than as a schema rejection at the boundary. ``target`` is
+    # different: it is a closed set of two, and ``A2UISurface`` already types it
+    # as exactly this Literal, so declaring it here tells the model the two
+    # valid values instead of leaving them in prose.
     name = "RenderUITool"
     tool_name = "render_ui"
     group = ToolGroup.INTERACTION
@@ -58,34 +67,33 @@ class RenderUITool(Tool):
         surface_id: Annotated[
             Any,
             Field(
-                default=None,
                 description="Stable surface id. Reusing the same id replaces the existing surface.",
             ),
         ] = None,
         component: Annotated[
             Any,
             Field(
-                default=None,
                 description="A2UI component tree. Root must include a valid 'type' discriminator.",
             ),
         ] = None,
         title: Annotated[
             Any,
             Field(
-                default="",
                 description="Optional panel title; defaults to surface_id.",
             ),
         ] = "",
         target: Annotated[
-            Any,
+            Literal["canvas", "inline"],
             Field(
-                default="canvas",
-                description="Where to render the surface: 'canvas' or 'inline'.",
+                description=(
+                    "'canvas' renders in the side panel, 'inline' inside the "
+                    "chat message."
+                )
             ),
         ] = "canvas",
         id: Annotated[
             Any,
-            Field(default=None, description="Alias for surface_id."),
+            Field(description="Alias for surface_id."),
         ] = None,
         **kwargs: Any,
     ) -> ToolResult:

@@ -96,12 +96,11 @@ class WebSearchTool(Tool):
         ],
         categories: Annotated[
             Optional[Literal["general", "news", "images", "videos"]],
-            Field(default=None, description="Optional search category."),
+            Field(description="Optional search category."),
         ] = None,
         max_results: Annotated[
             int,
             Field(
-                default=10,
                 ge=1,
                 le=20,
                 description="Maximum number of results to return.",
@@ -109,12 +108,11 @@ class WebSearchTool(Tool):
         ] = 10,
         time_range: Annotated[
             Optional[Literal["day", "week", "month", "year"]],
-            Field(default=None, description="Optional time filter for recent results."),
+            Field(description="Optional time filter for recent results."),
         ] = None,
         page: Annotated[
             int,
             Field(
-                default=1,
                 ge=1,
                 description="Page number for paginated search providers.",
             ),
