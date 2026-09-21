@@ -5,7 +5,8 @@
     ".releases/changes/builtin-tool-color.json",
     ".releases/changes/builtin-tool-floor.json",
     ".releases/changes/product-release-plans.json",
-    ".releases/changes/tool-package-layout.json"
+    ".releases/changes/tool-package-layout.json",
+    ".releases/changes/unified-refresh-button.json"
   ],
   "legacy_complete": true
 }
