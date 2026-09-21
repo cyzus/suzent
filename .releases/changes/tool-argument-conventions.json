@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Give every tool and every tool argument a description the model can see, and declare closed-value arguments as fixed choices, so tools in the search pool are discoverable and their valid values no longer have to be inferred from prose."
+}
