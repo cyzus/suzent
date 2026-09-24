@@ -10,6 +10,8 @@ interface ChatRowMenuProps {
   boundary?: DOMRect | null;
   projects: Project[];
   currentProjectId?: string | null;
+  pinned: boolean;
+  onTogglePin: () => void;
   onRename: () => void;
   onDelete: () => void;
   onMoveToProject: (projectId: string) => void;
@@ -29,6 +31,8 @@ export const ChatRowMenu: React.FC<ChatRowMenuProps> = ({
   boundary,
   projects,
   currentProjectId,
+  pinned,
+  onTogglePin,
   onRename,
   onDelete,
   onMoveToProject,
@@ -109,6 +113,17 @@ export const ChatRowMenu: React.FC<ChatRowMenuProps> = ({
 
   const rootView = (
     <>
+      <button
+        type="button"
+        role="menuitem"
+        className={`${itemBase} ${itemDefault}`}
+        onClick={() => {
+          onTogglePin();
+          onClose();
+        }}
+      >
+        {t(pinned ? 'chatList.unpinChat' : 'chatList.pinChat')}
+      </button>
       <button
         type="button"
         role="menuitem"

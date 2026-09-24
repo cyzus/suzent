@@ -1051,6 +1051,11 @@ export const en = {
     continuedFrom: 'Continued from task',
   },
   chatList: {
+    pinError: 'Unable to update pin',
+    pinErrorMessage: 'Please try again.',
+    pinChat: 'Pin chat',
+    unpinChat: 'Unpin chat',
+    pinnedChats: 'Pinned',
     searchChatsPlaceholder: 'Search chats...',
     clearSearch: 'Clear search',
     newChat: 'New chat',

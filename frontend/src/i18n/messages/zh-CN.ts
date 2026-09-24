@@ -1014,6 +1014,11 @@ export const zhCN = {
     continuedFrom: '接续自任务',
   },
   chatList: {
+    pinError: '置顶操作失败',
+    pinErrorMessage: '请重试。',
+    pinChat: '置顶聊天',
+    unpinChat: '取消置顶',
+    pinnedChats: '置顶聊天',
     searchChatsPlaceholder: '搜索对话…',
     clearSearch: '清空搜索',
     newChat: '新对话',

@@ -290,6 +290,7 @@ class ChatOperationsMixin:
         working_directory: str = None,
         context_usage: Dict[str, Any] = None,
         reindex: bool = True,
+        pinned: bool | None = None,
     ) -> bool:
         """Update an existing chat.
 
@@ -304,6 +305,9 @@ class ChatOperationsMixin:
             chat = session.get(ChatModel, chat_id)
             if not chat:
                 return False
+
+            if pinned is not None:
+                chat.pinned = pinned
 
             should_update_timestamp = False
 
@@ -664,11 +668,12 @@ class ChatOperationsMixin:
 
     def list_chats(
         self,
-        limit: int = 50,
+        limit: int | None = 50,
         offset: int = 0,
         search: str = None,
         platform: str = None,
         project_id: str = None,
+        pinned: bool | None = None,
     ) -> List[ChatSummaryModel]:
         """List chat summaries ordered by last updated.
 
@@ -688,11 +693,15 @@ class ChatOperationsMixin:
                     ChatModel.config,
                     ChatModel.last_result_at,
                     ChatModel.project_id,
+                    ChatModel.pinned,
                 )
                 .order_by(ChatModel.updated_at.desc())
                 .offset(offset)
                 .limit(limit)
             )
+
+            if pinned is not None:
+                statement = statement.where(ChatModel.pinned == pinned)
 
             statement = _apply_chat_filters(
                 statement, search, platform, project_id, self._search_fts_ids(search)
@@ -716,6 +725,7 @@ class ChatOperationsMixin:
                     config,
                     last_result_at,
                     row_project_id,
+                    row_pinned,
                 ) = row
                 config = config or {}
                 visible_count = config.get(SUMMARY_VISIBLE_COUNT_KEY)
@@ -734,6 +744,7 @@ class ChatOperationsMixin:
                 results.append(
                     ChatSummaryModel(
                         id=chat_id,
+                        pinned=row_pinned,
                         title=title,
                         createdAt=created_at.isoformat(),
                         updatedAt=updated_at.isoformat(),
