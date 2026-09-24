@@ -97,7 +97,7 @@ class TestRoleRouter:
         router.set_role("primary", ["model-b"])
         assert router.get_model_id("primary") == "model-b"
 
-    def test_load_from_dict_ignores_empty(self):
+    def test_load_from_dict_preserves_empty(self):
         router = RoleRouter()
         router.load_from_dict(
             {
@@ -115,7 +115,7 @@ class TestRoleRouter:
 
         router.replace_from_dict({"primary": []})
 
-        assert router.list_roles() == {}
+        assert router.list_roles() == {"primary": []}
 
     def test_load_from_config_ignores_legacy_model_fields(self, monkeypatch):
         from suzent import config as config_mod
@@ -215,3 +215,48 @@ def test_new_roles_survive_serialization_and_clearing() -> None:
     assert restored.get_model_id("permission_review") == "reviewer"
     restored.replace_from_dict({"decision": ["judge"], "permission_review": []})
     assert restored.get_model_id("permission_review") == "judge"
+
+
+def test_cleared_roles_survive_db_restart_and_config_defaults(monkeypatch) -> None:
+    import json
+    from types import SimpleNamespace
+    from suzent.config import CONFIG
+
+    saved: dict[str, str] = {}
+    db = SimpleNamespace(
+        save_api_key=lambda key, value: saved.update({key: value}),
+        get_api_keys=lambda: saved,
+    )
+    monkeypatch.setattr("suzent.database.get_database", lambda: db)
+    monkeypatch.setenv("_ROLE_MODELS_", "")
+    monkeypatch.setattr(
+        CONFIG,
+        "role_models",
+        {
+            "memory_extraction": ["yaml-extractor"],
+            "decision": ["yaml-decision"],
+            "title": ["yaml-title"],
+        },
+    )
+    monkeypatch.setattr(CONFIG, "memory_consolidation_model", "legacy-dream")
+    router = RoleRouter()
+    router.replace_from_dict(
+        {
+            "primary": ["main"],
+            "cheap": ["lightweight"],
+            "memory_extraction": [],
+            "decision": [],
+            "dream": [],
+        }
+    )
+    router.save_to_db()
+    assert json.loads(saved["_ROLE_MODELS_"])["dream"] == {"models": []}
+
+    restarted = RoleRouter()
+    restarted.load_from_db()
+    restarted.load_from_config()
+    assert restarted.list_roles()["memory_extraction"] == []
+    assert restarted.get_model_id("memory_extraction") == "lightweight"
+    assert restarted.get_model_id("goal_judge") == "lightweight"
+    assert restarted.get_model_id("dream") == "main"
+    assert restarted.get_model_id("title") == "yaml-title"

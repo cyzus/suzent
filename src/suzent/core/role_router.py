@@ -185,13 +185,12 @@ class RoleRouter:
                 logger.warning("Invalid role config for '{}': {}", role, value)
                 continue
 
-            if model_ids:
-                self.set_role(role, model_ids)
+            self.set_role(role, model_ids)
 
     def replace_from_dict(self, role_models: Dict[str, Any]) -> None:
         """Replace all role assignments with the supplied mapping.
 
-        Unlike ``load_from_dict``, empty lists intentionally clear roles. This
+        Empty lists preserve an explicit request to inherit. This
         matches the Settings UI, where removing the last model from a role must
         persist as "not configured" rather than leaving the old singleton value
         alive.
@@ -241,11 +240,11 @@ class RoleRouter:
             defaults = RoleRouter()
             defaults.load_from_dict(role_models)
             for role, ids in defaults.list_roles().items():
-                if not self.has_role(role):
+                if role not in self._roles:
                     self.set_role(role, ids)
 
         # Keep existing dream overrides when upgrading to role-based settings.
-        if not self.has_role(ModelRole.DREAM) and CONFIG.memory_consolidation_model:
+        if ModelRole.DREAM not in self._roles and CONFIG.memory_consolidation_model:
             self.set_role(ModelRole.DREAM, [CONFIG.memory_consolidation_model])
 
 

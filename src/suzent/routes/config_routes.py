@@ -961,6 +961,13 @@ async def save_role_models(request: Request) -> JSONResponse:
         router.replace_from_dict(roles)
         router.save_to_db()
 
+        from suzent.memory import lifecycle
+
+        if lifecycle.memory_manager is not None:
+            lifecycle.memory_manager.set_extraction_model(
+                router.get_model_id("memory_extraction")
+            )
+
         return JSONResponse({"success": True, "roles": router.list_roles()})
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
