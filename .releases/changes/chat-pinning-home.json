@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "minor"},
+  "summary": "Pin individual chats above Projects in a compact sidebar section, and rename the default project to Home while preserving custom names."
+}
