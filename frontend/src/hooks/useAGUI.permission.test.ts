@@ -154,3 +154,58 @@ it('restores an unanswered inline form from a snapshot, still routed to /answer'
   expect(restored[0].surface?.id).toBe('form');
   expect(deferred).toEqual(['form']);
 });
+
+it.each([
+  { type: 'TOOL_CALL_START', data: { toolCallId: 'call-1', toolCallName: 'BashTool' } },
+  {
+    type: 'CUSTOM',
+    data: {
+      name: 'tool_approval_request',
+      value: { toolCallId: 'call-1', toolName: 'BashTool', approvalId: 'approval-1' },
+    },
+  },
+  {
+    type: 'CUSTOM',
+    data: {
+      name: 'tool_approval_result',
+      value: { toolCallId: 'call-1', toolName: 'BashTool', status: 'executed', output: 'ok' },
+    },
+  },
+  {
+    type: 'CUSTOM',
+    data: {
+      name: 'tool_permission_resolution',
+      value: { toolCallId: 'call-1', toolName: 'BashTool', behavior: 'allow' },
+    },
+  },
+])('restores the tool name after a resolution created a placeholder: $type $data.name', (event) => {
+  const seed = processEvent(
+    {
+      type: 'CUSTOM',
+      data: {
+        name: 'tool_permission_resolution',
+        value: { toolCallId: 'call-1', behavior: 'allow' },
+      },
+    },
+    []
+  ).parts;
+  const result = processEvent(event, seed).parts;
+  expect(result).toHaveLength(1);
+  expect(result[0].toolName).toBe('BashTool');
+  expect(result[0].permissionResolution?.behavior).toBe('allow');
+});
+
+it('shows the resolved tool name immediately without an earlier tool start', () => {
+  const result = processEvent(
+    {
+      type: 'CUSTOM',
+      data: {
+        name: 'tool_permission_resolution',
+        value: { toolCallId: 'call-1', toolName: 'BashTool', behavior: 'allow' },
+      },
+    },
+    []
+  ).parts;
+  expect(result[0].toolName).toBe('BashTool');
+  expect(result[0].state).toBe('running');
+});

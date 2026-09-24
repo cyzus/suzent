@@ -463,6 +463,9 @@ class _DraftDisplayAccumulator:
                 self.parts.append(part)
                 self._tool_index[tool_call_id] = part
             else:
+                existing["toolName"] = getattr(
+                    event, "tool_call_name", ""
+                ) or existing.get("toolName")
                 existing["state"] = "running"
                 existing["approvalId"] = None
                 existing.setdefault("args", "")
@@ -596,7 +599,7 @@ class _DraftDisplayAccumulator:
             tool["approvalId"] = value.get("approvalId")
             tool["permission"] = value.get("decision")
             tool["toolName"] = (
-                tool.get("toolName") or value.get("toolName") or "unknown"
+                value.get("toolName") or tool.get("toolName") or "unknown"
             )
             if not tool.get("args") and value.get("args") is not None:
                 tool["args"] = _stringify_part_content(value.get("args"))
@@ -612,10 +615,14 @@ class _DraftDisplayAccumulator:
             tool_call_id = str(value.get("toolCallId") or "")
             tool = self._ensure_tool(tool_call_id)
             tool["permissionResolution"] = dict(value)
+            if value.get("toolName"):
+                tool["toolName"] = value["toolName"]
             self.dirty = True
         elif name == "tool_approval_result" and isinstance(value, dict):
             tool_call_id = str(value.get("toolCallId") or "")
             tool = self._ensure_tool(tool_call_id)
+            if value.get("toolName"):
+                tool["toolName"] = value["toolName"]
             tool["state"] = (
                 "completed" if value.get("status") == "executed" else "error"
             )
