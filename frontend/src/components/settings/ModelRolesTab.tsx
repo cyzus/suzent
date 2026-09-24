@@ -1,5 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useI18n } from '../../i18n';
+import { BrutalButton } from '../BrutalButton';
+import { SettingsHeader } from './SettingsHeader';
+import { SettingsPage } from './SettingsCard';
 
 interface ModelRolesTabProps {
   roleModels: Record<string, string[]>;
@@ -113,14 +116,14 @@ function ModelDropdown({ options, unregisteredModels, onSelect }: ModelDropdownP
         type="button"
         onClick={handleOpen}
         aria-expanded={open}
-        className="w-full flex items-center justify-between gap-2 px-3 py-1.5 rounded-sm border border-neutral-300 bg-white dark:border-zinc-600 dark:bg-zinc-800 dark:text-white font-medium text-xs hover:bg-neutral-50 dark:hover:bg-zinc-700"
+        className="w-full flex items-center justify-between gap-2 px-3 py-1.5 border-2 border-brutal-black bg-white dark:bg-zinc-800 dark:text-white font-mono font-bold text-xs hover:bg-brutal-yellow/20 brutal-btn"
       >
         <span>{t('settings.roles.addFromAvailable')}</span>
         <span className="text-[10px] opacity-60">▼</span>
       </button>
 
       {open && (
-        <div className="mt-2 rounded-sm border border-neutral-300 bg-white dark:bg-zinc-800 shadow-sm">
+        <div className="mt-2 border-2 border-brutal-black bg-white dark:bg-zinc-800 shadow-brutal-sm">
           {/* Search doubles as custom-model entry: Enter adds the typed id */}
           <div className="border-b-2 border-brutal-black">
             <input
@@ -213,8 +216,6 @@ function RoleRow({
   const label = t(`settings.${role.labelKey}`);
   const effective = selected.length ? selected : inherited;
   const isInherited = !selected.length && inherited.length > 0;
-  const buttonClass =
-    'rounded-sm border border-neutral-300 px-3 py-2 text-xs font-bold hover:bg-neutral-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue dark:border-zinc-600 dark:hover:bg-zinc-700 disabled:opacity-30';
 
   function close(): void {
     setEditing(false);
@@ -243,7 +244,7 @@ function RoleRow({
         }}
         className="group grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 text-left hover:bg-neutral-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-brutal-blue dark:hover:bg-zinc-900 sm:grid-cols-[minmax(8rem,0.8fr)_minmax(0,1.5fr)_auto]"
       >
-        <span className="text-sm font-bold">{label}</span>
+        <span className="text-sm font-black uppercase tracking-wide">{label}</span>
         <span className="col-start-1 row-start-2 min-w-0 sm:col-start-2 sm:row-start-1">
           <span
             className={`block truncate font-mono text-xs ${effective.length ? '' : 'font-sans text-neutral-400'}`}
@@ -264,7 +265,7 @@ function RoleRow({
         </span>
         <span className="col-start-2 row-start-1 row-span-2 flex items-center gap-2 text-xs text-neutral-500 sm:col-start-3 sm:row-span-1">
           <span
-            className={`h-1.5 w-1.5 rounded-full ${selected.length ? 'bg-emerald-500' : isInherited ? 'bg-blue-400' : 'bg-neutral-300'}`}
+            className={`h-1.5 w-1.5 rounded-full ${selected.length ? 'bg-brutal-green' : isInherited ? 'bg-brutal-blue' : 'bg-neutral-300'}`}
             aria-hidden="true"
           />
           <span aria-hidden="true">{editing ? '−' : '+'}</span>
@@ -279,13 +280,14 @@ function RoleRow({
             {t(`settings.${role.descKey}`)}
           </p>
           {role.fallback !== 'none' && (
-            <button
+            <BrutalButton
+              size="sm"
               type="button"
-              className={`${buttonClass} ${!draft.length ? 'border-blue-400 bg-blue-50 dark:bg-blue-950' : ''}`}
+              isActive={!draft.length}
               onClick={() => setDraft([])}
             >
               {t('settings.roles.restoreInheritance')}
-            </button>
+            </BrutalButton>
           )}
           {!draft.length && (
             <p className="break-words text-xs text-neutral-600 dark:text-neutral-400">
@@ -303,37 +305,40 @@ function RoleRow({
             {draft.map((model, index) => (
               <li
                 key={model}
-                className="flex flex-wrap items-center gap-2 rounded-sm border border-neutral-200 bg-white p-2 dark:border-zinc-700 dark:bg-zinc-800"
+                className="flex flex-wrap items-center gap-2 border-2 border-brutal-black bg-white p-2 dark:bg-zinc-800"
               >
                 <span className="w-5 text-center text-xs text-neutral-400">{index + 1}</span>
                 <span className="min-w-0 flex-1 break-all font-mono text-xs">{model}</span>
                 <div className="flex gap-1">
-                  <button
+                  <BrutalButton
+                    size="sm"
                     type="button"
-                    className={buttonClass}
+                    className="focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue"
                     disabled={index === 0}
                     onClick={() => move(index, -1)}
                     aria-label={`${t('settings.roles.moveUp')}: ${model}`}
                   >
                     ↑
-                  </button>
-                  <button
+                  </BrutalButton>
+                  <BrutalButton
+                    size="sm"
                     type="button"
-                    className={buttonClass}
+                    className="focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue"
                     disabled={index === draft.length - 1}
                     onClick={() => move(index, 1)}
                     aria-label={`${t('settings.roles.moveDown')}: ${model}`}
                   >
                     ↓
-                  </button>
-                  <button
+                  </BrutalButton>
+                  <BrutalButton
+                    size="sm"
                     type="button"
-                    className={buttonClass}
+                    className="focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue"
                     onClick={() => setDraft(draft.filter((id) => id !== model))}
                     aria-label={`${t('common.remove')}: ${model}`}
                   >
                     ×
-                  </button>
+                  </BrutalButton>
                 </div>
               </li>
             ))}
@@ -349,19 +354,25 @@ function RoleRow({
             }}
           />
           <div className="flex items-center justify-end gap-2 border-t border-neutral-200 pt-3 dark:border-zinc-700">
-            <button type="button" className={buttonClass} onClick={close}>
-              {t('common.cancel')}
-            </button>
-            <button
+            <BrutalButton
+              size="sm"
               type="button"
-              className={`${buttonClass} bg-brutal-black text-white hover:bg-zinc-700 dark:bg-white dark:text-black dark:hover:bg-neutral-200`}
+              className="focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue"
+              onClick={close}
+            >
+              {t('common.cancel')}
+            </BrutalButton>
+            <BrutalButton
+              size="sm"
+              type="button"
+              variant="primary"
               onClick={() => {
                 onChange(draft);
                 close();
               }}
             >
               {t('settings.roles.applyChanges')}
-            </button>
+            </BrutalButton>
           </div>
         </div>
       )}
@@ -414,22 +425,20 @@ export function ModelRolesTab({
   ];
 
   return (
-    <div className="space-y-5 bg-neutral-100 p-3 text-neutral-900 dark:bg-zinc-900 dark:text-neutral-100 sm:p-4">
-      <header className="border-l-4 border-brutal-yellow pl-3">
-        <h2 className="text-xl font-black tracking-tight">{t('settings.roles.title')}</h2>
-        <p className="mt-1 text-xs leading-relaxed text-neutral-500 dark:text-neutral-400">
-          {t('settings.roles.compactIntro')}
-        </p>
-      </header>
+    <SettingsPage>
+      <SettingsHeader
+        title={t('settings.roles.title')}
+        subtitle={t('settings.roles.compactIntro')}
+      />
       {groups.map((group) => (
         <section key={group.key} aria-labelledby={`roles-${group.key}`}>
           <h3
             id={`roles-${group.key}`}
-            className="mb-2 text-xs font-bold tracking-wide text-neutral-500 dark:text-neutral-400"
+            className="mb-2 text-sm font-black uppercase tracking-wide dark:text-white"
           >
             {t(`settings.roles.${group.key}`)}
           </h3>
-          <div className="divide-y divide-neutral-200 rounded-sm border border-neutral-300 bg-white dark:divide-zinc-700 dark:border-zinc-700 dark:bg-zinc-800">
+          <div className="divide-y divide-neutral-200 border-2 border-brutal-black bg-white shadow-brutal-sm dark:divide-zinc-700 dark:bg-zinc-800 dark:text-white">
             {ROLES.filter((role) => group.roles.includes(role.key)).map(renderRole)}
             {group.key === 'defaultsGroup' && (
               <details>
@@ -451,6 +460,6 @@ export function ModelRolesTab({
           </div>
         </section>
       ))}
-    </div>
+    </SettingsPage>
   );
 }
