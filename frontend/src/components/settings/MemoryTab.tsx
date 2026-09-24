@@ -14,8 +14,8 @@ interface MemoryTabProps {
   onMemoryEnabledChange: (enabled: boolean) => void;
   /** Model assigned to the "embedding" role (Model Roles tab). */
   embeddingModel?: string;
-  /** Model assigned to the "cheap" role — used for memory extraction. */
-  cheapModel?: string;
+  /** Effective model for the memory_extraction role, including inherited defaults. */
+  extractionModel?: string;
   /** Navigate the settings modal to the Model Roles tab. */
   onOpenModelRoles?: () => void;
 }
@@ -26,7 +26,7 @@ export function MemoryTab({
   memoryEnabled,
   onMemoryEnabledChange,
   embeddingModel,
-  cheapModel,
+  extractionModel,
   onOpenModelRoles,
 }: MemoryTabProps): React.ReactElement {
   const { t } = useI18n();
@@ -100,7 +100,7 @@ export function MemoryTab({
                 {t('settings.memoryConfig.extractionModelLabel')}
               </div>
               <div className="font-mono text-xs border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900 px-3 py-2 break-all min-h-[2.25rem]">
-                {cheapModel || t('settings.memoryConfig.modelNotConfigured')}
+                {extractionModel || t('settings.memoryConfig.modelNotConfigured')}
               </div>
             </div>
           </div>
