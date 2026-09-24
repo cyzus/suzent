@@ -239,6 +239,7 @@ export function processEvent(
         const existingOutput = next[existingStartIdx].output;
         next[existingStartIdx] = {
           ...next[existingStartIdx],
+          toolName: (data.toolCallName as string) || next[existingStartIdx].toolName,
           // Keep existing args visible during approval/resume. If the backend
           // replays TOOL_CALL_ARGS, the first replay delta replaces these args
           // below; if it only sends the result, file renderers still have path/content.
@@ -323,13 +324,14 @@ export function processEvent(
         if (existingIndex >= 0) {
           next[existingIndex] = {
             ...next[existingIndex],
+            toolName: resolution.toolName || next[existingIndex].toolName,
             permissionResolution: resolution,
           };
         } else {
           next.push({
             type: 'tool',
             toolCallId: tcId,
-            toolName: 'unknown',
+            toolName: resolution.toolName || 'unknown',
             args: '',
             state: 'running',
             permissionResolution: resolution,
@@ -370,7 +372,7 @@ export function processEvent(
               approvalId,
               permission: approval.decision as AGUIPart['permission'],
               // Fill in name/args if not yet present (approval may arrive before tool_call_start)
-              toolName: next[i].toolName || (approval.toolName as string) || 'unknown',
+              toolName: (approval.toolName as string) || next[i].toolName || 'unknown',
               args:
                 next[i].args ||
                 (approval.args
@@ -410,6 +412,7 @@ export function processEvent(
           if (next[i].type === 'tool' && next[i].toolCallId === tcId) {
             next[i] = {
               ...next[i],
+              toolName: (resultData.toolName as string) || next[i].toolName || 'unknown',
               state: resultData.status === 'executed' ? 'completed' : 'error',
               output,
               argsReplayPending: false,
