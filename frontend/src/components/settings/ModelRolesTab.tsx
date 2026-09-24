@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useI18n } from '../../i18n';
 import { SettingsHeader } from './SettingsHeader';
-import { GridCard, SettingsGrid, SettingsPage } from './SettingsCard';
+import { Badge, GridCard, SectionCardHeader, SettingsGrid, SettingsPage } from './SettingsCard';
 
 interface ModelRolesTabProps {
   roleModels: Record<string, string[]>;
@@ -90,6 +90,11 @@ function ModelDropdown({ options, unregisteredModels, onSelect }: ModelDropdownP
   }, [open]);
 
   function handleOpen() {
+    if (open) {
+      setOpen(false);
+      setQuery('');
+      return;
+    }
     setOpen(true);
     setTimeout(() => inputRef.current?.focus(), 0);
   }
@@ -108,6 +113,7 @@ function ModelDropdown({ options, unregisteredModels, onSelect }: ModelDropdownP
       <button
         type="button"
         onClick={handleOpen}
+        aria-expanded={open}
         className="w-full flex items-center justify-between gap-2 px-3 py-1.5 border-2 border-brutal-black bg-white dark:bg-zinc-700 dark:text-white font-bold uppercase text-xs hover:bg-brutal-yellow/20 dark:hover:bg-brutal-yellow/10 brutal-btn"
       >
         <span>{t('settings.roles.addFromAvailable')}</span>
@@ -125,6 +131,11 @@ function ModelDropdown({ options, unregisteredModels, onSelect }: ModelDropdownP
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && trimmed) handleSelect(trimmed);
+                if (e.key === 'Escape') {
+                  setOpen(false);
+                  setQuery('');
+                  ref.current?.querySelector('button')?.focus();
+                }
               }}
               placeholder={t('settings.roles.searchPlaceholder')}
               className="w-full px-3 py-2 font-mono text-xs bg-neutral-50 dark:bg-zinc-700 dark:text-white focus:outline-none"
@@ -249,7 +260,20 @@ function RoleCard({
             : t('settings.roles.noImplicitFallback');
 
   return (
-    <GridCard title={label} subtitle={desc} active={selected.length > 0}>
+    <GridCard
+      title={label}
+      subtitle={desc}
+      headerRight={
+        <Badge
+          tone={selected.length ? 'green' : inheritedModels.length ? 'blue' : 'neutral'}
+          className="shrink-0"
+        >
+          {t(
+            `settings.roles.${selected.length ? 'customStatus' : inheritedModels.length ? 'inheritedStatus' : 'notConfigured'}`
+          )}
+        </Badge>
+      }
+    >
       {/* Body */}
       <div className="flex flex-1 flex-col gap-3 p-3">
         {/* Selected model chain */}
@@ -330,7 +354,7 @@ function RoleCard({
         ) : (
           <div className="border-2 border-dashed border-neutral-300 bg-neutral-50 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-900">
             <p className="text-[10px] font-black uppercase text-neutral-500 dark:text-neutral-400">
-              {t('settings.roles.notConfigured')}
+              {t(`settings.roles.${inheritedModels.length ? 'inheritedStatus' : 'notConfigured'}`)}
             </p>
             <p className="mt-1 text-xs leading-relaxed text-neutral-600 dark:text-neutral-400">
               {emptyFallback}
@@ -343,6 +367,15 @@ function RoleCard({
           </div>
         )}
 
+        {selected.length > 0 && fallback !== 'none' && (
+          <button
+            type="button"
+            onClick={() => onChange([])}
+            className="self-start text-xs font-bold underline underline-offset-4 text-neutral-600 hover:text-brutal-black focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 dark:text-neutral-300 dark:hover:text-white"
+          >
+            {t('settings.roles.restoreInheritance')}
+          </button>
+        )}
         {/* Add model: searchable dropdown; typing a custom id also works */}
         <ModelDropdown options={available} unregisteredModels={unregistered} onSelect={addModel} />
         {unregisteredModels.length > 0 &&
@@ -403,20 +436,68 @@ export function ModelRolesTab({
     <SettingsPage>
       <SettingsHeader title={t('settings.roles.title')} subtitle={t('settings.roles.subtitle')} />
 
-      <SettingsGrid density="compact">
-        {ROLES.filter((role) => role.fallback !== 'decision').map(renderRole)}
-      </SettingsGrid>
-      <details className="mt-4">
-        <summary className="cursor-pointer font-bold dark:text-white">
-          {t('settings.roles.advancedDecision')}
-        </summary>
-        <p className="my-3 text-sm text-neutral-600 dark:text-neutral-400">
-          {t('settings.roles.advancedDecisionDesc')}
-        </p>
+      <section aria-labelledby="role-defaults">
+        <SectionCardHeader
+          title={t('settings.roles.defaultsGroup')}
+          description={t('settings.roles.defaultsGroupDesc')}
+        />
+        <div id="role-defaults" className="sr-only">
+          {t('settings.roles.defaultsGroup')}
+        </div>
         <SettingsGrid density="compact">
-          {ROLES.filter((role) => role.fallback === 'decision').map(renderRole)}
+          {ROLES.filter((role) => ['primary', 'cheap', 'decision'].includes(role.key)).map(
+            renderRole
+          )}
         </SettingsGrid>
-      </details>
+        <details className="mt-4 border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900 dark:text-white">
+          <summary className="cursor-pointer p-3 font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue">
+            {t('settings.roles.advancedDecision')}
+            <span className="ml-2 text-xs font-normal text-neutral-500 dark:text-neutral-400">
+              {t('settings.roles.overrideCount', {
+                count: ROLES.filter(
+                  (role) => role.fallback === 'decision' && roleModels[role.key]?.length
+                ).length,
+              })}
+            </span>
+          </summary>
+          <div className="border-t-2 border-brutal-black p-3">
+            <p className="mb-3 text-xs text-neutral-600 dark:text-neutral-400">
+              {t('settings.roles.advancedDecisionDesc')}
+            </p>
+            <SettingsGrid density="compact">
+              {ROLES.filter((role) => role.fallback === 'decision').map(renderRole)}
+            </SettingsGrid>
+          </div>
+        </details>
+      </section>
+      <section aria-labelledby="role-tasks">
+        <SectionCardHeader
+          title={t('settings.roles.tasksGroup')}
+          description={t('settings.roles.tasksGroupDesc')}
+        />
+        <div id="role-tasks" className="sr-only">
+          {t('settings.roles.tasksGroup')}
+        </div>
+        <SettingsGrid density="compact">
+          {ROLES.filter((role) => ['title', 'memory_extraction', 'dream'].includes(role.key)).map(
+            renderRole
+          )}
+        </SettingsGrid>
+      </section>
+      <section aria-labelledby="role-specialists">
+        <SectionCardHeader
+          title={t('settings.roles.specialistsGroup')}
+          description={t('settings.roles.specialistsGroupDesc')}
+        />
+        <div id="role-specialists" className="sr-only">
+          {t('settings.roles.specialistsGroup')}
+        </div>
+        <SettingsGrid density="compact">
+          {ROLES.filter((role) =>
+            ['vision', 'embedding', 'image_generation', 'tts'].includes(role.key)
+          ).map(renderRole)}
+        </SettingsGrid>
+      </section>
     </SettingsPage>
   );
 }

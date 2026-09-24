@@ -18,9 +18,16 @@ function renderRoles(roleModels: Record<string, string[]>): string {
 }
 
 describe('Model role inheritance settings', () => {
+  it('groups defaults, background tasks and specialists in order', () => {
+    const html = renderRoles({ primary: ['main'] });
+    expect(html.indexOf('Default models')).toBeLessThan(html.indexOf('Background tasks'));
+    expect(html.indexOf('Background tasks')).toBeLessThan(html.indexOf('Specialist models'));
+    expect(html).toContain('Inherited');
+    expect(html).toContain('Not configured');
+  });
   it('keeps individual decision overrides in the collapsed advanced section', () => {
     const html = renderRoles({ decision: ['decision-model'], cheap: ['lightweight'] });
-    const advanced = html.slice(html.indexOf('<details'));
+    const advanced = html.slice(html.indexOf('<details'), html.indexOf('</details>'));
     expect(advanced).not.toContain('open=""');
     expect(advanced).toContain('Goal Judge');
     expect(advanced).toContain('Permission Review');
@@ -31,8 +38,10 @@ describe('Model role inheritance settings', () => {
 
   it('shows the nearest parent and respects explicit child assignments', () => {
     const html = renderRoles({ primary: ['main'], goal_judge: ['custom-judge'] });
-    const advanced = html.slice(html.indexOf('<details'));
+    const advanced = html.slice(html.indexOf('<details'), html.indexOf('</details>'));
     expect(advanced).toContain('custom-judge');
+    expect(advanced).toContain('1 overrides');
+    expect(advanced).toContain('Use inherited models');
     expect(advanced.match(/Inherited: main/g)).toHaveLength(1);
   });
 });

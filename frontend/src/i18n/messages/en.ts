@@ -705,6 +705,19 @@ export const en = {
       title: 'Model Roles',
       subtitle:
         'Assign models by task. Empty roles inherit their parent role; explicit assignments override inheritance.',
+      customStatus: 'Custom',
+      inheritedStatus: 'Inherited',
+      restoreInheritance: 'Use inherited models',
+      overrideCount: '{count} overrides',
+      defaultsGroup: 'Default models',
+      defaultsGroupDesc:
+        'Set Primary first. Lightweight tasks inherit Cheap; review tasks share Decision.',
+      tasksGroup: 'Background tasks',
+      tasksGroupDesc:
+        'Title and memory extraction inherit Cheap. Dream inherits Primary. Override only where needed.',
+      specialistsGroup: 'Specialist models',
+      specialistsGroupDesc:
+        'Vision can inherit a compatible Primary model. Other capabilities require their own models.',
       primary: 'Primary',
       primaryDesc: 'Main chat agent. Needs tool use and large context.',
       cheap: 'Cheap',
