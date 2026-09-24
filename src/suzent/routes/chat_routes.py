@@ -13,7 +13,14 @@ import json
 import traceback
 from typing import Annotated, Any, Callable, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StrictInt, ValidationError
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictBool,
+    StrictInt,
+    ValidationError,
+)
 from starlette.requests import Request
 from starlette.responses import JSONResponse, StreamingResponse
 
@@ -1089,6 +1096,13 @@ async def get_chats(request: Request) -> JSONResponse:
         return JSONResponse(
             {
                 "chats": chats_data,
+                "pinnedChats": [
+                    {
+                        **chat.model_dump(mode="json", by_alias=True),
+                        "isRunning": is_background_streaming(chat.id),
+                    }
+                    for chat in db.list_chats(limit=None, pinned=True)
+                ],
                 "total": total,
                 "kindCounts": kind_counts,
                 "limit": limit,
@@ -1250,6 +1264,10 @@ async def create_chat(request: Request) -> JSONResponse:
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+class ChatPinUpdate(BaseModel):
+    pinned: StrictBool | None = None
+
+
 async def update_chat(request: Request) -> JSONResponse:
     """Update an existing chat."""
     try:
@@ -1266,7 +1284,15 @@ async def update_chat(request: Request) -> JSONResponse:
         if isinstance(config, dict) and "heartbeat_instructions" in config:
             instructions = config.pop("heartbeat_instructions")
 
-        success = db.update_chat(chat_id, title=title, config=config, messages=messages)
+        try:
+            pinned = ChatPinUpdate.model_validate(data).pinned
+        except ValidationError:
+            return JSONResponse(
+                {"error": "'pinned' must be a boolean"}, status_code=400
+            )
+        success = db.update_chat(
+            chat_id, title=title, config=config, messages=messages, pinned=pinned
+        )
         if not success:
             return JSONResponse({"error": "Chat not found"}, status_code=404)
 

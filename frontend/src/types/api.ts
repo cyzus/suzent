@@ -120,6 +120,7 @@ export interface Chat {
 }
 
 export interface ChatSummary {
+  pinned?: boolean;
   id: string;
   title: string;
   createdAt: string;

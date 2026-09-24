@@ -13,7 +13,7 @@ from .models import (
 
 class ProjectOperationsMixin:
     DEFAULT_PROJECT_SLUG = "default"
-    DEFAULT_PROJECT_NAME = "Default"
+    DEFAULT_PROJECT_NAME = "Home"
     SOCIAL_PROJECT_SLUG = "social"
     SOCIAL_PROJECT_NAME = "Social"
     SYSTEM_PROJECT_SLUGS = {"default", "social"}
