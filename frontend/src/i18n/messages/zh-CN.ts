@@ -1216,8 +1216,8 @@ export const zhCN = {
     permissionModeTitle: '工具权限模式',
     permissionModeLabel: '模式',
     autoModeConfirmation:
-      '自动模式会使用安全分类器在不询问的情况下批准低风险操作，强制拒绝规则仍然生效。是否启用自动模式？',
-    autoModeDialogTitle: '启用自动模式？',
+      '智能模式会使用安全分类器在不询问的情况下批准低风险操作，强制拒绝规则仍然生效。是否启用智能模式？',
+    autoModeDialogTitle: '启用智能模式？',
     autoModeCancel: '取消',
     autoModeEnable: '启用',
     fullAccessModeConfirmation:
@@ -1226,12 +1226,12 @@ export const zhCN = {
     fullAccessModeEnable: '启用',
     permissionModes: {
       default: '询问',
-      auto: '自动',
+      auto: '智能',
       full_access: '完全访问',
     },
     permissionModeInputLabels: {
       default: '询问权限',
-      auto: '自动模式',
+      auto: '智能模式',
       full_access: '完全访问',
     },
     permissionModeDescriptions: {
