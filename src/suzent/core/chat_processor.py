@@ -1089,8 +1089,15 @@ class ChatProcessor:
         deferred_tool_results = None
         permission_resolutions: list[dict[str, Any]] = []
         if resume_approvals:
+            from pydantic_ai.messages import ToolCallPart
             from pydantic_ai.tools import DeferredToolResults
 
+            tool_names = {
+                part.tool_call_id: part.tool_name
+                for message in message_history or []
+                for part in message.parts
+                if isinstance(part, ToolCallPart)
+            }
             resume_approvals = _resolve_resume_approval_actions(
                 chat_id, resume_approvals
             )
@@ -1119,6 +1126,7 @@ class ChatProcessor:
                     permission_resolutions.append(
                         {
                             "toolCallId": str(tool_call_id),
+                            "toolName": tool_names.get(tool_call_id, ""),
                             "behavior": "allow" if app.get("approved") else "deny",
                             "source": "user",
                             "actionId": str(app.get("action_id") or "legacy"),
