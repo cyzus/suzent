@@ -18,11 +18,19 @@ function renderRoles(roleModels: Record<string, string[]>): string {
 }
 
 describe('Model role inheritance settings', () => {
+  it('keeps editing controls out of the overview', () => {
+    const html = renderRoles({ primary: ['model-a', 'model-b'] });
+    expect(html).toContain('model-a');
+    expect(html).toContain('+');
+    expect(html).not.toContain('Apply changes');
+    expect(html).not.toContain('Add model...');
+    expect(html).toContain('aria-expanded="false"');
+  });
   it('groups defaults, background tasks and specialists in order', () => {
     const html = renderRoles({ primary: ['main'] });
     expect(html.indexOf('Default models')).toBeLessThan(html.indexOf('Background tasks'));
     expect(html.indexOf('Background tasks')).toBeLessThan(html.indexOf('Specialist models'));
-    expect(html).toContain('Inherited');
+    expect(html).toContain('From Primary');
     expect(html).toContain('Not configured');
   });
   it('keeps individual decision overrides in the collapsed advanced section', () => {
@@ -31,8 +39,9 @@ describe('Model role inheritance settings', () => {
     expect(advanced).not.toContain('open=""');
     expect(advanced).toContain('Goal Judge');
     expect(advanced).toContain('Permission Review');
-    expect(advanced).toContain('Inherited: decision-model');
-    expect(advanced).not.toContain('Inherited: lightweight');
+    expect(advanced).toContain('decision-model');
+    expect(advanced).toContain('From Decision');
+    expect(advanced).not.toContain('lightweight');
     expect(html).not.toContain('settings.roles.');
   });
 
@@ -41,7 +50,7 @@ describe('Model role inheritance settings', () => {
     const advanced = html.slice(html.indexOf('<details'), html.indexOf('</details>'));
     expect(advanced).toContain('custom-judge');
     expect(advanced).toContain('1 overrides');
-    expect(advanced).toContain('Use inherited models');
-    expect(advanced.match(/Inherited: main/g)).toHaveLength(1);
+    expect(advanced).not.toContain('Apply changes');
+    expect(advanced.match(/From Primary/g)).toHaveLength(1);
   });
 });

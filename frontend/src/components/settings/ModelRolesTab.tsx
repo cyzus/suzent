@@ -1,7 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useI18n } from '../../i18n';
-import { SettingsHeader } from './SettingsHeader';
-import { Badge, GridCard, SectionCardHeader, SettingsGrid, SettingsPage } from './SettingsCard';
 
 interface ModelRolesTabProps {
   roleModels: Record<string, string[]>;
@@ -103,6 +101,7 @@ function ModelDropdown({ options, unregisteredModels, onSelect }: ModelDropdownP
     onSelect(model);
     setOpen(false);
     setQuery('');
+    ref.current?.querySelector('button')?.focus();
   }
 
   const trimmed = query.trim();
@@ -114,14 +113,14 @@ function ModelDropdown({ options, unregisteredModels, onSelect }: ModelDropdownP
         type="button"
         onClick={handleOpen}
         aria-expanded={open}
-        className="w-full flex items-center justify-between gap-2 px-3 py-1.5 border-2 border-brutal-black bg-white dark:bg-zinc-700 dark:text-white font-bold uppercase text-xs hover:bg-brutal-yellow/20 dark:hover:bg-brutal-yellow/10 brutal-btn"
+        className="w-full flex items-center justify-between gap-2 px-3 py-1.5 rounded-sm border border-neutral-300 bg-white dark:border-zinc-600 dark:bg-zinc-800 dark:text-white font-medium text-xs hover:bg-neutral-50 dark:hover:bg-zinc-700"
       >
         <span>{t('settings.roles.addFromAvailable')}</span>
         <span className="text-[10px] opacity-60">▼</span>
       </button>
 
       {open && (
-        <div className="absolute z-50 top-full mt-1 left-0 right-0 border-2 border-brutal-black bg-white dark:bg-zinc-800 shadow-brutal">
+        <div className="mt-2 rounded-sm border border-neutral-300 bg-white dark:bg-zinc-800 shadow-sm">
           {/* Search doubles as custom-model entry: Enter adds the typed id */}
           <div className="border-b-2 border-brutal-black">
             <input
@@ -130,13 +129,15 @@ function ModelDropdown({ options, unregisteredModels, onSelect }: ModelDropdownP
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && trimmed) handleSelect(trimmed);
+                if (e.key === 'Enter' && trimmed && options.includes(trimmed))
+                  handleSelect(trimmed);
                 if (e.key === 'Escape') {
                   setOpen(false);
                   setQuery('');
                   ref.current?.querySelector('button')?.focus();
                 }
               }}
+              aria-label={t('settings.roles.searchPlaceholder')}
               placeholder={t('settings.roles.searchPlaceholder')}
               className="w-full px-3 py-2 font-mono text-xs bg-neutral-50 dark:bg-zinc-700 dark:text-white focus:outline-none"
               spellCheck={false}
@@ -186,210 +187,187 @@ function ModelDropdown({ options, unregisteredModels, onSelect }: ModelDropdownP
   );
 }
 
-// ── Role card ────────────────────────────────────────────────────────────────
-
-interface RoleCardProps {
-  roleKey: string;
-  label: string;
-  desc: string;
+interface RoleRowProps {
+  role: (typeof ROLES)[number];
   selected: string[];
+  inherited: string[];
+  source: string | null;
   suggestions: string[];
   unregisteredModels: string[];
-  fallback: FallbackBehavior;
-  inheritedModels: string[];
   onChange: (models: string[]) => void;
 }
 
-function RoleCard({
-  roleKey,
-  label,
-  desc,
+function RoleRow({
+  role,
   selected,
+  inherited,
+  source,
   suggestions,
   unregisteredModels,
-  fallback,
-  inheritedModels,
   onChange,
-}: RoleCardProps) {
+}: RoleRowProps): React.ReactElement {
   const { t } = useI18n();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<string[]>([]);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const label = t(`settings.${role.labelKey}`);
+  const effective = selected.length ? selected : inherited;
+  const isInherited = !selected.length && inherited.length > 0;
+  const buttonClass =
+    'rounded-sm border border-neutral-300 px-3 py-2 text-xs font-bold hover:bg-neutral-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue dark:border-zinc-600 dark:hover:bg-zinc-700 disabled:opacity-30';
 
-  const unregistered = new Set(unregisteredModels);
-  const explicitOverrides = new Set(selected.filter((model) => !suggestions.includes(model)));
-  const available = [...new Set([...suggestions, ...unregisteredModels])].filter(
-    (m) => !selected.includes(m)
-  );
-
-  function addModel(modelId: string) {
-    const id = modelId.trim();
-    if (id && !selected.includes(id)) onChange([...selected, id]);
+  function close(): void {
+    setEditing(false);
+    trigger.current?.focus();
   }
 
-  function removeModel(modelId: string) {
-    onChange(selected.filter((m) => m !== modelId));
+  function move(index: number, offset: number): void {
+    const next = [...draft];
+    [next[index], next[index + offset]] = [next[index + offset], next[index]];
+    setDraft(next);
   }
-
-  function moveUp(idx: number) {
-    if (idx === 0) return;
-    const next = [...selected];
-    [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
-    onChange(next);
-  }
-
-  function moveDown(idx: number) {
-    if (idx >= selected.length - 1) return;
-    const next = [...selected];
-    [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
-    onChange(next);
-  }
-
-  function priorityLabel(index: number): string {
-    if (index === 0) return t('settings.roles.firstChoice');
-    if (index === selected.length - 1) return t('settings.roles.lastResort');
-    return t('settings.roles.fallbackNumber', { number: String(index) });
-  }
-
-  const emptyFallback =
-    fallback === 'primary'
-      ? t('settings.roles.inheritsPrimary')
-      : fallback === 'cheap'
-        ? t('settings.roles.inheritsCheap')
-        : fallback === 'decision'
-          ? t('settings.roles.inheritsDecision')
-          : fallback === 'vision-primary'
-            ? t('settings.roles.inheritsVisionPrimary')
-            : t('settings.roles.noImplicitFallback');
 
   return (
-    <GridCard
-      title={label}
-      subtitle={desc}
-      headerRight={
-        <Badge
-          tone={selected.length ? 'green' : inheritedModels.length ? 'blue' : 'neutral'}
-          className="shrink-0"
-        >
-          {t(
-            `settings.roles.${selected.length ? 'customStatus' : inheritedModels.length ? 'inheritedStatus' : 'notConfigured'}`
-          )}
-        </Badge>
-      }
-    >
-      {/* Body */}
-      <div className="flex flex-1 flex-col gap-3 p-3">
-        {/* Selected model chain */}
-        {selected.length > 0 ? (
-          <div>
-            {selected.map((modelId, idx) => (
-              <React.Fragment key={modelId}>
-                <div className="grid grid-cols-[5.25rem_minmax(0,1fr)_auto] items-center gap-1.5">
-                  <span className="text-[9px] font-black uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
-                    {priorityLabel(idx)}
-                  </span>
-                  <span
-                    className="flex min-w-0 items-center gap-1.5 border-2 border-brutal-black bg-neutral-50 px-2 py-1.5 font-mono text-xs dark:bg-zinc-700 dark:text-white"
-                    title={modelId}
-                  >
-                    <span className="truncate">{modelId}</span>
-                    {(unregistered.has(modelId) || explicitOverrides.has(modelId)) && (
-                      <span
-                        className="shrink-0 text-amber-700 dark:text-amber-300"
-                        title={t('settings.roles.explicitOverride')}
-                        aria-label={t('settings.roles.explicitOverride')}
-                      >
-                        ?
-                      </span>
-                    )}
-                  </span>
-                  <div className="flex items-center gap-1">
-                    {idx > 0 ? (
-                      <button
-                        type="button"
-                        onClick={() => moveUp(idx)}
-                        className="w-6 h-6 flex items-center justify-center border-2 border-brutal-black bg-white dark:bg-zinc-700 hover:bg-neutral-100 dark:hover:bg-zinc-600 dark:text-white text-xs flex-shrink-0 font-bold"
-                        title={t('settings.roles.moveUp')}
-                      >
-                        ↑
-                      </button>
-                    ) : (
-                      selected.length > 1 && (
-                        <span className="w-6 h-6 flex-shrink-0" aria-hidden="true" />
-                      )
-                    )}
-                    {idx < selected.length - 1 ? (
-                      <button
-                        type="button"
-                        onClick={() => moveDown(idx)}
-                        className="w-6 h-6 flex items-center justify-center border-2 border-brutal-black bg-white dark:bg-zinc-700 hover:bg-neutral-100 dark:hover:bg-zinc-600 dark:text-white text-xs flex-shrink-0 font-bold"
-                        title={t('settings.roles.moveDown')}
-                      >
-                        ↓
-                      </button>
-                    ) : (
-                      selected.length > 1 && (
-                        <span className="w-6 h-6 flex-shrink-0" aria-hidden="true" />
-                      )
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => removeModel(modelId)}
-                      className="w-6 h-6 flex items-center justify-center border-2 border-brutal-black bg-white dark:bg-zinc-700 hover:bg-red-50 dark:hover:bg-red-900/30 dark:text-white text-xs flex-shrink-0 font-bold"
-                      title={t('common.remove')}
-                    >
-                      ×
-                    </button>
-                  </div>
-                </div>
-                {idx < selected.length - 1 && (
-                  <div
-                    className="ml-[5.55rem] h-3 border-l-2 border-dashed border-neutral-400"
-                    aria-hidden="true"
-                  />
-                )}
-              </React.Fragment>
-            ))}
-            <p className="mt-2 border-t border-neutral-200 pt-2 text-[10px] leading-relaxed text-neutral-500 dark:border-zinc-600 dark:text-neutral-400">
-              {t('settings.roles.chainStops')}
-            </p>
-          </div>
-        ) : (
-          <div className="border-2 border-dashed border-neutral-300 bg-neutral-50 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-900">
-            <p className="text-[10px] font-black uppercase text-neutral-500 dark:text-neutral-400">
-              {t(`settings.roles.${inheritedModels.length ? 'inheritedStatus' : 'notConfigured'}`)}
-            </p>
-            <p className="mt-1 text-xs leading-relaxed text-neutral-600 dark:text-neutral-400">
-              {emptyFallback}
-            </p>
-            {inheritedModels.length > 0 && (
-              <p className="mt-2 break-all font-mono text-xs dark:text-neutral-300">
-                {t('settings.roles.inheritedModels', { models: inheritedModels.join(' → ') })}
-              </p>
-            )}
-          </div>
-        )}
-
-        {selected.length > 0 && fallback !== 'none' && (
-          <button
-            type="button"
-            onClick={() => onChange([])}
-            className="self-start text-xs font-bold underline underline-offset-4 text-neutral-600 hover:text-brutal-black focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 dark:text-neutral-300 dark:hover:text-white"
+    <div className={editing ? 'bg-neutral-50 dark:bg-zinc-900' : ''}>
+      <button
+        ref={trigger}
+        type="button"
+        aria-expanded={editing}
+        aria-controls={`role-editor-${role.key}`}
+        onClick={() => {
+          if (editing) close();
+          else {
+            setDraft([...selected]);
+            setEditing(true);
+          }
+        }}
+        className="group grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 text-left hover:bg-neutral-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-brutal-blue dark:hover:bg-zinc-900 sm:grid-cols-[minmax(8rem,0.8fr)_minmax(0,1.5fr)_auto]"
+      >
+        <span className="text-sm font-bold">{label}</span>
+        <span className="col-start-1 row-start-2 min-w-0 sm:col-start-2 sm:row-start-1">
+          <span
+            className={`block truncate font-mono text-xs ${effective.length ? '' : 'font-sans text-neutral-400'}`}
+            title={effective.join(', ')}
           >
-            {t('settings.roles.restoreInheritance')}
-          </button>
-        )}
-        {/* Add model: searchable dropdown; typing a custom id also works */}
-        <ModelDropdown options={available} unregisteredModels={unregistered} onSelect={addModel} />
-        {unregisteredModels.length > 0 &&
-          ['vision', 'embedding', 'image_generation', 'tts'].includes(roleKey) && (
-            <p className="text-[10px] leading-relaxed text-amber-800 dark:text-amber-300">
-              {t('settings.roles.unregisteredAvailable')}
+            {effective[0] || t('settings.roles.notConfigured')}
+            {effective.length > 1 && (
+              <span className="ml-2 font-sans text-neutral-500">+{effective.length - 1}</span>
+            )}
+          </span>
+          <span className="mt-1 block text-[11px] text-neutral-500 dark:text-neutral-400">
+            {isInherited
+              ? t('settings.roles.fromRole', { role: source })
+              : selected.length
+                ? t('settings.roles.customStatus')
+                : t('settings.roles.chooseModel')}
+          </span>
+        </span>
+        <span className="col-start-2 row-start-1 row-span-2 flex items-center gap-2 text-xs text-neutral-500 sm:col-start-3 sm:row-span-1">
+          <span
+            className={`h-1.5 w-1.5 rounded-full ${selected.length ? 'bg-emerald-500' : isInherited ? 'bg-blue-400' : 'bg-neutral-300'}`}
+            aria-hidden="true"
+          />
+          <span aria-hidden="true">{editing ? '−' : '+'}</span>
+        </span>
+      </button>
+      {editing && (
+        <div
+          id={`role-editor-${role.key}`}
+          className="space-y-3 border-t border-neutral-200 px-4 pb-4 pt-3 dark:border-zinc-700"
+        >
+          <p className="text-xs leading-relaxed text-neutral-500 dark:text-neutral-400">
+            {t(`settings.${role.descKey}`)}
+          </p>
+          {role.fallback !== 'none' && (
+            <button
+              type="button"
+              className={`${buttonClass} ${!draft.length ? 'border-blue-400 bg-blue-50 dark:bg-blue-950' : ''}`}
+              onClick={() => setDraft([])}
+            >
+              {t('settings.roles.restoreInheritance')}
+            </button>
+          )}
+          {!draft.length && (
+            <p className="break-words text-xs text-neutral-600 dark:text-neutral-400">
+              {inherited.length
+                ? t('settings.roles.inheritPreview', { role: source, model: inherited[0] })
+                : t('settings.roles.emptyPreview')}
             </p>
           )}
-      </div>
-    </GridCard>
+          {draft.length > 0 && (
+            <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
+              {t('settings.roles.modelOrder')}
+            </p>
+          )}
+          <ol className="space-y-2">
+            {draft.map((model, index) => (
+              <li
+                key={model}
+                className="flex flex-wrap items-center gap-2 rounded-sm border border-neutral-200 bg-white p-2 dark:border-zinc-700 dark:bg-zinc-800"
+              >
+                <span className="w-5 text-center text-xs text-neutral-400">{index + 1}</span>
+                <span className="min-w-0 flex-1 break-all font-mono text-xs">{model}</span>
+                <div className="flex gap-1">
+                  <button
+                    type="button"
+                    className={buttonClass}
+                    disabled={index === 0}
+                    onClick={() => move(index, -1)}
+                    aria-label={`${t('settings.roles.moveUp')}: ${model}`}
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    className={buttonClass}
+                    disabled={index === draft.length - 1}
+                    onClick={() => move(index, 1)}
+                    aria-label={`${t('settings.roles.moveDown')}: ${model}`}
+                  >
+                    ↓
+                  </button>
+                  <button
+                    type="button"
+                    className={buttonClass}
+                    onClick={() => setDraft(draft.filter((id) => id !== model))}
+                    aria-label={`${t('common.remove')}: ${model}`}
+                  >
+                    ×
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ol>
+          <ModelDropdown
+            options={[...new Set([...suggestions, ...unregisteredModels])].filter(
+              (id) => !draft.includes(id)
+            )}
+            unregisteredModels={new Set(unregisteredModels)}
+            onSelect={(id) => {
+              const model = id.trim();
+              if (model && !draft.includes(model)) setDraft([...draft, model]);
+            }}
+          />
+          <div className="flex items-center justify-end gap-2 border-t border-neutral-200 pt-3 dark:border-zinc-700">
+            <button type="button" className={buttonClass} onClick={close}>
+              {t('common.cancel')}
+            </button>
+            <button
+              type="button"
+              className={`${buttonClass} bg-brutal-black text-white hover:bg-zinc-700 dark:bg-white dark:text-black dark:hover:bg-neutral-200`}
+              onClick={() => {
+                onChange(draft);
+                close();
+              }}
+            >
+              {t('settings.roles.applyChanges')}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
-
-// ── Tab ──────────────────────────────────────────────────────────────────────
 
 export function ModelRolesTab({
   roleModels,
@@ -399,105 +377,80 @@ export function ModelRolesTab({
 }: ModelRolesTabProps): React.ReactElement {
   const { t } = useI18n();
 
-  function inheritedModelsFor(fallback: FallbackBehavior): string[] {
-    if (fallback === 'none') return [];
-    if (fallback === 'vision-primary') {
-      return (roleModels.primary || []).filter((model) => suggestions.vision?.includes(model));
-    }
-    const assigned = roleModels[fallback];
-    if (assigned?.length) return assigned;
-    const parent = ROLES.find((role) => role.key === fallback);
-    return parent ? inheritedModelsFor(parent.fallback) : [];
+  function resolveParent(fallback: FallbackBehavior): { models: string[]; source: string | null } {
+    if (fallback === 'none') return { models: [], source: null };
+    if (fallback === 'vision-primary')
+      return {
+        models: (roleModels.primary || []).filter((model) => suggestions.vision?.includes(model)),
+        source: t('settings.roles.primary'),
+      };
+    const parent = ROLES.find((role) => role.key === fallback)!;
+    const models = roleModels[fallback] || [];
+    return models.length
+      ? { models, source: t(`settings.${parent.labelKey}`) }
+      : resolveParent(parent.fallback);
   }
 
-  function renderRole({
-    key,
-    labelKey,
-    descKey,
-    fallback,
-  }: (typeof ROLES)[number]): React.ReactElement {
+  function renderRole(role: (typeof ROLES)[number]): React.ReactElement {
+    const { models, source } = resolveParent(role.fallback);
     return (
-      <RoleCard
-        key={key}
-        roleKey={key}
-        label={t(`settings.${labelKey}`)}
-        desc={t(`settings.${descKey}`)}
-        selected={roleModels[key] || []}
-        suggestions={suggestions[key] || []}
+      <RoleRow
+        key={role.key}
+        role={role}
+        selected={roleModels[role.key] || []}
+        inherited={models}
+        source={source}
+        suggestions={suggestions[role.key] || []}
         unregisteredModels={unregisteredModels}
-        fallback={fallback}
-        inheritedModels={inheritedModelsFor(fallback)}
-        onChange={(models) => onChange({ ...roleModels, [key]: models })}
+        onChange={(selected) => onChange({ ...roleModels, [role.key]: selected })}
       />
     );
   }
 
-  return (
-    <SettingsPage>
-      <SettingsHeader title={t('settings.roles.title')} subtitle={t('settings.roles.subtitle')} />
+  const groups = [
+    { key: 'defaultsGroup', roles: ['primary', 'cheap', 'decision'] },
+    { key: 'tasksGroup', roles: ['title', 'memory_extraction', 'dream'] },
+    { key: 'specialistsGroup', roles: ['vision', 'embedding', 'image_generation', 'tts'] },
+  ];
 
-      <section aria-labelledby="role-defaults">
-        <SectionCardHeader
-          title={t('settings.roles.defaultsGroup')}
-          description={t('settings.roles.defaultsGroupDesc')}
-        />
-        <div id="role-defaults" className="sr-only">
-          {t('settings.roles.defaultsGroup')}
-        </div>
-        <SettingsGrid density="compact">
-          {ROLES.filter((role) => ['primary', 'cheap', 'decision'].includes(role.key)).map(
-            renderRole
-          )}
-        </SettingsGrid>
-        <details className="mt-4 border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900 dark:text-white">
-          <summary className="cursor-pointer p-3 font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue">
-            {t('settings.roles.advancedDecision')}
-            <span className="ml-2 text-xs font-normal text-neutral-500 dark:text-neutral-400">
-              {t('settings.roles.overrideCount', {
-                count: ROLES.filter(
-                  (role) => role.fallback === 'decision' && roleModels[role.key]?.length
-                ).length,
-              })}
-            </span>
-          </summary>
-          <div className="border-t-2 border-brutal-black p-3">
-            <p className="mb-3 text-xs text-neutral-600 dark:text-neutral-400">
-              {t('settings.roles.advancedDecisionDesc')}
-            </p>
-            <SettingsGrid density="compact">
-              {ROLES.filter((role) => role.fallback === 'decision').map(renderRole)}
-            </SettingsGrid>
+  return (
+    <div className="space-y-5 bg-neutral-100 p-3 text-neutral-900 dark:bg-zinc-900 dark:text-neutral-100 sm:p-4">
+      <header className="border-l-4 border-brutal-yellow pl-3">
+        <h2 className="text-xl font-black tracking-tight">{t('settings.roles.title')}</h2>
+        <p className="mt-1 text-xs leading-relaxed text-neutral-500 dark:text-neutral-400">
+          {t('settings.roles.compactIntro')}
+        </p>
+      </header>
+      {groups.map((group) => (
+        <section key={group.key} aria-labelledby={`roles-${group.key}`}>
+          <h3
+            id={`roles-${group.key}`}
+            className="mb-2 text-xs font-bold tracking-wide text-neutral-500 dark:text-neutral-400"
+          >
+            {t(`settings.roles.${group.key}`)}
+          </h3>
+          <div className="divide-y divide-neutral-200 rounded-sm border border-neutral-300 bg-white dark:divide-zinc-700 dark:border-zinc-700 dark:bg-zinc-800">
+            {ROLES.filter((role) => group.roles.includes(role.key)).map(renderRole)}
+            {group.key === 'defaultsGroup' && (
+              <details>
+                <summary className="cursor-pointer px-4 py-3 text-xs text-neutral-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue dark:text-neutral-400">
+                  {t('settings.roles.advancedDecision')}
+                  <span className="ml-2">
+                    {t('settings.roles.overrideCount', {
+                      count: ['goal_judge', 'permission_review'].filter(
+                        (key) => roleModels[key]?.length
+                      ).length,
+                    })}
+                  </span>
+                </summary>
+                <div className="divide-y divide-neutral-200 border-t border-neutral-200 dark:divide-zinc-700 dark:border-zinc-700">
+                  {ROLES.filter((role) => role.fallback === 'decision').map(renderRole)}
+                </div>
+              </details>
+            )}
           </div>
-        </details>
-      </section>
-      <section aria-labelledby="role-tasks">
-        <SectionCardHeader
-          title={t('settings.roles.tasksGroup')}
-          description={t('settings.roles.tasksGroupDesc')}
-        />
-        <div id="role-tasks" className="sr-only">
-          {t('settings.roles.tasksGroup')}
-        </div>
-        <SettingsGrid density="compact">
-          {ROLES.filter((role) => ['title', 'memory_extraction', 'dream'].includes(role.key)).map(
-            renderRole
-          )}
-        </SettingsGrid>
-      </section>
-      <section aria-labelledby="role-specialists">
-        <SectionCardHeader
-          title={t('settings.roles.specialistsGroup')}
-          description={t('settings.roles.specialistsGroupDesc')}
-        />
-        <div id="role-specialists" className="sr-only">
-          {t('settings.roles.specialistsGroup')}
-        </div>
-        <SettingsGrid density="compact">
-          {ROLES.filter((role) =>
-            ['vision', 'embedding', 'image_generation', 'tts'].includes(role.key)
-          ).map(renderRole)}
-        </SettingsGrid>
-      </section>
-    </SettingsPage>
+        </section>
+      ))}
+    </div>
   );
 }

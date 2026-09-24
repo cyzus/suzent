@@ -718,6 +718,13 @@ export const en = {
       specialistsGroup: 'Specialist models',
       specialistsGroupDesc:
         'Vision can inherit a compatible Primary model. Other capabilities require their own models.',
+      modelOrder: 'Models are ordered by priority, with your first choice at the top.',
+      compactIntro: 'Choose a role to edit. Tasks use inherited models until you assign their own.',
+      fromRole: 'From {role}',
+      chooseModel: 'Choose a model',
+      inheritPreview: 'Use {model} from {role}.',
+      emptyPreview: 'No model selected. Add one below to enable this role.',
+      applyChanges: 'Apply changes',
       primary: 'Primary',
       primaryDesc: 'Main chat agent. Needs tool use and large context.',
       cheap: 'Cheap',
