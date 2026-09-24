@@ -61,12 +61,13 @@ const ROLES: { key: string; labelKey: string; descKey: string; fallback: Fallbac
 // ── Searchable dropdown ──────────────────────────────────────────────────────
 
 interface ModelDropdownProps {
+  label: string;
   options: string[];
   unregisteredModels: Set<string>;
   onSelect: (model: string) => void;
 }
 
-function ModelDropdown({ options, unregisteredModels, onSelect }: ModelDropdownProps) {
+function ModelDropdown({ label, options, unregisteredModels, onSelect }: ModelDropdownProps) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -118,13 +119,12 @@ function ModelDropdown({ options, unregisteredModels, onSelect }: ModelDropdownP
         aria-expanded={open}
         className="w-full flex items-center justify-between gap-2 px-3 py-1.5 border-2 border-brutal-black bg-white dark:bg-zinc-800 dark:text-white font-mono font-bold text-xs hover:bg-brutal-yellow/20 brutal-btn"
       >
-        <span>{t('settings.roles.addFromAvailable')}</span>
+        <span className="min-w-0 truncate">{label}</span>
         <span className="text-[10px] opacity-60">▼</span>
       </button>
 
       {open && (
         <div className="mt-2 border-2 border-brutal-black bg-white dark:bg-zinc-800 shadow-brutal-sm">
-          {/* Search doubles as custom-model entry: Enter adds the typed id */}
           <div className="border-b-2 border-brutal-black">
             <input
               ref={inputRef}
@@ -171,7 +171,7 @@ function ModelDropdown({ options, unregisteredModels, onSelect }: ModelDropdownP
                 </button>
               </li>
             ))}
-            {trimmed && !isExistingOption && (
+            {trimmed.includes('/') && !isExistingOption && filtered.length === 0 && (
               <li>
                 <button
                   type="button"
@@ -212,6 +212,7 @@ function RoleRow({
   const { t } = useI18n();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<string[]>([]);
+  const [inherit, setInherit] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const label = t(`settings.${role.labelKey}`);
   const effective = selected.length ? selected : inherited;
@@ -239,6 +240,7 @@ function RoleRow({
           if (editing) close();
           else {
             setDraft([...selected]);
+            setInherit(role.fallback !== 'none' && selected.length === 0);
             setEditing(true);
           }
         }}
@@ -280,79 +282,117 @@ function RoleRow({
             {t(`settings.${role.descKey}`)}
           </p>
           {role.fallback !== 'none' && (
-            <BrutalButton
-              size="sm"
-              type="button"
-              isActive={!draft.length}
-              onClick={() => setDraft([])}
-            >
-              {t('settings.roles.restoreInheritance')}
-            </BrutalButton>
+            <fieldset className="flex flex-wrap gap-4 text-xs font-bold">
+              <legend className="sr-only">{t('settings.roles.modelSource')}</legend>
+              <label className="flex cursor-pointer items-center gap-2">
+                <input
+                  type="radio"
+                  name={`source-${role.key}`}
+                  checked={inherit}
+                  onChange={() => setInherit(true)}
+                />
+                {t('settings.roles.inheritMode')}
+              </label>
+              <label className="flex cursor-pointer items-center gap-2">
+                <input
+                  type="radio"
+                  name={`source-${role.key}`}
+                  checked={!inherit}
+                  onChange={() => setInherit(false)}
+                />
+                {t('settings.roles.customMode')}
+              </label>
+            </fieldset>
           )}
-          {!draft.length && (
+          {inherit ? (
             <p className="break-words text-xs text-neutral-600 dark:text-neutral-400">
               {inherited.length
                 ? t('settings.roles.inheritPreview', { role: source, model: inherited[0] })
-                : t('settings.roles.emptyPreview')}
+                : t('settings.roles.parentMissing')}
             </p>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-xs font-bold">{t('settings.roles.firstChoice')}</p>
+              <ModelDropdown
+                label={draft[0] || t('settings.roles.chooseModel')}
+                options={[...new Set([...suggestions, ...unregisteredModels])]}
+                unregisteredModels={new Set(unregisteredModels)}
+                onSelect={(id) => {
+                  const model = id.trim();
+                  if (model) setDraft([model, ...draft.slice(1).filter((item) => item !== model)]);
+                }}
+              />
+              {draft.length > 0 && role.fallback === 'none' && (
+                <BrutalButton type="button" size="xs" onClick={() => setDraft([])}>
+                  {t('settings.roles.clearRole')}
+                </BrutalButton>
+              )}
+              {draft.length > 0 && (
+                <details className="border-t border-neutral-200 pt-3 dark:border-zinc-700">
+                  <summary className="cursor-pointer text-xs font-bold">
+                    {t('settings.roles.backupModels', { count: draft.length - 1 })}
+                  </summary>
+                  <div className="mt-3 space-y-3">
+                    <p className="text-[11px] text-neutral-500">{t('settings.roles.modelOrder')}</p>
+                    <ol className="space-y-2">
+                      {draft.slice(1).map((model, offset) => {
+                        const index = offset + 1;
+                        return (
+                          <li
+                            key={model}
+                            className="flex flex-wrap items-center gap-2 border-2 border-brutal-black bg-white p-2 dark:bg-zinc-800"
+                          >
+                            <span className="min-w-0 flex-1 break-all font-mono text-xs">
+                              {model}
+                            </span>
+                            <div className="flex gap-1">
+                              <BrutalButton
+                                size="sm"
+                                type="button"
+                                disabled={index === 1}
+                                onClick={() => move(index, -1)}
+                                aria-label={`${t('settings.roles.moveUp')}: ${model}`}
+                              >
+                                ↑
+                              </BrutalButton>
+                              <BrutalButton
+                                size="sm"
+                                type="button"
+                                disabled={index === draft.length - 1}
+                                onClick={() => move(index, 1)}
+                                aria-label={`${t('settings.roles.moveDown')}: ${model}`}
+                              >
+                                ↓
+                              </BrutalButton>
+                              <BrutalButton
+                                size="sm"
+                                type="button"
+                                onClick={() => setDraft(draft.filter((id) => id !== model))}
+                                aria-label={`${t('common.remove')}: ${model}`}
+                              >
+                                ×
+                              </BrutalButton>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ol>
+                    <ModelDropdown
+                      label={t('settings.roles.addBackup')}
+                      options={[...new Set([...suggestions, ...unregisteredModels])].filter(
+                        (id) => !draft.includes(id)
+                      )}
+                      unregisteredModels={new Set(unregisteredModels)}
+                      onSelect={(id) => {
+                        const model = id.trim();
+                        if (model && !draft.includes(model)) setDraft([...draft, model]);
+                      }}
+                    />
+                  </div>
+                </details>
+              )}
+            </div>
           )}
-          {draft.length > 0 && (
-            <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
-              {t('settings.roles.modelOrder')}
-            </p>
-          )}
-          <ol className="space-y-2">
-            {draft.map((model, index) => (
-              <li
-                key={model}
-                className="flex flex-wrap items-center gap-2 border-2 border-brutal-black bg-white p-2 dark:bg-zinc-800"
-              >
-                <span className="w-5 text-center text-xs text-neutral-400">{index + 1}</span>
-                <span className="min-w-0 flex-1 break-all font-mono text-xs">{model}</span>
-                <div className="flex gap-1">
-                  <BrutalButton
-                    size="sm"
-                    type="button"
-                    className="focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue"
-                    disabled={index === 0}
-                    onClick={() => move(index, -1)}
-                    aria-label={`${t('settings.roles.moveUp')}: ${model}`}
-                  >
-                    ↑
-                  </BrutalButton>
-                  <BrutalButton
-                    size="sm"
-                    type="button"
-                    className="focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue"
-                    disabled={index === draft.length - 1}
-                    onClick={() => move(index, 1)}
-                    aria-label={`${t('settings.roles.moveDown')}: ${model}`}
-                  >
-                    ↓
-                  </BrutalButton>
-                  <BrutalButton
-                    size="sm"
-                    type="button"
-                    className="focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue"
-                    onClick={() => setDraft(draft.filter((id) => id !== model))}
-                    aria-label={`${t('common.remove')}: ${model}`}
-                  >
-                    ×
-                  </BrutalButton>
-                </div>
-              </li>
-            ))}
-          </ol>
-          <ModelDropdown
-            options={[...new Set([...suggestions, ...unregisteredModels])].filter(
-              (id) => !draft.includes(id)
-            )}
-            unregisteredModels={new Set(unregisteredModels)}
-            onSelect={(id) => {
-              const model = id.trim();
-              if (model && !draft.includes(model)) setDraft([...draft, model]);
-            }}
-          />
           <div className="flex items-center justify-end gap-2 border-t border-neutral-200 pt-3 dark:border-zinc-700">
             <BrutalButton
               size="sm"
@@ -366,8 +406,9 @@ function RoleRow({
               size="sm"
               type="button"
               variant="primary"
+              disabled={!inherit && role.fallback !== 'none' && draft.length === 0}
               onClick={() => {
-                onChange(draft);
+                onChange(inherit ? [] : draft);
                 close();
               }}
             >
