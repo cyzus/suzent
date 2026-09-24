@@ -1061,6 +1061,7 @@ export const zhCN = {
       viewAllScheduled: '查看全部 {count} 个自动任务',
       moreHeartbeat: '还有 {count} 个心跳会话',
       deleteTaskTitle: '删除 {name}？',
+      deleteBoundTaskMessage: '这将删除定时任务，保留其所在的对话。',
       deleteTaskMessage: '这会删除自动任务及其会话，且无法撤销。',
     },
     organization: {

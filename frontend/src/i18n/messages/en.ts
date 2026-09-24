@@ -1098,6 +1098,7 @@ export const en = {
       viewAllScheduled: 'View all {count} scheduled tasks',
       moreHeartbeat: '{count} more heartbeat sessions',
       deleteTaskTitle: 'Delete {name}?',
+      deleteBoundTaskMessage: 'This removes the scheduled task. Its conversation will be kept.',
       deleteTaskMessage:
         'This removes the scheduled task and its conversation. This cannot be undone.',
     },
