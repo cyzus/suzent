@@ -15,7 +15,7 @@ import type { ChatGPTLoginResponse, ChatGPTStatusResponse } from '../../types/ap
 import { BrutalMultiSelect } from '../BrutalMultiSelect';
 import { BrutalButton } from '../BrutalButton';
 import { SettingsHeader } from './SettingsHeader';
-import { SettingsGrid, SettingsPage } from './SettingsCard';
+import { SettingsPage } from './SettingsCard';
 import {
   getProviderColor,
   getProviderInitials,
@@ -58,6 +58,7 @@ interface ProvidersTabProps {
   showKey: Record<string, boolean>;
   activeTabs: Record<string, ProviderTab>;
   verifying: Record<string, boolean>;
+  verification?: Record<string, { success: boolean; message: string }>;
   onKeyChange: (key: string, val: string) => void;
   onToggleShowKey: (key: string) => void;
   onTabChange: (providerId: string, tab: ProviderTab) => void;
@@ -72,6 +73,7 @@ interface ProvidersTabProps {
 // ─── KeyStatusBadge ──────────────────────────────────────────────────────────
 
 function KeyStatusBadge({ fields }: { fields: ApiField[] }) {
+  const { t } = useI18n();
   const secretFields = fields.filter((f) => f.type === 'secret');
   if (secretFields.length === 0) return null;
   const hasKey = secretFields.some((f) => f.isSet);
@@ -80,7 +82,7 @@ function KeyStatusBadge({ fields }: { fields: ApiField[] }) {
     <span
       className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 border-2 ${hasKey ? 'border-brutal-black bg-brutal-black text-white dark:bg-white dark:text-brutal-black' : 'border-brutal-black text-brutal-black dark:border-white dark:text-white bg-transparent'}`}
     >
-      {hasKey ? 'key set' : 'no key'}
+      {t(`settings.providers.${hasKey ? 'keySet' : 'noKey'}`)}
     </span>
   );
 }
@@ -543,6 +545,7 @@ export function ProvidersTab({
   showKey,
   activeTabs,
   verifying,
+  verification = {},
   onKeyChange,
   onToggleShowKey,
   onTabChange,
@@ -554,6 +557,10 @@ export function ProvidersTab({
   onChatGPTAuthChanged,
 }: ProvidersTabProps): React.ReactElement {
   const { t } = useI18n();
+  const [query, setQuery] = useState('');
+  const [modelQueries, setModelQueries] = useState<Record<string, string>>({});
+  const [modelDrafts, setModelDrafts] = useState<Record<string, string>>({});
+  const [keyDrafts, setKeyDrafts] = useState<Record<string, string>>({});
   const [showAddForm, setShowAddForm] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
@@ -563,7 +570,7 @@ export function ProvidersTab({
 
   const startEditing = (fieldKey: string) => {
     setEditingFields((prev) => new Set(prev).add(fieldKey));
-    onKeyChange(fieldKey, '');
+    setKeyDrafts((prev) => ({ ...prev, [fieldKey]: '' }));
   };
 
   const cancelEditing = (field: ApiField) => {
@@ -572,12 +579,21 @@ export function ProvidersTab({
       s.delete(field.key);
       return s;
     });
-    onKeyChange(field.key, field.value);
+    setKeyDrafts((prev) => {
+      const next = { ...prev };
+      delete next[field.key];
+      return next;
+    });
   };
 
-  // Commits the in-progress edit: exits edit mode keeping the current value.
-  // Persistence is handled by the parent's autosave on apiKeys changes.
+  // Only committed drafts enter the parent autosave state.
   const confirmEditing = (field: ApiField) => {
+    onKeyChange(field.key, keyDrafts[field.key] ?? '');
+    setKeyDrafts((prev) => {
+      const next = { ...prev };
+      delete next[field.key];
+      return next;
+    });
     setEditingFields((prev) => {
       const s = new Set(prev);
       s.delete(field.key);
@@ -648,7 +664,7 @@ export function ProvidersTab({
               size="sm"
               className="!border-white"
             >
-              {showAddForm ? '✕' : t('settings.providers.addProvider')}
+              {showAddForm ? t('common.cancel') : t('settings.providers.addProvider')}
             </BrutalButton>
           </>
         }
@@ -658,23 +674,43 @@ export function ProvidersTab({
         <AddProviderForm onSave={handleSaveProvider} onCancel={() => setShowAddForm(false)} />
       )}
 
-      <SettingsGrid>
+      <input
+        type="search"
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+        aria-label={t('settings.providers.searchProviders')}
+        placeholder={t('settings.providers.searchProviders')}
+        className="w-full border-2 border-brutal-black bg-white px-3 py-2 text-sm dark:bg-zinc-800 dark:text-white"
+      />
+      {!providers.some((provider) =>
+        `${provider.label} ${provider.id}`.toLowerCase().includes(query.trim().toLowerCase())
+      ) && <p className="text-sm dark:text-white">{t('settings.providers.noMatchingProviders')}</p>}
+      <div className="space-y-3">
         {providers.map((provider) => {
+          const visible = `${provider.label} ${provider.id}`
+            .toLowerCase()
+            .includes(query.trim().toLowerCase());
           const activeTab = activeTabs[provider.id] || 'credentials';
           const conf = userConfigs[provider.id] || { enabled_models: [], custom_models: [] };
           const isEnabled = conf.enabled_models.length > 0;
 
           if (provider.id === 'chatgpt') {
             return (
-              <ChatGPTProviderCard
-                key={provider.id}
-                provider={provider}
-                config={conf}
-                onConfigChange={onConfigChange}
-                onAuthChanged={onChatGPTAuthChanged}
-                onVerify={onVerify}
-                verifying={!!verifying[provider.id]}
-              />
+              <div key={provider.id} className={visible ? '' : 'hidden'}>
+                <ChatGPTProviderCard
+                  provider={provider}
+                  config={conf}
+                  onConfigChange={onConfigChange}
+                  onAuthChanged={onChatGPTAuthChanged}
+                  onVerify={onVerify}
+                  verifying={!!verifying[provider.id]}
+                />
+                {verification[provider.id] && (
+                  <p role="status" className="mt-2 text-xs dark:text-white">
+                    {verification[provider.id].message}
+                  </p>
+                )}
+              </div>
             );
           }
 
@@ -699,12 +735,12 @@ export function ProvidersTab({
           }
 
           return (
-            <div
+            <details
               key={provider.id}
-              className="flex h-full flex-col border-2 border-brutal-black bg-white shadow-brutal-sm dark:bg-zinc-800 dark:text-white"
+              className={`${visible ? '' : 'hidden'} border-2 border-brutal-black bg-white shadow-brutal-sm dark:bg-zinc-800 dark:text-white`}
             >
               {/* Provider Header */}
-              <div className="flex items-center justify-between gap-3 border-b-2 border-brutal-black bg-neutral-50 p-3 dark:bg-zinc-900">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 bg-neutral-50 p-3 dark:bg-zinc-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue">
                 <div className="flex flex-1 items-center gap-3 min-w-0">
                   <ProviderIcon provider={provider} />
                   <div className="flex flex-col min-w-0">
@@ -716,28 +752,27 @@ export function ProvidersTab({
                     </span>
                     {provider.user_defined && (
                       <span className="text-[9px] font-bold uppercase tracking-wider text-neutral-400">
-                        custom
+                        {t('settings.providers.customProvider')}
                       </span>
                     )}
                   </div>
                 </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <KeyStatusBadge fields={provider.fields} />
-                  {provider.user_defined && (
-                    <button
-                      onClick={() => handleDelete(provider.id)}
-                      disabled={deletingId === provider.id}
-                      className="text-[10px] font-black uppercase px-2 py-1 border-2 border-brutal-black text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-700 disabled:opacity-40"
-                      title={t('settings.providers.deleteProvider')}
-                    >
-                      {deletingId === provider.id ? '…' : '✕'}
-                    </button>
-                  )}
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <KeyStatusBadge
+                    fields={provider.fields.map((field) => ({
+                      ...field,
+                      isSet: field.isSet || !!apiKeys[field.key],
+                    }))}
+                  />
+                  <span className="text-[10px] font-bold">
+                    {t('settings.providers.enabledCount', { count: conf.enabled_models.length })}
+                  </span>
+                  <span aria-hidden="true">▾</span>
                   <div
                     className={`w-4 h-4 rounded-full border-2 border-brutal-black ${isEnabled ? 'bg-brutal-green' : 'bg-transparent'}`}
                   ></div>
                 </div>
-              </div>
+              </summary>
 
               {/* Tabs */}
               <div className="flex border-b-2 border-brutal-black bg-brutal-black">
@@ -759,8 +794,11 @@ export function ProvidersTab({
                 {activeTab === 'credentials' && (
                   <div className="space-y-4">
                     {provider.fields.map((field) => {
-                      const val = apiKeys[field.key] ?? '';
-                      const isConfigured = field.isSet && !editingFields.has(field.key);
+                      const val = keyDrafts[field.key] ?? apiKeys[field.key] ?? '';
+                      const isConfigured =
+                        (field.isSet || !!apiKeys[field.key]) &&
+                        !editingFields.has(field.key) &&
+                        keyDrafts[field.key] === undefined;
                       const isEnvKey = field.source === 'env'; // display-only hint
 
                       return (
@@ -771,7 +809,9 @@ export function ProvidersTab({
                             </label>
                             {isConfigured && (
                               <span className="text-[9px] font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
-                                {isEnvKey ? 'env' : 'saved'}
+                                {t(
+                                  `settings.providers.${isEnvKey ? 'environmentValue' : 'savedValue'}`
+                                )}
                               </span>
                             )}
                           </div>
@@ -781,7 +821,7 @@ export function ProvidersTab({
                             <div className="flex gap-0 min-w-0">
                               <div className="flex-1 min-w-0 flex items-center bg-neutral-100 dark:bg-zinc-800 border-2 border-brutal-black px-3 py-2">
                                 <span className="font-mono text-xs text-neutral-500 dark:text-neutral-400 truncate">
-                                  {val || '••••••••'}
+                                  {field.type === 'secret' ? '••••••••' : val}
                                 </span>
                               </div>
                               <button
@@ -797,8 +837,8 @@ export function ProvidersTab({
                               const isEditing = editingFields.has(field.key);
                               const showToggle = field.type === 'secret' && val.length > 0;
                               // Confirm/Cancel pair only when actively editing a previously-set field
-                              const showConfirm = isEditing;
-                              const showCancel = field.isSet && isEditing;
+                              const showConfirm = keyDrafts[field.key] !== undefined;
+                              const showCancel = isEditing || keyDrafts[field.key] !== undefined;
                               const canConfirm = val.trim().length > 0;
                               const hasRight = showToggle || showConfirm || showCancel;
                               return (
@@ -812,8 +852,15 @@ export function ProvidersTab({
                                             : 'password'
                                           : 'text'
                                       }
+                                      aria-label={field.label}
+                                      autoComplete="off"
                                       value={val}
-                                      onChange={(e) => onKeyChange(field.key, e.target.value)}
+                                      onChange={(e) =>
+                                        setKeyDrafts((prev) => ({
+                                          ...prev,
+                                          [field.key]: e.target.value,
+                                        }))
+                                      }
                                       onKeyDown={(e) => {
                                         if (e.key === 'Enter' && canConfirm) confirmEditing(field);
                                       }}
@@ -867,6 +914,44 @@ export function ProvidersTab({
                   </div>
                 )}
 
+                {activeTab === 'credentials' && (
+                  <div className="space-y-2">
+                    <BrutalButton
+                      size="sm"
+                      variant="primary"
+                      disabled={
+                        verifying[provider.id] ||
+                        provider.fields.some(
+                          (field) =>
+                            keyDrafts[field.key] !== undefined || editingFields.has(field.key)
+                        )
+                      }
+                      onClick={() => onVerify(provider)}
+                    >
+                      {verifying[provider.id]
+                        ? t('settings.providers.fetching')
+                        : t('settings.providers.testConnection')}
+                    </BrutalButton>
+                    <p className="text-[11px] text-neutral-500">
+                      {t('settings.providers.connectionHint')}
+                    </p>
+                  </div>
+                )}
+                {verification[provider.id] && (
+                  <p
+                    role="status"
+                    className={`border-l-4 px-3 py-2 text-xs ${verification[provider.id].success ? 'border-brutal-green' : 'border-brutal-red'}`}
+                  >
+                    {verification[provider.id].message}
+                  </p>
+                )}
+                {provider.fields.some(
+                  (field) => keyDrafts[field.key] !== undefined || editingFields.has(field.key)
+                ) && (
+                  <p className="text-xs text-amber-700 dark:text-amber-300">
+                    {t('settings.providers.unsavedCredentials')}
+                  </p>
+                )}
                 {activeTab === 'models' && (
                   <div className="flex flex-col h-full pt-2">
                     {/* Input Row with Fetch Button */}
@@ -874,23 +959,46 @@ export function ProvidersTab({
                       <div className="flex flex-1 min-w-0 gap-0">
                         <input
                           type="text"
+                          aria-label={t('settings.providers.addModelIdPlaceholder')}
+                          value={modelDrafts[provider.id] || ''}
+                          onChange={(event) =>
+                            setModelDrafts((prev) => ({
+                              ...prev,
+                              [provider.id]: event.target.value,
+                            }))
+                          }
                           placeholder={t('settings.providers.addModelIdPlaceholder')}
                           className="flex-1 min-w-0 bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 dark:focus:bg-zinc-800 dark:text-white dark:placeholder-neutral-500"
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') {
                               onAddCustomModel(provider.id, e.currentTarget.value);
-                              e.currentTarget.value = '';
+                              setModelDrafts((prev) => ({ ...prev, [provider.id]: '' }));
                             }
                           }}
                         />
-                        <button className="bg-brutal-black text-white w-10 font-bold border-2 border-brutal-black hover:bg-neutral-800 flex items-center justify-center text-lg">
+                        <button
+                          type="button"
+                          aria-label={t('settings.providers.addModelIdPlaceholder')}
+                          disabled={!modelDrafts[provider.id]?.trim()}
+                          onClick={() => {
+                            onAddCustomModel(provider.id, modelDrafts[provider.id]);
+                            setModelDrafts((prev) => ({ ...prev, [provider.id]: '' }));
+                          }}
+                          className="disabled:opacity-40 bg-brutal-black text-white w-10 font-bold border-2 border-brutal-black hover:bg-neutral-800 flex items-center justify-center text-lg"
+                        >
                           +
                         </button>
                       </div>
                       <BrutalButton
                         variant="primary"
                         onClick={() => onVerify(provider)}
-                        disabled={verifying[provider.id]}
+                        disabled={
+                          verifying[provider.id] ||
+                          provider.fields.some(
+                            (field) =>
+                              keyDrafts[field.key] !== undefined || editingFields.has(field.key)
+                          )
+                        }
                         className="text-xs px-4 py-2 font-black uppercase shrink-0"
                       >
                         {verifying[provider.id]
@@ -899,6 +1007,24 @@ export function ProvidersTab({
                       </BrutalButton>
                     </div>
 
+                    <input
+                      type="search"
+                      value={modelQueries[provider.id] || ''}
+                      onChange={(event) =>
+                        setModelQueries((prev) => ({
+                          ...prev,
+                          [provider.id]: event.target.value,
+                        }))
+                      }
+                      placeholder={t('settings.providers.searchModels')}
+                      aria-label={t('settings.providers.searchModels')}
+                      className="mb-3 border-2 border-brutal-black bg-white px-3 py-2 text-xs dark:bg-zinc-900 dark:text-white"
+                    />
+                    <p className="mb-2 text-xs text-neutral-500">
+                      {t('settings.providers.enabledCount', {
+                        count: conf.enabled_models.length,
+                      })}
+                    </p>
                     {/* Models List (Scrollable) */}
                     <BrutalMultiSelect
                       variant="list"
@@ -906,15 +1032,30 @@ export function ProvidersTab({
                       onChange={(newVal) =>
                         onConfigChange(provider.id, { ...conf, enabled_models: newVal })
                       }
-                      options={allModels.map((m) => ({ value: m.id, label: m.name || m.id }))}
+                      options={allModels
+                        .filter((m) =>
+                          `${m.name} ${m.id}`
+                            .toLowerCase()
+                            .includes((modelQueries[provider.id] || '').trim().toLowerCase())
+                        )
+                        .map((m) => ({ value: m.id, label: m.name || m.id }))}
                       emptyMessage={t('settings.providers.noModelsFound')}
                       emptyAction={
-                        <button
-                          onClick={() => onVerify(provider)}
-                          className="underline hover:text-black"
-                        >
-                          {t('settings.providers.fetchModels')}
-                        </button>
+                        !(modelQueries[provider.id] || '').trim() && (
+                          <button
+                            disabled={
+                              verifying[provider.id] ||
+                              provider.fields.some(
+                                (field) =>
+                                  keyDrafts[field.key] !== undefined || editingFields.has(field.key)
+                              )
+                            }
+                            onClick={() => onVerify(provider)}
+                            className="underline hover:text-black"
+                          >
+                            {t('settings.providers.fetchModels')}
+                          </button>
+                        )
                       }
                       dropdownClassName="max-h-80"
                     />
@@ -929,11 +1070,23 @@ export function ProvidersTab({
                     </div>
                   </div>
                 )}
+                {provider.user_defined && (
+                  <div className="border-t border-neutral-200 pt-3 dark:border-zinc-700">
+                    <BrutalButton
+                      size="xs"
+                      variant="danger"
+                      disabled={deletingId === provider.id}
+                      onClick={() => handleDelete(provider.id)}
+                    >
+                      {t('settings.providers.deleteProvider')}
+                    </BrutalButton>
+                  </div>
+                )}
               </div>
-            </div>
+            </details>
           );
         })}
-      </SettingsGrid>
+      </div>
     </SettingsPage>
   );
 }
