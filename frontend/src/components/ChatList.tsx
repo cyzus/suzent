@@ -95,6 +95,7 @@ interface ChatListProps {
 export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
   const {
     chats,
+    pinnedChats,
     chatTotal,
     loadingChats,
     loadingMoreChats,
@@ -665,12 +666,32 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
     );
   };
 
+  const handleTogglePin = async (chatId: string): Promise<void> => {
+    try {
+      const response = await fetch(`${getApiBase()}/chats/${chatId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pinned: !pinnedChats.some((chat) => chat.id === chatId) }),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      await refreshChatList(undefined, true);
+    } catch (error) {
+      console.error('Failed to pin chat:', error);
+      setDialog({
+        title: t('chatList.pinError'),
+        message: t('chatList.pinErrorMessage'),
+        actions: [{ label: t('common.cancel'), tone: 'default' }],
+      });
+    }
+  };
+
   // ── Move chat to project ──
 
   const handleMoveChatToProject = async (chatId: string, projectId: string) => {
     const chat =
       chatsRef.current.find((c) => c.id === chatId) ??
-      projectChatsRef.current.find((c) => c.id === chatId);
+      projectChatsRef.current.find((c) => c.id === chatId) ??
+      pinnedChats.find((c) => c.id === chatId);
     if (!chat || chat.projectId === projectId) return;
     const ok = await moveChat(chatId, projectId, chat.projectId);
     if (ok) {
@@ -694,7 +715,12 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
     setOpenMenu({ chatId, anchor });
   };
 
-  const renderChatRow = (chat: ChatSummary, showProject = false, nested = false) => {
+  const renderChatRow = (
+    chat: ChatSummary,
+    showProject = false,
+    nested = false,
+    compact = false
+  ) => {
     const unread = unreadMessages(chat);
     const chatKind = getChatKind(chat);
     const relatedChatId = chat.parentChatId ?? chat.forkedFromChatId;
@@ -733,8 +759,8 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
           e.stopPropagation();
           openChatMenu(chat.id, { x: e.clientX, y: e.clientY });
         }}
-        className={`group relative py-2 transition-all border-b last:border-b-0
-          ${chatKind === 'subagent' ? (nested ? 'pl-10 pr-3' : 'pl-8 pr-3.5') : nested ? 'pl-8 pr-3' : 'px-3.5'}
+        className={`group relative transition-colors ${compact ? 'min-h-9 px-2.5 py-2 rounded-sm' : 'py-2 border-b last:border-b-0'}
+          ${compact ? '' : chatKind === 'subagent' ? (nested ? 'pl-10 pr-3' : 'pl-8 pr-3.5') : nested ? 'pl-8 pr-3' : 'px-3.5'}
           ${renamingChatId ? (renamingChatId === chat.id ? 'cursor-default' : 'opacity-50 pointer-events-none') : 'cursor-pointer'}
           ${rowSurface}`}
       >
@@ -771,108 +797,136 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
           </form>
         )}
 
-        <div className="min-w-0 space-y-1 pr-8">
-          <div className="flex items-start gap-2 overflow-hidden">
+        {compact ? (
+          <div className="flex min-w-0 items-center gap-2 pr-6">
             <h3
-              className={`font-extrabold text-xs leading-snug truncate flex-1 min-w-0 transition-colors ${currentChatId === chat.id ? 'text-brutal-black dark:text-white' : isUnread(chat) ? 'text-neutral-950 dark:text-white' : 'text-neutral-800 dark:text-neutral-100 group-hover:text-brutal-black dark:group-hover:text-white'}`}
+              title={chat.title || t('chatList.untitled')}
+              className="min-w-0 flex-1 truncate text-[11px] font-semibold leading-5 text-neutral-800 dark:text-neutral-100"
             >
               {chat.title || t('chatList.untitled')}
             </h3>
-          </div>
-          <div className="flex items-center gap-1.5 overflow-hidden">
-            <SessionStatusBadges
-              running={isChatRunning(chat.id, chat.isRunning)}
-              unreadCount={unread}
-            />
-            {/* Project chip — always shown so the user knows which workspace */}
-            {showProject && chat.projectName && (
+            {(isChatRunning(chat.id, chat.isRunning) || unread > 0) && (
+              <SessionStatusBadges
+                running={isChatRunning(chat.id, chat.isRunning)}
+                unreadCount={unread}
+              />
+            )}
+            {chat.projectName && (
               <span
-                className={`inline-flex items-center h-5 px-2 text-[10px] font-extrabold uppercase tracking-wide border shrink-0 max-w-[8rem] truncate ${
-                  currentChatId === chat.id
-                    ? 'bg-white text-brutal-black border-neutral-500 dark:bg-zinc-900 dark:text-white dark:border-neutral-500'
-                    : 'bg-neutral-100 text-neutral-600 border-neutral-300 dark:bg-zinc-700 dark:text-neutral-300 dark:border-zinc-500'
-                }`}
                 title={chat.projectName}
+                className="max-w-[4.5rem] truncate text-[9px] font-medium text-neutral-400 dark:text-neutral-500"
               >
                 {chat.projectName}
               </span>
             )}
-            {(chat.acpAgentName ||
-              chat.acpAgentId ||
-              (chat as any).acp_agent_name ||
-              (chat as any).acp_agent_id) && (
-              <span
-                className={`inline-flex items-center h-5 px-2 rounded-sm text-[10px] font-extrabold uppercase tracking-wide border shrink-0 ${currentChatId === chat.id ? 'bg-brutal-black text-white border-brutal-black dark:bg-white dark:text-black' : 'bg-white text-brutal-black border-brutal-black dark:bg-zinc-900 dark:text-white dark:border-white'}`}
-                title={
-                  chat.acpAgentName ||
-                  (chat as any).acp_agent_name ||
-                  chat.acpAgentId ||
-                  (chat as any).acp_agent_id
-                }
-              >
-                ACP
-              </span>
-            )}
-            {chat.platform && (
-              <span
-                className={`inline-flex items-center h-5 px-2 rounded-sm text-[10px] font-extrabold uppercase tracking-wide border shrink-0 ${currentChatId === chat.id ? 'bg-white text-brutal-black border-neutral-500 dark:bg-zinc-900 dark:text-white dark:border-neutral-500' : 'bg-neutral-100 text-neutral-700 border-neutral-300 dark:bg-zinc-700 dark:text-neutral-200 dark:border-zinc-500'}`}
-              >
-                {platformLabel(chat.platform)}
-              </span>
-            )}
-            {chat.heartbeatEnabled && (
-              <span
-                className={`shrink-0 flex items-center gap-1 h-5 px-1.5 rounded-sm border text-[9px] font-extrabold uppercase tracking-wide ${currentChatId === chat.id ? 'bg-white text-brutal-black border-neutral-500 dark:bg-zinc-900 dark:text-white dark:border-neutral-500' : 'bg-brutal-yellow text-brutal-black border-brutal-black transition-all'}`}
-                title={t('chatWindow.heartbeatEnabled')}
-              >
-                <svg
-                  className="w-3 h-3"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="3"
-                  strokeLinecap="square"
-                  strokeLinejoin="miter"
-                >
-                  <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
-                </svg>
-                <span>{t('chatList.labels.heartbeat')}</span>
-              </span>
-            )}
-            {hasCollapsedChildren && (
-              <button
-                type="button"
-                aria-expanded={childrenExpanded}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  toggleSubagentParent(chat.id);
-                }}
-                className={`inline-flex items-center h-4 px-1.5 border text-[9px] font-extrabold uppercase tracking-wide shrink-0 transition-colors ${
-                  childrenExpanded
-                    ? 'border-brutal-black bg-brutal-yellow text-brutal-black'
-                    : 'border-neutral-300 bg-neutral-100 text-neutral-600 hover:border-brutal-black dark:border-zinc-600 dark:bg-zinc-700 dark:text-neutral-300'
-                }`}
-              >
-                {t('chatList.labels.subagentsCount', { count: childSubagents.length })}
-              </button>
-            )}
-            {chatKind === 'subagent' && parentTitle && (
-              <span className="text-[9px] font-bold uppercase text-neutral-400 dark:text-neutral-500 truncate">
-                {t('chatList.labels.subagentOf', { name: parentTitle })}
-              </span>
-            )}
-            {chat.forkedFromChatId && parentTitle && (
-              <span className="text-[9px] font-bold text-blue-500 dark:text-blue-400 truncate">
-                {t('chatList.labels.branchOf', { name: parentTitle })}
-              </span>
-            )}
-            <span
-              className={`text-[10px] font-bold uppercase ml-auto shrink-0 ${currentChatId === chat.id ? 'text-neutral-600 dark:text-neutral-300' : 'text-neutral-400 dark:text-neutral-500'}`}
-            >
+            <span className="shrink-0 text-[9px] tabular-nums text-neutral-400 dark:text-neutral-500">
               {formatDate(chat.updatedAt)}
             </span>
           </div>
-        </div>
+        ) : (
+          <div className="min-w-0 space-y-1 pr-8">
+            <div className="flex items-start gap-2 overflow-hidden">
+              <h3
+                className={`font-extrabold text-xs leading-snug truncate flex-1 min-w-0 transition-colors ${currentChatId === chat.id ? 'text-brutal-black dark:text-white' : isUnread(chat) ? 'text-neutral-950 dark:text-white' : 'text-neutral-800 dark:text-neutral-100 group-hover:text-brutal-black dark:group-hover:text-white'}`}
+              >
+                {chat.title || t('chatList.untitled')}
+              </h3>
+            </div>
+            <div className="flex items-center gap-1.5 overflow-hidden">
+              <SessionStatusBadges
+                running={isChatRunning(chat.id, chat.isRunning)}
+                unreadCount={unread}
+              />
+              {/* Project chip — always shown so the user knows which workspace */}
+              {showProject && chat.projectName && (
+                <span
+                  className={`inline-flex items-center h-5 px-2 text-[10px] font-extrabold uppercase tracking-wide border shrink-0 max-w-[8rem] truncate ${
+                    currentChatId === chat.id
+                      ? 'bg-white text-brutal-black border-neutral-500 dark:bg-zinc-900 dark:text-white dark:border-neutral-500'
+                      : 'bg-neutral-100 text-neutral-600 border-neutral-300 dark:bg-zinc-700 dark:text-neutral-300 dark:border-zinc-500'
+                  }`}
+                  title={chat.projectName}
+                >
+                  {chat.projectName}
+                </span>
+              )}
+              {(chat.acpAgentName ||
+                chat.acpAgentId ||
+                (chat as any).acp_agent_name ||
+                (chat as any).acp_agent_id) && (
+                <span
+                  className={`inline-flex items-center h-5 px-2 rounded-sm text-[10px] font-extrabold uppercase tracking-wide border shrink-0 ${currentChatId === chat.id ? 'bg-brutal-black text-white border-brutal-black dark:bg-white dark:text-black' : 'bg-white text-brutal-black border-brutal-black dark:bg-zinc-900 dark:text-white dark:border-white'}`}
+                  title={
+                    chat.acpAgentName ||
+                    (chat as any).acp_agent_name ||
+                    chat.acpAgentId ||
+                    (chat as any).acp_agent_id
+                  }
+                >
+                  ACP
+                </span>
+              )}
+              {chat.platform && (
+                <span
+                  className={`inline-flex items-center h-5 px-2 rounded-sm text-[10px] font-extrabold uppercase tracking-wide border shrink-0 ${currentChatId === chat.id ? 'bg-white text-brutal-black border-neutral-500 dark:bg-zinc-900 dark:text-white dark:border-neutral-500' : 'bg-neutral-100 text-neutral-700 border-neutral-300 dark:bg-zinc-700 dark:text-neutral-200 dark:border-zinc-500'}`}
+                >
+                  {platformLabel(chat.platform)}
+                </span>
+              )}
+              {chat.heartbeatEnabled && (
+                <span
+                  className={`shrink-0 flex items-center gap-1 h-5 px-1.5 rounded-sm border text-[9px] font-extrabold uppercase tracking-wide ${currentChatId === chat.id ? 'bg-white text-brutal-black border-neutral-500 dark:bg-zinc-900 dark:text-white dark:border-neutral-500' : 'bg-brutal-yellow text-brutal-black border-brutal-black transition-all'}`}
+                  title={t('chatWindow.heartbeatEnabled')}
+                >
+                  <svg
+                    className="w-3 h-3"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="3"
+                    strokeLinecap="square"
+                    strokeLinejoin="miter"
+                  >
+                    <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+                  </svg>
+                  <span>{t('chatList.labels.heartbeat')}</span>
+                </span>
+              )}
+              {hasCollapsedChildren && (
+                <button
+                  type="button"
+                  aria-expanded={childrenExpanded}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    toggleSubagentParent(chat.id);
+                  }}
+                  className={`inline-flex items-center h-4 px-1.5 border text-[9px] font-extrabold uppercase tracking-wide shrink-0 transition-colors ${
+                    childrenExpanded
+                      ? 'border-brutal-black bg-brutal-yellow text-brutal-black'
+                      : 'border-neutral-300 bg-neutral-100 text-neutral-600 hover:border-brutal-black dark:border-zinc-600 dark:bg-zinc-700 dark:text-neutral-300'
+                  }`}
+                >
+                  {t('chatList.labels.subagentsCount', { count: childSubagents.length })}
+                </button>
+              )}
+              {chatKind === 'subagent' && parentTitle && (
+                <span className="text-[9px] font-bold uppercase text-neutral-400 dark:text-neutral-500 truncate">
+                  {t('chatList.labels.subagentOf', { name: parentTitle })}
+                </span>
+              )}
+              {chat.forkedFromChatId && parentTitle && (
+                <span className="text-[9px] font-bold text-blue-500 dark:text-blue-400 truncate">
+                  {t('chatList.labels.branchOf', { name: parentTitle })}
+                </span>
+              )}
+              <span
+                className={`text-[10px] font-bold uppercase ml-auto shrink-0 ${currentChatId === chat.id ? 'text-neutral-600 dark:text-neutral-300' : 'text-neutral-400 dark:text-neutral-500'}`}
+              >
+                {formatDate(chat.updatedAt)}
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* Three-dot menu button — appears on hover; right-click anywhere on the row also opens it */}
         <button
@@ -1279,7 +1333,17 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
               </section>
             )}
 
-            <section className="relative order-1 border-t-2 border-brutal-black">
+            {pinnedChats.length > 0 && (
+              <section className="order-0 px-1.5 pb-2 pt-1">
+                <h2 className="px-1.5 py-2 text-[9px] font-bold uppercase tracking-[0.12em] text-neutral-400 dark:text-neutral-500">
+                  {t('chatList.pinnedChats')}
+                </h2>
+                <div>{pinnedChats.map((chat) => renderChatRow(chat, true, false, true))}</div>
+              </section>
+            )}
+            <section
+              className={`relative order-1 ${pinnedChats.length > 0 ? 'pt-2' : 'border-t-2 border-brutal-black'}`}
+            >
               <div
                 ref={organizationMenuRef}
                 className="relative flex items-center justify-between px-3 py-1.5"
@@ -1540,6 +1604,7 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
       {openMenu &&
         (() => {
           const chat =
+            pinnedChats.find((c) => c.id === openMenu.chatId) ??
             chatsRef.current.find((c) => c.id === openMenu.chatId) ??
             projectChatsRef.current.find((c) => c.id === openMenu.chatId);
           if (!chat) return null;
@@ -1549,6 +1614,8 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
               boundary={sidebarBoundsRef.current?.getBoundingClientRect() ?? null}
               projects={projects}
               currentProjectId={chat.projectId ?? undefined}
+              pinned={pinnedChats.some((item) => item.id === chat.id)}
+              onTogglePin={() => void handleTogglePin(chat.id)}
               onRename={() => {
                 setRenamingChatId(chat.id);
                 setRenameValue(chat.title || '');
