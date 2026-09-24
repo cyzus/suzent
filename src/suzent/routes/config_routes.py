@@ -991,6 +991,12 @@ def _build_role_suggestions(
     return {
         "primary": enabled_models,
         "cheap": enabled_models,
+        "title": enabled_models,
+        "memory_extraction": enabled_models,
+        "decision": enabled_models,
+        "goal_judge": enabled_models,
+        "permission_review": enabled_models,
+        "dream": enabled_models,
         "vision": vision_models,
         "embedding": sorted(
             model for model, cap in caps.items() if cap.mode == "embedding"

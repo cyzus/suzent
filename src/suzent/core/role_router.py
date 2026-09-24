@@ -1,7 +1,7 @@
 """
 Role-based model router.
 
-Maps logical roles (primary, cheap, vision, tts, embedding, image_generation)
+Maps logical task and capability roles
 to configured model IDs.  Supports:
   - Per-role model lists with automatic ``FallbackModel`` wrapping
   - DB-persisted role assignments (from frontend Settings)
@@ -31,6 +31,12 @@ class ModelRole(StrEnum):
 
     PRIMARY = "primary"
     CHEAP = "cheap"
+    TITLE = "title"
+    MEMORY_EXTRACTION = "memory_extraction"
+    DECISION = "decision"
+    GOAL_JUDGE = "goal_judge"
+    PERMISSION_REVIEW = "permission_review"
+    DREAM = "dream"
     VISION = "vision"
     TTS = "tts"
     EMBEDDING = "embedding"
@@ -49,11 +55,17 @@ class RoleConfig:
         return self.model_ids[0] if self.model_ids else None
 
 
-# Shallow fallback chain: if a role has no explicit config, try these in order.
+# Inheritance chain: if a role has no explicit config, try these in order.
 # TTS / embedding / image_generation intentionally have NO fallback —
 # those require specialist models, not a chat model.
 _ROLE_FALLBACKS: Dict[str, List[str]] = {
     ModelRole.CHEAP: [ModelRole.PRIMARY],
+    ModelRole.TITLE: [ModelRole.CHEAP],
+    ModelRole.MEMORY_EXTRACTION: [ModelRole.CHEAP],
+    ModelRole.DECISION: [ModelRole.CHEAP],
+    ModelRole.GOAL_JUDGE: [ModelRole.DECISION],
+    ModelRole.PERMISSION_REVIEW: [ModelRole.DECISION],
+    ModelRole.DREAM: [ModelRole.PRIMARY],
     ModelRole.VISION: [ModelRole.PRIMARY],
 }
 
@@ -87,7 +99,7 @@ class RoleRouter:
         logger.debug("Role '{}' → {}", role, model_ids)
 
     def get_model_id(self, role: str) -> str | None:
-        """Get the primary model ID for a role, with shallow fallback.
+        """Get the primary model ID for a role, with inherited defaults.
 
         Returns the first configured model in the role's list. If the role has
         no explicit config, falls back to the first allowed model from the
@@ -98,7 +110,7 @@ class RoleRouter:
         return ids[0] if ids else None
 
     def get_model_ids(self, role: str) -> list[str]:
-        """Get all model IDs for a role, with shallow fallback.
+        """Get all model IDs for a role, with inherited defaults.
 
         Capability filters are applied to fallback candidates only;
         explicitly configured models are returned as-is.
@@ -226,7 +238,15 @@ class RoleRouter:
 
         role_models = getattr(CONFIG, "role_models", None)
         if role_models:
-            self.load_from_dict(role_models)
+            defaults = RoleRouter()
+            defaults.load_from_dict(role_models)
+            for role, ids in defaults.list_roles().items():
+                if not self.has_role(role):
+                    self.set_role(role, ids)
+
+        # Keep existing dream overrides when upgrading to role-based settings.
+        if not self.has_role(ModelRole.DREAM) and CONFIG.memory_consolidation_model:
+            self.set_role(ModelRole.DREAM, [CONFIG.memory_consolidation_model])
 
 
 # ---------------------------------------------------------------------------

@@ -580,7 +580,9 @@ export function SettingsModal({
           memoryEnabled={memoryEnabled}
           onMemoryEnabledChange={handleMemoryEnabledChange}
           embeddingModel={roleModels.embedding?.[0]}
-          cheapModel={roleModels.cheap?.[0]}
+          extractionModel={
+            roleModels.memory_extraction?.[0] || roleModels.cheap?.[0] || roleModels.primary?.[0]
+          }
           onOpenModelRoles={() => selectCategory('roles')}
         />
       )}

@@ -10,11 +10,32 @@ interface ModelRolesTabProps {
   onChange: (roles: Record<string, string[]>) => void;
 }
 
-type FallbackBehavior = 'none' | 'primary' | 'vision-primary';
+type FallbackBehavior = 'none' | 'primary' | 'cheap' | 'decision' | 'vision-primary';
 
 const ROLES: { key: string; labelKey: string; descKey: string; fallback: FallbackBehavior }[] = [
   { key: 'primary', labelKey: 'roles.primary', descKey: 'roles.primaryDesc', fallback: 'none' },
   { key: 'cheap', labelKey: 'roles.cheap', descKey: 'roles.cheapDesc', fallback: 'primary' },
+  { key: 'decision', labelKey: 'roles.decision', descKey: 'roles.decisionDesc', fallback: 'cheap' },
+  { key: 'title', labelKey: 'roles.autoTitle', descKey: 'roles.autoTitleDesc', fallback: 'cheap' },
+  {
+    key: 'memory_extraction',
+    labelKey: 'roles.memoryExtraction',
+    descKey: 'roles.memoryExtractionDesc',
+    fallback: 'cheap',
+  },
+  { key: 'dream', labelKey: 'roles.dream', descKey: 'roles.dreamDesc', fallback: 'primary' },
+  {
+    key: 'goal_judge',
+    labelKey: 'roles.goalJudge',
+    descKey: 'roles.goalJudgeDesc',
+    fallback: 'decision',
+  },
+  {
+    key: 'permission_review',
+    labelKey: 'roles.permissionReview',
+    descKey: 'roles.permissionReviewDesc',
+    fallback: 'decision',
+  },
   {
     key: 'vision',
     labelKey: 'roles.vision',
@@ -164,6 +185,7 @@ interface RoleCardProps {
   suggestions: string[];
   unregisteredModels: string[];
   fallback: FallbackBehavior;
+  inheritedModels: string[];
   onChange: (models: string[]) => void;
 }
 
@@ -175,6 +197,7 @@ function RoleCard({
   suggestions,
   unregisteredModels,
   fallback,
+  inheritedModels,
   onChange,
 }: RoleCardProps) {
   const { t } = useI18n();
@@ -217,9 +240,13 @@ function RoleCard({
   const emptyFallback =
     fallback === 'primary'
       ? t('settings.roles.inheritsPrimary')
-      : fallback === 'vision-primary'
-        ? t('settings.roles.inheritsVisionPrimary')
-        : t('settings.roles.noImplicitFallback');
+      : fallback === 'cheap'
+        ? t('settings.roles.inheritsCheap')
+        : fallback === 'decision'
+          ? t('settings.roles.inheritsDecision')
+          : fallback === 'vision-primary'
+            ? t('settings.roles.inheritsVisionPrimary')
+            : t('settings.roles.noImplicitFallback');
 
   return (
     <GridCard title={label} subtitle={desc} active={selected.length > 0}>
@@ -308,16 +335,22 @@ function RoleCard({
             <p className="mt-1 text-xs leading-relaxed text-neutral-600 dark:text-neutral-400">
               {emptyFallback}
             </p>
+            {inheritedModels.length > 0 && (
+              <p className="mt-2 break-all font-mono text-xs dark:text-neutral-300">
+                {t('settings.roles.inheritedModels', { models: inheritedModels.join(' → ') })}
+              </p>
+            )}
           </div>
         )}
 
         {/* Add model: searchable dropdown; typing a custom id also works */}
         <ModelDropdown options={available} unregisteredModels={unregistered} onSelect={addModel} />
-        {unregisteredModels.length > 0 && roleKey !== 'primary' && roleKey !== 'cheap' && (
-          <p className="text-[10px] leading-relaxed text-amber-800 dark:text-amber-300">
-            {t('settings.roles.unregisteredAvailable')}
-          </p>
-        )}
+        {unregisteredModels.length > 0 &&
+          ['vision', 'embedding', 'image_generation', 'tts'].includes(roleKey) && (
+            <p className="text-[10px] leading-relaxed text-amber-800 dark:text-amber-300">
+              {t('settings.roles.unregisteredAvailable')}
+            </p>
+          )}
       </div>
     </GridCard>
   );
@@ -333,25 +366,57 @@ export function ModelRolesTab({
 }: ModelRolesTabProps): React.ReactElement {
   const { t } = useI18n();
 
+  function inheritedModelsFor(fallback: FallbackBehavior): string[] {
+    if (fallback === 'none') return [];
+    if (fallback === 'vision-primary') {
+      return (roleModels.primary || []).filter((model) => suggestions.vision?.includes(model));
+    }
+    const assigned = roleModels[fallback];
+    if (assigned?.length) return assigned;
+    const parent = ROLES.find((role) => role.key === fallback);
+    return parent ? inheritedModelsFor(parent.fallback) : [];
+  }
+
+  function renderRole({
+    key,
+    labelKey,
+    descKey,
+    fallback,
+  }: (typeof ROLES)[number]): React.ReactElement {
+    return (
+      <RoleCard
+        key={key}
+        roleKey={key}
+        label={t(`settings.${labelKey}`)}
+        desc={t(`settings.${descKey}`)}
+        selected={roleModels[key] || []}
+        suggestions={suggestions[key] || []}
+        unregisteredModels={unregisteredModels}
+        fallback={fallback}
+        inheritedModels={inheritedModelsFor(fallback)}
+        onChange={(models) => onChange({ ...roleModels, [key]: models })}
+      />
+    );
+  }
+
   return (
     <SettingsPage>
       <SettingsHeader title={t('settings.roles.title')} subtitle={t('settings.roles.subtitle')} />
 
       <SettingsGrid density="compact">
-        {ROLES.map(({ key, labelKey, descKey, fallback }) => (
-          <RoleCard
-            key={key}
-            roleKey={key}
-            label={t(`settings.${labelKey}`)}
-            desc={t(`settings.${descKey}`)}
-            selected={roleModels[key] || []}
-            suggestions={suggestions[key] || []}
-            unregisteredModels={unregisteredModels}
-            fallback={fallback}
-            onChange={(models) => onChange({ ...roleModels, [key]: models })}
-          />
-        ))}
+        {ROLES.filter((role) => role.fallback !== 'decision').map(renderRole)}
       </SettingsGrid>
+      <details className="mt-4">
+        <summary className="cursor-pointer font-bold dark:text-white">
+          {t('settings.roles.advancedDecision')}
+        </summary>
+        <p className="my-3 text-sm text-neutral-600 dark:text-neutral-400">
+          {t('settings.roles.advancedDecisionDesc')}
+        </p>
+        <SettingsGrid density="compact">
+          {ROLES.filter((role) => role.fallback === 'decision').map(renderRole)}
+        </SettingsGrid>
+      </details>
     </SettingsPage>
   );
 }

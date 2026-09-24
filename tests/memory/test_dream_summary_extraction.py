@@ -82,3 +82,25 @@ async def test_run_forked_agent_caps_length(monkeypatch):
     summary = await runner._run_forked_agent(DREAM_CHAT_ID, "sys", "msg")
     assert len(summary) <= 600
     assert summary.endswith("…")
+
+
+@pytest.mark.parametrize("chat_id", [DREAM_CHAT_ID, "system-dream-lint"])
+async def test_dream_phases_use_dream_role(monkeypatch, chat_id: str) -> None:
+    from suzent.core.role_router import RoleRouter
+
+    router = RoleRouter()
+    router.set_role("dream", ["dream-model"])
+    monkeypatch.setattr("suzent.core.role_router.get_role_router", lambda: router)
+
+    def build_config(base: dict, **kwargs) -> dict:
+        assert base["model"] == "dream-model"
+        return base
+
+    async def process(*args, **kwargs) -> str:
+        return "Done"
+
+    monkeypatch.setattr("suzent.agent_manager.build_agent_config", build_config)
+    monkeypatch.setattr(
+        "suzent.core.chat_processor.ChatProcessor.process_turn_text", process
+    )
+    assert await DreamRunner()._run_forked_agent(chat_id, "sys", "msg") == "Done"
