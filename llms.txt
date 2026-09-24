@@ -17,6 +17,7 @@ Full documentation: https://suzent.com/llms-full.txt
 - [Notebook](https://suzent.com/docs/concepts/memory/llm-wiki)
 - [Memory System](https://suzent.com/docs/concepts/memory)
 - [Upgrade Notes](https://suzent.com/docs/concepts/memory/upgrade-notes)
+- [Model roles](https://suzent.com/docs/concepts/model-roles)
 - [A2A — Open Agent Federation](https://suzent.com/docs/concepts/nodes/a2a)
 - [ACP — Suzent in Someone Else's Editor](https://suzent.com/docs/concepts/nodes/acp)
 - [Suzent Nodes Guide](https://suzent.com/docs/concepts/nodes)
