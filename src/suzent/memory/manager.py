@@ -107,6 +107,14 @@ class MemoryManager:
             f"markdown: {'enabled' if markdown_store else 'disabled'}"
         )
 
+    def set_extraction_model(self, model: str | None) -> None:
+        """Apply role changes without rebuilding stores or background workers."""
+        if model == self.llm_extraction_model:
+            return
+        client = LLMClient(model=model) if model else None
+        self.llm_extraction_model = model
+        self.llm_client = client
+
     # ===== Core Memory Blocks (File-based SSoT) =====
 
     # Default content when a block file does not yet exist
@@ -876,15 +884,15 @@ class MemoryManager:
         user_prompt = memory_context.format_fact_extraction_user_prompt(
             content, known_facts
         )
-        extraction_model = self.llm_extraction_model or getattr(
-            self.llm_client, "model", None
-        )
+        # Keep one client throughout an extraction if settings change mid-request.
+        client = self.llm_client
+        extraction_model = self.llm_extraction_model or getattr(client, "model", None)
         logger.debug(f"Starting LLM fact extraction with model={extraction_model!r}")
 
         try:
             # Use schema-based extraction with Pydantic model
             # LiteLLM converts FactExtractionResponse to json_schema format
-            extraction_result = await self.llm_client.extract_with_schema(
+            extraction_result = await client.extract_with_schema(
                 prompt=user_prompt,
                 response_model=FactExtractionResponse,
                 system=system_prompt,
@@ -919,7 +927,7 @@ class MemoryManager:
 
             # Fallback to basic JSON extraction
             try:
-                response = await self.llm_client.extract_structured(
+                response = await client.extract_structured(
                     prompt=user_prompt,
                     system=system_prompt,
                     temperature=LLM_EXTRACTION_TEMPERATURE,

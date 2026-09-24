@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "minor"},
+  "summary": "Add inherited task model roles, shared decision defaults, Dream model settings, and a compact editor with separate primary and backup model selection."
+}

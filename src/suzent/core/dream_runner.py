@@ -1021,8 +1021,11 @@ class DreamRunner(BaseBrain):
             "tools": list(CONFIG.memory_dream_tools),
             "static_instructions": system_prompt,
         }
-        if CONFIG.memory_consolidation_model:
-            base["model"] = CONFIG.memory_consolidation_model
+        from suzent.core.role_router import get_role_router
+
+        dream_model = get_role_router().get_model_id("dream")
+        if dream_model:
+            base["model"] = dream_model
         cfg = build_agent_config(base, require_social_tool=False)
 
         last_block: list[str] = []

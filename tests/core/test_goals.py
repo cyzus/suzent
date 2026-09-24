@@ -143,6 +143,7 @@ def test_judge_prompt_truncates_long_response():
 def _patch_judge(monkeypatch, model, complete_impl):
     class _Router:
         def get_model_id(self, role):
+            assert role == "goal_judge"
             return model
 
     class _Client:

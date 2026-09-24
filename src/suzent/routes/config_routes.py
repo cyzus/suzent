@@ -961,6 +961,13 @@ async def save_role_models(request: Request) -> JSONResponse:
         router.replace_from_dict(roles)
         router.save_to_db()
 
+        from suzent.memory import lifecycle
+
+        if lifecycle.memory_manager is not None:
+            lifecycle.memory_manager.set_extraction_model(
+                router.get_model_id("memory_extraction")
+            )
+
         return JSONResponse({"success": True, "roles": router.list_roles()})
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
@@ -991,6 +998,12 @@ def _build_role_suggestions(
     return {
         "primary": enabled_models,
         "cheap": enabled_models,
+        "title": enabled_models,
+        "memory_extraction": enabled_models,
+        "decision": enabled_models,
+        "goal_judge": enabled_models,
+        "permission_review": enabled_models,
+        "dream": enabled_models,
         "vision": vision_models,
         "embedding": sorted(
             model for model, cap in caps.items() if cap.mode == "embedding"

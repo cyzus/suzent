@@ -242,7 +242,7 @@ async def _initialize_memory_system() -> bool:
 
             _router = get_role_router()
             _embedding_model = _router.get_model_id("embedding")
-            _extraction_model = _router.get_model_id("cheap")
+            _extraction_model = _router.get_model_id("memory_extraction")
         except Exception:
             _embedding_model = None
             _extraction_model = None

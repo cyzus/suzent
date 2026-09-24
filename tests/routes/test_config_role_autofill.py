@@ -112,6 +112,16 @@ def test_role_suggestions_keep_unregistered_models_available_as_overrides():
         ["openai/gpt-4.1-vision", "custom/new-model"],
     )
 
+    for role in (
+        "title",
+        "memory_extraction",
+        "decision",
+        "goal_judge",
+        "permission_review",
+        "dream",
+    ):
+        assert suggestions[role] == ["openai/gpt-4.1-vision", "custom/new-model"]
+
     assert suggestions["vision"] == ["openai/gpt-4.1-vision"]
     assert suggestions["embedding"] == ["openai/text-embedding-3-small"]
     assert suggestions["tts"] == ["openai/tts-1"]
