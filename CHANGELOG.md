@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v0.15.0] - 2026-09-21
+## [v0.15.0] - 2026-09-24
 
 ### 🐛 Fixed
 - Make the service log readable in the console (#246)
@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Stop an answered ask_question surface from reappearing with its options once the turn finishes.
 - Give built-in tools their own grey fill and a padlock in the tool picker, so a locked row no longer looks like a faded selected one.
 - Keep a core set of tools always equipped, and show in the picker which tools are built-in and which stay discoverable when unchecked.
+- Pin individual chats above Projects in a compact sidebar section, and rename the default project to Home while preserving custom names.
 - Give every tool and every tool argument a description the model can see, and declare closed-value arguments as fixed choices, so tools in the search pool are discoverable and their valid values no longer have to be inferred from prose.
 - Return a clean 'not found' refusal instead of crashing when update_task is given an unknown task id, or manage_goal is paused, resumed or given a subgoal with no active goal.
 - Give every refresh control the same spinning-arrow icon button, and drop the redundant ones on views that already poll.
