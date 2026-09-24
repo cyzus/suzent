@@ -599,7 +599,7 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
   const handleRequestTaskDelete = (job: CronJob): void => {
     const deleteTask = async (): Promise<void> => {
       await deleteCronJob(job.id);
-      if (getScheduledTaskChat(job).ownsChat && job.last_run_at) {
+      if (job.last_run_at) {
         try {
           await deleteChat(`cron-${job.id}`);
         } catch {
