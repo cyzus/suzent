@@ -7,6 +7,7 @@
     ".releases/changes/builtin-tool-floor.json",
     ".releases/changes/chat-pinning-home.json",
     ".releases/changes/inchat-task-navigation.json",
+    ".releases/changes/model-role-hierarchy.json",
     ".releases/changes/product-release-plans.json",
     ".releases/changes/tool-argument-conventions.json",
     ".releases/changes/tool-package-layout.json",
