@@ -21,6 +21,7 @@ import {
   type CronJob,
   type HeartbeatStatus,
 } from '../lib/api';
+import { getScheduledTaskChat } from '../lib/scheduledTaskChat';
 import { ChatRowMenu } from './ChatRowMenu';
 import { ProjectRowMenu } from './ProjectRowMenu';
 import { BrutalDialog } from './BrutalDialog';
@@ -318,7 +319,9 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
       prev.map((item) => (item.id === chatId ? { ...item, unreadCount: 0 } : item))
     );
     setCronJobs((prev) =>
-      prev.map((job) => (`cron-${job.id}` === chatId ? { ...job, unread_count: 0 } : job))
+      prev.map((job) =>
+        getScheduledTaskChat(job).chatId === chatId ? { ...job, unread_count: 0 } : job
+      )
     );
     setHeartbeatStatus((prev) =>
       prev
@@ -582,7 +585,7 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
     const trimmed = taskRenameValue.trim();
     if (trimmed && trimmed !== job.name) {
       await updateCronJob(job.id, { name: trimmed });
-      if (job.last_run_at) {
+      if (getScheduledTaskChat(job).ownsChat && job.last_run_at) {
         try {
           await renameChat(`cron-${job.id}`, `Cron: ${trimmed}`);
         } catch {
@@ -608,7 +611,11 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
     };
     setDialog({
       title: t('chatList.automation.deleteTaskTitle', { name: job.name }),
-      message: t('chatList.automation.deleteTaskMessage'),
+      message: t(
+        getScheduledTaskChat(job).ownsChat
+          ? 'chatList.automation.deleteTaskMessage'
+          : 'chatList.automation.deleteBoundTaskMessage'
+      ),
       actions: [
         { label: t('common.cancel') },
         { label: t('chatList.menu.delete'), tone: 'danger', onClick: deleteTask },
@@ -1140,8 +1147,7 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
                       <div className="border-b border-neutral-200 bg-white dark:border-zinc-700 dark:bg-zinc-800">
                         <div>
                           {visibleCronJobs.map((job) => {
-                            const chatId = `cron-${job.id}`;
-                            const canOpen = !!job.last_run_at;
+                            const { chatId, canOpen } = getScheduledTaskChat(job);
                             const failureHandled = isCronFailureHandledInChat(job);
                             const unresolvedError =
                               job.last_error && !failureHandled ? job.last_error : null;
