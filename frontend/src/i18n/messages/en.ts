@@ -1259,8 +1259,8 @@ export const en = {
     permissionModeTitle: 'Tool permission mode',
     permissionModeLabel: 'Mode',
     autoModeConfirmation:
-      'Auto mode uses a security classifier to approve low-risk actions without asking. Hard denies still apply. Enable Auto mode?',
-    autoModeDialogTitle: 'Enable Auto mode?',
+      'Smart mode uses a security classifier to approve low-risk actions without asking. Hard denies still apply. Enable Smart mode?',
+    autoModeDialogTitle: 'Enable Smart mode?',
     autoModeCancel: 'Cancel',
     autoModeEnable: 'Enable',
     fullAccessModeConfirmation:
@@ -1269,12 +1269,12 @@ export const en = {
     fullAccessModeEnable: 'Enable',
     permissionModes: {
       default: 'Ask',
-      auto: 'Auto',
+      auto: 'Smart',
       full_access: 'Full Access',
     },
     permissionModeInputLabels: {
       default: 'Ask permissions',
-      auto: 'Auto mode',
+      auto: 'Smart mode',
       full_access: 'Full Access',
     },
     permissionModeDescriptions: {
