@@ -22,11 +22,14 @@ const provider: ApiProvider = {
   models: [],
   user_config: { enabled_models: [], custom_models: [] },
 };
-function render(tab: 'credentials' | 'models' = 'credentials'): string {
+function render(
+  tab: 'credentials' | 'models' = 'credentials',
+  currentProvider: ApiProvider = provider
+): string {
   return renderToStaticMarkup(
     <I18nProvider>
       <ProvidersTab
-        providers={[provider]}
+        providers={[currentProvider]}
         apiKeys={{ EXAMPLE_KEY: 'test-secret-must-stay-hidden' }}
         userConfigs={{ example: { enabled_models: ['example/model'], custom_models: [] } }}
         showKey={{}}
@@ -46,6 +49,21 @@ function render(tab: 'credentials' | 'models' = 'credentials'): string {
   );
 }
 describe('Provider settings overview', () => {
+  it('keeps subscription authentication mounted inside a collapsed card', () => {
+    const html = render('credentials', {
+      ...provider,
+      id: 'chatgpt',
+      label: 'ChatGPT Subscription',
+      fields: [],
+    });
+    expect(html).toContain('<details');
+    expect(html).not.toContain('open=""');
+    const summary = html.slice(html.indexOf('<summary'), html.indexOf('</summary>'));
+    expect(summary).toContain('ChatGPT Subscription');
+    expect(summary).not.toContain('<button');
+    expect(html).toContain('Sign In');
+    expect(html).toContain('Not Signed In');
+  });
   it('starts collapsed with search and enabled-model count', () => {
     const html = render();
     expect(html).toContain('<details');

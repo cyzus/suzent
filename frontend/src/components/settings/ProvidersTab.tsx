@@ -415,8 +415,8 @@ function ChatGPTProviderCard({
     : t('settings.providers.chatgpt.signIn');
 
   return (
-    <div className="flex h-full flex-col border-2 border-brutal-black bg-white shadow-brutal-sm dark:bg-zinc-800 dark:text-white">
-      <div className="flex items-center justify-between gap-3 border-b-2 border-brutal-black bg-neutral-50 p-3 dark:bg-zinc-900">
+    <details className="border-2 border-brutal-black bg-white shadow-brutal-sm dark:bg-zinc-800 dark:text-white">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 bg-neutral-50 p-3 dark:bg-zinc-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue">
         <div className="flex min-w-0 flex-1 items-center gap-3">
           <ProviderIcon provider={provider} />
           <div className="flex flex-col min-w-0">
@@ -436,6 +436,15 @@ function ChatGPTProviderCard({
           >
             {statusLabel}
           </span>
+          <span className="text-[10px] font-bold">
+            {t('settings.providers.enabledCount', { count: config.enabled_models.length })}
+          </span>
+          <span aria-hidden="true">▾</span>
+        </div>
+      </summary>
+
+      <div className="flex flex-1 flex-col gap-4 border-t-2 border-brutal-black p-4">
+        <div className="flex justify-end">
           <BrutalButton
             type="button"
             variant={connected ? 'danger' : 'dark'}
@@ -447,9 +456,6 @@ function ChatGPTProviderCard({
             {loading ? '…' : statusActionLabel}
           </BrutalButton>
         </div>
-      </div>
-
-      <div className="flex flex-1 flex-col gap-4 p-4">
         {pendingLogin && (
           <div className="space-y-3 p-3 border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900">
             <p className="text-xs font-bold text-neutral-700 dark:text-neutral-300">
@@ -532,7 +538,7 @@ function ChatGPTProviderCard({
           />
         </div>
       </div>
-    </div>
+    </details>
   );
 }
 
