@@ -3348,6 +3348,36 @@ improve context-window and cost accuracy:
 `mode` is one of `chat`, `embedding`, `image_generation`, or `tts`. Keys
 starting with `_` (e.g. `_doc`) are treated as comments and ignored.
 
+### Image editing
+
+The registry preserves LiteLLM's `supported_endpoints` and `image_edit` mode.
+A model is confirmed to support editing when its endpoints include
+`/v1/images/edits` or its mode is `image_edit`. Missing metadata means unknown,
+not unsupported; some providers' endpoint lists are incomplete. Runtime sync and
+`scripts/sync_model_capabilities.py` use the same parser. Bare OpenAI model IDs
+are normalized to the `openai/` prefix used by Suzent.
+
+Configure **Image Editing** separately in Settings → Model Roles. Confirmed
+models appear as suggestions; enabled models with unknown editing capability
+remain available as explicit overrides. There is no chat-model fallback.
+
+The `edit_image` tool accepts a prompt, local `image_paths`, optional PNG
+`mask_path`, `size`, `quality`, and `count` (1–4). Each input is limited to 20 MB;
+providers can impose stricter limits. Mask dimensions must match the source.
+Multi-image, mask, dimensions, and quality support depend on the selected model.
+Results are saved as new files in the workspace's `images` directory; pass the
+returned `saved_paths` to edit them again. Existing chats with a saved tool
+selection may need **ImageEditTool** enabled.
+
+`generate_image` passes size and quality to the image API and requests the count
+as a native batch. DALL-E 3 therefore requires count=1. Its free-form `style`
+remains a prompt hint. Both tools save all returned images with extensions
+identified from the image bytes and report empty provider responses as errors.
+
+When a provider does not support `quality`, image tools omit that optional hint
+and report `dropped_params: ["quality"]` along with a note in the result.
+Unsupported size, mask, and batch-count parameters still fail explicitly.
+
 
 ---
 
