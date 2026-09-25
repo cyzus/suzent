@@ -8,11 +8,11 @@ import { ModelRolesTab } from './ModelRolesTab';
 it('separates speech controls from role assignment and links both pages', () => {
   const voice = renderToStaticMarkup(
     <I18nProvider>
-      <VoiceSettingsCard onOpenModelRoles={() => {}} />
+      <VoiceSettingsCard />
     </I18nProvider>
   );
   expect(voice).toContain('bg-white');
-  expect(voice).toContain('Choose the API speech model');
+  expect(voice).not.toContain('Choose the API speech model');
   const roles = renderToStaticMarkup(
     <I18nProvider>
       <ModelRolesTab

@@ -618,7 +618,11 @@ export function SettingsModal({
       {activeCategory === 'audio' && (
         <SettingsPage>
           <SettingsHeader title={t('speech.title')} subtitle={t('speech.subtitle')} />
-          <VoiceSettingsCard onOpenModelRoles={() => selectCategory('roles')} />
+          <VoiceSettingsCard
+            suggestions={roleSuggestions.tts || []}
+            unregisteredModels={roleSuggestions._unregistered || []}
+            onModelsSaved={(models) => setRoleModels((current) => ({ ...current, tts: models }))}
+          />
         </SettingsPage>
       )}
 

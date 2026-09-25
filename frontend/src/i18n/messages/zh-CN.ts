@@ -1,5 +1,11 @@
 export const zhCN = {
   speech: {
+    model: '语音模型',
+    modelChanged: '已按模型调整设置，请保存以应用更改。',
+    savedBackups: '保留了另外 {count} 个已存模型，语音使用首个模型。',
+    providerDefault: '模型默认音色',
+    customVoice: '自定义音色 ID',
+
     openSettings: '音色与播放设置 →',
     autoplay: '自动播放工具新生成的语音',
     queued: '等待播放',

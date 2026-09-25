@@ -19,6 +19,10 @@ class VoiceSettings(BaseModel):
     instructions: str = Field(default="", max_length=4000)
 
 
+class VoiceSettingsUpdate(VoiceSettings):
+    tts_models: list[str] | None = Field(default=None, max_length=20)
+
+
 def get_voice_settings() -> VoiceSettings:
     from suzent.config import CONFIG
 

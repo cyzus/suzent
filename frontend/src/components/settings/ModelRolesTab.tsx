@@ -80,7 +80,12 @@ interface ModelDropdownProps {
   onSelect: (model: string) => void;
 }
 
-function ModelDropdown({ label, options, unregisteredModels, onSelect }: ModelDropdownProps) {
+export function ModelDropdown({
+  label,
+  options,
+  unregisteredModels,
+  onSelect,
+}: ModelDropdownProps) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -458,6 +463,22 @@ export function ModelRolesTab({
   }
 
   function renderRole(role: (typeof ROLES)[number]): React.ReactElement {
+    if (role.key === 'tts')
+      return (
+        <button
+          key="tts"
+          type="button"
+          onClick={onOpenVoiceSettings}
+          disabled={!onOpenVoiceSettings}
+          className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-neutral-50 dark:hover:bg-zinc-900"
+        >
+          <span className="text-sm font-black">{t('settings.roles.tts')}</span>
+          <span className="min-w-0 truncate font-mono text-xs">
+            {roleModels.tts?.[0] || t('settings.roles.notConfigured')}
+          </span>
+          <span className="text-xs">{t('speech.openSettings')}</span>
+        </button>
+      );
     const { models, source } = resolveParent(role.fallback);
     return (
       <RoleRow

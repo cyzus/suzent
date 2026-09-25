@@ -1168,17 +1168,32 @@ async def delete_custom_provider(request: Request) -> JSONResponse:
 
 
 async def voice_settings(request: Request) -> JSONResponse:
-    """Read or persist speech defaults independently of model selection."""
-    from suzent.voice.settings import VoiceSettings, get_voice_settings
+    """Speech defaults and the existing TTS role are edited together."""
+    from suzent.voice.settings import VoiceSettingsUpdate, get_voice_settings
+    from suzent.core.role_router import get_role_router
 
+    router = get_role_router()
     if request.method == "GET":
-        return JSONResponse(get_voice_settings().model_dump())
+        return JSONResponse(
+            {
+                **get_voice_settings().model_dump(),
+                "tts_models": router.get_model_ids("tts"),
+            }
+        )
     try:
-        settings = VoiceSettings.model_validate(await request.json())
+        update = VoiceSettingsUpdate.model_validate(await request.json())
+        if update.tts_models is not None and any(
+            not model.strip() or "/" not in model for model in update.tts_models
+        ):
+            raise ValueError("TTS model IDs must use provider/model format.")
+        settings = update.model_dump(exclude={"tts_models"})
         config_data = _load_local_config_file()
-        config_data["voice_settings"] = settings.model_dump()
+        config_data["voice_settings"] = settings
         _save_local_config_file(config_data)
-        CONFIG.voice_settings = settings.model_dump()
-        return JSONResponse(settings.model_dump())
+        CONFIG.voice_settings = settings
+        if update.tts_models is not None:
+            router.set_role("tts", update.tts_models)
+            router.save_to_db()
+        return JSONResponse({**settings, "tts_models": router.get_model_ids("tts")})
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)

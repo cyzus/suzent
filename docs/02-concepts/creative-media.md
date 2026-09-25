@@ -29,7 +29,11 @@ retrieved, with playback controls. Later tools start another rail segment.
 
 ## Speech
 
-**Settings → Voice & audio** saves global defaults. Each `speak`
+**Settings → Voice & audio** saves the API speech model and global defaults together.
+Model Roles shows a TTS summary linking to this page. Gemini and OpenAI models
+provide built-in voice suggestions and model-specific controls; unknown/custom
+providers retain a manual voice ID field. Changing models resets the voice and
+incompatible options before Save. Each `speak`
 call may override engine, voice, speed, volume, language, pitch, output format,
 and `prompt` (tone/style instructions).
 

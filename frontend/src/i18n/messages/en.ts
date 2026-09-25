@@ -1,5 +1,11 @@
 export const en = {
   speech: {
+    model: 'Speech model',
+    modelChanged: 'Settings were adjusted for this model. Save to apply the changes.',
+    savedBackups: '{count} additional stored models are retained. Speech uses the first model.',
+    providerDefault: 'Model default voice',
+    customVoice: 'Custom voice ID',
+
     openSettings: 'Voice & playback settings →',
     autoplay: 'Automatically play new tool speech',
     queued: 'Queued',
