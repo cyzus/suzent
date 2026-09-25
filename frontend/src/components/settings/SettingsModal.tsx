@@ -590,7 +590,14 @@ export function SettingsModal({
             await deleteCustomProvider(providerId);
             setProviders((prev) => prev.filter((p) => p.id !== providerId));
           }}
-          onChatGPTAuthChanged={refreshBackendConfig}
+          onChatGPTAuthChanged={async () => {
+            setVerification((prev) => {
+              const next = { ...prev };
+              delete next.chatgpt;
+              return next;
+            });
+            await refreshBackendConfig();
+          }}
         />
       )}
 
