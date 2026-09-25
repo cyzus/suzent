@@ -878,6 +878,29 @@ export const en = {
     saving: 'Saving...',
     verifyFailed: 'Verification failed or no models found.',
     social: {
+      channelEnabled: 'Enabled',
+      channelDisabled: 'Disabled',
+      searchChannels: 'Search channels…',
+      noMatchingChannels: 'No matching channels.',
+      connectionTab: 'Connection',
+      accessTab: 'Access control',
+      accessHint:
+        'Enter the user IDs allowed to chat with this channel, separated by commas. Manage pairing requests below.',
+
+      fields: {
+        token: 'Bot token',
+        app_id: 'App ID',
+        app_secret: 'App secret',
+        encrypt_key: 'Encryption key',
+        verification_token: 'Verification token',
+        app_token: 'App token',
+        bot_token: 'Bot token',
+        base_url: 'Service URL',
+        channel_version: 'Channel version',
+        get_updates_buf: 'Update cursor',
+      },
+      enabledCount: '{enabled} / {total} enabled',
+
       title: 'Social Channels',
       subtitle: 'Configure social platform agents and access control',
       socialModel: 'Social Model',

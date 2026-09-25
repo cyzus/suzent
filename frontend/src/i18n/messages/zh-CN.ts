@@ -924,6 +924,28 @@ export const zhCN = {
     saving: '正在保存...',
     verifyFailed: '验证失败或未找到可用模型。',
     social: {
+      channelEnabled: '已启用',
+      channelDisabled: '未启用',
+      searchChannels: '搜索频道…',
+      noMatchingChannels: '没有匹配的频道。',
+      connectionTab: '连接配置',
+      accessTab: '访问控制',
+      accessHint: '填写允许使用此频道的用户 ID，以英文逗号分隔。配对请求可在下方管理。',
+
+      fields: {
+        token: '机器人令牌',
+        app_id: '应用 ID',
+        app_secret: '应用密钥',
+        encrypt_key: '加密密钥',
+        verification_token: '验证令牌',
+        app_token: '应用令牌',
+        bot_token: '机器人令牌',
+        base_url: '服务地址',
+        channel_version: '频道版本',
+        get_updates_buf: '消息同步游标',
+      },
+      enabledCount: '已启用 {enabled} / {total}',
+
       title: '社交频道',
       subtitle: '配置社交平台智能体与访问控制',
       socialModel: '社交模型',

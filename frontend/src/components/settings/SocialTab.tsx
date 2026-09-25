@@ -16,13 +16,7 @@ import { BrutalMultiSelect } from '../BrutalMultiSelect';
 import { BrutalOnOff } from '../BrutalOnOff';
 import { RefreshButton } from '../RefreshButton';
 import { SettingsHeader } from './SettingsHeader';
-import {
-  SettingsCard,
-  SectionCardHeader,
-  GridCard,
-  SettingsGrid,
-  SettingsPage,
-} from './SettingsCard';
+import { Badge, SettingsCard, SectionCardHeader, SettingsPage } from './SettingsCard';
 import { SocialPlatformBadge, SocialPlatformIcon, socialPlatformLabel } from './SocialPlatformIcon';
 
 interface McpServersData {
@@ -95,6 +89,21 @@ export function SocialTab({
   const { t } = useI18n();
 
   const handshakeEnabled = !!(socialConfig.handshake as any)?.enabled;
+  const [channelQuery, setChannelQuery] = useState('');
+  const [channelSections, setChannelSections] = useState<Record<string, 'connection' | 'access'>>(
+    {}
+  );
+  const channels = Object.entries(socialConfig).filter(
+    ([key, value]) =>
+      !['allowed_users', 'model', 'memory_enabled', 'tools', 'mcp_enabled', 'handshake'].includes(
+        key
+      ) &&
+      value !== null &&
+      typeof value === 'object' &&
+      !Array.isArray(value)
+  );
+  const enabledCount = channels.filter(([, config]) => config.enabled).length;
+
   const [pairings, setPairings] = useState<PairingRequest[]>([]);
   const [pairingLoading, setPairingLoading] = useState(false);
   const [wechatLogin, setWechatLogin] = useState<WeChatLoginSession | null>(null);
@@ -220,7 +229,7 @@ export function SocialTab({
 
     return (
       <div className="space-y-3 border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900 p-3">
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="text-xs font-black uppercase text-neutral-900 dark:text-neutral-100">
               {t('settings.social.wechatAuthTitle')}
@@ -285,7 +294,178 @@ export function SocialTab({
 
   return (
     <SettingsPage>
-      <SettingsHeader title={t('settings.social.title')} subtitle={t('settings.social.subtitle')} />
+      <SettingsHeader
+        title={t('settings.social.title')}
+        subtitle={t('settings.social.subtitle')}
+        actions={
+          <Badge tone={enabledCount ? 'green' : 'neutral'}>
+            {t('settings.social.enabledCount', { enabled: enabledCount, total: channels.length })}
+          </Badge>
+        }
+      />
+
+      <input
+        type="search"
+        value={channelQuery}
+        onChange={(event) => setChannelQuery(event.target.value)}
+        aria-label={t('settings.social.searchChannels')}
+        placeholder={t('settings.social.searchChannels')}
+        className="w-full border-2 border-brutal-black bg-white px-3 py-2 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue dark:bg-zinc-800 dark:text-white"
+      />
+      {!channels.some(([key]) =>
+        `${socialPlatformLabel(key)} ${key}`
+          .toLowerCase()
+          .includes(channelQuery.trim().toLowerCase())
+      ) && (
+        <p className="text-sm text-neutral-500 dark:text-neutral-400">
+          {t('settings.social.noMatchingChannels')}
+        </p>
+      )}
+      <div className="space-y-3">
+        {channels.map(([key, value]) => {
+          const platformConfig = value as any;
+          const isEnabled = !!platformConfig.enabled;
+          const section = channelSections[key] ?? 'connection';
+          const visible = `${socialPlatformLabel(key)} ${key}`
+            .toLowerCase()
+            .includes(channelQuery.trim().toLowerCase());
+          const panelId = `social-channel-${key}`;
+
+          return (
+            <details
+              key={key}
+              className={`${visible ? '' : 'hidden'} border-2 border-brutal-black bg-white shadow-brutal-sm dark:bg-zinc-800 dark:text-white`}
+            >
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 bg-neutral-50 p-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue dark:bg-zinc-900">
+                <span className="flex min-w-0 flex-1 items-center gap-3">
+                  <SocialPlatformBadge id={key} />
+                  <span className="break-words text-xl font-black uppercase leading-tight tracking-wide">
+                    {socialPlatformLabel(key)}
+                  </span>
+                </span>
+                <span className="flex shrink-0 items-center gap-2">
+                  <span
+                    className={`border-2 border-brutal-black px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider ${isEnabled ? 'bg-brutal-black text-white dark:bg-white dark:text-brutal-black' : 'dark:border-white'}`}
+                  >
+                    {t(
+                      isEnabled
+                        ? 'settings.social.channelEnabled'
+                        : 'settings.social.channelDisabled'
+                    )}
+                  </span>
+                  <span aria-hidden="true">▾</span>
+                  <span
+                    aria-hidden="true"
+                    className={`h-4 w-4 shrink-0 rounded-full border-2 border-brutal-black ${isEnabled ? 'bg-brutal-green' : 'bg-transparent'}`}
+                  />
+                </span>
+              </summary>
+              <div className="flex border-y-2 border-brutal-black bg-brutal-black">
+                {(['connection', 'access'] as const).map((item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    aria-pressed={section === item}
+                    aria-controls={`${panelId}-${item}`}
+                    onClick={() => setChannelSections((current) => ({ ...current, [key]: item }))}
+                    className={`flex-1 p-2 text-xs font-bold uppercase tracking-wider transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue ${item === 'connection' ? 'border-r-2 border-brutal-black' : ''} ${section === item ? 'bg-brutal-black text-white dark:bg-zinc-900' : 'bg-white text-brutal-black hover:bg-neutral-100 dark:bg-zinc-800 dark:text-white dark:hover:bg-zinc-700'}`}
+                  >
+                    {t(`settings.social.${item}Tab`)}
+                  </button>
+                ))}
+              </div>
+              <div className="space-y-4 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <span className="text-xs font-bold uppercase">{t('settings.social.enable')}</span>
+                  <BrutalOnOff
+                    checked={isEnabled}
+                    onChange={(checked) =>
+                      onConfigChange({
+                        ...socialConfig,
+                        [key]: { ...platformConfig, enabled: checked },
+                      })
+                    }
+                  />
+                </div>
+                <div
+                  id={`${panelId}-connection`}
+                  hidden={section !== 'connection'}
+                  className="space-y-4"
+                >
+                  {key === 'wechat' && renderWeChatAuthPanel(platformConfig)}
+
+                  {Object.entries(platformConfig).map(([fieldKey, fieldVal]) => {
+                    if (fieldKey === 'enabled' || fieldKey === 'allowed_users') return null;
+
+                    const isSecret =
+                      fieldKey.includes('token') ||
+                      fieldKey.includes('secret') ||
+                      fieldKey.includes('key');
+
+                    return (
+                      <div key={fieldKey} className="space-y-1">
+                        <label
+                          htmlFor={`${panelId}-${fieldKey}`}
+                          className="text-[10px] font-bold uppercase text-neutral-500 dark:text-neutral-400 tracking-wider"
+                        >
+                          {t(`settings.social.fields.${fieldKey}`) ===
+                          `settings.social.fields.${fieldKey}`
+                            ? fieldKey.replace(/_/g, ' ')
+                            : t(`settings.social.fields.${fieldKey}`)}
+                        </label>
+                        <input
+                          id={`${panelId}-${fieldKey}`}
+                          autoComplete="off"
+                          spellCheck={false}
+                          type={isSecret ? 'password' : 'text'}
+                          value={fieldVal == null ? '' : String(fieldVal)}
+                          onChange={(e) =>
+                            onConfigChange({
+                              ...socialConfig,
+                              [key]: { ...platformConfig, [fieldKey]: e.target.value },
+                            })
+                          }
+                          className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:border-brutal-blue focus:ring-1 focus:ring-brutal-blue focus:bg-neutral-50 dark:focus:bg-zinc-800 dark:text-white dark:placeholder-neutral-500"
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+                <div id={`${panelId}-access`} hidden={section !== 'access'} className="space-y-2">
+                  <p className="text-xs leading-relaxed text-neutral-500 dark:text-neutral-400">
+                    {t('settings.social.accessHint')}
+                  </p>
+                  <label
+                    htmlFor={`${panelId}-allowed-users`}
+                    className="text-[10px] font-bold uppercase text-neutral-500 dark:text-neutral-400 tracking-wider"
+                  >
+                    {t('settings.social.allowedUsersSpecific')}
+                  </label>
+                  <input
+                    id={`${panelId}-allowed-users`}
+                    type="text"
+                    value={(platformConfig.allowed_users || []).join(', ')}
+                    onChange={(e) =>
+                      onConfigChange({
+                        ...socialConfig,
+                        [key]: {
+                          ...platformConfig,
+                          allowed_users: e.target.value
+                            .split(',')
+                            .map((s) => s.trim())
+                            .filter(Boolean),
+                        },
+                      })
+                    }
+                    placeholder={t('settings.social.allowedUsersSpecificPlaceholder')}
+                    className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:border-brutal-blue focus:ring-1 focus:ring-brutal-blue focus:bg-neutral-50 dark:focus:bg-zinc-800 dark:text-white dark:placeholder-neutral-500"
+                  />
+                </div>
+              </div>
+            </details>
+          );
+        })}
+      </div>
 
       {/* Agent Capabilities Card */}
       <SettingsCard>
@@ -313,7 +493,7 @@ export function SocialTab({
 
         <div className="space-y-6">
           {/* Memory Toggle */}
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <label className="text-sm font-bold uppercase text-neutral-800 dark:text-neutral-200">
               {t('settings.social.enableMemoryTools')}
             </label>
@@ -325,7 +505,7 @@ export function SocialTab({
 
           {/* Tools Section */}
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <label className="text-sm font-bold uppercase text-neutral-800 dark:text-neutral-200">
                 {t('settings.social.tools')}
               </label>
@@ -366,7 +546,7 @@ export function SocialTab({
           {mcpServers &&
             Object.keys(mcpServers.urls).length + Object.keys(mcpServers.stdio).length > 0 && (
               <div className="space-y-3">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-3">
                   <label className="text-sm font-bold uppercase text-neutral-800 dark:text-neutral-200">
                     {t('settings.social.mcpServers')}
                   </label>
@@ -483,7 +663,7 @@ export function SocialTab({
               {pairings.map((p) => (
                 <div
                   key={p.token}
-                  className="border-2 border-brutal-black p-3 bg-neutral-50 dark:bg-zinc-900 flex items-start justify-between gap-3"
+                  className="border-2 border-brutal-black p-3 bg-neutral-50 dark:bg-zinc-900 flex flex-wrap items-start justify-between gap-3"
                 >
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -524,104 +704,6 @@ export function SocialTab({
             </div>
           ))}
       </SettingsCard>
-
-      {/* Platform-specific cards */}
-      <SettingsGrid>
-        {Object.entries(socialConfig).map(([key, value]) => {
-          if (
-            key === 'allowed_users' ||
-            key === 'model' ||
-            key === 'memory_enabled' ||
-            key === 'tools' ||
-            key === 'mcp_enabled' ||
-            key === 'handshake'
-          )
-            return null;
-          if (typeof value !== 'object' || value === null) return null;
-
-          const platformConfig = value as any;
-          const isEnabled = !!platformConfig.enabled;
-
-          return (
-            <GridCard
-              key={key}
-              title={
-                <span className="flex items-center gap-3 min-w-0">
-                  <SocialPlatformBadge id={key} />
-                  <span className="truncate">{socialPlatformLabel(key)}</span>
-                </span>
-              }
-              headerRight={
-                <BrutalOnOff
-                  checked={isEnabled}
-                  onChange={(checked) =>
-                    onConfigChange({
-                      ...socialConfig,
-                      [key]: { ...platformConfig, enabled: checked },
-                    })
-                  }
-                />
-              }
-            >
-              <div className={`p-5 space-y-3 transition-opacity ${isEnabled ? '' : 'opacity-60'}`}>
-                {key === 'wechat' && renderWeChatAuthPanel(platformConfig)}
-
-                {Object.entries(platformConfig).map(([fieldKey, fieldVal]) => {
-                  if (fieldKey === 'enabled' || fieldKey === 'allowed_users') return null;
-
-                  const isSecret =
-                    fieldKey.includes('token') ||
-                    fieldKey.includes('secret') ||
-                    fieldKey.includes('key');
-
-                  return (
-                    <div key={fieldKey} className="space-y-1">
-                      <label className="text-[10px] font-bold uppercase text-neutral-500 dark:text-neutral-400 tracking-wider">
-                        {fieldKey.replace(/_/g, ' ')}
-                      </label>
-                      <input
-                        type={isSecret ? 'password' : 'text'}
-                        value={fieldVal as string}
-                        onChange={(e) =>
-                          onConfigChange({
-                            ...socialConfig,
-                            [key]: { ...platformConfig, [fieldKey]: e.target.value },
-                          })
-                        }
-                        className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 dark:focus:bg-zinc-800 dark:text-white dark:placeholder-neutral-500"
-                      />
-                    </div>
-                  );
-                })}
-
-                <div className="space-y-1 mt-4 pt-3 border-t-2 border-dashed border-neutral-300 dark:border-zinc-600">
-                  <label className="text-[10px] font-bold uppercase text-neutral-500 dark:text-neutral-400 tracking-wider">
-                    {t('settings.social.allowedUsersSpecific')}
-                  </label>
-                  <input
-                    type="text"
-                    value={(platformConfig.allowed_users || []).join(', ')}
-                    onChange={(e) =>
-                      onConfigChange({
-                        ...socialConfig,
-                        [key]: {
-                          ...platformConfig,
-                          allowed_users: e.target.value
-                            .split(',')
-                            .map((s) => s.trim())
-                            .filter(Boolean),
-                        },
-                      })
-                    }
-                    placeholder={t('settings.social.allowedUsersSpecificPlaceholder')}
-                    className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 dark:focus:bg-zinc-800 dark:text-white dark:placeholder-neutral-500"
-                  />
-                </div>
-              </div>
-            </GridCard>
-          );
-        })}
-      </SettingsGrid>
     </SettingsPage>
   );
 }
