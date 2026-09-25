@@ -1,4 +1,7 @@
 import React from 'react';
+import { SpeechPlayer } from './SpeechPlayer';
+import { getApiBase, getSandboxParams } from '../../lib/api';
+import { useChatStore } from '../../hooks/useChatStore';
 import { getImageToolPaths, ImageToolRenderer } from './ImageToolRenderer';
 import { parseToolResultEnvelope } from './ToolCallBlock';
 
@@ -24,14 +27,80 @@ export function getImageResultPaths(calls: ImageResultCall[]): string[] {
   return [...paths];
 }
 
+interface PlayableResult {
+  key: string;
+  kind: 'video' | 'audio' | 'system';
+  path?: string;
+  metadata: Record<string, unknown>;
+}
+export function getPlayableResults(calls: ImageResultCall[]): PlayableResult[] {
+  return calls.flatMap<PlayableResult>((call, index) => {
+    if (call.toolName !== 'check_video' && call.toolName !== 'speak') return [];
+    const result = parseToolResultEnvelope(call.output);
+    if (result?.success !== true || !result.metadata || typeof result.metadata !== 'object')
+      return [];
+    const metadata = result.metadata as Record<string, unknown>;
+    if (
+      call.toolName === 'speak' &&
+      metadata.engine === 'system' &&
+      typeof metadata.text === 'string'
+    )
+      return [{ key: `speech-${index}`, kind: 'system' as const, metadata }];
+    const paths = metadata.saved_paths;
+    if (!Array.isArray(paths)) return [];
+    return paths
+      .filter((path): path is string => typeof path === 'string' && !!path.trim())
+      .map((path) => ({
+        key: path,
+        kind: call.toolName === 'check_video' ? ('video' as const) : ('audio' as const),
+        path,
+        metadata,
+      }));
+  });
+}
+
+export function hasMediaResults(calls: ImageResultCall[]): boolean {
+  return getImageResultPaths(calls).length > 0 || getPlayableResults(calls).length > 0;
+}
+
 export const ImageResultGallery: React.FC<{ calls: ImageResultCall[] }> = ({ calls }) => {
   const paths = getImageResultPaths(calls);
-  if (!paths.length) return null;
+  const media = getPlayableResults(calls);
+  const { currentChatId, config } = useChatStore();
   return (
-    <ImageToolRenderer
-      toolName="generate_image"
-      parsedArgs={null}
-      metadata={{ saved_paths: [...paths] }}
-    />
+    <>
+      {paths.length > 0 && (
+        <ImageToolRenderer
+          toolName="generate_image"
+          parsedArgs={null}
+          metadata={{ saved_paths: paths }}
+        />
+      )}
+      {media.map((item) => {
+        if (item.kind === 'system') return <SpeechPlayer key={item.key} metadata={item.metadata} />;
+        if (!currentChatId || !item.path) return null;
+        const src = `${getApiBase()}/sandbox/serve?${getSandboxParams(currentChatId, item.path, config.sandbox_volumes)}`;
+        return item.kind === 'video' ? (
+          <video
+            key={item.key}
+            src={src}
+            controls
+            preload="metadata"
+            className="max-h-96 max-w-full"
+          />
+        ) : (
+          <audio
+            key={item.key}
+            src={src}
+            controls
+            preload="metadata"
+            ref={(element) => {
+              if (element)
+                element.volume = Math.max(0, Math.min(1, Number(item.metadata.volume ?? 1)));
+            }}
+          />
+        );
+      })}
+    </>
   );
 };

@@ -215,7 +215,8 @@ def _all_tool_classes() -> tuple:
     from suzent.tools.browser.tool import BrowsingTool
     from suzent.tools.skill_tool import SkillTool
     from suzent.tools.social_message_tool import SocialMessageTool
-    from suzent.tools.voice_tool import SpeakTool
+    from suzent.tools.creative.voice_tool import SpeakTool
+    from suzent.tools.creative.video_tool import VideoGenerationTool, VideoStatusTool
     from suzent.tools.creative.image_generation_tool import ImageGenerationTool
     from suzent.tools.creative.image_edit_tool import ImageEditTool
     from suzent.tools.creative.image_vision_tool import ImageVisionTool
@@ -251,6 +252,8 @@ def _all_tool_classes() -> tuple:
         TaskListTool,
         ScheduleTool,
         RenderUITool,
+        VideoGenerationTool,
+        VideoStatusTool,
         ImageGenerationTool,
         ImageEditTool,
         ImageVisionTool,
@@ -292,6 +295,8 @@ TOOL_DESCRIPTION_OVERRIDES = {
     "AgentSendTool": "Durably send a message to another agent session and wake it.",
     "AgentStopTool": "Stop an active local or paired remote agent session.",
     "RenderUITool": "Render an interactive interface such as a form, table, card, or action panel.",
+    "VideoGenerationTool": "Generate a video from text or a reference image and return a persistent job ID.",
+    "VideoStatusTool": "Check a video job and save its completed video to the conversation.",
     "SpeakTool": "Convert a response to speech and return playable audio to the conversation.",
     "SocialMessageTool": "Send a message through a configured social channel after approval.",
 }

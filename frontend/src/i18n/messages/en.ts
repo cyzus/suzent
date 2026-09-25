@@ -1,4 +1,30 @@
 export const en = {
+  speech: {
+    autoFormat: 'Model default',
+    title: 'Voice settings',
+    engine: 'Speech engine',
+    system: 'System speech (no API)',
+    api: 'API speech',
+    voice: 'Voice',
+    defaultVoice: 'Device default',
+    play: 'Play',
+    stop: 'Stop',
+    unavailable:
+      'No local voices are available. Install a system voice or open Suzent on a supported device.',
+    failed: 'Unable to complete this action. Check your settings and try again.',
+    saved: 'Voice settings saved.',
+    systemHelp:
+      'Uses local voices on the device playing the message. Audio cannot be exported. Per-call options override these defaults.',
+    apiHelp:
+      'Uses the TTS model role and saves replayable audio. Voice IDs, formats, speed and style support depend on the provider. Unsupported options return an error.',
+    language: 'Language (e.g. zh-CN)',
+    format: 'Audio format',
+    instructions: 'Tone and style instructions',
+    speed: 'Speed',
+    pitch: 'Pitch',
+    volume: 'Volume',
+  },
+
   mobileAccess: {
     fullAccess: 'Full access',
     restrictedAccess: 'Restricted access',
@@ -789,6 +815,8 @@ export const en = {
       embedding: 'Embedding',
       embeddingDesc: 'Vector search and memory retrieval.',
       imageEdit: 'Image Editing',
+      videoGeneration: 'Video generation',
+      videoGenerationDesc: 'Create videos from text or a reference image. Requires a video model.',
       imageEditDesc:
         'Edit existing images using instructions and optional reference images or masks.',
       imageGeneration: 'Image Generation',

@@ -1,0 +1,59 @@
+# Video and speech
+
+Creative tools include image generation/editing, video generation and speech.
+Enable `VideoGenerationTool`, `VideoStatusTool` and `SpeakTool` in the tool picker.
+
+## Video
+
+Configure **Settings → Model Roles → Video generation** with a LiteLLM video
+model. Refresh model capabilities to discover models whose upstream mode is
+`video_generation`, or enter a custom model ID. This role does not inherit the
+chat model. Model-specific duration, size and reference-image limits still apply.
+
+`generate_video(prompt, seconds?, size?, image_path?)` submits a paid provider job
+and returns a `job_id`. Reference images are local files of up to 20 MB.
+`check_video(job_id)` queries progress and downloads a completed result as MP4.
+Wait at least 10 seconds between checks. Job records persist in the project
+`videos/` directory and are scoped to the originating chat. A new process can
+resume checks; there is no background polling while Suzent is closed. Provider
+retention limits still apply. Retry **check_video**, not generation, after a
+transient status/download error. After an ambiguous submission timeout, inspect
+provider jobs before resubmitting to avoid duplicate charges.
+
+Example: “Generate an 8-second landscape video of mist moving through a forest.
+Check its progress, then show the finished video.” For image-to-video, attach an
+image and ask to use that image as the reference.
+
+Completed videos appear outside the activity rail at the point they were
+retrieved, with playback controls. Later tools start another rail segment.
+
+## Speech
+
+**Settings → Model Roles → Voice settings** saves global defaults. Each `speak`
+call may override engine, voice, speed, volume, language, pitch, output format,
+and `prompt` (tone/style instructions).
+
+- **System**: no API or TTS model required. Press Play in chat to use a local voice
+  installed on the device viewing the message. Supports voice, language, speed,
+  pitch and volume. Install a system voice if none are available. This mode does
+  not export audio or interpret style instructions. It never automatically plays
+  when messages are loaded. Voice availability depends on the device/webview.
+- **API**: uses the TTS model role and provider credentials; saves audio in the
+  project's `audio/` directory for replay. Supports provider voice IDs, speed,
+  format and style instructions. Pitch/language overrides apply to system speech
+  only. Volume controls playback. Auto format uses WAV for Gemini and MP3 for
+  other providers. Gemini style instructions are included in its text prompt;
+  numeric speed and formats other than WAV are rejected before generation because
+  the current LiteLLM Gemini speech bridge does not implement them. Other models
+  may impose their own limits.
+
+An existing TTS role defaults to API speech until voice settings are saved;
+otherwise the default is system speech. System and API voices use different IDs.
+
+Examples:
+
+- “Read this in Chinese using system speech, speed 0.9, pitch 1.1.”
+- “Generate API speech with voice alloy, as a WAV file, in a calm tone.”
+
+The `speak` tool now returns playable results in chat instead of opening the
+backend server's speaker device. Hardware voice-node playback is unchanged.

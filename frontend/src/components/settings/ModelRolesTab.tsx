@@ -1,3 +1,4 @@
+import { VoiceSettingsCard } from './VoiceSettingsCard';
 import React, { useEffect, useRef, useState } from 'react';
 import { useI18n } from '../../i18n';
 import { BrutalButton } from '../BrutalButton';
@@ -59,6 +60,12 @@ const ROLES: { key: string; labelKey: string; descKey: string; fallback: Fallbac
     key: 'image_edit',
     labelKey: 'roles.imageEdit',
     descKey: 'roles.imageEditDesc',
+    fallback: 'none',
+  },
+  {
+    key: 'video_generation',
+    labelKey: 'roles.videoGeneration',
+    descKey: 'roles.videoGenerationDesc',
     fallback: 'none',
   },
   { key: 'tts', labelKey: 'roles.tts', descKey: 'roles.ttsDesc', fallback: 'none' },
@@ -472,7 +479,7 @@ export function ModelRolesTab({
     { key: 'tasksGroup', roles: ['title', 'memory_extraction', 'dream'] },
     {
       key: 'specialistsGroup',
-      roles: ['vision', 'embedding', 'image_generation', 'image_edit', 'tts'],
+      roles: ['vision', 'embedding', 'image_generation', 'image_edit', 'video_generation', 'tts'],
     },
   ];
 
@@ -512,6 +519,7 @@ export function ModelRolesTab({
           </div>
         </section>
       ))}
+      <VoiceSettingsCard />
     </SettingsPage>
   );
 }

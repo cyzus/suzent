@@ -1023,6 +1023,9 @@ def _build_role_suggestions(
             or getattr(registry.get_capabilities(model), "supports_image_edit", None)
             is None
         ),
+        "video_generation": sorted(
+            model for model, cap in caps.items() if cap.mode == "video_generation"
+        ),
         "tts": sorted(model for model, cap in caps.items() if cap.mode == "tts"),
         "_unregistered": unregistered_models,
     }
@@ -1147,3 +1150,20 @@ async def delete_custom_provider(request: Request) -> JSONResponse:
         return JSONResponse({"success": True})
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def voice_settings(request: Request) -> JSONResponse:
+    """Read or persist speech defaults independently of model selection."""
+    from suzent.voice.settings import VoiceSettings, get_voice_settings
+
+    if request.method == "GET":
+        return JSONResponse(get_voice_settings().model_dump())
+    try:
+        settings = VoiceSettings.model_validate(await request.json())
+        config_data = _load_local_config_file()
+        config_data["voice_settings"] = settings.model_dump()
+        _save_local_config_file(config_data)
+        CONFIG.voice_settings = settings.model_dump()
+        return JSONResponse(settings.model_dump())
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)

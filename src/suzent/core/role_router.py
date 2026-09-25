@@ -42,6 +42,7 @@ class ModelRole(StrEnum):
     EMBEDDING = "embedding"
     IMAGE_GENERATION = "image_generation"
     IMAGE_EDIT = "image_edit"
+    VIDEO_GENERATION = "video_generation"
 
 
 class RoleConfig:

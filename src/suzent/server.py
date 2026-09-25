@@ -100,6 +100,7 @@ from suzent.routes.config_routes import (
     get_role_models,
     save_role_models,
     get_role_suggestions,
+    voice_settings,
     save_custom_provider,
     delete_custom_provider,
     sync_capabilities,
@@ -1215,6 +1216,7 @@ app = Starlette(
         Route("/config/cost/chat/{chat_id}", get_chat_cost, methods=["GET"]),
         Route("/config/role-models", get_role_models, methods=["GET"]),
         Route("/config/role-models", save_role_models, methods=["POST"]),
+        Route("/config/voice", voice_settings, methods=["GET", "POST"]),
         Route("/config/role-suggestions", get_role_suggestions, methods=["GET"]),
         Route("/config/providers/custom", save_custom_provider, methods=["POST"]),
         Route(

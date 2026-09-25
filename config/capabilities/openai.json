@@ -114,10 +114,10 @@
       "mode": "tts"
     },
     "openai/sora-2": {
-      "mode": "chat"
+      "mode": "video_generation"
     },
     "openai/sora-2-pro": {
-      "mode": "chat"
+      "mode": "video_generation"
     },
     "openai/gpt-4-0613": {
       "mode": "chat"
@@ -485,7 +485,7 @@
       "mode": "chat"
     },
     "openai/sora-2-pro-high-res": {
-      "mode": "chat"
+      "mode": "video_generation"
     }
   }
 }

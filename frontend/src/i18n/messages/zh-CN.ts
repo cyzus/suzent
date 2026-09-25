@@ -1,4 +1,28 @@
 export const zhCN = {
+  speech: {
+    autoFormat: '模型默认格式',
+    title: '语音设置',
+    engine: '语音引擎',
+    system: '系统语音（无需 API）',
+    api: 'API 语音',
+    voice: '音色',
+    defaultVoice: '设备默认音色',
+    play: '播放',
+    stop: '停止',
+    unavailable: '没有可用的本地音色。请安装系统音色，或在支持的设备上打开 Suzent。',
+    failed: '操作失败，请检查设置并重试。',
+    saved: '语音设置已保存。',
+    systemHelp: '使用播放消息的设备上的本地音色，不生成可导出的音频。工具调用可覆盖这些默认设置。',
+    apiHelp:
+      '使用 TTS 模型角色生成可重播的音频。音色 ID、格式、语速和风格支持取决于提供商；不支持的参数会返回错误。',
+    language: '语言（如 zh-CN）',
+    format: '音频格式',
+    instructions: '语气与风格指导',
+    speed: '语速',
+    pitch: '音高',
+    volume: '音量',
+  },
+
   mobileAccess: {
     fullAccess: '完整访问',
     restrictedAccess: '受限访问',
@@ -367,6 +391,11 @@ export const zhCN = {
         },
         ImageGenerationTool: { name: '生成图片', description: '根据文本提示生成图片。' },
         ImageVisionTool: { name: '分析图片', description: '使用具备视觉能力的语言模型分析图片。' },
+        VideoGenerationTool: {
+          name: '生成视频',
+          description: '使用文字或参考图片提交视频生成任务。',
+        },
+        VideoStatusTool: { name: '查询视频', description: '查看视频进度并保存完成的视频。' },
         SpeakTool: { name: '朗读', description: '将回复转换为可播放的语音。' },
         SocialMessageTool: {
           name: '社交消息',
@@ -840,6 +869,8 @@ export const zhCN = {
       embedding: '向量嵌入',
       embeddingDesc: '向量检索与记忆召回。',
       imageEdit: '图像编辑',
+      videoGeneration: '视频生成',
+      videoGenerationDesc: '使用文字或参考图生成视频，需要配置视频模型。',
       imageEditDesc: '根据指令编辑已有图片，可使用参考图或蒙版。',
       imageGeneration: '图像生成',
       imageGenerationDesc: '文生图。',

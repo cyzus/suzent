@@ -381,11 +381,11 @@
       "max_input_tokens": 1024
     },
     "gemini/veo-3.1-generate-preview": {
-      "mode": "chat",
+      "mode": "video_generation",
       "max_input_tokens": 1024
     },
     "gemini/veo-3.1-fast-generate-preview": {
-      "mode": "chat",
+      "mode": "video_generation",
       "max_input_tokens": 1024
     },
     "gemini/gemini-live-2.5-flash-preview-native-audio-09-2025": {
@@ -469,15 +469,15 @@
       "supports_response_schema": true
     },
     "gemini/veo-3.1-lite-generate-preview": {
-      "mode": "chat",
+      "mode": "video_generation",
       "max_input_tokens": 1024
     },
     "gemini/veo-3.1-fast-generate-001": {
-      "mode": "chat",
+      "mode": "video_generation",
       "max_input_tokens": 1024
     },
     "gemini/veo-3.1-generate-001": {
-      "mode": "chat",
+      "mode": "video_generation",
       "max_input_tokens": 1024
     },
     "gemini/gemini-2.0-flash-exp-image-generation": {
