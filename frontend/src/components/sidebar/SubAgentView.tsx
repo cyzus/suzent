@@ -6,7 +6,12 @@
  * the stream does not carry (the tool-call log, the final result text).
  */
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import {
+  ArrowPathIcon,
+  ExclamationTriangleIcon,
+  StopIcon,
+  XMarkIcon,
+} from '@heroicons/react/24/outline';
 import { getApiBase } from '../../lib/api';
 import { useSubAgentStatus } from '../../hooks/useSubAgentStatus';
 import { useI18n } from '../../i18n';
@@ -101,6 +106,7 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
   const [fetchedTask, setFetchedTask] = useState<SubAgentTask | null>(null);
   const [toolLog, setToolLog] = useState<ToolLogEntry[]>([]);
   const [elapsedTime, setElapsedTime] = useState('');
+  const [stopping, setStopping] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const elapsedRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const taskRef = useRef<SubAgentTask | null>(null);
@@ -143,11 +149,14 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
   }, [taskId, fetchChatLog]);
 
   const stopAgent = async () => {
+    setStopping(true);
     try {
       await fetch(`${getApiBase()}/subagents/${taskId}/stop`, { method: 'POST' });
       fetchTask();
     } catch {
       /* ignore */
+    } finally {
+      setStopping(false);
     }
   };
 
@@ -245,26 +254,29 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
           {isRunning && (
             <button
               onClick={stopAgent}
-              className="px-2 py-1 text-[10px] leading-none font-bold uppercase tracking-wide bg-red-50 dark:bg-red-950 text-red-700 dark:text-red-300 border-2 border-red-600 rounded-sm hover:bg-red-100 dark:hover:bg-red-900 transition-colors"
+              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-transparent text-red-600 dark:text-red-400 hover:border-red-200 dark:hover:border-red-800 hover:bg-red-50 dark:hover:bg-red-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 disabled:opacity-50 disabled:cursor-wait transition-colors"
+              type="button"
+              disabled={stopping}
+              title={t(stopping ? 'subAgents.stopping' : 'subAgents.stop')}
+              aria-label={t(stopping ? 'subAgents.stopping' : 'subAgents.stop')}
+              aria-busy={stopping}
             >
-              {t('subAgents.stop')}
+              {stopping ? (
+                <ArrowPathIcon className="h-4 w-4 animate-spin" aria-hidden="true" />
+              ) : (
+                <StopIcon className="h-4 w-4" aria-hidden="true" />
+              )}
             </button>
           )}
           {onClose && (
             <button
               onClick={onClose}
-              className="p-1 aspect-square flex items-center justify-center text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors"
+              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-transparent text-neutral-400 hover:border-neutral-200 dark:hover:border-zinc-600 hover:bg-neutral-100 dark:hover:bg-zinc-700 hover:text-neutral-700 dark:hover:text-neutral-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue transition-colors"
+              type="button"
+              aria-label={t('subAgents.close')}
               title={t('subAgents.close')}
             >
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2.5}
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
+              <XMarkIcon className="h-4 w-4" aria-hidden="true" />
             </button>
           )}
         </div>

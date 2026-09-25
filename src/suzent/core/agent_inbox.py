@@ -9,7 +9,9 @@ from typing import Any, Optional
 
 from suzent.config import CONFIG
 from suzent.database import get_database
-from suzent.logger import logger
+from suzent.logger import get_logger
+
+logger = get_logger(__name__)
 
 _POLL_INTERVAL_SECONDS = 1.0
 _LEASE_SECONDS = 180
@@ -97,6 +99,16 @@ class AgentInboxDispatcher:
                     message_id, worker_id=self.worker_id
                 )
                 return
+            if message.get("kind") == "background_task_result":
+                from suzent.core.background_commands import get_background_commands
+
+                if get_background_commands().suppress_wakeup(
+                    (message.get("payload") or {}).get("task_id", "")
+                ):
+                    get_database().acknowledge_agent_message(
+                        message_id, worker_id=self.worker_id
+                    )
+                    return
             await self._deliver(message)
             if not get_database().acknowledge_agent_message(
                 message_id, worker_id=self.worker_id
@@ -157,7 +169,7 @@ class AgentInboxDispatcher:
         control: Any,
         message: dict[str, Any],
         content: str,
-        is_subagent_result: bool,
+        is_task_result: bool,
         citation_sources: list[dict[str, Any]],
     ) -> bool:
         """Deliver `content` into the target's in-flight turn.
@@ -176,7 +188,7 @@ class AgentInboxDispatcher:
 
         payload = (
             wrap_in_system_reminder(content, display_trigger=content)
-            if is_subagent_result
+            if is_task_result
             else content
         )
 
@@ -243,9 +255,12 @@ class AgentInboxDispatcher:
             payload.get("sender_agent_id") or sender_chat_id or "system"
         )
         marker = _delivery_marker(str(message["message_id"]))
-        is_subagent_result = message.get("kind") == "subagent_result"
-        if is_subagent_result:
-            # Sub-agent completion is an autonomous trigger, like cron and
+        is_task_result = message.get("kind") in {
+            "subagent_result",
+            "background_task_result",
+        }
+        if is_task_result:
+            # Background task completion is an autonomous trigger, like cron and
             # heartbeat, rather than a new utterance from the user. Keep the
             # durable marker inside the reminder so retries remain idempotent.
             delivered_content = f"{message['content']}\n{marker}"
@@ -274,7 +289,7 @@ class AgentInboxDispatcher:
                     control,
                     message,
                     delivered_content,
-                    is_subagent_result,
+                    is_task_result,
                     list(payload.get("citation_sources") or []),
                 ):
                     return
@@ -292,23 +307,21 @@ class AgentInboxDispatcher:
                     wrap_in_system_reminder(
                         delivered_content, display_trigger=delivered_content
                     )
-                    if is_subagent_result
+                    if is_task_result
                     else delivered_content,
                     config_override,
                     None,
                     # This text was wrapped by us a line ago; the flag is the
                     # provenance, since the token inside it proves nothing.
-                    runtime_authored=is_subagent_result,
+                    runtime_authored=is_task_result,
                 )
             else:
                 await ChatProcessor().process_background_turn(
                     chat_id=target_chat_id,
                     user_id=CONFIG.user_id,
-                    message_content="" if is_subagent_result else delivered_content,
+                    message_content="" if is_task_result else delivered_content,
                     config_override=config_override,
-                    system_reminders=[delivered_content]
-                    if is_subagent_result
-                    else None,
+                    system_reminders=[delivered_content] if is_task_result else None,
                     incoming_citation_sources=list(
                         payload.get("citation_sources") or []
                     ),

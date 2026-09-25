@@ -66,7 +66,7 @@ class StartCommandTool(ShellCommandBackend):
     display_name = "Start command"
     description = (
         "Start a long-running command in the background and return an ID for later "
-        "status checks or cancellation."
+        "status checks or cancellation. Completion automatically notifies the agent."
     )
     deferrable = False
     session_guidance = None

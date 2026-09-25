@@ -260,6 +260,12 @@ from suzent.routes.acp_routes import (
     resume_acp_session,
     probe_acp_agent,
 )
+from suzent.routes.background_task_routes import (
+    list_background_tasks,
+    get_background_task,
+    stop_background_task,
+    stream_background_tasks,
+)
 from suzent.routes.subagent_routes import (
     list_active_subagents,
     list_subagents,
@@ -751,6 +757,10 @@ async def startup():
         except Exception as e:
             logger.error(f"Failed to start AgentInboxDispatcher: {e}")
 
+        from suzent.core.background_commands import get_background_commands
+
+        await get_background_commands().start()
+
         # Start scheduler
         global scheduler_brain
         try:
@@ -968,6 +978,9 @@ async def shutdown():
             except asyncio.CancelledError:
                 pass
 
+    from suzent.core.background_commands import get_background_commands
+
+    await _stop(get_background_commands().stop(), "BackgroundCommands")
     if agent_inbox_dispatcher:
         await _stop(agent_inbox_dispatcher.stop(), "AgentInboxDispatcher")
 
@@ -1418,6 +1431,12 @@ app = Starlette(
         Route("/canvas/{chat_id}/answer", a2ui_answer, methods=["POST"]),
         Route("/events/stream", event_bus_stream, methods=["GET"]),
         Route("/subagents/active", list_active_subagents, methods=["GET"]),
+        Route("/background-tasks/stream", stream_background_tasks, methods=["GET"]),
+        Route("/background-tasks", list_background_tasks, methods=["GET"]),
+        Route("/background-tasks/{task_id}", get_background_task, methods=["GET"]),
+        Route(
+            "/background-tasks/{task_id}/stop", stop_background_task, methods=["POST"]
+        ),
         Route("/subagents/stream", stream_subagents, methods=["GET"]),
         Route("/subagents/clear-stuck", clear_stuck_subagents_route, methods=["POST"]),
         Route("/subagents/{task_id}/steer", steer_subagent_route, methods=["POST"]),
