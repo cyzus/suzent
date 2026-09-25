@@ -53,6 +53,10 @@ const ImagePreview: React.FC<{ src: string; path: string; onOpen: (src: string) 
 export const ImageToolRenderer: React.FC<ToolRendererProps> = (props) => {
   const { currentChatId, config } = useChatStore();
   const paths = getImageToolPaths(props);
+  const imageUrls = paths.map(
+    (path) =>
+      `${getApiBase()}/sandbox/serve?${getSandboxParams(currentChatId || '', path, config.sandbox_volumes)}`
+  );
   const [viewingImage, setViewingImage] = useState<string | null>(null);
   return (
     <div className="space-y-3 min-w-0">
@@ -64,7 +68,12 @@ export const ImageToolRenderer: React.FC<ToolRendererProps> = (props) => {
           })}
         </div>
       )}
-      <ImageViewer src={viewingImage} onClose={() => setViewingImage(null)} />
+      <ImageViewer
+        src={viewingImage}
+        onClose={() => setViewingImage(null)}
+        images={imageUrls}
+        onNavigate={setViewingImage}
+      />
       {props.output && <MarkdownRenderer content={props.output} />}
     </div>
   );

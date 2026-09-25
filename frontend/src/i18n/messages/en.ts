@@ -1993,6 +1993,9 @@ export const en = {
     clickToView: 'Click to view {path} (Shift+Click for full screen)',
   },
   imageViewer: {
+    previous: 'Previous image',
+    next: 'Next image',
+    close: 'Close',
     fullScreenAlt: 'Full screen preview',
   },
 } as const;
