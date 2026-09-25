@@ -126,3 +126,20 @@ def test_role_suggestions_keep_unregistered_models_available_as_overrides():
     assert suggestions["embedding"] == ["openai/text-embedding-3-small"]
     assert suggestions["tts"] == ["openai/tts-1"]
     assert suggestions["_unregistered"] == ["custom/new-model"]
+
+
+def test_image_edit_suggestions_distinguish_unknown_capabilities():
+    from suzent.core.model_registry import ModelCapabilities
+
+    registry = FakeRegistry()
+    registry._capabilities = {
+        "openai/editor": ModelCapabilities(
+            mode="image_generation", supported_endpoints=("/v1/images/edits",)
+        ),
+        "gemini/unknown-image": ModelCapabilities(mode="image_generation"),
+    }
+    suggestions = config_routes._build_role_suggestions(
+        registry, ["openai/editor", "gemini/unknown-image"]
+    )
+    assert suggestions["image_edit"] == ["openai/editor"]
+    assert suggestions["_image_edit_unknown"] == ["gemini/unknown-image"]

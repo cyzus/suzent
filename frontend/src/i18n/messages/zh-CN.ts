@@ -839,6 +839,8 @@ export const zhCN = {
       visionDesc: '图像分析，必须支持多模态输入。',
       embedding: '向量嵌入',
       embeddingDesc: '向量检索与记忆召回。',
+      imageEdit: '图像编辑',
+      imageEditDesc: '根据指令编辑已有图片，可使用参考图或蒙版。',
       imageGeneration: '图像生成',
       imageGenerationDesc: '文生图。',
       tts: '语音合成',

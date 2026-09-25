@@ -41,6 +41,7 @@ class ModelRole(StrEnum):
     TTS = "tts"
     EMBEDDING = "embedding"
     IMAGE_GENERATION = "image_generation"
+    IMAGE_EDIT = "image_edit"
 
 
 class RoleConfig:

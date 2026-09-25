@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "minor"},
+  "summary": "Add image editing with a dedicated model role and improve image generation size, quality, and batch output handling."
+}
