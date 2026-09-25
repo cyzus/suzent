@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { getApiBase, getSandboxParams } from '../../lib/api';
 import { useChatStore } from '../../hooks/useChatStore';
 import { useI18n } from '../../i18n';
+import { useChatImages } from '../ChatImageGallery';
 import { ImageViewer } from '../ImageViewer';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import type { ToolRendererProps } from './ToolCallBlock';
@@ -57,14 +58,22 @@ export const ImageToolRenderer: React.FC<ToolRendererProps> = (props) => {
     (path) =>
       `${getApiBase()}/sandbox/serve?${getSandboxParams(currentChatId || '', path, config.sandbox_volumes)}`
   );
+  const gallery = useChatImages(imageUrls);
   const [viewingImage, setViewingImage] = useState<string | null>(null);
   return (
-    <div className="space-y-3 min-w-0">
+    <div ref={gallery.ref} className="space-y-3 min-w-0">
       {currentChatId && paths.length > 0 && (
         <div className="flex flex-wrap gap-3">
           {paths.map((path) => {
             const src = `${getApiBase()}/sandbox/serve?${getSandboxParams(currentChatId, path, config.sandbox_volumes)}`;
-            return <ImagePreview key={src} src={src} path={path} onOpen={setViewingImage} />;
+            return (
+              <ImagePreview
+                key={src}
+                src={src}
+                path={path}
+                onOpen={gallery.open ?? setViewingImage}
+              />
+            );
           })}
         </div>
       )}

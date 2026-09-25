@@ -1,3 +1,4 @@
+import { ChatMarkdownImage } from '../ChatImageGallery';
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -740,7 +741,7 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(
           }
 
           return (
-            <img
+            <ChatMarkdownImage
               src={src}
               alt={props.alt || ''}
               title={props.title}

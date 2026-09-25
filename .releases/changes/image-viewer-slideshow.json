@@ -1,4 +1,4 @@
 {
   "products": {"desktop": "minor"},
-  "summary": "Browse generated image groups in the image viewer using navigation buttons and arrow keys."
+  "summary": "Browse uploaded, generated, edited, and Markdown images from the current conversation in one image viewer using navigation buttons and arrow keys."
 }
