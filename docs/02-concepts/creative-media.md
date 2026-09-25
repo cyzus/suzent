@@ -43,8 +43,9 @@ and `prompt` (tone/style instructions).
   only. Volume controls playback. Auto format uses WAV for Gemini and MP3 for
   other providers. Gemini style instructions are included in its text prompt;
   numeric speed and formats other than WAV are rejected before generation because
-  the current LiteLLM Gemini speech bridge does not implement them. Other models
-  may impose their own limits.
+  this adapter supports WAV and prompt-based pacing for Gemini. Gemini audio
+  requests carry the configured credentials directly, bypassing LiteLLM’s speech
+  bridge. Other models may impose their own limits.
 
 New speech results in the current chat play automatically by default. System and
 API speech share a queue and provide Stop and Replay controls. Disable

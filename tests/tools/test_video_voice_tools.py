@@ -116,7 +116,7 @@ async def test_system_speech_needs_no_model_or_audio_device(context):
 
 @pytest.mark.parametrize(
     "model,expected_format",
-    [("openai/gpt-4o-mini-tts", "mp3"), ("gemini/gemini-2.5-flash-preview-tts", "wav")],
+    [("openai/gpt-4o-mini-tts", "mp3")],
 )
 async def test_api_speech_overrides_and_saves(
     context, tmp_path, model, expected_format
@@ -241,7 +241,7 @@ async def test_speech_autoplay_setting_and_stable_result_id(context):
 
 @pytest.mark.parametrize("provider", ["gemini", "vertex_ai"])
 @pytest.mark.parametrize("audio_format", ["auto", "wav"])
-async def test_gemini_speech_bridge_keeps_audio_format_out_of_chat(
+async def test_gemini_direct_audio_preserves_credentials_and_wav(
     context, tmp_path, provider, audio_format
 ):
     import base64
@@ -250,51 +250,33 @@ async def test_gemini_speech_bridge_keeps_audio_format_out_of_chat(
     from pathlib import Path
 
     import litellm
-    from litellm.endpoints.speech.speech_to_completion_bridge.transformation import (
-        SpeechToCompletionBridgeTransformationHandler,
-    )
 
     model = f"{provider}/gemini-2.5-flash-preview-tts"
-    bridge = SpeechToCompletionBridgeTransformationHandler()
     pcm = b"\x00\x00" * 240
 
-    async def speech(**kwargs):
-        # Exercise the installed LiteLLM request and response transformations,
-        # replacing only the provider's response with deterministic PCM audio.
-        request = bridge.transform_request(
-            model=kwargs["model"].split("/", 1)[1],
-            input=kwargs["input"],
-            voice=kwargs["voice"],
-            optional_params={
-                key: kwargs[key]
-                for key in ("response_format", "speed", "instructions")
-                if key in kwargs
-            },
-            litellm_params={},
-            headers={},
-            litellm_logging_obj=None,
-            custom_llm_provider=provider,
-        )
+    async def completion(**request):
+        assert request["model"] == model
+        assert request["api_key"] == "configured-test-key"
+        assert request["api_base"] == "https://example.invalid/gemini"
         assert "response_format" not in request
         assert request["audio"]["voice"] == "Kore"
+        assert request["modalities"] == ["audio"]
         assert "Calm" in request["messages"][0]["content"]
-        return bridge.transform_response(
-            litellm.ModelResponse(
-                model=model,
-                choices=[
-                    {
-                        "message": {
-                            "role": "assistant",
-                            "audio": {
-                                "id": "audio",
-                                "data": base64.b64encode(pcm).decode(),
-                                "expires_at": 0,
-                                "transcript": "hello",
-                            },
-                        }
+        return litellm.ModelResponse(
+            model=model,
+            choices=[
+                {
+                    "message": {
+                        "role": "assistant",
+                        "audio": {
+                            "id": "audio",
+                            "data": base64.b64encode(pcm).decode(),
+                            "expires_at": 0,
+                            "transcript": "hello",
+                        },
                     }
-                ],
-            )
+                }
+            ],
         )
 
     with (
@@ -308,8 +290,20 @@ async def test_gemini_speech_bridge_keeps_audio_format_out_of_chat(
             "get_role_router",
             return_value=SimpleNamespace(get_model_id=lambda _: model),
         ),
-        patch.object(voice, "_litellm_model_and_kwargs", return_value=(model, {})),
-        patch.object(voice, "_litellm", return_value=SimpleNamespace(aspeech=speech)),
+        patch.object(
+            voice,
+            "_litellm_model_and_kwargs",
+            return_value=(
+                model,
+                {
+                    "api_key": "configured-test-key",
+                    "api_base": "https://example.invalid/gemini",
+                },
+            ),
+        ),
+        patch.object(
+            voice, "_litellm", return_value=SimpleNamespace(acompletion=completion)
+        ),
         patch.object(voice.CONFIG, "workspace_root", str(tmp_path)),
     ):
         result = await voice.SpeakTool().forward(context, "hello", prompt="Calm")
@@ -320,3 +314,26 @@ async def test_gemini_speech_bridge_keeps_audio_format_out_of_chat(
         with wave.open(io.BytesIO(path.read_bytes()), "rb") as audio:
             assert audio.getframerate() == 24000
             assert audio.readframes(audio.getnframes()) == pcm
+
+
+async def test_gemini_rejects_unsupported_speed_before_provider_call(context):
+    with (
+        patch.object(
+            voice, "get_voice_settings", return_value=VoiceSettings(engine="api")
+        ),
+        patch.object(
+            voice,
+            "get_role_router",
+            return_value=SimpleNamespace(
+                get_model_id=lambda _: "gemini/gemini-2.5-flash-preview-tts"
+            ),
+        ),
+        patch.object(
+            voice,
+            "_litellm_model_and_kwargs",
+            return_value=("gemini/gemini-2.5-flash-preview-tts", {}),
+        ),
+        patch.object(voice, "_litellm") as client,
+    ):
+        assert not (await voice.SpeakTool().forward(context, "hello", speed=2)).success
+        client.assert_not_called()

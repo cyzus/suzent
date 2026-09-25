@@ -1,6 +1,9 @@
 """Prepare on-device speech or generate a replayable audio artifact."""
 
 import asyncio
+import base64
+import io
+import wave
 from pathlib import Path
 from typing import Annotated, Literal
 from uuid import uuid4
@@ -104,9 +107,7 @@ class SpeakTool(Tool):
                     raise ValueError(
                         "Gemini TTS supports WAV output and no numeric speed control through this adapter. Use auto/WAV, speed 1, and prompt for pacing."
                     )
-                # The bridge produces WAV itself; response_format would leak into chat JSON-format validation.
                 options["voice"] = settings.voice or "Kore"
-                # LiteLLM's speech bridge drops instructions. Gemini accepts them in the text prompt.
                 speech_input = (
                     f"{settings.instructions}\nRead the following text aloud:\n{text}"
                     if settings.instructions
@@ -123,15 +124,40 @@ class SpeakTool(Tool):
                     options["speed"] = settings.speed
                 if settings.instructions:
                     options["instructions"] = settings.instructions
-            response = await _litellm().aspeech(
-                model=routed_model,
-                input=speech_input,
-                **options,
-                **auth,
-                drop_params=False,
-                timeout=120,
-            )
-            content = response if isinstance(response, bytes) else response.content
+            if is_gemini:
+                # aspeech's bridge loses explicit credentials and leaks audio response_format into chat.
+                response = await _litellm().acompletion(
+                    model=routed_model,
+                    messages=[{"role": "user", "content": speech_input}],
+                    modalities=["audio"],
+                    audio={"voice": options["voice"]},
+                    **auth,
+                    drop_params=False,
+                    timeout=120,
+                )
+                audio = response.choices[0].message.audio
+                if audio is None or not audio.data:
+                    raise ValueError("Gemini returned no speech audio.")
+                pcm = base64.b64decode(audio.data, validate=True)
+                if not pcm or len(pcm) % 2:
+                    raise ValueError("Gemini returned invalid PCM16 audio.")
+                buffer = io.BytesIO()
+                with wave.open(buffer, "wb") as wav:
+                    wav.setnchannels(1)
+                    wav.setsampwidth(2)
+                    wav.setframerate(24000)
+                    wav.writeframes(pcm)
+                content = buffer.getvalue()
+            else:
+                response = await _litellm().aspeech(
+                    model=routed_model,
+                    input=speech_input,
+                    **options,
+                    **auth,
+                    drop_params=False,
+                    timeout=120,
+                )
+                content = response if isinstance(response, bytes) else response.content
             if not isinstance(content, bytes) or not content:
                 raise ValueError("TTS returned empty audio.")
             if ctx.deps.chat_id:
