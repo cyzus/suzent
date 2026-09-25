@@ -317,6 +317,12 @@ class ChatOperationsMixin:
 
             if config is not None:
                 next_config = dict(config)
+                # UI config snapshots must not erase or resurrect server-owned approvals.
+                next_config.pop("_pending_approvals", None)
+                if "_pending_approvals" in (chat.config or {}):
+                    next_config["_pending_approvals"] = chat.config[
+                        "_pending_approvals"
+                    ]
                 if messages is None:
                     next_config = _copy_summary_keys(next_config, chat.config)
                 chat.config = next_config
