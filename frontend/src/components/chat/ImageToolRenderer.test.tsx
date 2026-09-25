@@ -32,6 +32,9 @@ describe('image tool previews', () => {
     expect(html).toContain('path=C%3A%5Cimages%5Ca+%231.png');
     expect(html).toContain('chat_id=chat-1');
     expect(html).toContain('Generated two images.');
+    expect(html.match(/<button /g)).toHaveLength(2);
+    expect(html).not.toContain('target=');
+    expect(html).not.toContain('<a ');
   });
 
   it('prefers the resolved analysis path and falls back for older results', () => {

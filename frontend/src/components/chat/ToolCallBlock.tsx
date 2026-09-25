@@ -41,8 +41,6 @@ const OUTPUT_RENDERERS: Record<string, React.FC<ToolRendererProps> | undefined> 
   start_command: BashOutputRenderer,
   read_file: FileDiffViewer,
   analyze_image: ImageToolRenderer,
-  generate_image: ImageToolRenderer,
-  edit_image: ImageToolRenderer,
 };
 
 export type ApprovalState = 'pending' | 'approved' | 'denied' | undefined;
