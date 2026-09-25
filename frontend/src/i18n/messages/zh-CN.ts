@@ -1933,6 +1933,9 @@ export const zhCN = {
     clickToView: '点击查看 {path}（按住 Shift 点击全屏）',
   },
   imageViewer: {
+    previous: '上一张',
+    next: '下一张',
+    close: '关闭',
     fullScreenAlt: '全屏预览',
   },
   memoryView: {

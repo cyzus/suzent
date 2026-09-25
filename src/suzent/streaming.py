@@ -1956,11 +1956,6 @@ async def stream_agent_responses(
                         "chatId": chat_id,
                         "decision": payload.get("permission_decision", {}),
                     }
-                    await _queue_custom_event(
-                        out_queue,
-                        "tool_approval_request",
-                        approval_info,
-                    )
                     # Persist pending approval to DB so the frontend can
                     # reconstruct the approval dialog after a page refresh.
                     if chat_id:
@@ -2004,6 +1999,12 @@ async def stream_agent_responses(
                             logger.debug(
                                 f"[Streaming] Failed to save pending_approval: {_pa_err}"
                             )
+
+                    await _queue_custom_event(
+                        out_queue,
+                        "tool_approval_request",
+                        approval_info,
+                    )
 
                 elif msg_type == "permission_decision":
                     yield CustomEvent(name="tool_permission_decision", value=payload)

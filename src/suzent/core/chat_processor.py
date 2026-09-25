@@ -258,13 +258,13 @@ def _resolve_resume_approval_actions(
             # response is already a committed StreamingResponse, so raising
             # here would abort the connection mid-stream with no error event.
             # Skip the already-resolved approval instead.
-            logger.info("Skipping unknown or stale approval request: %s", approval_id)
+            logger.info("Skipping unknown or stale approval request: {}", approval_id)
             continue
 
         decision = pending_request.get("decision")
         if not isinstance(decision, dict):
             logger.warning(
-                "Approval request has no decision contract, skipping: %s",
+                "Approval request has no decision contract, skipping: {}",
                 approval_id,
             )
             continue
