@@ -3,6 +3,7 @@
   "consumed": [
     ".releases/changes/approved-tool-names.json",
     ".releases/changes/ask-question-no-replay.json",
+    ".releases/changes/background-task-wakeups.json",
     ".releases/changes/builtin-tool-color.json",
     ".releases/changes/builtin-tool-floor.json",
     ".releases/changes/chat-pinning-home.json",

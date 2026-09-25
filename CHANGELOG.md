@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Release notes
 - Preserve tool names when resuming after human approval and restoring chat drafts.
 - Stop an answered ask_question surface from reappearing with its options once the turn finishes.
+- Notify agents when background Shell commands finish and unify Shell commands and sub-agents in the background task sidebar.
 - Give built-in tools their own grey fill and a padlock in the tool picker, so a locked row no longer looks like a faded selected one.
 - Keep a core set of tools always equipped, and show in the picker which tools are built-in and which stay discoverable when unchecked.
 - Pin individual chats above Projects in a compact sidebar section, and rename the default project to Home while preserving custom names.
