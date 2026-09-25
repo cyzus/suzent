@@ -1,3 +1,4 @@
+import { speechQueue } from '../../lib/speechPlayback';
 import React, { useEffect, useState } from 'react';
 import { getApiBase } from '../../lib/api';
 import { useI18n } from '../../i18n';
@@ -5,6 +6,7 @@ import { useSystemVoices } from '../chat/SpeechPlayer';
 import { BrutalButton } from '../BrutalButton';
 
 interface VoiceSettings {
+  autoplay: boolean;
   engine: 'system' | 'api';
   voice: string;
   speed: number;
@@ -49,6 +51,7 @@ export function VoiceSettingsCard(): React.ReactElement {
         body: JSON.stringify(settings),
       });
       if (!response.ok) throw new Error();
+      speechQueue.setAutoplay(settings?.autoplay !== false);
       setStatus('speech.saved');
     } catch {
       setStatus('speech.failed');
@@ -62,6 +65,14 @@ export function VoiceSettingsCard(): React.ReactElement {
       <h3 className="font-black">{t('speech.title')}</h3>
       {settings && (
         <fieldset disabled={saving} className="space-y-3">
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={settings.autoplay !== false}
+              onChange={(event) => update({ autoplay: event.target.checked })}
+            />
+            {t('speech.autoplay')}
+          </label>
           <label className="block">
             {t('speech.engine')}
             <select

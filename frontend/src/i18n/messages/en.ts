@@ -1,5 +1,11 @@
 export const en = {
   speech: {
+    autoplay: 'Automatically play new tool speech',
+    queued: 'Queued',
+    playing: 'Playing',
+    playbackBlocked:
+      'Playback could not start. Click Play to retry; your browser may require a click before playing audio.',
+
     autoFormat: 'Model default',
     title: 'Voice settings',
     engine: 'Speech engine',

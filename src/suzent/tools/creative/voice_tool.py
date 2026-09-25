@@ -75,10 +75,10 @@ class SpeakTool(Tool):
             settings = VoiceSettings.model_validate(
                 get_voice_settings().model_dump() | overrides
             )
-            metadata = {"text": text, **settings.model_dump()}
+            metadata = {"speech_id": uuid4().hex, "text": text, **settings.model_dump()}
             if settings.engine == "system":
                 return ToolResult.success_result(
-                    "System speech is ready. Press Play in the conversation on a device with a local system voice. Style instructions and output format do not apply to system speech.",
+                    "System speech is ready for playback on the current device. Style instructions and output format do not apply to system speech.",
                     metadata=metadata,
                 )
             if pitch is not None or language is not None:

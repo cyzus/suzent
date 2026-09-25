@@ -33,11 +33,10 @@ retrieved, with playback controls. Later tools start another rail segment.
 call may override engine, voice, speed, volume, language, pitch, output format,
 and `prompt` (tone/style instructions).
 
-- **System**: no API or TTS model required. Press Play in chat to use a local voice
+- **System**: no API or TTS model required. Uses a local voice
   installed on the device viewing the message. Supports voice, language, speed,
   pitch and volume. Install a system voice if none are available. This mode does
-  not export audio or interpret style instructions. It never automatically plays
-  when messages are loaded. Voice availability depends on the device/webview.
+  not export audio or interpret style instructions. Voice availability depends on the device/webview.
 - **API**: uses the TTS model role and provider credentials; saves audio in the
   project's `audio/` directory for replay. Supports provider voice IDs, speed,
   format and style instructions. Pitch/language overrides apply to system speech
@@ -46,6 +45,13 @@ and `prompt` (tone/style instructions).
   numeric speed and formats other than WAV are rejected before generation because
   the current LiteLLM Gemini speech bridge does not implement them. Other models
   may impose their own limits.
+
+New speech results in the current chat play automatically by default. System and
+API speech share a queue and provide Stop and Replay controls. Disable
+**Automatically play new tool speech** in Voice settings for manual playback.
+History loading, refresh, chat switches and repeated stream snapshots do not
+replay earlier results. Switching chats stops playback and clears the queue.
+If device/browser autoplay is blocked, click Play to retry.
 
 An existing TTS role defaults to API speech until voice settings are saved;
 otherwise the default is system speech. System and API voices use different IDs.

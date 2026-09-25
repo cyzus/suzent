@@ -1,5 +1,10 @@
 export const zhCN = {
   speech: {
+    autoplay: '自动播放工具新生成的语音',
+    queued: '等待播放',
+    playing: '正在播放',
+    playbackBlocked: '未能开始播放。请点击播放重试，浏览器可能需要你先点击才能播放声音。',
+
     autoFormat: '模型默认格式',
     title: '语音设置',
     engine: '语音引擎',

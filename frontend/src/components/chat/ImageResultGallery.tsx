@@ -89,16 +89,7 @@ export const ImageResultGallery: React.FC<{ calls: ImageResultCall[] }> = ({ cal
             className="max-h-96 max-w-full"
           />
         ) : (
-          <audio
-            key={item.key}
-            src={src}
-            controls
-            preload="metadata"
-            ref={(element) => {
-              if (element)
-                element.volume = Math.max(0, Math.min(1, Number(item.metadata.volume ?? 1)));
-            }}
-          />
+          <SpeechPlayer key={item.key} src={src} metadata={item.metadata} />
         );
       })}
     </>

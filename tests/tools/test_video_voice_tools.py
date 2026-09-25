@@ -226,3 +226,14 @@ async def test_voice_settings_validation_and_persistence():
         assert (await config_routes.voice_settings(request)).status_code == 200
         assert save.call_args.args[0]["preserved"] is True
         assert config_routes.CONFIG.voice_settings["speed"] == 1.2
+
+
+async def test_speech_autoplay_setting_and_stable_result_id(context):
+    with patch.object(
+        voice, "get_voice_settings", return_value=VoiceSettings(autoplay=False)
+    ):
+        first = await voice.SpeakTool().forward(context, "hello")
+        second = await voice.SpeakTool().forward(context, "hello")
+        assert first.metadata["autoplay"] is False
+        assert first.metadata["speech_id"] != second.metadata["speech_id"]
+    assert VoiceSettings().autoplay is True

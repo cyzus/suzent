@@ -1,5 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState, useSyncExternalStore } from 'react';
 import { useI18n } from '../../i18n';
+import { createSpeechJob, speechId, speechQueue } from '../../lib/speechPlayback';
 
 export function useSystemVoices(): SpeechSynthesisVoice[] {
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
@@ -16,92 +17,57 @@ export function useSystemVoices(): SpeechSynthesisVoice[] {
 
 export function SpeechPlayer({
   metadata,
+  src,
 }: {
   metadata: Record<string, unknown>;
+  src?: string;
 }): React.ReactElement {
   const { t } = useI18n();
   const voices = useSystemVoices();
-  const [playing, setPlaying] = useState(false);
-  const [error, setError] = useState(false);
-  const active = useRef<SpeechSynthesisUtterance | null>(null);
   const [selected, setSelected] = useState(String(metadata.voice || ''));
-  useEffect(
-    () => () => {
-      if (active.current) {
-        active.current.onend = null;
-        active.current.onerror = null;
-        window.speechSynthesis.cancel();
-      }
-    },
-    []
+  const id = speechId(metadata, src);
+  const state = useSyncExternalStore(
+    speechQueue.subscribe,
+    () => speechQueue.state(id),
+    () => 'idle'
   );
-  const play = () => {
-    const language = String(metadata.language || '');
-    const voice =
-      voices.find((item) => item.voiceURI === selected || item.name === selected) ||
-      voices.find(
-        (item) => language && item.lang.toLowerCase().startsWith(language.toLowerCase())
-      ) ||
-      voices.find((item) => item.default) ||
-      voices[0];
-    if (!voice) return;
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(String(metadata.text || ''));
-    utterance.voice = voice;
-    utterance.lang = language || voice.lang;
-    utterance.rate = Number(metadata.speed ?? 1);
-    utterance.pitch = Number(metadata.pitch ?? 1);
-    utterance.volume = Number(metadata.volume ?? 1);
-    utterance.onend = () => {
-      if (active.current !== utterance) return;
-      setPlaying(false);
-      active.current = null;
-    };
-    utterance.onerror = (event) => {
-      if (active.current !== utterance) return;
-      setPlaying(false);
-      setError(event.error !== 'canceled' && event.error !== 'interrupted');
-      active.current = null;
-    };
-    active.current = utterance;
-    setError(false);
-    setPlaying(true);
-    window.speechSynthesis.speak(utterance);
-  };
+  const busy = state === 'playing' || state === 'queued';
   return (
     <div className="space-y-2 border-2 border-brutal-black p-3">
-      <p className="text-xs font-bold">{t('speech.system')}</p>
-      <select
-        aria-label={t('speech.voice')}
-        value={selected}
-        onChange={(e) => setSelected(e.target.value)}
-        className="max-w-full bg-transparent"
-      >
-        <option value="">{t('speech.defaultVoice')}</option>
-        {voices.map((voice) => (
-          <option key={voice.voiceURI} value={voice.voiceURI}>
-            {voice.name} ({voice.lang})
-          </option>
-        ))}
-      </select>
+      <p className="text-xs font-bold">{t(src ? 'speech.api' : 'speech.system')}</p>
+      {!src && (
+        <select
+          aria-label={t('speech.voice')}
+          value={selected}
+          onChange={(event) => setSelected(event.target.value)}
+          className="max-w-full bg-transparent"
+        >
+          <option value="">{t('speech.defaultVoice')}</option>
+          {voices.map((voice) => (
+            <option key={voice.voiceURI} value={voice.voiceURI}>
+              {voice.name} ({voice.lang})
+            </option>
+          ))}
+        </select>
+      )}
       <div className="flex gap-3">
-        <button type="button" disabled={!voices.length || playing} onClick={play}>
-          {t('speech.play')}
-        </button>
         <button
           type="button"
-          disabled={!playing}
+          disabled={(!src && !voices.length) || busy}
           onClick={() => {
-            window.speechSynthesis.cancel();
-            active.current = null;
-            setPlaying(false);
+            const job = createSpeechJob({ ...metadata, voice: selected }, src);
+            speechQueue.enqueue({ ...job, id });
           }}
         >
+          {t('speech.play')}
+        </button>
+        <button type="button" disabled={!busy} onClick={() => speechQueue.stop(id)}>
           {t('speech.stop')}
         </button>
       </div>
-      {!voices.length && <p role="status">{t('speech.unavailable')}</p>}
-      {error && <p role="alert">{t('speech.failed')}</p>}
+      {busy && <p role="status">{t(state === 'queued' ? 'speech.queued' : 'speech.playing')}</p>}
+      {!src && !voices.length && <p role="status">{t('speech.unavailable')}</p>}
+      {state === 'blocked' && <p role="alert">{t('speech.playbackBlocked')}</p>}
     </div>
   );
 }

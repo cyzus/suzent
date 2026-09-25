@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class VoiceSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    autoplay: bool = True
     engine: Literal["system", "api"] = "system"
     voice: str = Field(default="", max_length=200)
     speed: float = Field(default=1, ge=0.25, le=4)
