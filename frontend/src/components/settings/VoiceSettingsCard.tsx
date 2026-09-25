@@ -17,7 +17,11 @@ interface VoiceSettings {
   instructions: string;
 }
 
-export function VoiceSettingsCard(): React.ReactElement {
+export function VoiceSettingsCard({
+  onOpenModelRoles,
+}: {
+  onOpenModelRoles?: () => void;
+}): React.ReactElement {
   const { t } = useI18n();
   const voices = useSystemVoices();
   const [settings, setSettings] = useState<VoiceSettings | null>(null);
@@ -59,13 +63,21 @@ export function VoiceSettingsCard(): React.ReactElement {
       setSaving(false);
     }
   };
-  const fieldClass = 'block w-full border-2 border-brutal-black bg-white p-2 dark:bg-zinc-800';
+  const fieldClass =
+    'mt-1 block w-full border-2 border-brutal-black bg-white px-3 py-2 text-sm font-normal dark:bg-zinc-800';
   return (
-    <section className="space-y-3 border-2 border-brutal-black p-4 dark:text-white">
-      <h3 className="font-black">{t('speech.title')}</h3>
+    <section className="space-y-4 border-2 border-brutal-black bg-white p-4 shadow-brutal-sm dark:bg-zinc-800 dark:text-white sm:p-5">
+      {onOpenModelRoles && (
+        <BrutalButton size="sm" onClick={onOpenModelRoles}>
+          {t('speech.openModels')}
+        </BrutalButton>
+      )}
       {settings && (
-        <fieldset disabled={saving} className="space-y-3">
-          <label className="flex items-center gap-2">
+        <fieldset
+          disabled={saving}
+          className="grid grid-cols-1 gap-4 text-sm font-medium sm:grid-cols-2"
+        >
+          <label className="flex items-center gap-2 sm:col-span-2">
             <input
               type="checkbox"
               checked={settings.autoplay !== false}
@@ -88,7 +100,9 @@ export function VoiceSettingsCard(): React.ReactElement {
           </label>
           {settings.engine === 'system' ? (
             <>
-              <p className="text-xs">{t('speech.systemHelp')}</p>
+              <p className="text-xs font-normal leading-relaxed text-neutral-500 sm:col-span-2">
+                {t('speech.systemHelp')}
+              </p>
               <label className="block">
                 {t('speech.voice')}
                 <select
@@ -120,7 +134,9 @@ export function VoiceSettingsCard(): React.ReactElement {
             </>
           ) : (
             <>
-              <p className="text-xs">{t('speech.apiHelp')}</p>
+              <p className="text-xs font-normal leading-relaxed text-neutral-500 sm:col-span-2">
+                {t('speech.apiHelp')}
+              </p>
               <label className="block">
                 {t('speech.voice')}
                 <input
@@ -143,7 +159,7 @@ export function VoiceSettingsCard(): React.ReactElement {
                   ))}
                 </select>
               </label>
-              <label className="block">
+              <label className="block sm:col-span-2">
                 {t('speech.instructions')}
                 <textarea
                   className={fieldClass}
@@ -172,7 +188,11 @@ export function VoiceSettingsCard(): React.ReactElement {
               />
             </label>
           ))}
-          <BrutalButton onClick={() => void save()} disabled={saving}>
+          <BrutalButton
+            className="justify-self-end sm:col-span-2"
+            onClick={() => void save()}
+            disabled={saving}
+          >
             {t('common.save')}
           </BrutalButton>
         </fieldset>

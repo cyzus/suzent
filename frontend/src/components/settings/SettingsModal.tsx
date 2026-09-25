@@ -1,3 +1,6 @@
+import { VoiceSettingsCard } from './VoiceSettingsCard';
+import { SettingsPage } from './SettingsCard';
+import { SettingsHeader } from './SettingsHeader';
 import React, { useEffect, useRef, useState } from 'react';
 
 import { useChatStore } from '../../hooks/useChatStore';
@@ -405,6 +408,7 @@ export function SettingsModal({
     const timeoutId = window.setTimeout(async () => {
       try {
         await saveProviderSettings();
+        setRoleSuggestions(await fetchRoleSuggestions());
       } catch (error) {
         console.error('Failed to save provider settings', error);
       }
@@ -607,7 +611,15 @@ export function SettingsModal({
           suggestions={roleSuggestions}
           unregisteredModels={roleSuggestions._unregistered || []}
           onChange={setRoleModels}
+          onOpenVoiceSettings={() => selectCategory('audio')}
         />
+      )}
+
+      {activeCategory === 'audio' && (
+        <SettingsPage>
+          <SettingsHeader title={t('speech.title')} subtitle={t('speech.subtitle')} />
+          <VoiceSettingsCard onOpenModelRoles={() => selectCategory('roles')} />
+        </SettingsPage>
       )}
 
       {activeCategory === 'memory' && (

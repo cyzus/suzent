@@ -1,4 +1,3 @@
-import { VoiceSettingsCard } from './VoiceSettingsCard';
 import React, { useEffect, useRef, useState } from 'react';
 import { useI18n } from '../../i18n';
 import { BrutalButton } from '../BrutalButton';
@@ -9,6 +8,7 @@ interface ModelRolesTabProps {
   roleModels: Record<string, string[]>;
   suggestions: Record<string, string[]>;
   unregisteredModels: string[];
+  onOpenVoiceSettings?: () => void;
   onChange: (roles: Record<string, string[]>) => void;
 }
 
@@ -439,6 +439,7 @@ export function ModelRolesTab({
   suggestions,
   unregisteredModels,
   onChange,
+  onOpenVoiceSettings,
 }: ModelRolesTabProps): React.ReactElement {
   const { t } = useI18n();
 
@@ -489,6 +490,11 @@ export function ModelRolesTab({
         title={t('settings.roles.title')}
         subtitle={t('settings.roles.compactIntro')}
       />
+      {onOpenVoiceSettings && (
+        <BrutalButton size="sm" onClick={onOpenVoiceSettings}>
+          {t('speech.openSettings')}
+        </BrutalButton>
+      )}
       {groups.map((group) => (
         <section key={group.key} aria-labelledby={`roles-${group.key}`}>
           <h3
@@ -519,7 +525,6 @@ export function ModelRolesTab({
           </div>
         </section>
       ))}
-      <VoiceSettingsCard />
     </SettingsPage>
   );
 }

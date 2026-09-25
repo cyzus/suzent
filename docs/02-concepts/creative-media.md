@@ -29,7 +29,7 @@ retrieved, with playback controls. Later tools start another rail segment.
 
 ## Speech
 
-**Settings → Model Roles → Voice settings** saves global defaults. Each `speak`
+**Settings → Voice & audio** saves global defaults. Each `speak`
 call may override engine, voice, speed, volume, language, pitch, output format,
 and `prompt` (tone/style instructions).
 
@@ -64,3 +64,8 @@ Examples:
 
 The `speak` tool now returns playable results in chat instead of opening the
 backend server's speaker device. Hardware voice-node playback is unchanged.
+
+Specialist role recommendations require a configured provider (credentials for
+API services, explicitly enabled models for keyless local services). Unconfigured
+providers are excluded without deleting existing role assignments. This checks
+configuration, not account/model access, and does not make verification requests.

@@ -1,5 +1,6 @@
 export const en = {
   speech: {
+    openSettings: 'Voice & playback settings →',
     autoplay: 'Automatically play new tool speech',
     queued: 'Queued',
     playing: 'Playing',
@@ -7,7 +8,7 @@ export const en = {
       'Playback could not start. Click Play to retry; your browser may require a click before playing audio.',
 
     autoFormat: 'Model default',
-    title: 'Voice settings',
+    title: 'Voice & audio',
     engine: 'Speech engine',
     system: 'System speech (no API)',
     api: 'API speech',
@@ -29,6 +30,8 @@ export const en = {
     speed: 'Speed',
     pitch: 'Pitch',
     volume: 'Volume',
+    subtitle: 'Choose how speech sounds and plays on your device.',
+    openModels: 'Choose the API speech model →',
   },
 
   mobileAccess: {

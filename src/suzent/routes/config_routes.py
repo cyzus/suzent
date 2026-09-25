@@ -979,7 +979,7 @@ async def save_role_models(request: Request) -> JSONResponse:
 
 
 def _build_role_suggestions(
-    registry: Any, enabled_models: list[str]
+    registry: Any, enabled_models: list[str], configured_providers: set[str]
 ) -> dict[str, list[str]]:
     """Build role suggestions without hiding enabled models we cannot classify.
 
@@ -987,6 +987,11 @@ def _build_role_suggestions(
     a separate metadata bucket so the UI can label them as capability-unverified
     instead of presenting them as known-compatible suggestions.
     """
+    enabled_models = [
+        model
+        for model in enabled_models
+        if model.partition("/")[0] in configured_providers
+    ]
     vision_models = [
         model for model in enabled_models if registry.supports_vision(model)
     ]
@@ -994,7 +999,11 @@ def _build_role_suggestions(
         model for model in enabled_models if registry.get_capabilities(model) is None
     ]
 
-    caps = registry._capabilities  # type: ignore[attr-defined]
+    caps = {
+        model: cap
+        for model, cap in registry._capabilities.items()
+        if model.partition("/")[0] in configured_providers
+    }
     return {
         "primary": enabled_models,
         "cheap": enabled_models,
@@ -1045,7 +1054,13 @@ async def get_role_suggestions(request: Request) -> JSONResponse:
         registry = get_model_registry()
         chat_models = get_enabled_models_from_db()
 
-        return JSONResponse(_build_role_suggestions(registry, chat_models))
+        from suzent.core.providers.helpers import get_configured_provider_ids
+
+        return JSONResponse(
+            _build_role_suggestions(
+                registry, chat_models, get_configured_provider_ids()
+            )
+        )
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 

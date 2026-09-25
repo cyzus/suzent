@@ -1,12 +1,13 @@
 export const zhCN = {
   speech: {
+    openSettings: '音色与播放设置 →',
     autoplay: '自动播放工具新生成的语音',
     queued: '等待播放',
     playing: '正在播放',
     playbackBlocked: '未能开始播放。请点击播放重试，浏览器可能需要你先点击才能播放声音。',
 
     autoFormat: '模型默认格式',
-    title: '语音设置',
+    title: '语音与音频',
     engine: '语音引擎',
     system: '系统语音（无需 API）',
     api: 'API 语音',
@@ -26,6 +27,8 @@ export const zhCN = {
     speed: '语速',
     pitch: '音高',
     volume: '音量',
+    subtitle: '设置语音引擎、音色和播放方式。',
+    openModels: '选择 API 语音模型 →',
   },
 
   mobileAccess: {
