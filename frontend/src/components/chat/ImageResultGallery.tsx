@@ -7,7 +7,7 @@ interface ImageResultCall {
   output?: string;
 }
 
-export const ImageResultGallery: React.FC<{ calls: ImageResultCall[] }> = ({ calls }) => {
+export function getImageResultPaths(calls: ImageResultCall[]): string[] {
   const paths = new Set<string>();
   for (const call of calls) {
     if (call.toolName !== 'generate_image' && call.toolName !== 'edit_image') continue;
@@ -21,7 +21,12 @@ export const ImageResultGallery: React.FC<{ calls: ImageResultCall[] }> = ({ cal
     }))
       paths.add(path);
   }
-  if (!paths.size) return null;
+  return [...paths];
+}
+
+export const ImageResultGallery: React.FC<{ calls: ImageResultCall[] }> = ({ calls }) => {
+  const paths = getImageResultPaths(calls);
+  if (!paths.length) return null;
   return (
     <ImageToolRenderer
       toolName="generate_image"

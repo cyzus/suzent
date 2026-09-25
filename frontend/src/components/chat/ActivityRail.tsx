@@ -91,7 +91,8 @@ export type ActivityRenderGroup<T> =
 
 export function groupActivityChunks<T>(
   chunks: T[],
-  isActivityChunk: (chunk: T) => boolean
+  isActivityChunk: (chunk: T) => boolean,
+  endsActivity: (chunk: T) => boolean = () => false
 ): ActivityRenderGroup<T>[] {
   const renderGroups: ActivityRenderGroup<T>[] = [];
   let activityChunks: Array<{ chunk: T; index: number }> = [];
@@ -99,6 +100,10 @@ export function groupActivityChunks<T>(
   chunks.forEach((chunk, index) => {
     if (isActivityChunk(chunk)) {
       activityChunks.push({ chunk, index });
+      if (endsActivity(chunk)) {
+        renderGroups.push({ type: 'activity', chunks: activityChunks });
+        activityChunks = [];
+      }
       return;
     }
 
