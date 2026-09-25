@@ -9,7 +9,7 @@ from suzent.llm import ImageGenerator
 from suzent.logger import get_logger
 from suzent.tools.base import Tool, ToolErrorCode, ToolGroup, ToolResult
 from suzent.tools.filesystem.file_tool_utils import get_or_create_path_resolver
-from suzent.tools.image_output import image_suffix, save_images
+from suzent.tools.creative.image_output import image_suffix, save_images
 
 logger = get_logger(__name__)
 MAX_INPUT_BYTES = 20 * 1024 * 1024

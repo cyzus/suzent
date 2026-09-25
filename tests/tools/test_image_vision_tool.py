@@ -3,7 +3,7 @@ from pathlib import Path
 from unittest.mock import patch, AsyncMock, MagicMock
 
 from suzent.tools.base import ToolErrorCode
-from suzent.tools.image_vision_tool import ImageVisionTool
+from suzent.tools.creative.image_vision_tool import ImageVisionTool
 
 
 @pytest.fixture
@@ -31,7 +31,7 @@ async def test_image_vision_file_not_found(mock_ctx):
     mock_resolver.resolve.return_value = mock_path
 
     with patch(
-        "suzent.tools.image_vision_tool.get_or_create_path_resolver",
+        "suzent.tools.creative.image_vision_tool.get_or_create_path_resolver",
         return_value=mock_resolver,
     ):
         tool = ImageVisionTool()
@@ -41,7 +41,10 @@ async def test_image_vision_file_not_found(mock_ctx):
 
 
 @pytest.mark.asyncio
-@patch("suzent.tools.image_vision_tool.litellm.acompletion", new_callable=AsyncMock)
+@patch(
+    "suzent.tools.creative.image_vision_tool.litellm.acompletion",
+    new_callable=AsyncMock,
+)
 @patch("builtins.open", new_callable=MagicMock)
 async def test_image_vision_success(mock_open, mock_acompletion, mock_ctx):
     mock_stat = MagicMock()
@@ -72,7 +75,7 @@ async def test_image_vision_success(mock_open, mock_acompletion, mock_ctx):
     mock_router.get_model_id.return_value = "openai/gpt-4.1"
 
     with patch(
-        "suzent.tools.image_vision_tool.get_or_create_path_resolver",
+        "suzent.tools.creative.image_vision_tool.get_or_create_path_resolver",
         return_value=mock_resolver,
     ):
         with patch("suzent.core.role_router.get_role_router", return_value=mock_router):
@@ -102,7 +105,7 @@ async def test_image_vision_no_model(mock_ctx):
     mock_router.get_model_id.return_value = None
 
     with patch(
-        "suzent.tools.image_vision_tool.get_or_create_path_resolver",
+        "suzent.tools.creative.image_vision_tool.get_or_create_path_resolver",
         return_value=mock_resolver,
     ):
         with patch("suzent.core.role_router.get_role_router", return_value=mock_router):
@@ -133,7 +136,7 @@ async def test_image_vision_too_large(mock_ctx):
     mock_resolver.resolve.return_value = mock_path
 
     with patch(
-        "suzent.tools.image_vision_tool.get_or_create_path_resolver",
+        "suzent.tools.creative.image_vision_tool.get_or_create_path_resolver",
         return_value=mock_resolver,
     ):
         tool = ImageVisionTool()
@@ -165,7 +168,10 @@ def _staged_image(mock_open):
 
 
 @pytest.mark.asyncio
-@patch("suzent.tools.image_vision_tool.litellm.acompletion", new_callable=AsyncMock)
+@patch(
+    "suzent.tools.creative.image_vision_tool.litellm.acompletion",
+    new_callable=AsyncMock,
+)
 @patch("builtins.open", new_callable=MagicMock)
 async def test_a_self_hosted_vision_model_is_reachable_and_not_thinking(
     mock_open, mock_acompletion, mock_ctx
@@ -185,12 +191,12 @@ async def test_a_self_hosted_vision_model_is_reachable_and_not_thinking(
     mock_router.get_model_id.return_value = "sglang/qwen3-vl"
 
     with patch(
-        "suzent.tools.image_vision_tool.get_or_create_path_resolver",
+        "suzent.tools.creative.image_vision_tool.get_or_create_path_resolver",
         return_value=mock_resolver,
     ):
         with patch("suzent.core.role_router.get_role_router", return_value=mock_router):
             with patch(
-                "suzent.tools.image_vision_tool.chat_completion_args",
+                "suzent.tools.creative.image_vision_tool.chat_completion_args",
                 return_value=(
                     "openai/qwen3-vl",
                     {
@@ -211,7 +217,10 @@ async def test_a_self_hosted_vision_model_is_reachable_and_not_thinking(
 
 
 @pytest.mark.asyncio
-@patch("suzent.tools.image_vision_tool.litellm.acompletion", new_callable=AsyncMock)
+@patch(
+    "suzent.tools.creative.image_vision_tool.litellm.acompletion",
+    new_callable=AsyncMock,
+)
 @patch("builtins.open", new_callable=MagicMock)
 async def test_an_empty_completion_is_an_error_not_an_empty_description(
     mock_open, mock_acompletion, mock_ctx
@@ -230,7 +239,7 @@ async def test_an_empty_completion_is_an_error_not_an_empty_description(
     mock_router.get_model_id.return_value = "sglang/qwen3-vl"
 
     with patch(
-        "suzent.tools.image_vision_tool.get_or_create_path_resolver",
+        "suzent.tools.creative.image_vision_tool.get_or_create_path_resolver",
         return_value=mock_resolver,
     ):
         with patch("suzent.core.role_router.get_role_router", return_value=mock_router):
@@ -254,7 +263,10 @@ def test_a_keyless_local_server_still_gets_a_credential():
 
 
 @pytest.mark.asyncio
-@patch("suzent.tools.image_vision_tool.litellm.acompletion", new_callable=AsyncMock)
+@patch(
+    "suzent.tools.creative.image_vision_tool.litellm.acompletion",
+    new_callable=AsyncMock,
+)
 @patch("builtins.open", new_callable=MagicMock)
 async def test_an_empty_completion_is_still_billed(
     mock_open, mock_acompletion, mock_ctx
@@ -280,7 +292,7 @@ async def test_an_empty_completion_is_still_billed(
     tracker.log_cost = AsyncMock()
 
     with patch(
-        "suzent.tools.image_vision_tool.get_or_create_path_resolver",
+        "suzent.tools.creative.image_vision_tool.get_or_create_path_resolver",
         return_value=mock_resolver,
     ):
         with patch("suzent.core.role_router.get_role_router", return_value=mock_router):

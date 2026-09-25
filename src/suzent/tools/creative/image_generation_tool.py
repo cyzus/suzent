@@ -8,7 +8,7 @@ from suzent.core.agent_deps import AgentDeps
 from suzent.llm import ImageGenerator
 from suzent.logger import get_logger
 from suzent.tools.base import Tool, ToolErrorCode, ToolGroup, ToolResult
-from suzent.tools.image_output import save_images
+from suzent.tools.creative.image_output import save_images
 
 logger = get_logger(__name__)
 

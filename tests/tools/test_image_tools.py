@@ -6,9 +6,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from suzent.llm import ImageGenerator
-from suzent.tools.image_edit_tool import ImageEditTool
-from suzent.tools.image_generation_tool import ImageGenerationTool
-from suzent.tools.image_output import save_images
+from suzent.tools.creative.image_edit_tool import ImageEditTool
+from suzent.tools.creative.image_generation_tool import ImageGenerationTool
+from suzent.tools.creative.image_output import save_images
 
 
 @pytest.fixture(autouse=True)
@@ -104,7 +104,7 @@ async def test_save_formats_and_unique_paths(tmp_path: Path) -> None:
         for data in [PNG, jpeg]
     ]
     with patch(
-        "suzent.tools.image_output.CONFIG",
+        "suzent.tools.creative.image_output.CONFIG",
         SimpleNamespace(workspace_root=str(tmp_path)),
     ):
         paths = await save_images(images, SimpleNamespace(chat_id=None))
@@ -117,9 +117,9 @@ async def test_save_formats_and_unique_paths(tmp_path: Path) -> None:
 
 async def test_generate_tool_keeps_style_and_passes_size() -> None:
     with (
-        patch("suzent.tools.image_generation_tool.ImageGenerator") as factory,
+        patch("suzent.tools.creative.image_generation_tool.ImageGenerator") as factory,
         patch(
-            "suzent.tools.image_generation_tool.save_images",
+            "suzent.tools.creative.image_generation_tool.save_images",
             new_callable=AsyncMock,
             return_value=["out.png"],
         ),
@@ -136,8 +136,10 @@ async def test_generate_tool_keeps_style_and_passes_size() -> None:
 
 async def test_edit_validates_paths_before_request(tmp_path: Path) -> None:
     with (
-        patch("suzent.tools.image_edit_tool.ImageGenerator") as factory,
-        patch("suzent.tools.image_edit_tool.get_or_create_path_resolver") as resolver,
+        patch("suzent.tools.creative.image_edit_tool.ImageGenerator") as factory,
+        patch(
+            "suzent.tools.creative.image_edit_tool.get_or_create_path_resolver"
+        ) as resolver,
     ):
         resolver.return_value.resolve.return_value = tmp_path / "missing.png"
         result = await ImageEditTool().forward(MagicMock(), "edit", ["missing.png"])
@@ -149,10 +151,12 @@ async def test_edit_tool_uses_saved_paths(tmp_path: Path) -> None:
     source = tmp_path / "source.png"
     source.write_bytes(PNG)
     with (
-        patch("suzent.tools.image_edit_tool.ImageGenerator") as factory,
-        patch("suzent.tools.image_edit_tool.get_or_create_path_resolver") as resolver,
+        patch("suzent.tools.creative.image_edit_tool.ImageGenerator") as factory,
         patch(
-            "suzent.tools.image_edit_tool.save_images",
+            "suzent.tools.creative.image_edit_tool.get_or_create_path_resolver"
+        ) as resolver,
+        patch(
+            "suzent.tools.creative.image_edit_tool.save_images",
             new_callable=AsyncMock,
             return_value=["new.png"],
         ),
