@@ -189,6 +189,13 @@ class ShellProcessBackend(Tool):
             done = result.get("done", False)
             exit_code = result.get("exit_code")
 
+            if done:
+                from suzent.core.background_commands import get_background_commands
+
+                get_background_commands().observe(
+                    chat_id, process_id, result, consumed=True
+                )
+
             # In host mode, evict completed processes once output has been fully drained.
             if (
                 self._host_mode
@@ -291,14 +298,21 @@ class ShellProcessBackend(Tool):
             )
 
     def _kill(self, process_id: str, chat_id: str) -> ToolResult:
+        from suzent.core.background_commands import get_background_commands
+
+        commands = get_background_commands()
+        previously_consumed = commands.begin_stop(chat_id, process_id)
+        ok = False
         try:
             if self._host_mode:
                 from suzent.tools.shell.host_process_registry import HostProcessRegistry
 
                 registry = HostProcessRegistry()
                 ok = registry.kill(chat_id, process_id)
-                # Evict regardless of kill result to clean up finished entries/temp files.
-                registry.evict(chat_id, process_id)
+                # A process that exited before kill still needs its real result
+                # collected by the monitor or check_command.
+                if ok:
+                    registry.evict(chat_id, process_id)
             else:
                 ok = self.manager.kill_process(self.chat_id, process_id)
             self.audit_operation(
@@ -326,3 +340,5 @@ class ShellProcessBackend(Tool):
                 f"Error killing process {process_id}: {e}",
                 metadata={"process_id": process_id},
             )
+        finally:
+            commands.finish_stop(chat_id, process_id, ok, previously_consumed)

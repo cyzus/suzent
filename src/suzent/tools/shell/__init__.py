@@ -10,6 +10,9 @@ def cleanup_shell_session(chat_id: str) -> None:
     from suzent.sandbox import SandboxManager
     from suzent.tools.shell.host_process_registry import HostProcessRegistry
 
+    from suzent.core.background_commands import get_background_commands
+
+    get_background_commands().remove_chat(chat_id)
     try:
         HostProcessRegistry().evict_chat(chat_id)
     except Exception as exc:
