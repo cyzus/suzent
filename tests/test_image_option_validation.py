@@ -75,3 +75,36 @@ async def test_xai_generation_uses_compatible_fallback() -> None:
             generator._validate_options(
                 "xai/grok-imagine-image", {"invalid": True}, editing=False
             )
+
+
+@pytest.mark.parametrize("editing", [False, True])
+async def test_gemini_quality_degrades_without_dropping_size(editing: bool) -> None:
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, patch
+
+    model = "gemini/gemini-3.1-flash-image-preview"
+    call = AsyncMock(
+        return_value=SimpleNamespace(
+            data=[SimpleNamespace(url="https://example.com/image.png")]
+        )
+    )
+    with (
+        patch(
+            "suzent.llm._litellm",
+            return_value=SimpleNamespace(aimage_generation=call, aimage_edit=call),
+        ),
+        patch("suzent.llm._litellm_model_and_kwargs", return_value=(model, {})),
+    ):
+        generator = ImageGenerator(model)
+        await generator._request(
+            "draw", "1024x1024", "high", 1, **({"image": b"image"} if editing else {})
+        )
+        assert "quality" not in call.call_args.kwargs
+        assert call.call_args.kwargs["size"] == "1024x1024"
+        assert generator.dropped_params == ["quality"]
+        await generator._request("draw", None, None, 1)
+        assert generator.dropped_params == []
+        with pytest.raises(ValueError, match="mask"):
+            generator._validate_options(
+                model, {"mask": b"mask", "quality": "high"}, editing=True
+            )

@@ -57,21 +57,30 @@ class ImageGenerationTool(Tool):
                 "Provide a non-empty prompt and count between 1 and 4.",
             )
         try:
-            images = await ImageGenerator().generate(
+            generator = ImageGenerator()
+            images = await generator.generate(
                 f"{prompt}\nStyle: {style}" if style else prompt,
                 size=size,
                 quality=quality,
                 count=count,
             )
             paths = await save_images(images, ctx.deps)
+            note = (
+                " Unsupported quality was ignored; provider defaults were used."
+                if generator.dropped_params
+                else ""
+            )
             return ToolResult.success_result(
-                f"Successfully generated and saved {len(paths)} image(s).",
+                f"Successfully generated and saved {len(paths)} image(s).{note}",
                 metadata={
                     "saved_paths": paths,
                     "prompt": prompt,
                     "style": style,
                     "size": size,
-                    "quality": quality,
+                    "quality": None
+                    if "quality" in generator.dropped_params
+                    else quality,
+                    "dropped_params": generator.dropped_params,
                     "count": count,
                 },
             )

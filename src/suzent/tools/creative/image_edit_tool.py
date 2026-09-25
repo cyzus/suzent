@@ -97,9 +97,18 @@ class ImageEditTool(Tool):
                 count=count,
             )
             saved_paths = await save_images(images, ctx.deps)
+            note = (
+                " Unsupported quality was ignored; provider defaults were used."
+                if generator.dropped_params
+                else ""
+            )
             return ToolResult.success_result(
-                f"Successfully edited and saved {len(saved_paths)} image(s).",
-                metadata={"saved_paths": saved_paths, "count": len(saved_paths)},
+                f"Successfully edited and saved {len(saved_paths)} image(s).{note}",
+                metadata={
+                    "saved_paths": saved_paths,
+                    "count": len(saved_paths),
+                    "dropped_params": generator.dropped_params,
+                },
             )
         except Exception as exc:  # noqa: BLE001 — tool boundary returns provider failures
             logger.error(f"Image editing failed: {traceback.format_exc()}")

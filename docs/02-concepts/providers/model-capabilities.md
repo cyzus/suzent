@@ -111,3 +111,7 @@ selection may need **ImageEditTool** enabled.
 as a native batch. DALL-E 3 therefore requires count=1. Its free-form `style`
 remains a prompt hint. Both tools save all returned images with extensions
 identified from the image bytes and report empty provider responses as errors.
+
+When a provider does not support `quality`, image tools omit that optional hint
+and report `dropped_params: ["quality"]` along with a note in the result.
+Unsupported size, mask, and batch-count parameters still fail explicitly.

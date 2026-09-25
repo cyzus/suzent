@@ -333,6 +333,7 @@ class ImageGenerator:
     ) -> None:
         from suzent.core.role_router import get_role_router
 
+        self.dropped_params: list[str] = []
         self.model = model or get_role_router().get_model_id(role)
         if not self.model:
             raise ValueError(
@@ -372,7 +373,7 @@ class ImageGenerator:
 
     def _validate_options(
         self, model: str, options: dict[str, Any], *, editing: bool
-    ) -> None:
+    ) -> set[str]:
         from litellm import LlmProviders, get_llm_provider, openai_compatible_providers
         from litellm.utils import ProviderConfigManager
 
@@ -397,10 +398,14 @@ class ImageGenerator:
         # LiteLLM's global drop_params can override per-request False for edits.
         # Check explicitly without mutating shared settings used by concurrent chats.
         unsupported = set(options) - set(config.get_supported_openai_params(name))
+        dropped = unsupported & {"quality"}
+        unsupported -= dropped
         if unsupported:
             raise ValueError(
                 f"Unsupported image parameters for {model}: {', '.join(sorted(unsupported))}"
             )
+
+        return dropped
 
     async def _request(
         self,
@@ -418,7 +423,8 @@ class ImageGenerator:
         }
         if count != 1:
             options["n"] = count
-        self._validate_options(
+        self.dropped_params = []
+        dropped = self._validate_options(
             model,
             {
                 **options,
@@ -426,6 +432,9 @@ class ImageGenerator:
             },
             editing=bool(inputs),
         )
+        self.dropped_params = sorted(dropped)
+        for key in dropped:
+            options.pop(key, None)
         client = _litellm()
         call = client.aimage_edit if inputs else client.aimage_generation
         response = await call(

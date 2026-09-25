@@ -13,7 +13,7 @@ from suzent.tools.creative.image_output import save_images
 
 @pytest.fixture(autouse=True)
 def mock_option_validation():
-    with patch.object(ImageGenerator, "_validate_options"):
+    with patch.object(ImageGenerator, "_validate_options", return_value=set()):
         yield
 
 
@@ -124,6 +124,7 @@ async def test_generate_tool_keeps_style_and_passes_size() -> None:
             return_value=["out.png"],
         ),
     ):
+        factory.return_value.dropped_params = []
         factory.return_value.generate = AsyncMock(return_value=["image"])
         result = await ImageGenerationTool().forward(
             MagicMock(), "cat", style="ink", size="1536x1024", quality="high"
@@ -162,6 +163,7 @@ async def test_edit_tool_uses_saved_paths(tmp_path: Path) -> None:
         ),
     ):
         resolver.return_value.resolve.return_value = source
+        factory.return_value.dropped_params = []
         factory.return_value.edit = AsyncMock(return_value=["image"])
         result = await ImageEditTool().forward(
             MagicMock(), "blue background", [str(source)]
