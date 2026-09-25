@@ -1,25 +1,19 @@
-/**
- * SubAgentList — every sub-agent spawned in the current session.
- *
- * History comes from /subagents; live state is overlaid from the shared
- * useSubAgentStatus EventSource. The overlay now includes the terminal update,
- * so a run that finishes flips to DONE/STOPPED in place instead of sitting on a
- * stale "running" row until someone reopened the panel.
- */
-import React, { useEffect, useRef, useState } from 'react';
+/** Shared task list; polling repairs state after a dropped event stream. */
+import { ArrowPathIcon, CommandLineIcon, StopIcon } from '@heroicons/react/24/outline';
+import React, { useEffect, useState } from 'react';
 import { getApiBase } from '../../lib/api';
-import { useSubAgentStatus, SubAgentSummary } from '../../hooks/useSubAgentStatus';
-import { isSubAgentActive, SubAgentStatusBadge } from '../chat/subAgentStatus';
+import { useBackgroundTasks, BackgroundTaskSummary } from '../../hooks/useBackgroundTasks';
+import { isStreamStateStale, isSubAgentActive, SubAgentStatusBadge } from '../chat/subAgentStatus';
 import { AgentAvatar } from './subAgentDisplay';
 import { toolLabel } from '../chat/toolSummary';
 import { useI18n } from '../../i18n';
 
-interface SubAgentListProps {
+interface BackgroundTaskListProps {
   chatId: string;
   onSelect: (taskId: string) => void;
 }
 
-type SubAgentRow = SubAgentSummary;
+type BackgroundTaskRow = BackgroundTaskSummary;
 
 function formatDuration(
   startedAt: string | null | undefined,
@@ -35,62 +29,66 @@ function formatDuration(
 }
 
 /** Newest first, with anything still working pinned to the top. */
-function sortRows(rows: SubAgentRow[]): SubAgentRow[] {
+function sortRows(rows: BackgroundTaskRow[]): BackgroundTaskRow[] {
   return [...rows].sort((a, b) => {
     const activeDelta = Number(isSubAgentActive(b.status)) - Number(isSubAgentActive(a.status));
     if (activeDelta !== 0) return activeDelta;
-    const key = (r: SubAgentRow) => r.finished_at || r.started_at || '';
+    const key = (r: BackgroundTaskRow) => r.finished_at || r.started_at || '';
     return key(b).localeCompare(key(a));
   });
 }
 
-async function stopSubAgent(taskId: string): Promise<void> {
-  await fetch(`${getApiBase()}/subagents/${encodeURIComponent(taskId)}/stop`, { method: 'POST' });
+async function stopBackgroundTask(taskId: string): Promise<void> {
+  const res = await fetch(`${getApiBase()}/background-tasks/${encodeURIComponent(taskId)}/stop`, {
+    method: 'POST',
+  });
+  if (!res.ok) throw new Error();
 }
 
-export const SubAgentList: React.FC<SubAgentListProps> = ({ chatId, onSelect }) => {
+export const BackgroundTaskList: React.FC<BackgroundTaskListProps> = ({ chatId, onSelect }) => {
   const { t } = useI18n();
-  const [historicTasks, setHistoricTasks] = useState<SubAgentRow[]>([]);
+  const [historicTasks, setHistoricTasks] = useState<BackgroundTaskRow[]>([]);
+  const [stopError, setStopError] = useState(false);
   const [loading, setLoading] = useState(true);
   const [stopping, setStopping] = useState<Set<string>>(new Set());
-  const { taskStates } = useSubAgentStatus();
-  const lastSignatureRef = useRef('');
-
-  const fetchTasks = (chatId: string) =>
-    fetch(`${getApiBase()}/subagents?parent_chat_id=${encodeURIComponent(chatId)}`)
-      .then((r) => r.json())
-      .then((d) => setHistoricTasks(d.tasks ?? []))
-      .catch(() => {});
+  const { taskStates } = useBackgroundTasks();
 
   useEffect(() => {
     setLoading(true);
-    lastSignatureRef.current = '';
-    fetchTasks(chatId).finally(() => setLoading(false));
+    setHistoricTasks([]);
+    let active = true;
+    const refresh = async () => {
+      try {
+        const res = await fetch(
+          `${getApiBase()}/background-tasks?parent_chat_id=${encodeURIComponent(chatId)}`
+        );
+        if (res.ok && active) {
+          const data = await res.json();
+          if (active) setHistoricTasks(data.tasks ?? []);
+        }
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    void refresh().catch(() => {});
+    const timer = setInterval(() => void refresh().catch(() => {}), 3000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
   }, [chatId]);
 
   const liveTasks = Object.values(taskStates).filter((task) => task.parent_chat_id === chatId);
 
-  // Refetch whenever a task appears or changes state, so persisted-only fields
-  // (worktree branch, result summary) catch up with the live overlay.
-  const signature = liveTasks
-    .map((task) => `${task.task_id}:${task.status}`)
-    .sort()
-    .join('|');
-  useEffect(() => {
-    if (!signature || signature === lastSignatureRef.current) return;
-    lastSignatureRef.current = signature;
-    fetchTasks(chatId);
-  }, [signature, chatId]);
-
   const liveById = new Map(liveTasks.map((task) => [task.task_id, task]));
   const merged = [
-    ...liveTasks.map((task) => ({
-      ...historicTasks.find((h) => h.task_id === task.task_id),
-      ...task,
-    })),
+    ...liveTasks.map((task) => {
+      const fetched = historicTasks.find((h) => h.task_id === task.task_id);
+      return isStreamStateStale(task.status, fetched?.status) ? fetched! : { ...fetched, ...task };
+    }),
     ...historicTasks.filter((task) => !liveById.has(task.task_id)),
   ];
-  const tasks = sortRows(merged as SubAgentRow[]);
+  const tasks = sortRows(merged as BackgroundTaskRow[]);
 
   if (loading) {
     return (
@@ -103,7 +101,7 @@ export const SubAgentList: React.FC<SubAgentListProps> = ({ chatId, onSelect }) 
   if (tasks.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-[10px] font-bold uppercase tracking-widest font-mono text-neutral-400">
-        {t('subAgents.empty')}
+        {t('backgroundTasks.empty')}
       </div>
     );
   }
@@ -114,7 +112,7 @@ export const SubAgentList: React.FC<SubAgentListProps> = ({ chatId, onSelect }) 
     <div className="flex flex-col h-full min-h-0 font-mono">
       <div className="px-3 py-2 border-b-3 border-brutal-black bg-white dark:bg-zinc-800 shrink-0">
         <span className="text-[10px] font-bold uppercase tracking-widest font-mono text-neutral-500 dark:text-neutral-400">
-          {t('subAgents.heading', { count: tasks.length })}
+          {t('backgroundTasks.heading', { count: tasks.length })}
         </span>
         {activeCount > 0 && (
           <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest font-mono text-brutal-blue">
@@ -123,6 +121,11 @@ export const SubAgentList: React.FC<SubAgentListProps> = ({ chatId, onSelect }) 
           </span>
         )}
       </div>
+      {stopError && (
+        <p role="alert" className="text-xs text-red-600 p-2">
+          {t('backgroundTasks.stopFailed')}
+        </p>
+      )}
       <div className="flex-1 overflow-y-auto scrollbar-thin p-2 space-y-1 min-h-0">
         {tasks.map((task) => {
           const isActive = isSubAgentActive(task.status);
@@ -148,7 +151,11 @@ export const SubAgentList: React.FC<SubAgentListProps> = ({ chatId, onSelect }) 
               }`}
             >
               <div className="flex items-start gap-2">
-                <AgentAvatar model={task.model_override} status={task.status} />
+                {task.kind === 'shell' ? (
+                  <CommandLineIcon className="w-6 h-6 shrink-0 text-neutral-500" />
+                ) : (
+                  <AgentAvatar model={task.model_override} status={task.status} />
+                )}
                 <div className="flex-1 min-w-0">
                   {/* What this agent was sent to do -- its name, in effect. */}
                   <div className="text-[11px] font-bold text-neutral-800 dark:text-neutral-100 leading-snug line-clamp-2 group-hover:text-neutral-900 dark:group-hover:text-white">
@@ -158,12 +165,16 @@ export const SubAgentList: React.FC<SubAgentListProps> = ({ chatId, onSelect }) 
                   {/* One quiet line of provenance: who ran it, and for how
                       long. The model belongs up here beside the agent rather
                       than trailing the card as an afterthought. */}
-                  {task.model_override && (
+                  {(task.model_override || task.kind === 'shell') && (
                     <div
                       className="mt-0.5 text-[9px] text-neutral-500 dark:text-neutral-400 truncate"
-                      title={`${t('subAgents.model')}: ${task.model_override}`}
+                      title={
+                        task.kind === 'shell'
+                          ? t('backgroundTasks.shell')
+                          : `${t('subAgents.model')}: ${task.model_override}`
+                      }
                     >
-                      {task.model_override}
+                      {task.kind === 'shell' ? t('backgroundTasks.shell') : task.model_override}
                     </div>
                   )}
 
@@ -172,22 +183,37 @@ export const SubAgentList: React.FC<SubAgentListProps> = ({ chatId, onSelect }) 
                     <SubAgentStatusBadge status={task.status} t={t} />
                     {isActive && (
                       <button
+                        onKeyDown={(e) => e.stopPropagation()}
                         onClick={(e) => {
                           e.stopPropagation();
                           setStopping((s) => new Set(s).add(task.task_id));
-                          stopSubAgent(task.task_id).finally(() =>
-                            setStopping((s) => {
-                              const n = new Set(s);
-                              n.delete(task.task_id);
-                              return n;
-                            })
-                          );
+                          setStopError(false);
+                          stopBackgroundTask(task.task_id)
+                            .catch(() => setStopError(true))
+                            .finally(() =>
+                              setStopping((s) => {
+                                const n = new Set(s);
+                                n.delete(task.task_id);
+                                return n;
+                              })
+                            );
                         }}
                         disabled={stopping.has(task.task_id)}
-                        className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-px border-2 border-red-600 bg-red-50 dark:bg-red-950 text-red-700 dark:text-red-300 rounded-sm hover:bg-red-100 dark:hover:bg-red-900 disabled:opacity-50 transition-colors"
-                        title={t('subAgents.stop')}
+                        className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm border border-transparent text-red-600 dark:text-red-400 hover:border-red-200 dark:hover:border-red-800 hover:bg-red-50 dark:hover:bg-red-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 disabled:opacity-50 disabled:cursor-wait transition-colors"
+                        type="button"
+                        title={t(
+                          stopping.has(task.task_id) ? 'subAgents.stopping' : 'subAgents.stop'
+                        )}
+                        aria-label={t(
+                          stopping.has(task.task_id) ? 'subAgents.stopping' : 'subAgents.stop'
+                        )}
+                        aria-busy={stopping.has(task.task_id)}
                       >
-                        {stopping.has(task.task_id) ? t('subAgents.stopping') : t('subAgents.stop')}
+                        {stopping.has(task.task_id) ? (
+                          <ArrowPathIcon className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                        ) : (
+                          <StopIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                        )}
                       </button>
                     )}
 

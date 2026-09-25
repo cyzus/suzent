@@ -1656,7 +1656,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const transcriptHasSubAgentCall = useMemo(
     () =>
       safeMessages.some((message) =>
-        (message.parts || []).some((part) => part.type === 'tool' && part.toolName === 'agent')
+        (message.parts || []).some(
+          (part) => part.type === 'tool' && ['agent', 'start_command'].includes(part.toolName || '')
+        )
       ),
     [safeMessages]
   );
