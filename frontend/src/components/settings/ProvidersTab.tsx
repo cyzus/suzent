@@ -739,6 +739,7 @@ export function ProvidersTab({
                       title={id}
                       onClick={() => {
                         setQuery('');
+                        setModelQueries((prev) => ({ ...prev, [provider.id]: '' }));
                         onTabChange(provider.id, 'models');
                         setJumpTarget(provider.id);
                       }}
