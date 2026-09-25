@@ -1,6 +1,7 @@
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
+import { ImageResultGallery } from './ImageResultGallery';
 import { getImageToolPaths, ImageToolRenderer } from './ImageToolRenderer';
 
 vi.mock('../../hooks/useChatStore', () => ({
@@ -53,4 +54,35 @@ describe('image tool previews', () => {
       })
     ).toEqual(['a.png']);
   });
+});
+
+it('renders edited outputs rather than source images', () => {
+  expect(
+    getImageToolPaths({
+      toolName: 'edit_image',
+      parsedArgs: { image_paths: ['source.png'] },
+      metadata: { saved_paths: ['edited.png'] },
+    })
+  ).toEqual(['edited.png']);
+});
+
+it('shows successful outputs outside tool details, deduplicating paths and ignoring failures', () => {
+  const output = JSON.stringify({ success: true, metadata: { saved_paths: ['result.png'] } });
+  const html = renderToStaticMarkup(
+    <ImageResultGallery
+      calls={[
+        { toolName: 'generate_image', output },
+        { toolName: 'edit_image', output },
+        {
+          toolName: 'edit_image',
+          output: JSON.stringify({ success: false, metadata: { saved_paths: ['failed.png'] } }),
+        },
+        { toolName: 'analyze_image', output },
+        { toolName: 'edit_image', output: '{' },
+      ]}
+    />
+  );
+  expect(html.match(/<img /g)).toHaveLength(1);
+  expect(html).not.toContain('<details');
+  expect(html).not.toContain('failed.png');
 });

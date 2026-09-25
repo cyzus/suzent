@@ -42,6 +42,7 @@ const OUTPUT_RENDERERS: Record<string, React.FC<ToolRendererProps> | undefined> 
   read_file: FileDiffViewer,
   analyze_image: ImageToolRenderer,
   generate_image: ImageToolRenderer,
+  edit_image: ImageToolRenderer,
 };
 
 export type ApprovalState = 'pending' | 'approved' | 'denied' | undefined;
@@ -67,7 +68,7 @@ function stripJsonFence(value: string): string {
   return match ? match[1].trim() : trimmed;
 }
 
-function parseToolResultEnvelope(output: string | undefined): ToolResultEnvelope | null {
+export function parseToolResultEnvelope(output: string | undefined): ToolResultEnvelope | null {
   if (!output) return null;
 
   let current: unknown = output;
@@ -103,7 +104,8 @@ function parseToolResultEnvelope(output: string | undefined): ToolResultEnvelope
         content?: unknown;
         output?: unknown;
       };
-      if (typeof candidate.message === 'string') return candidate;
+      if (typeof candidate.message === 'string' || typeof candidate.success === 'boolean')
+        return candidate;
       const nested = candidate.result ?? candidate.content ?? candidate.output;
       if (typeof nested === 'string') {
         current = nested;

@@ -10,6 +10,7 @@ import {
 } from '../../lib/chatUtils';
 import { ThinkingAnimation, AgentBadge, RobotIcon } from './ThinkingAnimation';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { ImageResultGallery } from './ImageResultGallery';
 import { ImageWithFallback } from './ImageWithFallback';
 import { ToolCallBlock } from './ToolCallBlock';
 import { parseSubAgentArgs, SubAgentCallBlock } from './SubAgentCallBlock';
@@ -974,6 +975,11 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
                   onForceWebContext={onForceWebContext}
                 />
               ) : null}
+              <ImageResultGallery
+                calls={effectiveParts
+                  .filter((part) => part.type === 'tool')
+                  .map((part) => ({ toolName: part.toolName, output: part.output }))}
+              />
               {fileChangeSummary}
               {messageFooter}
             </div>
@@ -1305,6 +1311,11 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
               );
             })}
             {fileChangeSummary}
+            <ImageResultGallery
+              calls={legacyBlocks
+                .filter((block) => block.type === 'toolCall')
+                .map((block) => ({ toolName: block.toolName, output: block.content }))}
+            />
             {messageFooter}
           </div>
         </div>

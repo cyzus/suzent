@@ -7,7 +7,7 @@ import type { ToolRendererProps } from './ToolCallBlock';
 
 export function getImageToolPaths({ toolName, parsedArgs, metadata }: ToolRendererProps): string[] {
   const paths =
-    toolName === 'generate_image'
+    toolName === 'generate_image' || toolName === 'edit_image'
       ? metadata?.saved_paths
       : [metadata?.image_path ?? parsedArgs?.image_path];
   return Array.isArray(paths)
