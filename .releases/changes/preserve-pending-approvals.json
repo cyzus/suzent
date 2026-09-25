@@ -1,4 +1,0 @@
-{
-  "products": {"desktop": "patch"},
-  "summary": "Preserve pending tool approvals when saving chat settings so allowing a request does not repeatedly prompt again."
-}
