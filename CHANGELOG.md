@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Give built-in tools their own grey fill and a padlock in the tool picker, so a locked row no longer looks like a faded selected one.
 - Keep a core set of tools always equipped, and show in the picker which tools are built-in and which stay discoverable when unchecked.
 - Pin individual chats above Projects in a compact sidebar section, and rename the default project to Home while preserving custom names.
+- Add image editing with a dedicated model role and improve image generation size, quality, and batch output handling.
 - Open in-chat scheduled tasks in their original conversation, including before their first run.
 - Add inherited task model roles, shared decision defaults, Dream model settings, and a compact editor with separate primary and backup model selection.
 - Improve provider settings with searchable collapsible providers, credential drafts, inline connection feedback, model search, and working manual model addition.
