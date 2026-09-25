@@ -465,6 +465,10 @@ export const en = {
       connectionSuccess:
         'Connection successful. Found {count} models. Select the models you want to use.',
       unsavedCredentials: 'Save or cancel your credential edits before testing the connection.',
+      enabledSummary: '{models} enabled models · {providers} providers',
+      enabledSummaryHint:
+        'Enabled models are not necessarily connected. Select a model to open its provider settings.',
+      enabledEmpty: 'No models enabled yet. Expand a provider below to get started.',
       title: 'Model Providers',
       subtitle: 'Connect provider API keys and manage available models',
       apiKeysTab: 'API keys',

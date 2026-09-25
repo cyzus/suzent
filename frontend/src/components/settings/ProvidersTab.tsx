@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 import { useI18n } from '../../i18n';
 import {
@@ -425,9 +425,6 @@ function ChatGPTProviderCard({
             >
               {provider.label}
             </span>
-            <span className="text-[10px] font-black uppercase tracking-wider text-neutral-400 leading-tight">
-              {t('settings.providers.chatgpt.subtitle')}
-            </span>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -444,16 +441,29 @@ function ChatGPTProviderCard({
       </summary>
 
       <div className="flex flex-1 flex-col gap-4 border-t-2 border-brutal-black p-4">
-        <div className="flex justify-end">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-2 border-brutal-black bg-neutral-50 p-3 dark:bg-zinc-900">
+          <div className="flex min-w-0 items-center gap-2" role="status">
+            <span
+              className={`h-3 w-3 shrink-0 border-2 border-brutal-black ${connected ? 'bg-brutal-green' : 'bg-neutral-300'}`}
+              aria-hidden="true"
+            />
+            <span className="text-xs font-bold">
+              {loading
+                ? t('settings.providers.chatgpt.loadingStatus')
+                : pendingLogin
+                  ? t('settings.providers.chatgpt.waiting')
+                  : statusLabel}
+            </span>
+          </div>
           <BrutalButton
             type="button"
-            variant={connected ? 'danger' : 'dark'}
+            variant={connected ? 'default' : 'primary'}
             size="xs"
             onClick={connected ? handleDisconnect : handleSignIn}
             disabled={loading || !!pendingLogin}
             title={pendingLogin ? statusLabel : statusActionLabel}
           >
-            {loading ? '…' : statusActionLabel}
+            {statusActionLabel}
           </BrutalButton>
         </div>
         {pendingLogin && (
@@ -563,6 +573,28 @@ export function ProvidersTab({
   onChatGPTAuthChanged,
 }: ProvidersTabProps): React.ReactElement {
   const { t } = useI18n();
+  const providerPanels = useRef<Record<string, HTMLElement | null>>({});
+  const [jumpTarget, setJumpTarget] = useState<string | null>(null);
+  useEffect(() => {
+    if (!jumpTarget) return;
+    const panel = providerPanels.current[jumpTarget];
+    const details = panel instanceof HTMLDetailsElement ? panel : panel?.querySelector('details');
+    if (details) {
+      details.open = true;
+      details.scrollIntoView({ block: 'nearest' });
+      details.querySelector('summary')?.focus();
+    }
+    setJumpTarget(null);
+  }, [jumpTarget]);
+  const enabledGroups = providers
+    .map((provider) => ({
+      provider,
+      models: [
+        ...new Set((userConfigs[provider.id] || provider.user_config)?.enabled_models || []),
+      ],
+    }))
+    .filter((group) => group.models.length > 0);
+  const enabledCount = enabledGroups.reduce((total, group) => total + group.models.length, 0);
   const [query, setQuery] = useState('');
   const [modelQueries, setModelQueries] = useState<Record<string, string>>({});
   const [modelDrafts, setModelDrafts] = useState<Record<string, string>>({});
@@ -680,6 +712,49 @@ export function ProvidersTab({
         <AddProviderForm onSave={handleSaveProvider} onCancel={() => setShowAddForm(false)} />
       )}
 
+      <details className="border-2 border-brutal-black bg-white shadow-brutal-sm dark:bg-zinc-800 dark:text-white">
+        <summary className="cursor-pointer p-3 text-sm font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-brutal-blue">
+          {t('settings.providers.enabledSummary', {
+            models: enabledCount,
+            providers: enabledGroups.length,
+          })}
+        </summary>
+        <div className="space-y-3 border-t-2 border-brutal-black p-3">
+          <p className="text-xs text-neutral-500 dark:text-neutral-400">
+            {t('settings.providers.enabledSummaryHint')}
+          </p>
+          {enabledCount === 0 && <p className="text-xs">{t('settings.providers.enabledEmpty')}</p>}
+          {enabledGroups.map(({ provider, models }) => (
+            <div key={provider.id}>
+              <h3 className="mb-2 text-xs font-black uppercase">{provider.label}</h3>
+              <div className="flex flex-wrap gap-2">
+                {models.map((id) => {
+                  const model = [...provider.models, ...provider.default_models].find(
+                    (item) => item.id === id
+                  );
+                  return (
+                    <BrutalButton
+                      key={id}
+                      size="xs"
+                      title={id}
+                      onClick={() => {
+                        setQuery('');
+                        onTabChange(provider.id, 'models');
+                        setJumpTarget(provider.id);
+                      }}
+                      className="max-w-full break-all text-left"
+                    >
+                      {model?.name || id}
+                      <span aria-hidden="true">↗</span>
+                    </BrutalButton>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </details>
+
       <input
         type="search"
         value={query}
@@ -702,7 +777,13 @@ export function ProvidersTab({
 
           if (provider.id === 'chatgpt') {
             return (
-              <div key={provider.id} className={visible ? '' : 'hidden'}>
+              <div
+                key={provider.id}
+                ref={(element) => {
+                  providerPanels.current[provider.id] = element;
+                }}
+                className={visible ? '' : 'hidden'}
+              >
                 <ChatGPTProviderCard
                   provider={provider}
                   config={conf}
@@ -742,6 +823,9 @@ export function ProvidersTab({
 
           return (
             <details
+              ref={(element) => {
+                providerPanels.current[provider.id] = element;
+              }}
               key={provider.id}
               className={`${visible ? '' : 'hidden'} border-2 border-brutal-black bg-white shadow-brutal-sm dark:bg-zinc-800 dark:text-white`}
             >

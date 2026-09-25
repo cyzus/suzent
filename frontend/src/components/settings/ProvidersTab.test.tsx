@@ -58,9 +58,11 @@ describe('Provider settings overview', () => {
     });
     expect(html).toContain('<details');
     expect(html).not.toContain('open=""');
-    const summary = html.slice(html.indexOf('<summary'), html.indexOf('</summary>'));
+    const start = html.lastIndexOf('<summary');
+    const summary = html.slice(start, html.indexOf('</summary>', start));
     expect(summary).toContain('ChatGPT Subscription');
     expect(summary).not.toContain('<button');
+    expect(summary).not.toContain('Sign in with your ChatGPT account');
     expect(html).toContain('Sign In');
     expect(html).toContain('Not Signed In');
   });
@@ -70,6 +72,8 @@ describe('Provider settings overview', () => {
     expect(html).not.toContain('open=""');
     expect(html).toContain('Search providers');
     expect(html).toContain('1 models enabled');
+    expect(html).toContain('1 enabled models · 1 providers');
+    expect(html).toContain('Enabled models are not necessarily connected.');
     expect(html).not.toContain('settings.providers.');
   });
   it('masks stored credentials and shows inline verification', () => {
