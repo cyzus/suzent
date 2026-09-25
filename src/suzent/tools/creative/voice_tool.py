@@ -98,12 +98,13 @@ class SpeakTool(Tool):
             audio_format = settings.response_format
             if audio_format == "auto":
                 audio_format = "wav" if is_gemini else "mp3"
-            options = {"response_format": audio_format}
+            options = {}
             if is_gemini:
                 if audio_format != "wav" or settings.speed != 1:
                     raise ValueError(
                         "Gemini TTS supports WAV output and no numeric speed control through this adapter. Use auto/WAV, speed 1, and prompt for pacing."
                     )
+                # The bridge produces WAV itself; response_format would leak into chat JSON-format validation.
                 options["voice"] = settings.voice or "Kore"
                 # LiteLLM's speech bridge drops instructions. Gemini accepts them in the text prompt.
                 speech_input = (
@@ -112,6 +113,7 @@ class SpeakTool(Tool):
                     else text
                 )
             else:
+                options["response_format"] = audio_format
                 speech_input = text
                 if settings.voice:
                     options["voice"] = settings.voice

@@ -237,3 +237,86 @@ async def test_speech_autoplay_setting_and_stable_result_id(context):
         assert first.metadata["autoplay"] is False
         assert first.metadata["speech_id"] != second.metadata["speech_id"]
     assert VoiceSettings().autoplay is True
+
+
+@pytest.mark.parametrize("provider", ["gemini", "vertex_ai"])
+@pytest.mark.parametrize("audio_format", ["auto", "wav"])
+async def test_gemini_speech_bridge_keeps_audio_format_out_of_chat(
+    context, tmp_path, provider, audio_format
+):
+    import base64
+    import io
+    import wave
+    from pathlib import Path
+
+    import litellm
+    from litellm.endpoints.speech.speech_to_completion_bridge.transformation import (
+        SpeechToCompletionBridgeTransformationHandler,
+    )
+
+    model = f"{provider}/gemini-2.5-flash-preview-tts"
+    bridge = SpeechToCompletionBridgeTransformationHandler()
+    pcm = b"\x00\x00" * 240
+
+    async def speech(**kwargs):
+        # Exercise the installed LiteLLM request and response transformations,
+        # replacing only the provider's response with deterministic PCM audio.
+        request = bridge.transform_request(
+            model=kwargs["model"].split("/", 1)[1],
+            input=kwargs["input"],
+            voice=kwargs["voice"],
+            optional_params={
+                key: kwargs[key]
+                for key in ("response_format", "speed", "instructions")
+                if key in kwargs
+            },
+            litellm_params={},
+            headers={},
+            litellm_logging_obj=None,
+            custom_llm_provider=provider,
+        )
+        assert "response_format" not in request
+        assert request["audio"]["voice"] == "Kore"
+        assert "Calm" in request["messages"][0]["content"]
+        return bridge.transform_response(
+            litellm.ModelResponse(
+                model=model,
+                choices=[
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "audio": {
+                                "id": "audio",
+                                "data": base64.b64encode(pcm).decode(),
+                                "expires_at": 0,
+                                "transcript": "hello",
+                            },
+                        }
+                    }
+                ],
+            )
+        )
+
+    with (
+        patch.object(
+            voice,
+            "get_voice_settings",
+            return_value=VoiceSettings(engine="api", response_format=audio_format),
+        ),
+        patch.object(
+            voice,
+            "get_role_router",
+            return_value=SimpleNamespace(get_model_id=lambda _: model),
+        ),
+        patch.object(voice, "_litellm_model_and_kwargs", return_value=(model, {})),
+        patch.object(voice, "_litellm", return_value=SimpleNamespace(aspeech=speech)),
+        patch.object(voice.CONFIG, "workspace_root", str(tmp_path)),
+    ):
+        result = await voice.SpeakTool().forward(context, "hello", prompt="Calm")
+        assert result.success, result.message
+        assert result.metadata["response_format"] == "wav"
+        path = Path(result.metadata["saved_paths"][0])
+        assert path.suffix == ".wav"
+        with wave.open(io.BytesIO(path.read_bytes()), "rb") as audio:
+            assert audio.getframerate() == 24000
+            assert audio.readframes(audio.getnframes()) == pcm
