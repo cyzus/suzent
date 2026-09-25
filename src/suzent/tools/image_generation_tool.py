@@ -1,22 +1,20 @@
-from pathlib import Path
-import aiohttp
-from datetime import datetime
-from typing import Annotated, Optional
+import traceback
+from typing import Annotated
 
 from pydantic import Field
 from pydantic_ai import RunContext
-from suzent.core.agent_deps import AgentDeps
 
-from suzent.tools.base import Tool, ToolErrorCode, ToolGroup, ToolResult
+from suzent.core.agent_deps import AgentDeps
 from suzent.llm import ImageGenerator
-from suzent.config import CONFIG
 from suzent.logger import get_logger
+from suzent.tools.base import Tool, ToolErrorCode, ToolGroup, ToolResult
+from suzent.tools.image_output import save_images
 
 logger = get_logger(__name__)
 
 
 class ImageGenerationTool(Tool):
-    """Tool for generating images from text prompts using LiteLLM."""
+    """Generate new images from text. Use edit_image to modify existing images."""
 
     name: str = "ImageGenerationTool"
     tool_name: str = "generate_image"
@@ -27,123 +25,58 @@ class ImageGenerationTool(Tool):
         self,
         ctx: RunContext[AgentDeps],
         prompt: Annotated[
-            str, Field(description="Text prompt describing the image to generate.")
+            str, Field(description="Text description of the desired image.")
         ],
         style: Annotated[
-            Optional[str],
-            Field(
-                description="Optional style hint to fold into the generation prompt.",
-            ),
+            str | None, Field(description="Free-form style hint added to the prompt.")
         ] = None,
         size: Annotated[
-            Optional[str],
-            Field(description="Optional image size hint, such as 1024x1024."),
+            str | None,
+            Field(
+                description="Output size, e.g. 1536x1024. Supported values depend on the model."
+            ),
         ] = None,
         count: Annotated[
             int,
             Field(
                 ge=1,
                 le=4,
-                description="Number of images to generate. The tool returns up to four images.",
+                description="Number of images, subject to model limits (DALL-E 3 supports one).",
             ),
         ] = 1,
+        quality: Annotated[
+            str | None,
+            Field(
+                description="Model-specific quality, e.g. low/medium/high or standard/hd."
+            ),
+        ] = None,
     ) -> ToolResult:
-        """Generate an image from the given prompt.
-
-        Args:
-            prompt: Text description of the image to generate
-
-        Returns:
-            String indicating success and the path where the image was saved
-        """
-        if not prompt.strip():
+        if not prompt.strip() or not 1 <= count <= 4:
             return ToolResult.error_result(
                 ToolErrorCode.INVALID_ARGUMENT,
-                "prompt is required.",
+                "Provide a non-empty prompt and count between 1 and 4.",
             )
-
         try:
-            generator = ImageGenerator()
-            generated_images = []
-            for _ in range(count):
-                generation_prompt = prompt
-                if style:
-                    generation_prompt = f"{generation_prompt}\nStyle: {style}"
-                if size:
-                    generation_prompt = f"{generation_prompt}\nSize: {size}"
-                image_url = await generator.generate(prompt=generation_prompt)
-                generated_images.append(image_url)
-
-            # Save the image to the project's shared images directory
-            chat_id = ctx.deps.chat_id
-            if chat_id:
-                from suzent.database import get_database
-
-                workspace_dir = get_database().get_project_dir(chat_id) / "images"
-            else:
-                workspace_dir = Path(CONFIG.workspace_root) / "images"
-
-            workspace_dir.mkdir(parents=True, exist_ok=True)
-
-            saved_paths = []
-
-            import base64
-
-            async with aiohttp.ClientSession() as session:
-                for index, image_url in enumerate(generated_images, 1):
-                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    filename = f"generated_image_{timestamp}_{index}.png"
-                    file_path = workspace_dir / filename
-
-                    if image_url.startswith("data:image/png;base64,"):
-                        b64_data = image_url.split("data:image/png;base64,")[1]
-                        image_data = base64.b64decode(b64_data)
-                        with open(file_path, "wb") as f:
-                            f.write(image_data)
-                        saved_paths.append(str(file_path))
-                        continue
-
-                    async with session.get(image_url) as response:
-                        if response.status == 200:
-                            image_data = await response.read()
-                            with open(file_path, "wb") as f:
-                                f.write(image_data)
-                            saved_paths.append(str(file_path))
-                        else:
-                            logger.error(
-                                f"Failed to download generated image. Status: {response.status}"
-                            )
-                            return ToolResult.error_result(
-                                ToolErrorCode.EXECUTION_FAILED,
-                                f"Generated image at {image_url} but failed to download it.",
-                                metadata={
-                                    "prompt": prompt,
-                                    "style": style,
-                                    "size": size,
-                                    "count": count,
-                                },
-                            )
-
+            images = await ImageGenerator().generate(
+                f"{prompt}\nStyle: {style}" if style else prompt,
+                size=size,
+                quality=quality,
+                count=count,
+            )
+            paths = await save_images(images, ctx.deps)
             return ToolResult.success_result(
-                f"Successfully generated and saved {len(saved_paths)} image(s).",
+                f"Successfully generated and saved {len(paths)} image(s).",
                 metadata={
+                    "saved_paths": paths,
                     "prompt": prompt,
                     "style": style,
                     "size": size,
+                    "quality": quality,
                     "count": count,
-                    "saved_paths": saved_paths,
                 },
             )
-
-        except Exception as e:
-            logger.error(f"Image generation failed: {e}")
+        except Exception as exc:  # noqa: BLE001 — tool boundary returns provider failures
+            logger.error(f"Image generation failed: {traceback.format_exc()}")
             return ToolResult.error_result(
-                ToolErrorCode.EXECUTION_FAILED,
-                f"Failed to generate image: {str(e)}",
-                metadata={
-                    "prompt": prompt,
-                    "style": style,
-                    "size": size,
-                    "count": count,
-                },
+                ToolErrorCode.EXECUTION_FAILED, f"Failed to generate image: {exc}"
             )

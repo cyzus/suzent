@@ -228,10 +228,16 @@
       "supports_reasoning": true
     },
     "dashscope/qwen-image-2.0": {
-      "mode": "image_generation"
+      "mode": "image_generation",
+      "supported_endpoints": [
+        "/v1/images/generations"
+      ]
     },
     "dashscope/qwen-image-2.0-pro": {
-      "mode": "image_generation"
+      "mode": "image_generation",
+      "supported_endpoints": [
+        "/v1/images/generations"
+      ]
     },
     "dashscope/kimi/kimi-k2.6": {
       "mode": "chat"
@@ -912,10 +918,16 @@
       "supports_prompt_caching": true
     },
     "dashscope/qwen-image-3.0": {
-      "mode": "image_generation"
+      "mode": "image_generation",
+      "supported_endpoints": [
+        "/v1/images/generations"
+      ]
     },
     "dashscope/qwen-image-3.0-pro": {
-      "mode": "image_generation"
+      "mode": "image_generation",
+      "supported_endpoints": [
+        "/v1/images/generations"
+      ]
     }
   }
 }

@@ -788,6 +788,8 @@ export const en = {
       visionDesc: 'Image analysis. Must support multimodal input.',
       embedding: 'Embedding',
       embeddingDesc: 'Vector search and memory retrieval.',
+      imageEdit: 'Image Editing',
+      imageEditDesc: 'Edit existing images using instructions and optional reference images or masks.',
       imageGeneration: 'Image Generation',
       imageGenerationDesc: 'Text-to-image generation.',
       tts: 'TTS',

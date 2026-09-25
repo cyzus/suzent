@@ -55,6 +55,12 @@ const ROLES: { key: string; labelKey: string; descKey: string; fallback: Fallbac
     descKey: 'roles.imageGenerationDesc',
     fallback: 'none',
   },
+  {
+    key: 'image_edit',
+    labelKey: 'roles.imageEdit',
+    descKey: 'roles.imageEditDesc',
+    fallback: 'none',
+  },
   { key: 'tts', labelKey: 'roles.tts', descKey: 'roles.ttsDesc', fallback: 'none' },
 ];
 
@@ -453,7 +459,9 @@ export function ModelRolesTab({
         inherited={models}
         source={source}
         suggestions={suggestions[role.key] || []}
-        unregisteredModels={unregisteredModels}
+        unregisteredModels={
+          role.key === 'image_edit' ? suggestions._image_edit_unknown || [] : unregisteredModels
+        }
         onChange={(selected) => onChange({ ...roleModels, [role.key]: selected })}
       />
     );
@@ -462,7 +470,7 @@ export function ModelRolesTab({
   const groups = [
     { key: 'defaultsGroup', roles: ['primary', 'cheap', 'decision'] },
     { key: 'tasksGroup', roles: ['title', 'memory_extraction', 'dream'] },
-    { key: 'specialistsGroup', roles: ['vision', 'embedding', 'image_generation', 'tts'] },
+    { key: 'specialistsGroup', roles: ['vision', 'embedding', 'image_generation', 'image_edit', 'tts'] },
   ];
 
   return (

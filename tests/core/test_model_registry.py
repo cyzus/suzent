@@ -437,3 +437,56 @@ class TestProviderTwinFallback:
         registry = self._registry({"gpt-4.1": ModelCapabilities(mode="chat")})
 
         assert registry.get_capabilities("gpt-4.1").is_stub is True
+
+
+@pytest.mark.parametrize(
+    "entry, expected",
+    [
+        (
+            {"mode": "image_generation", "supported_endpoints": ["/v1/images/edits"]},
+            True,
+        ),
+        ({"mode": "image_edit"}, True),
+        ({"mode": "image_generation", "supports_vision": True}, None),
+        ({"mode": "chat"}, None),
+    ],
+)
+def test_image_edit_capability(entry: dict, expected: bool | None) -> None:
+    from suzent.core.model_registry import _parse_model_entry
+
+    caps = _parse_model_entry(entry)
+    assert caps.supports_image_edit is expected
+    assert caps.supported_endpoints == tuple(entry.get("supported_endpoints", []))
+
+
+async def test_sync_image_endpoints_and_bare_openai_ids(tmp_path, monkeypatch) -> None:
+    from unittest.mock import AsyncMock, MagicMock
+    from suzent.core import model_registry as module
+
+    raw = {
+        "gpt-image-test": {
+            "litellm_provider": "openai",
+            "mode": "image_generation",
+            "supported_endpoints": ["/v1/images/generations", "/v1/images/edits"],
+        },
+        "openai/edit-test": {
+            "mode": "image_edit",
+            "supported_endpoints": ["/v1/images/edits"],
+        },
+    }
+    response = MagicMock()
+    response.json.return_value = raw
+    client = AsyncMock()
+    client.get.return_value = response
+    monkeypatch.setattr(module, "_CAPABILITIES_DIR", tmp_path / "shipped")
+    monkeypatch.setattr(module, "_local_capabilities_dir", lambda: tmp_path / "local")
+    monkeypatch.setattr(module, "_writes_to_repo", lambda: False)
+    with patch("httpx.AsyncClient") as factory:
+        factory.return_value.__aenter__.return_value = client
+        await module.sync_from_litellm()
+    saved = json.loads((tmp_path / "local/openai.json").read_text())["models"]
+    assert (
+        saved["openai/gpt-image-test"]["supported_endpoints"]
+        == raw["gpt-image-test"]["supported_endpoints"]
+    )
+    assert saved["openai/edit-test"]["mode"] == "image_edit"

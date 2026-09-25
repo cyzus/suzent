@@ -217,6 +217,7 @@ def _all_tool_classes() -> tuple:
     from suzent.tools.social_message_tool import SocialMessageTool
     from suzent.tools.voice_tool import SpeakTool
     from suzent.tools.image_generation_tool import ImageGenerationTool
+    from suzent.tools.image_edit_tool import ImageEditTool
     from suzent.tools.image_vision_tool import ImageVisionTool
     from suzent.tools.recall import MemorySearchTool
     from suzent.tools.recall import SessionSearchTool
@@ -251,6 +252,7 @@ def _all_tool_classes() -> tuple:
         ScheduleTool,
         RenderUITool,
         ImageGenerationTool,
+        ImageEditTool,
         ImageVisionTool,
         SpeakTool,
         SocialMessageTool,
