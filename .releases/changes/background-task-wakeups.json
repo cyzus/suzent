@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "minor"},
+  "summary": "Notify agents when background Shell commands finish and unify Shell commands and sub-agents in the background task sidebar."
+}

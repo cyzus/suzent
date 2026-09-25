@@ -309,8 +309,10 @@ class ShellProcessBackend(Tool):
 
                 registry = HostProcessRegistry()
                 ok = registry.kill(chat_id, process_id)
-                # Evict regardless of kill result to clean up finished entries/temp files.
-                registry.evict(chat_id, process_id)
+                # A process that exited before kill still needs its real result
+                # collected by the monitor or check_command.
+                if ok:
+                    registry.evict(chat_id, process_id)
             else:
                 ok = self.manager.kill_process(self.chat_id, process_id)
             self.audit_operation(
