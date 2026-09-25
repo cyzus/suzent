@@ -49,7 +49,14 @@ class ImageEditTool(Tool):
         quality: Annotated[
             str | None, Field(description="Model-supported output quality.")
         ] = None,
-        count: Annotated[int, Field(ge=1, le=4)] = 1,
+        count: Annotated[
+            int,
+            Field(
+                ge=1,
+                le=4,
+                description="Number of output images; batch support depends on the model.",
+            ),
+        ] = 1,
     ) -> ToolResult:
         if not prompt.strip() or not 1 <= len(image_paths) <= 16 or not 1 <= count <= 4:
             return ToolResult.error_result(

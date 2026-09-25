@@ -46,3 +46,32 @@ async def test_gemini_edit_omits_default_count(tmp_path) -> None:
         with pytest.raises(ValueError, match="Unsupported image parameters"):
             await generator.edit("edit", [str(path)], count=2)
         assert call.await_count == 1
+
+
+async def test_xai_generation_uses_compatible_fallback() -> None:
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, patch
+
+    call = AsyncMock(
+        return_value=SimpleNamespace(
+            data=[SimpleNamespace(url="https://example.com/image.png")]
+        )
+    )
+    with (
+        patch(
+            "suzent.llm._litellm", return_value=SimpleNamespace(aimage_generation=call)
+        ),
+        patch(
+            "suzent.llm._litellm_model_and_kwargs",
+            return_value=("xai/grok-imagine-image", {}),
+        ),
+    ):
+        generator = ImageGenerator("xai/grok-imagine-image")
+        await generator.generate("draw")
+        await generator.generate("draw", size="1024x1024", count=2)
+        assert call.await_count == 2
+        assert call.call_args.kwargs["n"] == 2
+        with pytest.raises(ValueError, match="Unsupported image parameters"):
+            generator._validate_options(
+                "xai/grok-imagine-image", {"invalid": True}, editing=False
+            )

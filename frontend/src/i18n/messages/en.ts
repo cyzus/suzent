@@ -789,7 +789,8 @@ export const en = {
       embedding: 'Embedding',
       embeddingDesc: 'Vector search and memory retrieval.',
       imageEdit: 'Image Editing',
-      imageEditDesc: 'Edit existing images using instructions and optional reference images or masks.',
+      imageEditDesc:
+        'Edit existing images using instructions and optional reference images or masks.',
       imageGeneration: 'Image Generation',
       imageGenerationDesc: 'Text-to-image generation.',
       tts: 'TTS',

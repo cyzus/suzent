@@ -470,7 +470,10 @@ export function ModelRolesTab({
   const groups = [
     { key: 'defaultsGroup', roles: ['primary', 'cheap', 'decision'] },
     { key: 'tasksGroup', roles: ['title', 'memory_extraction', 'dream'] },
-    { key: 'specialistsGroup', roles: ['vision', 'embedding', 'image_generation', 'image_edit', 'tts'] },
+    {
+      key: 'specialistsGroup',
+      roles: ['vision', 'embedding', 'image_generation', 'image_edit', 'tts'],
+    },
   ];
 
   return (

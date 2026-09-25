@@ -373,7 +373,7 @@ class ImageGenerator:
     def _validate_options(
         self, model: str, options: dict[str, Any], *, editing: bool
     ) -> None:
-        from litellm import LlmProviders, get_llm_provider
+        from litellm import LlmProviders, get_llm_provider, openai_compatible_providers
         from litellm.utils import ProviderConfigManager
 
         name, provider, _, _ = get_llm_provider(model)
@@ -383,6 +383,13 @@ class ImageGenerator:
             else ProviderConfigManager.get_provider_image_generation_config
         )
         config = getter(model=name, provider=LlmProviders(provider))
+        if (
+            config is None
+            and not editing
+            and (provider in openai_compatible_providers or provider == "litellm_proxy")
+        ):
+            # Match LiteLLM's generation fallback for OpenAI-compatible providers.
+            config = getter(model=name, provider=LlmProviders.OPENAI)
         if config is None:
             raise ValueError(
                 f"Image {'editing' if editing else 'generation'} is not supported for {provider}."
