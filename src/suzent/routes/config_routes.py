@@ -1011,6 +1011,18 @@ def _build_role_suggestions(
         "image_generation": sorted(
             model for model, cap in caps.items() if cap.mode == "image_generation"
         ),
+        "image_edit": sorted(
+            model
+            for model, cap in caps.items()
+            if getattr(cap, "supports_image_edit", None) is True
+        ),
+        "_image_edit_unknown": sorted(
+            model
+            for model in enabled_models
+            if registry.get_capabilities(model) is None
+            or getattr(registry.get_capabilities(model), "supports_image_edit", None)
+            is None
+        ),
         "tts": sorted(model for model, cap in caps.items() if cap.mode == "tts"),
         "_unregistered": unregistered_models,
     }

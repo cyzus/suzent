@@ -96,6 +96,7 @@ class ConfigModel(BaseModel):
         "CheckCommandTool",
         "StopCommandTool",
         "ImageGenerationTool",
+        "ImageEditTool",
         "AgentTool",
         "MemorySearchTool",
         "SessionSearchTool",

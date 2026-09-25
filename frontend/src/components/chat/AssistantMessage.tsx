@@ -10,6 +10,7 @@ import {
 } from '../../lib/chatUtils';
 import { ThinkingAnimation, AgentBadge, RobotIcon } from './ThinkingAnimation';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { ImageResultGallery, getImageResultPaths } from './ImageResultGallery';
 import { ImageWithFallback } from './ImageWithFallback';
 import { ToolCallBlock } from './ToolCallBlock';
 import { parseSubAgentArgs, SubAgentCallBlock } from './SubAgentCallBlock';
@@ -219,11 +220,18 @@ const AGUIPartsContent: React.FC<{
   // Merged, cleaned up and grouped for display. Parts that render nothing --
   // the empty text shell the stream opens per assistant step above all -- are
   // dropped there, so an invisible part cannot split the activity rail.
-  const chunks = useMemo(() => buildAguiActivityChunks(parts), [parts]);
+  const chunks = useMemo(
+    () =>
+      buildAguiActivityChunks(parts).flatMap((chunk) =>
+        chunk.type === 'tool' ? chunk.items.map((item) => ({ ...chunk, items: [item] })) : [chunk]
+      ),
+    [parts]
+  );
 
   const renderGroups = groupActivityChunks(
     chunks,
-    (chunk) => chunk.type === 'tool' || chunk.type === 'reasoning'
+    (chunk) => chunk.type === 'tool' || chunk.type === 'reasoning',
+    (chunk) => chunk.type === 'tool' && getImageResultPaths(chunk.items).length > 0
   );
   // Only the turn's final rail is live. Earlier ones are finished work: they
   // must not animate, and must not each start their own worked-for clock.
@@ -236,156 +244,166 @@ const AGUIPartsContent: React.FC<{
           const activityGroupOrdinal = getActivityGroupOrdinal(renderGroups, gi);
           const isCurrentGroup = Boolean(isStreaming) && gi === currentActivityGroupIndex;
           return (
-            <ActivityRail
-              key={`activity-${gi}`}
-              itemCount={countActivityItems(group.chunks)}
-              durationSeconds={workedDurationSeconds}
-              startedAtMs={streamStartedAtMs}
-              showDuration={activityGroupOrdinal === 0}
-              defaultExpanded={isCurrentGroup}
-              isActive={Boolean(isStreaming)}
-              isCurrent={isCurrentGroup}
-              hasPending={hasAguiPendingApproval(group.chunks)}
-              currentLabel={getAguiActivityLabel(group.chunks, isCurrentGroup)}
-            >
-              {group.chunks.map(({ chunk, index: ci }) => {
-                if (chunk.type === 'reasoning') {
-                  const reasoningText = chunk.items.map((p) => p.text || '').join('');
-                  if (!reasoningText.trim()) return null;
-                  const isChunkStreaming = isStreaming && ci === chunks.length - 1;
-                  return (
-                    <ReasoningRailItem
-                      key={`reasoning-${ci}`}
-                      text={reasoningText}
-                      isStreaming={isChunkStreaming}
-                      onFileClick={onFileClick}
-                    />
-                  );
-                }
-
-                const tools = chunk.items.map((tp, ti) => {
-                  // A historical approval snapshot without an actionable ID is
-                  // unresolved/stale, not proof that the user denied the call.
-                  const isActionablyPending =
-                    tp.state === 'approval-requested' &&
-                    !tp.output &&
-                    !!tp.approvalId &&
-                    !!isStreaming;
-                  const approvalState = isActionablyPending
-                    ? ('pending' as const)
-                    : tp.state === 'error'
-                      ? ('denied' as const)
-                      : undefined;
-
-                  return {
-                    toolCallId: tp.toolCallId || `tool-${ci}-${ti}`,
-                    toolName: tp.toolName || 'unknown',
-                    toolArgs: tp.args || undefined,
-                    output: tp.output || undefined,
-                    approvalState,
-                    permission: tp.permission,
-                    permissionDecision: tp.permissionDecision,
-                    permissionResolution: tp.permissionResolution,
-                    onApprove:
-                      isActionablyPending && tp.approvalId && onToolApproval
-                        ? (remember: ApprovalRememberScope, actionId?: string, feedback?: string) =>
-                            onToolApproval(
-                              tp.approvalId!,
-                              tp.toolCallId || '',
-                              true,
-                              remember,
-                              tp.toolName,
-                              actionId,
-                              feedback
-                            )
-                        : undefined,
-                    onDeny:
-                      isActionablyPending && tp.approvalId && onToolApproval
-                        ? (actionId?: string, feedback?: string) =>
-                            onToolApproval(
-                              tp.approvalId!,
-                              tp.toolCallId || '',
-                              false,
-                              null,
-                              tp.toolName,
-                              actionId,
-                              feedback
-                            )
-                        : undefined,
-                  };
-                });
-
-                return tools.map((t, i) => {
-                  const itemState =
-                    t.approvalState === 'pending'
-                      ? ('pending' as const)
-                      : t.approvalState === 'denied'
-                        ? ('error' as const)
-                        : isStreaming && !t.output
-                          ? ('active' as const)
-                          : t.output
-                            ? ('done' as const)
-                            : ('neutral' as const);
-
-                  if (t.toolName === 'agent') {
-                    const persisted = parseSubAgentResult(t.output);
-                    const taskId = persisted.taskId;
-                    const taskState = taskId ? subAgentTasks?.[taskId] : undefined;
-                    const args = parseSubAgentArgs(t.toolArgs);
-                    // The tool returning is not the sub-agent finishing: a
-                    // background spawn returns 'queued' while the run continues.
-                    // Prefer the status the result recorded, so a live task stays
-                    // non-terminal and keeps being polled.
-                    const defaultStatus =
-                      t.approvalState === 'pending'
-                        ? 'queued'
-                        : (persisted.status ?? (t.output ? 'completed' : 'running'));
+            <React.Fragment key={`activity-${gi}`}>
+              <ActivityRail
+                itemCount={countActivityItems(group.chunks)}
+                durationSeconds={workedDurationSeconds}
+                startedAtMs={streamStartedAtMs}
+                showDuration={activityGroupOrdinal === 0}
+                defaultExpanded={isCurrentGroup}
+                isActive={Boolean(isStreaming)}
+                isCurrent={isCurrentGroup}
+                hasPending={hasAguiPendingApproval(group.chunks)}
+                currentLabel={getAguiActivityLabel(group.chunks, isCurrentGroup)}
+              >
+                {group.chunks.map(({ chunk, index: ci }) => {
+                  if (chunk.type === 'reasoning') {
+                    const reasoningText = chunk.items.map((p) => p.text || '').join('');
+                    if (!reasoningText.trim()) return null;
+                    const isChunkStreaming = isStreaming && ci === chunks.length - 1;
                     return (
-                      <ActivityRailItem key={t.toolCallId || `sa-${ci}-${i}`} state={itemState}>
-                        <SubAgentCallBlock
-                          taskId={taskId}
-                          description={args.description}
-                          toolsAllowed={args.toolsAllowed}
-                          runInBackground={args.runInBackground}
-                          toolCallId={t.toolCallId}
-                          status={taskState?.status ?? defaultStatus}
-                          model={persisted.model}
-                          subagentType={persisted.subagentType}
-                          resultSummary={taskState?.resultSummary ?? persisted.resultSummary}
-                          error={taskState?.error ?? persisted.error}
-                          onOpenSidebar={onOpenSubAgentSidebar}
-                          onStop={onStopSubAgent}
-                        />
-                      </ActivityRailItem>
+                      <ReasoningRailItem
+                        key={`reasoning-${ci}`}
+                        text={reasoningText}
+                        isStreaming={isChunkStreaming}
+                        onFileClick={onFileClick}
+                      />
                     );
                   }
 
-                  const isAutoApproved = toolApprovalPolicy?.[t.toolName] === 'always_allow';
-                  return (
-                    <ActivityRailItem key={t.toolCallId || `tool-${ci}-${i}`} state={itemState}>
-                      <ToolCallBlock
-                        toolName={t.toolName}
-                        toolArgs={t.toolArgs}
-                        output={t.output}
-                        defaultCollapsed={t.approvalState !== 'pending'}
-                        approvalState={t.approvalState}
-                        isStreaming={isStreaming && !t.output}
-                        onApprove={t.onApprove}
-                        onDeny={t.onDeny}
-                        permission={t.permission}
-                        permissionDecision={t.permissionDecision}
-                        permissionResolution={t.permissionResolution}
-                        isAutoApproved={isAutoApproved}
-                        onRemovePolicy={onRemoveApprovalPolicy}
-                        onForceWebContext={onForceWebContext}
-                        toolCallId={t.toolCallId}
-                        inActivityRail
-                      />
-                    </ActivityRailItem>
-                  );
-                });
-              })}
-            </ActivityRail>
+                  const tools = chunk.items.map((tp, ti) => {
+                    // A historical approval snapshot without an actionable ID is
+                    // unresolved/stale, not proof that the user denied the call.
+                    const isActionablyPending =
+                      tp.state === 'approval-requested' &&
+                      !tp.output &&
+                      !!tp.approvalId &&
+                      !!isStreaming;
+                    const approvalState = isActionablyPending
+                      ? ('pending' as const)
+                      : tp.state === 'error'
+                        ? ('denied' as const)
+                        : undefined;
+
+                    return {
+                      toolCallId: tp.toolCallId || `tool-${ci}-${ti}`,
+                      toolName: tp.toolName || 'unknown',
+                      toolArgs: tp.args || undefined,
+                      output: tp.output || undefined,
+                      approvalState,
+                      permission: tp.permission,
+                      permissionDecision: tp.permissionDecision,
+                      permissionResolution: tp.permissionResolution,
+                      onApprove:
+                        isActionablyPending && tp.approvalId && onToolApproval
+                          ? (
+                              remember: ApprovalRememberScope,
+                              actionId?: string,
+                              feedback?: string
+                            ) =>
+                              onToolApproval(
+                                tp.approvalId!,
+                                tp.toolCallId || '',
+                                true,
+                                remember,
+                                tp.toolName,
+                                actionId,
+                                feedback
+                              )
+                          : undefined,
+                      onDeny:
+                        isActionablyPending && tp.approvalId && onToolApproval
+                          ? (actionId?: string, feedback?: string) =>
+                              onToolApproval(
+                                tp.approvalId!,
+                                tp.toolCallId || '',
+                                false,
+                                null,
+                                tp.toolName,
+                                actionId,
+                                feedback
+                              )
+                          : undefined,
+                    };
+                  });
+
+                  return tools.map((t, i) => {
+                    const itemState =
+                      t.approvalState === 'pending'
+                        ? ('pending' as const)
+                        : t.approvalState === 'denied'
+                          ? ('error' as const)
+                          : isStreaming && !t.output
+                            ? ('active' as const)
+                            : t.output
+                              ? ('done' as const)
+                              : ('neutral' as const);
+
+                    if (t.toolName === 'agent') {
+                      const persisted = parseSubAgentResult(t.output);
+                      const taskId = persisted.taskId;
+                      const taskState = taskId ? subAgentTasks?.[taskId] : undefined;
+                      const args = parseSubAgentArgs(t.toolArgs);
+                      // The tool returning is not the sub-agent finishing: a
+                      // background spawn returns 'queued' while the run continues.
+                      // Prefer the status the result recorded, so a live task stays
+                      // non-terminal and keeps being polled.
+                      const defaultStatus =
+                        t.approvalState === 'pending'
+                          ? 'queued'
+                          : (persisted.status ?? (t.output ? 'completed' : 'running'));
+                      return (
+                        <ActivityRailItem key={t.toolCallId || `sa-${ci}-${i}`} state={itemState}>
+                          <SubAgentCallBlock
+                            taskId={taskId}
+                            description={args.description}
+                            toolsAllowed={args.toolsAllowed}
+                            runInBackground={args.runInBackground}
+                            toolCallId={t.toolCallId}
+                            status={taskState?.status ?? defaultStatus}
+                            model={persisted.model}
+                            subagentType={persisted.subagentType}
+                            resultSummary={taskState?.resultSummary ?? persisted.resultSummary}
+                            error={taskState?.error ?? persisted.error}
+                            onOpenSidebar={onOpenSubAgentSidebar}
+                            onStop={onStopSubAgent}
+                          />
+                        </ActivityRailItem>
+                      );
+                    }
+
+                    const isAutoApproved = toolApprovalPolicy?.[t.toolName] === 'always_allow';
+                    return (
+                      <ActivityRailItem key={t.toolCallId || `tool-${ci}-${i}`} state={itemState}>
+                        <ToolCallBlock
+                          toolName={t.toolName}
+                          toolArgs={t.toolArgs}
+                          output={t.output}
+                          defaultCollapsed={t.approvalState !== 'pending'}
+                          approvalState={t.approvalState}
+                          isStreaming={isStreaming && !t.output}
+                          onApprove={t.onApprove}
+                          onDeny={t.onDeny}
+                          permission={t.permission}
+                          permissionDecision={t.permissionDecision}
+                          permissionResolution={t.permissionResolution}
+                          isAutoApproved={isAutoApproved}
+                          onRemovePolicy={onRemoveApprovalPolicy}
+                          onForceWebContext={onForceWebContext}
+                          toolCallId={t.toolCallId}
+                          inActivityRail
+                        />
+                      </ActivityRailItem>
+                    );
+                  });
+                })}
+              </ActivityRail>
+              <ImageResultGallery
+                calls={group.chunks.flatMap(({ chunk }) =>
+                  chunk.type === 'tool' ? chunk.items : []
+                )}
+              />
+            </React.Fragment>
           );
         }
 
@@ -1064,8 +1082,17 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
   }
 
   const legacyRenderGroups = groupActivityChunks(
-    validChunks,
-    (chunk) => chunk.type === 'reasoning' || chunk.type === 'toolCall'
+    validChunks.flatMap((chunk) =>
+      chunk.type === 'toolCall'
+        ? chunk.blocks.map((block) => ({ ...chunk, blocks: [block] }))
+        : [chunk]
+    ),
+    (chunk) => chunk.type === 'reasoning' || chunk.type === 'toolCall',
+    (chunk) =>
+      chunk.type === 'toolCall' &&
+      getImageResultPaths(
+        chunk.blocks.map((block) => ({ toolName: block.toolName, output: block.content }))
+      ).length > 0
   );
   const currentLegacyActivityGroupIndex = findLastActivityGroupIndex(legacyRenderGroups);
 
@@ -1088,70 +1115,82 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
                 const isCurrentGroup =
                   isStreamingThis && groupIndex === currentLegacyActivityGroupIndex;
                 return (
-                  <ActivityRail
-                    key={`legacy-activity-${groupIndex}`}
-                    itemCount={countActivityItems(group.chunks)}
-                    durationSeconds={workedDurationSeconds}
-                    startedAtMs={streamStartedAtMs}
-                    showDuration={activityGroupOrdinal === 0}
-                    defaultExpanded={isCurrentGroup}
-                    isActive={isStreamingThis}
-                    isCurrent={isCurrentGroup}
-                    hasPending={hasLegacyPendingApproval(group.chunks)}
-                    currentLabel={getLegacyActivityLabel(group.chunks, isCurrentGroup)}
-                  >
-                    {group.chunks.map(({ chunk, index: idx }) => {
-                      if (chunk.type === 'reasoning') {
-                        const isChunkStreaming = isStreamingThis && idx === validChunks.length - 1;
-                        return chunk.blocks.map((rb, ri) => (
-                          <ReasoningRailItem
-                            key={`legacy-reasoning-${idx}-${ri}`}
-                            text={rb.content}
-                            isStreaming={isChunkStreaming && ri === chunk.blocks.length - 1}
-                            onFileClick={onFileClick}
-                          />
-                        ));
-                      }
-
-                      return chunk.blocks.map((b, bi) => {
-                        const isPending = b.approvalState === 'pending' && !b.content;
-                        const isActive = isStreamingThis && !b.content;
-                        const isDenied = b.approvalState === 'denied';
-                        const isDone = Boolean(b.content);
-                        return (
-                          <ActivityRailItem
-                            key={`legacy-tool-${idx}-${bi}`}
-                            state={
-                              isPending
-                                ? 'pending'
-                                : isDenied
-                                  ? 'error'
-                                  : isActive
-                                    ? 'active'
-                                    : isDone
-                                      ? 'done'
-                                      : 'neutral'
-                            }
-                          >
-                            <StaticContent
-                              blocks={[b]}
-                              messageIndex={messageIndex}
+                  <React.Fragment key={`legacy-activity-${groupIndex}`}>
+                    <ActivityRail
+                      itemCount={countActivityItems(group.chunks)}
+                      durationSeconds={workedDurationSeconds}
+                      startedAtMs={streamStartedAtMs}
+                      showDuration={activityGroupOrdinal === 0}
+                      defaultExpanded={isCurrentGroup}
+                      isActive={isStreamingThis}
+                      isCurrent={isCurrentGroup}
+                      hasPending={hasLegacyPendingApproval(group.chunks)}
+                      currentLabel={getLegacyActivityLabel(group.chunks, isCurrentGroup)}
+                    >
+                      {group.chunks.map(({ chunk, index: idx }) => {
+                        if (chunk.type === 'reasoning') {
+                          const isChunkStreaming =
+                            isStreamingThis && idx === validChunks.length - 1;
+                          return chunk.blocks.map((rb, ri) => (
+                            <ReasoningRailItem
+                              key={`legacy-reasoning-${idx}-${ri}`}
+                              text={rb.content}
+                              isStreaming={isChunkStreaming && ri === chunk.blocks.length - 1}
                               onFileClick={onFileClick}
-                              onToolApproval={onToolApproval}
-                              toolApprovalPolicy={toolApprovalPolicy}
-                              onRemoveApprovalPolicy={onRemoveApprovalPolicy}
-                              onInlineAction={onInlineAction}
-                              subAgentTasks={subAgentTasks}
-                              onOpenSubAgentSidebar={onOpenSubAgentSidebar}
-                              onStopSubAgent={onStopSubAgent}
-                              onForceWebContext={onForceWebContext}
-                              inActivityRail
                             />
-                          </ActivityRailItem>
-                        );
-                      });
-                    })}
-                  </ActivityRail>
+                          ));
+                        }
+
+                        return chunk.blocks.map((b, bi) => {
+                          const isPending = b.approvalState === 'pending' && !b.content;
+                          const isActive = isStreamingThis && !b.content;
+                          const isDenied = b.approvalState === 'denied';
+                          const isDone = Boolean(b.content);
+                          return (
+                            <ActivityRailItem
+                              key={`legacy-tool-${idx}-${bi}`}
+                              state={
+                                isPending
+                                  ? 'pending'
+                                  : isDenied
+                                    ? 'error'
+                                    : isActive
+                                      ? 'active'
+                                      : isDone
+                                        ? 'done'
+                                        : 'neutral'
+                              }
+                            >
+                              <StaticContent
+                                blocks={[b]}
+                                messageIndex={messageIndex}
+                                onFileClick={onFileClick}
+                                onToolApproval={onToolApproval}
+                                toolApprovalPolicy={toolApprovalPolicy}
+                                onRemoveApprovalPolicy={onRemoveApprovalPolicy}
+                                onInlineAction={onInlineAction}
+                                subAgentTasks={subAgentTasks}
+                                onOpenSubAgentSidebar={onOpenSubAgentSidebar}
+                                onStopSubAgent={onStopSubAgent}
+                                onForceWebContext={onForceWebContext}
+                                inActivityRail
+                              />
+                            </ActivityRailItem>
+                          );
+                        });
+                      })}
+                    </ActivityRail>
+                    <ImageResultGallery
+                      calls={group.chunks.flatMap(({ chunk }) =>
+                        chunk.type === 'toolCall'
+                          ? chunk.blocks.map((block) => ({
+                              toolName: block.toolName,
+                              output: block.content,
+                            }))
+                          : []
+                      )}
+                    />
+                  </React.Fragment>
                 );
               }
 
