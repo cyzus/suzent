@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Pin individual chats above Projects in a compact sidebar section, and rename the default project to Home while preserving custom names.
 - Open in-chat scheduled tasks in their original conversation, including before their first run.
 - Add inherited task model roles, shared decision defaults, Dream model settings, and a compact editor with separate primary and backup model selection.
+- Improve provider settings with searchable collapsible providers, credential drafts, inline connection feedback, model search, and working manual model addition.
 - Give every tool and every tool argument a description the model can see, and declare closed-value arguments as fixed choices, so tools in the search pool are discoverable and their valid values no longer have to be inferred from prose.
 - Return a clean 'not found' refusal instead of crashing when update_task is given an unknown task id, or manage_goal is paused, resumed or given a subgoal with no active goal.
 - Give every refresh control the same spinning-arrow icon button, and drop the redundant ones on views that already poll.
