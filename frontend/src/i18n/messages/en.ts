@@ -450,6 +450,25 @@ export const en = {
       },
     },
     providers: {
+      searchProviders: 'Search providers...',
+      noMatchingProviders: 'No matching providers. Try another name.',
+      searchModels: 'Search models by name or ID...',
+      enabledCount: '{count} models enabled',
+      keySet: 'Key configured',
+      noKey: 'Key needed',
+      customProvider: 'Custom provider',
+      environmentValue: 'Environment',
+      savedValue: 'Saved',
+      testConnection: 'Test connection & fetch models',
+      connectionHint:
+        'Save your credentials, then test the connection and choose which models to enable.',
+      connectionSuccess:
+        'Connection successful. Found {count} models. Select the models you want to use.',
+      unsavedCredentials: 'Save or cancel your credential edits before testing the connection.',
+      enabledSummary: '{models} enabled models · {providers} providers',
+      enabledSummaryHint:
+        'Enabled models are not necessarily connected. Select a model to open its provider settings.',
+      enabledEmpty: 'No models enabled yet. Expand a provider below to get started.',
       title: 'Model Providers',
       subtitle: 'Connect provider API keys and manage available models',
       apiKeysTab: 'API keys',
