@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Improve provider settings with searchable collapsible providers, credential drafts, inline connection feedback, model search, and working manual model addition."
+}
