@@ -486,7 +486,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun disconnectNode() {
-        socket?.cancel()
+        socket?.let { client?.cancelNode(it) }
         socket = null
         nodeStatus = text(if (nodeEnabled) R.string.node_offline else R.string.node_off)
     }
@@ -499,7 +499,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         socket = api.node(object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 viewModelScope.launch {
-                    if (socket !== webSocket || !foreground) { webSocket.cancel(); return@launch }
+                    if (socket !== webSocket || !foreground) { api.cancelNode(webSocket); return@launch }
                     webSocket.send(NodeProtocol.connect("Suzent Android", "android", saved.nodeToken).toString())
                 }
             }

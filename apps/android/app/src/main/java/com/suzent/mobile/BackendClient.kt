@@ -144,10 +144,20 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
     fun node(listener: WebSocketListener): WebSocket = http.newWebSocket(
         Request.Builder().url(backend.endpoint("ws/node")).build(), listener)
 
-    fun cancelLive() { liveCall?.cancel() }
+    fun cancelNode(socket: WebSocket) {
+        http.dispatcher.executorService.execute { socket.cancel() }
+    }
+
+    fun cancelLive() {
+        val call = liveCall ?: return
+        http.dispatcher.executorService.execute { call.cancel() }
+    }
     fun close() {
-        http.dispatcher.cancelAll()
-        http.connectionPool.evictAll()
+        // TLS shutdown can write close_notify, including when evicting an idle socket.
+        http.dispatcher.executorService.execute {
+            http.dispatcher.cancelAll()
+            http.connectionPool.evictAll()
+        }
     }
 }
 
