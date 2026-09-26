@@ -1,3 +1,5 @@
+import { createSpeechJob, speechQueue } from '../lib/speechPlayback';
+import { parseToolResultEnvelope } from './chat/ToolCallBlock';
 import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useChatStore } from '../hooks/useChatStore';
 import { useAGUI, type AGUIPart, type ApprovalRememberScope } from '../hooks/useAGUI';
@@ -755,6 +757,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     kanban,
   } = useGoalTasks();
   const { loadCoreMemory, loadStats } = useMemory();
+  useEffect(() => {
+    speechQueue.reset();
+    return () => speechQueue.reset();
+  }, [currentChatId]);
+
   const canvas = useCanvas(currentChatId);
   const { t } = useI18n();
   const setHeartbeatRunning = useHeartbeatRunning((s) => s.setRunning);
@@ -1037,6 +1044,31 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     removeInlineSurface,
   } = useAGUI({
     url: `${getApiBase()}/chat`,
+    onSpeechResult: (chatId, part) => {
+      if (activeChatIdRef.current !== chatId) return;
+      const result = parseToolResultEnvelope(part.output);
+      if (result?.success !== true || !result.metadata || typeof result.metadata !== 'object')
+        return;
+      const metadata = result.metadata as Record<string, unknown>;
+      if (metadata.autoplay === false) return;
+
+      // The stream publishes this tool result immediately after this callback.
+      // Start playback on the next frame so the matching SpeechPlayer has mounted
+      // and can observe the queued/playing transitions from their beginning.
+      const enqueue = () => {
+        if (activeChatIdRef.current !== chatId) return;
+        if (metadata.engine === 'system') speechQueue.enqueue(createSpeechJob(metadata), true);
+        else if (metadata.engine === 'api' && Array.isArray(metadata.saved_paths)) {
+          for (const path of metadata.saved_paths) {
+            if (typeof path !== 'string') continue;
+            const src = `${getApiBase()}/sandbox/serve?${getSandboxParams(chatId, path, config.sandbox_volumes)}`;
+            speechQueue.enqueue(createSpeechJob(metadata, src), true);
+          }
+        }
+      };
+      if (document.visibilityState === 'visible') requestAnimationFrame(enqueue);
+      else setTimeout(enqueue, 0);
+    },
     onFinish: async (parts, persistence) => {
       const chatId = streamingChatIdRef.current || activeChatIdRef.current;
       const finishDirect = (loadHistory: () => Promise<void>) =>

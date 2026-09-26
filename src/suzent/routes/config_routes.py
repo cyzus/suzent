@@ -979,7 +979,7 @@ async def save_role_models(request: Request) -> JSONResponse:
 
 
 def _build_role_suggestions(
-    registry: Any, enabled_models: list[str]
+    registry: Any, enabled_models: list[str], configured_providers: set[str]
 ) -> dict[str, list[str]]:
     """Build role suggestions without hiding enabled models we cannot classify.
 
@@ -987,6 +987,11 @@ def _build_role_suggestions(
     a separate metadata bucket so the UI can label them as capability-unverified
     instead of presenting them as known-compatible suggestions.
     """
+    enabled_models = [
+        model
+        for model in enabled_models
+        if model.partition("/")[0] in configured_providers
+    ]
     vision_models = [
         model for model in enabled_models if registry.supports_vision(model)
     ]
@@ -994,7 +999,11 @@ def _build_role_suggestions(
         model for model in enabled_models if registry.get_capabilities(model) is None
     ]
 
-    caps = registry._capabilities  # type: ignore[attr-defined]
+    caps = {
+        model: cap
+        for model, cap in registry._capabilities.items()
+        if model.partition("/")[0] in configured_providers
+    }
     return {
         "primary": enabled_models,
         "cheap": enabled_models,
@@ -1023,6 +1032,9 @@ def _build_role_suggestions(
             or getattr(registry.get_capabilities(model), "supports_image_edit", None)
             is None
         ),
+        "video_generation": sorted(
+            model for model, cap in caps.items() if cap.mode == "video_generation"
+        ),
         "tts": sorted(model for model, cap in caps.items() if cap.mode == "tts"),
         "_unregistered": unregistered_models,
     }
@@ -1042,7 +1054,13 @@ async def get_role_suggestions(request: Request) -> JSONResponse:
         registry = get_model_registry()
         chat_models = get_enabled_models_from_db()
 
-        return JSONResponse(_build_role_suggestions(registry, chat_models))
+        from suzent.core.providers.helpers import get_configured_provider_ids
+
+        return JSONResponse(
+            _build_role_suggestions(
+                registry, chat_models, get_configured_provider_ids()
+            )
+        )
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
@@ -1147,3 +1165,35 @@ async def delete_custom_provider(request: Request) -> JSONResponse:
         return JSONResponse({"success": True})
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def voice_settings(request: Request) -> JSONResponse:
+    """Speech defaults and the existing TTS role are edited together."""
+    from suzent.voice.settings import VoiceSettingsUpdate, get_voice_settings
+    from suzent.core.role_router import get_role_router
+
+    router = get_role_router()
+    if request.method == "GET":
+        return JSONResponse(
+            {
+                **get_voice_settings().model_dump(),
+                "tts_models": router.get_model_ids("tts"),
+            }
+        )
+    try:
+        update = VoiceSettingsUpdate.model_validate(await request.json())
+        if update.tts_models is not None and any(
+            not model.strip() or "/" not in model for model in update.tts_models
+        ):
+            raise ValueError("TTS model IDs must use provider/model format.")
+        settings = update.model_dump(exclude={"tts_models"})
+        config_data = _load_local_config_file()
+        config_data["voice_settings"] = settings
+        _save_local_config_file(config_data)
+        CONFIG.voice_settings = settings
+        if update.tts_models is not None:
+            router.set_role("tts", update.tts_models)
+            router.save_to_db()
+        return JSONResponse({**settings, "tts_models": router.get_model_ids("tts")})
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
