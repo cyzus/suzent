@@ -1,7 +1,5 @@
 import React, { useEffect, useState, useSyncExternalStore } from 'react';
-import { PlayIcon, StopIcon, SpeakerWaveIcon } from '@heroicons/react/24/outline';
-import { BrutalIconButton } from '../BrutalButton';
-import { BrutalSelect } from '../BrutalSelect';
+import { SpeakerWaveIcon } from '@heroicons/react/24/solid';
 import { useI18n } from '../../i18n';
 import { createSpeechJob, speechId, speechQueue } from '../../lib/speechPlayback';
 
@@ -27,7 +25,6 @@ export function SpeechPlayer({
 }): React.ReactElement {
   const { t } = useI18n();
   const voices = useSystemVoices();
-  const [selected, setSelected] = useState(String(metadata.voice || ''));
   const id = speechId(metadata, src);
   const state = useSyncExternalStore(
     speechQueue.subscribe,
@@ -35,62 +32,48 @@ export function SpeechPlayer({
     () => 'idle'
   );
   const busy = state === 'playing' || state === 'queued';
+  const unavailable = !src && !voices.length;
+  const status = busy
+    ? t(state === 'queued' ? 'speech.queued' : 'speech.playing')
+    : t('speech.clip');
   return (
-    <div className="my-2 w-full max-w-sm space-y-2 border border-neutral-200 bg-white p-3 dark:border-zinc-700 dark:bg-zinc-800">
-      <div className="flex items-center gap-3">
-        <BrutalIconButton
-          type="button"
-          variant="primary"
-          size="icon-lg"
-          className="shrink-0 !border-0 !shadow-none"
-          label={t(busy ? 'speech.stop' : 'speech.play')}
-          disabled={!busy && !src && !voices.length}
-          onClick={() => {
-            if (busy) {
-              speechQueue.stop(id);
-            } else {
-              const job = createSpeechJob({ ...metadata, voice: selected }, src);
-              speechQueue.enqueue({ ...job, id });
-            }
-          }}
-        >
-          {busy ? <StopIcon className="h-4 w-4" /> : <PlayIcon className="h-4 w-4" />}
-        </BrutalIconButton>
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-brutal-black dark:text-white">
-            {t('speech.clip')}
-          </p>
-          <p
-            role="status"
-            className={`h-4 truncate text-xs leading-4 ${busy ? 'text-brutal-blue' : 'text-neutral-500 dark:text-neutral-400'}`}
-          >
-            {busy
-              ? t(state === 'queued' ? 'speech.queued' : 'speech.playing')
-              : `${t(src ? 'speech.api' : 'speech.system')}${src && selected ? ` · ${selected}` : ''}`}
-          </p>
-        </div>
+    <div className="my-2 w-fit max-w-full">
+      <button
+        type="button"
+        aria-label={t(busy ? 'speech.stop' : 'speech.play')}
+        disabled={unavailable}
+        onClick={() => {
+          if (busy) {
+            speechQueue.stop(id);
+          } else {
+            const job = createSpeechJob(metadata, src);
+            speechQueue.enqueue({ ...job, id });
+          }
+        }}
+        className={`flex h-11 w-44 max-w-full items-center gap-3 border px-3 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${
+          busy
+            ? 'border-brutal-blue bg-brutal-blue text-white'
+            : 'border-neutral-300 bg-neutral-100 text-brutal-black hover:bg-neutral-200 dark:border-zinc-600 dark:bg-zinc-800 dark:text-white dark:hover:bg-zinc-700'
+        }`}
+      >
         <SpeakerWaveIcon
           aria-hidden="true"
-          className={`h-5 w-5 shrink-0 ${state === 'playing' ? 'text-brutal-blue' : 'text-neutral-400'}`}
+          className={`h-5 w-5 shrink-0 ${state === 'playing' ? 'animate-pulse' : ''}`}
         />
-      </div>
-      {!src && (
-        <BrutalSelect
-          label={t('speech.voice')}
-          value={selected}
-          onChange={setSelected}
-          disabled={busy}
-          buttonClassName="!border !border-neutral-200 !shadow-none dark:!border-zinc-700"
-          options={[
-            { value: '', label: t('speech.defaultVoice') },
-            ...voices.map((voice) => ({
-              value: voice.voiceURI,
-              label: `${voice.name} (${voice.lang})`,
-            })),
-          ]}
-        />
-      )}
-      {!src && !voices.length && (
+        <span role="status" className="min-w-0 flex-1 truncate text-xs font-semibold">
+          {status}
+        </span>
+        <span className="flex h-4 shrink-0 items-center gap-0.5" aria-hidden="true">
+          {[2, 4, 3].map((height, index) => (
+            <span
+              key={height}
+              className={`w-0.5 bg-current ${state === 'playing' ? 'animate-pulse' : 'opacity-40'}`}
+              style={{ height: `${height * 2}px`, animationDelay: `${index * 120}ms` }}
+            />
+          ))}
+        </span>
+      </button>
+      {unavailable && (
         <p role="status" className="text-xs text-neutral-500 dark:text-neutral-400">
           {t('speech.unavailable')}
         </p>
