@@ -72,7 +72,7 @@ export const en = {
       'Pair the Suzent app with this desktop. Each phone receives its own revocable access.',
     origin: 'Backend address reachable from your phone',
     network:
-      'The QR code includes this address plus detected LAN and Tailscale addresses. Your phone checks reachability before you confirm. Release apps require HTTPS; HTTP is debug-only.',
+      'LAN connections are encrypted automatically. Scan to trust this desktop. You can also enter an existing HTTPS address.',
     generate: 'Pair a phone',
     expired: 'Invitation expired. Generate a new QR code.',
     qrAlt: 'Suzent mobile pairing QR code',

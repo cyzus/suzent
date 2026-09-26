@@ -66,8 +66,7 @@ export const zhCN = {
     title: '移动端访问',
     description: '将 Suzent 手机应用与此桌面端配对。每台手机使用可单独撤销的访问凭证。',
     origin: '手机可以访问的后端地址',
-    network:
-      '二维码包含此地址及检测到的局域网和 Tailscale 地址。手机先检查可达性，再由你确认。正式版需要 HTTPS；仅调试版支持 HTTP。',
+    network: '局域网连接会自动加密，扫码后信任这台桌面设备。也可以填写已有的 HTTPS 地址。',
     generate: '配对手机',
     expired: '邀请已过期，请生成新的二维码。',
     qrAlt: 'Suzent 移动端配对二维码',

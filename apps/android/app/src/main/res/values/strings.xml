@@ -108,4 +108,5 @@
     <string name="desktop_recognized">Desktop recognized</string>
     <string name="flashlight">Flashlight</string>
     <string name="pair_again">Pair again</string>
+    <string name="pairing_secure_connection">Could not establish a trusted connection. Check the network, or scan again if the desktop identity changed.</string>
 </resources>

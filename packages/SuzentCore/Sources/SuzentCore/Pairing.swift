@@ -42,6 +42,7 @@ public struct MobileCapabilities: Decodable, Sendable {
 }
 
 public struct PairingInvitation: Decodable, Sendable {
+    public let tls: DeviceTrust?
     public let type: String
     public let pairingProtocol: Int
     public let approval: String?
@@ -59,7 +60,9 @@ public struct PairingInvitation: Decodable, Sendable {
         var value: Self
         do { value = try decoder.decode(Self.self, from: Data(text.utf8)) }
         catch { throw PairingError.invalidInvitation }
-        guard value.type == "suzent.mobile", value.pairingProtocol == 1 else { throw PairingError.incompatible }
+        guard value.type == "suzent.mobile", [1, 2].contains(value.pairingProtocol) else { throw PairingError.incompatible }
+        guard (value.pairingProtocol == 2) == (value.tls != nil) else { throw PairingError.invalidInvitation }
+        if let tls = value.tls { _ = try tls.certificate() }
         guard value.approval == nil || value.approval == "phone" else { throw PairingError.incompatible }
         guard value.expiresAt > now.timeIntervalSince1970 else { throw PairingError.expired }
         guard value.pairingId.range(of: "^[a-f0-9]{32}$", options: .regularExpression) != nil,
@@ -73,6 +76,9 @@ public struct PairingInvitation: Decodable, Sendable {
             if !candidates.contains(origin) { candidates.append(origin) }
         }
         guard candidates.count <= 6 else { throw PairingError.invalidInvitation }
+        if value.tls != nil, candidates.contains(where: { URL(string: $0)?.scheme != "https" }) {
+            throw PairingError.invalidInvitation
+        }
         let usable = try candidates.filter { try Backend($0, allowHTTP: true).url.scheme == "https" || allowHTTP }
         guard let first = usable.first else { throw PairingError.invalidInvitation }
         value.origin = first
@@ -94,7 +100,7 @@ public struct PairingInvitation: Decodable, Sendable {
                 try Task.checkCancellation()
             }
         }
-        throw PairingError.unreachable
+        throw tls == nil ? PairingError.unreachable : PairingError.secureConnection
     }
 
 }
@@ -126,7 +132,7 @@ public struct PairingResult: Decodable, Sendable {
 }
 
 public enum PairingError: Error, LocalizedError {
-    case invalidInvitation, incompatible, expired, denied, unreachable
+    case invalidInvitation, incompatible, expired, denied, unreachable, secureConnection
 
     public var errorDescription: String? {
         switch self {
@@ -134,6 +140,7 @@ public enum PairingError: Error, LocalizedError {
         case .incompatible: return String(localized: "This backend is incompatible. Update Suzent on your desktop and phone.")
         case .expired: return String(localized: "Pairing expired. Generate a new QR code on your desktop.")
         case .unreachable: return String(localized: "None of the desktop addresses could be reached with a compatible protocol. Check Wi-Fi or Tailscale and update the desktop app.")
+        case .secureConnection: return String(localized: "Could not establish a trusted connection. Check the network, or scan again if the desktop identity changed.")
         case .denied: return String(localized: "Pairing was declined on the desktop.")
         }
     }

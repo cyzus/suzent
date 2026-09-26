@@ -268,10 +268,11 @@ duplicates are not deleted based on device names.
 
 ## Mobile versions and CI builds
 
-Mobile versions are independent of the desktop/backend product version. Edit
-`packages/mobile-contract/version.json`, then run
-`uv run python scripts/generate_mobile_version.py` to update Android's
-`version.properties` and iOS's `Config/Version.xcconfig`. Both platforms share the
+Mobile versions are independent of the desktop/backend product version. Add a
+`mobile` impact declaration under `.releases/changes/` in feature PRs. The
+`release/mobile` plan updates `packages/mobile-contract/version.json` and generates
+Android's `version.properties` and iOS's `Config/Version.xcconfig`; do not bump these
+files manually in feature PRs. See [the release guide](releasing.md). Both platforms share the
 marketing version; the source build number is used for local builds. The desktop
 `scripts/bump_version.py` deliberately does not include these files. Protocol
 compatibility continues to use the pairing protocol and capabilities, not matching
@@ -313,3 +314,24 @@ work; desktop `v*` release triggers are unchanged.
 
 These are follow-up milestones; merging the current mobile implementation enables
 CI artifact downloads only and does not enable automatic Release publication.
+
+## Encrypted local pairing
+
+For a local HTTP backend address, **Pair phone** now creates a separate local
+HTTPS endpoint automatically. Scan the QR in the native app and confirm the
+connection. No Tailscale account, domain, or system root-certificate installation
+is required. If the desktop address field already contains a public HTTPS origin,
+that address keeps normal system certificate validation instead.
+
+Allow the desktop backend through the local firewall when prompted. The encrypted
+mobile listener uses a persisted port distinct from the desktop HTTP port and
+runs only after local pairing has been enabled. Keep `mobile_tls` in the user
+configuration directory across upgrades; it contains the private device identity.
+Its server certificate renews without requiring new pairing. Saved addresses are
+retried on reconnect; `.local` name resolution can help after an IP change but is
+network-dependent. Rescan if none of the saved addresses resolve to the desktop.
+
+A new device identity is never accepted during reconnect. If the desktop's keys
+were intentionally replaced, scan a fresh QR to authorize it again. Public HTTPS,
+Tailscale and reverse proxies remain supported as optional connection methods;
+this local listener does not provide internet traversal or a relay service.
