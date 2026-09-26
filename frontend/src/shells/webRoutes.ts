@@ -16,6 +16,7 @@
 
 import type { ComponentType, SVGProps } from 'react';
 import {
+  SpeakerWaveIcon,
   AdjustmentsHorizontalIcon,
   BoltIcon,
   ChartBarIcon,
@@ -86,6 +87,13 @@ export const WEB_DESTINATION_GROUPS: WebDestinationGroup[] = [
         labelKey: 'settings.categories.roles',
         icon: AdjustmentsHorizontalIcon,
         category: 'roles',
+        framed: true,
+      },
+      {
+        path: '/audio',
+        labelKey: 'speech.title',
+        icon: SpeakerWaveIcon,
+        category: 'audio',
         framed: true,
       },
       {

@@ -70,7 +70,7 @@ def _write_target_dir() -> Path:
 class ModelCapabilities:
     """Immutable capability descriptor for a single model."""
 
-    mode: str = "chat"  # chat | embedding | image_generation | image_edit | tts
+    mode: str = "chat"  # chat | embedding | image_generation | image_edit | video_generation | tts
     supported_endpoints: tuple[str, ...] = ()
 
     max_input_tokens: int = 0
@@ -104,7 +104,8 @@ class ModelCapabilities:
         """
         return not (
             self.supported_endpoints
-            or self.mode in {"image_generation", "image_edit"}
+            or self.mode
+            in {"image_generation", "image_edit", "video_generation", "tts"}
             or self.max_input_tokens
             or self.max_output_tokens
             or self.output_vector_size
@@ -198,6 +199,7 @@ _LITELLM_MODE_MAP: dict[str, str | None] = {
     "embedding": "embedding",
     "image_generation": "image_generation",
     "image_edit": "image_edit",
+    "video_generation": "video_generation",
     "audio_speech": "tts",
     "audio_transcription": None,  # STT — not a role we manage
     "moderations": None,

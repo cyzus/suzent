@@ -120,6 +120,7 @@ class ConfigModel(BaseModel):
 
     tts_model: str = ""
     tts_voice: str = ""
+    voice_settings: dict[str, Any] = {}
 
     embedding_model: Optional[str] = None
     embedding_dimension: int = 0

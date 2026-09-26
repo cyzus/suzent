@@ -8,6 +8,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import type { A2UISurface } from '../types/a2ui';
 import type { AGUIPart, AcpPermissionRequest, ApprovalRememberScope } from '../types/agui';
 import type { CitationSource } from '../lib/streamEvents';
+import { LiveSpeechTracker } from '../lib/liveSpeech';
 import { recoverableStream } from '../lib/recoverableStream';
 
 // ── Types ────────────────────────────────────────────────────────────
@@ -19,6 +20,7 @@ interface UseAGUIOptions {
   onFinish?: (parts: AGUIPart[], persistence?: { confirmed: boolean }) => void | Promise<void>;
   onCustomEvent?: (name: string, value: unknown) => void;
   onMarkDeferred?: (surfaceId: string) => void;
+  onSpeechResult?: (chatId: string, part: AGUIPart) => void;
   onError?: (error: Error, parts: AGUIPart[]) => void;
 }
 
@@ -824,6 +826,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
       // which is what a steer does while this loop is still draining.
       const attachedToken = clientRunTokenRef.current;
 
+      const speechTracker = new LiveSpeechTracker(isProbe, opts?.seedParts || partsRef.current);
       if (!isProbe) {
         // Normal send: reset immediately so the UI shows "submitted" while waiting.
         publishParts([], true);
@@ -886,6 +889,9 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
               publishParts(currentParts, true);
               throw new Error(result.error);
             }
+          }
+          for (const part of speechTracker.collect(currentParts, batch.runId, batch.reset)) {
+            optionsRef.current.onSpeechResult?.(String(requestBody.chat_id || ''), part);
           }
           publishParts(currentParts, batch.reset);
           setPendingApprovalCountSync(

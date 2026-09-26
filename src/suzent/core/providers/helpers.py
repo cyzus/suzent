@@ -127,6 +127,24 @@ def _provider_is_configured(spec) -> bool:
     return False
 
 
+def get_configured_provider_ids() -> set[str]:
+    """Provider IDs/aliases eligible for recommendations; no credential verification calls."""
+    from suzent.core.providers.catalog import PROVIDER_REGISTRY
+
+    config = _load_user_provider_config() or {}
+    available: set[str] = set()
+    for spec in PROVIDER_REGISTRY:
+        entry = config.get(spec.id, {})
+        if entry.get("enabled") is False:
+            continue
+        # Keyless endpoints should not appear just because they ship in the catalog.
+        if spec.api_key_optional and not entry.get("enabled_models"):
+            continue
+        if _provider_is_configured(spec):
+            available.update([spec.id, *spec.aliases])
+    return available
+
+
 _UNSET = object()
 _default_model_cache: Any = _UNSET
 

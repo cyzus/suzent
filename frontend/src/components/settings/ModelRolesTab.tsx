@@ -8,6 +8,7 @@ interface ModelRolesTabProps {
   roleModels: Record<string, string[]>;
   suggestions: Record<string, string[]>;
   unregisteredModels: string[];
+  onOpenVoiceSettings?: () => void;
   onChange: (roles: Record<string, string[]>) => void;
 }
 
@@ -61,6 +62,12 @@ const ROLES: { key: string; labelKey: string; descKey: string; fallback: Fallbac
     descKey: 'roles.imageEditDesc',
     fallback: 'none',
   },
+  {
+    key: 'video_generation',
+    labelKey: 'roles.videoGeneration',
+    descKey: 'roles.videoGenerationDesc',
+    fallback: 'none',
+  },
   { key: 'tts', labelKey: 'roles.tts', descKey: 'roles.ttsDesc', fallback: 'none' },
 ];
 
@@ -73,7 +80,12 @@ interface ModelDropdownProps {
   onSelect: (model: string) => void;
 }
 
-function ModelDropdown({ label, options, unregisteredModels, onSelect }: ModelDropdownProps) {
+export function ModelDropdown({
+  label,
+  options,
+  unregisteredModels,
+  onSelect,
+}: ModelDropdownProps) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -432,6 +444,7 @@ export function ModelRolesTab({
   suggestions,
   unregisteredModels,
   onChange,
+  onOpenVoiceSettings,
 }: ModelRolesTabProps): React.ReactElement {
   const { t } = useI18n();
 
@@ -450,6 +463,22 @@ export function ModelRolesTab({
   }
 
   function renderRole(role: (typeof ROLES)[number]): React.ReactElement {
+    if (role.key === 'tts')
+      return (
+        <button
+          key="tts"
+          type="button"
+          onClick={onOpenVoiceSettings}
+          disabled={!onOpenVoiceSettings}
+          className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-neutral-50 dark:hover:bg-zinc-900"
+        >
+          <span className="text-sm font-black">{t('settings.roles.tts')}</span>
+          <span className="min-w-0 truncate font-mono text-xs">
+            {roleModels.tts?.[0] || t('settings.roles.notConfigured')}
+          </span>
+          <span className="text-xs">{t('speech.openSettings')}</span>
+        </button>
+      );
     const { models, source } = resolveParent(role.fallback);
     return (
       <RoleRow
@@ -472,7 +501,7 @@ export function ModelRolesTab({
     { key: 'tasksGroup', roles: ['title', 'memory_extraction', 'dream'] },
     {
       key: 'specialistsGroup',
-      roles: ['vision', 'embedding', 'image_generation', 'image_edit', 'tts'],
+      roles: ['vision', 'embedding', 'image_generation', 'image_edit', 'video_generation', 'tts'],
     },
   ];
 
@@ -482,6 +511,11 @@ export function ModelRolesTab({
         title={t('settings.roles.title')}
         subtitle={t('settings.roles.compactIntro')}
       />
+      {onOpenVoiceSettings && (
+        <BrutalButton size="sm" onClick={onOpenVoiceSettings}>
+          {t('speech.openSettings')}
+        </BrutalButton>
+      )}
       {groups.map((group) => (
         <section key={group.key} aria-labelledby={`roles-${group.key}`}>
           <h3

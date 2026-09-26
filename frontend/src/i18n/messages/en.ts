@@ -1,4 +1,60 @@
 export const en = {
+  videoPlayer: {
+    reveal: 'Show file location',
+    menu: 'Video controls',
+    pause: 'Pause',
+    mute: 'Mute',
+    unmute: 'Unmute',
+    loop: 'Loop',
+    stopLoop: 'Stop looping',
+    fullscreen: 'Fullscreen',
+    title: 'Generated video',
+    failed: 'Unable to load this video.',
+    retry: 'Retry',
+  },
+  speech: {
+    clip: 'Voice message',
+    controls: 'Voice controls',
+    model: 'Speech model',
+    modelChanged: 'Settings were adjusted for this model. Save to apply the changes.',
+    savedBackups: '{count} additional stored models are retained. Speech uses the first model.',
+    providerDefault: 'Model default voice',
+    customVoice: 'Custom voice ID',
+
+    openSettings: 'Voice & playback settings →',
+    autoplay: 'Automatically play new tool speech',
+    queued: 'Queued',
+    playing: 'Playing',
+    playbackBlocked:
+      'Playback could not start. Click Play to retry; your browser may require a click before playing audio.',
+
+    autoFormat: 'Model default',
+    title: 'Voice & audio',
+    engine: 'Speech engine',
+    system: 'System speech (no API)',
+    api: 'API speech',
+    voice: 'Voice',
+    defaultVoice: 'Device default',
+    play: 'Play',
+    stop: 'Stop',
+    unavailable:
+      'No local voices are available. Install a system voice or open Suzent on a supported device.',
+    failed: 'Unable to complete this action. Check your settings and try again.',
+    saved: 'Voice settings saved.',
+    systemHelp:
+      'Uses local voices on the device playing the message. Audio cannot be exported. Per-call options override these defaults.',
+    apiHelp:
+      'Uses the TTS model role and saves replayable audio. Voice IDs, formats, speed and style support depend on the provider. Unsupported options return an error.',
+    language: 'Language (e.g. zh-CN)',
+    format: 'Audio format',
+    instructions: 'Tone and style instructions',
+    speed: 'Speed',
+    pitch: 'Pitch',
+    volume: 'Volume',
+    subtitle: 'Choose how speech sounds and plays on your device.',
+    openModels: 'Choose the API speech model →',
+  },
+
   mobileAccess: {
     fullAccess: 'Full access',
     restrictedAccess: 'Restricted access',
@@ -789,6 +845,8 @@ export const en = {
       embedding: 'Embedding',
       embeddingDesc: 'Vector search and memory retrieval.',
       imageEdit: 'Image Editing',
+      videoGeneration: 'Video generation',
+      videoGenerationDesc: 'Create videos from text or a reference image. Requires a video model.',
       imageEditDesc:
         'Edit existing images using instructions and optional reference images or masks.',
       imageGeneration: 'Image Generation',

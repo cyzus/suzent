@@ -10,7 +10,7 @@ import {
 } from '../../lib/chatUtils';
 import { ThinkingAnimation, AgentBadge, RobotIcon } from './ThinkingAnimation';
 import { MarkdownRenderer } from './MarkdownRenderer';
-import { ImageResultGallery, getImageResultPaths } from './ImageResultGallery';
+import { ImageResultGallery, hasVisualMediaResults } from './ImageResultGallery';
 import { ImageWithFallback } from './ImageWithFallback';
 import { ToolCallBlock } from './ToolCallBlock';
 import { parseSubAgentArgs, SubAgentCallBlock } from './SubAgentCallBlock';
@@ -231,7 +231,7 @@ const AGUIPartsContent: React.FC<{
   const renderGroups = groupActivityChunks(
     chunks,
     (chunk) => chunk.type === 'tool' || chunk.type === 'reasoning',
-    (chunk) => chunk.type === 'tool' && getImageResultPaths(chunk.items).length > 0
+    (chunk) => chunk.type === 'tool' && hasVisualMediaResults(chunk.items)
   );
   // Only the turn's final rail is live. Earlier ones are finished work: they
   // must not animate, and must not each start their own worked-for clock.
@@ -1090,9 +1090,9 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
     (chunk) => chunk.type === 'reasoning' || chunk.type === 'toolCall',
     (chunk) =>
       chunk.type === 'toolCall' &&
-      getImageResultPaths(
+      hasVisualMediaResults(
         chunk.blocks.map((block) => ({ toolName: block.toolName, output: block.content }))
-      ).length > 0
+      )
   );
   const currentLegacyActivityGroupIndex = findLastActivityGroupIndex(legacyRenderGroups);
 
