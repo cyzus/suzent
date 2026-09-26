@@ -87,7 +87,7 @@ jobs:
           git commit -m "chore: prepare $PRODUCT $prefix$version"
           old="$(git ls-remote origin "refs/heads/$branch" | cut -f1)"
           git push --force-with-lease="refs/heads/$branch:$old" origin "HEAD:$branch"
-          gh pr create --base main --head "$branch" --title "chore: release $prefix$version" --body 'Review the product changelog and persistent version override. Desktop and browser merges publish through their existing packaging workflows; mobile merges record the version and notes only. See docs/03-developing/releasing.md.'
+          gh pr create --base main --head "$branch" --title "chore: release $prefix$version" --body 'Review the product changelog and persistent version override. Product release merges start their packaging workflows. Mobile publishes signed Android assets and uploads iOS to TestFlight after the mobile-release environment is configured. See docs/03-developing/releasing.md.'
           GH_TOKEN="$ACTIONS_TOKEN" gh workflow run ci.yml --ref "$branch" -f "release_product=$PRODUCT"
           if [[ "$PRODUCT" == mobile ]]; then
             GH_TOKEN="$ACTIONS_TOKEN" gh workflow run mobile.yml --ref "$branch"

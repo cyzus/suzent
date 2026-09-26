@@ -20,6 +20,17 @@ android {
         versionCode = mobileVersion.getProperty("versionCode").toInt()
         versionName = mobileVersion.getProperty("versionName")
     }
+    signingConfigs {
+        create("release") {
+            storeFile = System.getenv("ANDROID_KEYSTORE_PATH")?.let { file(it) }
+            storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+            keyAlias = System.getenv("ANDROID_KEY_ALIAS")
+            keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+        }
+    }
+    buildTypes {
+        getByName("release") { signingConfig = signingConfigs.getByName("release") }
+    }
     buildFeatures { compose = true; buildConfig = true }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -46,4 +57,18 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20251224")
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
+}
+
+val validateReleaseSigning by tasks.registering {
+    doLast {
+        val required = listOf("ANDROID_KEYSTORE_PATH", "ANDROID_KEYSTORE_PASSWORD", "ANDROID_KEY_ALIAS", "ANDROID_KEY_PASSWORD")
+        val missing = required.filter { System.getenv(it).isNullOrBlank() }
+        check(missing.isEmpty()) { "Release signing requires: ${missing.joinToString()}" }
+        check(file(System.getenv("ANDROID_KEYSTORE_PATH")).isFile) { "Release keystore does not exist" }
+    }
+}
+tasks.configureEach {
+    if (name == "packageRelease" || name == "signReleaseBundle") {
+        dependsOn(validateReleaseSigning)
+    }
 }
