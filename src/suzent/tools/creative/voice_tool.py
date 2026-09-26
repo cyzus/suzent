@@ -39,11 +39,21 @@ class SpeakTool(Tool):
                 description="API model tone/style instructions; system speech cannot interpret these."
             ),
         ] = None,
-        engine: Literal["system", "api"] | None = None,
+        engine: Annotated[
+            Literal["system", "api"] | None,
+            Field(description="Speech engine override: local system or API speech."),
+        ] = None,
         voice: Annotated[
             str | None, Field(description="System voice name/URI or API voice ID.")
         ] = None,
-        speed: Annotated[float | None, Field(ge=0.25, le=4)] = None,
+        speed: Annotated[
+            float | None,
+            Field(
+                ge=0.25,
+                le=4,
+                description="Speech rate multiplier; provider support varies.",
+            ),
+        ] = None,
         pitch: Annotated[
             float | None, Field(ge=0, le=2, description="System speech only.")
         ] = None,
@@ -53,8 +63,10 @@ class SpeakTool(Tool):
         language: Annotated[
             str | None, Field(description="System speech language, e.g. zh-CN.")
         ] = None,
-        response_format: Literal["auto", "mp3", "wav", "opus", "aac", "flac"]
-        | None = None,
+        response_format: Annotated[
+            Literal["auto", "mp3", "wav", "opus", "aac", "flac"] | None,
+            Field(description="API audio format; auto uses the provider default."),
+        ] = None,
     ) -> ToolResult:
         if not text.strip() or len(text) > 20000:
             return ToolResult.error_result(

@@ -50,6 +50,26 @@ def _save(path: Path, data: bytes) -> None:
         temporary.unlink(missing_ok=True)
 
 
+def _ensure_gemini_image_input_compatibility() -> None:
+    """Move Veo's starting image into the instance for affected LiteLLM releases."""
+    from litellm.llms.gemini.videos.transformation import GeminiVideoConfig
+
+    transform = GeminiVideoConfig.transform_video_create_request
+    if getattr(transform, "_suzent_image_compatibility", False):
+        return
+
+    def transform_with_image_instance(self, *args, **kwargs):
+        request_data, files, api_base = transform(self, *args, **kwargs)
+        parameters = request_data.get("parameters", {})
+        image = parameters.pop("image", None)
+        if image is not None:
+            request_data["instances"][0]["image"] = image
+        return request_data, files, api_base
+
+    transform_with_image_instance._suzent_image_compatibility = True
+    GeminiVideoConfig.transform_video_create_request = transform_with_image_instance
+
+
 class VideoGenerationTool(Tool):
     """Start a video generation job. Use check_video with the returned job_id to retrieve progress and save the completed video. Do not resubmit a pending job."""
 
@@ -115,6 +135,8 @@ class VideoGenerationTool(Tool):
                     image_suffix(handle.read(16))
                     handle.seek(0)
                     options["input_reference"] = handle
+                    if routed_model.startswith("gemini/"):
+                        _ensure_gemini_image_input_compatibility()
                 response = await _litellm().avideo_generation(
                     model=routed_model,
                     prompt=prompt,
