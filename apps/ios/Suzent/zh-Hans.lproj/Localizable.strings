@@ -53,6 +53,7 @@
 "Pairing invitation" = "配对邀请";
 "Review invitation" = "检查邀请";
 "Reconnect to desktop" = "重新连接桌面端";
+"Could not reach your desktop. Check Wi-Fi or Tailscale and make sure Suzent is running, then retry or pair again." = "无法连接桌面端。请检查 Wi-Fi 或 Tailscale，并确认 Suzent 正在运行，然后重试或重新配对。";
 "Desktop access" = "桌面端访问";
 "All conversations" = "所有会话";
 "Shared conversations: %lld" = "已共享会话：%lld";

@@ -70,9 +70,15 @@ struct ContentView: View {
                         if !model.connected && model.canReconnect {
                             VStack(spacing: 20) {
                                 Text("Reconnect to desktop").font(.headline)
-                                if model.busy { ProgressView() }
+                                if model.busy {
+                                    ProgressView()
+                                    if model.reconnecting {
+                                        Button("Cancel") { model.cancelReconnect() }
+                                            .buttonStyle(SuzentButtonStyle())
+                                    }
+                                }
                                 else { Button("Reconnect to desktop") { Task { await model.connect() } } }
-                                Button("Pair again") { repairScanner = true }.buttonStyle(SuzentButtonStyle()).disabled(model.busy || model.streaming)
+                                Button("Pair again") { model.error = nil; repairScanner = true }.buttonStyle(SuzentButtonStyle()).disabled(model.busy || model.streaming)
                 Button("Forget connection", role: .destructive) { model.forget() }.disabled(model.busy)
                             }.frame(maxWidth: .infinity, maxHeight: .infinity)
                         }
@@ -115,6 +121,7 @@ struct ContentView: View {
             }
         }
         .onChange(of: model.sentVersion) { _, _ in composing = false }
+        .fullScreenCover(isPresented: $repairScanner) { PairingScanner(model: model) }
     }
 
     private var sidebar: some View {
@@ -195,11 +202,11 @@ struct ContentView: View {
                     Toggle("Enable foreground Node", isOn: Binding(get: { model.nodeEnabled }, set: { model.toggleNode($0) }))
                     Text(model.nodeStatus).font(.footnote).foregroundStyle(.secondary)
                 }
-                Button("Pair again") { repairScanner = true }.buttonStyle(SuzentButtonStyle()).disabled(model.busy || model.streaming)
+                Button("Pair again") { model.error = nil; repairScanner = true }.buttonStyle(SuzentButtonStyle()).disabled(model.busy || model.streaming)
                 Button("Forget connection", role: .destructive) { model.forget() }.disabled(model.busy)
                 Text("To revoke access, also remove its credentials on the desktop.").font(.footnote).foregroundStyle(.secondary)
             }.padding(20)
-        }.fullScreenCover(isPresented: $repairScanner) { PairingScanner(model: model) }
+        }
     }
 
     private func conversation(_ chat: Chat) -> some View {

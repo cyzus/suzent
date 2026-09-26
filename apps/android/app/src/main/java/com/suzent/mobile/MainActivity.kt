@@ -55,6 +55,8 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun MobileScreen(model: MobileModel) {
     var showSettings by rememberSaveable { mutableStateOf(false) }
+    var repairScanner by remember { mutableStateOf(false) }
+    if (repairScanner) PairingScanner(model) { repairScanner = false }
     val drawer = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val focus = LocalFocusManager.current
@@ -96,8 +98,12 @@ private fun MobileScreen(model: MobileModel) {
                 when {
                     !model.connected && model.canReconnect -> Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center) {
                         Text(stringResource(R.string.reconnect), style = MaterialTheme.typography.titleMedium)
-                        if (model.busy) CircularProgressIndicator()
+                        if (model.busy) {
+                            CircularProgressIndicator()
+                            if (model.reconnecting) TextButton(onClick = model::cancelReconnect) { Text(stringResource(R.string.cancel_reconnect)) }
+                        }
                         else TextButton(onClick = model::connect) { Text(stringResource(R.string.reconnect)) }
+                        TextButton(onClick = { model.error = null; repairScanner = true }, enabled = !model.busy) { Text(stringResource(R.string.pair_again)) }
                         TextButton(onClick = model::forget, enabled = !model.busy) { Text(stringResource(R.string.forget), color = MaterialTheme.colorScheme.error) }
                     }
                     !model.connected -> Box(Modifier.padding(horizontal = 16.dp)) { PairingView(model) }

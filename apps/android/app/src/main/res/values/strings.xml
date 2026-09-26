@@ -108,5 +108,7 @@
     <string name="desktop_recognized">Desktop recognized</string>
     <string name="flashlight">Flashlight</string>
     <string name="pair_again">Pair again</string>
+    <string name="cancel_reconnect">Cancel</string>
+    <string name="reconnect_unreachable">Could not reach your desktop. Check Wi-Fi or Tailscale and make sure Suzent is running, then retry or pair again.</string>
     <string name="pairing_secure_connection">Could not establish a trusted connection. Check the network, or scan again if the desktop identity changed.</string>
 </resources>

@@ -15,6 +15,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.TimeoutCancellationException
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
@@ -28,6 +30,8 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     var pairingCode by mutableStateOf<String?>(null)
     var device by mutableStateOf<ClientDevice?>(null)
     var canReconnect by mutableStateOf(false)
+    var reconnecting by mutableStateOf(false)
+    private var reconnectJob: Job? = null
     private var pairingJob: Job? = null
     var projects by mutableStateOf<List<Project>>(emptyList())
     var selectedModel by mutableStateOf<String?>(null)
@@ -165,16 +169,17 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
 
     private suspend fun activate(stored: Connection) {
         var saved = stored
-        if (saved.tls != null) {
+        run {
             var reachable: String? = null
             for (origin in (listOf(saved.origin) + saved.origins).distinct()) {
-                val probe = BackendClient(Backend.parse(origin), "", probeOnly = true, deviceTrust = saved.tls)
+                currentCoroutineContext().ensureActive()
+                val probe = BackendClient(Backend.parse(origin, BuildConfig.DEBUG), "", probeOnly = true, deviceTrust = saved.tls)
                 try { probe.capabilities(); reachable = origin; break }
                 catch (failure: CancellationException) { throw failure }
                 catch (_: Exception) { }
                 finally { probe.close() }
             }
-            saved = saved.copy(origin = reachable ?: throw PairingFailure(PairingFailure.Reason.SECURE_CONNECTION))
+            saved = saved.copy(origin = reachable ?: throw PairingFailure(PairingFailure.Reason.UNREACHABLE))
         }
         require(saved.clientProtocol == 1)
         val candidate = BackendClient(Backend.parse(saved.origin, BuildConfig.DEBUG), saved.hostToken, deviceTrust = saved.tls)
@@ -183,11 +188,13 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                 try { candidate.confirmPairing() }
                 catch (failure: BackendClient.HttpFailure) {
                     if (failure.code != 401) throw failure
+                    currentCoroutineContext().ensureActive()
                     val restored = saved.copy(origin = saved.previousOrigin.ifEmpty { saved.origin }, hostToken = saved.previousToken, previousToken = "", previousOrigin = "", tls = saved.previousTLS, previousTLS = null, origins = saved.previousOrigins, previousOrigins = emptyList())
                     store.save(restored); connection = restored; origin = restored.origin
                     candidate.close(); activate(restored); return
                 }
                 val confirmed = saved.copy(previousToken = "", previousOrigin = "", previousTLS = null, previousOrigins = emptyList())
+                currentCoroutineContext().ensureActive()
                 store.save(confirmed); connection = confirmed
                 saved = confirmed
             }
@@ -212,14 +219,22 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         val saved = connection ?: return
         if (busy || !canReconnect) return
         busy = true
+        reconnecting = true
         error = null
-        viewModelScope.launch {
-            try { activate(saved) }
+        reconnectJob = viewModelScope.launch {
+            try { withTimeout(20_000) { activate(saved) } }
+            catch (_: TimeoutCancellationException) { error = text(R.string.reconnect_unreachable) }
             catch (failure: CancellationException) { throw failure }
+            catch (failure: java.io.IOException) {
+                if (failure is BackendClient.HttpFailure || failure is javax.net.ssl.SSLException) handle(failure)
+                else error = text(R.string.reconnect_unreachable)
+            }
             catch (failure: Exception) { handle(failure) }
-            finally { busy = false }
+            finally { busy = false; reconnecting = false; reconnectJob = null }
         }
     }
+
+    fun cancelReconnect() { reconnectJob?.cancel() }
 
     private fun handle(failure: Exception, fallback: Int = R.string.request_error) {
         if (failure is BackendClient.HttpFailure && failure.code == 401) {
@@ -465,6 +480,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     fun setForeground(active: Boolean) {
         foreground = active
         if (!active) {
+            cancelReconnect()
             client?.cancelLive()
             streamJob?.cancel()
             streaming = false
