@@ -6489,7 +6489,12 @@ Updated phones check candidate capabilities without credentials, then display th
 first reachable compatible address for confirmation. A three-second timeout per
 candidate bounds this check. Old single-origin invitations remain supported.
 Select permissions on desktop, then pair and confirm on the phone. Saved connections retain
-only the confirmed address; changing networks does not migrate credentials.
+the confirmed address and the invitation's alternative addresses.
+On both platforms, reconnect probes saved addresses without credentials with a
+three-second timeout per address, including legacy HTTP connections in debug builds.
+The entire reconnect has a twenty-second deadline and a Cancel action. Cancellation
+also stops pending network requests; moving to the background cancels reconnect.
+An unreachable desktop leaves the saved connection intact so the user can retry or pair again.
 HTTPS/WSS is required for release builds. Debug builds
 allow explicit HTTP addresses for a trusted LAN/tailnet; HTTP is not encrypted.
 No certificate-validation bypass or automatic URL redirect is supported.
