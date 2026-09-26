@@ -27,6 +27,7 @@ struct ContentView: View {
     @State private var keyboardVisible = false
     @State private var showModelPicker = false
     @State private var showProjectPicker = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var projects: [Project] {
         var result = model.projects
@@ -61,26 +62,23 @@ struct ContentView: View {
                         }.padding(.horizontal, 12).padding(.vertical, 6)
                         Rectangle().frame(height: PresentationTokens.borderWidth)
                         if let error = model.error {
-                            HStack {
-                                Text(error).font(.footnote)
-                                Spacer()
-                                Button("Dismiss") { model.error = nil }
-                            }.padding(12).background(Color(presentation: PresentationTokens.yellow)).foregroundStyle(.black)
+                            SuzentNotice(message: error) { model.error = nil }
                         }
                         if !model.connected && model.canReconnect {
                             VStack(spacing: 20) {
-                                Text("Reconnect to desktop").font(.headline)
+                                SuzentAssistantBadge()
+                                Text("Reconnect to desktop").font(.system(size: PresentationTokens.typeSection, weight: .bold))
                                 if model.busy {
-                                    ProgressView()
+                                    StreamingPulse()
                                     if model.reconnecting {
                                         Button("Cancel") { model.cancelReconnect() }
                                             .buttonStyle(SuzentButtonStyle())
                                     }
                                 }
-                                else { Button("Reconnect to desktop") { Task { await model.connect() } } }
+                                else { Button("Reconnect to desktop") { Task { await model.connect() } }.buttonStyle(SuzentButtonStyle(prominent: true)) }
                                 Button("Pair again") { model.error = nil; repairScanner = true }.buttonStyle(SuzentButtonStyle()).disabled(model.busy || model.streaming)
-                Button("Forget connection", role: .destructive) { model.forget() }.disabled(model.busy)
-                            }.frame(maxWidth: .infinity, maxHeight: .infinity)
+                Button("Forget connection", role: .destructive) { model.forget() }.buttonStyle(SuzentButtonStyle(quiet: true, destructive: true)).disabled(model.busy)
+                            }.padding(PresentationTokens.spaceLarge).frame(maxWidth: 480).frame(maxWidth: .infinity, maxHeight: .infinity)
                         }
                         else if !model.connected { PairingView(model: model) }
                         else if showSettings { settings }
@@ -93,35 +91,61 @@ struct ContentView: View {
                         .allowsHitTesting(showSidebar)
                         .onTapGesture { withAnimation { showSidebar = false } }
                     sidebar.frame(width: min(geometry.size.width - 48, PresentationTokens.sidebarWidth), height: geometry.size.height)
-                        .background(Color(uiColor: .systemBackground))
+                        .background(Color.suzentSurface)
                         .overlay(alignment: .trailing) { Rectangle().frame(width: 2) }
                         .compositingGroup()
                         .offset(x: showSidebar ? 0 : -min(geometry.size.width - 48, PresentationTokens.sidebarWidth) - 2)
                         .allowsHitTesting(showSidebar)
                         .accessibilityHidden(!showSidebar)
                 }
-            }.clipped()
+            }.background(Color.suzentSurface).clipped()
         }
         .task { if model.canReconnect && !model.connected { await model.connect() } }
-        .tint(Color(presentation: PresentationTokens.blue))
+        .tint(.primary)
         .task(id: model.connected) { if model.connected { await model.watchNavigation() } }
-        .onChange(of: model.connected) { _, connected in showModelPicker = false; showSidebar = false; if !connected { showSettings = false } }
+        .onChange(of: model.connected) { _, connected in showModelPicker = false; showProjectPicker = false; showSidebar = false; if !connected { showSettings = false } }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardVisible = true }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in keyboardVisible = false }
-        .sheet(isPresented: $showModelPicker) {
-            SuzentSelectionPanel(title: String(localized: "Desktop model"),
-                options: [(id: "", title: String(localized: "Conversation default"))] + Array(Set(model.selected?.models ?? [])).sorted().map { (id: $0, title: $0) },
-                selected: model.selectedModel ?? "") { model.selectedModel = $0.isEmpty ? nil : $0 }
-        }
-        .sheet(isPresented: $showProjectPicker) {
-            SuzentSelectionPanel(title: String(localized: "Creating in"),
-                options: model.projects.map { (id: $0.id, title: $0.name) }, selected: model.selected?.projectId ?? "") { id in
-                model.selected?.projectId = id
-                model.selected?.projectName = model.projects.first { $0.id == id }?.name
-            }
-        }
+        .accessibilityHidden(showModelPicker || showProjectPicker)
+        .overlay { selectionOverlay }
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: showModelPicker || showProjectPicker)
         .onChange(of: model.sentVersion) { _, _ in composing = false }
         .fullScreenCover(isPresented: $repairScanner) { PairingScanner(model: model) }
+    }
+
+    private var selectionOverlay: some View {
+            GeometryReader { geometry in
+                if showModelPicker || showProjectPicker {
+                    ZStack(alignment: .bottom) {
+                        Color.black.opacity(0.32).ignoresSafeArea()
+                            .onTapGesture { dismissSelection() }.accessibilityHidden(true)
+                        Group {
+                            if showModelPicker {
+                                SuzentSelectionPanel(title: String(localized: "Desktop model"),
+                                    options: [(id: "", title: String(localized: "Conversation default"))] + Array(Set(model.selected?.models ?? [])).sorted().map { (id: $0, title: $0) },
+                                    selected: model.selectedModel ?? "", dismiss: dismissSelection) {
+                                        model.selectedModel = $0.isEmpty ? nil : $0
+                                    }
+                            } else {
+                                SuzentSelectionPanel(title: String(localized: "Creating in"),
+                                    options: model.projects.map { (id: $0.id, title: $0.name) },
+                                    selected: model.selected?.projectId ?? "", dismiss: dismissSelection) { id in
+                                        model.selected?.projectId = id
+                                        model.selected?.projectName = model.projects.first { $0.id == id }?.name
+                                    }
+                            }
+                        }.frame(maxWidth: 560).frame(maxHeight: geometry.size.height * 0.65)
+                            .padding(16)
+                            .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
+                    }.accessibilityAddTraits(.isModal)
+                        .accessibilityAction(.escape) { dismissSelection() }
+                }
+            }
+    }
+
+    private func dismissSelection() {
+        showModelPicker = false
+        showProjectPicker = false
     }
 
     private var sidebar: some View {
@@ -132,9 +156,7 @@ struct ContentView: View {
                 Button { withAnimation { showSidebar = false } } label: { Image(systemName: "xmark").frame(width: 44, height: 44) }
                     .accessibilityLabel("Close sidebar")
             }.padding(.horizontal, 16)
-            TextField("Search chats", text: $search).font(.system(size: PresentationTokens.typeChat)).padding(12)
-                .frame(minHeight: PresentationTokens.controlHeight)
-                .overlay(Rectangle().stroke(.primary, lineWidth: PresentationTokens.borderWidth)).padding(.horizontal, 16).padding(.bottom, 12)
+            SuzentTextInput(placeholder: "Search chats", text: $search).padding(.horizontal, 16).padding(.bottom, 12)
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     ForEach(projects) { project in projectSection(project) }
@@ -194,18 +216,18 @@ struct ContentView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 Text("Settings").font(.system(size: PresentationTokens.typeSection, weight: .bold))
-                DisclosureGroup("Desktop access") {
-                    if let device = model.device { ClientPermissionsView(device: device, origin: model.origin).padding(.top, 16) }
-                }.padding(16).overlay(Rectangle().stroke(.primary, lineWidth: PresentationTokens.borderWidth))
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("This phone as a Node").font(.headline)
-                    Toggle("Enable foreground Node", isOn: Binding(get: { model.nodeEnabled }, set: { model.toggleNode($0) }))
-                    Text(model.nodeStatus).font(.footnote).foregroundStyle(.secondary)
+                SuzentDisclosure(title: "Desktop access") {
+                    if let device = model.device { ClientPermissionsView(device: device, origin: model.origin) }
                 }
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("This phone as a Node").font(.system(size: PresentationTokens.typeControl, weight: .bold))
+                    Toggle("Enable foreground Node", isOn: Binding(get: { model.nodeEnabled }, set: { model.toggleNode($0) })).toggleStyle(SuzentToggleStyle())
+                    Text(model.nodeStatus).font(.system(size: PresentationTokens.typeCaption)).foregroundStyle(.secondary)
+                }.padding(16).overlay(Rectangle().stroke(.primary, lineWidth: PresentationTokens.borderWidth))
                 Button("Pair again") { model.error = nil; repairScanner = true }.buttonStyle(SuzentButtonStyle()).disabled(model.busy || model.streaming)
-                Button("Forget connection", role: .destructive) { model.forget() }.disabled(model.busy)
+                Button("Forget connection", role: .destructive) { model.forget() }.buttonStyle(SuzentButtonStyle(quiet: true, destructive: true)).disabled(model.busy)
                 Text("To revoke access, also remove its credentials on the desktop.").font(.footnote).foregroundStyle(.secondary)
-            }.padding(20)
+            }.padding(PresentationTokens.spacePage)
         }
     }
 
@@ -247,18 +269,18 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .center) {
                     TextField("Message", text: $model.draft, axis: .vertical).lineLimit(keyboardVisible ? 1...6 : 1...1).focused($composing)
+                        .tint(Color(presentation: PresentationTokens.blue))
                         .font(.system(size: PresentationTokens.typeChat)).padding(.horizontal, 4).padding(.vertical, 12).frame(minHeight: 44).disabled(model.busy)
                     if !keyboardVisible { sendAction(chat) }
                 }
                 if keyboardVisible { HStack {
-                    Button { composing = false; showModelPicker = true } label: {
-                        HStack { Text(model.selectedModel ?? chat.model ?? String(localized: "Desktop model")).lineLimit(1); Image(systemName: "chevron.down") }.font(.caption.bold())
-                            .frame(minHeight: 44)
-                    }.buttonStyle(.plain).disabled(model.busy || model.streaming || (chat.models ?? []).isEmpty || model.device?.permissions.send != true)
+                    SuzentSelectionTrigger(value: model.selectedModel ?? chat.model ?? String(localized: "Desktop model")) {
+                        composing = false; showModelPicker = true
+                    }.disabled(model.busy || model.streaming || (chat.models ?? []).isEmpty || model.device?.permissions.send != true)
                     Spacer(minLength: 8)
                     sendAction(chat)
                 } }
-            }.padding(10).background(Color(uiColor: .systemBackground))
+            }.padding(10).background(Color.suzentSurface)
                 .overlay(Rectangle().stroke(.primary, lineWidth: PresentationTokens.borderWidth))
                 .background { Rectangle().fill(Color.primary).offset(x: 2, y: 2) }
                 .padding(.trailing, 2).padding(.bottom, 2)
@@ -274,18 +296,9 @@ struct ContentView: View {
                 Text(greeting).textCase(.uppercase).font(.system(size: 30, weight: .black))
                     .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
             }
-            Button { composing = false; showProjectPicker = true } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "cube")
-                    Text("Creating in").foregroundStyle(.secondary)
-                    Text(chat.projectName ?? String(localized: "Default")).lineLimit(1)
-                    Image(systemName: "chevron.down")
-                }.font(.system(size: PresentationTokens.typeControl, weight: .bold)).padding(12)
-                    .foregroundStyle(.primary).background(Color(uiColor: .systemBackground))
-                    .overlay(Rectangle().stroke(.primary, lineWidth: PresentationTokens.borderWidth))
-                    .background { Rectangle().fill(Color.primary).offset(x: 2, y: 2) }
-                    .padding(.trailing, 2).padding(.bottom, 2)
-            }.disabled(model.busy || model.projects.isEmpty).buttonStyle(.plain)
+            SuzentSelectionTrigger(value: chat.projectName ?? String(localized: "Default"), prefix: String(localized: "Creating in")) {
+                composing = false; showProjectPicker = true
+            }.disabled(model.busy || model.projects.isEmpty)
         }.frame(maxWidth: .infinity).padding(.horizontal, 8).padding(.vertical, keyboardVisible ? 12 : 40)
     }
 

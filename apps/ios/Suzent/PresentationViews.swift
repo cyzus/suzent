@@ -3,6 +3,12 @@ import SuzentCore
 import MarkdownUI
 
 extension Color {
+    static var suzentSurface: Color {
+        Color(uiColor: UIColor { traits in
+            traits.userInterfaceStyle == .dark ? UIColor(red: 23 / 255, green: 23 / 255, blue: 23 / 255, alpha: 1) : .white
+        })
+    }
+
     init(presentation value: UInt32) {
         self.init(.sRGB, red: Double((value >> 16) & 255) / 255,
                   green: Double((value >> 8) & 255) / 255, blue: Double(value & 255) / 255, opacity: 1)
@@ -15,26 +21,24 @@ struct MessageView: View {
     private var user: Bool { message.role == "user" }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            if !user { SuzentAssistantBadge(compact: !isLatest) }
-            if user && !message.text.isEmpty {
-                Text("You").font(.caption.bold())
-                Text(message.text).font(.system(size: PresentationTokens.typeChat)).textSelection(.enabled)
+        if user {
+            HStack {
+                Spacer(minLength: 40)
+                Text(message.text).font(.system(size: PresentationTokens.typeChat))
+                    .textSelection(.enabled).padding(PresentationTokens.spaceMedium)
+                    .foregroundStyle(.black)
+                    .background(Color(presentation: PresentationTokens.yellow))
+                    .overlay(Rectangle().strokeBorder(.primary, lineWidth: PresentationTokens.borderWidth))
+                    .background { Rectangle().fill(Color.primary).offset(x: PresentationTokens.shadowOffset, y: PresentationTokens.shadowOffset) }
+                    .frame(maxWidth: 320, alignment: .trailing)
+                    .padding(.trailing, PresentationTokens.shadowOffset).padding(.bottom, PresentationTokens.shadowOffset)
             }
-            if !user { ActivityContent(parts: message.parts, live: false) }
-
+        } else {
+            VStack(alignment: .leading, spacing: 10) {
+                SuzentAssistantBadge(compact: !isLatest)
+                ActivityContent(parts: message.parts, live: false)
+            }.frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(user ? 10 : 0)
-        .foregroundStyle(user ? Color.black : Color.primary)
-        .background {
-            if user {
-                Rectangle().fill(Color(presentation: PresentationTokens.code_bg))
-                    .overlay(Rectangle().stroke(.primary, lineWidth: PresentationTokens.borderWidth))
-                    .shadow(color: .primary, radius: 0, x: PresentationTokens.shadowOffset, y: PresentationTokens.shadowOffset)
-            }
-        }
-        .padding(.leading, user ? 40 : 0)
-        .frame(maxWidth: .infinity, alignment: user ? .trailing : .leading)
     }
 }
 
@@ -45,6 +49,8 @@ private extension String {
 struct SuzentButtonStyle: ButtonStyle {
     var prominent = false
     var compact = false
+    var quiet = false
+    var destructive = false
     @Environment(\.isEnabled) private var enabled
     @Environment(\.colorScheme) private var scheme
 
@@ -53,17 +59,87 @@ struct SuzentButtonStyle: ButtonStyle {
         return configuration.label
             .font(.system(size: PresentationTokens.typeControl, weight: .semibold))
             .padding(.horizontal, compact ? PresentationTokens.spaceMedium : PresentationTokens.spacePage)
-            .padding(.vertical, compact ? 8 : 12)
+            .padding(.vertical, PresentationTokens.spaceSmall)
             .frame(maxWidth: compact ? nil : .infinity, minHeight: PresentationTokens.controlHeight)
-            .foregroundStyle(prominent ? .white : outline)
+            .foregroundStyle(destructive ? Color.red : prominent ? .white : outline)
             .background(prominent ? Color(presentation: PresentationTokens.blue)
                 : scheme == .dark ? Color(presentation: PresentationTokens.surface_dark) : .white)
-            .overlay(Rectangle().stroke(outline, lineWidth: PresentationTokens.borderWidth))
+            .overlay(Rectangle().strokeBorder(quiet ? .clear : outline, lineWidth: PresentationTokens.borderWidth))
             .compositingGroup()
-            .shadow(color: outline, radius: 0, x: configuration.isPressed ? 0 : PresentationTokens.shadowOffset,
+            .shadow(color: quiet ? .clear : outline, radius: 0, x: configuration.isPressed ? 0 : PresentationTokens.shadowOffset,
                     y: configuration.isPressed ? 0 : PresentationTokens.shadowOffset)
-            .offset(x: configuration.isPressed ? 1 : 0, y: configuration.isPressed ? 1 : 0)
+            .offset(x: configuration.isPressed && !quiet ? PresentationTokens.shadowOffset : 0, y: configuration.isPressed && !quiet ? PresentationTokens.shadowOffset : 0)
+            .padding(.trailing, quiet ? 0 : PresentationTokens.shadowOffset)
+            .padding(.bottom, quiet ? 0 : PresentationTokens.shadowOffset)
             .opacity(enabled ? 1 : 0.45)
+    }
+}
+
+struct SuzentDisclosure<Content: View>: View {
+    let title: LocalizedStringKey
+    @ViewBuilder let content: () -> Content
+    @State private var expanded = false
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button { expanded.toggle() } label: {
+                HStack {
+                    Text(title)
+                    Spacer()
+                    Text(expanded ? "−" : "+")
+                }.font(.system(size: PresentationTokens.typeControl, weight: .semibold))
+                    .frame(minHeight: PresentationTokens.controlHeight).contentShape(Rectangle())
+            }.buttonStyle(.plain).accessibilityValue(expanded ? Text("Expanded") : Text("Collapsed"))
+            if expanded { content().padding(.top, PresentationTokens.spaceMedium) }
+        }.padding(PresentationTokens.spacePage)
+            .overlay(Rectangle().strokeBorder(.primary, lineWidth: PresentationTokens.borderWidth))
+    }
+}
+
+struct SuzentTextInput: View {
+    let placeholder: LocalizedStringKey
+    @Binding var text: String
+    var multiline = false
+    @FocusState private var focused: Bool
+    var body: some View {
+        TextField(placeholder, text: $text, axis: multiline ? .vertical : .horizontal)
+            .font(.system(size: PresentationTokens.typeControl))
+            .lineLimit(multiline ? 3...6 : 1...1)
+            .textInputAutocapitalization(.never).autocorrectionDisabled()
+            .focused($focused).padding(PresentationTokens.spaceMedium)
+            .frame(minHeight: PresentationTokens.controlHeight)
+            .overlay(Rectangle().stroke(focused ? Color(presentation: PresentationTokens.blue) : .primary, lineWidth: PresentationTokens.borderWidth))
+    }
+}
+
+struct SuzentNotice: View {
+    let message: String
+    let dismiss: () -> Void
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(message).font(.system(size: PresentationTokens.typeCaption))
+            Spacer(minLength: 0)
+            Button("Dismiss", action: dismiss).font(.system(size: PresentationTokens.typeCaption, weight: .semibold))
+                .frame(minWidth: 44, minHeight: PresentationTokens.controlHeight).buttonStyle(.plain)
+        }.padding(.horizontal, 12).padding(.vertical, 4)
+            .foregroundStyle(.black).background(Color(presentation: PresentationTokens.yellow))
+    }
+}
+
+struct SuzentToggleStyle: ToggleStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        Button { withAnimation(.easeOut(duration: 0.15)) { configuration.isOn.toggle() } } label: {
+            HStack(spacing: 12) {
+                configuration.label.font(.system(size: PresentationTokens.typeControl))
+                Spacer(minLength: 12)
+                Rectangle().fill(configuration.isOn ? Color(presentation: PresentationTokens.blue) : Color.secondary.opacity(0.2))
+                    .frame(width: 44, height: 26)
+                    .overlay(Rectangle().stroke(.primary, lineWidth: PresentationTokens.borderWidth))
+                    .overlay(alignment: configuration.isOn ? .trailing : .leading) {
+                        Rectangle().fill(configuration.isOn ? .white : .primary).frame(width: 18, height: 18).padding(4)
+                    }
+            }.frame(minHeight: PresentationTokens.controlHeight).contentShape(Rectangle())
+        }.buttonStyle(.plain)
+            .accessibilityRepresentation { Toggle(isOn: configuration.$isOn) { configuration.label } }
     }
 }
 
@@ -128,7 +204,7 @@ struct SuzentAssistantBadge: View {
                 }
             } else {
                 SuzentLogoMark().frame(width: 26, height: 26)
-                    .frame(width: 90, height: 40).background(Color(uiColor: .systemBackground))
+                    .frame(width: 90, height: 40).background(Color.suzentSurface)
                     .overlay(Rectangle().stroke(.primary, lineWidth: PresentationTokens.borderWidth))
                     .background { Rectangle().fill(Color.primary).offset(x: 3, y: 3) }
                     .padding(.trailing, 3).padding(.bottom, 3)
@@ -317,16 +393,33 @@ struct GreetingCube: View {
     }
 }
 
+struct SuzentSelectionTrigger: View {
+    let value: String
+    var prefix: String? = nil
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                if let prefix { Text(prefix).foregroundStyle(.secondary).lineLimit(1) }
+                Text(value).lineLimit(1).truncationMode(.middle)
+                Image(systemName: "chevron.down").font(.system(size: 12, weight: .semibold))
+            }
+        }.buttonStyle(SuzentButtonStyle(compact: true))
+    }
+}
+
 struct SuzentSelectionPanel: View {
     let title: String
     let options: [(id: String, title: String)]
     let selected: String
+    let dismiss: () -> Void
     let choose: (String) -> Void
-    @Environment(\.dismiss) private var dismiss
+    @AccessibilityFocusState private var titleFocused: Bool
     var body: some View {
         VStack(spacing: 0) {
             HStack {
                 Text(title).font(.system(size: 15, weight: .bold, design: .monospaced))
+                    .accessibilityAddTraits(.isHeader).accessibilityFocused($titleFocused)
                 Spacer()
                 Button { dismiss() } label: { Image(systemName: "xmark").frame(width: 44, height: 44) }.accessibilityLabel("Dismiss")
             }.padding(.leading, 16).foregroundStyle(.white).background(.black)
@@ -340,17 +433,17 @@ struct SuzentSelectionPanel: View {
                                 Image(systemName: "checkmark").opacity(option.id == selected ? 1 : 0)
                             }.padding(16).frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
                                 .foregroundStyle(option.id == selected ? Color.black : Color.primary)
-                                .background(option.id == selected ? Color(presentation: PresentationTokens.yellow) : Color(uiColor: .systemBackground))
+                                .background(option.id == selected ? Color(presentation: PresentationTokens.yellow) : Color.suzentSurface)
                         }.buttonStyle(.plain).accessibilityAddTraits(option.id == selected ? .isSelected : [])
                         Divider()
                     }
                 }
             }
-        }.background(Color(uiColor: .systemBackground))
-            .overlay(Rectangle().stroke(.primary, lineWidth: 2))
-            .shadow(color: .primary, radius: 0, x: 4, y: 4).padding(16)
-            .presentationDetents([.medium, .large]).presentationDragIndicator(.hidden)
-            .presentationCornerRadius(0).presentationBackground(.clear)
+        }.background(Color.suzentSurface)
+            .overlay(Rectangle().strokeBorder(.primary, lineWidth: PresentationTokens.borderWidth))
+            .background { Rectangle().fill(Color.primary).offset(x: 4, y: 4) }
+            .padding(.trailing, 4).padding(.bottom, 4)
+            .onAppear { titleFocused = true }
     }
 }
 
