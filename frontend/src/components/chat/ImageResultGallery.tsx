@@ -1,4 +1,5 @@
 import React from 'react';
+import { VideoResultPlayer } from './VideoResultPlayer';
 import { SpeechPlayer } from './SpeechPlayer';
 import { getApiBase, getSandboxParams } from '../../lib/api';
 import { useChatStore } from '../../hooks/useChatStore';
@@ -81,13 +82,7 @@ export const ImageResultGallery: React.FC<{ calls: ImageResultCall[] }> = ({ cal
         if (!currentChatId || !item.path) return null;
         const src = `${getApiBase()}/sandbox/serve?${getSandboxParams(currentChatId, item.path, config.sandbox_volumes)}`;
         return item.kind === 'video' ? (
-          <video
-            key={item.key}
-            src={src}
-            controls
-            preload="metadata"
-            className="max-h-96 max-w-full"
-          />
+          <VideoResultPlayer key={src} src={src} path={item.path} />
         ) : (
           <SpeechPlayer key={item.key} src={src} metadata={item.metadata} />
         );

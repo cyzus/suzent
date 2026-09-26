@@ -1,5 +1,12 @@
 export const en = {
+  videoPlayer: {
+    title: 'Generated video',
+    failed: 'Unable to load this video.',
+    retry: 'Retry',
+    download: 'Download video',
+  },
   speech: {
+    controls: 'Voice controls',
     model: 'Speech model',
     modelChanged: 'Settings were adjusted for this model. Save to apply the changes.',
     savedBackups: '{count} additional stored models are retained. Speech uses the first model.',

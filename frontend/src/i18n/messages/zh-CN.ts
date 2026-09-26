@@ -1,5 +1,12 @@
 export const zhCN = {
+  videoPlayer: {
+    title: '生成的视频',
+    failed: '无法加载视频。',
+    retry: '重试',
+    download: '下载视频',
+  },
   speech: {
+    controls: '声音与播放',
     model: '语音模型',
     modelChanged: '已按模型调整设置，请保存以应用更改。',
     savedBackups: '保留了另外 {count} 个已存模型，语音使用首个模型。',
