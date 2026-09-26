@@ -20,10 +20,10 @@ export function VideoResultPlayer({
   const filename = path.split(/[\\/]/).pop() || path;
   return (
     <figure
-      className="my-2 w-full overflow-hidden border-2 border-brutal-black bg-white shadow-brutal-sm dark:bg-zinc-800"
+      className="my-2 w-full overflow-hidden border border-neutral-200 bg-white dark:border-zinc-700 dark:bg-zinc-800"
       style={{ maxWidth: `min(100%, ${Math.min(672, 448 * ratio)}px)` }}
     >
-      <div className="flex items-center justify-between gap-3 border-b-2 border-brutal-black px-3 py-2 dark:text-white">
+      <div className="flex items-center justify-between gap-3 border-b border-neutral-200 dark:border-zinc-700 px-3 py-2 dark:text-white">
         <span className="flex min-w-0 items-center gap-2 text-xs font-black uppercase tracking-wide">
           <FilmIcon className="h-4 w-4 shrink-0" />
           {t('videoPlayer.title')}
@@ -64,7 +64,7 @@ export function VideoResultPlayer({
             <BrutalIconButton
               size="icon-lg"
               variant="primary"
-              className="pointer-events-auto"
+              className="pointer-events-auto !border !border-white/30 !shadow-none"
               label={t('speech.play')}
               onClick={() => {
                 void video.current?.play().catch(() => setPlayBlocked(true));
@@ -90,7 +90,7 @@ export function VideoResultPlayer({
           </div>
         )}
       </div>
-      <figcaption className="flex items-center justify-between gap-3 border-t-2 border-brutal-black px-3 py-2 dark:text-white">
+      <figcaption className="flex items-center justify-between gap-3 border-t border-neutral-200 dark:border-zinc-700 px-3 py-2 dark:text-white">
         <span className="min-w-0 truncate font-mono text-[11px] text-neutral-500" title={filename}>
           {filename}
         </span>
