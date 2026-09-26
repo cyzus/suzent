@@ -77,7 +77,7 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
 
   // History state
   const [historyJobId, setHistoryJobId] = useState<number | null>(null);
-  const [historyRuns, setHistoryRuns] = useState<CronRun[]>([]);
+  const [historyRunsByJob, setHistoryRunsByJob] = useState<Record<number, CronRun[]>>({});
 
   const refresh = async () => {
     try {
@@ -234,12 +234,12 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
   const toggleHistory = async (jobId: number) => {
     if (historyJobId === jobId) {
       setHistoryJobId(null);
-      setHistoryRuns([]);
       return;
     }
     setHistoryJobId(jobId);
+    setHistoryRunsByJob((runsByJob) => ({ ...runsByJob, [jobId]: [] }));
     const runs = await fetchCronJobRuns(jobId);
-    setHistoryRuns(runs);
+    setHistoryRunsByJob((runsByJob) => ({ ...runsByJob, [jobId]: runs }));
   };
 
   const formatDate = (iso: string | null) => {
@@ -735,13 +735,13 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
 
                       {historyJobId === job.id && (
                         <div className="mt-2 border-t border-neutral-200 dark:border-zinc-700 pt-2">
-                          {historyRuns.length === 0 ? (
+                          {(historyRunsByJob[job.id] ?? []).length === 0 ? (
                             <div className="text-xs text-neutral-400 dark:text-neutral-500">
                               {t('settings.automation.noRunHistory')}
                             </div>
                           ) : (
                             <div className="space-y-1">
-                              {historyRuns.map((run) => (
+                              {(historyRunsByJob[job.id] ?? []).map((run) => (
                                 <div key={run.id} className="text-xs flex items-start gap-2">
                                   <span
                                     className={`font-bold ${run.status === 'success' ? 'text-green-600' : run.status === 'error' ? 'text-red-600' : 'text-yellow-600'}`}
