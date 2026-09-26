@@ -25,6 +25,7 @@ class GlobTool(Tool):
     name = "GlobTool"
     tool_name = "glob_search"
     group = ToolGroup.FILESYSTEM
+    builtin = True
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -40,7 +41,6 @@ class GlobTool(Tool):
         path: Annotated[
             Optional[str],
             Field(
-                default=None,
                 description="Optional search root directory. Leave empty to search the current workspace root.",
             ),
         ] = None,

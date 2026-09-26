@@ -1,3 +1,6 @@
+import { VoiceSettingsCard } from './VoiceSettingsCard';
+import { SettingsPage } from './SettingsCard';
+import { SettingsHeader } from './SettingsHeader';
 import React, { useEffect, useRef, useState } from 'react';
 
 import { useChatStore } from '../../hooks/useChatStore';
@@ -100,6 +103,9 @@ export function SettingsModal({
   const [userConfigs, setUserConfigs] = useState<Record<string, UserConfig>>({});
   const [showKey, setShowKey] = useState<Record<string, boolean>>({});
   const [activeTabs, setActiveTabs] = useState<Record<string, ProviderTab>>({});
+  const [verification, setVerification] = useState<
+    Record<string, { success: boolean; message: string }>
+  >({});
   const [verifying, setVerifying] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(false);
   const [providersLoaded, setProvidersLoaded] = useState(false);
@@ -402,6 +408,7 @@ export function SettingsModal({
     const timeoutId = window.setTimeout(async () => {
       try {
         await saveProviderSettings();
+        setRoleSuggestions(await fetchRoleSuggestions());
       } catch (error) {
         console.error('Failed to save provider settings', error);
       }
@@ -465,6 +472,13 @@ export function SettingsModal({
   }, [globalNotebookHostPath, isOpen, notebookLoaded, refreshBackendConfig]);
 
   function handleKeyChange(key: string, val: string): void {
+    setVerification((prev) => {
+      const next = { ...prev };
+      for (const provider of providers) {
+        if (provider.fields.some((field) => field.key === key)) delete next[provider.id];
+      }
+      return next;
+    });
     setApiKeys((prev) => ({ ...prev, [key]: val }));
   }
 
@@ -481,7 +495,7 @@ export function SettingsModal({
         [providerId]: {
           ...current,
           custom_models: [...current.custom_models, trimmed],
-          enabled_models: [...current.enabled_models, trimmed],
+          enabled_models: [...new Set([...current.enabled_models, trimmed])],
         },
       };
     });
@@ -489,6 +503,11 @@ export function SettingsModal({
 
   async function handleVerify(provider: ApiProvider): Promise<void> {
     setVerifying((prev) => ({ ...prev, [provider.id]: true }));
+    setVerification((prev) => {
+      const next = { ...prev };
+      delete next[provider.id];
+      return next;
+    });
 
     const configForProvider: Record<string, string> = {};
     for (const field of provider.fields) {
@@ -498,17 +517,31 @@ export function SettingsModal({
       }
     }
 
-    const result = await verifyProvider(provider.id, configForProvider);
-
-    if (result.success && result.models.length > 0) {
-      setProviders((prev) =>
-        prev.map((p) => (p.id === provider.id ? { ...p, models: result.models } : p))
-      );
-    } else {
-      alert(result.message || result.error || t('settings.verifyFailed'));
+    try {
+      const result = await verifyProvider(provider.id, configForProvider);
+      setVerification((prev) => ({
+        ...prev,
+        [provider.id]: {
+          success: result.success,
+          message: result.success
+            ? t('settings.providers.connectionSuccess', { count: result.models.length })
+            : result.message || result.error || t('settings.verifyFailed'),
+        },
+      }));
+      if (result.success) {
+        setProviders((prev) =>
+          prev.map((p) => (p.id === provider.id ? { ...p, models: result.models } : p))
+        );
+        setActiveTabs((prev) => ({ ...prev, [provider.id]: 'models' }));
+      }
+    } catch {
+      setVerification((prev) => ({
+        ...prev,
+        [provider.id]: { success: false, message: t('settings.verifyFailed') },
+      }));
+    } finally {
+      setVerifying((prev) => ({ ...prev, [provider.id]: false }));
     }
-
-    setVerifying((prev) => ({ ...prev, [provider.id]: false }));
   }
 
   if (!isOpen) return null;
@@ -527,6 +560,7 @@ export function SettingsModal({
           showKey={showKey}
           activeTabs={activeTabs}
           verifying={verifying}
+          verification={verification}
           onKeyChange={handleKeyChange}
           onToggleShowKey={(key) => setShowKey((prev) => ({ ...prev, [key]: !prev[key] }))}
           onTabChange={(providerId, tab) =>
@@ -560,7 +594,14 @@ export function SettingsModal({
             await deleteCustomProvider(providerId);
             setProviders((prev) => prev.filter((p) => p.id !== providerId));
           }}
-          onChatGPTAuthChanged={refreshBackendConfig}
+          onChatGPTAuthChanged={async () => {
+            setVerification((prev) => {
+              const next = { ...prev };
+              delete next.chatgpt;
+              return next;
+            });
+            await refreshBackendConfig();
+          }}
         />
       )}
 
@@ -570,7 +611,19 @@ export function SettingsModal({
           suggestions={roleSuggestions}
           unregisteredModels={roleSuggestions._unregistered || []}
           onChange={setRoleModels}
+          onOpenVoiceSettings={() => selectCategory('audio')}
         />
+      )}
+
+      {activeCategory === 'audio' && (
+        <SettingsPage>
+          <SettingsHeader title={t('speech.title')} subtitle={t('speech.subtitle')} />
+          <VoiceSettingsCard
+            suggestions={roleSuggestions.tts || []}
+            unregisteredModels={roleSuggestions._unregistered || []}
+            onModelsSaved={(models) => setRoleModels((current) => ({ ...current, tts: models }))}
+          />
+        </SettingsPage>
       )}
 
       {activeCategory === 'memory' && (
@@ -580,7 +633,9 @@ export function SettingsModal({
           memoryEnabled={memoryEnabled}
           onMemoryEnabledChange={handleMemoryEnabledChange}
           embeddingModel={roleModels.embedding?.[0]}
-          cheapModel={roleModels.cheap?.[0]}
+          extractionModel={
+            roleModels.memory_extraction?.[0] || roleModels.cheap?.[0] || roleModels.primary?.[0]
+          }
           onOpenModelRoles={() => selectCategory('roles')}
         />
       )}

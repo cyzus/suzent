@@ -1,3 +1,5 @@
+import { createSpeechJob, speechQueue } from '../lib/speechPlayback';
+import { parseToolResultEnvelope } from './chat/ToolCallBlock';
 import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useChatStore } from '../hooks/useChatStore';
 import { useAGUI, type AGUIPart, type ApprovalRememberScope } from '../hooks/useAGUI';
@@ -33,6 +35,7 @@ import { useToolApproval } from '../hooks/chat/useToolApproval';
 import { permissionApprovalsToParts, useApprovalRestore } from '../hooks/chat/useApprovalRestore';
 import { NewChatView } from './NewChatView';
 import { ChatInputPanel, type FileMentionSelection } from './ChatInputPanel';
+import { ChatImageGallery } from './ChatImageGallery';
 import { ImageViewer } from './ImageViewer';
 import { FileViewer } from './FileViewer';
 import { BrutalDialog } from './BrutalDialog';
@@ -754,6 +757,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     kanban,
   } = useGoalTasks();
   const { loadCoreMemory, loadStats } = useMemory();
+  useEffect(() => {
+    speechQueue.reset();
+    return () => speechQueue.reset();
+  }, [currentChatId]);
+
   const canvas = useCanvas(currentChatId);
   const { t } = useI18n();
   const setHeartbeatRunning = useHeartbeatRunning((s) => s.setRunning);
@@ -1036,6 +1044,31 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     removeInlineSurface,
   } = useAGUI({
     url: `${getApiBase()}/chat`,
+    onSpeechResult: (chatId, part) => {
+      if (activeChatIdRef.current !== chatId) return;
+      const result = parseToolResultEnvelope(part.output);
+      if (result?.success !== true || !result.metadata || typeof result.metadata !== 'object')
+        return;
+      const metadata = result.metadata as Record<string, unknown>;
+      if (metadata.autoplay === false) return;
+
+      // The stream publishes this tool result immediately after this callback.
+      // Start playback on the next frame so the matching SpeechPlayer has mounted
+      // and can observe the queued/playing transitions from their beginning.
+      const enqueue = () => {
+        if (activeChatIdRef.current !== chatId) return;
+        if (metadata.engine === 'system') speechQueue.enqueue(createSpeechJob(metadata), true);
+        else if (metadata.engine === 'api' && Array.isArray(metadata.saved_paths)) {
+          for (const path of metadata.saved_paths) {
+            if (typeof path !== 'string') continue;
+            const src = `${getApiBase()}/sandbox/serve?${getSandboxParams(chatId, path, config.sandbox_volumes)}`;
+            speechQueue.enqueue(createSpeechJob(metadata, src), true);
+          }
+        }
+      };
+      if (document.visibilityState === 'visible') requestAnimationFrame(enqueue);
+      else setTimeout(enqueue, 0);
+    },
     onFinish: async (parts, persistence) => {
       const chatId = streamingChatIdRef.current || activeChatIdRef.current;
       const finishDirect = (loadHistory: () => Promise<void>) =>
@@ -1656,7 +1689,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const transcriptHasSubAgentCall = useMemo(
     () =>
       safeMessages.some((message) =>
-        (message.parts || []).some((part) => part.type === 'tool' && part.toolName === 'agent')
+        (message.parts || []).some(
+          (part) => part.type === 'tool' && ['agent', 'start_command'].includes(part.toolName || '')
+        )
       ),
     [safeMessages]
   );
@@ -2923,77 +2958,201 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   ]);
 
   return (
-    <div
-      className="flex flex-row flex-1 h-full min-h-0 overflow-x-hidden bg-neutral-50 dark:bg-zinc-900 relative"
-      onDragEnter={handleDragEnter}
-      onDragLeave={handleDragLeave}
-      onDragOver={handleDragOver}
-      onDrop={handleDrop}
-    >
-      {isDragging && <DragOverlay />}
-      <BrutalDialog
-        open={pendingFork !== null}
-        title={forkError ? t('conversationFork.errorTitle') : t('conversationFork.title')}
-        message={forkError || t('conversationFork.message')}
-        onClose={() => {
-          if (!forkBusy) {
-            setPendingFork(null);
-            setForkError(null);
-          }
-        }}
-        actions={
-          forkError
-            ? [
-                {
-                  label: t('common.close'),
-                  onClick: () => {
-                    setPendingFork(null);
-                    setForkError(null);
-                  },
-                },
-              ]
-            : [
-                {
-                  label: t('conversationFork.cancel'),
-                  onClick: () => setPendingFork(null),
-                },
-                {
-                  label: forkBusy ? t('conversationFork.creating') : t('conversationFork.confirm'),
-                  tone: 'primary',
-                  preventDismiss: true,
-                  onClick: confirmFork,
-                },
-              ]
-        }
-      />
-
-      {/* Main Chat Column */}
-      <div className="flex flex-col flex-1 min-w-0 min-h-0 h-full relative">
-        {/* Project board full-screen overlay */}
-        {isBoardFullscreen && (
-          <div className="absolute inset-0 z-30 bg-neutral-50 dark:bg-zinc-900 overflow-hidden">
-            <ProjectKanbanView
-              projectName={chats.find((c) => c.id === currentChatId)?.projectName ?? null}
-              projectId={chats.find((c) => c.id === currentChatId)?.projectId ?? null}
-              kanban={kanban}
-              chatTitles={Object.fromEntries(chats.map((c) => [c.id, c.title]))}
-              onClose={() => setIsBoardFullscreen(false)}
-            />
-          </div>
-        )}
-        <div className="relative flex-1 min-h-0">
-          <div
-            ref={scrollContainerRef}
-            className={
-              safeMessages.length === 0
-                ? 'h-full overflow-hidden p-4 md:p-6 pb-2 bg-neutral-50 dark:bg-zinc-900'
-                : 'h-full overflow-y-auto overflow-x-hidden px-4 md:px-6 pt-3 pb-2 scrollbar-thin bg-neutral-50 dark:bg-zinc-900'
+    <ChatImageGallery key={currentChatId || 'new'}>
+      <div
+        className="flex flex-row flex-1 h-full min-h-0 overflow-x-hidden bg-neutral-50 dark:bg-zinc-900 relative"
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+      >
+        {isDragging && <DragOverlay />}
+        <BrutalDialog
+          open={pendingFork !== null}
+          title={forkError ? t('conversationFork.errorTitle') : t('conversationFork.title')}
+          message={forkError || t('conversationFork.message')}
+          onClose={() => {
+            if (!forkBusy) {
+              setPendingFork(null);
+              setForkError(null);
             }
-          >
-            {isProbablyLoadingChatMessages ? (
-              <LoadingIndicator />
-            ) : safeMessages.length === 0 && !showTransientAssistant ? (
-              <NewChatView
+          }}
+          actions={
+            forkError
+              ? [
+                  {
+                    label: t('common.close'),
+                    onClick: () => {
+                      setPendingFork(null);
+                      setForkError(null);
+                    },
+                  },
+                ]
+              : [
+                  {
+                    label: t('conversationFork.cancel'),
+                    onClick: () => setPendingFork(null),
+                  },
+                  {
+                    label: forkBusy
+                      ? t('conversationFork.creating')
+                      : t('conversationFork.confirm'),
+                    tone: 'primary',
+                    preventDismiss: true,
+                    onClick: confirmFork,
+                  },
+                ]
+          }
+        />
+
+        {/* Main Chat Column */}
+        <div className="flex flex-col flex-1 min-w-0 min-h-0 h-full relative">
+          {/* Project board full-screen overlay */}
+          {isBoardFullscreen && (
+            <div className="absolute inset-0 z-30 bg-neutral-50 dark:bg-zinc-900 overflow-hidden">
+              <ProjectKanbanView
+                projectName={chats.find((c) => c.id === currentChatId)?.projectName ?? null}
+                projectId={chats.find((c) => c.id === currentChatId)?.projectId ?? null}
+                kanban={kanban}
+                chatTitles={Object.fromEntries(chats.map((c) => [c.id, c.title]))}
+                onClose={() => setIsBoardFullscreen(false)}
+              />
+            </div>
+          )}
+          <div className="relative flex-1 min-h-0">
+            <div
+              ref={scrollContainerRef}
+              className={
+                safeMessages.length === 0
+                  ? 'h-full overflow-hidden p-4 md:p-6 pb-2 bg-neutral-50 dark:bg-zinc-900'
+                  : 'h-full overflow-y-auto overflow-x-hidden px-4 md:px-6 pt-3 pb-2 scrollbar-thin bg-neutral-50 dark:bg-zinc-900'
+              }
+            >
+              {isProbablyLoadingChatMessages ? (
+                <LoadingIndicator />
+              ) : safeMessages.length === 0 && !showTransientAssistant ? (
+                <NewChatView
+                  input={input}
+                  setInput={setInput}
+                  selectedFiles={selectedFiles}
+                  handleFileSelect={handleFileSelect}
+                  removeFile={removeFile}
+                  uploadProgress={uploadProgress}
+                  isUploading={isUploading}
+                  fileError={fileError}
+                  send={send}
+                  config={safeConfig}
+                  setConfig={setConfig}
+                  backendConfig={safeBackendConfig}
+                  fileInputRef={fileInputRef}
+                  textareaRef={textareaRef}
+                  configReady={configReady}
+                  streamingForCurrentChat={streamingForCurrentChat}
+                  onPaste={handlePaste}
+                  onImageClick={setViewingImage}
+                  currentChatId={currentChatId}
+                  onFileMentionSelected={(mention) =>
+                    setFileMentions((prev) => [
+                      ...prev.filter((item) => item.name !== mention.name),
+                      mention,
+                    ])
+                  }
+                />
+              ) : (
+                <>
+                  {safeMessages.length > 0 && (
+                    <MessageListMemo
+                      messages={visibleMessages}
+                      turnWorkedSeconds={turnWorkedSecondsByMessageIndex}
+                      streamingForCurrentChat={false}
+                      chatCitationSources={chatCitationSources}
+                      messageIndexOffset={visibleMessageStartIndex}
+                      chatId={currentChatId ?? undefined}
+                      onImageClick={setViewingImage}
+                      onFileClick={handleFileClick}
+                      onToolApproval={handleToolApproval}
+                      toolApprovalPolicy={stableToolApprovalPolicy}
+                      onRemoveApprovalPolicy={handleRemoveApprovalPolicy}
+                      onInlineAction={handleInlineAction}
+                      subAgentTasks={subAgentTasks}
+                      onOpenSubAgentSidebar={handleOpenSubAgentSidebar}
+                      onStopSubAgent={handleStopSubAgent}
+                      onForceWebContext={handleForceWebContext}
+                      onRetry={!isStreaming ? handleRetry : undefined}
+                      onFork={!isStreaming ? requestFork : undefined}
+                      forkOrigin={forkOrigin}
+                      onOpenForkOrigin={handleOpenForkOrigin}
+                      onEditUserMessage={!isStreaming ? handleEditUserMessage : undefined}
+                      fallbackModel={fallbackModelSignature}
+                    />
+                  )}
+                  {/* Streaming/transient message from AG-UI */}
+                  {showTransientAssistant && (
+                    <div className="space-y-6 mt-6">
+                      <div className="w-full flex flex-col group/message">
+                        <div className="flex justify-start w-full">
+                          {streamDisplayRole === 'notice' ? (
+                            <NoticeMessage
+                              message={aguiPartsToStoreMessage(
+                                streamingParts,
+                                currentUsage,
+                                'notice'
+                              )}
+                            />
+                          ) : (
+                            <AssistantMessage
+                              message={{ role: 'assistant', content: '' }}
+                              messageIndex={safeMessages.length}
+                              isStreaming={streamingForCurrentChat}
+                              isLastMessage={true}
+                              onFileClick={handleFileClick}
+                              aguiParts={streamingParts}
+                              streamStartedAtMs={
+                                currentChatId
+                                  ? streamStartByChatRef.current.get(currentChatId)
+                                  : undefined
+                              }
+                              usage={currentUsage}
+                              toolApprovalPolicy={safeConfig.tool_approval_policy}
+                              onRemoveApprovalPolicy={handleRemoveApprovalPolicy}
+                              onInlineAction={handleInlineAction}
+                              subAgentTasks={subAgentTasks}
+                              onOpenSubAgentSidebar={handleOpenSubAgentSidebar}
+                              onStopSubAgent={handleStopSubAgent}
+                              onForceWebContext={handleForceWebContext}
+                              chatCitationSources={chatCitationSources}
+                              fallbackModel={fallbackModelSignature}
+                            />
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {!configReady && <LoadingIndicator />}
+              <div ref={bottomRef} className="h-0" />
+            </div>
+
+            {/* The board overlay covers the chat, so the rail would otherwise
+              float on top of a view it cannot scroll. */}
+            {safeMessages.length > 0 && !isBoardFullscreen && (
+              <ChatMinimap
+                messages={safeMessages}
+                scrollContainerRef={scrollContainerRef}
+                onJumpToMessage={jumpToMinimapMessage}
+              />
+            )}
+          </div>
+
+          {/* Input Panel (shown when messages exist) */}
+          {safeMessages.length > 0 && (
+            <div className="px-2 pt-2 pb-1 flex flex-col gap-2 bg-neutral-50 dark:bg-zinc-900 relative z-10 shrink-0">
+              {hasPendingTransientApprovals && (
+                <PermissionApprovalDock parts={streamingParts} onDecision={handleToolApproval} />
+              )}
+              <ChatInputPanel
                 input={input}
                 setInput={setInput}
                 selectedFiles={selectedFiles}
@@ -3010,6 +3169,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 textareaRef={textareaRef}
                 configReady={configReady}
                 streamingForCurrentChat={streamingForCurrentChat}
+                stopStreaming={stopStreaming}
+                stopInFlight={isStopping}
+                modelSelectDropUp={true}
+                modelValue={safeConfig.model}
+                onModelChange={handleInputModelChange}
                 onPaste={handlePaste}
                 onImageClick={setViewingImage}
                 currentChatId={currentChatId}
@@ -3020,184 +3184,59 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                   ])
                 }
               />
-            ) : (
-              <>
-                {safeMessages.length > 0 && (
-                  <MessageListMemo
-                    messages={visibleMessages}
-                    turnWorkedSeconds={turnWorkedSecondsByMessageIndex}
-                    streamingForCurrentChat={false}
-                    chatCitationSources={chatCitationSources}
-                    messageIndexOffset={visibleMessageStartIndex}
-                    chatId={currentChatId ?? undefined}
-                    onImageClick={setViewingImage}
-                    onFileClick={handleFileClick}
-                    onToolApproval={handleToolApproval}
-                    toolApprovalPolicy={stableToolApprovalPolicy}
-                    onRemoveApprovalPolicy={handleRemoveApprovalPolicy}
-                    onInlineAction={handleInlineAction}
-                    subAgentTasks={subAgentTasks}
-                    onOpenSubAgentSidebar={handleOpenSubAgentSidebar}
-                    onStopSubAgent={handleStopSubAgent}
-                    onForceWebContext={handleForceWebContext}
-                    onRetry={!isStreaming ? handleRetry : undefined}
-                    onFork={!isStreaming ? requestFork : undefined}
-                    forkOrigin={forkOrigin}
-                    onOpenForkOrigin={handleOpenForkOrigin}
-                    onEditUserMessage={!isStreaming ? handleEditUserMessage : undefined}
-                    fallbackModel={fallbackModelSignature}
-                  />
-                )}
-                {/* Streaming/transient message from AG-UI */}
-                {showTransientAssistant && (
-                  <div className="space-y-6 mt-6">
-                    <div className="w-full flex flex-col group/message">
-                      <div className="flex justify-start w-full">
-                        {streamDisplayRole === 'notice' ? (
-                          <NoticeMessage
-                            message={aguiPartsToStoreMessage(
-                              streamingParts,
-                              currentUsage,
-                              'notice'
-                            )}
-                          />
-                        ) : (
-                          <AssistantMessage
-                            message={{ role: 'assistant', content: '' }}
-                            messageIndex={safeMessages.length}
-                            isStreaming={streamingForCurrentChat}
-                            isLastMessage={true}
-                            onFileClick={handleFileClick}
-                            aguiParts={streamingParts}
-                            streamStartedAtMs={
-                              currentChatId
-                                ? streamStartByChatRef.current.get(currentChatId)
-                                : undefined
-                            }
-                            usage={currentUsage}
-                            toolApprovalPolicy={safeConfig.tool_approval_policy}
-                            onRemoveApprovalPolicy={handleRemoveApprovalPolicy}
-                            onInlineAction={handleInlineAction}
-                            subAgentTasks={subAgentTasks}
-                            onOpenSubAgentSidebar={handleOpenSubAgentSidebar}
-                            onStopSubAgent={handleStopSubAgent}
-                            onForceWebContext={handleForceWebContext}
-                            chatCitationSources={chatCitationSources}
-                            fallbackModel={fallbackModelSignature}
-                          />
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-
-            {!configReady && <LoadingIndicator />}
-            <div ref={bottomRef} className="h-0" />
-          </div>
-
-          {/* The board overlay covers the chat, so the rail would otherwise
-              float on top of a view it cannot scroll. */}
-          {safeMessages.length > 0 && !isBoardFullscreen && (
-            <ChatMinimap
-              messages={safeMessages}
-              scrollContainerRef={scrollContainerRef}
-              onJumpToMessage={jumpToMinimapMessage}
-            />
+            </div>
           )}
         </div>
 
-        {/* Input Panel (shown when messages exist) */}
-        {safeMessages.length > 0 && (
-          <div className="px-2 pt-2 pb-1 flex flex-col gap-2 bg-neutral-50 dark:bg-zinc-900 relative z-10 shrink-0">
-            {hasPendingTransientApprovals && (
-              <PermissionApprovalDock parts={streamingParts} onDecision={handleToolApproval} />
-            )}
-            <ChatInputPanel
-              input={input}
-              setInput={setInput}
-              selectedFiles={selectedFiles}
-              handleFileSelect={handleFileSelect}
-              removeFile={removeFile}
-              uploadProgress={uploadProgress}
-              isUploading={isUploading}
-              fileError={fileError}
-              send={send}
-              config={safeConfig}
-              setConfig={setConfig}
-              backendConfig={safeBackendConfig}
-              fileInputRef={fileInputRef}
-              textareaRef={textareaRef}
-              configReady={configReady}
-              streamingForCurrentChat={streamingForCurrentChat}
-              stopStreaming={stopStreaming}
-              stopInFlight={isStopping}
-              modelSelectDropUp={true}
-              modelValue={safeConfig.model}
-              onModelChange={handleInputModelChange}
-              onPaste={handlePaste}
-              onImageClick={setViewingImage}
-              currentChatId={currentChatId}
-              onFileMentionSelected={(mention) =>
-                setFileMentions((prev) => [
-                  ...prev.filter((item) => item.name !== mention.name),
-                  mention,
-                ])
-              }
-            />
-          </div>
-        )}
+        {/* Right Sidebar */}
+        <RightSidebar
+          isOpen={isRightSidebarOpen}
+          onClose={() => onRightSidebarToggle(false)}
+          onOpen={() => onRightSidebarToggle(true)}
+          onWidthChange={onRightSidebarWidthChange}
+          maxWidthPx={rightSidebarMaxWidthPx}
+          canvasMaxWidthPx={rightSidebarCanvasMaxWidthPx}
+          viewportWidthPx={viewportWidthPx}
+          forceFullView={rightSidebarForceFullView}
+          goal={goal}
+          tasks={tasks}
+          goalChatId={goalChatId}
+          kanban={kanban}
+          currentProjectName={chats.find((c) => c.id === currentChatId)?.projectName ?? null}
+          currentProjectId={chats.find((c) => c.id === currentChatId)?.projectId ?? null}
+          chatTitles={Object.fromEntries(chats.map((c) => [c.id, c.title]))}
+          onProjectBoardChange={setIsBoardFullscreen}
+          isNewChat={
+            safeMessages.length === 0 && !showTransientAssistant && !isProbablyLoadingChatMessages
+          }
+          fileToPreview={sidebarFilePreview}
+          onMaximizeFile={handleMaximizeFile}
+          canvas={canvas}
+          onCanvasDispatch={handleCanvasDispatch}
+          viewingSubAgentTaskId={viewingSubAgentTaskId}
+          onCloseSubAgent={() => setViewingSubAgentTaskId(null)}
+          onSelectSubAgent={(taskId) => setViewingSubAgentTaskId(taskId)}
+          currentChatId={currentChatId}
+          hasSubAgents={
+            Object.keys(subAgentTasks).length > 0 ||
+            currentChatSummary?.platform === 'subagent' ||
+            safeConfig?.platform === 'subagent'
+          }
+          hasSubAgentHistory={transcriptHasSubAgentCall}
+          messages={safeMessages}
+          forcedWebContextId={forcedWebContextId}
+          onClearForcedWebContext={() => setForcedWebContextId(null)}
+        />
+
+        <ImageViewer src={viewingImage} onClose={() => setViewingImage(null)} />
+
+        <FileViewer
+          filePath={viewingFile?.path ?? null}
+          fileName={viewingFile?.name ?? null}
+          chatId={currentChatId}
+          onClose={() => setViewingFile(null)}
+        />
       </div>
-
-      {/* Right Sidebar */}
-      <RightSidebar
-        isOpen={isRightSidebarOpen}
-        onClose={() => onRightSidebarToggle(false)}
-        onOpen={() => onRightSidebarToggle(true)}
-        onWidthChange={onRightSidebarWidthChange}
-        maxWidthPx={rightSidebarMaxWidthPx}
-        canvasMaxWidthPx={rightSidebarCanvasMaxWidthPx}
-        viewportWidthPx={viewportWidthPx}
-        forceFullView={rightSidebarForceFullView}
-        goal={goal}
-        tasks={tasks}
-        goalChatId={goalChatId}
-        kanban={kanban}
-        currentProjectName={chats.find((c) => c.id === currentChatId)?.projectName ?? null}
-        currentProjectId={chats.find((c) => c.id === currentChatId)?.projectId ?? null}
-        chatTitles={Object.fromEntries(chats.map((c) => [c.id, c.title]))}
-        onProjectBoardChange={setIsBoardFullscreen}
-        isNewChat={
-          safeMessages.length === 0 && !showTransientAssistant && !isProbablyLoadingChatMessages
-        }
-        fileToPreview={sidebarFilePreview}
-        onMaximizeFile={handleMaximizeFile}
-        canvas={canvas}
-        onCanvasDispatch={handleCanvasDispatch}
-        viewingSubAgentTaskId={viewingSubAgentTaskId}
-        onCloseSubAgent={() => setViewingSubAgentTaskId(null)}
-        onSelectSubAgent={(taskId) => setViewingSubAgentTaskId(taskId)}
-        currentChatId={currentChatId}
-        hasSubAgents={
-          Object.keys(subAgentTasks).length > 0 ||
-          currentChatSummary?.platform === 'subagent' ||
-          safeConfig?.platform === 'subagent'
-        }
-        hasSubAgentHistory={transcriptHasSubAgentCall}
-        messages={safeMessages}
-        forcedWebContextId={forcedWebContextId}
-        onClearForcedWebContext={() => setForcedWebContextId(null)}
-      />
-
-      <ImageViewer src={viewingImage} onClose={() => setViewingImage(null)} />
-
-      <FileViewer
-        filePath={viewingFile?.path ?? null}
-        fileName={viewingFile?.name ?? null}
-        chatId={currentChatId}
-        onClose={() => setViewingFile(null)}
-      />
-    </div>
+    </ChatImageGallery>
   );
 };

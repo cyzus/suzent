@@ -115,6 +115,7 @@ interface ChatCoreContextValue {
   removeEmptyAssistantMessage: (chatId?: string | null) => void;
   currentChatId: string | null;
   chats: ChatSummary[];
+  pinnedChats: ChatSummary[];
   loadingChats: boolean;
   refreshingChats: boolean;
   searchQuery: string;
@@ -201,6 +202,15 @@ const stripReusableConfig = (config: ChatConfig): ChatConfig => {
   return reusable as unknown as ChatConfig;
 };
 
+/** Union the always-equipped tools into a selection.
+ *
+ * The server floors them anyway, so this is about the UI telling the truth: a
+ * preference saved before a tool became builtin would otherwise show it off
+ * while the agent holds it.
+ */
+const withBuiltinTools = (tools: string[] | undefined, backendDefaults: ConfigOptions): string[] =>
+  Array.from(new Set([...(tools ?? []), ...(backendDefaults.builtinTools ?? [])]));
+
 /** Build a ChatConfig from user preferences and backend defaults. */
 const buildConfigFromPreferences = (
   prefs: ConfigOptions['userPreferences'],
@@ -208,7 +218,7 @@ const buildConfigFromPreferences = (
 ): ChatConfig => ({
   model: prefs?.model || backendDefaults.defaultModel || backendDefaults.models[0] || '',
   agent: prefs?.agent || backendDefaults.agents[0] || '',
-  tools: prefs?.tools || backendDefaults.defaultTools || [],
+  tools: withBuiltinTools(prefs?.tools || backendDefaults.defaultTools, backendDefaults),
   memory_enabled: prefs?.memory_enabled,
   thinking: normalizeThinkingEffort(prefs?.thinking),
   sandbox_enabled: prefs?.sandbox_enabled ?? backendDefaults.sandboxEnabled ?? true,
@@ -387,6 +397,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
   const [currentChatTitle, setCurrentChatTitle] = useState<string>('New Chat');
   const [chats, setChats] = useState<ChatSummary[]>([]);
+  const [pinnedChats, setPinnedChats] = useState<ChatSummary[]>([]);
   const [chatTotal, setChatTotal] = useState<number>(0);
   const [chatKindTotals, setChatKindTotals] = useState<ChatKindCounts>(emptyChatKindCounts);
   const [chatOffset, setChatOffset] = useState<number>(0);
@@ -483,6 +494,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
             // Ensure chat-scoped state is never inherited from localStorage.
             return {
               ...stripReusableConfig(parsed),
+              tools: withBuiltinTools(parsed.tools, backendConfig),
               permission_mode: backendConfig.defaultPermissionMode ?? 'default',
             };
           }
@@ -497,7 +509,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
       return {
         model: backendConfig.defaultModel || backendConfig.models[0] || '',
         agent: backendConfig.agents[0] || '',
-        tools: backendConfig.defaultTools || [],
+        tools: withBuiltinTools(backendConfig.defaultTools, backendConfig),
         sandbox_enabled: backendConfig.sandboxEnabled ?? true,
         permission_mode: backendConfig.defaultPermissionMode ?? 'default',
         mcp_urls: [],
@@ -700,6 +712,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
 
           const data = await res.json();
           const serverList: ChatSummary[] = data.chats || [];
+          setPinnedChats(data.pinnedChats || []);
           setChatTotal(data.total ?? serverList.length);
           setChatKindTotals(
             data.kindCounts ?? {
@@ -834,6 +847,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
   const updateChatTitleLocally = useCallback(
     (chatId: string, title: string) => {
       setChats((prev) => prev.map((c) => (c.id === chatId ? { ...c, title } : c)));
+      setPinnedChats((prev) => prev.map((c) => (c.id === chatId ? { ...c, title } : c)));
       if (chatId === currentChatId) setCurrentChatTitle(title);
     },
     [currentChatId]
@@ -1825,6 +1839,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
           throw new Error(`Failed to delete chat: ${res.status} ${res.statusText}`);
         }
 
+        setPinnedChats((prev) =>
+          prev.filter((chat) => chat.id !== chatId && (!cascade || chat.parentChatId !== chatId))
+        );
         // Background consistency sync (non-blocking).
         void refreshChatListSilently();
       } catch (error) {
@@ -1861,7 +1878,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
 
   const renameChat = useCallback(
     async (chatId: string, title: string) => {
-      const prev = chats.find((c) => c.id === chatId);
+      const prev = chats.find((c) => c.id === chatId) ?? pinnedChats.find((c) => c.id === chatId);
       updateChatTitleLocally(chatId, title);
       try {
         const res = await fetch(`${getApiBase()}/chats/${chatId}`, {
@@ -1875,7 +1892,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
         if (prev) updateChatTitleLocally(chatId, prev.title ?? '');
       }
     },
-    [chats, updateChatTitleLocally]
+    [chats, pinnedChats, updateChatTitleLocally]
   );
 
   const coreValue = useMemo<ChatCoreContextValue>(
@@ -1897,6 +1914,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
       removeEmptyAssistantMessage,
       currentChatId,
       chats,
+      pinnedChats,
       chatTotal,
       chatKindTotals,
       loadingChats,
@@ -1942,6 +1960,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
       removeEmptyAssistantMessage,
       currentChatId,
       chats,
+      pinnedChats,
       chatTotal,
       chatKindTotals,
       loadingChats,

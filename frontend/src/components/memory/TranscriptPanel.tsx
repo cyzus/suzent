@@ -9,6 +9,7 @@ import { useI18n } from '../../i18n';
 import { MemoryMarkdown } from './MemoryMarkdown';
 import { useChatStore } from '../../hooks/useChatStore';
 import { BrutalSelect } from '../BrutalSelect';
+import { RefreshButton } from '../RefreshButton';
 import type { TranscriptEntry } from '../../types/memory';
 
 function formatTimestamp(ts: string): string {
@@ -182,12 +183,10 @@ export const TranscriptPanel: React.FC = () => {
               {t('transcripts.entriesCount', { count: String(entries.length) })}
               {lastN !== undefined && ` (${t('transcripts.lastN', { n: String(lastN) })})`}
             </span>
-            <button
-              onClick={() => loadTranscript(selectedSessionId)}
-              className="px-3 py-1 border-2 border-brutal-black bg-white dark:bg-zinc-700 hover:bg-neutral-100 dark:hover:bg-zinc-600 dark:text-white font-bold text-xs uppercase shadow-[2px_2px_0_0_#000] brutal-btn transition-all"
-            >
-              Refresh
-            </button>
+            <RefreshButton
+              onClick={() => void loadTranscript(selectedSessionId)}
+              spinning={loading}
+            />
           </div>
         )}
       </div>

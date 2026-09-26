@@ -268,10 +268,11 @@ duplicates are not deleted based on device names.
 
 ## Mobile versions and CI builds
 
-Mobile versions are independent of the desktop/backend product version. Edit
-`packages/mobile-contract/version.json`, then run
-`uv run python scripts/generate_mobile_version.py` to update Android's
-`version.properties` and iOS's `Config/Version.xcconfig`. Both platforms share the
+Mobile versions are independent of the desktop/backend product version. Add a
+`mobile` impact declaration under `.releases/changes/` in feature PRs. The
+`release/mobile` plan updates `packages/mobile-contract/version.json` and generates
+Android's `version.properties` and iOS's `Config/Version.xcconfig`; do not bump these
+files manually in feature PRs. See [the release guide](releasing.md). Both platforms share the
 marketing version; the source build number is used for local builds. The desktop
 `scripts/bump_version.py` deliberately does not include these files. Protocol
 compatibility continues to use the pairing protocol and capabilities, not matching

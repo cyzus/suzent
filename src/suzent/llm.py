@@ -326,49 +326,138 @@ class EmbeddingGenerator:
 
 
 class ImageGenerator:
-    """Generate images using LiteLLM."""
+    """Image generation and editing through the configured specialist models."""
 
-    def __init__(self, model: str = None):
-        if model:
-            self.model = model
-        else:
-            try:
-                from suzent.core.role_router import get_role_router
+    def __init__(
+        self, model: str | None = None, *, role: str = "image_generation"
+    ) -> None:
+        from suzent.core.role_router import get_role_router
 
-                self.model = get_role_router().get_model_id("image_generation")
-            except Exception:
-                self.model = None
-
-    async def generate(self, prompt: str, size: str = "1024x1024") -> str:
-        """Generate an image from a prompt.
-
-        Args:
-            prompt: Text description of the image
-            size: Image dimensions (e.g., "1024x1024")
-
-        Returns:
-            URL to the generated image
-        """
-        try:
-            model, auth_kwargs = _litellm_model_and_kwargs(self.model)
-            response = await _litellm().aimage_generation(
-                prompt=prompt,
-                model=model,
-                size=size,
-                **auth_kwargs,
+        self.dropped_params: list[str] = []
+        self.model = model or get_role_router().get_model_id(role)
+        if not self.model:
+            raise ValueError(
+                f"No {role} model configured. Set it in Settings → Model Roles."
             )
 
-            data = response.data[0]
-            if hasattr(data, "url") and data.url:
-                return data.url
-            elif hasattr(data, "b64_json") and data.b64_json:
-                return f"data:image/png;base64,{data.b64_json}"
-            else:
-                return None
+    async def generate(
+        self,
+        prompt: str,
+        size: str | None = None,
+        *,
+        quality: str | None = None,
+        count: int = 1,
+    ) -> list[str]:
+        return await self._request(prompt, size, quality, count)
 
-        except Exception as e:
-            logger.error(f"Failed to generate image: {e}")
-            raise
+    async def edit(
+        self,
+        prompt: str,
+        image_paths: list[str],
+        *,
+        mask_path: str | None = None,
+        size: str | None = None,
+        quality: str | None = None,
+        count: int = 1,
+    ) -> list[str]:
+        from contextlib import ExitStack
+
+        with ExitStack() as stack:
+            images = [stack.enter_context(open(path, "rb")) for path in image_paths]
+            inputs: dict[str, Any] = {
+                "image": images[0] if len(images) == 1 else images
+            }
+            if mask_path:
+                inputs["mask"] = stack.enter_context(open(mask_path, "rb"))
+            return await self._request(prompt, size, quality, count, **inputs)
+
+    def _validate_options(
+        self, model: str, options: dict[str, Any], *, editing: bool
+    ) -> set[str]:
+        from litellm import LlmProviders, get_llm_provider, openai_compatible_providers
+        from litellm.utils import ProviderConfigManager
+
+        name, provider, _, _ = get_llm_provider(model)
+        getter = (
+            ProviderConfigManager.get_provider_image_edit_config
+            if editing
+            else ProviderConfigManager.get_provider_image_generation_config
+        )
+        config = getter(model=name, provider=LlmProviders(provider))
+        if (
+            config is None
+            and not editing
+            and (provider in openai_compatible_providers or provider == "litellm_proxy")
+        ):
+            # Match LiteLLM's generation fallback for OpenAI-compatible providers.
+            config = getter(model=name, provider=LlmProviders.OPENAI)
+        if config is None:
+            raise ValueError(
+                f"Image {'editing' if editing else 'generation'} is not supported for {provider}."
+            )
+        # LiteLLM's global drop_params can override per-request False for edits.
+        # Check explicitly without mutating shared settings used by concurrent chats.
+        unsupported = set(options) - set(config.get_supported_openai_params(name))
+        dropped = unsupported & {"quality"}
+        unsupported -= dropped
+        if unsupported:
+            raise ValueError(
+                f"Unsupported image parameters for {model}: {', '.join(sorted(unsupported))}"
+            )
+
+        return dropped
+
+    async def _request(
+        self,
+        prompt: str,
+        size: str | None,
+        quality: str | None,
+        count: int,
+        **inputs: Any,
+    ) -> list[str]:
+        model, auth_kwargs = _litellm_model_and_kwargs(self.model)
+        options = {
+            key: value
+            for key, value in {"size": size, "quality": quality}.items()
+            if value is not None
+        }
+        if count != 1:
+            options["n"] = count
+        self.dropped_params = []
+        dropped = self._validate_options(
+            model,
+            {
+                **options,
+                **({"mask": inputs["mask"]} if "mask" in inputs else {}),
+            },
+            editing=bool(inputs),
+        )
+        self.dropped_params = sorted(dropped)
+        for key in dropped:
+            options.pop(key, None)
+        client = _litellm()
+        call = client.aimage_edit if inputs else client.aimage_generation
+        response = await call(
+            model=model,
+            prompt=prompt,
+            drop_params=False,
+            **options,
+            **inputs,
+            **auth_kwargs,
+        )
+        images: list[str] = []
+        for data in response.data or []:
+            if getattr(data, "url", None):
+                images.append(data.url)
+            elif getattr(data, "b64_json", None):
+                images.append(f"data:application/octet-stream;base64,{data.b64_json}")
+            else:
+                raise ValueError(
+                    "Image provider returned an image without URL or base64 data."
+                )
+        if not images:
+            raise ValueError("Image provider returned no images.")
+        return images
 
 
 class LLMClient:

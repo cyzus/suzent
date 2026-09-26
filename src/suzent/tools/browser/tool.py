@@ -1,6 +1,6 @@
 import asyncio
 import sys
-from collections.abc import Coroutine
+from collections.abc import Awaitable, Callable, Coroutine
 from typing import Annotated, Any, Literal, TypeVar
 from playwright.async_api import (
     async_playwright,
@@ -288,54 +288,60 @@ class BrowserSessionManager:
 
     # --- Wrapper methods for Thread Safety ---
 
+    async def _page_action(
+        self,
+        action: Callable[[], Awaitable[Any]],
+        *,
+        invalidates_refs: bool = True,
+    ) -> None:
+        """Run a page action on the main loop, under the action lock.
+
+        *invalidates_refs* bumps the snapshot generation, which expires the
+        element handles a previous snapshot handed out. Every action that can
+        move or replace the page needs it; a plain scroll does not, because the
+        nodes it moves are the same nodes.
+
+        ``action`` is called inside the lock, so the coroutine it returns is
+        created there too -- building it in the caller would start nothing, but
+        it would be a coroutine awaited under a lock it was not made under.
+        """
+
+        async def _fn() -> None:
+            async with self._action_lock:
+                if invalidates_refs:
+                    self._snapshot_generation += 1
+                await action()
+
+        await self._run_on_main_loop(_fn())
+
     async def goto(self, url: str) -> None:
         url = normalize_browser_url(url)
-
-        async def _fn() -> None:
-            async with self._action_lock:
-                self._snapshot_generation += 1
-                await self._page.goto(url, wait_until="domcontentloaded", timeout=15000)
-
-        await self._run_on_main_loop(_fn())
+        await self._page_action(
+            lambda: self._page.goto(url, wait_until="domcontentloaded", timeout=15000)
+        )
 
     async def click(self, x: int, y: int) -> None:
-        async def _fn() -> None:
-            async with self._action_lock:
-                self._snapshot_generation += 1
-                await self._page.mouse.click(x, y)
-
-        await self._run_on_main_loop(_fn())
+        await self._page_action(lambda: self._page.mouse.click(x, y))
 
     async def scroll(self, dx: int, dy: int) -> None:
-        async def _fn() -> None:
-            async with self._action_lock:
-                await self._page.mouse.wheel(dx, dy)
-
-        await self._run_on_main_loop(_fn())
+        await self._page_action(
+            lambda: self._page.mouse.wheel(dx, dy), invalidates_refs=False
+        )
 
     async def back(self) -> None:
-        async def _fn() -> None:
-            async with self._action_lock:
-                self._snapshot_generation += 1
-                await self._page.go_back(wait_until="domcontentloaded")
-
-        await self._run_on_main_loop(_fn())
+        await self._page_action(
+            lambda: self._page.go_back(wait_until="domcontentloaded")
+        )
 
     async def forward(self) -> None:
-        async def _fn() -> None:
-            async with self._action_lock:
-                self._snapshot_generation += 1
-                await self._page.go_forward(wait_until="domcontentloaded")
-
-        await self._run_on_main_loop(_fn())
+        await self._page_action(
+            lambda: self._page.go_forward(wait_until="domcontentloaded")
+        )
 
     async def reload(self) -> None:
-        async def _fn() -> None:
-            async with self._action_lock:
-                self._snapshot_generation += 1
-                await self._page.reload(wait_until="domcontentloaded")
-
-        await self._run_on_main_loop(_fn())
+        await self._page_action(
+            lambda: self._page.reload(wait_until="domcontentloaded")
+        )
 
     async def _dispose_refs(self) -> None:
         refs, self._selector_map = self._selector_map, {}
@@ -826,7 +832,6 @@ class BrowsingTool(Tool):
         arguments: Annotated[
             list[str] | None,
             Field(
-                default=None,
                 description="tabs: [] lists stable tab IDs ([controlled] marks the tab this tool acts on, [user-viewing] marks the tab the user is currently looking at); select_tab: [tab-id] switches tabs; open: [url] or []; snapshot: [] or [offset, limit<=100] or [-i]; click/dblclick/hover: [ref]; fill/type/press: [ref, value]; click_coords: [x, y]; scroll: [dx, dy] or []; back/forward/reload/refresh: []. Use exact @gNeN refs from the latest snapshot; selectors are not accepted.",
             ),
         ] = None,

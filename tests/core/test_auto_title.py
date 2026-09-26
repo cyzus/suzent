@@ -8,6 +8,7 @@ class _Router:
         self.model = model
 
     def get_model_id(self, _role: str) -> str | None:
+        assert _role == "title"
         return self.model
 
 

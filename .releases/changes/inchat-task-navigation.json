@@ -1,0 +1,4 @@
+{
+  "products": { "desktop": "patch" },
+  "summary": "Open in-chat scheduled tasks in their original conversation, including before their first run."
+}

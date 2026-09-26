@@ -7,6 +7,7 @@ import { useState, useEffect } from 'react';
 import { memoryApi } from '../../lib/memoryApi';
 import { useI18n } from '../../i18n';
 import { MemoryMarkdown } from './MemoryMarkdown';
+import { RefreshButton } from '../RefreshButton';
 
 function formatDateLabel(
   dateStr: string,
@@ -202,12 +203,7 @@ export const DailyLogsPanel: React.FC = () => {
                   {formatDateLabel(selectedDate, t)}
                 </p>
               </div>
-              <button
-                onClick={() => loadLog(selectedDate)}
-                className="px-3 py-1 border-2 border-brutal-black bg-white dark:bg-zinc-700 hover:bg-neutral-100 dark:hover:bg-zinc-600 dark:text-white font-bold text-xs uppercase shadow-[2px_2px_0_0_#000] brutal-btn transition-all"
-              >
-                Refresh
-              </button>
+              <RefreshButton onClick={() => void loadLog(selectedDate)} spinning={loading} />
             </div>
 
             <LogContentArea loading={loading} error={error} content={content} />

@@ -8,6 +8,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import type { A2UISurface } from '../types/a2ui';
 import type { AGUIPart, AcpPermissionRequest, ApprovalRememberScope } from '../types/agui';
 import type { CitationSource } from '../lib/streamEvents';
+import { LiveSpeechTracker } from '../lib/liveSpeech';
 import { recoverableStream } from '../lib/recoverableStream';
 
 // ── Types ────────────────────────────────────────────────────────────
@@ -19,6 +20,7 @@ interface UseAGUIOptions {
   onFinish?: (parts: AGUIPart[], persistence?: { confirmed: boolean }) => void | Promise<void>;
   onCustomEvent?: (name: string, value: unknown) => void;
   onMarkDeferred?: (surfaceId: string) => void;
+  onSpeechResult?: (chatId: string, part: AGUIPart) => void;
   onError?: (error: Error, parts: AGUIPart[]) => void;
 }
 
@@ -239,6 +241,7 @@ export function processEvent(
         const existingOutput = next[existingStartIdx].output;
         next[existingStartIdx] = {
           ...next[existingStartIdx],
+          toolName: (data.toolCallName as string) || next[existingStartIdx].toolName,
           // Keep existing args visible during approval/resume. If the backend
           // replays TOOL_CALL_ARGS, the first replay delta replaces these args
           // below; if it only sends the result, file renderers still have path/content.
@@ -323,13 +326,14 @@ export function processEvent(
         if (existingIndex >= 0) {
           next[existingIndex] = {
             ...next[existingIndex],
+            toolName: resolution.toolName || next[existingIndex].toolName,
             permissionResolution: resolution,
           };
         } else {
           next.push({
             type: 'tool',
             toolCallId: tcId,
-            toolName: 'unknown',
+            toolName: resolution.toolName || 'unknown',
             args: '',
             state: 'running',
             permissionResolution: resolution,
@@ -370,7 +374,7 @@ export function processEvent(
               approvalId,
               permission: approval.decision as AGUIPart['permission'],
               // Fill in name/args if not yet present (approval may arrive before tool_call_start)
-              toolName: next[i].toolName || (approval.toolName as string) || 'unknown',
+              toolName: (approval.toolName as string) || next[i].toolName || 'unknown',
               args:
                 next[i].args ||
                 (approval.args
@@ -410,6 +414,7 @@ export function processEvent(
           if (next[i].type === 'tool' && next[i].toolCallId === tcId) {
             next[i] = {
               ...next[i],
+              toolName: (resultData.toolName as string) || next[i].toolName || 'unknown',
               state: resultData.status === 'executed' ? 'completed' : 'error',
               output,
               argsReplayPending: false,
@@ -821,6 +826,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
       // which is what a steer does while this loop is still draining.
       const attachedToken = clientRunTokenRef.current;
 
+      const speechTracker = new LiveSpeechTracker(isProbe, opts?.seedParts || partsRef.current);
       if (!isProbe) {
         // Normal send: reset immediately so the UI shows "submitted" while waiting.
         publishParts([], true);
@@ -883,6 +889,9 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
               publishParts(currentParts, true);
               throw new Error(result.error);
             }
+          }
+          for (const part of speechTracker.collect(currentParts, batch.runId, batch.reset)) {
+            optionsRef.current.onSpeechResult?.(String(requestBody.chat_id || ''), part);
           }
           publishParts(currentParts, batch.reset);
           setPendingApprovalCountSync(

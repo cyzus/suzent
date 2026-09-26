@@ -7,6 +7,7 @@ import { useState, useEffect } from 'react';
 import { memoryApi } from '../../lib/memoryApi';
 import { useI18n } from '../../i18n';
 import { MemoryMarkdown } from './MemoryMarkdown';
+import { RefreshButton } from '../RefreshButton';
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -111,12 +112,12 @@ export const MemoryFilePanel: React.FC = () => {
           </p>
         </div>
         <div className="flex gap-2">
-          <button
-            onClick={loadMemoryFile}
-            className="px-3 py-1 border-2 border-white bg-brutal-black hover:bg-white hover:text-brutal-black font-bold text-xs uppercase transition-all"
-          >
-            {t('common.refresh')}
-          </button>
+          <RefreshButton
+            onClick={() => void loadMemoryFile()}
+            spinning={loading}
+            variant="dark"
+            className="border-white"
+          />
           <button
             onClick={handleReindex}
             disabled={reindexing}

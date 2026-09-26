@@ -70,7 +70,9 @@ def _write_target_dir() -> Path:
 class ModelCapabilities:
     """Immutable capability descriptor for a single model."""
 
-    mode: str = "chat"  # chat | embedding | image_generation | tts
+    mode: str = "chat"  # chat | embedding | image_generation | image_edit | video_generation | tts
+    supported_endpoints: tuple[str, ...] = ()
+
     max_input_tokens: int = 0
     max_output_tokens: int = 0
     output_vector_size: int = 0  # embedding models only
@@ -81,6 +83,12 @@ class ModelCapabilities:
     supports_response_schema: bool = False
     input_cost_per_token: float = 0.0
     output_cost_per_token: float = 0.0
+
+    @property
+    def supports_image_edit(self) -> bool | None:
+        if self.mode == "image_edit" or "/v1/images/edits" in self.supported_endpoints:
+            return True
+        return None
 
     @property
     def context_window(self) -> int:
@@ -95,7 +103,10 @@ class ModelCapabilities:
         supports nothing", which is absence of data, not a description.
         """
         return not (
-            self.max_input_tokens
+            self.supported_endpoints
+            or self.mode
+            in {"image_generation", "image_edit", "video_generation", "tts"}
+            or self.max_input_tokens
             or self.max_output_tokens
             or self.output_vector_size
             or self.supports_vision
@@ -115,6 +126,7 @@ class ModelCapabilities:
 def _parse_model_entry(attrs: dict) -> ModelCapabilities:
     return ModelCapabilities(
         mode=attrs.get("mode", "chat"),
+        supported_endpoints=tuple(attrs.get("supported_endpoints") or ()),
         max_input_tokens=attrs.get("max_input_tokens", 0),
         max_output_tokens=attrs.get("max_output_tokens", 0),
         output_vector_size=attrs.get("output_vector_size", 0),
@@ -186,6 +198,8 @@ _LITELLM_MODE_MAP: dict[str, str | None] = {
     "completion": "chat",
     "embedding": "embedding",
     "image_generation": "image_generation",
+    "image_edit": "image_edit",
+    "video_generation": "video_generation",
     "audio_speech": "tts",
     "audio_transcription": None,  # STT — not a role we manage
     "moderations": None,
@@ -305,8 +319,13 @@ async def sync_from_litellm() -> dict[str, int]:
     # restricted to providers we manage.
     by_provider: dict[str, dict[str, dict]] = {}
     for key, info in raw.items():
-        if not isinstance(info, dict) or "/" not in key:
+        if not isinstance(info, dict):
             continue
+        if "/" not in key:
+            provider_id = info.get("litellm_provider")
+            if provider_id != "openai":
+                continue
+            key = f"{provider_id}/{key}"
         provider_id = key.split("/", 1)[0]
         if provider_id not in known_providers:
             continue
@@ -328,6 +347,8 @@ async def sync_from_litellm() -> dict[str, int]:
 
             entry: dict = dict(curr.get(model_id, {}))  # preserve existing fields
             entry["mode"] = mapped_mode
+            if "supported_endpoints" in info:
+                entry["supported_endpoints"] = info["supported_endpoints"]
 
             # Context window — overwrite from LiteLLM
             for src, dst in (

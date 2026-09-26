@@ -1,3 +1,4 @@
+import { useChatImages } from '../ChatImageGallery';
 import React, { useEffect, useRef, useState } from 'react';
 import type { Message } from '../../types/api';
 import { FileIcon } from '../FileIcon';
@@ -160,6 +161,8 @@ function UserImageGallery({
   images: UserImage[];
   onImageClick?: (src: string) => void;
 }) {
+  const gallery = useChatImages(images.map((image) => image.fullSrc));
+  const openImage = gallery.open ?? onImageClick;
   const [index, setIndex] = useState(0);
   // Clamp if the image list shrinks (e.g. an edit removed attachments).
   const safeIndex = Math.min(index, images.length - 1);
@@ -178,7 +181,7 @@ function UserImageGallery({
         alt={img.filename}
         className="max-w-sm max-h-64 border-4 border-brutal-black shadow-brutal-lg object-contain bg-white"
         title={img.filename}
-        onClick={() => onImageClick?.(img.fullSrc)}
+        onClick={() => openImage?.(img.fullSrc)}
         style={{ cursor: onImageClick ? 'pointer' : 'default' }}
       />
     ) : (
@@ -187,7 +190,7 @@ function UserImageGallery({
         alt={img.filename}
         className="max-w-sm max-h-64 border-4 border-brutal-black shadow-brutal-lg object-contain bg-white"
         title={img.filename}
-        onClick={() => onImageClick?.(img.fullSrc)}
+        onClick={() => openImage?.(img.fullSrc)}
         style={{ cursor: onImageClick ? 'pointer' : 'default' }}
         loading="lazy"
         decoding="async"
@@ -198,7 +201,7 @@ function UserImageGallery({
 
   if (images.length === 1) {
     return (
-      <div className="flex flex-wrap gap-3 justify-end">
+      <div ref={gallery.ref} className="flex flex-wrap gap-3 justify-end">
         <div className="relative group animate-brutal-pop">
           {renderThumb(current)}
           {current.filename && (
@@ -212,7 +215,7 @@ function UserImageGallery({
   }
 
   return (
-    <div className="flex justify-end">
+    <div ref={gallery.ref} className="flex justify-end">
       <div className="relative group animate-brutal-pop inline-block">
         {renderThumb(current)}
 

@@ -69,7 +69,7 @@ def test_rejects_unknown_action(tmp_path):
     assert "Unknown action 'delete'" in result.message
 
 
-def test_host_kill_always_evicts_registry_entry(monkeypatch, tmp_path):
+def test_host_kill_preserves_already_finished_registry_entry(monkeypatch, tmp_path):
     class _FakeRegistry:
         def __init__(self):
             self.kill_calls = []
@@ -96,7 +96,7 @@ def test_host_kill_always_evicts_registry_entry(monkeypatch, tmp_path):
 
     assert not result.success
     assert registry.kill_calls == [("chat-1", "abcdef123456")]
-    assert registry.evict_calls == [("chat-1", "abcdef123456")]
+    assert registry.evict_calls == []
 
 
 def test_host_poll_evicts_when_done_and_drained(monkeypatch, tmp_path):
@@ -133,3 +133,51 @@ def test_host_poll_evicts_when_done_and_drained(monkeypatch, tmp_path):
     assert result.success
     assert registry.poll_calls == [("chat-1", "abcdef123456", 42)]
     assert registry.evict_calls == [("chat-1", "abcdef123456")]
+
+
+async def test_stop_racing_host_completion_preserves_success(monkeypatch, tmp_path):
+    from unittest.mock import Mock
+
+    from suzent.core.background_commands import BackgroundCommands
+
+    commands = BackgroundCommands()
+    commands.register("chat-1", "abcdef123456", "Build project", "host")
+    enqueue = Mock()
+    monkeypatch.setattr(
+        "suzent.core.background_commands.get_background_commands", lambda: commands
+    )
+    monkeypatch.setattr("suzent.core.agent_inbox.enqueue_agent_message", enqueue)
+
+    class FinishedRegistry:
+        evicted = False
+
+        def kill(self, chat_id, process_id):
+            return False
+
+        def evict(self, chat_id, process_id):
+            self.evicted = True
+
+        def poll(self, chat_id, process_id, offset):
+            if self.evicted:
+                raise KeyError(process_id)
+            return {
+                "done": True,
+                "exit_code": 0,
+                "output": "Build succeeded",
+                "offset": 15,
+            }
+
+    registry = FinishedRegistry()
+    monkeypatch.setattr(
+        "suzent.tools.shell.host_process_registry.HostProcessRegistry", lambda: registry
+    )
+    result = ShellProcessBackend().forward(
+        _ctx(tmp_path, sandbox_enabled=False), process_id="abcdef123456", action="kill"
+    )
+    assert not result.success
+    await commands.tick()
+    assert commands.get("shell_abcdef123456")["status"] == "completed"
+    assert commands.get("shell_abcdef123456")["exit_code"] == 0
+    enqueue.assert_called_once()
+    assert "Build succeeded" in enqueue.call_args.kwargs["content"]
+    assert "failed" not in enqueue.call_args.kwargs["content"]

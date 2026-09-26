@@ -8,7 +8,7 @@ import pytest
 from suzent.tools.ask_question_tool import AskQuestionTool, QuestionItem
 from suzent.tools.filesystem.glob_tool import GlobTool
 from suzent.tools.filesystem.grep_tool import GrepTool
-from suzent.tools.memory_tools import MemorySearchTool
+from suzent.tools.recall.memory_tools import MemorySearchTool
 from suzent.tools.render_ui_tool import RenderUITool
 from suzent.tools.webpage_tool import WebpageTool
 from suzent.tools.websearch_tool import WebSearchTool

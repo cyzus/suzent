@@ -100,6 +100,7 @@ from suzent.routes.config_routes import (
     get_role_models,
     save_role_models,
     get_role_suggestions,
+    voice_settings,
     save_custom_provider,
     delete_custom_provider,
     sync_capabilities,
@@ -259,6 +260,12 @@ from suzent.routes.acp_routes import (
     resolve_acp_permission,
     resume_acp_session,
     probe_acp_agent,
+)
+from suzent.routes.background_task_routes import (
+    list_background_tasks,
+    get_background_task,
+    stop_background_task,
+    stream_background_tasks,
 )
 from suzent.routes.subagent_routes import (
     list_active_subagents,
@@ -751,6 +758,10 @@ async def startup():
         except Exception as e:
             logger.error(f"Failed to start AgentInboxDispatcher: {e}")
 
+        from suzent.core.background_commands import get_background_commands
+
+        await get_background_commands().start()
+
         # Start scheduler
         global scheduler_brain
         try:
@@ -906,7 +917,7 @@ def ensure_app_data():
     chatgpt_token_dir = USER_CONFIG_DIR / "chatgpt"
     os.environ.setdefault("CHATGPT_TOKEN_DIR", str(chatgpt_token_dir))
 
-    print("INFO: Starting App Data Verification...", flush=True)
+    logger.info("Starting app data verification")
 
     for target in [
         DATA_DIR,
@@ -926,7 +937,7 @@ def ensure_app_data():
             except Exception as e:
                 logger.error(f"Failed to create directory {target}: {e}")
 
-    print("INFO: App Data Verification Complete.", flush=True)
+    logger.info("App data verification complete")
 
 
 async def _stop(coro, name: str, timeout: float = 5.0):
@@ -968,6 +979,9 @@ async def shutdown():
             except asyncio.CancelledError:
                 pass
 
+    from suzent.core.background_commands import get_background_commands
+
+    await _stop(get_background_commands().stop(), "BackgroundCommands")
     if agent_inbox_dispatcher:
         await _stop(agent_inbox_dispatcher.stop(), "AgentInboxDispatcher")
 
@@ -1216,6 +1230,7 @@ app = Starlette(
         Route("/config/cost/chat/{chat_id}", get_chat_cost, methods=["GET"]),
         Route("/config/role-models", get_role_models, methods=["GET"]),
         Route("/config/role-models", save_role_models, methods=["POST"]),
+        Route("/config/voice", voice_settings, methods=["GET", "POST"]),
         Route("/config/role-suggestions", get_role_suggestions, methods=["GET"]),
         Route("/config/providers/custom", save_custom_provider, methods=["POST"]),
         Route(
@@ -1432,6 +1447,12 @@ app = Starlette(
         Route("/canvas/{chat_id}/answer", a2ui_answer, methods=["POST"]),
         Route("/events/stream", event_bus_stream, methods=["GET"]),
         Route("/subagents/active", list_active_subagents, methods=["GET"]),
+        Route("/background-tasks/stream", stream_background_tasks, methods=["GET"]),
+        Route("/background-tasks", list_background_tasks, methods=["GET"]),
+        Route("/background-tasks/{task_id}", get_background_task, methods=["GET"]),
+        Route(
+            "/background-tasks/{task_id}/stop", stop_background_task, methods=["POST"]
+        ),
         Route("/subagents/stream", stream_subagents, methods=["GET"]),
         Route("/subagents/clear-stuck", clear_stuck_subagents_route, methods=["POST"]),
         Route("/subagents/{task_id}/steer", steer_subagent_route, methods=["POST"]),
@@ -1671,6 +1692,10 @@ if __name__ == "__main__":
             host=host,
             port=bind_port,
             log_level=log_level.lower(),
+            # Leave logging alone: setup_logging has already pointed the root
+            # logger at loguru, and uvicorn's own config would install
+            # handlers that write its lines in a second shape.
+            log_config=None,
             ws="wsproto",
             timeout_graceful_shutdown=5,  # force-close lingering SSE connections after 5s
         )

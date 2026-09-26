@@ -160,6 +160,19 @@ Executes shell commands in a secure environment. Runs inside an isolated Docker 
 - `check_command`: read incremental output and check completion
 - `stop_command`: terminate the command and its process tree
 
+Background commands continue after the agent finishes a turn. While the backend
+is running, command completion or failure sends a durable inbox message to the
+owning agent: an active turn receives the result in place, and an idle agent
+starts a new background turn. Results include the exit code and the last 8,000
+characters of output. `check_command` remains available for retained output.
+A completed result already read by `check_command`, or a command explicitly
+stopped with `stop_command` or the sidebar, does not trigger another wakeup.
+
+The **Background tasks** sidebar combines sub-agents and Shell commands. It shows
+live status, recent command output, exit codes, and stop controls. Command tracking
+and recent sidebar history are in memory; they are not restored after a backend
+restart. Once queued, completion messages use the existing durable agent inbox.
+
 All four operations belong to the Shell capability and can be enabled separately.
 Selecting a capability header in the frontend toggles every tool in that capability.
 Existing `ShellTool`, `BashTool`, or `ProcessTool` selections are expanded to all

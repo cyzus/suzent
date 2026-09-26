@@ -204,7 +204,6 @@ class ShellCommandBackend(Tool):
         timeout: Annotated[
             Optional[int],
             Field(
-                default=None,
                 ge=0,
                 description=(
                     "Optional execution timeout in seconds. Defaults to 120s. "
@@ -430,13 +429,22 @@ class ShellCommandBackend(Tool):
                 content=content,
                 language=SANDBOX_COMMAND_LANGUAGE,
             )
+            from suzent.core.background_commands import get_background_commands
+
+            get_background_commands().register(
+                self.chat_id,
+                proc_id,
+                description or "Shell command",
+                "sandbox",
+                manager=self.manager,
+            )
             self._audit_execution(
                 "background",
                 description=description,
                 process_id=proc_id,
             )
             return self._success_result(
-                "Background process started.",
+                "Background process started. Completion will notify you automatically.",
                 mode="sandbox",
                 timeout=None,
                 background=True,
@@ -598,6 +606,11 @@ class ShellCommandBackend(Tool):
                 cwd=str(working_dir),
                 env=env,
             )
+            from suzent.core.background_commands import get_background_commands
+
+            get_background_commands().register(
+                self.chat_id, process_id, description or "Shell command", "host"
+            )
             self._audit_execution(
                 "background",
                 description=description,
@@ -605,7 +618,8 @@ class ShellCommandBackend(Tool):
                 process_id=process_id,
             )
             return self._success_result(
-                "Background command started. Use check_command to read output "
+                "Background command started. Completion will notify you automatically. "
+                "Use check_command to read output "
                 "or stop_command to terminate it.",
                 mode="host",
                 timeout=None,

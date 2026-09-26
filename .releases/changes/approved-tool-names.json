@@ -1,0 +1,6 @@
+{
+  "products": {
+    "desktop": "patch"
+  },
+  "summary": "Preserve tool names when resuming after human approval and restoring chat drafts."
+}

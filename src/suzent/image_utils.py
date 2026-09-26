@@ -11,6 +11,10 @@ import base64
 import io
 from PIL import Image
 
+from suzent.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 def encode_image_to_base64(
     image: Image.Image, format: str = "JPEG", quality: int = 85
@@ -35,7 +39,9 @@ def encode_image_to_base64(
 
     img_bytes = buffered.getvalue()
     size_mb = len(img_bytes) / (1024 * 1024)
-    print(f"[Encoding] Format={format}, Quality={quality}, Size={size_mb:.2f} MB")
+    logger.debug(
+        f"[Encoding] Format={format}, Quality={quality}, Size={size_mb:.2f} MB"
+    )
 
     return base64.b64encode(img_bytes).decode("utf-8")
 
@@ -77,14 +83,14 @@ def compress_image_with_bytes(
     if image.mode not in ("RGB", "L"):
         image = image.convert("RGB")
 
-    print(
+    logger.debug(
         f"[Compression] Original: {original_size[0]}x{original_size[1]}, mode: {image.mode}"
     )
 
     # For very small targets (< 1 MB), start with dimension reduction immediately
     # This is because images will be re-encoded when sent to the model
     if max_size_mb < 1.0:
-        print(
+        logger.debug(
             f"[Compression] Small target ({max_size_mb} MB), starting with dimension reduction"
         )
         # Try progressively smaller sizes - be very aggressive for tiny targets
@@ -101,7 +107,7 @@ def compress_image_with_bytes(
                 size_mb = len(compressed_bytes) / (1024 * 1024)
 
                 if len(compressed_bytes) <= max_size_bytes:
-                    print(
+                    logger.debug(
                         f"[Compression] Success at scale={scale:.2f}, quality={quality}: "
                         f"{new_size[0]}x{new_size[1]}, {size_mb:.2f} MB"
                     )
@@ -117,13 +123,17 @@ def compress_image_with_bytes(
         size_mb = len(compressed_bytes) / (1024 * 1024)
 
         if len(compressed_bytes) <= max_size_bytes:
-            print(f"[Compression] Success at quality={quality}: {size_mb:.2f} MB")
+            logger.debug(
+                f"[Compression] Success at quality={quality}: {size_mb:.2f} MB"
+            )
             buffer.seek(0)
             compressed_image = Image.open(buffer)
             return compressed_image, compressed_bytes
 
     # If quality reduction isn't enough, scale down dimensions
-    print("[Compression] Quality reduction insufficient, trying dimension scaling...")
+    logger.debug(
+        "[Compression] Quality reduction insufficient, trying dimension scaling..."
+    )
     scale_factors = [0.9, 0.8, 0.7, 0.6, 0.5, 0.4]
 
     for scale in scale_factors:
@@ -138,7 +148,7 @@ def compress_image_with_bytes(
             size_mb = len(compressed_bytes) / (1024 * 1024)
 
             if len(compressed_bytes) <= max_size_bytes:
-                print(
+                logger.debug(
                     f"[Compression] Success at scale={scale:.1f}, quality={quality}: "
                     f"{new_size[0]}x{new_size[1]}, {size_mb:.2f} MB"
                 )
@@ -147,14 +157,16 @@ def compress_image_with_bytes(
                 return compressed_image, compressed_bytes
 
     # Last resort: very small size with low quality
-    print("[Compression] Using last resort: 30% scale, quality=30")
+    logger.debug("[Compression] Using last resort: 30% scale, quality=30")
     final_size = (int(image.width * 0.3), int(image.height * 0.3))
     final_image = image.resize(final_size, Image.Resampling.LANCZOS)
     buffer = io.BytesIO()
     final_image.save(buffer, format=target_format, quality=30, optimize=True)
     compressed_bytes = buffer.getvalue()
     size_mb = len(compressed_bytes) / (1024 * 1024)
-    print(f"[Compression] Final: {final_size[0]}x{final_size[1]}, {size_mb:.2f} MB")
+    logger.debug(
+        f"[Compression] Final: {final_size[0]}x{final_size[1]}, {size_mb:.2f} MB"
+    )
     buffer.seek(0)
     compressed_image = Image.open(buffer)
     return compressed_image, compressed_bytes

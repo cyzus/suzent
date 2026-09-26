@@ -242,7 +242,7 @@ async def _initialize_memory_system() -> bool:
 
             _router = get_role_router()
             _embedding_model = _router.get_model_id("embedding")
-            _extraction_model = _router.get_model_id("cheap")
+            _extraction_model = _router.get_model_id("memory_extraction")
         except Exception:
             _embedding_model = None
             _extraction_model = None
@@ -394,7 +394,7 @@ def create_memory_tools() -> list:
         return []
 
     try:
-        from suzent.tools.memory_tools import MemorySearchTool
+        from suzent.tools.recall.memory_tools import MemorySearchTool
 
         search_tool = MemorySearchTool(memory_manager)
         search_tool._main_loop = main_event_loop

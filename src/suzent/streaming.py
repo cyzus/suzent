@@ -61,7 +61,9 @@ from suzent.permissions import (
 )
 from suzent.permissions.models import CommandDecision, PermissionDecision
 from suzent.permissions.audit import record_permission_audit
-from loguru import logger
+from suzent.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 # Module-level encoder for custom events
@@ -461,6 +463,9 @@ class _DraftDisplayAccumulator:
                 self.parts.append(part)
                 self._tool_index[tool_call_id] = part
             else:
+                existing["toolName"] = getattr(
+                    event, "tool_call_name", ""
+                ) or existing.get("toolName")
                 existing["state"] = "running"
                 existing["approvalId"] = None
                 existing.setdefault("args", "")
@@ -594,7 +599,7 @@ class _DraftDisplayAccumulator:
             tool["approvalId"] = value.get("approvalId")
             tool["permission"] = value.get("decision")
             tool["toolName"] = (
-                tool.get("toolName") or value.get("toolName") or "unknown"
+                value.get("toolName") or tool.get("toolName") or "unknown"
             )
             if not tool.get("args") and value.get("args") is not None:
                 tool["args"] = _stringify_part_content(value.get("args"))
@@ -610,10 +615,14 @@ class _DraftDisplayAccumulator:
             tool_call_id = str(value.get("toolCallId") or "")
             tool = self._ensure_tool(tool_call_id)
             tool["permissionResolution"] = dict(value)
+            if value.get("toolName"):
+                tool["toolName"] = value["toolName"]
             self.dirty = True
         elif name == "tool_approval_result" and isinstance(value, dict):
             tool_call_id = str(value.get("toolCallId") or "")
             tool = self._ensure_tool(tool_call_id)
+            if value.get("toolName"):
+                tool["toolName"] = value["toolName"]
             tool["state"] = (
                 "completed" if value.get("status") == "executed" else "error"
             )
@@ -626,7 +635,11 @@ class _DraftDisplayAccumulator:
             tool["displayData"] = value
             self.dirty = True
         elif name == "a2ui.render" and isinstance(value, dict):
-            if value.get("target") == "inline":
+            # Deferred surfaces (ask_question) are transient: the agent is blocked
+            # on them and the frontend drops them the moment the user answers.
+            # Persisting one into the draft makes the answered question render a
+            # second time when the finished turn is reloaded from the backend.
+            if value.get("target") == "inline" and not value.get("deferred"):
                 self.parts.append({"type": "a2ui", "surface": value})
                 self.dirty = True
         elif name == "citation_sources" and isinstance(value, dict):
@@ -1777,6 +1790,10 @@ async def stream_agent_responses(
                         ev.get("event") == "a2ui.render"
                         and ev.get("target") == "inline"
                         and ev.get("id")
+                        # Deferred (ask_question) surfaces must not be cached:
+                        # the cache is replayed into the persisted display log,
+                        # which would re-render the already-answered question.
+                        and not ev.get("deferred")
                     ):
                         try:
                             deps.inline_a2ui_surfaces[ev["id"]] = dict(ev)
@@ -1939,11 +1956,6 @@ async def stream_agent_responses(
                         "chatId": chat_id,
                         "decision": payload.get("permission_decision", {}),
                     }
-                    await _queue_custom_event(
-                        out_queue,
-                        "tool_approval_request",
-                        approval_info,
-                    )
                     # Persist pending approval to DB so the frontend can
                     # reconstruct the approval dialog after a page refresh.
                     if chat_id:
@@ -1987,6 +1999,12 @@ async def stream_agent_responses(
                             logger.debug(
                                 f"[Streaming] Failed to save pending_approval: {_pa_err}"
                             )
+
+                    await _queue_custom_event(
+                        out_queue,
+                        "tool_approval_request",
+                        approval_info,
+                    )
 
                 elif msg_type == "permission_decision":
                     yield CustomEvent(name="tool_permission_decision", value=payload)

@@ -4,8 +4,9 @@ import { GoalTaskView } from '../sidebar/GoalTaskView';
 import { SandboxFiles } from '../sidebar/SandboxFiles';
 import { WebActivitiesView } from '../sidebar/WebActivitiesView';
 import { CanvasView } from '../sidebar/CanvasView';
-import { SubAgentView } from '../sidebar/SubAgentView';
-import { SubAgentList } from '../sidebar/SubAgentList';
+import { BackgroundTaskView } from '../sidebar/BackgroundTaskView';
+import { useBackgroundTasks } from '../../hooks/useBackgroundTasks';
+import { BackgroundTaskList } from '../sidebar/BackgroundTaskList';
 import { RepositoryContextView } from '../sidebar/RepositoryContextView';
 import type { Message, Goal, Task } from '../../types/api';
 import type { KanbanData } from '../../hooks/useGoalTasks';
@@ -109,6 +110,13 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   isNewChat = false,
 }) => {
   const { t } = useI18n();
+  const { taskStates } = useBackgroundTasks();
+  const backgroundTasks = Object.values(taskStates).filter(
+    (task) => task.parent_chat_id === currentChatId
+  );
+  const hasBackgroundActivity = backgroundTasks.some(
+    (task) => task.status === 'running' || task.status === 'queued'
+  );
   const [activeTab, setActiveTab] = useState<TabId>('browser');
   const [isFileExpanded, setIsFileExpanded] = useState(false);
   const [isBrowserStreamActive, setIsBrowserStreamActive] = useState(false);
@@ -196,12 +204,13 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       id: 'agents',
       icon: CpuChipIcon,
       labelKey: 'sidebar.tabs.agents',
-      fallbackLabel: 'Agents',
+      fallbackLabel: 'Background tasks',
       // Openable on history: the panel fetches its own list from /subagents,
       // so a reopened chat can show every past run. The dot stays tied to live
       // state -- a finished history is not activity.
-      hasContent: hasSubAgents || hasSubAgentHistory || !!viewingSubAgentTaskId,
-      hasActivity: hasSubAgents || !!viewingSubAgentTaskId,
+      hasContent:
+        backgroundTasks.length > 0 || hasSubAgents || hasSubAgentHistory || !!viewingSubAgentTaskId,
+      hasActivity: hasBackgroundActivity,
       activityClass: 'bg-brutal-blue animate-pulse',
     },
     {
@@ -527,15 +536,15 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                 className={`flex-1 h-full flex flex-col min-h-0 ${activeTab === 'agents' ? 'flex' : 'hidden'}`}
               >
                 {viewingSubAgentTaskId ? (
-                  <SubAgentView taskId={viewingSubAgentTaskId} onClose={onCloseSubAgent} />
+                  <BackgroundTaskView taskId={viewingSubAgentTaskId} onClose={onCloseSubAgent} />
                 ) : currentChatId ? (
-                  <SubAgentList
+                  <BackgroundTaskList
                     chatId={currentChatId}
                     onSelect={(taskId) => onSelectSubAgent?.(taskId)}
                   />
                 ) : (
                   <div className="flex items-center justify-center h-full text-[10px] font-bold uppercase tracking-widest font-mono text-neutral-400">
-                    No sub-agent selected
+                    {t('backgroundTasks.empty')}
                   </div>
                 )}
               </div>
@@ -607,15 +616,15 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                 className={`flex-1 h-full flex flex-col min-h-0 ${activeTab === 'agents' ? 'flex' : 'hidden'}`}
               >
                 {viewingSubAgentTaskId ? (
-                  <SubAgentView taskId={viewingSubAgentTaskId} onClose={onCloseSubAgent} />
+                  <BackgroundTaskView taskId={viewingSubAgentTaskId} onClose={onCloseSubAgent} />
                 ) : currentChatId ? (
-                  <SubAgentList
+                  <BackgroundTaskList
                     chatId={currentChatId}
                     onSelect={(taskId) => onSelectSubAgent?.(taskId)}
                   />
                 ) : (
                   <div className="flex items-center justify-center h-full text-[10px] font-bold uppercase tracking-widest font-mono text-neutral-400">
-                    No sub-agent selected
+                    {t('backgroundTasks.empty')}
                   </div>
                 )}
               </div>

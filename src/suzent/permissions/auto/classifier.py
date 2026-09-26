@@ -38,7 +38,7 @@ class AutoPermissionClassifier:
         from suzent.core.role_router import get_role_router
         from suzent.llm import LLMClient
 
-        model = get_role_router().get_model_id("cheap")
+        model = get_role_router().get_model_id("permission_review")
         if not model:
             raise RuntimeError("No classifier model is configured")
 

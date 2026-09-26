@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import runpy
 
-from suzent.config import DEFAULT_PORT
+from suzent.config import DEFAULT_PORT, SERVICE_LOG_PATH
 from suzent.logger import logger
 from suzent.service.state import ServiceInstanceLock
 
@@ -15,6 +15,11 @@ def run_service() -> None:
     os.environ["SUZENT_RUN_MODE"] = "service"
     os.environ.setdefault("SUZENT_HOST", "127.0.0.1")
     os.environ.setdefault("SUZENT_PORT", str(DEFAULT_PORT))
+    # The console reads this file to answer "what did the host do before it
+    # stopped talking to me", so the service writes it on every platform
+    # rather than relying on the service manager to capture stdout -- systemd
+    # sends stdout to the journal, and Windows discards it.
+    os.environ.setdefault("LOG_FILE", str(SERVICE_LOG_PATH))
     port = int(os.environ["SUZENT_PORT"])
 
     lock = ServiceInstanceLock(port=port)

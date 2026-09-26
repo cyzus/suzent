@@ -6,7 +6,10 @@ from types import SimpleNamespace
 import pytest
 
 from suzent.database.search import sanitize_messages
-from suzent.tools.session_search_tool import SessionSearchTool, _parse_role_filter
+from suzent.tools.recall.session_search_tool import (
+    SessionSearchTool,
+    _parse_role_filter,
+)
 
 
 @pytest.fixture
@@ -218,7 +221,9 @@ def _ctx(db, chat_id=""):
 
 @pytest.fixture
 def tool_db(db, monkeypatch):
-    monkeypatch.setattr("suzent.tools.session_search_tool.get_database", lambda: db)
+    monkeypatch.setattr(
+        "suzent.tools.recall.session_search_tool.get_database", lambda: db
+    )
     return db
 
 

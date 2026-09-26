@@ -1,0 +1,82 @@
+from typing import Annotated, Literal, Optional
+
+from pydantic import Field
+from pydantic_ai import RunContext
+
+from suzent.core.agent_deps import AgentDeps
+from suzent.database import get_database
+from suzent.logger import get_logger
+from suzent.tools.base import Tool, ToolGroup, ToolResult
+from suzent.tools.tasks.project_scope import require_project_id
+
+logger = get_logger(__name__)
+
+
+class TaskListTool(Tool):
+    name: str = "TaskListTool"
+    tool_name: str = "list_tasks"
+    group: ToolGroup = ToolGroup.TASKS
+
+    def forward(
+        self,
+        ctx: RunContext[AgentDeps],
+        status: Annotated[
+            Optional[
+                Literal["pending", "in_progress", "completed", "blocked", "cancelled"]
+            ],
+            Field(
+                description=(
+                    "Return only tasks in this status. 'blocked' is derived "
+                    "(pending with a non-empty blocked_by), not a stored status."
+                )
+            ),
+        ] = None,
+        assignee: Annotated[
+            str | None,
+            Field(description="Filter by agent ID or 'main'."),
+        ] = None,
+        include_completed: Annotated[
+            bool,
+            Field(description="Include completed tasks, which are omitted by default."),
+        ] = False,
+        include_cancelled: Annotated[
+            bool,
+            Field(description="Include cancelled tasks, which are omitted by default."),
+        ] = False,
+    ) -> ToolResult:
+        project_id, no_project = require_project_id(ctx)
+        if no_project:
+            return no_project
+        db = get_database()
+        # "blocked" is a derived status (pending + non-empty blocked_by), not stored in DB
+        db_status = None if status == "blocked" else status
+        tasks = db.list_tasks(
+            project_id=project_id,
+            status=db_status,
+            assignee=assignee,
+            include_completed=include_completed,
+            include_cancelled=include_cancelled,
+        )
+        if status == "blocked":
+            tasks = [t for t in tasks if t.blocked_by]
+        if not tasks:
+            return ToolResult.success_result("No tasks found.")
+
+        lines = ["Tasks:"]
+        for task in tasks:
+            assignee_str = f" ({task.assignee})" if task.assignee else ""
+            blocks_str = (
+                f" blocks: {', '.join(f'#{b}' for b in task.blocks)}"
+                if task.blocks
+                else ""
+            )
+            blocked_by_str = (
+                f" blocked by: {', '.join(f'#{b}' for b in task.blocked_by)}"
+                if task.blocked_by
+                else ""
+            )
+            lines.append(
+                f"  [#{task.id}] {task.title}{assignee_str} — {task.status}{blocks_str}{blocked_by_str}\n"
+                f"    {task.description}"
+            )
+        return ToolResult.success_result("\n".join(lines))

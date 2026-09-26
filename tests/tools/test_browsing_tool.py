@@ -195,6 +195,35 @@ async def test_reload_and_navigation_expire_refs(
     assert fresh.metadata["url"] == "https://browser.test/"
 
 
+async def test_scroll_keeps_refs_while_click_expires_them(
+    browser: BrowserSessionManager,
+) -> None:
+    """Scrolling moves the same nodes, so a snapshot's refs must survive it.
+
+    The page actions share one wrapper, and which of them bump the snapshot
+    generation is a per-action decision -- scroll is the only one that does not.
+    """
+    await browser._page.set_content(
+        "<title>Scroll fixture</title>"
+        "<button>Top</button>"
+        "<div style='height:3000px'></div>"
+        "<button>Bottom</button>"
+    )
+    await browser.get_snapshot()
+    ref = next(iter(browser._selector_map))
+    generation = browser._snapshot_generation
+
+    await browser.scroll(0, 500)
+    assert browser._snapshot_generation == generation
+    assert (await browser.interact("click", ref)).success
+
+    await browser.get_snapshot()
+    ref = next(iter(browser._selector_map))
+    await browser.click(5, 5)
+    assert browser._snapshot_generation > generation
+    assert not (await browser.interact("click", ref)).success
+
+
 async def test_default_dialog_does_not_block(browser: BrowserSessionManager) -> None:
     await browser._page.set_content("<button onclick=\"alert('hello')\">Alert</button>")
     await browser.get_snapshot()

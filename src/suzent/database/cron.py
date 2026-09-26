@@ -26,14 +26,31 @@ class CronOperationsMixin:
     def create_cron_job(
         self,
         name: str,
-        cron_expr: str,
-        prompt: str,
+        cron_expr: str = "",
+        prompt: str = "",
         active: bool = True,
         delivery_mode: str = "announce",
         model_override: Optional[str] = None,
+        *,
+        schedule_kind: str = "cron",
+        interval_minutes: Optional[int] = None,
+        run_at: Optional[datetime] = None,
+        timezone: Optional[str] = None,
+        jitter_seconds: int = 0,
+        catch_up: str = "skip",
+        chat_id: Optional[str] = None,
+        context_mode: Optional[str] = None,
+        suppress_ok: bool = False,
+        source: str = "user",
     ) -> int:
-        """Create a new cron job and return its ID."""
+        """Create a scheduled task and return its ID.
+
+        ``context_mode`` defaults to ``bound`` whenever a ``chat_id`` is given,
+        so callers that only pass a chat get the behaviour they expect.
+        """
         now = datetime.now()
+        if context_mode is None:
+            context_mode = "bound" if chat_id else "isolated"
         job = CronJobModel(
             name=name,
             cron_expr=cron_expr,
@@ -41,6 +58,16 @@ class CronOperationsMixin:
             active=active,
             delivery_mode=delivery_mode,
             model_override=model_override,
+            schedule_kind=schedule_kind,
+            interval_minutes=interval_minutes,
+            run_at=run_at,
+            timezone=timezone,
+            jitter_seconds=jitter_seconds,
+            catch_up=catch_up,
+            chat_id=chat_id,
+            context_mode=context_mode,
+            suppress_ok=suppress_ok,
+            source=source,
             created_at=now,
             updated_at=now,
         )
@@ -49,6 +76,33 @@ class CronOperationsMixin:
             session.commit()
             session.refresh(job)
             return job.id
+
+    def list_cron_jobs_for_chat(
+        self, chat_id: str, active_only: bool = False
+    ) -> List[CronJobModel]:
+        """List scheduled tasks bound to a specific chat."""
+        with self._session() as session:
+            statement = (
+                select(CronJobModel)
+                .where(CronJobModel.chat_id == chat_id)
+                .order_by(CronJobModel.created_at.desc())
+            )
+            if active_only:
+                statement = statement.where(CronJobModel.active.is_(True))
+            return session.exec(statement).all()
+
+    def find_cron_job_by_source(
+        self, source: str, chat_id: str
+    ) -> Optional[CronJobModel]:
+        """Find the task a given subsystem owns for a chat (e.g. heartbeat)."""
+        with self._session() as session:
+            statement = (
+                select(CronJobModel)
+                .where(CronJobModel.source == source)
+                .where(CronJobModel.chat_id == chat_id)
+                .order_by(CronJobModel.id)
+            )
+            return session.exec(statement).first()
 
     def update_cron_job(self, job_id: int, **kwargs) -> bool:
         """Update a cron job's configuration fields."""
@@ -83,11 +137,15 @@ class CronOperationsMixin:
         last_error: Optional[str] = None,
         retry_count: Optional[int] = None,
         clear_error: bool = False,
+        clear_next_run: bool = False,
     ) -> bool:
         """Update cron job run metadata (used by scheduler).
 
         Pass clear_error=True on a successful run to wipe any stale error from a
         previous failed run; otherwise last_error is left untouched when None.
+
+        Pass clear_next_run=True to disarm the task -- a one-shot does this as
+        it starts, so a tick during the run cannot fire it a second time.
         """
         with self._session() as session:
             job = session.get(CronJobModel, job_id)
@@ -95,7 +153,9 @@ class CronOperationsMixin:
                 return False
             if last_run_at is not None:
                 job.last_run_at = last_run_at
-            if next_run_at is not None:
+            if clear_next_run:
+                job.next_run_at = None
+            elif next_run_at is not None:
                 job.next_run_at = next_run_at
             if last_result is not None:
                 job.last_result = last_result[:2000]

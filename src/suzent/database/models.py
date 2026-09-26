@@ -44,6 +44,7 @@ class ChatSummaryModel(BaseModel):
     title: str
     createdAt: str
     updatedAt: str
+    pinned: bool = False
     messageCount: int
     lastMessage: Optional[str] = None
     platform: Optional[str] = None
@@ -88,6 +89,7 @@ class ChatModel(SQLModel, table=True):
 
     id: str = Field(primary_key=True)
     title: str
+    pinned: bool = Field(default=False)
     created_at: datetime = Field(serialization_alias="createdAt")
     updated_at: datetime = Field(serialization_alias="updatedAt")
     config: dict = Field(default_factory=dict, sa_column=Column(JSON))
@@ -319,18 +321,44 @@ class MemoryConfigModel(SQLModel):
 
 
 class CronJobModel(SQLModel, table=True):
-    """Scheduled cron job for automated task execution."""
+    """A scheduled task: cron, fixed interval, or one-shot.
+
+    The table keeps its legacy ``cron_jobs`` name, but a row is no longer
+    necessarily cron-shaped. ``schedule_kind`` picks how ``next_run_at`` is
+    computed, and ``context_mode`` picks where the turn runs:
+
+    * ``isolated`` -- a dedicated ``cron-{id}`` chat, the original behaviour.
+    * ``bound``    -- an existing chat, so the task sees that conversation.
+
+    Heartbeats are rows too: ``schedule_kind="interval"``, ``context_mode="bound"``,
+    ``suppress_ok=True``, ``source="heartbeat"``.
+    """
 
     __tablename__ = "cron_jobs"
 
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str
-    cron_expr: str
+    # Empty for non-cron kinds; the column is NOT NULL from the original schema.
+    cron_expr: str = Field(default="")
     prompt: str
     active: bool = Field(default=True)
     delivery_mode: str = Field(default="announce")  # "announce" | "none"
     model_override: Optional[str] = None
     retry_count: int = Field(default=0)
+
+    # -- Scheduling ---------------------------------------------------------
+    schedule_kind: str = Field(default="cron")  # "cron" | "interval" | "once"
+    interval_minutes: Optional[int] = None  # schedule_kind == "interval"
+    run_at: Optional[datetime] = None  # schedule_kind == "once"
+    timezone: Optional[str] = None  # IANA name; None = machine local time
+    jitter_seconds: int = Field(default=0)  # random 0..n spread
+    catch_up: str = Field(default="skip")  # "skip" | "run_once" after downtime
+
+    # -- Execution target ---------------------------------------------------
+    chat_id: Optional[str] = Field(default=None, index=True)
+    context_mode: str = Field(default="isolated")  # "isolated" | "bound"
+    suppress_ok: bool = Field(default=False)  # roll back a no-op turn (heartbeat)
+    source: str = Field(default="user")  # "user" | "agent" | "preset" | "heartbeat"
     last_run_at: Optional[datetime] = None
     next_run_at: Optional[datetime] = None
     last_result: Optional[str] = None

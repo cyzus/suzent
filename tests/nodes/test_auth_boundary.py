@@ -242,6 +242,8 @@ def test_query_token_only_for_stream_paths():
 
     assert extract_query_token("/events/stream", b"token=abc") == "abc"
     assert extract_query_token("/subagents/stream", b"x=1&token=abc") == "abc"
+    assert extract_query_token("/background-tasks/stream", b"token=abc") == "abc"
+    assert extract_query_token("/background-tasks", b"token=abc") == ""
     # Everything else must keep using a header, so a token in the query is
     # ignored rather than honoured.
     assert extract_query_token("/config", b"token=abc") == ""

@@ -110,9 +110,117 @@ def test_role_suggestions_keep_unregistered_models_available_as_overrides():
     suggestions = config_routes._build_role_suggestions(
         FakeRegistry(),
         ["openai/gpt-4.1-vision", "custom/new-model"],
+        {"openai", "custom"},
     )
+
+    for role in (
+        "title",
+        "memory_extraction",
+        "decision",
+        "goal_judge",
+        "permission_review",
+        "dream",
+    ):
+        assert suggestions[role] == ["openai/gpt-4.1-vision", "custom/new-model"]
 
     assert suggestions["vision"] == ["openai/gpt-4.1-vision"]
     assert suggestions["embedding"] == ["openai/text-embedding-3-small"]
     assert suggestions["tts"] == ["openai/tts-1"]
     assert suggestions["_unregistered"] == ["custom/new-model"]
+
+
+def test_image_edit_suggestions_distinguish_unknown_capabilities():
+    from suzent.core.model_registry import ModelCapabilities
+
+    registry = FakeRegistry()
+    registry._capabilities = {
+        "openai/editor": ModelCapabilities(
+            mode="image_generation", supported_endpoints=("/v1/images/edits",)
+        ),
+        "gemini/unknown-image": ModelCapabilities(mode="image_generation"),
+    }
+    suggestions = config_routes._build_role_suggestions(
+        registry, ["openai/editor", "gemini/unknown-image"], {"openai", "gemini"}
+    )
+    assert suggestions["image_edit"] == ["openai/editor"]
+    assert suggestions["_image_edit_unknown"] == ["gemini/unknown-image"]
+
+
+def test_specialist_suggestions_require_configured_provider():
+    from suzent.core.model_registry import ModelCapabilities
+
+    registry = FakeRegistry()
+    registry._capabilities = {
+        f"{provider}/{mode}": ModelCapabilities(mode=mode)
+        for provider in ("configured", "missing-key")
+        for mode in (
+            "embedding",
+            "tts",
+            "image_generation",
+            "image_edit",
+            "video_generation",
+        )
+    }
+    suggestions = config_routes._build_role_suggestions(
+        registry, ["missing-key/custom", "configured/custom"], {"configured"}
+    )
+    for role in (
+        "embedding",
+        "tts",
+        "image_generation",
+        "image_edit",
+        "video_generation",
+    ):
+        assert suggestions[role] == [f"configured/{role}"]
+    assert suggestions["_unregistered"] == ["configured/custom"]
+    assert suggestions["_image_edit_unknown"] == ["configured/custom"]
+    assert all(
+        not models
+        for models in config_routes._build_role_suggestions(
+            registry, [], set()
+        ).values()
+    )
+
+
+def test_configured_provider_ids_include_aliases_and_require_local_opt_in(monkeypatch):
+    from suzent.core.providers import catalog, helpers
+
+    def spec(name, keyless=False):
+        return SimpleNamespace(
+            id=name,
+            aliases=[name + "-alias"],
+            api_key_optional=keyless,
+            env_keys=[] if keyless else ["TEST_KEY"],
+            api_type="openai",
+        )
+
+    monkeypatch.setattr(
+        catalog,
+        "PROVIDER_REGISTRY",
+        [
+            spec("ready"),
+            spec("missing"),
+            spec("disabled"),
+            spec("local", True),
+            spec("unused-local", True),
+        ],
+    )
+    monkeypatch.setattr(
+        helpers,
+        "resolve_api_key",
+        lambda name: "test-key" if name in {"ready", "disabled"} else None,
+    )
+    monkeypatch.setattr(
+        helpers,
+        "_load_user_provider_config",
+        lambda: {
+            "disabled": {"enabled": False},
+            "local": {"enabled_models": ["local/model"]},
+        },
+    )
+    assert helpers.get_configured_provider_ids() == {
+        "ready",
+        "ready-alias",
+        "local",
+        "local-alias",
+    }

@@ -2,7 +2,9 @@
 
 from typing import Any
 
-from loguru import logger
+from suzent.logger import get_logger
+
+logger = get_logger(__name__)
 
 _PLACEHOLDER_TITLES = frozenset({"", "new chat", "untitled"})
 
@@ -54,7 +56,7 @@ async def generate_auto_title(
 ) -> str | None:
     """Generate a semantic title from the user's first message.
 
-    Uses the ``cheap`` role (lightweight model) via RoleRouter, falling back
+    Uses the ``title`` role (lightweight model) via RoleRouter, falling back
     to legacy config if no role is configured.
     """
     try:
@@ -67,9 +69,9 @@ async def generate_auto_title(
             return None
 
         router = get_role_router()
-        model = router.get_model_id("cheap")
+        model = router.get_model_id("title")
         logger.info(
-            f"[AutoTitle] cheap role model={model!r}, fallback={fallback_model!r}"
+            f"[AutoTitle] title role model={model!r}, fallback={fallback_model!r}"
         )
 
         candidate_models: list[str] = []

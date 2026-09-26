@@ -208,7 +208,8 @@ async def test_target_turn_uses_headless_config_and_delivery_marker(monkeypatch)
 
 
 @pytest.mark.asyncio
-async def test_subagent_result_is_delivered_as_system_reminder(monkeypatch):
+@pytest.mark.parametrize("kind", ["subagent_result", "background_task_result"])
+async def test_subagent_result_is_delivered_as_system_reminder(monkeypatch, kind):
     captured = {}
     target = SimpleNamespace(title="Target", config={"platform": "personal"})
     sender = SimpleNamespace(title="Research agent", config={})
@@ -232,7 +233,7 @@ async def test_subagent_result_is_delivered_as_system_reminder(monkeypatch):
     monkeypatch.setattr("suzent.core.stream_registry.stream_controls", {})
 
     message = _message()
-    message["kind"] = "subagent_result"
+    message["kind"] = kind
     await AgentInboxDispatcher()._run_target_turn(message)
 
     assert captured["message_content"] == ""

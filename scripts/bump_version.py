@@ -587,6 +587,21 @@ def main() -> int:
     root = Path(__file__).resolve().parent.parent
     current_version = get_current_version(root)
 
+    if (
+        (root / ".releases/config.json").exists()
+        and not args.changelog
+        and (
+            args.version
+            or args.reconcile_version
+            or args.refresh_changelog
+            or args.suggest_bump
+        )
+    ):
+        parser.error(
+            "Use scripts/release_plan.py plan/apply/override for product releases. "
+            "bump_version.py remains the desktop version validator."
+        )
+
     if args.print_version:
         print(current_version)
         return 0
@@ -599,9 +614,7 @@ def main() -> int:
         subjects = [line.strip() for line in log.stdout.splitlines() if line.strip()]
         unreadable = audit_commit_subjects(subjects)
         for subject in unreadable:
-            print(
-                f"::warning::Unrecognized commit prefix, earns no version bump: {subject}"
-            )
+            print(f"::warning::Unrecognized Conventional Commit prefix: {subject}")
         print(f"{len(subjects) - len(unreadable)}/{len(subjects)} commit(s) readable")
         return 0
     if args.suggest_bump:

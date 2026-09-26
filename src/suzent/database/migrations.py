@@ -18,6 +18,22 @@ class DatabaseMigrationMixin:
         """Run database migrations for new columns."""
         inspector = inspect(self.engine)
 
+        if "chats" in inspector.get_table_names():
+            columns = {col["name"] for col in inspector.get_columns("chats")}
+            if "pinned" not in columns:
+                with self.engine.begin() as conn:
+                    conn.execute(
+                        text(
+                            "ALTER TABLE chats ADD COLUMN pinned BOOLEAN NOT NULL DEFAULT 0"
+                        )
+                    )
+                    conn.execute(
+                        text(
+                            "UPDATE projects SET name = 'Home' "
+                            "WHERE slug = 'default' AND name = 'Default'"
+                        )
+                    )
+
         # Migration: Add 'headers' column to 'mcp_servers' table
         if "mcp_servers" in inspector.get_table_names():
             columns = [col["name"] for col in inspector.get_columns("mcp_servers")]
@@ -40,6 +56,34 @@ class DatabaseMigrationMixin:
                     )
                 if "is_heartbeat" in columns:
                     conn.execute(text("ALTER TABLE cron_jobs DROP COLUMN is_heartbeat"))
+
+                # Migration: cron_jobs becomes the unified scheduled-task table.
+                # A task can now bind to an existing chat, run on a fixed
+                # interval or once, and carry timezone/jitter/catch-up policy.
+                # Defaults reproduce the previous cron-only behaviour exactly.
+                for column, ddl in (
+                    ("schedule_kind", "TEXT DEFAULT 'cron'"),
+                    ("interval_minutes", "INTEGER"),
+                    ("run_at", "DATETIME"),
+                    ("timezone", "TEXT"),
+                    ("jitter_seconds", "INTEGER DEFAULT 0"),
+                    ("catch_up", "TEXT DEFAULT 'skip'"),
+                    ("chat_id", "TEXT"),
+                    ("context_mode", "TEXT DEFAULT 'isolated'"),
+                    ("suppress_ok", "BOOLEAN DEFAULT 0"),
+                    ("source", "TEXT DEFAULT 'user'"),
+                ):
+                    if column not in columns:
+                        conn.execute(
+                            text(f"ALTER TABLE cron_jobs ADD COLUMN {column} {ddl}")
+                        )
+                if "chat_id" not in columns:
+                    conn.execute(
+                        text(
+                            "CREATE INDEX IF NOT EXISTS ix_cron_jobs_chat_id "
+                            "ON cron_jobs(chat_id)"
+                        )
+                    )
                 conn.commit()
 
         # Migration: goals gain a generation counter so a replacement can be

@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  SpeakerWaveIcon,
   AdjustmentsHorizontalIcon,
   BoltIcon,
   ChartBarIcon,
@@ -28,6 +29,7 @@ import { isWeb } from '../../lib/runtime';
 export type SettingsCategory =
   | 'providers'
   | 'roles'
+  | 'audio'
   | 'memory'
   | 'automation'
   | 'social'
@@ -47,6 +49,7 @@ export type SettingsCategory =
 export const SETTINGS_CATEGORY_IDS: readonly SettingsCategory[] = [
   'providers',
   'roles',
+  'audio',
   'memory',
   'automation',
   'social',
@@ -84,6 +87,7 @@ const ALL_CATEGORY_GROUPS: CategoryGroup[] = [
     categories: [
       { id: 'providers', labelKey: 'settings.categories.providers', icon: ServerStackIcon },
       { id: 'roles', labelKey: 'settings.categories.roles', icon: AdjustmentsHorizontalIcon },
+      { id: 'audio', labelKey: 'speech.title', icon: SpeakerWaveIcon },
       { id: 'memory', labelKey: 'settings.categories.memory', icon: CircleStackIcon },
       { id: 'automation', labelKey: 'settings.categories.automation', icon: ClockIcon },
     ],

@@ -131,6 +131,24 @@ def _make_tool(
 
     wrapper.__name__ = tool_cls.tool_name
 
+    # The model-facing description comes from this docstring, and
+    # ``functools.wraps`` copies the *raw* ``__doc__`` -- None whenever
+    # ``forward()`` declares no docstring of its own. Fourteen tools reached the
+    # model with no description at all that way, ten of them in the ToolSearch
+    # pool, where a tool is found by its name and description.
+    #
+    # The catalog text fills the gap, because it is what the tool picker already
+    # shows and it is per-tool. An inherited ``forward()`` docstring is not used:
+    # the shell tools share one backend, whose docstring says a command "returns
+    # its output" -- true of ``run_command``, wrong for ``start_command``, which
+    # returns a process id.
+    #
+    # Only the gap is filled. The catalog text is a single line, so overwriting a
+    # docstring that is already there would throw away the detail the other
+    # seventeen tools carry.
+    if not wrapper.__doc__:
+        wrapper.__doc__ = _tool_description(tool_cls)
+
     if tool_cls.requires_approval or defer_loading:
         prepare = None
         if defer_loading:
@@ -166,8 +184,14 @@ def _make_tool(
 _REGISTRY: Optional[Dict[str, Union[Callable, PydanticTool]]] = None
 
 
-def _all_tool_classes() -> list:
-    """Import and return all tool classes in display order."""
+@functools.cache
+def _all_tool_classes() -> tuple:
+    """Import and return all tool classes in display order.
+
+    Cached: the list is fixed once the process has imported it, and
+    ``get_tool_class_name`` runs per discovered tool on the streaming path, so
+    rebuilding it per call was pure overhead.
+    """
     from suzent.tools.filesystem import (
         ReadFileTool,
         WriteFileTool,
@@ -183,29 +207,32 @@ def _all_tool_classes() -> list:
     )
     from suzent.tools.webpage_tool import WebpageTool
     from suzent.tools.websearch_tool import WebSearchTool
-    from suzent.tools.goal_tool import GoalTool
-    from suzent.tools.task_create_tool import TaskCreateTool
-    from suzent.tools.task_update_tool import TaskUpdateTool
-    from suzent.tools.task_list_tool import TaskListTool
+    from suzent.tools.tasks import GoalTool
+    from suzent.tools.tasks import TaskCreateTool
+    from suzent.tools.tasks import TaskUpdateTool
+    from suzent.tools.tasks import TaskListTool
+    from suzent.tools.schedule_tool import ScheduleTool
     from suzent.tools.browser.tool import BrowsingTool
     from suzent.tools.skill_tool import SkillTool
     from suzent.tools.social_message_tool import SocialMessageTool
-    from suzent.tools.voice_tool import SpeakTool
-    from suzent.tools.image_generation_tool import ImageGenerationTool
-    from suzent.tools.image_vision_tool import ImageVisionTool
-    from suzent.tools.memory_tools import MemorySearchTool
-    from suzent.tools.session_search_tool import SessionSearchTool
+    from suzent.tools.creative.voice_tool import SpeakTool
+    from suzent.tools.creative.video_tool import VideoGenerationTool, VideoStatusTool
+    from suzent.tools.creative.image_generation_tool import ImageGenerationTool
+    from suzent.tools.creative.image_edit_tool import ImageEditTool
+    from suzent.tools.creative.image_vision_tool import ImageVisionTool
+    from suzent.tools.recall import MemorySearchTool
+    from suzent.tools.recall import SessionSearchTool
     from suzent.tools.render_ui_tool import RenderUITool
     from suzent.tools.ask_question_tool import AskQuestionTool
-    from suzent.tools.agent_tool import AgentTool
-    from suzent.tools.agent_lifecycle_tools import (
+    from suzent.tools.agents import AgentTool
+    from suzent.tools.agents import (
         AgentListTool,
         AgentReadTool,
         AgentSendTool,
         AgentStopTool,
     )
 
-    return [
+    return (
         ReadFileTool,
         WriteFileTool,
         EditFileTool,
@@ -223,8 +250,12 @@ def _all_tool_classes() -> list:
         TaskCreateTool,
         TaskUpdateTool,
         TaskListTool,
+        ScheduleTool,
         RenderUITool,
+        VideoGenerationTool,
+        VideoStatusTool,
         ImageGenerationTool,
+        ImageEditTool,
         ImageVisionTool,
         SpeakTool,
         SocialMessageTool,
@@ -236,7 +267,7 @@ def _all_tool_classes() -> list:
         AgentReadTool,
         AgentSendTool,
         AgentStopTool,
-    ]
+    )
 
 
 CAPABILITY_DESCRIPTIONS = {
@@ -244,23 +275,28 @@ CAPABILITY_DESCRIPTIONS = {
     "Shell": "Run bounded commands and control long-running background processes.",
     "Web": "Search the web, retrieve pages, and interact with browser-based content.",
     "Tasks & goals": "Plan durable goals and track structured project tasks.",
-    "Agent": "Ask questions, render interfaces, and delegate bounded sub-agent work.",
+    "Orchestration": "Load skills and delegate bounded work to sub-agents.",
+    "Interaction": "Ask the user a question and render interfaces in the chat.",
     "Creative": "Generate, inspect, speak, or share rich media and social content.",
     "Memory & recall": "Search durable memory and retrieve relevant past sessions.",
 }
 
 TOOL_DESCRIPTION_OVERRIDES = {
+    "SkillTool": "Load a skill's instructions before starting work the skill covers.",
     "BrowsingTool": "Open and interact with browser pages, including navigation, clicks, forms, and screenshots.",
     "AskQuestionTool": "Pause execution to ask the user a focused question when their input is required.",
     "GoalTool": "Create, inspect, and complete a durable goal that can continue across agent turns.",
     "TaskCreateTool": "Create structured project tasks with dependencies, assignees, and progress metadata.",
     "TaskUpdateTool": "Update the status, ownership, description, or dependencies of an existing task.",
     "TaskListTool": "List project tasks and their current status, ownership, and dependency relationships.",
+    "ScheduleTool": "Schedule a later turn in this conversation, on a delay, an interval, or a cron expression.",
     "AgentListTool": "List local project agents and paired remote Suzent agents.",
     "AgentReadTool": "Read an accessible agent session's bounded visible transcript.",
     "AgentSendTool": "Durably send a message to another agent session and wake it.",
     "AgentStopTool": "Stop an active local or paired remote agent session.",
     "RenderUITool": "Render an interactive interface such as a form, table, card, or action panel.",
+    "VideoGenerationTool": "Generate a video from text or a reference image and return a persistent job ID.",
+    "VideoStatusTool": "Check a video job and save its completed video to the conversation.",
     "SpeakTool": "Convert a response to speech and return playable audio to the conversation.",
     "SocialMessageTool": "Send a message through a configured social channel after approval.",
 }
@@ -298,6 +334,11 @@ def get_tool_capabilities() -> List[Dict[str, object]]:
                 "description": _tool_description(cls),
                 "runtimeName": cls.tool_name,
                 "requiresApproval": bool(cls.requires_approval),
+                "builtin": bool(getattr(cls, "builtin", False)),
+                # Unchecking a deferrable tool demotes it to the ToolSearch pool
+                # rather than denying it, so the picker has to say which of the
+                # two an empty checkbox means.
+                "deferrable": bool(getattr(cls, "deferrable", True)),
             }
         )
     return [
@@ -309,6 +350,16 @@ def get_tool_capabilities() -> List[Dict[str, object]]:
         }
         for label, tools in capabilities.items()
     ]
+
+
+def get_builtin_tool_names() -> List[str]:
+    """Registry keys of the tools the user cannot turn off.
+
+    Read off the classes rather than the ``BUILTIN_TOOL_NAMES`` constant, so a
+    tool that sets ``builtin = True`` is honoured even before the import-light
+    copy in ``names`` catches up.
+    """
+    return [cls.name for cls in _all_tool_classes() if getattr(cls, "builtin", False)]
 
 
 def group_tools_by_capability(tool_names: List[str]) -> Dict[str, List[str]]:
@@ -377,20 +428,24 @@ def get_deferred_tool_functions(exclude: set[str]) -> list[PydanticTool]:
     return tools
 
 
+@functools.cache
+def _name_indexes() -> tuple[Dict[str, str], Dict[str, str]]:
+    """``(runtime name -> class name, class name -> runtime name)``."""
+    classes = _all_tool_classes()
+    return (
+        {cls.tool_name: cls.name for cls in classes},
+        {cls.name: cls.tool_name for cls in classes},
+    )
+
+
 def get_tool_class_name(runtime_name: str) -> Optional[str]:
     """Resolve a model-facing function name to its Suzent tool class name."""
-    for cls in _all_tool_classes():
-        if cls.tool_name == runtime_name:
-            return cls.name
-    return None
+    return _name_indexes()[0].get(runtime_name)
 
 
 def get_tool_runtime_name(class_name: str) -> Optional[str]:
     """Resolve a Suzent tool class name to its model-facing function name."""
-    for cls in _all_tool_classes():
-        if cls.name == class_name:
-            return cls.tool_name
-    return None
+    return _name_indexes()[1].get(class_name)
 
 
 def list_available_tools() -> List[str]:

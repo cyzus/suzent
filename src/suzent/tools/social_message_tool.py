@@ -117,7 +117,6 @@ class SocialMessageTool(Tool):
         message: Annotated[
             Optional[str],
             Field(
-                default=None,
                 description=(
                     "Intermediate progress update or deliberate outbound message. "
                     "When handling an inbound social conversation, return the final answer "
@@ -129,21 +128,18 @@ class SocialMessageTool(Tool):
         channel: Annotated[
             Optional[str],
             Field(
-                default=None,
                 description="Destination platform such as telegram, slack, discord, feishu, or wechat.",
             ),
         ] = None,
         recipient: Annotated[
             Optional[str],
             Field(
-                default=None,
                 description="Recipient or chat identifier on the selected platform.",
             ),
         ] = None,
         list_contacts: Annotated[
             Optional[bool],
             Field(
-                default=None,
                 description="Set to true to list available channels and known contacts instead of sending a message.",
             ),
         ] = None,

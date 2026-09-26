@@ -6,7 +6,7 @@ import sys
 from abc import ABC, abstractmethod
 from pathlib import Path
 
-from suzent.config import RUNTIME_DIR
+from suzent.config import SERVICE_LOG_PATH
 
 SERVICE_DESCRIPTION = "Suzent Background Service"
 
@@ -20,7 +20,7 @@ class PlatformServiceManager(ABC):
 
     @property
     def log_path(self) -> Path:
-        return RUNTIME_DIR / "server.log"
+        return SERVICE_LOG_PATH
 
     @property
     def runtime_arguments(self) -> list[str]:

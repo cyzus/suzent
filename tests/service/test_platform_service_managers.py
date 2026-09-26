@@ -25,6 +25,10 @@ def test_linux_unit_is_user_level_and_restarts_on_failure(tmp_path, monkeypatch)
     assert "Restart=on-failure" in unit
     assert "TimeoutStopSec=15" in unit
     assert "suzent.service.runtime" in unit
+    # Without this the console's log viewer is empty on the platform it was
+    # written for: systemd sends stdout to the journal, which it cannot read.
+    assert f"StandardOutput=append:{manager.log_path}" in unit
+    assert f"StandardError=append:{manager.log_path}" in unit
     assert calls == [("daemon-reload",), ("enable", "suzent.service")]
 
 

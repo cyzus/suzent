@@ -72,9 +72,15 @@ class ToolCapability(str, Enum):
     SHELL = "Shell"
     WEB = "Web"
     TASKS = "Tasks & goals"
-    AGENT = "Agent"
+    ORCHESTRATION = "Orchestration"
+    INTERACTION = "Interaction"
     CREATIVE = "Creative"
     MEMORY = "Memory & recall"
+
+    # Deprecated: the old "Agent" capability mixed delegation with talking to the
+    # user. It stays as an alias so third-party tools that set ``ToolGroup.AGENT``
+    # keep working -- they land in Orchestration.
+    AGENT = "Orchestration"
 
 
 # Compatibility alias for existing tool implementations and third-party tools.
@@ -111,6 +117,10 @@ class ToolErrorCode(Enum):
     # Input validation errors
     INVALID_ARGUMENT = "invalid_argument"
     MISSING_REQUIRED_PARAM = "missing_required_param"
+
+    # A named record the tool was asked to act on does not exist. Distinct from
+    # FILE_NOT_FOUND, which is about a path on disk.
+    NOT_FOUND = "not_found"
 
     # Generic fallback
     UNKNOWN_ERROR = "unknown_error"
@@ -180,6 +190,7 @@ class Tool:
     display_name: Optional[str] = None
     description: Optional[str] = None
     requires_approval: bool = False
+    builtin: bool = False  # True = always equipped; the user cannot turn it off
     deferrable: bool = True  # False = never goes into the activatable pool
     session_guidance: Optional[str] = None
     guidance_priority: int = 100
@@ -195,17 +206,12 @@ class Tool:
     @staticmethod
     def is_tool_denied(deps: Any, tool_name: str) -> Optional[str]:
         """Return a denial reason when policy explicitly blocks a tool."""
+        from suzent.tools.names import policy_alias_names
+
         policy = getattr(deps, "tool_approval_policy", {}) or {}
-        aliases = [tool_name]
-        if tool_name == "run_command":
-            aliases.extend(["RunCommandTool", "ShellTool"])
-        elif tool_name == "start_command":
-            aliases.extend(["StartCommandTool", "ShellTool"])
-        elif tool_name == "check_command":
-            aliases.append("CheckCommandTool")
-        elif tool_name == "stop_command":
-            aliases.append("StopCommandTool")
-        if any(policy.get(name) == "always_deny" for name in aliases):
+        if any(
+            policy.get(name) == "always_deny" for name in policy_alias_names(tool_name)
+        ):
             return f"Tool '{tool_name}' is denied by policy"
         return None
 

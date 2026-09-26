@@ -258,13 +258,13 @@ def _resolve_resume_approval_actions(
             # response is already a committed StreamingResponse, so raising
             # here would abort the connection mid-stream with no error event.
             # Skip the already-resolved approval instead.
-            logger.info("Skipping unknown or stale approval request: %s", approval_id)
+            logger.info("Skipping unknown or stale approval request: {}", approval_id)
             continue
 
         decision = pending_request.get("decision")
         if not isinstance(decision, dict):
             logger.warning(
-                "Approval request has no decision contract, skipping: %s",
+                "Approval request has no decision contract, skipping: {}",
                 approval_id,
             )
             continue
@@ -1089,8 +1089,15 @@ class ChatProcessor:
         deferred_tool_results = None
         permission_resolutions: list[dict[str, Any]] = []
         if resume_approvals:
+            from pydantic_ai.messages import ToolCallPart
             from pydantic_ai.tools import DeferredToolResults
 
+            tool_names = {
+                part.tool_call_id: part.tool_name
+                for message in message_history or []
+                for part in message.parts
+                if isinstance(part, ToolCallPart)
+            }
             resume_approvals = _resolve_resume_approval_actions(
                 chat_id, resume_approvals
             )
@@ -1119,6 +1126,7 @@ class ChatProcessor:
                     permission_resolutions.append(
                         {
                             "toolCallId": str(tool_call_id),
+                            "toolName": tool_names.get(tool_call_id, ""),
                             "behavior": "allow" if app.get("approved") else "deny",
                             "source": "user",
                             "actionId": str(app.get("action_id") or "legacy"),
@@ -3223,10 +3231,13 @@ def _append_inline_a2ui_surfaces(
     if not inline_a2ui_surfaces:
         return display_messages
 
+    # Deferred surfaces (ask_question) are transient — the agent blocks on them
+    # and the frontend removes them once answered. Writing one into the display
+    # log makes the answered question reappear when the turn is reloaded.
     surfaces = [
         surface
         for surface in inline_a2ui_surfaces.values()
-        if isinstance(surface, dict)
+        if isinstance(surface, dict) and not surface.get("deferred")
     ]
     if not surfaces:
         return display_messages

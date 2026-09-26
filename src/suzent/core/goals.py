@@ -130,7 +130,7 @@ async def judge_goal(
     from suzent.core.role_router import get_role_router
     from suzent.llm import LLMClient
 
-    model = get_role_router().get_model_id("cheap")
+    model = get_role_router().get_model_id("goal_judge")
     if not model:
         logger.warning("[goal] no judge model configured; failing open (continue)")
         return "continue", "no judge model configured", True
@@ -327,7 +327,7 @@ async def maybe_continue_goal(
             notify_goal(
                 chat_id,
                 "⏸ Goal paused — the judge model returned unparseable verdicts "
-                f"{count}× in a row. Configure a stronger 'cheap' model, then "
+                f"{count}× in a row. Configure a stronger 'goal_judge' or 'decision' model, then "
                 "/goal resume.",
             )
             return

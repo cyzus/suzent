@@ -120,6 +120,7 @@ export interface Chat {
 }
 
 export interface ChatSummary {
+  pinned?: boolean;
   id: string;
   title: string;
   createdAt: string;
@@ -200,6 +201,7 @@ export interface ConfigOptions {
   agents: string[];
   tools: string[]; // full list of tool options
   defaultTools: string[]; // default enabled tools
+  builtinTools?: string[]; // always equipped; the picker shows these locked on
   toolCapabilities?: ToolCapabilityOption[];
   codeTag: string; // CODE_TAG (e.g. <code>) so frontend can parse blocks consistently
   userId?: string; // backend-provided user identifier for memory system alignment
@@ -228,6 +230,13 @@ export interface ToolOption {
   description: string;
   runtimeName: string;
   requiresApproval: boolean;
+  /** Always equipped — the picker renders it checked and non-interactive. */
+  builtin?: boolean;
+  /**
+   * Unchecked, a deferrable tool stays in the ToolSearch pool: the agent can
+   * still find and load it mid-task. A non-deferrable one is genuinely off.
+   */
+  deferrable?: boolean;
 }
 
 export interface ToolCapabilityOption {

@@ -436,25 +436,43 @@
       "supports_prompt_caching": true
     },
     "xai/grok-imagine-image": {
-      "mode": "image_generation"
+      "mode": "image_generation",
+      "supported_endpoints": [
+        "/v1/images/generations"
+      ]
     },
     "xai/grok-imagine-image-2026-03-02": {
-      "mode": "image_generation"
+      "mode": "image_generation",
+      "supported_endpoints": [
+        "/v1/images/generations"
+      ]
     },
     "xai/grok-imagine-image-quality": {
-      "mode": "image_generation"
+      "mode": "image_generation",
+      "supported_endpoints": [
+        "/v1/images/generations"
+      ]
     },
     "xai/grok-imagine-image-quality-20260403": {
-      "mode": "image_generation"
+      "mode": "image_generation",
+      "supported_endpoints": [
+        "/v1/images/generations"
+      ]
     },
     "xai/grok-imagine-image-quality-latest": {
-      "mode": "image_generation"
+      "mode": "image_generation",
+      "supported_endpoints": [
+        "/v1/images/generations"
+      ]
     },
     "xai/grok-imagine-image-pro": {
       "mode": "image_generation"
     },
     "xai/grok-imagine-image-2.0": {
-      "mode": "image_generation"
+      "mode": "image_generation",
+      "supported_endpoints": [
+        "/v1/images/generations"
+      ]
     },
     "xai/grok-4.20-non-reasoning": {
       "mode": "chat",

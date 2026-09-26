@@ -47,7 +47,8 @@ class QuestionItem(BaseModel):
 class AskQuestionTool(Tool):
     name = "AskQuestionTool"
     tool_name = "ask_question"
-    group = ToolGroup.AGENT
+    group = ToolGroup.INTERACTION
+    builtin = True
     requires_approval = False
     session_guidance = (
         "Use AskQuestionTool for clarification, or genuine blockers after investigation, not as "
@@ -66,9 +67,7 @@ class AskQuestionTool(Tool):
         ],
         surface_id: Annotated[
             str,
-            Field(
-                default="", description="Stable surface id; auto-generated if omitted."
-            ),
+            Field(description="Stable surface id; auto-generated if omitted."),
         ] = "",
     ) -> ToolResult:
         """Ask the user one or more questions as an interactive inline surface.

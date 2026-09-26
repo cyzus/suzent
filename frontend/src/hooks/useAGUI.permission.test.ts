@@ -133,3 +133,79 @@ it('does not restore an already answered inline form from a snapshot', () => {
   ).parts;
   expect(resolved).toEqual([]);
 });
+
+it('restores an unanswered inline form from a snapshot, still routed to /answer', () => {
+  // Reloading mid-question replays the run from seq 0, so the pending surface
+  // comes back through this same reducer. onMarkDeferred has to fire again:
+  // it is what keeps the answer going to /canvas/{chat}/answer instead of
+  // opening a new turn through /canvas/{chat}/action.
+  const deferred: string[] = [];
+  const restored = processEvent(
+    {
+      type: 'CUSTOM',
+      data: { name: 'a2ui.render', value: { id: 'form', target: 'inline', deferred: true } },
+    },
+    [],
+    undefined,
+    (surfaceId) => deferred.push(surfaceId)
+  ).parts;
+
+  expect(restored).toHaveLength(1);
+  expect(restored[0].surface?.id).toBe('form');
+  expect(deferred).toEqual(['form']);
+});
+
+it.each([
+  { type: 'TOOL_CALL_START', data: { toolCallId: 'call-1', toolCallName: 'BashTool' } },
+  {
+    type: 'CUSTOM',
+    data: {
+      name: 'tool_approval_request',
+      value: { toolCallId: 'call-1', toolName: 'BashTool', approvalId: 'approval-1' },
+    },
+  },
+  {
+    type: 'CUSTOM',
+    data: {
+      name: 'tool_approval_result',
+      value: { toolCallId: 'call-1', toolName: 'BashTool', status: 'executed', output: 'ok' },
+    },
+  },
+  {
+    type: 'CUSTOM',
+    data: {
+      name: 'tool_permission_resolution',
+      value: { toolCallId: 'call-1', toolName: 'BashTool', behavior: 'allow' },
+    },
+  },
+])('restores the tool name after a resolution created a placeholder: $type $data.name', (event) => {
+  const seed = processEvent(
+    {
+      type: 'CUSTOM',
+      data: {
+        name: 'tool_permission_resolution',
+        value: { toolCallId: 'call-1', behavior: 'allow' },
+      },
+    },
+    []
+  ).parts;
+  const result = processEvent(event, seed).parts;
+  expect(result).toHaveLength(1);
+  expect(result[0].toolName).toBe('BashTool');
+  expect(result[0].permissionResolution?.behavior).toBe('allow');
+});
+
+it('shows the resolved tool name immediately without an earlier tool start', () => {
+  const result = processEvent(
+    {
+      type: 'CUSTOM',
+      data: {
+        name: 'tool_permission_resolution',
+        value: { toolCallId: 'call-1', toolName: 'BashTool', behavior: 'allow' },
+      },
+    },
+    []
+  ).parts;
+  expect(result[0].toolName).toBe('BashTool');
+  expect(result[0].state).toBe('running');
+});

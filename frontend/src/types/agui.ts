@@ -98,6 +98,7 @@ export interface ToolPermissionDecision {
 
 export interface ToolPermissionResolution {
   toolCallId: string;
+  toolName?: string;
   behavior: 'allow' | 'deny';
   source: 'user';
   actionId: string;

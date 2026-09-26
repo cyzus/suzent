@@ -38,6 +38,7 @@ class GrepTool(Tool):
     name = "GrepTool"
     tool_name = "grep_search"
     group = ToolGroup.FILESYSTEM
+    builtin = True
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -57,28 +58,24 @@ class GrepTool(Tool):
         path: Annotated[
             Optional[str],
             Field(
-                default=None,
                 description="Optional file or directory search root. Leave empty to search the current workspace root.",
             ),
         ] = None,
         include: Annotated[
             Optional[str],
             Field(
-                default=None,
                 description="Optional glob filter for files to include, such as '*.py' or '*.{js,ts}'.",
             ),
         ] = None,
         case_insensitive: Annotated[
             Optional[bool],
             Field(
-                default=None,
                 description="Set to true for case-insensitive regex matching.",
             ),
         ] = None,
         context_lines: Annotated[
             Optional[int],
             Field(
-                default=None,
                 ge=0,
                 description="Number of surrounding lines to include around each match.",
             ),

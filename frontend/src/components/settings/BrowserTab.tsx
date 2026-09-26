@@ -12,6 +12,7 @@ import {
 } from '../../lib/browserSettings';
 import { BrutalSelect } from '../BrutalSelect';
 import { BrutalButton } from '../BrutalButton';
+import { RefreshButton } from '../RefreshButton';
 import { SettingsCard, SettingsPage } from './SettingsCard';
 import { BrowserExtensionSetup } from './BrowserExtensionSetup';
 import { SettingsHeader } from './SettingsHeader';
@@ -66,9 +67,12 @@ export function BrowserTab(): React.ReactElement {
         title={t('settings.browser.title')}
         subtitle={t('settings.browser.subtitle')}
         actions={
-          <BrutalButton size="sm" disabled={busy} onClick={() => void load()}>
-            {t('settings.browser.recheck')}
-          </BrutalButton>
+          <RefreshButton
+            disabled={busy}
+            spinning={busy}
+            label={t('settings.browser.recheck')}
+            onClick={() => void load()}
+          />
         }
       />
       {error && <p role="alert">{t('settings.browser.error')}</p>}

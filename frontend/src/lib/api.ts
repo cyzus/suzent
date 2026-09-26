@@ -1330,15 +1330,34 @@ export async function fetchSocialConfig(): Promise<SocialConfig> {
 // Cron Jobs / Automation
 // -----------------------------------------------------------------------------
 
+export type ScheduleKind = 'cron' | 'interval' | 'once';
+export type ContextMode = 'isolated' | 'bound';
+export type TaskSource = 'user' | 'agent' | 'preset' | 'heartbeat';
+
 export interface CronJob {
   id: number;
   name: string;
   cron_expr: string;
   prompt: string;
   active: boolean;
-  delivery_mode: 'announce' | 'none';
+  delivery_mode: 'announce' | 'none' | 'silent';
   model_override: string | null;
   retry_count: number;
+  /** How next_run_at is computed: a cron expression, a fixed gap, or a single run_at. */
+  schedule_kind: ScheduleKind;
+  interval_minutes: number | null;
+  run_at: string | null;
+  /** IANA name; null means the machine's local time. */
+  timezone: string | null;
+  jitter_seconds: number;
+  catch_up: 'skip' | 'run_once';
+  /** Set when the task runs inside an existing conversation. */
+  chat_id: string | null;
+  context_mode: ContextMode;
+  /** Roll a bound turn back out of the chat when it has nothing to report. */
+  suppress_ok: boolean;
+  source: TaskSource;
+  chat_title: string | null;
   last_run_at: string | null;
   next_run_at: string | null;
   last_result: string | null;
@@ -1358,6 +1377,28 @@ export interface CronNotification {
   timestamp: string;
 }
 
+export interface BindableChat {
+  id: string;
+  title: string;
+}
+
+/** Chats a scheduled task can be bound to.
+ *
+ * Cron's own isolated chats are filtered out: binding a task to another task's
+ * chat is never what someone means, and it would make the list mostly noise.
+ */
+export async function fetchBindableChats(limit = 100): Promise<BindableChat[]> {
+  const res = await fetch(`${getApiBase()}/chats?limit=${limit}`);
+  if (!res.ok) throw new Error('Failed to fetch chats');
+  const data = await res.json();
+  return (data.chats || [])
+    .filter((chat: { platform?: string }) => (chat.platform || '').toLowerCase() !== 'cron')
+    .map((chat: { id: string; title?: string }) => ({
+      id: chat.id,
+      title: chat.title || chat.id.slice(0, 8),
+    }));
+}
+
 export async function fetchCronJobs(): Promise<CronJob[]> {
   const res = await fetch(`${getApiBase()}/cron/jobs`);
   if (!res.ok) throw new Error('Failed to fetch cron jobs');
@@ -1367,11 +1408,20 @@ export async function fetchCronJobs(): Promise<CronJob[]> {
 
 export async function createCronJob(job: {
   name: string;
-  cron_expr: string;
   prompt: string;
+  cron_expr?: string;
   active?: boolean;
   delivery_mode?: string;
   model_override?: string | null;
+  schedule_kind?: ScheduleKind;
+  interval_minutes?: number | null;
+  run_at?: string | null;
+  timezone?: string | null;
+  jitter_seconds?: number;
+  catch_up?: 'skip' | 'run_once';
+  chat_id?: string | null;
+  context_mode?: ContextMode;
+  suppress_ok?: boolean;
 }): Promise<CronJob> {
   const res = await fetch(`${getApiBase()}/cron/jobs`, {
     method: 'POST',
