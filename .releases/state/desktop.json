@@ -10,6 +10,7 @@
     ".releases/changes/image-edit-support.json",
     ".releases/changes/image-viewer-slideshow.json",
     ".releases/changes/inchat-task-navigation.json",
+    ".releases/changes/mobile-local-https.json",
     ".releases/changes/model-role-hierarchy.json",
     ".releases/changes/preserve-pending-approvals.json",
     ".releases/changes/product-release-plans.json",

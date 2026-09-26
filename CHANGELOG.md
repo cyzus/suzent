@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add image editing with a dedicated model role and improve image generation size, quality, and batch output handling.
 - Browse uploaded, generated, edited, and Markdown images from the current conversation in one image viewer using navigation buttons and arrow keys.
 - Open in-chat scheduled tasks in their original conversation, including before their first run.
+- Restore local desktop pairing for release mobile apps with QR-scoped HTTPS trust and reliable credential rollback.
 - Add inherited task model roles, shared decision defaults, Dream model settings, and a compact editor with separate primary and backup model selection.
 - Preserve pending tool approvals when saving chat settings so allowing a request does not repeatedly prompt again.
 - Improve provider settings with searchable collapsible providers, credential drafts, inline connection feedback, model search, and working manual model addition.
