@@ -1,0 +1,4 @@
+{
+  "products": { "mobile": "patch" },
+  "summary": "Align iOS and Android controls, settings, reconnection, inputs, notices, and bottom-sheet selectors with the Suzent visual language."
+}

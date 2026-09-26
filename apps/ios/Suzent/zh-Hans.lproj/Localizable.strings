@@ -134,3 +134,6 @@
 "Pair again" = "重新配对";
 
 "Could not establish a trusted connection. Check the network, or scan again if the desktop identity changed." = "无法建立可信连接。请检查网络；如果桌面设备身份已更换，请重新扫码。";
+
+"Expanded" = "已展开";
+"Collapsed" = "已收起";

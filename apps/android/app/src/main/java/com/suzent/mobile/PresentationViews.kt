@@ -1,5 +1,10 @@
 package com.suzent.mobile
 
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.draw.alpha
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
@@ -64,6 +69,9 @@ fun SuzentTheme(content: @Composable () -> Unit) {
     val typography = Typography()
     MaterialTheme(colorScheme = colors, typography = typography.copy(
         titleLarge = typography.titleLarge.copy(fontSize = PresentationTokens.typeTitle.sp, fontWeight = FontWeight.Bold),
+        titleMedium = typography.titleMedium.copy(fontSize = PresentationTokens.typeControl.sp, fontWeight = FontWeight.SemiBold),
+        labelMedium = typography.labelMedium.copy(fontSize = PresentationTokens.typeControl.sp, fontWeight = FontWeight.SemiBold),
+        bodyMedium = typography.bodyMedium.copy(fontSize = PresentationTokens.typeControl.sp),
         bodyLarge = typography.bodyLarge.copy(fontSize = PresentationTokens.typeBody.sp),
         bodySmall = typography.bodySmall.copy(fontSize = PresentationTokens.typeCaption.sp)
     ), shapes = Shapes(
@@ -128,43 +136,92 @@ private data class MarkdownBlock(val body: CharSequence, val language: String? =
 
 @Composable
 fun MessageView(message: DisplayMessage, isLatest: Boolean = false) {
-    val user = message.role == "user"
     val outline = MaterialTheme.colorScheme.outline
-    Box(Modifier.fillMaxWidth(), contentAlignment = if (user) androidx.compose.ui.Alignment.CenterEnd else androidx.compose.ui.Alignment.CenterStart) {
-    Column((if (user) Modifier.widthIn(max = 320.dp) else Modifier.fillMaxWidth()).then(if (user) Modifier.padding(start = 40.dp, end = 2.dp)
-        .drawBehind { drawRect(outline, topLeft = Offset(PresentationTokens.shadowOffset.dp.toPx(), PresentationTokens.shadowOffset.dp.toPx())) }
-        .background(Color(PresentationTokens.code_bg))
-        .border(PresentationTokens.borderWidth.dp, outline).padding(10.dp) else Modifier.padding(vertical = 6.dp)),
-        verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (!user) SuzentAssistantBadge(compact = !isLatest)
-        if (user && message.text.isNotBlank()) {
-            Text(stringResource(R.string.you), color = Color.Black, style = MaterialTheme.typography.labelLarge)
+    if (message.role == "user") Box(Modifier.fillMaxWidth().padding(start = 40.dp), contentAlignment = androidx.compose.ui.Alignment.CenterEnd) {
+        Box(Modifier.padding(end = PresentationTokens.shadowOffset.dp, bottom = PresentationTokens.shadowOffset.dp)
+            .widthIn(max = 320.dp).drawBehind {
+                drawRect(outline, topLeft = Offset(PresentationTokens.shadowOffset.dp.toPx(), PresentationTokens.shadowOffset.dp.toPx()), size = size)
+            }.background(Color(PresentationTokens.yellow)).border(PresentationTokens.borderWidth.dp, outline).padding(PresentationTokens.spaceMedium.dp)) {
             SelectionContainer { Text(message.text, color = Color.Black, fontSize = PresentationTokens.typeChat.sp) }
         }
-        if (!user) ActivityContent(message.parts, live = false)
-
+    } else Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        SuzentAssistantBadge(compact = !isLatest)
+        ActivityContent(message.parts, live = false)
     }
-}
 }
 
 @Composable
-fun SuzentAction(label: String, onClick: () -> Unit, prominent: Boolean = false, enabled: Boolean = true, compact: Boolean = false) {
+fun SuzentTextButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    contentPadding: PaddingValues = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+    content: @Composable RowScope.() -> Unit,
+) {
+    TextButton(onClick = onClick, modifier = modifier, enabled = enabled, contentPadding = contentPadding,
+        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurface,
+            disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = .45f)), content = content)
+}
+
+@Composable
+fun SuzentAction(label: String, onClick: () -> Unit, prominent: Boolean = false, enabled: Boolean = true, compact: Boolean = false, quiet: Boolean = false, destructive: Boolean = false) {
     val outline = MaterialTheme.colorScheme.outline
-    Box((if (compact) Modifier else Modifier.fillMaxWidth()).drawBehind {
-        val offset = PresentationTokens.shadowOffset.dp.toPx()
-        if (enabled) drawRect(outline, topLeft = Offset(offset, offset),
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val shadow = if (quiet) 0.dp else PresentationTokens.shadowOffset.dp
+    Box((if (compact) Modifier else Modifier.fillMaxWidth()).alpha(if (enabled) 1f else .45f).drawBehind {
+        val offset = shadow.toPx()
+        if (!quiet && !pressed) drawRect(outline, topLeft = Offset(offset, offset),
             size = androidx.compose.ui.geometry.Size((size.width - offset).coerceAtLeast(0f), (size.height - offset).coerceAtLeast(0f)))
-    }.padding(end = PresentationTokens.shadowOffset.dp, bottom = PresentationTokens.shadowOffset.dp)) {
-        val fill = if (prominent) Color(PresentationTokens.blue) else MaterialTheme.colorScheme.surface
+    }.padding(end = shadow, bottom = shadow)) {
         Row((if (compact) Modifier else Modifier.fillMaxWidth())
-            .background(if (enabled) fill else fill.copy(alpha = 0.45f))
-            .border(PresentationTokens.borderWidth.dp, outline)
-            .clickable(enabled = enabled, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)
+            .offset(x = if (pressed) shadow else 0.dp, y = if (pressed) shadow else 0.dp)
+            .background(if (prominent) Color(PresentationTokens.blue) else MaterialTheme.colorScheme.surface)
+            .then(if (quiet) Modifier else Modifier.border(PresentationTokens.borderWidth.dp, outline))
+            .clickable(interactionSource = interaction, indication = null, enabled = enabled, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)
             .heightIn(min = PresentationTokens.controlHeight.dp)
-            .padding(horizontal = (if (compact) 12 else 16).dp, vertical = 8.dp),
+            .padding(horizontal = (if (compact) PresentationTokens.spaceMedium else PresentationTokens.spacePage).dp, vertical = PresentationTokens.spaceSmall.dp),
             horizontalArrangement = Arrangement.Center, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
             Text(label, fontSize = PresentationTokens.typeControl.sp, fontWeight = FontWeight.SemiBold,
-                color = (if (prominent) Color.White else MaterialTheme.colorScheme.onSurface).copy(alpha = if (enabled) 1f else 0.45f))
+                color = if (destructive) Color.Red else if (prominent) Color.White else MaterialTheme.colorScheme.onSurface)
+        }
+    }
+}
+
+@Composable
+fun SuzentTextInput(value: String, onValueChange: (String) -> Unit, placeholder: String, modifier: Modifier = Modifier, multiline: Boolean = false) {
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+    androidx.compose.foundation.text.BasicTextField(value, onValueChange, singleLine = !multiline,
+        minLines = if (multiline) 3 else 1, maxLines = if (multiline) 6 else 1, interactionSource = interaction,
+        textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
+        cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary),
+        modifier = modifier.fillMaxWidth().border(PresentationTokens.borderWidth.dp, if (focused) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline)
+            .heightIn(min = PresentationTokens.controlHeight.dp).padding(PresentationTokens.spaceMedium.dp),
+        decorationBox = { input -> Box { if (value.isEmpty()) Text(placeholder, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = PresentationTokens.typeControl.sp); input() } })
+}
+
+@Composable
+fun SuzentNotice(message: String, dismiss: () -> Unit) {
+    Row(Modifier.fillMaxWidth().background(Color(PresentationTokens.yellow)).padding(horizontal = 12.dp, vertical = 4.dp),
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(message, Modifier.weight(1f), color = Color.Black, fontSize = PresentationTokens.typeCaption.sp)
+        Text(stringResource(R.string.dismiss), Modifier.clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = dismiss)
+            .heightIn(min = PresentationTokens.controlHeight.dp).wrapContentHeight(), color = Color.Black,
+            fontSize = PresentationTokens.typeCaption.sp, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+@Composable
+fun SuzentToggle(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    val position by animateDpAsState(if (checked) 22.dp else 4.dp, tween(150), label = "toggle")
+    Row(Modifier.fillMaxWidth().toggleable(value = checked, role = androidx.compose.ui.semantics.Role.Switch, onValueChange = onCheckedChange)
+        .heightIn(min = PresentationTokens.controlHeight.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(label, Modifier.weight(1f), fontSize = PresentationTokens.typeControl.sp)
+        Box(Modifier.size(44.dp, 26.dp).background(if (checked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = .2f))
+            .border(PresentationTokens.borderWidth.dp, MaterialTheme.colorScheme.outline)) {
+            Box(Modifier.offset(x = position, y = 4.dp).size(18.dp).background(if (checked) Color.White else MaterialTheme.colorScheme.onSurface))
         }
     }
 }
@@ -223,7 +280,7 @@ private fun ActivityRail(parts: List<MessagePart>, live: Boolean) {
     val accent = if (failed) MaterialTheme.colorScheme.error else if (running) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
     val status = stringResource(if (waiting) R.string.approval_required else if (running) R.string.activity_running else if (failed) R.string.activity_failed else R.string.activity_completed)
     Column(Modifier.fillMaxWidth()) {
-        TextButton(onClick = { expanded = !expanded }, contentPadding = PaddingValues(horizontal = 4.dp, vertical = 12.dp), modifier = Modifier.fillMaxWidth()) {
+        SuzentTextButton(onClick = { expanded = !expanded }, contentPadding = PaddingValues(horizontal = 4.dp, vertical = 12.dp), modifier = Modifier.fillMaxWidth()) {
             Text(status.uppercase(), fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold,
                 color = if (waiting || failed) accent else MaterialTheme.colorScheme.onSurfaceVariant)
             if (running) { Spacer(Modifier.width(8.dp)); StreamingPulse() }
@@ -263,7 +320,7 @@ fun ToolActivityBlock(part: MessagePart, live: Boolean, last: Boolean = true) {
             Box(Modifier.width(1.dp).weight(1f).background(if (last) Color.Transparent else ink.copy(alpha = 0.12f)))
         }
         Column(Modifier.weight(1f)) {
-            TextButton(onClick = { details = !details }, contentPadding = PaddingValues(0.dp), modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp)) {
+            SuzentTextButton(onClick = { details = !details }, contentPadding = PaddingValues(0.dp), modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp)) {
                 Text(if (part.type == "reasoning") stringResource(R.string.reasoning) else if (part.type == "tool") part.toolName.ifEmpty { stringResource(R.string.tool_activity) } else stringResource(R.string.unsupported_activity),
                     color = ink, fontSize = 13.sp, maxLines = 2, fontWeight = FontWeight.Medium,
                     fontFamily = if (part.type == "tool") FontFamily.Monospace else FontFamily.Default, modifier = Modifier.weight(1f))
@@ -345,16 +402,40 @@ fun GreetingCube(modifier: Modifier = Modifier) {
 }
 
 @Composable
+fun SuzentSelectionTrigger(value: String, onClick: () -> Unit, enabled: Boolean = true, prefix: String? = null) {
+    val outline = MaterialTheme.colorScheme.outline
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val offset = PresentationTokens.shadowOffset.dp
+    Row(Modifier.alpha(if (enabled) 1f else .45f).padding(end = offset, bottom = offset)
+        .drawBehind { if (!pressed) drawRect(outline, topLeft = Offset(offset.toPx(), offset.toPx()), size = size) }
+        .offset(x = if (pressed) offset else 0.dp, y = if (pressed) offset else 0.dp)
+        .background(MaterialTheme.colorScheme.surface).border(PresentationTokens.borderWidth.dp, outline)
+        .clickable(interactionSource = interaction, indication = null, enabled = enabled, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)
+        .heightIn(min = PresentationTokens.controlHeight.dp).padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (prefix != null) Text(prefix, fontSize = PresentationTokens.typeControl.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+        Text(value, Modifier.weight(1f, fill = false), fontSize = PresentationTokens.typeControl.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.MiddleEllipsis)
+        Canvas(Modifier.size(12.dp)) {
+            val path = androidx.compose.ui.graphics.Path().apply { moveTo(size.width * .15f, size.height * .35f); lineTo(size.width * .5f, size.height * .7f); lineTo(size.width * .85f, size.height * .35f) }
+            drawPath(path, outline, style = Stroke(width = 1.5.dp.toPx()))
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
 fun SuzentSelectionPanel(title: String, options: List<Pair<String, String>>, selected: String, dismiss: () -> Unit, choose: (String) -> Unit) {
     val outline = MaterialTheme.colorScheme.outline
-    androidx.compose.ui.window.Dialog(onDismissRequest = dismiss) {
-        Column(Modifier.fillMaxWidth().padding(4.dp).drawBehind {
-            drawRect(outline, topLeft = Offset(4.dp.toPx(), 4.dp.toPx()))
+    ModalBottomSheet(onDismissRequest = dismiss, containerColor = Color.Transparent,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), dragHandle = null, shape = RectangleShape) {
+        Column(Modifier.fillMaxWidth().padding(16.dp).drawBehind {
+            drawRect(outline, topLeft = Offset(4.dp.toPx(), 4.dp.toPx()), size = size)
         }.background(MaterialTheme.colorScheme.surface).border(2.dp, outline)) {
             val dismissLabel = stringResource(R.string.dismiss)
             Row(Modifier.fillMaxWidth().background(Color.Black).padding(start = 16.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                 Text(title, Modifier.weight(1f), fontFamily = FontFamily.Monospace, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                TextButton(onClick = dismiss, modifier = Modifier.size(44.dp)) { Text("×", color = Color.White, modifier = Modifier.semantics { contentDescription = dismissLabel }) }
+                SuzentTextButton(onClick = dismiss, modifier = Modifier.size(44.dp)) { Text("×", color = Color.White, modifier = Modifier.semantics { contentDescription = dismissLabel }) }
             }
             androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxWidth().heightIn(max = 480.dp)) {
                 items(options.size) { index ->

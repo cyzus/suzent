@@ -79,7 +79,7 @@ private fun MobileScreen(model: MobileModel) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                     if (model.connected) {
                         val label = stringResource(R.string.open_sidebar)
-                        IconButton(onClick = { focus.clearFocus(); scope.launch { drawer.open() } }, modifier = Modifier.size(PresentationTokens.controlHeight.dp)) { Icon(painterResource(R.drawable.ic_menu), contentDescription = label, tint = MaterialTheme.colorScheme.primary) }
+                        IconButton(onClick = { focus.clearFocus(); scope.launch { drawer.open() } }, modifier = Modifier.size(PresentationTokens.controlHeight.dp)) { Icon(painterResource(R.drawable.ic_menu), contentDescription = label, tint = MaterialTheme.colorScheme.onSurface) }
                     }
                     Box(Modifier.weight(1f)) { SuzentWordmark() }
                     if (model.connected) IconButton(onClick = { focus.clearFocus(); model.create(); showSettings = false }, modifier = Modifier.size(PresentationTokens.controlHeight.dp),
@@ -90,21 +90,20 @@ private fun MobileScreen(model: MobileModel) {
         }) { padding ->
             Column(Modifier.fillMaxSize().padding(padding).imePadding()) {
                 model.error?.let { message ->
-                    Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.secondaryContainer).padding(12.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                        Text(message, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSecondaryContainer)
-                        TextButton(onClick = { model.error = null }) { Text(stringResource(R.string.dismiss)) }
-                    }
+                    SuzentNotice(message) { model.error = null }
                 }
                 when {
-                    !model.connected && model.canReconnect -> Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center) {
-                        Text(stringResource(R.string.reconnect), style = MaterialTheme.typography.titleMedium)
-                        if (model.busy) {
-                            CircularProgressIndicator()
-                            if (model.reconnecting) TextButton(onClick = model::cancelReconnect) { Text(stringResource(R.string.cancel_reconnect)) }
+                    !model.connected && model.canReconnect -> Box(Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.Center) {
+                        Column(Modifier.widthIn(max = 480.dp).padding(PresentationTokens.spaceLarge.dp), verticalArrangement = Arrangement.spacedBy(20.dp), horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+                            SuzentAssistantBadge()
+                            Text(stringResource(R.string.reconnect), fontSize = PresentationTokens.typeSection.sp, fontWeight = FontWeight.Bold)
+                            if (model.busy) {
+                                StreamingPulse()
+                                if (model.reconnecting) SuzentAction(stringResource(R.string.cancel_reconnect), model::cancelReconnect)
+                            } else SuzentAction(stringResource(R.string.reconnect), model::connect, prominent = true)
+                            SuzentAction(stringResource(R.string.pair_again), { model.error = null; repairScanner = true }, enabled = !model.busy && !model.streaming)
+                            SuzentAction(stringResource(R.string.forget), model::forget, enabled = !model.busy, quiet = true, destructive = true)
                         }
-                        else TextButton(onClick = model::connect) { Text(stringResource(R.string.reconnect)) }
-                        TextButton(onClick = { model.error = null; repairScanner = true }, enabled = !model.busy) { Text(stringResource(R.string.pair_again)) }
-                        TextButton(onClick = model::forget, enabled = !model.busy) { Text(stringResource(R.string.forget), color = MaterialTheme.colorScheme.error) }
                     }
                     !model.connected -> Box(Modifier.padding(horizontal = 16.dp)) { PairingView(model) }
                     showSettings -> SettingsView(model)
@@ -127,23 +126,18 @@ private fun Sidebar(model: MobileModel, settingsSelected: Boolean, close: () -> 
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
             Text(stringResource(R.string.chats), fontSize = PresentationTokens.typeSection.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
             val label = stringResource(R.string.close_sidebar)
-            TextButton(onClick = close, modifier = Modifier.size(44.dp).semantics { contentDescription = label }) { Text("×") }
+            SuzentTextButton(onClick = close, modifier = Modifier.size(44.dp).semantics { contentDescription = label }) { Text("×") }
         }
-        BasicTextField(search, { search = it }, singleLine = true,
-            textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = PresentationTokens.typeChat.sp, color = MaterialTheme.colorScheme.onSurface),
-            cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary),
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).border(PresentationTokens.borderWidth.dp, MaterialTheme.colorScheme.outline)
-                .heightIn(min = PresentationTokens.controlHeight.dp).padding(12.dp),
-            decorationBox = { inner -> Box { if (search.isEmpty()) Text(stringResource(R.string.search_chats), fontSize = PresentationTokens.typeChat.sp, color = MaterialTheme.colorScheme.onSurfaceVariant); inner() } })
+        SuzentTextInput(search, { search = it }, stringResource(R.string.search_chats), Modifier.padding(horizontal = 16.dp))
         LazyColumn(Modifier.weight(1f).padding(horizontal = 16.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
             projects.forEach { project ->
                 item(key = "project:${project.id}") {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                        TextButton(onClick = { collapsedProjects = if (project.id in collapsedProjects) collapsedProjects - project.id else collapsedProjects + project.id }, modifier = Modifier.weight(1f), contentPadding = PaddingValues(0.dp)) {
+                        SuzentTextButton(onClick = { collapsedProjects = if (project.id in collapsedProjects) collapsedProjects - project.id else collapsedProjects + project.id }, modifier = Modifier.weight(1f), contentPadding = PaddingValues(0.dp)) {
                             Text((if (project.id in collapsedProjects) "▸ " else "▾ ") + project.name, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace, fontSize = PresentationTokens.typeControl.sp, modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.onSurface)
                         }
                         val label = stringResource(R.string.new_chat)
-                        TextButton(onClick = { create(project.id) }, enabled = !model.busy && !model.streaming && model.device?.permissions?.createChats == true && model.projects.any { it.id == project.id },
+                        SuzentTextButton(onClick = { create(project.id) }, enabled = !model.busy && !model.streaming && model.device?.permissions?.createChats == true && model.projects.any { it.id == project.id },
                             modifier = Modifier.size(44.dp).semantics { contentDescription = label }) { Text("+") }
                     }
                 }
@@ -155,11 +149,11 @@ private fun Sidebar(model: MobileModel, settingsSelected: Boolean, close: () -> 
                 SidebarChat(it, model.selected?.id == it.id && !settingsSelected, !model.busy, open)
             }
             if (projects.isEmpty() && model.chats.isEmpty()) item {
-                TextButton(onClick = { create(null) }, enabled = !model.busy && !model.streaming && model.device?.permissions?.createChats == true) { Text(stringResource(R.string.new_chat)) }
+                SuzentTextButton(onClick = { create(null) }, enabled = !model.busy && !model.streaming && model.device?.permissions?.createChats == true) { Text(stringResource(R.string.new_chat)) }
             }
         }
         HorizontalDivider()
-        TextButton(onClick = settings, modifier = Modifier.fillMaxWidth().padding(8.dp)) { Text(stringResource(R.string.settings), modifier = Modifier.fillMaxWidth(), fontWeight = FontWeight.Bold) }
+        SuzentTextButton(onClick = settings, modifier = Modifier.fillMaxWidth().padding(8.dp)) { Text(stringResource(R.string.settings), modifier = Modifier.fillMaxWidth(), fontWeight = FontWeight.Bold) }
     }
 }
 
@@ -179,20 +173,22 @@ private fun SettingsView(model: MobileModel) {
     var repairScanner by remember { mutableStateOf(false) }
     if (repairScanner) PairingScanner(model) { repairScanner = false }
     var accessExpanded by rememberSaveable { mutableStateOf(false) }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(PresentationTokens.spacePage.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
         Text(stringResource(R.string.settings), fontSize = PresentationTokens.typeSection.sp, fontWeight = FontWeight.Bold)
         Column(Modifier.fillMaxWidth().border(PresentationTokens.borderWidth.dp, MaterialTheme.colorScheme.outline).padding(16.dp)) {
-            TextButton(onClick = { accessExpanded = !accessExpanded }) { Text(stringResource(R.string.access), modifier = Modifier.weight(1f)); Text(if (accessExpanded) "−" else "+") }
-            if (accessExpanded) model.device?.let { ClientPermissionsView(it, model.origin) }
+            Row(Modifier.fillMaxWidth().clickable(role = androidx.compose.ui.semantics.Role.Button) { accessExpanded = !accessExpanded }.heightIn(min = PresentationTokens.controlHeight.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Text(stringResource(R.string.access), modifier = Modifier.weight(1f), fontSize = PresentationTokens.typeControl.sp, fontWeight = FontWeight.SemiBold)
+                Text(if (accessExpanded) "−" else "+")
+            }
+            if (accessExpanded) model.device?.let { Box(Modifier.padding(top = PresentationTokens.spaceMedium.dp)) { ClientPermissionsView(it, model.origin) } }
         }
-        Text(stringResource(R.string.node_heading), fontSize = PresentationTokens.typeControl.sp, fontWeight = FontWeight.Bold)
-        Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-            Text(stringResource(R.string.enable_node), Modifier.weight(1f))
-            Switch(checked = model.nodeEnabled, onCheckedChange = model::toggleNode)
+        Column(Modifier.fillMaxWidth().border(PresentationTokens.borderWidth.dp, MaterialTheme.colorScheme.outline).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(stringResource(R.string.node_heading), fontSize = PresentationTokens.typeControl.sp, fontWeight = FontWeight.Bold)
+            SuzentToggle(stringResource(R.string.enable_node), model.nodeEnabled, model::toggleNode)
+            Text(model.nodeStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Text(model.nodeStatus, style = MaterialTheme.typography.bodySmall)
-        SuzentAction(stringResource(R.string.pair_again), { repairScanner = true }, enabled = !model.busy && !model.streaming)
-        TextButton(onClick = model::forget, enabled = !model.busy) { Text(stringResource(R.string.forget), color = MaterialTheme.colorScheme.error) }
+        SuzentAction(stringResource(R.string.pair_again), { model.error = null; repairScanner = true }, enabled = !model.busy && !model.streaming)
+        SuzentAction(stringResource(R.string.forget), model::forget, enabled = !model.busy, quiet = true, destructive = true)
         Text(stringResource(R.string.revoke_help), style = MaterialTheme.typography.bodySmall)
     }
 }
@@ -254,9 +250,8 @@ private fun ColumnScope.Conversation(model: MobileModel) {
         }
         if (expanded) Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
             Box(Modifier.weight(1f)) {
-                TextButton(onClick = { modelsExpanded = true; focus.clearFocus(); keyboard?.hide() }, enabled = !model.busy && !model.streaming && chat.models.isNotEmpty() && model.device?.permissions?.send == true) {
-                    Text((model.selectedModel ?: chat.model ?: stringResource(R.string.desktop_model)) + " ▾", maxLines = 1, style = MaterialTheme.typography.labelMedium)
-                }
+                SuzentSelectionTrigger(model.selectedModel ?: chat.model ?: stringResource(R.string.desktop_model),
+                    { modelsExpanded = true; focus.clearFocus(); keyboard?.hide() }, enabled = !model.busy && !model.streaming && chat.models.isNotEmpty() && model.device?.permissions?.send == true)
 
             }
             SendAction(model, chat)
@@ -265,7 +260,7 @@ private fun ColumnScope.Conversation(model: MobileModel) {
     }
     if (modelsExpanded) SuzentSelectionPanel(
         title = stringResource(R.string.desktop_model),
-        options = listOf("" to stringResource(R.string.conversation_default)) + chat.models.distinct().map { it to it },
+        options = listOf("" to stringResource(R.string.conversation_default)) + chat.models.distinct().sorted().map { it to it },
         selected = model.selectedModel.orEmpty(), dismiss = { modelsExpanded = false }
     ) { model.selectedModel = it.ifEmpty { null }; modelsExpanded = false }
 
@@ -290,8 +285,8 @@ private fun StartPage(model: MobileModel, chat: Chat, keyboardVisible: Boolean) 
         Text(stringResource(greeting).uppercase(java.util.Locale.getDefault()), fontSize = 30.sp, lineHeight = 36.sp, fontWeight = FontWeight.Black,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         Box {
-            SuzentAction(stringResource(R.string.creating_in) + "  " + (chat.projectName ?: stringResource(R.string.default_project)) + "  ▾",
-                { projectsExpanded = true }, enabled = !model.busy && model.projects.isNotEmpty(), compact = true)
+            SuzentSelectionTrigger(chat.projectName ?: stringResource(R.string.default_project),
+                { projectsExpanded = true }, enabled = !model.busy && model.projects.isNotEmpty(), prefix = stringResource(R.string.creating_in))
             if (projectsExpanded) SuzentSelectionPanel(
                 title = stringResource(R.string.creating_in), options = model.projects.map { it.id to it.name },
                 selected = chat.projectId.orEmpty(), dismiss = { projectsExpanded = false }

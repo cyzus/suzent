@@ -48,9 +48,7 @@ struct PairingView: View {
                         .buttonStyle(SuzentButtonStyle(prominent: true)).disabled(model.busy)
                     DisclosureGroup("Paste an invitation instead") {
                         VStack(alignment: .leading, spacing: PresentationTokens.spaceMedium) {
-                            TextField("Pairing invitation", text: $model.invitationText, axis: .vertical)
-                                .textInputAutocapitalization(.never).autocorrectionDisabled().lineLimit(3...6)
-                                .padding().overlay(Rectangle().stroke(.secondary))
+                            SuzentTextInput(placeholder: "Pairing invitation", text: $model.invitationText, multiline: true)
                             Button("Review invitation") { model.stageInvitation(model.invitationText) }
                                 .buttonStyle(SuzentButtonStyle()).disabled(model.busy || model.invitationText.isEmpty)
                         }.padding(.top)

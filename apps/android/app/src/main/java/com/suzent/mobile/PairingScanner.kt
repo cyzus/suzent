@@ -98,7 +98,7 @@ fun PairingScanner(model: MobileModel, close: () -> Unit) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("▪ SUZENT ▪", fontSize = 21.sp, fontWeight = FontWeight.Black, modifier = Modifier.weight(1f))
                     val cancelLabel = stringResource(R.string.cancel_pairing)
-                    TextButton(onClick = { reset(); close() }, modifier = Modifier.semantics { contentDescription = cancelLabel }) { Text("×", color = Color.White, fontSize = 28.sp) }
+                    SuzentTextButton(onClick = { reset(); close() }, modifier = Modifier.semantics { contentDescription = cancelLabel }) { Text("×", color = Color.White, fontSize = 28.sp) }
                 }
                 Text(stringResource(R.string.scan_heading), color = Color.White, style = MaterialTheme.typography.titleLarge, modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 24.dp))
                 Text(stringResource(R.string.scan_hint), color = Color.White, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 8.dp))
@@ -112,12 +112,12 @@ fun PairingScanner(model: MobileModel, close: () -> Unit) {
                         AnimatedVisibility(model.error != null, enter = fadeIn() + slideInVertically { it / 4 }) {
                             Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Text(model.error.orEmpty(), Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodySmall)
-                                TextButton(onClick = reset) { Text(stringResource(R.string.scan_again)) }
+                                SuzentTextButton(onClick = reset) { Text(stringResource(R.string.scan_again)) }
                             }
                         }
                         if (model.busy) { LinearProgressIndicator(Modifier.fillMaxWidth()); Text(stringResource(R.string.checking_addresses), color = Color.White) }
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            TextButton(onClick = { torch = !torch }, enabled = allowed && !cameraFailed,
+                            SuzentTextButton(onClick = { torch = !torch }, enabled = allowed && !cameraFailed,
                                 modifier = Modifier.border(1.dp, Color.White).background(if (torch) Color(PresentationTokens.yellow) else Color.Black)) {
                                 Text(stringResource(R.string.flashlight), color = if (torch) Color.Black else Color.White)
                             }
@@ -131,7 +131,7 @@ fun PairingScanner(model: MobileModel, close: () -> Unit) {
                         .verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(stringResource(R.string.desktop_recognized), Modifier.weight(1f), fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.labelMedium)
-                            TextButton(onClick = reset) { Text(stringResource(R.string.scan_again)) }
+                            SuzentTextButton(onClick = reset) { Text(stringResource(R.string.scan_again)) }
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                             Image(painterResource(R.drawable.suzent_logo), contentDescription = null, modifier = Modifier.size(42.dp))
@@ -143,7 +143,7 @@ fun PairingScanner(model: MobileModel, close: () -> Unit) {
                         } else model.pairingInvitation?.let { invitation ->
                             var details by remember { mutableStateOf(false) }
                             model.pairingPreview?.let { preview ->
-                                TextButton(onClick = { details = !details }) { Text(stringResource(R.string.desktop_access) + if (details) " −" else " +") }
+                                SuzentTextButton(onClick = { details = !details }) { Text(stringResource(R.string.desktop_access) + if (details) " −" else " +") }
                                 if (details) {
                                     val p = preview.permissions
                                     Text(if (p.allChats) stringResource(R.string.all_conversations) else stringResource(R.string.shared_conversations, p.chatIds.size))
@@ -164,7 +164,7 @@ fun PairingScanner(model: MobileModel, close: () -> Unit) {
         }
         if (paste) AlertDialog(onDismissRequest = { paste = false }, title = { Text(stringResource(R.string.paste_invitation)) }, text = {
             OutlinedTextField(model.invitationText, { model.invitationText = it }, minLines = 3, label = { Text(stringResource(R.string.pairing_invitation)) })
-        }, confirmButton = { TextButton(onClick = { paste = false; model.stageInvitation(model.invitationText) }, enabled = !model.busy && model.invitationText.isNotBlank()) { Text(stringResource(R.string.review_invitation)) } })
+        }, confirmButton = { SuzentTextButton(onClick = { paste = false; model.stageInvitation(model.invitationText) }, enabled = !model.busy && model.invitationText.isNotBlank()) { Text(stringResource(R.string.review_invitation)) } })
     }
 }
 

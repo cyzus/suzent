@@ -60,7 +60,7 @@ fun PairingView(model: MobileModel) {
             if (model.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             SuzentAction(stringResource(if (invitation.phoneConfirmation) R.string.confirm_connection else R.string.request_pairing),
                 model::approveDestination, prominent = true, enabled = !model.busy)
-            TextButton(onClick = model::cancelPairing, enabled = !model.busy) { Text(stringResource(R.string.cancel_pairing)) }
+            SuzentTextButton(onClick = model::cancelPairing, enabled = !model.busy) { Text(stringResource(R.string.cancel_pairing)) }
         } else if (model.busy) {
             LinearProgressIndicator(Modifier.fillMaxWidth())
             Text(stringResource(R.string.checking_addresses))
@@ -70,10 +70,9 @@ fun PairingView(model: MobileModel) {
             SuzentAction(stringResource(R.string.scan_desktop), {
                 launchScanner()
             }, prominent = true, enabled = !model.busy)
-            TextButton(onClick = { paste = !paste }) { Text(stringResource(R.string.paste_invitation)) }
+            SuzentTextButton(onClick = { paste = !paste }) { Text(stringResource(R.string.paste_invitation)) }
             if (paste) {
-                OutlinedTextField(value = model.invitationText, onValueChange = { model.invitationText = it },
-                    label = { Text(stringResource(R.string.pairing_invitation)) }, modifier = Modifier.fillMaxWidth(), minLines = 3, maxLines = 6)
+                SuzentTextInput(model.invitationText, { model.invitationText = it }, stringResource(R.string.pairing_invitation), multiline = true)
                 SuzentAction(stringResource(R.string.review_invitation), { model.stageInvitation(model.invitationText) },
                     enabled = !model.busy && model.invitationText.isNotBlank())
             }
