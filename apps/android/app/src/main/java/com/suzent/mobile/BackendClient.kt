@@ -8,6 +8,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+import okhttp3.Callback
+import okhttp3.Response
 import okhttp3.Call
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -33,9 +38,24 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
 
     private suspend fun json(path: String, body: JSONObject? = null): JSONObject = withContext(Dispatchers.IO) {
         val transport = if (body == null) reads else http
-        transport.newCall(request(path, body)).execute().use { response ->
-            if (!response.isSuccessful) throw HttpFailure(response.code)
-            JSONObject(response.body?.string() ?: throw IOException("Empty response"))
+        suspendCancellableCoroutine { continuation ->
+            val call = transport.newCall(request(path, body))
+            continuation.invokeOnCancellation {
+                transport.dispatcher.executorService.execute { call.cancel() }
+            }
+            call.enqueue(object : Callback {
+                override fun onFailure(call: Call, error: IOException) {
+                    continuation.resumeWithException(error)
+                }
+                override fun onResponse(call: Call, response: Response) {
+                    runCatching {
+                        response.use {
+                            if (!it.isSuccessful) throw HttpFailure(it.code)
+                            JSONObject(it.body?.string() ?: throw IOException("Empty response"))
+                        }
+                    }.fold(continuation::resume, continuation::resumeWithException)
+                }
+            })
         }
     }
 

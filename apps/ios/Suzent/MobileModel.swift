@@ -10,6 +10,8 @@ import SuzentCore
     var pairingCode: String?
     var device: ClientDevice?
     var canReconnect = false
+    var reconnecting = false
+    @ObservationIgnored private var reconnectTask: Task<Void, Never>?
     private var pairingTask: Task<Void, Never>?
     var chats: [Chat] = []
     var projects: [Project] = []
@@ -154,15 +156,17 @@ import SuzentCore
 
     private func activate(_ stored: Connection) async throws {
         var saved = stored
-        if let tls = saved.tls {
+        do {
             var reachable: String?
-            for origin in [saved.origin] + (saved.origins ?? []) where reachable == nil {
-                let probe = try SuzentClient(backend: try Backend(origin), token: "", probeOnly: true, deviceTrust: tls)
+            var visited = Set<String>()
+            for origin in [saved.origin] + (saved.origins ?? []) where reachable == nil && visited.insert(origin).inserted {
+                try Task.checkCancellation()
+                let probe = try SuzentClient(backend: try Backend(origin, allowHTTP: allowsHTTP), token: "", probeOnly: true, deviceTrust: saved.tls)
                 defer { probe.close() }
                 do { _ = try await probe.capabilities(); reachable = origin }
                 catch { try Task.checkCancellation() }
             }
-            guard let reachable else { throw PairingError.secureConnection }
+            guard let reachable else { throw PairingError.unreachable }
             saved.origin = reachable
         }
         guard saved.clientProtocol == 1 else { throw PairingError.incompatible }
@@ -173,6 +177,7 @@ import SuzentCore
                 var restored = saved
                 do { try await candidate.confirmPairing() }
                 catch ClientError.http(401) {
+                    try Task.checkCancellation()
                     restored = Connection(origins: saved.previousOrigins, tls: saved.previousTLS, origin: saved.previousOrigin ?? saved.origin, hostToken: previous, nodeToken: saved.nodeToken, clientProtocol: 1)
                     try CredentialStore.save(restored); connection = restored; origin = restored.origin
                     candidate.close(); try await activate(restored); return
@@ -181,6 +186,7 @@ import SuzentCore
                 restored.previousOrigin = nil
                 restored.previousTLS = nil
                 restored.previousOrigins = nil
+                try Task.checkCancellation()
                 try CredentialStore.save(restored); connection = restored
                 saved = restored
             }
@@ -206,11 +212,26 @@ import SuzentCore
     func connect() async {
         guard let connection, canReconnect, !busy else { return }
         busy = true
-        defer { busy = false }
+        reconnecting = true
+        defer { busy = false; reconnecting = false; reconnectTask = nil }
         error = nil
-        do { try await activate(connection) }
-        catch { handle(error) }
+        let attempt = Task {
+            do {
+                try await withConnectionTimeout { try await self.activate(connection) }
+            } catch {
+                guard !Task.isCancelled else { return }
+                if let network = error as? URLError, [.timedOut, .notConnectedToInternet, .cannotConnectToHost, .cannotFindHost, .networkConnectionLost].contains(network.code) {
+                    self.error = String(localized: "Could not reach your desktop. Check Wi-Fi or Tailscale and make sure Suzent is running, then retry or pair again.")
+                } else { handle(error) }
+            }
+        }
+        reconnectTask = attempt
+        await withTaskCancellationHandler {
+            await attempt.value
+        } onCancel: { attempt.cancel() }
     }
+
+    func cancelReconnect() { reconnectTask?.cancel() }
 
     private func handle(_ failure: Error) {
         if case ClientError.http(401) = failure {
@@ -440,6 +461,7 @@ import SuzentCore
     func setForeground(_ active: Bool) async {
         foreground = active
         if !active {
+            cancelReconnect()
             streamTask?.cancel()
             streaming = false
             liveParts = []
