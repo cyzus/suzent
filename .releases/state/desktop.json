@@ -1,0 +1,24 @@
+{
+  "version": "0.15.0",
+  "consumed": [
+    ".releases/changes/approved-tool-names.json",
+    ".releases/changes/ask-question-no-replay.json",
+    ".releases/changes/background-task-wakeups.json",
+    ".releases/changes/builtin-tool-color.json",
+    ".releases/changes/builtin-tool-floor.json",
+    ".releases/changes/chat-pinning-home.json",
+    ".releases/changes/image-edit-support.json",
+    ".releases/changes/image-viewer-slideshow.json",
+    ".releases/changes/inchat-task-navigation.json",
+    ".releases/changes/mobile-local-https.json",
+    ".releases/changes/model-role-hierarchy.json",
+    ".releases/changes/preserve-pending-approvals.json",
+    ".releases/changes/product-release-plans.json",
+    ".releases/changes/providers-settings-ux.json",
+    ".releases/changes/tool-argument-conventions.json",
+    ".releases/changes/tool-package-layout.json",
+    ".releases/changes/unified-refresh-button.json",
+    ".releases/changes/video-and-voice.json"
+  ],
+  "legacy_complete": true
+}

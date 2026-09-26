@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.15.0] - 2026-09-26
+
+### 🐛 Fixed
+- Make the service log readable in the console (#246)
+- Reuse verified desktop binaries across retries (#247)
+- Keep the working-dir folder picker inside the viewport
+- Keep the project picker menu inside the viewport (#243)
+
+### Release notes
+- Preserve tool names when resuming after human approval and restoring chat drafts.
+- Stop an answered ask_question surface from reappearing with its options once the turn finishes.
+- Notify agents when background Shell commands finish and unify Shell commands and sub-agents in the background task sidebar.
+- Give built-in tools their own grey fill and a padlock in the tool picker, so a locked row no longer looks like a faded selected one.
+- Keep a core set of tools always equipped, and show in the picker which tools are built-in and which stay discoverable when unchecked.
+- Pin individual chats above Projects in a compact sidebar section, and rename the default project to Home while preserving custom names.
+- Add image editing with a dedicated model role and improve image generation size, quality, and batch output handling.
+- Browse uploaded, generated, edited, and Markdown images from the current conversation in one image viewer using navigation buttons and arrow keys.
+- Open in-chat scheduled tasks in their original conversation, including before their first run.
+- Restore local desktop pairing for release mobile apps with QR-scoped HTTPS trust and reliable credential rollback.
+- Add inherited task model roles, shared decision defaults, Dream model settings, and a compact editor with separate primary and backup model selection.
+- Preserve pending tool approvals when saving chat settings so allowing a request does not repeatedly prompt again.
+- Improve provider settings with searchable collapsible providers, credential drafts, inline connection feedback, model search, and working manual model addition.
+- Give every tool and every tool argument a description the model can see, and declare closed-value arguments as fixed choices, so tools in the search pool are discoverable and their valid values no longer have to be inferred from prose.
+- Return a clean 'not found' refusal instead of crashing when update_task is given an unknown task id, or manage_goal is paused, resumed or given a subgoal with no active goal.
+- Give every refresh control the same spinning-arrow icon button, and drop the redundant ones on views that already poll.
+- Generate videos with persistent job tracking, play media in chat, and customize system or API speech.
+
 ## [v0.14.0] - 2026-09-18
 
 <!-- highlights -->
