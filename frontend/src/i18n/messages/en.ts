@@ -1,5 +1,6 @@
 export const en = {
   videoPlayer: {
+    reveal: 'Show file location',
     menu: 'Video controls',
     pause: 'Pause',
     mute: 'Mute',

@@ -2,10 +2,20 @@ import React, { useRef, useState } from 'react';
 import { PlayIcon } from '@heroicons/react/24/outline';
 import { BrutalButton, BrutalIconButton } from '../BrutalButton';
 import { VideoContextMenu } from './VideoContextMenu';
+import { getApiBase } from '../../lib/api';
+import { useChatStore } from '../../hooks/useChatStore';
 import { useI18n } from '../../i18n';
 
-export function VideoResultPlayer({ src }: { src: string; path: string }): React.ReactElement {
+export function VideoResultPlayer({
+  src,
+  path,
+}: {
+  src: string;
+  path: string;
+}): React.ReactElement {
   const { t } = useI18n();
+  const { currentChatId } = useChatStore();
+  const [revealError, setRevealError] = useState(false);
   const video = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -91,7 +101,29 @@ export function VideoResultPlayer({ src }: { src: string; path: string }): React
           video={video.current}
           onClose={() => setMenu(null)}
           onError={() => setPlayBlocked(true)}
+          onReveal={
+            currentChatId
+              ? async () => {
+                  setRevealError(false);
+                  try {
+                    const response = await fetch(`${getApiBase()}/system/open_explorer`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ path, chat_id: currentChatId }),
+                    });
+                    if (!response.ok) setRevealError(true);
+                  } catch {
+                    setRevealError(true);
+                  }
+                }
+              : undefined
+          }
         />
+      )}
+      {revealError && (
+        <p role="alert" className="px-3 py-2 text-xs text-brutal-red">
+          {t('sandbox.contextMenu.revealFailed')}
+        </p>
       )}
       {playBlocked && (
         <p role="status" className="px-3 pb-2 text-xs text-neutral-500">

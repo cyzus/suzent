@@ -7,11 +7,13 @@ export function VideoContextMenu({
   video,
   onClose,
   onError,
+  onReveal,
 }: {
   anchor: { x: number; y: number };
   video: HTMLVideoElement;
   onClose: () => void;
   onError: () => void;
+  onReveal?: () => Promise<void>;
 }): React.ReactElement {
   const { t } = useI18n();
   const ref = useRef<HTMLDivElement>(null);
@@ -40,6 +42,7 @@ export function VideoContextMenu({
     };
   }, [onClose]);
   const items = [
+    ...(onReveal ? [{ label: t('videoPlayer.reveal'), action: onReveal }] : []),
     {
       label: t(video.paused ? 'speech.play' : 'videoPlayer.pause'),
       action: async () => {

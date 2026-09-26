@@ -1,5 +1,6 @@
 export const zhCN = {
   videoPlayer: {
+    reveal: '找到文件位置',
     menu: '视频操作',
     pause: '暂停',
     mute: '静音',
