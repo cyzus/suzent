@@ -58,17 +58,20 @@ export function SpeechPlayer({
       >
         <SpeakerWaveIcon
           aria-hidden="true"
-          className={`h-5 w-5 shrink-0 ${state === 'playing' ? 'animate-pulse' : ''}`}
+          className={`h-5 w-5 shrink-0 ${state === 'playing' ? 'speech-speaker-playing' : ''}`}
         />
         <span role="status" className="min-w-0 flex-1 truncate text-xs font-semibold">
           {status}
         </span>
-        <span className="flex h-4 shrink-0 items-center gap-0.5" aria-hidden="true">
-          {[2, 4, 3].map((height, index) => (
+        <span
+          className={`flex h-4 shrink-0 items-center gap-0.5 ${state === 'playing' ? 'speech-wave-playing' : ''}`}
+          aria-hidden="true"
+        >
+          {[2, 4, 3].map((height) => (
             <span
               key={height}
-              className={`w-0.5 bg-current ${state === 'playing' ? 'animate-pulse' : 'opacity-40'}`}
-              style={{ height: `${height * 2}px`, animationDelay: `${index * 120}ms` }}
+              className={`w-0.5 bg-current ${state === 'playing' ? '' : 'opacity-40'}`}
+              style={{ height: `${height * 2}px` }}
             />
           ))}
         </span>
