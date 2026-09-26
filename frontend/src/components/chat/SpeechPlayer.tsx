@@ -32,9 +32,6 @@ export function SpeechPlayer({
   );
   const busy = state === 'playing' || state === 'queued';
   const unavailable = !src && !voices.length;
-  const status = busy
-    ? t(state === 'queued' ? 'speech.queued' : 'speech.playing')
-    : t('speech.clip');
   return (
     <div className="my-2 w-fit max-w-full">
       <button
@@ -49,7 +46,7 @@ export function SpeechPlayer({
             speechQueue.enqueue({ ...job, id });
           }
         }}
-        className={`flex h-11 w-44 max-w-full items-center gap-3 border px-3 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${
+        className={`flex h-11 w-24 max-w-full items-center justify-center border px-3 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${
           busy
             ? 'border-brutal-blue bg-brutal-blue text-white'
             : 'border-neutral-300 bg-neutral-100 text-brutal-black hover:bg-neutral-200 dark:border-zinc-600 dark:bg-zinc-800 dark:text-white dark:hover:bg-zinc-700'
@@ -57,7 +54,7 @@ export function SpeechPlayer({
       >
         <span
           aria-hidden="true"
-          className={`flex h-5 w-12 shrink-0 items-center justify-center gap-[3px] ${state === 'playing' ? 'speech-wave-playing' : ''}`}
+          className={`flex h-5 items-center justify-center gap-[3px] ${state === 'playing' ? 'speech-wave-playing' : ''}`}
         >
           {[6, 12, 8, 16, 10, 14, 7].map((height, index) => (
             <span
@@ -67,8 +64,8 @@ export function SpeechPlayer({
             />
           ))}
         </span>
-        <span role="status" className="min-w-0 flex-1 truncate text-xs font-semibold">
-          {status}
+        <span role="status" className="sr-only">
+          {busy ? t(state === 'queued' ? 'speech.queued' : 'speech.playing') : t('speech.clip')}
         </span>
       </button>
       {unavailable && (
