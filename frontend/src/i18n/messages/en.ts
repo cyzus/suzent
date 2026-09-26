@@ -1,5 +1,12 @@
 export const en = {
   videoPlayer: {
+    menu: 'Video controls',
+    pause: 'Pause',
+    mute: 'Mute',
+    unmute: 'Unmute',
+    loop: 'Loop',
+    stopLoop: 'Stop looping',
+    fullscreen: 'Fullscreen',
     title: 'Generated video',
     failed: 'Unable to load this video.',
     retry: 'Retry',

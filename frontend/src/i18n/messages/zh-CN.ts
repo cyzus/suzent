@@ -1,5 +1,12 @@
 export const zhCN = {
   videoPlayer: {
+    menu: '视频操作',
+    pause: '暂停',
+    mute: '静音',
+    unmute: '取消静音',
+    loop: '循环播放',
+    stopLoop: '关闭循环',
+    fullscreen: '全屏',
     title: '生成的视频',
     failed: '无法加载视频。',
     retry: '重试',

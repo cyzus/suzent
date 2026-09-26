@@ -1,37 +1,33 @@
 import React, { useRef, useState } from 'react';
-import { FilmIcon, PlayIcon } from '@heroicons/react/24/outline';
+import { PlayIcon } from '@heroicons/react/24/outline';
 import { BrutalButton, BrutalIconButton } from '../BrutalButton';
+import { VideoContextMenu } from './VideoContextMenu';
 import { useI18n } from '../../i18n';
 
-export function VideoResultPlayer({
-  src,
-  path,
-}: {
-  src: string;
-  path: string;
-}): React.ReactElement {
+export function VideoResultPlayer({ src }: { src: string; path: string }): React.ReactElement {
   const { t } = useI18n();
   const video = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
   const [failed, setFailed] = useState(false);
   const [playBlocked, setPlayBlocked] = useState(false);
   const [ratio, setRatio] = useState(16 / 9);
-  const [resolution, setResolution] = useState('');
-  const filename = path.split(/[\\/]/).pop() || path;
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   return (
     <figure
       className="my-2 w-full overflow-hidden border border-neutral-200 bg-white dark:border-zinc-700 dark:bg-zinc-800"
+      onContextMenu={(event) => {
+        event.preventDefault();
+        setMenu({ x: event.clientX, y: event.clientY });
+      }}
+      onKeyDown={(event) => {
+        if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
+          event.preventDefault();
+          const rect = event.currentTarget.getBoundingClientRect();
+          setMenu({ x: rect.left + 12, y: rect.top + 12 });
+        }
+      }}
       style={{ maxWidth: `min(100%, ${Math.min(672, 448 * ratio)}px)` }}
     >
-      <div className="flex items-center justify-between gap-3 border-b border-neutral-200 dark:border-zinc-700 px-3 py-2 dark:text-white">
-        <span className="flex min-w-0 items-center gap-2 text-xs font-black uppercase tracking-wide">
-          <FilmIcon className="h-4 w-4 shrink-0" />
-          {t('videoPlayer.title')}
-        </span>
-        {resolution && (
-          <span className="shrink-0 font-mono text-[10px] text-neutral-500">{resolution}</span>
-        )}
-      </div>
       <div className="relative bg-black" style={{ aspectRatio: ratio, maxHeight: '28rem' }}>
         <video
           ref={video}
@@ -45,7 +41,6 @@ export function VideoResultPlayer({
             const element = event.currentTarget;
             if (element.videoWidth && element.videoHeight) {
               setRatio(element.videoWidth / element.videoHeight);
-              setResolution(`${element.videoWidth} × ${element.videoHeight}`);
             }
           }}
           onPlay={() => {
@@ -90,11 +85,14 @@ export function VideoResultPlayer({
           </div>
         )}
       </div>
-      <figcaption className="flex items-center justify-between gap-3 border-t border-neutral-200 dark:border-zinc-700 px-3 py-2 dark:text-white">
-        <span className="min-w-0 truncate font-mono text-[11px] text-neutral-500" title={filename}>
-          {filename}
-        </span>
-      </figcaption>
+      {menu && video.current && (
+        <VideoContextMenu
+          anchor={menu}
+          video={video.current}
+          onClose={() => setMenu(null)}
+          onError={() => setPlayBlocked(true)}
+        />
+      )}
       {playBlocked && (
         <p role="status" className="px-3 pb-2 text-xs text-neutral-500">
           {t('speech.playbackBlocked')}
