@@ -11,7 +11,12 @@ from suzent.voice.settings import VoiceSettings
 @pytest.fixture
 def context(tmp_path):
     return SimpleNamespace(
-        deps=SimpleNamespace(chat_id=None, workspace_root=str(tmp_path))
+        deps=SimpleNamespace(
+            chat_id=None,
+            workspace_root=str(tmp_path),
+            interaction_profile="interactive",
+            social_context={},
+        )
     )
 
 
@@ -112,6 +117,17 @@ async def test_system_speech_needs_no_model_or_audio_device(context):
         assert result.metadata["speed"] == 1.5
         assert result.metadata["engine"] == "system"
         client.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "deps", [{"interaction_profile": "headless"}, {"social_context": {"platform": "x"}}]
+)
+async def test_system_speech_rejected_without_desktop_client(context, deps):
+    vars(context.deps).update(deps)
+    with patch.object(voice, "get_voice_settings", return_value=VoiceSettings()):
+        result = await voice.SpeakTool().forward(context, "hello")
+    assert not result.success
+    assert "desktop chat" in result.message
 
 
 @pytest.mark.parametrize(

@@ -37,6 +37,15 @@ describe('media results', () => {
       true
     );
   });
+  it('shows a saved media path only once across repeated status results', () => {
+    const media = getPlayableResults([
+      call('check_video', { saved_paths: ['/video.mp4'] }),
+      call('check_video', { saved_paths: ['/video.mp4'] }),
+    ]);
+
+    expect(media).toHaveLength(1);
+    expect(media[0].path).toBe('/video.mp4');
+  });
   it('renders an explicit playback control and unavailable-device hint without autoplay', () => {
     const html = renderToStaticMarkup(
       <I18nProvider>

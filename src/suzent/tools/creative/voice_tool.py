@@ -92,6 +92,13 @@ class SpeakTool(Tool):
             )
             metadata = {"speech_id": uuid4().hex, "text": text, **settings.model_dump()}
             if settings.engine == "system":
+                if (
+                    ctx.deps.interaction_profile != "interactive"
+                    or ctx.deps.social_context
+                ):
+                    raise ValueError(
+                        "System speech needs the desktop chat to play it; configure Settings → Model Roles → TTS and use engine=api here."
+                    )
                 return ToolResult.success_result(
                     "System speech is ready for playback on the current device. Style instructions and output format do not apply to system speech.",
                     metadata=metadata,

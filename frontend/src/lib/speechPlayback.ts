@@ -92,9 +92,10 @@ export class SpeechQueue {
     this.enabled = enabled;
     if (!enabled) {
       // Preserve seen IDs so re-enabling never replays an earlier result.
-      this.jobs = [];
-      if (this.active) this.stop(this.active.id);
-      for (const [id, state] of this.states) if (state === 'queued') this.update(id, 'idle');
+      // Only automatic jobs are cancelled; manual playback keeps going.
+      for (const job of this.jobs) if (this.seen.has(job.id)) this.update(job.id, 'idle');
+      this.jobs = this.jobs.filter((job) => !this.seen.has(job.id));
+      if (this.active && this.seen.has(this.active.id)) this.stop(this.active.id);
     }
   }
 }

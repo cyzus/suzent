@@ -35,6 +35,7 @@ interface PlayableResult {
   metadata: Record<string, unknown>;
 }
 export function getPlayableResults(calls: ImageResultCall[]): PlayableResult[] {
+  const seen = new Set<string>();
   return calls.flatMap<PlayableResult>((call, index) => {
     if (call.toolName !== 'check_video' && call.toolName !== 'speak') return [];
     const result = parseToolResultEnvelope(call.output);
@@ -50,7 +51,10 @@ export function getPlayableResults(calls: ImageResultCall[]): PlayableResult[] {
     const paths = metadata.saved_paths;
     if (!Array.isArray(paths)) return [];
     return paths
-      .filter((path): path is string => typeof path === 'string' && !!path.trim())
+      .filter(
+        (path): path is string =>
+          typeof path === 'string' && !!path.trim() && !seen.has(path) && !!seen.add(path)
+      )
       .map((path) => ({
         key: path,
         kind: call.toolName === 'check_video' ? ('video' as const) : ('audio' as const),

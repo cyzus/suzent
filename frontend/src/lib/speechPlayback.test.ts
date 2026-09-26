@@ -73,6 +73,16 @@ describe('speech queue', () => {
     queue.enqueue(b.job);
     expect(b.start).toHaveBeenCalledOnce();
   });
+  it('keeps manual playback active when autoplay is disabled', () => {
+    const queue = new SpeechQueue();
+    const manual = controlled('manual');
+    queue.enqueue(manual.job);
+
+    queue.setAutoplay(false);
+
+    expect(manual.cleanup).not.toHaveBeenCalled();
+    expect(queue.state('manual')).toBe('playing');
+  });
   it('reports browser autoplay rejection and releases the queue', async () => {
     const pause = vi.fn();
     vi.stubGlobal(
