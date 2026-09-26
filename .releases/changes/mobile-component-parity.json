@@ -1,0 +1,8 @@
+{
+  "products": {
+    "mobile": "patch",
+    "desktop": "none"
+  },
+  "summary": "Align iOS and Android controls, settings, reconnection, inputs, notices, and bottom-sheet selectors with the Suzent visual language.",
+  "reason": "The shared presentation README documents native mobile controls; desktop runtime code, assets, and behavior are unchanged."
+}
