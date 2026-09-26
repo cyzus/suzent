@@ -33,7 +33,7 @@ export function SpeechPlayer({
   const busy = state === 'playing' || state === 'queued';
   const unavailable = !src && !voices.length;
   return (
-    <div className="my-2 w-fit max-w-full">
+    <div className="w-fit max-w-full">
       <button
         type="button"
         aria-label={t(busy ? 'speech.stop' : 'speech.play')}

@@ -1,7 +1,7 @@
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { getPlayableResults, hasMediaResults } from './ImageResultGallery';
+import { getPlayableResults, hasMediaResults, hasVisualMediaResults } from './ImageResultGallery';
 import { SpeechPlayer } from './SpeechPlayer';
 import { I18nProvider } from '../../i18n';
 
@@ -32,6 +32,10 @@ describe('media results', () => {
     ]);
     expect(media.map((item) => item.kind)).toEqual(['system', 'audio']);
     expect(hasMediaResults([call('speak', { engine: 'system', text: 'hello' })])).toBe(true);
+    expect(hasVisualMediaResults([call('speak', { engine: 'system', text: 'hello' })])).toBe(false);
+    expect(hasVisualMediaResults([call('check_video', { saved_paths: ['/video.mp4'] })])).toBe(
+      true
+    );
   });
   it('renders an explicit playback control and unavailable-device hint without autoplay', () => {
     const html = renderToStaticMarkup(

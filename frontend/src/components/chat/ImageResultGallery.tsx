@@ -64,6 +64,14 @@ export function hasMediaResults(calls: ImageResultCall[]): boolean {
   return getImageResultPaths(calls).length > 0 || getPlayableResults(calls).length > 0;
 }
 
+/** Media that should close an activity group to preserve its timeline position. */
+export function hasVisualMediaResults(calls: ImageResultCall[]): boolean {
+  return (
+    getImageResultPaths(calls).length > 0 ||
+    getPlayableResults(calls).some((item) => item.kind === 'video')
+  );
+}
+
 export const ImageResultGallery: React.FC<{ calls: ImageResultCall[] }> = ({ calls }) => {
   const paths = getImageResultPaths(calls);
   const media = getPlayableResults(calls);
@@ -77,16 +85,21 @@ export const ImageResultGallery: React.FC<{ calls: ImageResultCall[] }> = ({ cal
           metadata={{ saved_paths: paths }}
         />
       )}
-      {media.map((item) => {
-        if (item.kind === 'system') return <SpeechPlayer key={item.key} metadata={item.metadata} />;
-        if (!currentChatId || !item.path) return null;
-        const src = `${getApiBase()}/sandbox/serve?${getSandboxParams(currentChatId, item.path, config.sandbox_volumes)}`;
-        return item.kind === 'video' ? (
-          <VideoResultPlayer key={src} src={src} path={item.path} />
-        ) : (
-          <SpeechPlayer key={item.key} src={src} metadata={item.metadata} />
-        );
-      })}
+      {media.length > 0 && (
+        <div className="my-2 flex flex-col items-start gap-1">
+          {media.map((item) => {
+            if (item.kind === 'system')
+              return <SpeechPlayer key={item.key} metadata={item.metadata} />;
+            if (!currentChatId || !item.path) return null;
+            const src = `${getApiBase()}/sandbox/serve?${getSandboxParams(currentChatId, item.path, config.sandbox_volumes)}`;
+            return item.kind === 'video' ? (
+              <VideoResultPlayer key={src} src={src} path={item.path} />
+            ) : (
+              <SpeechPlayer key={item.key} src={src} metadata={item.metadata} />
+            );
+          })}
+        </div>
+      )}
     </>
   );
 };
