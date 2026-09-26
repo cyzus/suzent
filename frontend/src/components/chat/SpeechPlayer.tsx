@@ -1,5 +1,4 @@
 import React, { useEffect, useState, useSyncExternalStore } from 'react';
-import { SpeakerWaveIcon } from '@heroicons/react/24/solid';
 import { useI18n } from '../../i18n';
 import { createSpeechJob, speechId, speechQueue } from '../../lib/speechPlayback';
 
@@ -56,24 +55,20 @@ export function SpeechPlayer({
             : 'border-neutral-300 bg-neutral-100 text-brutal-black hover:bg-neutral-200 dark:border-zinc-600 dark:bg-zinc-800 dark:text-white dark:hover:bg-zinc-700'
         }`}
       >
-        <SpeakerWaveIcon
-          aria-hidden="true"
-          className={`h-5 w-5 shrink-0 ${state === 'playing' ? 'speech-speaker-playing' : ''}`}
-        />
-        <span role="status" className="min-w-0 flex-1 truncate text-xs font-semibold">
-          {status}
-        </span>
         <span
-          className={`flex h-4 shrink-0 items-center gap-0.5 ${state === 'playing' ? 'speech-wave-playing' : ''}`}
           aria-hidden="true"
+          className={`flex h-5 w-12 shrink-0 items-center justify-center gap-[3px] ${state === 'playing' ? 'speech-wave-playing' : ''}`}
         >
-          {[2, 4, 3].map((height) => (
+          {[6, 12, 8, 16, 10, 14, 7].map((height, index) => (
             <span
-              key={height}
-              className={`w-0.5 bg-current ${state === 'playing' ? '' : 'opacity-40'}`}
-              style={{ height: `${height * 2}px` }}
+              key={`${index}-${height}`}
+              className={`w-0.5 bg-current ${state === 'playing' ? '' : 'opacity-55'}`}
+              style={{ height: `${height}px`, animationDelay: `${index * 70}ms` }}
             />
           ))}
+        </span>
+        <span role="status" className="min-w-0 flex-1 truncate text-xs font-semibold">
+          {status}
         </span>
       </button>
       {unavailable && (
