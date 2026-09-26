@@ -108,5 +108,7 @@
     <string name="desktop_recognized">已识别桌面端</string>
     <string name="flashlight">手电筒</string>
     <string name="pair_again">重新配对</string>
+    <string name="cancel_reconnect">取消</string>
+    <string name="reconnect_unreachable">无法连接桌面端。请检查 Wi-Fi 或 Tailscale，并确认 Suzent 正在运行，然后重试或重新配对。</string>
     <string name="pairing_secure_connection">无法建立可信连接。请检查网络；如果桌面设备身份已更换，请重新扫码。</string>
 </resources>

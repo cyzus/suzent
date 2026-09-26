@@ -1,0 +1,4 @@
+{
+  "products": { "mobile": "patch" },
+  "summary": "Bound desktop reconnection time on iOS and Android, allow cancellation, and make re-pairing available when a saved desktop is unreachable."
+}

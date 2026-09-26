@@ -13,6 +13,34 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class BackendClientTest {
+    @Test(timeout = 5000) fun reconnectDeadlineCancelsBlockedRequest() = runBlocking {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE))
+        server.start()
+        val client = BackendClient(Backend.parse(server.url("/").toString(), true), "")
+        try {
+            val failure = runCatching { withTimeout(500) { client.capabilities() } }.exceptionOrNull()
+            assertTrue(failure is kotlinx.coroutines.TimeoutCancellationException)
+            assertEquals(1, server.requestCount)
+        } finally { client.close(); server.shutdown() }
+    }
+
+    @Test(timeout = 7000) fun cancelInterruptsResponseBodyRead() = runBlocking {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setBody("{}").setBodyDelay(3, TimeUnit.SECONDS))
+        server.start()
+        val client = BackendClient(Backend.parse(server.url("/").toString(), true), "")
+        try {
+            val request = async { client.capabilities() }
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                assertNotNull(server.takeRequest(2, TimeUnit.SECONDS))
+            }
+            request.cancel()
+            withTimeout(1000) { request.join() }
+            assertTrue(request.isCancelled)
+        } finally { client.close(); server.shutdown() }
+    }
+
     @Test fun cleanupCancelsABlockedStream() = runBlocking {
         for (closeClient in listOf(false, true)) {
             val server = MockWebServer()
