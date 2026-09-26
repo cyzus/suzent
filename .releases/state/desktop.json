@@ -16,7 +16,8 @@
     ".releases/changes/providers-settings-ux.json",
     ".releases/changes/tool-argument-conventions.json",
     ".releases/changes/tool-package-layout.json",
-    ".releases/changes/unified-refresh-button.json"
+    ".releases/changes/unified-refresh-button.json",
+    ".releases/changes/video-and-voice.json"
   ],
   "legacy_complete": true
 }
