@@ -2,16 +2,38 @@
   "_doc": "OpenAI model capabilities. Auto-updated by Fetch; manually curate the flags.",
   "models": {
     "openai/computer-use-preview": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/responses"
+      ],
+      "max_input_tokens": 8192,
+      "max_output_tokens": 1024,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": false,
+      "supports_reasoning": true,
+      "supports_prompt_caching": false
     },
     "openai/computer-use-preview-2025-03-11": {
       "mode": "chat"
     },
     "openai/gpt-realtime-2.1": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/realtime"
+      ],
+      "max_input_tokens": 128000,
+      "max_output_tokens": 32000,
+      "supports_function_calling": true
     },
     "openai/gpt-realtime-2.1-mini": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/realtime"
+      ],
+      "max_input_tokens": 128000,
+      "max_output_tokens": 32000,
+      "supports_function_calling": true
     },
     "openai/curie:ft-personal-2022-02-08-23-37-50": {
       "mode": "chat"
@@ -57,7 +79,12 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": false,
-      "supports_prompt_caching": false
+      "supports_prompt_caching": true,
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/batch",
+        "/v1/responses"
+      ]
     },
     "openai/gpt-4.1-mini": {
       "mode": "chat",
@@ -67,7 +94,12 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": false,
-      "supports_prompt_caching": false
+      "supports_prompt_caching": true,
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/batch",
+        "/v1/responses"
+      ]
     },
     "openai/gpt-4.1-nano": {
       "mode": "chat",
@@ -77,7 +109,12 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": false,
-      "supports_prompt_caching": false
+      "supports_prompt_caching": true,
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/batch",
+        "/v1/responses"
+      ]
     },
     "openai/o3": {
       "mode": "chat",
@@ -87,7 +124,13 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": false
+      "supports_prompt_caching": true,
+      "supported_endpoints": [
+        "/v1/responses",
+        "/v1/chat/completions",
+        "/v1/completions",
+        "/v1/batch"
+      ]
     },
     "openai/o4-mini": {
       "mode": "chat",
@@ -97,21 +140,29 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": false
+      "supports_prompt_caching": true
     },
     "openai/text-embedding-3-small": {
       "mode": "embedding",
-      "output_vector_size": 1536
+      "output_vector_size": 1536,
+      "max_input_tokens": 8191
     },
     "openai/text-embedding-3-large": {
       "mode": "embedding",
-      "output_vector_size": 3072
+      "output_vector_size": 3072,
+      "max_input_tokens": 8191
     },
     "openai/tts-1": {
-      "mode": "tts"
+      "mode": "tts",
+      "supported_endpoints": [
+        "/v1/audio/speech"
+      ]
     },
     "openai/tts-1-hd": {
-      "mode": "tts"
+      "mode": "tts",
+      "supported_endpoints": [
+        "/v1/audio/speech"
+      ]
     },
     "openai/sora-2": {
       "mode": "chat"
@@ -120,32 +171,91 @@
       "mode": "chat"
     },
     "openai/gpt-4-0613": {
-      "mode": "chat"
+      "mode": "chat",
+      "max_input_tokens": 8192,
+      "max_output_tokens": 4096,
+      "supports_function_calling": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-4": {
-      "mode": "chat"
+      "mode": "chat",
+      "max_input_tokens": 8192,
+      "max_output_tokens": 4096,
+      "supports_function_calling": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-3.5-turbo": {
-      "mode": "chat"
+      "mode": "chat",
+      "max_input_tokens": 16385,
+      "max_output_tokens": 4096,
+      "supports_function_calling": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-5.5-pro-2026-04-23": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/responses",
+        "/v1/batch"
+      ],
+      "max_input_tokens": 1050000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": false,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-image-2-2026-04-21": {
       "mode": "image_generation",
       "supported_endpoints": [
         "/v1/images/generations",
         "/v1/images/edits"
-      ]
+      ],
+      "supports_vision": true
     },
     "openai/gpt-5.5": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/batch",
+        "/v1/responses"
+      ],
+      "max_input_tokens": 1050000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-5.5-2026-04-23": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/batch",
+        "/v1/responses"
+      ],
+      "max_input_tokens": 1050000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-5.5-pro": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/responses",
+        "/v1/batch"
+      ],
+      "max_input_tokens": 1050000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": false,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "openai/davinci-002": {
       "mode": "chat"
@@ -160,64 +270,161 @@
       "mode": "chat"
     },
     "openai/gpt-3.5-turbo-1106": {
-      "mode": "chat"
+      "mode": "chat",
+      "max_input_tokens": 16385,
+      "max_output_tokens": 4096,
+      "supports_function_calling": true,
+      "supports_prompt_caching": true
     },
     "openai/tts-1-1106": {
-      "mode": "chat"
+      "mode": "tts",
+      "supported_endpoints": [
+        "/v1/audio/speech"
+      ]
     },
     "openai/tts-1-hd-1106": {
-      "mode": "chat"
+      "mode": "tts",
+      "supported_endpoints": [
+        "/v1/audio/speech"
+      ]
     },
     "openai/gpt-3.5-turbo-0125": {
-      "mode": "chat"
+      "mode": "chat",
+      "max_input_tokens": 16385,
+      "max_output_tokens": 4096,
+      "supports_function_calling": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-4-turbo": {
-      "mode": "chat"
+      "mode": "chat",
+      "max_input_tokens": 128000,
+      "max_output_tokens": 4096,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-4-turbo-2024-04-09": {
-      "mode": "chat"
+      "mode": "chat",
+      "max_input_tokens": 128000,
+      "max_output_tokens": 4096,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-4o": {
-      "mode": "chat"
+      "mode": "chat",
+      "max_input_tokens": 128000,
+      "max_output_tokens": 16384,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-4o-2024-05-13": {
-      "mode": "chat"
+      "mode": "chat",
+      "max_input_tokens": 128000,
+      "max_output_tokens": 4096,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-4o-mini-2024-07-18": {
-      "mode": "chat"
+      "mode": "chat",
+      "max_input_tokens": 128000,
+      "max_output_tokens": 16384,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-4o-mini": {
-      "mode": "chat"
+      "mode": "chat",
+      "max_input_tokens": 128000,
+      "max_output_tokens": 16384,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-4o-2024-08-06": {
-      "mode": "chat"
+      "mode": "chat",
+      "max_input_tokens": 128000,
+      "max_output_tokens": 16384,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_prompt_caching": true
     },
     "openai/omni-moderation-latest": {
-      "mode": "chat"
+      "mode": "chat",
+      "max_input_tokens": 32768,
+      "max_output_tokens": 0
     },
     "openai/omni-moderation-2024-09-26": {
-      "mode": "chat"
+      "mode": "chat",
+      "max_input_tokens": 32768,
+      "max_output_tokens": 0
     },
     "openai/o1-2024-12-17": {
-      "mode": "chat"
+      "mode": "chat",
+      "max_input_tokens": 200000,
+      "max_output_tokens": 100000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "openai/o1": {
-      "mode": "chat"
+      "mode": "chat",
+      "max_input_tokens": 200000,
+      "max_output_tokens": 100000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "openai/o3-mini": {
-      "mode": "chat"
+      "mode": "chat",
+      "max_input_tokens": 200000,
+      "max_output_tokens": 100000,
+      "supports_vision": false,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "openai/o3-mini-2025-01-31": {
-      "mode": "chat"
+      "mode": "chat",
+      "max_input_tokens": 200000,
+      "max_output_tokens": 100000,
+      "supports_vision": false,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-4o-2024-11-20": {
-      "mode": "chat"
+      "mode": "chat",
+      "max_input_tokens": 128000,
+      "max_output_tokens": 16384,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-4o-mini-search-preview-2025-03-11": {
       "mode": "chat"
     },
     "openai/gpt-4o-mini-search-preview": {
-      "mode": "chat"
+      "mode": "chat",
+      "max_input_tokens": 128000,
+      "max_output_tokens": 16384,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-4o-transcribe": {
       "mode": "chat"
@@ -226,28 +433,106 @@
       "mode": "chat"
     },
     "openai/o1-pro-2025-03-19": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/responses",
+        "/v1/batch"
+      ],
+      "max_input_tokens": 200000,
+      "max_output_tokens": 100000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "openai/o1-pro": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/responses",
+        "/v1/batch"
+      ],
+      "max_input_tokens": 200000,
+      "max_output_tokens": 100000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-4o-mini-tts": {
-      "mode": "chat"
+      "mode": "tts",
+      "supported_endpoints": [
+        "/v1/audio/speech"
+      ]
     },
     "openai/o3-2025-04-16": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/responses",
+        "/v1/chat/completions",
+        "/v1/completions",
+        "/v1/batch"
+      ],
+      "max_input_tokens": 200000,
+      "max_output_tokens": 100000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "openai/o4-mini-2025-04-16": {
-      "mode": "chat"
+      "mode": "chat",
+      "max_input_tokens": 200000,
+      "max_output_tokens": 100000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-4.1-2025-04-14": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/batch",
+        "/v1/responses"
+      ],
+      "max_input_tokens": 1047576,
+      "max_output_tokens": 32768,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-4.1-mini-2025-04-14": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/batch",
+        "/v1/responses"
+      ],
+      "max_input_tokens": 1047576,
+      "max_output_tokens": 32768,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-4.1-nano-2025-04-14": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/batch",
+        "/v1/responses"
+      ],
+      "max_input_tokens": 1047576,
+      "max_output_tokens": 32768,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-image-1": {
       "mode": "image_generation",
@@ -257,16 +542,60 @@
       ]
     },
     "openai/o3-pro": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/responses",
+        "/v1/batch"
+      ],
+      "max_input_tokens": 200000,
+      "max_output_tokens": 100000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "openai/o3-pro-2025-06-10": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/responses",
+        "/v1/batch"
+      ],
+      "max_input_tokens": 200000,
+      "max_output_tokens": 100000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "openai/o4-mini-deep-research": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/batch",
+        "/v1/responses"
+      ],
+      "max_input_tokens": 200000,
+      "max_output_tokens": 100000,
+      "supports_vision": true,
+      "supports_function_calling": false,
+      "supports_response_schema": false,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "openai/o3-deep-research": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/batch",
+        "/v1/responses"
+      ],
+      "max_input_tokens": 200000,
+      "max_output_tokens": 100000,
+      "supports_vision": true,
+      "supports_function_calling": false,
+      "supports_response_schema": false,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-4o-transcribe-diarize": {
       "mode": "chat"
@@ -278,40 +607,171 @@
       "mode": "chat"
     },
     "openai/gpt-5-chat-latest": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/responses"
+      ],
+      "max_input_tokens": 128000,
+      "max_output_tokens": 16384,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": false
     },
     "openai/gpt-5-2025-08-07": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/batch",
+        "/v1/responses"
+      ],
+      "max_input_tokens": 272000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-5": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/batch",
+        "/v1/responses"
+      ],
+      "max_input_tokens": 272000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-5-mini-2025-08-07": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/batch",
+        "/v1/responses"
+      ],
+      "max_input_tokens": 272000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-5-mini": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/batch",
+        "/v1/responses"
+      ],
+      "max_input_tokens": 272000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-5-nano-2025-08-07": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/batch",
+        "/v1/responses"
+      ],
+      "max_input_tokens": 272000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-5-nano": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/batch",
+        "/v1/responses"
+      ],
+      "max_input_tokens": 272000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-audio-2025-08-28": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/responses",
+        "/v1/realtime",
+        "/v1/batch"
+      ],
+      "max_input_tokens": 128000,
+      "max_output_tokens": 16384,
+      "supports_vision": false,
+      "supports_function_calling": true,
+      "supports_response_schema": false,
+      "supports_reasoning": false,
+      "supports_prompt_caching": false
     },
     "openai/gpt-realtime": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/realtime"
+      ],
+      "max_input_tokens": 32000,
+      "max_output_tokens": 4096,
+      "supports_function_calling": true
     },
     "openai/gpt-realtime-2025-08-28": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/realtime"
+      ],
+      "max_input_tokens": 32000,
+      "max_output_tokens": 4096,
+      "supports_function_calling": true
     },
     "openai/gpt-audio": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/responses",
+        "/v1/realtime",
+        "/v1/batch"
+      ],
+      "max_input_tokens": 128000,
+      "max_output_tokens": 16384,
+      "supports_vision": false,
+      "supports_function_calling": true,
+      "supports_response_schema": false,
+      "supports_reasoning": false,
+      "supports_prompt_caching": false
     },
     "openai/gpt-5-codex": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/responses"
+      ],
+      "max_input_tokens": 272000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-image-1-mini": {
       "mode": "image_generation",
@@ -321,67 +781,241 @@
       ]
     },
     "openai/gpt-5-pro-2025-10-06": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/batch",
+        "/v1/responses"
+      ],
+      "max_input_tokens": 400000,
+      "max_output_tokens": 272000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-5-pro": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/batch",
+        "/v1/responses"
+      ],
+      "max_input_tokens": 400000,
+      "max_output_tokens": 272000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-audio-mini": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/responses",
+        "/v1/realtime",
+        "/v1/batch"
+      ],
+      "max_input_tokens": 128000,
+      "max_output_tokens": 16384,
+      "supports_vision": false,
+      "supports_function_calling": true,
+      "supports_response_schema": false,
+      "supports_reasoning": false,
+      "supports_prompt_caching": false
     },
     "openai/gpt-audio-mini-2025-10-06": {
       "mode": "chat"
     },
     "openai/gpt-5-search-api": {
-      "mode": "chat"
+      "mode": "chat",
+      "max_input_tokens": 272000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-realtime-mini": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/realtime"
+      ],
+      "max_input_tokens": 32000,
+      "max_output_tokens": 4096,
+      "supports_function_calling": true
     },
     "openai/gpt-realtime-mini-2025-10-06": {
       "mode": "chat"
     },
     "openai/gpt-5-search-api-2025-10-14": {
-      "mode": "chat"
+      "mode": "chat",
+      "max_input_tokens": 272000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-5.1-chat-latest": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/responses"
+      ],
+      "max_input_tokens": 128000,
+      "max_output_tokens": 16384,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": false
     },
     "openai/gpt-5.1-2025-11-13": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/responses"
+      ],
+      "max_input_tokens": 272000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-5.1": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/responses"
+      ],
+      "max_input_tokens": 272000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-5.1-codex": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/responses"
+      ],
+      "max_input_tokens": 400000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-5.1-codex-mini": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/responses"
+      ],
+      "max_input_tokens": 400000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-5.1-codex-max": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/responses"
+      ],
+      "max_input_tokens": 400000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-image-1.5": {
       "mode": "image_generation",
       "supported_endpoints": [
         "/v1/images/generations"
-      ]
+      ],
+      "supports_vision": true
     },
     "openai/gpt-5.2-2025-12-11": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/batch",
+        "/v1/responses"
+      ],
+      "max_input_tokens": 272000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-5.2": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/batch",
+        "/v1/responses"
+      ],
+      "max_input_tokens": 272000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-5.2-pro-2025-12-11": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/batch",
+        "/v1/responses"
+      ],
+      "max_input_tokens": 272000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-5.2-pro": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/batch",
+        "/v1/responses"
+      ],
+      "max_input_tokens": 272000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-5.2-chat-latest": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/responses"
+      ],
+      "max_input_tokens": 128000,
+      "max_output_tokens": 16384,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": false
     },
     "openai/gpt-4o-mini-transcribe-2025-12-15": {
       "mode": "chat"
@@ -393,13 +1027,35 @@
       "mode": "chat"
     },
     "openai/gpt-4o-mini-tts-2025-12-15": {
-      "mode": "chat"
+      "mode": "tts",
+      "supported_endpoints": [
+        "/v1/audio/speech"
+      ]
     },
     "openai/gpt-realtime-mini-2025-12-15": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/realtime"
+      ],
+      "max_input_tokens": 128000,
+      "max_output_tokens": 4096,
+      "supports_function_calling": true
     },
     "openai/gpt-audio-mini-2025-12-15": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/responses",
+        "/v1/realtime",
+        "/v1/batch"
+      ],
+      "max_input_tokens": 128000,
+      "max_output_tokens": 16384,
+      "supports_vision": false,
+      "supports_function_calling": true,
+      "supports_response_schema": false,
+      "supports_reasoning": false,
+      "supports_prompt_caching": false
     },
     "openai/chatgpt-image-latest": {
       "mode": "image_generation",
@@ -409,74 +1065,246 @@
       ]
     },
     "openai/gpt-5.2-codex": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/responses"
+      ],
+      "max_input_tokens": 272000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-5.3-codex": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/responses"
+      ],
+      "max_input_tokens": 272000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-realtime-1.5": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/realtime"
+      ],
+      "max_input_tokens": 32000,
+      "max_output_tokens": 4096,
+      "supports_function_calling": true
     },
     "openai/gpt-audio-1.5": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions"
+      ],
+      "max_input_tokens": 128000,
+      "max_output_tokens": 16384,
+      "supports_vision": false,
+      "supports_function_calling": true,
+      "supports_response_schema": false,
+      "supports_reasoning": false,
+      "supports_prompt_caching": false
     },
     "openai/gpt-4o-search-preview": {
-      "mode": "chat"
+      "mode": "chat",
+      "max_input_tokens": 128000,
+      "max_output_tokens": 16384,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-4o-search-preview-2025-03-11": {
       "mode": "chat"
     },
     "openai/gpt-5.3-chat-latest": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/responses"
+      ],
+      "max_input_tokens": 128000,
+      "max_output_tokens": 16384,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": false
     },
     "openai/gpt-5.4-2026-03-05": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/batch",
+        "/v1/responses"
+      ],
+      "max_input_tokens": 1050000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-5.4-pro": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/responses",
+        "/v1/batch"
+      ],
+      "max_input_tokens": 1050000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": false,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-5.4-pro-2026-03-05": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/responses",
+        "/v1/batch"
+      ],
+      "max_input_tokens": 1050000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": false,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-5.4": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/batch",
+        "/v1/responses"
+      ],
+      "max_input_tokens": 1050000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-5.4-nano-2026-03-17": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/batch",
+        "/v1/responses"
+      ],
+      "max_input_tokens": 272000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-5.4-nano": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/batch",
+        "/v1/responses"
+      ],
+      "max_input_tokens": 272000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-5.4-mini-2026-03-17": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/batch",
+        "/v1/responses"
+      ],
+      "max_input_tokens": 272000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-5.4-mini": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/batch",
+        "/v1/responses"
+      ],
+      "max_input_tokens": 272000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-image-2": {
       "mode": "image_generation",
       "supported_endpoints": [
         "/v1/images/generations",
         "/v1/images/edits"
-      ]
+      ],
+      "supports_vision": true
     },
     "openai/gpt-3.5-turbo-16k": {
-      "mode": "chat"
+      "mode": "chat",
+      "max_input_tokens": 16385,
+      "max_output_tokens": 4096,
+      "supports_prompt_caching": true
     },
     "openai/whisper-1": {
       "mode": "chat"
     },
     "openai/text-embedding-ada-002": {
-      "mode": "chat"
+      "mode": "embedding",
+      "max_input_tokens": 8191,
+      "output_vector_size": 1536
     },
     "openai/chat-latest": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/responses"
+      ],
+      "max_input_tokens": 400000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     },
     "openai/gpt-realtime-translate": {
-      "mode": "chat"
+      "mode": "chat",
+      "max_input_tokens": 16000,
+      "max_output_tokens": 2000
     },
     "openai/gpt-realtime-2": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/realtime"
+      ],
+      "max_input_tokens": 128000,
+      "max_output_tokens": 32000,
+      "supports_function_calling": true
     },
     "openai/gpt-realtime-whisper": {
       "mode": "chat"
@@ -485,6 +1313,363 @@
       "mode": "chat"
     },
     "openai/sora-2-pro-high-res": {
+      "mode": "chat"
+    },
+    "openai/ft:gpt-3.5-turbo": {
+      "mode": "chat",
+      "max_input_tokens": 16385,
+      "max_output_tokens": 4096
+    },
+    "openai/ft:gpt-3.5-turbo-0125": {
+      "mode": "chat",
+      "max_input_tokens": 16385,
+      "max_output_tokens": 4096
+    },
+    "openai/ft:gpt-3.5-turbo-0613": {
+      "mode": "chat",
+      "max_input_tokens": 4096,
+      "max_output_tokens": 4096
+    },
+    "openai/ft:gpt-3.5-turbo-1106": {
+      "mode": "chat",
+      "max_input_tokens": 16385,
+      "max_output_tokens": 4096
+    },
+    "openai/ft:gpt-4-0613": {
+      "mode": "chat",
+      "max_input_tokens": 8192,
+      "max_output_tokens": 4096,
+      "supports_function_calling": true
+    },
+    "openai/ft:gpt-4o-2024-08-06": {
+      "mode": "chat",
+      "max_input_tokens": 128000,
+      "max_output_tokens": 16384,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_prompt_caching": true
+    },
+    "openai/ft:gpt-4o-2024-11-20": {
+      "mode": "chat",
+      "max_input_tokens": 128000,
+      "max_output_tokens": 16384,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_prompt_caching": true
+    },
+    "openai/ft:gpt-4o-mini-2024-07-18": {
+      "mode": "chat",
+      "max_input_tokens": 128000,
+      "max_output_tokens": 16384,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_prompt_caching": true
+    },
+    "openai/ft:gpt-4.1-2025-04-14": {
+      "mode": "chat",
+      "max_input_tokens": 1047576,
+      "max_output_tokens": 32768,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_prompt_caching": true
+    },
+    "openai/ft:gpt-4.1-mini-2025-04-14": {
+      "mode": "chat",
+      "max_input_tokens": 1047576,
+      "max_output_tokens": 32768,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_prompt_caching": true
+    },
+    "openai/ft:gpt-4.1-nano-2025-04-14": {
+      "mode": "chat",
+      "max_input_tokens": 1047576,
+      "max_output_tokens": 32768,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_prompt_caching": true
+    },
+    "openai/ft:o4-mini-2025-04-16": {
+      "mode": "chat",
+      "max_input_tokens": 200000,
+      "max_output_tokens": 100000,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openai/gpt-4-1106-preview": {
+      "mode": "chat",
+      "max_input_tokens": 128000,
+      "max_output_tokens": 4096,
+      "supports_function_calling": true,
+      "supports_prompt_caching": true
+    },
+    "openai/gpt-4o-audio-preview-2024-12-17": {
+      "mode": "chat",
+      "max_input_tokens": 128000,
+      "max_output_tokens": 16384,
+      "supports_function_calling": true
+    },
+    "openai/gpt-4o-audio-preview-2025-06-03": {
+      "mode": "chat",
+      "max_input_tokens": 128000,
+      "max_output_tokens": 16384,
+      "supports_function_calling": true
+    },
+    "openai/gpt-4o-mini-audio-preview-2024-12-17": {
+      "mode": "chat",
+      "max_input_tokens": 128000,
+      "max_output_tokens": 16384,
+      "supports_function_calling": true
+    },
+    "openai/gpt-4o-mini-realtime-preview-2024-12-17": {
+      "mode": "chat",
+      "max_input_tokens": 128000,
+      "max_output_tokens": 4096,
+      "supports_function_calling": true
+    },
+    "openai/gpt-image-1.5-2025-12-16": {
+      "mode": "image_generation",
+      "supported_endpoints": [
+        "/v1/images/generations"
+      ],
+      "supports_vision": true
+    },
+    "openai/gpt-image-2.5-flare": {
+      "mode": "image_generation",
+      "supported_endpoints": [
+        "/v1/images/generations",
+        "/v1/images/edits"
+      ],
+      "supports_vision": true
+    },
+    "openai/gpt-image-2.5-flare-2026-09-08": {
+      "mode": "image_generation",
+      "supported_endpoints": [
+        "/v1/images/generations",
+        "/v1/images/edits"
+      ],
+      "supports_vision": true
+    },
+    "openai/gpt-image-2.5-sunburst": {
+      "mode": "image_generation",
+      "supported_endpoints": [
+        "/v1/images/generations",
+        "/v1/images/edits"
+      ],
+      "supports_vision": true
+    },
+    "openai/gpt-image-2.5-sunburst-2026-09-08": {
+      "mode": "image_generation",
+      "supported_endpoints": [
+        "/v1/images/generations",
+        "/v1/images/edits"
+      ],
+      "supports_vision": true
+    },
+    "openai/gpt-6-astra": {
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/batch",
+        "/v1/responses"
+      ],
+      "max_input_tokens": 922000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openai/gpt-6-sol": {
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/batch",
+        "/v1/responses"
+      ],
+      "max_input_tokens": 922000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openai/gpt-6-luna": {
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/batch",
+        "/v1/responses"
+      ],
+      "max_input_tokens": 922000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openai/gpt-5.6": {
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/batch",
+        "/v1/responses"
+      ],
+      "max_input_tokens": 922000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openai/gpt-5.6-sol": {
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/batch",
+        "/v1/responses"
+      ],
+      "max_input_tokens": 922000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openai/gpt-5.6-terra": {
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/batch",
+        "/v1/responses"
+      ],
+      "max_input_tokens": 922000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openai/gpt-5.6-luna": {
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/batch",
+        "/v1/responses"
+      ],
+      "max_input_tokens": 922000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openai/gpt-5.6-cyber": {
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/responses"
+      ],
+      "max_input_tokens": 400000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openai/daybreak-red-latest": {
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/responses"
+      ],
+      "max_input_tokens": 400000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openai/gpt-daybreak-red-latest": {
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/responses"
+      ],
+      "max_input_tokens": 400000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openai/daybreak-blue-latest": {
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/responses"
+      ],
+      "max_input_tokens": 922000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openai/gpt-daybreak-blue-latest": {
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/responses"
+      ],
+      "max_input_tokens": 922000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openai/gpt-5-chat": {
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/batch",
+        "/v1/responses"
+      ],
+      "max_input_tokens": 128000,
+      "max_output_tokens": 16384,
+      "supports_vision": true,
+      "supports_function_calling": false,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openai/text-embedding-ada-002-v2": {
+      "mode": "embedding",
+      "max_input_tokens": 8191
+    },
+    "openai/gpt-live-1": {
+      "mode": "chat",
+      "supports_function_calling": true
+    },
+    "openai/gpt-5.5-cyber": {
+      "mode": "chat",
+      "supports_reasoning": true
+    },
+    "openai/gpt-rosalind-research": {
       "mode": "chat"
     }
   }

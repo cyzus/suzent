@@ -47,7 +47,7 @@
     },
     "openrouter/anthropic/claude-sonnet-4": {
       "mode": "chat",
-      "max_input_tokens": 1000000,
+      "max_input_tokens": 200000,
       "max_output_tokens": 64000,
       "supports_vision": true,
       "supports_function_calling": true,
@@ -231,7 +231,12 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/completions",
+        "/v1/batch"
+      ]
     },
     "openrouter/google/gemini-3-flash-preview": {
       "mode": "chat",
@@ -241,7 +246,12 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/completions",
+        "/v1/batch"
+      ]
     },
     "openrouter/google/gemini-3.1-flash-lite-preview": {
       "mode": "chat",
@@ -251,7 +261,12 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/completions",
+        "/v1/batch"
+      ]
     },
     "openrouter/google/gemini-3.1-pro-preview": {
       "mode": "chat",
@@ -368,7 +383,7 @@
       "max_input_tokens": 128000,
       "max_output_tokens": 102400,
       "supports_vision": true,
-      "supports_function_calling": false,
+      "supports_function_calling": true,
       "supports_response_schema": false,
       "supports_reasoning": false,
       "supports_prompt_caching": false
@@ -578,22 +593,22 @@
     "openrouter/openai/gpt-oss-120b": {
       "mode": "chat",
       "max_input_tokens": 131072,
-      "max_output_tokens": 117964,
-      "supports_function_calling": true,
-      "supports_response_schema": true,
-      "supports_reasoning": true,
-      "supports_vision": false,
-      "supports_prompt_caching": false
-    },
-    "openrouter/openai/gpt-oss-20b": {
-      "mode": "chat",
-      "max_input_tokens": 131072,
-      "max_output_tokens": 117964,
+      "max_output_tokens": 65536,
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
       "supports_vision": false,
       "supports_prompt_caching": true
+    },
+    "openrouter/openai/gpt-oss-20b": {
+      "mode": "chat",
+      "max_input_tokens": 131072,
+      "max_output_tokens": 32768,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_vision": false,
+      "supports_prompt_caching": false
     },
     "openrouter/openai/o1": {
       "mode": "chat",
@@ -631,7 +646,7 @@
       "max_output_tokens": 29491,
       "supports_vision": false,
       "supports_function_calling": false,
-      "supports_response_schema": false,
+      "supports_response_schema": true,
       "supports_reasoning": false,
       "supports_prompt_caching": false
     },
@@ -684,12 +699,12 @@
     "openrouter/qwen/qwen3.5-35b-a3b": {
       "mode": "chat",
       "max_input_tokens": 262144,
-      "max_output_tokens": 65536,
+      "max_output_tokens": 16384,
       "supports_vision": true,
       "supports_function_calling": true,
       "supports_reasoning": true,
       "supports_response_schema": true,
-      "supports_prompt_caching": false
+      "supports_prompt_caching": true
     },
     "openrouter/qwen/qwen3.5-27b": {
       "mode": "chat",
@@ -878,7 +893,12 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/completions",
+        "/v1/batch"
+      ]
     },
     "openrouter/xiaomi/mimo-v2.5-pro": {
       "mode": "chat",
@@ -915,7 +935,7 @@
       "max_input_tokens": 262144,
       "supports_function_calling": true,
       "supports_reasoning": true,
-      "max_output_tokens": 131072,
+      "max_output_tokens": 235929,
       "supports_vision": false,
       "supports_response_schema": true,
       "supports_prompt_caching": true
@@ -933,7 +953,7 @@
     "openrouter/deepseek/deepseek-v4-pro": {
       "mode": "chat",
       "max_input_tokens": 1048576,
-      "max_output_tokens": 393216,
+      "max_output_tokens": 384000,
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
@@ -943,7 +963,7 @@
     "openrouter/deepseek/deepseek-v4-pro-0813": {
       "mode": "chat",
       "max_input_tokens": 1048576,
-      "max_output_tokens": 393216,
+      "max_output_tokens": 384000,
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
@@ -953,7 +973,7 @@
     "openrouter/deepseek/deepseek-v4.1-flash": {
       "mode": "chat",
       "max_input_tokens": 1048576,
-      "max_output_tokens": 384000,
+      "max_output_tokens": 393216,
       "supports_vision": true,
       "supports_function_calling": true,
       "supports_response_schema": true,
@@ -1333,7 +1353,7 @@
     "openrouter/z-ai/glm-5.3-flash": {
       "mode": "chat",
       "max_input_tokens": 1310720,
-      "max_output_tokens": 131072,
+      "max_output_tokens": 943718,
       "supports_vision": true,
       "supports_function_calling": true,
       "supports_response_schema": true,
@@ -1563,7 +1583,7 @@
     "openrouter/nvidia/nemotron-3-ultra-550b-a55b": {
       "mode": "chat",
       "max_input_tokens": 262144,
-      "max_output_tokens": 32768,
+      "max_output_tokens": 182520,
       "supports_vision": false,
       "supports_function_calling": true,
       "supports_response_schema": true,
@@ -1662,7 +1682,7 @@
     "openrouter/qwen/qwen3.6-27b": {
       "mode": "chat",
       "max_input_tokens": 262144,
-      "max_output_tokens": 65536,
+      "max_output_tokens": 262140,
       "supports_vision": true,
       "supports_function_calling": true,
       "supports_response_schema": true,
@@ -1821,7 +1841,7 @@
     "openrouter/qwen/qwen3.5-9b": {
       "mode": "chat",
       "max_input_tokens": 262144,
-      "max_output_tokens": 235929,
+      "max_output_tokens": 32768,
       "supports_vision": true,
       "supports_function_calling": true,
       "supports_response_schema": true,
@@ -1916,7 +1936,7 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": false
+      "supports_prompt_caching": true
     },
     "openrouter/z-ai/glm-4.6v": {
       "mode": "chat",
@@ -2111,7 +2131,7 @@
     "openrouter/qwen/qwen3-next-80b-a3b-thinking": {
       "mode": "chat",
       "max_input_tokens": 262144,
-      "max_output_tokens": 32768,
+      "max_output_tokens": 235929,
       "supports_vision": false,
       "supports_function_calling": true,
       "supports_response_schema": true,
@@ -2136,7 +2156,7 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": false,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": false
     },
     "openrouter/moonshotai/kimi-k2-0905": {
       "mode": "chat",
@@ -2679,7 +2699,7 @@
     "openrouter/~deepseek/deepseek-flash-latest": {
       "mode": "chat",
       "max_input_tokens": 1048576,
-      "max_output_tokens": 393216,
+      "max_output_tokens": 943718,
       "supports_vision": true,
       "supports_function_calling": true,
       "supports_response_schema": true,
@@ -2689,7 +2709,7 @@
     "openrouter/~deepseek/deepseek-pro-latest": {
       "mode": "chat",
       "max_input_tokens": 1048576,
-      "max_output_tokens": 393216,
+      "max_output_tokens": 384000,
       "supports_vision": false,
       "supports_function_calling": true,
       "supports_response_schema": true,
@@ -2699,7 +2719,7 @@
     "openrouter/~deepseek/deepseek-v4-flash-latest": {
       "mode": "chat",
       "max_input_tokens": 1310720,
-      "max_output_tokens": 393216,
+      "max_output_tokens": 943718,
       "supports_vision": false,
       "supports_function_calling": true,
       "supports_response_schema": true,
@@ -2799,7 +2819,7 @@
     "openrouter/~z-ai/glm-flash-latest": {
       "mode": "chat",
       "max_input_tokens": 1310720,
-      "max_output_tokens": 131072,
+      "max_output_tokens": 943718,
       "supports_vision": true,
       "supports_function_calling": true,
       "supports_response_schema": true,
@@ -2809,7 +2829,7 @@
     "openrouter/~z-ai/glm-latest": {
       "mode": "chat",
       "max_input_tokens": 1310720,
-      "max_output_tokens": 235929,
+      "max_output_tokens": 131072,
       "supports_vision": false,
       "supports_function_calling": true,
       "supports_response_schema": true,
@@ -3499,7 +3519,7 @@
     "openrouter/meta/muse-glimmer-30b": {
       "mode": "chat",
       "max_input_tokens": 131072,
-      "max_output_tokens": 117964,
+      "max_output_tokens": 16384,
       "supports_vision": true,
       "supports_function_calling": true,
       "supports_response_schema": true,
@@ -3659,7 +3679,7 @@
     "openrouter/moonshotai/kimi-k3:batch": {
       "mode": "chat",
       "max_input_tokens": 1048576,
-      "max_output_tokens": 943718,
+      "max_output_tokens": 16384,
       "supports_vision": true,
       "supports_function_calling": true,
       "supports_response_schema": true,
@@ -4472,7 +4492,7 @@
       "max_output_tokens": 131072,
       "supports_vision": true,
       "supports_function_calling": true,
-      "supports_response_schema": true,
+      "supports_response_schema": false,
       "supports_reasoning": false,
       "supports_prompt_caching": true
     },
@@ -4529,7 +4549,7 @@
     "openrouter/z-ai/glm-5.3-flash:batch": {
       "mode": "chat",
       "max_input_tokens": 1048576,
-      "max_output_tokens": 943718,
+      "max_output_tokens": 131072,
       "supports_vision": true,
       "supports_function_calling": true,
       "supports_response_schema": true,
@@ -4539,12 +4559,322 @@
     "openrouter/z-ai/glm-5.3:batch": {
       "mode": "chat",
       "max_input_tokens": 1048576,
-      "max_output_tokens": 943718,
+      "max_output_tokens": 131072,
       "supports_vision": false,
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
       "supports_prompt_caching": true
+    },
+    "openrouter/anthropic/claude-opus-5.5": {
+      "mode": "chat",
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/fireworks/ember-1": {
+      "mode": "chat",
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 943718,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/qwen/qwen3.8-max-prime": {
+      "mode": "chat",
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 131072,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/typesafe/jev-1.13": {
+      "mode": "chat",
+      "max_input_tokens": 32000,
+      "max_output_tokens": 28800
+    },
+    "openrouter/typesafe/jev-router": {
+      "mode": "chat",
+      "max_input_tokens": 1000000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true
+    },
+    "openrouter/aion-labs/aion-3.5": {
+      "mode": "chat",
+      "max_input_tokens": 262144,
+      "max_output_tokens": 32768,
+      "supports_vision": false,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/aion-labs/aion-3.5-mini": {
+      "mode": "chat",
+      "max_input_tokens": 262144,
+      "max_output_tokens": 32768,
+      "supports_vision": false,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/openai/gpt-6-luna": {
+      "mode": "chat",
+      "max_input_tokens": 1050000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/openai/gpt-6-luna-pro": {
+      "mode": "chat",
+      "max_input_tokens": 1050000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/openai/gpt-6-sol": {
+      "mode": "chat",
+      "max_input_tokens": 1050000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/openai/gpt-6-sol-pro": {
+      "mode": "chat",
+      "max_input_tokens": 1050000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/stealth/space-bunny-alpha": {
+      "mode": "chat",
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_reasoning": true
+    },
+    "openrouter/upstage/solar-mini4": {
+      "mode": "chat",
+      "max_input_tokens": 524288,
+      "max_output_tokens": 131072,
+      "supports_vision": false,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/prism-ml/ternary-bonsai-2-27b": {
+      "mode": "chat",
+      "max_input_tokens": 262144,
+      "max_output_tokens": 32768,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": false
+    },
+    "openrouter/z-ai/glm-5.3-prime": {
+      "mode": "chat",
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 131072,
+      "supports_vision": false,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/z-ai/glm-5.3-flashx": {
+      "mode": "chat",
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 131072,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/x-ai/grok-4.7": {
+      "mode": "chat",
+      "max_input_tokens": 500000,
+      "max_output_tokens": 450000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/xiaomi/mimo-v2.6-flash": {
+      "mode": "chat",
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 131072,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/xiaomi/mimo-v2.6-pro": {
+      "mode": "chat",
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 131072,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/xiaomi/mimo-v2.6-pro-ultraspeed": {
+      "mode": "chat",
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 131072,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/nex-agi/nex-n2.5-mini": {
+      "mode": "chat",
+      "max_input_tokens": 262144,
+      "max_output_tokens": 235929,
+      "supports_vision": true,
+      "supports_function_calling": false,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/nex-agi/nex-n2.5-pro": {
+      "mode": "chat",
+      "max_input_tokens": 262144,
+      "max_output_tokens": 235929,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/anthropic/claude-opus-5.5:batch": {
+      "mode": "chat",
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/cohere/command-a-plus": {
+      "mode": "chat",
+      "max_input_tokens": 192000,
+      "max_output_tokens": 64000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/deepseek/deepseek-v4.1-flash:batch": {
+      "mode": "chat",
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 131072,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/openai/gpt-6-luna-pro:batch": {
+      "mode": "chat",
+      "max_input_tokens": 1050000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/openai/gpt-6-luna:batch": {
+      "mode": "chat",
+      "max_input_tokens": 1050000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/openai/gpt-6-sol-pro:batch": {
+      "mode": "chat",
+      "max_input_tokens": 1050000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/openai/gpt-6-sol:batch": {
+      "mode": "chat",
+      "max_input_tokens": 1050000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/openai/gpt-oss-20b:batch": {
+      "mode": "chat",
+      "max_input_tokens": 131072,
+      "max_output_tokens": 117964,
+      "supports_vision": false,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": false
+    },
+    "openrouter/qwen/qwen3.8-omni-flash": {
+      "mode": "chat",
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 131072,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/perceptron/perceptron-mk1.5": {
+      "mode": "chat",
+      "max_input_tokens": 36864,
+      "max_output_tokens": 8192,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true
     }
   }
 }

@@ -50,16 +50,28 @@
       "supports_prompt_caching": true
     },
     "minimax/speech-02-hd": {
-      "mode": "tts"
+      "mode": "tts",
+      "supported_endpoints": [
+        "/v1/audio/speech"
+      ]
     },
     "minimax/speech-02-turbo": {
-      "mode": "tts"
+      "mode": "tts",
+      "supported_endpoints": [
+        "/v1/audio/speech"
+      ]
     },
     "minimax/speech-2.6-hd": {
-      "mode": "tts"
+      "mode": "tts",
+      "supported_endpoints": [
+        "/v1/audio/speech"
+      ]
     },
     "minimax/speech-2.6-turbo": {
-      "mode": "tts"
+      "mode": "tts",
+      "supported_endpoints": [
+        "/v1/audio/speech"
+      ]
     }
   }
 }
