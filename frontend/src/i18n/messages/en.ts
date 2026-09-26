@@ -3,7 +3,6 @@ export const en = {
     title: 'Generated video',
     failed: 'Unable to load this video.',
     retry: 'Retry',
-    download: 'Download video',
   },
   speech: {
     controls: 'Voice controls',

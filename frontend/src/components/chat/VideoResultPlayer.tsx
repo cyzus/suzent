@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
-import { ArrowDownTrayIcon, FilmIcon, PlayIcon } from '@heroicons/react/24/outline';
-import { BrutalButton, BrutalLink } from '../BrutalButton';
+import { FilmIcon, PlayIcon } from '@heroicons/react/24/outline';
+import { BrutalButton, BrutalIconButton } from '../BrutalButton';
 import { useI18n } from '../../i18n';
 
 export function VideoResultPlayer({
@@ -60,17 +60,19 @@ export function VideoResultPlayer({
           }}
         />
         {!playing && !failed && (
-          <BrutalButton
-            size="icon-lg"
-            variant="primary"
-            className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
-            aria-label={t('speech.play')}
-            onClick={() => {
-              void video.current?.play().catch(() => setPlayBlocked(true));
-            }}
-          >
-            <PlayIcon className="h-5 w-5" />
-          </BrutalButton>
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+            <BrutalIconButton
+              size="icon-lg"
+              variant="primary"
+              className="pointer-events-auto"
+              label={t('speech.play')}
+              onClick={() => {
+                void video.current?.play().catch(() => setPlayBlocked(true));
+              }}
+            >
+              <PlayIcon className="h-5 w-5" />
+            </BrutalIconButton>
+          </div>
         )}
         {failed && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-neutral-950 p-4 text-center text-sm text-white">
@@ -92,15 +94,6 @@ export function VideoResultPlayer({
         <span className="min-w-0 truncate font-mono text-[11px] text-neutral-500" title={filename}>
           {filename}
         </span>
-        <BrutalLink
-          href={src}
-          download={filename}
-          size="icon"
-          aria-label={t('videoPlayer.download')}
-          title={t('videoPlayer.download')}
-        >
-          <ArrowDownTrayIcon className="h-4 w-4" />
-        </BrutalLink>
       </figcaption>
       {playBlocked && (
         <p role="status" className="px-3 pb-2 text-xs text-neutral-500">

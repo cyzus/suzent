@@ -3,7 +3,6 @@ export const zhCN = {
     title: '生成的视频',
     failed: '无法加载视频。',
     retry: '重试',
-    download: '下载视频',
   },
   speech: {
     controls: '声音与播放',
