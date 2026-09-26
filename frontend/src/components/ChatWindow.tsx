@@ -1051,14 +1051,23 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         return;
       const metadata = result.metadata as Record<string, unknown>;
       if (metadata.autoplay === false) return;
-      if (metadata.engine === 'system') speechQueue.enqueue(createSpeechJob(metadata), true);
-      else if (metadata.engine === 'api' && Array.isArray(metadata.saved_paths)) {
-        for (const path of metadata.saved_paths) {
-          if (typeof path !== 'string') continue;
-          const src = `${getApiBase()}/sandbox/serve?${getSandboxParams(chatId, path, config.sandbox_volumes)}`;
-          speechQueue.enqueue(createSpeechJob(metadata, src), true);
+
+      // The stream publishes this tool result immediately after this callback.
+      // Start playback on the next frame so the matching SpeechPlayer has mounted
+      // and can observe the queued/playing transitions from their beginning.
+      const enqueue = () => {
+        if (activeChatIdRef.current !== chatId) return;
+        if (metadata.engine === 'system') speechQueue.enqueue(createSpeechJob(metadata), true);
+        else if (metadata.engine === 'api' && Array.isArray(metadata.saved_paths)) {
+          for (const path of metadata.saved_paths) {
+            if (typeof path !== 'string') continue;
+            const src = `${getApiBase()}/sandbox/serve?${getSandboxParams(chatId, path, config.sandbox_volumes)}`;
+            speechQueue.enqueue(createSpeechJob(metadata, src), true);
+          }
         }
-      }
+      };
+      if (document.visibilityState === 'visible') requestAnimationFrame(enqueue);
+      else setTimeout(enqueue, 0);
     },
     onFinish: async (parts, persistence) => {
       const chatId = streamingChatIdRef.current || activeChatIdRef.current;
