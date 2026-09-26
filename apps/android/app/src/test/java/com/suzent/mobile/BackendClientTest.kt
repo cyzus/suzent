@@ -2,6 +2,9 @@ package com.suzent.mobile
 
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.async
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.CancellationException
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.SocketPolicy
@@ -10,6 +13,25 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class BackendClientTest {
+    @Test fun cleanupCancelsABlockedStream() = runBlocking {
+        for (closeClient in listOf(false, true)) {
+            val server = MockWebServer()
+            server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE))
+            server.start()
+            val client = BackendClient(Backend.parse(server.url("/").toString(), true), "fixture-token")
+            try {
+                val stream = async(kotlinx.coroutines.Dispatchers.IO) {
+                    runCatching { client.observe("test") {} }
+                }
+                assertNotNull(server.takeRequest(5, TimeUnit.SECONDS))
+                if (closeClient) client.close() else client.cancelLive()
+                val result = withTimeout(5000) { stream.await() }
+                assertTrue(result.exceptionOrNull() is CancellationException)
+                assertEquals(1, server.requestCount)
+            } finally { client.close(); server.shutdown() }
+        }
+    }
+
     @Test fun readRecoversFromClosedPooledConnection() = runBlocking {
         val server = MockWebServer()
         server.enqueue(MockResponse().setBody("""{"chats":[]}"""))

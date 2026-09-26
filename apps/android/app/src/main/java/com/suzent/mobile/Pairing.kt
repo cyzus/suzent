@@ -4,7 +4,7 @@ import org.json.JSONObject
 import kotlinx.coroutines.ensureActive
 
 class PairingFailure(val reason: Reason) : Exception() {
-    enum class Reason { INVALID, INCOMPATIBLE, EXPIRED, DENIED, UNREACHABLE }
+    enum class Reason { INVALID, INCOMPATIBLE, EXPIRED, DENIED, UNREACHABLE, SECURE_CONNECTION }
 }
 
 data class ClientPermissions(val chatIds: List<String>, val allChats: Boolean,
@@ -34,16 +34,18 @@ fun validateMobileCapabilities(json: JSONObject, pairing: Boolean = false) {
     }
 }
 
-data class PairingInvitation(val origin: String, val id: String, val secret: String, val expiresAt: Double, val origins: List<String> = listOf(origin), val phoneConfirmation: Boolean = false) {
+data class PairingInvitation(val origin: String, val id: String, val secret: String, val expiresAt: Double, val origins: List<String> = listOf(origin), val phoneConfirmation: Boolean = false, val tls: DeviceTrust? = null) {
     companion object {
         fun parse(text: String, allowHttp: Boolean = false, now: Double = System.currentTimeMillis() / 1000.0): PairingInvitation {
             try {
                 require(text.toByteArray().size <= 4096)
                 val json = JSONObject(text)
-                if (json.getString("type") != "suzent.mobile" || json.opt("pairing_protocol") != 1)
+                if (json.getString("type") != "suzent.mobile" || json.opt("pairing_protocol") !in listOf(1, 2))
                     throw PairingFailure(PairingFailure.Reason.INCOMPATIBLE)
                 if (json.has("approval") && json.getString("approval") != "phone")
                     throw PairingFailure(PairingFailure.Reason.INCOMPATIBLE)
+                val tls = json.optJSONObject("tls")?.let { DeviceTrust.parse(it) }
+                require((json.opt("pairing_protocol") == 2) == (tls != null))
                 val expiry = json.getDouble("expires_at")
                 require(expiry.isFinite())
                 if (expiry <= now) throw PairingFailure(PairingFailure.Reason.EXPIRED)
@@ -53,12 +55,13 @@ data class PairingInvitation(val origin: String, val id: String, val secret: Str
                 val candidates = (listOf(origin) + (0 until additional.length()).map { additional.getString(it) }).distinct()
                 require(candidates.size <= 6)
                 candidates.forEach { Backend.parse(it, allowHttp = true) }
+                require(tls == null || candidates.all { Backend.parse(it, allowHttp = true).origin.isHttps })
                 val usable = candidates.filter { allowHttp || Backend.parse(it, allowHttp = true).origin.isHttps }
                 require(usable.isNotEmpty())
                 val id = json.getString("pairing_id")
                 val secret = json.getString("invitation")
                 require(id.matches(Regex("[a-f0-9]{32}")) && secret.matches(Regex("[A-Za-z0-9_-]{40,64}")))
-                return PairingInvitation(usable.first(), id, secret, expiry, usable, json.optString("approval") == "phone")
+                return PairingInvitation(usable.first(), id, secret, expiry, usable, json.optString("approval") == "phone", tls)
             } catch (failure: PairingFailure) { throw failure }
             catch (_: Exception) { throw PairingFailure(PairingFailure.Reason.INVALID) }
         }
@@ -77,7 +80,7 @@ suspend fun <T> resolvePairingInvitation(invitation: PairingInvitation, probe: s
         } catch (failure: kotlinx.coroutines.CancellationException) { throw failure }
         catch (_: Exception) { }
     }
-    throw PairingFailure(PairingFailure.Reason.UNREACHABLE)
+    throw PairingFailure(if (invitation.tls == null) PairingFailure.Reason.UNREACHABLE else PairingFailure.Reason.SECURE_CONNECTION)
 }
 
 

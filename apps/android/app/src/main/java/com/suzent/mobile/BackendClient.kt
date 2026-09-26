@@ -17,10 +17,12 @@ import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import org.json.JSONObject
 
-class BackendClient(val backend: Backend, private val token: String, probeOnly: Boolean = false) {
+class BackendClient(val backend: Backend, private val token: String, probeOnly: Boolean = false, deviceTrust: DeviceTrust? = null) {
+    init { require(deviceTrust == null || backend.origin.isHttps) { "Device trust requires HTTPS" } }
     private val http = OkHttpClient.Builder().followRedirects(false).followSslRedirects(false)
         .retryOnConnectionFailure(false).connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(90, TimeUnit.SECONDS).callTimeout(if (probeOnly) 3 else 0, TimeUnit.SECONDS).build()
+        .readTimeout(90, TimeUnit.SECONDS).callTimeout(if (probeOnly) 3 else 0, TimeUnit.SECONDS)
+        .apply { deviceTrust?.configure(this) }.build()
     private val reads = http.newBuilder().retryOnConnectionFailure(true).build()
     @Volatile private var liveCall: Call? = null
 
@@ -142,10 +144,20 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
     fun node(listener: WebSocketListener): WebSocket = http.newWebSocket(
         Request.Builder().url(backend.endpoint("ws/node")).build(), listener)
 
-    fun cancelLive() { liveCall?.cancel() }
+    fun cancelNode(socket: WebSocket) {
+        http.dispatcher.executorService.execute { socket.cancel() }
+    }
+
+    fun cancelLive() {
+        val call = liveCall ?: return
+        http.dispatcher.executorService.execute { call.cancel() }
+    }
     fun close() {
-        http.dispatcher.cancelAll()
-        http.connectionPool.evictAll()
+        // TLS shutdown can write close_notify, including when evicting an idle socket.
+        http.dispatcher.executorService.execute {
+            http.dispatcher.cancelAll()
+            http.connectionPool.evictAll()
+        }
     }
 }
 

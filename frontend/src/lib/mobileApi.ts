@@ -21,6 +21,8 @@ export interface MobilePending {
   expires_at: number;
 }
 export interface MobileInvitation {
+  tls?: { version: number; ca_certificate: string; fingerprint: string };
+  origins?: string[];
   approval?: 'phone';
   pairing_id: string;
   invitation: string;
@@ -76,12 +78,18 @@ export function mobilePairingPayload(
   invitation: MobileInvitation,
   origins: string[] = []
 ): string {
-  const primary = pairingOrigin(origin);
-  const candidates = [...new Set([primary, ...origins.map(pairingOrigin)])];
+  if (invitation.tls && !invitation.origins?.length)
+    throw new Error('Missing secure backend addresses');
+  const primary = pairingOrigin(invitation.tls ? invitation.origins![0] : origin);
+  const candidates = [
+    ...new Set([primary, ...(invitation.tls ? invitation.origins! : origins).map(pairingOrigin)]),
+  ];
   if (candidates.length > 6) throw new Error('Too many backend addresses');
+  if (invitation.tls && candidates.some((candidate) => new URL(candidate).protocol !== 'https:'))
+    throw new Error('Device trust requires HTTPS');
   const value = JSON.stringify({
     type: 'suzent.mobile',
-    pairing_protocol: 1,
+    pairing_protocol: invitation.tls ? 2 : 1,
     origin: primary,
     ...(candidates.length > 1 ? { origins: candidates } : {}),
     ...invitation,

@@ -1,0 +1,5 @@
+{
+  "products": {"desktop": "patch", "mobile": "patch"},
+  "summary": "Restore local desktop pairing for release mobile apps with QR-scoped HTTPS trust and reliable credential rollback.",
+  "reason": "Complete the existing LAN pairing path for release builds without requiring external HTTPS infrastructure."
+}

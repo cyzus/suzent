@@ -113,3 +113,53 @@ Use Settings → Pair again to retain the ownership proof. Forgetting the
 connection, clearing app storage, or losing credentials prevents proof of the
 old installation; it is treated as a new device. Existing duplicate grants are
 not automatically removed by matching names or IP addresses.
+
+## Local TLS invitations (QR protocol 2)
+
+`POST /mobile/pairing/invite` accepts `local_tls: true`. It starts a dedicated
+HTTPS listener, and returns its `origins` plus a `tls` object:
+
+```json
+{"version": 1, "ca_certificate": "base64-DER-device-CA", "fingerprint": "sha256-hex-of-DER"}
+```
+
+The desktop emits `pairing_protocol: 2` for these invitations. Protocol 2 requires
+this object and exclusively HTTPS candidates, even in debug builds. Older phones
+reject the new QR protocol rather than silently falling back to HTTP. Existing
+public-CA HTTPS invitations remain protocol 1; `/mobile/capabilities` preserves
+its protocol-1 bootstrap API and advertises `local_tls: 1`.
+
+The QR is the out-of-band trust source, so it must be scanned from the intended
+trusted desktop. Its hash detects mismatched certificate data, not a maliciously
+replaced whole QR code. A phone validates the server chain against only that
+device CA, including hostname/IP SAN, validity and server-auth usage. There is no
+trust-all callback, global trust-store installation, or system-CA fallback for
+pinned connections. Trust is saved alongside credentials and previous trust is
+preserved during pending credential rotation. Normal public HTTPS sessions keep
+the system trust store. The same client transport secures HTTP, SSE and Node WSS;
+redirects remain disabled.
+
+The backend stores its persistent CA key and certificate in
+`USER_CONFIG_DIR/mobile_tls/identity.pem`, with owner-only permissions on POSIX.
+Short-lived leaf certificates are renewed daily and when addresses change,
+without changing the saved device CA. The listener's selected port is persisted
+and reused across restarts. Do not delete this directory during upgrades. Loss or
+replacement of the CA requires explicit re-pairing; a broken identity is never
+silently regenerated. The CA has a 20-year validity period; replacing an expired
+CA also requires re-pairing.
+
+The TLS listener opens on first local pairing and resumes on later backend
+starts. It exposes only mobile bootstrap/client routes and `/ws/node`, never the
+operator endpoints. Proxy headers are ignored and all requests are treated as
+remote, including connections from localhost. An occupied saved port is an error,
+not a reason to advertise an arbitrary new port or downgrade transport.
+
+Phones retain candidate origins and probe them without credentials before
+reconnecting. The desktop also offers its `.local` hostname; this depends on the
+host OS and network providing mDNS resolution. If all saved addresses change and
+mDNS is unavailable, scan again. A recognized device can rotate its credential
+without duplicating its device entry. No cross-network reachability is implied.
+
+`tls-fixture.json` contains public test certificates only (no private keys). Its
+short-lived leaf is tested at the fixed verification date 2030-01-01 so validity
+checks remain deterministic.

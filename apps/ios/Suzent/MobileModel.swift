@@ -73,7 +73,7 @@ import SuzentCore
             defer { if generation == current { busy = false } }
             do {
                 let selected = try await invitation.resolving { origin -> PairingPreview? in
-                    let probe = SuzentClient(backend: try Backend(origin, allowHTTP: allowHTTP), token: "", probeOnly: true)
+                    let probe = try SuzentClient(backend: try Backend(origin, allowHTTP: allowHTTP), token: "", probeOnly: true, deviceTrust: invitation.tls)
                     defer { probe.close() }
                     _ = try await probe.capabilities()
                     return invitation.phoneConfirmation ? try await probe.pairingPreview(invitation) : nil
@@ -104,7 +104,7 @@ import SuzentCore
             defer { if generation == current { busy = false; pairingCode = nil } }
             do {
                 let backend = try Backend(invitation.origin, allowHTTP: allowsHTTP)
-                let bootstrap = SuzentClient(backend: backend, token: "")
+                let bootstrap = try SuzentClient(backend: backend, token: "", deviceTrust: invitation.tls)
                 defer { bootstrap.close() }
                 let capabilities = try await bootstrap.capabilities()
                 let previous = capabilities.pairingRepair == 1 ? connection?.hostToken : nil
@@ -127,7 +127,7 @@ import SuzentCore
                         guard let token = result.reused == true ? previous : result.token, !token.isEmpty, result.device != nil else {
                             throw ClientError.invalidResponse
                         }
-                        let saved = Connection(origin: backend.url.absoluteString, hostToken: token, nodeToken: recognized ? connection?.nodeToken ?? "" : "", clientProtocol: 1,
+                        let saved = Connection(origins: invitation.origins, tls: invitation.tls, previousOrigins: connection?.origins, previousTLS: connection?.tls, origin: backend.url.absoluteString, hostToken: token, nodeToken: recognized ? connection?.nodeToken ?? "" : "", clientProtocol: 1,
                                                previousToken: recognized && result.reused != true ? previous : nil,
                                                previousOrigin: recognized && result.reused != true ? connection?.origin : nil)
                         try CredentialStore.save(saved)
@@ -152,22 +152,37 @@ import SuzentCore
         }
     }
 
-    private func activate(_ saved: Connection) async throws {
+    private func activate(_ stored: Connection) async throws {
+        var saved = stored
+        if let tls = saved.tls {
+            var reachable: String?
+            for origin in [saved.origin] + (saved.origins ?? []) where reachable == nil {
+                let probe = try SuzentClient(backend: try Backend(origin), token: "", probeOnly: true, deviceTrust: tls)
+                defer { probe.close() }
+                do { _ = try await probe.capabilities(); reachable = origin }
+                catch { try Task.checkCancellation() }
+            }
+            guard let reachable else { throw PairingError.secureConnection }
+            saved.origin = reachable
+        }
         guard saved.clientProtocol == 1 else { throw PairingError.incompatible }
         let backend = try Backend(saved.origin, allowHTTP: allowsHTTP)
-        let candidate = SuzentClient(backend: backend, token: saved.hostToken)
+        let candidate = try SuzentClient(backend: backend, token: saved.hostToken, deviceTrust: saved.tls)
         do {
             if let previous = saved.previousToken {
                 var restored = saved
                 do { try await candidate.confirmPairing() }
                 catch ClientError.http(401) {
-                    restored = Connection(origin: saved.previousOrigin ?? saved.origin, hostToken: previous, nodeToken: saved.nodeToken, clientProtocol: 1)
+                    restored = Connection(origins: saved.previousOrigins, tls: saved.previousTLS, origin: saved.previousOrigin ?? saved.origin, hostToken: previous, nodeToken: saved.nodeToken, clientProtocol: 1)
                     try CredentialStore.save(restored); connection = restored; origin = restored.origin
                     candidate.close(); try await activate(restored); return
                 }
                 restored.previousToken = nil
                 restored.previousOrigin = nil
+                restored.previousTLS = nil
+                restored.previousOrigins = nil
                 try CredentialStore.save(restored); connection = restored
+                saved = restored
             }
             _ = try await candidate.capabilities()
             let session = try await candidate.clientSession()
@@ -175,6 +190,9 @@ import SuzentCore
             let projectList = try await candidate.projects()
             let initialChat = try await candidate.composer()
             try Task.checkCancellation()
+            try CredentialStore.save(saved)
+            connection = saved
+            origin = saved.origin
             client?.close()
             client = candidate
             device = session.device
