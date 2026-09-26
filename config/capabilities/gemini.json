@@ -21,7 +21,10 @@
       "max_input_tokens": 131072,
       "max_output_tokens": 65536,
       "supports_vision": true,
-      "supports_reasoning": true
+      "supports_reasoning": true,
+      "supported_endpoints": [
+        "/v1beta/interactions"
+      ]
     },
     "gemini/gemini-2.5-pro": {
       "mode": "chat",
@@ -31,7 +34,11 @@
       "supports_function_calling": true,
       "supports_reasoning": true,
       "supports_prompt_caching": true,
-      "supports_response_schema": true
+      "supports_response_schema": true,
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/completions"
+      ]
     },
     "gemini/gemini-2.5-flash": {
       "mode": "chat",
@@ -41,7 +48,12 @@
       "supports_function_calling": true,
       "supports_reasoning": true,
       "supports_prompt_caching": true,
-      "supports_response_schema": true
+      "supports_response_schema": true,
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/completions",
+        "/v1/batch"
+      ]
     },
     "gemini/gemini-2.5-flash-lite": {
       "mode": "chat",
@@ -51,7 +63,12 @@
       "supports_function_calling": true,
       "supports_reasoning": true,
       "supports_prompt_caching": true,
-      "supports_response_schema": true
+      "supports_response_schema": true,
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/completions",
+        "/v1/batch"
+      ]
     },
     "gemini/gemini-2.0-flash": {
       "mode": "chat",
@@ -99,7 +116,10 @@
       "max_input_tokens": 8192,
       "max_output_tokens": 16384,
       "supports_function_calling": false,
-      "supports_response_schema": false
+      "supports_response_schema": false,
+      "supported_endpoints": [
+        "/v1/audio/speech"
+      ]
     },
     "gemini/gemini-2.5-pro-preview-tts": {
       "mode": "chat",
@@ -144,7 +164,12 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/completions",
+        "/v1/batch"
+      ]
     },
     "gemini/gemini-flash-lite-latest": {
       "mode": "chat",
@@ -154,7 +179,12 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/completions",
+        "/v1/batch"
+      ]
     },
     "gemini/gemini-pro-latest": {
       "mode": "chat",
@@ -164,7 +194,12 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/completions",
+        "/v1/batch"
+      ]
     },
     "gemini/gemini-2.5-flash-image": {
       "mode": "image_generation",
@@ -199,7 +234,12 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/completions",
+        "/v1/batch"
+      ]
     },
     "gemini/gemini-3.1-pro-preview": {
       "mode": "chat",
@@ -209,7 +249,12 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/completions",
+        "/v1/batch"
+      ]
     },
     "gemini/gemini-3.1-pro-preview-customtools": {
       "mode": "chat",
@@ -219,7 +264,12 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/completions",
+        "/v1/batch"
+      ]
     },
     "gemini/gemini-3.1-flash-lite-preview": {
       "mode": "chat",
@@ -229,15 +279,20 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/completions",
+        "/v1/batch"
+      ]
     },
     "gemini/gemini-3-pro-image-preview": {
       "mode": "image_generation",
-      "max_input_tokens": 65536,
+      "max_input_tokens": 131072,
       "max_output_tokens": 32768,
       "supports_vision": true,
       "supports_function_calling": false,
-      "supports_response_schema": true,
+      "supports_response_schema": false,
       "supports_prompt_caching": true,
       "supports_reasoning": false,
       "supported_endpoints": [
@@ -264,10 +319,10 @@
     "gemini/gemini-3.1-flash-image-preview": {
       "mode": "image_generation",
       "max_input_tokens": 65536,
-      "max_output_tokens": 32768,
+      "max_output_tokens": 65536,
       "supports_vision": true,
       "supports_function_calling": false,
-      "supports_response_schema": true,
+      "supports_response_schema": false,
       "supports_prompt_caching": true,
       "supports_reasoning": false,
       "supported_endpoints": [
@@ -299,7 +354,10 @@
       "max_input_tokens": 8192,
       "max_output_tokens": 16384,
       "supports_function_calling": false,
-      "supports_response_schema": false
+      "supports_response_schema": false,
+      "supported_endpoints": [
+        "/v1/audio/speech"
+      ]
     },
     "gemini/gemini-robotics-er-1.5-preview": {
       "mode": "chat",
@@ -326,13 +384,39 @@
       "max_input_tokens": 128000,
       "max_output_tokens": 64000,
       "supports_vision": true,
-      "supports_function_calling": true
+      "supports_function_calling": true,
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/completions"
+      ]
     },
     "gemini/deep-research-max-preview-04-2026": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/completions",
+        "/v1/batch"
+      ],
+      "max_input_tokens": 131072,
+      "max_output_tokens": 65536,
+      "supports_vision": true,
+      "supports_function_calling": false,
+      "supports_response_schema": false,
+      "supports_prompt_caching": false
     },
     "gemini/deep-research-preview-04-2026": {
-      "mode": "chat"
+      "mode": "chat",
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/completions",
+        "/v1/batch"
+      ],
+      "max_input_tokens": 131072,
+      "max_output_tokens": 65536,
+      "supports_vision": true,
+      "supports_function_calling": false,
+      "supports_response_schema": false,
+      "supports_prompt_caching": false
     },
     "gemini/deep-research-pro-preview-12-2025": {
       "mode": "image_generation",
@@ -356,7 +440,8 @@
     "gemini/gemini-embedding-2-preview": {
       "mode": "embedding",
       "max_input_tokens": 8192,
-      "output_vector_size": 3072
+      "output_vector_size": 3072,
+      "supports_vision": true
     },
     "gemini/gemini-embedding-2": {
       "mode": "embedding",
@@ -395,7 +480,10 @@
       "supports_vision": true,
       "supports_function_calling": true,
       "supports_response_schema": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": false,
+      "supported_endpoints": [
+        "/v1/realtime"
+      ]
     },
     "gemini/gemini-1.5-flash": {
       "mode": "embedding",
@@ -488,13 +576,19 @@
     },
     "gemini/gemini-2.5-flash-native-audio-latest": {
       "mode": "chat",
-      "max_input_tokens": 1048576,
-      "max_output_tokens": 8192
+      "max_input_tokens": 131072,
+      "max_output_tokens": 8192,
+      "supported_endpoints": [
+        "/v1/realtime"
+      ]
     },
     "gemini/gemini-2.5-flash-native-audio-preview-09-2025": {
       "mode": "chat",
       "max_input_tokens": 1048576,
-      "max_output_tokens": 8192
+      "max_output_tokens": 8192,
+      "supported_endpoints": [
+        "/v1/realtime"
+      ]
     },
     "gemini/gemini-2.5-flash-native-audio-preview-12-2025": {
       "mode": "chat",
@@ -502,7 +596,10 @@
       "max_output_tokens": 8192,
       "supports_vision": true,
       "supports_function_calling": true,
-      "supports_response_schema": false
+      "supports_response_schema": false,
+      "supported_endpoints": [
+        "/v1/realtime"
+      ]
     },
     "gemini/gemini-3.1-flash-live-preview": {
       "mode": "chat",
@@ -510,7 +607,10 @@
       "max_output_tokens": 65536,
       "supports_vision": true,
       "supports_function_calling": true,
-      "supports_response_schema": false
+      "supports_response_schema": false,
+      "supported_endpoints": [
+        "/v1/realtime"
+      ]
     },
     "gemini/gemini-3.1-flash-lite": {
       "mode": "chat",
@@ -520,7 +620,12 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/completions",
+        "/v1/batch"
+      ]
     },
     "gemini/gemini-3.5-flash": {
       "mode": "chat",
@@ -530,7 +635,12 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/completions",
+        "/v1/batch"
+      ]
     },
     "gemini/antigravity-preview-05-2026": {
       "mode": "chat"
@@ -573,7 +683,12 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/completions",
+        "/v1/batch"
+      ]
     },
     "gemini/gemini-3.6-flash": {
       "mode": "chat",
@@ -583,7 +698,12 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/completions",
+        "/v1/batch"
+      ]
     },
     "gemini/imagen-3.0-fast-generate-001": {
       "mode": "image_generation"
@@ -602,7 +722,12 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/completions",
+        "/v1/batch"
+      ]
     },
     "gemini/gemini-3.7-flash": {
       "mode": "chat",
@@ -612,19 +737,30 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/completions",
+        "/v1/batch"
+      ]
     },
     "gemini/gemini-robotics-er-2-streaming-preview": {
       "mode": "chat",
       "supports_vision": true,
-      "supports_function_calling": true
+      "supports_function_calling": true,
+      "supported_endpoints": [
+        "/v1/realtime"
+      ]
     },
     "gemini/gemini-3.5-live-translate-preview": {
       "mode": "chat",
       "max_input_tokens": 131072,
       "max_output_tokens": 65536,
       "supports_function_calling": false,
-      "supports_response_schema": false
+      "supports_response_schema": false,
+      "supported_endpoints": [
+        "/v1/realtime"
+      ]
     },
     "gemini/gemini-3.8-flash": {
       "mode": "chat",
@@ -634,14 +770,22 @@
       "supports_function_calling": true,
       "supports_response_schema": true,
       "supports_reasoning": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/completions",
+        "/v1/batch"
+      ]
     },
     "gemini/gemini-omni-1.1-flash": {
       "mode": "chat",
       "max_input_tokens": 1048576,
       "max_output_tokens": 65536,
       "supports_vision": true,
-      "supports_reasoning": true
+      "supports_reasoning": true,
+      "supported_endpoints": [
+        "/v1beta/interactions"
+      ]
     },
     "gemini/lyria-3.5-clip-preview": {
       "mode": "chat",
@@ -685,6 +829,31 @@
       "supports_vision": true,
       "supports_function_calling": true,
       "supports_response_schema": false
+    },
+    "gemini/gemini-3.8-flash-tts": {
+      "mode": "tts",
+      "supported_endpoints": [
+        "/v1/audio/speech"
+      ],
+      "max_input_tokens": 8192,
+      "max_output_tokens": 16384
+    },
+    "gemini/gemini-3.8-flash-lite-tts": {
+      "mode": "tts",
+      "supported_endpoints": [
+        "/v1/audio/speech"
+      ],
+      "max_input_tokens": 8192,
+      "max_output_tokens": 16384
+    },
+    "gemini/lyria-realtime-exp": {
+      "mode": "chat",
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 65536,
+      "supports_vision": false,
+      "supports_function_calling": false,
+      "supports_response_schema": false,
+      "supports_prompt_caching": false
     }
   }
 }

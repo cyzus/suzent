@@ -928,6 +928,26 @@
       "supported_endpoints": [
         "/v1/images/generations"
       ]
+    },
+    "dashscope/qwen3.8-flash": {
+      "mode": "chat",
+      "max_input_tokens": 991808,
+      "max_output_tokens": 131072,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "dashscope/qwen3.8-omni-flash": {
+      "mode": "chat",
+      "max_input_tokens": 991808,
+      "max_output_tokens": 131072,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     }
   }
 }
