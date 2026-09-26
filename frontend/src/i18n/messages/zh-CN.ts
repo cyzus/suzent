@@ -13,6 +13,7 @@ export const zhCN = {
     retry: '重试',
   },
   speech: {
+    clip: '语音消息',
     controls: '声音与播放',
     model: '语音模型',
     modelChanged: '已按模型调整设置，请保存以应用更改。',

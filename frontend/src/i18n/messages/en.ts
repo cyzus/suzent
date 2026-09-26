@@ -13,6 +13,7 @@ export const en = {
     retry: 'Retry',
   },
   speech: {
+    clip: 'Voice message',
     controls: 'Voice controls',
     model: 'Speech model',
     modelChanged: 'Settings were adjusted for this model. Save to apply the changes.',

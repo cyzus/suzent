@@ -1,4 +1,7 @@
 import React, { useEffect, useState, useSyncExternalStore } from 'react';
+import { PlayIcon, StopIcon, SpeakerWaveIcon } from '@heroicons/react/24/outline';
+import { BrutalIconButton } from '../BrutalButton';
+import { BrutalSelect } from '../BrutalSelect';
 import { useI18n } from '../../i18n';
 import { createSpeechJob, speechId, speechQueue } from '../../lib/speechPlayback';
 
@@ -33,41 +36,71 @@ export function SpeechPlayer({
   );
   const busy = state === 'playing' || state === 'queued';
   return (
-    <div className="space-y-2 border-2 border-brutal-black p-3">
-      <p className="text-xs font-bold">{t(src ? 'speech.api' : 'speech.system')}</p>
-      {!src && (
-        <select
-          aria-label={t('speech.voice')}
-          value={selected}
-          onChange={(event) => setSelected(event.target.value)}
-          className="max-w-full bg-transparent"
-        >
-          <option value="">{t('speech.defaultVoice')}</option>
-          {voices.map((voice) => (
-            <option key={voice.voiceURI} value={voice.voiceURI}>
-              {voice.name} ({voice.lang})
-            </option>
-          ))}
-        </select>
-      )}
-      <div className="flex gap-3">
-        <button
+    <div className="my-2 w-full max-w-sm space-y-2 border border-neutral-200 bg-white p-3 dark:border-zinc-700 dark:bg-zinc-800">
+      <div className="flex items-center gap-3">
+        <BrutalIconButton
           type="button"
-          disabled={(!src && !voices.length) || busy}
+          variant="primary"
+          size="icon-lg"
+          className="shrink-0 !border-0 !shadow-none"
+          label={t(busy ? 'speech.stop' : 'speech.play')}
+          disabled={!busy && !src && !voices.length}
           onClick={() => {
-            const job = createSpeechJob({ ...metadata, voice: selected }, src);
-            speechQueue.enqueue({ ...job, id });
+            if (busy) {
+              speechQueue.stop(id);
+            } else {
+              const job = createSpeechJob({ ...metadata, voice: selected }, src);
+              speechQueue.enqueue({ ...job, id });
+            }
           }}
         >
-          {t('speech.play')}
-        </button>
-        <button type="button" disabled={!busy} onClick={() => speechQueue.stop(id)}>
-          {t('speech.stop')}
-        </button>
+          {busy ? <StopIcon className="h-4 w-4" /> : <PlayIcon className="h-4 w-4" />}
+        </BrutalIconButton>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-brutal-black dark:text-white">
+            {t('speech.clip')}
+          </p>
+          <p className="truncate text-xs text-neutral-500 dark:text-neutral-400">
+            {t(src ? 'speech.api' : 'speech.system')}
+            {src && selected ? ` · ${selected}` : ''}
+          </p>
+        </div>
+        <SpeakerWaveIcon
+          aria-hidden="true"
+          className={`h-5 w-5 shrink-0 ${state === 'playing' ? 'text-brutal-blue' : 'text-neutral-400'}`}
+        />
       </div>
-      {busy && <p role="status">{t(state === 'queued' ? 'speech.queued' : 'speech.playing')}</p>}
-      {!src && !voices.length && <p role="status">{t('speech.unavailable')}</p>}
-      {state === 'blocked' && <p role="alert">{t('speech.playbackBlocked')}</p>}
+      {!src && (
+        <BrutalSelect
+          label={t('speech.voice')}
+          value={selected}
+          onChange={setSelected}
+          disabled={busy}
+          buttonClassName="!border !border-neutral-200 !shadow-none dark:!border-zinc-700"
+          options={[
+            { value: '', label: t('speech.defaultVoice') },
+            ...voices.map((voice) => ({
+              value: voice.voiceURI,
+              label: `${voice.name} (${voice.lang})`,
+            })),
+          ]}
+        />
+      )}
+      {busy && (
+        <p role="status" className="text-xs text-brutal-blue">
+          {t(state === 'queued' ? 'speech.queued' : 'speech.playing')}
+        </p>
+      )}
+      {!src && !voices.length && (
+        <p role="status" className="text-xs text-neutral-500 dark:text-neutral-400">
+          {t('speech.unavailable')}
+        </p>
+      )}
+      {state === 'blocked' && (
+        <p role="alert" className="text-xs text-brutal-red">
+          {t('speech.playbackBlocked')}
+        </p>
+      )}
     </div>
   );
 }
