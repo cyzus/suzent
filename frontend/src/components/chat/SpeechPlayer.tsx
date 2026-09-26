@@ -60,9 +60,13 @@ export function SpeechPlayer({
           <p className="text-sm font-semibold text-brutal-black dark:text-white">
             {t('speech.clip')}
           </p>
-          <p className="truncate text-xs text-neutral-500 dark:text-neutral-400">
-            {t(src ? 'speech.api' : 'speech.system')}
-            {src && selected ? ` · ${selected}` : ''}
+          <p
+            role="status"
+            className={`h-4 truncate text-xs leading-4 ${busy ? 'text-brutal-blue' : 'text-neutral-500 dark:text-neutral-400'}`}
+          >
+            {busy
+              ? t(state === 'queued' ? 'speech.queued' : 'speech.playing')
+              : `${t(src ? 'speech.api' : 'speech.system')}${src && selected ? ` · ${selected}` : ''}`}
           </p>
         </div>
         <SpeakerWaveIcon
@@ -85,11 +89,6 @@ export function SpeechPlayer({
             })),
           ]}
         />
-      )}
-      {busy && (
-        <p role="status" className="text-xs text-brutal-blue">
-          {t(state === 'queued' ? 'speech.queued' : 'speech.playing')}
-        </p>
       )}
       {!src && !voices.length && (
         <p role="status" className="text-xs text-neutral-500 dark:text-neutral-400">
