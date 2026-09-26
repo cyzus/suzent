@@ -8,6 +8,7 @@ Full documentation: https://suzent.com/zh-Hans/llms-full.txt
 - [快速开始](https://suzent.com/zh-Hans/docs/getting-started/quickstart)
 - [Agent Communication](https://suzent.com/zh-Hans/docs/concepts/agent-communication)
 - [Suzent Automation Guide](https://suzent.com/zh-Hans/docs/concepts/automation)
+- [Video and speech](https://suzent.com/zh-Hans/docs/concepts/creative-media)
 - [文件系统与执行](https://suzent.com/zh-Hans/docs/concepts/filesystem)
 - [GitHub Sync](https://suzent.com/zh-Hans/docs/concepts/github-sync)
 - [Memory Architecture](https://suzent.com/zh-Hans/docs/concepts/memory/architecture)

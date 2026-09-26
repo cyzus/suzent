@@ -8,6 +8,7 @@ Full documentation: https://suzent.com/llms-full.txt
 - [Quickstart](https://suzent.com/docs/getting-started/quickstart)
 - [Agent Communication](https://suzent.com/docs/concepts/agent-communication)
 - [Suzent Automation Guide](https://suzent.com/docs/concepts/automation)
+- [Video and speech](https://suzent.com/docs/concepts/creative-media)
 - [Filesystem & Execution](https://suzent.com/docs/concepts/filesystem)
 - [GitHub Sync](https://suzent.com/docs/concepts/github-sync)
 - [Memory Architecture](https://suzent.com/docs/concepts/memory/architecture)
