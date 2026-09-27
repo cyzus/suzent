@@ -14,6 +14,12 @@ const RELEASE_BASE_URL: &str = "https://github.com/cyzus/suzent/releases/downloa
 /// Keeps a captured failure reason short enough to stay readable in the UI.
 const FAILURE_DETAIL_LIMIT: usize = 600;
 
+fn background_command(program: impl AsRef<std::ffi::OsStr>) -> Command {
+    let mut command = Command::new(program);
+    crate::hide_command_window(&mut command);
+    command
+}
+
 #[derive(Deserialize)]
 struct ReleaseResponse {
     tag_name: String,
@@ -304,7 +310,7 @@ fn run_transaction(paths: &UpdatePaths, target_tag: &str) -> Result<(), String> 
             target_tag,
         )?;
         run_checked(
-            Command::new("git")
+            background_command("git")
                 .args(["stash", "push", "--include-untracked", "-m"])
                 .arg(format!("suzent-update-{target_tag}"))
                 .current_dir(&paths.root),
@@ -436,7 +442,7 @@ fn run_service_command(root: &Path, action: &str) -> Result<(), String> {
         ));
     }
     run_checked(
-        Command::new(python)
+        background_command(python)
             .args(["-m", "suzent.cli", "service", action])
             .current_dir(root),
         action,
@@ -466,7 +472,7 @@ fn prepare_target(paths: &UpdatePaths, target_tag: &str) -> Result<String, Strin
 
     write_status(paths, "fetch", 25, "Fetching release source", target_tag)?;
     run_checked(
-        Command::new("git")
+        background_command("git")
             .args(["fetch", "--force", "origin", "tag", target_tag])
             .current_dir(&paths.root),
         "fetch release source",
@@ -504,7 +510,7 @@ fn install_target(paths: &UpdatePaths, target_tag: &str) -> Result<(), String> {
         &transaction.target_commit
     };
     run_checked(
-        Command::new("git")
+        background_command("git")
             .args(["checkout", "--detach", target_commit])
             .current_dir(&paths.root),
         "check out release source",
@@ -574,7 +580,7 @@ fn refresh_shortcuts(paths: &UpdatePaths) {
         return;
     }
     if let Err(error) = run_checked(
-        Command::new(python)
+        background_command(python)
             .args(["-m", "suzent.cli", "shortcuts"])
             .current_dir(&paths.root),
         "refresh launcher shortcuts",
@@ -593,21 +599,21 @@ fn rollback(paths: &UpdatePaths, transaction: &UpdateTransaction) -> Result<(), 
     )?;
     let source_result = if transaction.old_branch.is_empty() {
         run_checked(
-            Command::new("git")
+            background_command("git")
                 .args(["checkout", "--detach", &transaction.old_commit])
                 .current_dir(&paths.root),
             "restore previous source",
         )
     } else {
         run_checked(
-            Command::new("git")
+            background_command("git")
                 .args(["checkout", &transaction.old_branch])
                 .current_dir(&paths.root),
             "restore previous branch",
         )
         .and_then(|()| {
             run_checked(
-                Command::new("git")
+                background_command("git")
                     .args(["reset", "--hard", &transaction.old_commit])
                     .current_dir(&paths.root),
                 "restore previous commit",
@@ -715,7 +721,7 @@ fn verify_backend_version(root: &Path, target_tag: &str) -> Result<(), String> {
     } else {
         root.join(".venv/bin/python")
     };
-    let output = Command::new(&python)
+    let output = background_command(&python)
         .args([
             "-c",
             "from importlib.metadata import version; print(version('suzent'))",
@@ -740,7 +746,7 @@ fn run_uv_sync(root: &Path) -> Result<(), String> {
     let mut last_error = String::new();
     for attempt in 1..=3 {
         match run_checked(
-            Command::new("uv")
+            background_command("uv")
                 .args(["sync", "--frozen", "--extra", "social"])
                 .current_dir(root),
             "synchronize Python environment",
@@ -765,7 +771,7 @@ fn stop_suzent_processes(root: &Path) -> Result<(), String> {
         let script = format!(
             "$root='{escaped}'; $self={current_pid}; Get-CimInstance Win32_Process | Where-Object {{ $_.ProcessId -ne $self -and $_.Name -notlike 'suzent-installer*' -and (($_.ExecutablePath -like \"$root*\") -or ($_.CommandLine -like \"*$root*\")) }} | ForEach-Object {{ $_.ProcessId; Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }}"
         );
-        let output = Command::new("powershell")
+        let output = background_command("powershell")
             .args(["-NoProfile", "-Command", &script])
             .output()
             .map_err(|error| format!("failed to inspect running Suzent processes: {error}"))?;
@@ -779,13 +785,15 @@ fn stop_suzent_processes(root: &Path) -> Result<(), String> {
         }
         pids.extend(parse_pids(&output.stdout));
     } else {
-        let output = Command::new("pgrep").args(["-f", &root_text]).output();
+        let output = background_command("pgrep")
+            .args(["-f", &root_text])
+            .output();
         if let Ok(output) = output {
             for line in String::from_utf8_lossy(&output.stdout).lines() {
                 if let Ok(pid) = line.trim().parse::<u32>() {
                     if pid != current_pid {
                         pids.push(pid);
-                        let _ = Command::new("kill")
+                        let _ = background_command("kill")
                             .args(["-TERM", &pid.to_string()])
                             .status();
                     }
@@ -860,7 +868,7 @@ fn process_exists(pid: u32) -> bool {
 
 #[cfg(not(windows))]
 fn process_exists(pid: u32) -> bool {
-    Command::new("kill")
+    background_command("kill")
         .args(["-0", &pid.to_string()])
         .status()
         .map(|status| status.success())
@@ -1312,7 +1320,7 @@ fn preserve_conflicted_checkout(
 
     quit_git_operations(root);
     run_checked(
-        Command::new("git")
+        background_command("git")
             .args(["reset", "--hard", old_commit])
             .current_dir(root),
         "restore conflicted checkout after preserving it",
@@ -1358,7 +1366,10 @@ fn quit_git_operations(root: &Path) {
         ["cherry-pick", "--quit"],
         ["revert", "--quit"],
     ] {
-        let _ = Command::new("git").args(args).current_dir(root).output();
+        let _ = background_command("git")
+            .args(args)
+            .current_dir(root)
+            .output();
     }
 }
 
@@ -1442,7 +1453,7 @@ fn git_bytes(root: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
 }
 
 fn git_output(root: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
-    let output = Command::new("git")
+    let output = background_command("git")
         .args(args)
         .current_dir(root)
         .output()
@@ -1497,7 +1508,7 @@ fn command_failure_detail(stdout: &[u8], stderr: &[u8]) -> Option<String> {
 }
 
 fn launch_app(executable: &Path, root: &Path) -> Result<(), String> {
-    Command::new(executable)
+    background_command(executable)
         .current_dir(root)
         .spawn()
         .map_err(|error| format!("failed to relaunch Suzent: {error}"))?;
@@ -1557,6 +1568,7 @@ fn set_executable(_path: &Path) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+    use super::background_command;
     use super::{
         acquire_lock, backup_current_ui, command_failure_detail, is_release_tag, parse_pids,
         parse_release_checksum, record_failure, restore_ui_backup, wait_for_process_exit,
@@ -1564,9 +1576,25 @@ mod tests {
         FAILURE_DETAIL_LIMIT,
     };
     use std::fs;
-    use std::process::Command;
     use std::thread;
     use std::time::Duration;
+
+    #[cfg(windows)]
+    #[test]
+    fn background_process_has_no_console_and_keeps_diagnostics() {
+        let output = background_command("powershell.exe")
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                "Add-Type -Name ConsoleProbe -Namespace Suzent -MemberDefinition '[DllImport(\"kernel32.dll\")] public static extern System.IntPtr GetConsoleWindow();'; [Console]::Out.WriteLine([Suzent.ConsoleProbe]::GetConsoleWindow().ToInt64()); [Console]::Error.WriteLine('diagnostic'); exit 7",
+            ])
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(7));
+        assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "0");
+        assert!(String::from_utf8_lossy(&output.stderr).contains("diagnostic"));
+    }
 
     #[test]
     fn reuses_download_after_install_and_rollback() {
@@ -1864,7 +1892,7 @@ mod tests {
     #[test]
     fn detects_a_checkout_with_a_git_operation_in_progress() {
         let temp = tempfile::tempdir().expect("temp dir");
-        assert!(Command::new("git")
+        assert!(background_command("git")
             .args(["init", "--quiet"])
             .current_dir(temp.path())
             .status()
@@ -1884,7 +1912,7 @@ mod tests {
         let temp = tempfile::tempdir().expect("temp dir");
         let root = temp.path();
         let git = |args: &[&str]| {
-            Command::new("git")
+            background_command("git")
                 .args(args)
                 .current_dir(root)
                 .status()
