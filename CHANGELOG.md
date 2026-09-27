@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [v0.15.0] - 2026-09-27
 
+<!-- highlights -->
+This desktop release provides the local HTTPS pairing support needed by the
+signed Android 0.1.1 release. Update the desktop app before pairing over a local
+network, then generate a fresh QR code in desktop settings. The QR code carries
+the certificate trust information scoped to this desktop connection; no system
+certificate installation or Tailscale setup is required.
+
+Desktop and mobile versions remain independent. Older backends using an
+already trusted HTTPS endpoint can continue to use the existing pairing
+protocol, but plain HTTP LAN pairing is not supported by release mobile apps.
+<!-- /highlights -->
+
 ### 🐛 Fixed
 - Make the service log readable in the console (#246)
 - Reuse verified desktop binaries across retries (#247)
