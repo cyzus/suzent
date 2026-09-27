@@ -56,6 +56,7 @@ Full documentation: https://suzent.com/zh-Hans/llms-full.txt
 - [工具](https://suzent.com/zh-Hans/docs/concepts/tools)
 - [Development Guide](https://suzent.com/zh-Hans/docs/developing/development-guide)
 - [Docker Services (Optional)](https://suzent.com/zh-Hans/docs/developing/docker-services)
+- [Mobile release distribution](https://suzent.com/zh-Hans/docs/developing/mobile-releases)
 - [Native mobile clients](https://suzent.com/zh-Hans/docs/developing/mobile)
 - [Updating Model Capabilities](https://suzent.com/zh-Hans/docs/developing/model-capability-updates)
 - [Release guide](https://suzent.com/zh-Hans/docs/developing/releasing)
