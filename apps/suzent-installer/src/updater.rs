@@ -222,6 +222,7 @@ fn run_inner(args: &[String], repair: bool) -> Result<(), String> {
     let paths = UpdatePaths::new(root, &target_tag);
     fs::create_dir_all(&paths.state_dir).map_err(display_io("create update state directory"))?;
     let _lock = acquire_lock(&paths.state_dir)?;
+    recover_legacy_journal(&paths)?;
 
     if paths.journal.exists() {
         if !repair {
@@ -377,6 +378,19 @@ fn recover_interrupted_update(paths: &UpdatePaths) -> Result<(), String> {
     let bytes = fs::read(&paths.journal).map_err(display_io("read update transaction"))?;
     let transaction: UpdateTransaction = serde_json::from_slice(&bytes)
         .map_err(|error| format!("failed to read update transaction: {error}"))?;
+    if transaction.phase == "complete" {
+        cleanup_transaction_files(&UpdatePaths::new(
+            paths.root.clone(),
+            &transaction.target_tag,
+        ));
+        return Ok(());
+    }
+    if transaction.phase == "preserving" && repository_hazard(&paths.root)?.is_some() {
+        return Err(format!(
+            "local-change preservation was interrupted; inspect {} and resolve Git conflicts manually before retrying; journal retained",
+            transaction.recovery_dir.as_deref().unwrap_or("the recovery directory")
+        ));
+    }
     write_status(
         paths,
         "rollback",
@@ -388,7 +402,8 @@ fn recover_interrupted_update(paths: &UpdatePaths) -> Result<(), String> {
         let mut service_guard = ServiceRestartGuard::detect(&paths.root);
         service_guard.stop()?;
         stop_suzent_processes(&paths.root)?;
-        let result = rollback(paths, &transaction);
+        let recovery_paths = UpdatePaths::new(paths.root.clone(), &transaction.target_tag);
+        let result = rollback(&recovery_paths, &transaction);
         let restart_result = service_guard.restart();
         result.and(restart_result)
     } else {
@@ -511,7 +526,12 @@ fn install_target(paths: &UpdatePaths, target_tag: &str) -> Result<(), String> {
     };
     run_checked(
         background_command("git")
-            .args(["checkout", "--detach", target_commit])
+            .args([
+                "checkout",
+                "--no-overwrite-ignore",
+                "--detach",
+                target_commit,
+            ])
             .current_dir(&paths.root),
         "check out release source",
     )?;
@@ -1177,24 +1197,66 @@ fn write_json_atomic<T: Serialize>(
     action: &'static str,
 ) -> Result<(), String> {
     let temporary = path.with_extension("tmp");
-    let backup = path.with_extension("bak");
     let bytes = serde_json::to_vec_pretty(value).map_err(|error| format!("{action}: {error}"))?;
-    fs::write(&temporary, bytes).map_err(display_io(action))?;
-    let had_previous = path.exists();
-    if backup.exists() {
-        fs::remove_file(&backup).map_err(display_io(action))?;
+    let mut file = fs::File::create(&temporary).map_err(display_io(action))?;
+    file.write_all(&bytes).map_err(display_io(action))?;
+    file.sync_all().map_err(display_io(action))?;
+    drop(file);
+    replace_state_file(&temporary, path).map_err(display_io(action))?;
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn replace_state_file(source: &Path, destination: &Path) -> io::Result<()> {
+    fs::rename(source, destination)?;
+    fs::File::open(destination.parent().expect("state file parent"))?.sync_all()
+}
+
+#[cfg(windows)]
+fn replace_state_file(source: &Path, destination: &Path) -> io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::{
+        MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
+    };
+    let source: Vec<u16> = source.as_os_str().encode_wide().chain(Some(0)).collect();
+    let destination: Vec<u16> = destination
+        .as_os_str()
+        .encode_wide()
+        .chain(Some(0))
+        .collect();
+    // Both files are on the same volume; never remove the previous journal first.
+    if unsafe {
+        MoveFileExW(
+            source.as_ptr(),
+            destination.as_ptr(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+        )
+    } == 0
+    {
+        return Err(io::Error::last_os_error());
     }
-    if had_previous {
-        rename_with_retry(path, &backup, action)?;
+    Ok(())
+}
+
+fn recover_legacy_journal(paths: &UpdatePaths) -> Result<(), String> {
+    let backup = paths.journal.with_extension("bak");
+    if !backup.exists() {
+        return Ok(());
     }
-    if let Err(error) = rename_with_retry(&temporary, path, action) {
-        if had_previous && backup.exists() {
-            let _ = rename_with_retry(&backup, path, "restore previous update state");
-        }
-        return Err(error);
-    }
-    if backup.exists() {
-        fs::remove_file(backup).map_err(display_io(action))?;
+    let authoritative = if paths.journal.exists() {
+        &paths.journal
+    } else {
+        &backup
+    };
+    let bytes = fs::read(authoritative).map_err(display_io("read legacy transaction"))?;
+    serde_json::from_slice::<UpdateTransaction>(&bytes).map_err(|error| {
+        format!("invalid legacy transaction; preserve files and repair manually: {error}")
+    })?;
+    if !paths.journal.exists() {
+        replace_state_file(&backup, &paths.journal)
+            .map_err(display_io("restore legacy transaction"))?;
+    } else {
+        fs::remove_file(backup).map_err(display_io("remove superseded transaction"))?;
     }
     Ok(())
 }
@@ -1298,7 +1360,7 @@ fn preserve_conflicted_checkout(
                 fs::create_dir_all(parent)
                     .map_err(display_io("prepare untracked recovery path"))?;
             }
-            rename_with_retry(&source, &destination, "move untracked file to recovery")?;
+            copy_recovery_file(&source, &destination)?;
         }
     }
 
@@ -1318,13 +1380,10 @@ fn preserve_conflicted_checkout(
         "write recovery manifest",
     )?;
 
-    quit_git_operations(root);
-    run_checked(
-        background_command("git")
-            .args(["reset", "--hard", old_commit])
-            .current_dir(root),
-        "restore conflicted checkout after preserving it",
-    )
+    Err(format!(
+        "Git conflicts or an operation in progress require manual resolution. The checkout was not changed; a diagnostic snapshot is saved in {}. Resolve or abort the Git operation, then run suzent repair. Do not delete the snapshot until your changes are recovered.",
+        recovery_dir.display()
+    ))
 }
 
 fn preserve_conflict_stages(root: &Path, recovery_dir: &Path) -> Result<Vec<String>, String> {
@@ -1357,20 +1416,6 @@ fn preserve_conflict_stages(root: &Path, recovery_dir: &Path) -> Result<Vec<Stri
         saved.push(format!("{stage}:{}", relative.display()));
     }
     Ok(saved)
-}
-
-fn quit_git_operations(root: &Path) {
-    for args in [
-        ["merge", "--quit"],
-        ["rebase", "--quit"],
-        ["cherry-pick", "--quit"],
-        ["revert", "--quit"],
-    ] {
-        let _ = background_command("git")
-            .args(args)
-            .current_dir(root)
-            .output();
-    }
 }
 
 fn copy_recovery_file(source: &Path, destination: &Path) -> Result<(), String> {
@@ -1578,6 +1623,46 @@ mod tests {
     use std::fs;
     use std::thread;
     use std::time::Duration;
+
+    #[test]
+    fn atomic_state_replacement_keeps_previous_document_until_commit() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("state.json");
+        super::write_json_atomic(&path, &"old", "test").unwrap();
+        fs::write(path.with_extension("tmp"), b"partial").unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "\"old\"");
+        super::write_json_atomic(&path, &"new", "test").unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "\"new\"");
+        assert!(!path.with_extension("bak").exists());
+        assert!(!path.with_extension("tmp").exists());
+        assert!(super::replace_state_file(&temp.path().join("missing"), &path).is_err());
+        assert_eq!(fs::read_to_string(&path).unwrap(), "\"new\"");
+    }
+
+    #[test]
+    fn legacy_journal_gap_is_recovered_without_trusting_partial_temp() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = UpdatePaths::new(temp.path().to_path_buf(), "v1.2.3");
+        fs::create_dir_all(&paths.state_dir).unwrap();
+        let journal = serde_json::json!({
+            "target_tag": "v1.2.3", "old_commit": "abc", "old_branch": "",
+            "old_release_tag": "v1.2.2", "old_ui_version": "v1.2.2",
+            "stashed_changes": false, "phase": "switching"
+        });
+        let bytes = serde_json::to_vec(&journal).unwrap();
+        fs::write(paths.journal.with_extension("bak"), &bytes).unwrap();
+        fs::write(paths.journal.with_extension("tmp"), b"partial").unwrap();
+        super::recover_legacy_journal(&paths).unwrap();
+        assert_eq!(fs::read(&paths.journal).unwrap(), bytes);
+        assert!(!paths.journal.with_extension("bak").exists());
+        fs::write(paths.journal.with_extension("bak"), b"stale").unwrap();
+        super::recover_legacy_journal(&paths).unwrap();
+        assert!(!paths.journal.with_extension("bak").exists());
+        fs::remove_file(&paths.journal).unwrap();
+        fs::write(paths.journal.with_extension("bak"), b"corrupt").unwrap();
+        assert!(super::recover_legacy_journal(&paths).is_err());
+        assert!(paths.journal.with_extension("bak").exists());
+    }
 
     #[cfg(windows)]
     #[test]
@@ -1908,7 +1993,7 @@ mod tests {
     }
 
     #[test]
-    fn preserves_conflicts_and_untracked_files_before_forced_recovery() {
+    fn conflict_snapshot_never_changes_the_checkout() {
         let temp = tempfile::tempdir().expect("temp dir");
         let root = temp.path();
         let git = |args: &[&str]| {
@@ -1935,6 +2020,8 @@ mod tests {
         let old_commit = super::git_text(root, &["rev-parse", "HEAD"]).expect("old commit");
         assert!(!git(&["merge", "incoming"]).success());
         fs::write(root.join("local-note.txt"), "keep me\n").expect("untracked file");
+        let conflicted = fs::read(root.join("conflicted.txt")).unwrap();
+        let index = fs::read(root.join(".git/index")).unwrap();
 
         let recovery = root.join(".suzent/update-recovery/test");
         super::preserve_conflicted_checkout(
@@ -1944,13 +2031,15 @@ mod tests {
             &old_commit,
             "installed",
         )
-        .expect("preserve checkout");
+        .expect_err("manual resolution required");
 
+        assert_eq!(fs::read(root.join("conflicted.txt")).unwrap(), conflicted);
+        assert_eq!(fs::read(root.join(".git/index")).unwrap(), index);
+        assert!(root.join(".git/MERGE_HEAD").exists());
         assert_eq!(
-            fs::read_to_string(root.join("conflicted.txt")).expect("restored file"),
-            "installed\n"
+            fs::read_to_string(root.join("local-note.txt")).unwrap(),
+            "keep me\n"
         );
-        assert!(!root.join("local-note.txt").exists());
         assert_eq!(
             fs::read_to_string(recovery.join("untracked/local-note.txt"))
                 .expect("recovered untracked file"),
@@ -1963,6 +2052,24 @@ mod tests {
         assert!(recovery.join("manifest.json").exists());
         assert!(super::repository_hazard(root)
             .expect("inspect recovered repository")
-            .is_none());
+            .is_some());
+
+        // A failed snapshot must leave originals untouched as well.
+        let failed = root.join(".suzent/update-recovery/failed");
+        fs::create_dir_all(failed.join("untracked/local-note.txt")).unwrap();
+        assert!(super::preserve_conflicted_checkout(
+            root,
+            &failed,
+            "conflict",
+            &old_commit,
+            "installed"
+        )
+        .is_err());
+        assert_eq!(fs::read(root.join("conflicted.txt")).unwrap(), conflicted);
+        assert_eq!(fs::read(root.join(".git/index")).unwrap(), index);
+        assert_eq!(
+            fs::read_to_string(root.join("local-note.txt")).unwrap(),
+            "keep me\n"
+        );
     }
 }

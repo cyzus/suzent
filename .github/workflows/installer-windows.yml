@@ -1,0 +1,28 @@
+name: Installer Windows
+
+on:
+  pull_request:
+    paths:
+      - 'apps/suzent-installer/**'
+      - '.github/workflows/installer-windows.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  installer:
+    name: Windows installer tests
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: apps/suzent-installer
+      - name: Test recovery and hidden subprocesses
+        working-directory: apps/suzent-installer
+        run: cargo test --locked
