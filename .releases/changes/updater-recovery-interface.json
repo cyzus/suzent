@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Improve standalone updater process waits, release commit tracking and Git recovery handling, and simplify the update window with copyable diagnostics."
+}
