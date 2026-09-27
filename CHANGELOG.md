@@ -42,6 +42,7 @@ protocol, but plain HTTP LAN pairing is not supported by release mobile apps.
 - Give every tool and every tool argument a description the model can see, and declare closed-value arguments as fixed choices, so tools in the search pool are discoverable and their valid values no longer have to be inferred from prose.
 - Return a clean 'not found' refusal instead of crashing when update_task is given an unknown task id, or manage_goal is paused, resumed or given a subgoal with no active goal.
 - Give every refresh control the same spinning-arrow icon button, and drop the redundant ones on views that already poll.
+- Improve standalone updater process waits, release commit tracking and Git recovery handling, and simplify the update window with copyable diagnostics.
 - Generate videos with persistent job tracking, play media in chat, and customize system or API speech.
 
 ## [v0.14.0] - 2026-09-18
