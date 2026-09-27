@@ -147,13 +147,13 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn existing_but_broken_git_is_not_usable() {
-        use std::os::unix::fs::PermissionsExt;
+        use std::os::unix::fs::symlink;
         let dir = tempfile::tempdir().unwrap();
         let git = dir.path().join("git");
-        std::fs::write(&git, "#!/bin/sh\nexit 1\n").unwrap();
-        std::fs::set_permissions(&git, std::fs::Permissions::from_mode(0o755)).unwrap();
+        symlink("/usr/bin/false", &git).unwrap();
         assert!(!usable_git(&git));
-        std::fs::write(&git, "#!/bin/sh\nexit 0\n").unwrap();
+        std::fs::remove_file(&git).unwrap();
+        symlink("/usr/bin/true", &git).unwrap();
         assert!(usable_git(&git));
     }
 }
