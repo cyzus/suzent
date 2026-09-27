@@ -1664,6 +1664,25 @@ mod tests {
         assert!(paths.journal.with_extension("bak").exists());
     }
 
+    #[test]
+    fn completed_transaction_recovery_keeps_verified_installation() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = UpdatePaths::new(temp.path().to_path_buf(), "v1.2.3");
+        fs::create_dir_all(&paths.state_dir).unwrap();
+        fs::create_dir_all(paths.root.join("bin")).unwrap();
+        fs::write(paths.ui(), "verified-new-ui").unwrap();
+        let journal = serde_json::json!({
+            "target_tag": "v1.2.3", "old_commit": "abc", "old_branch": "",
+            "old_release_tag": "v1.2.2", "old_ui_version": "v1.2.2",
+            "stashed_changes": false, "phase": "complete"
+        });
+        fs::write(&paths.journal, serde_json::to_vec(&journal).unwrap()).unwrap();
+        // No Git repository or Python exists: completed recovery must not run rollback.
+        super::recover_interrupted_update(&paths).unwrap();
+        assert_eq!(fs::read_to_string(paths.ui()).unwrap(), "verified-new-ui");
+        assert!(!paths.journal.exists());
+    }
+
     #[cfg(windows)]
     #[test]
     fn background_process_has_no_console_and_keeps_diagnostics() {
