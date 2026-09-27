@@ -291,7 +291,7 @@ def render_notes(root: Path, data: dict[str, Any], source: str) -> str:
         + draft.rstrip()
         + "\n\n"
         + existing[position:].lstrip()
-    )
+    ).rstrip() + "\n"
 
 
 def release_notes(root: Path, product: str) -> str:
