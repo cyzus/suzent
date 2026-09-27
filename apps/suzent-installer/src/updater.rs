@@ -5,7 +5,7 @@ use std::env;
 use std::fs::{self, OpenOptions};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Command;
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -45,12 +45,29 @@ fn is_false(value: &bool) -> bool {
 #[derive(Serialize, Deserialize)]
 struct UpdateTransaction {
     target_tag: String,
+    #[serde(default)]
+    target_commit: String,
     old_commit: String,
     old_branch: String,
     old_release_tag: String,
     old_ui_version: String,
     stashed_changes: bool,
+    #[serde(default)]
+    stash_commit: Option<String>,
+    #[serde(default)]
+    recovery_dir: Option<String>,
     phase: String,
+}
+
+#[derive(Serialize)]
+struct RecoveryManifest {
+    created_at: u64,
+    reason: String,
+    old_commit: String,
+    old_branch: String,
+    tracked_files: Vec<String>,
+    untracked_files: Vec<String>,
+    conflict_stages: Vec<String>,
 }
 
 struct UpdateLock {
@@ -180,9 +197,8 @@ fn run_inner(args: &[String], repair: bool) -> Result<(), String> {
     }
 
     if let Some(pid) = flag_value(args, "--wait-pid").and_then(|value| value.parse().ok()) {
-        wait_for_process_exit(pid, Duration::from_secs(120));
+        wait_for_process_exit(pid, Duration::from_secs(120))?;
     }
-    thread::sleep(Duration::from_millis(750));
 
     let configured_target = flag_value(args, "--target").or_else(|| {
         repair
@@ -201,6 +217,16 @@ fn run_inner(args: &[String], repair: bool) -> Result<(), String> {
     fs::create_dir_all(&paths.state_dir).map_err(display_io("create update state directory"))?;
     let _lock = acquire_lock(&paths.state_dir)?;
 
+    if paths.journal.exists() {
+        if !repair {
+            return Err(format!(
+                "an interrupted update is recorded in {}; run 'suzent repair' before updating again",
+                paths.journal.display()
+            ));
+        }
+        recover_interrupted_update(&paths)?;
+    }
+
     if let Err(error) = run_transaction(&paths, &target_tag) {
         record_failure(&paths, &target_tag, &error);
         return Err(error);
@@ -218,6 +244,7 @@ fn run_inner(args: &[String], repair: bool) -> Result<(), String> {
 fn run_transaction(paths: &UpdatePaths, target_tag: &str) -> Result<(), String> {
     let mut service_guard = ServiceRestartGuard::detect(&paths.root);
     write_status(paths, "preflight", 5, "Preparing update", target_tag)?;
+    let repository_hazard = repository_hazard(&paths.root)?;
 
     let old_commit = git_text(&paths.root, &["rev-parse", "HEAD"])?;
     let old_branch = git_text(&paths.root, &["branch", "--show-current"])?;
@@ -225,20 +252,50 @@ fn run_transaction(paths: &UpdatePaths, target_tag: &str) -> Result<(), String> 
     let old_ui_version = read_trimmed(paths.ui_version()).unwrap_or_default();
     let mut transaction = UpdateTransaction {
         target_tag: target_tag.to_string(),
+        target_commit: String::new(),
         old_commit,
         old_branch,
         old_release_tag,
         old_ui_version,
         stashed_changes: false,
+        stash_commit: None,
+        recovery_dir: None,
         phase: "preflight".to_string(),
     };
-    write_journal(paths, &transaction)?;
 
-    prepare_target(paths, target_tag)?;
+    transaction.target_commit = prepare_target(paths, target_tag)?;
     transaction.phase = "prepared".to_string();
     write_journal(paths, &transaction)?;
 
-    if has_local_changes(&paths.root)? {
+    if let Some(reason) = repository_hazard {
+        write_status(
+            paths,
+            "preserve",
+            30,
+            "Saving conflicted Git checkout",
+            target_tag,
+        )?;
+        let recovery_dir = paths
+            .state_dir
+            .join("update-recovery")
+            .join(format!("{}-{target_tag}", now_epoch_millis()));
+        transaction.recovery_dir = Some(recovery_dir.display().to_string());
+        transaction.phase = "preserving".to_string();
+        write_journal(paths, &transaction)?;
+        preserve_conflicted_checkout(
+            &paths.root,
+            &recovery_dir,
+            &reason,
+            &transaction.old_commit,
+            &transaction.old_branch,
+        )?;
+        println!(
+            "Local source changes were saved in {}",
+            recovery_dir.display()
+        );
+        transaction.phase = "preserved".to_string();
+        write_journal(paths, &transaction)?;
+    } else if has_local_changes(&paths.root)? {
         write_status(
             paths,
             "preserve",
@@ -254,6 +311,8 @@ fn run_transaction(paths: &UpdatePaths, target_tag: &str) -> Result<(), String> 
             "preserve local changes",
         )?;
         transaction.stashed_changes = true;
+        transaction.stash_commit = Some(git_text(&paths.root, &["rev-parse", "refs/stash"])?);
+        transaction.phase = "preserved".to_string();
         write_journal(paths, &transaction)?;
     }
 
@@ -296,9 +355,43 @@ fn run_transaction(paths: &UpdatePaths, target_tag: &str) -> Result<(), String> 
 
     transaction.phase = "complete".to_string();
     write_journal(paths, &transaction)?;
-    write_status(paths, "complete", 100, "Suzent update complete", target_tag)?;
+    let completion_message = match &transaction.recovery_dir {
+        Some(recovery_dir) => {
+            format!("Suzent update complete; local source changes saved in {recovery_dir}")
+        }
+        None => "Suzent update complete".to_string(),
+    };
+    write_status(paths, "complete", 100, &completion_message, target_tag)?;
     cleanup_transaction_files(paths);
     service_guard.restart()?;
+    Ok(())
+}
+
+fn recover_interrupted_update(paths: &UpdatePaths) -> Result<(), String> {
+    let bytes = fs::read(&paths.journal).map_err(display_io("read update transaction"))?;
+    let transaction: UpdateTransaction = serde_json::from_slice(&bytes)
+        .map_err(|error| format!("failed to read update transaction: {error}"))?;
+    write_status(
+        paths,
+        "rollback",
+        5,
+        "Recovering interrupted update",
+        &transaction.target_tag,
+    )?;
+    let recovery_result = if matches!(transaction.phase.as_str(), "switching" | "complete") {
+        let mut service_guard = ServiceRestartGuard::detect(&paths.root);
+        service_guard.stop()?;
+        stop_suzent_processes(&paths.root)?;
+        let result = rollback(paths, &transaction);
+        let restart_result = service_guard.restart();
+        result.and(restart_result)
+    } else {
+        Ok(())
+    };
+    recovery_result.map_err(|error| {
+        format!("failed to recover interrupted update; backups and journal were preserved: {error}")
+    })?;
+    fs::remove_file(&paths.journal).map_err(display_io("finish interrupted update recovery"))?;
     Ok(())
 }
 
@@ -350,7 +443,7 @@ fn run_service_command(root: &Path, action: &str) -> Result<(), String> {
     )
 }
 
-fn prepare_target(paths: &UpdatePaths, target_tag: &str) -> Result<(), String> {
+fn prepare_target(paths: &UpdatePaths, target_tag: &str) -> Result<String, String> {
     write_status(
         paths,
         "download",
@@ -377,7 +470,8 @@ fn prepare_target(paths: &UpdatePaths, target_tag: &str) -> Result<(), String> {
             .args(["fetch", "--force", "origin", "tag", target_tag])
             .current_dir(&paths.root),
         "fetch release source",
-    )
+    )?;
+    git_text(&paths.root, &["rev-list", "-n", "1", target_tag])
 }
 
 fn prepare_ui(
@@ -403,9 +497,15 @@ fn prepare_ui(
 
 fn install_target(paths: &UpdatePaths, target_tag: &str) -> Result<(), String> {
     write_status(paths, "source", 50, "Switching source version", target_tag)?;
+    let transaction = read_transaction(paths)?;
+    let target_commit = if transaction.target_commit.is_empty() {
+        target_tag
+    } else {
+        &transaction.target_commit
+    };
     run_checked(
         Command::new("git")
-            .args(["checkout", "--detach", target_tag])
+            .args(["checkout", "--detach", target_commit])
             .current_dir(&paths.root),
         "check out release source",
     )?;
@@ -450,6 +550,12 @@ fn install_target(paths: &UpdatePaths, target_tag: &str) -> Result<(), String> {
     )?;
     refresh_shortcuts(paths);
     Ok(())
+}
+
+fn read_transaction(paths: &UpdatePaths) -> Result<UpdateTransaction, String> {
+    let bytes = fs::read(&paths.journal).map_err(display_io("read update transaction"))?;
+    serde_json::from_slice(&bytes)
+        .map_err(|error| format!("failed to read update transaction: {error}"))
 }
 
 /// Repairs the launcher entries through `suzent.cli.shortcuts`, the same code
@@ -528,12 +634,18 @@ fn backup_current_ui(paths: &UpdatePaths) -> Result<(), String> {
     }
     fs::create_dir_all(&paths.backup_dir).map_err(display_io("create update backup"))?;
     if paths.ui().exists() {
-        fs::rename(paths.ui(), paths.backup_ui())
-            .map_err(display_io("back up desktop application"))?;
+        rename_with_retry(
+            &paths.ui(),
+            &paths.backup_ui(),
+            "back up desktop application",
+        )?;
     }
     if paths.ui_version().exists() {
-        fs::rename(paths.ui_version(), paths.backup_ui_version())
-            .map_err(display_io("back up desktop version marker"))?;
+        rename_with_retry(
+            &paths.ui_version(),
+            &paths.backup_ui_version(),
+            "back up desktop version marker",
+        )?;
     }
     Ok(())
 }
@@ -541,7 +653,11 @@ fn backup_current_ui(paths: &UpdatePaths) -> Result<(), String> {
 fn install_staged_ui(paths: &UpdatePaths, target_tag: &str) -> Result<(), String> {
     let bin = paths.root.join("bin");
     fs::create_dir_all(&bin).map_err(display_io("create desktop binary directory"))?;
-    fs::rename(paths.staged_ui(), paths.ui()).map_err(display_io("install desktop application"))?;
+    rename_with_retry(
+        &paths.staged_ui(),
+        &paths.ui(),
+        "install desktop application",
+    )?;
     fs::write(paths.ui_version(), target_tag)
         .map_err(display_io("write desktop version marker"))?;
     Ok(())
@@ -555,20 +671,29 @@ fn restore_ui_backup(paths: &UpdatePaths, old_version: &str) -> Result<(), Strin
             // Return the candidate for retries without allocating another binary-sized copy.
             fs::create_dir_all(&paths.staging_dir)
                 .map_err(display_io("create update staging directory"))?;
-            fs::rename(paths.ui(), paths.staged_ui())
-                .map_err(display_io("preserve desktop application for retry"))?;
+            rename_with_retry(
+                &paths.ui(),
+                &paths.staged_ui(),
+                "preserve desktop application for retry",
+            )?;
         }
     }
     if paths.backup_ui().exists() {
-        fs::rename(paths.backup_ui(), paths.ui())
-            .map_err(display_io("restore desktop application"))?;
+        rename_with_retry(
+            &paths.backup_ui(),
+            &paths.ui(),
+            "restore desktop application",
+        )?;
     }
     if paths.ui_version().exists() {
         fs::remove_file(paths.ui_version()).map_err(display_io("remove failed version marker"))?;
     }
     if paths.backup_ui_version().exists() {
-        fs::rename(paths.backup_ui_version(), paths.ui_version())
-            .map_err(display_io("restore desktop version marker"))?;
+        rename_with_retry(
+            &paths.backup_ui_version(),
+            &paths.ui_version(),
+            "restore desktop version marker",
+        )?;
     } else if !old_version.is_empty() {
         fs::write(paths.ui_version(), old_version)
             .map_err(display_io("restore desktop version"))?;
@@ -626,22 +751,32 @@ fn run_uv_sync(root: &Path) -> Result<(), String> {
 fn stop_suzent_processes(root: &Path) -> Result<(), String> {
     let root_text = root.display().to_string();
     let current_pid = std::process::id();
+    let mut pids = Vec::new();
     if cfg!(windows) {
         let escaped = root_text.replace('\'', "''");
         let script = format!(
-            "$root='{escaped}'; $self={current_pid}; Get-CimInstance Win32_Process | Where-Object {{ $_.ProcessId -ne $self -and $_.Name -notlike 'suzent-installer*' -and (($_.ExecutablePath -like \"$root*\") -or ($_.CommandLine -like \"*$root*\")) }} | ForEach-Object {{ Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }}"
+            "$root='{escaped}'; $self={current_pid}; Get-CimInstance Win32_Process | Where-Object {{ $_.ProcessId -ne $self -and $_.Name -notlike 'suzent-installer*' -and (($_.ExecutablePath -like \"$root*\") -or ($_.CommandLine -like \"*$root*\")) }} | ForEach-Object {{ $_.ProcessId; Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }}"
         );
-        let _ = Command::new("powershell")
+        let output = Command::new("powershell")
             .args(["-NoProfile", "-Command", &script])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
+            .output()
+            .map_err(|error| format!("failed to inspect running Suzent processes: {error}"))?;
+        if !output.status.success() {
+            return Err(format!(
+                "failed to stop running Suzent processes{}",
+                command_failure_detail(&output.stdout, &output.stderr)
+                    .map(|detail| format!(": {detail}"))
+                    .unwrap_or_default()
+            ));
+        }
+        pids.extend(parse_pids(&output.stdout));
     } else {
         let output = Command::new("pgrep").args(["-f", &root_text]).output();
         if let Ok(output) = output {
             for line in String::from_utf8_lossy(&output.stdout).lines() {
                 if let Ok(pid) = line.trim().parse::<u32>() {
                     if pid != current_pid {
+                        pids.push(pid);
                         let _ = Command::new("kill")
                             .args(["-TERM", &pid.to_string()])
                             .status();
@@ -650,15 +785,51 @@ fn stop_suzent_processes(root: &Path) -> Result<(), String> {
             }
         }
     }
-    thread::sleep(Duration::from_secs(1));
+    wait_for_processes_exit(&pids, Duration::from_secs(15))
+}
+
+fn parse_pids(output: &[u8]) -> Vec<u32> {
+    String::from_utf8_lossy(output)
+        .lines()
+        .filter_map(|line| line.trim().parse().ok())
+        .collect()
+}
+
+fn wait_for_process_exit(pid: u32, timeout: Duration) -> Result<(), String> {
+    let started = Instant::now();
+    while process_exists(pid) {
+        if started.elapsed() >= timeout {
+            return Err(format!(
+                "process {pid} did not exit within {} seconds; close it and retry",
+                timeout.as_secs()
+            ));
+        }
+        thread::sleep(Duration::from_millis(200));
+    }
     Ok(())
 }
 
-fn wait_for_process_exit(pid: u32, timeout: Duration) {
-    let started = SystemTime::now();
-    while process_exists(pid) {
-        if started.elapsed().unwrap_or_default() >= timeout {
-            break;
+fn wait_for_processes_exit(pids: &[u32], timeout: Duration) -> Result<(), String> {
+    let started = Instant::now();
+    loop {
+        let running: Vec<_> = pids
+            .iter()
+            .copied()
+            .filter(|pid| process_exists(*pid))
+            .collect();
+        if running.is_empty() {
+            return Ok(());
+        }
+        if started.elapsed() >= timeout {
+            return Err(format!(
+                "Suzent processes are still running after {} seconds (PIDs: {}); close them and retry",
+                timeout.as_secs(),
+                running
+                    .iter()
+                    .map(u32::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
         }
         thread::sleep(Duration::from_millis(200));
     }
@@ -794,7 +965,7 @@ fn download_file(
                 total.unwrap()
             ));
         }
-        fs::rename(&temporary, destination).map_err(display_io("finish downloaded asset"))
+        rename_with_retry(&temporary, destination, "finish downloaded asset")
     })();
     if result.is_err() {
         let _ = fs::remove_file(&temporary);
@@ -990,18 +1161,261 @@ fn write_json_atomic<T: Serialize>(
     action: &'static str,
 ) -> Result<(), String> {
     let temporary = path.with_extension("tmp");
+    let backup = path.with_extension("bak");
     let bytes = serde_json::to_vec_pretty(value).map_err(|error| format!("{action}: {error}"))?;
     fs::write(&temporary, bytes).map_err(display_io(action))?;
-    if path.exists() {
-        fs::remove_file(path).map_err(display_io(action))?;
+    let had_previous = path.exists();
+    if backup.exists() {
+        fs::remove_file(&backup).map_err(display_io(action))?;
     }
-    fs::rename(temporary, path).map_err(display_io(action))
+    if had_previous {
+        rename_with_retry(path, &backup, action)?;
+    }
+    if let Err(error) = rename_with_retry(&temporary, path, action) {
+        if had_previous && backup.exists() {
+            let _ = rename_with_retry(&backup, path, "restore previous update state");
+        }
+        return Err(error);
+    }
+    if backup.exists() {
+        fs::remove_file(backup).map_err(display_io(action))?;
+    }
+    Ok(())
+}
+
+fn rename_with_retry(source: &Path, destination: &Path, action: &str) -> Result<(), String> {
+    let mut delay = Duration::from_millis(150);
+    let mut last_error = None;
+    for attempt in 1..=5 {
+        match fs::rename(source, destination) {
+            Ok(()) => return Ok(()),
+            Err(error)
+                if attempt < 5
+                    && matches!(
+                        error.kind(),
+                        io::ErrorKind::PermissionDenied | io::ErrorKind::WouldBlock
+                    ) =>
+            {
+                last_error = Some(error);
+                thread::sleep(delay);
+                delay = delay.saturating_mul(2);
+            }
+            Err(error) => return Err(format!("failed to {action}: {error}")),
+        }
+    }
+    Err(format!(
+        "failed to {action} after 5 attempts: {}",
+        last_error.expect("retry loop records an error")
+    ))
 }
 
 fn cleanup_transaction_files(paths: &UpdatePaths) {
     let _ = fs::remove_file(&paths.journal);
     let _ = fs::remove_dir_all(&paths.staging_dir);
     let _ = fs::remove_dir_all(&paths.backup_dir);
+}
+
+fn repository_hazard(root: &Path) -> Result<Option<String>, String> {
+    let unmerged = git_text(root, &["diff", "--name-only", "--diff-filter=U"])?;
+    if !unmerged.is_empty() {
+        return Ok(Some(format!(
+            "unresolved conflicts: {}",
+            unmerged.lines().collect::<Vec<_>>().join(", ")
+        )));
+    }
+
+    for (name, marker) in [
+        ("merge", "MERGE_HEAD"),
+        ("rebase", "rebase-merge"),
+        ("rebase", "rebase-apply"),
+        ("cherry-pick", "CHERRY_PICK_HEAD"),
+        ("revert", "REVERT_HEAD"),
+    ] {
+        let marker_path = PathBuf::from(git_text(root, &["rev-parse", "--git-path", marker])?);
+        let marker_path = if marker_path.is_absolute() {
+            marker_path
+        } else {
+            root.join(marker_path)
+        };
+        if marker_path.exists() {
+            return Ok(Some(format!("Git {name} in progress")));
+        }
+    }
+    Ok(None)
+}
+
+fn preserve_conflicted_checkout(
+    root: &Path,
+    recovery_dir: &Path,
+    reason: &str,
+    old_commit: &str,
+    old_branch: &str,
+) -> Result<(), String> {
+    fs::create_dir_all(recovery_dir).map_err(display_io("create update recovery directory"))?;
+
+    let staged_patch = git_bytes(root, &["diff", "--cached", "--binary"])?;
+    let unstaged_patch = git_bytes(root, &["diff", "--binary"])?;
+    fs::write(recovery_dir.join("staged.patch"), staged_patch)
+        .map_err(display_io("save staged changes"))?;
+    fs::write(recovery_dir.join("unstaged.patch"), unstaged_patch)
+        .map_err(display_io("save unstaged changes"))?;
+
+    let mut tracked_files = git_paths(root, &["ls-files", "-z", "--modified", "--deleted"])?;
+    for path in git_paths(root, &["diff", "-z", "--name-only", "--diff-filter=U"])? {
+        if !tracked_files.contains(&path) {
+            tracked_files.push(path);
+        }
+    }
+    for relative in &tracked_files {
+        let source = root.join(relative);
+        if source.exists() {
+            copy_recovery_file(&source, &recovery_dir.join("tracked").join(relative))?;
+        }
+    }
+
+    let untracked_files = git_paths(root, &["ls-files", "-z", "--others", "--exclude-standard"])?;
+    for relative in &untracked_files {
+        let source = root.join(relative);
+        if source.exists() {
+            let destination = recovery_dir.join("untracked").join(relative);
+            if let Some(parent) = destination.parent() {
+                fs::create_dir_all(parent)
+                    .map_err(display_io("prepare untracked recovery path"))?;
+            }
+            rename_with_retry(&source, &destination, "move untracked file to recovery")?;
+        }
+    }
+
+    let conflict_stages = preserve_conflict_stages(root, recovery_dir)?;
+    let manifest = RecoveryManifest {
+        created_at: now_epoch_millis(),
+        reason: reason.to_string(),
+        old_commit: old_commit.to_string(),
+        old_branch: old_branch.to_string(),
+        tracked_files: display_paths(&tracked_files),
+        untracked_files: display_paths(&untracked_files),
+        conflict_stages,
+    };
+    write_json_atomic(
+        &recovery_dir.join("manifest.json"),
+        &manifest,
+        "write recovery manifest",
+    )?;
+
+    quit_git_operations(root);
+    run_checked(
+        Command::new("git")
+            .args(["reset", "--hard", old_commit])
+            .current_dir(root),
+        "restore conflicted checkout after preserving it",
+    )
+}
+
+fn preserve_conflict_stages(root: &Path, recovery_dir: &Path) -> Result<Vec<String>, String> {
+    let entries = git_bytes(root, &["ls-files", "-u", "-z"])?;
+    let mut saved = Vec::new();
+    for entry in entries
+        .split(|byte| *byte == 0)
+        .filter(|entry| !entry.is_empty())
+    {
+        let Some(tab) = entry.iter().position(|byte| *byte == b'\t') else {
+            return Err("invalid unmerged index entry from Git".to_string());
+        };
+        let metadata = String::from_utf8_lossy(&entry[..tab]);
+        let fields: Vec<_> = metadata.split_whitespace().collect();
+        if fields.len() != 3 {
+            return Err("invalid unmerged index metadata from Git".to_string());
+        }
+        let relative = validated_git_path(&entry[tab + 1..])?;
+        let stage = fields[2];
+        let blob = git_bytes(root, &["cat-file", "blob", fields[1]])?;
+        let destination = recovery_dir
+            .join("conflict-stages")
+            .join(stage)
+            .join(&relative);
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent)
+                .map_err(display_io("prepare conflict-stage recovery path"))?;
+        }
+        fs::write(&destination, blob).map_err(display_io("save conflict-stage content"))?;
+        saved.push(format!("{stage}:{}", relative.display()));
+    }
+    Ok(saved)
+}
+
+fn quit_git_operations(root: &Path) {
+    for args in [
+        ["merge", "--quit"],
+        ["rebase", "--quit"],
+        ["cherry-pick", "--quit"],
+        ["revert", "--quit"],
+    ] {
+        let _ = Command::new("git").args(args).current_dir(root).output();
+    }
+}
+
+fn copy_recovery_file(source: &Path, destination: &Path) -> Result<(), String> {
+    let metadata = fs::symlink_metadata(source).map_err(display_io("inspect recovery file"))?;
+    if !metadata.file_type().is_file() {
+        return Err(format!(
+            "cannot safely preserve non-regular path {}; resolve it manually",
+            source.display()
+        ));
+    }
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent).map_err(display_io("prepare recovery path"))?;
+    }
+    fs::copy(source, destination).map_err(display_io("copy file into recovery"))?;
+    Ok(())
+}
+
+fn git_paths(root: &Path, args: &[&str]) -> Result<Vec<PathBuf>, String> {
+    let paths: Vec<_> = git_bytes(root, args)?
+        .split(|byte| *byte == 0)
+        .filter(|entry| !entry.is_empty())
+        .map(validated_git_path)
+        .collect::<Result<_, _>>()?;
+    Ok(paths
+        .into_iter()
+        .filter(|path| {
+            path.components()
+                .next()
+                .is_none_or(|part| part.as_os_str() != ".suzent")
+        })
+        .collect())
+}
+
+fn validated_git_path(bytes: &[u8]) -> Result<PathBuf, String> {
+    let path = git_path_from_bytes(bytes)?;
+    if path.is_absolute()
+        || path
+            .components()
+            .any(|component| !matches!(component, std::path::Component::Normal(_)))
+    {
+        return Err(format!("Git returned an unsafe path: {}", path.display()));
+    }
+    Ok(path)
+}
+
+#[cfg(unix)]
+fn git_path_from_bytes(bytes: &[u8]) -> Result<PathBuf, String> {
+    use std::ffi::OsString;
+    use std::os::unix::ffi::OsStringExt;
+    Ok(PathBuf::from(OsString::from_vec(bytes.to_vec())))
+}
+
+#[cfg(not(unix))]
+fn git_path_from_bytes(bytes: &[u8]) -> Result<PathBuf, String> {
+    String::from_utf8(bytes.to_vec())
+        .map(PathBuf::from)
+        .map_err(|_| "Git returned a path that is not valid UTF-8".to_string())
+}
+
+fn display_paths(paths: &[PathBuf]) -> Vec<String> {
+    paths
+        .iter()
+        .map(|path| path.to_string_lossy().into_owned())
+        .collect()
 }
 
 fn has_local_changes(root: &Path) -> Result<bool, String> {
@@ -1011,6 +1425,15 @@ fn has_local_changes(root: &Path) -> Result<bool, String> {
 }
 
 fn git_text(root: &Path, args: &[&str]) -> Result<String, String> {
+    let output = git_output(root, args)?;
+    Ok(String::from_utf8_lossy(&output).trim().to_string())
+}
+
+fn git_bytes(root: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
+    git_output(root, args)
+}
+
+fn git_output(root: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
     let output = Command::new("git")
         .args(args)
         .current_dir(root)
@@ -1019,7 +1442,7 @@ fn git_text(root: &Path, args: &[&str]) -> Result<String, String> {
     if !output.status.success() {
         return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
     }
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    Ok(output.stdout)
 }
 
 fn run_checked(command: &mut Command, action: &str) -> Result<(), String> {
@@ -1127,11 +1550,13 @@ fn set_executable(_path: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        acquire_lock, backup_current_ui, command_failure_detail, is_release_tag,
-        parse_release_checksum, record_failure, restore_ui_backup, write_download_status,
-        write_status, UpdatePaths, UpdateStatus, FAILURE_DETAIL_LIMIT,
+        acquire_lock, backup_current_ui, command_failure_detail, is_release_tag, parse_pids,
+        parse_release_checksum, record_failure, restore_ui_backup, wait_for_process_exit,
+        write_download_status, write_status, UpdatePaths, UpdateStatus, UpdateTransaction,
+        FAILURE_DETAIL_LIMIT,
     };
     use std::fs;
+    use std::process::Command;
     use std::thread;
     use std::time::Duration;
 
@@ -1355,5 +1780,113 @@ mod tests {
         assert_eq!(status.downloaded_bytes, Some(5 * 1024 * 1024));
         assert_eq!(status.total_bytes, Some(10 * 1024 * 1024));
         assert_eq!(status.progress, 19);
+    }
+
+    #[test]
+    fn parses_only_valid_process_ids() {
+        assert_eq!(parse_pids(b"123\r\nwarning\r\n456\r\n"), vec![123, 456]);
+    }
+
+    #[test]
+    fn process_wait_reports_a_live_process_after_timeout() {
+        let result = wait_for_process_exit(std::process::id(), Duration::ZERO);
+        assert!(result.unwrap_err().contains("did not exit"));
+    }
+
+    #[test]
+    fn reads_journals_written_before_exact_stash_and_target_tracking() {
+        let transaction: UpdateTransaction = serde_json::from_str(
+            r#"{
+                "target_tag":"v1.2.3",
+                "old_commit":"abc",
+                "old_branch":"main",
+                "old_release_tag":"v1.2.2",
+                "old_ui_version":"v1.2.2",
+                "stashed_changes":true,
+                "phase":"switching"
+            }"#,
+        )
+        .expect("legacy journal");
+
+        assert_eq!(transaction.stash_commit, None);
+        assert_eq!(transaction.recovery_dir, None);
+        assert!(transaction.target_commit.is_empty());
+    }
+
+    #[test]
+    fn detects_a_checkout_with_a_git_operation_in_progress() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        assert!(Command::new("git")
+            .args(["init", "--quiet"])
+            .current_dir(temp.path())
+            .status()
+            .expect("git init")
+            .success());
+        fs::write(temp.path().join(".git/MERGE_HEAD"), "deadbeef").expect("merge marker");
+
+        let hazard = super::repository_hazard(temp.path())
+            .expect("inspect repository")
+            .expect("hazard");
+
+        assert!(hazard.contains("Git merge in progress"));
+    }
+
+    #[test]
+    fn preserves_conflicts_and_untracked_files_before_forced_recovery() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let root = temp.path();
+        let git = |args: &[&str]| {
+            Command::new("git")
+                .args(args)
+                .current_dir(root)
+                .status()
+                .expect("run git")
+        };
+        assert!(git(&["init", "--quiet"]).success());
+        assert!(git(&["config", "user.name", "Suzent Test"]).success());
+        assert!(git(&["config", "user.email", "suzent@example.invalid"]).success());
+        fs::write(root.join("conflicted.txt"), "base\n").expect("base file");
+        assert!(git(&["add", "conflicted.txt"]).success());
+        assert!(git(&["commit", "--quiet", "-m", "base"]).success());
+        let base = super::git_text(root, &["rev-parse", "HEAD"]).expect("base commit");
+
+        assert!(git(&["checkout", "--quiet", "-b", "incoming"]).success());
+        fs::write(root.join("conflicted.txt"), "incoming\n").expect("incoming file");
+        assert!(git(&["commit", "--quiet", "-am", "incoming"]).success());
+        assert!(git(&["checkout", "--quiet", "-b", "installed", &base]).success());
+        fs::write(root.join("conflicted.txt"), "installed\n").expect("installed file");
+        assert!(git(&["commit", "--quiet", "-am", "installed"]).success());
+        let old_commit = super::git_text(root, &["rev-parse", "HEAD"]).expect("old commit");
+        assert!(!git(&["merge", "incoming"]).success());
+        fs::write(root.join("local-note.txt"), "keep me\n").expect("untracked file");
+
+        let recovery = root.join(".suzent/update-recovery/test");
+        super::preserve_conflicted_checkout(
+            root,
+            &recovery,
+            "test conflict",
+            &old_commit,
+            "installed",
+        )
+        .expect("preserve checkout");
+
+        assert_eq!(
+            fs::read_to_string(root.join("conflicted.txt")).expect("restored file"),
+            "installed\n"
+        );
+        assert!(!root.join("local-note.txt").exists());
+        assert_eq!(
+            fs::read_to_string(recovery.join("untracked/local-note.txt"))
+                .expect("recovered untracked file"),
+            "keep me\n"
+        );
+        assert!(recovery.join("tracked/conflicted.txt").exists());
+        assert!(recovery.join("conflict-stages/1/conflicted.txt").exists());
+        assert!(recovery.join("conflict-stages/2/conflicted.txt").exists());
+        assert!(recovery.join("conflict-stages/3/conflicted.txt").exists());
+        assert!(recovery.join("manifest.json").exists());
+        assert!(super::repository_hazard(root)
+            .expect("inspect recovered repository")
+            .is_none());
     }
 }

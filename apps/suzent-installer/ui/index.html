@@ -336,6 +336,317 @@
       body[data-mode="update"] .status-card,
       body[data-mode="update"] .stage.running,
       body[data-mode="update"] .log { box-shadow: none; }
+
+      /* The updater is intentionally quieter than first-run installation: one
+         strong progress surface, a compact step list, and diagnostics kept to
+         the side until they are needed. */
+      body[data-mode="update"] {
+        --update-surface: #f7f7f4;
+        --update-panel: #ffffff;
+        --update-border: #deded8;
+        --update-muted: #74746d;
+        background: var(--update-panel);
+      }
+      body[data-mode="update"] .shell { grid-template-columns: 156px minmax(0, 1fr); }
+      body[data-mode="update"] .rail {
+        padding: 24px 20px 18px;
+        border-right: 0;
+        background: #171714;
+      }
+      body[data-mode="update"] .rail::before {
+        width: 132px;
+        height: 132px;
+        top: auto;
+        right: -68px;
+        bottom: -62px;
+        border: 24px solid rgba(255,255,255,.045);
+        transform: none;
+      }
+      body[data-mode="update"] .brand { align-items: center; }
+      body[data-mode="update"] .brand-logo { width: 28px; height: 28px; }
+      body[data-mode="update"] .wordmark { font-size: 12px; letter-spacing: .1em; }
+      body[data-mode="update"] .rail-copy { display: none; }
+      body[data-mode="update"] .rail-footer { max-width: 112px; }
+      body[data-mode="update"] .safety-pill {
+        width: 100%;
+        padding: 8px 9px;
+        justify-content: flex-start;
+        border: 1px solid #484843;
+        border-radius: 7px;
+        color: #d0d0c9;
+        background: #22221f;
+        font-size: 8px;
+        line-height: 1.25;
+        letter-spacing: .06em;
+      }
+      body[data-mode="update"] .safety-pill::before {
+        flex: 0 0 auto;
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: #9de5b8;
+      }
+      body[data-mode="update"] .topbar {
+        min-height: 70px;
+        padding: 15px 24px;
+        border-bottom: 1px solid var(--update-border);
+      }
+      body[data-mode="update"] .topbar-title h2 {
+        font-size: 18px;
+        font-weight: 780;
+        letter-spacing: -.025em;
+        text-transform: none;
+      }
+      body[data-mode="update"] .topbar-title p { margin-top: 4px; color: var(--update-muted); }
+      body[data-mode="update"] .mode-badge {
+        padding: 7px 10px;
+        border: 1px solid var(--update-border);
+        border-radius: 999px;
+        background: var(--update-surface);
+        box-shadow: none;
+        font-size: 8px;
+      }
+      body[data-mode="update"] .mode-badge::before {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #4caf72;
+      }
+      body[data-mode="update"] .workspace { grid-template-columns: minmax(0, 1fr) 224px; }
+      body[data-mode="update"] .primary { padding: 22px 26px 20px; background: var(--update-panel); }
+      body[data-mode="update"] .activity {
+        padding: 22px 18px 18px;
+        border-left: 1px solid var(--update-border);
+        background: var(--update-surface);
+      }
+      body[data-mode="update"] label { margin-bottom: 6px; color: var(--update-muted); font-size: 8px; }
+      body[data-mode="update"] .path-box::before { left: 11px; top: 8px; color: #92928b; }
+      body[data-mode="update"] input {
+        height: 36px;
+        padding-left: 32px;
+        border: 1px solid var(--update-border);
+        border-radius: 7px;
+        color: #5c5c56;
+        background: var(--update-surface);
+        box-shadow: none;
+      }
+      body[data-mode="update"] .status-card {
+        margin-top: 28px;
+        padding: 0;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+      }
+      body[data-mode="update"] .status-kicker { margin-bottom: 8px; color: #777770; font-size: 8px; }
+      body[data-mode="update"] .status-title {
+        font-size: clamp(22px, 3vw, 28px);
+        font-weight: 760;
+        letter-spacing: -.04em;
+        text-transform: none;
+      }
+      body[data-mode="update"] .status-message { max-width: 520px; margin-top: 8px; font-size: 11px; }
+      body[data-mode="update"] .elapsed { padding-top: 5px; color: #8a8a83; }
+      body[data-mode="update"] .progress-track {
+        height: 8px;
+        margin-top: 22px;
+        border-radius: 99px;
+        background: #e9e9e4;
+      }
+      body[data-mode="update"] .progress-bar {
+        border-radius: inherit;
+        background: linear-gradient(90deg, #171714, #494942);
+      }
+      body[data-mode="update"] .progress-meta { margin-top: 9px; letter-spacing: .03em; text-transform: none; }
+      body[data-mode="update"] .stage-heading { margin: 26px 0 8px; }
+      body[data-mode="update"] .stage-heading h3 { font-size: 9px; letter-spacing: .1em; }
+      body[data-mode="update"] .stages { gap: 2px; padding-right: 0; }
+      body[data-mode="update"] .stage {
+        min-height: 40px;
+        grid-template-columns: 22px minmax(0, 1fr) auto;
+        padding: 7px 4px;
+        border: 0;
+        border-bottom: 1px solid #edede8;
+        border-radius: 0;
+      }
+      body[data-mode="update"] .stage:hover { background: transparent; }
+      body[data-mode="update"] .stage.running {
+        border: 0;
+        border-bottom: 1px solid #d8d8d2;
+        color: #171714;
+        background: transparent;
+      }
+      body[data-mode="update"] .stage-icon {
+        width: 19px;
+        height: 19px;
+        border: 1px solid #c8c8c1;
+        border-radius: 50%;
+        font-size: 7px;
+      }
+      body[data-mode="update"] .stage.running .stage-icon {
+        border-color: #171714;
+        border-radius: 50%;
+        color: #fff;
+        background: #171714;
+      }
+      body[data-mode="update"] .stage.succeeded .stage-icon {
+        border-color: #6ab186;
+        border-radius: 50%;
+        color: #fff;
+        background: #58a876;
+      }
+      body[data-mode="update"] .stage-title { font-size: 10px; font-weight: 600; }
+      body[data-mode="update"] .state { font-size: 7px; }
+      body[data-mode="update"] .activity-header { margin-bottom: 12px; }
+      body[data-mode="update"] .activity-header h3 { font-size: 9px; letter-spacing: .1em; }
+      body[data-mode="update"] .live-dot::before { border-radius: 50%; }
+      body[data-mode="update"] .recent-status {
+        margin-top: auto;
+        padding: 10px 0;
+        border: 0;
+        border-top: 1px solid var(--update-border);
+        border-radius: 0;
+        color: #65655f;
+        background: transparent;
+        white-space: normal;
+        line-height: 1.45;
+      }
+      body[data-mode="update"] .log {
+        margin-top: 6px;
+        border: 1px solid var(--update-border);
+        border-radius: 7px;
+        background: #fff;
+      }
+      body[data-mode="update"] .log summary { color: #676761; }
+      body[data-mode="update"] .log-body {
+        color: #d0d0c9;
+        border-top-color: #393934;
+        background: #20201d;
+      }
+      body[data-mode="update"] .error-card,
+      body[data-mode="update"] .complete-card {
+        padding: 12px;
+        border-radius: 7px;
+        box-shadow: none;
+      }
+      body[data-mode="update"] .error-card { border: 1px solid #d8aaa6; }
+      body[data-mode="update"] .complete-card { border: 1px solid #a8cdb5; }
+      body[data-mode="update"] .result-actions button {
+        height: 31px;
+        border: 1px solid #171714;
+        border-radius: 6px;
+        box-shadow: none;
+      }
+      body[data-mode="update"] .result-actions button:hover:not(:disabled) {
+        transform: none;
+        box-shadow: none;
+        background: #34342f;
+      }
+      body[data-mode="update"] .result-actions button.secondary:hover:not(:disabled) {
+        color: #171714;
+        background: #eeeeea;
+      }
+      @media (max-width: 820px) {
+        body[data-mode="update"] .shell { grid-template-columns: 116px minmax(0, 1fr); }
+        body[data-mode="update"] .workspace { grid-template-columns: minmax(0, 1fr); }
+        body[data-mode="update"] .activity { display: none; }
+      }
+
+      /* Update mode is a single calm surface. Secondary information stays in
+         the same flow instead of splitting the operation into navigation and
+         activity panels. */
+      body[data-mode="update"] .shell { display: block; }
+      body[data-mode="update"] .rail { display: none; }
+      body[data-mode="update"] .content { height: 100%; }
+      body[data-mode="update"] .topbar {
+        min-height: 68px;
+        padding: 15px 30px;
+        border-bottom: 1px solid #e5e5df;
+      }
+      body[data-mode="update"] .workspace {
+        display: flex;
+        min-height: 0;
+        flex: 1;
+        flex-direction: column;
+        overflow: hidden;
+        background:
+          radial-gradient(circle at 78% 16%, rgba(255,230,102,.18), transparent 22%),
+          #fff;
+      }
+      body[data-mode="update"] .primary {
+        width: min(720px, calc(100% - 56px));
+        flex: 0 0 auto;
+        align-self: center;
+        padding: 20px 0 12px;
+        background: transparent;
+      }
+      body[data-mode="update"] #destination-block {
+        order: 4;
+        margin-top: 14px;
+      }
+      body[data-mode="update"] .status-card { order: 1; }
+      body[data-mode="update"] .stage-heading { order: 2; }
+      body[data-mode="update"] .stages { order: 3; }
+      body[data-mode="update"] .footer-actions { order: 5; }
+      body[data-mode="update"] #destination-block {
+        opacity: .78;
+        transition: opacity 180ms ease;
+      }
+      body[data-mode="update"] #destination-block:hover { opacity: 1; }
+      body[data-mode="update"] .status-card { margin-top: 18px; }
+      body[data-mode="update"] .status-title { font-size: clamp(26px, 4vw, 34px); }
+      body[data-mode="update"] .status-message { font-size: 12px; }
+      body[data-mode="update"] .progress-track { position: relative; overflow: visible; }
+      body[data-mode="update"] .progress-bar {
+        overflow: hidden;
+        transition: width 520ms cubic-bezier(.22,.8,.22,1);
+      }
+      body[data-mode="update"] .stage-heading { margin-top: 20px; }
+      body[data-mode="update"] .stages { overflow: visible; }
+      body[data-mode="update"] .stage {
+        opacity: .5;
+        transform: translateY(0);
+        transition: opacity 220ms ease, transform 220ms ease, color 220ms ease;
+      }
+      body[data-mode="update"] .stage.succeeded { opacity: .72; }
+      body[data-mode="update"] .stage.running {
+        opacity: 1;
+        transform: translateX(3px);
+      }
+      body[data-mode="update"] .activity {
+        width: min(720px, calc(100% - 56px));
+        flex: 0 0 auto;
+        align-self: center;
+        display: block;
+        padding: 0 0 18px;
+        border: 0;
+        background: transparent;
+      }
+      body[data-mode="update"] .activity-header,
+      body[data-mode="update"] .recent-status,
+      body[data-mode="update"] .log,
+      body[data-mode="update"] .stage-toggle { display: none; }
+      body[data-mode="update"] .error-card,
+      body[data-mode="update"] .complete-card { margin: 0 0 10px; }
+      body[data-mode="update"] .log {
+        margin: 0;
+        border-color: #deded8;
+        background: rgba(255,255,255,.8);
+      }
+      body[data-mode="update"] .log summary { padding: 10px 12px; }
+      body[data-mode="update"] .log-body { max-height: 150px; }
+      body[data-mode="update"].has-error .stage-heading,
+      body[data-mode="update"].has-error .stages { display: none; }
+      body[data-mode="update"].has-error #destination-block { margin-top: 18px; }
+      body[data-mode="update"].has-error .activity { padding-top: 10px; }
+      @media (max-width: 820px) {
+        body[data-mode="update"] .shell { display: block; }
+        body[data-mode="update"] .primary,
+        body[data-mode="update"] .activity { width: min(100% - 36px, 720px); }
+        body[data-mode="update"] .activity { display: block; }
+      }
+      body[data-mode="update"] *,
+      body[data-mode="update"] *::before,
+      body[data-mode="update"] *::after { animation: none !important; transition: none !important; }
       body.resizing::after { display: none; }
       body.resizing *, body.resizing *::before, body.resizing *::after { animation: none !important; transition: none !important; }
       @media (max-width: 820px) {
@@ -491,8 +802,19 @@
       function log(message) { if (!message) return; els.recent.textContent = message; const line = document.createElement('div'); line.textContent = message; els.log.appendChild(line); els.log.scrollTop = els.log.scrollHeight; }
       function setProgress(value, label, displayValue = null) { const pct = Math.max(0, Math.min(100, Math.round(value))); if (els.bar.style.width !== `${pct}%`) els.bar.style.width = `${pct}%`; els.bar.classList.toggle('running', running && pct < 100); setNodeText(els.percent, displayValue || `${pct}%`); setNodeText(els.progressLabel, label || text.waiting); const track = document.querySelector('.progress-track'); if (track.getAttribute('aria-valuenow') !== String(pct)) track.setAttribute('aria-valuenow', String(pct)); }
       function setRunning(value) { running = value; els.live.classList.toggle('running', value); els.live.textContent = value ? text.live : text.ready; els.start.disabled = value; els.browse.disabled = value; els.dir.readOnly = context?.mode === 'update'; els.dir.disabled = value && context?.mode !== 'update'; }
-      function setError(message) { lastError = message || ''; els.error.style.display = message ? 'block' : 'none'; els.errorMessage.textContent = message || ''; if (message) { els.complete.style.display = 'none'; els.statusKicker.textContent = text.action; els.statusTitle.textContent = text.failed; } }
-      function setComplete(message) { els.complete.style.display = message ? 'block' : 'none'; els.completeMessage.textContent = message || ''; if (message) { els.error.style.display = 'none'; els.statusKicker.textContent = text.allSet; els.statusTitle.textContent = text.completed; } }
+      function setError(message) { lastError = message || ''; document.body.classList.toggle('has-error', Boolean(message)); els.error.style.display = message ? 'block' : 'none'; els.errorMessage.textContent = message || ''; if (message) { els.complete.style.display = 'none'; els.statusKicker.textContent = text.action; els.statusTitle.textContent = text.failed; } }
+      function setComplete(message) { document.body.classList.remove('has-error'); els.complete.style.display = message ? 'block' : 'none'; els.completeMessage.textContent = message || ''; if (message) { els.error.style.display = 'none'; els.statusKicker.textContent = text.allSet; els.statusTitle.textContent = text.completed; } }
+
+      function diagnosticDetails() {
+        const lines = Array.from(els.log.children).map(line => line.textContent).filter(Boolean);
+        return [
+          `Suzent ${context?.repair ? 'repair' : 'update'} diagnostics`,
+          `Target: ${context?.target || 'latest'}`,
+          `Installation: ${context?.dir || els.dir.value || 'unknown'}`,
+          `Error: ${lastError || 'unknown'}`,
+          lines.length ? `\nActivity:\n${lines.join('\n')}` : '',
+        ].filter(Boolean).join('\n');
+      }
 
       function applyStaticCopy() {
         document.body.dataset.mode = context.mode;
@@ -510,7 +832,7 @@
         setText('log-local', text.local); els.live.textContent = text.ready;
         setText('footer-note', context.mode === 'update' ? text.footerUpdate : text.footerInstall); setText('safety-pill', text.protected);
         els.start.hidden = context.mode === 'update';
-        els.toggleStages.hidden = context.mode !== 'update';
+        els.toggleStages.hidden = true;
         els.toggleStages.textContent = text.showAll;
         els.recent.textContent = text.waitingActivity;
         $('rail-eyebrow').hidden = context.mode === 'update';
@@ -566,8 +888,7 @@
         if (context.mode === 'update' && !showAllStages) {
           const unresolvedIndex = fullList.findIndex(stage => ['running', 'failed', 'pending'].includes(states.get(stage.name) || 'pending'));
           const currentIndex = unresolvedIndex < 0 ? Math.max(0, fullList.length - 1) : unresolvedIndex;
-          list = fullList.slice(currentIndex, currentIndex + 3);
-          if (done > 0) list = [{ name: '__completed', title: text.completedCount(done), originalIndex: -1, summaryState: 'succeeded' }, ...list];
+          list = fullList.slice(currentIndex, currentIndex + 1);
         }
         els.stages.innerHTML = '';
         for (const stage of list) {
@@ -704,7 +1025,7 @@
       els.start.addEventListener('click', () => context.mode === 'install' ? runInstall() : retryUpdate());
       els.retry.addEventListener('click', () => context.mode === 'install' ? runInstall() : retryUpdate());
       els.launch.addEventListener('click', launchSuzent);
-      els.copyError.addEventListener('click', () => navigator.clipboard?.writeText(lastError));
+      els.copyError.addEventListener('click', () => navigator.clipboard?.writeText(diagnosticDetails()));
       els.toggleStages.addEventListener('click', () => { showAllStages = !showAllStages; renderStages(); });
       const titlebar = document.querySelector('.app-titlebar');
       titlebar.addEventListener('pointerdown', event => {
