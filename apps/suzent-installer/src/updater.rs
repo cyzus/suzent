@@ -664,7 +664,9 @@ fn install_staged_ui(paths: &UpdatePaths, target_tag: &str) -> Result<(), String
 }
 
 fn restore_ui_backup(paths: &UpdatePaths, old_version: &str) -> Result<(), String> {
-    if paths.ui().exists() {
+    // A consumed backup means restoration already ran (or backup never started).
+    // Never move the installed binary again when resuming an interrupted rollback.
+    if paths.backup_ui().exists() && paths.ui().exists() {
         if paths.staged_ui().exists() {
             fs::remove_file(paths.ui()).map_err(display_io("remove failed desktop application"))?;
         } else {
@@ -684,6 +686,12 @@ fn restore_ui_backup(paths: &UpdatePaths, old_version: &str) -> Result<(), Strin
             &paths.ui(),
             "restore desktop application",
         )?;
+    }
+    if !paths.ui().exists() && !old_version.is_empty() {
+        return Err(
+            "cannot restore desktop application: installed binary and backup are missing"
+                .to_string(),
+        );
     }
     if paths.ui_version().exists() {
         fs::remove_file(paths.ui_version()).map_err(display_io("remove failed version marker"))?;
@@ -1595,6 +1603,46 @@ mod tests {
         restore_ui_backup(&paths, "v1.2.2").unwrap();
         assert_eq!(fs::read(paths.ui()).unwrap(), b"old-ui");
         assert_eq!(fs::read(paths.staged_ui()).unwrap(), b"new-ui");
+    }
+
+    #[test]
+    fn repeated_rollback_preserves_restored_binary_and_candidate() {
+        for interrupted_before_marker in [false, true] {
+            let temp = tempfile::tempdir().unwrap();
+            let paths = UpdatePaths::new(temp.path().to_path_buf(), "v1.2.3");
+            fs::create_dir_all(paths.root.join("bin")).unwrap();
+            fs::create_dir_all(&paths.staging_dir).unwrap();
+            fs::write(paths.ui(), b"old-ui").unwrap();
+            fs::write(paths.ui_version(), "v1.2.2").unwrap();
+            backup_current_ui(&paths).unwrap();
+            fs::write(paths.staged_ui(), b"new-ui").unwrap();
+            super::install_staged_ui(&paths, "v1.2.3").unwrap();
+            if interrupted_before_marker {
+                fs::rename(paths.ui(), paths.staged_ui()).unwrap();
+                fs::rename(paths.backup_ui(), paths.ui()).unwrap();
+            } else {
+                restore_ui_backup(&paths, "v1.2.2").unwrap();
+            }
+            for _ in 0..2 {
+                restore_ui_backup(&paths, "v1.2.2").unwrap();
+                assert_eq!(fs::read(paths.ui()).unwrap(), b"old-ui");
+                assert_eq!(fs::read(paths.staged_ui()).unwrap(), b"new-ui");
+                assert_eq!(fs::read_to_string(paths.ui_version()).unwrap(), "v1.2.2");
+            }
+        }
+    }
+
+    #[test]
+    fn rollback_without_backup_keeps_existing_binary() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = UpdatePaths::new(temp.path().to_path_buf(), "v1.2.3");
+        fs::create_dir_all(paths.root.join("bin")).unwrap();
+        fs::write(paths.ui(), b"old-ui").unwrap();
+        restore_ui_backup(&paths, "v1.2.2").unwrap();
+        assert_eq!(fs::read(paths.ui()).unwrap(), b"old-ui");
+        assert!(!paths.staged_ui().exists());
+        fs::remove_file(paths.ui()).unwrap();
+        assert!(restore_ui_backup(&paths, "v1.2.2").is_err());
     }
 
     #[test]

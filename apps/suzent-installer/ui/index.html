@@ -723,7 +723,7 @@
                 <div class="summary-row"><span id="summary-safety-label">Recovery</span><strong id="summary-safety">Automatic rollback</strong></div>
               </div>
               <div class="error-card" id="error"><div class="result-title" id="error-title">Action needed</div><div id="error-message"></div><div class="result-actions"><button id="retry" type="button">Retry safely</button><button class="secondary" id="copy-error" type="button">Copy details</button></div></div>
-              <div class="complete-card" id="complete"><div class="result-title" id="complete-title">All set</div><div id="complete-message"></div></div>
+              <div class="complete-card" id="complete"><div class="result-title" id="complete-title">All set</div><div id="complete-message" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></div><div class="result-actions"><button id="copy-result" type="button">Copy details</button></div></div>
               <div class="recent-status" id="recent-status">Waiting for activity</div>
               <details class="log" id="log-details"><summary><span id="log-heading">Live details</span><span class="log-local" id="log-local">local only</span></summary><div class="log-body" id="log-body"></div></details>
             </aside>
@@ -994,7 +994,11 @@
         let raw = null; try { raw = await invoke('updater_status'); } catch {}
         const status = raw ? JSON.parse(raw) : null; if (status) applyUpdateStatus(status);
         els.close.disabled = false; els.close.title = ''; setText('footer-note', text.footerUpdate);
-        if (code === 0) { setComplete(isZh ? '更新已验证，Suzent 正在重新启动。' : 'The update is verified and Suzent is relaunching.'); setTimeout(closeInstaller, 1400); }
+        if (code === 0) {
+          const message = status?.message || (isZh ? '更新已验证，Suzent 正在重新启动。' : 'The update is verified and Suzent is relaunching.');
+          setComplete(message);
+          els.completeMessage.title = message;
+        }
         else setError(status?.message || (isZh ? '更新失败。工作版本已保留，请查看详情后重试。' : 'The update failed. Your working version was preserved; review details and retry.'));
       }
 
@@ -1026,6 +1030,21 @@
       els.retry.addEventListener('click', () => context.mode === 'install' ? runInstall() : retryUpdate());
       els.launch.addEventListener('click', launchSuzent);
       els.copyError.addEventListener('click', () => navigator.clipboard?.writeText(diagnosticDetails()));
+      setText('copy-result', text.copy);
+      $('copy-result').addEventListener('click', async () => {
+        try {
+          if (!navigator.clipboard) throw new Error('Clipboard unavailable');
+          await navigator.clipboard.writeText(els.completeMessage.textContent);
+          setText('copy-result', isZh ? '已复制' : 'Copied');
+        } catch {
+          setText('copy-result', isZh ? '复制失败，请选择文字复制' : 'Copy failed; select text to copy');
+          const selection = window.getSelection();
+          const range = document.createRange();
+          range.selectNodeContents(els.completeMessage);
+          selection?.removeAllRanges();
+          selection?.addRange(range);
+        }
+      });
       els.toggleStages.addEventListener('click', () => { showAllStages = !showAllStages; renderStages(); });
       const titlebar = document.querySelector('.app-titlebar');
       titlebar.addEventListener('pointerdown', event => {
