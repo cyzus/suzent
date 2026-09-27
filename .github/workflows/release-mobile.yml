@@ -6,6 +6,12 @@ on:
         description: Existing mobile-vMAJOR.MINOR.PATCH tag on main
         required: true
         type: string
+      platforms:
+        description: Platforms to distribute
+        type: choice
+        options: [android, ios, both]
+        default: android
+        required: true
 permissions:
   contents: read
 concurrency:
@@ -43,6 +49,7 @@ jobs:
           name: mobile-release-metadata
           path: release-metadata/
   android:
+    if: inputs.platforms != 'ios'
     needs: prepare
     environment: mobile-release
     runs-on: ubuntu-latest
@@ -94,6 +101,7 @@ jobs:
           path: mobile-assets/
           if-no-files-found: error
   ios:
+    if: inputs.platforms != 'android'
     needs: prepare
     environment: mobile-release
     runs-on: macos-26
@@ -124,6 +132,10 @@ jobs:
           path: ${{ runner.temp }}/Suzent.xcarchive/dSYMs/
           if-no-files-found: error
   publish:
+    if: >-
+      always() && !cancelled() && needs.prepare.result == 'success' &&
+      needs.android.result == 'success' &&
+      (needs.ios.result == 'success' || needs.ios.result == 'skipped')
     needs: [prepare, android, ios]
     runs-on: ubuntu-latest
     permissions:

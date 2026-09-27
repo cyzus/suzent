@@ -88,7 +88,7 @@ jobs:
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
 
       - name: Start mobile release build
-        run: gh workflow run release-mobile.yml --ref main -f "tag=$RELEASE_TAG"
+        run: gh workflow run release-mobile.yml --ref main -f "tag=$RELEASE_TAG" -f platforms=android
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
