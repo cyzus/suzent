@@ -1,0 +1,11 @@
+{
+  "version": "0.1.1",
+  "consumed": [
+    ".releases/changes/ios-reconnect-timeout.json",
+    ".releases/changes/mobile-component-parity.json",
+    ".releases/changes/mobile-local-https.json",
+    ".releases/changes/mobile-release-distribution.json",
+    ".releases/changes/product-release-plans.json"
+  ],
+  "legacy_complete": true
+}
