@@ -511,3 +511,15 @@ def test_explicit_maintenance_release_has_publishable_notes(
     notes = release.release_notes(repo, product)
     assert "Release maintenance" in notes.partition("\n")[2]
     assert "initial-release" not in notes
+
+
+def test_first_mobile_changelog_has_single_terminal_newline(repo: Path) -> None:
+    adopt(repo)
+    note(repo, "first-mobile", mobile="patch")
+    source = commit(repo)
+    release.apply(repo, "mobile", source)
+    notes = (repo / release.changelog_path("mobile")).read_text()
+    assert notes.endswith("\n") and not notes.endswith("\n\n")
+    release.check(repo, source, "mobile")
+    release.git(repo, "add", ".")
+    release.git(repo, "diff", "--cached", "--check")
