@@ -5,13 +5,14 @@ Suzent prepares independent release plans for three products:
 | Product | Includes | Release PR | What merging does |
 | --- | --- | --- | --- |
 | `desktop` | Python backend, desktop UI, Tauri app and installer | `release/next` | Records the plan, creates `vX.Y.Z`, and starts the existing desktop build/publication workflow |
-| `mobile` | iOS and Android; one shared product version | `release/mobile` | Records the version and changelog; native CI produces test artifacts |
+| `mobile` | iOS and Android; one shared product version | `release/mobile` | Creates `mobile-vX.Y.Z`, publishes signed Android assets, and uploads iOS to App Store Connect |
 | `browser` | Chrome/Edge extension | `release/browser` | Creates `browser-vX.Y.Z` and publishes the store-ready ZIP; store submission remains manual |
 
-Mobile App Store, Play Store, signed distribution, and GitHub Release publishing
-remain future work. A mobile release-plan merge does **not** publish an app or
-trigger a desktop release. Browser releases retain their existing reproducible ZIP builder and
-`--latest=false` publication, so they never replace the desktop latest release.
+Mobile signing requires the `mobile-release` environment. See
+[Mobile release distribution](mobile-releases.md) for credentials, recovery, and
+acceptance requirements. Store review/submission remains separate from building
+and uploading. Mobile and browser releases use `--latest=false`, so they never
+replace the desktop latest release.
 
 ## Declare release impact in a feature PR
 

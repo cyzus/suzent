@@ -27,6 +27,11 @@ on:
       - 'src/suzent/core/stream_replay.py'
       - 'src/suzent/routes/chat_routes.py'
       - '.github/workflows/mobile.yml'
+      - '.github/workflows/release-mobile.yml'
+      - '.github/workflows/mobile-release-on-merge.yml'
+      - 'scripts/mobile/**'
+      - 'scripts/mobile_release.py'
+      - 'tests/test_mobile_release.py'
   pull_request:
     paths:
       - 'apps/ios/**'
@@ -53,6 +58,11 @@ on:
       - 'src/suzent/core/stream_replay.py'
       - 'src/suzent/routes/chat_routes.py'
       - '.github/workflows/mobile.yml'
+      - '.github/workflows/release-mobile.yml'
+      - '.github/workflows/mobile-release-on-merge.yml'
+      - 'scripts/mobile/**'
+      - 'scripts/mobile_release.py'
+      - 'tests/test_mobile_release.py'
   workflow_dispatch:
 permissions:
   contents: read
@@ -115,7 +125,7 @@ jobs:
           packages: platform-tools
       - uses: gradle/actions/setup-gradle@v4
       - run: sdkmanager 'platforms;android-36' 'build-tools;35.0.0'
-      - run: ./gradlew :app:assembleDebug :app:testDebugUnitTest
+      - run: ./gradlew :app:assembleDebug :app:testDebugUnitTest :app:testReleaseUnitTest :app:compileReleaseKotlin
         working-directory: apps/android
       - uses: actions/upload-artifact@v4
         with:

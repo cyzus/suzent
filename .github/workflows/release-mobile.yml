@@ -1,0 +1,167 @@
+name: Release mobile
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing mobile-vMAJOR.MINOR.PATCH tag on main
+        required: true
+        type: string
+      platforms:
+        description: Platforms to distribute
+        type: choice
+        options: [android, ios, both]
+        default: android
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: mobile-distribution
+  cancel-in-progress: false
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.metadata.outputs.version }}
+      build: ${{ steps.metadata.outputs.build }}
+      sha: ${{ steps.metadata.outputs.sha }}
+    steps:
+      - name: Validate tag input
+        env:
+          TAG: ${{ inputs.tag }}
+        run: '[[ "$TAG" =~ ^mobile-v[0-9]+\.[0-9]+\.[0-9]+$ ]]'
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - id: metadata
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          python scripts/generate_mobile_version.py --check
+          python scripts/mobile_release.py "$TAG" --output release-metadata
+          jq -r 'to_entries[] | "\(.key)=\(.value)"' release-metadata/metadata.json >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mobile-release-metadata
+          path: release-metadata/
+  android:
+    if: inputs.platforms != 'ios'
+    needs: prepare
+    environment: mobile-release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - run: sdkmanager 'platforms;android-36' 'build-tools;35.0.0'
+      - run: python3 scripts/generate_mobile_version.py --build-number "$BUILD"
+        env:
+          BUILD: ${{ needs.prepare.outputs.build }}
+      - name: Build and verify signed release
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            [[ -n "${!name}" ]] || { echo "::error::Missing $name in mobile-release environment"; exit 1; }
+          done
+          export ANDROID_KEYSTORE_PATH="$RUNNER_TEMP/mobile-release.keystore"
+          trap 'rm -f "$ANDROID_KEYSTORE_PATH"' EXIT
+          python3 - <<'PY'
+          import base64, os
+          from pathlib import Path
+          p = Path(os.environ['ANDROID_KEYSTORE_PATH'])
+          p.write_bytes(base64.b64decode(os.environ['ANDROID_KEYSTORE_BASE64'], validate=True))
+          p.chmod(0o600)
+          PY
+          ./apps/android/gradlew -p apps/android :app:testReleaseUnitTest :app:assembleRelease :app:bundleRelease
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose apps/android/app/build/outputs/apk/release/app-release.apk
+          jarsigner -verify apps/android/app/build/outputs/bundle/release/app-release.aab
+          mkdir -p mobile-assets
+          cp apps/android/app/build/outputs/apk/release/app-release.apk "mobile-assets/suzent-$VERSION-android.apk"
+          cp apps/android/app/build/outputs/bundle/release/app-release.aab "mobile-assets/suzent-$VERSION-android.aab"
+          (cd mobile-assets && sha256sum ./*.apk ./*.aab > SHA256SUMS)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mobile-android-release
+          path: mobile-assets/
+          if-no-files-found: error
+  ios:
+    if: inputs.platforms != 'android'
+    needs: prepare
+    environment: mobile-release
+    runs-on: macos-26
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+      - run: brew install xcodegen
+      - run: python3 scripts/generate_mobile_version.py --build-number "$BUILD"
+        env:
+          BUILD: ${{ needs.prepare.outputs.build }}
+      - run: swift test --package-path packages/SuzentCore
+      - name: Archive and upload to TestFlight
+        run: bash scripts/mobile/ios-release.sh
+        env:
+          IOS_CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
+          IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          IOS_PROFILE_BASE64: ${{ secrets.IOS_PROFILE_BASE64 }}
+          APP_STORE_CONNECT_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_KEY_BASE64 }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mobile-ios-symbols
+          path: ${{ runner.temp }}/Suzent.xcarchive/dSYMs/
+          if-no-files-found: error
+  publish:
+    if: >-
+      always() && !cancelled() && needs.prepare.result == 'success' &&
+      needs.android.result == 'success' &&
+      (needs.ios.result == 'success' || needs.ios.result == 'skipped')
+    needs: [prepare, android, ios]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: mobile-release-metadata
+          path: metadata
+      - uses: actions/download-artifact@v4
+        with:
+          name: mobile-android-release
+          path: assets
+      - name: Publish Android assets and mobile notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --verify-tag --draft --title "Suzent $TAG" --notes-file metadata/notes.md
+          fi
+          if [[ "$(gh release view "$TAG" --json isDraft --jq .isDraft)" != true ]]; then
+            echo 'Release already published; refusing to replace public assets.'
+            exit 0
+          fi
+          gh release upload "$TAG" assets/* --clobber
+          gh release edit "$TAG" --draft=false --latest=false

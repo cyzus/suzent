@@ -120,3 +120,10 @@ apps/android/.kotlin/
 
 # Built web UI staged into the package by scripts/build_webui.py
 src/suzent/webui/
+
+# Private mobile signing credentials
+*.jks
+*.keystore
+*.p12
+*.p8
+*.mobileprovision

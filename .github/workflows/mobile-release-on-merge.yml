@@ -1,0 +1,94 @@
+name: Start Mobile Release After Merge
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - closed
+
+permissions:
+  actions: write
+  contents: write
+
+jobs:
+  tag-and-build:
+    if: >-
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'release/mobile'
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout merged commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Validate release
+        id: release
+        shell: bash
+        run: |
+          freshness="$(
+            gh api \
+              "repos/$GITHUB_REPOSITORY/compare/$BASE_SHA...$HEAD_SHA" \
+              --jq .status
+          )"
+          if [[ "$freshness" != "ahead" && "$freshness" != "identical" ]]; then
+            echo "::error::Release head did not contain the latest main commit before merge. Refresh the Release PR before publishing."
+            exit 1
+          fi
+
+          python scripts/release_plan.py check --base "$BASE_SHA" --release-product mobile
+          python scripts/generate_mobile_version.py --check
+          version="$(python -c 'import json; print(json.load(open("packages/mobile-contract/version.json"))["version"])')"
+          tag="mobile-v$version"
+          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            # A re-run of this workflow re-tags the same merge; that is fine.
+            # A different commit means the version was already spent.
+            if [[ "$(git rev-list -n 1 "$tag")" != "$MERGE_SHA" ]]; then
+              echo "::error::Version $version is already released as $tag. Reconcile the release branch before merging."
+              exit 1
+            fi
+          fi
+          if ! grep -Fq "## [$tag]" packages/mobile-contract/CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no entry for $tag"
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          RELEASE_BRANCH: ${{ github.event.pull_request.head.ref }}
+
+      - name: Create release tag
+        shell: bash
+        run: |
+          if git rev-parse "$RELEASE_TAG" >/dev/null 2>&1; then
+            tagged_commit="$(git rev-list -n 1 "$RELEASE_TAG")"
+            if [[ "$tagged_commit" != "$MERGE_SHA" ]]; then
+              echo "::error::Tag $RELEASE_TAG already points to another commit"
+              exit 1
+            fi
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "$RELEASE_TAG" -m "Release $RELEASE_TAG"
+            git push origin "$RELEASE_TAG"
+          fi
+        env:
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+
+      - name: Start mobile release build
+        run: gh workflow run release-mobile.yml --ref main -f "tag=$RELEASE_TAG" -f platforms=android
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}

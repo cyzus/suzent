@@ -290,7 +290,8 @@ This increases with each new workflow run; retries keep the same build number.
 CI overrides generated settings only in its checkout, without committing them.
 Keep local builds below 1001; reinstalling a lower-numbered local build over a CI
 build may require an explicit development downgrade. Preserve this numbering
-sequence when introducing a separate release workflow.
+sequence for debug previews. Signed releases use their own stable range described
+in [Mobile release distribution](mobile-releases.md).
 
 After Android builds and unit tests pass, download
 `suzent-android-<version>-<build>-debug` from the workflow run's **Artifacts** section.
@@ -302,23 +303,13 @@ and other CI runs. Uninstalling an existing installation to resolve a signature
 conflict removes its local connection credentials and requires pairing again.
 A fixed signing key is required before distributing upgradeable releases.
 
-iOS CI builds the simulator target without signing and does not upload a device IPA.
-This workflow does not publish GitHub Releases, Play Store builds, or TestFlight
-builds. Mobile release signing and `mobile-v*` release triggers are separate future
-work; desktop `v*` release triggers are unchanged.
-
-### Planned release distribution
-
-- Configure a fixed Android signing key in CI so downloaded builds can upgrade
-  existing installations without removing local data or pairing credentials.
-- Publish successful main builds to a rolling `mobile-preview` GitHub prerelease.
-- Publish versioned mobile releases from `mobile-v*` tags, independently of desktop
-  releases, with signed APKs and mobile-specific release notes.
-- Add iOS signing and TestFlight distribution once the Apple developer credentials
-  are configured. Keep PR builds as Actions artifacts rather than public releases.
-
-These are follow-up milestones; merging the current mobile implementation enables
-CI artifact downloads only and does not enable automatic Release publication.
+iOS PR CI builds the simulator target without signing. The separate **Release
+mobile** workflow builds signed Android APK/AAB files and uploads an iOS device
+archive to App Store Connect after a `release/mobile` merge. It requires the
+`mobile-release` environment and signing credentials; see
+[Mobile release distribution](mobile-releases.md) for setup, outputs, build-number
+ranges, retry behavior, and acceptance gates. Rolling `mobile-preview` releases
+and automatic Play Store submission remain future work.
 
 ## Encrypted local pairing
 
