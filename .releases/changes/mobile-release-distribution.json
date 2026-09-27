@@ -1,0 +1,4 @@
+{
+  "products": {"mobile": "patch"},
+  "summary": "Add signed Android release artifacts and iOS TestFlight upload automation for reviewed mobile releases."
+}
