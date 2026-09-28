@@ -450,6 +450,9 @@
             const result = preview || !invoke ? {ok:true,skipped:false,duration_ms:420,logs:[`${stage.title}: ok`]} : JSON.parse(await invoke('run_installer_stage',{request:{stage:stage.name,dir}}));
             phaseDurations[stage.name] = Number(result.duration_ms || Date.now() - phaseStartedAt); currentPhase = '';
             log(`${stage.title} (${result.duration_ms}ms)`); (result.logs || []).forEach(log);
+            if (stage.name === 'shortcuts' && result.skipped && result.reason) {
+              warnings.push(result.reason); log(result.reason);
+            }
             if (!result.ok) { states.set(stage.name,'failed'); renderStages(stage.name); if (stage.name === 'shortcuts') { warnings.push(result.reason || `${stage.title} failed`); log(warnings.at(-1)); continue; } throw new Error(result.reason || `${stage.title} failed`); }
             states.set(stage.name,result.skipped?'skipped':'succeeded'); renderStages();
           }

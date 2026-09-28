@@ -21,7 +21,7 @@ class Element {
   querySelectorAll() { return []; }
 }
 
-async function harness({mode = 'install', result = null, status = null, shortcutFailure = false} = {}) {
+async function harness({mode = 'install', result = null, status = null, shortcutFailure = false, shortcutSkipped = false} = {}) {
   const elements = new Map();
   const element = id => {
     if (!elements.has(id)) elements.set(id, new Element());
@@ -37,7 +37,7 @@ async function harness({mode = 'install', result = null, status = null, shortcut
     if (command === 'updater_status') return status && JSON.stringify(status);
     if (command === 'updater_result') return result;
     if (command === 'save_diagnostics') return true;
-    if (command === 'run_installer_stage') return JSON.stringify({ok: !(shortcutFailure && args.request.stage === 'shortcuts'), reason:'shortcut denied', logs:[], duration_ms:1});
+    if (command === 'run_installer_stage') return JSON.stringify({ok: !(shortcutFailure && args.request.stage === 'shortcuts'), skipped: shortcutSkipped && args.request.stage === 'shortcuts', reason:'shortcut denied', logs:[], duration_ms:1});
   };
   const appWindow = {onCloseRequested(fn) { handlers.close = fn; }, close() {calls.push(['close']);}};
   const window = {
@@ -112,4 +112,13 @@ test('update shortcut warnings remain available in diagnostics', async () => {
   assert.equal(h.element('complete-title').textContent, 'Completed with a warning');
   await h.element('copy-result').events.click();
   assert.match(h.calls.find(([name]) => name === 'clipboard')[1], /Access denied/);
+});
+
+test('skipped shortcut stage with a reason is a visible warning', async () => {
+  const h = await harness({shortcutSkipped:true});
+  await h.element('start').events.click();
+  assert.equal(h.element('complete-title').textContent, 'Installed with a warning');
+  assert.equal(h.element('launch').hidden, false);
+  await h.element('copy-result').events.click();
+  assert.match(h.calls.find(([name]) => name === 'clipboard')[1], /shortcut denied/);
 });
