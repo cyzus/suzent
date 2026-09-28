@@ -787,18 +787,22 @@ fn stop_suzent_processes(root: &Path) -> Result<(), String> {
     let current_pid = std::process::id();
     let mut pids = Vec::new();
     if cfg!(windows) {
-        let escaped = root_text.replace('\'', "''");
-        let script = format!(
-            "$root='{escaped}'; $self={current_pid}; Get-CimInstance Win32_Process | Where-Object {{ $_.ProcessId -ne $self -and $_.Name -notlike 'suzent-installer*' -and (($_.ExecutablePath -like \"$root*\") -or ($_.CommandLine -like \"*$root*\")) }} | ForEach-Object {{ $_.ProcessId; Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }}"
-        );
         let output = background_command("powershell")
-            .args(["-NoProfile", "-Command", &script])
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                include_str!("stop_windows_processes.ps1"),
+            ])
+            .env("SUZENT_UPDATE_ROOT", root)
+            .env("SUZENT_UPDATER_PID", current_pid.to_string())
             .output()
             .map_err(|error| format!("failed to inspect running Suzent processes: {error}"))?;
         if !output.status.success() {
             return Err(format!(
-                "failed to stop running Suzent processes{}",
-                command_failure_detail(&output.stdout, &output.stderr)
+                "failed to stop running Suzent processes (exit {:?}){}",
+                output.status.code(),
+                command_failure_detail(&[], &output.stderr)
                     .map(|detail| format!(": {detail}"))
                     .unwrap_or_default()
             ));
@@ -874,13 +878,17 @@ fn wait_for_processes_exit(pids: &[u32], timeout: Duration) -> Result<(), String
 #[cfg(windows)]
 fn process_exists(pid: u32) -> bool {
     use windows_sys::Win32::Foundation::{CloseHandle, ERROR_INVALID_PARAMETER};
-    use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
+    use windows_sys::Win32::System::Threading::{
+        GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
 
     unsafe {
         let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
         if !handle.is_null() {
+            let mut exit_code = 0;
+            let queried = GetExitCodeProcess(handle, &mut exit_code);
             CloseHandle(handle);
-            return true;
+            return queried == 0 || exit_code == 259;
         }
         std::io::Error::last_os_error().raw_os_error() != Some(ERROR_INVALID_PARAMETER as i32)
     }
@@ -1681,6 +1689,56 @@ mod tests {
         super::recover_interrupted_update(&paths).unwrap();
         assert_eq!(fs::read_to_string(paths.ui()).unwrap(), "verified-new-ui");
         assert!(!paths.journal.exists());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_stop_targets_only_installation_binaries() {
+        struct ChildGuard(std::process::Child);
+        impl Drop for ChildGuard {
+            fn drop(&mut self) {
+                let _ = self.0.kill();
+                let _ = self.0.wait();
+            }
+        }
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("用户's suzent [test]");
+        let sibling = temp.path().join("用户's suzent [test]-other");
+        let ping = std::path::PathBuf::from(std::env::var_os("SystemRoot").unwrap())
+            .join("System32/ping.exe");
+        let spawn = |path: std::path::PathBuf| {
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::copy(&ping, &path).unwrap();
+            ChildGuard(
+                background_command(path)
+                    .args(["-t", "127.0.0.1"])
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .spawn()
+                    .unwrap(),
+            )
+        };
+        let mut desktop = spawn(root.join("bin/suzent-ui.exe"));
+        let mut backend = spawn(root.join(".venv/Scripts/python.exe"));
+        let mut unrelated = spawn(root.join("bin/helper.exe"));
+        let mut other_installation = spawn(sibling.join("bin/suzent-ui.exe"));
+        let mut mentioning_path = ChildGuard(
+            background_command("powershell.exe")
+                .args(["-NoProfile", "-Command", "Start-Sleep -Seconds 60; #"])
+                .arg(&root)
+                .spawn()
+                .unwrap(),
+        );
+        thread::sleep(Duration::from_millis(300));
+        assert!(desktop.0.try_wait().unwrap().is_none());
+        assert!(backend.0.try_wait().unwrap().is_none());
+        super::stop_suzent_processes(&root).unwrap();
+        assert!(desktop.0.try_wait().unwrap().is_some());
+        assert!(backend.0.try_wait().unwrap().is_some());
+        assert!(unrelated.0.try_wait().unwrap().is_none());
+        assert!(other_installation.0.try_wait().unwrap().is_none());
+        assert!(mentioning_path.0.try_wait().unwrap().is_none());
+        super::stop_suzent_processes(&root).unwrap();
     }
 
     #[cfg(windows)]

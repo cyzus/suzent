@@ -1,0 +1,4 @@
+{
+  "products": { "desktop": "patch" },
+  "summary": "Prevent the Windows updater from terminating its own PowerShell helper or unrelated processes, and preserve actionable stop errors."
+}
