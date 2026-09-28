@@ -4,6 +4,7 @@ from suzent.service import manager as service_manager
 from suzent.service.manager import ServiceController
 from suzent.service.models import ServiceProcessState
 from suzent.service.platforms.base import PlatformServiceManager
+from suzent.version import get_backend_source_root
 
 
 class FakePlatformManager(PlatformServiceManager):
@@ -38,10 +39,12 @@ def _process_state() -> ServiceProcessState:
         started_at="2026-08-18T00:00:00+00:00",
         port=25314,
         version="0.8.0",
+        source_root=str(get_backend_source_root()),
     )
 
 
-def test_install_can_start_or_only_enable_definition():
+def test_install_can_start_or_only_enable_definition(monkeypatch):
+    monkeypatch.setattr(service_manager, "read_process_state", lambda: None)
     manager = FakePlatformManager()
     controller = ServiceController(manager)
 
@@ -123,3 +126,35 @@ def test_stop_does_not_force_process_after_graceful_exit(monkeypatch):
     controller.stop()
 
     assert platform.actions == []
+
+
+def test_foreign_service_is_never_stopped_or_replaced(monkeypatch):
+    state = _process_state()
+    foreign = ServiceProcessState(
+        instance_id=state.instance_id,
+        control_token=state.control_token,
+        pid=state.pid,
+        process_created_at=state.process_created_at,
+        started_at=state.started_at,
+        port=state.port,
+        version=state.version,
+        source_root="C:/another-suzent",
+    )
+    monkeypatch.setattr(service_manager, "read_process_state", lambda: foreign)
+    platform = FakePlatformManager(installed=True)
+    controller = ServiceController(platform)
+
+    for operation in (
+        controller.stop,
+        controller.uninstall,
+        controller.install,
+        controller.start,
+    ):
+        try:
+            operation()
+        except RuntimeError as exc:
+            assert "no process was stopped" in str(exc)
+        else:
+            raise AssertionError("foreign service must not be modified")
+    assert platform.actions == []
+    assert controller.status().error is not None

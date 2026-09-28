@@ -99,6 +99,7 @@ export function BackgroundServiceTab(): React.ReactElement {
       : status.running
         ? t('settings.service.starting')
         : t('settings.service.stopped');
+  const visibleError = error ?? status?.error;
 
   return (
     <SettingsPage>
@@ -130,7 +131,7 @@ export function BackgroundServiceTab(): React.ReactElement {
           actions={
             <BrutalOnOff
               checked={status?.installed ?? false}
-              disabled={busy || status === null}
+              disabled={busy || status === null || Boolean(status.error)}
               onChange={(enabled) => void setEnabled(enabled)}
             />
           }
@@ -161,16 +162,16 @@ export function BackgroundServiceTab(): React.ReactElement {
           </p>
         )}
 
-        {error && (
+        {visibleError && (
           <div className="mt-4 border-2 border-brutal-black bg-red-100 dark:bg-red-950 p-3 text-sm font-mono text-red-800 dark:text-red-200">
-            {error}
+            {visibleError}
           </div>
         )}
 
         <div className="flex flex-wrap gap-3 mt-6">
           <BrutalButton
             variant="warning"
-            disabled={busy || !status?.installed}
+            disabled={busy || !status?.installed || Boolean(status.error)}
             onClick={() => void restart()}
           >
             {t('settings.service.restart')}

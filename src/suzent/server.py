@@ -349,12 +349,16 @@ _social_reload_lock = asyncio.Lock()
 async def health(_request: Request) -> JSONResponse:
     """Lightweight liveness probe used for process identity and supervision."""
     from suzent.routes.system_routes import get_backend_version
+    from suzent.version import get_backend_source_root
+
+    source_root = get_backend_source_root()
 
     return JSONResponse(
         {
             "app": "suzent",
             "status": "ok",
             "version": get_backend_version(),
+            "source_root": str(source_root) if source_root else None,
             "run_mode": os.getenv("SUZENT_RUN_MODE", "standalone"),
             "pid": os.getpid(),
         }

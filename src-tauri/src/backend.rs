@@ -57,28 +57,29 @@ impl BackendProcess {
 
     /// Attach to an already-running backend without taking ownership of it.
     pub fn attach_if_healthy(port: u16) -> Option<Self> {
-        let url = format!("http://127.0.0.1:{}/health", port);
-        let client = reqwest::blocking::Client::builder()
-            .timeout(Duration::from_secs(1))
-            .no_proxy()
-            .build()
-            .ok()?;
-        let response = client.get(url).send().ok()?;
-        if !response.status().is_success() {
-            return None;
-        }
-        let body = response.text().ok()?;
-        let payload: serde_json::Value = serde_json::from_str(&body).ok()?;
+        let payload = health_payload(port)?;
         if payload.get("app").and_then(|value| value.as_str()) != Some("suzent")
             || payload.get("status").and_then(|value| value.as_str()) != Some("ok")
         {
             return None;
         }
-        Some(Self {
+        Some(Self::attached(port))
+    }
+
+    pub fn attach_if_matching(port: u16, workspace: &Path) -> Result<Option<Self>, String> {
+        let Some(payload) = health_payload(port) else {
+            return Ok(None);
+        };
+        validate_backend_identity(&payload, workspace, port)?;
+        Ok(Some(Self::attached(port)))
+    }
+
+    fn attached(port: u16) -> Self {
+        Self {
             child: None,
             port,
             control_token: None,
-        })
+        }
     }
 
     pub fn is_owned(&self) -> bool {
@@ -167,7 +168,7 @@ impl BackendProcess {
         let port = self.poll_port_file(&port_file, Duration::from_secs(30))?;
         self.port = port;
         println!("Backend reported port: {}", port);
-        self.wait_for_backend()?;
+        self.wait_for_backend(repo_dir)?;
         Ok(port)
     }
 
@@ -203,7 +204,7 @@ impl BackendProcess {
         }
     }
 
-    fn wait_for_backend(&mut self) -> Result<(), String> {
+    fn wait_for_backend(&mut self, workspace: &Path) -> Result<(), String> {
         let url = format!("http://127.0.0.1:{}/health", self.port);
         let client = reqwest::blocking::Client::builder()
             .timeout(Duration::from_secs(2))
@@ -217,7 +218,13 @@ impl BackendProcess {
             attempt += 1;
             match client.get(&url).send() {
                 Ok(resp) => {
-                    if resp.status().is_success() || resp.status().as_u16() == 404 {
+                    if resp.status().is_success() {
+                        let body = resp
+                            .text()
+                            .map_err(|error| format!("Invalid backend health response: {error}"))?;
+                        let payload: serde_json::Value = serde_json::from_str(&body)
+                            .map_err(|error| format!("Invalid backend health response: {error}"))?;
+                        validate_backend_identity(&payload, workspace, self.port)?;
                         println!("Backend ready after {} attempts", attempt);
                         return Ok(());
                     }
@@ -251,6 +258,62 @@ impl BackendProcess {
     }
 }
 
+fn health_payload(port: u16) -> Option<serde_json::Value> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(1))
+        .no_proxy()
+        .build()
+        .ok()?;
+    let body = client
+        .get(format!("http://127.0.0.1:{port}/health"))
+        .send()
+        .ok()?
+        .error_for_status()
+        .ok()?
+        .text()
+        .ok()?;
+    serde_json::from_str(&body).ok()
+}
+
+fn validate_backend_identity(
+    payload: &serde_json::Value,
+    workspace: &Path,
+    port: u16,
+) -> Result<(), String> {
+    let actual_version = payload.get("version").and_then(|value| value.as_str());
+    let actual_root = payload.get("source_root").and_then(|value| value.as_str());
+    let expected_root = std::fs::canonicalize(workspace).map_err(|error| {
+        format!(
+            "Cannot identify Suzent installation {}: {error}",
+            workspace.display()
+        )
+    })?;
+    let matches_root = actual_root
+        .and_then(|root| std::fs::canonicalize(root).ok())
+        .is_some_and(|root| {
+            if cfg!(windows) {
+                root.to_string_lossy()
+                    .eq_ignore_ascii_case(&expected_root.to_string_lossy())
+            } else {
+                root == expected_root
+            }
+        });
+    if payload.get("app").and_then(|value| value.as_str()) == Some("suzent")
+        && payload.get("status").and_then(|value| value.as_str()) == Some("ok")
+        && actual_version == Some(env!("CARGO_PKG_VERSION"))
+        && matches_root
+    {
+        return Ok(());
+    }
+    Err(format!(
+        "Backend on port {port} belongs to {} (version {}), not this installation at {} (version {}). Stop or reconfigure the other installation, or choose a different SUZENT_PORT; no process was stopped.",
+        actual_root.unwrap_or("unknown source"),
+        actual_version.unwrap_or("unknown"),
+        expected_root.display(),
+        env!("CARGO_PKG_VERSION"),
+    ))
+}
+
 impl Drop for BackendProcess {
     fn drop(&mut self) {
         self.stop();
@@ -259,7 +322,11 @@ impl Drop for BackendProcess {
 
 #[cfg(test)]
 mod tests {
-    use super::{BackendProcess, BACKEND_READY_TIMEOUT};
+    use super::{
+        saved_install_workspace, validate_backend_identity, BackendProcess, BACKEND_READY_TIMEOUT,
+    };
+    use serde_json::json;
+    use std::fs;
     use std::time::Duration;
 
     #[test]
@@ -290,6 +357,41 @@ mod tests {
     #[test]
     fn missing_attached_backend_is_not_running() {
         assert!(!BackendProcess::new().is_running());
+    }
+
+    #[test]
+    fn backend_identity_requires_matching_source_and_version() {
+        let temp = tempfile::tempdir().unwrap();
+        let installed = temp.path().join("installed");
+        let development = temp.path().join("development");
+        fs::create_dir_all(&installed).unwrap();
+        fs::create_dir_all(&development).unwrap();
+        let payload = json!({
+            "app": "suzent",
+            "status": "ok",
+            "version": env!("CARGO_PKG_VERSION"),
+            "source_root": installed.display().to_string(),
+        });
+        assert!(validate_backend_identity(&payload, &installed, 25314).is_ok());
+        let mismatch = validate_backend_identity(&payload, &development, 25314).unwrap_err();
+        assert!(mismatch.contains(&installed.display().to_string()));
+        assert!(mismatch.contains(&development.display().to_string()));
+        assert!(validate_backend_identity(&json!({"app": "suzent", "status": "ok", "version": "0.0.0", "source_root": installed.display().to_string()}), &installed, 25314).is_err());
+        assert!(validate_backend_identity(
+            &json!({"app": "suzent", "status": "ok"}),
+            &installed,
+            25314
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn ignores_stale_install_directory_marker() {
+        let temp = tempfile::tempdir().unwrap();
+        let workspace = temp.path().join("missing");
+        let marker = temp.path().join("install-dir.txt");
+        fs::write(&marker, workspace.display().to_string()).unwrap();
+        assert_eq!(saved_install_workspace(&marker), None);
     }
 }
 
@@ -342,6 +444,11 @@ fn workspace_containing_exe() -> Option<PathBuf> {
 }
 
 pub fn find_install_workspace_dir() -> PathBuf {
+    if !cfg!(debug_assertions) {
+        if let Some(dir) = workspace_containing_exe() {
+            return dir;
+        }
+    }
     if let Ok(dir) = std::env::var("SUZENT_DIR") {
         if !dir.trim().is_empty() {
             return PathBuf::from(dir);
@@ -357,14 +464,16 @@ pub fn find_install_workspace_dir() -> PathBuf {
         return dir;
     }
 
-    if let Ok(dir) = std::fs::read_to_string(install_workspace_marker_path()) {
-        let trimmed = dir.trim();
-        if !trimmed.is_empty() {
-            return PathBuf::from(trimmed);
-        }
+    if let Some(path) = saved_install_workspace(&install_workspace_marker_path()) {
+        return path;
     }
 
     default_install_dir()
+}
+
+fn saved_install_workspace(marker: &Path) -> Option<PathBuf> {
+    let path = PathBuf::from(std::fs::read_to_string(marker).ok()?.trim());
+    is_workspace_bootstrapped(&path).then_some(path)
 }
 
 pub fn persist_install_workspace_dir(dir: &std::path::Path) -> Result<(), String> {
@@ -469,8 +578,10 @@ pub fn find_venv_python(repo_dir: &Path) -> Option<PathBuf> {
 }
 
 fn dirs_home() -> PathBuf {
-    std::env::var("HOME")
-        .or_else(|_| std::env::var("USERPROFILE"))
+    let primary = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
+    let secondary = if cfg!(windows) { "HOME" } else { "USERPROFILE" };
+    std::env::var(primary)
+        .or_else(|_| std::env::var(secondary))
         .map(PathBuf::from)
         .unwrap_or_default()
 }

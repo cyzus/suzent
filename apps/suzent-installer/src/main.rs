@@ -167,6 +167,10 @@ fn main() {
         eprintln!("Failed to write bootstrap marker: {error}");
         exit_with_prompt(1, config.non_interactive);
     }
+    if let Err(error) = write_install_dir_marker(&config.dir) {
+        eprintln!("Failed to save install directory: {error}");
+        exit_with_prompt(1, config.non_interactive);
+    }
 
     print_completion(&config);
     exit_with_prompt(0, config.non_interactive);
@@ -1050,6 +1054,9 @@ fn stage_shim(config: &InstallConfig) -> StageOutcome {
         if let Err(error) = write_bootstrap_marker(config) {
             return StageOutcome::fail(format!("Failed to write bootstrap marker: {error}"));
         }
+        if let Err(error) = write_install_dir_marker(&config.dir) {
+            return StageOutcome::fail(format!("Failed to save install directory: {error}"));
+        }
         return StageOutcome::skipped("CLI shim writing is currently Windows-only.");
     }
 
@@ -1070,6 +1077,9 @@ fn stage_shim(config: &InstallConfig) -> StageOutcome {
 
     if let Err(error) = write_bootstrap_marker(config) {
         return StageOutcome::fail(format!("Failed to write bootstrap marker: {error}"));
+    }
+    if let Err(error) = write_install_dir_marker(&config.dir) {
+        return StageOutcome::fail(format!("Failed to save install directory: {error}"));
     }
 
     print_human(format!("[OK] CLI shim written to {}", shim.display()));
@@ -1349,12 +1359,37 @@ fn playwright_executable(workspace: &Path) -> Option<PathBuf> {
 }
 
 fn default_install_dir() -> PathBuf {
-    dirs_home().join("suzent")
+    saved_install_dir(&install_dir_marker_path()).unwrap_or_else(|| dirs_home().join("suzent"))
+}
+
+fn install_dir_marker_path() -> PathBuf {
+    env::var("SUZENT_DATA_DIR")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| dirs_home().join(".suzent"))
+        .join("install-dir.txt")
+}
+
+fn saved_install_dir(marker: &Path) -> Option<PathBuf> {
+    let path = PathBuf::from(fs::read_to_string(marker).ok()?.trim());
+    (path.join("pyproject.toml").is_file()
+        && path.join(".suzent-bootstrap-complete").is_file()
+        && workspace_python(&path).is_file())
+    .then_some(path)
+}
+
+fn write_install_dir_marker(dir: &Path) -> io::Result<()> {
+    let marker = install_dir_marker_path();
+    fs::create_dir_all(marker.parent().expect("install marker parent"))?;
+    fs::write(marker, fs::canonicalize(dir)?.display().to_string())
 }
 
 fn dirs_home() -> PathBuf {
-    env::var("HOME")
-        .or_else(|_| env::var("USERPROFILE"))
+    let primary = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
+    let secondary = if cfg!(windows) { "HOME" } else { "USERPROFILE" };
+    env::var(primary)
+        .or_else(|_| env::var(secondary))
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from("."))
 }
@@ -1496,7 +1531,8 @@ fn exit_with_prompt(code: i32, non_interactive: bool) -> ! {
 
 #[cfg(test)]
 mod tests {
-    use super::is_release_tag;
+    use super::{is_release_tag, saved_install_dir, workspace_python};
+    use std::fs;
 
     #[test]
     fn validates_stable_release_tags() {
@@ -1504,5 +1540,25 @@ mod tests {
         assert!(!is_release_tag("0.7.3"));
         assert!(!is_release_tag("v0.7"));
         assert!(!is_release_tag("v0.7.3-rc1"));
+    }
+
+    #[test]
+    fn reuses_only_a_complete_install_record() {
+        let temp = tempfile::tempdir().unwrap();
+        let workspace = temp.path().join("custom install");
+        fs::create_dir_all(workspace_python(&workspace).parent().unwrap()).unwrap();
+        fs::write(
+            workspace.join("pyproject.toml"),
+            "[project]\nname='suzent'\n",
+        )
+        .unwrap();
+        fs::write(workspace.join(".suzent-bootstrap-complete"), "ready").unwrap();
+        fs::write(workspace_python(&workspace), "").unwrap();
+        let marker = temp.path().join("install-dir.txt");
+        fs::write(&marker, workspace.display().to_string()).unwrap();
+        assert_eq!(saved_install_dir(&marker), Some(workspace.clone()));
+
+        fs::remove_file(workspace.join(".suzent-bootstrap-complete")).unwrap();
+        assert_eq!(saved_install_dir(&marker), None);
     }
 }

@@ -513,7 +513,10 @@ fn spawn_backend_start(app_handle: tauri::AppHandle) {
         let Ok(mut backend_guard) = state.backend.lock() else {
             return;
         };
-        if backend_guard.as_mut().is_some_and(BackendProcess::is_running) {
+        if backend_guard
+            .as_mut()
+            .is_some_and(BackendProcess::is_running)
+        {
             return;
         }
         backend_guard.take();
@@ -887,7 +890,8 @@ fn get_backend_config(app_handle: &tauri::AppHandle) -> Result<(u16, BackendProc
     } else {
         port
     };
-    if let Some(backend) = BackendProcess::attach_if_healthy(resolved) {
+    let repo_dir = backend::find_install_workspace_dir();
+    if let Some(backend) = BackendProcess::attach_if_matching(resolved, &repo_dir)? {
         println!(
             "Dev mode: attached to existing backend on port {}",
             resolved
@@ -923,7 +927,7 @@ fn get_backend_config(app_handle: &tauri::AppHandle) -> Result<(u16, BackendProc
     } else {
         configured_port
     };
-    if let Some(backend) = BackendProcess::attach_if_healthy(attach_port) {
+    if let Some(backend) = BackendProcess::attach_if_matching(attach_port, &repo_dir)? {
         println!(
             "Attached to existing Suzent service on port {}",
             attach_port
