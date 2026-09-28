@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Preserve the selected Windows installation directory and prevent the desktop from silently connecting to a backend from another installation."
+}
