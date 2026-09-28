@@ -42,6 +42,8 @@ struct UpdateStatus {
     total_bytes: Option<u64>,
     #[serde(default, skip_serializing_if = "is_false")]
     failed: bool,
+    #[serde(default)]
+    warnings: Vec<String>,
 }
 
 fn is_false(value: &bool) -> bool {
@@ -194,7 +196,7 @@ pub fn run(args: &[String], repair: bool) -> i32 {
     }
 }
 
-fn run_inner(args: &[String], repair: bool) -> Result<(), String> {
+pub(crate) fn run_inner(args: &[String], repair: bool) -> Result<(), String> {
     let root = flag_value(args, "--dir")
         .map(PathBuf::from)
         .ok_or_else(|| "--dir is required for update and repair".to_string())?;
@@ -574,7 +576,16 @@ fn install_target(paths: &UpdatePaths, target_tag: &str) -> Result<(), String> {
         "Refreshing launcher shortcuts",
         target_tag,
     )?;
-    refresh_shortcuts(paths);
+    if let Err(error) = refresh_shortcuts(paths) {
+        let mut status: UpdateStatus = serde_json::from_slice(
+            &fs::read(&paths.status).map_err(display_io("read shortcut status"))?,
+        )
+        .map_err(|error| error.to_string())?;
+        status
+            .warnings
+            .push(format!("{error}; run 'suzent shortcuts' to retry"));
+        write_json_atomic(&paths.status, &status, "record shortcut warning")?;
+    }
     Ok(())
 }
 
@@ -590,23 +601,20 @@ fn read_transaction(paths: &UpdatePaths) -> Result<UpdateTransaction, String> {
 ///
 /// Deliberately not fatal: a missing desktop icon is no reason to roll back an
 /// otherwise working update, so a failure is reported and the update completes.
-fn refresh_shortcuts(paths: &UpdatePaths) {
+fn refresh_shortcuts(paths: &UpdatePaths) -> Result<(), String> {
     let python = service_python(&paths.root);
     if !python.exists() {
-        eprintln!(
+        return Err(format!(
             "skipped launcher shortcut repair: {} is missing",
             python.display()
-        );
-        return;
+        ));
     }
-    if let Err(error) = run_checked(
+    run_checked(
         background_command(python)
             .args(["-m", "suzent.cli", "shortcuts"])
             .current_dir(&paths.root),
         "refresh launcher shortcuts",
-    ) {
-        eprintln!("{error}; run 'suzent shortcuts' to retry");
-    }
+    )
 }
 
 fn rollback(paths: &UpdatePaths, transaction: &UpdateTransaction) -> Result<(), String> {
@@ -1183,6 +1191,13 @@ fn write_status_details(
         downloaded_bytes,
         total_bytes,
         failed,
+        warnings: if phase == "preflight" {
+            Vec::new()
+        } else {
+            same_transaction
+                .map(|status| status.warnings.clone())
+                .unwrap_or_default()
+        },
     };
     write_json_atomic(&paths.status, &payload, "write update status")
 }
@@ -1809,6 +1824,26 @@ mod tests {
         })
         .unwrap();
         super::prepare_ui(&paths, &expected, || panic!("downloaded again")).unwrap();
+    }
+
+    #[test]
+    fn shortcut_warning_survives_completion_but_not_a_new_attempt() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = UpdatePaths::new(temp.path().to_path_buf(), "v1.2.3");
+        fs::create_dir_all(&paths.state_dir).unwrap();
+        super::write_status(&paths, "shortcuts", 96, "Shortcuts", "v1.2.3").unwrap();
+        let mut status: super::UpdateStatus =
+            serde_json::from_slice(&fs::read(&paths.status).unwrap()).unwrap();
+        status.warnings.push("Shortcut access denied".into());
+        super::write_json_atomic(&paths.status, &status, "test warning").unwrap();
+        super::write_status(&paths, "complete", 100, "Done", "v1.2.3").unwrap();
+        let completed: super::UpdateStatus =
+            serde_json::from_slice(&fs::read(&paths.status).unwrap()).unwrap();
+        assert_eq!(completed.warnings, vec!["Shortcut access denied"]);
+        super::write_status(&paths, "preflight", 0, "Retry", "v1.2.3").unwrap();
+        let retry: super::UpdateStatus =
+            serde_json::from_slice(&fs::read(&paths.status).unwrap()).unwrap();
+        assert!(retry.warnings.is_empty());
     }
 
     #[test]

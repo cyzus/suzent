@@ -81,6 +81,11 @@ def _get_ui_binary(root: Path) -> Path | None:
     name = "suzent-ui.exe" if IS_WINDOWS else "suzent-ui"
     release_name = "suzent.exe" if IS_WINDOWS else "suzent"
     managed_release = root / _BIN_DIR / name
+    local_release = root / "src-tauri" / "target" / "release" / release_name
+    if (
+        _is_development_workspace(root) or _read_update_channel(root) == _DEV_CHANNEL
+    ) and local_release.is_file():
+        return local_release
 
     # `suzent update` installs the UI and its version marker atomically. Prefer
     # that managed pair over a locally-built executable whose newer mtime does
@@ -90,7 +95,7 @@ def _get_ui_binary(root: Path) -> Path | None:
 
     candidates = [
         managed_release,
-        root / "src-tauri" / "target" / "release" / release_name,
+        local_release,
     ]
     existing = [p for p in candidates if p.exists() and _is_ui_binary_current(root, p)]
     if not existing:
@@ -1574,7 +1579,7 @@ def register_commands(app: typer.Typer):
             False, "--docs", help="Run documentation server instead of app"
         ),
     ):
-        """Start the Suzent development environment."""
+        """Start the desktop app, or opt into development with --dev."""
         root = get_project_root()
 
         if docs:
@@ -1588,10 +1593,6 @@ def register_commands(app: typer.Typer):
 
         typer.echo("🚀 Starting SUZENT...")
         _notify_update_available(root)
-
-        if not dev and _read_update_channel(root) == _DEV_CHANNEL:
-            typer.echo("  • Development update channel active; starting in dev mode.")
-            dev = True
 
         # --dev implies running the backend in debug mode.
         if dev:
@@ -1618,12 +1619,15 @@ def register_commands(app: typer.Typer):
             _report_detached(port, log_name="desktop")
             return
 
-        # ── Developer fallback: tauri dev ────────────────────────────────────
-        if dev:
-            typer.echo("  * Starting in developer mode (--dev).")
-        else:
-            typer.echo("  No pre-built UI binary found - starting in developer mode.")
-            typer.echo("     Run 'suzent update' to download the binary.")
+        if not dev:
+            typer.echo(
+                f"  ❌ No desktop build found in {root}. Build the desktop app "
+                "from this checkout, or use `suzent start --dev`."
+            )
+            raise typer.Exit(code=1)
+
+        # ── Explicit developer launch ───────────────────────────────────────
+        typer.echo("  * Starting in developer mode (--dev).")
         ensure_cargo_in_path()
         ensure_msvc_linker()
 
@@ -1631,10 +1635,6 @@ def register_commands(app: typer.Typer):
         ports_to_check = [(DEV_FRONTEND_PORT, "Frontend")]
         if not backend_running:
             ports_to_check.insert(0, (port, "Backend"))
-        elif not dev:
-            typer.echo(
-                f"  ✅ Backend already running on http://127.0.0.1:{port}; reusing it."
-            )
 
         for busy_port, name in ports_to_check:
             pid = get_pid_on_port(busy_port)
@@ -1642,38 +1642,19 @@ def register_commands(app: typer.Typer):
                 typer.echo(
                     f"\n⚠️  {name} Port {busy_port} is already in use by PID {pid}."
                 )
-                if typer.confirm("   Do you want to kill this process to continue?"):
-                    typer.echo(f"   🔪 Killing PID {pid}...")
-                    try:
-                        kill_process(pid)
-                        typer.echo("   ✅ Process killed.")
-                    except Exception as e:
-                        typer.echo(f"   ❌ Failed to kill process: {e}")
-                        raise typer.Exit(code=1)
-                else:
-                    typer.echo("   ❌ Startup aborted.")
-                    raise typer.Exit(code=1)
-
-        if dev and backend_running:
-            pid = get_pid_on_port(port)
-            if not pid:
                 typer.echo(
-                    "  ❌ Dev mode found an existing Suzent backend but could not "
-                    "identify its PID. Run 'suzent stop' and retry."
+                    "   Stop it from its owning installation before retrying; "
+                    "no process was stopped."
                 )
                 raise typer.Exit(code=1)
+
+        if dev and backend_running:
             typer.echo(
-                f"  • Restarting existing backend (PID {pid}) for a clean dev session..."
+                f"  ❌ A backend is already running on port {port}. Stop it "
+                "and its background service from the owning installation before "
+                "starting development mode; no process was stopped."
             )
-            try:
-                kill_process(pid)
-            except Exception as error:
-                typer.echo(f"  ❌ Failed to restart existing backend: {error}")
-                raise typer.Exit(code=1)
-            if not _wait_for_port_release(port):
-                typer.echo("  ❌ Existing backend did not release its port.")
-                raise typer.Exit(code=1)
-            backend_running = False
+            raise typer.Exit(code=1)
 
         backend_env = os.environ.copy()
         backend_env["SUZENT_PORT"] = str(port)
@@ -1698,7 +1679,12 @@ def register_commands(app: typer.Typer):
         if IS_WINDOWS:
             # `npm` is a shell script; without a console it needs cmd to resolve.
             frontend_cmd = ["cmd", "/c", *frontend_cmd]
-        _launch_detached(frontend_cmd, log_name="frontend", cwd=root / "src-tauri")
+        _launch_detached(
+            frontend_cmd,
+            log_name="frontend",
+            cwd=root / "src-tauri",
+            env={**backend_env, "SUZENT_DIR": str(root)},
+        )
         _report_detached(port, log_name="frontend")
 
     @app.command()
@@ -2149,9 +2135,8 @@ def register_commands(app: typer.Typer):
 
     def _checkout_update_target(root: Path, *, dev: bool, release_tag: str) -> None:
         if dev:
-            run_command(["git", "fetch", "origin", "main"], cwd=root)
-            run_command(["git", "switch", "main"], cwd=root)
-            run_command(["git", "merge", "--ff-only", "origin/main"], cwd=root)
+            run_command(["git", "fetch"], cwd=root)
+            run_command(["git", "merge", "--ff-only", "@{upstream}"], cwd=root)
             return
         run_command(["git", "fetch", "origin", "tag", release_tag], cwd=root)
         run_command(["git", "checkout", "--detach", release_tag], cwd=root)
@@ -2172,7 +2157,10 @@ def register_commands(app: typer.Typer):
     ) -> None:
         root = get_project_root()
 
-        if not dev and _is_development_workspace(root):
+        if not dev and (
+            _is_development_workspace(root)
+            or _read_update_channel(root) == _DEV_CHANNEL
+        ):
             typer.echo(
                 "  • Source checkout detected; using the development update channel."
             )
@@ -2180,6 +2168,38 @@ def register_commands(app: typer.Typer):
 
         channel = _DEV_CHANNEL if dev else _STABLE_CHANNEL
         typer.echo(f"🔄 Updating Suzent ({channel} channel)...")
+        typer.echo(f"  • Installation: {root}")
+
+        if dev:
+            try:
+                branch = _git_text(root, "branch", "--show-current")
+                upstream = _git_text(root, "rev-parse", "--abbrev-ref", "@{upstream}")
+                dirty = _git_text(root, "status", "--porcelain")
+                operations = (
+                    "MERGE_HEAD",
+                    "CHERRY_PICK_HEAD",
+                    "REVERT_HEAD",
+                    "rebase-merge",
+                    "rebase-apply",
+                    "sequencer",
+                )
+                in_progress = any(
+                    (root / _git_text(root, "rev-parse", "--git-path", name)).exists()
+                    for name in operations
+                )
+                if not branch or dirty or in_progress:
+                    raise ValueError(
+                        "checkout is detached, dirty, or has an unfinished Git operation"
+                    )
+            except (subprocess.CalledProcessError, ValueError) as error:
+                typer.echo(
+                    "  ❌ Development update requires a clean branch with an upstream "
+                    f"and no unfinished Git operations. Save your changes first. ({error})"
+                )
+                raise typer.Exit(code=1)
+            typer.echo(
+                f"  • Fast-forwarding {branch} from {upstream}; branch will not change."
+            )
 
         if dev and _delegate_windows_update(root, dev=True):
             return
@@ -2211,20 +2231,7 @@ def register_commands(app: typer.Typer):
             typer.echo("  ❌ Suzent installation is not a valid Git checkout.")
             raise typer.Exit(code=1)
 
-        # Self-heal installs dirtied by the old behavior, where runtime model
-        # discovery wrote into the tracked config/capabilities/ files and made
-        # every `git pull` conflict. Those writes now go to the user data dir,
-        # so any local change here is stale runtime noise — discard it so the
-        # pull is clean. Curated updates ship from the repo and land normally.
-        try:
-            run_command(
-                ["git", "checkout", "--", "config/capabilities"],
-                cwd=root,
-            )
-        except subprocess.CalledProcessError:
-            pass  # No such path / nothing to discard — fine.
-
-        target_label = "origin/main" if dev else release_tag
+        target_label = upstream if dev else release_tag
         typer.echo(f"  • Updating source to {target_label}...")
         stashed_changes = False
         if not dev:
@@ -2243,6 +2250,12 @@ def register_commands(app: typer.Typer):
         try:
             _checkout_update_target(root, dev=dev, release_tag=release_tag)
         except subprocess.CalledProcessError:
+            if dev:
+                typer.echo(
+                    "  ❌ Fetch or fast-forward failed. Resolve the branch manually; "
+                    "no automatic stash or branch switch was attempted."
+                )
+                raise typer.Exit(code=1)
             if stashed_changes:
                 typer.echo("  ❌ Source update failed. Restoring local changes...")
                 _restore_stashed_changes(root, stashed_changes)
