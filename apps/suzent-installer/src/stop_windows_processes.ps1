@@ -18,7 +18,9 @@ try {
     }
     foreach ($entry in $processes) {
         if ($protected.Contains([uint32]$entry.ProcessId)) { continue }
-        if (-not $entry.ExecutablePath -or $allowedPaths -notcontains $entry.ExecutablePath) { continue }
+        if (-not $entry.ExecutablePath) { continue }
+        # CIM may report an 8.3 path while the installation uses its long form.
+        if ($allowedPaths -notcontains [IO.Path]::GetFullPath($entry.ExecutablePath)) { continue }
         $process = $null
         try {
             try { $process = [Diagnostics.Process]::GetProcessById($entry.ProcessId) }
@@ -26,7 +28,7 @@ try {
             # Hold the process handle and recheck identity before terminating it.
             $null = $process.Handle
             if ($process.HasExited) { continue }
-            if ($allowedPaths -notcontains $process.MainModule.FileName) { continue }
+            if ($allowedPaths -notcontains [IO.Path]::GetFullPath($process.MainModule.FileName)) { continue }
             # CIM timestamps may lose sub-millisecond precision.
             if ([Math]::Abs(($process.StartTime.ToUniversalTime() - $entry.CreationDate.ToUniversalTime()).TotalMilliseconds) -gt 1) { continue }
             $process.Kill()
