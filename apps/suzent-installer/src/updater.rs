@@ -1733,7 +1733,17 @@ mod tests {
         assert!(desktop.0.try_wait().unwrap().is_none());
         assert!(backend.0.try_wait().unwrap().is_none());
         super::stop_suzent_processes(&root).unwrap();
-        assert!(desktop.0.try_wait().unwrap().is_some());
+        if desktop.0.try_wait().unwrap().is_none() {
+            let probe = background_command("powershell.exe")
+                .args(["-NoProfile", "-Command", &format!(
+                    "$p=Get-CimInstance Win32_Process -Filter 'ProcessId = {}'; $q=Get-Process -Id {}; $p | Select-Object ProcessId,ParentProcessId,ExecutablePath,CreationDate | Format-List; $q.MainModule.FileName; $q.StartTime.ToUniversalTime().ToString('O'); $p.CreationDate.ToUniversalTime().ToString('O'); [IO.Path]::GetFullPath($env:SUZENT_UPDATE_ROOT)", desktop.0.id(), desktop.0.id())])
+                .env("SUZENT_UPDATE_ROOT", &root).output().unwrap();
+            panic!(
+                "desktop was not stopped: {} {}",
+                String::from_utf8_lossy(&probe.stdout),
+                String::from_utf8_lossy(&probe.stderr)
+            );
+        }
         assert!(backend.0.try_wait().unwrap().is_some());
         assert!(unrelated.0.try_wait().unwrap().is_none());
         assert!(other_installation.0.try_wait().unwrap().is_none());
