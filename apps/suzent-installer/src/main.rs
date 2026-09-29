@@ -110,6 +110,92 @@ struct InstallerContext {
     branch: Option<String>,
 }
 
+#[derive(Serialize)]
+struct DestinationInfo {
+    kind: &'static str,
+    branch: Option<String>,
+}
+
+fn inspect_destination_path(root: &Path) -> DestinationInfo {
+    let info = |kind, branch| DestinationInfo { kind, branch };
+    if !root.is_absolute() {
+        return info("invalid", None);
+    }
+    if !root.exists() {
+        return info("new", None);
+    }
+    if !root.is_dir() {
+        return info("invalid", None);
+    }
+    if root.join(".git").exists()
+        && (!root.join("pyproject.toml").is_file() || !root.join("src/suzent").is_dir())
+    {
+        return info("occupied", None);
+    }
+    if !root.join(".git").exists() {
+        return info(
+            if is_empty_dir(root) {
+                "new"
+            } else {
+                "occupied"
+            },
+            None,
+        );
+    }
+    let git = |args: &[&str]| {
+        let mut command = Command::new("git");
+        command.args(args).current_dir(root);
+        hide_command_window(&mut command);
+        command
+            .output()
+            .ok()
+            .filter(|output| output.status.success())
+            .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
+    };
+    let branch = git(&["branch", "--show-current"]).filter(|value| !value.is_empty());
+    let channel = fs::read_to_string(root.join(".suzent/update-channel")).unwrap_or_default();
+    if branch.is_some()
+        || channel.trim() == "dev"
+        || !root.join(".suzent-bootstrap-complete").is_file()
+    {
+        return info("development", branch);
+    }
+    if git(&["rev-parse", "HEAD"]).is_none() {
+        return info("invalid", None);
+    }
+    let kind = if root.join(".suzent/update-transaction.json").exists()
+        || !workspace_python(root).is_file()
+    {
+        "repair"
+    } else {
+        "update"
+    };
+    info(kind, None)
+}
+
+#[tauri::command]
+async fn inspect_destination(dir: String) -> Result<DestinationInfo, String> {
+    tauri::async_runtime::spawn_blocking(move || inspect_destination_path(Path::new(&dir)))
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn open_existing_updater(dir: String) -> Result<(), String> {
+    let root = PathBuf::from(dir);
+    let destination = inspect_destination_path(&root);
+    let mode = match destination.kind {
+        "update" => "--update",
+        "repair" => "--repair",
+        _ => return Err("This directory is not a managed release installation. Review its development update instructions instead.".into()),
+    };
+    let mut command = Command::new(env::current_exe().map_err(|error| error.to_string())?);
+    command.args([mode, "--dir"]).arg(&root).current_dir(&root);
+    hide_command_window(&mut command);
+    command.spawn().map_err(|error| error.to_string())?;
+    Ok(())
+}
+
 struct UpdateRuntime {
     args: Vec<String>,
     repair: bool,
@@ -236,6 +322,9 @@ async fn run_installer_stage(request: StageRequest) -> Result<String, String> {
         config.dir = PathBuf::from(flag_value(&args, "--dir").expect("stage directory"));
         config.json = true;
         config.non_interactive = true;
+        if config.dir.join(".git").exists() && matches!(request.stage.as_str(), "git" | "repository") {
+            return Err("An existing checkout must use update/repair, not first-time installation. No branch was changed.".into());
+        }
         let Some(stage) = stages(&config)
             .into_iter()
             .find(|stage| stage.name == request.stage)
@@ -329,6 +418,8 @@ fn run_tauri_app() {
             launch_installed_app,
             updater_status,
             save_diagnostics,
+            inspect_destination,
+            open_existing_updater,
         ])
         .run(installer_context_config())
         .expect("error while running Suzent installer");
@@ -601,7 +692,13 @@ fn run_stage(config: &InstallConfig, stage: InstallStage) -> StageResult {
 
     let started = Instant::now();
     clear_stage_logs();
-    let outcome = (stage.worker)(config);
+    let outcome = if (stage.name == "git" && inspect_destination_path(&config.dir).kind != "new")
+        || (stage.name == "repository" && config.dir.join(".git").exists())
+    {
+        StageOutcome::fail("Existing or unrecognized directories cannot use first-time installation. Use the existing installation's update/repair flow, or review development update instructions. No branch was changed.")
+    } else {
+        (stage.worker)(config)
+    };
 
     StageResult {
         stage: stage.name.to_string(),
@@ -1681,6 +1778,59 @@ fn exit_with_prompt(code: i32, non_interactive: bool) -> ! {
 mod tests {
     use super::{is_release_tag, saved_install_dir, workspace_python};
     use std::fs;
+
+    #[test]
+    fn destination_detection_distinguishes_new_development_and_release_repair() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        assert_eq!(super::inspect_destination_path(root).kind, "new");
+        fs::write(root.join("unrelated.txt"), "keep").unwrap();
+        assert_eq!(super::inspect_destination_path(root).kind, "occupied");
+        let git = |args: &[&str]| {
+            let mut command = std::process::Command::new("git");
+            command
+                .args([
+                    "-c",
+                    "user.name=Installer Test",
+                    "-c",
+                    "user.email=installer@example.invalid",
+                ])
+                .args(args)
+                .current_dir(root);
+            super::hide_command_window(&mut command);
+            assert!(command.output().unwrap().status.success());
+        };
+        git(&["init", "-b", "development"]);
+        fs::write(root.join("pyproject.toml"), "[project]\nname = 'suzent'\n").unwrap();
+        fs::create_dir_all(root.join("src/suzent")).unwrap();
+        git(&["add", "pyproject.toml"]);
+        git(&["commit", "-m", "initial"]);
+        let development = super::inspect_destination_path(root);
+        assert_eq!(development.kind, "development");
+        assert_eq!(development.branch.as_deref(), Some("development"));
+        fs::write(root.join(".suzent-bootstrap-complete"), "ready").unwrap();
+        assert_eq!(super::inspect_destination_path(root).kind, "development");
+        git(&["checkout", "--detach"]);
+        assert_eq!(super::inspect_destination_path(root).kind, "repair");
+        let python = super::workspace_python(root);
+        fs::create_dir_all(python.parent().unwrap()).unwrap();
+        fs::write(python, "").unwrap();
+        assert_eq!(super::inspect_destination_path(root).kind, "update");
+        fs::create_dir_all(root.join(".suzent")).unwrap();
+        fs::write(root.join(".suzent/update-transaction.json"), "{}").unwrap();
+        assert_eq!(super::inspect_destination_path(root).kind, "repair");
+        let config =
+            super::InstallConfig::from_env_and_args(&["--dir".into(), root.display().to_string()]);
+        let stage = super::stages(&config)
+            .into_iter()
+            .find(|stage| stage.name == "repository")
+            .unwrap();
+        assert!(!super::run_stage(&config, stage).ok);
+        assert_eq!(
+            fs::read_to_string(root.join("unrelated.txt")).unwrap(),
+            "keep"
+        );
+    }
 
     #[test]
     fn desktop_stage_copy_matches_install_mode_in_manifest_and_execution() {

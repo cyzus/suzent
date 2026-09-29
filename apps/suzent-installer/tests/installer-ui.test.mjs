@@ -22,7 +22,7 @@ class Element {
   querySelectorAll() { return []; }
 }
 
-async function harness({mode = 'install', result = null, status = null, shortcutFailure = false, shortcutSkipped = false, skippedStage = null, branch = null, language = 'en', closeError = null} = {}) {
+async function harness({mode = 'install', result = null, status = null, shortcutFailure = false, shortcutSkipped = false, skippedStage = null, branch = null, language = 'en', closeError = null, destinationKind = 'new'} = {}) {
   const elements = new Map();
   const element = id => {
     if (!elements.has(id)) elements.set(id, new Element());
@@ -32,6 +32,7 @@ async function harness({mode = 'install', result = null, status = null, shortcut
   const handlers = {};
   const invoke = async (command, args) => {
     calls.push([command, args]);
+    if (command === 'inspect_destination') return {kind:destinationKind, branch:destinationKind === 'development' ? 'feature/local' : null};
     if (command === 'installer_context') return {mode, branch, dir: 'D:\\workspace\\suzent', target:'v0.15.0'};
     if (command === 'default_install_dir_command') return 'C:\\Users\\test\\suzent';
     if (command === 'installer_manifest') return JSON.stringify({stages: [{name:'backend',title:'Synchronizing Python environment'}, {name:'shortcuts',title:'Creating launch shortcuts'}, ...(skippedStage ? [{name:skippedStage,title:skippedStage}] : [])]});
@@ -79,6 +80,12 @@ test('explicit custom path survives initialization and directory selection is ex
   assert.equal(h.element('finish-close').disabled, false);
 });
 
+test('repeated update clicks launch only one standalone updater', async () => {
+  const h = await harness({destinationKind:'update'});
+  await Promise.all([h.element('start').events.click(), h.element('start').events.click()]);
+  assert.equal(h.calls.filter(([name]) => name === 'open_existing_updater').length, 1);
+});
+
 for (const language of ['en', 'zh-CN']) {
   test(`branch channel and desktop title are consistent in ${language}`, async () => {
     const h = await harness({branch:'feature/desktop', language});
@@ -86,6 +93,24 @@ for (const language of ['en', 'zh-CN']) {
     assert.match(h.element('page-subtitle').textContent, /feature\/desktop/);
     assert.equal(vm.runInContext("translateStage('Building desktop UI from source')", h.context), language === 'en' ? 'Building desktop UI from source' : '从源码构建桌面程序');
     assert.equal(vm.runInContext("translateStage('Downloading desktop UI binary')", h.context), language === 'en' ? 'Downloading desktop UI binary' : '下载桌面程序');
+  });
+}
+
+for (const destinationKind of ['update', 'repair', 'development', 'occupied', 'invalid']) {
+  test(`existing destination ${destinationKind} never enters first installation`, async () => {
+    const h = await harness({destinationKind});
+    await h.element('start').events.click();
+    assert.ok(!h.calls.some(([name]) => name === 'run_installer_stage'));
+    if (['update', 'repair'].includes(destinationKind)) {
+      assert.equal(h.calls.find(([name]) => name === 'open_existing_updater')[1].dir, 'D:\\workspace\\suzent');
+    } else {
+      assert.ok(!h.calls.some(([name]) => name === 'open_existing_updater'));
+    }
+    if (destinationKind === 'development') {
+      assert.equal(h.element('start').textContent, 'Copy update steps');
+      assert.match(h.calls.find(([name]) => name === 'clipboard')[1], /merge --ff-only/);
+    }
+    if (['occupied', 'invalid'].includes(destinationKind)) assert.equal(h.element('start').disabled, true);
   });
 }
 
