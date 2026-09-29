@@ -3,6 +3,7 @@ from starlette.routing import Route
 from starlette.testclient import TestClient
 
 from suzent import server
+from suzent.version import get_backend_source_root
 
 
 class _FakeUvicornServer:
@@ -33,6 +34,7 @@ def test_health_identifies_suzent_backend(monkeypatch) -> None:
     assert response.json()["status"] == "ok"
     assert response.json()["run_mode"] == "service"
     assert isinstance(response.json()["pid"], int)
+    assert response.json()["source_root"] == str(get_backend_source_root())
 
 
 def test_readiness_changes_after_background_startup() -> None:

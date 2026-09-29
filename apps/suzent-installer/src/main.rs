@@ -11,9 +11,11 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use tauri::Emitter;
+use tauri::Manager;
+use tauri_plugin_dialog::DialogExt;
 
 const PROTOCOL_VERSION: u16 = 1;
 const TARGET_PYTHON_VERSION: &str = "3.12";
@@ -105,12 +107,132 @@ struct InstallerContext {
     repair: bool,
     dir: String,
     target: String,
+    branch: Option<String>,
+    native_titlebar: bool,
+}
+
+#[derive(Serialize)]
+struct DestinationInfo {
+    kind: &'static str,
+    branch: Option<String>,
+}
+
+fn inspect_destination_path(root: &Path) -> DestinationInfo {
+    let info = |kind, branch| DestinationInfo { kind, branch };
+    if !root.is_absolute() {
+        return info("invalid", None);
+    }
+    if !root.exists() {
+        return info("new", None);
+    }
+    if !root.is_dir() {
+        return info("invalid", None);
+    }
+    if root.join(".git").exists()
+        && (!root.join("pyproject.toml").is_file() || !root.join("src/suzent").is_dir())
+    {
+        return info("occupied", None);
+    }
+    if !root.join(".git").exists() {
+        return info(
+            if is_empty_dir(root) {
+                "new"
+            } else {
+                "occupied"
+            },
+            None,
+        );
+    }
+    let git = |args: &[&str]| {
+        let mut command = Command::new("git");
+        command.args(args).current_dir(root);
+        hide_command_window(&mut command);
+        command
+            .output()
+            .ok()
+            .filter(|output| output.status.success())
+            .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
+    };
+    let branch = git(&["branch", "--show-current"]).filter(|value| !value.is_empty());
+    let channel = fs::read_to_string(root.join(".suzent/update-channel")).unwrap_or_default();
+    if branch.is_some() || channel.trim() == "dev" {
+        return info("development", branch);
+    }
+    if git(&["rev-parse", "HEAD"]).is_none() {
+        return info("invalid", None);
+    }
+    if !root.join(".suzent-bootstrap-complete").is_file() && channel.trim() != "stable" {
+        return info("development", branch);
+    }
+    let kind = if !root.join(".suzent-bootstrap-complete").is_file()
+        || root.join(".suzent/update-transaction.json").exists()
+        || !workspace_python(root).is_file()
+    {
+        "repair"
+    } else {
+        "update"
+    };
+    info(kind, None)
+}
+
+#[tauri::command]
+async fn inspect_destination(dir: String) -> Result<DestinationInfo, String> {
+    tauri::async_runtime::spawn_blocking(move || inspect_destination_path(Path::new(&dir)))
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn open_existing_updater(dir: String) -> Result<(), String> {
+    let root = PathBuf::from(dir);
+    let destination = inspect_destination_path(&root);
+    let mode = match destination.kind {
+        "update" => "--update",
+        "repair" => "--repair",
+        _ => return Err("This directory is not a managed release installation. Review its development update instructions instead.".into()),
+    };
+    let mut command = Command::new(env::current_exe().map_err(|error| error.to_string())?);
+    command.args([mode, "--dir"]).arg(&root).current_dir(&root);
+    hide_command_window(&mut command);
+    command.spawn().map_err(|error| error.to_string())?;
+    Ok(())
 }
 
 struct UpdateRuntime {
     args: Vec<String>,
     repair: bool,
     running: AtomicBool,
+    result: Mutex<Option<UpdateResult>>,
+}
+
+#[derive(Clone, Serialize)]
+struct UpdateResult {
+    code: i32,
+    error: Option<String>,
+}
+
+#[tauri::command]
+fn updater_result(runtime: tauri::State<'_, Arc<UpdateRuntime>>) -> Option<UpdateResult> {
+    runtime.result.lock().ok()?.clone()
+}
+
+#[tauri::command]
+async fn save_diagnostics(app: tauri::AppHandle, content: String) -> Result<bool, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let Some(file) = app
+            .dialog()
+            .file()
+            .set_file_name("suzent-diagnostics.txt")
+            .blocking_save_file()
+        else {
+            return Ok(false);
+        };
+        let path = file.into_path().map_err(|error| error.to_string())?;
+        fs::write(path, content).map_err(|error| error.to_string())?;
+        Ok(true)
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 fn main() {
@@ -137,7 +259,7 @@ fn main() {
     }
 
     if has_flag(&args, "--manifest") {
-        print_json(&manifest());
+        print_json(&manifest(&config));
         return;
     }
 
@@ -153,7 +275,7 @@ fn main() {
         exit_with_prompt(0, config.non_interactive);
     }
 
-    for stage in stages() {
+    for stage in stages(&config) {
         let result = run_stage(&config, stage);
         if config.json {
             print_json(&result);
@@ -167,6 +289,10 @@ fn main() {
         eprintln!("Failed to write bootstrap marker: {error}");
         exit_with_prompt(1, config.non_interactive);
     }
+    if let Err(error) = write_install_dir_marker(&config.dir) {
+        eprintln!("Failed to save install directory: {error}");
+        exit_with_prompt(1, config.non_interactive);
+    }
 
     print_completion(&config);
     exit_with_prompt(0, config.non_interactive);
@@ -174,7 +300,8 @@ fn main() {
 
 #[tauri::command]
 fn installer_manifest() -> Result<String, String> {
-    serde_json::to_string(&manifest()).map_err(|error| error.to_string())
+    let config = InstallConfig::from_env_and_args(&env::args().skip(1).collect::<Vec<_>>());
+    serde_json::to_string(&manifest(&config)).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -193,8 +320,14 @@ async fn run_installer_stage(request: StageRequest) -> Result<String, String> {
             "--dir".to_string(),
             request.dir,
         ];
-        let config = InstallConfig::from_env_and_args(&args);
-        let Some(stage) = stages()
+        let mut config = InstallConfig::from_env_and_args(&env::args().skip(1).collect::<Vec<_>>());
+        config.dir = PathBuf::from(flag_value(&args, "--dir").expect("stage directory"));
+        config.json = true;
+        config.non_interactive = true;
+        if config.dir.join(".git").exists() && matches!(request.stage.as_str(), "git" | "repository") {
+            return Err("An existing checkout must use update/repair, not first-time installation. No branch was changed.".into());
+        }
+        let Some(stage) = stages(&config)
             .into_iter()
             .find(|stage| stage.name == request.stage)
         else {
@@ -219,6 +352,7 @@ async fn run_installer_stage(request: StageRequest) -> Result<String, String> {
 fn installer_context() -> InstallerContext {
     let args: Vec<String> = env::args().skip(1).collect();
     let repair = has_flag(&args, "--repair");
+    let config = InstallConfig::from_env_and_args(&args);
     InstallerContext {
         mode: if has_flag(&args, "--update") || repair {
             "update"
@@ -226,12 +360,13 @@ fn installer_context() -> InstallerContext {
             "install"
         },
         repair,
-        dir: flag_value(&args, "--dir")
-            .map(PathBuf::from)
-            .unwrap_or_else(default_install_dir)
+        dir: InstallConfig::from_env_and_args(&args)
+            .dir
             .display()
             .to_string(),
         target: flag_value(&args, "--target").unwrap_or_default(),
+        branch: config.branch_explicit.then_some(config.branch),
+        native_titlebar: cfg!(target_os = "macos"),
     }
 }
 
@@ -246,8 +381,68 @@ fn updater_status() -> Option<String> {
 fn retry_update(
     app_handle: tauri::AppHandle,
     runtime: tauri::State<'_, Arc<UpdateRuntime>>,
+    repair: Option<bool>,
 ) -> Result<(), String> {
-    start_update_worker(app_handle, runtime.inner().clone())
+    start_update_worker(
+        app_handle,
+        runtime.inner().clone(),
+        repair.unwrap_or(runtime.repair),
+        None,
+    )
+}
+
+#[tauri::command]
+async fn confirm_git_recovery(
+    app_handle: tauri::AppHandle,
+    runtime: tauri::State<'_, Arc<UpdateRuntime>>,
+    chinese: bool,
+) -> Result<bool, String> {
+    let runtime = runtime.inner().clone();
+    let error = runtime
+        .result
+        .lock()
+        .map_err(|error| error.to_string())?
+        .as_ref()
+        .and_then(|result| result.error.clone())
+        .filter(|error| error.starts_with("CONFIRM_GIT_RECOVERY:"))
+        .ok_or("No Git recovery confirmation is pending")?;
+    let status: serde_json::Value =
+        serde_json::from_str(&updater_status().ok_or("Missing update status")?)
+            .map_err(|error| error.to_string())?;
+    let target = status["target_version"]
+        .as_str()
+        .filter(|tag| is_release_tag(tag))
+        .ok_or("Missing recovery target")?
+        .to_string();
+    if !error.contains(&format!("\nTarget: {target}\n")) {
+        return Err(
+            "Update target changed; retry to review the new target before confirming".into(),
+        );
+    }
+    let error = error
+        .trim_start_matches("CONFIRM_GIT_RECOVERY: ")
+        .to_string();
+    let dialog_app = app_handle.clone();
+    let dialog_parent = app_handle
+        .get_webview_window("main")
+        .ok_or("Missing updater window")?;
+    let accepted = tauri::async_runtime::spawn_blocking(move || {
+        dialog_app.dialog().message(format!("{}\n\n{error}", if chinese {
+            "将停止此安装的程序，校验备份本地文件、Git index 和操作状态，再清理冲突并更新到下面的目标版本。本地修改不会自动合回；忽略文件和数据库不会被清理。失败可能需要手动恢复冲突现场。备份失败不会清理源码。"
+        } else {
+            "Stop this installation, verify backups of local files, Git index and operation state, then clear conflicts and update to the target below. Local changes are not reapplied. Ignored files and databases are not cleaned. Failure may require manual recovery of the conflict state. A failed backup never permits source cleanup."
+        }))
+        .parent(&dialog_parent)
+        .title(if chinese { "确认备份并继续更新" } else { "Confirm backup and update" })
+        .buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancelCustom(
+            if chinese { "备份并继续更新" } else { "Back up and update" }.into(),
+            if chinese { "取消" } else { "Cancel" }.into(),
+        )).blocking_show()
+    }).await.map_err(|error| error.to_string())?;
+    if accepted {
+        start_update_worker(app_handle, runtime, false, Some(target))?;
+    }
+    Ok(accepted)
 }
 
 #[tauri::command]
@@ -266,7 +461,13 @@ fn launch_installed_app(dir: String) -> Result<(), String> {
 }
 
 fn installer_context_config() -> tauri::Context<tauri::Wry> {
-    tauri::generate_context!()
+    let mut context = tauri::generate_context!();
+    if cfg!(target_os = "macos") {
+        for window in &mut context.config_mut().app.windows {
+            window.decorations = true;
+        }
+    }
+    context
 }
 
 fn run_tauri_app() {
@@ -280,6 +481,9 @@ fn run_tauri_app() {
             run_installer_stage,
             launch_installed_app,
             updater_status,
+            save_diagnostics,
+            inspect_destination,
+            open_existing_updater,
         ])
         .run(installer_context_config())
         .expect("error while running Suzent installer");
@@ -290,6 +494,7 @@ fn run_update_tauri(args: Vec<String>, repair: bool) {
         args,
         repair,
         running: AtomicBool::new(false),
+        result: Mutex::new(None),
     });
     let setup_runtime = runtime.clone();
     tauri::Builder::default()
@@ -300,10 +505,25 @@ fn run_update_tauri(args: Vec<String>, repair: bool) {
             installer_context,
             updater_status,
             retry_update,
+            confirm_git_recovery,
+            updater_result,
+            launch_installed_app,
+            save_diagnostics,
         ])
         .setup(move |app| {
-            start_update_worker(app.handle().clone(), setup_runtime.clone())?;
+            start_update_worker(app.handle().clone(), setup_runtime.clone(), repair, None)?;
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window
+                    .state::<Arc<UpdateRuntime>>()
+                    .running
+                    .load(Ordering::SeqCst)
+                {
+                    api.prevent_close();
+                }
+            }
         })
         .run(installer_context_config())
         .expect("error while running Suzent updater");
@@ -312,14 +532,32 @@ fn run_update_tauri(args: Vec<String>, repair: bool) {
 fn start_update_worker(
     app_handle: tauri::AppHandle,
     runtime: Arc<UpdateRuntime>,
+    repair: bool,
+    recovery_target: Option<String>,
 ) -> Result<(), String> {
     if runtime.running.swap(true, Ordering::SeqCst) {
         return Err("An update is already running".to_string());
     }
+    *runtime.result.lock().map_err(|error| error.to_string())? = None;
     std::thread::spawn(move || {
-        let code = updater::run(&runtime.args, runtime.repair);
+        let mut args = runtime.args.clone();
+        if let Some(target) = recovery_target {
+            // Prepend the confirmed target so a later --target cannot change it.
+            args.splice(
+                0..0,
+                ["--target".into(), target, "--backup-conflicts".into()],
+            );
+        }
+        let error = updater::run_inner(&args, repair).err();
+        let result = UpdateResult {
+            code: if error.is_some() { 1 } else { 0 },
+            error,
+        };
+        if let Ok(mut stored) = runtime.result.lock() {
+            *stored = Some(result.clone());
+        }
         runtime.running.store(false, Ordering::SeqCst);
-        let _ = app_handle.emit("updater-finished", code);
+        let _ = app_handle.emit("updater-finished", result);
     });
     Ok(())
 }
@@ -396,7 +634,7 @@ impl InstallConfig {
     }
 }
 
-fn stages() -> Vec<InstallStage> {
+fn stages(config: &InstallConfig) -> Vec<InstallStage> {
     vec![
         InstallStage {
             name: "git",
@@ -442,7 +680,11 @@ fn stages() -> Vec<InstallStage> {
         },
         InstallStage {
             name: "ui",
-            title: "Downloading desktop UI binary",
+            title: if config.branch_explicit {
+                "Building desktop UI from source"
+            } else {
+                "Downloading desktop UI binary"
+            },
             category: "install",
             needs_user_input: false,
             worker: stage_ui,
@@ -478,10 +720,10 @@ fn stages() -> Vec<InstallStage> {
     ]
 }
 
-fn manifest() -> ManifestPayload {
+fn manifest(config: &InstallConfig) -> ManifestPayload {
     ManifestPayload {
         protocol_version: PROTOCOL_VERSION,
-        stages: stages()
+        stages: stages(config)
             .into_iter()
             .map(|stage| ManifestStage {
                 name: stage.name,
@@ -494,7 +736,10 @@ fn manifest() -> ManifestPayload {
 }
 
 fn run_stage_command(config: &InstallConfig, stage_name: &str) {
-    let Some(stage) = stages().into_iter().find(|stage| stage.name == stage_name) else {
+    let Some(stage) = stages(config)
+        .into_iter()
+        .find(|stage| stage.name == stage_name)
+    else {
         print_json(&StageResult {
             stage: stage_name.to_string(),
             ok: false,
@@ -521,7 +766,13 @@ fn run_stage(config: &InstallConfig, stage: InstallStage) -> StageResult {
 
     let started = Instant::now();
     clear_stage_logs();
-    let outcome = (stage.worker)(config);
+    let outcome = if (stage.name == "git" && inspect_destination_path(&config.dir).kind != "new")
+        || (stage.name == "repository" && config.dir.join(".git").exists())
+    {
+        StageOutcome::fail("Existing or unrecognized directories cannot use first-time installation. Use the existing installation's update/repair flow, or review development update instructions. No branch was changed.")
+    } else {
+        (stage.worker)(config)
+    };
 
     StageResult {
         stage: stage.name.to_string(),
@@ -858,8 +1109,11 @@ fn stage_dependencies(config: &InstallConfig) -> StageOutcome {
 }
 
 fn stage_ui(config: &InstallConfig) -> StageOutcome {
-    let asset = ui_asset_name();
     let release_tag = read_install_release_tag(config);
+    if release_tag.is_none() {
+        return stage_source_ui(config);
+    }
+    let asset = ui_asset_name();
     let release_base_url = if let Some(tag) = &release_tag {
         if config.release_base_url_override {
             config.release_base_url.clone()
@@ -913,6 +1167,69 @@ fn stage_ui(config: &InstallConfig) -> StageOutcome {
     let ui_version = release_tag.as_deref().unwrap_or("latest");
     let _ = fs::write(bin_dir.join("version.txt"), ui_version);
     print_human(format!("[OK] UI binary ready at {}", dest.display()));
+    StageOutcome::ok()
+}
+
+fn stage_source_ui(config: &InstallConfig) -> StageOutcome {
+    if find_executable("cargo").is_none() || find_executable("node").is_none() {
+        return StageOutcome::fail(
+            "Branch installations require Node.js, npm, Rust and the platform build tools. Install them and retry; a release desktop cannot be paired with development source.",
+        );
+    }
+    build_source_ui(config, run_command)
+}
+
+fn build_source_ui(
+    config: &InstallConfig,
+    mut run: impl FnMut(&mut Command) -> bool,
+) -> StageOutcome {
+    for (directory, args) in [
+        ("frontend", vec!["ci"]),
+        ("src-tauri", vec!["ci"]),
+        ("src-tauri", vec!["run", "build:dist", "--", "--no-bundle"]),
+    ] {
+        let mut command = if cfg!(windows) {
+            let mut command = Command::new("cmd");
+            command.args(["/d", "/c", "npm"]);
+            command
+        } else {
+            Command::new("npm")
+        };
+        command.args(args).current_dir(config.dir.join(directory));
+        // A global Cargo target override must not redirect the artifact we install.
+        command.env("CARGO_TARGET_DIR", config.dir.join("src-tauri/target"));
+        configure_mirror_env(&mut command, config);
+        if !run(&mut command) {
+            return StageOutcome::fail("Failed to build the desktop from this checkout. Check Node.js/Rust build dependencies and retry; no release desktop was downloaded.");
+        }
+    }
+    let binary = config
+        .dir
+        .join("src-tauri/target/release")
+        .join(if cfg!(windows) {
+            "suzent.exe"
+        } else {
+            "suzent"
+        });
+    let bin = config.dir.join("bin");
+    let destination = bin.join(ui_binary_name());
+    let staged = destination.with_extension("source.tmp");
+    if let Err(error) = fs::create_dir_all(&bin)
+        .and_then(|()| fs::copy(&binary, &staged).map(|_| ()))
+        .and_then(|()| fs::rename(&staged, &destination))
+    {
+        let _ = fs::remove_file(&staged);
+        return StageOutcome::fail(format!(
+            "Failed to install the source-built desktop: {error}"
+        ));
+    }
+    if let Err(error) = fs::remove_file(bin.join("version.txt")) {
+        if error.kind() != io::ErrorKind::NotFound {
+            return StageOutcome::fail(format!(
+                "Failed to clear stale release desktop metadata: {error}"
+            ));
+        }
+    }
     StageOutcome::ok()
 }
 
@@ -1050,6 +1367,9 @@ fn stage_shim(config: &InstallConfig) -> StageOutcome {
         if let Err(error) = write_bootstrap_marker(config) {
             return StageOutcome::fail(format!("Failed to write bootstrap marker: {error}"));
         }
+        if let Err(error) = write_install_dir_marker(&config.dir) {
+            return StageOutcome::fail(format!("Failed to save install directory: {error}"));
+        }
         return StageOutcome::skipped("CLI shim writing is currently Windows-only.");
     }
 
@@ -1070,6 +1390,9 @@ fn stage_shim(config: &InstallConfig) -> StageOutcome {
 
     if let Err(error) = write_bootstrap_marker(config) {
         return StageOutcome::fail(format!("Failed to write bootstrap marker: {error}"));
+    }
+    if let Err(error) = write_install_dir_marker(&config.dir) {
+        return StageOutcome::fail(format!("Failed to save install directory: {error}"));
     }
 
     print_human(format!("[OK] CLI shim written to {}", shim.display()));
@@ -1193,17 +1516,44 @@ fn write_banner(config: &InstallConfig) {
     println!();
 }
 
+fn existing_destination_preview(destination: &DestinationInfo) -> Option<&'static str> {
+    match destination.kind {
+        "new" => None,
+        "development" => Some("Existing development workspace. No first-install stages will run.\nUse the manual update instructions in the installer, or run suzent update from this workspace after reviewing local changes."),
+        "update" => Some("Existing release installation. Open the installer and choose Update this installation to use the standalone updater."),
+        "repair" => Some("Existing installation needs repair. Open the installer and choose Repair this installation to use the standalone updater."),
+        _ => Some("Destination is invalid or occupied. First installation is blocked; choose an empty directory or a valid Suzent installation."),
+    }
+}
+
 fn print_preview(config: &InstallConfig) {
     println!("Preview mode: no changes will be made.");
     println!();
-    for (idx, stage) in stages().into_iter().enumerate() {
-        println!("Step {}/{}: {}", idx + 1, stages().len(), stage.title);
+    let destination = inspect_destination_path(&config.dir);
+    if let Some(message) = existing_destination_preview(&destination) {
+        println!("Target: {}", config.dir.display());
+        println!("{message}");
+        if let Some(branch) = destination.branch {
+            println!("Current branch: {branch}");
+        }
+        return;
+    }
+    let plan = stages(config);
+    let count = plan.len();
+    for (idx, stage) in plan.into_iter().enumerate() {
+        println!("Step {}/{}: {}", idx + 1, count, stage.title);
         match stage.name {
             "repository" => {
                 println!("  Clone or update {}", config.repo_url);
                 println!("  Target: {}", config.dir.display());
             }
             "dependencies" => println!("  uv sync --frozen --extra social"),
+            "ui" if config.branch_explicit => {
+                println!("  Branch: {}", config.branch);
+                println!("  npm ci (frontend and src-tauri)");
+                println!("  npm run build:dist -- --no-bundle (src-tauri)");
+                println!("  Requires Node.js/npm, Rust and platform build tools; no release UI download.");
+            }
             "ui" => println!("  {}", ui_asset_name()),
             "playwright" => {
                 if config.skip_playwright {
@@ -1349,12 +1699,35 @@ fn playwright_executable(workspace: &Path) -> Option<PathBuf> {
 }
 
 fn default_install_dir() -> PathBuf {
-    dirs_home().join("suzent")
+    saved_install_dir(&install_dir_marker_path()).unwrap_or_else(|| dirs_home().join("suzent"))
+}
+
+fn install_dir_marker_path() -> PathBuf {
+    env::var("SUZENT_DATA_DIR")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| dirs_home().join(".suzent"))
+        .join("install-dir.txt")
+}
+
+fn saved_install_dir(marker: &Path) -> Option<PathBuf> {
+    let path = PathBuf::from(fs::read_to_string(marker).ok()?.trim());
+    // A missing drive or broken environment needs repair, not a second install.
+    path.is_absolute().then_some(path)
+}
+
+fn write_install_dir_marker(dir: &Path) -> io::Result<()> {
+    let marker = install_dir_marker_path();
+    fs::create_dir_all(marker.parent().expect("install marker parent"))?;
+    fs::write(marker, fs::canonicalize(dir)?.display().to_string())
 }
 
 fn dirs_home() -> PathBuf {
-    env::var("HOME")
-        .or_else(|_| env::var("USERPROFILE"))
+    let primary = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
+    let secondary = if cfg!(windows) { "HOME" } else { "USERPROFILE" };
+    env::var(primary)
+        .or_else(|_| env::var(secondary))
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from("."))
 }
@@ -1496,7 +1869,176 @@ fn exit_with_prompt(code: i32, non_interactive: bool) -> ! {
 
 #[cfg(test)]
 mod tests {
-    use super::is_release_tag;
+    use super::{is_release_tag, saved_install_dir, workspace_python};
+    use std::fs;
+
+    #[test]
+    fn preview_only_lists_first_install_stages_for_new_destinations() {
+        for (kind, expected) in [
+            ("development", "Existing development workspace"),
+            ("update", "Update this installation"),
+            ("repair", "Repair this installation"),
+            ("occupied", "First installation is blocked"),
+            ("invalid", "First installation is blocked"),
+        ] {
+            let destination = super::DestinationInfo { kind, branch: None };
+            assert!(super::existing_destination_preview(&destination)
+                .unwrap()
+                .contains(expected));
+        }
+        assert!(
+            super::existing_destination_preview(&super::DestinationInfo {
+                kind: "new",
+                branch: None,
+            })
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn destination_detection_distinguishes_new_development_and_release_repair() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        assert_eq!(super::inspect_destination_path(root).kind, "new");
+        fs::write(root.join("unrelated.txt"), "keep").unwrap();
+        assert_eq!(super::inspect_destination_path(root).kind, "occupied");
+        let git = |args: &[&str]| {
+            let mut command = std::process::Command::new("git");
+            command
+                .args([
+                    "-c",
+                    "user.name=Installer Test",
+                    "-c",
+                    "user.email=installer@example.invalid",
+                ])
+                .args(args)
+                .current_dir(root);
+            super::hide_command_window(&mut command);
+            assert!(command.output().unwrap().status.success());
+        };
+        git(&["init", "-b", "development"]);
+        fs::write(root.join("pyproject.toml"), "[project]\nname = 'suzent'\n").unwrap();
+        fs::create_dir_all(root.join("src/suzent")).unwrap();
+        git(&["add", "pyproject.toml"]);
+        git(&["commit", "-m", "initial"]);
+        let development = super::inspect_destination_path(root);
+        assert_eq!(development.kind, "development");
+        assert_eq!(development.branch.as_deref(), Some("development"));
+        fs::write(root.join(".suzent-bootstrap-complete"), "ready").unwrap();
+        assert_eq!(super::inspect_destination_path(root).kind, "development");
+        git(&["checkout", "--detach"]);
+        assert_eq!(super::inspect_destination_path(root).kind, "repair");
+        fs::create_dir_all(root.join(".suzent")).unwrap();
+        fs::write(root.join(".suzent/update-channel"), "stable").unwrap();
+        fs::remove_file(root.join(".suzent-bootstrap-complete")).unwrap();
+        assert_eq!(super::inspect_destination_path(root).kind, "repair");
+        let python = super::workspace_python(root);
+        fs::create_dir_all(python.parent().unwrap()).unwrap();
+        fs::write(python, "").unwrap();
+        assert_eq!(super::inspect_destination_path(root).kind, "repair");
+        fs::write(root.join(".suzent-bootstrap-complete"), "ready").unwrap();
+        assert_eq!(super::inspect_destination_path(root).kind, "update");
+        fs::create_dir_all(root.join(".suzent")).unwrap();
+        fs::write(root.join(".suzent/update-transaction.json"), "{}").unwrap();
+        assert_eq!(super::inspect_destination_path(root).kind, "repair");
+        let config =
+            super::InstallConfig::from_env_and_args(&["--dir".into(), root.display().to_string()]);
+        let stage = super::stages(&config)
+            .into_iter()
+            .find(|stage| stage.name == "repository")
+            .unwrap();
+        assert!(!super::run_stage(&config, stage).ok);
+        assert_eq!(
+            fs::read_to_string(root.join("unrelated.txt")).unwrap(),
+            "keep"
+        );
+    }
+
+    #[test]
+    fn desktop_stage_copy_matches_install_mode_in_manifest_and_execution() {
+        let mut config = super::InstallConfig::from_env_and_args(&[]);
+        for (development, expected) in [
+            (false, "Downloading desktop UI binary"),
+            (true, "Building desktop UI from source"),
+        ] {
+            config.branch_explicit = development;
+            let stage = super::stages(&config)
+                .into_iter()
+                .find(|stage| stage.name == "ui")
+                .unwrap();
+            let manifest = super::manifest(&config);
+            let published = manifest
+                .stages
+                .iter()
+                .find(|stage| stage.name == "ui")
+                .unwrap();
+            assert_eq!(stage.title, expected);
+            assert_eq!(published.title, expected);
+        }
+    }
+
+    #[test]
+    fn branch_desktop_is_built_from_selected_checkout() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        let config = super::InstallConfig::from_env_and_args(&[
+            "--dir".into(),
+            root.display().to_string(),
+            "--branch".into(),
+            "feature".into(),
+        ]);
+        let artifact = root
+            .join("src-tauri/target/release")
+            .join(if cfg!(windows) {
+                "suzent.exe"
+            } else {
+                "suzent"
+            });
+        fs::create_dir_all(artifact.parent().unwrap()).unwrap();
+        fs::write(&artifact, b"branch desktop").unwrap();
+        let installed = root.join("bin").join(super::ui_binary_name());
+        fs::create_dir_all(installed.parent().unwrap()).unwrap();
+        fs::write(&installed, b"old desktop").unwrap();
+        let mut calls = Vec::new();
+        let result = super::build_source_ui(&config, |command| {
+            calls.push((
+                command.get_current_dir().unwrap().to_path_buf(),
+                command
+                    .get_args()
+                    .map(|arg| arg.to_string_lossy().to_string())
+                    .collect::<Vec<_>>(),
+            ));
+            true
+        });
+        assert!(result.ok);
+        assert_eq!(calls.len(), 3);
+        assert_eq!(calls[0].0, root.join("frontend"));
+        assert_eq!(calls[2].0, root.join("src-tauri"));
+        assert!(calls[2].1.ends_with(&[
+            "run".into(),
+            "build:dist".into(),
+            "--".into(),
+            "--no-bundle".into()
+        ]));
+        assert_eq!(
+            fs::read(root.join("bin").join(super::ui_binary_name())).unwrap(),
+            b"branch desktop"
+        );
+    }
+
+    #[test]
+    fn failed_source_build_never_replaces_installed_desktop() {
+        let temp = tempfile::tempdir().unwrap();
+        let config = super::InstallConfig::from_env_and_args(&[
+            "--dir".into(),
+            temp.path().display().to_string(),
+        ]);
+        let binary = temp.path().join("bin").join(super::ui_binary_name());
+        fs::create_dir_all(binary.parent().unwrap()).unwrap();
+        fs::write(&binary, b"old").unwrap();
+        assert!(!super::build_source_ui(&config, |_| false).ok);
+        assert_eq!(fs::read(binary).unwrap(), b"old");
+    }
 
     #[test]
     fn validates_stable_release_tags() {
@@ -1504,5 +2046,34 @@ mod tests {
         assert!(!is_release_tag("0.7.3"));
         assert!(!is_release_tag("v0.7"));
         assert!(!is_release_tag("v0.7.3-rc1"));
+    }
+
+    #[test]
+    fn preserves_custom_install_record_when_repair_is_needed() {
+        let temp = tempfile::tempdir().unwrap();
+        let workspace = temp.path().join("custom install");
+        fs::create_dir_all(workspace_python(&workspace).parent().unwrap()).unwrap();
+        fs::write(
+            workspace.join("pyproject.toml"),
+            "[project]\nname='suzent'\n",
+        )
+        .unwrap();
+        fs::write(workspace.join(".suzent-bootstrap-complete"), "ready").unwrap();
+        fs::write(workspace_python(&workspace), "").unwrap();
+        let marker = temp.path().join("install-dir.txt");
+        fs::write(&marker, workspace.display().to_string()).unwrap();
+        assert_eq!(saved_install_dir(&marker), Some(workspace.clone()));
+
+        fs::remove_file(workspace.join(".suzent-bootstrap-complete")).unwrap();
+        assert_eq!(saved_install_dir(&marker), Some(workspace.clone()));
+        fs::remove_file(workspace_python(&workspace)).unwrap();
+        assert_eq!(saved_install_dir(&marker), Some(workspace));
+        let offline = temp.path().join("offline drive");
+        fs::write(&marker, offline.display().to_string()).unwrap();
+        assert_eq!(saved_install_dir(&marker), Some(offline));
+        for invalid in ["", "relative/install"] {
+            fs::write(&marker, invalid).unwrap();
+            assert_eq!(saved_install_dir(&marker), None);
+        }
     }
 }

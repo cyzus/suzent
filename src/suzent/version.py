@@ -47,6 +47,16 @@ def _get_source_version(start: Path | None = None) -> str | None:
     return None
 
 
+def get_backend_source_root(start: Path | None = None) -> Path | None:
+    """Return the source checkout that provides the running backend."""
+
+    source_file = (start or Path(__file__)).resolve()
+    for parent in source_file.parents:
+        if read_project_version(parent / "pyproject.toml"):
+            return parent
+    return None
+
+
 def get_backend_version() -> str:
     """Return the running backend package version."""
 

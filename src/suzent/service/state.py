@@ -14,6 +14,7 @@ import psutil
 
 from suzent.config import DEFAULT_PORT, RUNTIME_DIR
 from suzent.service.models import ServiceProcessState
+from suzent.version import get_backend_source_root
 
 SERVICE_STATE_PATH = RUNTIME_DIR / "service.json"
 SERVICE_LOCK_PATH = RUNTIME_DIR / "service.lock"
@@ -42,6 +43,7 @@ def read_process_state() -> ServiceProcessState | None:
             started_at=str(raw["started_at"]),
             port=int(raw["port"]),
             version=str(raw["version"]),
+            source_root=raw.get("source_root"),
         )
         process = psutil.Process(state.pid)
         if abs(process.create_time() - state.process_created_at) > 1.0:
@@ -105,6 +107,7 @@ class ServiceInstanceLock:
                 started_at=datetime.now(timezone.utc).isoformat(),
                 port=self.port,
                 version=get_backend_version(),
+                source_root=str(root) if (root := get_backend_source_root()) else None,
             )
             try:
                 os.write(fd, self.instance_id.encode("ascii"))

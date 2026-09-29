@@ -17,6 +17,7 @@ class ServiceProcessState:
     started_at: str
     port: int
     version: str
+    source_root: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

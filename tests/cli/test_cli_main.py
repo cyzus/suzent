@@ -187,7 +187,7 @@ def test_start_dev_keeps_capability_writes_local(monkeypatch, tmp_path):
     assert backend_env["SUZENT_DEV_MODE"] == "1"
 
 
-def test_start_dev_restarts_existing_backend(monkeypatch, tmp_path):
+def test_start_dev_refuses_existing_backend_without_stopping_it(monkeypatch, tmp_path):
     app = typer.Typer()
     cli_main.register_commands(app)
     killed_pids = []
@@ -220,10 +220,10 @@ def test_start_dev_restarts_existing_backend(monkeypatch, tmp_path):
 
     result = runner.invoke(app, ["start", "--dev"])
 
-    assert result.exit_code == 0
-    assert killed_pids == [4321]
-    assert popen_calls[0][:3] == [cli_main.sys.executable, "-m", "suzent.server"]
-    assert "--debug" in popen_calls[0]
+    assert result.exit_code == 1
+    assert killed_pids == []
+    assert popen_calls == []
+    assert "no process was stopped" in result.stdout
 
 
 class _NullLog:
@@ -442,9 +442,10 @@ def test_stop_reports_when_no_server_is_running(monkeypatch):
     assert "No Suzent server running" in result.output
 
 
-def test_get_ui_binary_prefers_managed_release_over_newer_local_build(
-    monkeypatch, tmp_path
-):
+@pytest.mark.parametrize("development", [False, True])
+def test_get_ui_binary_selects_build_for_workspace(monkeypatch, tmp_path, development):
+    if not development:
+        (tmp_path / ".suzent-bootstrap-complete").touch()
     monkeypatch.setattr(cli_main, "IS_WINDOWS", True)
     managed = tmp_path / "bin" / "suzent-ui.exe"
     local_build = tmp_path / "src-tauri" / "target" / "release" / "suzent.exe"
@@ -455,7 +456,9 @@ def test_get_ui_binary_prefers_managed_release_over_newer_local_build(
     local_build.write_bytes(b"local")
     local_build.touch()
 
-    assert cli_main._get_ui_binary(tmp_path) == managed
+    assert cli_main._get_ui_binary(tmp_path) == (
+        local_build if development else managed
+    )
 
 
 @pytest.mark.parametrize(
@@ -488,6 +491,34 @@ def test_release_ui_receives_workspace_directory(
     assert launched["env"]["SUZENT_DIR"] == str(tmp_path)
     if expected_port is not None:
         assert launched["env"]["SUZENT_PORT"] == expected_port
+
+
+@pytest.mark.parametrize("has_binary", [False, True])
+def test_plain_start_never_enters_dev_mode(monkeypatch, tmp_path, has_binary):
+    app = typer.Typer()
+    cli_main.register_commands(app)
+    cli_main._write_update_channel(tmp_path, "dev")
+    monkeypatch.setattr(cli_main, "get_project_root", lambda: tmp_path)
+    monkeypatch.setattr(cli_main, "_notify_update_available", lambda root: None)
+    binary = tmp_path / "bin" / "suzent-ui.exe"
+    monkeypatch.setattr(
+        cli_main, "_get_ui_binary", lambda root: binary if has_binary else None
+    )
+    monkeypatch.setattr(
+        cli_main, "ensure_cargo_in_path", lambda: pytest.fail("implicit dev launch")
+    )
+    launches = []
+    monkeypatch.setattr(
+        cli_main, "_launch_detached", lambda cmd, **kwargs: launches.append(cmd)
+    )
+    monkeypatch.setattr(cli_main, "_report_detached", lambda *args, **kwargs: None)
+
+    result = runner.invoke(app, ["start"])
+
+    assert result.exit_code == (0 if has_binary else 1)
+    assert launches == ([[str(binary)]] if has_binary else [])
+    if not has_binary:
+        assert "suzent start --dev" in result.stdout
 
 
 def test_serve_uses_default_windows_process_group(monkeypatch):
@@ -667,6 +698,12 @@ def _mock_update_runtime(monkeypatch, tmp_path):
             return subprocess.CompletedProcess(command, 0, stdout="oldcommit\n")
         if command[:3] == ["git", "branch", "--show-current"]:
             return subprocess.CompletedProcess(command, 0, stdout="main\n")
+        if command[:3] == ["git", "rev-parse", "--abbrev-ref"]:
+            return subprocess.CompletedProcess(command, 0, stdout="origin/main\n")
+        if command[:3] == ["git", "rev-parse", "--git-path"]:
+            return subprocess.CompletedProcess(
+                command, 0, stdout=f".git/{command[3]}\n"
+            )
         return subprocess.CompletedProcess(command, 0, stdout="")
 
     def fake_run_command(command, **kwargs):
@@ -675,6 +712,11 @@ def _mock_update_runtime(monkeypatch, tmp_path):
     monkeypatch.setattr(cli_main, "get_project_root", lambda: tmp_path)
     monkeypatch.setattr(cli_main.subprocess, "run", fake_run)
     monkeypatch.setattr(cli_main, "run_command", fake_run_command)
+    monkeypatch.setattr(
+        cli_main,
+        "_rebuild_development_ui",
+        lambda root: commands.append((["rebuild-desktop"], root)),
+    )
     monkeypatch.setattr(cli_main, "IS_WINDOWS", False)
     return app, commands
 
@@ -743,7 +785,7 @@ def test_plain_update_uses_dev_channel_for_source_checkout(monkeypatch, tmp_path
     assert result.exit_code == 0
     assert "Source checkout detected" in result.stdout
     command_args = [command for command, _cwd in commands]
-    assert ["git", "fetch", "origin", "main"] in command_args
+    assert ["git", "fetch"] in command_args
     assert cli_main._read_update_channel(tmp_path) == "dev"
 
 
@@ -763,7 +805,7 @@ def test_interrupted_update_message_includes_target_and_phase(tmp_path):
     assert "suzent repair" in message
 
 
-def test_dev_update_uses_main_and_never_downloads_release_ui(monkeypatch, tmp_path):
+def test_dev_update_uses_upstream_and_never_downloads_release_ui(monkeypatch, tmp_path):
     app, commands = _mock_update_runtime(monkeypatch, tmp_path)
     monkeypatch.setattr(
         cli_main,
@@ -775,11 +817,12 @@ def test_dev_update_uses_main_and_never_downloads_release_ui(monkeypatch, tmp_pa
 
     assert result.exit_code == 0
     command_args = [command for command, _cwd in commands]
-    assert ["git", "fetch", "origin", "main"] in command_args
-    assert ["git", "switch", "main"] in command_args
-    assert ["git", "merge", "--ff-only", "origin/main"] in command_args
+    assert ["git", "fetch"] in command_args
+    assert not any(command[:2] == ["git", "switch"] for command in command_args)
+    assert ["git", "merge", "--ff-only", "@{upstream}"] in command_args
     npm_ci_dirs = [cwd for command, cwd in commands if command == ["npm", "ci"]]
     assert npm_ci_dirs == [tmp_path / "frontend", tmp_path / "src-tauri"]
+    assert (["rebuild-desktop"], tmp_path) in commands
     assert cli_main._read_update_channel(tmp_path) == "dev"
 
 
