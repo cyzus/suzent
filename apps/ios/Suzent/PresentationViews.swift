@@ -2,6 +2,7 @@ import SwiftUI
 import SuzentCore
 import MarkdownUI
 import SafariServices
+import ImageIO
 
 extension Color {
     static var suzentSurface: Color {
@@ -158,6 +159,39 @@ private struct CitationPreview {
     let url: URL
     let title: String
     let snippet: String
+    let favicon: String?
+}
+
+@MainActor
+private final class CitationIcons: ObservableObject {
+    @Published var images: [String: UIImage] = [:]
+    private static let cache = NSCache<NSString, UIImage>()
+    private static let session = URLSession(configuration: .ephemeral)
+
+    func load(_ urls: [String]) async {
+        for raw in Set(urls) {
+            guard !Task.isCancelled, images[raw] == nil, let url = URL(string: raw), url.scheme == "https" else { continue }
+            if let cached = Self.cache.object(forKey: raw as NSString) { images[raw] = cached; continue }
+            do {
+                let (bytes, response) = try await Self.session.bytes(for: URLRequest(url: url, timeoutInterval: 8))
+                guard (response as? HTTPURLResponse)?.statusCode == 200 else { continue }
+                var data = Data()
+                for try await byte in bytes {
+                    data.append(byte)
+                    if data.count > 262144 { break }
+                }
+                guard data.count <= 262144, let source = CGImageSourceCreateWithData(data as CFData, nil),
+                      let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                        kCGImageSourceCreateThumbnailFromImageAlways: true,
+                        kCGImageSourceThumbnailMaxPixelSize: 64
+                      ] as CFDictionary) else { continue }
+                let image = UIImage(cgImage: thumbnail)
+                Self.cache.countLimit = 128
+                Self.cache.setObject(image, forKey: raw as NSString)
+                images[raw] = image
+            } catch { continue }
+        }
+    }
 }
 
 private struct CitationBrowser: UIViewControllerRepresentable {
@@ -169,6 +203,8 @@ private struct CitationBrowser: UIViewControllerRepresentable {
 private struct CitationParagraph: UIViewRepresentable {
     let markdown: String
     let selectedURL: URL?
+    let sources: [CitationSource]
+    let icons: [String: UIImage]
     let onOpen: (URL) -> Void
     @Environment(\.colorScheme) private var colorScheme
 
@@ -201,14 +237,18 @@ private struct CitationParagraph: UIViewRepresentable {
             if let url = value as? URL, url.scheme == "suzent-citation" { links.append((range, url)) }
         }
         for (range, url) in links.reversed() {
-            let label = result.attributedSubstring(from: range).string
+            let label = String(result.attributedSubstring(from: range).string.dropFirst(3))
+            let sourceID = url.lastPathComponent.split(separator: ",").first.map(String.init)
+            let favicon = sources.first { $0.id == sourceID }?.favicon
+            let icon = favicon.flatMap { icons[$0] }
             let badgeFont = UIFont.systemFont(ofSize: font.pointSize * 0.72, weight: .medium)
             let selected = selectedURL == url
             let dark = colorScheme == .dark
             let ink: UIColor = dark && !selected ? .white : .darkGray
             let attributes: [NSAttributedString.Key: Any] = [.font: badgeFont, .foregroundColor: ink]
             let size = (label as NSString).size(withAttributes: attributes)
-            let bounds = CGRect(x: 0, y: 0, width: ceil(size.width) + 14, height: ceil(size.height) + 6)
+            let iconSize = badgeFont.pointSize
+            let bounds = CGRect(x: 0, y: 0, width: ceil(size.width) + 14 + iconSize + 4, height: ceil(size.height) + 6)
             let image = UIGraphicsImageRenderer(size: bounds.size).image { _ in
                 let path = UIBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), cornerRadius: bounds.height / 2)
                 (selected ? UIColor(red: 0.74, green: 0.84, blue: 1, alpha: 1) : UIColor(white: dark ? 0.19 : 0.96, alpha: 1)).setFill()
@@ -216,7 +256,9 @@ private struct CitationParagraph: UIViewRepresentable {
                 UIColor(white: dark ? 0.38 : 0.8, alpha: 1).setStroke()
                 path.lineWidth = 0.5
                 path.stroke()
-                (label as NSString).draw(at: CGPoint(x: 7, y: 3), withAttributes: attributes)
+                if let icon { icon.draw(in: CGRect(x: 7, y: (bounds.height - iconSize) / 2, width: iconSize, height: iconSize)) }
+                else { ("↗" as NSString).draw(at: CGPoint(x: 7, y: 3), withAttributes: attributes) }
+                (label as NSString).draw(at: CGPoint(x: 7 + iconSize + 4, y: 3), withAttributes: attributes)
             }
             let attachment = NSTextAttachment()
             attachment.image = image
@@ -249,6 +291,7 @@ struct SuzentMarkdown: View {
     var citationSources: [CitationSource] = []
     @State private var pendingLink: URL?
     @State private var browserLink: URL?
+    @StateObject private var icons = CitationIcons()
     var body: some View {
         Markdown(markdownWithCitationLinks(text, sources: citationSources, badges: true))
             .markdownTheme(suzentMarkdownTheme)
@@ -258,6 +301,7 @@ struct SuzentMarkdown: View {
                 return .handled
             })
             .textSelection(.enabled)
+            .task(id: citationSources.compactMap(\.favicon)) { await icons.load(citationSources.compactMap(\.favicon)) }
             .sheet(isPresented: Binding(
                 get: { pendingLink != nil },
                 set: { if !$0 { pendingLink = nil } }
@@ -267,8 +311,12 @@ struct SuzentMarkdown: View {
                         Text("Sources").font(.title2.bold())
                         ForEach(previewSources, id: \.url) { source in
                             VStack(alignment: .leading, spacing: 12) {
-                                Text("↗  " + (source.url.host ?? "").replacingOccurrences(of: "www.", with: ""))
-                                    .font(.caption).foregroundStyle(.secondary)
+                                HStack(spacing: 8) {
+                                    if let favicon = source.favicon, let image = icons.images[favicon] {
+                                        Image(uiImage: image).resizable().scaledToFit().frame(width: 18, height: 18).accessibilityHidden(true)
+                                    } else { Image(systemName: "globe").frame(width: 18, height: 18).accessibilityHidden(true) }
+                                    Text((source.url.host ?? "").replacingOccurrences(of: "www.", with: ""))
+                                }.font(.caption).foregroundStyle(.secondary)
                                 Text(source.title).font(.headline)
                                 if !source.snippet.isEmpty { Text(source.snippet).font(.subheadline).lineLimit(6) }
                                 Button("Read article") { browserLink = source.url }.buttonStyle(.borderedProminent).clipShape(Capsule())
@@ -295,18 +343,18 @@ struct SuzentMarkdown: View {
             return link.lastPathComponent.split(separator: ",").compactMap { id in
                 guard let source = citationSources.first(where: { $0.id == id }), let raw = source.url,
                       let url = URL(string: raw), ["http", "https"].contains(url.scheme) else { return nil }
-                return CitationPreview(url: url, title: source.title, snippet: source.snippet ?? "")
+                return CitationPreview(url: url, title: source.title, snippet: source.snippet ?? "", favicon: source.favicon)
             }
         }
         let source = citationSources.first { $0.url == link.absoluteString }
-        return [CitationPreview(url: link, title: source?.title ?? link.host ?? link.absoluteString, snippet: source?.snippet ?? "")]
+        return [CitationPreview(url: link, title: source?.title ?? link.host ?? link.absoluteString, snippet: source?.snippet ?? "", favicon: source?.favicon)]
     }
 
     private var suzentMarkdownTheme: Theme {
         Theme.gitHub
                 .paragraph { configuration in
                     if configuration.content.renderMarkdown().contains("suzent-citation://") {
-                        CitationParagraph(markdown: configuration.content.renderMarkdown(), selectedURL: pendingLink) { pendingLink = $0 }
+                        CitationParagraph(markdown: configuration.content.renderMarkdown(), selectedURL: pendingLink, sources: citationSources, icons: icons.images) { pendingLink = $0 }
                     } else { configuration.label }
                 }
                 .text {

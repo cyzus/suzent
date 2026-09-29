@@ -24,6 +24,7 @@ private val citationPatterns = listOf(
 
 fun markdownWithCitationLinks(text: String, sources: List<CitationSource>, badges: Boolean = false): String {
     val byId = sources.associateBy { it.id }
+    var occurrence = 0
     return citationPatterns.fold(text) { current, pattern ->
         pattern.replace(current) { match ->
             val ids = match.groupValues[1].split(',', '\ue202', '\ufffc').map { it.trim() }.filter { it.isNotEmpty() }
@@ -34,7 +35,7 @@ fun markdownWithCitationLinks(text: String, sources: List<CitationSource>, badge
             val compact = if (badges && name.length > 26) name.take(26) + "…" else name
             val label = (if (badges) "↗  " else "") + compact.replace("]", "\\]") + suffix
             val scheme = runCatching { java.net.URI(primary.url).scheme?.lowercase() }.getOrNull()
-            val target = if (badges) "suzent-citation://sources/" + ids.joinToString(",") { java.net.URLEncoder.encode(it, "UTF-8") } else primary.url.replace(">", "%3E")
+            val target = if (badges) "suzent-citation://sources/" + ids.joinToString(",") { java.net.URLEncoder.encode(it, "UTF-8") } + "#badge-${occurrence++}" else primary.url.replace(">", "%3E")
             if (scheme in listOf("http", "https")) "[$label](<$target>)" else label
         }
     }

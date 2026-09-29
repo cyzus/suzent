@@ -40,6 +40,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -91,6 +92,14 @@ fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList
     var pendingLink by remember { mutableStateOf<String?>(null) }
     val renderedText = remember(text, citationSources) { markdownWithCitationLinks(text, citationSources, badges = true) }
     val dark = isSystemInDarkTheme()
+    val iconURLs = remember(citationSources) { citationSources.map { it.favicon }.filter { it.startsWith("https://") }.distinct() }
+    val icons by produceState<Map<String, android.graphics.Bitmap>>(emptyMap(), iconURLs) {
+        value = emptyMap()
+        for (url in iconURLs) {
+            val bitmap = withContext(Dispatchers.IO) { CitationIcons.load(url) }
+            if (bitmap != null) value = value + (url to bitmap)
+        }
+    }
     val renderer = remember(context) { Markwon.builder(context)
         .usePlugin(object : AbstractMarkwonPlugin() {
             override fun configureConfiguration(builder: MarkwonConfiguration.Builder) {
@@ -147,7 +156,9 @@ fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList
                         val end = styled.getSpanEnd(span)
                         if (styled.subSequence(start, end).startsWith("↗  ")) {
                             val target = (span as? android.text.style.URLSpan)?.url
-                            styled.setSpan(CitationBadgeSpan(dark, target == pendingLink), start, end, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                            val sourceId = target?.let { Uri.parse(it).path?.removePrefix("/")?.split(',')?.firstOrNull() }
+                            val icon = citationSources.firstOrNull { it.id == sourceId }?.favicon?.let(icons::get)
+                            styled.setSpan(CitationBadgeSpan(dark, target == pendingLink, icon), start, end, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                         }
                     }
                     renderer.setParsedMarkdown(view, styled)
@@ -169,7 +180,12 @@ fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList
                 sources.forEach { source ->
                     val uri = Uri.parse(source.url)
                     Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(16.dp)).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("↗  " + uri.host.orEmpty().removePrefix("www."), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            val icon = icons[source.favicon]
+                            if (icon != null) Image(icon.asImageBitmap(), contentDescription = null, modifier = Modifier.size(18.dp))
+                            else Text("↗", Modifier.size(18.dp), style = MaterialTheme.typography.labelMedium)
+                            Text(uri.host.orEmpty().removePrefix("www."), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                         Text(source.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                         if (source.snippet.isNotBlank()) Text(source.snippet, style = MaterialTheme.typography.bodyMedium, maxLines = 6, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                         if (uri.scheme in listOf("http", "https")) {
@@ -191,7 +207,31 @@ fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList
     }
 }
 
-private class CitationBadgeSpan(private val dark: Boolean, private val selected: Boolean) : android.text.style.ReplacementSpan() {
+private object CitationIcons {
+    private val cache = android.util.LruCache<String, android.graphics.Bitmap>(128)
+    private val client = okhttp3.OkHttpClient.Builder().callTimeout(8, java.util.concurrent.TimeUnit.SECONDS).build()
+
+    fun load(url: String): android.graphics.Bitmap? {
+        cache.get(url)?.let { return it }
+        return runCatching {
+            client.newCall(okhttp3.Request.Builder().url(url).build()).execute().use { response ->
+                if (!response.isSuccessful) return@use null
+                val source = response.body?.source() ?: return@use null
+                source.request(262145)
+                if (source.buffer.size > 262144) return@use null
+                val bytes = source.buffer.readByteArray()
+                val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+                val options = android.graphics.BitmapFactory.Options().apply {
+                    inSampleSize = (maxOf(bounds.outWidth, bounds.outHeight) / 64).coerceAtLeast(1)
+                }
+                android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)?.also { cache.put(url, it) }
+            }
+        }.getOrNull()
+    }
+}
+
+private class CitationBadgeSpan(private val dark: Boolean, private val selected: Boolean, private val icon: android.graphics.Bitmap?) : android.text.style.ReplacementSpan() {
     private fun badgePaint(paint: android.graphics.Paint) = android.graphics.Paint(paint).apply {
         textSize = paint.textSize * 0.72f
         isUnderlineText = false
@@ -201,7 +241,7 @@ private class CitationBadgeSpan(private val dark: Boolean, private val selected:
     override fun getSize(paint: android.graphics.Paint, text: CharSequence, start: Int, end: Int,
         fm: android.graphics.Paint.FontMetricsInt?): Int {
         val badge = badgePaint(paint)
-        return kotlin.math.ceil(badge.measureText(text, start, end) + paint.textSize * 0.85f).toInt()
+        return kotlin.math.ceil(badge.measureText(text, start + 3, end) + paint.textSize * 1.85f).toInt()
     }
 
     override fun draw(canvas: android.graphics.Canvas, text: CharSequence, start: Int, end: Int,
@@ -218,7 +258,12 @@ private class CitationBadgeSpan(private val dark: Boolean, private val selected:
         canvas.drawRoundRect(bounds, bounds.height() / 2, bounds.height() / 2, badge)
         badge.style = android.graphics.Paint.Style.FILL
         badge.color = android.graphics.Color.parseColor(if (dark && !selected) "#EEEEEE" else "#404040")
-        canvas.drawText(text, start, end, x + padding, y.toFloat(), badge)
+        val iconSize = paint.textSize * 0.72f
+        if (icon != null) {
+            val iconTop = bounds.centerY() - iconSize / 2
+            canvas.drawBitmap(icon, null, android.graphics.RectF(x + padding, iconTop, x + padding + iconSize, iconTop + iconSize), badge)
+        } else canvas.drawText("↗", x + padding, y.toFloat(), badge)
+        canvas.drawText(text, start + 3, end, x + padding + paint.textSize, y.toFloat(), badge)
     }
 }
 

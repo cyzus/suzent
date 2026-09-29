@@ -10,6 +10,7 @@ private let citationPatterns = [
 public func markdownWithCitationLinks(_ text: String, sources: [CitationSource], badges: Bool = false) -> String {
     let byID = Dictionary(uniqueKeysWithValues: sources.map { ($0.id, $0) })
     var result = text
+    var occurrence = 0
     for pattern in citationPatterns {
         guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { continue }
         let matches = regex.matches(in: result, range: NSRange(result.startIndex..., in: result))
@@ -30,7 +31,8 @@ public func markdownWithCitationLinks(_ text: String, sources: [CitationSource],
                 let compact = String(host.prefix(26)) + (host.count > 26 ? "…" : "") + suffix
                 let badgeLabel = compact.replacingOccurrences(of: "]", with: "\\]")
                 let content = badges ? "↗  \(badgeLabel)" : label
-                let target = badges ? "suzent-citation://sources/" + ids.map { $0.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? "" }.joined(separator: ",") : rawURL.replacingOccurrences(of: ">", with: "%3E")
+                let target = badges ? "suzent-citation://sources/" + ids.map { $0.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? "" }.joined(separator: ",") + "#badge-\(occurrence)" : rawURL.replacingOccurrences(of: ">", with: "%3E")
+                occurrence += 1
                 replacement = "[\(content)](<\(target)>)"
             } else {
                 replacement = label
