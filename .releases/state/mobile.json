@@ -2,6 +2,7 @@
   "version": "0.2.0",
   "consumed": [
     ".releases/changes/ios-reconnect-timeout.json",
+    ".releases/changes/mobile-chat-management.json",
     ".releases/changes/mobile-component-parity.json",
     ".releases/changes/mobile-local-https.json",
     ".releases/changes/mobile-pua-citations.json",

@@ -1,8 +1,9 @@
 # Mobile changelog
 
-## [mobile-v0.2.0] - 2026-09-29
+## [mobile-v0.2.0] - 2026-09-30
 
 ### Release notes
+- Add native conversation context menus, responsive pressed states, and explicit device-scoped conversation management permissions.
 - Render PUA and ASCII citation markers and open their sources through native confirmation prompts on iOS and Android.
 - Retry ambiguous mobile sends safely on iOS and Android by deduplicating stable client message IDs on the backend.
 
