@@ -10,6 +10,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -23,6 +26,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -108,7 +112,9 @@ private fun MobileScreen(model: MobileModel) {
                     !model.connected -> Box(Modifier.padding(horizontal = 16.dp)) { PairingView(model) }
                     showSettings -> SettingsView(model)
                     model.selected != null -> Conversation(model)
-                    else -> Box(Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.Center) { CircularProgressIndicator() }
+                    else -> Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = androidx.compose.ui.Alignment.Center) {
+                        if (model.busy) CircularProgressIndicator() else Text(stringResource(R.string.select_conversation), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
             }
         }
@@ -130,6 +136,12 @@ private fun Sidebar(model: MobileModel, settingsSelected: Boolean, close: () -> 
         }
         SuzentTextInput(search, { search = it }, stringResource(R.string.search_chats), Modifier.padding(horizontal = 16.dp))
         LazyColumn(Modifier.weight(1f).padding(horizontal = 16.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
+            if (model.chats.any { it.pinned }) {
+                item(key = "pinned-heading") { Text(stringResource(R.string.pinned_chats), fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace, fontSize = PresentationTokens.typeControl.sp, modifier = Modifier.padding(vertical = 12.dp)) }
+                items(model.chats.filter { it.pinned && it.title.contains(search, ignoreCase = true) }, key = { it.id }) {
+                    SidebarChat(it, model.selected?.id == it.id && !settingsSelected, model, open)
+                }
+            }
             projects.forEach { project ->
                 item(key = "project:${project.id}") {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
@@ -141,12 +153,12 @@ private fun Sidebar(model: MobileModel, settingsSelected: Boolean, close: () -> 
                             modifier = Modifier.size(44.dp).semantics { contentDescription = label }) { Text("+") }
                     }
                 }
-                if (project.id !in collapsedProjects || search.isNotEmpty()) items(model.chats.filter { it.projectId == project.id && it.title.contains(search, ignoreCase = true) }, key = { it.id }) {
-                    SidebarChat(it, model.selected?.id == it.id && !settingsSelected, !model.busy, open)
+                if (project.id !in collapsedProjects || search.isNotEmpty()) items(model.chats.filter { !it.pinned && it.projectId == project.id && it.title.contains(search, ignoreCase = true) }, key = { it.id }) {
+                    SidebarChat(it, model.selected?.id == it.id && !settingsSelected, model, open)
                 }
             }
-            items(model.chats.filter { it.projectId == null && it.title.contains(search, ignoreCase = true) }, key = { it.id }) {
-                SidebarChat(it, model.selected?.id == it.id && !settingsSelected, !model.busy, open)
+            items(model.chats.filter { !it.pinned && it.projectId == null && it.title.contains(search, ignoreCase = true) }, key = { it.id }) {
+                SidebarChat(it, model.selected?.id == it.id && !settingsSelected, model, open)
             }
             if (projects.isEmpty() && model.chats.isEmpty()) item {
                 SuzentTextButton(onClick = { create(null) }, enabled = !model.busy && !model.streaming && model.device?.permissions?.createChats == true) { Text(stringResource(R.string.new_chat)) }
@@ -158,13 +170,72 @@ private fun Sidebar(model: MobileModel, settingsSelected: Boolean, close: () -> 
 }
 
 @Composable
-private fun SidebarChat(chat: Chat, selected: Boolean, enabled: Boolean, open: (Chat) -> Unit) {
+private fun SidebarChat(chat: Chat, selected: Boolean, model: MobileModel, open: (Chat) -> Unit) {
+    var menu by remember { mutableStateOf(false) }
+    var moving by remember { mutableStateOf(false) }
+    var renaming by remember { mutableStateOf(false) }
+    var deleting by remember { mutableStateOf(false) }
+    var title by remember { mutableStateOf("") }
     val outline = MaterialTheme.colorScheme.outline
-    Row(Modifier.fillMaxWidth().background(if (selected) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surface)
+    val interaction = remember(chat.id) { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val foreground = if (pressed) Color.Black else MaterialTheme.colorScheme.onSurface
+    Box {
+    Row(Modifier.fillMaxWidth().background(if (pressed) Color(PresentationTokens.yellow) else if (selected) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surface)
         .drawBehind { if (selected) drawRect(outline, size = Size(3.dp.toPx(), size.height)) }
-        .clickable(enabled = enabled) { open(chat) }.heightIn(min = 48.dp).padding(12.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-        Text(chat.title, Modifier.weight(1f), fontSize = PresentationTokens.typeChat.sp, maxLines = 2, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
+        .combinedClickable(interactionSource = interaction, indication = null, enabled = !model.busy,
+            onLongClickLabel = stringResource(R.string.conversation_actions),
+            onLongClick = { moving = false; menu = true }, onClick = { open(chat) })
+        .heightIn(min = 48.dp).padding(12.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        if (chat.pinned) Icon(painterResource(R.drawable.ic_chat_pin), null, tint = foreground, modifier = Modifier.padding(end = 6.dp).size(14.dp))
+        Text(chat.title, Modifier.weight(1f), color = foreground, fontSize = PresentationTokens.typeChat.sp, maxLines = 2, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
         if (chat.running) Text("…", color = MaterialTheme.colorScheme.primary)
+    }
+    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = RectangleShape,
+        containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp,
+        modifier = Modifier.width(260.dp).border(2.dp, outline)) {
+        if (model.device?.permissions?.manageChats != true) {
+            Text(stringResource(R.string.manage_permission_hint), modifier = Modifier.padding(16.dp), fontSize = 13.sp)
+        } else if (moving) {
+            ChatMenuItem(R.string.move_to_project, R.drawable.ic_chat_back) { moving = false }
+            HorizontalDivider(thickness = 2.dp, color = outline)
+            model.projects.forEach { project ->
+                DropdownMenuItem(text = { Text(project.name, fontWeight = FontWeight.Bold, fontSize = 13.sp) },
+                    enabled = project.id != chat.projectId && !model.busy,
+                    onClick = { menu = false; model.manageChat(chat, "move", project.id) })
+            }
+        } else {
+            ChatMenuItem(if (chat.pinned) R.string.unpin_chat else R.string.pin_chat, R.drawable.ic_chat_pin) { menu = false; model.manageChat(chat, if (chat.pinned) "unpin" else "pin") }
+            ChatMenuItem(R.string.rename_chat, R.drawable.ic_chat_rename) { menu = false; title = chat.title; renaming = true }
+            ChatMenuItem(R.string.move_to_project, R.drawable.ic_chat_folder, enabled = !chat.running && model.projects.isNotEmpty()) { moving = true }
+            HorizontalDivider(thickness = 2.dp, color = outline)
+            ChatMenuItem(R.string.delete_chat, R.drawable.ic_chat_delete, enabled = !chat.running, danger = true) { menu = false; deleting = true }
+        }
+    }
+    }
+    if (renaming) AlertDialog(onDismissRequest = { renaming = false }, shape = RectangleShape,
+        title = { Text(stringResource(R.string.rename_chat)) },
+        text = { SuzentTextInput(title, { title = it }, stringResource(R.string.conversation_title)) },
+        confirmButton = { TextButton(enabled = title.trim().isNotEmpty() && title.length <= 200 && !model.busy,
+            onClick = { renaming = false; model.manageChat(chat, "rename", title.trim()) }) { Text(stringResource(R.string.save_chat)) } },
+        dismissButton = { TextButton(onClick = { renaming = false }) { Text(stringResource(android.R.string.cancel)) } })
+    if (deleting) AlertDialog(onDismissRequest = { deleting = false }, shape = RectangleShape,
+        title = { Text(stringResource(R.string.delete_chat)) }, text = { Text(stringResource(R.string.delete_chat_warning)) },
+        confirmButton = { TextButton(enabled = !model.busy, onClick = { deleting = false; model.manageChat(chat, "delete") }) {
+            Text(stringResource(R.string.delete_chat), color = MaterialTheme.colorScheme.error) } },
+        dismissButton = { TextButton(onClick = { deleting = false }) { Text(stringResource(android.R.string.cancel)) } })
+}
+
+@Composable
+private fun ChatMenuItem(label: Int, icon: Int, enabled: Boolean = true, danger: Boolean = false, action: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val background = if (pressed) { if (danger) MaterialTheme.colorScheme.error else Color(PresentationTokens.yellow) } else Color.Transparent
+    val foreground = if (pressed) { if (danger) Color.White else Color.Black } else if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+    Row(Modifier.fillMaxWidth().background(background).clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = action)
+        .heightIn(min = 44.dp).padding(horizontal = 12.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        Icon(painterResource(icon), null, tint = foreground.copy(alpha = if (enabled) 1f else .4f), modifier = Modifier.padding(end = 10.dp).size(18.dp))
+        Text(stringResource(label), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = foreground.copy(alpha = if (enabled) 1f else .4f))
     }
 }
 

@@ -6,6 +6,16 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class PairingTest {
+    @Test fun managementRequiresExplicitOptIn() {
+        val payload = JSONObject().put("chat_ids", JSONArray()).put("all_chats", true)
+            .put("create_chats", true).put("send", true).put("stop", true)
+        assertFalse(ClientPermissions.parse(payload).manageChats)
+        payload.put("manage_chats", true)
+        assertTrue(ClientPermissions.parse(payload).manageChats)
+        assertFalse(Chat.parse(JSONObject().put("id", "chat")).pinned)
+        assertTrue(Chat.parse(JSONObject().put("id", "chat").put("pinned", true)).pinned)
+    }
+
     private fun invitation() = JSONObject().put("type", "suzent.mobile").put("pairing_protocol", 1)
         .put("origin", "https://desktop.example").put("pairing_id", "a".repeat(32))
         .put("invitation", "b".repeat(43)).put("expires_at", 2000)

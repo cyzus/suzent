@@ -82,6 +82,7 @@ export const en = {
     compare: 'Confirm that the phone shows code {code}.',
     all_chats: 'Read all conversations, including future ones',
     create_chats: 'Create conversations',
+    manage_chats: 'Manage conversations (pin, rename, move, delete)',
     send: 'Send messages',
     stop: 'Stop responses',
     sharedChats: 'Conversations this phone can read',

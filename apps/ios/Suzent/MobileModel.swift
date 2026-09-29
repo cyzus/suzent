@@ -268,6 +268,36 @@ import SuzentCore
         } catch { if generation == current { handle(error) } }
     }
 
+    func manageChat(_ chat: Chat, action: String, value: String? = nil) async {
+        guard let client, !busy, device?.permissions.manageChats == true else { return }
+        busy = true
+        defer { busy = false }
+        let current = generation
+        do {
+            try await client.manageChat(chat.id, action: action, value: value)
+            guard generation == current else { return }
+            if action == "delete" {
+                drafts.removeValue(forKey: chat.id)
+                chats.removeAll { $0.id == chat.id }
+                if selected?.id == chat.id {
+                    streamTask?.cancel()
+                    selected = nil
+                    streaming = false
+                    liveParts = []; pendingApprovals = []; draft = ""
+                }
+            }
+            let listing = try await client.chats()
+            guard generation == current else { return }
+            chats = listing
+            if let updated = listing.first(where: { $0.id == selected?.id }) {
+                selected?.title = updated.title
+                selected?.projectId = updated.projectId
+                selected?.projectName = updated.projectName
+                selected?.pinned = updated.pinned
+            }
+        } catch { if generation == current { handle(error) } }
+    }
+
     func open(_ chat: Chat) async {
         guard let client, !busy else { return }
         if let id = selected?.id { drafts[id] = draft }

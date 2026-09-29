@@ -8,13 +8,13 @@ class PairingFailure(val reason: Reason) : Exception() {
 }
 
 data class ClientPermissions(val chatIds: List<String>, val allChats: Boolean,
-    val createChats: Boolean, val send: Boolean, val stop: Boolean, val approveTools: Boolean = false) {
+    val createChats: Boolean, val send: Boolean, val stop: Boolean, val approveTools: Boolean = false, val manageChats: Boolean = false) {
     companion object {
         fun parse(json: JSONObject): ClientPermissions {
             val ids = json.getJSONArray("chat_ids")
             return ClientPermissions((0 until ids.length()).map { ids.getString(it) },
                 json.getBoolean("all_chats"), json.getBoolean("create_chats"),
-                json.getBoolean("send"), json.getBoolean("stop"), json.optBoolean("approve_tools"))
+                json.getBoolean("send"), json.getBoolean("stop"), json.optBoolean("approve_tools"), json.optBoolean("manage_chats"))
         }
     }
 }

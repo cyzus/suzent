@@ -42,7 +42,8 @@ fun PairingView(model: MobileModel) {
                 val permissions = preview.permissions
                 Column(Modifier.fillMaxWidth().border(PresentationTokens.borderWidth.dp, MaterialTheme.colorScheme.outline).padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (permissions.allChats && permissions.createChats && permissions.send && permissions.stop && permissions.approveTools) {
+                    Text(stringResource(R.string.manage_conversations) + ": " + stringResource(if (permissions.manageChats) R.string.allowed else R.string.not_allowed))
+                    if (permissions.allChats && permissions.createChats && permissions.manageChats && permissions.send && permissions.stop && permissions.approveTools) {
                         Text(stringResource(R.string.full_access), style = MaterialTheme.typography.titleMedium)
                         Text(stringResource(R.string.full_access_summary))
                     } else {
@@ -95,7 +96,7 @@ fun ClientPermissionsView(device: ClientDevice, origin: String) {
         Text(origin, style = MaterialTheme.typography.bodySmall)
         Text(if (device.permissions.allChats) stringResource(R.string.all_conversations)
             else stringResource(R.string.shared_conversations, device.permissions.chatIds.size))
-        listOf(R.string.create_conversations to device.permissions.createChats,
+        listOf(R.string.manage_conversations to device.permissions.manageChats, R.string.create_conversations to device.permissions.createChats,
             R.string.send_messages to device.permissions.send, R.string.stop_responses to device.permissions.stop, R.string.approve_tools to device.permissions.approveTools).forEach { (label, enabled) ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(stringResource(label))

@@ -37,6 +37,11 @@ class SendRequest(ChatRequest):
     client_message_id: str | None = Field(default=None, min_length=1, max_length=100)
 
 
+class ManageRequest(ChatRequest):
+    action: Literal["pin", "unpin", "rename", "move", "delete"]
+    value: str | None = Field(default=None, min_length=1, max_length=200)
+
+
 class ObserveRequest(ChatRequest):
     wait_ms: int = Field(default=1000, ge=0, le=1000)
     protocol: Literal[1] = 1
@@ -91,6 +96,7 @@ async def chats(request: Request) -> JSONResponse:
         limit=1000,
     )
     projects_by_chat = db.get_chat_projects([chat_id for chat_id, _ in records])
+    pinned = db.get_pinned_chat_ids([chat_id for chat_id, _ in records])
     from suzent.core.stream_registry import is_background_streaming
 
     return reply(
@@ -99,6 +105,7 @@ async def chats(request: Request) -> JSONResponse:
                 {
                     "id": chat_id,
                     "title": title,
+                    "pinned": chat_id in pinned,
                     "isRunning": is_background_streaming(chat_id),
                     "projectId": projects_by_chat.get(chat_id, (None, None))[0],
                     "projectName": projects_by_chat.get(chat_id, (None, None))[1],
@@ -132,6 +139,7 @@ async def chat(request: Request) -> JSONResponse:
             },
             "projectId": metadata[0],
             "projectName": metadata[1],
+            "pinned": chat_id in get_database().get_pinned_chat_ids([chat_id]),
             "model": (config.get("model") or get_default_chat_model())
             if native
             else None,
@@ -228,6 +236,52 @@ async def stop(request: Request) -> JSONResponse:
     return await stop_chat(forwarded(request, body.model_dump()))
 
 
+async def manage(request: Request) -> JSONResponse:
+    body = await parse(request, ManageRequest)
+    grant = authorize(request, body.chat_id, "manage_chats")
+    db = get_database()
+    if db.get_chat(body.chat_id) is None:
+        raise HTTPException(404, "Conversation unavailable")
+    if body.action in {"rename", "move"} and not (body.value or "").strip():
+        raise HTTPException(400, "A value is required")
+    from suzent.core.stream_registry import is_background_streaming
+
+    if body.action in {"move", "delete"} and is_background_streaming(body.chat_id):
+        raise HTTPException(409, "Stop the response before moving or deleting")
+    if body.action == "move":
+        if body.value not in {project["id"] for project in allowed_projects(grant)}:
+            raise HTTPException(403, "Project not shared with this device")
+        # Shared project moves also move descendants. Never affect unshared chats.
+        if any(
+            not grant.permissions.permits_chat(child)
+            for child in db.get_subagent_chat_ids_for_parent_chat(body.chat_id)
+        ):
+            raise HTTPException(
+                403, "Conversation descendants not shared with this device"
+            )
+        from suzent.routes.project_routes import move_chat_to_project
+
+        target = forwarded(request, {"project_id": body.value})
+        target.scope["path_params"] = {"chat_id": body.chat_id}
+        return await move_chat_to_project(target)
+    if body.action == "delete":
+        from suzent.routes.chat_routes import delete_chat
+
+        target = forwarded(request, {})
+        target.scope["path_params"] = {"chat_id": body.chat_id}
+        target.scope["query_string"] = b""
+        return await delete_chat(target)
+    updated = db.update_chat(
+        body.chat_id,
+        **(
+            {"title": body.value.strip()}
+            if body.action == "rename"
+            else {"pinned": body.action == "pin"}
+        ),
+    )
+    return reply({"ok": updated}, 200 if updated else 404)
+
+
 async def revocable_stream(
     source: AsyncIterator, store: PairingStore, token: str, chat_id: str
 ) -> AsyncIterator:
@@ -308,5 +362,6 @@ client_routes = [
     Route("/mobile/client/chats/{chat_id}", chat, methods=["GET"]),
     Route("/mobile/client/send", send, methods=["POST"]),
     Route("/mobile/client/stop", stop, methods=["POST"]),
+    Route("/mobile/client/manage", manage, methods=["POST"]),
     Route("/mobile/client/live", observe, methods=["POST"]),
 ]

@@ -287,6 +287,36 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun manageChat(chat: Chat, action: String, value: String? = null) {
+        val api = client ?: return
+        if (busy || device?.permissions?.manageChats != true) return
+        busy = true
+        val current = generation
+        viewModelScope.launch {
+            try {
+                api.manageChat(chat.id, action, value)
+                if (generation != current) return@launch
+                if (action == "delete") {
+                    drafts.remove(chat.id)
+                    chats = chats.filterNot { it.id == chat.id }
+                    if (selected?.id == chat.id) {
+                        streamJob?.cancel(); api.cancelLive()
+                        selected = null; streaming = false
+                        liveParts = emptyList(); pendingApprovals = emptyList(); draft = ""
+                    }
+                }
+                val listing = api.chats()
+                if (generation != current) return@launch
+                chats = listing
+                listing.firstOrNull { it.id == selected?.id }?.let { updated ->
+                    selected = selected?.copy(title = updated.title, projectId = updated.projectId, projectName = updated.projectName, pinned = updated.pinned)
+                }
+            } catch (failure: CancellationException) { throw failure }
+            catch (failure: Exception) { if (generation == current) handle(failure) }
+            finally { busy = false }
+        }
+    }
+
     fun open(chat: Chat) {
         if (busy) return
         selected?.id?.let { drafts[it] = draft }

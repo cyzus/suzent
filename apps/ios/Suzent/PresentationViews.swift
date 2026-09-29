@@ -48,6 +48,19 @@ private extension String {
     var nonEmpty: String? { isEmpty ? nil : self }
 }
 
+struct ChatRowButtonStyle: ButtonStyle {
+    var selected: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(configuration.isPressed ? Color.black : Color.primary)
+            .background(configuration.isPressed ? Color(presentation: PresentationTokens.yellow) : selected ? Color.primary.opacity(0.08) : .clear)
+            .overlay(alignment: .leading) {
+                if selected { Rectangle().fill(Color.primary).frame(width: 3) }
+            }
+    }
+}
+
 struct SuzentButtonStyle: ButtonStyle {
     var prominent = false
     var compact = false

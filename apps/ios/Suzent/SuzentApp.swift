@@ -16,6 +16,87 @@ import MarkdownUI
     }
 }
 
+private struct ChatSidebarRow: View {
+    let chat: Chat
+    let selected: Bool
+    let enabled: Bool
+    let canManage: Bool
+    let projects: [Project]
+    let manage: (String, String?) -> Void
+    let open: () -> Void
+    @State private var menu = false
+    @State private var moving = false
+    @State private var renaming = false
+    @State private var deleting = false
+    @State private var title = ""
+
+    var body: some View {
+        Button { if !menu { open() } } label: {
+            HStack {
+                if chat.pinned == true { Image(systemName: "pin.fill").font(.caption) }
+                Text(chat.title).font(.system(size: PresentationTokens.typeChat, weight: selected ? .semibold : .regular))
+                    .lineLimit(2).multilineTextAlignment(.leading)
+                Spacer()
+                if chat.isRunning == true { Image(systemName: "ellipsis") }
+            }.padding(12).frame(maxWidth: .infinity, minHeight: 48, alignment: .leading).contentShape(Rectangle())
+        }.buttonStyle(ChatRowButtonStyle(selected: selected)).disabled(!enabled)
+            .simultaneousGesture(LongPressGesture().onEnded { _ in
+                guard enabled else { return }
+                moving = false; menu = true
+            })
+            .accessibilityAction(named: Text("Conversation actions")) { moving = false; menu = true }
+            .popover(isPresented: $menu) {
+                VStack(spacing: 0) {
+                    if !canManage {
+                        Text("Enable Manage conversations in desktop Settings → Mobile access.")
+                            .font(.footnote).padding(16)
+                    } else if moving {
+                        menuItem("Move to project", icon: "chevron.left") { moving = false }
+                        Divider()
+                        ScrollView {
+                            VStack(spacing: 0) {
+                                ForEach(projects) { project in
+                                    Button { menu = false; manage("move", project.id) } label: {
+                                        HStack { Text(project.name); Spacer(); if project.id == chat.projectId { Image(systemName: "checkmark") } }
+                                            .padding(12).frame(minHeight: 44)
+                                    }.buttonStyle(ChatRowButtonStyle(selected: false)).disabled(project.id == chat.projectId)
+                                }
+                            }
+                        }.frame(maxHeight: 260)
+                    } else {
+                        menuItem(chat.pinned == true ? "Unpin" : "Pin", icon: "pin") { menu = false; manage(chat.pinned == true ? "unpin" : "pin", nil) }
+                        menuItem("Rename", icon: "pencil") { menu = false; title = chat.title; renaming = true }
+                        menuItem("Move to project", icon: "folder") { moving = true }
+                            .disabled(chat.isRunning == true || projects.isEmpty)
+                        Divider()
+                        menuItem("Delete conversation", icon: "trash", danger: true) { menu = false; deleting = true }
+                            .disabled(chat.isRunning == true)
+                    }
+                }.frame(width: 260).background(Color.suzentSurface)
+                    .overlay(Rectangle().stroke(Color.primary, lineWidth: 2))
+                    .padding(3).presentationCompactAdaptation(.popover)
+            }
+            .alert("Rename", isPresented: $renaming) {
+                TextField("Conversation title", text: $title)
+                Button("Cancel", role: .cancel) {}
+                Button("Save") { manage("rename", title.trimmingCharacters(in: .whitespacesAndNewlines)) }
+                    .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || title.count > 200)
+            }
+            .alert("Delete conversation?", isPresented: $deleting) {
+                Button("Cancel", role: .cancel) {}
+                Button("Delete", role: .destructive) { manage("delete", nil) }
+            } message: { Text("This deletes the conversation on all devices and cannot be undone.") }
+    }
+
+    private func menuItem(_ title: LocalizedStringKey, icon: String, danger: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: icon).font(.system(size: 13, weight: .bold))
+                .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).frame(minHeight: 44)
+                .foregroundStyle(danger ? Color.red : Color.primary)
+        }.buttonStyle(ChatRowButtonStyle(selected: false))
+    }
+}
+
 struct ContentView: View {
     @Bindable var model: MobileModel
     @State private var showSidebar = false
@@ -83,7 +164,10 @@ struct ContentView: View {
                         else if !model.connected { PairingView(model: model) }
                         else if showSettings { settings }
                         else if let chat = model.selected { conversation(chat) }
-                        else { ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity) }
+                        else {
+                            if model.busy { ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity) }
+                            else { Text("Select a conversation or start a new one.").foregroundStyle(.secondary).padding().frame(maxWidth: .infinity, maxHeight: .infinity) }
+                        }
                     }.frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
                 if !wide && model.connected {
@@ -159,8 +243,12 @@ struct ContentView: View {
             SuzentTextInput(placeholder: "Search chats", text: $search).padding(.horizontal, 16).padding(.bottom, 12)
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
+                    if model.chats.contains(where: { $0.pinned == true }) {
+                        Text("Pinned").font(.system(size: PresentationTokens.typeControl, weight: .bold, design: .monospaced))
+                        conversationRows(model.chats.filter { $0.pinned == true })
+                    }
                     ForEach(projects) { project in projectSection(project) }
-                    let unassigned = model.chats.filter { $0.projectId == nil }
+                    let unassigned = model.chats.filter { $0.projectId == nil && $0.pinned != true }
                     if !unassigned.isEmpty { conversationRows(unassigned) }
                     if projects.isEmpty && model.chats.isEmpty {
                         Button("New conversation") { Task { await model.createChat(); showSidebar = false; showSettings = false } }
@@ -191,24 +279,22 @@ struct ContentView: View {
                 }.accessibilityLabel("New conversation")
                     .disabled(model.busy || model.streaming || model.device?.permissions.createChats != true || !model.projects.contains(where: { $0.id == project.id }))
             }
-            if !collapsedProjects.contains(project.id) || !search.isEmpty { conversationRows(model.chats.filter { $0.projectId == project.id }) }
+            if !collapsedProjects.contains(project.id) || !search.isEmpty { conversationRows(model.chats.filter { $0.projectId == project.id && $0.pinned != true }) }
         }
     }
 
     private func conversationRows(_ chats: [Chat]) -> some View {
-        ForEach(chats.filter { search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) }) { chat in
-            Button {
+        ForEach(chats.filter { search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) }.sorted { ($0.pinned == true) && ($1.pinned != true) }) { chat in
+            ChatSidebarRow(chat: chat, selected: model.selected?.id == chat.id && !showSettings,
+                           enabled: !model.busy, canManage: model.device?.permissions.manageChats == true,
+                           projects: model.projects, manage: { action, value in
+                Task { await model.manageChat(chat, action: action, value: value) }
+            }) {
                 composing = false
-                Task { await model.open(chat); showSettings = false; showSidebar = false }
-            } label: {
-                HStack {
-                    Text(chat.title).font(.system(size: PresentationTokens.typeChat, weight: model.selected?.id == chat.id ? .semibold : .regular)).lineLimit(2).multilineTextAlignment(.leading)
-                    Spacer()
-                    if chat.isRunning == true { Image(systemName: "ellipsis").foregroundStyle(.blue) }
-                }.padding(12).frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
-                    .background(model.selected?.id == chat.id && !showSettings ? Color.primary.opacity(0.08) : .clear)
-                    .overlay(alignment: .leading) { if model.selected?.id == chat.id && !showSettings { Rectangle().frame(width: 3) } }
-            }.buttonStyle(.plain).disabled(model.busy)
+                showSettings = false
+                showSidebar = false
+                Task { await model.open(chat) }
+            }
         }
     }
 
