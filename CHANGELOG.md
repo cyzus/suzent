@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v0.15.1] - 2026-09-29
 
 ### Release notes
+- Update existing development workspaces directly from the installer, with branch-preserving fast-forward, confirmed local-change backups, desktop rebuilds, and recoverable rollback.
 - Separate daily and development launch modes, preserve custom installation paths, and simplify installer completion, recovery, and diagnostics.
 - Preserve the selected Windows installation directory and prevent the desktop from silently connecting to a backend from another installation.
 - Prevent the Windows updater from terminating its own PowerShell helper or unrelated processes, and preserve actionable stop errors.
