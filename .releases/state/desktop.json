@@ -1,5 +1,5 @@
 {
-  "version": "0.15.0",
+  "version": "0.15.1",
   "consumed": [
     ".releases/changes/approved-tool-names.json",
     ".releases/changes/ask-question-no-replay.json",
@@ -16,11 +16,14 @@
     ".releases/changes/preserve-pending-approvals.json",
     ".releases/changes/product-release-plans.json",
     ".releases/changes/providers-settings-ux.json",
+    ".releases/changes/single-source-installer-ux.json",
     ".releases/changes/tool-argument-conventions.json",
     ".releases/changes/tool-package-layout.json",
     ".releases/changes/unified-refresh-button.json",
     ".releases/changes/updater-recovery-interface.json",
-    ".releases/changes/video-and-voice.json"
+    ".releases/changes/video-and-voice.json",
+    ".releases/changes/windows-install-backend-identity.json",
+    ".releases/changes/windows-updater-process-identity.json"
   ],
   "legacy_complete": true
 }

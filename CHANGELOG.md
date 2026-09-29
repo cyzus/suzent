@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.15.1] - 2026-09-29
+
+### Release notes
+- Separate daily and development launch modes, preserve custom installation paths, and simplify installer completion, recovery, and diagnostics.
+- Preserve the selected Windows installation directory and prevent the desktop from silently connecting to a backend from another installation.
+- Prevent the Windows updater from terminating its own PowerShell helper or unrelated processes, and preserve actionable stop errors.
+
 ## [v0.15.0] - 2026-09-27
 
 <!-- highlights -->
