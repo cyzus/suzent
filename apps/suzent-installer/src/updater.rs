@@ -257,12 +257,12 @@ pub(crate) fn run_inner(args: &[String], repair: bool) -> Result<(), String> {
     }
 
     let journal_paths = UpdatePaths::new(root.clone(), "development");
+    fs::create_dir_all(&journal_paths.state_dir)
+        .map_err(display_io("create update state directory"))?;
+    let _lock = acquire_lock(&journal_paths.state_dir)?;
+    recover_legacy_journal(&journal_paths)?;
     let development = development_update_mode(&root, args, repair)?;
     if development {
-        fs::create_dir_all(&journal_paths.state_dir)
-            .map_err(display_io("create update state directory"))?;
-        let _lock = acquire_lock(&journal_paths.state_dir)?;
-        recover_legacy_journal(&journal_paths)?;
         let snapshot = if journal_paths.journal.exists() {
             if !repair {
                 return Err("An interrupted development update exists; choose Repair installation before retrying".into());
@@ -329,9 +329,6 @@ pub(crate) fn run_inner(args: &[String], repair: bool) -> Result<(), String> {
     }
 
     let paths = UpdatePaths::new(root, &target_tag);
-    fs::create_dir_all(&paths.state_dir).map_err(display_io("create update state directory"))?;
-    let _lock = acquire_lock(&paths.state_dir)?;
-    recover_legacy_journal(&paths)?;
 
     let recovered_snapshot = if paths.journal.exists() {
         if !repair {
@@ -2378,6 +2375,19 @@ mod tests {
         assert!(!super::development_update_mode(root, &[], true).unwrap());
         assert!(!super::development_update_mode(root, &dev_args, true).unwrap());
         assert!(super::development_update_mode(root, &dev_args, false).unwrap());
+        fs::rename(&paths.journal, paths.journal.with_extension("bak")).unwrap();
+        let args = vec![
+            "--dir".into(),
+            root.to_string_lossy().into_owned(),
+            "--development".into(),
+            "--target".into(),
+            "invalid-release-target".into(),
+        ];
+        let error = super::run_inner(&args, true).unwrap_err();
+        assert!(error.contains("invalid release tag"), "{error}");
+        assert!(paths.journal.exists());
+        assert!(!paths.journal.with_extension("bak").exists());
+        assert!(!super::read_transaction(&paths).unwrap().development);
     }
 
     #[test]
