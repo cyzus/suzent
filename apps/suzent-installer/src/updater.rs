@@ -391,14 +391,16 @@ fn run_transaction(
         };
         let rollback_result = rollback(paths, &transaction);
         if rollback_result.is_ok() {
-            let _ = write_status(
-                paths,
-                "rolled_back",
-                100,
-                "Update failed; previous version restored",
-                target_tag,
-            );
-            let _ = fs::remove_file(&paths.journal);
+            transaction.phase = "rolled_back".to_string();
+            write_journal(paths, &transaction)?;
+            let message = match &transaction.recovery_dir {
+                Some(directory) => format!("Update failed; previous version restored. Local source changes saved in {directory}"),
+                None => "Update failed; previous version restored".to_string(),
+            };
+            let _ = write_status(paths, "rolled_back", 100, &message, target_tag);
+            if transaction.recovery_dir.is_none() {
+                let _ = fs::remove_file(&paths.journal);
+            }
             return Err(error);
         }
         let rollback_error = rollback_result.unwrap_err();
@@ -2005,6 +2007,7 @@ mod tests {
             "preserved",
             "clearing_conflicts",
             "conflicts_cleared",
+            "rolled_back",
         ] {
             let journal = serde_json::json!({
                 "target_tag": "v1.2.3", "old_commit": "abc", "old_branch": "",
@@ -2015,7 +2018,7 @@ mod tests {
             let bytes = serde_json::to_vec(&journal).unwrap();
             fs::write(&paths.journal, &bytes).unwrap();
             let result = super::recover_interrupted_update(&paths);
-            if phase == "conflicts_cleared" {
+            if matches!(phase, "conflicts_cleared" | "rolled_back") {
                 assert_eq!(result.unwrap(), Some(snapshot.display().to_string()));
             } else {
                 let error = result.unwrap_err();
@@ -2067,8 +2070,21 @@ mod tests {
         let spawn = |path: std::path::PathBuf| {
             fs::create_dir_all(path.parent().unwrap()).unwrap();
             fs::copy(&ping, &path).unwrap();
+            let short_path = background_command("powershell.exe")
+                .args(["-NoProfile", "-NonInteractive", "-Command",
+                    "[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false); (New-Object -ComObject Scripting.FileSystemObject).GetFile($env:SUZENT_TEST_EXECUTABLE).ShortPath"])
+                .env("SUZENT_TEST_EXECUTABLE", &path)
+                .output()
+                .unwrap();
+            assert!(
+                short_path.status.success(),
+                "{}",
+                String::from_utf8_lossy(&short_path.stderr)
+            );
+            let executable = String::from_utf8(short_path.stdout).unwrap();
+            assert!(!executable.trim().is_empty());
             ChildGuard(
-                background_command(path)
+                background_command(executable.trim())
                     .args(["-t", "127.0.0.1"])
                     .stdout(std::process::Stdio::null())
                     .stderr(std::process::Stdio::null())

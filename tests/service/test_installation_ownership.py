@@ -152,3 +152,51 @@ def test_legacy_state_requires_exact_venv_process_identity(
     assert ServiceController._owns_legacy_process(state, root) == (
         (owned or parent_owned) and created == 10
     )
+
+
+@pytest.mark.parametrize(
+    "identity", ["owned", "foreign", "shared", "reused", "other-module"]
+)
+def test_legacy_unix_state_requires_venv_command_identity(
+    monkeypatch, tmp_path: Path, identity: str
+) -> None:
+    shared = tmp_path / "shared-python"
+    shared.write_text("python")
+    root = tmp_path / "owned"
+    launcher = root / ".venv/bin/python"
+    launcher.parent.mkdir(parents=True)
+    launcher.symlink_to(shared)
+    foreign = tmp_path / "foreign/.venv/bin/python"
+    foreign.parent.mkdir(parents=True)
+    foreign.symlink_to(shared)
+    invoked = {"foreign": foreign, "shared": shared}.get(identity, launcher)
+
+    class Process:
+        def create_time(self) -> float:
+            return 20.0 if identity == "reused" else 10.0
+
+        def cmdline(self) -> list[str]:
+            module_name = (
+                "other.module"
+                if identity == "other-module"
+                else "suzent.service.runtime"
+            )
+            return [str(invoked), "-m", module_name]
+
+        def exe(self) -> str:
+            return str(shared)
+
+        def parent(self) -> None:
+            return None
+
+    state = ServiceProcessState(
+        instance_id="id",
+        control_token="token",
+        pid=42,
+        process_created_at=10,
+        started_at="2026-01-01T00:00:00+00:00",
+        port=25314,
+        version="0.14.0",
+    )
+    monkeypatch.setattr(module.psutil, "Process", lambda pid: Process())
+    assert ServiceController._owns_legacy_process(state, root) == (identity == "owned")

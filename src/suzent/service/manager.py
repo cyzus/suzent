@@ -87,7 +87,7 @@ class ServiceController:
 
     @staticmethod
     def _owns_legacy_process(state: ServiceProcessState, root: Path) -> bool:
-        """Recognize Windows venv redirectors without trusting shared uv Python."""
+        """Require venv identity, not just a potentially shared Python binary."""
         launchers = {
             root.resolve() / ".venv" / "Scripts" / name
             for name in ("python.exe", "pythonw.exe")
@@ -96,6 +96,18 @@ class ServiceController:
             process = psutil.Process(state.pid)
             if abs(process.create_time() - state.process_created_at) > 1.0:
                 return False
+            command = process.cmdline()
+            if len(command) >= 3 and command[1:3] == ["-m", "suzent.service.runtime"]:
+                invoked = Path(command[0])
+                venv_bin = root.resolve() / ".venv" / "bin"
+                if (
+                    invoked.is_absolute()
+                    and invoked.parent.resolve() == venv_bin.resolve()
+                    and invoked.name in {"python", "python3"}
+                    and invoked.is_file()
+                    and invoked.resolve() == Path(process.exe()).resolve()
+                ):
+                    return True
             for candidate in (process, process.parent()):
                 if (
                     candidate is None
