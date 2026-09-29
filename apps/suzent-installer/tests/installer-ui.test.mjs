@@ -7,6 +7,16 @@ const html = readFileSync(new URL('../ui/index.html', import.meta.url), 'utf8');
 const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
 const permissions = JSON.parse(readFileSync(new URL('../capabilities/default.json', import.meta.url), 'utf8')).permissions;
 
+test('window runtime includes the Windows resize handle-leak fix', () => {
+  // https://github.com/tauri-apps/tauri/pull/15614
+  const lock = readFileSync(new URL('../Cargo.lock', import.meta.url), 'utf8');
+  const match = lock.match(/name = "tauri-runtime-wry"\nversion = "(\d+)\.(\d+)\.(\d+)"/);
+  assert.ok(match, 'window runtime must be locked');
+  const [major, minor, patch] = match.slice(1).map(Number);
+  assert.ok(major > 2 || (major === 2 && (minor > 11 || (minor === 11 && patch >= 4))),
+    'tauri-runtime-wry must include the 2.11.4 Windows HDC leak fix');
+});
+
 class Element {
   constructor() {
     this.textContent = ''; this.value = ''; this.children = []; this.style = {};
