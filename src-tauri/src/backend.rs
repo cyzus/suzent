@@ -386,12 +386,12 @@ mod tests {
     }
 
     #[test]
-    fn ignores_stale_install_directory_marker() {
+    fn preserves_unavailable_install_directory_marker() {
         let temp = tempfile::tempdir().unwrap();
         let workspace = temp.path().join("missing");
         let marker = temp.path().join("install-dir.txt");
         fs::write(&marker, workspace.display().to_string()).unwrap();
-        assert_eq!(saved_install_workspace(&marker), None);
+        assert_eq!(saved_install_workspace(&marker), Some(workspace));
     }
 }
 
@@ -473,7 +473,8 @@ pub fn find_install_workspace_dir() -> PathBuf {
 
 fn saved_install_workspace(marker: &Path) -> Option<PathBuf> {
     let path = PathBuf::from(std::fs::read_to_string(marker).ok()?.trim());
-    is_workspace_bootstrapped(&path).then_some(path)
+    // Preserve the chosen location even when it needs repair or is offline.
+    path.is_absolute().then_some(path)
 }
 
 pub fn persist_install_workspace_dir(dir: &std::path::Path) -> Result<(), String> {

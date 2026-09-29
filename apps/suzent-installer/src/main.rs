@@ -11,9 +11,11 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use tauri::Emitter;
+use tauri::Manager;
+use tauri_plugin_dialog::DialogExt;
 
 const PROTOCOL_VERSION: u16 = 1;
 const TARGET_PYTHON_VERSION: &str = "3.12";
@@ -111,6 +113,37 @@ struct UpdateRuntime {
     args: Vec<String>,
     repair: bool,
     running: AtomicBool,
+    result: Mutex<Option<UpdateResult>>,
+}
+
+#[derive(Clone, Serialize)]
+struct UpdateResult {
+    code: i32,
+    error: Option<String>,
+}
+
+#[tauri::command]
+fn updater_result(runtime: tauri::State<'_, Arc<UpdateRuntime>>) -> Option<UpdateResult> {
+    runtime.result.lock().ok()?.clone()
+}
+
+#[tauri::command]
+async fn save_diagnostics(app: tauri::AppHandle, content: String) -> Result<bool, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let Some(file) = app
+            .dialog()
+            .file()
+            .set_file_name("suzent-diagnostics.txt")
+            .blocking_save_file()
+        else {
+            return Ok(false);
+        };
+        let path = file.into_path().map_err(|error| error.to_string())?;
+        fs::write(path, content).map_err(|error| error.to_string())?;
+        Ok(true)
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 fn main() {
@@ -230,9 +263,8 @@ fn installer_context() -> InstallerContext {
             "install"
         },
         repair,
-        dir: flag_value(&args, "--dir")
-            .map(PathBuf::from)
-            .unwrap_or_else(default_install_dir)
+        dir: InstallConfig::from_env_and_args(&args)
+            .dir
             .display()
             .to_string(),
         target: flag_value(&args, "--target").unwrap_or_default(),
@@ -250,8 +282,13 @@ fn updater_status() -> Option<String> {
 fn retry_update(
     app_handle: tauri::AppHandle,
     runtime: tauri::State<'_, Arc<UpdateRuntime>>,
+    repair: Option<bool>,
 ) -> Result<(), String> {
-    start_update_worker(app_handle, runtime.inner().clone())
+    start_update_worker(
+        app_handle,
+        runtime.inner().clone(),
+        repair.unwrap_or(runtime.repair),
+    )
 }
 
 #[tauri::command]
@@ -284,6 +321,7 @@ fn run_tauri_app() {
             run_installer_stage,
             launch_installed_app,
             updater_status,
+            save_diagnostics,
         ])
         .run(installer_context_config())
         .expect("error while running Suzent installer");
@@ -294,6 +332,7 @@ fn run_update_tauri(args: Vec<String>, repair: bool) {
         args,
         repair,
         running: AtomicBool::new(false),
+        result: Mutex::new(None),
     });
     let setup_runtime = runtime.clone();
     tauri::Builder::default()
@@ -304,10 +343,24 @@ fn run_update_tauri(args: Vec<String>, repair: bool) {
             installer_context,
             updater_status,
             retry_update,
+            updater_result,
+            launch_installed_app,
+            save_diagnostics,
         ])
         .setup(move |app| {
-            start_update_worker(app.handle().clone(), setup_runtime.clone())?;
+            start_update_worker(app.handle().clone(), setup_runtime.clone(), repair)?;
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window
+                    .state::<Arc<UpdateRuntime>>()
+                    .running
+                    .load(Ordering::SeqCst)
+                {
+                    api.prevent_close();
+                }
+            }
         })
         .run(installer_context_config())
         .expect("error while running Suzent updater");
@@ -316,14 +369,23 @@ fn run_update_tauri(args: Vec<String>, repair: bool) {
 fn start_update_worker(
     app_handle: tauri::AppHandle,
     runtime: Arc<UpdateRuntime>,
+    repair: bool,
 ) -> Result<(), String> {
     if runtime.running.swap(true, Ordering::SeqCst) {
         return Err("An update is already running".to_string());
     }
+    *runtime.result.lock().map_err(|error| error.to_string())? = None;
     std::thread::spawn(move || {
-        let code = updater::run(&runtime.args, runtime.repair);
+        let error = updater::run_inner(&runtime.args, repair).err();
+        let result = UpdateResult {
+            code: if error.is_some() { 1 } else { 0 },
+            error,
+        };
+        if let Ok(mut stored) = runtime.result.lock() {
+            *stored = Some(result.clone());
+        }
         runtime.running.store(false, Ordering::SeqCst);
-        let _ = app_handle.emit("updater-finished", code);
+        let _ = app_handle.emit("updater-finished", result);
     });
     Ok(())
 }
@@ -1373,10 +1435,8 @@ fn install_dir_marker_path() -> PathBuf {
 
 fn saved_install_dir(marker: &Path) -> Option<PathBuf> {
     let path = PathBuf::from(fs::read_to_string(marker).ok()?.trim());
-    (path.join("pyproject.toml").is_file()
-        && path.join(".suzent-bootstrap-complete").is_file()
-        && workspace_python(&path).is_file())
-    .then_some(path)
+    // A missing drive or broken environment needs repair, not a second install.
+    path.is_absolute().then_some(path)
 }
 
 fn write_install_dir_marker(dir: &Path) -> io::Result<()> {
@@ -1543,7 +1603,7 @@ mod tests {
     }
 
     #[test]
-    fn reuses_only_a_complete_install_record() {
+    fn preserves_custom_install_record_when_repair_is_needed() {
         let temp = tempfile::tempdir().unwrap();
         let workspace = temp.path().join("custom install");
         fs::create_dir_all(workspace_python(&workspace).parent().unwrap()).unwrap();
@@ -1559,6 +1619,15 @@ mod tests {
         assert_eq!(saved_install_dir(&marker), Some(workspace.clone()));
 
         fs::remove_file(workspace.join(".suzent-bootstrap-complete")).unwrap();
-        assert_eq!(saved_install_dir(&marker), None);
+        assert_eq!(saved_install_dir(&marker), Some(workspace.clone()));
+        fs::remove_file(workspace_python(&workspace)).unwrap();
+        assert_eq!(saved_install_dir(&marker), Some(workspace));
+        let offline = temp.path().join("offline drive");
+        fs::write(&marker, offline.display().to_string()).unwrap();
+        assert_eq!(saved_install_dir(&marker), Some(offline));
+        for invalid in ["", "relative/install"] {
+            fs::write(&marker, invalid).unwrap();
+            assert_eq!(saved_install_dir(&marker), None);
+        }
     }
 }

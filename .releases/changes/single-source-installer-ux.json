@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch"},
+  "summary": "Separate daily and development launch modes, preserve custom installation paths, and simplify installer completion, recovery, and diagnostics."
+}
