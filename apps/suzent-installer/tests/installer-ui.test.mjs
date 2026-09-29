@@ -161,12 +161,14 @@ test('early failure reports actual error without claiming rollback', async () =>
   assert.match(h.calls.find(([name]) => name === 'save_diagnostics')[1].content, /D:\\workspace\\suzent/);
 });
 
-test('repair-required state offers an actual repair operation', async () => {
-  const h = await harness({mode:'update',result:{code:1,error:'run suzent repair'},status:{phase:'repair_required',message:'Recovery failed',progress:100}});
+for (const phase of ['repair_required', 'rolled_back']) {
+test(`${phase} state offers an actual repair operation`, async () => {
+  const h = await harness({mode:'update',result:{code:1,error:'run suzent repair'},status:{phase,message:'Recovery needs retry',progress:100}});
   assert.equal(h.element('retry').textContent, 'Repair installation');
   await h.element('retry').events.click();
   assert.equal(h.calls.find(([name]) => name === 'retry_update')[1].repair, true);
 });
+}
 
 test('active work blocks closing the window', async () => {
   const h = await harness({mode:'update'});

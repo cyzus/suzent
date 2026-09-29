@@ -394,14 +394,18 @@ fn run_transaction(
             transaction.phase = "rolled_back".to_string();
             write_journal(paths, &transaction)?;
             let message = match &transaction.recovery_dir {
-                Some(directory) => format!("Update failed; previous version restored. Local source changes saved in {directory}"),
+                Some(directory) => format!("Update failed; previous version restored. Local source changes saved in {directory}. Run suzent repair to retry."),
                 None => "Update failed; previous version restored".to_string(),
             };
             let _ = write_status(paths, "rolled_back", 100, &message, target_tag);
             if transaction.recovery_dir.is_none() {
                 let _ = fs::remove_file(&paths.journal);
             }
-            return Err(error);
+            return Err(if transaction.recovery_dir.is_some() {
+                format!("{error}; recovery journal retained; run suzent repair to retry")
+            } else {
+                error
+            });
         }
         let rollback_error = rollback_result.unwrap_err();
         let _ = write_status(

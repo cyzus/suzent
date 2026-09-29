@@ -403,7 +403,7 @@
         const downloading = status.phase === 'download' && Number(status.downloaded_bytes || 0) > 0;
         setNodeText(els.statusTitle, downloading ? text.downloading : (updateStages[index]?.[1] || text.preparing));
         const critical = ['source', 'dependencies', 'desktop', 'verify', 'switching', 'rollback'].includes(status.phase);
-        repairNeeded = status.phase === 'repair_required';
+        repairNeeded = ['repair_required', 'rolled_back'].includes(status.phase);
         els.retry.textContent = repairNeeded ? (isZh ? '修复安装' : 'Repair installation') : text.retry;
         const downloadDetail = downloading
           ? `${formatBytes(status.downloaded_bytes)}${status.total_bytes ? ` / ${formatBytes(status.total_bytes)} · ${Math.min(100, Math.round(status.downloaded_bytes * 100 / status.total_bytes))}%` : ''}`
