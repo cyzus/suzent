@@ -230,7 +230,10 @@ async fn run_installer_stage(request: StageRequest) -> Result<String, String> {
             "--dir".to_string(),
             request.dir,
         ];
-        let config = InstallConfig::from_env_and_args(&args);
+        let mut config = InstallConfig::from_env_and_args(&env::args().skip(1).collect::<Vec<_>>());
+        config.dir = PathBuf::from(flag_value(&args, "--dir").expect("stage directory"));
+        config.json = true;
+        config.non_interactive = true;
         let Some(stage) = stages()
             .into_iter()
             .find(|stage| stage.name == request.stage)
@@ -924,8 +927,11 @@ fn stage_dependencies(config: &InstallConfig) -> StageOutcome {
 }
 
 fn stage_ui(config: &InstallConfig) -> StageOutcome {
-    let asset = ui_asset_name();
     let release_tag = read_install_release_tag(config);
+    if release_tag.is_none() {
+        return stage_source_ui(config);
+    }
+    let asset = ui_asset_name();
     let release_base_url = if let Some(tag) = &release_tag {
         if config.release_base_url_override {
             config.release_base_url.clone()
@@ -979,6 +985,69 @@ fn stage_ui(config: &InstallConfig) -> StageOutcome {
     let ui_version = release_tag.as_deref().unwrap_or("latest");
     let _ = fs::write(bin_dir.join("version.txt"), ui_version);
     print_human(format!("[OK] UI binary ready at {}", dest.display()));
+    StageOutcome::ok()
+}
+
+fn stage_source_ui(config: &InstallConfig) -> StageOutcome {
+    if find_executable("cargo").is_none() || find_executable("node").is_none() {
+        return StageOutcome::fail(
+            "Branch installations require Node.js, npm, Rust and the platform build tools. Install them and retry; a release desktop cannot be paired with development source.",
+        );
+    }
+    build_source_ui(config, run_command)
+}
+
+fn build_source_ui(
+    config: &InstallConfig,
+    mut run: impl FnMut(&mut Command) -> bool,
+) -> StageOutcome {
+    for (directory, args) in [
+        ("frontend", vec!["ci"]),
+        ("src-tauri", vec!["ci"]),
+        ("src-tauri", vec!["run", "build:dist", "--", "--no-bundle"]),
+    ] {
+        let mut command = if cfg!(windows) {
+            let mut command = Command::new("cmd");
+            command.args(["/d", "/c", "npm"]);
+            command
+        } else {
+            Command::new("npm")
+        };
+        command.args(args).current_dir(config.dir.join(directory));
+        // A global Cargo target override must not redirect the artifact we install.
+        command.env("CARGO_TARGET_DIR", config.dir.join("src-tauri/target"));
+        configure_mirror_env(&mut command, config);
+        if !run(&mut command) {
+            return StageOutcome::fail("Failed to build the desktop from this checkout. Check Node.js/Rust build dependencies and retry; no release desktop was downloaded.");
+        }
+    }
+    let binary = config
+        .dir
+        .join("src-tauri/target/release")
+        .join(if cfg!(windows) {
+            "suzent.exe"
+        } else {
+            "suzent"
+        });
+    let bin = config.dir.join("bin");
+    let destination = bin.join(ui_binary_name());
+    let staged = destination.with_extension("source.tmp");
+    if let Err(error) = fs::create_dir_all(&bin)
+        .and_then(|()| fs::copy(&binary, &staged).map(|_| ()))
+        .and_then(|()| fs::rename(&staged, &destination))
+    {
+        let _ = fs::remove_file(&staged);
+        return StageOutcome::fail(format!(
+            "Failed to install the source-built desktop: {error}"
+        ));
+    }
+    if let Err(error) = fs::remove_file(bin.join("version.txt")) {
+        if error.kind() != io::ErrorKind::NotFound {
+            return StageOutcome::fail(format!(
+                "Failed to clear stale release desktop metadata: {error}"
+            ));
+        }
+    }
     StageOutcome::ok()
 }
 
@@ -1593,6 +1662,66 @@ fn exit_with_prompt(code: i32, non_interactive: bool) -> ! {
 mod tests {
     use super::{is_release_tag, saved_install_dir, workspace_python};
     use std::fs;
+
+    #[test]
+    fn branch_desktop_is_built_from_selected_checkout() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        let config = super::InstallConfig::from_env_and_args(&[
+            "--dir".into(),
+            root.display().to_string(),
+            "--branch".into(),
+            "feature".into(),
+        ]);
+        let artifact = root
+            .join("src-tauri/target/release")
+            .join(if cfg!(windows) {
+                "suzent.exe"
+            } else {
+                "suzent"
+            });
+        fs::create_dir_all(artifact.parent().unwrap()).unwrap();
+        fs::write(&artifact, b"branch desktop").unwrap();
+        let mut calls = Vec::new();
+        let result = super::build_source_ui(&config, |command| {
+            calls.push((
+                command.get_current_dir().unwrap().to_path_buf(),
+                command
+                    .get_args()
+                    .map(|arg| arg.to_string_lossy().to_string())
+                    .collect::<Vec<_>>(),
+            ));
+            true
+        });
+        assert!(result.ok);
+        assert_eq!(calls.len(), 3);
+        assert_eq!(calls[0].0, root.join("frontend"));
+        assert_eq!(calls[2].0, root.join("src-tauri"));
+        assert!(calls[2].1.ends_with(&[
+            "run".into(),
+            "build:dist".into(),
+            "--".into(),
+            "--no-bundle".into()
+        ]));
+        assert_eq!(
+            fs::read(root.join("bin").join(super::ui_binary_name())).unwrap(),
+            b"branch desktop"
+        );
+    }
+
+    #[test]
+    fn failed_source_build_never_replaces_installed_desktop() {
+        let temp = tempfile::tempdir().unwrap();
+        let config = super::InstallConfig::from_env_and_args(&[
+            "--dir".into(),
+            temp.path().display().to_string(),
+        ]);
+        let binary = temp.path().join("bin").join(super::ui_binary_name());
+        fs::create_dir_all(binary.parent().unwrap()).unwrap();
+        fs::write(&binary, b"old").unwrap();
+        assert!(!super::build_source_ui(&config, |_| false).ok);
+        assert_eq!(fs::read(binary).unwrap(), b"old");
+    }
 
     #[test]
     fn validates_stable_release_tags() {

@@ -40,6 +40,11 @@ Keep your chosen installation directory and its single `.venv`. Run
 Stop the existing backend and its background service before switching modes.
 The update channel does not select the launch mode.
 
+Installer branch selections (`--branch` or `SUZENT_BRANCH`) build the desktop
+from that checkout instead of downloading a release desktop. Node.js/npm, Rust,
+and the platform's Tauri build prerequisites must be installed. A failed build
+stops the desktop stage rather than silently installing a mismatched binary.
+
 Both modes use the current Python source and dependencies; daily mode is not
 an isolated stable version. After manually checking out another revision,
 sync its locked dependencies and rebuild the desktop before launching.

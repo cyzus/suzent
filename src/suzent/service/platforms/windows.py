@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import os
 import subprocess
 import time
@@ -29,6 +30,39 @@ _LEGACY_LAUNCHER = RUNTIME_DIR / "service-launcher.pyw"
 
 
 class WindowsServiceManager(PlatformServiceManager):
+    def assert_definition_owned(self) -> None:
+        registered = self._read_autostart()
+        if not self.definition_path.exists():
+            if registered is None:
+                return
+            raise RuntimeError(
+                "Suzent autostart exists without its service definition. Inspect the registered installation before repairing it; no settings were changed."
+            )
+        try:
+            tree = ast.parse(self.definition_path.read_text(encoding="utf-8"))
+            values = [
+                node.value.value
+                for node in tree.body
+                if isinstance(node, ast.Assign)
+                and any(
+                    isinstance(target, ast.Name) and target.id == "PYTHON"
+                    for target in node.targets
+                )
+                and isinstance(node.value, ast.Constant)
+                and isinstance(node.value.value, str)
+            ]
+            if (
+                len(values) == 1
+                and Path(values[0]).resolve() == self.python_executable
+                and registered in (None, self._autostart_command())
+            ):
+                return
+        except (OSError, SyntaxError, ValueError):
+            pass
+        raise RuntimeError(
+            "The registered Suzent service belongs to another or unknown installation. Manage it from its owning installation; no settings were changed."
+        )
+
     @property
     def definition_path(self) -> Path:
         return SUPERVISOR_PATH

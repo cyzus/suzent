@@ -24,23 +24,27 @@ class ServiceController:
         self.platform_manager = platform_manager or get_platform_manager()
 
     def install(self, *, start: bool = True) -> None:
+        self.platform_manager.assert_definition_owned()
         self._assert_service_owned(read_process_state())
         self.platform_manager.install()
         if start:
             self.platform_manager.start()
 
     def uninstall(self) -> None:
+        self.platform_manager.assert_definition_owned()
         self._assert_service_owned(read_process_state())
         self.stop()
         self.platform_manager.uninstall()
 
     def start(self) -> None:
+        self.platform_manager.assert_definition_owned()
         if not self.platform_manager.is_installed():
             raise RuntimeError("Suzent service is not installed.")
         self._assert_service_owned(read_process_state())
         self.platform_manager.start()
 
     def stop(self) -> None:
+        self.platform_manager.assert_definition_owned()
         state = read_process_state()
         self._assert_service_owned(state)
         if state is None:
@@ -69,11 +73,45 @@ class ServiceController:
         actual = Path(state.source_root).resolve() if state.source_root else None
         if expected is not None and actual == expected.resolve():
             return
+        if (
+            actual is None
+            and expected is not None
+            and ServiceController._owns_legacy_process(state, expected)
+        ):
+            return
         raise RuntimeError(
             f"Running service belongs to {actual or 'an unknown installation'} "
             f"(PID {state.pid}), not {expected or 'this installation'}. "
             "Inspect the other installation and stop it explicitly; no process was stopped."
         )
+
+    @staticmethod
+    def _owns_legacy_process(state: ServiceProcessState, root: Path) -> bool:
+        """Recognize Windows venv redirectors without trusting shared uv Python."""
+        launchers = {
+            root.resolve() / ".venv" / "Scripts" / name
+            for name in ("python.exe", "pythonw.exe")
+        }
+        try:
+            process = psutil.Process(state.pid)
+            if abs(process.create_time() - state.process_created_at) > 1.0:
+                return False
+            for candidate in (process, process.parent()):
+                if (
+                    candidate is None
+                    or candidate.create_time() > state.process_created_at + 1.0
+                ):
+                    continue
+                command = candidate.cmdline()
+                is_runtime = any(
+                    command[index : index + 2] == ["-m", "suzent.service.runtime"]
+                    for index in range(len(command) - 1)
+                )
+                if is_runtime and Path(candidate.exe()).resolve() in launchers:
+                    return True
+        except (psutil.Error, OSError):
+            pass
+        return False
 
     @staticmethod
     def _request_graceful_shutdown(port: int, control_token: str) -> bool:
@@ -92,6 +130,16 @@ class ServiceController:
         installed = self.platform_manager.is_installed()
         autostart = self.platform_manager.is_autostart_enabled()
         state = read_process_state()
+        try:
+            self.platform_manager.assert_definition_owned()
+        except RuntimeError as exc:
+            return ServiceStatus(
+                installed=installed,
+                autostart=autostart,
+                running=False,
+                ready=False,
+                error=str(exc),
+            )
         if state is None:
             return ServiceStatus(
                 installed=installed,

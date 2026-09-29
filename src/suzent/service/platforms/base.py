@@ -32,6 +32,9 @@ class PlatformServiceManager(ABC):
     def is_autostart_enabled(self) -> bool:
         return self.is_installed()
 
+    def assert_definition_owned(self) -> None:
+        """Reject foreign service definitions when the platform shares one entry."""
+
     @abstractmethod
     def install(self) -> None: ...
 
