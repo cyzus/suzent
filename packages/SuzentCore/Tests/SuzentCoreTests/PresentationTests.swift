@@ -63,3 +63,11 @@ import Testing
     let reset = buffer.drain()
     #expect(reset == [])
 }
+
+@Test func resolvesCitationSourcesStoredInAnotherMessage() throws {
+    let data = Data(#"[{"role":"assistant","parts":[{"type":"text","text":"Weather \uE200cite\uE202t0_src_1\uE201"}]},{"role":"assistant","parts":[{"type":"citation-sources","citationSources":[{"id":"t0_src_1","type":"webpage","title":"Forecast","url":"https://example.com/weather"}]}]}]"#.utf8)
+    let messages = try JSONDecoder().decode([ChatMessage].self, from: data)
+    let row = try #require(presentMessages(messages).first)
+
+    #expect(markdownWithCitationLinks(row.text, sources: row.citationSources) == "Weather [Forecast](<https://example.com/weather>)")
+}

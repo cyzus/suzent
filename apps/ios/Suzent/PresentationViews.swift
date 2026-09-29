@@ -1,6 +1,8 @@
 import SwiftUI
 import SuzentCore
 import MarkdownUI
+import SafariServices
+import ImageIO
 
 extension Color {
     static var suzentSurface: Color {
@@ -36,7 +38,7 @@ struct MessageView: View {
         } else {
             VStack(alignment: .leading, spacing: 10) {
                 SuzentAssistantBadge(compact: !isLatest)
-                ActivityContent(parts: message.parts, live: false)
+                ActivityContent(parts: message.parts, live: false, citationSources: message.citationSources)
             }.frame(maxWidth: .infinity, alignment: .leading)
         }
     }
@@ -153,11 +155,324 @@ struct SuzentWordmark: View {
     }
 }
 
+private struct CitationPreview {
+    let url: URL
+    let title: String
+    let snippet: String
+    let favicon: String?
+}
+
+@MainActor
+private final class CitationIcons: ObservableObject {
+    @Published var images: [String: UIImage] = [:]
+
+    func load(_ urls: [String]) async {
+        let missing = Array(Set(urls).filter { images[$0] == nil })
+        for start in stride(from: 0, to: missing.count, by: 4) {
+            guard !Task.isCancelled else { return }
+            let batch = Array(missing[start..<min(start + 4, missing.count)])
+            let loaded = await withTaskGroup(of: (String, UIImage?).self) { group in
+                for raw in batch { group.addTask { (raw, await CitationIconLoader.shared.load(raw)) } }
+                var result: [String: UIImage] = [:]
+                for await (raw, image) in group { if let image { result[raw] = image } }
+                return result
+            }
+            guard !Task.isCancelled else { return }
+            if !loaded.isEmpty { images.merge(loaded) { _, new in new } }
+        }
+    }
+}
+
+private actor CitationIconLoader {
+    static let shared = CitationIconLoader()
+    private let cache = NSCache<NSString, UIImage>()
+    private var pending: [String: Task<UIImage?, Never>] = [:]
+
+    func load(_ raw: String) async -> UIImage? {
+        if let image = cache.object(forKey: raw as NSString) { return image }
+        if let task = pending[raw] { return await task.value }
+        guard let url = URL(string: raw), url.scheme == "https" else { return nil }
+        let task = Task { await Self.download(url) }
+        pending[raw] = task
+        let image = await task.value
+        pending[raw] = nil
+        if let image {
+            cache.countLimit = 128
+            cache.setObject(image, forKey: raw as NSString)
+        }
+        return image
+    }
+
+    private static let session = URLSession(configuration: .ephemeral)
+    private nonisolated static func download(_ url: URL) async -> UIImage? {
+        do {
+            let (bytes, response) = try await Self.session.bytes(for: URLRequest(url: url, timeoutInterval: 8))
+            guard (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+            var data = Data()
+            for try await byte in bytes {
+                data.append(byte)
+                if data.count > 262144 { break }
+            }
+            guard data.count <= 262144, let source = CGImageSourceCreateWithData(data as CFData, nil),
+                  let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                    kCGImageSourceCreateThumbnailFromImageAlways: true,
+                    kCGImageSourceShouldCacheImmediately: true,
+                    kCGImageSourceThumbnailMaxPixelSize: 64
+                  ] as CFDictionary) else { return nil }
+            return UIImage(cgImage: thumbnail)
+        } catch { return nil }
+    }
+}
+
+private struct CitationBrowser: UIViewControllerRepresentable {
+    let url: URL
+    func makeUIViewController(context: Context) -> SFSafariViewController { SFSafariViewController(url: url) }
+    func updateUIViewController(_ controller: SFSafariViewController, context: Context) {}
+}
+
+private struct CitationParagraph: UIViewRepresentable {
+    let markdown: String
+    let selectedURL: URL?
+    let sources: [CitationSource]
+    let icons: [String: UIImage]
+    let onOpen: (URL) -> Void
+    @Environment(\.colorScheme) private var colorScheme
+
+    func makeCoordinator() -> Coordinator { Coordinator(onOpen: onOpen) }
+    func makeUIView(context: Context) -> UITextView {
+        let view = UITextView()
+        view.isEditable = false
+        view.isScrollEnabled = false
+        view.backgroundColor = .clear
+        view.textContainerInset = .zero
+        view.textContainer.lineFragmentPadding = 0
+        view.delegate = context.coordinator
+        return view
+    }
+    func updateUIView(_ view: UITextView, context: Context) {
+        let coordinator = context.coordinator
+        coordinator.onOpen = onOpen
+        let dark = colorScheme == .dark
+        let iconVersions = coordinator.iconURLs.reduce(into: [String: ObjectIdentifier]()) { result, url in
+            if let image = icons[url] { result[url] = ObjectIdentifier(image) }
+        }
+        if coordinator.markdown == markdown, coordinator.sources == sources, coordinator.dark == dark,
+           coordinator.iconVersions == iconVersions {
+            if coordinator.selectedURL != selectedURL {
+                for url in [coordinator.selectedURL, selectedURL].compactMap({ $0 }) {
+                    guard let badge = coordinator.badges[url] else { continue }
+                    badge.attachment.image = url == selectedURL ? badge.highlighted : badge.normal
+                    view.layoutManager.invalidateDisplay(forCharacterRange: badge.range)
+                }
+                coordinator.selectedURL = selectedURL
+            }
+            return
+        }
+        let parsed: AttributedString
+        if coordinator.markdown == markdown, let cached = coordinator.parsed { parsed = cached }
+        else { parsed = (try? AttributedString(markdown: markdown, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(markdown) }
+        coordinator.parsed = parsed
+        coordinator.markdown = markdown
+        coordinator.sources = sources
+        coordinator.dark = dark
+        coordinator.selectedURL = selectedURL
+        coordinator.badges = [:]
+        coordinator.iconURLs = []
+        let result = NSMutableAttributedString(parsed)
+        let all = NSRange(location: 0, length: result.length)
+        let font = UIFont.systemFont(ofSize: CGFloat(PresentationTokens.typeChat))
+        result.addAttributes([.font: font, .foregroundColor: UIColor.label], range: all)
+        for run in parsed.runs {
+            let range = NSRange(run.range, in: parsed)
+            if run.inlinePresentationIntent?.contains(.stronglyEmphasized) == true {
+                result.addAttribute(.font, value: UIFont.boldSystemFont(ofSize: font.pointSize), range: range)
+            }
+        }
+        var links: [(NSRange, URL)] = []
+        result.enumerateAttribute(.link, in: all) { value, range, _ in
+            if let url = value as? URL, url.scheme == "suzent-citation" { links.append((range, url)) }
+        }
+        for (range, url) in links.reversed() {
+            let label = String(result.attributedSubstring(from: range).string.dropFirst(3))
+            let sourceID = url.lastPathComponent.split(separator: ",").first.map(String.init)
+            let favicon = sources.first { $0.id == sourceID }?.favicon
+            if let favicon { coordinator.iconURLs.insert(favicon) }
+            let icon = favicon.flatMap { icons[$0] }
+            let badgeFont = UIFont.systemFont(ofSize: font.pointSize * 0.72, weight: .medium)
+            let selected = selectedURL == url
+            let ink: UIColor = dark && !selected ? .white : .darkGray
+            let attributes: [NSAttributedString.Key: Any] = [.font: badgeFont, .foregroundColor: ink]
+            let size = (label as NSString).size(withAttributes: attributes)
+            let iconSize = badgeFont.pointSize
+            let bounds = CGRect(x: 0, y: 0, width: ceil(size.width) + 14 + iconSize + 4, height: ceil(size.height) + 6)
+            func renderImage(selected: Bool) -> UIImage {
+                let key = Coordinator.BadgeKey(label: label, dark: dark, selected: selected, icon: icon.map(ObjectIdentifier.init))
+                if let cached = coordinator.badgeImages[key] { return cached }
+                let image = UIGraphicsImageRenderer(size: bounds.size).image { _ in
+                    let path = UIBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), cornerRadius: bounds.height / 2)
+                    (selected ? UIColor(red: 0.74, green: 0.84, blue: 1, alpha: 1) : UIColor(white: dark ? 0.19 : 0.96, alpha: 1)).setFill()
+                    path.fill()
+                    UIColor(white: dark ? 0.38 : 0.8, alpha: 1).setStroke()
+                    path.lineWidth = 0.5
+                    path.stroke()
+                    if let icon { icon.draw(in: CGRect(x: 7, y: (bounds.height - iconSize) / 2, width: iconSize, height: iconSize)) }
+                    let textAttributes: [NSAttributedString.Key: Any] = [.font: badgeFont, .foregroundColor: dark && !selected ? UIColor.white : UIColor.darkGray]
+                    if icon == nil { ("↗" as NSString).draw(at: CGPoint(x: 7, y: 3), withAttributes: textAttributes) }
+                    (label as NSString).draw(at: CGPoint(x: 7 + iconSize + 4, y: 3), withAttributes: textAttributes)
+                }
+                if coordinator.badgeImages.count >= 128 { coordinator.badgeImages.removeAll() }
+                coordinator.badgeImages[key] = image
+                return image
+            }
+            let normal = renderImage(selected: false)
+            let highlighted = renderImage(selected: true)
+            let attachment = NSTextAttachment()
+            attachment.image = selected ? highlighted : normal
+            attachment.bounds = CGRect(x: 0, y: font.descender - 1, width: bounds.width, height: bounds.height)
+            let badge = NSMutableAttributedString(attachment: attachment)
+            badge.addAttributes([.link: url, .accessibilitySpeechSpellOut: false], range: NSRange(location: 0, length: 1))
+            result.replaceCharacters(in: range, with: badge)
+            coordinator.badges[url] = Coordinator.Badge(attachment: attachment, normal: normal, highlighted: highlighted, range: .init(location: 0, length: 1))
+        }
+        result.enumerateAttribute(.link, in: NSRange(location: 0, length: result.length)) { value, range, _ in
+            if let url = value as? URL { coordinator.badges[url]?.range = range }
+        }
+        coordinator.iconVersions = coordinator.iconURLs.reduce(into: [:]) { versions, url in
+            if let image = icons[url] { versions[url] = ObjectIdentifier(image) }
+        }
+        coordinator.measuredSize = nil
+        view.attributedText = result
+        view.linkTextAttributes = [.foregroundColor: UIColor.systemBlue]
+        view.tintColor = .clear
+        view.accessibilityLabel = String(parsed.characters)
+    }
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
+        guard let width = proposal.width else { return nil }
+        if let cached = context.coordinator.measuredSize, cached.width == width { return cached }
+        let measured = uiView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
+        context.coordinator.measuredSize = CGSize(width: width, height: measured.height)
+        return context.coordinator.measuredSize
+    }
+    final class Coordinator: NSObject, UITextViewDelegate {
+        struct BadgeKey: Hashable {
+            let label: String
+            let dark: Bool
+            let selected: Bool
+            let icon: ObjectIdentifier?
+        }
+        struct Badge {
+            let attachment: NSTextAttachment
+            let normal: UIImage
+            let highlighted: UIImage
+            var range: NSRange
+        }
+        var markdown: String?
+        var parsed: AttributedString?
+        var sources: [CitationSource] = []
+        var dark = false
+        var selectedURL: URL?
+        var iconURLs: Set<String> = []
+        var iconVersions: [String: ObjectIdentifier] = [:]
+        var badges: [URL: Badge] = [:]
+        var badgeImages: [BadgeKey: UIImage] = [:]
+        var measuredSize: CGSize?
+        var onOpen: (URL) -> Void
+        init(onOpen: @escaping (URL) -> Void) { self.onOpen = onOpen }
+        func textView(_ textView: UITextView, shouldInteractWith URL: URL, in characterRange: NSRange, interaction: UITextItemInteraction) -> Bool {
+            if ["http", "https", "suzent-citation"].contains(URL.scheme) { onOpen(URL) }
+            return false
+        }
+    }
+}
+
+@MainActor
+private final class CitationContentCache {
+    private var text: String?
+    private var sources: [CitationSource] = []
+    private var parsed = MarkdownContent("")
+
+    func content(_ text: String, sources: [CitationSource]) -> MarkdownContent {
+        if self.text != text || self.sources != sources {
+            parsed = MarkdownContent(markdownWithCitationLinks(text, sources: sources, badges: true))
+            self.text = text
+            self.sources = sources
+        }
+        return parsed
+    }
+}
+
 struct SuzentMarkdown: View {
     let text: String
+    var citationSources: [CitationSource] = []
+    @State private var pendingLink: URL?
+    @State private var browserLink: URL?
+    @StateObject private var icons = CitationIcons()
+    @State private var contentCache = CitationContentCache()
     var body: some View {
-        Markdown(text)
-            .markdownTheme(Theme.gitHub
+        Markdown(contentCache.content(text, sources: citationSources))
+            .markdownTheme(suzentMarkdownTheme)
+            .environment(\.openURL, OpenURLAction { url in
+                guard ["http", "https", "suzent-citation"].contains(url.scheme?.lowercased()) else { return .discarded }
+                pendingLink = url
+                return .handled
+            })
+            .textSelection(.enabled)
+            .task(id: citationSources.compactMap(\.favicon)) { await icons.load(citationSources.compactMap(\.favicon)) }
+            .sheet(isPresented: Binding(
+                get: { pendingLink != nil },
+                set: { if !$0 { pendingLink = nil } }
+            )) {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("Sources").font(.title2.bold())
+                        ForEach(previewSources, id: \.url) { source in
+                            VStack(alignment: .leading, spacing: 12) {
+                                HStack(spacing: 8) {
+                                    if let favicon = source.favicon, let image = icons.images[favicon] {
+                                        Image(uiImage: image).resizable().scaledToFit().frame(width: 18, height: 18).accessibilityHidden(true)
+                                    } else { Image(systemName: "globe").frame(width: 18, height: 18).accessibilityHidden(true) }
+                                    Text((source.url.host ?? "").replacingOccurrences(of: "www.", with: ""))
+                                }.font(.caption).foregroundStyle(.secondary)
+                                Text(source.title).font(.headline)
+                                if !source.snippet.isEmpty { Text(source.snippet).font(.subheadline).lineLimit(6) }
+                                Button("Read article") { browserLink = source.url }.buttonStyle(.borderedProminent).clipShape(Capsule())
+                                HStack {
+                                    Button("Copy link") { UIPasteboard.general.url = source.url }
+                                    Spacer()
+                                    Button("Open externally") { UIApplication.shared.open(source.url) }
+                                }.font(.caption)
+                            }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 16))
+                        }
+                    }.padding(24)
+                }
+                .presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
+                .sheet(isPresented: Binding(get: { browserLink != nil }, set: { if !$0 { browserLink = nil } })) {
+                    if let browserLink { CitationBrowser(url: browserLink).ignoresSafeArea() }
+                }
+            }
+    }
+
+    private var previewSources: [CitationPreview] {
+        guard let link = pendingLink else { return [] }
+        if link.scheme == "suzent-citation" {
+            return link.lastPathComponent.split(separator: ",").compactMap { id in
+                guard let source = citationSources.first(where: { $0.id == id }), let raw = source.url,
+                      let url = URL(string: raw), ["http", "https"].contains(url.scheme) else { return nil }
+                return CitationPreview(url: url, title: source.title, snippet: source.snippet ?? "", favicon: source.favicon)
+            }
+        }
+        let source = citationSources.first { $0.url == link.absoluteString }
+        return [CitationPreview(url: link, title: source?.title ?? link.host ?? link.absoluteString, snippet: source?.snippet ?? "", favicon: source?.favicon)]
+    }
+
+    private var suzentMarkdownTheme: Theme {
+        Theme.gitHub
+                .paragraph { configuration in
+                    if configuration.content.renderMarkdown().contains("suzent-citation://") {
+                        CitationParagraph(markdown: configuration.content.renderMarkdown(), selectedURL: pendingLink, sources: citationSources, icons: icons.images) { pendingLink = $0 }
+                    } else { configuration.label }
+                }
                 .text {
                     ForegroundColor(.primary)
                     BackgroundColor(.clear)
@@ -169,7 +484,9 @@ struct SuzentMarkdown: View {
                     ForegroundColor(.black)
                     BackgroundColor(Color(presentation: PresentationTokens.yellow))
                 }
-                .link { ForegroundColor(Color(presentation: PresentationTokens.blue)) }
+                .link {
+                    ForegroundColor(Color(presentation: PresentationTokens.blue))
+                }
                 .codeBlock { configuration in
                     VStack(alignment: .leading, spacing: 0) {
                         Text(configuration.language?.uppercased() ?? "CODE")
@@ -188,8 +505,7 @@ struct SuzentMarkdown: View {
                         }.background(Color(presentation: PresentationTokens.code_bg))
                     }.overlay(Rectangle().stroke(.primary, lineWidth: PresentationTokens.borderWidth))
                         .markdownMargin(top: 8, bottom: 16)
-                })
-            .textSelection(.enabled)
+                }
     }
 }
 
@@ -216,10 +532,11 @@ struct SuzentAssistantBadge: View {
 struct ActivityContent: View {
     let parts: [MessagePart]
     var live = false
+    var citationSources: [CitationSource] = []
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             ForEach(Array(activityChunks(parts).enumerated()), id: \.offset) { _, chunk in
-                if chunk.first?.type == "text" { SuzentMarkdown(text: chunk.first?.text ?? "") }
+                if chunk.first?.type == "text" { SuzentMarkdown(text: chunk.first?.text ?? "", citationSources: citationSources) }
                 else { ActivityRail(parts: chunk, live: live) }
             }
             if live { StreamingPulse().padding(.vertical, 4).accessibilityLabel("Working…") }

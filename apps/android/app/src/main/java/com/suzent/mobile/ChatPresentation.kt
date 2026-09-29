@@ -1,28 +1,75 @@
 package com.suzent.mobile
 
+data class CitationSource(
+    val id: String, val type: String, val title: String, val url: String = "",
+    val snippet: String = "", val favicon: String = "",
+)
+
 data class MessagePart(
     val type: String, val text: String = "", val toolName: String = "",
     val args: String = "", val output: String = "", val toolCallId: String = "",
-    val state: String = "", val messageId: String = ""
+    val state: String = "", val messageId: String = "", val citationSources: List<CitationSource> = emptyList(),
 )
 
-data class DisplayMessage(val role: String, val parts: List<MessagePart>) {
+data class DisplayMessage(val role: String, val parts: List<MessagePart>, val citationSources: List<CitationSource> = emptyList()) {
     val text: String get() = parts.filter { it.type == "text" }.joinToString("\n\n") { it.text }
 }
 
+private val citationPatterns = listOf(
+    Regex("\\[\\[cite:\\s*([^\\]\\n]+?)\\s*]]", RegexOption.IGNORE_CASE),
+    Regex("\ue200cite\ue202([^\ue201]+)\ue201", RegexOption.IGNORE_CASE),
+    Regex("\ufffccite\ufffc([A-Za-z0-9_,\\s\ufffc]+)\ufffc", RegexOption.IGNORE_CASE),
+    Regex("\\bcite[-:]((?:t\\d+_src_\\d+)(?:\\s*,\\s*t\\d+_src_\\d+)*)\\b", RegexOption.IGNORE_CASE),
+)
+
+fun markdownWithCitationLinks(text: String, sources: List<CitationSource>, badges: Boolean = false): String {
+    val byId = sources.associateBy { it.id }
+    var occurrence = 0
+    return citationPatterns.fold(text) { current, pattern ->
+        pattern.replace(current) { match ->
+            val ids = match.groupValues[1].split(',', '\ue202', '\ufffc').map { it.trim() }.filter { it.isNotEmpty() }
+            val primary = ids.firstNotNullOfOrNull(byId::get) ?: return@replace ""
+            val suffix = if (ids.size > 1) " +${ids.size - 1}" else ""
+            val host = runCatching { java.net.URI(primary.url).host?.removePrefix("www.") }.getOrNull()
+            val name = if (badges) (host ?: primary.title.ifEmpty { primary.id }) else primary.title.ifEmpty { primary.id }
+            val compact = if (badges && name.length > 26) name.take(26) + "…" else name
+            val label = (if (badges) "↗  " else "") + compact.replace("]", "\\]") + suffix
+            val scheme = runCatching { java.net.URI(primary.url).scheme?.lowercase() }.getOrNull()
+            val target = if (badges) "suzent-citation://sources/" + ids.joinToString(",") { java.net.URLEncoder.encode(it, "UTF-8") } + "#badge-${occurrence++}" else primary.url.replace(">", "%3E")
+            if (scheme in listOf("http", "https")) "[$label](<$target>)" else label
+        }
+    }
+}
+
+private fun citationSourceIds(text: String): Set<String> = citationPatterns.flatMap { pattern ->
+    pattern.findAll(text).flatMap { match ->
+        match.groupValues[1].split(',', '\ue202', '\ufffc').map(String::trim).filter(String::isNotEmpty)
+    }.toList()
+}.toSet()
+
 fun presentMessages(messages: List<ChatMessage>, liveToolIds: Set<String> = emptySet()): List<DisplayMessage> {
+    val indexedSources = messages.flatMapIndexed { index, message ->
+        message.parts.flatMap { part -> part.citationSources.map { index to it } }
+    }
     val representedTools = messages.flatMap { it.parts }.filter { it.type == "tool" }
         .map { it.toolCallId }.filter { it.isNotEmpty() }.toSet()
-    val rows = messages.mapNotNull { message ->
-        if (PresentationTokens.compactionSummaryMarkers.any { message.content.contains(it) }) return@mapNotNull null
-        if (message.role == "tool" && (message.toolCallId in representedTools || message.toolCallId in liveToolIds)) return@mapNotNull null
+    val rows = messages.mapIndexedNotNull { messageIndex, message ->
+        if (PresentationTokens.compactionSummaryMarkers.any { message.content.contains(it) }) return@mapIndexedNotNull null
+        if (message.role == "tool" && (message.toolCallId in representedTools || message.toolCallId in liveToolIds)) return@mapIndexedNotNull null
         val rawParts = when {
             message.role == "tool" -> listOf(MessagePart("tool", toolName = message.name, output = message.content, toolCallId = message.toolCallId))
             message.parts.isEmpty() -> listOf(MessagePart("text", text = message.content))
             else -> message.parts.filter { it.type != "tool" || it.toolCallId !in liveToolIds }
         }
         val parts = normalizeParts(rawParts)
-        if (parts.isEmpty()) null else DisplayMessage(message.role, parts)
+        if (parts.isEmpty()) null else {
+            val localSources = rawParts.flatMap { it.citationSources }
+            val referencedIds = parts.flatMap { citationSourceIds(it.text) }.toSet()
+            val nearbySources = referencedIds.mapNotNull { id ->
+                indexedSources.filter { it.second.id == id }.minByOrNull { kotlin.math.abs(it.first - messageIndex) }?.second
+            }
+            DisplayMessage(message.role, parts, (localSources + nearbySources).distinctBy { it.id })
+        }
     }
     val grouped = mutableListOf<DisplayMessage>()
     rows.forEach { row ->
@@ -31,7 +78,7 @@ fun presentMessages(messages: List<ChatMessage>, liveToolIds: Set<String> = empt
             previous.parts.last().type != "text" && row.parts.first().type != "text") {
             grouped[grouped.lastIndex] = DisplayMessage(
                 if (previous.role == "assistant" || row.role == "assistant") "assistant" else "tool",
-                normalizeParts(previous.parts + row.parts))
+                normalizeParts(previous.parts + row.parts), previous.citationSources + row.citationSources)
         } else grouped.add(row)
     }
     return grouped
