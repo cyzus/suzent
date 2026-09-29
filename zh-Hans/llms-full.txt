@@ -5592,9 +5592,9 @@ uv sync --all-extras
 uv run suzent start --dev
 ```
 
-> **Note**: `suzent start` launches the full development environment. The
-> `--dev` flag forces developer mode (debug backend + Tauri dev, skipping the
-> pre-built UI binary). For a headless debug backend only, use
+> **Note**: `suzent start` launches a built desktop app; it never implicitly
+> enters development mode. Use `--dev` for the debug backend + Tauri dev.
+> For a headless debug backend only, use
 > `uv run suzent serve --debug`.
 
 To update an existing development checkout, run:
@@ -5603,10 +5603,35 @@ To update an existing development checkout, run:
 uv run suzent update
 ```
 
-This fast-forwards `main` and installs the exact Python and frontend
+This fast-forwards the current branch from its configured upstream and installs the Python and frontend
 dependencies from the lockfiles. Suzent detects that this is a source checkout
 and selects the development channel automatically. Bootstrapped installations
 continue to use the stable channel.
+
+Development updates require a clean working tree and a configured upstream.
+Untracked files, unfinished Git operations, detached HEAD, or divergent history
+must be handled manually. Updates do not switch branches or stash your work.
+
+### One checkout for development and daily use
+
+Keep your chosen installation directory and its single `.venv`. Run
+`suzent start --dev` for development, or build the desktop with
+`npm run build:dist` in `src-tauri` and use `suzent start` for daily use.
+Stop the existing backend and its background service before switching modes.
+The update channel does not select the launch mode.
+
+Installer branch selections (`--branch` or `SUZENT_BRANCH`) build the desktop
+from that checkout instead of downloading a release desktop. Node.js/npm, Rust,
+and the platform's Tauri build prerequisites must be installed. A failed build
+stops the desktop stage rather than silently installing a mismatched binary.
+
+Both modes use the current Python source and dependencies; daily mode is not
+an isolated stable version. After manually checking out another revision,
+sync its locked dependencies and rebuild the desktop before launching.
+Save local changes first and back up user data before migrations: checking out
+old source does not roll back a database. A saved custom installation path is
+retained even if its environment is broken; repair that location rather than
+silently installing another copy in the default user directory.
 
 `uv sync --all-extras` installs both the `social` and `dev` optional
 dependency groups (equivalent to the `all` extra). For a minimal runtime
