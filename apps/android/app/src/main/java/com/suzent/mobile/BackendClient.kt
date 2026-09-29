@@ -113,8 +113,8 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
             .apply { if (model != null) put("model", model) }
         try {
             json("mobile/client/send", body)
-        } catch (failure: IOException) {
-            if (failure is HttpFailure) throw failure
+        } catch (failure: Exception) {
+            if (failure is HttpFailure || failure is CancellationException) throw failure
             json("mobile/client/send", body)
         }
     }

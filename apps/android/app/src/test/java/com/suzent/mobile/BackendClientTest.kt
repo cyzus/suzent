@@ -13,9 +13,9 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class BackendClientTest {
-    @Test fun sendRetriesWithTheSameIdAfterAResponseIsLost() = runBlocking {
+    @Test fun sendRetriesWithTheSameIdAfterAnAmbiguousResponse() = runBlocking {
         val server = MockWebServer()
-        server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AFTER_REQUEST))
+        server.enqueue(MockResponse().setResponseCode(202).setBody("not-json"))
         server.enqueue(MockResponse().setResponseCode(202).setBody("""{"chat_id":"test"}"""))
         server.start()
         val client = BackendClient(Backend.parse(server.url("/").toString(), true), "token")
