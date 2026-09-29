@@ -108,6 +108,7 @@ struct InstallerContext {
     dir: String,
     target: String,
     branch: Option<String>,
+    native_titlebar: bool,
 }
 
 #[derive(Serialize)]
@@ -364,6 +365,7 @@ fn installer_context() -> InstallerContext {
             .to_string(),
         target: flag_value(&args, "--target").unwrap_or_default(),
         branch: config.branch_explicit.then_some(config.branch),
+        native_titlebar: cfg!(target_os = "macos"),
     }
 }
 
@@ -458,7 +460,13 @@ fn launch_installed_app(dir: String) -> Result<(), String> {
 }
 
 fn installer_context_config() -> tauri::Context<tauri::Wry> {
-    tauri::generate_context!()
+    let mut context = tauri::generate_context!();
+    if cfg!(target_os = "macos") {
+        for window in &mut context.config_mut().app.windows {
+            window.decorations = true;
+        }
+    }
+    context
 }
 
 fn run_tauri_app() {

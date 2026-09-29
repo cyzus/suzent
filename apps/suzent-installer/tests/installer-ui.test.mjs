@@ -32,7 +32,7 @@ class Element {
   querySelectorAll() { return []; }
 }
 
-async function harness({mode = 'install', result = null, status = null, shortcutFailure = false, shortcutSkipped = false, skippedStage = null, branch = null, language = 'en', closeError = null, destinationKind = 'new', recoveryAccepted = false} = {}) {
+async function harness({mode = 'install', result = null, status = null, shortcutFailure = false, shortcutSkipped = false, skippedStage = null, branch = null, language = 'en', closeError = null, destinationKind = 'new', recoveryAccepted = false, nativeTitlebar = false} = {}) {
   const elements = new Map();
   const element = id => {
     if (!elements.has(id)) elements.set(id, new Element());
@@ -44,7 +44,7 @@ async function harness({mode = 'install', result = null, status = null, shortcut
     calls.push([command, args]);
     if (command === 'confirm_git_recovery') return recoveryAccepted;
     if (command === 'inspect_destination') return {kind:destinationKind, branch:destinationKind === 'development' ? 'feature/local' : null};
-    if (command === 'installer_context') return {mode, branch, dir: 'D:\\workspace\\suzent', target:'v0.15.0'};
+    if (command === 'installer_context') return {mode, branch, native_titlebar:nativeTitlebar, dir: 'D:\\workspace\\suzent', target:'v0.15.0'};
     if (command === 'default_install_dir_command') return 'C:\\Users\\test\\suzent';
     if (command === 'installer_manifest') return JSON.stringify({stages: [{name:'backend',title:'Synchronizing Python environment'}, {name:'shortcuts',title:'Creating launch shortcuts'}, ...(skippedStage ? [{name:skippedStage,title:skippedStage}] : [])]});
     if (command === 'updater_status') return status && JSON.stringify(status);
@@ -89,6 +89,14 @@ test('explicit custom path survives initialization and directory selection is ex
   assert.equal(h.element('launch').hidden, false);
   assert.equal(h.element('start').hidden, true);
   assert.equal(h.element('finish-close').disabled, false);
+});
+
+test('Mac uses native controls without reserving a second titlebar', async () => {
+  const mac = await harness({nativeTitlebar:true});
+  assert.equal(mac.element('.app-titlebar').hidden, true);
+  assert.equal(mac.element('main').style.height, '100vh');
+  const windows = await harness();
+  assert.notEqual(windows.element('.app-titlebar').hidden, true);
 });
 
 test('repeated update clicks launch only one standalone updater', async () => {

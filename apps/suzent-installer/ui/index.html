@@ -605,6 +605,10 @@
 
       (async () => {
         context = await loadContext(); document.documentElement.lang = isZh ? 'zh-CN' : 'en'; applyStaticCopy();
+        if (context.native_titlebar) {
+          titlebar.hidden = true;
+          document.querySelector('main').style.height = '100vh';
+        }
         if (context.mode === 'install') await loadInstall(); else await loadUpdate();
       })().catch(error => setError(error instanceof Error ? error.message : String(error)));
     </script>
