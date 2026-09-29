@@ -1,0 +1,4 @@
+{
+  "products": { "desktop": "patch" },
+  "summary": "Update existing development workspaces directly from the installer, with branch-preserving fast-forward, confirmed local-change backups, desktop rebuilds, and recoverable rollback."
+}

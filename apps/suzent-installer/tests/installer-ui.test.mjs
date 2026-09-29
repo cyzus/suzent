@@ -99,11 +99,13 @@ test('Mac uses native controls without reserving a second titlebar', async () =>
   assert.notEqual(windows.element('.app-titlebar').hidden, true);
 });
 
-test('repeated update clicks launch only one standalone updater', async () => {
-  const h = await harness({destinationKind:'update'});
+for (const destinationKind of ['update', 'development']) {
+test(`repeated ${destinationKind} clicks launch only one standalone updater`, async () => {
+  const h = await harness({destinationKind});
   await Promise.all([h.element('start').events.click(), h.element('start').events.click()]);
   assert.equal(h.calls.filter(([name]) => name === 'open_existing_updater').length, 1);
 });
+}
 
 for (const recoveryAccepted of [false, true]) {
   test(`conflict retry requires native confirmation: accepted=${recoveryAccepted}`, async () => {
@@ -131,18 +133,26 @@ for (const destinationKind of ['update', 'repair', 'development', 'occupied', 'i
     const h = await harness({destinationKind});
     await h.element('start').events.click();
     assert.ok(!h.calls.some(([name]) => name === 'run_installer_stage'));
-    if (['update', 'repair'].includes(destinationKind)) {
+    if (['update', 'repair', 'development'].includes(destinationKind)) {
       assert.equal(h.calls.find(([name]) => name === 'open_existing_updater')[1].dir, 'D:\\workspace\\suzent');
     } else {
       assert.ok(!h.calls.some(([name]) => name === 'open_existing_updater'));
     }
     if (destinationKind === 'development') {
-      assert.equal(h.element('start').textContent, 'Copy update steps');
-      assert.match(h.calls.find(([name]) => name === 'clipboard')[1], /merge --ff-only/);
+      assert.equal(h.element('start').textContent, 'Update this workspace');
+      assert.ok(!h.calls.some(([name]) => name === 'clipboard'));
     }
     if (['occupied', 'invalid'].includes(destinationKind)) assert.equal(h.element('start').disabled, true);
   });
 }
+
+test('Chinese development workspace action updates instead of copying instructions', async () => {
+  const h = await harness({destinationKind:'development',language:'zh-CN'});
+  assert.equal(h.element('start').textContent, '更新此工作区');
+  await h.element('start').events.click();
+  assert.equal(h.calls.filter(([name]) => name === 'open_existing_updater').length, 1);
+  assert.ok(!h.calls.some(([name]) => name === 'clipboard' || name === 'run_installer_stage'));
+});
 
 test('completion before event subscription is recovered from native result', async () => {
   const h = await harness({mode:'update',result:{code:0,error:null},status:{phase:'complete',progress:100,message:'Done'}});

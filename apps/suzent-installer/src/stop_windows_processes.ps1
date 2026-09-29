@@ -14,6 +14,8 @@ public static extern uint GetLongPathName(string path, System.Text.StringBuilder
     $root = [IO.Path]::GetFullPath($env:SUZENT_UPDATE_ROOT)
     $allowedPaths = @(
         [IO.Path]::Combine($root, 'bin\suzent-ui.exe'),
+        [IO.Path]::Combine($root, 'src-tauri\target\release\suzent.exe'),
+        [IO.Path]::Combine($root, 'src-tauri\target\debug\suzent.exe'),
         [IO.Path]::Combine($root, '.venv\Scripts\python.exe'),
         [IO.Path]::Combine($root, '.venv\Scripts\pythonw.exe')
     ) | ForEach-Object { Get-CanonicalExecutablePath $_ }
