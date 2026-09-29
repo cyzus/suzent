@@ -152,6 +152,12 @@ public final class SuzentClient: Sendable {
         return try JSONDecoder().decode(Listing.self, from: await data("mobile/client/chats")).chats
     }
 
+    public func manageChat(_ id: String, action: String, value: String? = nil) async throws {
+        var body = ["chat_id": id, "action": action]
+        if let value { body["value"] = value }
+        _ = try await data("mobile/client/manage", body: body)
+    }
+
     public func projects() async throws -> [Project] {
         struct Listing: Decodable { let projects: [Project] }
         return try JSONDecoder().decode(Listing.self, from: await data("mobile/client/projects")).projects

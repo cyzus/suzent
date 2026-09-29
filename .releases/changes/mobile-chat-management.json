@@ -1,0 +1,4 @@
+{
+  "products": {"desktop": "patch", "mobile": "minor"},
+  "summary": "Add native conversation context menus, responsive pressed states, and explicit device-scoped conversation management permissions."
+}

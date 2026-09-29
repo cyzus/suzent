@@ -37,6 +37,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     var selectedModel by mutableStateOf<String?>(null)
     var sentVersion by mutableStateOf(0)
     var openedVersion by mutableStateOf(0)
+    var pinnedVersion by mutableStateOf(0)
     var pairingVersion by mutableStateOf(0)
     private val drafts = mutableMapOf<String, String>()
     var chats by mutableStateOf<List<Chat>>(emptyList())
@@ -284,6 +285,37 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                 android.util.Log.d("SuzentNetwork", "Refresh failure: ${failure.javaClass.simpleName} / ${status ?: failure.cause?.javaClass?.simpleName ?: "transport"}")
             }
             if (current == generation) handle(failure, R.string.refresh_error)
+        }
+    }
+
+    fun manageChat(chat: Chat, action: String, value: String? = null) {
+        val api = client ?: return
+        if (busy || device?.permissions?.manageChats != true) return
+        busy = true
+        val current = generation
+        viewModelScope.launch {
+            try {
+                api.manageChat(chat.id, action, value)
+                if (generation != current) return@launch
+                if (action == "delete") {
+                    drafts.remove(chat.id)
+                    chats = chats.filterNot { it.id == chat.id }
+                    if (selected?.id == chat.id) {
+                        streamJob?.cancel(); api.cancelLive()
+                        selected = null; streaming = false
+                        liveParts = emptyList(); pendingApprovals = emptyList(); draft = ""
+                    }
+                }
+                val listing = api.chats()
+                if (generation != current) return@launch
+                chats = listing
+                if (action == "pin" && listing.any { it.id == chat.id && it.pinned }) pinnedVersion++
+                listing.firstOrNull { it.id == selected?.id }?.let { updated ->
+                    selected = selected?.copy(title = updated.title, projectId = updated.projectId, projectName = updated.projectName, pinned = updated.pinned)
+                }
+            } catch (failure: CancellationException) { throw failure }
+            catch (failure: Exception) { if (generation == current) handle(failure) }
+            finally { busy = false }
         }
     }
 

@@ -76,6 +76,7 @@ export const zhCN = {
     compare: '请确认手机上显示的验证码为 {code}。',
     all_chats: '读取所有会话（包括未来的会话）',
     create_chats: '创建会话',
+    manage_chats: '管理会话（置顶、重命名、移动、删除）',
     send: '发送消息',
     stop: '停止回复',
     sharedChats: '允许这台手机读取的会话',

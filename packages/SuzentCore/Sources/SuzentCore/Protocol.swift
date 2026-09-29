@@ -43,9 +43,10 @@ public enum ClientError: Error, LocalizedError, Sendable {
 
 public struct Chat: Decodable, Identifiable, Sendable {
     public let id: String
-    public let title: String
+    public var title: String
     public var messages: [ChatMessage]?
     public var isRunning: Bool?
+    public var pinned: Bool?
     public var projectId: String?
     public var projectName: String?
     public var model: String?

@@ -20,6 +20,7 @@ const emptyPermissions = (): MobilePermissions => ({
   chat_ids: [],
   all_chats: false,
   create_chats: false,
+  manage_chats: false,
   send: false,
   stop: false,
   approve_tools: false,
@@ -28,6 +29,7 @@ const fullPermissions = (): MobilePermissions => ({
   ...emptyPermissions(),
   all_chats: true,
   create_chats: true,
+  manage_chats: true,
   send: true,
   stop: true,
   approve_tools: true,
@@ -47,7 +49,9 @@ function PermissionPicker({
   const { t } = useI18n();
   return (
     <div className="space-y-3">
-      {(['all_chats', 'create_chats', 'send', 'stop', 'approve_tools'] as const).map((key) => (
+      {(
+        ['all_chats', 'create_chats', 'manage_chats', 'send', 'stop', 'approve_tools'] as const
+      ).map((key) => (
         <label key={key} className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"
@@ -136,7 +140,10 @@ export function MobileAccessCard({
 }): React.ReactElement {
   const { t } = useI18n();
   const [origin, setOrigin] = useState('');
-  const [permissions, setPermissions] = useState<MobilePermissions>(fullPermissions);
+  const [permissions, setPermissions] = useState<MobilePermissions>(() => ({
+    ...fullPermissions(),
+    manage_chats: false,
+  }));
   const invitationRef = useRef<MobileInvitation | null>(null);
   const mounted = useRef(true);
   useEffect(() => {
@@ -284,6 +291,7 @@ export function MobileAccessCard({
             {t(
               permissions.all_chats &&
                 permissions.create_chats &&
+                permissions.manage_chats &&
                 permissions.send &&
                 permissions.stop &&
                 permissions.approve_tools
@@ -384,13 +392,27 @@ export function MobileAccessCard({
               <strong>
                 {device.display_name} · {device.platform}
               </strong>
+              <label className="flex items-center gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={device.permissions.manage_chats === true}
+                  disabled={busy}
+                  onChange={(event) => {
+                    const enabled = event.target.checked;
+                    void act(async () => {
+                      await mobileRequest(`devices/${device.device_id}/management`, { enabled });
+                    });
+                  }}
+                />
+                {t('mobileAccess.manage_chats')}
+              </label>
               <p className="text-xs">
                 {device.permissions.all_chats
                   ? t('mobileAccess.all_chats')
                   : t('mobileAccess.chatCount', { count: device.permissions.chat_ids.length })}
               </p>
               <p className="text-xs">
-                {(['create_chats', 'send', 'stop', 'approve_tools'] as const)
+                {(['create_chats', 'manage_chats', 'send', 'stop', 'approve_tools'] as const)
                   .filter((key) => device.permissions[key])
                   .map((key) => t(`mobileAccess.${key}`))
                   .join(' · ') || t('mobileAccess.readOnly')}

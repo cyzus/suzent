@@ -21,6 +21,7 @@ class ClientPermissions(BaseModel):
     chat_ids: list[str] = Field(default_factory=list)
     all_chats: bool = False
     create_chats: bool = False
+    manage_chats: bool = False
     send: bool = False
     stop: bool = False
     approve_tools: bool = False
@@ -336,6 +337,26 @@ class PairingStore:
                 )
                 return True
             return False
+
+    def set_management(self, device_id: str, enabled: bool) -> bool:
+        with self._lock:
+            if not any(g.device_id == device_id for g in self._grants.values()):
+                return False
+            self._save(
+                {
+                    key: grant.model_copy(
+                        update={
+                            "permissions": grant.permissions.model_copy(
+                                update={"manage_chats": enabled}
+                            )
+                        }
+                    )
+                    if grant.device_id == device_id
+                    else grant
+                    for key, grant in self._grants.items()
+                }
+            )
+            return True
 
     def revoke(self, device_id: str) -> bool:
         with self._lock:

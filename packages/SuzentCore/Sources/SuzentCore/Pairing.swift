@@ -5,6 +5,7 @@ public struct ClientPermissions: Codable, Sendable {
     public let chatIds: [String]
     public let allChats: Bool
     public let createChats: Bool
+    public var manageChats: Bool? = nil
     public let send: Bool
     public let stop: Bool
     public let approveTools: Bool?
