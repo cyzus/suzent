@@ -103,7 +103,10 @@ private struct ChatSidebarRow: View {
             }
         }.frame(width: 260).background(Color.suzentSurface)
             .overlay(Rectangle().stroke(Color.primary, lineWidth: 2))
-            .shadow(color: .black, radius: 0, x: 3, y: 3)
+            .background {
+                Rectangle().fill(Color.black).offset(x: 3, y: 3)
+                    .allowsHitTesting(false).accessibilityHidden(true)
+            }
     }
 
     private func menuItem(_ title: LocalizedStringKey, icon: String, danger: Bool = false, action: @escaping () -> Void) -> some View {
