@@ -1,5 +1,10 @@
 # Mobile changelog
 
+## [mobile-v0.1.2] - 2026-09-29
+
+### Release notes
+- Retry ambiguous mobile sends safely on iOS and Android by deduplicating stable client message IDs on the backend.
+
 ## [mobile-v0.1.1] - 2026-09-27
 
 ### Release notes
