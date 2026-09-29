@@ -92,8 +92,7 @@ private struct ChatSidebarRow: View {
         Button(action: action) {
             Label(title, systemImage: icon).font(.system(size: 13, weight: .bold))
                 .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).frame(minHeight: 44)
-                .foregroundStyle(danger ? Color.red : Color.primary)
-        }.buttonStyle(ChatRowButtonStyle(selected: false))
+        }.buttonStyle(ChatRowButtonStyle(selected: false, destructive: danger))
     }
 }
 
