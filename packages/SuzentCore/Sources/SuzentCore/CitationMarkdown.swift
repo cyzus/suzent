@@ -29,8 +29,7 @@ public func markdownWithCitationLinks(_ text: String, sources: [CitationSource],
                 let host = url.host?.replacingOccurrences(of: "^www\\.", with: "", options: .regularExpression) ?? primary.title
                 let compact = String(host.prefix(26)) + (host.count > 26 ? "…" : "") + suffix
                 let badgeLabel = compact.replacingOccurrences(of: "]", with: "\\]")
-                let key = compact.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? "badge"
-                let content = badges ? "![\(badgeLabel)](suzent-citation://badge/\(key))" : label
+                let content = badges ? " ↗ \(badgeLabel) " : label
                 replacement = "[\(content)](<\(rawURL.replacingOccurrences(of: ">", with: "%3E"))>)"
             } else {
                 replacement = label

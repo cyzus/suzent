@@ -148,6 +148,9 @@ fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList
                         }
                     }
                     renderer.setParsedMarkdown(view, styled)
+                    // Text selection installs ArrowKeyMovementMethod, which prevents Markwon
+                    // from installing its link handler automatically.
+                    view.movementMethod = android.text.method.LinkMovementMethod.getInstance()
                 })
             }
         }

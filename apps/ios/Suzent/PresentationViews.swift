@@ -153,37 +153,12 @@ struct SuzentWordmark: View {
     }
 }
 
-private struct CitationBadgeImageProvider: InlineImageProvider {
-    let dark: Bool
-
-    func image(with url: URL, label: String) async throws -> Image {
-        guard url.scheme == "suzent-citation" else {
-            return try await DefaultInlineImageProvider().image(with: url, label: label)
-        }
-        return await MainActor.run {
-            let badge = Text("↗  " + label)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(dark ? Color.white : Color.black.opacity(0.75))
-                .padding(.horizontal, 7).padding(.vertical, 3)
-                .background(dark ? Color(white: 0.18) : Color(white: 0.96), in: Capsule())
-                .overlay(Capsule().strokeBorder(dark ? Color(white: 0.38) : Color(white: 0.8), lineWidth: 0.5))
-            let renderer = ImageRenderer(content: badge)
-            renderer.scale = UIScreen.main.scale
-            guard let image = renderer.uiImage else { return Image(systemName: "link") }
-            guard let cgImage = image.cgImage else { return Image(systemName: "link") }
-            return Image(cgImage, scale: image.scale, label: Text(label))
-        }
-    }
-}
-
 struct SuzentMarkdown: View {
-    @Environment(\.colorScheme) private var colorScheme
     let text: String
     var citationSources: [CitationSource] = []
     @State private var pendingLink: URL?
     var body: some View {
         Markdown(markdownWithCitationLinks(text, sources: citationSources, badges: true))
-            .markdownInlineImageProvider(CitationBadgeImageProvider(dark: colorScheme == .dark))
             .markdownTheme(suzentMarkdownTheme)
             .environment(\.openURL, OpenURLAction { url in
                 guard ["http", "https"].contains(url.scheme?.lowercased()) else { return .discarded }
@@ -223,7 +198,12 @@ struct SuzentMarkdown: View {
                     ForegroundColor(.black)
                     BackgroundColor(Color(presentation: PresentationTokens.yellow))
                 }
-                .link { ForegroundColor(Color(presentation: PresentationTokens.blue)) }
+                .link {
+                    ForegroundColor(.primary)
+                    BackgroundColor(Color.secondary.opacity(0.12))
+                    FontSize(12)
+                    FontWeight(.medium)
+                }
                 .codeBlock { configuration in
                     VStack(alignment: .leading, spacing: 0) {
                         Text(configuration.language?.uppercased() ?? "CODE")
