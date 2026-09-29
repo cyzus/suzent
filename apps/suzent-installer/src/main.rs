@@ -185,17 +185,32 @@ async fn inspect_destination(dir: String) -> Result<DestinationInfo, String> {
 #[tauri::command]
 fn open_existing_updater(dir: String) -> Result<(), String> {
     let root = PathBuf::from(dir);
-    let destination = inspect_destination_path(&root);
-    let mode = match destination.kind {
-        "update" => "--update",
-        "repair" => "--repair",
-        _ => return Err("This directory is not a managed release installation. Review its development update instructions instead.".into()),
-    };
-    let mut command = Command::new(env::current_exe().map_err(|error| error.to_string())?);
-    command.args([mode, "--dir"]).arg(&root).current_dir(&root);
+    let mut command = existing_update_command(&root)?;
     hide_command_window(&mut command);
     command.spawn().map_err(|error| error.to_string())?;
     Ok(())
+}
+
+fn existing_update_command(root: &Path) -> Result<Command, String> {
+    let destination = inspect_destination_path(root);
+    let mode = match destination.kind {
+        "update" => "--update",
+        "repair" => "--repair",
+        "development" => {
+            if root.join(".suzent/update-transaction.json").exists() {
+                "--repair"
+            } else {
+                "--update"
+            }
+        }
+        _ => return Err("This directory is not a recognized Suzent installation.".into()),
+    };
+    let mut command = Command::new(env::current_exe().map_err(|error| error.to_string())?);
+    command.args([mode, "--dir"]).arg(root).current_dir(root);
+    if destination.kind == "development" {
+        command.arg("--development");
+    }
+    Ok(command)
 }
 
 struct UpdateRuntime {
@@ -365,7 +380,13 @@ fn installer_context() -> InstallerContext {
             .display()
             .to_string(),
         target: flag_value(&args, "--target").unwrap_or_default(),
-        branch: config.branch_explicit.then_some(config.branch),
+        branch: if has_flag(&args, "--development")
+            || (repair && inspect_destination_path(&config.dir).kind == "development")
+        {
+            inspect_destination_path(&config.dir).branch
+        } else {
+            config.branch_explicit.then_some(config.branch)
+        },
         native_titlebar: cfg!(target_os = "macos"),
     }
 }
@@ -411,7 +432,10 @@ async fn confirm_git_recovery(
             .map_err(|error| error.to_string())?;
     let target = status["target_version"]
         .as_str()
-        .filter(|tag| is_release_tag(tag))
+        .filter(|tag| {
+            is_release_tag(tag)
+                || (matches!(tag.len(), 40 | 64) && tag.chars().all(|ch| ch.is_ascii_hexdigit()))
+        })
         .ok_or("Missing recovery target")?
         .to_string();
     if !error.contains(&format!("\nTarget: {target}\n")) {
@@ -419,6 +443,11 @@ async fn confirm_git_recovery(
             "Update target changed; retry to review the new target before confirming".into(),
         );
     }
+    let source = error
+        .lines()
+        .find(|line| line.starts_with("Source: "))
+        .ok_or("Missing confirmed source identity")?
+        .to_string();
     let error = error
         .trim_start_matches("CONFIRM_GIT_RECOVERY: ")
         .to_string();
@@ -440,7 +469,7 @@ async fn confirm_git_recovery(
         )).blocking_show()
     }).await.map_err(|error| error.to_string())?;
     if accepted {
-        start_update_worker(app_handle, runtime, false, Some(target))?;
+        start_update_worker(app_handle, runtime, true, Some((target, source)))?;
     }
     Ok(accepted)
 }
@@ -533,7 +562,7 @@ fn start_update_worker(
     app_handle: tauri::AppHandle,
     runtime: Arc<UpdateRuntime>,
     repair: bool,
-    recovery_target: Option<String>,
+    recovery_target: Option<(String, String)>,
 ) -> Result<(), String> {
     if runtime.running.swap(true, Ordering::SeqCst) {
         return Err("An update is already running".to_string());
@@ -541,11 +570,17 @@ fn start_update_worker(
     *runtime.result.lock().map_err(|error| error.to_string())? = None;
     std::thread::spawn(move || {
         let mut args = runtime.args.clone();
-        if let Some(target) = recovery_target {
+        if let Some((target, source)) = recovery_target {
             // Prepend the confirmed target so a later --target cannot change it.
             args.splice(
                 0..0,
-                ["--target".into(), target, "--backup-conflicts".into()],
+                [
+                    "--target".into(),
+                    target,
+                    "--backup-conflicts".into(),
+                    "--confirmed-source".into(),
+                    source,
+                ],
             );
         }
         let error = updater::run_inner(&args, repair).err();
@@ -1519,7 +1554,7 @@ fn write_banner(config: &InstallConfig) {
 fn existing_destination_preview(destination: &DestinationInfo) -> Option<&'static str> {
     match destination.kind {
         "new" => None,
-        "development" => Some("Existing development workspace. No first-install stages will run.\nUse the manual update instructions in the installer, or run suzent update from this workspace after reviewing local changes."),
+        "development" => Some("Existing development workspace. No first-install stages will run.\nChoose Update this workspace in the installer to fast-forward the current upstream, synchronize dependencies and rebuild the desktop. Local changes require backup confirmation; divergent branches are not overwritten."),
         "update" => Some("Existing release installation. Open the installer and choose Update this installation to use the standalone updater."),
         "repair" => Some("Existing installation needs repair. Open the installer and choose Repair this installation to use the standalone updater."),
         _ => Some("Destination is invalid or occupied. First installation is blocked; choose an empty directory or a valid Suzent installation."),
@@ -1924,6 +1959,26 @@ mod tests {
         let development = super::inspect_destination_path(root);
         assert_eq!(development.kind, "development");
         assert_eq!(development.branch.as_deref(), Some("development"));
+        let command = super::existing_update_command(root).unwrap();
+        let args: Vec<_> = command
+            .get_args()
+            .map(|arg| arg.to_string_lossy().to_string())
+            .collect();
+        assert_eq!(
+            args,
+            vec![
+                "--update",
+                "--dir",
+                &root.display().to_string(),
+                "--development"
+            ]
+        );
+        fs::create_dir_all(root.join(".suzent")).unwrap();
+        fs::write(root.join(".suzent/update-transaction.json"), "{}").unwrap();
+        let repair = super::existing_update_command(root).unwrap();
+        assert!(repair.get_args().any(|arg| arg == "--repair"));
+        assert!(repair.get_args().any(|arg| arg == "--development"));
+        fs::remove_file(root.join(".suzent/update-transaction.json")).unwrap();
         fs::write(root.join(".suzent-bootstrap-complete"), "ready").unwrap();
         assert_eq!(super::inspect_destination_path(root).kind, "development");
         git(&["checkout", "--detach"]);

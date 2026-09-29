@@ -52,6 +52,12 @@ fn is_false(value: &bool) -> bool {
 
 #[derive(Serialize, Deserialize)]
 struct UpdateTransaction {
+    #[serde(default)]
+    development: bool,
+    #[serde(default)]
+    local_ui_existed: bool,
+    #[serde(default)]
+    managed_ui_existed: bool,
     target_tag: String,
     #[serde(default)]
     target_commit: String,
@@ -65,6 +71,12 @@ struct UpdateTransaction {
     #[serde(default)]
     recovery_dir: Option<String>,
     phase: String,
+}
+
+struct DevelopmentTarget {
+    commit: String,
+    branch: String,
+    old_commit: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -119,6 +131,10 @@ impl ServiceRestartGuard {
         run_service_command(&self.root, "start")?;
         self.stopped = false;
         Ok(())
+    }
+
+    fn leave_stopped(&mut self) {
+        self.stopped = false;
     }
 }
 
@@ -181,6 +197,20 @@ impl UpdatePaths {
     fn backup_ui_version(&self) -> PathBuf {
         self.backup_dir.join("version.txt")
     }
+
+    fn local_ui(&self) -> PathBuf {
+        self.root
+            .join("src-tauri/target/release")
+            .join(if cfg!(windows) {
+                "suzent.exe"
+            } else {
+                "suzent"
+            })
+    }
+
+    fn backup_local_ui(&self) -> PathBuf {
+        self.backup_dir.join("local-desktop")
+    }
 }
 
 pub fn run(args: &[String], repair: bool) -> i32 {
@@ -203,9 +233,70 @@ pub(crate) fn run_inner(args: &[String], repair: bool) -> Result<(), String> {
     if !root.join(".git").exists() {
         return Err(format!("{} is not a Suzent Git checkout", root.display()));
     }
-
     if let Some(pid) = flag_value(args, "--wait-pid").and_then(|value| value.parse().ok()) {
         wait_for_process_exit(pid, Duration::from_secs(120))?;
+    }
+
+    let journal_paths = UpdatePaths::new(root.clone(), "development");
+    let development = args.iter().any(|arg| arg == "--development")
+        || (repair
+            && ((journal_paths.journal.exists() && read_transaction(&journal_paths)?.development)
+                || super::inspect_destination_path(&root).kind == "development"));
+    if development {
+        fs::create_dir_all(&journal_paths.state_dir)
+            .map_err(display_io("create update state directory"))?;
+        let _lock = acquire_lock(&journal_paths.state_dir)?;
+        recover_legacy_journal(&journal_paths)?;
+        let snapshot = if journal_paths.journal.exists() {
+            if !repair {
+                return Err("An interrupted development update exists; choose Repair installation before retrying".into());
+            }
+            recover_interrupted_update(&journal_paths)?
+        } else {
+            None
+        };
+        write_status(
+            &journal_paths,
+            "fetch",
+            10,
+            "Checking current branch and fetching its upstream",
+            "development",
+        )?;
+        let mut failure_target = "development".to_string();
+        let result = (|| {
+            for tool in ["git", "uv", "node", "npm", "cargo"] {
+                if super::find_executable(tool).is_none() {
+                    return Err(format!("Development updates require {tool}; install it before retrying. No source was changed."));
+                }
+            }
+            // Legacy CLI repair supplies a release tag for its installer download,
+            // not a development source target. The retained journal determines mode.
+            let configured =
+                flag_value(args, "--target").filter(|target| !repair || !is_release_tag(target));
+            let target = prepare_development_target(&root, configured.as_deref())?;
+            if flag_value(args, "--confirmed-source").is_some_and(|source| {
+                source != format!("Source: {} ({})", target.branch, target.old_commit)
+            }) {
+                return Err("The branch or commit changed after confirmation; retry and review the checkout again".into());
+            }
+            failure_target = target.commit.clone();
+            let paths = UpdatePaths::new(root.clone(), &target.commit);
+            run_transaction(
+                &paths,
+                &target.commit,
+                args.iter().any(|arg| arg == "--backup-conflicts"),
+                snapshot,
+                Some(&target),
+            )
+        })();
+        if let Err(error) = &result {
+            record_failure(&journal_paths, &failure_target, error);
+        }
+        result?;
+        if let Some(relaunch) = flag_value(args, "--relaunch") {
+            launch_app(&PathBuf::from(relaunch), &root)?;
+        }
+        return Ok(());
     }
 
     let configured_target = flag_value(args, "--target").or_else(|| {
@@ -243,6 +334,7 @@ pub(crate) fn run_inner(args: &[String], repair: bool) -> Result<(), String> {
         &target_tag,
         args.iter().any(|arg| arg == "--backup-conflicts"),
         recovered_snapshot,
+        None,
     ) {
         record_failure(&paths, &target_tag, &error);
         return Err(error);
@@ -262,12 +354,26 @@ fn run_transaction(
     target_tag: &str,
     backup_conflicts: bool,
     recovered_snapshot: Option<String>,
+    development_target: Option<&DevelopmentTarget>,
 ) -> Result<(), String> {
+    let development = development_target.is_some();
     let mut service_guard = ServiceRestartGuard::detect(&paths.root);
     write_status(paths, "preflight", 5, "Preparing update", target_tag)?;
-    let repository_hazard = repository_hazard(&paths.root)?;
+    let repository_hazard =
+        repository_hazard(&paths.root)?.or(if development && has_local_changes(&paths.root)? {
+            Some("Local changes must be backed up before updating this workspace".into())
+        } else {
+            None
+        });
     let old_commit = git_text(&paths.root, &["rev-parse", "HEAD"])?;
     let old_branch = git_text(&paths.root, &["branch", "--show-current"])?;
+    if development_target
+        .is_some_and(|target| target.old_commit != old_commit || target.branch != old_branch)
+    {
+        return Err(
+            "Checkout changed after preflight; no source changes were made by the updater".into(),
+        );
+    }
     if repository_hazard.is_some() && recovered_snapshot.is_some() {
         return Err(format!(
             "Git conflicts remain after recovery; inspect the original snapshot at {} and resolve them manually before retrying; journal retained",
@@ -283,6 +389,9 @@ fn run_transaction(
     let old_release_tag = read_trimmed(paths.state_dir.join("release-tag")).unwrap_or_default();
     let old_ui_version = read_trimmed(paths.ui_version()).unwrap_or_default();
     let mut transaction = UpdateTransaction {
+        development,
+        local_ui_existed: development && paths.local_ui().is_file(),
+        managed_ui_existed: development && paths.ui().is_file(),
         target_tag: target_tag.to_string(),
         target_commit: String::new(),
         old_commit,
@@ -295,7 +404,11 @@ fn run_transaction(
         phase: "preflight".to_string(),
     };
 
-    transaction.target_commit = prepare_target(paths, target_tag)?;
+    transaction.target_commit = if development {
+        target_tag.to_string()
+    } else {
+        prepare_target(paths, target_tag)?
+    };
     transaction.phase = "prepared".to_string();
     write_journal(paths, &transaction)?;
 
@@ -337,8 +450,12 @@ fn run_transaction(
         );
         transaction.phase = "clearing_conflicts".to_string();
         write_journal(paths, &transaction)?;
-        clear_preserved_conflicts(&paths.root, &recovery_dir, &transaction.old_commit)
-            .map_err(|error| format!("{error}; local source snapshot: {}. Run suzent repair after inspecting the recovery instructions.", recovery_dir.display()))?;
+        if let Err(error) =
+            clear_preserved_conflicts(&paths.root, &recovery_dir, &transaction.old_commit)
+        {
+            service_guard.leave_stopped();
+            return Err(format!("{error}; local source snapshot: {}. Service left stopped. Run suzent repair after inspecting the recovery instructions.", recovery_dir.display()));
+        }
         transaction.phase = "conflicts_cleared".to_string();
         write_journal(paths, &transaction)?;
     } else if has_local_changes(&paths.root)? {
@@ -383,7 +500,16 @@ fn run_transaction(
     transaction.phase = "switching".to_string();
     write_journal(paths, &transaction)?;
 
-    let result = backup_current_ui(paths).and_then(|()| install_target(paths, target_tag));
+    let result = backup_current_ui(paths).and_then(|()| {
+        if development && transaction.local_ui_existed {
+            rename_with_retry(
+                &paths.local_ui(),
+                &paths.backup_local_ui(),
+                "back up development desktop",
+            )?;
+        }
+        install_target(paths, target_tag)
+    });
     if let Err(error) = result {
         let error = match &transaction.recovery_dir {
             Some(directory) => format!("{error}; local conflict state is saved in {directory}. Source rollback does not reapply these local changes."),
@@ -408,6 +534,9 @@ fn run_transaction(
             });
         }
         let rollback_error = rollback_result.unwrap_err();
+        if development {
+            service_guard.leave_stopped();
+        }
         let _ = write_status(
             paths,
             "repair_required",
@@ -467,6 +596,10 @@ fn recover_interrupted_update(paths: &UpdatePaths) -> Result<Option<String>, Str
         stop_suzent_processes(&paths.root)?;
         let recovery_paths = UpdatePaths::new(paths.root.clone(), &transaction.target_tag);
         let result = rollback(&recovery_paths, &transaction);
+        if transaction.development && result.is_err() {
+            service_guard.leave_stopped();
+            return result.map(|()| transaction.recovery_dir);
+        }
         let restart_result = service_guard.restart();
         result.and(restart_result)
     } else {
@@ -530,6 +663,45 @@ fn run_service_command(root: &Path, action: &str) -> Result<(), String> {
     )
 }
 
+fn prepare_development_target(
+    root: &Path,
+    confirmed: Option<&str>,
+) -> Result<DevelopmentTarget, String> {
+    let branch = git_text(root, &["branch", "--show-current"])?;
+    if branch.is_empty() {
+        return Err("Development updates require a checked-out branch with an upstream. Finish or abort a detached rebase manually first; no branch was changed.".into());
+    }
+    let remote = git_text(root, &["config", "--get", &format!("branch.{branch}.remote")])
+        .map_err(|_| "This branch has no upstream. Configure its upstream before updating; no branch was changed.".to_string())?;
+    let old_commit = git_text(root, &["rev-parse", "HEAD"])?;
+    run_checked(
+        background_command("git")
+            .args(["fetch", "--", &remote])
+            .current_dir(root),
+        "fetch development upstream",
+    )?;
+    if git_text(root, &["branch", "--show-current"])? != branch
+        || git_text(root, &["rev-parse", "HEAD"])? != old_commit
+    {
+        return Err(
+            "The checkout changed during fetch; retry after other Git operations finish".into(),
+        );
+    }
+    let target = git_text(root, &["rev-parse", "@{upstream}^{commit}"]).map_err(|_| {
+        "The current branch has no valid upstream; no branch was changed".to_string()
+    })?;
+    if confirmed.is_some_and(|commit| commit != target) {
+        return Err("The upstream changed after confirmation. Retry and review the new target before authorizing backup.".into());
+    }
+    run_checked(background_command("git").args(["merge-base", "--is-ancestor", &old_commit, &target]).current_dir(root), "validate fast-forward development update")
+        .map_err(|_| "The branch has local commits or diverged from its upstream. Reconcile the branches manually; the updater will not reset or switch your branch.".to_string())?;
+    Ok(DevelopmentTarget {
+        commit: target,
+        branch,
+        old_commit,
+    })
+}
+
 fn prepare_target(paths: &UpdatePaths, target_tag: &str) -> Result<String, String> {
     write_status(
         paths,
@@ -582,25 +754,46 @@ fn prepare_ui(
     verify_asset_checksum(&paths.staged_ui(), expected)
 }
 
-fn install_target(paths: &UpdatePaths, target_tag: &str) -> Result<(), String> {
-    write_status(paths, "source", 50, "Switching source version", target_tag)?;
-    let transaction = read_transaction(paths)?;
+fn switch_source(paths: &UpdatePaths, transaction: &UpdateTransaction) -> Result<(), String> {
     let target_commit = if transaction.target_commit.is_empty() {
-        target_tag
+        &transaction.target_tag
     } else {
         &transaction.target_commit
     };
-    run_checked(
-        background_command("git")
-            .args([
-                "checkout",
-                "--no-overwrite-ignore",
-                "--detach",
-                target_commit,
-            ])
-            .current_dir(&paths.root),
-        "check out release source",
-    )?;
+    if transaction.development {
+        if git_text(&paths.root, &["branch", "--show-current"])? != transaction.old_branch
+            || git_text(&paths.root, &["rev-parse", "HEAD"])? != transaction.old_commit
+        {
+            return Err(
+                "Development checkout changed before source update; refusing to switch it".into(),
+            );
+        }
+        run_checked(
+            background_command("git")
+                .args(["merge", "--ff-only", "--no-overwrite-ignore", target_commit])
+                .current_dir(&paths.root),
+            "fast-forward current development branch",
+        )?;
+    } else {
+        run_checked(
+            background_command("git")
+                .args([
+                    "checkout",
+                    "--no-overwrite-ignore",
+                    "--detach",
+                    target_commit,
+                ])
+                .current_dir(&paths.root),
+            "check out release source",
+        )?;
+    }
+    Ok(())
+}
+
+fn install_target(paths: &UpdatePaths, target_tag: &str) -> Result<(), String> {
+    write_status(paths, "source", 50, "Switching source version", target_tag)?;
+    let transaction = read_transaction(paths)?;
+    switch_source(paths, &transaction)?;
 
     write_status(
         paths,
@@ -609,7 +802,7 @@ fn install_target(paths: &UpdatePaths, target_tag: &str) -> Result<(), String> {
         "Synchronizing Python environment",
         target_tag,
     )?;
-    run_uv_sync(&paths.root)?;
+    run_uv_sync_mode(&paths.root, transaction.development)?;
 
     write_status(
         paths,
@@ -618,7 +811,50 @@ fn install_target(paths: &UpdatePaths, target_tag: &str) -> Result<(), String> {
         "Installing desktop application",
         target_tag,
     )?;
-    install_staged_ui(paths, target_tag)?;
+    let version = if transaction.development {
+        let config = super::InstallConfig::from_env_and_args(&[
+            "--dir".into(),
+            paths.root.display().to_string(),
+            "--branch".into(),
+            transaction.old_branch.clone(),
+        ]);
+        let mut build_error = None;
+        let outcome = super::build_source_ui(&config, |command| {
+            match run_checked(command, "build development desktop") {
+                Ok(()) => true,
+                Err(error) => {
+                    build_error = Some(error);
+                    false
+                }
+            }
+        });
+        if !outcome.ok {
+            return Err(build_error
+                .or(outcome.reason)
+                .unwrap_or_else(|| "Development desktop build failed".into()));
+        }
+        let metadata: serde_json::Value = serde_json::from_slice(
+            &fs::read(paths.root.join("src-tauri/tauri.conf.prod.json"))
+                .map_err(display_io("read desktop version"))?,
+        )
+        .map_err(|error| error.to_string())?;
+        let version = metadata["version"]
+            .as_str()
+            .ok_or("Missing desktop version")?
+            .to_string();
+        run_checked(
+            background_command(service_python(&paths.root))
+                .args(["-c", "import json, sys, tomllib; from pathlib import Path; expected = sys.argv[1]; cargo = tomllib.loads(Path('src-tauri/Cargo.toml').read_text(encoding='utf-8'))['package']['version']; frontend = json.loads(Path('frontend/package.json').read_text(encoding='utf-8'))['version']; assert cargo == frontend == expected, f'Desktop version mismatch: Cargo={cargo}, frontend={frontend}, config={expected}'", &version])
+                .current_dir(&paths.root),
+            "verify source-built desktop versions",
+        )?;
+        fs::write(paths.ui_version(), &version)
+            .map_err(display_io("record development desktop version"))?;
+        version
+    } else {
+        install_staged_ui(paths, target_tag)?;
+        target_tag.to_string()
+    };
 
     write_status(
         paths,
@@ -627,11 +863,20 @@ fn install_target(paths: &UpdatePaths, target_tag: &str) -> Result<(), String> {
         "Verifying installed version",
         target_tag,
     )?;
-    verify_backend_version(&paths.root, target_tag)?;
-    fs::write(paths.state_dir.join("release-tag"), target_tag)
-        .map_err(display_io("record installed release"))?;
-    fs::write(paths.state_dir.join("update-channel"), "stable")
-        .map_err(display_io("record update channel"))?;
+    verify_backend_version(&paths.root, &version)?;
+    if !transaction.development {
+        fs::write(paths.state_dir.join("release-tag"), target_tag)
+            .map_err(display_io("record installed release"))?;
+    }
+    fs::write(
+        paths.state_dir.join("update-channel"),
+        if transaction.development {
+            "dev"
+        } else {
+            "stable"
+        },
+    )
+    .map_err(display_io("record update channel"))?;
 
     write_status(
         paths,
@@ -650,7 +895,7 @@ fn install_target(paths: &UpdatePaths, target_tag: &str) -> Result<(), String> {
             .push(format!("{error}; run 'suzent shortcuts' to retry"));
         write_json_atomic(&paths.status, &status, "record shortcut warning")?;
     }
-    if !paths.root.join(".suzent-bootstrap-complete").is_file() {
+    if !transaction.development && !paths.root.join(".suzent-bootstrap-complete").is_file() {
         let config = super::InstallConfig::from_env_and_args(&[
             "--dir".to_string(),
             paths.root.display().to_string(),
@@ -693,15 +938,22 @@ fn refresh_shortcuts(paths: &UpdatePaths) -> Result<(), String> {
     )
 }
 
-fn rollback(paths: &UpdatePaths, transaction: &UpdateTransaction) -> Result<(), String> {
-    write_status(
-        paths,
-        "rollback",
-        90,
-        "Restoring previous version",
-        &transaction.target_tag,
-    )?;
-    let source_result = if transaction.old_branch.is_empty() {
+fn restore_source(paths: &UpdatePaths, transaction: &UpdateTransaction) -> Result<(), String> {
+    if transaction.development {
+        let branch = git_text(&paths.root, &["branch", "--show-current"])?;
+        let commit = git_text(&paths.root, &["rev-parse", "HEAD"])?;
+        if branch != transaction.old_branch
+            || (commit != transaction.old_commit && commit != transaction.target_commit)
+        {
+            return Err("Checkout changed outside the updater; original backups retained. Restore source manually before repair.".into());
+        }
+        run_checked(
+            background_command("git")
+                .args(["reset", "--keep", &transaction.old_commit])
+                .current_dir(&paths.root),
+            "restore development commit without overwriting new edits",
+        )
+    } else if transaction.old_branch.is_empty() {
         run_checked(
             background_command("git")
                 .args(["checkout", "--detach", &transaction.old_commit])
@@ -723,9 +975,24 @@ fn rollback(paths: &UpdatePaths, transaction: &UpdateTransaction) -> Result<(), 
                 "restore previous commit",
             )
         })
-    };
-    let sync_result = source_result.and_then(|()| run_uv_sync(&paths.root));
+    }
+}
+
+fn rollback(paths: &UpdatePaths, transaction: &UpdateTransaction) -> Result<(), String> {
+    write_status(
+        paths,
+        "rollback",
+        90,
+        "Restoring previous version",
+        &transaction.target_tag,
+    )?;
+    let source_result = restore_source(paths, transaction);
+    let sync_result =
+        source_result.and_then(|()| run_uv_sync_mode(&paths.root, transaction.development));
     let ui_result = restore_ui_backup(paths, &transaction.old_ui_version);
+    if transaction.development {
+        restore_development_ui(paths, transaction)?;
+    }
     if transaction.old_release_tag.is_empty() {
         let _ = fs::remove_file(paths.state_dir.join("release-tag"));
     } else {
@@ -736,6 +1003,31 @@ fn rollback(paths: &UpdatePaths, transaction: &UpdateTransaction) -> Result<(), 
         .map_err(display_io("restore release marker"))?;
     }
     sync_result.and(ui_result)
+}
+
+fn restore_development_ui(
+    paths: &UpdatePaths,
+    transaction: &UpdateTransaction,
+) -> Result<(), String> {
+    if paths.backup_local_ui().is_file() {
+        if paths.local_ui().exists() {
+            fs::remove_file(paths.local_ui())
+                .map_err(display_io("remove failed development desktop"))?;
+        }
+        rename_with_retry(
+            &paths.backup_local_ui(),
+            &paths.local_ui(),
+            "restore development desktop",
+        )?;
+    } else if !transaction.local_ui_existed && paths.local_ui().exists() {
+        fs::remove_file(paths.local_ui())
+            .map_err(display_io("remove newly built development desktop"))?;
+    }
+    if !transaction.managed_ui_existed && paths.ui().exists() {
+        fs::remove_file(paths.ui())
+            .map_err(display_io("remove newly installed development desktop"))?;
+    }
+    Ok(())
 }
 
 fn backup_current_ui(paths: &UpdatePaths) -> Result<(), String> {
@@ -846,15 +1138,15 @@ fn verify_backend_version(root: &Path, target_tag: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn run_uv_sync(root: &Path) -> Result<(), String> {
+fn run_uv_sync_mode(root: &Path, development: bool) -> Result<(), String> {
     let mut last_error = String::new();
     for attempt in 1..=3 {
-        match run_checked(
-            background_command("uv")
-                .args(["sync", "--frozen", "--extra", "social"])
-                .current_dir(root),
-            "synchronize Python environment",
-        ) {
+        let mut command = background_command("uv");
+        command.args(["sync", "--frozen", "--extra", "social"]);
+        if development {
+            command.args(["--extra", "dev"]);
+        }
+        match run_checked(command.current_dir(root), "synchronize Python environment") {
             Ok(()) => return Ok(()),
             Err(error) => last_error = error,
         }
@@ -917,10 +1209,15 @@ fn stop_suzent_processes(root: &Path) -> Result<(), String> {
 }
 
 fn is_unix_install_process(command: &str, root: &Path) -> bool {
-    let ui = root.join("bin/suzent-ui");
     let python = root.join(".venv/bin/python");
-    if let Some(rest) = command.strip_prefix(ui.to_string_lossy().as_ref()) {
-        return rest.is_empty() || rest.starts_with(char::is_whitespace);
+    for ui in [
+        root.join("bin/suzent-ui"),
+        root.join("src-tauri/target/release/suzent"),
+        root.join("src-tauri/target/debug/suzent"),
+    ] {
+        if let Some(rest) = command.strip_prefix(ui.to_string_lossy().as_ref()) {
+            return rest.is_empty() || rest.starts_with(char::is_whitespace);
+        }
     }
     if let Some(rest) = command.strip_prefix(python.to_string_lossy().as_ref()) {
         let boundary = rest.find(char::is_whitespace).unwrap_or(rest.len());
@@ -1958,6 +2255,199 @@ mod tests {
     use std::thread;
     use std::time::Duration;
 
+    fn development_fixture() -> (
+        tempfile::TempDir,
+        super::DevelopmentTarget,
+        UpdateTransaction,
+    ) {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        let git = |args: &[&str]| {
+            super::run_checked(
+                background_command("git").args(args).current_dir(root),
+                "fixture git",
+            )
+            .unwrap();
+        };
+        git(&["init", "-b", "my-feature"]);
+        git(&["config", "core.autocrlf", "false"]);
+        git(&["config", "user.name", "Updater Test"]);
+        git(&["config", "user.email", "updater@example.invalid"]);
+        fs::write(
+            root.join(".gitignore"),
+            ".suzent/\n.env\nbin/\nsrc-tauri/target/\n",
+        )
+        .unwrap();
+        fs::write(root.join("source.txt"), "old\n").unwrap();
+        git(&["add", "."]);
+        git(&["commit", "-m", "old"]);
+        git(&["checkout", "-b", "upstream-feature"]);
+        fs::write(root.join("source.txt"), "new\n").unwrap();
+        fs::write(root.join("incoming-only.txt"), "incoming\n").unwrap();
+        git(&["add", "."]);
+        git(&["commit", "-m", "new"]);
+        git(&["checkout", "my-feature"]);
+        git(&["branch", "--set-upstream-to=upstream-feature"]);
+        let target = super::prepare_development_target(root, None).unwrap();
+        let transaction = serde_json::from_value(serde_json::json!({
+            "development": true, "target_tag": target.commit, "target_commit": target.commit,
+            "old_commit": target.old_commit, "old_branch": target.branch,
+            "old_release_tag": "", "old_ui_version": "", "stashed_changes": false,
+            "phase": "switching"
+        }))
+        .unwrap();
+        (temp, target, transaction)
+    }
+
+    #[test]
+    fn development_update_fast_forwards_and_rolls_back_the_same_branch() {
+        let (temp, target, transaction) = development_fixture();
+        let paths = UpdatePaths::new(temp.path().to_path_buf(), &target.commit);
+        fs::write(temp.path().join(".env"), "keep data").unwrap();
+        assert_eq!(
+            super::git_text(temp.path(), &["rev-parse", "HEAD"]).unwrap(),
+            target.old_commit
+        );
+        super::switch_source(&paths, &transaction).unwrap();
+        assert_eq!(
+            super::git_text(temp.path(), &["branch", "--show-current"]).unwrap(),
+            "my-feature"
+        );
+        assert_eq!(
+            super::git_text(temp.path(), &["rev-parse", "HEAD"]).unwrap(),
+            target.commit
+        );
+        super::restore_source(&paths, &transaction).unwrap();
+        assert_eq!(
+            super::git_text(temp.path(), &["rev-parse", "HEAD"]).unwrap(),
+            target.old_commit
+        );
+        assert_eq!(
+            fs::read_to_string(temp.path().join(".env")).unwrap(),
+            "keep data"
+        );
+    }
+
+    #[test]
+    fn development_preflight_rejects_missing_upstream_divergence_and_changed_confirmation() {
+        let (temp, target, _) = development_fixture();
+        let root = temp.path();
+        assert!(super::prepare_development_target(root, Some(&target.old_commit)).is_err());
+        super::git_text(root, &["branch", "--unset-upstream"]).unwrap();
+        assert!(super::prepare_development_target(root, None).is_err());
+        super::git_text(root, &["branch", "--set-upstream-to=upstream-feature"]).unwrap();
+        fs::write(root.join("local-commit.txt"), "keep commit").unwrap();
+        super::git_text(root, &["add", "local-commit.txt"]).unwrap();
+        super::git_text(root, &["commit", "-m", "local change"]).unwrap();
+        let local = super::git_text(root, &["rev-parse", "HEAD"]).unwrap();
+        assert!(super::prepare_development_target(root, None).is_err());
+        assert_eq!(
+            super::git_text(root, &["rev-parse", "HEAD"]).unwrap(),
+            local
+        );
+        super::git_text(root, &["checkout", "--detach"]).unwrap();
+        assert!(super::prepare_development_target(root, None).is_err());
+    }
+
+    #[test]
+    fn development_local_changes_require_confirmation_and_verified_backup() {
+        let (temp, target, _) = development_fixture();
+        let root = temp.path();
+        let paths = UpdatePaths::new(root.to_path_buf(), &target.commit);
+        fs::create_dir_all(&paths.state_dir).unwrap();
+        fs::write(root.join("source.txt"), "my edits\n").unwrap();
+        fs::write(root.join("note.txt"), "untracked\n").unwrap();
+        fs::write(root.join(".env"), "ignored\n").unwrap();
+        let error =
+            super::run_transaction(&paths, &target.commit, false, None, Some(&target)).unwrap_err();
+        assert!(error.starts_with("CONFIRM_GIT_RECOVERY:"), "{error}");
+        assert!(!paths.journal.exists());
+        assert_eq!(
+            fs::read_to_string(root.join("source.txt")).unwrap(),
+            "my edits\n"
+        );
+        let snapshot = paths.state_dir.join("update-recovery/test");
+        super::preserve_conflicted_checkout(
+            root,
+            &snapshot,
+            "local edits",
+            &target.old_commit,
+            &target.branch,
+        )
+        .unwrap();
+        super::clear_preserved_conflicts(root, &snapshot, &target.old_commit).unwrap();
+        assert_eq!(
+            fs::read_to_string(snapshot.join("tracked/source.txt")).unwrap(),
+            "my edits\n"
+        );
+        assert_eq!(
+            fs::read_to_string(root.join("source.txt")).unwrap(),
+            "old\n"
+        );
+        assert_eq!(
+            fs::read_to_string(root.join("note.txt")).unwrap(),
+            "untracked\n"
+        );
+        assert_eq!(fs::read_to_string(root.join(".env")).unwrap(), "ignored\n");
+    }
+
+    #[test]
+    fn development_source_switch_and_rollback_do_not_overwrite_new_work() {
+        let (temp, target, transaction) = development_fixture();
+        let root = temp.path();
+        let paths = UpdatePaths::new(root.to_path_buf(), &target.commit);
+        fs::write(root.join("incoming-only.txt"), "my untracked file").unwrap();
+        assert!(super::switch_source(&paths, &transaction).is_err());
+        assert_eq!(
+            fs::read_to_string(root.join("incoming-only.txt")).unwrap(),
+            "my untracked file"
+        );
+        fs::remove_file(root.join("incoming-only.txt")).unwrap();
+        super::switch_source(&paths, &transaction).unwrap();
+        fs::write(root.join("source.txt"), "new edit while updating").unwrap();
+        assert!(super::restore_source(&paths, &transaction).is_err());
+        assert_eq!(
+            fs::read_to_string(root.join("source.txt")).unwrap(),
+            "new edit while updating"
+        );
+        super::git_text(root, &["checkout", "-b", "another-branch"]).unwrap();
+        assert!(super::restore_source(&paths, &transaction).is_err());
+        assert!(super::switch_source(&paths, &transaction).is_err());
+    }
+
+    #[test]
+    fn development_desktop_rollback_restores_both_launch_targets() {
+        for existed in [false, true] {
+            let (temp, target, mut transaction) = development_fixture();
+            let paths = UpdatePaths::new(temp.path().to_path_buf(), &target.commit);
+            fs::create_dir_all(paths.ui().parent().unwrap()).unwrap();
+            fs::create_dir_all(paths.local_ui().parent().unwrap()).unwrap();
+            transaction.local_ui_existed = existed;
+            transaction.managed_ui_existed = existed;
+            if existed {
+                fs::write(paths.ui(), "old managed").unwrap();
+                fs::write(paths.local_ui(), "old local").unwrap();
+            }
+            super::backup_current_ui(&paths).unwrap();
+            if existed {
+                fs::rename(paths.local_ui(), paths.backup_local_ui()).unwrap();
+            }
+            fs::write(paths.ui(), "new managed").unwrap();
+            fs::write(paths.local_ui(), "new local").unwrap();
+            for _ in 0..2 {
+                super::restore_ui_backup(&paths, "").unwrap();
+                super::restore_development_ui(&paths, &transaction).unwrap();
+                if existed {
+                    assert_eq!(fs::read_to_string(paths.ui()).unwrap(), "old managed");
+                    assert_eq!(fs::read_to_string(paths.local_ui()).unwrap(), "old local");
+                } else {
+                    assert!(!paths.ui().exists());
+                    assert!(!paths.local_ui().exists());
+                }
+            }
+        }
+    }
+
     #[test]
     fn atomic_state_replacement_keeps_previous_document_until_commit() {
         let temp = tempfile::tempdir().unwrap();
@@ -2097,6 +2587,8 @@ mod tests {
             )
         };
         let mut desktop = spawn(root.join("bin/suzent-ui.exe"));
+        let mut local_desktop = spawn(root.join("src-tauri/target/release/suzent.exe"));
+        let mut dev_desktop = spawn(root.join("src-tauri/target/debug/suzent.exe"));
         let mut backend = spawn(root.join(".venv/Scripts/python.exe"));
         let mut unrelated = spawn(root.join("bin/helper.exe"));
         let mut other_installation = spawn(sibling.join("bin/suzent-ui.exe"));
@@ -2123,6 +2615,8 @@ mod tests {
             );
         }
         assert!(backend.0.try_wait().unwrap().is_some());
+        assert!(local_desktop.0.try_wait().unwrap().is_some());
+        assert!(dev_desktop.0.try_wait().unwrap().is_some());
         assert!(unrelated.0.try_wait().unwrap().is_none());
         assert!(other_installation.0.try_wait().unwrap().is_none());
         assert!(mentioning_path.0.try_wait().unwrap().is_none());
@@ -2488,6 +2982,8 @@ mod tests {
         let root = std::path::Path::new("/Users/test/Suzent folder");
         for command in [
             "/Users/test/Suzent folder/bin/suzent-ui",
+            "/Users/test/Suzent folder/src-tauri/target/release/suzent",
+            "/Users/test/Suzent folder/src-tauri/target/debug/suzent",
             "/Users/test/Suzent folder/.venv/bin/python -m suzent.cli serve",
             "/Users/test/Suzent folder/.venv/bin/python3.12 -m suzent.cli serve",
         ] {
@@ -2609,7 +3105,7 @@ mod tests {
         assert_eq!(fs::read(root.join(".git/index")).unwrap(), index);
         fs::write(root.join("local-note.txt"), "keep me\n").unwrap();
         let paths = super::UpdatePaths::new(root.to_path_buf(), "v1.2.3");
-        assert!(super::run_transaction(&paths, "v1.2.3", false, None)
+        assert!(super::run_transaction(&paths, "v1.2.3", false, None, None)
             .unwrap_err()
             .starts_with("CONFIRM_GIT_RECOVERY:"));
         assert!(!paths.journal.exists());
