@@ -227,15 +227,17 @@ pub fn run(args: &[String], repair: bool) -> i32 {
 }
 
 fn development_update_mode(root: &Path, args: &[String], repair: bool) -> Result<bool, String> {
+    if repair {
+        let paths = UpdatePaths::new(root.to_path_buf(), "development");
+        if paths.journal.exists() {
+            return Ok(read_transaction(&paths)?.development);
+        }
+    }
     if args.iter().any(|arg| arg == "--development") {
         return Ok(true);
     }
     if !repair {
         return Ok(false);
-    }
-    let paths = UpdatePaths::new(root.to_path_buf(), "development");
-    if paths.journal.exists() {
-        return Ok(read_transaction(&paths)?.development);
     }
     if flag_value(args, "--target").is_some_and(|target| is_release_tag(&target)) {
         return Ok(false);
@@ -2374,6 +2376,8 @@ mod tests {
         transaction.development = false;
         super::write_journal(&paths, &transaction).unwrap();
         assert!(!super::development_update_mode(root, &[], true).unwrap());
+        assert!(!super::development_update_mode(root, &dev_args, true).unwrap());
+        assert!(super::development_update_mode(root, &dev_args, false).unwrap());
     }
 
     #[test]
