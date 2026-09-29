@@ -450,14 +450,15 @@
             const result = preview || !invoke ? {ok:true,skipped:false,duration_ms:420,logs:[`${stage.title}: ok`]} : JSON.parse(await invoke('run_installer_stage',{request:{stage:stage.name,dir}}));
             phaseDurations[stage.name] = Number(result.duration_ms || Date.now() - phaseStartedAt); currentPhase = '';
             log(`${stage.title} (${result.duration_ms}ms)`); (result.logs || []).forEach(log);
-            if (stage.name === 'shortcuts' && result.skipped && result.reason) {
+            if (result.skipped && result.reason) {
               warnings.push(result.reason); log(result.reason);
             }
             if (!result.ok) { states.set(stage.name,'failed'); renderStages(stage.name); if (stage.name === 'shortcuts') { warnings.push(result.reason || `${stage.title} failed`); log(warnings.at(-1)); continue; } throw new Error(result.reason || `${stage.title} failed`); }
             states.set(stage.name,result.skipped?'skipped':'succeeded'); renderStages();
           }
           setProgress(100,text.completed); setRunning(false); installComplete = true; setComplete(isZh ? '安装步骤已完成。你可以打开 Suzent，或关闭此窗口。' : 'Installation steps complete. Open Suzent when ready, or close this window.'); els.launch.hidden = false; els.start.hidden = true;
-          if (warnings.length) { setText('complete-title', isZh ? '已安装，有待处理项' : 'Installed with a warning'); els.completeMessage.textContent = isZh ? '快捷方式未完成。运行 suzent shortcuts 修复；完整诊断可复制。' : 'Shortcuts need attention. Run suzent shortcuts to repair; copy details for diagnostics.'; }
+          if (warnings.length) { setText('complete-title', isZh ? '已完成，有提示' : 'Completed with notes'); els.completeMessage.textContent = (isZh ? '部分步骤已跳过或需要处理：' : 'Some steps were skipped or need attention: ') + warnings.join(' '); els.completeMessage.title = els.completeMessage.textContent; }
+          if (states.get('ui') === 'skipped') els.launch.hidden = true;
         } catch (error) { setRunning(false); setError(error instanceof Error ? error.message : String(error)); els.start.textContent = text.retry; }
       }
 

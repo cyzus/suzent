@@ -21,7 +21,7 @@ class Element {
   querySelectorAll() { return []; }
 }
 
-async function harness({mode = 'install', result = null, status = null, shortcutFailure = false, shortcutSkipped = false} = {}) {
+async function harness({mode = 'install', result = null, status = null, shortcutFailure = false, shortcutSkipped = false, skippedStage = null} = {}) {
   const elements = new Map();
   const element = id => {
     if (!elements.has(id)) elements.set(id, new Element());
@@ -33,11 +33,11 @@ async function harness({mode = 'install', result = null, status = null, shortcut
     calls.push([command, args]);
     if (command === 'installer_context') return {mode, dir: 'D:\\workspace\\suzent', target:'v0.15.0'};
     if (command === 'default_install_dir_command') return 'C:\\Users\\test\\suzent';
-    if (command === 'installer_manifest') return JSON.stringify({stages: [{name:'backend',title:'Synchronizing Python environment'}, {name:'shortcuts',title:'Creating launch shortcuts'}]});
+    if (command === 'installer_manifest') return JSON.stringify({stages: [{name:'backend',title:'Synchronizing Python environment'}, {name:'shortcuts',title:'Creating launch shortcuts'}, ...(skippedStage ? [{name:skippedStage,title:skippedStage}] : [])]});
     if (command === 'updater_status') return status && JSON.stringify(status);
     if (command === 'updater_result') return result;
     if (command === 'save_diagnostics') return true;
-    if (command === 'run_installer_stage') return JSON.stringify({ok: !(shortcutFailure && args.request.stage === 'shortcuts'), skipped: shortcutSkipped && args.request.stage === 'shortcuts', reason:'shortcut denied', logs:[], duration_ms:1});
+    if (command === 'run_installer_stage') return JSON.stringify({ok: !(shortcutFailure && args.request.stage === 'shortcuts'), skipped: (shortcutSkipped && args.request.stage === 'shortcuts') || args.request.stage === skippedStage, reason: args.request.stage === skippedStage ? `${skippedStage} unavailable; repair required` : 'shortcut denied', logs:[], duration_ms:1});
   };
   const appWindow = {onCloseRequested(fn) { handlers.close = fn; }, close() {calls.push(['close']);}};
   const window = {
@@ -102,9 +102,9 @@ test('active work blocks closing the window', async () => {
 test('shortcut failure is a visible partial success with launch available', async () => {
   const h = await harness({shortcutFailure:true});
   await h.element('start').events.click();
-  assert.equal(h.element('complete-title').textContent, 'Installed with a warning');
+  assert.equal(h.element('complete-title').textContent, 'Completed with notes');
   assert.equal(h.element('launch').hidden, false);
-  assert.match(h.element('complete-message').textContent, /suzent shortcuts/);
+  assert.match(h.element('complete-message').textContent, /shortcut denied/);
 });
 
 test('update shortcut warnings remain available in diagnostics', async () => {
@@ -117,8 +117,20 @@ test('update shortcut warnings remain available in diagnostics', async () => {
 test('skipped shortcut stage with a reason is a visible warning', async () => {
   const h = await harness({shortcutSkipped:true});
   await h.element('start').events.click();
-  assert.equal(h.element('complete-title').textContent, 'Installed with a warning');
+  assert.equal(h.element('complete-title').textContent, 'Completed with notes');
   assert.equal(h.element('launch').hidden, false);
   await h.element('copy-result').events.click();
   assert.match(h.calls.find(([name]) => name === 'clipboard')[1], /shortcut denied/);
 });
+
+for (const skippedStage of ['playwright', 'ui']) {
+  test(`skipped ${skippedStage} result is visible at completion`, async () => {
+    const h = await harness({skippedStage});
+    await h.element('start').events.click();
+    assert.equal(h.element('complete-title').textContent, 'Completed with notes');
+    assert.match(h.element('complete-message').textContent, new RegExp(`${skippedStage} unavailable`));
+    assert.equal(h.element('launch').hidden, skippedStage === 'ui');
+    await h.element('copy-result').events.click();
+    assert.match(h.calls.find(([name]) => name === 'clipboard')[1], new RegExp(`${skippedStage} unavailable`));
+  });
+}
