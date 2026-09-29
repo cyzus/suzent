@@ -107,6 +107,7 @@ struct InstallerContext {
     repair: bool,
     dir: String,
     target: String,
+    branch: Option<String>,
 }
 
 struct UpdateRuntime {
@@ -170,7 +171,7 @@ fn main() {
     }
 
     if has_flag(&args, "--manifest") {
-        print_json(&manifest());
+        print_json(&manifest(&config));
         return;
     }
 
@@ -186,7 +187,7 @@ fn main() {
         exit_with_prompt(0, config.non_interactive);
     }
 
-    for stage in stages() {
+    for stage in stages(&config) {
         let result = run_stage(&config, stage);
         if config.json {
             print_json(&result);
@@ -211,7 +212,8 @@ fn main() {
 
 #[tauri::command]
 fn installer_manifest() -> Result<String, String> {
-    serde_json::to_string(&manifest()).map_err(|error| error.to_string())
+    let config = InstallConfig::from_env_and_args(&env::args().skip(1).collect::<Vec<_>>());
+    serde_json::to_string(&manifest(&config)).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -234,7 +236,7 @@ async fn run_installer_stage(request: StageRequest) -> Result<String, String> {
         config.dir = PathBuf::from(flag_value(&args, "--dir").expect("stage directory"));
         config.json = true;
         config.non_interactive = true;
-        let Some(stage) = stages()
+        let Some(stage) = stages(&config)
             .into_iter()
             .find(|stage| stage.name == request.stage)
         else {
@@ -259,6 +261,7 @@ async fn run_installer_stage(request: StageRequest) -> Result<String, String> {
 fn installer_context() -> InstallerContext {
     let args: Vec<String> = env::args().skip(1).collect();
     let repair = has_flag(&args, "--repair");
+    let config = InstallConfig::from_env_and_args(&args);
     InstallerContext {
         mode: if has_flag(&args, "--update") || repair {
             "update"
@@ -271,6 +274,7 @@ fn installer_context() -> InstallerContext {
             .display()
             .to_string(),
         target: flag_value(&args, "--target").unwrap_or_default(),
+        branch: config.branch_explicit.then_some(config.branch),
     }
 }
 
@@ -465,7 +469,7 @@ impl InstallConfig {
     }
 }
 
-fn stages() -> Vec<InstallStage> {
+fn stages(config: &InstallConfig) -> Vec<InstallStage> {
     vec![
         InstallStage {
             name: "git",
@@ -511,7 +515,11 @@ fn stages() -> Vec<InstallStage> {
         },
         InstallStage {
             name: "ui",
-            title: "Downloading desktop UI binary",
+            title: if config.branch_explicit {
+                "Building desktop UI from source"
+            } else {
+                "Downloading desktop UI binary"
+            },
             category: "install",
             needs_user_input: false,
             worker: stage_ui,
@@ -547,10 +555,10 @@ fn stages() -> Vec<InstallStage> {
     ]
 }
 
-fn manifest() -> ManifestPayload {
+fn manifest(config: &InstallConfig) -> ManifestPayload {
     ManifestPayload {
         protocol_version: PROTOCOL_VERSION,
-        stages: stages()
+        stages: stages(config)
             .into_iter()
             .map(|stage| ManifestStage {
                 name: stage.name,
@@ -563,7 +571,10 @@ fn manifest() -> ManifestPayload {
 }
 
 fn run_stage_command(config: &InstallConfig, stage_name: &str) {
-    let Some(stage) = stages().into_iter().find(|stage| stage.name == stage_name) else {
+    let Some(stage) = stages(config)
+        .into_iter()
+        .find(|stage| stage.name == stage_name)
+    else {
         print_json(&StageResult {
             stage: stage_name.to_string(),
             ok: false,
@@ -1337,14 +1348,22 @@ fn write_banner(config: &InstallConfig) {
 fn print_preview(config: &InstallConfig) {
     println!("Preview mode: no changes will be made.");
     println!();
-    for (idx, stage) in stages().into_iter().enumerate() {
-        println!("Step {}/{}: {}", idx + 1, stages().len(), stage.title);
+    let plan = stages(config);
+    let count = plan.len();
+    for (idx, stage) in plan.into_iter().enumerate() {
+        println!("Step {}/{}: {}", idx + 1, count, stage.title);
         match stage.name {
             "repository" => {
                 println!("  Clone or update {}", config.repo_url);
                 println!("  Target: {}", config.dir.display());
             }
             "dependencies" => println!("  uv sync --frozen --extra social"),
+            "ui" if config.branch_explicit => {
+                println!("  Branch: {}", config.branch);
+                println!("  npm ci (frontend and src-tauri)");
+                println!("  npm run build:dist -- --no-bundle (src-tauri)");
+                println!("  Requires Node.js/npm, Rust and platform build tools; no release UI download.");
+            }
             "ui" => println!("  {}", ui_asset_name()),
             "playwright" => {
                 if config.skip_playwright {
@@ -1662,6 +1681,29 @@ fn exit_with_prompt(code: i32, non_interactive: bool) -> ! {
 mod tests {
     use super::{is_release_tag, saved_install_dir, workspace_python};
     use std::fs;
+
+    #[test]
+    fn desktop_stage_copy_matches_install_mode_in_manifest_and_execution() {
+        let mut config = super::InstallConfig::from_env_and_args(&[]);
+        for (development, expected) in [
+            (false, "Downloading desktop UI binary"),
+            (true, "Building desktop UI from source"),
+        ] {
+            config.branch_explicit = development;
+            let stage = super::stages(&config)
+                .into_iter()
+                .find(|stage| stage.name == "ui")
+                .unwrap();
+            let manifest = super::manifest(&config);
+            let published = manifest
+                .stages
+                .iter()
+                .find(|stage| stage.name == "ui")
+                .unwrap();
+            assert_eq!(stage.title, expected);
+            assert_eq!(published.title, expected);
+        }
+    }
 
     #[test]
     fn branch_desktop_is_built_from_selected_checkout() {

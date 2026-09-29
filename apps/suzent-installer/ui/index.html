@@ -180,6 +180,7 @@
       };
 
       const stageTranslations = {
+        'Downloading desktop UI binary': '下载桌面程序', 'Building desktop UI from source': '从源码构建桌面程序',
         'Checking system prerequisites': '检查系统环境', 'Installing uv': '安装 uv', 'Preparing workspace': '准备工作区', 'Installing standalone updater': '安装独立更新器',
         'Installing Suzent desktop': '安装 Suzent 桌面端', 'Synchronizing Python environment': '同步 Python 环境', 'Installing Playwright Chromium': '安装 Playwright 浏览器',
         'Creating launch shortcuts': '创建启动快捷方式', 'Finalizing installation': '完成安装',
@@ -211,6 +212,7 @@
       const states = new Map();
 
       function translateStage(title) { return isZh ? (stageTranslations[title] || title) : title; }
+      function channelLabel() { return context?.branch ? (isZh ? '开发分支' : 'Development branch') : text.stable; }
       function setNodeText(node, value) { if (node && node.textContent !== value) node.textContent = value; }
       function setText(id, value) { setNodeText($(id), value); }
       function log(message) { if (!message) return; els.recent.textContent = message; const line = document.createElement('div'); line.textContent = message; els.log.appendChild(line); els.log.scrollTop = els.log.scrollHeight; }
@@ -238,11 +240,11 @@
         setText('rail-title', context.mode === 'update' ? text.updateTitle : text.installTitle);
         setText('rail-intro', context.mode === 'update' ? text.updateIntro : text.installIntro);
         setText('page-title', context.repair ? text.repairPage : context.mode === 'update' ? text.updatePage : text.installPage);
-        setText('mode-badge', text.stable); setText('path-label', context.mode === 'update' ? text.currentLocation : text.destination); setText('browse-dir', text.choose); setText('status-kicker', text.ready);
+        setText('mode-badge', channelLabel()); setText('path-label', context.mode === 'update' ? text.currentLocation : text.destination); setText('browse-dir', text.choose); setText('status-kicker', text.ready);
         setText('status-title', text.review); setText('status-message', context.mode === 'update' ? text.updateIntro : text.nothing); setText('progress-label', text.waiting);
         setText('steps-heading', context.mode === 'update' ? text.updatePlan : text.plan); setText('start', context.mode === 'update' ? text.retry : text.install); setText('launch', text.launch);
         setText('activity-heading', text.activity); setText('summary-channel-label', text.channel); setText('summary-target-label', text.target); setText('summary-safety-label', text.recovery);
-        setText('summary-channel', text.stable); setText('summary-target', context.target || text.latest); setText('summary-safety', text.rollback); setText('error-title', text.action);
+        setText('summary-channel', channelLabel()); setText('summary-target', context.branch || context.target || text.latest); setText('summary-safety', text.rollback); setText('error-title', text.action);
         setText('retry', text.retry); setText('copy-error', text.copy); setText('complete-title', text.allSet); setText('log-heading', text.details);
         setText('finish-close', isZh ? '关闭' : 'Close');
         setText('save-error', isZh ? '保存诊断' : 'Save diagnostics');
@@ -385,7 +387,7 @@
           manifest = JSON.parse(raw); context.dir = context.dir || defaultDir;
         }
         manifest.stages.forEach(stage => states.set(stage.name, 'pending'));
-        els.dir.value = context.dir; setText('page-subtitle', `${text.stable} · ${manifest.stages.length} ${text.steps}`); renderStages();
+        els.dir.value = context.dir; setText('page-subtitle', `${context.branch || channelLabel()} · ${manifest.stages.length} ${text.steps}`); renderStages();
       }
 
       async function loadUpdate() {

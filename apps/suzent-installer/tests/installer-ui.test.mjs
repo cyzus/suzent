@@ -21,7 +21,7 @@ class Element {
   querySelectorAll() { return []; }
 }
 
-async function harness({mode = 'install', result = null, status = null, shortcutFailure = false, shortcutSkipped = false, skippedStage = null} = {}) {
+async function harness({mode = 'install', result = null, status = null, shortcutFailure = false, shortcutSkipped = false, skippedStage = null, branch = null, language = 'en'} = {}) {
   const elements = new Map();
   const element = id => {
     if (!elements.has(id)) elements.set(id, new Element());
@@ -31,7 +31,7 @@ async function harness({mode = 'install', result = null, status = null, shortcut
   const handlers = {};
   const invoke = async (command, args) => {
     calls.push([command, args]);
-    if (command === 'installer_context') return {mode, dir: 'D:\\workspace\\suzent', target:'v0.15.0'};
+    if (command === 'installer_context') return {mode, branch, dir: 'D:\\workspace\\suzent', target:'v0.15.0'};
     if (command === 'default_install_dir_command') return 'C:\\Users\\test\\suzent';
     if (command === 'installer_manifest') return JSON.stringify({stages: [{name:'backend',title:'Synchronizing Python environment'}, {name:'shortcuts',title:'Creating launch shortcuts'}, ...(skippedStage ? [{name:skippedStage,title:skippedStage}] : [])]});
     if (command === 'updater_status') return status && JSON.stringify(status);
@@ -46,7 +46,7 @@ async function harness({mode = 'install', result = null, status = null, shortcut
   };
   const context = vm.createContext({
     window, document:{body:element('body'), documentElement:element('html'), getElementById:element, querySelector:element, createElement:() => new Element()},
-    navigator:{language:'en', clipboard:{writeText:async text => calls.push(['clipboard',text])}},
+    navigator:{language, clipboard:{writeText:async text => calls.push(['clipboard',text])}},
     location:{search:''}, URLSearchParams, Date, clearInterval() {}, console,
   });
   vm.runInContext(script, context);
@@ -65,6 +65,16 @@ test('explicit custom path survives initialization and directory selection is ex
   assert.equal(h.element('start').hidden, true);
   assert.equal(h.element('finish-close').disabled, false);
 });
+
+for (const language of ['en', 'zh-CN']) {
+  test(`branch channel and desktop title are consistent in ${language}`, async () => {
+    const h = await harness({branch:'feature/desktop', language});
+    assert.equal(h.element('mode-badge').textContent, language === 'en' ? 'Development branch' : '开发分支');
+    assert.match(h.element('page-subtitle').textContent, /feature\/desktop/);
+    assert.equal(vm.runInContext("translateStage('Building desktop UI from source')", h.context), language === 'en' ? 'Building desktop UI from source' : '从源码构建桌面程序');
+    assert.equal(vm.runInContext("translateStage('Downloading desktop UI binary')", h.context), language === 'en' ? 'Downloading desktop UI binary' : '下载桌面程序');
+  });
+}
 
 test('completion before event subscription is recovered from native result', async () => {
   const h = await harness({mode:'update',result:{code:0,error:null},status:{phase:'complete',progress:100,message:'Done'}});
