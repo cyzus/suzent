@@ -155,16 +155,17 @@ fn inspect_destination_path(root: &Path) -> DestinationInfo {
     };
     let branch = git(&["branch", "--show-current"]).filter(|value| !value.is_empty());
     let channel = fs::read_to_string(root.join(".suzent/update-channel")).unwrap_or_default();
-    if branch.is_some()
-        || channel.trim() == "dev"
-        || !root.join(".suzent-bootstrap-complete").is_file()
-    {
+    if branch.is_some() || channel.trim() == "dev" {
         return info("development", branch);
     }
     if git(&["rev-parse", "HEAD"]).is_none() {
         return info("invalid", None);
     }
-    let kind = if root.join(".suzent/update-transaction.json").exists()
+    if !root.join(".suzent-bootstrap-complete").is_file() && channel.trim() != "stable" {
+        return info("development", branch);
+    }
+    let kind = if !root.join(".suzent-bootstrap-complete").is_file()
+        || root.join(".suzent/update-transaction.json").exists()
         || !workspace_python(root).is_file()
     {
         "repair"
@@ -1515,9 +1516,28 @@ fn write_banner(config: &InstallConfig) {
     println!();
 }
 
+fn existing_destination_preview(destination: &DestinationInfo) -> Option<&'static str> {
+    match destination.kind {
+        "new" => None,
+        "development" => Some("Existing development workspace. No first-install stages will run.\nUse the manual update instructions in the installer, or run suzent update from this workspace after reviewing local changes."),
+        "update" => Some("Existing release installation. Open the installer and choose Update this installation to use the standalone updater."),
+        "repair" => Some("Existing installation needs repair. Open the installer and choose Repair this installation to use the standalone updater."),
+        _ => Some("Destination is invalid or occupied. First installation is blocked; choose an empty directory or a valid Suzent installation."),
+    }
+}
+
 fn print_preview(config: &InstallConfig) {
     println!("Preview mode: no changes will be made.");
     println!();
+    let destination = inspect_destination_path(&config.dir);
+    if let Some(message) = existing_destination_preview(&destination) {
+        println!("Target: {}", config.dir.display());
+        println!("{message}");
+        if let Some(branch) = destination.branch {
+            println!("Current branch: {branch}");
+        }
+        return;
+    }
     let plan = stages(config);
     let count = plan.len();
     for (idx, stage) in plan.into_iter().enumerate() {
@@ -1853,6 +1873,29 @@ mod tests {
     use std::fs;
 
     #[test]
+    fn preview_only_lists_first_install_stages_for_new_destinations() {
+        for (kind, expected) in [
+            ("development", "Existing development workspace"),
+            ("update", "Update this installation"),
+            ("repair", "Repair this installation"),
+            ("occupied", "First installation is blocked"),
+            ("invalid", "First installation is blocked"),
+        ] {
+            let destination = super::DestinationInfo { kind, branch: None };
+            assert!(super::existing_destination_preview(&destination)
+                .unwrap()
+                .contains(expected));
+        }
+        assert!(
+            super::existing_destination_preview(&super::DestinationInfo {
+                kind: "new",
+                branch: None,
+            })
+            .is_none()
+        );
+    }
+
+    #[test]
     fn destination_detection_distinguishes_new_development_and_release_repair() {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path();
@@ -1885,9 +1928,15 @@ mod tests {
         assert_eq!(super::inspect_destination_path(root).kind, "development");
         git(&["checkout", "--detach"]);
         assert_eq!(super::inspect_destination_path(root).kind, "repair");
+        fs::create_dir_all(root.join(".suzent")).unwrap();
+        fs::write(root.join(".suzent/update-channel"), "stable").unwrap();
+        fs::remove_file(root.join(".suzent-bootstrap-complete")).unwrap();
+        assert_eq!(super::inspect_destination_path(root).kind, "repair");
         let python = super::workspace_python(root);
         fs::create_dir_all(python.parent().unwrap()).unwrap();
         fs::write(python, "").unwrap();
+        assert_eq!(super::inspect_destination_path(root).kind, "repair");
+        fs::write(root.join(".suzent-bootstrap-complete"), "ready").unwrap();
         assert_eq!(super::inspect_destination_path(root).kind, "update");
         fs::create_dir_all(root.join(".suzent")).unwrap();
         fs::write(root.join(".suzent/update-transaction.json"), "{}").unwrap();

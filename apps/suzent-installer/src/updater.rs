@@ -226,20 +226,23 @@ pub(crate) fn run_inner(args: &[String], repair: bool) -> Result<(), String> {
     let _lock = acquire_lock(&paths.state_dir)?;
     recover_legacy_journal(&paths)?;
 
-    if paths.journal.exists() {
+    let recovered_snapshot = if paths.journal.exists() {
         if !repair {
             return Err(format!(
                 "an interrupted update is recorded in {}; run 'suzent repair' before updating again",
                 paths.journal.display()
             ));
         }
-        recover_interrupted_update(&paths)?;
-    }
+        recover_interrupted_update(&paths)?
+    } else {
+        None
+    };
 
     if let Err(error) = run_transaction(
         &paths,
         &target_tag,
         args.iter().any(|arg| arg == "--backup-conflicts"),
+        recovered_snapshot,
     ) {
         record_failure(&paths, &target_tag, &error);
         return Err(error);
@@ -258,12 +261,19 @@ fn run_transaction(
     paths: &UpdatePaths,
     target_tag: &str,
     backup_conflicts: bool,
+    recovered_snapshot: Option<String>,
 ) -> Result<(), String> {
     let mut service_guard = ServiceRestartGuard::detect(&paths.root);
     write_status(paths, "preflight", 5, "Preparing update", target_tag)?;
     let repository_hazard = repository_hazard(&paths.root)?;
     let old_commit = git_text(&paths.root, &["rev-parse", "HEAD"])?;
     let old_branch = git_text(&paths.root, &["branch", "--show-current"])?;
+    if repository_hazard.is_some() && recovered_snapshot.is_some() {
+        return Err(format!(
+            "Git conflicts remain after recovery; inspect the original snapshot at {} and resolve them manually before retrying; journal retained",
+            recovered_snapshot.as_deref().unwrap()
+        ));
+    }
     if let Some(reason) = &repository_hazard {
         if !backup_conflicts {
             return Err(format!("CONFIRM_GIT_RECOVERY: {reason}\nDirectory: {}\nSource: {old_branch} ({old_commit})\nTarget: {target_tag}\nBack up local changes and Git operation state before continuing. Local changes will not be reapplied automatically. No source files have been changed.", paths.root.display()));
@@ -281,7 +291,7 @@ fn run_transaction(
         old_ui_version,
         stashed_changes: false,
         stash_commit: None,
-        recovery_dir: None,
+        recovery_dir: recovered_snapshot,
         phase: "preflight".to_string(),
     };
 
@@ -325,10 +335,12 @@ fn run_transaction(
             "Local source changes were saved in {}",
             recovery_dir.display()
         );
-        transaction.phase = "preserved".to_string();
+        transaction.phase = "clearing_conflicts".to_string();
         write_journal(paths, &transaction)?;
         clear_preserved_conflicts(&paths.root, &recovery_dir, &transaction.old_commit)
             .map_err(|error| format!("{error}; local source snapshot: {}. Run suzent repair after inspecting the recovery instructions.", recovery_dir.display()))?;
+        transaction.phase = "conflicts_cleared".to_string();
+        write_journal(paths, &transaction)?;
     } else if has_local_changes(&paths.root)? {
         write_status(
             paths,
@@ -414,7 +426,7 @@ fn run_transaction(
     Ok(())
 }
 
-fn recover_interrupted_update(paths: &UpdatePaths) -> Result<(), String> {
+fn recover_interrupted_update(paths: &UpdatePaths) -> Result<Option<String>, String> {
     let bytes = fs::read(&paths.journal).map_err(display_io("read update transaction"))?;
     let transaction: UpdateTransaction = serde_json::from_slice(&bytes)
         .map_err(|error| format!("failed to read update transaction: {error}"))?;
@@ -423,11 +435,16 @@ fn recover_interrupted_update(paths: &UpdatePaths) -> Result<(), String> {
             paths.root.clone(),
             &transaction.target_tag,
         ));
-        return Ok(());
+        return Ok(transaction.recovery_dir);
     }
-    if transaction.phase == "preserving" && repository_hazard(&paths.root)?.is_some() {
+    if transaction.recovery_dir.is_some()
+        && matches!(
+            transaction.phase.as_str(),
+            "preserving" | "preserved" | "clearing_conflicts"
+        )
+    {
         return Err(format!(
-            "local-change preservation was interrupted; inspect {} and resolve Git conflicts manually before retrying; journal retained",
+            "local-change preservation or cleanup was interrupted; manual recovery is required. Inspect README.txt in {}, recover local changes before archiving the transaction journal, then retry repair; journal and original backup retained",
             transaction.recovery_dir.as_deref().unwrap_or("the recovery directory")
         ));
     }
@@ -452,8 +469,11 @@ fn recover_interrupted_update(paths: &UpdatePaths) -> Result<(), String> {
     recovery_result.map_err(|error| {
         format!("failed to recover interrupted update; backups and journal were preserved: {error}")
     })?;
-    fs::remove_file(&paths.journal).map_err(display_io("finish interrupted update recovery"))?;
-    Ok(())
+    if transaction.recovery_dir.is_none() {
+        fs::remove_file(&paths.journal)
+            .map_err(display_io("finish interrupted update recovery"))?;
+    }
+    Ok(transaction.recovery_dir)
 }
 
 #[cfg(windows)]
@@ -623,6 +643,18 @@ fn install_target(paths: &UpdatePaths, target_tag: &str) -> Result<(), String> {
             .warnings
             .push(format!("{error}; run 'suzent shortcuts' to retry"));
         write_json_atomic(&paths.status, &status, "record shortcut warning")?;
+    }
+    if !paths.root.join(".suzent-bootstrap-complete").is_file() {
+        let config = super::InstallConfig::from_env_and_args(&[
+            "--dir".to_string(),
+            paths.root.display().to_string(),
+        ]);
+        let outcome = super::stage_shim(&config);
+        if !outcome.ok {
+            return Err(outcome
+                .reason
+                .unwrap_or_else(|| "failed to finish bootstrap".to_string()));
+        }
     }
     Ok(())
 }
@@ -1961,6 +1993,44 @@ mod tests {
     }
 
     #[test]
+    fn interrupted_conflict_cleanup_retains_original_journal_and_snapshot() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = UpdatePaths::new(temp.path().to_path_buf(), "v1.2.3");
+        fs::create_dir_all(&paths.state_dir).unwrap();
+        let snapshot = paths.state_dir.join("update-recovery/original");
+        fs::create_dir_all(&snapshot).unwrap();
+        fs::write(snapshot.join("local.txt"), "original conflicts").unwrap();
+        for phase in [
+            "preserving",
+            "preserved",
+            "clearing_conflicts",
+            "conflicts_cleared",
+        ] {
+            let journal = serde_json::json!({
+                "target_tag": "v1.2.3", "old_commit": "abc", "old_branch": "",
+                "old_release_tag": "v1.2.2", "old_ui_version": "v1.2.2",
+                "stashed_changes": false, "phase": phase,
+                "recovery_dir": snapshot.display().to_string()
+            });
+            let bytes = serde_json::to_vec(&journal).unwrap();
+            fs::write(&paths.journal, &bytes).unwrap();
+            let result = super::recover_interrupted_update(&paths);
+            if phase == "conflicts_cleared" {
+                assert_eq!(result.unwrap(), Some(snapshot.display().to_string()));
+            } else {
+                let error = result.unwrap_err();
+                assert!(error.contains("manual recovery is required"));
+                assert!(error.contains(&snapshot.display().to_string()));
+            }
+            assert_eq!(fs::read(&paths.journal).unwrap(), bytes);
+            assert_eq!(
+                fs::read_to_string(snapshot.join("local.txt")).unwrap(),
+                "original conflicts"
+            );
+        }
+    }
+
+    #[test]
     fn completed_transaction_recovery_keeps_verified_installation() {
         let temp = tempfile::tempdir().unwrap();
         let paths = UpdatePaths::new(temp.path().to_path_buf(), "v1.2.3");
@@ -2519,7 +2589,7 @@ mod tests {
         assert_eq!(fs::read(root.join(".git/index")).unwrap(), index);
         fs::write(root.join("local-note.txt"), "keep me\n").unwrap();
         let paths = super::UpdatePaths::new(root.to_path_buf(), "v1.2.3");
-        assert!(super::run_transaction(&paths, "v1.2.3", false)
+        assert!(super::run_transaction(&paths, "v1.2.3", false, None)
             .unwrap_err()
             .starts_with("CONFIRM_GIT_RECOVERY:"));
         assert!(!paths.journal.exists());
