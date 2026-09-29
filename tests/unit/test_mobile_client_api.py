@@ -30,6 +30,9 @@ def setup_client(tmp_path, monkeypatch):
         for key in ("shared", "private")
     }
     db = SimpleNamespace(
+        get_pinned_chat_ids=lambda ids: set(),
+        get_subagent_chat_ids_for_parent_chat=lambda chat_id: [],
+        update_chat=lambda chat_id, **changes: chat_id in records,
         get_chat=records.get,
         get_chat_projects=lambda ids: {
             key: ("p-" + key, key.title()) for key in ids if key in records
@@ -64,6 +67,7 @@ def test_scoped_reads_and_host_endpoints(setup_client, monkeypatch):
         {
             "id": "shared",
             "title": "shared",
+            "pinned": False,
             "isRunning": False,
             "projectId": "p-shared",
             "projectName": "Shared",
@@ -89,6 +93,149 @@ def test_scoped_reads_and_host_endpoints(setup_client, monkeypatch):
     )
     store.revoke(result["device"]["device_id"])
     assert client.get("/mobile/client/session").status_code == 401
+
+
+@pytest.mark.parametrize("action", ["pin", "unpin", "rename", "move", "delete"])
+def test_management_requires_explicit_permission_and_scope(setup_client, action):
+    client, store = setup_client
+    result = grant(store, chat_ids=["shared"], send=True, create_chats=True)
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+    body = {"chat_id": "shared", "action": action, "value": "p-shared"}
+    assert client.post("/mobile/client/manage", json=body).status_code == 403
+    assert store.set_management(result["device"]["device_id"], True)
+    body["chat_id"] = "private"
+    assert client.post("/mobile/client/manage", json=body).status_code == 403
+    assert (
+        client.post(
+            f"/mobile/devices/{result['device']['device_id']}/management",
+            json={"enabled": True},
+        ).status_code
+        == 401
+    )
+
+
+def test_management_validation_and_revocation(setup_client, monkeypatch):
+    client, store = setup_client
+    result = grant(store, chat_ids=["shared"], manage_chats=True)
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+    for action in ("pin", "unpin", "rename"):
+        assert (
+            client.post(
+                "/mobile/client/manage",
+                json={"chat_id": "shared", "action": action, "value": "New title"},
+            ).status_code
+            == 200
+        )
+    for value in ("", "  ", "x" * 201):
+        assert (
+            client.post(
+                "/mobile/client/manage",
+                json={"chat_id": "shared", "action": "rename", "value": value},
+            ).status_code
+            == 400
+        )
+    assert (
+        client.post(
+            "/mobile/client/manage",
+            json={"chat_id": "shared", "action": "pin", "config": {}},
+        ).status_code
+        == 400
+    )
+    assert (
+        client.post(
+            "/mobile/client/manage",
+            json={"chat_id": "shared", "action": "move", "value": "p-private"},
+        ).status_code
+        == 403
+    )
+    monkeypatch.setattr(
+        "suzent.core.stream_registry.is_background_streaming", lambda _: True
+    )
+    for action in ("move", "delete"):
+        assert (
+            client.post(
+                "/mobile/client/manage",
+                json={"chat_id": "shared", "action": action, "value": "p-shared"},
+            ).status_code
+            == 409
+        )
+    store.set_management(result["device"]["device_id"], False)
+    assert (
+        client.post(
+            "/mobile/client/manage", json={"chat_id": "shared", "action": "pin"}
+        ).status_code
+        == 403
+    )
+
+
+def test_management_move_and_delete_do_not_escape_scope(setup_client, monkeypatch):
+    client, store = setup_client
+    result = grant(store, chat_ids=["shared"], manage_chats=True)
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+    calls = []
+
+    async def handler(request):
+        calls.append((request.path_params, request.query_params, await request.json()))
+        return JSONResponse({"ok": True})
+
+    monkeypatch.setattr("suzent.routes.project_routes.move_chat_to_project", handler)
+    monkeypatch.setattr("suzent.routes.chat_routes.delete_chat", handler)
+    assert (
+        client.post(
+            "/mobile/client/manage",
+            json={"chat_id": "shared", "action": "move", "value": "p-shared"},
+        ).status_code
+        == 200
+    )
+    assert calls[-1][0] == {"chat_id": "shared"}
+    assert calls[-1][2] == {"project_id": "p-shared"}
+    assert (
+        client.post(
+            "/mobile/client/manage?cascade=true",
+            json={"chat_id": "shared", "action": "delete"},
+        ).status_code
+        == 200
+    )
+    assert not calls[-1][1]
+
+    from suzent.mobile.client_api import get_database
+
+    monkeypatch.setattr(
+        get_database(), "get_subagent_chat_ids_for_parent_chat", lambda _: ["private"]
+    )
+    assert (
+        client.post(
+            "/mobile/client/manage",
+            json={"chat_id": "shared", "action": "move", "value": "p-shared"},
+        ).status_code
+        == 403
+    )
+    restored = PairingStore(store.path)
+    assert restored.verify(result["token"]).permissions.manage_chats
+    restored.set_management(result["device"]["device_id"], False)
+    assert not PairingStore(store.path).verify(result["token"]).permissions.manage_chats
+
+
+def test_move_rejects_running_shared_descendants(setup_client, monkeypatch):
+    from suzent.mobile.client_api import get_database
+
+    client, store = setup_client
+    result = grant(store, chat_ids=["shared", "private"], manage_chats=True)
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+    monkeypatch.setattr(
+        get_database(), "get_subagent_chat_ids_for_parent_chat", lambda _: ["private"]
+    )
+    monkeypatch.setattr(
+        "suzent.core.stream_registry.is_background_streaming",
+        lambda chat_id: chat_id == "private",
+    )
+    assert (
+        client.post(
+            "/mobile/client/manage",
+            json={"chat_id": "shared", "action": "move", "value": "p-shared"},
+        ).status_code
+        == 409
+    )
 
 
 def test_send_cannot_override_permissions_or_run_commands(setup_client, monkeypatch):
@@ -205,6 +352,7 @@ def test_transcript_excludes_backend_configuration(setup_client, monkeypatch):
     response = client.get("/mobile/client/chats/shared")
     assert response.status_code == 200
     assert set(response.json()) == {
+        "pinned",
         "id",
         "title",
         "messages",
@@ -271,6 +419,7 @@ def test_transcript_reports_current_run_without_loading_runtime(
             "title": "Test",
             "messages": [],
             "isRunning": running,
+            "pinned": False,
             "projectId": "p-shared",
             "projectName": "Shared",
             "model": "test/model",
