@@ -22,14 +22,17 @@ private val citationPatterns = listOf(
     Regex("\\bcite[-:]((?:t\\d+_src_\\d+)(?:\\s*,\\s*t\\d+_src_\\d+)*)\\b", RegexOption.IGNORE_CASE),
 )
 
-fun markdownWithCitationLinks(text: String, sources: List<CitationSource>): String {
+fun markdownWithCitationLinks(text: String, sources: List<CitationSource>, badges: Boolean = false): String {
     val byId = sources.associateBy { it.id }
     return citationPatterns.fold(text) { current, pattern ->
         pattern.replace(current) { match ->
             val ids = match.groupValues[1].split(',', '\ue202', '\ufffc').map { it.trim() }.filter { it.isNotEmpty() }
             val primary = ids.firstNotNullOfOrNull(byId::get) ?: return@replace ""
             val suffix = if (ids.size > 1) " +${ids.size - 1}" else ""
-            val label = (primary.title.ifEmpty { primary.id }).replace("]", "\\]") + suffix
+            val host = runCatching { java.net.URI(primary.url).host?.removePrefix("www.") }.getOrNull()
+            val name = if (badges) (host ?: primary.title.ifEmpty { primary.id }) else primary.title.ifEmpty { primary.id }
+            val compact = if (badges && name.length > 26) name.take(26) + "…" else name
+            val label = (if (badges) "↗  " else "") + compact.replace("]", "\\]") + suffix
             val scheme = runCatching { java.net.URI(primary.url).scheme?.lowercase() }.getOrNull()
             if (scheme in listOf("http", "https")) "[$label](<${primary.url.replace(">", "%3E")}>)" else label
         }

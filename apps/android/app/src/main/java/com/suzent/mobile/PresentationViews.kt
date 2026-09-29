@@ -87,7 +87,8 @@ fun SuzentTheme(content: @Composable () -> Unit) {
 fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList()) {
     val context = LocalContext.current
     var pendingLink by remember { mutableStateOf<String?>(null) }
-    val renderedText = remember(text, citationSources) { markdownWithCitationLinks(text, citationSources) }
+    val renderedText = remember(text, citationSources) { markdownWithCitationLinks(text, citationSources, badges = true) }
+    val dark = isSystemInDarkTheme()
     val renderer = remember(context) { Markwon.builder(context)
         .usePlugin(object : AbstractMarkwonPlugin() {
             override fun configureConfiguration(builder: MarkwonConfiguration.Builder) {
@@ -138,7 +139,15 @@ fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList
                     TextView(ctx).apply { textSize = PresentationTokens.typeChat.toFloat(); setTextIsSelectable(true); setLineSpacing(0f, 1.2f) }
                 }, update = { view ->
                     view.setTextColor(foreground); view.setLinkTextColor(link)
-                    if (view.tag != block.body) { renderer.setParsedMarkdown(view, block.body as android.text.Spanned); view.tag = block.body }
+                    val styled = android.text.SpannableString(block.body)
+                    styled.getSpans(0, styled.length, android.text.style.ClickableSpan::class.java).forEach { span ->
+                        val start = styled.getSpanStart(span)
+                        val end = styled.getSpanEnd(span)
+                        if (styled.subSequence(start, end).startsWith("↗  ")) {
+                            styled.setSpan(CitationBadgeSpan(dark), start, end, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                        }
+                    }
+                    renderer.setParsedMarkdown(view, styled)
                 })
             }
         }
@@ -158,6 +167,37 @@ fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList
             }) { Text(stringResource(R.string.open_link)) } },
             dismissButton = { TextButton(onClick = { pendingLink = null }) { Text(stringResource(R.string.cancel_link)) } },
         )
+    }
+}
+
+private class CitationBadgeSpan(private val dark: Boolean) : android.text.style.ReplacementSpan() {
+    private fun badgePaint(paint: android.graphics.Paint) = android.graphics.Paint(paint).apply {
+        textSize = paint.textSize * 0.72f
+        isUnderlineText = false
+        typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+    }
+
+    override fun getSize(paint: android.graphics.Paint, text: CharSequence, start: Int, end: Int,
+        fm: android.graphics.Paint.FontMetricsInt?): Int {
+        val badge = badgePaint(paint)
+        return kotlin.math.ceil(badge.measureText(text, start, end) + paint.textSize * 0.85f).toInt()
+    }
+
+    override fun draw(canvas: android.graphics.Canvas, text: CharSequence, start: Int, end: Int,
+        x: Float, top: Int, y: Int, bottom: Int, paint: android.graphics.Paint) {
+        val badge = badgePaint(paint)
+        val padding = paint.textSize * 0.3f
+        val bounds = android.graphics.RectF(x + 2, y + badge.ascent() - padding * 0.45f,
+            x + getSize(paint, text, start, end, null) - 2, y + badge.descent() + padding * 0.45f)
+        badge.color = android.graphics.Color.parseColor(if (dark) "#303030" else "#F5F5F5")
+        canvas.drawRoundRect(bounds, bounds.height() / 2, bounds.height() / 2, badge)
+        badge.style = android.graphics.Paint.Style.STROKE
+        badge.strokeWidth = paint.textSize * 0.035f
+        badge.color = android.graphics.Color.parseColor(if (dark) "#606060" else "#CCCCCC")
+        canvas.drawRoundRect(bounds, bounds.height() / 2, bounds.height() / 2, badge)
+        badge.style = android.graphics.Paint.Style.FILL
+        badge.color = android.graphics.Color.parseColor(if (dark) "#EEEEEE" else "#404040")
+        canvas.drawText(text, start, end, x + padding, y.toFloat(), badge)
     }
 }
 

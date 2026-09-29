@@ -7,7 +7,7 @@ private let citationPatterns = [
     #"\bcite[-:]((?:t\d+_src_\d+)(?:\s*,\s*t\d+_src_\d+)*)\b"#,
 ]
 
-public func markdownWithCitationLinks(_ text: String, sources: [CitationSource]) -> String {
+public func markdownWithCitationLinks(_ text: String, sources: [CitationSource], badges: Bool = false) -> String {
     let byID = Dictionary(uniqueKeysWithValues: sources.map { ($0.id, $0) })
     var result = text
     for pattern in citationPatterns {
@@ -26,7 +26,12 @@ public func markdownWithCitationLinks(_ text: String, sources: [CitationSource])
             let label = (primary.title.isEmpty ? primary.id : primary.title).replacingOccurrences(of: "]", with: "\\]") + suffix
             let replacement: String
             if let rawURL = primary.url, let url = URL(string: rawURL), ["http", "https"].contains(url.scheme?.lowercased()) {
-                replacement = "[\(label)](<\(rawURL.replacingOccurrences(of: ">", with: "%3E"))>)"
+                let host = url.host?.replacingOccurrences(of: "^www\\.", with: "", options: .regularExpression) ?? primary.title
+                let compact = String(host.prefix(26)) + (host.count > 26 ? "…" : "") + suffix
+                let badgeLabel = compact.replacingOccurrences(of: "]", with: "\\]")
+                let key = compact.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? "badge"
+                let content = badges ? "![\(badgeLabel)](suzent-citation://badge/\(key))" : label
+                replacement = "[\(content)](<\(rawURL.replacingOccurrences(of: ">", with: "%3E"))>)"
             } else {
                 replacement = label
             }
