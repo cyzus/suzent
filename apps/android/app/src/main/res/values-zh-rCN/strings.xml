@@ -111,4 +111,11 @@
     <string name="cancel_reconnect">取消</string>
     <string name="reconnect_unreachable">无法连接桌面端。请检查 Wi-Fi 或 Tailscale，并确认 Suzent 正在运行，然后重试或重新配对。</string>
     <string name="pairing_secure_connection">无法建立可信连接。请检查网络；如果桌面设备身份已更换，请重新扫码。</string>
+    <string name="open_external_link">打开外部链接？</string>
+    <string name="open_link">打开</string>
+    <string name="cancel_link">取消</string>
+    <string name="citation_sources">引用来源</string>
+    <string name="citation_read">阅读原文</string>
+    <string name="citation_copy">复制链接</string>
+    <string name="citation_external">外部浏览器打开</string>
 </resources>

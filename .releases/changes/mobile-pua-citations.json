@@ -1,0 +1,4 @@
+{
+  "products": {"mobile": "minor"},
+  "summary": "Render PUA and ASCII citation markers and open their sources through native confirmation prompts on iOS and Android."
+}

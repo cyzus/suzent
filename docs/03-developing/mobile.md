@@ -126,8 +126,13 @@ list so the stop control cannot retain a stale list flag.
 
 ## Limits
 
-The preview renders Markdown replies and structured tool/reasoning activities in
-expandable activity rails. Attachments, citations, A2UI and some
+The preview renders Markdown replies, PUA/ASCII citation markers, and structured
+tool/reasoning activities in expandable activity rails. Citation and ordinary
+web links open a native source-preview sheet with title, snippet, copy-link and
+external-browser actions. Reading a source uses Safari View Controller on iOS
+and Custom Tabs on Android. Inline citation capsules display source favicons
+with a fixed-size fallback; repeated references have independent selection.
+Multi-source citations list each resolved source in the sheet. Attachments, A2UI and some
 legacy inline tool formats still require desktop. Shared palette and filtering
 rules live in `packages/presentation`; regenerate platform files with
 `uv run python scripts/generate_presentation.py` after editing their source.
