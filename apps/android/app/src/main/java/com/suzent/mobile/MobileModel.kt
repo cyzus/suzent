@@ -37,6 +37,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
     var selectedModel by mutableStateOf<String?>(null)
     var sentVersion by mutableStateOf(0)
     var openedVersion by mutableStateOf(0)
+    var pinnedVersion by mutableStateOf(0)
     var pairingVersion by mutableStateOf(0)
     private val drafts = mutableMapOf<String, String>()
     var chats by mutableStateOf<List<Chat>>(emptyList())
@@ -308,6 +309,7 @@ class MobileModel(application: Application) : AndroidViewModel(application) {
                 val listing = api.chats()
                 if (generation != current) return@launch
                 chats = listing
+                if (action == "pin" && listing.any { it.id == chat.id && it.pinned }) pinnedVersion++
                 listing.firstOrNull { it.id == selected?.id }?.let { updated ->
                     selected = selected?.copy(title = updated.title, projectId = updated.projectId, projectName = updated.projectName, pinned = updated.pinned)
                 }

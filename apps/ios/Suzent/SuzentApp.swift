@@ -277,8 +277,10 @@ struct ContentView: View {
                     .accessibilityLabel("Close sidebar")
             }.padding(.horizontal, 16)
             SuzentTextInput(placeholder: "Search chats", text: $search).padding(.horizontal, 16).padding(.bottom, 12)
+            ScrollViewReader { reader in
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
+                    Color.clear.frame(height: 0).id("sidebar-top")
                     if model.chats.contains(where: { $0.pinned == true }) {
                         Text("Pinned").font(.system(size: PresentationTokens.typeControl, weight: .bold, design: .monospaced))
                         conversationRows(model.chats.filter { $0.pinned == true })
@@ -292,6 +294,12 @@ struct ContentView: View {
                             .disabled(model.busy || model.streaming || model.device?.permissions.createChats != true)
                     }
                 }.padding(.horizontal, 16)
+            }
+            .onChange(of: model.pinnedVersion) { _, _ in
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.22)) {
+                    reader.scrollTo("sidebar-top", anchor: .top)
+                }
+            }
             }
             Divider()
             Button { composing = false; showSettings = true; showSidebar = false } label: {

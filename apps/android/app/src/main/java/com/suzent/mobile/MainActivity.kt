@@ -15,6 +15,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
@@ -124,6 +125,14 @@ private fun MobileScreen(model: MobileModel) {
 @Composable
 private fun Sidebar(model: MobileModel, settingsSelected: Boolean, close: () -> Unit, open: (Chat) -> Unit, create: (String?) -> Unit, settings: () -> Unit) {
     var search by rememberSaveable { mutableStateOf("") }
+    val listState = rememberLazyListState()
+    var observedPinVersion by remember { mutableIntStateOf(model.pinnedVersion) }
+    LaunchedEffect(model.pinnedVersion) {
+        if (observedPinVersion != model.pinnedVersion) {
+            observedPinVersion = model.pinnedVersion
+            listState.animateScrollToItem(0)
+        }
+    }
     var collapsedProjects by remember { mutableStateOf(setOf<String>()) }
     val projects = remember(model.projects, model.chats) {
         (model.projects + model.chats.mapNotNull { chat -> chat.projectId?.let { Project(it, chat.projectName ?: it) } }).distinctBy { it.id }
@@ -135,7 +144,7 @@ private fun Sidebar(model: MobileModel, settingsSelected: Boolean, close: () -> 
             SuzentTextButton(onClick = close, modifier = Modifier.size(44.dp).semantics { contentDescription = label }) { Text("×") }
         }
         SuzentTextInput(search, { search = it }, stringResource(R.string.search_chats), Modifier.padding(horizontal = 16.dp))
-        LazyColumn(Modifier.weight(1f).padding(horizontal = 16.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
+        LazyColumn(Modifier.weight(1f).padding(horizontal = 16.dp), state = listState, contentPadding = PaddingValues(vertical = 12.dp)) {
             if (model.chats.any { it.pinned }) {
                 item(key = "pinned-heading") { Text(stringResource(R.string.pinned_chats), fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace, fontSize = PresentationTokens.typeControl.sp, modifier = Modifier.padding(vertical = 12.dp)) }
                 items(model.chats.filter { it.pinned && it.title.contains(search, ignoreCase = true) }, key = { it.id }) {

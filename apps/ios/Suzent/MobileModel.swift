@@ -18,6 +18,7 @@ import SuzentCore
     var selectedModel: String?
     var sentVersion = 0
     var openedVersion = 0
+    var pinnedVersion = 0
     var pairingVersion = 0
     @ObservationIgnored private var drafts: [String: String] = [:]
     var selected: Chat?
@@ -289,6 +290,7 @@ import SuzentCore
             let listing = try await client.chats()
             guard generation == current else { return }
             chats = listing
+            if action == "pin", listing.contains(where: { $0.id == chat.id && $0.pinned == true }) { pinnedVersion += 1 }
             if let updated = listing.first(where: { $0.id == selected?.id }) {
                 selected?.title = updated.title
                 selected?.projectId = updated.projectId
