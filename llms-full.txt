@@ -6017,9 +6017,27 @@ dependencies from the lockfiles. Suzent detects that this is a source checkout
 and selects the development channel automatically. Bootstrapped installations
 continue to use the stable channel.
 
-Development updates require a clean working tree and a configured upstream.
+CLI development updates require a clean working tree and a configured upstream.
 Untracked files, unfinished Git operations, detached HEAD, or divergent history
 must be handled manually. Updates do not switch branches or stash your work.
+
+Alternatively, select your existing checkout in the installer and click **Update
+this workspace**. This runs the standalone updater, not copied shell commands:
+it fetches the current branch's upstream, pins the commit, stops this installation,
+fast-forwards the same branch, synchronizes the existing `.venv`, and rebuilds
+both daily desktop launch targets. Node.js/npm, Rust, uv, and the platform build
+tools must already be available. Finish any development/watch tasks before updating.
+
+Local changes or attached-branch Git conflicts require **Back up and update**
+confirmation. The updater verifies a snapshot under the existing
+`<checkout>/.suzent/update-recovery/` directory before clearing tracked changes;
+changes are not automatically reapplied. Ignored data and untracked working files
+are not deleted; a file blocking the fast-forward stops the update safely.
+Detached checkouts/rebases, missing upstreams, and diverged branches still require
+manual attention. Failed updates restore source, locked Python dependencies, and
+desktop backups, or retain the journal and report that repair is required. Use the
+installer's repair button for an interrupted operation. Database changes are not
+covered by source rollback.
 
 ### One checkout for development and daily use
 
