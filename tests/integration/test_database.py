@@ -55,6 +55,18 @@ class TestChatOperations:
         assert len(chat.messages) == 1
         assert chat.messages[0]["content"] == "Hello"
 
+    def test_append_client_message_once_is_idempotent(self, db):
+        chat_id = db.create_chat("Mobile", {})
+        message = {"role": "user", "content": "Hello"}
+
+        assert db.append_chat_message_once(chat_id, message, "send-1") == "created"
+        assert db.append_chat_message_once(chat_id, message, "send-1") == "duplicate"
+        assert db.has_client_message(chat_id, "send-1") is True
+        assert db.has_client_message(chat_id, "send-2") is False
+        assert db.get_chat(chat_id).messages == [
+            {"role": "user", "content": "Hello", "_client_message_id": "send-1"}
+        ]
+
     def test_clone_chat_to_point_copies_reusable_config_and_truncates_messages(
         self, db
     ):

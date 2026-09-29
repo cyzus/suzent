@@ -128,6 +128,10 @@ def test_send_cannot_override_permissions_or_run_commands(setup_client, monkeypa
     assert client.post("/mobile/client/send", json=base).status_code == 202
     assert calls == [base]
 
+    identified = {**base, "client_message_id": "phone-send-1"}
+    assert client.post("/mobile/client/send", json=identified).status_code == 202
+    assert calls[-1] == identified
+
 
 def test_created_chat_added_to_only_its_device(setup_client, monkeypatch):
     client, store = setup_client

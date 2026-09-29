@@ -372,6 +372,47 @@ class ChatOperationsMixin:
             session.commit()
             return True
 
+    def append_chat_message_once(
+        self, chat_id: str, message: Dict[str, Any], client_message_id: str
+    ) -> str:
+        """Append a client-authored message once, returning its claim status."""
+        with self._session() as session:
+            chat = session.get(ChatModel, chat_id)
+            if not chat:
+                return "missing"
+
+            messages = list(chat.messages or [])
+            if any(
+                isinstance(item, dict)
+                and item.get("_client_message_id") == client_message_id
+                for item in messages
+            ):
+                return "duplicate"
+
+            entry = dict(message)
+            entry["_client_message_id"] = client_message_id
+            messages.append(entry)
+            chat.messages = messages
+            chat.config = _with_message_summary(chat.config, messages)
+            chat.updated_at = datetime.now()
+            flag_modified(chat, "config")
+            session.add(chat)
+            self._reindex_in_session(session, chat_id, messages)
+            session.commit()
+            return "created"
+
+    def has_client_message(self, chat_id: str, client_message_id: str) -> bool:
+        """Return whether a chat already contains a mobile send receipt."""
+        with self._session() as session:
+            chat = session.get(ChatModel, chat_id)
+            if not chat:
+                return False
+            return any(
+                isinstance(item, dict)
+                and item.get("_client_message_id") == client_message_id
+                for item in (chat.messages or [])
+            )
+
     def rewrite_chat_messages(
         self,
         chat_id: str,

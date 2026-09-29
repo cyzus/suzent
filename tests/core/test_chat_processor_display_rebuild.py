@@ -17,6 +17,7 @@ from suzent.core.chat_processor import (
     _attach_latest_file_changes,
     _build_file_mention_context,
     _merge_rebuilt_after_compaction,
+    _preserve_client_message_ids,
     _preserve_file_change_metadata,
     _preserve_permission_metadata,
     _preserve_citation_sources,
@@ -63,6 +64,25 @@ def test_rebuild_display_messages_preserves_reasoning():
     assert assistant["role"] == "assistant"
     assert "final answer" in assistant["content"]
     assert 'data-reasoning="true"' in assistant["content"]
+
+
+def test_preserve_client_message_ids_survives_display_rebuild():
+    rebuilt = [
+        {"role": "user", "content": "first"},
+        {"role": "assistant", "content": "answer"},
+        {"role": "user", "content": "second"},
+    ]
+    existing = [
+        {"role": "user", "content": "first", "_client_message_id": "send-1"},
+        {"role": "assistant", "content": "answer"},
+        {"role": "user", "content": "second", "_client_message_id": "send-2"},
+    ]
+
+    assert _preserve_client_message_ids(rebuilt, existing) == [
+        {"role": "user", "content": "first", "_client_message_id": "send-1"},
+        {"role": "assistant", "content": "answer"},
+        {"role": "user", "content": "second", "_client_message_id": "send-2"},
+    ]
 
 
 def test_preserve_permission_metadata_merges_streamed_decision_and_resolution():

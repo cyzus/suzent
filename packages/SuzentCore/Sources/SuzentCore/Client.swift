@@ -174,9 +174,18 @@ public final class SuzentClient: Sendable {
     }
 
     public func send(_ text: String, chatID: String, model: String? = nil) async throws {
-        var body = ["chat_id": chatID, "message": text]
+        var body = [
+            "chat_id": chatID,
+            "message": text,
+            "client_message_id": UUID().uuidString.lowercased()
+        ]
         if let model { body["model"] = model }
-        _ = try await data("mobile/client/send", body: body)
+        do {
+            _ = try await data("mobile/client/send", body: body)
+        } catch let error as URLError {
+            guard error.code != .cancelled else { throw error }
+            _ = try await data("mobile/client/send", body: body)
+        }
     }
 
     public func stop(_ chatID: String) async throws {

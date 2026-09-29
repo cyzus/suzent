@@ -1,0 +1,4 @@
+{
+  "products": { "desktop": "patch", "mobile": "patch" },
+  "summary": "Retry ambiguous mobile sends safely on iOS and Android by deduplicating stable client message IDs on the backend."
+}

@@ -13,6 +13,20 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class BackendClientTest {
+    @Test fun sendRetriesWithTheSameIdAfterAnAmbiguousResponse() = runBlocking {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setResponseCode(202).setBody("not-json"))
+        server.enqueue(MockResponse().setResponseCode(202).setBody("""{"chat_id":"test"}"""))
+        server.start()
+        val client = BackendClient(Backend.parse(server.url("/").toString(), true), "token")
+        try {
+            client.send("test", "hello")
+            val first = JSONObject(requireNotNull(server.takeRequest()).body.readUtf8())
+            val retry = JSONObject(requireNotNull(server.takeRequest()).body.readUtf8())
+            assertEquals(first.getString("client_message_id"), retry.getString("client_message_id"))
+        } finally { client.close(); server.shutdown() }
+    }
+
     @Test(timeout = 5000) fun reconnectDeadlineCancelsBlockedRequest() = runBlocking {
         val server = MockWebServer()
         server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE))
@@ -120,6 +134,7 @@ class BackendClientTest {
                     val body = JSONObject(request.body.readUtf8())
                     assertEquals("hello", body.getString("message"))
                     assertEquals("test", body.getString("chat_id"))
+                    assertTrue(body.getString("client_message_id").isNotBlank())
                 }
             }
         } finally { client.close(); server.shutdown() }
