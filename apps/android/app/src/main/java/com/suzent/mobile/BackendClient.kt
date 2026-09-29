@@ -2,6 +2,7 @@ package com.suzent.mobile
 
 import java.io.IOException
 import java.util.concurrent.TimeUnit
+import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
@@ -106,7 +107,16 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
         return Chat.parse(json("mobile/client/chats/$id"))
     }
     suspend fun send(id: String, text: String, model: String? = null) {
-        json("mobile/client/send", JSONObject().put("chat_id", id).put("message", text).apply { if (model != null) put("model", model) })
+        val messageId = UUID.randomUUID().toString()
+        val body = JSONObject().put("chat_id", id).put("message", text)
+            .put("client_message_id", messageId)
+            .apply { if (model != null) put("model", model) }
+        try {
+            json("mobile/client/send", body)
+        } catch (failure: IOException) {
+            if (failure is HttpFailure) throw failure
+            json("mobile/client/send", body)
+        }
     }
     suspend fun approvals(id: String): ApprovalState {
         require(!id.contains('/') && id != "." && id != "..")

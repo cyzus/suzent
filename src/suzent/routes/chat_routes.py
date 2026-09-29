@@ -188,7 +188,8 @@ def _prewrite_user_display_message(
     chat_id: str,
     message: str,
     files_list: list,
-) -> bool:
+    client_message_id: str | None = None,
+) -> bool | None:
     """Append the user's display row before stream_started can trigger reloads.
 
     Returns whether that row is really in the transcript. The turn uses this as
@@ -210,6 +211,13 @@ def _prewrite_user_display_message(
         entry["files"] = files
 
     try:
+        if client_message_id is not None:
+            status = get_database().append_chat_message_once(
+                chat_id, entry, client_message_id
+            )
+            if status == "duplicate":
+                return None
+            return status == "created"
         return bool(get_database().append_chat_message(chat_id, entry))
     except Exception as exc:
         # The type only. A database error carries its statement's bound
@@ -522,12 +530,17 @@ async def chat_send(request: Request) -> JSONResponse:
     files_list = data.get("files", [])
     file_mentions = data.get("file_mentions", [])
     resume_approvals = data.get("resume_approvals", [])
+    client_message_id = data.get("client_message_id")
 
     if not chat_id:
         return JSONResponse({"error": "chat_id is required"}, status_code=400)
     if not _names_a_run(chat_id) or not _names_a_run(data.get("client_run_token")):
         return JSONResponse(
             {"error": "chat_id and client_run_token must be strings"}, status_code=400
+        )
+    if client_message_id is not None and not _names_a_run(client_message_id):
+        return JSONResponse(
+            {"error": "client_message_id must be a string"}, status_code=400
         )
     if not message and not files_list and not resume_approvals:
         return JSONResponse({"error": "Empty message"}, status_code=400)
@@ -538,6 +551,13 @@ async def chat_send(request: Request) -> JSONResponse:
     config_override = build_agent_config(config, require_social_tool=False)
     effective_runtime = _resolve_chat_runtime(chat_id, config)
     if is_background_streaming(chat_id):
+        if client_message_id is not None and get_database().has_client_message(
+            chat_id, client_message_id
+        ):
+            return JSONResponse(
+                {"chat_id": chat_id, "client_message_id": client_message_id},
+                status_code=202,
+            )
         return JSONResponse({"error": "Chat is already streaming"}, status_code=409)
 
     # Whether this route wrote the turn's user row, which the turn cannot infer:
@@ -546,7 +566,14 @@ async def chat_send(request: Request) -> JSONResponse:
     prewritten = False
     if not resume_approvals and not message.strip().startswith("/"):
         message = _sanitized_for_display_and_turn(message)
-        prewritten = _prewrite_user_display_message(chat_id, message, files_list)
+        prewritten = _prewrite_user_display_message(
+            chat_id, message, files_list, client_message_id
+        )
+        if prewritten is None:
+            return JSONResponse(
+                {"chat_id": chat_id, "client_message_id": client_message_id},
+                status_code=202,
+            )
 
     stream_queue = register_background_stream(chat_id)
     attach_client_token(chat_id, stream_queue.replay, data.get("client_run_token"))

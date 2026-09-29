@@ -2137,6 +2137,7 @@ class ChatProcessor:
                     # so chat.messages is always a faithful log of all exchanges, including tools and reasoning.
                     rebuilt = _rebuild_display_messages(messages, model_id=model_id)
                     rebuilt = _preserve_display_triggers(rebuilt, chat_messages)
+                    rebuilt = _preserve_client_message_ids(rebuilt, chat_messages)
                     rebuilt = _preserve_permission_metadata(rebuilt, chat_messages)
                     rebuilt = _preserve_citation_sources(rebuilt, chat_messages)
                     rebuilt = _preserve_trailing_notices(rebuilt, chat_messages)
@@ -2829,6 +2830,24 @@ def _preserve_permission_metadata(rebuilt: list, existing: list | None) -> list:
             metadata = metadata_by_tool_call_id.get(str(part.get("toolCallId") or ""))
             if metadata:
                 part.update(metadata)
+    return rebuilt
+
+
+def _preserve_client_message_ids(rebuilt: list, existing: list | None) -> list:
+    """Keep mobile idempotency receipts when agent history rebuilds display rows."""
+    existing_ids = [
+        message.get("_client_message_id")
+        for message in existing or []
+        if isinstance(message, dict) and message.get("role") == "user"
+    ]
+    user_messages = [
+        message
+        for message in rebuilt
+        if isinstance(message, dict) and message.get("role") == "user"
+    ]
+    for message, client_message_id in zip(user_messages, existing_ids):
+        if isinstance(client_message_id, str) and client_message_id:
+            message["_client_message_id"] = client_message_id
     return rebuilt
 
 

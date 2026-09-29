@@ -63,3 +63,12 @@ def test_a_failed_write_is_logged_without_the_prompt(db, monkeypatch):
 def test_nothing_to_write_is_not_a_written_row(db):
     assert chat_routes._prewrite_user_display_message("c", "   ", []) is False
     assert db.append_chat_message.call_count == 0
+
+
+def test_mobile_send_reports_an_existing_client_message_as_duplicate(db):
+    db.append_chat_message_once.return_value = "duplicate"
+
+    assert chat_routes._prewrite_user_display_message("c", "hi", [], "mobile-1") is None
+    db.append_chat_message_once.assert_called_once_with(
+        "c", {"role": "user", "content": "hi"}, "mobile-1"
+    )
