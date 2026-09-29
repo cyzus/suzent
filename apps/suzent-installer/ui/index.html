@@ -208,6 +208,7 @@
       let updateFinished = false;
       let polling = false;
       let repairNeeded = false;
+      let gitRecoveryNeeded = false;
       let launchFailed = false;
       let destination = {kind:'new', branch:null};
       let destinationRequest = 0;
@@ -485,8 +486,9 @@
           els.completeMessage.title = message;
         }
         else {
+          gitRecoveryNeeded = Boolean(result?.error?.startsWith('CONFIRM_GIT_RECOVERY:'));
           repairNeeded = repairNeeded || Boolean(result?.error?.includes('suzent repair'));
-          els.retry.textContent = repairNeeded ? (isZh ? '修复安装' : 'Repair installation') : text.retry;
+          els.retry.textContent = gitRecoveryNeeded ? (isZh ? '备份并继续更新…' : 'Back up and update…') : repairNeeded ? (isZh ? '修复安装' : 'Repair installation') : text.retry;
           setError(result?.error || status?.message || (isZh ? '操作未完成。请保存诊断，确认安装状态后重试或修复。' : 'Operation incomplete. Save diagnostics and check the installation before retrying or repairing.'));
           els.statusMessage.textContent = isZh ? '不会假定回退成功。完整错误可复制或保存。' : 'Recovery is not assumed. Copy or save the full error details.';
         }
@@ -518,7 +520,20 @@
         } catch (error) { setRunning(false); setError(error instanceof Error ? error.message : String(error)); els.start.textContent = text.retry; }
       }
 
-      async function retryUpdate() { if (running) return; updateFinished = false; failureFloor = Date.now(); setError(null); phaseDurations = {}; currentPhase = ''; phaseStartedAt = 0; startedAt = Date.now(); setRunning(true); if (preview || !invoke) { setRunning(false); setComplete(isZh ? '预览：操作完成。' : 'Preview: operation complete.'); els.launch.hidden = false; return; } try { await invoke('retry_update', {repair: repairNeeded || context.repair}); pollTimer = window.setInterval(pollUpdate,350); } catch (error) { setRunning(false); setError(String(error)); } }
+      async function retryUpdate() {
+        if (running) return;
+        if (gitRecoveryNeeded) {
+          setRunning(true);
+          try {
+            const accepted = await invoke('confirm_git_recovery', {chinese:isZh});
+            if (!accepted) { setRunning(false); return; }
+            gitRecoveryNeeded = false; updateFinished = false; failureFloor = Date.now(); setError(null);
+            startedAt = Date.now(); pollTimer = window.setInterval(pollUpdate,350);
+          } catch (error) { setRunning(false); setError(String(error)); }
+          return;
+        }
+        updateFinished = false; failureFloor = Date.now(); setError(null); phaseDurations = {}; currentPhase = ''; phaseStartedAt = 0; startedAt = Date.now(); setRunning(true); if (preview || !invoke) { setRunning(false); setComplete(isZh ? '预览：操作完成。' : 'Preview: operation complete.'); els.launch.hidden = false; return; } try { await invoke('retry_update', {repair: repairNeeded || context.repair}); pollTimer = window.setInterval(pollUpdate,350); } catch (error) { setRunning(false); setError(String(error)); }
+      }
       async function pollUpdate() {
         if (polling || updateFinished) return;
         polling = true;

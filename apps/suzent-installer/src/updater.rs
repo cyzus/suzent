@@ -67,7 +67,7 @@ struct UpdateTransaction {
     phase: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 struct RecoveryManifest {
     created_at: u64,
     reason: String,
@@ -104,7 +104,7 @@ impl ServiceRestartGuard {
     }
 
     fn stop(&mut self) -> Result<(), String> {
-        if !self.enabled {
+        if !self.enabled || self.stopped {
             return Ok(());
         }
         run_service_command(&self.root, "stop")?;
@@ -236,7 +236,11 @@ pub(crate) fn run_inner(args: &[String], repair: bool) -> Result<(), String> {
         recover_interrupted_update(&paths)?;
     }
 
-    if let Err(error) = run_transaction(&paths, &target_tag) {
+    if let Err(error) = run_transaction(
+        &paths,
+        &target_tag,
+        args.iter().any(|arg| arg == "--backup-conflicts"),
+    ) {
         record_failure(&paths, &target_tag, &error);
         return Err(error);
     }
@@ -250,13 +254,22 @@ pub(crate) fn run_inner(args: &[String], repair: bool) -> Result<(), String> {
 
 /// Runs the whole update transaction so a failure at any phase can be
 /// recorded on the status document by the caller.
-fn run_transaction(paths: &UpdatePaths, target_tag: &str) -> Result<(), String> {
+fn run_transaction(
+    paths: &UpdatePaths,
+    target_tag: &str,
+    backup_conflicts: bool,
+) -> Result<(), String> {
     let mut service_guard = ServiceRestartGuard::detect(&paths.root);
     write_status(paths, "preflight", 5, "Preparing update", target_tag)?;
     let repository_hazard = repository_hazard(&paths.root)?;
-
     let old_commit = git_text(&paths.root, &["rev-parse", "HEAD"])?;
     let old_branch = git_text(&paths.root, &["branch", "--show-current"])?;
+    if let Some(reason) = &repository_hazard {
+        if !backup_conflicts {
+            return Err(format!("CONFIRM_GIT_RECOVERY: {reason}\nDirectory: {}\nSource: {old_branch} ({old_commit})\nTarget: {target_tag}\nBack up local changes and Git operation state before continuing. Local changes will not be reapplied automatically. No source files have been changed.", paths.root.display()));
+        }
+    }
+
     let old_release_tag = read_trimmed(paths.state_dir.join("release-tag")).unwrap_or_default();
     let old_ui_version = read_trimmed(paths.ui_version()).unwrap_or_default();
     let mut transaction = UpdateTransaction {
@@ -275,6 +288,16 @@ fn run_transaction(paths: &UpdatePaths, target_tag: &str) -> Result<(), String> 
     transaction.target_commit = prepare_target(paths, target_tag)?;
     transaction.phase = "prepared".to_string();
     write_journal(paths, &transaction)?;
+
+    write_status(
+        paths,
+        "stopping",
+        28,
+        "Stopping Suzent processes",
+        target_tag,
+    )?;
+    service_guard.stop()?;
+    stop_suzent_processes(&paths.root)?;
 
     if let Some(reason) = repository_hazard {
         write_status(
@@ -297,13 +320,15 @@ fn run_transaction(paths: &UpdatePaths, target_tag: &str) -> Result<(), String> 
             &reason,
             &transaction.old_commit,
             &transaction.old_branch,
-        )?;
+        ).map_err(|error| format!("{error}; conflict backup location: {}. Source cleanup was not started; run suzent repair after inspecting the journal.", recovery_dir.display()))?;
         println!(
             "Local source changes were saved in {}",
             recovery_dir.display()
         );
         transaction.phase = "preserved".to_string();
         write_journal(paths, &transaction)?;
+        clear_preserved_conflicts(&paths.root, &recovery_dir, &transaction.old_commit)
+            .map_err(|error| format!("{error}; local source snapshot: {}. Run suzent repair after inspecting the recovery instructions.", recovery_dir.display()))?;
     } else if has_local_changes(&paths.root)? {
         write_status(
             paths,
@@ -314,7 +339,16 @@ fn run_transaction(paths: &UpdatePaths, target_tag: &str) -> Result<(), String> 
         )?;
         run_checked(
             background_command("git")
-                .args(["stash", "push", "--include-untracked", "-m"])
+                .args([
+                    "-c",
+                    "user.name=Suzent Updater",
+                    "-c",
+                    "user.email=updater@suzent.invalid",
+                    "stash",
+                    "push",
+                    "--include-untracked",
+                    "-m",
+                ])
                 .arg(format!("suzent-update-{target_tag}"))
                 .current_dir(&paths.root),
             "preserve local changes",
@@ -339,6 +373,10 @@ fn run_transaction(paths: &UpdatePaths, target_tag: &str) -> Result<(), String> 
 
     let result = backup_current_ui(paths).and_then(|()| install_target(paths, target_tag));
     if let Err(error) = result {
+        let error = match &transaction.recovery_dir {
+            Some(directory) => format!("{error}; local conflict state is saved in {directory}. Source rollback does not reapply these local changes."),
+            None => error,
+        };
         let rollback_result = rollback(paths, &transaction);
         if rollback_result.is_ok() {
             let _ = write_status(
@@ -813,13 +851,18 @@ fn stop_suzent_processes(root: &Path) -> Result<(), String> {
         }
         pids.extend(parse_pids(&output.stdout));
     } else {
-        let output = background_command("pgrep")
-            .args(["-f", &root_text])
-            .output();
-        if let Ok(output) = output {
-            for line in String::from_utf8_lossy(&output.stdout).lines() {
-                if let Ok(pid) = line.trim().parse::<u32>() {
-                    if pid != current_pid {
+        let output = background_command("ps")
+            .args(["-axo", "pid=,command="])
+            .output()
+            .map_err(|error| format!("failed to inspect Suzent processes: {error}"))?;
+        if !output.status.success() {
+            return Err("failed to inspect Suzent processes".into());
+        }
+        for line in String::from_utf8_lossy(&output.stdout).lines() {
+            let line = line.trim();
+            if let Some((pid, command)) = line.split_once(char::is_whitespace) {
+                if let Ok(pid) = pid.parse::<u32>() {
+                    if pid != current_pid && is_unix_install_process(command.trim(), root) {
                         pids.push(pid);
                         let _ = background_command("kill")
                             .args(["-TERM", &pid.to_string()])
@@ -830,6 +873,28 @@ fn stop_suzent_processes(root: &Path) -> Result<(), String> {
         }
     }
     wait_for_processes_exit(&pids, Duration::from_secs(15))
+}
+
+fn is_unix_install_process(command: &str, root: &Path) -> bool {
+    let ui = root.join("bin/suzent-ui");
+    let python = root.join(".venv/bin/python");
+    if let Some(rest) = command.strip_prefix(ui.to_string_lossy().as_ref()) {
+        return rest.is_empty() || rest.starts_with(char::is_whitespace);
+    }
+    if let Some(rest) = command.strip_prefix(python.to_string_lossy().as_ref()) {
+        let boundary = rest.find(char::is_whitespace).unwrap_or(rest.len());
+        let (suffix, arguments) = rest.split_at(boundary);
+        if !suffix.chars().all(|ch| ch.is_ascii_digit() || ch == '.') {
+            return false;
+        }
+        let args: Vec<_> = arguments.split_whitespace().collect();
+        return args.starts_with(&["-m", "suzent.server"])
+            || (args.starts_with(&["-m", "suzent.cli"])
+                && args
+                    .get(2)
+                    .is_some_and(|action| matches!(*action, "serve" | "start" | "web")));
+    }
+    false
 }
 
 fn parse_pids(output: &[u8]) -> Vec<u32> {
@@ -1344,7 +1409,15 @@ fn preserve_conflicted_checkout(
     old_commit: &str,
     old_branch: &str,
 ) -> Result<(), String> {
-    fs::create_dir_all(recovery_dir).map_err(display_io("create update recovery directory"))?;
+    if !git_bytes(root, &["ls-files", "-z", "--", ".suzent"])?.is_empty() {
+        return Err(
+            "The update state directory is tracked by Git; manual recovery is required".into(),
+        );
+    }
+    if let Some(parent) = recovery_dir.parent() {
+        fs::create_dir_all(parent).map_err(display_io("create recovery parent"))?;
+    }
+    fs::create_dir(recovery_dir).map_err(display_io("create unique update recovery directory"))?;
 
     let staged_patch = git_bytes(root, &["diff", "--cached", "--binary"])?;
     let unstaged_patch = git_bytes(root, &["diff", "--binary"])?;
@@ -1353,7 +1426,13 @@ fn preserve_conflicted_checkout(
     fs::write(recovery_dir.join("unstaged.patch"), unstaged_patch)
         .map_err(display_io("save unstaged changes"))?;
 
-    let mut tracked_files = git_paths(root, &["ls-files", "-z", "--modified", "--deleted"])?;
+    let mut tracked_files = git_paths(root, &["diff", "HEAD", "--name-only", "-z"])?;
+    tracked_files.extend(git_paths(
+        root,
+        &["ls-files", "-z", "--modified", "--deleted"],
+    )?);
+    tracked_files.sort();
+    tracked_files.dedup();
     for path in git_paths(root, &["diff", "-z", "--name-only", "--diff-filter=U"])? {
         if !tracked_files.contains(&path) {
             tracked_files.push(path);
@@ -1361,15 +1440,24 @@ fn preserve_conflicted_checkout(
     }
     for relative in &tracked_files {
         let source = root.join(relative);
-        if source.exists() {
+        if source.symlink_metadata().is_ok() {
             copy_recovery_file(&source, &recovery_dir.join("tracked").join(relative))?;
         }
     }
 
     let untracked_files = git_paths(root, &["ls-files", "-z", "--others", "--exclude-standard"])?;
+    if tracked_files
+        .iter()
+        .chain(&untracked_files)
+        .any(|path| path.to_str().is_none())
+    {
+        return Err(
+            "Non-UTF-8 paths require manual conflict recovery; source was not changed".into(),
+        );
+    }
     for relative in &untracked_files {
         let source = root.join(relative);
-        if source.exists() {
+        if source.symlink_metadata().is_ok() {
             let destination = recovery_dir.join("untracked").join(relative);
             if let Some(parent) = destination.parent() {
                 fs::create_dir_all(parent)
@@ -1380,6 +1468,52 @@ fn preserve_conflicted_checkout(
     }
 
     let conflict_stages = preserve_conflict_stages(root, recovery_dir)?;
+    for marker in [
+        "HEAD",
+        "index",
+        "ORIG_HEAD",
+        "MERGE_HEAD",
+        "MERGE_MSG",
+        "MERGE_MODE",
+        "AUTO_MERGE",
+        "CHERRY_PICK_HEAD",
+        "REVERT_HEAD",
+        "REBASE_HEAD",
+        "rebase-merge",
+        "rebase-apply",
+        "sequencer",
+    ] {
+        let source = git_metadata_path(root, marker)?;
+        if source.symlink_metadata().is_ok() {
+            copy_recovery_tree(&source, &recovery_dir.join("git-state").join(marker))?;
+        }
+    }
+    let recovery_ref = format!(
+        "refs/suzent-recovery/{}",
+        recovery_dir
+            .file_name()
+            .ok_or("missing recovery name")?
+            .to_string_lossy()
+    );
+    run_checked(
+        background_command("git")
+            .args(["update-ref", &recovery_ref, old_commit])
+            .current_dir(root),
+        "retain original commit",
+    )?;
+    for name in ["ORIG_HEAD", "REBASE_HEAD", "MERGE_HEAD"] {
+        if let Ok(commit) = git_text(
+            root,
+            &["rev-parse", "--verify", &format!("{name}^{{commit}}")],
+        ) {
+            run_checked(
+                background_command("git")
+                    .args(["update-ref", &format!("{recovery_ref}-{name}"), &commit])
+                    .current_dir(root),
+                "retain operation commit",
+            )?;
+        }
+    }
     let manifest = RecoveryManifest {
         created_at: now_epoch_millis(),
         reason: reason.to_string(),
@@ -1395,10 +1529,137 @@ fn preserve_conflicted_checkout(
         "write recovery manifest",
     )?;
 
-    Err(format!(
-        "Git conflicts or an operation in progress require manual resolution. The checkout was not changed; a diagnostic snapshot is saved in {}. Resolve or abort the Git operation, then run suzent repair. Do not delete the snapshot until your changes are recovered.",
-        recovery_dir.display()
-    ))
+    fs::write(recovery_dir.join("README.txt"), format!("Original commit: {old_commit}\nOriginal branch: {old_branch}\nRecovery ref: {recovery_ref}\ntracked/ and untracked/ contain original working files; git-state/ contains the index and Git operation state; manifest.json lists paths, including deleted files. Do not apply these files to a running installation. Git state is a diagnostic recovery snapshot, not a portable automatic restore. Keep this directory until local changes have been recovered. Databases and ignored user data are not rolled back.\n")).map_err(display_io("write recovery instructions"))?;
+    Ok(())
+}
+
+fn git_metadata_path(root: &Path, marker: &str) -> Result<PathBuf, String> {
+    let path = PathBuf::from(git_text(root, &["rev-parse", "--git-path", marker])?);
+    Ok(if path.is_absolute() {
+        path
+    } else {
+        root.join(path)
+    })
+}
+
+fn copy_recovery_tree(source: &Path, destination: &Path) -> Result<(), String> {
+    let metadata =
+        fs::symlink_metadata(source).map_err(display_io("inspect Git operation state"))?;
+    if metadata.is_dir() {
+        fs::create_dir_all(destination).map_err(display_io("prepare Git state backup"))?;
+        for entry in fs::read_dir(source).map_err(display_io("read Git operation state"))? {
+            let entry = entry.map_err(display_io("read Git state entry"))?;
+            copy_recovery_tree(&entry.path(), &destination.join(entry.file_name()))?;
+        }
+        Ok(())
+    } else {
+        copy_recovery_file(source, destination)
+    }
+}
+
+fn clear_preserved_conflicts(
+    root: &Path,
+    recovery_dir: &Path,
+    old_commit: &str,
+) -> Result<(), String> {
+    if !recovery_dir.join("manifest.json").is_file()
+        || !recovery_dir.join("git-state/index").is_file()
+    {
+        return Err("Verified conflict backup is missing; checkout was not changed".into());
+    }
+    let manifest: RecoveryManifest = serde_json::from_slice(
+        &fs::read(recovery_dir.join("manifest.json"))
+            .map_err(display_io("read recovery manifest"))?,
+    )
+    .map_err(|error| error.to_string())?;
+    let mut current_tracked = git_paths(root, &["diff", "HEAD", "--name-only", "-z"])?;
+    current_tracked.extend(git_paths(
+        root,
+        &["ls-files", "-z", "--modified", "--deleted"],
+    )?);
+    current_tracked.sort();
+    current_tracked.dedup();
+    if display_paths(&current_tracked) != manifest.tracked_files
+        || display_paths(&git_paths(
+            root,
+            &["ls-files", "-z", "--others", "--exclude-standard"],
+        )?) != manifest.untracked_files
+    {
+        return Err("Changed paths differ from the backup; no conflict cleanup performed".into());
+    }
+    for (folder, paths) in [
+        ("tracked", &manifest.tracked_files),
+        ("untracked", &manifest.untracked_files),
+    ] {
+        for path in paths {
+            let relative = validated_git_path(path.as_bytes())?;
+            let original = root.join(&relative);
+            let saved = recovery_dir.join(folder).join(&relative);
+            if original.symlink_metadata().is_ok() || saved.exists() {
+                if !fs::symlink_metadata(&original)
+                    .map_err(display_io("verify source type"))?
+                    .file_type()
+                    .is_file()
+                {
+                    return Err(
+                        "Source file type changed after backup; no conflict cleanup performed"
+                            .into(),
+                    );
+                }
+                if fs::read(&original).map_err(display_io("verify current source"))?
+                    != fs::read(&saved).map_err(display_io("verify saved source"))?
+                {
+                    return Err("Source changed after backup; no conflict cleanup performed".into());
+                }
+            }
+        }
+    }
+    if fs::read(git_metadata_path(root, "index")?).map_err(display_io("verify current index"))?
+        != fs::read(recovery_dir.join("git-state/index"))
+            .map_err(display_io("verify saved index"))?
+        || git_text(root, &["rev-parse", "HEAD"])? != old_commit
+    {
+        return Err("Git state changed after backup; no conflict cleanup performed".into());
+    }
+    for (marker, operation) in [
+        ("rebase-merge", "rebase"),
+        ("rebase-apply", "rebase"),
+        ("sequencer", "cherry-pick"),
+        ("CHERRY_PICK_HEAD", "cherry-pick"),
+        ("REVERT_HEAD", "revert"),
+    ] {
+        if git_metadata_path(root, marker)?.exists() {
+            run_checked(
+                background_command("git")
+                    .args([operation, "--quit"])
+                    .current_dir(root),
+                "quit preserved Git operation",
+            )?;
+        }
+    }
+    // Unlike --hard, --merge refuses to overwrite obstructing untracked files.
+    run_checked(
+        background_command("git")
+            .args(["reset", "--merge", old_commit])
+            .current_dir(root),
+        "clear preserved conflict index",
+    )?;
+    run_checked(
+        background_command("git")
+            .args([
+                "restore",
+                "--source",
+                old_commit,
+                "--staged",
+                "--worktree",
+                "--",
+                ".",
+            ])
+            .current_dir(root),
+        "restore preserved tracked source",
+    )?;
+    // Untracked and ignored files stay in place. A target collision stops checkout.
+    Ok(())
 }
 
 fn preserve_conflict_stages(root: &Path, recovery_dir: &Path) -> Result<Vec<String>, String> {
@@ -1445,6 +1706,19 @@ fn copy_recovery_file(source: &Path, destination: &Path) -> Result<(), String> {
         fs::create_dir_all(parent).map_err(display_io("prepare recovery path"))?;
     }
     fs::copy(source, destination).map_err(display_io("copy file into recovery"))?;
+    let original = fs::read(source).map_err(display_io("verify original recovery file"))?;
+    let saved = fs::read(destination).map_err(display_io("verify recovery copy"))?;
+    if original != saved {
+        return Err(format!(
+            "Recovery verification failed: {}",
+            source.display()
+        ));
+    }
+    OpenOptions::new()
+        .write(true)
+        .open(destination)
+        .and_then(|file| file.sync_all())
+        .map_err(display_io("flush recovery copy"))?;
     Ok(())
 }
 
@@ -2048,6 +2322,42 @@ mod tests {
 
     #[test]
     fn conflict_snapshot_never_changes_the_checkout() {
+        conflict_recovery_case("merge");
+    }
+
+    #[test]
+    fn unix_process_matching_does_not_stop_terminals_or_other_installations() {
+        let root = std::path::Path::new("/Users/test/Suzent folder");
+        for command in [
+            "/Users/test/Suzent folder/bin/suzent-ui",
+            "/Users/test/Suzent folder/.venv/bin/python -m suzent.cli serve",
+            "/Users/test/Suzent folder/.venv/bin/python3.12 -m suzent.cli serve",
+        ] {
+            assert!(super::is_unix_install_process(command, root));
+        }
+        for command in [
+            "/bin/zsh -c cd /Users/test/Suzent folder",
+            "/usr/bin/pgrep -f /Users/test/Suzent folder",
+            "/Users/test/Suzent folder/apps/suzent-installer/target/debug/suzent-installer",
+            "/Users/test/Suzent folder-other/.venv/bin/python",
+            "/Users/test/Suzent folder/bin/suzent-ui-old",
+            "/Users/test/Suzent folder/.venv/bin/python-helper",
+        ] {
+            assert!(!super::is_unix_install_process(command, root));
+        }
+    }
+
+    #[test]
+    fn rebase_conflict_can_be_preserved_and_cleared() {
+        conflict_recovery_case("rebase");
+    }
+
+    #[test]
+    fn cherry_pick_conflict_can_be_preserved_and_cleared() {
+        conflict_recovery_case("cherry-pick");
+    }
+
+    fn conflict_recovery_case(operation: &str) {
         let temp = tempfile::tempdir().expect("temp dir");
         let root = temp.path();
         let git = |args: &[&str]| {
@@ -2071,8 +2381,13 @@ mod tests {
         assert!(git(&["checkout", "--quiet", "-b", "installed", &base]).success());
         fs::write(root.join("conflicted.txt"), "installed\n").expect("installed file");
         assert!(git(&["commit", "--quiet", "-am", "installed"]).success());
+        assert!(!git(&[operation, "incoming"]).success());
         let old_commit = super::git_text(root, &["rev-parse", "HEAD"]).expect("old commit");
-        assert!(!git(&["merge", "incoming"]).success());
+        let old_content = super::git_bytes(root, &["show", "HEAD:conflicted.txt"]).unwrap();
+        fs::write(root.join("staged-only.txt"), "staged content\n").unwrap();
+        assert!(git(&["add", "staged-only.txt"]).success());
+        fs::write(root.join(".git/info/exclude"), ".env\n.suzent/\n").unwrap();
+        fs::write(root.join(".env"), "PRIVATE=keep\n").unwrap();
         fs::write(root.join("local-note.txt"), "keep me\n").expect("untracked file");
         let conflicted = fs::read(root.join("conflicted.txt")).unwrap();
         let index = fs::read(root.join(".git/index")).unwrap();
@@ -2085,11 +2400,11 @@ mod tests {
             &old_commit,
             "installed",
         )
-        .expect_err("manual resolution required");
+        .expect("verified snapshot");
 
         assert_eq!(fs::read(root.join("conflicted.txt")).unwrap(), conflicted);
         assert_eq!(fs::read(root.join(".git/index")).unwrap(), index);
-        assert!(root.join(".git/MERGE_HEAD").exists());
+        assert!(super::repository_hazard(root).unwrap().is_some());
         assert_eq!(
             fs::read_to_string(root.join("local-note.txt")).unwrap(),
             "keep me\n"
@@ -2104,6 +2419,11 @@ mod tests {
         assert!(recovery.join("conflict-stages/2/conflicted.txt").exists());
         assert!(recovery.join("conflict-stages/3/conflicted.txt").exists());
         assert!(recovery.join("manifest.json").exists());
+        assert_eq!(fs::read(recovery.join("git-state/index")).unwrap(), index);
+        assert_eq!(
+            fs::read(recovery.join("tracked/staged-only.txt")).unwrap(),
+            b"staged content\n"
+        );
         assert!(super::repository_hazard(root)
             .expect("inspect recovered repository")
             .is_some());
@@ -2125,5 +2445,21 @@ mod tests {
             fs::read_to_string(root.join("local-note.txt")).unwrap(),
             "keep me\n"
         );
+        fs::write(root.join("local-note.txt"), "changed after snapshot\n").unwrap();
+        assert!(super::clear_preserved_conflicts(root, &recovery, &old_commit).is_err());
+        assert_eq!(fs::read(root.join(".git/index")).unwrap(), index);
+        fs::write(root.join("local-note.txt"), "keep me\n").unwrap();
+        let paths = super::UpdatePaths::new(root.to_path_buf(), "v1.2.3");
+        assert!(super::run_transaction(&paths, "v1.2.3", false)
+            .unwrap_err()
+            .starts_with("CONFIRM_GIT_RECOVERY:"));
+        assert!(!paths.journal.exists());
+        assert_eq!(fs::read(root.join(".git/index")).unwrap(), index);
+        super::clear_preserved_conflicts(root, &recovery, &old_commit)
+            .expect("clear backed-up conflict");
+        assert!(super::repository_hazard(root).unwrap().is_none());
+        assert_eq!(fs::read(root.join("conflicted.txt")).unwrap(), old_content);
+        assert_eq!(fs::read(root.join("local-note.txt")).unwrap(), b"keep me\n");
+        assert_eq!(fs::read(root.join(".env")).unwrap(), b"PRIVATE=keep\n");
     }
 }

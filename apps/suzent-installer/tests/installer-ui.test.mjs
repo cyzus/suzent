@@ -32,7 +32,7 @@ class Element {
   querySelectorAll() { return []; }
 }
 
-async function harness({mode = 'install', result = null, status = null, shortcutFailure = false, shortcutSkipped = false, skippedStage = null, branch = null, language = 'en', closeError = null, destinationKind = 'new'} = {}) {
+async function harness({mode = 'install', result = null, status = null, shortcutFailure = false, shortcutSkipped = false, skippedStage = null, branch = null, language = 'en', closeError = null, destinationKind = 'new', recoveryAccepted = false} = {}) {
   const elements = new Map();
   const element = id => {
     if (!elements.has(id)) elements.set(id, new Element());
@@ -42,6 +42,7 @@ async function harness({mode = 'install', result = null, status = null, shortcut
   const handlers = {};
   const invoke = async (command, args) => {
     calls.push([command, args]);
+    if (command === 'confirm_git_recovery') return recoveryAccepted;
     if (command === 'inspect_destination') return {kind:destinationKind, branch:destinationKind === 'development' ? 'feature/local' : null};
     if (command === 'installer_context') return {mode, branch, dir: 'D:\\workspace\\suzent', target:'v0.15.0'};
     if (command === 'default_install_dir_command') return 'C:\\Users\\test\\suzent';
@@ -95,6 +96,17 @@ test('repeated update clicks launch only one standalone updater', async () => {
   await Promise.all([h.element('start').events.click(), h.element('start').events.click()]);
   assert.equal(h.calls.filter(([name]) => name === 'open_existing_updater').length, 1);
 });
+
+for (const recoveryAccepted of [false, true]) {
+  test(`conflict retry requires native confirmation: accepted=${recoveryAccepted}`, async () => {
+    const h = await harness({mode:'update', result:{code:1,error:'CONFIRM_GIT_RECOVERY: unresolved conflicts'}, recoveryAccepted});
+    assert.equal(h.element('retry').textContent, 'Back up and update…');
+    await h.element('retry').events.click();
+    assert.equal(h.calls.filter(([name]) => name === 'confirm_git_recovery').length, 1);
+    assert.equal(h.calls.filter(([name]) => name === 'retry_update').length, 0);
+    assert.equal(h.element('finish-close').disabled, recoveryAccepted);
+  });
+}
 
 for (const language of ['en', 'zh-CN']) {
   test(`branch channel and desktop title are consistent in ${language}`, async () => {

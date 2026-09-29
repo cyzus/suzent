@@ -384,7 +384,62 @@ fn retry_update(
         app_handle,
         runtime.inner().clone(),
         repair.unwrap_or(runtime.repair),
+        None,
     )
+}
+
+#[tauri::command]
+async fn confirm_git_recovery(
+    app_handle: tauri::AppHandle,
+    runtime: tauri::State<'_, Arc<UpdateRuntime>>,
+    chinese: bool,
+) -> Result<bool, String> {
+    let runtime = runtime.inner().clone();
+    let error = runtime
+        .result
+        .lock()
+        .map_err(|error| error.to_string())?
+        .as_ref()
+        .and_then(|result| result.error.clone())
+        .filter(|error| error.starts_with("CONFIRM_GIT_RECOVERY:"))
+        .ok_or("No Git recovery confirmation is pending")?;
+    let status: serde_json::Value =
+        serde_json::from_str(&updater_status().ok_or("Missing update status")?)
+            .map_err(|error| error.to_string())?;
+    let target = status["target_version"]
+        .as_str()
+        .filter(|tag| is_release_tag(tag))
+        .ok_or("Missing recovery target")?
+        .to_string();
+    if !error.contains(&format!("\nTarget: {target}\n")) {
+        return Err(
+            "Update target changed; retry to review the new target before confirming".into(),
+        );
+    }
+    let error = error
+        .trim_start_matches("CONFIRM_GIT_RECOVERY: ")
+        .to_string();
+    let dialog_app = app_handle.clone();
+    let dialog_parent = app_handle
+        .get_webview_window("main")
+        .ok_or("Missing updater window")?;
+    let accepted = tauri::async_runtime::spawn_blocking(move || {
+        dialog_app.dialog().message(format!("{}\n\n{error}", if chinese {
+            "将停止此安装的程序，校验备份本地文件、Git index 和操作状态，再清理冲突并更新到下面的目标版本。本地修改不会自动合回；忽略文件和数据库不会被清理。失败可能需要手动恢复冲突现场。备份失败不会清理源码。"
+        } else {
+            "Stop this installation, verify backups of local files, Git index and operation state, then clear conflicts and update to the target below. Local changes are not reapplied. Ignored files and databases are not cleaned. Failure may require manual recovery of the conflict state. A failed backup never permits source cleanup."
+        }))
+        .parent(&dialog_parent)
+        .title(if chinese { "确认备份并继续更新" } else { "Confirm backup and update" })
+        .buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancelCustom(
+            if chinese { "备份并继续更新" } else { "Back up and update" }.into(),
+            if chinese { "取消" } else { "Cancel" }.into(),
+        )).blocking_show()
+    }).await.map_err(|error| error.to_string())?;
+    if accepted {
+        start_update_worker(app_handle, runtime, false, Some(target))?;
+    }
+    Ok(accepted)
 }
 
 #[tauri::command]
@@ -441,12 +496,13 @@ fn run_update_tauri(args: Vec<String>, repair: bool) {
             installer_context,
             updater_status,
             retry_update,
+            confirm_git_recovery,
             updater_result,
             launch_installed_app,
             save_diagnostics,
         ])
         .setup(move |app| {
-            start_update_worker(app.handle().clone(), setup_runtime.clone(), repair)?;
+            start_update_worker(app.handle().clone(), setup_runtime.clone(), repair, None)?;
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -468,13 +524,22 @@ fn start_update_worker(
     app_handle: tauri::AppHandle,
     runtime: Arc<UpdateRuntime>,
     repair: bool,
+    recovery_target: Option<String>,
 ) -> Result<(), String> {
     if runtime.running.swap(true, Ordering::SeqCst) {
         return Err("An update is already running".to_string());
     }
     *runtime.result.lock().map_err(|error| error.to_string())? = None;
     std::thread::spawn(move || {
-        let error = updater::run_inner(&runtime.args, repair).err();
+        let mut args = runtime.args.clone();
+        if let Some(target) = recovery_target {
+            // Prepend the confirmed target so a later --target cannot change it.
+            args.splice(
+                0..0,
+                ["--target".into(), target, "--backup-conflicts".into()],
+            );
+        }
+        let error = updater::run_inner(&args, repair).err();
         let result = UpdateResult {
             code: if error.is_some() { 1 } else { 0 },
             error,
