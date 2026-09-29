@@ -1291,11 +1291,65 @@ def _stop_windows_process(pid: int, label: str) -> None:
 
 
 def run_command(
-    cmd: list[str], cwd: Path = None, check: bool = True, shell_on_windows: bool = False
+    cmd: list[str],
+    cwd: Path = None,
+    check: bool = True,
+    shell_on_windows: bool = False,
+    env: dict[str, str] | None = None,
 ):
     """Run a subprocess command with platform-specific adjustments."""
     use_shell = IS_WINDOWS and shell_on_windows
-    subprocess.run(cmd, cwd=cwd, check=check, shell=use_shell)
+    kwargs = {"env": env} if env is not None else {}
+    subprocess.run(cmd, cwd=cwd, check=check, shell=use_shell, **kwargs)
+
+
+def _rebuild_development_ui(root: Path) -> None:
+    """Replace both desktop launch targets only after a matching build succeeds."""
+    project_version = read_project_version(root / "pyproject.toml")
+    if not project_version:
+        raise OSError("Cannot determine the source version for the desktop build")
+    target = root / "src-tauri" / "target"
+    binary = target / "release" / ("suzent.exe" if IS_WINDOWS else "suzent")
+    target.mkdir(parents=True, exist_ok=True)
+    backup_dir = Path(tempfile.mkdtemp(prefix="suzent-ui-backup-", dir=target))
+    backup = backup_dir / binary.name
+    if binary.exists():
+        binary.replace(backup)
+    try:
+        run_command(
+            ["npm", "run", "build:dist", "--", "--no-bundle"],
+            cwd=root / "src-tauri",
+            shell_on_windows=True,
+            env={**os.environ, "CARGO_TARGET_DIR": str(target.resolve())},
+        )
+        if not binary.is_file():
+            raise OSError(f"Desktop build produced no executable at {binary}")
+        bin_dir = root / _BIN_DIR
+        bin_dir.mkdir(parents=True, exist_ok=True)
+        staged_binary = backup_dir / "new-ui"
+        staged_version = backup_dir / "new-version.txt"
+        shutil.copy2(binary, staged_binary)
+        staged_version.write_text(f"v{project_version}", encoding="utf-8")
+        _replace_ui_files(
+            bin_dir / ("suzent-ui.exe" if IS_WINDOWS else "suzent-ui"),
+            bin_dir / "version.txt",
+            staged_binary,
+            staged_version,
+        )
+    except (OSError, subprocess.CalledProcessError) as error:
+        try:
+            if backup.exists():
+                backup.replace(binary)
+            else:
+                binary.unlink(missing_ok=True)
+        except OSError as restore_error:
+            raise OSError(
+                f"{error}; desktop rollback failed: {restore_error}. "
+                f"Backup retained at {backup_dir}"
+            ) from error
+        shutil.rmtree(backup_dir, ignore_errors=True)
+        raise
+    shutil.rmtree(backup_dir, ignore_errors=True)
 
 
 def _log_path(name: str) -> Path:
@@ -2396,8 +2450,12 @@ def register_commands(app: typer.Typer):
                     cwd=root / "src-tauri",
                     shell_on_windows=True,
                 )
-            except subprocess.CalledProcessError:
-                typer.echo("  ❌ Development frontend dependency update failed.")
+                typer.echo(
+                    "  • Rebuilding the daily desktop from the updated source..."
+                )
+                _rebuild_development_ui(root)
+            except (OSError, subprocess.CalledProcessError) as error:
+                typer.echo(f"  ❌ Development desktop update failed: {error}")
                 _restore_checkout(root, old_branch, old_commit)
                 _restore_stashed_changes(root, stashed_changes)
                 raise typer.Exit(code=1)

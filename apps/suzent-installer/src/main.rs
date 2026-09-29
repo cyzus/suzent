@@ -1947,6 +1947,9 @@ mod tests {
             });
         fs::create_dir_all(artifact.parent().unwrap()).unwrap();
         fs::write(&artifact, b"branch desktop").unwrap();
+        let installed = root.join("bin").join(super::ui_binary_name());
+        fs::create_dir_all(installed.parent().unwrap()).unwrap();
+        fs::write(&installed, b"old desktop").unwrap();
         let mut calls = Vec::new();
         let result = super::build_source_ui(&config, |command| {
             calls.push((

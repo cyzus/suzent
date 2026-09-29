@@ -2326,6 +2326,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn unix_process_matching_does_not_stop_terminals_or_other_installations() {
         let root = std::path::Path::new("/Users/test/Suzent folder");
         for command in [
@@ -2368,6 +2369,7 @@ mod tests {
                 .expect("run git")
         };
         assert!(git(&["init", "--quiet"]).success());
+        assert!(git(&["config", "core.autocrlf", "false"]).success());
         assert!(git(&["config", "user.name", "Suzent Test"]).success());
         assert!(git(&["config", "user.email", "suzent@example.invalid"]).success());
         fs::write(root.join("conflicted.txt"), "base\n").expect("base file");

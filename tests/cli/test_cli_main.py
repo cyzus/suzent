@@ -712,6 +712,11 @@ def _mock_update_runtime(monkeypatch, tmp_path):
     monkeypatch.setattr(cli_main, "get_project_root", lambda: tmp_path)
     monkeypatch.setattr(cli_main.subprocess, "run", fake_run)
     monkeypatch.setattr(cli_main, "run_command", fake_run_command)
+    monkeypatch.setattr(
+        cli_main,
+        "_rebuild_development_ui",
+        lambda root: commands.append((["rebuild-desktop"], root)),
+    )
     monkeypatch.setattr(cli_main, "IS_WINDOWS", False)
     return app, commands
 
@@ -817,6 +822,7 @@ def test_dev_update_uses_upstream_and_never_downloads_release_ui(monkeypatch, tm
     assert ["git", "merge", "--ff-only", "@{upstream}"] in command_args
     npm_ci_dirs = [cwd for command, cwd in commands if command == ["npm", "ci"]]
     assert npm_ci_dirs == [tmp_path / "frontend", tmp_path / "src-tauri"]
+    assert (["rebuild-desktop"], tmp_path) in commands
     assert cli_main._read_update_channel(tmp_path) == "dev"
 
 

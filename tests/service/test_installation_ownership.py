@@ -1,4 +1,5 @@
 from pathlib import Path
+import subprocess
 
 import pytest
 
@@ -6,6 +7,54 @@ from suzent.service import manager as module
 from suzent.service.manager import ServiceController
 from suzent.service.models import ServiceProcessState
 from suzent.service.platforms.windows import WindowsServiceManager
+from suzent.service.platforms import windows as windows_module
+
+
+@pytest.mark.parametrize("kind", ["launcher", "cmd", "foreign", "extra-args"])
+def test_owned_legacy_registry_entry_can_migrate(
+    monkeypatch, tmp_path: Path, kind: str
+) -> None:
+    definition = tmp_path / "service.pyw"
+    python = tmp_path / "current/.venv/Scripts/python.exe"
+    definition.write_text(f"PYTHON = {str(python)!r}\n")
+    monkeypatch.setattr(
+        WindowsServiceManager, "definition_path", property(lambda self: definition)
+    )
+    monkeypatch.setattr(
+        WindowsServiceManager, "python_executable", property(lambda self: python)
+    )
+    monkeypatch.setattr(
+        WindowsServiceManager, "_pythonw", lambda self: python.with_name("pythonw.exe")
+    )
+    command = subprocess.list2cmdline(
+        ["cmd.exe", "/d", "/c", str(windows_module._LEGACY_CMD)]
+        if kind == "cmd"
+        else [
+            str(python.with_name("pythonw.exe")),
+            str(windows_module._LEGACY_LAUNCHER),
+        ]
+    )
+    if kind == "foreign":
+        command = command.replace("current", "foreign")
+    elif kind == "extra-args":
+        command += " && unwanted-command"
+    monkeypatch.setattr(WindowsServiceManager, "_read_autostart", lambda self: command)
+    writes: list[str] = []
+    monkeypatch.setattr(
+        WindowsServiceManager,
+        "_set_autostart",
+        lambda self, value: writes.append(value),
+    )
+    manager = WindowsServiceManager()
+    if kind in {"foreign", "extra-args"}:
+        with pytest.raises(RuntimeError):
+            manager.assert_definition_owned()
+        assert writes == []
+    else:
+        manager.assert_definition_owned()
+        assert writes == []
+        manager._ensure_autostart()
+        assert writes == [manager._autostart_command()]
 
 
 @pytest.mark.parametrize("foreign_registry", [False, True])

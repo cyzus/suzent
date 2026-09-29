@@ -54,7 +54,15 @@ class WindowsServiceManager(PlatformServiceManager):
             if (
                 len(values) == 1
                 and Path(values[0]).resolve() == self.python_executable
-                and registered in (None, self._autostart_command())
+                and registered
+                in (
+                    None,
+                    self._autostart_command(),
+                    subprocess.list2cmdline(
+                        [str(self._pythonw()), str(_LEGACY_LAUNCHER)]
+                    ),
+                    subprocess.list2cmdline(["cmd.exe", "/d", "/c", str(_LEGACY_CMD)]),
+                )
             ):
                 return
         except (OSError, SyntaxError, ValueError):

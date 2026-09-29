@@ -66,6 +66,7 @@ def test_development_update_preserves_checkout(
     monkeypatch.setattr(cli, "get_project_root", lambda: checkout)
     monkeypatch.setattr(cli, "IS_WINDOWS", False)
     monkeypatch.setattr(cli, "run_command", run)
+    monkeypatch.setattr(cli, "_rebuild_development_ui", lambda root: None)
     monkeypatch.setattr(cli, "_refresh_shortcuts", lambda root: None)
     app = typer.Typer()
     cli.register_commands(app)
