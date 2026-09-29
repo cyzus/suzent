@@ -43,7 +43,7 @@ jobs:
           $digest = (Get-FileHash installer-artifact/suzent-installer-windows-x86_64.exe -Algorithm SHA256).Hash.ToLowerInvariant()
           "$digest  suzent-installer-windows-x86_64.exe" | Set-Content installer-artifact/SHA256SUMS -Encoding ascii
           "Source commit: $env:GITHUB_SHA`nTesting build; not a published release." | Set-Content installer-artifact/BUILD.txt -Encoding utf8
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: suzent-installer-windows-test
           path: installer-artifact/
