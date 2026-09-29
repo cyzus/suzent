@@ -34,7 +34,8 @@ fun markdownWithCitationLinks(text: String, sources: List<CitationSource>, badge
             val compact = if (badges && name.length > 26) name.take(26) + "…" else name
             val label = (if (badges) "↗  " else "") + compact.replace("]", "\\]") + suffix
             val scheme = runCatching { java.net.URI(primary.url).scheme?.lowercase() }.getOrNull()
-            if (scheme in listOf("http", "https")) "[$label](<${primary.url.replace(">", "%3E")}>)" else label
+            val target = if (badges) "suzent-citation://sources/" + ids.joinToString(",") { java.net.URLEncoder.encode(it, "UTF-8") } else primary.url.replace(">", "%3E")
+            if (scheme in listOf("http", "https")) "[$label](<$target>)" else label
         }
     }
 }

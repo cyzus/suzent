@@ -114,4 +114,8 @@
     <string name="open_external_link">打开外部链接？</string>
     <string name="open_link">打开</string>
     <string name="cancel_link">取消</string>
+    <string name="citation_sources">引用来源</string>
+    <string name="citation_read">阅读原文</string>
+    <string name="citation_copy">复制链接</string>
+    <string name="citation_external">外部浏览器打开</string>
 </resources>

@@ -1,6 +1,7 @@
 import SwiftUI
 import SuzentCore
 import MarkdownUI
+import SafariServices
 
 extension Color {
     static var suzentSurface: Color {
@@ -153,40 +154,161 @@ struct SuzentWordmark: View {
     }
 }
 
+private struct CitationPreview {
+    let url: URL
+    let title: String
+    let snippet: String
+}
+
+private struct CitationBrowser: UIViewControllerRepresentable {
+    let url: URL
+    func makeUIViewController(context: Context) -> SFSafariViewController { SFSafariViewController(url: url) }
+    func updateUIViewController(_ controller: SFSafariViewController, context: Context) {}
+}
+
+private struct CitationParagraph: UIViewRepresentable {
+    let markdown: String
+    let selectedURL: URL?
+    let onOpen: (URL) -> Void
+    @Environment(\.colorScheme) private var colorScheme
+
+    func makeCoordinator() -> Coordinator { Coordinator(onOpen: onOpen) }
+    func makeUIView(context: Context) -> UITextView {
+        let view = UITextView()
+        view.isEditable = false
+        view.isScrollEnabled = false
+        view.backgroundColor = .clear
+        view.textContainerInset = .zero
+        view.textContainer.lineFragmentPadding = 0
+        view.delegate = context.coordinator
+        return view
+    }
+    func updateUIView(_ view: UITextView, context: Context) {
+        context.coordinator.onOpen = onOpen
+        let parsed = (try? AttributedString(markdown: markdown, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(markdown)
+        let result = NSMutableAttributedString(parsed)
+        let all = NSRange(location: 0, length: result.length)
+        let font = UIFont.systemFont(ofSize: CGFloat(PresentationTokens.typeChat))
+        result.addAttributes([.font: font, .foregroundColor: UIColor.label], range: all)
+        for run in parsed.runs {
+            let range = NSRange(run.range, in: parsed)
+            if run.inlinePresentationIntent?.contains(.stronglyEmphasized) == true {
+                result.addAttribute(.font, value: UIFont.boldSystemFont(ofSize: font.pointSize), range: range)
+            }
+        }
+        var links: [(NSRange, URL)] = []
+        result.enumerateAttribute(.link, in: all) { value, range, _ in
+            if let url = value as? URL, url.scheme == "suzent-citation" { links.append((range, url)) }
+        }
+        for (range, url) in links.reversed() {
+            let label = result.attributedSubstring(from: range).string
+            let badgeFont = UIFont.systemFont(ofSize: font.pointSize * 0.72, weight: .medium)
+            let selected = selectedURL == url
+            let dark = colorScheme == .dark
+            let ink: UIColor = dark && !selected ? .white : .darkGray
+            let attributes: [NSAttributedString.Key: Any] = [.font: badgeFont, .foregroundColor: ink]
+            let size = (label as NSString).size(withAttributes: attributes)
+            let bounds = CGRect(x: 0, y: 0, width: ceil(size.width) + 14, height: ceil(size.height) + 6)
+            let image = UIGraphicsImageRenderer(size: bounds.size).image { _ in
+                let path = UIBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), cornerRadius: bounds.height / 2)
+                (selected ? UIColor(red: 0.74, green: 0.84, blue: 1, alpha: 1) : UIColor(white: dark ? 0.19 : 0.96, alpha: 1)).setFill()
+                path.fill()
+                UIColor(white: dark ? 0.38 : 0.8, alpha: 1).setStroke()
+                path.lineWidth = 0.5
+                path.stroke()
+                (label as NSString).draw(at: CGPoint(x: 7, y: 3), withAttributes: attributes)
+            }
+            let attachment = NSTextAttachment()
+            attachment.image = image
+            attachment.bounds = CGRect(x: 0, y: font.descender - 1, width: bounds.width, height: bounds.height)
+            let badge = NSMutableAttributedString(attachment: attachment)
+            badge.addAttributes([.link: url, .accessibilitySpeechSpellOut: false], range: NSRange(location: 0, length: 1))
+            result.replaceCharacters(in: range, with: badge)
+        }
+        view.attributedText = result
+        view.linkTextAttributes = [.foregroundColor: UIColor.systemBlue]
+        view.tintColor = .clear
+        view.accessibilityLabel = String(parsed.characters)
+    }
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
+        guard let width = proposal.width else { return nil }
+        return uiView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
+    }
+    final class Coordinator: NSObject, UITextViewDelegate {
+        var onOpen: (URL) -> Void
+        init(onOpen: @escaping (URL) -> Void) { self.onOpen = onOpen }
+        func textView(_ textView: UITextView, shouldInteractWith URL: URL, in characterRange: NSRange, interaction: UITextItemInteraction) -> Bool {
+            if ["http", "https", "suzent-citation"].contains(URL.scheme) { onOpen(URL) }
+            return false
+        }
+    }
+}
+
 struct SuzentMarkdown: View {
     let text: String
     var citationSources: [CitationSource] = []
     @State private var pendingLink: URL?
+    @State private var browserLink: URL?
     var body: some View {
         Markdown(markdownWithCitationLinks(text, sources: citationSources, badges: true))
             .markdownTheme(suzentMarkdownTheme)
             .environment(\.openURL, OpenURLAction { url in
-                guard ["http", "https"].contains(url.scheme?.lowercased()) else { return .discarded }
+                guard ["http", "https", "suzent-citation"].contains(url.scheme?.lowercased()) else { return .discarded }
                 pendingLink = url
                 return .handled
             })
             .textSelection(.enabled)
-            .alert(linkTitle, isPresented: Binding(
+            .sheet(isPresented: Binding(
                 get: { pendingLink != nil },
                 set: { if !$0 { pendingLink = nil } }
             )) {
-                Button("Cancel", role: .cancel) { pendingLink = nil }
-                Button("Open") {
-                    if let url = pendingLink { UIApplication.shared.open(url) }
-                    pendingLink = nil
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("Sources").font(.title2.bold())
+                        ForEach(previewSources, id: \.url) { source in
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text("↗  " + (source.url.host ?? "").replacingOccurrences(of: "www.", with: ""))
+                                    .font(.caption).foregroundStyle(.secondary)
+                                Text(source.title).font(.headline)
+                                if !source.snippet.isEmpty { Text(source.snippet).font(.subheadline).lineLimit(6) }
+                                Button("Read article") { browserLink = source.url }.buttonStyle(.borderedProminent).clipShape(Capsule())
+                                HStack {
+                                    Button("Copy link") { UIPasteboard.general.url = source.url }
+                                    Spacer()
+                                    Button("Open externally") { UIApplication.shared.open(source.url) }
+                                }.font(.caption)
+                            }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 16))
+                        }
+                    }.padding(24)
                 }
-            } message: {
-                if let source = pendingSource, let snippet = source.snippet, !snippet.isEmpty {
-                    Text("\(snippet)\n\n\(pendingLink?.absoluteString ?? "")")
-                } else { Text(pendingLink?.absoluteString ?? "") }
+                .presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
+                .sheet(isPresented: Binding(get: { browserLink != nil }, set: { if !$0 { browserLink = nil } })) {
+                    if let browserLink { CitationBrowser(url: browserLink).ignoresSafeArea() }
+                }
             }
     }
 
-    private var pendingSource: CitationSource? { citationSources.first { $0.url == pendingLink?.absoluteString } }
-    private var linkTitle: String { pendingSource?.title.isEmpty == false ? pendingSource!.title : "Open external link?" }
+    private var previewSources: [CitationPreview] {
+        guard let link = pendingLink else { return [] }
+        if link.scheme == "suzent-citation" {
+            return link.lastPathComponent.split(separator: ",").compactMap { id in
+                guard let source = citationSources.first(where: { $0.id == id }), let raw = source.url,
+                      let url = URL(string: raw), ["http", "https"].contains(url.scheme) else { return nil }
+                return CitationPreview(url: url, title: source.title, snippet: source.snippet ?? "")
+            }
+        }
+        let source = citationSources.first { $0.url == link.absoluteString }
+        return [CitationPreview(url: link, title: source?.title ?? link.host ?? link.absoluteString, snippet: source?.snippet ?? "")]
+    }
 
     private var suzentMarkdownTheme: Theme {
         Theme.gitHub
+                .paragraph { configuration in
+                    if configuration.content.renderMarkdown().contains("suzent-citation://") {
+                        CitationParagraph(markdown: configuration.content.renderMarkdown(), selectedURL: pendingLink) { pendingLink = $0 }
+                    } else { configuration.label }
+                }
                 .text {
                     ForegroundColor(.primary)
                     BackgroundColor(.clear)
@@ -199,10 +321,7 @@ struct SuzentMarkdown: View {
                     BackgroundColor(Color(presentation: PresentationTokens.yellow))
                 }
                 .link {
-                    ForegroundColor(.primary)
-                    BackgroundColor(Color.secondary.opacity(0.12))
-                    FontSize(12)
-                    FontWeight(.medium)
+                    ForegroundColor(Color(presentation: PresentationTokens.blue))
                 }
                 .codeBlock { configuration in
                     VStack(alignment: .leading, spacing: 0) {

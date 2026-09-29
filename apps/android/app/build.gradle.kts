@@ -42,6 +42,7 @@ android {
 kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
 
 dependencies {
+    implementation("androidx.browser:browser:1.8.0")
     implementation(platform("androidx.compose:compose-bom:2025.12.00"))
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.ui:ui")

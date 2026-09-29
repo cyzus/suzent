@@ -23,6 +23,7 @@ import kotlin.math.cos
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.foundation.clickable
@@ -83,6 +84,7 @@ fun SuzentTheme(content: @Composable () -> Unit) {
     ), content = content)
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList()) {
     val context = LocalContext.current
@@ -93,7 +95,7 @@ fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList
         .usePlugin(object : AbstractMarkwonPlugin() {
             override fun configureConfiguration(builder: MarkwonConfiguration.Builder) {
                 builder.linkResolver(LinkResolver { _, link ->
-                    if (runCatching { java.net.URI(link).scheme?.lowercase() }.getOrNull() in listOf("http", "https")) pendingLink = link
+                    if (runCatching { java.net.URI(link).scheme?.lowercase() }.getOrNull() in listOf("http", "https", "suzent-citation")) pendingLink = link
                 })
             }
         })
@@ -144,36 +146,52 @@ fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList
                         val start = styled.getSpanStart(span)
                         val end = styled.getSpanEnd(span)
                         if (styled.subSequence(start, end).startsWith("↗  ")) {
-                            styled.setSpan(CitationBadgeSpan(dark), start, end, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                            val target = (span as? android.text.style.URLSpan)?.url
+                            styled.setSpan(CitationBadgeSpan(dark, target == pendingLink), start, end, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                         }
                     }
                     renderer.setParsedMarkdown(view, styled)
                     // Text selection installs ArrowKeyMovementMethod, which prevents Markwon
                     // from installing its link handler automatically.
                     view.movementMethod = android.text.method.LinkMovementMethod.getInstance()
+                    view.highlightColor = android.graphics.Color.TRANSPARENT
                 })
             }
         }
     }
     pendingLink?.let { link ->
-        val source = citationSources.firstOrNull { it.url == link }
-        AlertDialog(
-            onDismissRequest = { pendingLink = null },
-            title = { Text(source?.title?.ifEmpty { null } ?: stringResource(R.string.open_external_link)) },
-            text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                source?.snippet?.takeIf { it.isNotBlank() }?.let { Text(it) }
-                Text(link, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
-            } },
-            confirmButton = { TextButton(onClick = {
-                pendingLink = null
-                runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(link))) }
-            }) { Text(stringResource(R.string.open_link)) } },
-            dismissButton = { TextButton(onClick = { pendingLink = null }) { Text(stringResource(R.string.cancel_link)) } },
-        )
+        val ids = Uri.parse(link).path.orEmpty().removePrefix("/").split(',')
+        val sources = if (link.startsWith("suzent-citation://")) ids.mapNotNull { id -> citationSources.firstOrNull { it.id == id } }
+            else listOf(citationSources.firstOrNull { it.url == link } ?: CitationSource("", "webpage", Uri.parse(link).host.orEmpty(), link))
+        ModalBottomSheet(onDismissRequest = { pendingLink = null }, shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)) {
+            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text(stringResource(R.string.citation_sources), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                sources.forEach { source ->
+                    val uri = Uri.parse(source.url)
+                    Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(16.dp)).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("↗  " + uri.host.orEmpty().removePrefix("www."), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(source.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        if (source.snippet.isNotBlank()) Text(source.snippet, style = MaterialTheme.typography.bodyMedium, maxLines = 6, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                        if (uri.scheme in listOf("http", "https")) {
+                            Button(onClick = { androidx.browser.customtabs.CustomTabsIntent.Builder().setShowTitle(true).build().launchUrl(context, uri) }, shape = RoundedCornerShape(50)) {
+                                Text(stringResource(R.string.citation_read))
+                            }
+                            Row {
+                                TextButton(onClick = {
+                                    val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                    clipboard.setPrimaryClip(android.content.ClipData.newPlainText(source.title, source.url))
+                                }) { Text(stringResource(R.string.citation_copy)) }
+                                TextButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, uri)) }) { Text(stringResource(R.string.citation_external)) }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
-private class CitationBadgeSpan(private val dark: Boolean) : android.text.style.ReplacementSpan() {
+private class CitationBadgeSpan(private val dark: Boolean, private val selected: Boolean) : android.text.style.ReplacementSpan() {
     private fun badgePaint(paint: android.graphics.Paint) = android.graphics.Paint(paint).apply {
         textSize = paint.textSize * 0.72f
         isUnderlineText = false
@@ -192,14 +210,14 @@ private class CitationBadgeSpan(private val dark: Boolean) : android.text.style.
         val padding = paint.textSize * 0.3f
         val bounds = android.graphics.RectF(x + 2, y + badge.ascent() - padding * 0.45f,
             x + getSize(paint, text, start, end, null) - 2, y + badge.descent() + padding * 0.45f)
-        badge.color = android.graphics.Color.parseColor(if (dark) "#303030" else "#F5F5F5")
+        badge.color = android.graphics.Color.parseColor(if (selected) "#BDD6FF" else if (dark) "#303030" else "#F5F5F5")
         canvas.drawRoundRect(bounds, bounds.height() / 2, bounds.height() / 2, badge)
         badge.style = android.graphics.Paint.Style.STROKE
         badge.strokeWidth = paint.textSize * 0.035f
         badge.color = android.graphics.Color.parseColor(if (dark) "#606060" else "#CCCCCC")
         canvas.drawRoundRect(bounds, bounds.height() / 2, bounds.height() / 2, badge)
         badge.style = android.graphics.Paint.Style.FILL
-        badge.color = android.graphics.Color.parseColor(if (dark) "#EEEEEE" else "#404040")
+        badge.color = android.graphics.Color.parseColor(if (dark && !selected) "#EEEEEE" else "#404040")
         canvas.drawText(text, start, end, x + padding, y.toFloat(), badge)
     }
 }
