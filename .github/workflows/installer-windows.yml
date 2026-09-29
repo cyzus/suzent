@@ -23,6 +23,7 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           workspaces: apps/suzent-installer
+          cache-on-failure: true
       - name: Test recovery and hidden subprocesses
         working-directory: apps/suzent-installer
         run: cargo test --locked
@@ -31,3 +32,20 @@ jobs:
           node-version: '22'
       - name: Test installer UX states
         run: node --test apps/suzent-installer/tests/installer-ui.test.mjs
+      - name: Build test installer
+        working-directory: apps/suzent-installer
+        run: cargo build --release --locked
+      - name: Package test installer
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path installer-artifact | Out-Null
+          Copy-Item apps/suzent-installer/target/release/suzent-installer.exe installer-artifact/suzent-installer-windows-x86_64.exe
+          $digest = (Get-FileHash installer-artifact/suzent-installer-windows-x86_64.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$digest  suzent-installer-windows-x86_64.exe" | Set-Content installer-artifact/SHA256SUMS -Encoding ascii
+          "Source commit: $env:GITHUB_SHA`nTesting build; not a published release." | Set-Content installer-artifact/BUILD.txt -Encoding utf8
+      - uses: actions/upload-artifact@v4
+        with:
+          name: suzent-installer-windows-test
+          path: installer-artifact/
+          if-no-files-found: error
+          retention-days: 14
