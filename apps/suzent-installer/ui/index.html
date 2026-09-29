@@ -227,9 +227,9 @@
           const development = info.kind === 'development';
           const existing = ['update','repair'].includes(info.kind);
           setText('page-title', development ? (isZh ? '已有开发工作区' : 'Existing development workspace') : info.kind === 'repair' ? text.repairPage : existing ? text.updatePage : text.installPage);
-          setText('start', development ? (isZh ? '复制更新步骤' : 'Copy update steps') : info.kind === 'repair' ? (isZh ? '修复此安装' : 'Repair this installation') : existing ? (isZh ? '更新此安装' : 'Update this installation') : text.install);
+          setText('start', development ? (isZh ? '更新此工作区' : 'Update this workspace') : info.kind === 'repair' ? (isZh ? '修复此安装' : 'Repair this installation') : existing ? (isZh ? '更新此安装' : 'Update this installation') : text.install);
           setText('status-title', blocked ? (isZh ? '请选择有效目录' : 'Choose a valid directory') : development ? (isZh ? '保留当前源码与分支' : 'Keep your current checkout') : existing ? (isZh ? '复用现有安装' : 'Use the existing installation') : text.review);
-          setText('status-message', blocked ? (isZh ? '目录不是可识别的 Suzent 安装，也不是空目录；不会覆盖。' : 'This is not a recognized Suzent installation or an empty folder; it will not be overwritten.') : development ? (isZh ? '此目录已有源码。请先保存改动，再按当前上游分支快进更新；安装器不会替你切换分支。' : 'Source already exists here. Save changes, then fast-forward its upstream. The installer will not switch branches.') : existing ? (isZh ? '点击后交给独立更新器处理，不重新克隆或创建另一份安装。' : 'Continue with the standalone updater, without cloning another installation.') : text.nothing);
+          setText('status-message', blocked ? (isZh ? '目录不是可识别的 Suzent 安装，也不是空目录；不会覆盖。' : 'This is not a recognized Suzent installation or an empty folder; it will not be overwritten.') : development ? (isZh ? '沿当前上游分支快进，同步依赖并重建桌面程序；有改动时先确认备份。请先结束开发任务，更新会停止此安装的程序。' : 'Fast-forward the current upstream, sync dependencies and rebuild the desktop. Local changes require backup confirmation. Finish development tasks first; this installation will be stopped.') : existing ? (isZh ? '点击后交给独立更新器处理，不重新克隆或创建另一份安装。' : 'Continue with the standalone updater, without cloning another installation.') : text.nothing);
           if (development) {
             setText('mode-badge', isZh ? '开发工作区' : 'Development workspace');
             setText('page-subtitle', info.branch || (isZh ? '未处于分支上，请先选择分支' : 'Detached checkout; select a branch first'));
@@ -250,15 +250,6 @@
         if (els.start.disabled) return;
         if (destination.kind === 'new') return runInstall();
         context.dir = els.dir.value.trim();
-        if (destination.kind === 'development') {
-          const guide = isZh
-            ? `现有工作区：${context.dir}\n分支：${destination.branch || 'detached HEAD'}\n1. 在此目录打开终端，运行 git status，先保存本地改动和未跟踪文件。\n2. 确认当前分支及 upstream；未完成 merge/rebase 或发生分叉时停止。\n3. 先备份日常数据并停止本安装的桌面和后台服务，再运行 git fetch，然后 git merge --ff-only '@{upstream}'。不要强制 checkout/reset。\n4. 用 uv sync --frozen --extra social --extra dev 同步依赖。\n5. 在 frontend 和 src-tauri 分别运行 npm ci；在 src-tauri 运行 npm run build:dist。\n6. 用 suzent start 日常启动，或 suzent start --dev 开发启动。源码切换不会回退数据库，请先备份日常数据。`
-            : `Workspace: ${context.dir}\nBranch: ${destination.branch || 'detached HEAD'}\n1. Open a terminal here, run git status, and save local changes and untracked files.\n2. Check the current branch and upstream. Stop for unfinished Git operations or divergent history.\n3. Back up user data and stop this installation's desktop and background service, then run git fetch and git merge --ff-only '@{upstream}'. Do not force checkout/reset.\n4. Run uv sync --frozen --extra social --extra dev.\n5. Run npm ci in frontend and src-tauri, then npm run build:dist in src-tauri.\n6. Use suzent start for daily use or suzent start --dev for development. Back up user data before migrations; Git does not roll back databases.`;
-          log(guide);
-          try { await navigator.clipboard.writeText(guide); setText('footer-note', isZh ? '更新步骤已复制；尚未修改工作区。' : 'Update steps copied. No workspace changes made.'); }
-          catch { setError(isZh ? '无法复制。请保存诊断获取完整更新步骤。' : 'Copy unavailable. Save diagnostics to get the complete update steps.'); }
-          return;
-        }
         try { setRunning(true); await invoke('open_existing_updater', {dir:context.dir}); setRunning(false); await closeInstaller(); }
         catch (error) { setError(String(error)); }
         } finally { if (running && destination.kind !== 'new') setRunning(false); destinationActionPending = false; }
