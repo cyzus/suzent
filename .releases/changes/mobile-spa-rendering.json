@@ -1,4 +1,4 @@
 {
   "products": {"mobile": "minor"},
-  "summary": "Render SPA and HTML response blocks interactively in the native iOS and Android clients."
+  "summary": "Render SPA and HTML response blocks interactively and open citations through native confirmation prompts on iOS and Android."
 }

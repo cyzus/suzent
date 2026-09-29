@@ -37,7 +37,7 @@ struct MessageView: View {
         } else {
             VStack(alignment: .leading, spacing: 10) {
                 SuzentAssistantBadge(compact: !isLatest)
-                ActivityContent(parts: message.parts, live: false)
+                ActivityContent(parts: message.parts, live: false, citationSources: message.citationSources)
             }.frame(maxWidth: .infinity, alignment: .leading)
         }
     }
@@ -156,19 +156,43 @@ struct SuzentWordmark: View {
 
 struct SuzentMarkdown: View {
     let text: String
+    var citationSources: [CitationSource] = []
+    @State private var pendingLink: URL?
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            ForEach(Array(renderableMarkdownSections(text).enumerated()), id: \.offset) { _, section in
+            ForEach(Array(renderableMarkdownSections(markdownWithCitationLinks(text, sources: citationSources)).enumerated()), id: \.offset) { _, section in
                 switch section {
                 case .markdown(let markdown):
                     Markdown(markdown).markdownTheme(suzentMarkdownTheme)
+                        .environment(\.openURL, OpenURLAction { url in
+                            guard ["http", "https"].contains(url.scheme?.lowercased()) else { return .discarded }
+                            pendingLink = url
+                            return .handled
+                        })
                 case .spa(let html):
-                    SpaWebView(html: html).frame(minHeight: 240, maxHeight: 520)
+                    SpaWebView(html: html) { pendingLink = $0 }.frame(minHeight: 240, maxHeight: 520)
                         .overlay(Rectangle().stroke(.primary, lineWidth: PresentationTokens.borderWidth))
                 }
             }
         }.textSelection(.enabled)
+            .alert(linkTitle, isPresented: Binding(
+                get: { pendingLink != nil },
+                set: { if !$0 { pendingLink = nil } }
+            )) {
+                Button("Cancel", role: .cancel) { pendingLink = nil }
+                Button("Open") {
+                    if let url = pendingLink { UIApplication.shared.open(url) }
+                    pendingLink = nil
+                }
+            } message: {
+                if let source = pendingSource, let snippet = source.snippet, !snippet.isEmpty {
+                    Text("\(snippet)\n\n\(pendingLink?.absoluteString ?? "")")
+                } else { Text(pendingLink?.absoluteString ?? "") }
+            }
     }
+
+    private var pendingSource: CitationSource? { citationSources.first { $0.url == pendingLink?.absoluteString } }
+    private var linkTitle: String { pendingSource?.title.isEmpty == false ? pendingSource!.title : "Open external link?" }
 
     private var suzentMarkdownTheme: Theme {
         Theme.gitHub
@@ -208,8 +232,14 @@ struct SuzentMarkdown: View {
 
 private struct SpaWebView: UIViewRepresentable {
     let html: String
+    let onOpenLink: (URL) -> Void
 
-    func makeCoordinator() -> Coordinator { Coordinator() }
+    init(html: String, onOpenLink: @escaping (URL) -> Void) {
+        self.html = html
+        self.onOpenLink = onOpenLink
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(onOpenLink: onOpenLink) }
 
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
@@ -222,6 +252,7 @@ private struct SpaWebView: UIViewRepresentable {
     }
 
     func updateUIView(_ view: WKWebView, context: Context) {
+        context.coordinator.onOpenLink = onOpenLink
         guard context.coordinator.loadedHTML != html else { return }
         context.coordinator.loadedHTML = html
         view.loadHTMLString(html, baseURL: nil)
@@ -234,18 +265,27 @@ private struct SpaWebView: UIViewRepresentable {
 
     final class Coordinator: NSObject, WKNavigationDelegate {
         var loadedHTML: String?
+        var onOpenLink: (URL) -> Void
+
+        init(onOpenLink: @escaping (URL) -> Void) { self.onOpenLink = onOpenLink }
 
         func webView(
             _ webView: WKWebView,
             decidePolicyFor navigationAction: WKNavigationAction,
             decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
         ) {
-            guard navigationAction.targetFrame?.isMainFrame == true,
-                  let scheme = navigationAction.request.url?.scheme else {
+            guard let url = navigationAction.request.url, let scheme = url.scheme?.lowercased() else {
                 decisionHandler(.allow)
                 return
             }
-            decisionHandler(["about", "data"].contains(scheme) ? .allow : .cancel)
+            if ["http", "https"].contains(scheme) {
+                decisionHandler(.cancel)
+                DispatchQueue.main.async { self.onOpenLink(url) }
+            } else if navigationAction.targetFrame?.isMainFrame != true || ["about", "data"].contains(scheme) {
+                decisionHandler(.allow)
+            } else {
+                decisionHandler(.cancel)
+            }
         }
     }
 }
@@ -273,10 +313,11 @@ struct SuzentAssistantBadge: View {
 struct ActivityContent: View {
     let parts: [MessagePart]
     var live = false
+    var citationSources: [CitationSource] = []
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             ForEach(Array(activityChunks(parts).enumerated()), id: \.offset) { _, chunk in
-                if chunk.first?.type == "text" { SuzentMarkdown(text: chunk.first?.text ?? "") }
+                if chunk.first?.type == "text" { SuzentMarkdown(text: chunk.first?.text ?? "", citationSources: citationSources) }
                 else { ActivityRail(parts: chunk, live: live) }
             }
             if live { StreamingPulse().padding(.vertical, 4).accessibilityLabel("Working…") }

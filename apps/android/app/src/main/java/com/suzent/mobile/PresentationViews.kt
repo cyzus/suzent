@@ -9,6 +9,8 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
 import android.widget.TextView
+import android.content.Intent
+import android.net.Uri
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -51,6 +53,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import io.noties.markwon.AbstractMarkwonPlugin
 import io.noties.markwon.core.MarkwonTheme
 import io.noties.markwon.Markwon
+import io.noties.markwon.MarkwonConfiguration
+import io.noties.markwon.LinkResolver
 import io.noties.markwon.ext.tables.TablePlugin
 import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
 
@@ -83,9 +87,18 @@ fun SuzentTheme(content: @Composable () -> Unit) {
 }
 
 @Composable
-fun MarkdownText(text: String) {
+fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList()) {
     val context = LocalContext.current
+    var pendingLink by remember { mutableStateOf<String?>(null) }
+    val renderedText = remember(text, citationSources) { markdownWithCitationLinks(text, citationSources) }
     val renderer = remember(context) { Markwon.builder(context)
+        .usePlugin(object : AbstractMarkwonPlugin() {
+            override fun configureConfiguration(builder: MarkwonConfiguration.Builder) {
+                builder.linkResolver(LinkResolver { _, link ->
+                    if (runCatching { java.net.URI(link).scheme?.lowercase() }.getOrNull() in listOf("http", "https")) pendingLink = link
+                })
+            }
+        })
         .usePlugin(object : AbstractMarkwonPlugin() {
             override fun configureTheme(builder: MarkwonTheme.Builder) {
                 builder.codeBackgroundColor(Color(PresentationTokens.yellow).toArgb())
@@ -97,10 +110,10 @@ fun MarkdownText(text: String) {
         }).usePlugin(TablePlugin.create(context)).usePlugin(StrikethroughPlugin.create()).build() }
     val foreground = MaterialTheme.colorScheme.onSurface.toArgb()
     val link = Color(PresentationTokens.blue).toArgb()
-    val blocks by produceState<List<MarkdownBlock>>(initialValue = emptyList(), renderer, text) {
+    val blocks by produceState<List<MarkdownBlock>>(initialValue = emptyList(), renderer, renderedText) {
         value = withContext(Dispatchers.Default) {
             synchronized(renderer) {
-                markdownSections(renderer.parse(text)).map { section ->
+                markdownSections(renderer.parse(renderedText)).map { section ->
                     when (section) {
                         is MarkdownSection.Prose -> MarkdownBlock(renderer.render(section.document))
                         is MarkdownSection.Code -> MarkdownBlock(section.text, section.language)
@@ -113,7 +126,7 @@ fun MarkdownText(text: String) {
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         blocks.forEach { block ->
             if (block.spa) {
-                SpaView(block.body.toString())
+                SpaView(block.body.toString()) { pendingLink = it }
             } else if (block.language != null) {
                 Column(Modifier.fillMaxWidth().border(PresentationTokens.borderWidth.dp, MaterialTheme.colorScheme.outline)) {
                     Text(block.language, Modifier.fillMaxWidth().background(Color.Black).padding(12.dp),
@@ -136,13 +149,30 @@ fun MarkdownText(text: String) {
             }
         }
     }
+    pendingLink?.let { link ->
+        val source = citationSources.firstOrNull { it.url == link }
+        AlertDialog(
+            onDismissRequest = { pendingLink = null },
+            title = { Text(source?.title?.ifEmpty { null } ?: stringResource(R.string.open_external_link)) },
+            text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                source?.snippet?.takeIf { it.isNotBlank() }?.let { Text(it) }
+                Text(link, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+            } },
+            confirmButton = { TextButton(onClick = {
+                pendingLink = null
+                runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(link))) }
+            }) { Text(stringResource(R.string.open_link)) } },
+            dismissButton = { TextButton(onClick = { pendingLink = null }) { Text(stringResource(R.string.cancel_link)) } },
+        )
+    }
 }
 
 private data class MarkdownBlock(val body: CharSequence, val language: String? = null, val spa: Boolean = false)
 
 @Composable
-private fun SpaView(html: String) {
+private fun SpaView(html: String, onOpenLink: (String) -> Unit) {
     val outline = MaterialTheme.colorScheme.outline
+    val currentOnOpenLink by rememberUpdatedState(onOpenLink)
     AndroidView(
         modifier = Modifier.fillMaxWidth().heightIn(min = 240.dp, max = 520.dp)
             .border(PresentationTokens.borderWidth.dp, outline),
@@ -155,6 +185,10 @@ private fun SpaView(html: String) {
                 webViewClient = object : WebViewClient() {
                     override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                         val scheme = request.url.scheme
+                        if (scheme == "http" || scheme == "https") {
+                            currentOnOpenLink(request.url.toString())
+                            return true
+                        }
                         return request.isForMainFrame && scheme != "about" && scheme != "data"
                     }
                 }
@@ -182,7 +216,7 @@ fun MessageView(message: DisplayMessage, isLatest: Boolean = false) {
         }
     } else Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         SuzentAssistantBadge(compact = !isLatest)
-        ActivityContent(message.parts, live = false)
+        ActivityContent(message.parts, live = false, citationSources = message.citationSources)
     }
 }
 
@@ -293,12 +327,12 @@ fun SuzentAssistantBadge(compact: Boolean = false) {
 }
 
 @Composable
-fun ActivityContent(parts: List<MessagePart>, live: Boolean) {
+fun ActivityContent(parts: List<MessagePart>, live: Boolean, citationSources: List<CitationSource> = emptyList()) {
     val chunks = remember(parts) { activityChunks(parts) }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         chunks.forEachIndexed { index, chunk ->
             key(index) {
-                if (chunk.first().type == "text") MarkdownText(chunk.first().text)
+                if (chunk.first().type == "text") MarkdownText(chunk.first().text, citationSources)
                 else ActivityRail(chunk, live)
             }
         }

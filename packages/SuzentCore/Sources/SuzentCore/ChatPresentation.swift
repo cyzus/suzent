@@ -1,5 +1,14 @@
 import Foundation
 
+public struct CitationSource: Codable, Sendable, Equatable, Identifiable {
+    public let id: String
+    public let type: String
+    public let title: String
+    public let url: String?
+    public let snippet: String?
+    public let favicon: String?
+}
+
 public struct MessagePart: Decodable, Sendable, Equatable {
     public var type: String
     public var text: String?
@@ -9,10 +18,13 @@ public struct MessagePart: Decodable, Sendable, Equatable {
     public var toolCallId: String?
     public var state: String?
     public var messageId: String?
+    public var citationSources: [CitationSource]?
     public init(type: String, text: String? = nil, toolName: String? = nil, args: String? = nil,
-                output: String? = nil, toolCallId: String? = nil, state: String? = nil, messageId: String? = nil) {
+                output: String? = nil, toolCallId: String? = nil, state: String? = nil, messageId: String? = nil,
+                citationSources: [CitationSource]? = nil) {
         self.type = type; self.text = text; self.toolName = toolName; self.args = args
         self.output = output; self.toolCallId = toolCallId; self.state = state; self.messageId = messageId
+        self.citationSources = citationSources
     }
 
 }
@@ -20,6 +32,7 @@ public struct MessagePart: Decodable, Sendable, Equatable {
 public struct DisplayMessage: Sendable {
     public let role: String
     public let parts: [MessagePart]
+    public let citationSources: [CitationSource]
     public var text: String { parts.filter { $0.type == "text" }.compactMap(\.text).joined(separator: "\n\n") }
 }
 
@@ -37,8 +50,9 @@ public func presentMessages(_ messages: [ChatMessage], liveToolIds: Set<String> 
         } else {
             rawParts = message.parts.filter { $0.type != "tool" || !liveToolIds.contains($0.toolCallId ?? "") }
         }
+        let sources = rawParts.flatMap { $0.citationSources ?? [] }
         let parts = normalizeParts(rawParts)
-        return parts.isEmpty ? nil : DisplayMessage(role: message.role, parts: parts)
+        return parts.isEmpty ? nil : DisplayMessage(role: message.role, parts: parts, citationSources: sources)
     }
     var grouped: [DisplayMessage] = []
     for row in rows {
@@ -47,7 +61,8 @@ public func presentMessages(_ messages: [ChatMessage], liveToolIds: Set<String> 
            previous.parts.last?.type != "text", row.parts.first?.type != "text" {
             grouped[grouped.count - 1] = DisplayMessage(
                 role: previous.role == "assistant" || row.role == "assistant" ? "assistant" : "tool",
-                parts: normalizeParts(previous.parts + row.parts))
+                parts: normalizeParts(previous.parts + row.parts),
+                citationSources: previous.citationSources + row.citationSources)
         } else { grouped.append(row) }
     }
     return grouped
