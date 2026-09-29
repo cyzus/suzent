@@ -10,7 +10,7 @@ const permissions = JSON.parse(readFileSync(new URL('../capabilities/default.jso
 test('window runtime includes the Windows resize handle-leak fix', () => {
   // https://github.com/tauri-apps/tauri/pull/15614
   const lock = readFileSync(new URL('../Cargo.lock', import.meta.url), 'utf8');
-  const match = lock.match(/name = "tauri-runtime-wry"\nversion = "(\d+)\.(\d+)\.(\d+)"/);
+  const match = lock.match(/name = "tauri-runtime-wry"\r?\nversion = "(\d+)\.(\d+)\.(\d+)"/);
   assert.ok(match, 'window runtime must be locked');
   const [major, minor, patch] = match.slice(1).map(Number);
   assert.ok(major > 2 || (major === 2 && (minor > 11 || (minor === 11 && patch >= 4))),
