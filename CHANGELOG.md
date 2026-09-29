@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.15.2] - 2026-09-29
+
+### Release notes
+- Retry ambiguous mobile sends safely on iOS and Android by deduplicating stable client message IDs on the backend.
+
 ## [v0.15.1] - 2026-09-29
 
 ### Release notes
