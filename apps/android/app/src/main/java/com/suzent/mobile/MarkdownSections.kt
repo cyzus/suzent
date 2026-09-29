@@ -8,6 +8,7 @@ import org.commonmark.node.Node
 internal sealed interface MarkdownSection {
     data class Prose(val document: Document) : MarkdownSection
     data class Code(val text: String, val language: String) : MarkdownSection
+    data class Spa(val html: String) : MarkdownSection
 }
 
 internal fun markdownSections(document: Node): List<MarkdownSection> {
@@ -23,8 +24,13 @@ internal fun markdownSections(document: Node): List<MarkdownSection> {
         when (val current = node) {
             is FencedCodeBlock -> {
                 flush()
-                sections.add(MarkdownSection.Code(current.literal.removeSuffix("\n"),
-                    current.info.substringBefore(' ').uppercase(java.util.Locale.ROOT).ifEmpty { "CODE" }))
+                val language = current.info.substringBefore(' ').lowercase(java.util.Locale.ROOT)
+                val body = current.literal.removeSuffix("\n")
+                sections.add(if (language == "spa" || language == "html") {
+                    MarkdownSection.Spa(body)
+                } else {
+                    MarkdownSection.Code(body, language.uppercase(java.util.Locale.ROOT).ifEmpty { "CODE" })
+                })
             }
             is IndentedCodeBlock -> {
                 flush()

@@ -30,4 +30,9 @@ class MarkdownSectionsTest {
         assertEquals(MarkdownSection.Code("  value  ", "PYTHON"), result.single())
         assertTrue(sections("").isEmpty())
     }
+
+    @Test fun recognizesSpaAndHtmlAsRenderableDocuments() {
+        assertEquals(MarkdownSection.Spa("<main>SPA</main>"), sections("```spa\n<main>SPA</main>\n```").single())
+        assertEquals(MarkdownSection.Spa("<p>HTML</p>"), sections("```html\n<p>HTML</p>\n```").single())
+    }
 }

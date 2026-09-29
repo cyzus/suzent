@@ -1,0 +1,4 @@
+{
+  "products": {"mobile": "minor"},
+  "summary": "Render SPA and HTML response blocks interactively in the native iOS and Android clients."
+}

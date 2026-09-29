@@ -126,7 +126,8 @@ list so the stop control cannot retain a stale list flag.
 
 ## Limits
 
-The preview renders Markdown replies and structured tool/reasoning activities in
+The preview renders Markdown replies, complete `spa`/`html` fenced blocks in an
+isolated interactive web view, and structured tool/reasoning activities in
 expandable activity rails. Attachments, citations, A2UI and some
 legacy inline tool formats still require desktop. Shared palette and filtering
 rules live in `packages/presentation`; regenerate platform files with

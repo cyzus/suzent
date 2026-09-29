@@ -1,6 +1,7 @@
 import SwiftUI
 import SuzentCore
 import MarkdownUI
+import WebKit
 
 extension Color {
     static var suzentSurface: Color {
@@ -156,8 +157,21 @@ struct SuzentWordmark: View {
 struct SuzentMarkdown: View {
     let text: String
     var body: some View {
-        Markdown(text)
-            .markdownTheme(Theme.gitHub
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(Array(renderableMarkdownSections(text).enumerated()), id: \.offset) { _, section in
+                switch section {
+                case .markdown(let markdown):
+                    Markdown(markdown).markdownTheme(suzentMarkdownTheme)
+                case .spa(let html):
+                    SpaWebView(html: html).frame(minHeight: 240, maxHeight: 520)
+                        .overlay(Rectangle().stroke(.primary, lineWidth: PresentationTokens.borderWidth))
+                }
+            }
+        }.textSelection(.enabled)
+    }
+
+    private var suzentMarkdownTheme: Theme {
+        Theme.gitHub
                 .text {
                     ForegroundColor(.primary)
                     BackgroundColor(.clear)
@@ -188,8 +202,51 @@ struct SuzentMarkdown: View {
                         }.background(Color(presentation: PresentationTokens.code_bg))
                     }.overlay(Rectangle().stroke(.primary, lineWidth: PresentationTokens.borderWidth))
                         .markdownMargin(top: 8, bottom: 16)
-                })
-            .textSelection(.enabled)
+                }
+    }
+}
+
+private struct SpaWebView: UIViewRepresentable {
+    let html: String
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    func makeUIView(context: Context) -> WKWebView {
+        let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = .nonPersistent()
+        let view = WKWebView(frame: .zero, configuration: configuration)
+        view.navigationDelegate = context.coordinator
+        view.scrollView.isScrollEnabled = true
+        view.isOpaque = false
+        return view
+    }
+
+    func updateUIView(_ view: WKWebView, context: Context) {
+        guard context.coordinator.loadedHTML != html else { return }
+        context.coordinator.loadedHTML = html
+        view.loadHTMLString(html, baseURL: nil)
+    }
+
+    static func dismantleUIView(_ view: WKWebView, coordinator: Coordinator) {
+        view.stopLoading()
+        view.navigationDelegate = nil
+    }
+
+    final class Coordinator: NSObject, WKNavigationDelegate {
+        var loadedHTML: String?
+
+        func webView(
+            _ webView: WKWebView,
+            decidePolicyFor navigationAction: WKNavigationAction,
+            decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+        ) {
+            guard navigationAction.targetFrame?.isMainFrame == true,
+                  let scheme = navigationAction.request.url?.scheme else {
+                decisionHandler(.allow)
+                return
+            }
+            decisionHandler(["about", "data"].contains(scheme) ? .allow : .cancel)
+        }
     }
 }
 
