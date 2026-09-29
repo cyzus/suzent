@@ -6497,6 +6497,23 @@ archive to App Store Connect after a `release/mobile` merge. It requires the
 ranges, retry behavior, and acceptance gates. Rolling `mobile-preview` releases
 and automatic Play Store submission remain future work.
 
+## Conversation management
+
+Long-press a conversation on iOS or Android to pin/unpin, rename, move it to a
+shared project, or delete it after confirmation. Pins and metadata are stored on
+the backend and shared with desktop. The mobile rows use the same yellow pressed
+feedback, 44-point minimum menu targets, outlined surfaces, and destructive red
+actions on both platforms.
+
+These actions require the independent `manage_chats` permission, disabled by
+default for existing and newly configured grants. Enable it explicitly in
+desktop Settings → Mobile access, either during pairing or for a paired device.
+Sending messages and creating chats do not grant management access. Old backend
+sessions without this field are treated as not authorized by both native clients.
+Moving/deleting a running conversation is rejected; project moves may not affect
+descendants outside the device's shared scope. Mobile deletion never cascades to
+subagent conversations. Existing credentials remain valid across this upgrade.
+
 ## Encrypted local pairing
 
 For a local HTTP backend address, **Pair phone** now creates a separate local
