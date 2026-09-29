@@ -37,9 +37,12 @@ public struct DisplayMessage: Sendable {
 }
 
 public func presentMessages(_ messages: [ChatMessage], liveToolIds: Set<String> = []) -> [DisplayMessage] {
+    let indexedSources = messages.enumerated().flatMap { index, message in
+        message.parts.flatMap { part in (part.citationSources ?? []).map { (index, $0) } }
+    }
     let represented = Set(messages.flatMap { $0.parts }.filter { $0.type == "tool" }
         .compactMap(\.toolCallId).filter { !$0.isEmpty })
-    let rows: [DisplayMessage] = messages.compactMap { message in
+    let rows: [DisplayMessage] = messages.enumerated().compactMap { messageIndex, message in
         if PresentationTokens.compactionSummaryMarkers.contains(where: { message.content.contains($0) }) { return nil }
         if message.role == "tool", let id = message.toolCallId, (represented.contains(id) || liveToolIds.contains(id)) { return nil }
         let rawParts: [MessagePart]
@@ -50,8 +53,15 @@ public func presentMessages(_ messages: [ChatMessage], liveToolIds: Set<String> 
         } else {
             rawParts = message.parts.filter { $0.type != "tool" || !liveToolIds.contains($0.toolCallId ?? "") }
         }
-        let sources = rawParts.flatMap { $0.citationSources ?? [] }
         let parts = normalizeParts(rawParts)
+        let localSources = rawParts.flatMap { $0.citationSources ?? [] }
+        let referencedIDs = Set(parts.flatMap { citationSourceIDs($0.text ?? "") })
+        let nearbySources = referencedIDs.compactMap { id in
+            indexedSources.filter { $0.1.id == id }.min { abs($0.0 - messageIndex) < abs($1.0 - messageIndex) }?.1
+        }
+        let sources = (localSources + nearbySources).reduce(into: [CitationSource]()) { sources, source in
+            if !sources.contains(where: { $0.id == source.id }) { sources.append(source) }
+        }
         return parts.isEmpty ? nil : DisplayMessage(role: message.role, parts: parts, citationSources: sources)
     }
     var grouped: [DisplayMessage] = []

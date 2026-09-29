@@ -36,19 +36,35 @@ fun markdownWithCitationLinks(text: String, sources: List<CitationSource>): Stri
     }
 }
 
+private fun citationSourceIds(text: String): Set<String> = citationPatterns.flatMap { pattern ->
+    pattern.findAll(text).flatMap { match ->
+        match.groupValues[1].split(',', '\ue202', '\ufffc').map(String::trim).filter(String::isNotEmpty)
+    }.toList()
+}.toSet()
+
 fun presentMessages(messages: List<ChatMessage>, liveToolIds: Set<String> = emptySet()): List<DisplayMessage> {
+    val indexedSources = messages.flatMapIndexed { index, message ->
+        message.parts.flatMap { part -> part.citationSources.map { index to it } }
+    }
     val representedTools = messages.flatMap { it.parts }.filter { it.type == "tool" }
         .map { it.toolCallId }.filter { it.isNotEmpty() }.toSet()
-    val rows = messages.mapNotNull { message ->
-        if (PresentationTokens.compactionSummaryMarkers.any { message.content.contains(it) }) return@mapNotNull null
-        if (message.role == "tool" && (message.toolCallId in representedTools || message.toolCallId in liveToolIds)) return@mapNotNull null
+    val rows = messages.mapIndexedNotNull { messageIndex, message ->
+        if (PresentationTokens.compactionSummaryMarkers.any { message.content.contains(it) }) return@mapIndexedNotNull null
+        if (message.role == "tool" && (message.toolCallId in representedTools || message.toolCallId in liveToolIds)) return@mapIndexedNotNull null
         val rawParts = when {
             message.role == "tool" -> listOf(MessagePart("tool", toolName = message.name, output = message.content, toolCallId = message.toolCallId))
             message.parts.isEmpty() -> listOf(MessagePart("text", text = message.content))
             else -> message.parts.filter { it.type != "tool" || it.toolCallId !in liveToolIds }
         }
         val parts = normalizeParts(rawParts)
-        if (parts.isEmpty()) null else DisplayMessage(message.role, parts, rawParts.flatMap { it.citationSources })
+        if (parts.isEmpty()) null else {
+            val localSources = rawParts.flatMap { it.citationSources }
+            val referencedIds = parts.flatMap { citationSourceIds(it.text) }.toSet()
+            val nearbySources = referencedIds.mapNotNull { id ->
+                indexedSources.filter { it.second.id == id }.minByOrNull { kotlin.math.abs(it.first - messageIndex) }?.second
+            }
+            DisplayMessage(message.role, parts, (localSources + nearbySources).distinctBy { it.id })
+        }
     }
     val grouped = mutableListOf<DisplayMessage>()
     rows.forEach { row ->

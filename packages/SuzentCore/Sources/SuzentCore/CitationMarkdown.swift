@@ -35,3 +35,16 @@ public func markdownWithCitationLinks(_ text: String, sources: [CitationSource])
     }
     return result
 }
+
+func citationSourceIDs(_ text: String) -> Set<String> {
+    var ids: Set<String> = []
+    for pattern in citationPatterns {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { continue }
+        for match in regex.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
+            guard let payload = Range(match.range(at: 1), in: text) else { continue }
+            ids.formUnion(text[payload].split(whereSeparator: { $0 == "," || $0 == "\u{e202}" || $0 == "\u{fffc}" })
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })
+        }
+    }
+    return ids
+}

@@ -61,4 +61,11 @@ class ChatPresentationTest {
         val chat = Chat.parse(JSONObject("""{"id":"chat","messages":[{"role":"assistant","parts":[{"type":"text","text":"Fact"},{"type":"citation-sources","citationSources":[{"id":"t0_src_1","type":"webpage","title":"Example","url":"https://example.com/a","snippet":"A source"}]}]}]}"""))
         assertEquals(listOf(source), presentMessages(chat.messages).single().citationSources)
     }
+
+    @Test fun resolvesCitationSourcesStoredInAnotherMessage() {
+        val chat = Chat.parse(JSONObject("""{"id":"chat","messages":[{"role":"assistant","parts":[{"type":"text","text":"Weather \ue200cite\ue202t0_src_1\ue201"}]},{"role":"assistant","parts":[{"type":"citation-sources","citationSources":[{"id":"t0_src_1","type":"webpage","title":"Forecast","url":"https://example.com/weather"}]}]}]}"""))
+        val row = presentMessages(chat.messages).single()
+
+        assertEquals("Weather [Forecast](<https://example.com/weather>)", markdownWithCitationLinks(row.text, row.citationSources))
+    }
 }
