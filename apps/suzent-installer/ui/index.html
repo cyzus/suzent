@@ -478,8 +478,12 @@
       }
       async function launchSuzent() { try { await invoke?.('launch_installed_app',{dir:context.dir}); await closeInstaller(); } catch (error) { launchFailed = true; setError(String(error)); els.retry.textContent = isZh ? '重试打开' : 'Retry opening'; } }
       const appWindow = tauri?.window?.getCurrentWindow?.();
-      appWindow?.onCloseRequested(event => { if (running) event.preventDefault(); });
-      async function closeInstaller() { if (running) return; if (appWindow) await appWindow.close(); else window.close(); }
+      appWindow?.onCloseRequested(event => { if (running) event.preventDefault(); }).catch(error => setError(String(error)));
+      async function closeInstaller() {
+        if (running) return;
+        try { if (appWindow) await appWindow.close(); else window.close(); }
+        catch (error) { setError(isZh ? `关闭窗口失败：${error}` : `Could not close the window: ${error}`); }
+      }
 
       els.start.addEventListener('click', () => context.mode === 'install' ? runInstall() : retryUpdate());
       els.retry.addEventListener('click', () => launchFailed ? launchSuzent() : context.mode === 'install' ? runInstall() : retryUpdate());
@@ -526,12 +530,6 @@
       $('window-maximize').addEventListener('click', () => appWindow?.toggleMaximize());
       $('window-close').addEventListener('click', () => { if (!els.close.disabled) closeInstaller(); });
       els.browse.addEventListener('click', async () => { if (!openDialog) return; try { const selected = await openDialog({directory:true,multiple:false,defaultPath:els.dir.value || undefined}); if (typeof selected === 'string') { els.dir.value = selected; context.dir = selected; } } catch (error) { setError(String(error)); } });
-      let resizeIdleTimer = null;
-      window.addEventListener('resize', () => {
-        document.body.classList.add('resizing');
-        window.clearTimeout(resizeIdleTimer);
-        resizeIdleTimer = window.setTimeout(() => document.body.classList.remove('resizing'), 140);
-      }, { passive: true });
       window.setInterval(() => { if (!startedAt) return; const seconds = Math.floor(((endedAt || Date.now()) - startedAt) / 1000); els.elapsed.textContent = `${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`; if (running) refreshStageDurations(); },1000);
 
       (async () => {

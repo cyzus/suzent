@@ -5,6 +5,7 @@ import vm from 'node:vm';
 
 const html = readFileSync(new URL('../ui/index.html', import.meta.url), 'utf8');
 const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+const permissions = JSON.parse(readFileSync(new URL('../capabilities/default.json', import.meta.url), 'utf8')).permissions;
 
 class Element {
   constructor() {
@@ -21,7 +22,7 @@ class Element {
   querySelectorAll() { return []; }
 }
 
-async function harness({mode = 'install', result = null, status = null, shortcutFailure = false, shortcutSkipped = false, skippedStage = null, branch = null, language = 'en'} = {}) {
+async function harness({mode = 'install', result = null, status = null, shortcutFailure = false, shortcutSkipped = false, skippedStage = null, branch = null, language = 'en', closeError = null} = {}) {
   const elements = new Map();
   const element = id => {
     if (!elements.has(id)) elements.set(id, new Element());
@@ -39,7 +40,19 @@ async function harness({mode = 'install', result = null, status = null, shortcut
     if (command === 'save_diagnostics') return true;
     if (command === 'run_installer_stage') return JSON.stringify({ok: !(shortcutFailure && args.request.stage === 'shortcuts'), skipped: (shortcutSkipped && args.request.stage === 'shortcuts') || args.request.stage === skippedStage, reason: args.request.stage === skippedStage ? `${skippedStage} unavailable; repair required` : 'shortcut denied', logs:[], duration_ms:1});
   };
-  const appWindow = {onCloseRequested(fn) { handlers.close = fn; }, close() {calls.push(['close']);}};
+  const appWindow = {
+    async onCloseRequested(fn) { handlers.close = fn; },
+    async close() {
+      if (closeError) throw new Error(closeError);
+      calls.push(['close']);
+      let prevented = false;
+      await handlers.close?.({preventDefault() {prevented = true;}});
+      if (!prevented) {
+        assert.ok(permissions.includes('core:window:allow-destroy'), 'Tauri onCloseRequested destroys the window when not prevented');
+        calls.push(['destroy']);
+      }
+    },
+  };
   const window = {
     __TAURI__: {core:{invoke}, dialog:{open:async () => 'D:\\work folder\\custom'}, event:{listen:async (name, fn) => {handlers[name] = fn;}}, window:{getCurrentWindow:() => appWindow}},
     setInterval() {return 1;}, clearInterval() {}, setTimeout() {}, clearTimeout() {}, addEventListener() {},
@@ -107,6 +120,24 @@ test('active work blocks closing the window', async () => {
   assert.equal(prevented, true);
   await h.element('finish-close').events.click();
   assert.ok(!h.calls.some(([name]) => name === 'close'));
+});
+
+test('idle close can complete the Tauri close-and-destroy flow', async () => {
+  const h = await harness();
+  await h.element('finish-close').events.click();
+  assert.ok(h.calls.some(([name]) => name === 'destroy'));
+});
+
+test('completed update close can destroy the window', async () => {
+  const h = await harness({mode:'update',result:{code:0}});
+  await h.element('finish-close').events.click();
+  assert.ok(h.calls.some(([name]) => name === 'destroy'));
+});
+
+test('close errors are displayed rather than silently ignored', async () => {
+  const h = await harness({closeError:'permission denied'});
+  await h.element('finish-close').events.click();
+  assert.match(h.element('error-message').textContent, /Could not close.*permission denied/);
 });
 
 test('shortcut failure is a visible partial success with launch available', async () => {
