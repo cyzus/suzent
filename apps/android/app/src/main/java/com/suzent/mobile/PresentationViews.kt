@@ -9,6 +9,8 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
 import android.widget.TextView
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -21,6 +23,7 @@ import kotlin.math.cos
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.foundation.clickable
@@ -37,6 +40,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -48,6 +52,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import io.noties.markwon.AbstractMarkwonPlugin
 import io.noties.markwon.core.MarkwonTheme
 import io.noties.markwon.Markwon
+import io.noties.markwon.MarkwonConfiguration
+import io.noties.markwon.LinkResolver
 import io.noties.markwon.ext.tables.TablePlugin
 import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
 
@@ -79,10 +85,29 @@ fun SuzentTheme(content: @Composable () -> Unit) {
     ), content = content)
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MarkdownText(text: String) {
+fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList()) {
     val context = LocalContext.current
+    var pendingLink by remember { mutableStateOf<String?>(null) }
+    val renderedText = remember(text, citationSources) { markdownWithCitationLinks(text, citationSources, badges = true) }
+    val dark = isSystemInDarkTheme()
+    val iconURLs = remember(citationSources) { citationSources.map { it.favicon }.filter { it.startsWith("https://") }.distinct() }
+    val icons by produceState<Map<String, android.graphics.Bitmap>>(emptyMap(), iconURLs) {
+        value = emptyMap()
+        for (url in iconURLs) {
+            val bitmap = withContext(Dispatchers.IO) { CitationIcons.load(url) }
+            if (bitmap != null) value = value + (url to bitmap)
+        }
+    }
     val renderer = remember(context) { Markwon.builder(context)
+        .usePlugin(object : AbstractMarkwonPlugin() {
+            override fun configureConfiguration(builder: MarkwonConfiguration.Builder) {
+                builder.linkResolver(LinkResolver { _, link ->
+                    if (runCatching { java.net.URI(link).scheme?.lowercase() }.getOrNull() in listOf("http", "https", "suzent-citation")) pendingLink = link
+                })
+            }
+        })
         .usePlugin(object : AbstractMarkwonPlugin() {
             override fun configureTheme(builder: MarkwonTheme.Builder) {
                 builder.codeBackgroundColor(Color(PresentationTokens.yellow).toArgb())
@@ -94,10 +119,10 @@ fun MarkdownText(text: String) {
         }).usePlugin(TablePlugin.create(context)).usePlugin(StrikethroughPlugin.create()).build() }
     val foreground = MaterialTheme.colorScheme.onSurface.toArgb()
     val link = Color(PresentationTokens.blue).toArgb()
-    val blocks by produceState<List<MarkdownBlock>>(initialValue = emptyList(), renderer, text) {
+    val blocks by produceState<List<MarkdownBlock>>(initialValue = emptyList(), renderer, renderedText) {
         value = withContext(Dispatchers.Default) {
             synchronized(renderer) {
-                markdownSections(renderer.parse(text)).map { section ->
+                markdownSections(renderer.parse(renderedText)).map { section ->
                     when (section) {
                         is MarkdownSection.Prose -> MarkdownBlock(renderer.render(section.document))
                         is MarkdownSection.Code -> MarkdownBlock(section.text, section.language)
@@ -125,10 +150,120 @@ fun MarkdownText(text: String) {
                     TextView(ctx).apply { textSize = PresentationTokens.typeChat.toFloat(); setTextIsSelectable(true); setLineSpacing(0f, 1.2f) }
                 }, update = { view ->
                     view.setTextColor(foreground); view.setLinkTextColor(link)
-                    if (view.tag != block.body) { renderer.setParsedMarkdown(view, block.body as android.text.Spanned); view.tag = block.body }
+                    val styled = android.text.SpannableString(block.body)
+                    styled.getSpans(0, styled.length, android.text.style.ClickableSpan::class.java).forEach { span ->
+                        val start = styled.getSpanStart(span)
+                        val end = styled.getSpanEnd(span)
+                        if (styled.subSequence(start, end).startsWith("↗  ")) {
+                            val target = (span as? android.text.style.URLSpan)?.url
+                            val sourceId = target?.let { Uri.parse(it).path?.removePrefix("/")?.split(',')?.firstOrNull() }
+                            val icon = citationSources.firstOrNull { it.id == sourceId }?.favicon?.let(icons::get)
+                            styled.setSpan(CitationBadgeSpan(dark, target == pendingLink, icon), start, end, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                        }
+                    }
+                    renderer.setParsedMarkdown(view, styled)
+                    // Text selection installs ArrowKeyMovementMethod, which prevents Markwon
+                    // from installing its link handler automatically.
+                    view.movementMethod = android.text.method.LinkMovementMethod.getInstance()
+                    view.highlightColor = android.graphics.Color.TRANSPARENT
                 })
             }
         }
+    }
+    pendingLink?.let { link ->
+        val ids = Uri.parse(link).path.orEmpty().removePrefix("/").split(',')
+        val sources = if (link.startsWith("suzent-citation://")) ids.mapNotNull { id -> citationSources.firstOrNull { it.id == id } }
+            else listOf(citationSources.firstOrNull { it.url == link } ?: CitationSource("", "webpage", Uri.parse(link).host.orEmpty(), link))
+        ModalBottomSheet(onDismissRequest = { pendingLink = null }, shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)) {
+            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text(stringResource(R.string.citation_sources), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                sources.forEach { source ->
+                    val uri = Uri.parse(source.url)
+                    Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(16.dp)).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            val icon = icons[source.favicon]
+                            if (icon != null) Image(icon.asImageBitmap(), contentDescription = null, modifier = Modifier.size(18.dp))
+                            else Text("↗", Modifier.size(18.dp), style = MaterialTheme.typography.labelMedium)
+                            Text(uri.host.orEmpty().removePrefix("www."), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Text(source.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        if (source.snippet.isNotBlank()) Text(source.snippet, style = MaterialTheme.typography.bodyMedium, maxLines = 6, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                        if (uri.scheme in listOf("http", "https")) {
+                            Button(onClick = { androidx.browser.customtabs.CustomTabsIntent.Builder().setShowTitle(true).build().launchUrl(context, uri) }, shape = RoundedCornerShape(50)) {
+                                Text(stringResource(R.string.citation_read))
+                            }
+                            Row {
+                                TextButton(onClick = {
+                                    val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                    clipboard.setPrimaryClip(android.content.ClipData.newPlainText(source.title, source.url))
+                                }) { Text(stringResource(R.string.citation_copy)) }
+                                TextButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, uri)) }) { Text(stringResource(R.string.citation_external)) }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private object CitationIcons {
+    private val cache = android.util.LruCache<String, android.graphics.Bitmap>(128)
+    private val client = okhttp3.OkHttpClient.Builder().callTimeout(8, java.util.concurrent.TimeUnit.SECONDS).build()
+
+    fun load(url: String): android.graphics.Bitmap? {
+        cache.get(url)?.let { return it }
+        return runCatching {
+            client.newCall(okhttp3.Request.Builder().url(url).build()).execute().use { response ->
+                if (!response.isSuccessful) return@use null
+                val source = response.body?.source() ?: return@use null
+                source.request(262145)
+                if (source.buffer.size > 262144) return@use null
+                val bytes = source.buffer.readByteArray()
+                val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+                val options = android.graphics.BitmapFactory.Options().apply {
+                    inSampleSize = (maxOf(bounds.outWidth, bounds.outHeight) / 64).coerceAtLeast(1)
+                }
+                android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)?.also { cache.put(url, it) }
+            }
+        }.getOrNull()
+    }
+}
+
+private class CitationBadgeSpan(private val dark: Boolean, private val selected: Boolean, private val icon: android.graphics.Bitmap?) : android.text.style.ReplacementSpan() {
+    private fun badgePaint(paint: android.graphics.Paint) = android.graphics.Paint(paint).apply {
+        textSize = paint.textSize * 0.72f
+        isUnderlineText = false
+        typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+    }
+
+    override fun getSize(paint: android.graphics.Paint, text: CharSequence, start: Int, end: Int,
+        fm: android.graphics.Paint.FontMetricsInt?): Int {
+        val badge = badgePaint(paint)
+        return kotlin.math.ceil(badge.measureText(text, start + 3, end) + paint.textSize * 1.85f).toInt()
+    }
+
+    override fun draw(canvas: android.graphics.Canvas, text: CharSequence, start: Int, end: Int,
+        x: Float, top: Int, y: Int, bottom: Int, paint: android.graphics.Paint) {
+        val badge = badgePaint(paint)
+        val padding = paint.textSize * 0.3f
+        val bounds = android.graphics.RectF(x + 2, y + badge.ascent() - padding * 0.45f,
+            x + getSize(paint, text, start, end, null) - 2, y + badge.descent() + padding * 0.45f)
+        badge.color = android.graphics.Color.parseColor(if (selected) "#BDD6FF" else if (dark) "#303030" else "#F5F5F5")
+        canvas.drawRoundRect(bounds, bounds.height() / 2, bounds.height() / 2, badge)
+        badge.style = android.graphics.Paint.Style.STROKE
+        badge.strokeWidth = paint.textSize * 0.035f
+        badge.color = android.graphics.Color.parseColor(if (dark) "#606060" else "#CCCCCC")
+        canvas.drawRoundRect(bounds, bounds.height() / 2, bounds.height() / 2, badge)
+        badge.style = android.graphics.Paint.Style.FILL
+        badge.color = android.graphics.Color.parseColor(if (dark && !selected) "#EEEEEE" else "#404040")
+        val iconSize = paint.textSize * 0.72f
+        if (icon != null) {
+            val iconTop = bounds.centerY() - iconSize / 2
+            canvas.drawBitmap(icon, null, android.graphics.RectF(x + padding, iconTop, x + padding + iconSize, iconTop + iconSize), badge)
+        } else canvas.drawText("↗", x + padding, y.toFloat(), badge)
+        canvas.drawText(text, start + 3, end, x + padding + paint.textSize, y.toFloat(), badge)
     }
 }
 
@@ -146,7 +281,7 @@ fun MessageView(message: DisplayMessage, isLatest: Boolean = false) {
         }
     } else Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         SuzentAssistantBadge(compact = !isLatest)
-        ActivityContent(message.parts, live = false)
+        ActivityContent(message.parts, live = false, citationSources = message.citationSources)
     }
 }
 
@@ -257,12 +392,12 @@ fun SuzentAssistantBadge(compact: Boolean = false) {
 }
 
 @Composable
-fun ActivityContent(parts: List<MessagePart>, live: Boolean) {
+fun ActivityContent(parts: List<MessagePart>, live: Boolean, citationSources: List<CitationSource> = emptyList()) {
     val chunks = remember(parts) { activityChunks(parts) }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         chunks.forEachIndexed { index, chunk ->
             key(index) {
-                if (chunk.first().type == "text") MarkdownText(chunk.first().text)
+                if (chunk.first().type == "text") MarkdownText(chunk.first().text, citationSources)
                 else ActivityRail(chunk, live)
             }
         }

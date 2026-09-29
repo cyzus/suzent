@@ -111,4 +111,11 @@
     <string name="cancel_reconnect">Cancel</string>
     <string name="reconnect_unreachable">Could not reach your desktop. Check Wi-Fi or Tailscale and make sure Suzent is running, then retry or pair again.</string>
     <string name="pairing_secure_connection">Could not establish a trusted connection. Check the network, or scan again if the desktop identity changed.</string>
+    <string name="open_external_link">Open external link?</string>
+    <string name="open_link">Open</string>
+    <string name="cancel_link">Cancel</string>
+    <string name="citation_sources">Sources</string>
+    <string name="citation_read">Read article</string>
+    <string name="citation_copy">Copy link</string>
+    <string name="citation_external">Open externally</string>
 </resources>

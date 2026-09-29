@@ -32,8 +32,14 @@ data class Chat(val id: String, val title: String, val running: Boolean, val mes
                     ChatMessage(item.optString("role", "assistant"), item.opt("content") as? String ?: "",
                         (0 until parts.length()).mapNotNull { partIndex ->
                             val part = parts.optJSONObject(partIndex) ?: return@mapNotNull null
+                            val sources = part.optJSONArray("citationSources") ?: JSONArray()
                             MessagePart(part.optString("type"), part.optString("text"), part.optString("toolName"),
-                                part.optString("args"), part.optString("output"), part.optString("toolCallId"), part.optString("state"))
+                                part.optString("args"), part.optString("output"), part.optString("toolCallId"), part.optString("state"),
+                                citationSources = (0 until sources.length()).mapNotNull { sourceIndex ->
+                                    sources.optJSONObject(sourceIndex)?.let { source -> CitationSource(
+                                        source.optString("id"), source.optString("type"), source.optString("title"),
+                                        source.optString("url"), source.optString("snippet"), source.optString("favicon")) }
+                                })
                         }, item.optString("name"), item.optString("tool_call_id"))
                 }, projectId = json.opt("projectId") as? String, projectName = json.opt("projectName") as? String,
                 model = json.opt("model") as? String, models = json.optJSONArray("models")?.let { a -> (0 until a.length()).map { a.getString(it) } } ?: emptyList())
