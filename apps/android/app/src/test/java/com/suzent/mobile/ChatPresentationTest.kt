@@ -57,6 +57,7 @@ class ChatPresentationTest {
     @Test fun rendersCitationMarkersAsLinksAndKeepsMetadata() {
         val source = CitationSource("t0_src_1", "webpage", "Example", "https://example.com/a", "A source")
         assertEquals("Fact [Example](<https://example.com/a>).", markdownWithCitationLinks("Fact [[cite:t0_src_1]].", listOf(source)))
+        assertEquals("Fact [Example](<https://example.com/a>).", markdownWithCitationLinks("Fact \ue200cite\ue202t0_src_1\ue201.", listOf(source)))
         val chat = Chat.parse(JSONObject("""{"id":"chat","messages":[{"role":"assistant","parts":[{"type":"text","text":"Fact"},{"type":"citation-sources","citationSources":[{"id":"t0_src_1","type":"webpage","title":"Example","url":"https://example.com/a","snippet":"A source"}]}]}]}"""))
         assertEquals(listOf(source), presentMessages(chat.messages).single().citationSources)
     }
