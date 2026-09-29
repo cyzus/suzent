@@ -1,7 +1,6 @@
 import SwiftUI
 import SuzentCore
 import MarkdownUI
-import WebKit
 
 extension Color {
     static var suzentSurface: Color {
@@ -159,22 +158,14 @@ struct SuzentMarkdown: View {
     var citationSources: [CitationSource] = []
     @State private var pendingLink: URL?
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ForEach(Array(renderableMarkdownSections(markdownWithCitationLinks(text, sources: citationSources)).enumerated()), id: \.offset) { _, section in
-                switch section {
-                case .markdown(let markdown):
-                    Markdown(markdown).markdownTheme(suzentMarkdownTheme)
-                        .environment(\.openURL, OpenURLAction { url in
-                            guard ["http", "https"].contains(url.scheme?.lowercased()) else { return .discarded }
-                            pendingLink = url
-                            return .handled
-                        })
-                case .spa(let html):
-                    SpaWebView(html: html) { pendingLink = $0 }.frame(minHeight: 240, maxHeight: 520)
-                        .overlay(Rectangle().stroke(.primary, lineWidth: PresentationTokens.borderWidth))
-                }
-            }
-        }.textSelection(.enabled)
+        Markdown(markdownWithCitationLinks(text, sources: citationSources))
+            .markdownTheme(suzentMarkdownTheme)
+            .environment(\.openURL, OpenURLAction { url in
+                guard ["http", "https"].contains(url.scheme?.lowercased()) else { return .discarded }
+                pendingLink = url
+                return .handled
+            })
+            .textSelection(.enabled)
             .alert(linkTitle, isPresented: Binding(
                 get: { pendingLink != nil },
                 set: { if !$0 { pendingLink = nil } }
@@ -227,66 +218,6 @@ struct SuzentMarkdown: View {
                     }.overlay(Rectangle().stroke(.primary, lineWidth: PresentationTokens.borderWidth))
                         .markdownMargin(top: 8, bottom: 16)
                 }
-    }
-}
-
-private struct SpaWebView: UIViewRepresentable {
-    let html: String
-    let onOpenLink: (URL) -> Void
-
-    init(html: String, onOpenLink: @escaping (URL) -> Void) {
-        self.html = html
-        self.onOpenLink = onOpenLink
-    }
-
-    func makeCoordinator() -> Coordinator { Coordinator(onOpenLink: onOpenLink) }
-
-    func makeUIView(context: Context) -> WKWebView {
-        let configuration = WKWebViewConfiguration()
-        configuration.websiteDataStore = .nonPersistent()
-        let view = WKWebView(frame: .zero, configuration: configuration)
-        view.navigationDelegate = context.coordinator
-        view.scrollView.isScrollEnabled = true
-        view.isOpaque = false
-        return view
-    }
-
-    func updateUIView(_ view: WKWebView, context: Context) {
-        context.coordinator.onOpenLink = onOpenLink
-        guard context.coordinator.loadedHTML != html else { return }
-        context.coordinator.loadedHTML = html
-        view.loadHTMLString(html, baseURL: nil)
-    }
-
-    static func dismantleUIView(_ view: WKWebView, coordinator: Coordinator) {
-        view.stopLoading()
-        view.navigationDelegate = nil
-    }
-
-    final class Coordinator: NSObject, WKNavigationDelegate {
-        var loadedHTML: String?
-        var onOpenLink: (URL) -> Void
-
-        init(onOpenLink: @escaping (URL) -> Void) { self.onOpenLink = onOpenLink }
-
-        func webView(
-            _ webView: WKWebView,
-            decidePolicyFor navigationAction: WKNavigationAction,
-            decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
-        ) {
-            guard let url = navigationAction.request.url, let scheme = url.scheme?.lowercased() else {
-                decisionHandler(.allow)
-                return
-            }
-            if ["http", "https"].contains(scheme) {
-                decisionHandler(.cancel)
-                DispatchQueue.main.async { self.onOpenLink(url) }
-            } else if navigationAction.targetFrame?.isMainFrame != true || ["about", "data"].contains(scheme) {
-                decisionHandler(.allow)
-            } else {
-                decisionHandler(.cancel)
-            }
-        }
     }
 }
 

@@ -126,10 +126,9 @@ list so the stop control cannot retain a stale list flag.
 
 ## Limits
 
-The preview renders Markdown replies, complete `spa`/`html` fenced blocks in an
-isolated interactive web view, and structured tool/reasoning activities in
-expandable activity rails. Citation and ordinary web links open through a native
-confirmation prompt. Attachments, A2UI and some
+The preview renders Markdown replies, PUA/ASCII citation markers, and structured
+tool/reasoning activities in expandable activity rails. Citation and ordinary
+web links open through a native confirmation prompt. Attachments, A2UI and some
 legacy inline tool formats still require desktop. Shared palette and filtering
 rules live in `packages/presentation`; regenerate platform files with
 `uv run python scripts/generate_presentation.py` after editing their source.

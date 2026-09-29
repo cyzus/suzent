@@ -11,9 +11,6 @@ import androidx.compose.ui.semantics.contentDescription
 import android.widget.TextView
 import android.content.Intent
 import android.net.Uri
-import android.webkit.WebResourceRequest
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -117,7 +114,6 @@ fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList
                     when (section) {
                         is MarkdownSection.Prose -> MarkdownBlock(renderer.render(section.document))
                         is MarkdownSection.Code -> MarkdownBlock(section.text, section.language)
-                        is MarkdownSection.Spa -> MarkdownBlock(section.html, spa = true)
                     }
                 }
             }
@@ -125,9 +121,7 @@ fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList
     }
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         blocks.forEach { block ->
-            if (block.spa) {
-                SpaView(block.body.toString()) { pendingLink = it }
-            } else if (block.language != null) {
+            if (block.language != null) {
                 Column(Modifier.fillMaxWidth().border(PresentationTokens.borderWidth.dp, MaterialTheme.colorScheme.outline)) {
                     Text(block.language, Modifier.fillMaxWidth().background(Color.Black).padding(12.dp),
                         color = Color.White, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold,
@@ -167,42 +161,7 @@ fun MarkdownText(text: String, citationSources: List<CitationSource> = emptyList
     }
 }
 
-private data class MarkdownBlock(val body: CharSequence, val language: String? = null, val spa: Boolean = false)
-
-@Composable
-private fun SpaView(html: String, onOpenLink: (String) -> Unit) {
-    val outline = MaterialTheme.colorScheme.outline
-    val currentOnOpenLink by rememberUpdatedState(onOpenLink)
-    AndroidView(
-        modifier = Modifier.fillMaxWidth().heightIn(min = 240.dp, max = 520.dp)
-            .border(PresentationTokens.borderWidth.dp, outline),
-        factory = { context ->
-            WebView(context).apply {
-                settings.javaScriptEnabled = true
-                settings.allowFileAccess = false
-                settings.allowContentAccess = false
-                settings.domStorageEnabled = false
-                webViewClient = object : WebViewClient() {
-                    override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                        val scheme = request.url.scheme
-                        if (scheme == "http" || scheme == "https") {
-                            currentOnOpenLink(request.url.toString())
-                            return true
-                        }
-                        return request.isForMainFrame && scheme != "about" && scheme != "data"
-                    }
-                }
-            }
-        },
-        update = { view ->
-            if (view.tag != html) {
-                view.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
-                view.tag = html
-            }
-        },
-        onRelease = { it.destroy() },
-    )
-}
+private data class MarkdownBlock(val body: CharSequence, val language: String? = null)
 
 @Composable
 fun MessageView(message: DisplayMessage, isLatest: Boolean = false) {
