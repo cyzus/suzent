@@ -102,6 +102,10 @@ class BackendClient(val backend: Backend, private val token: String, probeOnly: 
     }
     suspend fun composer(): Chat = Chat.parse(json("mobile/client/composer"))
     suspend fun create(title: String, projectId: String? = null): Chat = Chat.parse(json("mobile/client/chats", JSONObject().put("title", title).apply { if (projectId != null) put("project_id", projectId) }))
+    suspend fun manageChat(id: String, action: String, value: String? = null) {
+        json("mobile/client/manage", JSONObject().put("chat_id", id).put("action", action).apply { if (value != null) put("value", value) })
+    }
+
     suspend fun chat(id: String): Chat {
         require(!id.contains('/') && id != "." && id != "..")
         return Chat.parse(json("mobile/client/chats/$id"))

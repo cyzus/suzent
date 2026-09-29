@@ -18,6 +18,7 @@ import SuzentCore
     var selectedModel: String?
     var sentVersion = 0
     var openedVersion = 0
+    var pinnedVersion = 0
     var pairingVersion = 0
     @ObservationIgnored private var drafts: [String: String] = [:]
     var selected: Chat?
@@ -264,6 +265,37 @@ import SuzentCore
                 let chat = try await client.chat(id)
                 guard generation == current, selected?.id == id, !streaming else { return }
                 selected = chat
+            }
+        } catch { if generation == current { handle(error) } }
+    }
+
+    func manageChat(_ chat: Chat, action: String, value: String? = nil) async {
+        guard let client, !busy, device?.permissions.manageChats == true else { return }
+        busy = true
+        defer { busy = false }
+        let current = generation
+        do {
+            try await client.manageChat(chat.id, action: action, value: value)
+            guard generation == current else { return }
+            if action == "delete" {
+                drafts.removeValue(forKey: chat.id)
+                chats.removeAll { $0.id == chat.id }
+                if selected?.id == chat.id {
+                    streamTask?.cancel()
+                    selected = nil
+                    streaming = false
+                    liveParts = []; pendingApprovals = []; draft = ""
+                }
+            }
+            let listing = try await client.chats()
+            guard generation == current else { return }
+            chats = listing
+            if action == "pin", listing.contains(where: { $0.id == chat.id && $0.pinned == true }) { pinnedVersion += 1 }
+            if let updated = listing.first(where: { $0.id == selected?.id }) {
+                selected?.title = updated.title
+                selected?.projectId = updated.projectId
+                selected?.projectName = updated.projectName
+                selected?.pinned = updated.pinned
             }
         } catch { if generation == current { handle(error) } }
     }

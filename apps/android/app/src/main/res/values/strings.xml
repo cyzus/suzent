@@ -118,4 +118,17 @@
     <string name="citation_read">Read article</string>
     <string name="citation_copy">Copy link</string>
     <string name="citation_external">Open externally</string>
+    <string name="conversation_actions">Conversation actions</string>
+    <string name="manage_conversations">Manage conversations</string>
+    <string name="manage_permission_hint">Enable Manage conversations in desktop Settings → Mobile access.</string>
+    <string name="pin_chat">Pin</string>
+    <string name="unpin_chat">Unpin</string>
+    <string name="rename_chat">Rename</string>
+    <string name="move_to_project">Move to project</string>
+    <string name="delete_chat">Delete conversation</string>
+    <string name="delete_chat_warning">This deletes the conversation on all devices and cannot be undone.</string>
+    <string name="conversation_title">Conversation title</string>
+    <string name="save_chat">Save</string>
+    <string name="pinned_chats">Pinned</string>
+    <string name="select_conversation">Select a conversation or start a new one.</string>
 </resources>

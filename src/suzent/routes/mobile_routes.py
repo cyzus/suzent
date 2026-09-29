@@ -46,6 +46,11 @@ class DecisionRequest(BaseModel):
     permissions: ClientPermissions | None = None
 
 
+class ManagementRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    enabled: StrictBool
+
+
 def get_mobile_store(request: Request) -> PairingStore:
     state = request.app.state
     if not hasattr(state, "mobile_store"):
@@ -159,6 +164,17 @@ async def revoke(request: Request) -> JSONResponse:
     return reply({"ok": removed}, 200 if removed else 404)
 
 
+async def management(request: Request) -> JSONResponse:
+    try:
+        body = ManagementRequest.model_validate(await request.json())
+    except (ValidationError, ValueError):
+        return reply({"error": "Invalid management permission"}, 400)
+    updated = get_mobile_store(request).set_management(
+        request.path_params["device_id"], body.enabled
+    )
+    return reply({"ok": updated}, 200 if updated else 404)
+
+
 mobile_routes = [
     Route("/mobile/capabilities", capabilities, methods=["GET"]),
     Route("/mobile/pairing/invite", invite, methods=["POST"]),
@@ -169,5 +185,6 @@ mobile_routes = [
     Route("/mobile/pairing/pending", pending, methods=["GET"]),
     Route("/mobile/pairing/{pairing_id}/decide", decide, methods=["POST"]),
     Route("/mobile/devices", devices, methods=["GET"]),
+    Route("/mobile/devices/{device_id}/management", management, methods=["POST"]),
     Route("/mobile/devices/{device_id}/revoke", revoke, methods=["POST"]),
 ]

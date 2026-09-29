@@ -24,6 +24,17 @@ private func invitation(_ overrides: [String: Any] = [:]) throws -> String {
     #expect(try PairingInvitation.parse(debug, allowHTTP: true, now: now).origin == "http://desktop.example")
 }
 
+@Test func managementPermissionRequiresExplicitOptIn() throws {
+    let decoder = JSONDecoder()
+    decoder.keyDecodingStrategy = .convertFromSnakeCase
+    var payload: [String: Any] = ["chat_ids": [], "all_chats": true, "create_chats": true, "send": true, "stop": true]
+    let legacy = try decoder.decode(ClientPermissions.self, from: JSONSerialization.data(withJSONObject: payload))
+    #expect(legacy.manageChats != true)
+    payload["manage_chats"] = true
+    let enabled = try decoder.decode(ClientPermissions.self, from: JSONSerialization.data(withJSONObject: payload))
+    #expect(enabled.manageChats == true)
+}
+
 @Test func rejectsUnsupportedBackendCapabilities() throws {
     let decoder = JSONDecoder()
     decoder.keyDecodingStrategy = .convertFromSnakeCase

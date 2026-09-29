@@ -78,6 +78,7 @@ struct ClientPermissionsView: View {
             Label(device.permissions.allChats ? String(localized: "All conversations")
                 : String(localized: "Shared conversations: \(device.permissions.chatIds.count)"), systemImage: "text.bubble")
             permission("Create conversations", enabled: device.permissions.createChats)
+            permission("Manage conversations", enabled: device.permissions.manageChats == true)
             permission("Send messages", enabled: device.permissions.send)
             permission("Stop responses", enabled: device.permissions.stop)
             permission("Approve tool requests", enabled: device.permissions.approveTools == true)
@@ -97,7 +98,8 @@ struct PairingPermissionsView: View {
     let permissions: ClientPermissions
     var body: some View {
         VStack(alignment: .leading, spacing: PresentationTokens.spaceSmall) {
-            if permissions.allChats && permissions.createChats && permissions.send && permissions.stop && permissions.approveTools == true {
+            permission("Manage conversations", enabled: permissions.manageChats == true)
+            if permissions.allChats && permissions.createChats && permissions.manageChats == true && permissions.send && permissions.stop && permissions.approveTools == true {
                 Text("Full access").font(.headline)
                 Text("All conversations, messaging, and tool approvals.").font(.subheadline)
             } else {

@@ -4,6 +4,7 @@ export interface MobilePermissions {
   chat_ids: string[];
   all_chats: boolean;
   create_chats: boolean;
+  manage_chats?: boolean;
   send: boolean;
   stop: boolean;
   approve_tools?: boolean;

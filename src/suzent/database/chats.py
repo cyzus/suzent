@@ -698,6 +698,15 @@ class ChatOperationsMixin:
             ).all()
             return {row[0]: (row[1], row[2]) for row in rows}
 
+    def get_pinned_chat_ids(self, chat_ids: list[str]) -> set[str]:
+        if not chat_ids:
+            return set()
+        with self._session() as session:
+            statement = select(ChatModel.id).where(
+                ChatModel.id.in_(chat_ids), ChatModel.pinned
+            )
+            return set(session.exec(statement).all())
+
     def list_chat_titles(
         self, chat_ids: list[str] | None = None, limit: int = 1000
     ) -> list[tuple[str, str]]:
