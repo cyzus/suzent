@@ -252,13 +252,13 @@ async def manage(request: Request) -> JSONResponse:
         if body.value not in {project["id"] for project in allowed_projects(grant)}:
             raise HTTPException(403, "Project not shared with this device")
         # Shared project moves also move descendants. Never affect unshared chats.
-        if any(
-            not grant.permissions.permits_chat(child)
-            for child in db.get_subagent_chat_ids_for_parent_chat(body.chat_id)
-        ):
+        descendants = db.get_subagent_chat_ids_for_parent_chat(body.chat_id)
+        if any(not grant.permissions.permits_chat(child) for child in descendants):
             raise HTTPException(
                 403, "Conversation descendants not shared with this device"
             )
+        if any(is_background_streaming(child) for child in descendants):
+            raise HTTPException(409, "Stop descendant responses before moving")
         from suzent.routes.project_routes import move_chat_to_project
 
         target = forwarded(request, {"project_id": body.value})

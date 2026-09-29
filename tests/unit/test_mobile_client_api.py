@@ -216,6 +216,28 @@ def test_management_move_and_delete_do_not_escape_scope(setup_client, monkeypatc
     assert not PairingStore(store.path).verify(result["token"]).permissions.manage_chats
 
 
+def test_move_rejects_running_shared_descendants(setup_client, monkeypatch):
+    from suzent.mobile.client_api import get_database
+
+    client, store = setup_client
+    result = grant(store, chat_ids=["shared", "private"], manage_chats=True)
+    client.headers["Authorization"] = f"Bearer {result['token']}"
+    monkeypatch.setattr(
+        get_database(), "get_subagent_chat_ids_for_parent_chat", lambda _: ["private"]
+    )
+    monkeypatch.setattr(
+        "suzent.core.stream_registry.is_background_streaming",
+        lambda chat_id: chat_id == "private",
+    )
+    assert (
+        client.post(
+            "/mobile/client/manage",
+            json={"chat_id": "shared", "action": "move", "value": "p-shared"},
+        ).status_code
+        == 409
+    )
+
+
 def test_send_cannot_override_permissions_or_run_commands(setup_client, monkeypatch):
     client, store = setup_client
     result = grant(store, chat_ids=["shared"], send=True)
